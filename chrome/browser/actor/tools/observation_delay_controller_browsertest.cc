@@ -1,0 +1,551 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/actor/tools/observation_delay_controller.h"
+
+#include <string>
+
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/test_future.h"
+#include "base/test/with_feature_override.h"
+#include "base/time/time.h"
+#include "build/buildflag.h"
+#include "chrome/browser/actor/tools/observation_delay_test_util.h"
+#include "chrome/browser/ui/autofill/chrome_autofill_client.h"
+#include "chrome/common/chrome_features.h"
+#include "chrome/test/base/ui_test_utils.h"
+#include "components/actor/core/actor_features.h"
+#include "components/actor/core/task_id.h"
+#include "components/autofill/content/browser/content_autofill_driver.h"
+#include "components/autofill/content/browser/test_autofill_client_injector.h"
+#include "components/autofill/content/browser/test_content_autofill_client.h"
+#include "components/autofill/core/browser/form_predictions_tracker.h"
+#include "components/autofill/core/browser/form_predictions_tracker_test_api.h"
+#include "components/autofill/core/browser/mock_form_predictions_tracker.h"
+#include "components/autofill/core/common/form_data.h"
+#include "components/page_load_metrics/browser/page_load_metrics_test_waiter.h"
+#include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/browser_test_utils.h"
+#include "pdf/buildflags.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/strings/str_format.h"
+#include "url/gurl.h"
+
+namespace actor {
+
+namespace {
+
+using ::base::test::ScopedFeatureList;
+using ::base::test::TestFuture;
+using ::content::BeginNavigateToURLFromRenderer;
+using ::content::RenderFrameHost;
+using ::content::TestNavigationManager;
+using ::content::WebContents;
+using ::tabs::TabInterface;
+
+using State = ::actor::ObservationDelayController::State;
+
+class ObservationDelayControllerTest : public ObservationDelayTest {
+ public:
+  ObservationDelayControllerTest() {
+    scoped_feature_list_.InitAndEnableFeatureWithParameters(
+        features::kGlicActor,
+        {// Effectively disable the timeout to prevent flakes.
+         {features::kGlicActorPageStabilityTimeout.name, "30000ms"},
+         // Use small LCP delay.
+         {features::kActorObservationDelayLcp.name, "100ms"}});
+  }
+  ~ObservationDelayControllerTest() override = default;
+
+ private:
+  ScopedFeatureList scoped_feature_list_;
+};
+
+class ObservationDelayControllerNavigateTest
+    : public ObservationDelayControllerTest,
+      public base::test::WithFeatureOverride {
+ public:
+  ObservationDelayControllerNavigateTest()
+      : base::test::WithFeatureOverride(
+            kActorRestartObservationDelayControllerOnNavigate) {}
+};
+
+IN_PROC_BROWSER_TEST_P(ObservationDelayControllerNavigateTest,
+                       NavigateDuringPageStabilization) {
+  ASSERT_TRUE(
+      content::NavigateToURL(web_contents(), GetPageStabilityTestURL()));
+
+  TestObservationDelayController controller(*main_frame(), actor::TaskId(),
+                                            journal(), PageStabilityConfig());
+
+  // Initiate a fetch to block page stability.
+  ASSERT_TRUE(InitiateFetchRequest());
+
+  // Start waiting on the controller. It should be blocked in page stability.
+  TestFuture<ObservationDelayController::Result> result;
+  controller.Wait(*active_tab(), result.GetCallback());
+  ASSERT_TRUE(DoesReachSteadyState(controller, State::kWaitForPageStability));
+
+  const GURL url = embedded_test_server()->GetURL("/actor/blank.html");
+  TestNavigationManager manager(web_contents(), url);
+  ASSERT_TRUE(BeginNavigateToURLFromRenderer(web_contents(), url));
+
+  if (IsParamFeatureEnabled()) {
+    ASSERT_TRUE(controller.WaitForState(State::kDone));
+    ASSERT_EQ(result.Get(), ObservationDelayController::Result::kPageNavigated);
+  } else {
+    // Stop before committing the navigation. The observer should remain waiting
+    // on page stability.
+    ASSERT_TRUE(manager.WaitForResponse());
+    ASSERT_TRUE(DoesReachSteadyState(controller, State::kWaitForPageStability));
+
+    // Complete the navigation. The controller should wait for load, then a
+    // visual update, then complete.
+    ASSERT_TRUE(manager.WaitForNavigationFinished());
+    ASSERT_TRUE(controller.WaitForState(State::kWaitForLoadCompletion));
+    ASSERT_TRUE(controller.WaitForState(State::kWaitForVisualStateUpdate));
+    ASSERT_TRUE(controller.WaitForState(State::kMaybeDelayForLcp));
+    ASSERT_TRUE(controller.WaitForState(State::kDone));
+    ASSERT_EQ(result.Get(), ObservationDelayController::Result::kOk);
+  }
+}
+
+IN_PROC_BROWSER_TEST_P(ObservationDelayControllerNavigateTest,
+                       NavigateWithTooManyRestarts) {
+  ASSERT_TRUE(
+      content::NavigateToURL(web_contents(), GetPageStabilityTestURL()));
+
+  TestObservationDelayController controller(*main_frame(), actor::TaskId(),
+                                            journal(), PageStabilityConfig());
+  // Force the navigation count to be very large.
+  controller.SetNavigationCount(1000);
+
+  // Initiate a fetch to block page stability.
+  ASSERT_TRUE(InitiateFetchRequest());
+
+  // Start waiting on the controller. It should be blocked in page stability.
+  TestFuture<ObservationDelayController::Result> result;
+  controller.Wait(*active_tab(), result.GetCallback());
+  ASSERT_TRUE(DoesReachSteadyState(controller, State::kWaitForPageStability));
+
+  const GURL url = embedded_test_server()->GetURL("/actor/blank.html");
+  TestNavigationManager manager(web_contents(), url);
+  ASSERT_TRUE(BeginNavigateToURLFromRenderer(web_contents(), url));
+
+  // Stop before committing the navigation. The observer should remain waiting
+  // on page stability.
+  ASSERT_TRUE(manager.WaitForResponse());
+  ASSERT_TRUE(DoesReachSteadyState(controller, State::kWaitForPageStability));
+
+  // Complete the navigation. The controller should wait for load, then a
+  // visual update, then complete.
+  ASSERT_TRUE(manager.WaitForNavigationFinished());
+  ASSERT_TRUE(controller.WaitForState(State::kWaitForLoadCompletion));
+  ASSERT_TRUE(controller.WaitForState(State::kWaitForVisualStateUpdate));
+  ASSERT_TRUE(controller.WaitForState(State::kMaybeDelayForLcp));
+  ASSERT_TRUE(controller.WaitForState(State::kDone));
+  ASSERT_EQ(result.Get(), ObservationDelayController::Result::kOk);
+}
+
+IN_PROC_BROWSER_TEST_F(ObservationDelayControllerTest,
+                       UsePageStabilityForSameDocumentNavigation) {
+  ASSERT_TRUE(
+      content::NavigateToURL(web_contents(), GetPageStabilityTestURL()));
+
+  TestObservationDelayController controller(*main_frame(), actor::TaskId(),
+                                            journal(), PageStabilityConfig());
+
+  // Perform a same-document navigation. The page has a navigation handler
+  // that will initiate a fetch from this event.
+  ASSERT_TRUE(InitiateFetchRequest());
+
+  // Start waiting on the controller. It should be blocked in page stability.
+  TestFuture<ObservationDelayController::Result> result;
+  controller.Wait(*active_tab(), result.GetCallback());
+
+  ASSERT_TRUE(DoesReachSteadyState(controller, State::kWaitForPageStability));
+  EXPECT_FALSE(result.IsReady());
+
+  Respond("TEST COMPLETE");
+
+  ASSERT_TRUE(controller.WaitForState(State::kWaitForLoadCompletion));
+  ASSERT_TRUE(controller.WaitForState(State::kWaitForVisualStateUpdate));
+  ASSERT_TRUE(controller.WaitForState(State::kMaybeDelayForLcp));
+  ASSERT_TRUE(result.Wait());
+  ASSERT_EQ(GetOutputText(), "TEST COMPLETE");
+}
+
+// Test waiting on a new document load after waiting for the page to stabilize.
+IN_PROC_BROWSER_TEST_P(ObservationDelayControllerNavigateTest,
+                       LoadAfterStability) {
+  ASSERT_TRUE(
+      content::NavigateToURL(web_contents(), GetPageStabilityTestURL()));
+
+  TestObservationDelayController controller(*main_frame(), actor::TaskId(),
+                                            journal(), PageStabilityConfig());
+
+  ASSERT_TRUE(InitiateFetchRequest());
+
+  // Start waiting, since a fetch is in progress we should be waiting for page
+  // stability.
+  TestFuture<ObservationDelayController::Result> result;
+  controller.Wait(*active_tab(), result.GetCallback());
+
+  ASSERT_TRUE(DoesReachSteadyState(controller, State::kWaitForPageStability));
+  EXPECT_FALSE(result.IsReady());
+
+  // Start a navigation to a page that finishes navigating but is deferred on
+  // the load event.
+  NavigateToLoadDeferredPage deferred_navigation(web_contents(),
+                                                 embedded_test_server());
+  ASSERT_TRUE(deferred_navigation.RunToDOMContentLoadedEvent());
+
+  if (IsParamFeatureEnabled()) {
+    ASSERT_TRUE(controller.WaitForState(State::kDone));
+    ASSERT_EQ(result.Get(), ObservationDelayController::Result::kPageNavigated);
+  } else {
+    // The controller should reach the loading state and stay there.
+    ASSERT_TRUE(
+        DoesReachSteadyState(controller, State::kWaitForLoadCompletion));
+    EXPECT_FALSE(result.IsReady());
+
+    // Unblock the subframe, the controller should now proceed through the
+    // remaining states.
+    ASSERT_TRUE(deferred_navigation.RunToLoadEvent());
+
+    ASSERT_TRUE(controller.WaitForState(State::kWaitForVisualStateUpdate));
+    ASSERT_TRUE(controller.WaitForState(State::kMaybeDelayForLcp));
+    ASSERT_TRUE(controller.WaitForState(State::kDone));
+    ASSERT_EQ(result.Get(), ObservationDelayController::Result::kOk);
+  }
+}
+
+INSTANTIATE_FEATURE_OVERRIDE_TEST_SUITE(ObservationDelayControllerNavigateTest);
+
+// Ensure that putting a tab into the background while its waiting to stabilize
+// doesn't affect the PageStabilityMonitor.
+// TODO(b/448641423): This test better belongs in PageStabilityMonitor browser
+// tests but is much clearer to write here. Move once the tests are sharing
+// infrastructure.
+IN_PROC_BROWSER_TEST_F(ObservationDelayControllerTest,
+                       BackgroundTabWhileWaitingForStability) {
+  ASSERT_TRUE(
+      content::NavigateToURL(web_contents(), GetPageStabilityTestURL()));
+
+  TestObservationDelayController controller(*main_frame(), actor::TaskId(),
+                                            journal(), PageStabilityConfig());
+
+  ASSERT_TRUE(InitiateFetchRequest());
+
+  // Start waiting, since a fetch is in progress we should be waiting for page
+  // stability.
+  TestFuture<ObservationDelayController::Result> result;
+  controller.Wait(*active_tab(), result.GetCallback());
+  ASSERT_TRUE(DoesReachSteadyState(controller, State::kWaitForPageStability));
+  EXPECT_FALSE(result.IsReady());
+
+  // Ensure the tab can still produce frames while backgrounded.
+  auto scoped_decrement_closure =
+      web_contents()->IncrementCapturerCount(gfx::Size(),
+                                             /*stay_hidden=*/false,
+                                             /*stay_awake=*/true,
+                                             /*is_activity=*/true);
+
+  TabInterface* observed_tab = active_tab();
+  ASSERT_TRUE(observed_tab->IsActivated());
+
+  // Now open a new tab, putting the tab waiting on page stability in the
+  // background.
+  ui_test_utils::NavigateToURLWithDisposition(
+      browser(), GURL("about:blank"), WindowOpenDisposition::NEW_FOREGROUND_TAB,
+      ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
+  ASSERT_FALSE(observed_tab->IsActivated());
+  ASSERT_NE(active_tab(), observed_tab);
+
+  // Ensure the controller doesn't break out of waiting for page stability.
+  EXPECT_TRUE(DoesReachSteadyState(controller, State::kWaitForPageStability));
+}
+
+IN_PROC_BROWSER_TEST_F(ObservationDelayControllerTest, PdfFlow) {
+  const GURL pdf_url = embedded_test_server()->GetURL("/pdf/test.pdf");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), pdf_url));
+
+  TestObservationDelayController controller(*main_frame(), actor::TaskId(),
+                                            journal(), PageStabilityConfig());
+
+  TestFuture<ObservationDelayController::Result> result;
+  controller.Wait(*active_tab(), result.GetCallback());
+
+#if BUILDFLAG(ENABLE_PDF)
+  // PDF should transition through WaitForPdfLoadCompletion if enabled.
+  ASSERT_TRUE(controller.WaitForState(State::kWaitForPdfLoadCompletion));
+#endif
+
+  ASSERT_TRUE(controller.WaitForState(State::kWaitForVisualStateUpdate));
+  ASSERT_TRUE(controller.WaitForState(State::kMaybeDelayForLcp));
+
+  // On non-PDF platforms, we expect to enter kDelayForLcp.
+#if !BUILDFLAG(ENABLE_PDF)
+  ASSERT_TRUE(controller.WaitForState(State::kDelayForLcp));
+#endif
+
+  ASSERT_TRUE(controller.WaitForState(State::kDone));
+
+  ASSERT_TRUE(result.Wait());
+  ASSERT_EQ(result.Get(), ObservationDelayController::Result::kOk);
+}
+
+class ObservationDelayControllerLcpTest : public ObservationDelayTest {
+ public:
+  static constexpr int kLcpDelayInMs = 3000;
+  ObservationDelayControllerLcpTest() {
+    std::string lcp_delay = absl::StrFormat("%dms", kLcpDelayInMs);
+    scoped_feature_list_.InitAndEnableFeatureWithParameters(
+        features::kGlicActor,
+        {// Effectively disable the timeout to prevent flakes.
+         {features::kGlicActorPageStabilityTimeout.name, "30000ms"},
+         // Do not use min wait
+         {features::kGlicActorPageStabilityMinWait.name, "0ms"},
+         {features::kActorObservationDelayLcp.name, lcp_delay}});
+  }
+  ~ObservationDelayControllerLcpTest() override = default;
+
+ private:
+  ScopedFeatureList scoped_feature_list_;
+};
+
+// Tests that no delay is applied when LCP is already available.
+IN_PROC_BROWSER_TEST_F(ObservationDelayControllerLcpTest, NoDelayWhenLcpReady) {
+  const GURL url = embedded_test_server()->GetURL("/title1.html");
+
+  auto waiter = std::make_unique<page_load_metrics::PageLoadMetricsTestWaiter>(
+      web_contents());
+  waiter->AddPageExpectation(page_load_metrics::PageLoadMetricsTestWaiter::
+                                 TimingField::kLargestContentfulPaint);
+
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  // Wait for the LCP metric to be fully reported to the browser process.
+  waiter->Wait();
+
+  TestObservationDelayController controller(*main_frame(), actor::TaskId(),
+                                            journal(), PageStabilityConfig());
+
+  base::ElapsedTimer timer;
+  TestFuture<ObservationDelayController::Result> result;
+  controller.Wait(*active_tab(), result.GetCallback());
+
+  ASSERT_TRUE(controller.WaitForState(State::kMaybeDelayForLcp));
+  ASSERT_TRUE(result.Wait());
+
+  // Since the page had a paint, LCP is considered valid, and we should not
+  // have applied the delay.
+  EXPECT_LT(timer.Elapsed(), base::Milliseconds(kLcpDelayInMs));
+}
+
+// Tests that the LCP delay is correctly applied when a standard page is loaded
+// that has no content to paint (and thus no LCP).
+IN_PROC_BROWSER_TEST_F(ObservationDelayControllerLcpTest,
+                       DelayIsAppliedForPageWithNoContent) {
+  // Navigate to an empty html page. This is a standard navigation, so the
+  // PageLoadMetrics system will run, but no LCP will ever be recorded
+  // because there is no content.
+  const GURL url = embedded_test_server()->GetURL("/actor/blank.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  TestObservationDelayController controller(*main_frame(), actor::TaskId(),
+                                            journal(), PageStabilityConfig());
+
+  base::ElapsedTimer timer;
+  TestFuture<ObservationDelayController::Result> result;
+  controller.Wait(*active_tab(), result.GetCallback());
+
+  ASSERT_TRUE(controller.WaitForState(State::kMaybeDelayForLcp));
+  ASSERT_TRUE(controller.WaitForState(State::kDelayForLcp));
+  ASSERT_TRUE(result.Wait());
+
+  // The total time should be at least the LCP delay, because the empty page
+  // is tracked but has no contentful paint.
+  EXPECT_GE(timer.Elapsed(), base::Milliseconds(kLcpDelayInMs));
+}
+
+class ObservationDelayControllerExcludeAdRequestsTest
+    : public ObservationDelayControllerTest,
+      public base::test::WithFeatureOverride {
+ public:
+  ObservationDelayControllerExcludeAdRequestsTest()
+      : base::test::WithFeatureOverride(
+            features::kGlicActorObservationDelayExcludeAdFrameLoading) {}
+  ~ObservationDelayControllerExcludeAdRequestsTest() override = default;
+};
+
+IN_PROC_BROWSER_TEST_P(ObservationDelayControllerExcludeAdRequestsTest,
+                       ExcludeAdIframeLoad) {
+  const GURL url = embedded_test_server()->GetURL("/actor/blank.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  // Append an iframe.
+  EXPECT_TRUE(content::ExecJs(main_frame(), R"(
+      const frame = document.createElement('iframe');
+      frame.id = 'child'
+      document.body.appendChild(frame);
+    )"));
+  RenderFrameHost* iframe_rfh = content::ChildFrameAt(main_frame(), 0);
+  ASSERT_TRUE(iframe_rfh);
+
+  // Mark the iframe as an ad frame.
+  iframe_rfh->UpdateIsAdFrame(/*is_ad_frame=*/true);
+
+  const GURL iframe_url = embedded_test_server()->GetURL("/actor/simple.html");
+  TestNavigationManager iframe_manager(web_contents(), iframe_url);
+
+  TestObservationDelayController controller(*main_frame(), actor::TaskId(),
+                                            journal(), PageStabilityConfig());
+
+  // Initiate iframe navigation.
+  ASSERT_TRUE(BeginNavigateIframeToURL(web_contents(), /*iframe_id=*/"child",
+                                       iframe_url));
+  ASSERT_TRUE(iframe_manager.WaitForRequestStart());
+
+  // The frame tree is loading because the iframe is loading. However, it is
+  // considered as not loading when excluding ad frames.
+  ASSERT_TRUE(web_contents()->IsLoading());
+  ASSERT_FALSE(web_contents()->IsLoadingExcludingAdSubframes());
+
+  TestFuture<ObservationDelayController::Result> result;
+  controller.Wait(*active_tab(), result.GetCallback());
+
+  // Regardless of the feature status, the controller should move to wait for
+  // load completion state after the wait starts.
+  ASSERT_TRUE(controller.WaitForState(State::kWaitForLoadCompletion));
+
+  if (IsParamFeatureEnabled()) {
+    // The controller immediately advances to the next state as it excludes ad
+    // frames when waiting for load completion.
+    ASSERT_TRUE(controller.WaitForState(State::kWaitForVisualStateUpdate));
+    ASSERT_TRUE(controller.WaitForState(State::kMaybeDelayForLcp));
+    ASSERT_TRUE(controller.WaitForState(State::kDone));
+  } else {
+    // The controller should stay in the waiting for load completion state until
+    // the iframe navigation finishes.
+    ASSERT_TRUE(
+        DoesReachSteadyState(controller, State::kWaitForLoadCompletion));
+
+    // Complete the navigation. The controller should wait for visual update,
+    // then complete.
+    ASSERT_TRUE(iframe_manager.WaitForNavigationFinished());
+    ASSERT_TRUE(controller.WaitForState(State::kWaitForVisualStateUpdate));
+    ASSERT_TRUE(controller.WaitForState(State::kMaybeDelayForLcp));
+    ASSERT_TRUE(controller.WaitForState(State::kDone));
+  }
+
+  ASSERT_TRUE(result.Wait());
+}
+
+INSTANTIATE_FEATURE_OVERRIDE_TEST_SUITE(
+    ObservationDelayControllerExcludeAdRequestsTest);
+
+class ObservationAutofillClient : public autofill::TestContentAutofillClient {
+ public:
+  explicit ObservationAutofillClient(content::WebContents* web_contents)
+      : autofill::TestContentAutofillClient(web_contents) {
+    auto tracker = std::make_unique<
+        testing::StrictMock<autofill::MockFormPredictionsTracker>>(this);
+    mock_tracker_ptr_ = tracker.get();
+    set_form_predictions_tracker(std::move(tracker));
+  }
+
+  autofill::MockFormPredictionsTracker& mock_tracker() {
+    return *mock_tracker_ptr_;
+  }
+
+ private:
+  // Owned by the base class.
+  raw_ptr<autofill::MockFormPredictionsTracker> mock_tracker_ptr_ = nullptr;
+};
+
+class ObservationDelayControllerAutofillTest
+    : public ObservationDelayControllerTest,
+      public testing::WithParamInterface<int> {
+ public:
+  static constexpr int kAutofillParsingTimeoutInMs = 3000;
+  ObservationDelayControllerAutofillTest() {
+    std::string autofill_parsing_timeout =
+        absl::StrFormat("%dms", kAutofillParsingTimeoutInMs);
+    int lcp_delay_in_ms = GetParam();
+    std::string lcp_delay = absl::StrFormat("%dms", lcp_delay_in_ms);
+    feature_list_.InitWithFeaturesAndParameters(
+        {{autofill::features::kAutofillDelayApcForPredictions, {}},
+         {features::kGlicActor,
+          {// Effectively disable stability timeout to prevent flakes.
+           {features::kGlicActorPageStabilityTimeout.name, "30000ms"},
+           // Do not use min wait for stability so that it happens immediately.
+           {features::kGlicActorPageStabilityMinWait.name, "0ms"},
+           // wait for LCP quickly so that it happens immediately.
+           {features::kActorObservationDelayLcp.name, lcp_delay},
+           {features::kActorObservationDelayAutofillPredictionsTimeout.name,
+            autofill_parsing_timeout},
+           // Timeout the overall process after 15 seconds.
+           {features::kActorObservationDelayTimeout.name, "15000ms"}}}},
+        {});
+  }
+
+  ObservationAutofillClient* autofill_client() {
+    return autofill_client_injector_[web_contents()];
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+  autofill::TestAutofillClientInjector<ObservationAutofillClient>
+      autofill_client_injector_;
+};
+
+// Tests that if there is a `FormPredictionsTracker`, state is moved to
+// `kWaitForAutofillPredictions` and then to `kDone` once the tracker completes.
+IN_PROC_BROWSER_TEST_P(ObservationDelayControllerAutofillTest,
+                       FormPredictionsTrackerCallsBack) {
+  autofill::MockFormPredictionsTracker& tracker =
+      autofill_client()->mock_tracker();
+  EXPECT_CALL(tracker, Wait)
+      .WillOnce(testing::WithArgs<0, 1>(
+          [](base::OnceClosure callback, base::TimeDelta timeout) {
+            base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+                FROM_HERE, std::move(callback), timeout);
+          }));
+
+  const GURL url = embedded_test_server()->GetURL("/actor/blank.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  TestObservationDelayController controller(*main_frame(), actor::TaskId(),
+                                            journal(), PageStabilityConfig());
+
+  base::ElapsedTimer timer;
+  TestFuture<ObservationDelayController::Result> result;
+  controller.Wait(*active_tab(), result.GetCallback());
+
+  ASSERT_TRUE(controller.WaitForState(State::kWaitForAutofillPredictions));
+  // The state machine advances to done once the callback from the tracker is
+  // executed.
+  ASSERT_TRUE(controller.WaitForState(State::kDone));
+  ASSERT_TRUE(result.Wait());
+  EXPECT_EQ(result.Get(), ObservationDelayController::Result::kOk);
+  EXPECT_GE(timer.Elapsed(), base::Milliseconds(kAutofillParsingTimeoutInMs));
+}
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         ObservationDelayControllerAutofillTest,
+                         testing::Values(0, 50),
+                         [](const testing::TestParamInfo<int>& info) {
+                           return info.param == 0
+                                      ? "NoLcpDelay"
+                                      : base::StringPrintf("LcpDelay_%dms",
+                                                           info.param);
+                         });
+}  // namespace
+
+}  // namespace actor

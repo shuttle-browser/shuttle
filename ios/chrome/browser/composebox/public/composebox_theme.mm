@@ -1,0 +1,106 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/composebox/public/composebox_theme.h"
+
+#import "ios/chrome/common/ui/colors/semantic_color_names.h"
+
+@implementation ComposeboxTheme
+
+- (instancetype)initWithInputPlatePosition:
+                    (ComposeboxInputPlatePosition)position
+                                 incognito:(BOOL)incognito
+                                     isNTP:(BOOL)isNTP {
+  self = [super init];
+  if (self) {
+    _inputPlatePosition = position;
+    _incognito = incognito;
+    _isNTP = isNTP;
+  }
+
+  return self;
+}
+
+#pragma mark - Public
+
+- (BOOL)useIncognitoViewFallback {
+  return _isNTP && _incognito &&
+         _inputPlatePosition != ComposeboxInputPlatePosition::kiPad;
+}
+
+- (BOOL)isTopInputPlate {
+  return _inputPlatePosition == ComposeboxInputPlatePosition::kTop ||
+         _inputPlatePosition == ComposeboxInputPlatePosition::kiPad;
+}
+
+- (UIColor*)composeboxBackgroundColor {
+  return [UIColor colorNamed:kBackgroundColor];
+}
+
+- (UIColor*)inputItemBackgroundColor {
+  if (self.isTopInputPlate) {
+    return [UIColor colorNamed:kAimInputItemTopBackgroundColor];
+  } else {
+    return [UIColor colorNamed:kSecondaryBackgroundColor];
+  }
+}
+
+- (UIColor*)inputPlateBackgroundColor {
+  if (self.incognito) {
+    return [UIColor colorNamed:kStaticGrey900Color];
+  }
+  if (self.isTopInputPlate) {
+    return [UIColor colorNamed:kTextfieldBackgroundColor];
+  }
+
+  return [UIColor colorNamed:kPrimaryBackgroundColor];
+}
+
+- (UIColor*)closeButtonBackgroundColor {
+  if (self.incognito) {
+    return [UIColor colorNamed:kStaticGrey900Color];
+  }
+  return [UIColor colorNamed:kTextfieldBackgroundColor];
+}
+
+- (UIColor*)toolButtonBackgroundColorWithActiveState:(BOOL)active {
+  if (self.isTopInputPlate) {
+    return active ? [UIColor colorNamed:kAimComposeboxButtonBackgroundColor]
+                  : [UIColor clearColor];
+  } else {
+    return active ? [UIColor colorNamed:kSecondaryBackgroundColor]
+                  : [UIColor clearColor];
+  }
+}
+
+- (UIColor*)toolButtonTextColorWithActiveState:(BOOL)active {
+  return [UIColor colorNamed:kTextPrimaryColor];
+}
+
+- (UIColor*)toolButtonBorderColorWithActiveState:(BOOL)active {
+  if (active) {
+    return [UIColor clearColor];
+  } else {
+    return [UIColor colorNamed:kGrey400Color];
+  }
+}
+
+- (UIColor*)sendButtonForegroundColorHighlighted:(BOOL)highlighted {
+  CGFloat alpha = highlighted ? 0.6 : 1;
+  return [[UIColor colorNamed:kSolidWhiteColor] colorWithAlphaComponent:alpha];
+}
+
+- (UIColor*)sendButtonBackgroundColorHighlighted:(BOOL)highlighted {
+  CGFloat alpha = highlighted ? 0.6 : 1;
+  return [[UIColor colorNamed:kBlue600Color] colorWithAlphaComponent:alpha];
+}
+
+- (UIColor*)pdfSymbolColor {
+  UITraitCollection* lightStyle = [UITraitCollection
+      traitCollectionWithUserInterfaceStyle:UIUserInterfaceStyleLight];
+  return [[UIColor colorNamed:kRed500Color]
+      resolvedColorWithTraitCollection:lightStyle];
+}
+
+@end

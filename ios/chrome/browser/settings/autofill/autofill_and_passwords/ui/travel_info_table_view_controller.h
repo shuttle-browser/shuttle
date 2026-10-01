@@ -1,0 +1,45 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_SETTINGS_AUTOFILL_AUTOFILL_AND_PASSWORDS_UI_TRAVEL_INFO_TABLE_VIEW_CONTROLLER_H_
+#define IOS_CHROME_BROWSER_SETTINGS_AUTOFILL_AUTOFILL_AND_PASSWORDS_UI_TRAVEL_INFO_TABLE_VIEW_CONTROLLER_H_
+
+#import "ios/chrome/browser/settings/autofill/autofill_and_passwords/ui/travel_info_consumer.h"
+#import "ios/chrome/browser/settings/ui_bundled/settings_controller_protocol.h"
+#import "ios/chrome/browser/settings/ui_bundled/settings_root_table_view_controller.h"
+
+@protocol TravelInfoMutator;
+@class TravelInfoTableViewController;
+
+// Delegate for presentation events related to TravelInfoTableViewController.
+@protocol TravelInfoTableViewControllerDelegate <NSObject>
+
+// Called when the view controller is removed from its parent.
+- (void)travelInfoTableViewControllerDidRemove:
+    (TravelInfoTableViewController*)controller;
+
+// Called when the Suggestions from Gemini entry point is tapped.
+- (void)travelInfoTableViewControllerDidSelectSuggestionsFromGemini:
+    (TravelInfoTableViewController*)controller;
+
+@end
+
+// The TableView for Travel Info settings page.
+@interface TravelInfoTableViewController
+    : SettingsRootTableViewController <SettingsControllerProtocol,
+                                       TravelInfoConsumer>
+
+// Presentation delegate.
+@property(nonatomic, weak) id<TravelInfoTableViewControllerDelegate> delegate;
+
+// Mutator for actions in the view.
+@property(nonatomic, weak) id<TravelInfoMutator> mutator;
+
+- (instancetype)init NS_DESIGNATED_INITIALIZER;
+
+- (instancetype)initWithStyle:(UITableViewStyle)style NS_UNAVAILABLE;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_SETTINGS_AUTOFILL_AUTOFILL_AND_PASSWORDS_UI_TRAVEL_INFO_TABLE_VIEW_CONTROLLER_H_

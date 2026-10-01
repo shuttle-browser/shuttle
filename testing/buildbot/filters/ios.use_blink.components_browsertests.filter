@@ -1,0 +1,79 @@
+# TODO(crbug.com/335001216): These tests are failing due to the duplicate
+# resource assertion.
+-DistilledPageJsTest.AddClassesToYTIFramesTest
+-DistilledPageJsTest.IdentifyEmptySVGsTest
+-DistilledPageJsTest.ImageClassifierTest
+-DistilledPageJsTest.ListClassifierTest
+-DistilledPageJsTest.SettingsDialogTest
+-DistilledPageJsTest.WrapTablesTest
+-DistillerPageWebContentsTest.BasicDistillationWorks
+-DistillerPageWebContentsTest.DistillerContentsIgnoreRedirects
+-DistillerPageWebContentsTest.HandlesRelativeImages
+-DistillerPageWebContentsTest.HandlesRelativeLinks
+-DistillerPageWebContentsTest.HandlesRelativeVideos
+-DistillerPageWebContentsTest.MarkupInfo
+-DistillerPageWebContentsTest.PageDestroyedBeforeFinishDistillation
+-DistillerPageWebContentsTest.TestNoContentDoesNotCrash
+-DistillerPageWebContentsTest.UsingCurrentWebContentsNotFinishedLoadingYet
+-DistillerPageWebContentsTest.UsingCurrentWebContentsReadyForDistillation
+-DistillerPageWebContentsTest.UsingCurrentWebContentsWrongUrl
+-DistillerPageWebContentsTest.VisibilityDetection
+-DomDistillerDistillablePageUtilsTest.TestIsDistillablePage
+-DomDistillerDistillablePageUtilsTest.TestIsNotDistillablePage
+-DomDistillerJsTest.RunJsTests
+-ViewerJsTest.SanitizeLinks
+
+# These tests are hitting a NOTREACHED() in WebContentsImpl::GetSize().
+-All/PageContentProtoProviderBrowserTestMultiProcess.*
+-All/PageContentProtoProviderBrowserTestSiteIsolation.*
+-PageContentProtoProviderBrowserTest.*
+-PageContentProtoProviderBrowserTestActionableElements.AIPageContent
+-PageContentProtoProviderBrowserTestFencedFrame.AIPageContentFencedFrame
+-PageContentProtoProviderBrowserTestPaidContentDisabled.PaidContentDisabled
+-ScaledPageContentProtoProviderBrowserTest.ScaleSizes
+
+# TODO(crbug.com/460416951): The test is flaky on the bot. It occurs in Andriod
+# and Linux as well.
+-PageContentMetadataObserverBrowserTest.NoMetaTags
+
+# TODO(crbug.com/503810632): These tests have been failing since
+# https://crrev.com/c/7539316, https://crrev.com/c/7763951,
+# https://crrev.com/c/7671607, https://crrev.com/c/7863615,
+# https://crrev.com/c/7893748, https://crrev.com/c/8132523,
+# https://crrev.com/c/8161746, https://crrev.com/c/8194052, and
+# https://crrev.com/c/8267284 on the bot.
+-SurfaceEmbedBrowserTest.AttachToFocusedEmbedHasPageFocus
+-SurfaceEmbedBrowserTest.Crash
+-SurfaceEmbedBrowserTest.CrashEarly
+-SurfaceEmbedBrowserTest.CrashThenReattach
+-SurfaceEmbedBrowserTest.CrashThenReload
+-SurfaceEmbedBrowserTest.CrossProcessNavigationPixelTest
+-SurfaceEmbedBrowserTest.DisplayLockThrottlingViaContentVisibility
+-SurfaceEmbedBrowserTest.DisplayNonePropagates
+-SurfaceEmbedBrowserTest.EmbedMultipleTagsCreatesMultiplePlugins
+-SurfaceEmbedBrowserTest.EmbedPixelTest
+-SurfaceEmbedBrowserTest.EmbedTagCreatesPlugin
+-SurfaceEmbedBrowserTest.EmbedTagInvalidContentId
+-SurfaceEmbedBrowserTest.EmbedTagRemovedDestroysHost
+-SurfaceEmbedBrowserTest.FocusByClick
+-SurfaceEmbedBrowserTest.FocusByShiftTabKeyNoPreviousFocusableElement
+-SurfaceEmbedBrowserTest.FocusByTabKey
+-SurfaceEmbedBrowserTest.FocusByTabKeyNoNextFocusableElement
+-SurfaceEmbedBrowserTest.FocusPreservedAfterNavigation
+-SurfaceEmbedBrowserTest.HtmlPopupOnSurfaceEmbeddedPage
+-SurfaceEmbedBrowserTest.MultilevelDisplayLockThrottlingViaContentVisibility
+-SurfaceEmbedBrowserTest.ResizeEmbedPixelTest
+-SurfaceEmbedBrowserTest.VisibilityHiddenPropagates
+-SurfaceEmbedBrowserTest.VisualPropertiesSync
+-SurfaceEmbedBrowserTestNoHost.NoCrash
+-SurfaceEmbedBrowserTest.MultilevelDisplayNonePropagates
+-SurfaceEmbedBrowserTest.MultilevelVisibilityHiddenPropagates
+-SurfaceEmbedBrowserTest.FocusByShiftTabKey
+-SurfaceEmbedBrowserTest.MultilevelDetachIntermediate
+-SurfaceEmbedBrowserTest.MultilevelFocusAndInput
+-SurfaceEmbedBrowserTest.ThrottlingPropagation
+-SurfaceEmbedAccessibilityBrowserTest.PluginSendsParentAccessibilityInfoToHost
+-SurfaceEmbedWithInnerWebContentsBrowserTest.FocusAndInput
+-SurfaceEmbedBrowserTest.FocusAndInputWithInnerWebContents
+-SurfaceEmbedBrowserTest.IntersectionObserverIgnoresEmbedderScrollOffsetUnlikeIframe
+-SurfaceEmbedBrowserTest.IntersectionObserverIgnoresEmbedderViewportUnlikeIframe

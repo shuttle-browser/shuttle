@@ -1,0 +1,110 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_AI_OVERLAY_DIALOG_AI_OVERLAY_DIALOG_CONTROLLER_H_
+#define CHROME_BROWSER_UI_AI_OVERLAY_DIALOG_AI_OVERLAY_DIALOG_CONTROLLER_H_
+
+#include <memory>
+
+#include "base/memory/raw_ptr.h"
+#include "base/observer_list.h"
+#include "base/observer_list_types.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "content/public/browser/web_contents_delegate.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
+#include "ui/base/class_property.h"
+#include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
+
+class HostContentSettingsMap;
+
+namespace ttc {
+
+class AiOverlayDialogController : public content::WebContentsDelegate {
+ public:
+  class Observer : public base::CheckedObserver {
+   public:
+    virtual void OnInputCaptionsVisibleChanged(bool visible) {}
+    virtual void OnOutputCaptionsVisibleChanged(bool visible) {}
+    virtual void OnUsePersonaChanged(bool use_persona) {}
+  };
+
+  DECLARE_USER_DATA(AiOverlayDialogController);
+
+  static AiOverlayDialogController* From(BrowserWindowInterface* browser);
+
+  explicit AiOverlayDialogController(BrowserWindowInterface* browser);
+  AiOverlayDialogController(const AiOverlayDialogController&) = delete;
+  AiOverlayDialogController& operator=(const AiOverlayDialogController&) =
+      delete;
+  ~AiOverlayDialogController() override;
+
+
+  // Shows the transparent overlay above the browser window.
+  virtual void ShowOverlay() = 0;
+
+  // Hides the overlay.
+  virtual void HideOverlay() = 0;
+
+  // Toggles the overlay visibility.
+  void ToggleOverlay();
+
+  virtual bool IsOverlayShowing() const = 0;
+
+  // content::WebContentsDelegate:
+  void RequestMediaAccessPermission(
+      content::WebContents* web_contents,
+      const content::MediaStreamRequest& request,
+      content::MediaResponseCallback callback) override;
+  bool CheckMediaAccessPermission(content::RenderFrameHost* render_frame_host,
+                                  const url::Origin& security_origin,
+                                  blink::mojom::MediaStreamType type) override;
+
+  bool input_captions_visible() const { return input_captions_visible_; }
+  void SetInputCaptionsVisible(bool visible);
+
+  bool output_captions_visible() const { return output_captions_visible_; }
+  void SetOutputCaptionsVisible(bool visible);
+
+  bool captions_visible() const {
+    return input_captions_visible_ && output_captions_visible_;
+  }
+  void SetCaptionsVisible(bool visible);
+
+  bool use_persona() const { return use_persona_; }
+  void SetUsePersona(bool use_persona);
+
+  const absl::flat_hash_map<std::string, std::string>& remembered_notes()
+      const {
+    return remembered_notes_;
+  }
+  void SetRememberedNote(const std::string& key, const std::string& value);
+
+  void AddObserver(Observer* observer);
+  void RemoveObserver(Observer* observer);
+
+ protected:
+  BrowserWindowInterface* browser() const { return browser_; }
+
+ private:
+  raw_ptr<BrowserWindowInterface> browser_;
+
+  ui::ScopedUnownedUserData<AiOverlayDialogController>
+      scoped_unowned_user_data_;
+
+  const raw_ptr<HostContentSettingsMap> host_content_settings_map_;
+
+  bool input_captions_visible_ = true;
+  bool output_captions_visible_ = true;
+  bool use_persona_ = false;
+
+  absl::flat_hash_map<std::string, std::string> remembered_notes_;
+
+  base::ObserverList<Observer> observers_;
+};
+
+extern const ::ui::ClassProperty<bool>* const kActionAiOverlayActiveKey;
+
+}  // namespace ttc
+
+#endif  // CHROME_BROWSER_UI_AI_OVERLAY_DIALOG_AI_OVERLAY_DIALOG_CONTROLLER_H_

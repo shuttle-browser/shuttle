@@ -1,0 +1,121 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/platform/mediastream/webaudio_media_stream_source.h"
+
+#include <utility>
+
+#include "base/functional/callback_helpers.h"
+#include "base/logging.h"
+#include "base/numerics/safe_conversions.h"
+#include "base/task/single_thread_task_runner.h"
+#include "media/base/audio_bus.h"
+#include "media/base/audio_glitch_info.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
+
+namespace blink {
+
+WebAudioMediaStreamSource::WebAudioMediaStreamSource(
+    scoped_refptr<base::SingleThreadTaskRunner> task_runner)
+    : MediaStreamAudioSource(std::move(task_runner), false /* is_remote */),
+      fifo_(ConvertToBaseRepeatingCallback(CrossThreadBindRepeating(
+          &WebAudioMediaStreamSource::DeliverRebufferedAudio,
+          CrossThreadUnretained(this)))) {
+  DVLOG(1) << "WebAudioMediaStreamSource::WebAudioMediaStreamSource()";
+  consumer_ = base::MakeRefCounted<AudioConsumer>(this);
+}
+
+WebAudioMediaStreamSource::~WebAudioMediaStreamSource() {
+  DVLOG(1) << "WebAudioMediaStreamSource::~WebAudioMediaStreamSource()";
+  consumer_->Detach();
+}
+
+WebAudioMediaStreamSource::AudioConsumer::AudioConsumer(
+    WebAudioMediaStreamSource* owner)
+    : owner_(owner) {}
+
+void WebAudioMediaStreamSource::AudioConsumer::Detach() {
+  base::AutoLock lock(lock_);
+  owner_ = nullptr;
+}
+
+void WebAudioMediaStreamSource::AudioConsumer::SetFormat(int number_of_channels,
+                                                         float sample_rate) {
+  base::AutoLock lock(lock_);
+  if (owner_) {
+    owner_->SetFormat(number_of_channels, sample_rate);
+  }
+}
+
+void WebAudioMediaStreamSource::AudioConsumer::ConsumeAudio(
+    const Vector<const float*>& audio_data,
+    int number_of_frames) {
+  base::AutoTryLock try_lock(lock_);
+  if (try_lock.is_acquired() && owner_) {
+    owner_->ConsumeAudioInternal(audio_data, number_of_frames);
+  }
+}
+
+void WebAudioMediaStreamSource::SetFormat(int number_of_channels,
+                                          float sample_rate) {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  VLOG(1) << "WebAudio media stream source changed format to: channels="
+          << number_of_channels << ", sample_rate=" << sample_rate;
+
+  CHECK_LE(number_of_channels, 32, base::NotFatalUntil::M151);
+
+  // Set the format used by this WebAudioMediaStreamSource. We are using 10ms
+  // data as a buffer size since that is the native buffer size of WebRtc packet
+  // running on.
+  fifo_.Reset(sample_rate / 100);
+  media::AudioParameters params(
+      media::AudioParameters::AUDIO_PCM_LOW_LATENCY,
+      media::ChannelLayoutConfig::Guess(number_of_channels), sample_rate,
+      fifo_.frames_per_buffer());
+  MediaStreamAudioSource::SetFormat(params);
+
+  if (!wrapper_bus_ || wrapper_bus_->channels() != params.channels())
+    wrapper_bus_ = media::AudioBus::CreateWrapper(params.channels());
+}
+
+void WebAudioMediaStreamSource::ConsumeAudioInternal(
+    const Vector<const float*>& audio_data,
+    int number_of_frames) {
+  TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("mediastream"),
+               "WebAudioMediaStreamSource::ConsumeAudioInternal", "frames",
+               number_of_frames);
+
+  //  TODO(https://crbug.com/1302080): this should use the actual audio
+  // playout stamp instead of Now().
+  current_reference_time_ = base::TimeTicks::Now();
+  wrapper_bus_->set_frames(number_of_frames);
+  DCHECK_EQ(wrapper_bus_->channels(), static_cast<int>(audio_data.size()));
+  for (wtf_size_t i = 0; i < audio_data.size(); ++i) {
+    // TODO(crbug.com/375449662): Spanify `audio_data`.
+    wrapper_bus_->SetChannelData(
+        static_cast<int>(i),
+        UNSAFE_TODO(base::span(const_cast<float*>(audio_data[i]),
+                               base::checked_cast<size_t>(number_of_frames))));
+  }
+
+  // The following will result in zero, one, or multiple synchronous calls to
+  // DeliverRebufferedAudio().
+  fifo_.Push(*wrapper_bus_);
+}
+
+void WebAudioMediaStreamSource::DeliverRebufferedAudio(
+    const media::AudioBus& audio_bus,
+    int frame_delay) {
+  TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("mediastream"),
+               "WebAudioMediaStreamSource::DeliverRebufferedAudio", "frames",
+               audio_bus.frames());
+  const base::TimeTicks reference_time =
+      current_reference_time_ +
+      base::Microseconds(
+          frame_delay * base::Time::kMicrosecondsPerSecond /
+          MediaStreamAudioSource::GetAudioParameters().sample_rate());
+  MediaStreamAudioSource::DeliverDataToTracks(audio_bus, reference_time, {});
+}
+
+}  // namespace blink

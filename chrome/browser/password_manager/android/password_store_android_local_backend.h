@@ -1,0 +1,82 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_PASSWORD_MANAGER_ANDROID_PASSWORD_STORE_ANDROID_LOCAL_BACKEND_H_
+#define CHROME_BROWSER_PASSWORD_MANAGER_ANDROID_PASSWORD_STORE_ANDROID_LOCAL_BACKEND_H_
+
+#include "chrome/browser/password_manager/android/password_store_android_backend.h"
+#include "components/password_manager/core/browser/password_store/password_store_backend.h"
+
+namespace syncer {
+class SyncService;
+class DataTypeControllerDelegate;
+}  // namespace syncer
+
+namespace password_manager {
+
+// This class processes passwords stored in local storage (not associated to any
+// account).
+class PasswordStoreAndroidLocalBackend : public PasswordStoreBackend,
+                                         public PasswordStoreAndroidBackend {
+ public:
+  PasswordStoreAndroidLocalBackend();
+
+  // Only for testing.
+  PasswordStoreAndroidLocalBackend(
+      std::unique_ptr<PasswordStoreAndroidBackendBridgeHelper> bridge_helper,
+      std::unique_ptr<PasswordManagerLifecycleHelper> lifecycle_helper);
+  ~PasswordStoreAndroidLocalBackend() override;
+
+  // PasswordStoreBackend implementation.
+  void InitBackend(RemoteChangesReceived remote_form_changes_received,
+                   base::RepeatingClosure sync_enabled_or_disabled_cb,
+                   base::OnceCallback<void(bool)> completion) override;
+  void Shutdown(base::OnceClosure shutdown_completed) override;
+  ActionableError GetError() override;
+  void GetAllLoginsAsync(BackendLoginsOrErrorReply callback) override;
+  void GetAllLoginsWithAffiliationAndBrandingAsync(
+      BackendLoginsOrErrorReply callback) override;
+  void GetAutofillableLoginsAsync(BackendLoginsOrErrorReply callback) override;
+  void FillMatchingLoginsAsync(
+      BackendLoginsOrErrorReply callback,
+      bool include_psl,
+      const std::vector<PasswordFormDigest>& forms) override;
+  void GetGroupedMatchingLoginsAsync(
+      const PasswordFormDigest& form_digest,
+      BackendLoginsOrErrorReply callback) override;
+  void AddLoginAsync(StoredCredential cred,
+                     PasswordChangesOrErrorReply callback) override;
+  void UpdateLoginAsync(StoredCredential cred,
+                        PasswordChangesOrErrorReply callback) override;
+  void RemoveLoginAsync(const base::Location& location,
+                        StoredCredential cred,
+                        PasswordChangesOrErrorReply callback) override;
+  void RemoveLoginsCreatedBetweenAsync(
+      const base::Location& location,
+      base::Time delete_begin,
+      base::Time delete_end,
+      PasswordChangesOrErrorReply callback) override;
+  void DisableAutoSignInForOriginsAsync(
+      const base::RepeatingCallback<bool(const GURL&)>& origin_filter,
+      base::OnceClosure completion) override;
+  std::unique_ptr<syncer::DataTypeControllerDelegate>
+  CreateSyncControllerDelegate() override;
+  void OnSyncServiceInitialized(syncer::SyncService* sync_service) override;
+  SmartBubbleStatsStore* GetSmartBubbleStatsStore() override;
+  base::WeakPtr<PasswordStoreBackend> AsWeakPtr() override;
+
+ private:
+  // PasswordStoreAndroidBackend implementation.
+  void RecoverOnError(AndroidBackendAPIErrorCode error) override;
+  std::string GetAccountToRetryOperation() override;
+  PasswordStoreBackendMetricsRecorder::PasswordStoreAndroidBackendType
+  GetStorageType() override;
+
+  base::WeakPtrFactory<PasswordStoreAndroidLocalBackend> weak_ptr_factory_{
+      this};
+};
+
+}  // namespace password_manager
+
+#endif  // CHROME_BROWSER_PASSWORD_MANAGER_ANDROID_PASSWORD_STORE_ANDROID_LOCAL_BACKEND_H_

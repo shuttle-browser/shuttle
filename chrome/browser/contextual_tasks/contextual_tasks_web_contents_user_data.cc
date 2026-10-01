@@ -1,0 +1,111 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/contextual_tasks/contextual_tasks_web_contents_user_data.h"
+
+#include "base/metrics/field_trial_params.h"
+#include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_ui_service.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
+#include "components/contextual_tasks/public/account_utils.h"
+#include "components/omnibox/browser/aim_eligibility_service.h"
+#include "components/omnibox/common/omnibox_features.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "content/public/browser/web_contents.h"
+#include "url/gurl.h"
+
+namespace contextual_tasks {
+
+ContextualTasksWebContentsUserData::ContextualTasksWebContentsUserData(
+    content::WebContents* contents)
+    : content::WebContentsUserData<ContextualTasksWebContentsUserData>(
+          *contents) {}
+
+ContextualTasksWebContentsUserData::~ContextualTasksWebContentsUserData() =
+    default;
+
+WEB_CONTENTS_USER_DATA_KEY_IMPL(ContextualTasksWebContentsUserData);
+
+void ContextualTasksWebContentsUserData::set_input_state_model(
+    std::unique_ptr<contextual_search::InputStateModel> input_state_model) {
+  if (!input_state_model) {
+    return;
+  }
+  if (auto* handle = input_state_model->session_handle()) {
+    last_active_model_ = input_state_model->AsWeakPtr();
+    input_state_models_[handle->session_id()] = std::move(input_state_model);
+  }
+}
+
+base::WeakPtr<contextual_search::InputStateModel>
+ContextualTasksWebContentsUserData::GetOrCreateInputStateModel(
+    contextual_search::ContextualSearchSessionHandle& session_handle) {
+  // Garbage collect models whose session handles have been destroyed
+  base::EraseIf(input_state_models_, [](const auto& pair) {
+    return !pair.second->session_handle();
+  });
+
+  content::WebContents* web_contents = &GetWebContents();
+  Profile* profile =
+      Profile::FromBrowserContext(web_contents->GetBrowserContext());
+
+  auto* service = AimEligibilityServiceFactory::GetForProfile(profile);
+  const omnibox::SearchboxConfig* config =
+      service ? service->GetSearchboxConfig() : nullptr;
+
+  auto it = input_state_models_.find(session_handle.session_id());
+  if (it != input_state_models_.end()) {
+    // If the cached model was initialized without a valid searchbox config
+    // (e.g. during initial session startup before eligibility service response
+    // arrived), but a non-empty searchbox configuration has since become
+    // available, invalidate the stale cached model so a new model with active
+    // tools can be built.
+    if (!it->second->has_valid_config() && config &&
+        (config->has_rule_set() || !config->tool_configs().empty() ||
+         !config->model_configs().empty())) {
+      input_state_models_.erase(it);
+    } else {
+      last_active_model_ = it->second->AsWeakPtr();
+      return last_active_model_;
+    }
+  }
+
+  auto* ui_service = profile
+                         ? contextual_tasks::ContextualTasksUiServiceFactory::
+                               GetForBrowserContext(profile)
+                         : nullptr;
+  GURL url = web_contents->GetLastCommittedURL();
+  bool is_signed_in = false;
+  bool browser_identity_matches_aim_identity = false;
+  if (ui_service) {
+    is_signed_in = ui_service->IsSignedInToBrowserWithValidCredentials();
+    browser_identity_matches_aim_identity =
+        is_signed_in && ui_service->IsUrlForPrimaryAccount(url);
+  } else if (profile &&
+             omnibox::kComposeboxDriveIdentityFallback.Get()) {
+    if (auto* identity_manager =
+            IdentityManagerFactory::GetForProfile(profile)) {
+      if (contextual_tasks::IsSignedInToBrowserWithValidCredentials(
+              identity_manager)) {
+        is_signed_in = true;
+        browser_identity_matches_aim_identity =
+            contextual_tasks::IsUrlForPrimaryAccount(identity_manager, url);
+      }
+    }
+  }
+
+  bool is_off_the_record = profile->IsOffTheRecord();
+
+  auto model = std::make_unique<contextual_search::InputStateModel>(
+      session_handle, config ? *config : omnibox::SearchboxConfig(), url,
+      is_off_the_record, is_signed_in, browser_identity_matches_aim_identity);
+
+  last_active_model_ = model->AsWeakPtr();
+  input_state_models_[session_handle.session_id()] = std::move(model);
+  return last_active_model_;
+}
+
+}  // namespace contextual_tasks

@@ -1,0 +1,428 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.compositor.layouts.components;
+
+import android.content.Context;
+import android.graphics.RectF;
+import android.util.FloatProperty;
+import android.widget.Button;
+
+import androidx.annotation.DrawableRes;
+import androidx.annotation.IntDef;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.compositor.overlays.strip.StripLayoutView;
+import org.chromium.ui.util.MotionEventUtils;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+
+/**
+ * {@link CompositorButton} keeps track of state for buttons that are rendered in the compositor.
+ */
+@NullMarked
+public class CompositorButton extends StripLayoutView {
+    /**
+     * A property that can be used with a {@link
+     * org.chromium.chrome.browser.layouts.animation.CompositorAnimator}.
+     */
+    public static final FloatProperty<CompositorButton> OPACITY =
+            new FloatProperty<>("opacity") {
+                @Override
+                public void setValue(CompositorButton object, float value) {
+                    object.setOpacity(value);
+                }
+
+                @Override
+                public Float get(CompositorButton object) {
+                    return object.getOpacity();
+                }
+            };
+
+    @IntDef({
+        ButtonType.NEW_TAB,
+        ButtonType.INCOGNITO_SWITCHER,
+        ButtonType.TAB_CLOSE,
+        ButtonType.GLIC,
+        ButtonType.GLIC_DISMISS_NUDGE,
+        ButtonType.GLIC_ACTOR,
+        ButtonType.TAB_SEARCH
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface ButtonType {
+        int NEW_TAB = 0;
+        int INCOGNITO_SWITCHER = 1;
+        int TAB_CLOSE = 2;
+        int GLIC = 3;
+        int GLIC_DISMISS_NUDGE = 4;
+        int GLIC_ACTOR = 5;
+        int TAB_SEARCH = 6;
+    }
+
+    public interface TooltipHandler {
+        void setTooltipText(String text);
+    }
+
+    private final @DrawableRes int mResource;
+    private final @DrawableRes int mBackgroundResource;
+
+    private final @Nullable TooltipHandler mTooltipHandler;
+    private @Nullable String mTooltipText;
+    // @StripLayoutView the button was embedded in. Null if it's not a child view.
+    @Nullable private final StripLayoutView mParentView;
+    private final @ButtonType int mType;
+    private final float mClickSlop;
+
+    private float mOpacity;
+    private float mClickableOpacityThreshold = 1.0f;
+    private boolean mIsPressed;
+    private boolean mIsPressedFromMouse;
+    private boolean mIsHovered;
+    private boolean mEnabled = true;
+
+    private boolean mBackgroundAlwaysVisible;
+
+    /**
+     * Default constructor for {@link CompositorButton}
+     *
+     * @param context An Android context for fetching dimens.
+     * @param incognito Whether or not this button is incognito.
+     * @param resource The Android resource id for this button.
+     * @param backgroundResource The Android resource id for this button background.
+     * @param type The type of button.
+     * @param parentView The parent view this button is embedded in.
+     * @param width The button width.
+     * @param height The button height.
+     * @param tooltipHandler The handler for tooltips.
+     * @param clickHandler The action to be performed on click.
+     * @param keyboardFocusHandler The action to be performed on keyboard focus.
+     * @param clickSlopDp The click slop for the button, in dp.
+     */
+    public CompositorButton(
+            Context context,
+            boolean incognito,
+            @DrawableRes int resource,
+            @DrawableRes int backgroundResource,
+            @ButtonType int type,
+            @Nullable StripLayoutView parentView,
+            float width,
+            float height,
+            @Nullable TooltipHandler tooltipHandler,
+            StripLayoutViewOnClickHandler clickHandler,
+            StripLayoutViewOnKeyboardFocusHandler keyboardFocusHandler,
+            float clickSlopDp) {
+        super(
+                incognito,
+                clickHandler,
+                /* longClickHandler= */ null,
+                keyboardFocusHandler,
+                /* accessibilityFocusHandler= */ null,
+                context);
+        mResource = resource;
+        mBackgroundResource = backgroundResource;
+        mDrawBounds.set(0, 0, width, height);
+
+        mType = type;
+        mOpacity = 1.f;
+        mIsPressed = false;
+        mParentView = parentView;
+        mTooltipHandler = tooltipHandler;
+        setVisible(true);
+
+        mClickSlop = clickSlopDp;
+        // Apply the click slop to the button's touch target.
+        setTouchTargetInsets(null, null, null, null);
+    }
+
+    /**
+     * Set whether the background should be always visible, even when not hovered or pressed.
+     *
+     * @param alwaysVisible Whether the background should be always visible.
+     */
+    public void setBackgroundAlwaysVisible(boolean alwaysVisible) {
+        mBackgroundAlwaysVisible = alwaysVisible;
+    }
+
+    /**
+     * @return The Android resource that represents button background.
+     */
+    public int getBackgroundResourceId() {
+        return mBackgroundResource;
+    }
+
+    @Override
+    public int getVirtualViewPriority() {
+        return switch (getType()) {
+            // Buttons that can't be scrolled off are always foregrounded, and thus HIGH priority.
+            case ButtonType.GLIC,
+                    ButtonType.GLIC_ACTOR,
+                    ButtonType.GLIC_DISMISS_NUDGE,
+                    ButtonType.INCOGNITO_SWITCHER,
+                    ButtonType.NEW_TAB,
+                    ButtonType.TAB_SEARCH ->
+                    VirtualViewPriority.HIGH;
+            // Close buttons can be scrolled off (and beneath the edge fades & buttons), but always
+            // show on top of their respective tabs, so are given a MEDIUM priority
+            case ButtonType.TAB_CLOSE -> VirtualViewPriority.MEDIUM;
+            // Any other type is unexpected, and thus INVALID.
+            default -> {
+                assert false : "Unexpected button type.";
+                yield VirtualViewPriority.INVALID;
+            }
+        };
+    }
+
+    @Override
+    public boolean checkClickedOrHovered(float x, float y) {
+        if (mOpacity < mClickableOpacityThreshold) return false;
+        return super.checkClickedOrHovered(x, y);
+    }
+
+    /**
+     * @param threshold The minimum opacity required for the button to accept clicks/hovers.
+     */
+    public void setClickableOpacityThreshold(float threshold) {
+        mClickableOpacityThreshold = threshold;
+    }
+
+    /**
+     * @return The minimum opacity required for the button to accept clicks/hovers.
+     */
+    public float getClickableOpacityThreshold() {
+        return mClickableOpacityThreshold;
+    }
+
+    /**
+     * @return Parent view this button is embedded in.
+     */
+    public @Nullable StripLayoutView getParentView() {
+        return mParentView;
+    }
+
+    /**
+     * @param bounds A {@link RectF} representing the location of the button.
+     */
+    public void setBounds(RectF bounds) {
+        mDrawBounds.set(bounds);
+    }
+
+    @Override
+    public void setIncognito(boolean incognito) {
+        // Only the model selector button should be able to toggle incognito state.
+        assert mType == ButtonType.INCOGNITO_SWITCHER;
+        super.setIncognito(incognito);
+    }
+
+    /**
+     * @return The opacity of the button.
+     */
+    public float getOpacity() {
+        return mOpacity;
+    }
+
+    /**
+     * @param opacity The opacity of the button.
+     */
+    public void setOpacity(float opacity) {
+        mOpacity = opacity;
+    }
+
+    /**
+     * @return Type for this button.
+     */
+    public @ButtonType int getType() {
+        return mType;
+    }
+
+    /**
+     * @param state The pressed state of the button.
+     */
+    public void setPressed(boolean state) {
+        mIsPressed = state;
+
+        // clear isPressedFromMouse state.
+        if (!state) {
+            setPressedFromMouse(false);
+        }
+    }
+
+    /**
+     * @param state The pressed state of the button.
+     * @param fromMousePrimaryButton Whether the event originates from a mouse.
+     */
+    public void setPressed(boolean state, boolean fromMousePrimaryButton) {
+        mIsPressed = state;
+        mIsPressedFromMouse = fromMousePrimaryButton;
+    }
+
+    /**
+     * Set whether the button is pressed from mouse.
+     *
+     * @param isPressedFromMouse Whether the button is pressed from mouse.
+     */
+    private void setPressedFromMouse(boolean isPressedFromMouse) {
+        mIsPressedFromMouse = isPressedFromMouse;
+    }
+
+    /**
+     * @return The pressed state of the button.
+     */
+    public boolean isPressed() {
+        return mIsPressed;
+    }
+
+    /**
+     * @return Whether the button is pressed from mouse.
+     */
+    public boolean isPressedFromMouse() {
+        return mIsPressed && mIsPressedFromMouse;
+    }
+
+    /**
+     * Do not account for the button's click slop in the method inputs when invoking this method as
+     * this is accounted for in this method.
+     */
+    @Override
+    public void setTouchTargetInsets(
+            @Nullable Float left,
+            @Nullable Float top,
+            @Nullable Float right,
+            @Nullable Float bottom) {
+        float leftInset = -mClickSlop + (left != null ? left : 0);
+        float topInset = -mClickSlop + (top != null ? top : 0);
+        float rightInset = -mClickSlop + (right != null ? right : 0);
+        float bottomInset = -mClickSlop + (bottom != null ? bottom : 0);
+        super.setTouchTargetInsets(leftInset, topInset, rightInset, bottomInset);
+    }
+
+    /**
+     * @return The Android resource id for this button based on it's state.
+     */
+    public int getResourceId() {
+        return mResource;
+    }
+
+    /**
+     * Set state for a drag event.
+     * @param x     The x offset of the event.
+     * @param y     The y offset of the event.
+     * @return      Whether or not the button is selected after the event.
+     */
+    public boolean drag(float x, float y) {
+        if (!checkClickedOrHovered(x, y)) {
+            setPressed(false);
+            return false;
+        }
+        return isPressed();
+    }
+
+    /**
+     * Set state for an onDown event.
+     *
+     * @param x The x offset of the event.
+     * @param y The y offset of the event.
+     * @param buttons State of all buttons that were pressed when onDown was invoked.
+     * @return Whether or not the button was hit.
+     */
+    public boolean onDown(float x, float y, int buttons) {
+        if (checkClickedOrHovered(x, y) && MotionEventUtils.isTouchOrPrimaryButton(buttons)) {
+            setPressed(true, MotionEventUtils.isPrimaryButton(buttons));
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * @param x The x offset of the event.
+     * @param y The y offset of the event.
+     * @param buttons State of all buttons that were pressed when onDown was invoked.
+     * @return Whether or not the button was clicked.
+     */
+    public boolean click(float x, float y, int buttons) {
+        if (checkClickedOrHovered(x, y) && MotionEventUtils.isTouchOrPrimaryButton(buttons)) {
+            setPressed(false, MotionEventUtils.isPrimaryButton(buttons));
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Set state for an onUpOrCancel event.
+     *
+     * @return Whether or not the button was selected.
+     */
+    public boolean onUpOrCancel() {
+        boolean state = isPressed();
+        setPressed(/* state= */ false, /* fromMousePrimaryButton= */ false);
+        return state;
+    }
+
+    /**
+     * Set whether button is hovered on and notify the tooltip handler if the hover state changed.
+     *
+     * @param isHovered Whether the button is hovered on.
+     */
+    public void setHovered(boolean isHovered) {
+        if (mTooltipHandler != null && mIsHovered != isHovered) {
+            mTooltipHandler.setTooltipText(isHovered ? getTooltipText() : "");
+        }
+        mIsHovered = isHovered;
+    }
+
+    /**
+     * @return Whether the button is hovered on.
+     */
+    public boolean isHovered() {
+        return mIsHovered;
+    }
+
+    @Override
+    public void setVisible(boolean isVisible) {
+        if (!isVisible) {
+            setHovered(false);
+        }
+        super.setVisible(isVisible);
+    }
+
+    /**
+     * @return Whether hover background should be applied to the button.
+     */
+    public boolean getShouldApplyHoverBackground() {
+        return mBackgroundAlwaysVisible || isHovered() || isPressedFromMouse();
+    }
+
+    /**
+     * Sets the tooltip text for the button.
+     *
+     * @param tooltipText The tooltip text.
+     */
+    public void setTooltipText(@Nullable String tooltipText) {
+        mTooltipText = tooltipText;
+    }
+
+    private String getTooltipText() {
+        return mTooltipText != null ? mTooltipText : getAccessibilityDescription();
+    }
+
+    @Override
+    public String getAccessibilityClassName() {
+        return Button.class.getName();
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return mEnabled;
+    }
+
+    /**
+     * Sets the enabled state of the button.
+     *
+     * @param enabled Whether this button is enabled.
+     */
+    public void setEnabled(boolean enabled) {
+        mEnabled = enabled;
+    }
+}

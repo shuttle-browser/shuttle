@@ -1,0 +1,325 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.ntp_customization.theme.chrome_colors;
+
+import static org.chromium.build.NullUtil.assumeNonNull;
+
+import android.content.Context;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.LayerDrawable;
+
+import androidx.annotation.ColorInt;
+import androidx.annotation.ColorRes;
+import androidx.annotation.StringRes;
+import androidx.core.graphics.drawable.DrawableCompat;
+import androidx.recyclerview.widget.RecyclerView;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.ntp_customization.R;
+import org.chromium.chrome.browser.ntp_customization.theme.chrome_colors.NtpThemeColorInfo.NtpThemeColorId;
+import org.chromium.chrome.browser.ntp_customization.theme_sync.data.NtpBackgroundDataBase;
+import org.chromium.chrome.browser.ntp_customization.theme_sync.data.NtpBackgroundDataColor;
+import org.chromium.chrome.browser.ntp_customization.theme_sync.data.NtpBackgroundDataCustomizedColor;
+import org.chromium.chrome.browser.ui.bottombar.BottomBarConfigUtils;
+import org.chromium.chrome.browser.ui.theme.ChromeSemanticColorUtils;
+import org.chromium.components.browser_ui.styles.SemanticColorUtils;
+import org.chromium.ui.util.ColorUtils;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** Utility class for Chrome NTP's theme colors. */
+@NullMarked
+public class NtpThemeColorUtils {
+    static final int INVALID_ID = 0;
+
+    /**
+     * Creates a {@link NtpThemeColorInfo} instance for the given color Id.
+     *
+     * @param context The activity context.
+     * @param colorId The required color Id.
+     */
+    public static @Nullable NtpThemeColorInfo createNtpThemeColorInfo(
+            Context context, @NtpThemeColorId int colorId) {
+        if (colorId < NtpThemeColorId.DEFAULT || colorId >= NtpThemeColorId.NUM_ENTRIES) {
+            return null;
+        }
+
+        return new NtpThemeColorInfo(context, colorId);
+    }
+
+    /** Gets the primary color for the theme color id if exists, INVALID_ID otherwise. */
+    public static @ColorRes int getNtpThemePrimaryColorResId(@NtpThemeColorId int colorId) {
+        switch (colorId) {
+            case NtpThemeColorId.NTP_COLORS_BLUE:
+                return R.color.ntp_color_blue_primary;
+            case NtpThemeColorId.NTP_COLORS_AQUA:
+                return R.color.ntp_color_aqua_primary;
+            case NtpThemeColorId.NTP_COLORS_GREEN:
+                return R.color.ntp_color_green_primary;
+            case NtpThemeColorId.NTP_COLORS_VIRIDIAN:
+                return R.color.ntp_color_viridian_primary;
+            case NtpThemeColorId.NTP_COLORS_CITRON:
+                return R.color.ntp_color_citron_primary;
+            case NtpThemeColorId.NTP_COLORS_ORANGE:
+                return R.color.ntp_color_orange_primary;
+            case NtpThemeColorId.NTP_COLORS_ROSE:
+                return R.color.ntp_color_rose_primary;
+            case NtpThemeColorId.NTP_COLORS_FUCHSIA:
+                return R.color.ntp_color_fuchsia_primary;
+            case NtpThemeColorId.NTP_COLORS_VIOLET:
+                return R.color.ntp_color_violet_primary;
+            default:
+                return INVALID_ID;
+        }
+    }
+
+    /**
+     * Gets the accessibility string resource id of color theme when selected if exists, INVALID_ID
+     * otherwise.
+     */
+    public static @StringRes int getNtpColorThemeStringResId(@NtpThemeColorId int colorId) {
+        switch (colorId) {
+            case NtpThemeColorId.NTP_COLORS_BLUE:
+                return R.string.accessibility_ntp_blue_color_theme;
+            case NtpThemeColorId.NTP_COLORS_AQUA:
+                return R.string.accessibility_ntp_aqua_color_theme;
+            case NtpThemeColorId.NTP_COLORS_GREEN:
+                return R.string.accessibility_ntp_green_color_theme;
+            case NtpThemeColorId.NTP_COLORS_VIRIDIAN:
+                return R.string.accessibility_ntp_viridian_color_theme;
+            case NtpThemeColorId.NTP_COLORS_CITRON:
+                return R.string.accessibility_ntp_citron_color_theme;
+            case NtpThemeColorId.NTP_COLORS_ORANGE:
+                return R.string.accessibility_ntp_orange_color_theme;
+            case NtpThemeColorId.NTP_COLORS_ROSE:
+                return R.string.accessibility_ntp_rose_color_theme;
+            case NtpThemeColorId.NTP_COLORS_FUCHSIA:
+                return R.string.accessibility_ntp_fuchsia_color_theme;
+            case NtpThemeColorId.NTP_COLORS_VIOLET:
+                return R.string.accessibility_ntp_violet_color_theme;
+            default:
+                return INVALID_ID;
+        }
+    }
+
+    /**
+     * Initializes a list of NtpThemeColorInfo and add them to the provided list {@link
+     * chromeColorsList}. Returns the index of the info whose primary color matches the given
+     * primary color.
+     *
+     * @param context The Activity context.
+     * @param chromeColorsList The list to update.
+     * @param primaryColorInfo The primary color to find from the list.
+     */
+    public static int initColorsListAndFindPrimaryColorIndex(
+            Context context,
+            List<NtpThemeColorInfo> chromeColorsList,
+            @Nullable NtpThemeColorInfo primaryColorInfo) {
+        if (!chromeColorsList.isEmpty()) {
+            return findMatchedIndex(context, chromeColorsList, primaryColorInfo);
+        }
+
+        boolean hasPrimaryColor = primaryColorInfo != null;
+        int primaryColorIndex = RecyclerView.NO_POSITION;
+
+        for (int i = NtpThemeColorInfo.NtpThemeColorId.DEFAULT + 1;
+                i < NtpThemeColorInfo.NtpThemeColorId.NUM_ENTRIES;
+                i++) {
+            var info = NtpThemeColorUtils.createNtpThemeColorInfo(context, i);
+            if (info == null) continue;
+
+            if (hasPrimaryColor && isPrimaryColorMatched(context, primaryColorInfo, info)) {
+                primaryColorIndex = i - 1;
+            }
+            chromeColorsList.add(info);
+        }
+
+        // Handles the case of manually inputted primary and background colors. This color doesn't
+        // have a prebuilt color id.
+        if (primaryColorIndex == RecyclerView.NO_POSITION
+                && hasPrimaryColor
+                && primaryColorInfo instanceof NtpThemeColorFromHexInfo info
+                && info.backgroundColorLight != NtpThemeColorInfo.COLOR_NOT_SET) {
+            chromeColorsList.add(primaryColorInfo);
+            return chromeColorsList.size() - 1;
+        }
+
+        return primaryColorIndex;
+    }
+
+    /**
+     * If the primaryColorInfo matches any color info in the list, returns its index. Otherwise
+     * returns RecyclerView.NO_POSITION.
+     *
+     * @param context The application context.
+     * @param chromeColorsList The chrome colors list which has been build.
+     * @param primaryColorInfo The current color info to match.
+     */
+    private static int findMatchedIndex(
+            Context context,
+            List<NtpThemeColorInfo> chromeColorsList,
+            @Nullable NtpThemeColorInfo primaryColorInfo) {
+        if (primaryColorInfo == null) return RecyclerView.NO_POSITION;
+
+        for (int i = 0; i < chromeColorsList.size(); i++) {
+            if (isPrimaryColorMatched(context, primaryColorInfo, chromeColorsList.get(i))) {
+                return i;
+            }
+        }
+        return RecyclerView.NO_POSITION;
+    }
+
+    /**
+     * Returns whether the given ntpThemeColorInfo's primary color matches the primary color of the
+     * primaryColorInfo.
+     *
+     * @param context Used to get color.
+     * @param primaryColorInfo The ColorInfo for the primary color.
+     * @param ntpThemeColorInfo The ColorInfo to compare.
+     */
+    public static boolean isPrimaryColorMatched(
+            Context context,
+            @Nullable NtpThemeColorInfo primaryColorInfo,
+            @Nullable NtpThemeColorInfo ntpThemeColorInfo) {
+        if (primaryColorInfo == null || ntpThemeColorInfo == null) return false;
+
+        if (primaryColorInfo instanceof NtpThemeColorFromHexInfo primaryColorFromHexInfo) {
+            if (ntpThemeColorInfo instanceof NtpThemeColorFromHexInfo ntpThemeColorFromHexInfo) {
+                return primaryColorFromHexInfo.primaryColorLight
+                        == ntpThemeColorFromHexInfo.primaryColorLight;
+            }
+
+            return primaryColorFromHexInfo.primaryColorLight
+                    == context.getColor(ntpThemeColorInfo.primaryColorResId);
+        }
+
+        if (ntpThemeColorInfo instanceof NtpThemeColorFromHexInfo ntpThemeColorFromHexInfo) {
+            return context.getColor(primaryColorInfo.primaryColorResId)
+                    == ntpThemeColorFromHexInfo.primaryColorLight;
+        }
+
+        return ntpThemeColorInfo.primaryColorResId == primaryColorInfo.primaryColorResId;
+    }
+
+    /**
+     * Gets the background color from the given backgroundData. Returns the default background color
+     * if backgroundData is null.
+     *
+     * @param context Used to get a color's int value based on the theme.
+     * @param backgroundData The NtpBackgroundDataBase instance.
+     */
+    public static @ColorInt int getBackgroundColorFromNtpBackgroundData(
+            Context context, @Nullable NtpBackgroundDataBase backgroundData) {
+        if (backgroundData == null) return getDefaultBackgroundColor(context);
+
+        if (backgroundData
+                instanceof NtpBackgroundDataCustomizedColor ntpBackgroundDataCustomizedColor) {
+            return ntpBackgroundDataCustomizedColor.getNtpThemeColorFromHexInfo()
+                    .backgroundColorLight;
+        }
+
+        if (BottomBarConfigUtils.isBottomBarEnabled(context)) {
+            if (ColorUtils.inNightMode(context)) {
+                return SemanticColorUtils.getColorSurface(context);
+            }
+            return SemanticColorUtils.getColorSurfaceContainer(context);
+        }
+
+        // Use ?attr/colorSurfaceContainerHigh for NTP's background color for color theme.
+        return SemanticColorUtils.getColorSurfaceContainerHigh(context);
+    }
+
+    /** Returns the NtpThemeColorInfo instance from a given NtpBackgroundDataBase instance. */
+    public static @Nullable NtpThemeColorInfo getNtpThemeColorInfoFromNtpBackgroundData(
+            @Nullable NtpBackgroundDataBase backgroundData) {
+        if (backgroundData == null) return null;
+
+        if (backgroundData instanceof NtpBackgroundDataColor ntpBackgroundDataColor) {
+            return ntpBackgroundDataColor.getNtpThemeColorInfo();
+        }
+
+        if (backgroundData
+                instanceof NtpBackgroundDataCustomizedColor ntpBackgroundDataCustomizedColor) {
+            return ntpBackgroundDataCustomizedColor.getNtpThemeColorFromHexInfo();
+        }
+
+        return null;
+    }
+
+    /**
+     * Returns the default background color for NTP. Needs to use the Activity's context rather than
+     * the application's context, which isn't themed and will provide a wrong color.
+     *
+     * @param context The current Activity context. It is themed and can provide the correct color.
+     */
+    public static @ColorInt int getDefaultBackgroundColor(Context context) {
+        return ChromeSemanticColorUtils.getHomeSurfaceBackgroundColor(context);
+    }
+
+    /**
+     * Returns the primary color of the given NtpThemeColorInfo.
+     *
+     * @param context The Context to get themed color.
+     * @param colorInfo The NtpThemeColorInfo instance.
+     */
+    public static @ColorInt int getPrimaryColorFromColorInfo(
+            Context context, NtpThemeColorInfo colorInfo) {
+        if (colorInfo instanceof NtpThemeColorFromHexInfo ntpThemeColorFromHexInfo) {
+            return ntpThemeColorFromHexInfo.primaryColorLight;
+        }
+
+        return context.getColor(colorInfo.primaryColorResId);
+    }
+
+    /** Creates a colored circle drawable based on provides three colors. */
+    public static LayerDrawable createColoredCircle(
+            Context context,
+            @Nullable @ColorInt Integer topColor,
+            @Nullable @ColorInt Integer bottomLeftColor,
+            @Nullable @ColorInt Integer bottomRightColor) {
+        // 1. Loads each drawable layer.
+        Drawable iconTopHalf =
+                assumeNonNull(context.getDrawable(R.drawable.chrome_color_icon_top_half));
+        Drawable iconBottomLeft =
+                assumeNonNull(context.getDrawable(R.drawable.chrome_color_icon_bottom_left));
+        Drawable iconBottomRight =
+                assumeNonNull(context.getDrawable(R.drawable.chrome_color_icon_bottom_right));
+
+        // 2. Mutates each drawable to have its own state.
+        // Without this, tinting one instance would tint all instances of the drawable.
+        Drawable tintedIconTopHalf = DrawableCompat.wrap(iconTopHalf).mutate();
+        Drawable tintedIconBottomLeft = DrawableCompat.wrap(iconBottomLeft).mutate();
+        Drawable tintedIconBottomRight = DrawableCompat.wrap(iconBottomRight).mutate();
+
+        // 3. Applies the specific colors (tints).
+        if (topColor != null) {
+            DrawableCompat.setTint(tintedIconTopHalf, topColor);
+        }
+        if (bottomLeftColor != null) {
+            DrawableCompat.setTint(tintedIconBottomLeft, bottomLeftColor);
+        }
+        if (bottomRightColor != null) {
+            DrawableCompat.setTint(tintedIconBottomRight, bottomRightColor);
+        }
+
+        // 4. Combines them into a LayerDrawable.
+        Drawable[] layers =
+                new Drawable[] {tintedIconTopHalf, tintedIconBottomLeft, tintedIconBottomRight};
+        return new LayerDrawable(layers);
+    }
+
+    /**
+     * Creates a list of predefined theme color info.
+     *
+     * @param context The Activity context.
+     */
+    public static List<NtpThemeColorInfo> createThemeColorListForTesting(Context context) {
+        List<NtpThemeColorInfo> colorList = new ArrayList<>();
+        NtpThemeColorUtils.initColorsListAndFindPrimaryColorIndex(context, colorList, null);
+        return colorList;
+    }
+}

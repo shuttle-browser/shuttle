@@ -1,0 +1,8 @@
+AXLiveRegionChanged on AXGroup AXSubrole=AXApplicationAlert AXDescription='a' AXTitle='a'
+AXLiveRegionCreated on AXGroup AXSubrole=AXApplicationAlert AXDescription='a' AXTitle='a'
+=== Start Continuation ===
+AXLiveRegionChanged on AXGroup AXSubrole=AXApplicationAlertDialog AXDescription='b' AXTitle='b'
+AXLiveRegionCreated on AXGroup AXSubrole=AXApplicationAlertDialog AXDescription='b' AXTitle='b'
+=== Start Continuation ===
+AXLiveRegionChanged on AXGroup AXSubrole=AXApplicationAlert AXDescription='c' AXTitle='c'
+AXLiveRegionCreated on AXGroup AXSubrole=AXApplicationAlert AXDescription='c' AXTitle='c'

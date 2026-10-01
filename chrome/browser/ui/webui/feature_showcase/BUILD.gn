@@ -1,0 +1,120 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//components/signin/features.gni")
+import("//mojo/public/tools/bindings/mojom.gni")
+
+assert(enable_dice_support)
+
+mojom("mojo_bindings") {
+  sources = [
+    "default_browser.mojom",
+    "feature_showcase.mojom",
+    "gemini.mojom",
+    "google_lens.mojom",
+    "password_manager.mojom",
+    "themes_and_customization.mojom",
+  ]
+  webui_module_path = "/"
+}
+
+source_set("feature_showcase") {
+  sources = [
+    "default_browser_handler.cc",
+    "default_browser_handler.h",
+    "feature_showcase_handler.cc",
+    "feature_showcase_handler.h",
+    "feature_showcase_ui.cc",
+    "feature_showcase_ui.h",
+    "gemini_disclosure.cc",
+    "gemini_disclosure.h",
+    "gemini_handler.cc",
+    "gemini_handler.h",
+    "google_lens_handler.cc",
+    "google_lens_handler.h",
+    "password_manager_handler.cc",
+    "password_manager_handler.h",
+    "themes_and_customization_handler.cc",
+    "themes_and_customization_handler.h",
+  ]
+
+  public_deps = [
+    ":mojo_bindings",
+    "//chrome/common",
+    "//content/public/browser",
+  ]
+
+  deps = [
+    "//base",
+    "//chrome/app/theme:chrome_unscaled_resources",
+    "//chrome/browser:browser_process",
+    "//chrome/browser:shell_integration",
+    "//chrome/browser/glic",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/regional_capabilities",
+    "//chrome/browser/resources/feature_showcase:resources",
+    "//chrome/browser/resources/intro:resources",
+    "//chrome/browser/ui/actions:actions_headers",
+    "//chrome/browser/ui/lens",
+    "//chrome/browser/ui/toolbar/pinned_toolbar",
+    "//chrome/browser/ui/views/profiles/feature_showcase:metrics",
+    "//chrome/browser/ui/webui:theme_source",
+    "//chrome/browser/ui/webui/cr_components/customize_color_scheme_mode",
+    "//chrome/browser/ui/webui/cr_components/theme_color_picker:impl",
+    "//chrome/browser/ui/webui/intro",
+    "//chrome/common:constants",
+    "//components/glic:glic_pref_names",
+    "//components/lens",
+    "//components/lens:enterprise_policy",
+    "//components/prefs",
+    "//components/regional_capabilities",
+    "//components/signin/public/base:signin_switches",
+    "//components/variations/service",
+    "//content/public/browser",
+    "//ui/webui",
+  ]
+
+  if (is_win) {
+    deps += [
+      "//chrome/browser/win",
+      "//chrome/installer/util:with_no_strings",
+    ]
+  }
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "default_browser_handler_unittest.cc",
+    "feature_showcase_handler_unittest.cc",
+    "gemini_disclosure_unittest.cc",
+    "gemini_handler_unittest.cc",
+    "google_lens_handler_unittest.cc",
+    "password_manager_handler_unittest.cc",
+    "themes_and_customization_handler_unittest.cc",
+  ]
+  deps = [
+    ":feature_showcase",
+    ":mojo_bindings",
+    "//chrome/browser:shell_integration",
+    "//chrome/browser/glic",
+    "//chrome/browser/glic/test_support",
+    "//chrome/browser/signin",
+    "//chrome/browser/themes",
+    "//chrome/browser/ui/actions",
+    "//chrome/browser/ui/actions:actions_headers",
+    "//chrome/browser/ui/lens",
+    "//chrome/browser/ui/toolbar/pinned_toolbar",
+    "//chrome/browser/ui/views/profiles/feature_showcase:metrics",
+    "//chrome/browser/ui/webui/intro",
+    "//chrome/test:test_support",
+    "//components/glic:glic_pref_names",
+    "//components/lens",
+    "//components/prefs",
+    "//components/prefs:test_support",
+    "//content/test:test_support",
+    "//testing/gtest",
+    "//ui/actions",
+  ]
+}

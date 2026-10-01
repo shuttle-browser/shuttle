@@ -1,0 +1,354 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <memory>
+#include <string>
+
+#include "base/strings/stringprintf.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/test/bind.h"
+#include "base/test/mock_callback.h"
+#include "base/test/run_until.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/test_future.h"
+#include "chrome/browser/actor/actor_keyed_service.h"
+#include "chrome/browser/actor/actor_keyed_service_factory.h"
+#include "chrome/browser/actor/actor_task.h"
+#include "chrome/browser/actor/actor_test_util.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/glic/glic_profile_manager.h"
+#include "chrome/browser/glic/public/glic_keyed_service.h"
+#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
+#include "chrome/browser/glic/test_support/glic_test_environment.h"
+#include "chrome/browser/optimization_guide/mock_optimization_guide_keyed_service.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
+#include "chrome/browser/password_manager/password_change/features.h"
+#include "chrome/browser/password_manager/password_change/glic_password_change_actuator.h"
+#include "chrome/browser/password_manager/password_change/password_change_from_checkup_delegate.h"
+#include "chrome/browser/password_manager/password_manager_test_base.h"
+#include "chrome/browser/password_manager/passwords_navigation_observer.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/common/actor/action_result.h"
+#include "components/actor/core/actor_features.h"
+#include "components/autofill/core/common/autofill_debug_features.h"
+#include "components/autofill/core/common/autofill_test_util.h"
+#include "components/keyed_service/content/browser_context_dependency_manager.h"
+#include "components/optimization_guide/core/optimization_guide_proto_util.h"
+#include "components/optimization_guide/proto/model_quality_service.pb.h"
+#include "components/password_manager/core/browser/features/password_features.h"
+#include "components/password_manager/core/browser/password_form.h"
+#include "components/password_manager/core/browser/password_store/password_form_converters.h"
+#include "components/password_manager/core/browser/password_store/stored_credential.h"
+#include "components/password_manager/core/browser/password_string.h"
+#include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/content_browser_test_utils.h"
+#include "content/public/test/test_navigation_observer.h"
+#include "net/dns/mock_host_resolver.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "url/gurl.h"
+
+namespace {
+
+password_manager::StoredCredential CreateStoredCredential(const GURL& url) {
+  password_manager::PasswordForm form;
+  form.url = url;
+  form.signon_realm = url::Origin::Create(url).GetURL().spec();
+  form.username_value = u"testuser";
+  form.password_value = password_manager::PasswordString(u"testpass");
+  return password_manager::FromPasswordForm(std::move(form));
+}
+
+std::unique_ptr<KeyedService> CreateMockOptimizationGuideService(
+    content::BrowserContext* context) {
+  return std::make_unique<
+      testing::NiceMock<MockOptimizationGuideKeyedService>>();
+}
+
+}  // namespace
+
+class PasswordChangeFromCheckupDelegateBrowserTest
+    : public PasswordManagerBrowserTestBase {
+ public:
+  PasswordChangeFromCheckupDelegateBrowserTest() {
+    feature_list_.InitWithFeatures(
+        {password_change::features::kPasswordChangeWithGlic,
+         autofill::features::debug::kShowDomNodeIDs},
+        {});
+  }
+
+  void SetUpBrowserContextKeyedServices(
+      content::BrowserContext* context) override {
+    OptimizationGuideKeyedServiceFactory::GetInstance()->SetTestingFactory(
+        context, base::BindRepeating(&CreateMockOptimizationGuideService));
+  }
+
+  void SetUpOnMainThread() override {
+    PasswordManagerBrowserTestBase::SetUpOnMainThread();
+    host_resolver()->AddRule("example.com", "127.0.0.1");
+  }
+
+  int GetDomNodeId(content::WebContents* web_contents,
+                   const std::string& element_id) {
+    const std::string value_get_script = base::StringPrintf(
+        "var element = document.getElementById('%s');"
+        "var value = element ? Number(element.getAttribute(\"dom-node-id\")) : "
+        "-1;"
+        "value;",
+        element_id.c_str());
+    return content::EvalJs(web_contents->GetPrimaryMainFrame(),
+                           value_get_script,
+                           content::EXECUTE_SCRIPT_NO_USER_GESTURE)
+        .ExtractInt();
+  }
+
+ private:
+  autofill::test::AutofillBrowserTestEnvironment autofill_environment_;
+  glic::GlicTestEnvironment glic_test_env_;
+  base::test::ScopedFeatureList feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(PasswordChangeFromCheckupDelegateBrowserTest,
+                       StartsFlowAndVerifiesActorTab) {
+  Profile* profile = browser()->GetProfile();
+  auto* actor_service =
+      actor::ActorKeyedServiceFactory::GetActorKeyedService(profile);
+
+  content::WebContents* web_contents =
+      browser()->tab_strip_model()->GetActiveWebContents();
+  ASSERT_TRUE(web_contents);
+
+  auto delegate = std::make_unique<PasswordChangeFromCheckupDelegate>();
+  GURL url = embedded_test_server()->GetURL("example.com", "/title1.html");
+  delegate->StartPasswordChangeFlow(CreateStoredCredential(url),
+                                    web_contents->GetWeakPtr());
+  auto* actuation_tab = browser()->tab_strip_model()->GetTabAtIndex(1);
+
+  // Create task and add the tab to the task.
+  actor::TaskId task_id = actor_service->CreateTask(
+      actor::TestTaskSourceInfo(), actor::NoEnterprisePolicyChecker());
+  actor::ActorTask* task = actor_service->GetTask(task_id);
+
+  base::test::TestFuture<actor::mojom::ActionResultPtr> add_tab_future;
+  task->AddTab(actuation_tab->GetHandle(), /*stop_task_on_detach=*/true,
+               add_tab_future.GetCallback());
+  EXPECT_TRUE(add_tab_future.Wait());
+
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return browser()->tab_strip_model()->GetTabAtIndex(1) == actuation_tab;
+  }));
+  actor_service->NotifyTaskStateChanged(*task);
+
+  // Finish the task
+  actor_service->StopTask(task_id,
+                          actor::ActorTask::StoppedReason::kTaskComplete);
+
+  // The task is completed and removed from active tasks.
+  EXPECT_TRUE(base::test::RunUntil(
+      [&]() { return actor_service->GetTask(task_id) == nullptr; }));
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordChangeFromCheckupDelegateBrowserTest,
+                       FormWaiterFindsFormFillsAndSubmitsThroughGlic) {
+  content::WebContents* original_web_contents =
+      browser()->tab_strip_model()->GetActiveWebContents();
+
+  auto delegate = std::make_unique<PasswordChangeFromCheckupDelegate>();
+  GURL url = embedded_test_server()->GetURL(
+      "example.com", "/password/update_form_empty_fields.html");
+
+  content::TestNavigationObserver observer(url);
+  observer.StartWatchingNewWebContents();
+
+  delegate->StartPasswordChangeFlow(CreateStoredCredential(url),
+                                    original_web_contents->GetWeakPtr());
+
+  observer.Wait();
+
+  content::WebContents* new_web_contents =
+      browser()->tab_strip_model()->GetWebContentsAt(1);
+  ASSERT_TRUE(content::NavigateToURL(new_web_contents, url));
+
+  auto* actuator = static_cast<GlicPasswordChangeActuator*>(
+      delegate->get_actuator_for_testing());
+  ASSERT_TRUE(actuator);
+  auto find_form_update = glic::mojom::ExperimentalTriggeringUpdate::New();
+  find_form_update->data = "CHANGE_PASSWORD_FORM_FOUND";
+  actuator->OnUpdate(std::move(find_form_update),
+                     glic::mojom::SubscriberObservationType::kUpdate);
+
+  // Wait for the form fields to be filled.
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return content::EvalJs(
+               new_web_contents,
+               "document.getElementById('new_password_1').value !== ''")
+        .ExtractBool();
+  }));
+
+  std::string new_password_value =
+      content::EvalJs(new_web_contents,
+                      "document.getElementById('new_password_1').value")
+          .ExtractString();
+  EXPECT_EQ(base::UTF8ToUTF16(new_password_value),
+            delegate->generated_password());
+
+  // After the form is filled, the delegate transitions to Glic verification.
+  // We simulate Glic completing the verification task.
+  auto update = glic::mojom::ExperimentalTriggeringUpdate::New();
+  update->data = "PASSWORD_CHANGE_FINISHED_SUCCESSFULLY";
+  actuator->OnUpdate(std::move(update),
+                     glic::mojom::SubscriberObservationType::kUpdate);
+
+  // Wait for the new password to be saved.
+  WaitForPasswordStore();
+  CheckThatCredentialsStored(
+      /*username=*/"testuser",
+      /*password=*/base::UTF16ToUTF8(delegate->generated_password()));
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordChangeFromCheckupDelegateBrowserTest,
+                       FlowStopsOnUserIntervention) {
+  content::WebContents* originator_contents =
+      browser()->tab_strip_model()->GetActiveWebContents();
+  ASSERT_TRUE(originator_contents);
+
+  base::MockRepeatingCallback<void(
+      PasswordChangeFromCheckupDelegate::PasswordAutomaticChangeState)>
+      state_change_callback;
+  EXPECT_CALL(state_change_callback, Run(testing::_))
+      .WillRepeatedly(testing::Return());
+  EXPECT_CALL(state_change_callback,
+              Run(PasswordChangeFromCheckupDelegate::
+                      PasswordAutomaticChangeState::kError));
+
+  auto delegate = std::make_unique<PasswordChangeFromCheckupDelegate>();
+  GURL url = embedded_test_server()->GetURL("example.com", "/title1.html");
+
+  delegate->StartPasswordChangeFlow(CreateStoredCredential(url),
+                                    originator_contents->GetWeakPtr(),
+                                    state_change_callback.Get());
+
+  auto* actuator = static_cast<GlicPasswordChangeActuator*>(
+      delegate->get_actuator_for_testing());
+  ASSERT_TRUE(actuator);
+  auto update = glic::mojom::ExperimentalTriggeringUpdate::New();
+  update->type = glic::mojom::ExperimentalTriggeringUpdateType::kYieldToUser;
+  actuator->OnUpdate(std::move(update),
+                     glic::mojom::SubscriberObservationType::kUpdate);
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordChangeFromCheckupDelegateBrowserTest,
+                       VerificationFlowStopsOnUserIntervention) {
+  content::WebContents* original_web_contents =
+      browser()->tab_strip_model()->GetActiveWebContents();
+
+  base::MockRepeatingCallback<void(
+      PasswordChangeFromCheckupDelegate::PasswordAutomaticChangeState)>
+      state_change_callback;
+  EXPECT_CALL(state_change_callback, Run(testing::_))
+      .WillRepeatedly(testing::Return());
+
+  auto delegate = std::make_unique<PasswordChangeFromCheckupDelegate>();
+  GURL url = embedded_test_server()->GetURL(
+      "example.com", "/password/update_form_empty_fields.html");
+
+  content::TestNavigationObserver observer(url);
+  observer.StartWatchingNewWebContents();
+
+  delegate->StartPasswordChangeFlow(CreateStoredCredential(url),
+                                    original_web_contents->GetWeakPtr(),
+                                    state_change_callback.Get());
+
+  observer.Wait();
+
+  content::WebContents* new_web_contents =
+      browser()->tab_strip_model()->GetWebContentsAt(1);
+  ASSERT_TRUE(content::NavigateToURL(new_web_contents, url));
+
+  auto* actuator = static_cast<GlicPasswordChangeActuator*>(
+      delegate->get_actuator_for_testing());
+  ASSERT_TRUE(actuator);
+  auto find_form_update = glic::mojom::ExperimentalTriggeringUpdate::New();
+  find_form_update->data = "CHANGE_PASSWORD_FORM_FOUND";
+  actuator->OnUpdate(std::move(find_form_update),
+                     glic::mojom::SubscriberObservationType::kUpdate);
+
+  // Wait for the form fields to be filled, which indicates the delegate has
+  // transitioned to the verification step.
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return content::EvalJs(
+               new_web_contents,
+               "document.getElementById('new_password_1').value !== ''")
+        .ExtractBool();
+  }));
+
+  // Simulate Glic reporting user intervention during the verification step and
+  // verify that the flow transitions to the error state.
+  auto update = glic::mojom::ExperimentalTriggeringUpdate::New();
+  update->type = glic::mojom::ExperimentalTriggeringUpdateType::kYieldToUser;
+
+  EXPECT_CALL(state_change_callback,
+              Run(PasswordChangeFromCheckupDelegate::
+                      PasswordAutomaticChangeState::kError));
+  actuator->OnUpdate(std::move(update),
+                     glic::mojom::SubscriberObservationType::kUpdate);
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordChangeFromCheckupDelegateBrowserTest,
+                       FlowStopsOnStopCalled) {
+  Profile* profile = browser()->GetProfile();
+  auto* actor_service =
+      actor::ActorKeyedServiceFactory::GetActorKeyedService(profile);
+
+  content::WebContents* web_contents =
+      browser()->tab_strip_model()->GetActiveWebContents();
+  ASSERT_TRUE(web_contents);
+
+  auto delegate = std::make_unique<PasswordChangeFromCheckupDelegate>();
+  GURL url = embedded_test_server()->GetURL("example.com", "/title1.html");
+  delegate->StartPasswordChangeFlow(CreateStoredCredential(url),
+                                    web_contents->GetWeakPtr());
+  auto* actuation_tab = browser()->tab_strip_model()->GetTabAtIndex(1);
+
+  // Create task and add the tab to the task.
+  actor::TaskId task_id = actor_service->CreateTask(
+      actor::TestTaskSourceInfo(), actor::NoEnterprisePolicyChecker());
+  actor::ActorTask* task = actor_service->GetTask(task_id);
+
+  base::test::TestFuture<actor::mojom::ActionResultPtr> add_tab_future;
+  task->AddTab(actuation_tab->GetHandle(), /*stop_task_on_detach=*/true,
+               add_tab_future.GetCallback());
+  EXPECT_TRUE(add_tab_future.Wait());
+
+  actor_service->NotifyTaskStateChanged(*task);
+
+  // Call Stop() on delegate.
+  delegate->Stop(actor::ActorTask::StoppedReason::kStoppedByUser);
+
+  // Actuation tab remains open.
+  EXPECT_EQ(2, browser()->tab_strip_model()->count());
+}
+
+IN_PROC_BROWSER_TEST_F(PasswordChangeFromCheckupDelegateBrowserTest,
+                       FlowStopsImmediately) {
+  content::WebContents* web_contents =
+      browser()->tab_strip_model()->GetActiveWebContents();
+  ASSERT_TRUE(web_contents);
+
+  auto delegate = std::make_unique<PasswordChangeFromCheckupDelegate>();
+  GURL url = embedded_test_server()->GetURL("example.com", "/title1.html");
+  delegate->StartPasswordChangeFlow(CreateStoredCredential(url),
+                                    web_contents->GetWeakPtr());
+
+  EXPECT_EQ(2, browser()->tab_strip_model()->count());
+
+  // Stop immediately before any task created or tracked.
+  delegate->Stop(actor::ActorTask::StoppedReason::kStoppedByUser);
+
+  // Actuation tab remains open.
+  EXPECT_EQ(2, browser()->tab_strip_model()->count());
+}

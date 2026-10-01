@@ -1,0 +1,260 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.safe_browsing.settings;
+
+import androidx.test.filters.SmallTest;
+
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+import org.chromium.base.ThreadUtils;
+import org.chromium.base.test.util.DoNotBatch;
+import org.chromium.base.test.util.Feature;
+import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.init.ChromeBrowserInitializer;
+import org.chromium.chrome.browser.profiles.ProfileManager;
+import org.chromium.chrome.browser.safe_browsing.SafeBrowsingBridge;
+import org.chromium.chrome.browser.safe_browsing.SafeBrowsingState;
+import org.chromium.chrome.browser.settings.SettingsTestRule;
+import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
+import org.chromium.chrome.test.util.browser.signin.SigninTestRule;
+import org.chromium.components.browser_ui.settings.ChromeSwitchPreference;
+import org.chromium.components.browser_ui.settings.TextMessagePreference;
+import org.chromium.components.policy.test.annotations.Policies;
+import org.chromium.components.prefs.PrefService;
+import org.chromium.components.signin.test.util.TestAccounts;
+import org.chromium.components.user_prefs.UserPrefs;
+import org.chromium.content_public.browser.test.NativeLibraryTestUtils;
+
+/** Tests for {@link StandardProtectionSettingsFragment}. */
+@RunWith(ChromeJUnit4ClassRunner.class)
+@DoNotBatch(reason = "This test launches a Settings activity")
+public class StandardProtectionSettingsFragmentTest {
+    private static final String ASSERT_MESSAGE_PREFIX = "Incorrect state: ";
+    private static final String EXTENDED_REPORTING = "extended reporting ";
+    private static final String ENABLED_STATE = "enabled state ";
+    private static final String CHECKED_STATE = "checked state ";
+    private static final String MANAGED_STATE = "managed state ";
+    private static final String FROM_NATIVE = "from native";
+
+    @Rule
+    public SettingsTestRule<StandardProtectionSettingsFragment> mTestRule =
+            new SettingsTestRule<>(StandardProtectionSettingsFragment.class);
+
+    @Rule public final SigninTestRule mSigninTestRule = new SigninTestRule();
+
+    private ChromeSwitchPreference mExtendedReportingPreference;
+    private TextMessagePreference mStandardProtectionSubtitle;
+
+    @Before
+    public void setUp() {
+        NativeLibraryTestUtils.loadNativeLibraryAndInitBrowserProcess();
+    }
+
+    // TODO(crbug.com/336547987): Add a new test for checking that mExtendedReportingPreference is
+    // not shown when the flag is enabled.
+    private void startSettings() {
+        mTestRule.startSettingsActivity();
+        StandardProtectionSettingsFragment fragment = mTestRule.getFragment();
+        mExtendedReportingPreference =
+                fragment.findPreference(StandardProtectionSettingsFragment.PREF_EXTENDED_REPORTING);
+        mStandardProtectionSubtitle =
+                fragment.findPreference(StandardProtectionSettingsFragment.PREF_SUBTITLE);
+        if (!ChromeFeatureList.isEnabled(
+                ChromeFeatureList.SAFE_BROWSING_EXTENDED_REPORTING_REMOVE_PREF_DEPENDENCY)) {
+            Assert.assertNotNull(
+                    "Extended reporting preference should not be null when feature is DISABLED.",
+                    mExtendedReportingPreference);
+        }
+    }
+
+    private void setSafeBrowsingState(@SafeBrowsingState int state) {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    new SafeBrowsingBridge(ProfileManager.getLastUsedRegularProfile())
+                            .setSafeBrowsingState(state);
+                });
+    }
+
+    private boolean isSafeBrowsingExtendedReportingEnabled() {
+        return ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    return new SafeBrowsingBridge(ProfileManager.getLastUsedRegularProfile())
+                            .isSafeBrowsingExtendedReportingEnabled();
+                });
+    }
+
+    @Test
+    @SmallTest
+    @Feature({"SafeBrowsing"})
+    @DisableFeatures({ChromeFeatureList.SAFE_BROWSING_EXTENDED_REPORTING_REMOVE_PREF_DEPENDENCY})
+    public void testSwitchExtendedReportingPreference() {
+        setSafeBrowsingState(SafeBrowsingState.STANDARD_PROTECTION);
+        startSettings();
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    boolean isExtendedReportingEnabled = isSafeBrowsingExtendedReportingEnabled();
+                    String checkedStateErrorMessage =
+                            ASSERT_MESSAGE_PREFIX + EXTENDED_REPORTING + CHECKED_STATE;
+                    String enabledStateErrorMessage =
+                            ASSERT_MESSAGE_PREFIX + EXTENDED_REPORTING + ENABLED_STATE;
+                    Assert.assertEquals(
+                            checkedStateErrorMessage,
+                            isExtendedReportingEnabled,
+                            mExtendedReportingPreference.isChecked());
+                    Assert.assertTrue(
+                            enabledStateErrorMessage, mExtendedReportingPreference.isEnabled());
+
+                    mExtendedReportingPreference.performClick();
+
+                    Assert.assertEquals(
+                            checkedStateErrorMessage,
+                            !isExtendedReportingEnabled,
+                            mExtendedReportingPreference.isChecked());
+                    Assert.assertEquals(
+                            enabledStateErrorMessage + FROM_NATIVE,
+                            !isExtendedReportingEnabled,
+                            isSafeBrowsingExtendedReportingEnabled());
+                });
+    }
+
+    @Test
+    @SmallTest
+    @Feature({"SafeBrowsing"})
+    @DisableFeatures({ChromeFeatureList.SAFE_BROWSING_EXTENDED_REPORTING_REMOVE_PREF_DEPENDENCY})
+    public void testPreferenceDisabledInEnhancedProtectionMode() {
+        mSigninTestRule.addAccountThenSignin(TestAccounts.ACCOUNT1);
+        setSafeBrowsingState(SafeBrowsingState.ENHANCED_PROTECTION);
+        startSettings();
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    Assert.assertFalse(
+                            ASSERT_MESSAGE_PREFIX + EXTENDED_REPORTING + ENABLED_STATE,
+                            mExtendedReportingPreference.isEnabled());
+                    Assert.assertTrue(
+                            ASSERT_MESSAGE_PREFIX + EXTENDED_REPORTING + CHECKED_STATE,
+                            mExtendedReportingPreference.isChecked());
+                });
+    }
+
+    @Test
+    @SmallTest
+    @Feature({"SafeBrowsing"})
+    @DisableFeatures({ChromeFeatureList.SAFE_BROWSING_EXTENDED_REPORTING_REMOVE_PREF_DEPENDENCY})
+    public void testPreferenceDisabledInNoProtectionMode() {
+        mSigninTestRule.addAccountThenSignin(TestAccounts.ACCOUNT1);
+        setSafeBrowsingState(SafeBrowsingState.NO_SAFE_BROWSING);
+        startSettings();
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    Assert.assertFalse(
+                            ASSERT_MESSAGE_PREFIX + EXTENDED_REPORTING + ENABLED_STATE,
+                            mExtendedReportingPreference.isEnabled());
+                    Assert.assertFalse(
+                            ASSERT_MESSAGE_PREFIX + EXTENDED_REPORTING + CHECKED_STATE,
+                            mExtendedReportingPreference.isChecked());
+                });
+    }
+
+    @Test
+    @SmallTest
+    @Feature({"SafeBrowsing"})
+    @DisableFeatures({ChromeFeatureList.SAFE_BROWSING_EXTENDED_REPORTING_REMOVE_PREF_DEPENDENCY})
+    @Policies.Add({@Policies.Item(key = "SafeBrowsingExtendedReportingEnabled", string = "true")})
+    public void testExtendedReportingPolicyManaged() {
+        mSigninTestRule.addAccountThenSignin(TestAccounts.ACCOUNT1);
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    ChromeBrowserInitializer.getInstance().handleSynchronousStartup();
+                    setSafeBrowsingState(SafeBrowsingState.STANDARD_PROTECTION);
+                });
+        startSettings();
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    Assert.assertTrue(
+                            ASSERT_MESSAGE_PREFIX
+                                    + EXTENDED_REPORTING
+                                    + MANAGED_STATE
+                                    + FROM_NATIVE,
+                            new SafeBrowsingBridge(ProfileManager.getLastUsedRegularProfile())
+                                    .isSafeBrowsingExtendedReportingManaged());
+                    Assert.assertFalse(
+                            ASSERT_MESSAGE_PREFIX + EXTENDED_REPORTING + ENABLED_STATE,
+                            mExtendedReportingPreference.isEnabled());
+                    Assert.assertTrue(
+                            ASSERT_MESSAGE_PREFIX + EXTENDED_REPORTING + CHECKED_STATE,
+                            mExtendedReportingPreference.isChecked());
+                });
+    }
+
+    @Test
+    @SmallTest
+    @Feature({"SafeBrowsing"})
+    @DisableFeatures({ChromeFeatureList.SAFE_BROWSING_EXTENDED_REPORTING_REMOVE_PREF_DEPENDENCY})
+    public void testSafeBrowsingSettingsStandardProtection_Disabled() {
+        setSafeBrowsingState(SafeBrowsingState.STANDARD_PROTECTION);
+        startSettings();
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    StandardProtectionSettingsFragment fragment = mTestRule.getFragment();
+
+                    String standardProtectionSubtitle =
+                            fragment.getContext()
+                                    .getString(R.string.safe_browsing_standard_protection_subtitle);
+                    String extendedReportingTitle =
+                            fragment.getContext()
+                                    .getString(
+                                            R.string
+                                                    .safe_browsing_standard_protection_extended_reporting_title);
+
+                    Assert.assertEquals(
+                            standardProtectionSubtitle, mStandardProtectionSubtitle.getTitle());
+                    // Assert the Extended Reporting preference is present.
+                    Assert.assertNotNull(mExtendedReportingPreference);
+                    Assert.assertEquals(
+                            extendedReportingTitle, mExtendedReportingPreference.getTitle());
+                });
+    }
+
+    @Test
+    @SmallTest
+    @Feature({"SafeBrowsing"})
+    @EnableFeatures({ChromeFeatureList.SAFE_BROWSING_EXTENDED_REPORTING_REMOVE_PREF_DEPENDENCY})
+    public void testSafeBrowsingSettingsStandardProtection_Enabled() {
+        setSafeBrowsingState(SafeBrowsingState.STANDARD_PROTECTION);
+        startSettings();
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    StandardProtectionSettingsFragment fragment = mTestRule.getFragment();
+
+                    String standardProtectionSubtitle =
+                            fragment.getContext()
+                                    .getString(R.string.safe_browsing_standard_protection_subtitle);
+
+                    Assert.assertEquals(
+                            standardProtectionSubtitle, mStandardProtectionSubtitle.getTitle());
+
+                    // Assert the Extended Reporting preference is NOT present.
+                    Assert.assertNull(
+                            "Extended Reporting preference should be null when feature is ENABLED.",
+                            mExtendedReportingPreference);
+                });
+    }
+
+    PrefService getPrefService() {
+        return UserPrefs.get(ProfileManager.getLastUsedRegularProfile());
+    }
+}

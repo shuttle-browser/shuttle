@@ -1,0 +1,42 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_HOME_CUSTOMIZATION_COORDINATOR_HOME_CUSTOMIZATION_COORDINATOR_H_
+#define IOS_CHROME_BROWSER_HOME_CUSTOMIZATION_COORDINATOR_HOME_CUSTOMIZATION_COORDINATOR_H_
+
+#import <UIKit/UIKit.h>
+
+#import "ios/chrome/browser/home_customization/coordinator/home_customization_navigation_delegate.h"
+#import "ios/chrome/browser/shared/coordinator/chrome_coordinator/chrome_coordinator.h"
+
+@protocol HomeCustomizationDelegate;
+@protocol PromosManagerUIHandler;
+@protocol SnackbarCommands;
+
+// The coordinator for the Home surface's customization menu.
+@interface HomeCustomizationCoordinator
+    : ChromeCoordinator <HomeCustomizationNavigationDelegate>
+
+// Delegate for communicating back to the Home surface.
+@property(nonatomic, weak) id<HomeCustomizationDelegate> delegate;
+
+// Whether or not the coordinator was opened for user education. If it was, then
+// the coordinator is responsible for alerting the Feature Engagement Tracker
+// when it is dismissed.
+@property(nonatomic, assign) BOOL openedForUserEducation;
+
+// UI handler to alert upon dismissal, if the menu was presented as part of a
+// promo.
+@property(nonatomic, weak) id<PromosManagerUIHandler> promosManagerUIHandler;
+
+// Whether to display a snackbar upon dismissal informing the user that their
+// uploaded photo will not sync across devices.
+@property(nonatomic, readonly) BOOL shouldShowPhotoNotSyncedSnackbarOnDismiss;
+
+// Updates the data for all existing menu pages.
+- (void)updateMenuData;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_HOME_CUSTOMIZATION_COORDINATOR_HOME_CUSTOMIZATION_COORDINATOR_H_

@@ -1,0 +1,244 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/signin/public/browser/web_signin_tracker.h"
+
+#include <memory>
+#include <optional>
+
+#include "base/run_loop.h"
+#include "base/test/gmock_callback_support.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/mock_callback.h"
+#include "base/test/task_environment.h"
+#include "base/time/time.h"
+#include "components/signin/core/browser/account_reconcilor.h"
+#include "components/signin/core/browser/mirror_account_reconcilor_delegate.h"
+#include "components/signin/public/base/test_signin_client.h"
+#include "components/signin/public/identity_manager/identity_test_environment.h"
+#include "components/sync_preferences/testing_pref_service_syncable.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+using ::testing::_;
+
+namespace signin {
+
+class WebSigninTrackerTest : public ::testing::Test {
+ public:
+  WebSigninTrackerTest()
+      : signin_client_(&prefs_),
+        identity_test_env_(nullptr, &prefs_, &signin_client_) {
+    account_reconcilor_ = std::make_unique<AccountReconcilor>(
+        identity_test_env_.identity_manager(), &signin_client_,
+        std::make_unique<MirrorAccountReconcilorDelegate>(
+            identity_test_env_.identity_manager()));
+    account_reconcilor_->Initialize(
+        /*start_reconcile_if_tokens_available=*/false);
+  }
+
+  WebSigninTrackerTest(const WebSigninTrackerTest&) = delete;
+  WebSigninTrackerTest& operator=(const WebSigninTrackerTest&) = delete;
+
+  ~WebSigninTrackerTest() override { account_reconcilor_->Shutdown(); }
+
+  std::unique_ptr<WebSigninTracker> CreateWebSigninTracker(
+      CoreAccountId account,
+      base::OnceCallback<void(WebSigninTracker::Result)> callback,
+      std::optional<base::TimeDelta> timeout = std::nullopt) {
+    return std::make_unique<WebSigninTracker>(
+        identity_test_env_.identity_manager(), account_reconcilor_.get(),
+        account, std::move(callback), timeout);
+  }
+
+  ConsentLevel GetConsentLevel() const {
+#if BUILDFLAG(IS_CHROMEOS)
+    return ConsentLevel::kSync;
+#else
+    return ConsentLevel::kSignin;
+#endif
+  }
+
+ protected:
+  base::test::SingleThreadTaskEnvironment task_environment_{
+      base::test::TaskEnvironment::TimeSource::MOCK_TIME};
+  sync_preferences::TestingPrefServiceSyncable prefs_;
+  TestSigninClient signin_client_;
+  IdentityTestEnvironment identity_test_env_;
+  std::unique_ptr<AccountReconcilor> account_reconcilor_;
+};
+
+TEST_F(WebSigninTrackerTest,
+       CookiesWithSigninAccountShouldTriggerSuccessResult) {
+  base::HistogramTester tester;
+  AccountInfo account =
+      identity_test_env_.MakeAccountAvailable("test@gmail.com");
+  base::MockOnceCallback<void(WebSigninTracker::Result)> callback;
+  std::unique_ptr<WebSigninTracker> web_signin_bridge =
+      CreateWebSigninTracker(account.account_id, callback.Get());
+  EXPECT_CALL(callback, Run(WebSigninTracker::Result::kSuccess));
+
+  identity_test_env_.SetPrimaryAccount(account.email, GetConsentLevel());
+  CookieParamsForTest cookie_params{account.email, account.gaia};
+  identity_test_env_.SetCookieAccounts({cookie_params});
+  tester.ExpectTotalCount("Signin.WebSigninTracker.Latency.Success", 1);
+}
+
+TEST_F(WebSigninTrackerTest,
+       FreshCookiesWithSigninAccountShouldTriggerSuccessResult) {
+  base::HistogramTester tester;
+  AccountInfo account1 =
+      identity_test_env_.MakeAccountAvailable("test@gmail.com");
+  AccountInfo account2 =
+      identity_test_env_.MakeAccountAvailable("test2@gmail.com");
+  identity_test_env_.SetPrimaryAccount(account1.email, GetConsentLevel());
+  // Setting cookies is required to trigger the account reconcilor.
+  CookieParamsForTest cookie_params{account1.email, account1.gaia};
+  identity_test_env_.SetCookieAccounts({cookie_params});
+  // AccountReconcilor errors should have no effect on the result if the account
+  // is already in cookies.
+  identity_test_env_.WaitForAccessTokenRequestIfNecessaryAndRespondWithError(
+      GoogleServiceAuthError::FromServiceError(""));
+  // Waiting for the AccountReconcilor token request marks cookies as stale, set
+  // them again to mark cookies fresh and force `WebSigninTracker` to check the
+  // account presence.
+  identity_test_env_.SetCookieAccounts({cookie_params});
+
+  base::MockOnceCallback<void(WebSigninTracker::Result)> callback;
+  EXPECT_CALL(callback, Run(WebSigninTracker::Result::kSuccess));
+  std::unique_ptr<WebSigninTracker> web_signin_bridge =
+      CreateWebSigninTracker(account1.account_id, callback.Get());
+
+  tester.ExpectTotalCount("Signin.WebSigninTracker.Latency.Success", 1);
+}
+
+TEST_F(WebSigninTrackerTest,
+       CookiesWithoutSigninAccountShouldNotTriggerResult) {
+  base::HistogramTester tester;
+  AccountInfo signin_account =
+      identity_test_env_.MakeAccountAvailable("test1@gmail.com");
+  AccountInfo non_signin_account =
+      identity_test_env_.MakeAccountAvailable("test2@gmail.com");
+  base::MockOnceCallback<void(WebSigninTracker::Result)> callback;
+  std::unique_ptr<WebSigninTracker> web_signin_bridge =
+      CreateWebSigninTracker(signin_account.account_id, callback.Get());
+  EXPECT_CALL(callback, Run(_)).Times(0);
+
+  identity_test_env_.SetPrimaryAccount(non_signin_account.email,
+                                       GetConsentLevel());
+  CookieParamsForTest cookie_params{non_signin_account.email,
+                                    non_signin_account.gaia};
+  identity_test_env_.SetCookieAccounts({cookie_params});
+
+  tester.ExpectTotalCount("Signin.WebSigninTracker.Latency.Success", 0);
+}
+
+TEST_F(WebSigninTrackerTest, ReconcilorAuthErrorShouldTriggerAuthErrorResult) {
+  base::HistogramTester tester;
+  AccountInfo account =
+      identity_test_env_.MakeAccountAvailable("test@gmail.com");
+  base::MockOnceCallback<void(WebSigninTracker::Result)> callback;
+  std::unique_ptr<WebSigninTracker> web_signin_bridge =
+      CreateWebSigninTracker(account.account_id, callback.Get());
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(callback, Run(WebSigninTracker::Result::kAuthError))
+      .WillOnce(base::test::RunOnceClosure(run_loop.QuitClosure()));
+
+  identity_test_env_.SetInvalidRefreshTokenForAccount(account.account_id);
+  identity_test_env_.UpdatePersistentErrorOfRefreshTokenForAccount(
+      account.account_id,
+      GoogleServiceAuthError::FromInvalidGaiaCredentialsReason(
+          GoogleServiceAuthError::InvalidGaiaCredentialsReason::UNKNOWN));
+  identity_test_env_.SetCookieAccounts({});
+  identity_test_env_.SetPrimaryAccount(account.email, GetConsentLevel());
+  run_loop.Run();
+
+  tester.ExpectTotalCount("Signin.WebSigninTracker.Latency.AuthError", 1);
+}
+
+TEST_F(WebSigninTrackerTest,
+       DeferredCreationAndReconcilorAuthErrorShouldTriggerAuthErrorResult) {
+  base::HistogramTester tester;
+  AccountInfo account =
+      identity_test_env_.MakeAccountAvailable("test@gmail.com");
+  identity_test_env_.SetInvalidRefreshTokenForAccount(account.account_id);
+  identity_test_env_.UpdatePersistentErrorOfRefreshTokenForAccount(
+      account.account_id,
+      GoogleServiceAuthError::FromInvalidGaiaCredentialsReason(
+          GoogleServiceAuthError::InvalidGaiaCredentialsReason::UNKNOWN));
+  identity_test_env_.SetCookieAccounts({});
+  identity_test_env_.SetPrimaryAccount(account.email, GetConsentLevel());
+
+  base::MockOnceCallback<void(WebSigninTracker::Result)> callback;
+  EXPECT_CALL(callback, Run(WebSigninTracker::Result::kAuthError));
+  std::unique_ptr<WebSigninTracker> web_signin_bridge =
+      CreateWebSigninTracker(account.account_id, callback.Get());
+
+  tester.ExpectTotalCount("Signin.WebSigninTracker.Latency.AuthError", 1);
+}
+
+TEST_F(WebSigninTrackerTest,
+       ReconcilorNonAuthErrorShouldTriggerOtherErrorResult) {
+  base::HistogramTester tester;
+  AccountInfo account =
+      identity_test_env_.MakeAccountAvailable("test@gmail.com");
+  base::MockOnceCallback<void(WebSigninTracker::Result)> callback;
+  std::unique_ptr<WebSigninTracker> web_signin_bridge =
+      CreateWebSigninTracker(account.account_id, callback.Get());
+  base::RunLoop run_loop;
+  EXPECT_CALL(callback, Run(WebSigninTracker::Result::kOtherError))
+      .WillOnce(base::test::RunOnceClosure(run_loop.QuitClosure()));
+
+  identity_test_env_.SetPrimaryAccount(account.email, GetConsentLevel());
+  identity_test_env_.SetCookieAccounts({});
+
+  identity_test_env_.WaitForAccessTokenRequestIfNecessaryAndRespondWithError(
+      GoogleServiceAuthError::FromServiceError(""));
+
+  run_loop.Run();
+
+  tester.ExpectTotalCount("Signin.WebSigninTracker.Latency.OtherError", 1);
+}
+
+TEST_F(WebSigninTrackerTest,
+       DeferredCreationAndReconcilorNonAuthErrorShouldTriggerOtherErrorResult) {
+  base::HistogramTester tester;
+  AccountInfo account =
+      identity_test_env_.MakeAccountAvailable("test@gmail.com");
+  identity_test_env_.SetPrimaryAccount(account.email, GetConsentLevel());
+  identity_test_env_.SetCookieAccounts({});
+
+  identity_test_env_.WaitForAccessTokenRequestIfNecessaryAndRespondWithError(
+      GoogleServiceAuthError::FromServiceError(""));
+
+  base::MockOnceCallback<void(WebSigninTracker::Result)> callback;
+  EXPECT_CALL(callback, Run(WebSigninTracker::Result::kOtherError));
+  std::unique_ptr<WebSigninTracker> web_signin_bridge =
+      CreateWebSigninTracker(account.account_id, callback.Get());
+
+  tester.ExpectTotalCount("Signin.WebSigninTracker.Latency.OtherError", 1);
+}
+
+TEST_F(WebSigninTrackerTest, TimeoutResult) {
+  base::HistogramTester tester;
+  AccountInfo account =
+      identity_test_env_.MakeAccountAvailable("test@gmail.com");
+  base::MockOnceCallback<void(WebSigninTracker::Result)> callback;
+  base::TimeDelta timeout = base::Seconds(30);
+  std::unique_ptr<WebSigninTracker> web_signin_bridge =
+      CreateWebSigninTracker(account.account_id, callback.Get(), timeout);
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(callback, Run(WebSigninTracker::Result::kTimeout))
+      .WillOnce(base::test::RunOnceClosure(run_loop.QuitClosure()));
+
+  task_environment_.FastForwardBy(timeout);
+
+  run_loop.Run();
+
+  tester.ExpectTotalCount("Signin.WebSigninTracker.Latency.Timeout", 1);
+}
+
+}  // namespace signin

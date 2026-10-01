@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Validation of MediaStreamAudioDestinationNode API</title>
+    <script src="../../resources/testharness.js"></script>
+    <script src="../../resources/testharnessreport.js"></script>
+  </head>
+  <body>
+    <script>
+      'use strict';
+
+      test(() => {
+        const context = new AudioContext();
+        const mediaStreamDestination =
+            new MediaStreamAudioDestinationNode(context);
+
+        // MediaStreamAudioDestinationNode should inherit AudioNode.
+        assert_true(
+            mediaStreamDestination instanceof AudioNode,
+            'mediaStreamDestination should be an instance of AudioNode');
+
+        // Check the channel count boundary of 8 in constructor.
+        assert_throws_dom(
+            'NotSupportedError',
+            () => new MediaStreamAudioDestinationNode(
+                context, { channelCount: 9 }),
+            'MediaStreamAudioDestinationNode constructor should throw ' +
+                'NotSupportedError when channelCount is greater than 8');
+
+        // Check the channel count boundary of 8 using the setter.
+        assert_throws_dom(
+            'NotSupportedError',
+            () => { mediaStreamDestination.channelCount = 9; },
+            'Setting channelCount to a number greater than 8 ' +
+                'should throw NotSupportedError');
+
+        // Check number of inputs and outputs.
+        assert_equals(mediaStreamDestination.numberOfInputs, 1,
+            'mediaStreamDestination.numberOfInputs should be 1');
+
+        // We should have no outputs
+        assert_equals(mediaStreamDestination.numberOfOutputs, 0,
+            'mediaStreamDestination.numberOfOutputs should be 0');
+
+      }, 'Validation of MediaStreamAudioDestinationNode API');
+      promise_test(async t => {
+        const context = new AudioContext();
+        t.add_cleanup(() => context.close());
+        const mediaStreamDestination =
+            new MediaStreamAudioDestinationNode(context);
+        const pc = new RTCPeerConnection();
+        t.add_cleanup(() => pc.close());
+        pc.addStream(mediaStreamDestination.stream);
+        assert_equals(
+            pc.getLocalStreams().length, 1, 'pc should have 1 local stream');
+        assert_equals(
+            pc.getLocalStreams()[0], mediaStreamDestination.stream,
+            'local stream should be mediaStreamDestination.stream');
+      },
+      'RTCPeerConnection.addStream with MediaStreamAudioDestinationNode');
+
+      promise_test(async t => {
+        const context = new AudioContext();
+        t.add_cleanup(() => context.close());
+        const mediaStreamDestination =
+            new MediaStreamAudioDestinationNode(context);
+        const pc = new RTCPeerConnection();
+        t.add_cleanup(() => pc.close());
+        const track = mediaStreamDestination.stream.getAudioTracks()[0];
+        pc.addTrack(track, mediaStreamDestination.stream);
+        assert_equals(pc.getSenders().length, 1, 'pc should have 1 sender');
+        assert_equals(
+            pc.getSenders()[0].track, track, 'sender track should match');
+      },
+      'RTCPeerConnection.addTrack with MediaStreamAudioDestinationNode');
+    </script>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+[
+  {
+    "os": [
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "dns_over_https.excluded_domains",
+      "pref_location": "local_state",
+      "default_value": [],
+      "values_to_test": [
+        [
+          "google.com",
+          "*.google.com"
+        ]
+      ]
+    }
+  }
+]

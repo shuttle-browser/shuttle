@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2015 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+<!--
+Layout for the control group representing ChromeTabbedActivity's URL bar on
+small devices.
+-->
+<merge
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
+    <include layout="@layout/omnibox_back_button"/>
+    <include layout="@layout/location_status"/>
+    <include layout="@layout/fusebox_layout"/>
+    <include
+        layout="@layout/url_bar"
+        android:nextFocusForward="@+id/tab_switcher_button"/>
+    <!-- Intentionally only present on phones. -->
+    <ViewStub
+        tools:ignore="InconsistentLayout"
+        android:id="@+id/optional_button_location_bar_stub"
+        android:layout="@layout/optional_button_layout"
+        android:layout_height="match_parent"
+        android:layout_width="52dp"
+        android:layout_marginEnd="4dp"
+        android:visibility="gone" />
+
+    <include layout="@layout/url_action_container"/>
+    <View
+        android:id="@+id/focus_thief"
+        android:layout_width="1px"
+        android:layout_height="1px"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:importantForAccessibility="no" />
+</merge>

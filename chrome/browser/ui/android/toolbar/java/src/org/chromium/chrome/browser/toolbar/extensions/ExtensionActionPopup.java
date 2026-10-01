@@ -1,0 +1,286 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.toolbar.extensions;
+
+import android.app.Activity;
+import android.content.res.Resources;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.os.Build;
+import android.view.KeyEvent;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.PopupWindow.OnDismissListener;
+
+import org.chromium.base.Callback;
+import org.chromium.base.lifetime.Destroyable;
+import org.chromium.base.version_info.VersionInfo;
+import org.chromium.build.NullUtil;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tabmodel.TabModelSelector;
+import org.chromium.chrome.browser.ui.extensions.ExtensionActionPopupContents;
+import org.chromium.components.embedder_support.contextmenu.ContextMenuPopulatorFactory;
+import org.chromium.components.embedder_support.view.ContentView;
+import org.chromium.components.thinwebview.ThinWebView;
+import org.chromium.components.thinwebview.ThinWebViewAttachParams;
+import org.chromium.components.thinwebview.ThinWebViewConstraints;
+import org.chromium.components.thinwebview.ThinWebViewFactory;
+import org.chromium.components.thinwebview.internal.ThinWebViewContextMenuItemDelegate;
+import org.chromium.content_public.browser.WebContents;
+import org.chromium.content_public.browser.selection.SelectionDropdownMenuDelegate;
+import org.chromium.ui.base.ActivityWindowAndroid;
+import org.chromium.ui.base.ViewAndroidDelegate;
+import org.chromium.ui.base.ViewUtils;
+import org.chromium.ui.base.WindowAndroid;
+import org.chromium.ui.base.WindowAndroid.KeyboardShortcutsDelegate;
+import org.chromium.ui.modaldialog.ModalDialogManager;
+import org.chromium.ui.widget.AnchoredPopupWindow;
+import org.chromium.ui.widget.ViewRectProvider;
+
+/**
+ * Manages the display of an extension action's popup UI.
+ *
+ * <p>This class is responsible for creating and managing an {@link AnchoredPopupWindow} that hosts
+ * a {@link ThinWebView} rendering the extension's popup HTML. It owns {@link
+ * ExtensionActionPopupContents} which handles the native interactions and WebContents for the
+ * popup.
+ *
+ * <p>The popup's size is determined by the popup content, constrained by hard-coded limits, and
+ * managed by the nested {@link ContentsFrame}.
+ */
+@NullMarked
+class ExtensionActionPopup implements Destroyable {
+
+    /** The activity to use for creating views. */
+    private final Activity mActivity;
+
+    /** The ID of the extension action this popup is associated with. */
+    private final String mActionId;
+
+    /** The content manager for the popup, bridging to native. */
+    private final ExtensionActionPopupContents mContents;
+
+    /** The ThinWebView component that renders the extension's HTML content. */
+    private final ThinWebView mThinWebView;
+
+    /** The PopupWindow that is displayed on the screen, anchored to a view. */
+    private final AnchoredPopupWindow mPopupWindow;
+
+    /** The window of the popup. */
+    private final ActivityWindowAndroid mPopupWindowAndroid;
+
+    /** The content view of the popup. */
+    private final ContentView mContentView;
+
+    private final TabModelSelector mTabModelSelector;
+    private final Callback<@Nullable Tab> mCurrentTabObserver;
+
+    /**
+     * Constructs an ExtensionActionPopup.
+     *
+     * @param activity The {@link Activity} to use for creating views.
+     * @param windowAndroid The {@link WindowAndroid} for the current activity.
+     * @param anchorView The {@link View} to which the popup will be anchored.
+     * @param actionId The ID of the extension action.
+     * @param contents The {@link ExtensionActionPopupContents} instance that manages the
+     *     WebContents and native communication for this popup. The new {@link ExtensionActionPopup}
+     *     instance takes ownership of the provided {@code contents} and will be responsible for
+     *     calling its {@code destroy()} method.
+     * @param contextMenuPopulatorFactory The {@link ContextMenuPopulatorFactory} to use.
+     * @param selectionDropdownMenuDelegate The {@link SelectionDropdownMenuDelegate} to use.
+     * @param tabModelSelector The {@link TabModelSelector} to use.
+     */
+    public ExtensionActionPopup(
+            Activity activity,
+            WindowAndroid windowAndroid,
+            View anchorView,
+            String actionId,
+            ExtensionActionPopupContents contents,
+            @Nullable ContextMenuPopulatorFactory contextMenuPopulatorFactory,
+            @Nullable SelectionDropdownMenuDelegate selectionDropdownMenuDelegate,
+            TabModelSelector tabModelSelector,
+            boolean inspectWithDevTools) {
+        mActivity = activity;
+        mActionId = actionId;
+        mContents = contents;
+
+        WebContents webContents = contents.getWebContents();
+
+        mContentView = ContentView.createContentView(activity, webContents);
+
+        webContents.setDelegates(
+                VersionInfo.getProductVersion(),
+                ViewAndroidDelegate.createBasicDelegate(mContentView),
+                mContentView,
+                windowAndroid,
+                WebContents.createDefaultInternalsHolder());
+
+        mPopupWindowAndroid =
+                new ActivityWindowAndroid(
+                        activity,
+                        /* listenToActivityState= */ true,
+                        NullUtil.assumeNonNull(windowAndroid.getIntentRequestTracker()),
+                        /* insetObserver= */ null,
+                        /* occlusionTrackingAllowed= */ true) {
+                    @Override
+                    public @Nullable ModalDialogManager getModalDialogManager() {
+                        return windowAndroid.getModalDialogManager();
+                    }
+                };
+
+        mThinWebView =
+                ThinWebViewFactory.create(
+                        activity, new ThinWebViewConstraints(), mPopupWindowAndroid);
+
+        if (contextMenuPopulatorFactory != null) {
+            ThinWebViewContextMenuItemDelegate itemDelegate =
+                    new ThinWebViewContextMenuItemDelegate(webContents);
+            contextMenuPopulatorFactory.setItemDelegate(itemDelegate);
+        }
+
+        mThinWebView.attachWebContents(
+                webContents,
+                mContentView,
+                new ThinWebViewAttachParams.Builder()
+                        .setContextMenuPopulatorFactory(contextMenuPopulatorFactory)
+                        .setSelectionDropdownMenuDelegate(selectionDropdownMenuDelegate)
+                        .build());
+
+        mPopupWindow =
+                new AnchoredPopupWindow(
+                        activity,
+                        activity.getWindow().getDecorView(),
+                        new ColorDrawable(Color.WHITE),
+                        mThinWebView.getView(),
+                        new ViewRectProvider(anchorView));
+
+        mPopupWindow.setHorizontalOverlapAnchor(true);
+
+        // The popup should close on focus loss only if it's not being inspected. Otherwise,
+        // opening the devtools window would automatically close the popup.
+        mPopupWindow.setOutsideTouchable(!inspectWithDevTools);
+        mPopupWindow.setDismissOnScreenSizeChange(!inspectWithDevTools);
+        mPopupWindow.setAllowNonTouchableSize(true);
+
+        Resources resources = mActivity.getResources();
+        mPopupWindow.setElevation(
+                resources.getDimensionPixelSize(R.dimen.extension_action_popup_elevation));
+
+        // Set the content size to the minimum initially.
+        mPopupWindow.setDesiredContentSize(
+                resources.getDimensionPixelSize(R.dimen.extension_action_popup_min_width),
+                resources.getDimensionPixelSize(R.dimen.extension_action_popup_min_height));
+        mPopupWindow.setFocusable(!inspectWithDevTools);
+
+        mTabModelSelector = tabModelSelector;
+        mCurrentTabObserver =
+                tab -> {
+                    if (mPopupWindow.isShowing()) {
+                        // Due to inherent differences between platforms on focus handling, we
+                        // explicitly observe tab changes and dismiss, matching Desktop's
+                        // OnTabStripModelChanged behavior.
+                        mPopupWindow.dismiss();
+                    }
+                };
+        mTabModelSelector.getCurrentTabSupplier().addSyncObserver(mCurrentTabObserver);
+
+        contents.setDelegate(new ContentsDelegate());
+    }
+
+    /** Cleans up resources used by this popup. */
+    @Override
+    public void destroy() {
+        mTabModelSelector.getCurrentTabSupplier().removeObserver(mCurrentTabObserver);
+        mPopupWindow.dismiss();
+        mThinWebView.destroy();
+        mPopupWindowAndroid.destroy();
+        mContents.destroy();
+    }
+
+    /** Returns the ID of the extension action this popup represents. */
+    public String getActionId() {
+        return mActionId;
+    }
+
+    /** Triggers the loading of the initial page for the extension popup. */
+    public void loadInitialPage() {
+        mContents.loadInitialPage();
+    }
+
+    /** Adds a listener that will be notified when the popup window is dismissed. */
+    public void addOnDismissListener(OnDismissListener listener) {
+        mPopupWindow.addOnDismissListener(listener);
+    }
+
+    private class ContentsDelegate implements ExtensionActionPopupContents.Delegate {
+        @Override
+        public void resizeDueToAutoResize(int width, int height) {
+            if (Build.VERSION.SDK_INT >= 34) {
+                // Disable transition animations for the popup window. On Android, {@link
+                // onLoaded()} is called first, and then {@link resizeDueToAutoResize()} is called.
+                // A transition would result in a sliding animation from the original bounds to the
+                // updated bounds.
+                // TODO(crbug.com/478100096): Figure out what to do for lower API levels.
+                ((WindowManager.LayoutParams) mContentView.getRootView().getLayoutParams())
+                        .setCanPlayMoveAnimation(false);
+            }
+
+            int targetWidthPx = ViewUtils.dpToPx(mActivity, width);
+            int targetHeightPx = ViewUtils.dpToPx(mActivity, height);
+
+            View decorView = mActivity.getWindow().getDecorView();
+            int maxAvailableWidthPx = decorView.getWidth();
+            int maxAvailableHeightPx = decorView.getHeight();
+
+            if (maxAvailableWidthPx > 0) {
+                targetWidthPx = Math.min(targetWidthPx, maxAvailableWidthPx);
+            }
+            if (maxAvailableHeightPx > 0) {
+                targetHeightPx = Math.min(targetHeightPx, maxAvailableHeightPx);
+            }
+
+            mPopupWindow.setDesiredContentSize(targetWidthPx, targetHeightPx);
+        }
+
+        @Override
+        public boolean handleKeyboardEvent(@Nullable KeyEvent event) {
+            return ExtensionActionPopup.handleKeyboardEvent(mActivity, event);
+        }
+
+        @Override
+        public void onLoaded() {
+            mPopupWindow.show();
+            mContentView.requestFocus();
+        }
+
+        @Override
+        public void onClose() {
+            mPopupWindow.dismiss();
+        }
+    }
+
+    static boolean handleKeyboardEvent(@Nullable Activity activity, @Nullable KeyEvent event) {
+        if (activity == null || event == null) return false;
+
+        if (activity instanceof KeyboardShortcutsDelegate) {
+            KeyboardShortcutsDelegate delegate = (KeyboardShortcutsDelegate) activity;
+            if (delegate.handleKeyboardEvent(event)) {
+                return true;
+            }
+        }
+
+        // If the delegate didn't consume the event (e.g., if the Universal Keyboard
+        // Handling feature flag is disabled), we need to prevent the dispatchKeyEvent
+        // infinite loop. We prevent space and backspace events from being dispatched
+        // to the Activity.
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            return activity.onKeyDown(event.getKeyCode(), event);
+        }
+
+        return false;
+    }
+}

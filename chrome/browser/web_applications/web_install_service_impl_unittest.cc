@@ -1,0 +1,1122 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/web_applications/web_install_service_impl.h"
+
+#include <array>
+#include <optional>
+
+#include "base/functional/callback_helpers.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/test_future.h"
+#include "chrome/browser/ui/web_applications/web_app_dialog_utils.h"
+#include "chrome/browser/web_applications/test/fake_web_app_provider.h"
+#include "chrome/browser/web_applications/test/fake_web_app_ui_manager.h"
+#include "chrome/browser/web_applications/test/fake_web_contents_manager.h"
+#include "chrome/browser/web_applications/test/web_app_install_test_utils.h"
+#include "chrome/browser/web_applications/test/web_app_test.h"
+#include "chrome/browser/web_applications/web_app_command_manager.h"
+#include "chrome/browser/web_applications/web_app_provider.h"
+#include "chrome/browser/web_applications/web_contents/web_app_data_retriever.h"
+#include "components/ukm/test_ukm_recorder.h"
+#include "components/webapps/browser/banners/app_banner_manager.h"
+#include "components/webapps/browser/install_result_code.h"
+#include "components/webapps/browser/installable/installable_metrics.h"
+#include "components/webapps/browser/installable/ml_install_operation_tracker.h"
+#include "components/webapps/browser/installable/ml_installability_promoter.h"
+#include "components/webapps/common/web_app_id.h"
+#include "content/public/test/navigation_simulator.h"
+#include "content/public/test/test_renderer_host.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "mojo/public/cpp/test_support/fake_message_dispatch_context.h"
+#include "mojo/public/cpp/test_support/test_utils.h"
+#include "net/base/net_errors.h"
+#include "services/metrics/public/cpp/ukm_builders.h"
+#include "services/network/public/cpp/url_loader_completion_status.h"
+#include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
+#include "services/network/public/mojom/url_response_head.mojom.h"
+#include "services/network/test/test_url_loader_factory.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/features_generated.h"
+#include "third_party/blink/public/mojom/manifest/manifest.mojom.h"
+#include "third_party/blink/public/mojom/web_install/web_install.mojom.h"
+#include "url/gurl.h"
+
+namespace web_app {
+namespace {
+
+constexpr char kInstallApiResultUma[] = "WebApp.WebInstallApi.Result";
+constexpr char kInstallApiTypeUma[] = "WebApp.WebInstallApi.InstallType";
+constexpr char kVariantedInstallResultUma[] =
+    "WebApp.WebInstallService.Api.Result";
+constexpr char kVariantedInstallTypeUma[] =
+    "WebApp.WebInstallService.Api.InstallType";
+constexpr char kInstallElementResultUma[] = "WebApp.WebInstallElement.Result";
+constexpr char kInstallElementTypeUma[] =
+    "WebApp.WebInstallElement.InstallType";
+constexpr char kVariantedElementResultUma[] =
+    "WebApp.WebInstallService.Element.Result";
+constexpr char kVariantedElementTypeUma[] =
+    "WebApp.WebInstallService.Element.InstallType";
+
+constexpr char kDocumentUrl[] = "https://requesting-app.com/index.html";
+constexpr char kManifestUrl[] = "https://example.com/app/manifest.json";
+constexpr char kIconUrl[] = "https://example.com/app/icon.png";
+
+using Entry = ukm::builders::WebApp_WebInstall;
+
+// Counts WebApp_WebInstall UKM entries recording `metric_name`, verifying each
+// stores `expected_result`. A count of 0 asserts the metric was not recorded.
+int CountUkmEntriesWithResult(ukm::TestAutoSetUkmRecorder& recorder,
+                              const char* metric_name,
+                              WebInstallServiceResult expected_result) {
+  std::vector<int64_t> values =
+      recorder.GetMetricsEntryValues(Entry::kEntryName, metric_name);
+  for (const int64_t& value : values) {
+    EXPECT_EQ(value, static_cast<int64_t>(expected_result));
+  }
+  return values.size();
+}
+
+// Unit tests for WebInstallServiceImpl shared logic. These tests cover
+// code paths common to both `navigator.install()` (JS API) and the
+// `<install>` element, without going through either Blink entry point.
+class WebInstallServiceImplTest : public WebAppTest {
+ public:
+  WebInstallServiceImplTest()
+      : WebAppTest(WebAppTest::WithTestUrlLoaderFactory{}) {
+    scoped_feature_list_.InitWithFeatures({blink::features::kWebAppInstallation,
+                                           blink::features::kInstallElement},
+                                          {});
+  }
+  WebInstallServiceImplTest(const WebInstallServiceImplTest&) = delete;
+  WebInstallServiceImplTest& operator=(const WebInstallServiceImplTest&) =
+      delete;
+  ~WebInstallServiceImplTest() override = default;
+
+  void SetUp() override {
+    WebAppTest::SetUp();
+    test::AwaitStartWebAppProviderAndSubsystems(profile());
+
+    // Navigate to an HTTPS page so CreateIfAllowed succeeds.
+    NavigateAndCommit(GURL(kDocumentUrl));
+
+    webapps::MLInstallabilityPromoter::CreateForWebContents(web_contents());
+
+    // Mark the URL as loaded in the FakeWebContentsManager so data
+    // retrievers know which page state to use.
+    fake_web_contents_manager().SetUrlLoaded(web_contents(),
+                                             GURL(kDocumentUrl));
+  }
+
+  // Creates a WebInstallServiceImpl bound to `service_remote_` via the
+  // primary main frame's RenderFrameHost.
+  void BindService() {
+    WebInstallServiceImpl::CreateIfAllowed(
+        web_contents()->GetPrimaryMainFrame(),
+        service_remote_.BindNewPipeAndPassReceiver());
+  }
+
+  // Calls InstallFromManifest() with no options (current document install) and
+  // waits for the mojo callback.
+  blink::mojom::WebInstallServiceResult InstallFromApiCurrentDocument() {
+    base::test::TestFuture<blink::mojom::WebInstallServiceResult> future;
+    service_remote_->InstallFromManifest(/*options=*/nullptr,
+                                         future.GetCallback());
+    return future.Take();
+  }
+
+  // Calls ElementInstallFromManifest() with no options (current document) and
+  // waits for the mojo callback.
+  blink::mojom::WebInstallServiceResult InstallFromElementCurrentDocument() {
+    base::test::TestFuture<blink::mojom::WebInstallServiceResult> future;
+    service_remote_->ElementInstallFromManifest(/*options=*/nullptr,
+                                                future.GetCallback());
+    return future.Take();
+  }
+
+  // Creates a manifest with the given properties. If `custom_id` is provided,
+  // sets the id field explicitly. Otherwise, the FakeWebContentsManager will
+  // default it to start_url (and set has_custom_id = false).
+  blink::mojom::ManifestPtr CreateManifest(
+      const GURL& start_url,
+      const std::optional<GURL>& custom_id = std::nullopt) {
+    auto manifest = blink::mojom::Manifest::New();
+    manifest->name = u"Test App";
+    manifest->short_name = u"Test";
+    manifest->start_url = start_url;
+    manifest->display = blink::mojom::DisplayMode::kStandalone;
+
+    if (custom_id) {
+      manifest->id = custom_id.value();
+    }
+
+    blink::Manifest::ImageResource icon;
+    icon.src = GURL(kIconUrl);
+    icon.sizes = {{144, 144}};
+    icon.purpose = {blink::mojom::ManifestImageResource_Purpose::ANY};
+    manifest->icons = {icon};
+
+    return manifest;
+  }
+
+  // Populates the FakePageState for |url| with the given manifest.
+  void SetupPageWithManifest(const GURL& url,
+                             blink::mojom::ManifestPtr manifest) {
+    auto& page_state = fake_web_contents_manager().GetOrCreatePageState(url);
+    page_state.has_service_worker = true;
+    page_state.manifest_before_default_processing = std::move(manifest);
+    page_state.valid_manifest_for_web_app = true;
+    page_state.error_code = webapps::InstallableStatusCode::NO_ERROR_DETECTED;
+    page_state.manifest_url = GURL(kManifestUrl);
+  }
+
+  // Calls InstallFromManifest() (or ElementInstallFromManifest() when
+  // `from_element` is true) with the given manifest URL and waits for the mojo
+  // callback.
+  blink::mojom::WebInstallServiceResult InstallFromManifestUrl(
+      const GURL& manifest_url,
+      const std::optional<GURL>& manifest_id = std::nullopt,
+      bool from_element = false) {
+    auto options = blink::mojom::ManifestInstallOptions::New();
+    options->manifest_url = manifest_url;
+    options->manifest_id = manifest_id;
+
+    base::test::TestFuture<blink::mojom::WebInstallServiceResult> future;
+    if (from_element) {
+      service_remote_->ElementInstallFromManifest(std::move(options),
+                                                  future.GetCallback());
+    } else {
+      service_remote_->InstallFromManifest(std::move(options),
+                                           future.GetCallback());
+    }
+    EXPECT_TRUE(future.Wait());
+    return future.Get();
+  }
+
+  mojo::Remote<blink::mojom::WebInstallService>& service_remote() {
+    return service_remote_;
+  }
+
+ private:
+  mojo::Remote<blink::mojom::WebInstallService> service_remote_;
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+///////////////////////////////////////////////////////////////////////////////
+// Current document manifest validation tests.
+// These test the shared manifest validation in
+// OnDidCheckInstallabilityForCurrentDocumentInstall.
+//
+// These tests use InstallFromManifest() with null options but only verify the
+// shared validation logic. The UMA routing to element-specific histograms is
+// tested separately in ElementCurrentDocument_ElementUmaHistograms.
+///////////////////////////////////////////////////////////////////////////////
+
+// No manifest on the current document. Expect a DataError.
+TEST_F(WebInstallServiceImplTest, CurrentDocument_NoManifest) {
+  base::HistogramTester histograms;
+  ukm::TestAutoSetUkmRecorder ukm_recorder;
+  // Don't create page state - the fake will return "manifest not found" error.
+
+  BindService();
+  blink::mojom::WebInstallServiceResult result =
+      InstallFromApiCurrentDocument();
+
+  EXPECT_EQ(result, blink::mojom::WebInstallServiceResult::kDataError);
+
+  histograms.ExpectBucketCount(
+      kInstallApiResultUma, WebInstallServiceResult::kInstallCommandFailed, 1);
+  histograms.ExpectBucketCount(kInstallApiTypeUma,
+                               WebInstallServiceType::kCurrentDocument, 1);
+  histograms.ExpectBucketCount(kVariantedInstallResultUma,
+                               WebInstallServiceResult::kInstallCommandFailed,
+                               1);
+  histograms.ExpectBucketCount(kVariantedInstallTypeUma,
+                               WebInstallServiceType::kCurrentDocument, 1);
+  EXPECT_TRUE(ukm_recorder.GetEntriesByName(Entry::kEntryName).empty());
+}
+
+// Manifest exists but has no custom id. Expect a DataError with
+// kNoCustomManifestId.
+TEST_F(WebInstallServiceImplTest, CurrentDocument_NoCustomManifestId) {
+  base::HistogramTester histograms;
+  // Create a manifest WITHOUT setting `id` -- the fake will default it to
+  // start_url and set has_custom_id = false.
+  auto manifest = CreateManifest(GURL(kDocumentUrl));
+  SetupPageWithManifest(GURL(kDocumentUrl), std::move(manifest));
+
+  BindService();
+  blink::mojom::WebInstallServiceResult result =
+      InstallFromApiCurrentDocument();
+
+  EXPECT_EQ(result, blink::mojom::WebInstallServiceResult::kDataError);
+
+  histograms.ExpectBucketCount(kInstallApiResultUma,
+                               WebInstallServiceResult::kNoCustomManifestId, 1);
+  histograms.ExpectBucketCount(kInstallApiTypeUma,
+                               WebInstallServiceType::kCurrentDocument, 1);
+  histograms.ExpectBucketCount(kVariantedInstallResultUma,
+                               WebInstallServiceResult::kNoCustomManifestId, 1);
+  histograms.ExpectBucketCount(kVariantedInstallTypeUma,
+                               WebInstallServiceType::kCurrentDocument, 1);
+}
+
+// Manifest has a custom id from a different origin than the document.
+// Expect a DataError.
+TEST_F(WebInstallServiceImplTest, CurrentDocument_CrossOriginManifestId) {
+  base::HistogramTester histograms;
+  // Set up a manifest whose id is from a different origin.
+  GURL cross_origin_id("https://evil.com/some_id");
+  auto manifest = CreateManifest(GURL(kDocumentUrl), cross_origin_id);
+  SetupPageWithManifest(GURL(kDocumentUrl), std::move(manifest));
+
+  BindService();
+  blink::mojom::WebInstallServiceResult result =
+      InstallFromApiCurrentDocument();
+
+  EXPECT_EQ(result, blink::mojom::WebInstallServiceResult::kDataError);
+
+  histograms.ExpectBucketCount(
+      kInstallApiResultUma, WebInstallServiceResult::kInstallCommandFailed, 1);
+  histograms.ExpectBucketCount(kInstallApiTypeUma,
+                               WebInstallServiceType::kCurrentDocument, 1);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// UMA histogram tests.
+// These verify that the correct install type and result are recorded for
+// current vs background document installs, and that API vs element entry
+// points route to their respective histogram variants.
+///////////////////////////////////////////////////////////////////////////////
+
+// Current document install (no options) records kCurrentDocument type and
+// exercises the OnAppInstalled result code mapping.
+TEST_F(WebInstallServiceImplTest, UmaInstallType_CurrentDocument) {
+  base::HistogramTester histograms;
+
+  // Set up a valid manifest with custom id.
+  GURL custom_id("https://requesting-app.com/my_app_id");
+  auto manifest = CreateManifest(GURL(kDocumentUrl), custom_id);
+  SetupPageWithManifest(GURL(kDocumentUrl), std::move(manifest));
+
+  BindService();
+  // The FakeWebAppUiManager::TriggerInstallDialog calls the callback with
+  // kWebAppProviderNotReady, which exercises OnAppInstalled.
+  blink::mojom::WebInstallServiceResult result =
+      InstallFromApiCurrentDocument();
+
+  // FakeWebAppUiManager::TriggerInstallDialog returns kWebAppProviderNotReady,
+  // which maps to kAbortError and kUnexpectedFailure.
+  EXPECT_EQ(result, blink::mojom::WebInstallServiceResult::kAbortError);
+
+  // Verify install type UMA for API entry point.
+  histograms.ExpectBucketCount(kInstallApiTypeUma,
+                               WebInstallServiceType::kCurrentDocument, 1);
+  histograms.ExpectBucketCount(kVariantedInstallTypeUma,
+                               WebInstallServiceType::kCurrentDocument, 1);
+  // Verify result code mapping.
+  histograms.ExpectBucketCount(kInstallApiResultUma,
+                               WebInstallServiceResult::kUnexpectedFailure, 1);
+}
+
+// A current document install that reaches CreateWebAppFromManifest while an
+// install for the same document is already in progress records kAbortError.
+TEST_F(WebInstallServiceImplTest, UmaInstallType_CurrentDocument_InProgress) {
+  base::HistogramTester histograms;
+
+  // Set up a valid manifest with custom id.
+  GURL custom_id("https://requesting-app.com/my_app_id");
+  auto manifest = CreateManifest(GURL(kDocumentUrl), custom_id);
+  SetupPageWithManifest(GURL(kDocumentUrl), std::move(manifest));
+
+  // Drive TriggerInstallDialog to report that an install for the current
+  // document is already in progress.
+  static_cast<FakeWebAppUiManager&>(
+      FakeWebAppProvider::Get(profile())->ui_manager())
+      .SetTriggerInstallDialogResultCode(
+          webapps::InstallResultCode::kInstallAlreadyInProgress);
+
+  BindService();
+  blink::mojom::WebInstallServiceResult result =
+      InstallFromApiCurrentDocument();
+
+  EXPECT_EQ(result, blink::mojom::WebInstallServiceResult::kAbortError);
+
+  // Verify install type UMA for API entry point.
+  histograms.ExpectBucketCount(kInstallApiTypeUma,
+                               WebInstallServiceType::kCurrentDocument, 1);
+  histograms.ExpectBucketCount(kVariantedInstallTypeUma,
+                               WebInstallServiceType::kCurrentDocument, 1);
+  // Verify result code mapping.
+  histograms.ExpectBucketCount(kInstallApiResultUma,
+                               WebInstallServiceResult::kInstallInProgress, 1);
+  histograms.ExpectBucketCount(kVariantedInstallResultUma,
+                               WebInstallServiceResult::kInstallInProgress, 1);
+}
+
+// A current document install rejected by the promoter's HasCurrentInstall()
+// guard reports kInstallInProgress. This guard is distinct from the
+// per-instance install_in_progress_ flag: it fires when another surface already
+// holds an install on this web contents.
+TEST_F(WebInstallServiceImplTest,
+       CurrentDocument_ConcurrentInstall_ReportsInProgress) {
+  base::HistogramTester histograms;
+  ukm::TestAutoSetUkmRecorder ukm_recorder;
+
+  // Register an install on the promoter so HasCurrentInstall() is true. Hold
+  // the tracker to keep the guard armed for the duration of the call.
+  webapps::MLInstallabilityPromoter* promoter =
+      webapps::MLInstallabilityPromoter::FromWebContents(web_contents());
+  ASSERT_TRUE(promoter);
+  std::unique_ptr<webapps::MlInstallOperationTracker> tracker =
+      promoter->RegisterCurrentInstallForWebContents(
+          webapps::WebappInstallSource::WEB_INSTALL);
+  ASSERT_TRUE(tracker);
+  ASSERT_TRUE(promoter->HasCurrentInstall());
+
+  BindService();
+  blink::mojom::WebInstallServiceResult result =
+      InstallFromApiCurrentDocument();
+
+  EXPECT_EQ(result, blink::mojom::WebInstallServiceResult::kAbortError);
+
+  // Verify result code mapping for the API entry point.
+  histograms.ExpectBucketCount(kInstallApiResultUma,
+                               WebInstallServiceResult::kInstallInProgress, 1);
+  histograms.ExpectBucketCount(kVariantedInstallResultUma,
+                               WebInstallServiceResult::kInstallInProgress, 1);
+  EXPECT_TRUE(ukm_recorder.GetEntriesByName(Entry::kEntryName).empty());
+}
+
+// ElementInstallFromManifest records UMA to element-specific histograms.
+TEST_F(WebInstallServiceImplTest, ElementCurrentDocument_ElementUmaHistograms) {
+  base::HistogramTester histograms;
+  ukm::TestAutoSetUkmRecorder ukm_recorder;
+  base::AutoReset<int> manifest_wait_timeout =
+      WebAppDataRetriever::SetManifestWaitTimeoutForTesting(0);
+
+  BindService();
+  InstallFromElementCurrentDocument();
+
+  // Should record to element UMA, not API UMA.
+  histograms.ExpectBucketCount(kInstallElementTypeUma,
+                               WebInstallServiceType::kCurrentDocument, 1);
+  histograms.ExpectBucketCount(kVariantedElementTypeUma,
+                               WebInstallServiceType::kCurrentDocument, 1);
+  histograms.ExpectTotalCount(kInstallElementResultUma, 1);
+  histograms.ExpectTotalCount(kVariantedElementResultUma, 1);
+  // API histograms should be empty.
+  histograms.ExpectTotalCount(kInstallApiTypeUma, 0);
+  histograms.ExpectTotalCount(kInstallApiResultUma, 0);
+  EXPECT_TRUE(ukm_recorder.GetEntriesByName(Entry::kEntryName).empty());
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// CreateIfAllowed validation tests.
+// These test the guard checks in the static factory method.
+///////////////////////////////////////////////////////////////////////////////
+
+// CreateIfAllowed from a child iframe reports a bad message and does not bind
+// the receiver.
+TEST_F(WebInstallServiceImplTest, CreateIfAllowed_ChildFrame) {
+  content::RenderFrameHost* child_rfh =
+      content::RenderFrameHostTester::For(web_contents()->GetPrimaryMainFrame())
+          ->AppendChild("child_frame");
+  // Navigate to HTTPS so only the IsInPrimaryMainFrame() check rejects.
+  child_rfh = content::NavigationSimulator::NavigateAndCommitFromDocument(
+      GURL("https://child.example.com"), child_rfh);
+
+  mojo::FakeMessageDispatchContext fake_dispatch_context;
+  mojo::test::BadMessageObserver bad_message_observer;
+
+  mojo::Remote<blink::mojom::WebInstallService> remote;
+  WebInstallServiceImpl::CreateIfAllowed(child_rfh,
+                                         remote.BindNewPipeAndPassReceiver());
+
+  EXPECT_EQ(bad_message_observer.WaitForBadMessage(),
+            "WebInstall not allowed in subframes");
+}
+
+// CreateIfAllowed with a non-HTTP(S) scheme resets the receiver.
+TEST_F(WebInstallServiceImplTest, CreateIfAllowed_NonHttpsScheme) {
+  // Navigate to a non-HTTPS URL.
+  NavigateAndCommit(GURL("about:blank"));
+
+  mojo::Remote<blink::mojom::WebInstallService> remote;
+  WebInstallServiceImpl::CreateIfAllowed(web_contents()->GetPrimaryMainFrame(),
+                                         remote.BindNewPipeAndPassReceiver());
+
+  // The receiver should have been reset. Verify by trying to call a method
+  // and confirming it disconnects.
+  base::test::TestFuture<blink::mojom::WebInstallServiceResult> future;
+  remote->InstallFromManifest(/*options=*/nullptr, future.GetCallback());
+  // The pipe is reset, so flushing should cause a disconnect.
+  remote.FlushForTesting();
+  EXPECT_FALSE(remote.is_connected());
+}
+
+// Direct coverage for the CreateWebAppFromManifest() early-return guards in
+// web_app_dialog_utils.cc (the mojo service path bypasses this helper). Each
+// test arms one guard and asserts the callback runs exactly once (TestFuture's
+// OnceCallback CHECK-fails on a second Run()).
+
+// Install already in progress (HasCurrentInstall() true) ->
+// kInstallAlreadyInProgress.
+TEST_F(WebInstallServiceImplTest,
+       CreateWebAppFromManifest_HasCurrentInstall_Rejects) {
+  webapps::MLInstallabilityPromoter* promoter =
+      webapps::MLInstallabilityPromoter::FromWebContents(web_contents());
+  ASSERT_TRUE(promoter);
+  std::unique_ptr<webapps::MlInstallOperationTracker> tracker =
+      promoter->RegisterCurrentInstallForWebContents(
+          webapps::WebappInstallSource::WEB_INSTALL);
+  ASSERT_TRUE(tracker);
+  ASSERT_TRUE(promoter->HasCurrentInstall());
+
+  base::test::TestFuture<const webapps::AppId&, webapps::InstallResultCode>
+      future;
+  EXPECT_FALSE(CreateWebAppFromManifest(
+      web_contents(), webapps::WebappInstallSource::OMNIBOX_INSTALL_ICON,
+      future.GetCallback()));
+
+  EXPECT_TRUE(future.Get<webapps::AppId>().empty());
+  EXPECT_EQ(future.Get<webapps::InstallResultCode>(),
+            webapps::InstallResultCode::kInstallAlreadyInProgress);
+}
+
+// No AppBannerManager attached (the unit harness default) ->
+// kWebAppProviderNotReady.
+TEST_F(WebInstallServiceImplTest,
+       CreateWebAppFromManifest_NoAppBannerManager_Rejects) {
+  // The provider is up.
+  WebAppProvider* provider = WebAppProvider::GetForWebContents(web_contents());
+  ASSERT_TRUE(provider);
+  // No install is registered.
+  webapps::MLInstallabilityPromoter* promoter =
+      webapps::MLInstallabilityPromoter::FromWebContents(web_contents());
+  ASSERT_TRUE(promoter);
+  ASSERT_FALSE(promoter->HasCurrentInstall());
+  // No install command is running.
+  ASSERT_FALSE(
+      provider->command_manager().IsInstallingForWebContents(web_contents()));
+  // No AppBannerManager is attached.
+  ASSERT_FALSE(webapps::AppBannerManager::FromWebContents(web_contents()));
+
+  base::test::TestFuture<const webapps::AppId&, webapps::InstallResultCode>
+      future;
+  EXPECT_FALSE(CreateWebAppFromManifest(
+      web_contents(), webapps::WebappInstallSource::OMNIBOX_INSTALL_ICON,
+      future.GetCallback()));
+
+  EXPECT_TRUE(future.Get<webapps::AppId>().empty());
+  EXPECT_EQ(future.Get<webapps::InstallResultCode>(),
+            webapps::InstallResultCode::kWebAppProviderNotReady);
+}
+
+// TODO(crbug.com/485281836): Only explicit manifest IDs are supported for now.
+// Re-evaluate current document and manifest-only tests when implementing this.
+///////////////////////////////////////////////////////////////////////////////
+// IsInstalled rate limiting tests.
+// These verify that cross-origin IsInstalled queries are rate limited by both
+// total count per document and minimum time interval between queries.
+///////////////////////////////////////////////////////////////////////////////
+
+constexpr char kCrossOriginUrl[] = "https://example.com/app";
+
+// Small cap used in place of the production 100-query limit for cross-origin
+// IsInstalled rate limiting. Tests reference this directly in loop bounds.
+constexpr size_t kMaxQueries = 3;
+
+// Minimum interval between consecutive cross-origin queries -- matches the
+// production default of `g_min_cross_origin_query_interval`. Tests advance
+// the mock clock by this amount to satisfy the interval throttle.
+constexpr base::TimeDelta kMinCrossOriginQueryInterval = base::Seconds(1);
+
+class WebInstallServiceImplRateLimitTest : public WebAppTest {
+ public:
+  WebInstallServiceImplRateLimitTest()
+      : WebAppTest(base::test::TaskEnvironment::TimeSource::MOCK_TIME) {
+    scoped_feature_list_.InitWithFeatures({blink::features::kWebAppInstallation,
+                                           blink::features::kInstallElement},
+                                          {});
+  }
+
+  void SetUp() override {
+    WebAppTest::SetUp();
+    test::AwaitStartWebAppProviderAndSubsystems(profile());
+    NavigateAndCommit(GURL(kDocumentUrl));
+  }
+
+  void BindService() {
+    WebInstallServiceImpl::CreateIfAllowed(
+        web_contents()->GetPrimaryMainFrame(),
+        service_remote_.BindNewPipeAndPassReceiver());
+  }
+
+  bool IsInstalled(const GURL& manifest_id) {
+    auto options = blink::mojom::ManifestInstallOptions::New();
+    options->manifest_url = GURL(kManifestUrl);
+    options->manifest_id = manifest_id;
+
+    base::test::TestFuture<bool> future;
+    service_remote_->IsInstalled(std::move(options), future.GetCallback());
+    EXPECT_TRUE(future.Wait());
+
+    return future.Get();
+  }
+
+  bool IsInstalledWithManifestId(const GURL& manifest_url,
+                                 const GURL& manifest_id) {
+    auto options = blink::mojom::ManifestInstallOptions::New();
+    options->manifest_url = manifest_url;
+    options->manifest_id = manifest_id;
+
+    base::test::TestFuture<bool> future;
+    service_remote_->IsInstalled(std::move(options), future.GetCallback());
+    EXPECT_TRUE(future.Wait());
+
+    return future.Get();
+  }
+
+  mojo::Remote<blink::mojom::WebInstallService>& service_remote() {
+    return service_remote_;
+  }
+
+ private:
+  mojo::Remote<blink::mojom::WebInstallService> service_remote_;
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+// TODO(crbug.com/485281836): Update when current-document lookups are updated.
+TEST_F(WebInstallServiceImplRateLimitTest, NullOptions_ReturnsFalse) {
+  test::InstallDummyWebApp(profile(), "Current Document App",
+                           GURL(kDocumentUrl));
+  BindService();
+
+  base::test::TestFuture<bool> future;
+  service_remote()->IsInstalled(/*options=*/nullptr, future.GetCallback());
+  EXPECT_TRUE(future.Wait());
+
+  EXPECT_FALSE(future.Get());
+}
+
+// TODO(crbug.com/485281836): Update when manifest-only lookups are updated.
+TEST_F(WebInstallServiceImplRateLimitTest, ManifestOnly_ReturnsFalse) {
+  test::InstallDummyWebApp(profile(), "Manifest URL App",
+                           GURL(kCrossOriginUrl));
+  BindService();
+
+  auto options = blink::mojom::ManifestInstallOptions::New();
+  options->manifest_url = GURL(kCrossOriginUrl);
+  base::test::TestFuture<bool> future;
+  service_remote()->IsInstalled(std::move(options), future.GetCallback());
+  EXPECT_TRUE(future.Wait());
+
+  EXPECT_FALSE(future.Get());
+}
+
+TEST_F(WebInstallServiceImplRateLimitTest, SingleCrossOriginQuery_Allowed) {
+  BindService();
+
+  EXPECT_FALSE(IsInstalled(GURL(kCrossOriginUrl)));
+  task_environment()->AdvanceClock(kMinCrossOriginQueryInterval);
+
+  test::InstallDummyWebApp(profile(), "Cross Origin App",
+                           GURL(kCrossOriginUrl));
+
+  EXPECT_TRUE(IsInstalled(GURL(kCrossOriginUrl)));
+}
+
+// Same-origin manifest ID queries should not be rate limited.
+TEST_F(WebInstallServiceImplRateLimitTest, SameOriginQuery_NotRateLimited) {
+  // Use a small limit to avoid looping 100 times.
+  base::AutoReset<size_t> max_queries =
+      WebInstallServiceImpl::SetMaxCrossOriginQueriesForTesting(kMaxQueries);
+
+  test::InstallDummyWebApp(profile(), "Same Origin App", GURL(kDocumentUrl));
+  BindService();
+
+  // Issue well past the cross-origin cap; none should be blocked.
+  for (size_t i = 0; i < kMaxQueries * 2; ++i) {
+    EXPECT_TRUE(IsInstalled(GURL(kDocumentUrl)));
+  }
+}
+
+// Basic count throttle: cross-origin queries are rejected once the
+// per-document maximum has been reached.
+TEST_F(WebInstallServiceImplRateLimitTest,
+       CrossOriginQuery_RateLimitedAtCountCap) {
+  // Use a small limit to avoid looping 100 times.
+  base::AutoReset<size_t> max_queries =
+      WebInstallServiceImpl::SetMaxCrossOriginQueriesForTesting(kMaxQueries);
+
+  test::InstallDummyWebApp(profile(), "Cross Origin App",
+                           GURL(kCrossOriginUrl));
+  BindService();
+
+  // Issue the maximum allowed queries, advancing time after each to avoid
+  // the time-based rate limit on the next query.
+  for (size_t i = 0; i < kMaxQueries; ++i) {
+    // The cross origin app was installed, so these should succeed.
+    EXPECT_TRUE(IsInstalled(GURL(kCrossOriginUrl)));
+    task_environment()->AdvanceClock(kMinCrossOriginQueryInterval);
+  }
+
+  // The loop's final AdvanceClock cleared the time throttle, so this next
+  // query is rejected purely on count.
+  EXPECT_FALSE(IsInstalled(GURL(kCrossOriginUrl)));
+}
+
+// Basic interval throttle: a second cross-origin query issued before the
+// minimum interval elapses is deferred (not rejected); it completes once the
+// interval has passed.
+TEST_F(WebInstallServiceImplRateLimitTest,
+       CrossOriginQuery_DeferredWithinInterval) {
+  test::InstallDummyWebApp(profile(), "Cross Origin App",
+                           GURL(kCrossOriginUrl));
+  BindService();
+
+  // First query at t=0 runs immediately and is accepted.
+  EXPECT_TRUE(IsInstalled(GURL(kCrossOriginUrl)));
+
+  // Back-to-back second query is deferred -- not ready until the interval
+  // elapses.
+  auto options = blink::mojom::ManifestInstallOptions::New();
+  options->manifest_url = GURL(kManifestUrl);
+  options->manifest_id = GURL(kCrossOriginUrl);
+  base::test::TestFuture<bool> deferred;
+  service_remote()->IsInstalled(std::move(options), deferred.GetCallback());
+
+  // Drain the mojo pipe so the IsInstalled call reaches the service and
+  // posts the delayed task. The deferred reply should still be pending.
+  service_remote().FlushForTesting();
+  EXPECT_FALSE(deferred.IsReady());
+
+  // Advance well past the minimum interval so the deferred lookup is
+  // guaranteed to have run.
+  task_environment()->FastForwardBy(kMinCrossOriginQueryInterval * 2);
+  ASSERT_TRUE(deferred.IsReady());
+  EXPECT_TRUE(deferred.Get());
+}
+
+// A cross-origin query issued after an idle period longer than the minimum
+// interval dispatches immediately, not after the (now-stale) reserved slot.
+TEST_F(WebInstallServiceImplRateLimitTest,
+       CrossOriginQuery_AfterExtendedIdle_DispatchesImmediately) {
+  test::InstallDummyWebApp(profile(), "Cross Origin App",
+                           GURL(kCrossOriginUrl));
+  BindService();
+
+  // Prime the dispatch slot with a first query.
+  EXPECT_TRUE(IsInstalled(GURL(kCrossOriginUrl)));
+
+  // Idle for much longer than the minimum interval.
+  task_environment()->AdvanceClock(kMinCrossOriginQueryInterval * 5);
+
+  // The next query's reserved slot is in the past; it must dispatch now
+  // without waiting.
+  auto options = blink::mojom::ManifestInstallOptions::New();
+  options->manifest_url = GURL(kManifestUrl);
+  options->manifest_id = GURL(kCrossOriginUrl);
+  base::test::TestFuture<bool> future;
+  service_remote()->IsInstalled(std::move(options), future.GetCallback());
+  service_remote().FlushForTesting();
+  EXPECT_TRUE(future.IsReady());
+  EXPECT_TRUE(future.Get());
+}
+
+// Deferred queries must still consume the per-document count budget. This
+// pins the invariant that the count increment happens before scheduling -- if
+// it were ever moved after, a compromised renderer could enqueue an
+// unbounded number of pending lookups by spamming the API.
+TEST_F(WebInstallServiceImplRateLimitTest, DeferredQuery_ConsumesCountBudget) {
+  // Use a small limit to avoid looping 100 times.
+  base::AutoReset<size_t> max_queries =
+      WebInstallServiceImpl::SetMaxCrossOriginQueriesForTesting(kMaxQueries);
+
+  test::InstallDummyWebApp(profile(), "Cross Origin App",
+                           GURL(kCrossOriginUrl));
+  BindService();
+
+  // Issue kMaxQueries back-to-back. The first runs immediately; the rest are
+  // deferred at the minimum interval. Each one consumes one count of budget.
+  std::array<base::test::TestFuture<bool>, kMaxQueries> futures;
+  for (auto& future : futures) {
+    auto options = blink::mojom::ManifestInstallOptions::New();
+    options->manifest_url = GURL(kManifestUrl);
+    options->manifest_id = GURL(kCrossOriginUrl);
+    service_remote()->IsInstalled(std::move(options), future.GetCallback());
+  }
+  // Flush so all IsInstalled calls reach the service and post their tasks.
+  service_remote().FlushForTesting();
+
+  // Drain all deferred lookups by advancing well past the total expected
+  // span.
+  task_environment()->FastForwardBy(kMinCrossOriginQueryInterval *
+                                    (kMaxQueries + 1));
+  for (auto& future : futures) {
+    ASSERT_TRUE(future.IsReady());
+    EXPECT_TRUE(future.Get());
+  }
+
+  // The budget is now exhausted. The next query must be rejected on count,
+  // returning false immediately rather than being deferred.
+  EXPECT_FALSE(IsInstalled(GURL(kCrossOriginUrl)));
+}
+
+// A burst of cross-origin queries must be paced at the minimum interval.
+// The i-th deferred query should complete at t = i * interval, no sooner.
+// This guards against a "collapse the queue when the clock is ahead" bug
+// where a single FastForward would flush the whole burst at once.
+TEST_F(WebInstallServiceImplRateLimitTest,
+       BurstedDeferredQueries_PacedAtMinInterval) {
+  base::AutoReset<base::TimeDelta> interval =
+      WebInstallServiceImpl::SetMinCrossOriginQueryIntervalForTesting(
+          base::Seconds(5));
+
+  test::InstallDummyWebApp(profile(), "Cross Origin App",
+                           GURL(kCrossOriginUrl));
+  BindService();
+
+  // Issue three back-to-back queries at t=0.
+  std::array<base::test::TestFuture<bool>, 3> futures;
+  for (auto& future : futures) {
+    auto options = blink::mojom::ManifestInstallOptions::New();
+    options->manifest_url = GURL(kManifestUrl);
+    options->manifest_id = GURL(kCrossOriginUrl);
+    service_remote()->IsInstalled(std::move(options), future.GetCallback());
+  }
+  service_remote().FlushForTesting();
+
+  // t=0s: only futures[0] is ready (delay=0).
+  ASSERT_TRUE(futures[0].IsReady());
+  EXPECT_TRUE(futures[0].Get());
+  EXPECT_FALSE(futures[1].IsReady());
+  EXPECT_FALSE(futures[2].IsReady());
+
+  // t=4s: futures[1] still pending (needs t=5s).
+  task_environment()->FastForwardBy(base::Seconds(4));
+  EXPECT_FALSE(futures[1].IsReady());
+  EXPECT_FALSE(futures[2].IsReady());
+
+  // Past t=5s: futures[1] fires; futures[2] still pending (needs t=10s).
+  // Overshoot the boundary to avoid flakiness from exact-interval timing.
+  task_environment()->FastForwardBy(base::Seconds(2));
+  ASSERT_TRUE(futures[1].IsReady());
+  EXPECT_TRUE(futures[1].Get());
+  EXPECT_FALSE(futures[2].IsReady());
+
+  // Past t=10s: futures[2] fires.
+  task_environment()->FastForwardBy(base::Seconds(5));
+  ASSERT_TRUE(futures[2].IsReady());
+  EXPECT_TRUE(futures[2].Get());
+}
+
+// The cross-origin check follows the registrar lookup origin: when a
+// same-origin manifest_id is provided, queries are not rate-limited even if
+// the manifest_url is cross-origin.
+TEST_F(WebInstallServiceImplRateLimitTest,
+       CrossOriginManifestUrl_SameOriginManifestId_NotRateLimited) {
+  // Use a small limit to avoid looping 100 times.
+  base::AutoReset<size_t> max_queries =
+      WebInstallServiceImpl::SetMaxCrossOriginQueriesForTesting(kMaxQueries);
+
+  // Install an app whose manifest_id matches the document origin.
+  test::InstallDummyWebApp(profile(), "Same Origin App", GURL(kDocumentUrl));
+  BindService();
+
+  // Issue well past the cross-origin cap. Each query pairs a cross-origin
+  // manifest_url with a same-origin manifest_id, so the lookup is treated as
+  // same-origin and none should be rate-limited.
+  for (size_t i = 0; i < kMaxQueries * 2; ++i) {
+    EXPECT_TRUE(
+        IsInstalledWithManifestId(GURL(kCrossOriginUrl), GURL(kDocumentUrl)));
+  }
+}
+
+// The cross-origin check follows the registrar lookup origin: when a
+// cross-origin manifest_id is provided, queries are rate-limited even if the
+// manifest_url is same-origin.
+TEST_F(WebInstallServiceImplRateLimitTest,
+       SameOriginManifestUrl_CrossOriginManifestId_RateLimited) {
+  // Use a small limit to avoid looping 100 times.
+  base::AutoReset<size_t> max_queries =
+      WebInstallServiceImpl::SetMaxCrossOriginQueriesForTesting(kMaxQueries);
+
+  // Install an app whose manifest_id is cross-origin to the document.
+  test::InstallDummyWebApp(profile(), "Cross Origin App",
+                           GURL(kCrossOriginUrl));
+  BindService();
+
+  // Issue the maximum allowed queries, advancing time after each to avoid
+  // the time-based rate limit on the next query.
+  for (size_t i = 0; i < kMaxQueries; ++i) {
+    EXPECT_TRUE(
+        IsInstalledWithManifestId(GURL(kDocumentUrl), GURL(kCrossOriginUrl)));
+    task_environment()->AdvanceClock(kMinCrossOriginQueryInterval);
+  }
+
+  // The loop's final AdvanceClock cleared the time throttle, so this next
+  // query is rejected purely on count.
+  EXPECT_FALSE(
+      IsInstalledWithManifestId(GURL(kDocumentUrl), GURL(kCrossOriginUrl)));
+}
+
+// A non-HTTP(S) manifest_id (e.g. chrome://) should return false immediately
+// without consuming cross-origin query budget.
+TEST_F(WebInstallServiceImplRateLimitTest,
+       InvalidManifestIdScheme_ReturnsFalse) {
+  BindService();
+
+  EXPECT_FALSE(IsInstalledWithManifestId(GURL(kCrossOriginUrl),
+                                         GURL("chrome://settings")));
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// InstallFromManifest URL scheme validation tests.
+///////////////////////////////////////////////////////////////////////////////
+
+TEST_F(WebInstallServiceImplTest, InstallFromManifest_HttpRejected) {
+  BindService();
+  EXPECT_EQ(InstallFromManifestUrl(GURL("http://example.com/manifest.json")),
+            blink::mojom::WebInstallServiceResult::kDataError);
+}
+
+TEST_F(WebInstallServiceImplTest, InstallFromManifest_FileSchemeRejected) {
+  BindService();
+  EXPECT_EQ(InstallFromManifestUrl(GURL("file:///tmp/manifest.json")),
+            blink::mojom::WebInstallServiceResult::kDataError);
+}
+
+TEST_F(WebInstallServiceImplTest, InstallFromManifest_DataSchemeRejected) {
+  BindService();
+  EXPECT_EQ(
+      InstallFromManifestUrl(GURL("data:application/json,{\"name\":\"App\"}")),
+      blink::mojom::WebInstallServiceResult::kDataError);
+}
+
+TEST_F(WebInstallServiceImplTest, InstallFromManifest_BlobSchemeRejected) {
+  BindService();
+  EXPECT_EQ(InstallFromManifestUrl(GURL("blob:https://example.com/some-uuid")),
+            blink::mojom::WebInstallServiceResult::kDataError);
+}
+
+TEST_F(WebInstallServiceImplTest, InstallFromManifest_ChromeSchemeRejected) {
+  BindService();
+  EXPECT_EQ(InstallFromManifestUrl(GURL("chrome://settings/manifest.json")),
+            blink::mojom::WebInstallServiceResult::kDataError);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// InstallFromManifest telemetry tests.
+// Verify the manifest URL flow records the expected UMAs/UKMs, exercising
+// pre-parse exits (reached without serving a manifest).
+///////////////////////////////////////////////////////////////////////////////
+
+// A non-HTTPS manifest URL is rejected at the scheme gate: the
+// requesting-page UKM still records, but the installed-app UKM is not created
+// for non-HTTPS callers.
+TEST_F(WebInstallServiceImplTest,
+       InstallFromManifest_HttpManifestUrl_NoInstalledAppUkm) {
+  base::HistogramTester histograms;
+  ukm::TestAutoSetUkmRecorder ukm_recorder;
+  BindService();
+
+  EXPECT_EQ(InstallFromManifestUrl(GURL("http://example.com/manifest.json")),
+            blink::mojom::WebInstallServiceResult::kDataError);
+
+  histograms.ExpectBucketCount(kInstallApiTypeUma,
+                               WebInstallServiceType::kBackgroundDocument, 1);
+  histograms.ExpectBucketCount(kVariantedInstallTypeUma,
+                               WebInstallServiceType::kBackgroundDocument, 1);
+  histograms.ExpectBucketCount(kInstallApiResultUma,
+                               WebInstallServiceResult::kUnexpectedFailure, 1);
+  histograms.ExpectBucketCount(kVariantedInstallResultUma,
+                               WebInstallServiceResult::kUnexpectedFailure, 1);
+
+  EXPECT_EQ(CountUkmEntriesWithResult(
+                ukm_recorder, Entry::kResultByRequestingPageName,
+                WebInstallServiceResult::kUnexpectedFailure),
+            1);
+  EXPECT_EQ(
+      CountUkmEntriesWithResult(ukm_recorder, Entry::kResultByInstalledAppName,
+                                WebInstallServiceResult::kUnexpectedFailure),
+      0);
+  // Verify no APP_ID source is created at all for non-HTTPS callers - the
+  // installed-app UKM path never runs, so no source should be allocated.
+  for (const auto& [source_id, source] : ukm_recorder.GetSources()) {
+    EXPECT_NE(ukm::GetSourceIdType(source_id), ukm::SourceIdType::APP_ID);
+  }
+}
+
+// Confirms the installed-app UKM is keyed on the origin of the manifest URL
+// (scheme + host + port), not the full URL.
+TEST_F(WebInstallServiceImplTest,
+       InstallFromManifest_InstalledAppUkm_KeyedOnManifestOrigin) {
+  ukm::TestAutoSetUkmRecorder ukm_recorder;
+  BindService();
+
+  // Deep-path HTTPS manifest URL with query and fragment. Mock the fetch to
+  // fail so we exit before any real install, but after both UKM source ids
+  // have been created.
+  const GURL kDeepManifestUrl(
+      "https://example.com/deep/nested/path/manifest.json?v=1#frag");
+  profile_url_loader_factory().AddResponse(
+      kDeepManifestUrl, network::mojom::URLResponseHead::New(),
+      /*content=*/std::string(),
+      network::URLLoaderCompletionStatus(net::ERR_CONNECTION_REFUSED));
+
+  EXPECT_EQ(InstallFromManifestUrl(kDeepManifestUrl),
+            blink::mojom::WebInstallServiceResult::kDataError);
+
+  // Locate the installed-app UKM's source and verify its URL is keyed on the
+  // manifest origin, not the full manifest URL. Exactly one APP_ID source is
+  // created per install (lazily, inside `callback_with_metrics`), so mirror
+  // the neighboring "no APP_ID source" tests and iterate over sources.
+  const ukm::UkmSource* app_source = nullptr;
+  for (const auto& [source_id, source] : ukm_recorder.GetSources()) {
+    if (ukm::GetSourceIdType(source_id) == ukm::SourceIdType::APP_ID) {
+      ASSERT_EQ(app_source, nullptr);
+      app_source = source.get();
+    }
+  }
+  ASSERT_NE(app_source, nullptr);
+  EXPECT_EQ(app_source->url(), GURL("https://example.com/"));
+}
+
+// The <install> element manifest entry point (ElementInstallFromManifest)
+// shares InstallFromManifestInternal, so it must record to the Element-variant
+// UMA and UKM rather than the Api ones. Uses an HTTPS URL with a mocked
+// fetch failure so both element UKMs are recorded.
+TEST_F(WebInstallServiceImplTest,
+       ElementInstallFromManifest_RecordsElementVariantTelemetry) {
+  base::HistogramTester histograms;
+  ukm::TestAutoSetUkmRecorder ukm_recorder;
+  BindService();
+
+  profile_url_loader_factory().AddResponse(
+      GURL(kManifestUrl), network::mojom::URLResponseHead::New(),
+      /*content=*/std::string(),
+      network::URLLoaderCompletionStatus(net::ERR_CONNECTION_REFUSED));
+
+  EXPECT_EQ(InstallFromManifestUrl(GURL(kManifestUrl),
+                                   /*manifest_id=*/std::nullopt,
+                                   /*from_element=*/true),
+            blink::mojom::WebInstallServiceResult::kDataError);
+
+  // Records to the Element histograms, not the Api ones.
+  histograms.ExpectBucketCount(kInstallElementResultUma,
+                               WebInstallServiceResult::kInstallCommandFailed,
+                               1);
+  histograms.ExpectBucketCount(kVariantedElementResultUma,
+                               WebInstallServiceResult::kInstallCommandFailed,
+                               1);
+  histograms.ExpectBucketCount(kInstallElementTypeUma,
+                               WebInstallServiceType::kBackgroundDocument, 1);
+  histograms.ExpectTotalCount(kInstallApiResultUma, 0);
+  histograms.ExpectTotalCount(kInstallApiTypeUma, 0);
+
+  // Records the Element UKM setters, not the Api ones.
+  EXPECT_EQ(CountUkmEntriesWithResult(
+                ukm_recorder, Entry::kResultByRequestingPageName,
+                WebInstallServiceResult::kInstallCommandFailed),
+            0);
+  EXPECT_EQ(
+      CountUkmEntriesWithResult(ukm_recorder, Entry::kResultByInstalledAppName,
+                                WebInstallServiceResult::kInstallCommandFailed),
+      0);
+  EXPECT_EQ(CountUkmEntriesWithResult(
+                ukm_recorder, Entry::kElementResultByRequestingPageName,
+                WebInstallServiceResult::kInstallCommandFailed),
+            1);
+  EXPECT_EQ(CountUkmEntriesWithResult(
+                ukm_recorder, Entry::kElementResultByInstalledAppName,
+                WebInstallServiceResult::kInstallCommandFailed),
+            1);
+}
+
+// A concurrent manifest install reports kInstallInProgress. Records the
+// requesting-page UKM for abuse-monitoring coverage, but no installed-app UKM
+// because we exit before any manifest parse.
+TEST_F(WebInstallServiceImplTest,
+       InstallFromManifest_ConcurrentInstall_ReportsInProgress) {
+  BindService();
+
+  // Start a first install whose manifest fetch never completes (no response is
+  // registered), holding the install-in-progress guard. Flush so the guard is
+  // reserved before the second install below.
+  auto options = blink::mojom::ManifestInstallOptions::New();
+  options->manifest_url = GURL(kManifestUrl);
+  service_remote()->InstallFromManifest(std::move(options), base::DoNothing());
+  service_remote().FlushForTesting();
+
+  // Only measure the second (rejected) call.
+  base::HistogramTester histograms;
+  ukm::TestAutoSetUkmRecorder ukm_recorder;
+
+  EXPECT_EQ(InstallFromManifestUrl(GURL(kManifestUrl)),
+            blink::mojom::WebInstallServiceResult::kAbortError);
+
+  histograms.ExpectBucketCount(kInstallApiResultUma,
+                               WebInstallServiceResult::kInstallInProgress, 1);
+  histograms.ExpectBucketCount(kInstallApiTypeUma,
+                               WebInstallServiceType::kBackgroundDocument, 1);
+
+  // Requesting-page UKM records the in-progress rejection.
+  EXPECT_EQ(CountUkmEntriesWithResult(
+                ukm_recorder, Entry::kResultByRequestingPageName,
+                WebInstallServiceResult::kInstallInProgress),
+            1);
+  // No installed-app UKM because no APP_ID source is allocated before the
+  // in-progress early exit.
+  EXPECT_EQ(
+      CountUkmEntriesWithResult(ukm_recorder, Entry::kResultByInstalledAppName,
+                                WebInstallServiceResult::kInstallInProgress),
+      0);
+  for (const auto& [source_id, source] : ukm_recorder.GetSources()) {
+    EXPECT_NE(ukm::GetSourceIdType(source_id), ukm::SourceIdType::APP_ID);
+  }
+}
+
+// A manifest fetch failure (network error) exits before parsing with
+// kInstallCommandFailed and records both UKMs.
+TEST_F(WebInstallServiceImplTest,
+       InstallFromManifest_FetchFailureRecordsCommandFailed) {
+  base::HistogramTester histograms;
+  ukm::TestAutoSetUkmRecorder ukm_recorder;
+  BindService();
+
+  // Simulate a network error for the manifest fetch. A minimal response
+  // head is paired with the net error to avoid an inconsistent
+  // TestURLLoaderFactory state.
+  profile_url_loader_factory().AddResponse(
+      GURL(kManifestUrl), network::mojom::URLResponseHead::New(),
+      /*content=*/std::string(),
+      network::URLLoaderCompletionStatus(net::ERR_CONNECTION_REFUSED));
+
+  EXPECT_EQ(InstallFromManifestUrl(GURL(kManifestUrl)),
+            blink::mojom::WebInstallServiceResult::kDataError);
+
+  histograms.ExpectBucketCount(
+      kInstallApiResultUma, WebInstallServiceResult::kInstallCommandFailed, 1);
+  histograms.ExpectBucketCount(kVariantedInstallResultUma,
+                               WebInstallServiceResult::kInstallCommandFailed,
+                               1);
+  histograms.ExpectBucketCount(kInstallApiTypeUma,
+                               WebInstallServiceType::kBackgroundDocument, 1);
+
+  EXPECT_EQ(CountUkmEntriesWithResult(
+                ukm_recorder, Entry::kResultByRequestingPageName,
+                WebInstallServiceResult::kInstallCommandFailed),
+            1);
+  EXPECT_EQ(
+      CountUkmEntriesWithResult(ukm_recorder, Entry::kResultByInstalledAppName,
+                                WebInstallServiceResult::kInstallCommandFailed),
+      1);
+}
+
+}  // namespace
+}  // namespace web_app

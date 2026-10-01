@@ -1,0 +1,11 @@
+include_rules = [
+  # keep-sorted start
+  "+ios/chrome/browser/feature_engagement",
+  # keep-sorted end
+]
+
+specific_include_rules = {
+  "signin_utils\\.mm": [
+    "+ios/chrome/browser/promos_manager/model/constants.h",
+  ],
+}

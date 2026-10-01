@@ -1,0 +1,179 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_VIEWS_WEB_APPS_WEB_APP_INSTALL_FLOW_DIALOG_DELEGATE_H_
+#define CHROME_BROWSER_UI_VIEWS_WEB_APPS_WEB_APP_INSTALL_FLOW_DIALOG_DELEGATE_H_
+
+#include <iosfwd>
+#include <memory>
+#include <optional>
+#include <string>
+#include <variant>
+
+#include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
+#include "build/build_config.h"
+#include "chrome/browser/ui/page_action/page_action_controller.h"
+#include "chrome/browser/ui/views/web_apps/web_app_install_dialog_delegate.h"
+#include "chrome/browser/ui/views/web_apps/web_app_modal_dialog_delegate.h"
+#include "chrome/browser/ui/web_applications/web_app_dialogs.h"
+#include "chrome/browser/web_applications/web_app_install_params.h"
+#include "components/webapps/common/web_app_id.h"
+#include "ui/base/interaction/element_identifier.h"
+#include "ui/views/controls/button/button.h"
+
+class PrefService;
+
+namespace feature_engagement {
+class Tracker;
+}
+
+namespace webapps {
+class MlInstallOperationTracker;
+}
+
+namespace ui {
+class ImageModel;
+}
+
+namespace web_app {
+
+class ProgressDelay;
+class WebAppScreenshotFetcher;
+
+class WebAppInstallProgressView;
+class WebAppInstallOptionsView;
+struct WebAppInstallInfo;
+
+// LINT.IfChange(InstallDialogStep)
+enum class InstallDialogStep {
+  kInstallDialog = 0,
+  kInstallerOptions = 1,
+  kProgress = 2,
+  kSuccessful = 3,
+  kMaxValue = kSuccessful,
+};
+// LINT.ThenChange(//tools/metrics/histograms/enums.xml:WebAppInstallFlowStep)
+
+enum class InstallOsType { kMac, kWin, kCros, kOther };
+inline constexpr int kLargeImageSize = 80;
+std::ostream& operator<<(std::ostream& os, InstallOsType type);
+
+class WebAppInstallFlowDialogDelegate : public WebAppModalDialogDelegate {
+ public:
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kLearnMoreButtonId);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kCancelButtonId);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kInstallButton);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kIntroViewId);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kOptionsViewId);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kProgressViewId);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kSuccessfulViewId);
+
+  WebAppInstallFlowDialogDelegate(
+      content::WebContents* web_contents,
+      std::unique_ptr<WebAppInstallInfo> install_info,
+      std::unique_ptr<webapps::MlInstallOperationTracker> install_tracker,
+      WebAppInstallationAcceptanceCallback callback,
+      PwaInProductHelpState iph_state,
+      PrefService* prefs,
+      feature_engagement::Tracker* tracker,
+      InstallDialogType dialog_type,
+      InstallOsType os_type,
+      std::unique_ptr<ProgressDelay> progress_delay);
+
+  ~WebAppInstallFlowDialogDelegate() override;
+
+  static base::WeakPtr<WebAppInstallFlowDialogDelegate> Show(
+      content::WebContents* web_contents,
+      std::unique_ptr<WebAppInstallInfo> install_info,
+      std::unique_ptr<webapps::MlInstallOperationTracker> install_tracker,
+      WebAppInstallationAcceptanceCallback callback,
+      PwaInProductHelpState iph_state,
+      base::WeakPtr<WebAppScreenshotFetcher> screenshot_fetcher,
+      bool show_initiating_origin,
+      InstallDialogType dialog_type,
+      InstallOsType os_type,
+      std::unique_ptr<ProgressDelay> progress_delay,
+      std::optional<ui::ImageModel> folder_image_model,
+      std::optional<std::u16string> folder_label);
+
+  void SetProgressView(base::WeakPtr<WebAppInstallProgressView> progress_view) {
+    progress_view_ = std::move(progress_view);
+  }
+
+  bool AdvanceToNextStepOrClose();
+
+  void OnAccept();
+  void OnCancel();
+  void OnClose();
+  void OnCancelOrCloseClicked();
+  void OnDestroyed();
+
+  void OnTextFieldChangedMaybeUpdateButton(
+      const std::u16string& text_field_contents);
+
+  void OnProgress(std::optional<double> percent);
+
+  base::WeakPtr<WebAppInstallFlowDialogDelegate> AsWeakPtr() {
+    return weak_ptr_factory_.GetWeakPtr();
+  }
+
+  // views::WidgetObserver overrides:
+  void OnWidgetBoundsChanged(views::Widget* widget,
+                             const gfx::Rect& new_bounds) override;
+  // WebAppModalDialogDelegate overrides:
+  void CloseDialogAsIgnored() override;
+
+  InstallDialogType dialog_type() const { return dialog_type_; }
+
+  InstallDialogStep GetCurrentStepForTesting() const { return current_step_; }
+
+ protected:
+  InstallDialogStep current_step_ = InstallDialogStep::kInstallDialog;
+  InstallOsType os_type_;
+
+  base::WeakPtr<WebAppInstallProgressView> progress_view_;
+  base::WeakPtr<WebAppInstallOptionsView> options_view_;
+
+ private:
+  void OnLearnMoreButtonClicked();
+  void UpdateDialogTitleAndHeader(InstallDialogStep step);
+  void UpdateProgressAndMaybeAdvance();
+
+  void OnInstallResult(bool success, base::OnceClosure reparent_closure);
+  void AcceptForTesting();  // IN-TEST
+  void OnAutoAcceptInstallResultForTesting(
+      bool success,
+      base::OnceClosure reparent_closure);  // IN-TEST
+  void DeclineForTesting();                 // IN-TEST
+
+  void MeasureMetricsOnDialogClose(bool was_closed_by_user_action);
+  void MeasureAcceptUserActionsForInstallDialog();
+  void MeasureCloseUserActionsForInstallDialog();
+
+  std::unique_ptr<WebAppInstallInfo> install_info_;
+  webapps::AppId app_id_;
+  std::unique_ptr<webapps::MlInstallOperationTracker> install_tracker_;
+  WebAppInstallationAcceptanceCallback callback_;
+  PwaInProductHelpState iph_state_;
+  raw_ptr<PrefService> prefs_;
+  raw_ptr<feature_engagement::Tracker> tracker_;
+  InstallDialogType dialog_type_;
+  std::u16string text_field_contents_;
+  bool received_user_response_ = false;
+
+  const std::optional<std::variant<views::Button::ScopedAnchorHighlight,
+                                   page_actions::ScopedPageActionActivity>>
+      page_action_highlight_;
+
+  std::unique_ptr<ProgressDelay> progress_delay_;
+  bool install_success_ = false;
+  std::optional<double> timer_percentage_ = 0.0;
+  base::OnceClosure reparent_closure_;
+  base::WeakPtrFactory<WebAppInstallFlowDialogDelegate> weak_ptr_factory_{this};
+};
+
+}  // namespace web_app
+
+#endif  // CHROME_BROWSER_UI_VIEWS_WEB_APPS_WEB_APP_INSTALL_FLOW_DIALOG_DELEGATE_H_

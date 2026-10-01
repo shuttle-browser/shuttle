@@ -1,0 +1,502 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/tabs/alert/tab_alert_controller.h"
+
+#include <functional>
+#include <optional>
+#include <vector>
+
+#include "base/check.h"
+#include "base/containers/fixed_flat_map.h"
+#include "base/containers/flat_set.h"
+#include "base/containers/to_vector.h"
+#include "base/functional/bind.h"
+#include "base/metrics/user_metrics.h"
+#include "base/metrics/user_metrics_action.h"
+#include "base/notreached.h"
+#include "chrome/browser/actor/ui/actor_ui_tab_controller_interface.h"
+#include "chrome/browser/glic/browser_ui/glic_tab_indicator_helper.h"
+#include "chrome/browser/glic/public/context/glic_sharing_manager.h"
+#include "chrome/browser/glic/public/glic_keyed_service.h"
+#include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
+#include "chrome/browser/media/webrtc/media_stream_capture_indicator.h"
+#include "chrome/browser/ui/recently_audible_helper.h"
+#include "chrome/browser/vr/vr_tab_helper.h"
+#include "chrome/grit/generated_resources.h"
+#include "components/tabs/public/tab_alert.h"
+#include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_contents_capability_type.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
+
+namespace tabs {
+
+DEFINE_USER_DATA(TabAlertController);
+
+bool CompareAlerts::operator()(TabAlert first, TabAlert second) const {
+  // Alerts are ordered from highest priority to be shown to lowest priority.
+  static constexpr auto tab_alert_priority =
+      base::MakeFixedFlatMap<TabAlert, int>(
+          {{TabAlert::kDesktopCapturing, 17},
+           {TabAlert::kTabCapturing, 16},
+           {TabAlert::kMediaRecording, 15},
+           {TabAlert::kAudioRecording, 14},
+           {TabAlert::kVideoRecording, 13},
+           {TabAlert::kBluetoothConnected, 12},
+           {TabAlert::kBluetoothScanActive, 11},
+           {TabAlert::kUsbConnected, 10},
+           {TabAlert::kHidConnected, 9},
+           {TabAlert::kSerialConnected, 8},
+           {TabAlert::kActorWaitingOnUser, 7},
+           {TabAlert::kActorAccessing, 6},
+           {TabAlert::kGlicAccessing, 5},
+           {TabAlert::kGlicSharing, 4},
+           // NOTE: VR must take priority over the audio alert ones
+           // because most VR content has audio and its usage is implied by the
+           // VR icon.
+           {TabAlert::kVrPresentingInHeadset, 3},
+           {TabAlert::kPipPlaying, 2},
+           {TabAlert::kAudioMuting, 1},
+           {TabAlert::kAudioPlaying, 0},
+           {TabAlert::kNone, -1}});
+
+  return tab_alert_priority.at(first) > tab_alert_priority.at(second);
+}
+
+// Helper class that notifies subscribers if the alert state has changed when
+// the ScopedAlertNotifier is destroyed.
+class TabAlertController::ScopedAlertNotifier {
+ public:
+  explicit ScopedAlertNotifier(TabAlertController* tab_alert_controller)
+      : tab_alert_controller_(tab_alert_controller),
+        previous_alert_(tab_alert_controller->GetAlertToShow()) {}
+
+  ~ScopedAlertNotifier() {
+    std::optional<TabAlert> updated_alert =
+        tab_alert_controller_->GetAlertToShow();
+    if (previous_alert_ != updated_alert) {
+      tab_alert_controller_->alert_to_show_changed_callbacks_.Notify(
+          updated_alert);
+    }
+  }
+
+ private:
+  const raw_ptr<TabAlertController> tab_alert_controller_;
+  std::optional<TabAlert> previous_alert_;
+};
+
+TabAlertController::TabAlertController(TabInterface& tab)
+    : tabs::ContentsObservingTabFeature(tab),
+      scoped_unowned_user_data_(tab.GetUnownedUserDataHost(), *this) {
+  media_stream_capture_indicator_observation_.Observe(
+      MediaCaptureDevicesDispatcher::GetInstance()
+          ->GetMediaStreamCaptureIndicator()
+          .get());
+  vr_tab_helper_observation_.Observe(
+      vr::VrTabHelper::FromWebContents(web_contents()));
+  recently_audible_subscription_ =
+      RecentlyAudibleHelper::FromWebContents(tab.GetContents())
+          ->RegisterRecentlyAudibleChangedCallback(base::BindRepeating(
+              &TabAlertController::OnRecentlyAudibleStateChanged,
+              base::Unretained(this)));
+
+  if (auto* actor_ui_tab_controller =
+          actor::ui::ActorUiTabControllerInterface::From(&tab)) {
+    actor_tab_indicator_callback_runner_ =
+        actor_ui_tab_controller->RegisterActorTabIndicatorStateChangedCallback(
+            base::BindRepeating(
+                &TabAlertController::OnActorTabIndicatorStateChanged,
+                base::Unretained(this)));
+  }
+
+  glic::GlicTabIndicatorHelper* const glic_tab_indicator_helper =
+      glic::GlicTabIndicatorHelper::From(&tab);
+  if (glic_tab_indicator_helper) {
+    callback_subscriptions_.emplace_back(
+        glic_tab_indicator_helper->RegisterGlicSharingStateChange(
+            base::BindRepeating(&TabAlertController::OnGlicSharingStateChange,
+                                base::Unretained(this))));
+    callback_subscriptions_.emplace_back(
+        glic_tab_indicator_helper->RegisterGlicAccessingStateChange(
+            base::BindRepeating(&TabAlertController::OnGlicAccessingStateChange,
+                                base::Unretained(this))));
+  }
+}
+
+TabAlertController::~TabAlertController() = default;
+
+// static:
+const TabAlertController* TabAlertController::From(const TabInterface* tab) {
+  return Get(tab->GetUnownedUserDataHost());
+}
+
+// static:
+TabAlertController* TabAlertController::From(TabInterface* tab) {
+  return Get(tab->GetUnownedUserDataHost());
+}
+
+// static
+std::optional<TabAlert> TabAlertController::GetAlertStateToShow(
+    const std::vector<TabAlert>& alert_states) {
+  if (alert_states.empty()) {
+    return std::nullopt;
+  }
+
+  return alert_states[0];
+}
+
+// static:
+std::u16string TabAlertController::GetTabAlertStateText(
+    const TabAlert alert_state) {
+  switch (alert_state) {
+    case TabAlert::kAudioPlaying:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_AUDIO_PLAYING);
+    case TabAlert::kAudioMuting:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_AUDIO_MUTING);
+    case TabAlert::kMediaRecording:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_MEDIA_RECORDING);
+    case TabAlert::kAudioRecording:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_AUDIO_RECORDING);
+    case TabAlert::kVideoRecording:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_VIDEO_RECORDING);
+    case TabAlert::kTabCapturing:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_TAB_CAPTURING);
+    case TabAlert::kBluetoothConnected:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_BLUETOOTH_CONNECTED);
+    case TabAlert::kBluetoothScanActive:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_BLUETOOTH_SCAN_ACTIVE);
+    case TabAlert::kUsbConnected:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_USB_CONNECTED);
+    case TabAlert::kHidConnected:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_HID_CONNECTED);
+    case TabAlert::kSerialConnected:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_SERIAL_CONNECTED);
+    case TabAlert::kPipPlaying:
+      return l10n_util::GetStringUTF16(IDS_TOOLTIP_TAB_ALERT_STATE_PIP_PLAYING);
+    case TabAlert::kDesktopCapturing:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_DESKTOP_CAPTURING);
+    case TabAlert::kVrPresentingInHeadset:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_VR_PRESENTING);
+    case TabAlert::kActorAccessing:
+    case TabAlert::kActorWaitingOnUser:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_ACTOR_ACCESSING);
+    case TabAlert::kGlicAccessing:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_GLIC_ACCESSING);
+    case TabAlert::kGlicSharing:
+      return l10n_util::GetStringUTF16(
+          IDS_TOOLTIP_TAB_ALERT_STATE_GLIC_SHARING);
+    case TabAlert::kNone:
+      NOTREACHED();
+  }
+  NOTREACHED();
+}
+
+// static:
+int TabAlertController::GetAccessibleAlertStringId(const TabAlert alert_state) {
+  switch (alert_state) {
+    case TabAlert::kAudioPlaying:
+      return IDS_TAB_AX_LABEL_AUDIO_PLAYING_FORMAT;
+    case TabAlert::kUsbConnected:
+      return IDS_TAB_AX_LABEL_USB_CONNECTED_FORMAT;
+    case TabAlert::kBluetoothConnected:
+      return IDS_TAB_AX_LABEL_BLUETOOTH_CONNECTED_FORMAT;
+    case TabAlert::kBluetoothScanActive:
+      return IDS_TAB_AX_LABEL_BLUETOOTH_SCAN_ACTIVE_FORMAT;
+    case TabAlert::kHidConnected:
+      return IDS_TAB_AX_LABEL_HID_CONNECTED_FORMAT;
+    case TabAlert::kSerialConnected:
+      return IDS_TAB_AX_LABEL_SERIAL_CONNECTED_FORMAT;
+    case TabAlert::kMediaRecording:
+      return IDS_TAB_AX_LABEL_MEDIA_RECORDING_FORMAT;
+    case TabAlert::kAudioRecording:
+      return IDS_TAB_AX_LABEL_AUDIO_RECORDING_FORMAT;
+    case TabAlert::kVideoRecording:
+      return IDS_TAB_AX_LABEL_VIDEO_RECORDING_FORMAT;
+    case TabAlert::kAudioMuting:
+      return IDS_TAB_AX_LABEL_AUDIO_MUTING_FORMAT;
+    case TabAlert::kTabCapturing:
+      return IDS_TAB_AX_LABEL_TAB_CAPTURING_FORMAT;
+    case TabAlert::kPipPlaying:
+      return IDS_TAB_AX_LABEL_PIP_PLAYING_FORMAT;
+    case TabAlert::kDesktopCapturing:
+      return IDS_TAB_AX_LABEL_DESKTOP_CAPTURING_FORMAT;
+    case TabAlert::kVrPresentingInHeadset:
+      return IDS_TAB_AX_LABEL_VR_PRESENTING;
+    case TabAlert::kActorAccessing:
+    case TabAlert::kActorWaitingOnUser:
+      return IDS_TAB_AX_LABEL_ACTOR_ACCESSING;
+    case TabAlert::kGlicAccessing:
+      return IDS_TAB_AX_LABEL_GLIC_ACCESSING;
+    case TabAlert::kGlicSharing:
+      return IDS_TAB_AX_LABEL_GLIC_SHARING;
+    case TabAlert::kNone:
+      NOTREACHED();
+  }
+}
+
+// static:
+void TabAlertController::RecordCloseTabMetrics(const TabAlert alert_state) {
+  switch (alert_state) {
+    case TabAlert::kAudioPlaying:
+      base::RecordAction(base::UserMetricsAction("CloseTab_AudioIndicator"));
+      break;
+    case TabAlert::kMediaRecording:
+    case TabAlert::kAudioRecording:
+    case TabAlert::kVideoRecording:
+      base::RecordAction(
+          base::UserMetricsAction("CloseTab_RecordingIndicator"));
+      break;
+    case TabAlert::kAudioMuting:
+    case TabAlert::kDesktopCapturing:
+    case TabAlert::kTabCapturing:
+    case TabAlert::kBluetoothConnected:
+    case TabAlert::kBluetoothScanActive:
+    case TabAlert::kUsbConnected:
+    case TabAlert::kHidConnected:
+    case TabAlert::kSerialConnected:
+    case TabAlert::kPipPlaying:
+    case TabAlert::kVrPresentingInHeadset:
+    case TabAlert::kActorWaitingOnUser:
+    case TabAlert::kActorAccessing:
+    case TabAlert::kGlicAccessing:
+    case TabAlert::kGlicSharing:
+    case TabAlert::kNone:
+      break;
+  }
+}
+
+base::CallbackListSubscription
+TabAlertController::AddAlertToShowChangedCallback(
+    AlertToShowChangedCallback callback) {
+  return alert_to_show_changed_callbacks_.Add(std::move(callback));
+}
+
+std::optional<TabAlert> TabAlertController::GetAlertToShow() const {
+  if (active_alerts_.empty()) {
+    return std::nullopt;
+  }
+
+  return *active_alerts_.begin();
+}
+
+std::vector<TabAlert> TabAlertController::GetAllActiveAlerts() const {
+  return base::ToVector(active_alerts_);
+}
+
+bool TabAlertController::IsAlertActive(TabAlert alert) const {
+  return active_alerts_.contains(alert);
+}
+
+void TabAlertController::OnDiscardContents(TabInterface* tab_interface,
+                                           content::WebContents* old_contents,
+                                           content::WebContents* new_contents) {
+  tabs::ContentsObservingTabFeature::OnDiscardContents(
+      tab_interface, old_contents, new_contents);
+  vr_tab_helper_observation_.Reset();
+  vr_tab_helper_observation_.Observe(
+      vr::VrTabHelper::FromWebContents(new_contents));
+  recently_audible_subscription_ =
+      RecentlyAudibleHelper::FromWebContents(new_contents)
+          ->RegisterRecentlyAudibleChangedCallback(base::BindRepeating(
+              &TabAlertController::OnRecentlyAudibleStateChanged,
+              base::Unretained(this)));
+}
+
+void TabAlertController::OnCapabilityTypesChanged(
+    content::WebContentsCapabilityType capability_type,
+    bool used) {
+  static constexpr base::fixed_flat_map<content::WebContentsCapabilityType,
+                                        TabAlert, 5>
+      capability_type_to_alert =
+          base::MakeFixedFlatMap<content::WebContentsCapabilityType, TabAlert>(
+              {{content::WebContentsCapabilityType::kBluetoothConnected,
+                TabAlert::kBluetoothConnected},
+               {content::WebContentsCapabilityType::kBluetoothScanning,
+                TabAlert::kBluetoothScanActive},
+               {content::WebContentsCapabilityType::kUSB,
+                TabAlert::kUsbConnected},
+               {content::WebContentsCapabilityType::kHID,
+                TabAlert::kHidConnected},
+               {content::WebContentsCapabilityType::kSerial,
+                TabAlert::kSerialConnected}});
+
+  if (!capability_type_to_alert.contains(capability_type)) {
+    return;
+  }
+
+  const TabAlert alert = capability_type_to_alert.at(capability_type);
+  ScopedAlertNotifier notifier(this);
+  UpdateAlertState(alert, used);
+}
+
+void TabAlertController::MediaPictureInPictureChanged(
+    bool is_picture_in_picture) {
+  ScopedAlertNotifier notifier(this);
+  UpdateAlertState(TabAlert::kPipPlaying, is_picture_in_picture);
+}
+
+void TabAlertController::DidUpdateAudioMutingState(bool muted) {
+  // The muted alert should only show for tabs that were recently audible. It is
+  // possible for a tab to be muted but never play audio, in such cases, the
+  // muted alert should not show.
+  RecentlyAudibleHelper* const audible_helper =
+      RecentlyAudibleHelper::FromWebContents(tab().GetContents());
+  CHECK(audible_helper);
+  ScopedAlertNotifier notifier(this);
+  UpdateAlertState(TabAlert::kAudioMuting,
+                   audible_helper->WasRecentlyAudible() && muted);
+}
+
+void TabAlertController::OnIsCapturingVideoChanged(
+    content::WebContents* contents,
+    bool is_capturing_video) {
+  if (contents == web_contents()) {
+    ScopedAlertNotifier notifier(this);
+    UpdateAlertState(TabAlert::kVideoRecording, is_capturing_video);
+  }
+}
+
+void TabAlertController::OnIsCapturingAudioChanged(
+    content::WebContents* contents,
+    bool is_capturing_audio) {
+  if (contents == web_contents()) {
+    ScopedAlertNotifier notifier(this);
+    UpdateAlertState(TabAlert::kAudioRecording, is_capturing_audio);
+  }
+}
+
+void TabAlertController::OnIsBeingMirroredChanged(
+    content::WebContents* contents,
+    bool is_being_mirrored) {
+  if (contents == web_contents()) {
+    ScopedAlertNotifier notifier(this);
+    UpdateAlertState(TabAlert::kTabCapturing, is_being_mirrored);
+  }
+}
+
+void TabAlertController::OnIsCapturingWindowChanged(
+    content::WebContents* contents,
+    bool is_capturing_window) {
+  if (contents == web_contents()) {
+    ScopedAlertNotifier notifier(this);
+    const bool is_desktop_capturing_active =
+        is_capturing_window || MediaCaptureDevicesDispatcher::GetInstance()
+                                   ->GetMediaStreamCaptureIndicator()
+                                   ->IsCapturingDisplay(contents);
+    UpdateAlertState(TabAlert::kDesktopCapturing, is_desktop_capturing_active);
+  }
+}
+
+void TabAlertController::OnIsCapturingDisplayChanged(
+    content::WebContents* contents,
+    bool is_capturing_display) {
+  if (contents == web_contents()) {
+    ScopedAlertNotifier notifier(this);
+    const bool is_desktop_capturing_active =
+        is_capturing_display || MediaCaptureDevicesDispatcher::GetInstance()
+                                    ->GetMediaStreamCaptureIndicator()
+                                    ->IsCapturingWindow(contents);
+    UpdateAlertState(TabAlert::kDesktopCapturing, is_desktop_capturing_active);
+  }
+}
+
+void TabAlertController::OnIsContentDisplayedInHeadsetChanged(bool state) {
+  ScopedAlertNotifier notifier(this);
+  UpdateAlertState(TabAlert::kVrPresentingInHeadset, state);
+}
+
+void TabAlertController::OnGlicSharingStateChange(bool is_sharing) {
+  ScopedAlertNotifier notifier(this);
+  UpdateAlertState(TabAlert::kGlicSharing, is_sharing);
+}
+
+void TabAlertController::OnGlicAccessingStateChange(bool is_accessing) {
+  ScopedAlertNotifier notifier(this);
+  UpdateAlertState(TabAlert::kGlicAccessing, is_accessing);
+}
+
+void TabAlertController::OnActorTabIndicatorStateChanged(
+    actor::ui::TabIndicatorStatus tab_indicator_status) {
+  ScopedAlertNotifier notifier(this);
+  switch (tab_indicator_status) {
+    case actor::ui::TabIndicatorStatus::kNone:
+      UpdateAlertState(TabAlert::kActorWaitingOnUser, false);
+      UpdateAlertState(TabAlert::kActorAccessing, false);
+      break;
+    case actor::ui::TabIndicatorStatus::kDynamic:
+      UpdateAlertState(TabAlert::kActorWaitingOnUser, false);
+      UpdateAlertState(TabAlert::kActorAccessing, true);
+      break;
+    case actor::ui::TabIndicatorStatus::kStatic:
+      UpdateAlertState(TabAlert::kActorWaitingOnUser, true);
+      UpdateAlertState(TabAlert::kActorAccessing, false);
+      break;
+  }
+}
+
+void TabAlertController::OnRecentlyAudibleStateChanged(bool was_audible) {
+  // Muted alert state also needs to update when audible state changes to ensure
+  // that the muted alert becomes active if the tab is already muted but is
+  // recently audible or inactive after the tab is no longer audible.
+  ScopedAlertNotifier notifier(this);
+  UpdateAlertState(TabAlert::kAudioPlaying, was_audible);
+  UpdateAlertState(TabAlert::kAudioMuting,
+                   was_audible && tab().GetContents()->IsAudioMuted());
+}
+
+void TabAlertController::UpdateAlertState(TabAlert alert, bool is_active) {
+  if (alert == TabAlert::kAudioRecording ||
+      alert == TabAlert::kVideoRecording) {
+    UpdateMediaAlert();
+  } else {
+    if (is_active) {
+      active_alerts_.insert(alert);
+    } else {
+      active_alerts_.erase(alert);
+    }
+  }
+}
+
+void TabAlertController::UpdateMediaAlert() {
+  MediaStreamCaptureIndicator* const media_stream_capture_indicator =
+      MediaCaptureDevicesDispatcher::GetInstance()
+          ->GetMediaStreamCaptureIndicator()
+          .get();
+  content::WebContents* const web_contents = tab().GetContents();
+
+  const bool is_capturing_audio =
+      media_stream_capture_indicator->IsCapturingAudio(web_contents);
+  const bool is_capturing_video =
+      media_stream_capture_indicator->IsCapturingVideo(web_contents);
+
+  active_alerts_.erase(TabAlert::kMediaRecording);
+  active_alerts_.erase(TabAlert::kVideoRecording);
+  active_alerts_.erase(TabAlert::kAudioRecording);
+
+  if (is_capturing_video && is_capturing_audio) {
+    active_alerts_.insert(TabAlert::kMediaRecording);
+  } else if (is_capturing_video) {
+    active_alerts_.insert(TabAlert::kVideoRecording);
+  } else if (is_capturing_audio) {
+    active_alerts_.insert(TabAlert::kAudioRecording);
+  }
+}
+}  // namespace tabs

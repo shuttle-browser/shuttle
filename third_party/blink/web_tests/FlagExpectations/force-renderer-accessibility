@@ -1,0 +1,109 @@
+# tags: [ Android Fuchsia Linux Mac Mac13 Mac13-arm64 Mac14 Mac14-arm64 Mac15 Mac15-arm64 Mac26 Mac26-arm64 Win Win10.20h2 Win11 Win11-arm64 ]
+# tags: [ Release Debug ]
+# results: [ Skip Crash Pass Failure Slow ]
+
+# Expectations for --force-renderer-accessibility
+#
+# Used for the linux-blink-web-tests-force-accessibility-rel builder.
+# To change the builder configuration, edit:
+# infra/config/subprojects/chromium/try/tryserver.chromium.accessibility.star
+#
+# crbug.com/1138028 tracks the removal of these failure expectations
+# For failures, prefer [Pass Failure] over [ Skip ] to detect crashes.
+#
+# To save time in linux-blink-web-tests-force-accessibility-rel builder, do not
+# run virtual test suites.
+virtual/* [ Skip ]
+
+# Intentional skips for media tests using proprietary codecs.
+# The linux-blink-web-tests-force-accessibility-rel bot compiles without proprietary codecs.
+external/wpt/html/semantics/embedded-content/media-elements/track/track-element/track-cues-cuechange.html [ Skip ]
+external/wpt/webcodecs/audioDecoder-codec-specific.https.any.worker.html?adts_aac [ Skip ]
+external/wpt/webcodecs/audioDecoder-codec-specific.https.any.worker.html?mp4_aac [ Skip ]
+external/wpt/webcodecs/videoDecoder-codec-specific.https.any.worker.html?h264_annexb [ Skip ]
+external/wpt/webcodecs/videoDecoder-codec-specific.https.any.worker.html?h264_avc [ Skip ]
+external/wpt/webcodecs/audioDecoder-codec-specific.https.any.html?adts_aac [ Skip ]
+external/wpt/webcodecs/audioDecoder-codec-specific.https.any.html?mp4_aac [ Skip ]
+external/wpt/webcodecs/audio-decoder.crossOriginIsolated.https.any.html [ Skip ]
+external/wpt/webcodecs/audio-decoder.crossOriginIsolated.https.any.worker.html [ Skip ]
+external/wpt/webcodecs/video-decoder.crossOriginIsolated.https.any.html [ Skip ]
+external/wpt/webcodecs/video-decoder.crossOriginIsolated.https.any.worker.html [ Skip ]
+external/wpt/webcodecs/video-encoder-config.https.any.html [ Skip ]
+external/wpt/webcodecs/video-encoder-config.https.any.worker.html [ Skip ]
+external/wpt/webcodecs/videoDecoder-codec-specific.https.any.html?h264_annexb [ Skip ]
+external/wpt/webcodecs/videoDecoder-codec-specific.https.any.html?h264_avc [ Skip ]
+external/wpt/webrtc/RTCRtpTransceiver-setCodecPreferences.html [ Skip ]
+external/wpt/webrtc/protocol/rtp-demuxing.html [ Skip ]
+external/wpt/webrtc/protocol/video-codecs.https.html [ Skip ]
+fast/mediarecorder/MediaRecorder-error-on-oversize-frame-h264.html [ Skip ]
+wpt_internal/mediastream/mediastreamtrackprocessor-transfer-to-worker.html [ Skip ]
+wpt_internal/webcodecs/annexb_decoding.https.any.html [ Skip ]
+wpt_internal/webcodecs/annexb_decoding.https.any.worker.html [ Skip ]
+wpt_internal/webcodecs/avc_encoder_config.https.any.html [ Skip ]
+wpt_internal/webcodecs/avc_encoder_config.https.any.worker.html [ Skip ]
+
+# Flaky failure after enable swiftshader on headless shell
+crbug.com/339041663 external/wpt/css/css-break/flexbox/multi-line-row-flex-fragmentation-063-print.html [ Failure Pass ]
+crbug.com/339041663 external/wpt/css/css-break/flexbox/multi-line-row-flex-fragmentation-064-print.html [ Failure Pass ]
+
+# Times out
+http/tests/inspector-protocol/runtime/serialization-options.js [ Skip ]
+external/wpt/html/select/options-length-too-large.html [ Skip ]
+crbug.com/483201850 http/tests/persistent-origin-trials/meta-tag-origin-trial.https.php [ Skip ]
+
+# This test is skipped because it currently times out. This is due to the fact
+# that inline-block elements are now included in the accessibility tree and
+# this test creates 10K of those.
+# The limit imposed on tests is at most 5k accessible objects, so this fails
+# and leads to a time out.
+# This test was not designed for accessibility, and this case is not a
+# realistic scenario in the wild so we deem it safe to simply skip this test
+# when accessibility is enabled.
+fast/events/touch/gesture/gesture-tap-frame-move.html [ Skip ]
+
+crbug.com/40724063 external/wpt/pointerevents/pointerlock/pointerevent_movementxy_with_pointerlock.html [ Failure Pass ]
+
+# Flaky on most bots
+crbug.com/485661974 external/wpt/client-hints/critical-ch/mis-matched.multiple.https.window.html [ Failure Pass ]
+crbug.com/485661974 external/wpt/client-hints/critical-ch/redirect.cross-origin.https.window.html [ Failure Pass ]
+crbug.com/485661974 external/wpt/client-hints/critical-ch/request-count.multiple.https.window.html [ Failure Pass ]
+crbug.com/485661974 external/wpt/client-hints/critical-ch/subresource.https.window.html [ Failure Pass ]
+crbug.com/485661974 external/wpt/client-hints/critical-ch/unsafe-method.https.window.html [ Failure Pass ]
+crbug.com/480332818 external/wpt/css/css-image-animation/image-animation-img-running-to-normal.tentative.html [ Failure Pass ]
+crbug.com/485328296 external/wpt/css/css-position/crashtests/inline-containing-block-dynamic-change.html [ Failure Pass ]
+crbug.com/480249475 external/wpt/css/css-pseudo/input-element-pseudo-open.optional.html [ Failure Pass ]
+crbug.com/437902344 external/wpt/digital-credentials/allow-attribute-with-create.https.html [ Failure Pass ]
+crbug.com/485657219 external/wpt/fetch/fetch-later/activate-after.https.window.html [ Failure Pass ]
+crbug.com/485657219 external/wpt/fetch/fetch-later/quota/empty-payload.https.window.html [ Failure Pass ]
+crbug.com/485657219 external/wpt/fetch/fetch-later/quota/same-origin-iframe/max-payload.https.window.html [ Failure Pass ]
+crbug.com/485657219 external/wpt/fetch/fetch-later/send-on-deactivate-with-background-sync.https.window.html [ Failure Pass ]
+crbug.com/487909740 external/wpt/html/browsers/browsing-the-web/history-traversal/history-traversal-navigate-parent-while-child-loading.html [ Failure Pass ]
+crbug.com/485657224 external/wpt/html/interaction/focus/focusgroup/tentative/reading-flow-navigation/partial-reordering.html [ Failure Pass ]
+crbug.com/485657224 external/wpt/html/interaction/focus/focusgroup/tentative/sequential-navigation/arrow-key-handler-all-types.html [ Failure Pass ]
+crbug.com/484355021 external/wpt/html/semantics/embedded-content/the-video-element/video-loading-lazy-poster-when-visible.tentative.html [ Failure Pass ]
+crbug.com/485854361 external/wpt/pointerevents/pointerevent_to_slotted_target.html?touch [ Failure Pass ]
+crbug.com/485854362 external/wpt/service-workers/service-worker/fetch-mixed-content-to-inscope.https.html [ Failure Pass ]
+crbug.com/485854362 external/wpt/service-workers/service-worker/fetch-response-taint.https.html [ Failure Pass ]
+crbug.com/485854362 external/wpt/service-workers/service-worker/waiting.https.html [ Failure Pass ]
+crbug.com/485920248 external/wpt/speculation-rules/prefetch/prefetch-single.https.html?from_protocol=http&to_protocol=https [ Failure Pass ]
+crbug.com/485920248 external/wpt/speculation-rules/prerender/cookies.https.html [ Failure Pass ]
+crbug.com/485920248 external/wpt/speculation-rules/prerender/no-vary-search.https.html?24-24 [ Failure Pass ]
+crbug.com/417428652 external/wpt/touch-events/single-touch-vertical-rl.html [ Failure Pass ]
+crbug.com/485924027 external/wpt/visual-viewport/page-and-offset-in-iframe.html [ Failure Pass ]
+crbug.com/453103188 external/wpt/wasm/core/simd/simd_f32x4_arith.wast.js.html [ Failure Pass ]
+crbug.com/453144946 external/wpt/wasm/core/simd/simd_f64x2_arith.wast.js.html [ Crash Failure Pass ]
+crbug.com/485900039 fast/canvas/canvas-composite-alpha.html [ Failure Pass ]
+crbug.com/486067683 fast/compositor-wheel-scroll-latching/non-animated-scroll/subpixel-accumulation.html [ Failure Pass ]
+
+# Flaky on Linux
+crbug.com/485661981 external/wpt/hr-time/clamped-time-origin-isolated.https.html [ Failure Pass ]
+crbug.com/485661982 external/wpt/html/browsers/history/the-location-interface/location-ancestor-origins.sub.html [ Failure Pass ]
+crbug.com/485657225 external/wpt/html/semantics/forms/form-submission-0/urlencoded2.window.html [ Failure Pass ]
+crbug.com/485657225 external/wpt/html/semantics/forms/the-select-element/customizable-select/select-events.optional.html [ Failure Pass ]
+crbug.com/485657225 external/wpt/html/semantics/links/following-hyperlinks/activation-behavior.window.html [ Failure Pass ]
+crbug.com/475029697 external/wpt/webrtc/RTCRtpParameters-codec.html [ Failure Pass ]
+
+# Flaky FedCM iframe tests
+crbug.com/555242694 external/wpt/fedcm/fedcm-disconnect-iframe.sub.https.html [ Failure Pass ]
+crbug.com/555242694 external/wpt/fedcm/third-party-iframe/fedcm-third-party-iframe-active-mode.https.html [ Failure Pass ]
+crbug.com/555242694 external/wpt/fedcm/third-party-iframe/fedcm-third-party-iframe.https.html [ Failure Pass ]

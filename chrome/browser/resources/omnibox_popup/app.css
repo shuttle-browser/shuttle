@@ -1,0 +1,37 @@
+/* Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #scheme=relative
+ * #import=//resources/cr_components/composebox/composebox_shared_style.css.js
+ * #import=./omnibox_popup_shared_style.css.js
+ * #include=composebox-shared-style omnibox-popup-shared-style
+ * #css_wrapper_metadata_end */
+
+:host {
+  --cr-searchbox-min-width: 75%;
+  --cr-searchbox-results-margin-bottom: 0;
+  --cr-searchbox-results-padding-bottom: 0;
+  --cr-searchbox-width: 100%;
+
+  --text-input-inline-start-spacing: 16px;
+  --contextual-entrypoint-and-carousel-context-menu-container-padding-inline-start: 0;
+  --contextual-entrypoint-and-carousel-carousel-divider-margin-top: 8px;
+  --contextual-entrypoint-and-carousel-carousel-divider-margin-bottom: 8px;
+
+  font-size: var(--omnibox-font-size);
+}
+
+:host([has-visible-matches_]) .dropdownContainer {
+  padding-bottom: 10px;
+}
+
+/**
+ * In debug mode, make the element take up 50% of the viewport width.
+ */
+:host([is-debug]) {
+  display: block;
+  width: 50%;
+}

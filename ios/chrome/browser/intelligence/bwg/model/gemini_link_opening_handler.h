@@ -1,0 +1,34 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_INTELLIGENCE_BWG_MODEL_GEMINI_LINK_OPENING_HANDLER_H_
+#define IOS_CHROME_BROWSER_INTELLIGENCE_BWG_MODEL_GEMINI_LINK_OPENING_HANDLER_H_
+
+#import <Foundation/Foundation.h>
+
+#import "ios/chrome/browser/intelligence/bwg/model/bwg_link_opening_delegate.h"
+
+class UrlLoadingBrowserAgent;
+
+@class CommandDispatcher;
+
+// The handler for opening links for Gemini.
+@interface GeminiLinkOpeningHandler : NSObject <BWGLinkOpeningDelegate>
+
+// Initialize the handler with a URL loading browser agent.
+// In order to prevent a crash, we pass the 'CommandDispatcher' directly instead
+// of a command handler. This is because command handlers fail the protocol
+// conformance test at startup time, which is when this initializer get called.
+- (instancetype)initWithURLLoader:(UrlLoadingBrowserAgent*)URLLoadingAgent
+                       dispatcher:(CommandDispatcher*)dispatcher
+    NS_DESIGNATED_INITIALIZER;
+- (instancetype)init NS_UNAVAILABLE;
+
+// Disconnects the handler from the UrlLoadingBrowserAgent and dispatcher.
+// Must be called before the Browser is destroyed.
+- (void)disconnect;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_INTELLIGENCE_BWG_MODEL_GEMINI_LINK_OPENING_HANDLER_H_

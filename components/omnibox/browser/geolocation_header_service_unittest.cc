@@ -1,0 +1,1297 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/omnibox/browser/geolocation_header_service.h"
+
+#include <memory>
+
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/run_loop.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/run_until.h"
+#include "base/test/scoped_feature_list.h"
+#include "components/content_settings/core/browser/host_content_settings_map.h"
+#include "components/content_settings/core/common/content_settings_types.h"
+#include "components/content_settings/core/common/content_settings_utils.h"
+#include "components/content_settings/core/common/features.h"
+#include "components/omnibox/browser/autocomplete_match.h"
+#include "components/omnibox/browser/geolocation_header_service_test_api.h"
+#include "components/omnibox/common/omnibox_features.h"
+#include "components/permissions/test/test_permissions_client.h"
+#include "components/search_engines/search_engines_test_environment.h"
+#include "components/search_engines/template_url_data.h"
+#include "components/search_engines/template_url_service.h"
+#include "components/sync_preferences/testing_pref_service_syncable.h"
+#include "content/public/test/browser_task_environment.h"
+#if BUILDFLAG(IS_ANDROID)
+#include "components/location/android/mock_location_settings.h"
+#endif
+#include "services/device/public/cpp/test/scoped_geolocation_overrider.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "url/gurl.h"
+
+using testing::Optional;
+using testing::StartsWith;
+
+namespace {
+// Encoded location for:
+// lat: 20.3, long: 155.8, accuracy: 20.0, time: 123456789ms since epoch.
+// Textproto contents for precise location:
+// {
+//  role: CURRENT_LOCATION
+//  producer: DEVICE_LOCATION
+//  timestamp: 123456789000
+//  latlng: {
+//    latitude_e7 : 203000000
+//    longitude_e7: 1558000000
+//  }
+//  radius: 20000.0
+//  permission_granularity: PERMISSION_GRANULARITY_FINE
+// }
+constexpr double kTestLat = 20.3;
+constexpr double kTestLong = 155.8;
+constexpr double kTestAccuracy = 20.0;
+constexpr char kGoogleUrl[] = "https://www.google.com/search?q=test";
+constexpr char kLocationProtoPrefix[] = "w ";
+
+}  // namespace
+
+class GeolocationHeaderServiceTest : public testing::Test {
+ public:
+  GeolocationHeaderServiceTest() {
+    scoped_feature_list_.InitWithFeatures(
+        {omnibox::kPlatformAgnosticXGeo,
+         omnibox::kOmniboxXGeoPermissionGranularity,
+         content_settings::features::kApproximateGeolocationPermission},
+        {});
+  }
+
+  void SetUp() override {
+    search_engines_test_environment_ =
+        std::make_unique<search_engines::SearchEnginesTestEnvironment>();
+
+    HostContentSettingsMap::RegisterProfilePrefs(
+        search_engines_test_environment_->pref_service().registry());
+    settings_map_ = base::MakeRefCounted<HostContentSettingsMap>(
+        &search_engines_test_environment_->pref_service(), false, true, false,
+        false);
+    SetAppLevelPermission(/*granted=*/true);
+    UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                   /*is_precise=*/true);
+  }
+
+  void TearDown() override {
+    settings_map_->ShutdownOnUIThread();
+    search_engines_test_environment_ = nullptr;
+  }
+
+  std::unique_ptr<GeolocationHeaderService> CreateService() {
+#if BUILDFLAG(IS_ANDROID)
+    auto mock = std::make_unique<MockLocationSettings>();
+    MockLocationSettings::SetLocationStatus(
+        has_android_coarse_, has_android_fine_,
+        /*is_system_location_setting_enabled=*/true);
+    return std::make_unique<GeolocationHeaderService>(
+        settings_map(), template_url_service(), std::move(mock));
+#else
+    return std::make_unique<GeolocationHeaderService>(settings_map(),
+                                                      template_url_service());
+#endif
+  }
+
+  void SetAppLevelPermission(bool granted, bool fine_granted = true) {
+    has_android_coarse_ = granted;
+    has_android_fine_ = granted && fine_granted;
+    permissions_client_.SetHasDevicePermission(granted);
+  }
+
+  void SetSitePermissionWithOptions(const GURL& url,
+                                    GeolocationSetting setting) {
+    settings_map_->SetPermissionSettingDefaultScope(
+        url, url, content_settings::GeolocationContentSettingsType(), setting);
+  }
+
+  void SetDefaultSearchProviderUrl(std::string_view url,
+                                   bool send_x_geo_header = true) {
+    TemplateURLData data;
+    // Append {searchTerms} if not present so IsSearchURL() returns true.
+    std::string template_url(url);
+    if (template_url.find("{searchTerms}") == std::string::npos) {
+      if (template_url.back() != '/') {
+        template_url += "/";
+      }
+      template_url += "search?q={searchTerms}";
+    }
+    data.SetURL(template_url);
+    data.send_x_geo_header = send_x_geo_header;
+    if (url.find("google.com") != std::string::npos) {
+      data.SetKeyword(u"google.com");
+    }
+    TemplateURL* t_url =
+        template_url_service()->Add(std::make_unique<TemplateURL>(data));
+    template_url_service()->SetUserSelectedDefaultSearchProvider(t_url);
+  }
+
+  void SetupGoogleDseWithPermissions() {
+    SetDefaultSearchProviderUrl(kGoogleUrl);
+    SetSitePermissionWithOptions(
+        GURL(kGoogleUrl),
+        {PermissionOption::kAllowed, PermissionOption::kAllowed});
+  }
+
+  void UpdateLocation(double latitude,
+                      double longitude,
+                      double accuracy,
+                      base::Time timestamp,
+                      bool is_precise) {
+    auto result = device::mojom::GeopositionResult::NewPosition(
+        device::mojom::Geoposition::New());
+    result->get_position()->latitude = latitude;
+    result->get_position()->longitude = longitude;
+    result->get_position()->accuracy = accuracy;
+    result->get_position()->timestamp = timestamp;
+    result->get_position()->is_precise = is_precise;
+    geolocation_overrider_.UpdateLocation(std::move(result));
+  }
+
+  HostContentSettingsMap* settings_map() { return settings_map_.get(); }
+  TemplateURLService* template_url_service() {
+    return search_engines_test_environment_->template_url_service();
+  }
+
+ protected:
+  content::BrowserTaskEnvironment task_environment_{
+      base::test::TaskEnvironment::TimeSource::MOCK_TIME};
+  scoped_refptr<HostContentSettingsMap> settings_map_;
+  permissions::TestPermissionsClient permissions_client_;
+  bool has_android_coarse_ = true;
+  bool has_android_fine_ = true;
+  base::test::ScopedFeatureList scoped_feature_list_;
+  std::unique_ptr<search_engines::SearchEnginesTestEnvironment>
+      search_engines_test_environment_;
+
+  device::ScopedGeolocationOverrider geolocation_overrider_{0.0, 0.0};
+};
+
+TEST_F(GeolocationHeaderServiceTest, PermissionChecks) {
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  GURL url(kGoogleUrl);
+  SetupGoogleDseWithPermissions();
+
+  // 1. Default is ASK, so not allowed. PrimeLocation shouldn't fetch.
+  service->PrimeLocation();
+  EXPECT_FALSE(service->HasCachedLocation());
+
+  // 2. Set site permission to ALLOW. Allowed since app-level is granted.
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+  service->PrimeLocation();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  // 3. Revoke app-level permission.
+  SetAppLevelPermission(/*granted=*/false);
+  std::unique_ptr<GeolocationHeaderService> service2 = CreateService();
+  service2->PrimeLocation();
+  EXPECT_FALSE(service2->HasCachedLocation());
+
+  // 4. Restore app-level, revoke site-level.
+  SetAppLevelPermission(/*granted=*/true);
+  std::unique_ptr<GeolocationHeaderService> service3 = CreateService();
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kDenied, PermissionOption::kDenied});
+  service3->PrimeLocation();
+  EXPECT_FALSE(service3->HasCachedLocation());
+}
+
+// Verifies that the service only requests a single position update, destroying
+// the location watcher immediately after receiving the position.
+TEST_F(GeolocationHeaderServiceTest, SingleQueryInstance) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  SetupGoogleDseWithPermissions();
+
+  EXPECT_EQ(0u, geolocation_overrider_.GetGeolocationInstanceCount());
+
+  // Pause the overrider so the callback is not immediately fired.
+  geolocation_overrider_.Pause();
+
+  service->PrimeLocation();
+
+  // Wait until the Geolocation instance is created in the device service, this
+  // is not flaky because the overrider is paused.
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return geolocation_overrider_.GetGeolocationInstanceCount() == 1u;
+  }));
+
+  // Resume the overrider. This fulfills the QueryNextPosition request, which
+  // causes the service to save the location and reset the remote, destroying
+  // the instance.
+  geolocation_overrider_.Resume();
+
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return geolocation_overrider_.GetGeolocationInstanceCount() == 0u;
+  }));
+
+  EXPECT_TRUE(service->HasCachedLocation());
+}
+
+// Verifies that priming requests a location, and that subsequent requests yield
+// a valid header.
+TEST_F(GeolocationHeaderServiceTest, PrimeAndGetLocation) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  GURL url(kGoogleUrl);
+  SetupGoogleDseWithPermissions();
+
+  EXPECT_FALSE(service->HasCachedLocation());
+
+  base::HistogramTester histogram_tester;
+  service->PrimeLocation();
+
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  std::optional<std::string> header =
+      service->GetLocationHeader(url, /*for_automatic_sending=*/true);
+  EXPECT_THAT(header, Optional(StartsWith(kLocationProtoPrefix)));
+
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.GetLocationOutcome.Automatic",
+      0 /* kSuccess */, 1);
+}
+
+// Verifies that approximate site permissions still allow for the generation of
+// a location header.
+TEST_F(GeolocationHeaderServiceTest, ApproximatePermission) {
+  base::Time timestamp = base::Time::UnixEpoch() + base::Milliseconds(400);
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, timestamp,
+                 /*is_precise=*/false);
+
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  GeolocationHeaderServiceTestApi(service.get())
+      .SetLocationAge(base::Minutes(1));
+  GURL url(kGoogleUrl);
+  SetDefaultSearchProviderUrl(url.spec());
+
+  // Grant only approximate permission.
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAllowed, PermissionOption::kDenied});
+
+  service->PrimeLocation();
+
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  base::HistogramTester histogram_tester;
+  std::optional<std::string> header =
+      service->GetLocationHeader(url, /*for_automatic_sending=*/true);
+  ASSERT_TRUE(header.has_value());
+  // The expected string for COARSE location matching the Java tests.
+  EXPECT_EQ(*header, "w CAEQDBiAtRgqCg3AiBkMFYAx3Vw9AECcRsgBAQ==");
+
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.GetLocationOutcome.Automatic",
+      0 /* kSuccess */, 1);
+}
+
+// Verifies that location headers are strictly blocked for non-HTTPS URL
+// requests.
+TEST_F(GeolocationHeaderServiceTest, NonHttpsUrl) {
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  GURL url("http://www.google.com");
+  SetDefaultSearchProviderUrl(url.spec());
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  base::HistogramTester histogram_tester;
+  service->PrimeLocation();
+  EXPECT_FALSE(service->HasCachedLocation());
+
+  service->GetLocationHeader(url, /*for_automatic_sending=*/true);
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.GetLocationOutcome.Automatic",
+      3 /* kInsecureConnection */, 1);
+}
+
+// Verifies the structural integrity and base64url encoding of the X-Geo header
+// payload.
+TEST_F(GeolocationHeaderServiceTest, Serialization) {
+  base::Time timestamp = base::Time::UnixEpoch() + base::Milliseconds(400);
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, timestamp,
+                 /*is_precise=*/true);
+
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  GeolocationHeaderServiceTestApi(service.get())
+      .SetLocationAge(base::Minutes(1));
+  GURL url(kGoogleUrl);
+  SetupGoogleDseWithPermissions();
+
+  service->PrimeLocation();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  base::HistogramTester histogram_tester;
+  std::optional<std::string> header =
+      service->GetLocationHeader(url, /*for_automatic_sending=*/true);
+  ASSERT_TRUE(header.has_value());
+  // The expected string corresponds to the exact parameters above matching the
+  // Java tests.
+  EXPECT_EQ(*header, "w CAEQDBiAtRgqCg3AiBkMFYAx3Vw9AECcRsgBAg==");
+
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.GetLocationOutcome.Automatic",
+      0 /* kSuccess */, 1);
+}
+
+// Verifies that cached location data correctly expires after 24 hours,
+// preventing stale location leakage.
+TEST_F(GeolocationHeaderServiceTest, OldLocation) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  GURL url(kGoogleUrl);
+  SetupGoogleDseWithPermissions();
+
+  service->PrimeLocation();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  // Advance time by 23 hours. Location should still be valid.
+  task_environment_.FastForwardBy(base::Hours(23));
+  EXPECT_TRUE(service->HasCachedLocation());
+  {
+    base::HistogramTester histogram_tester;
+    EXPECT_TRUE(service->GetLocationHeader(url, /*for_automatic_sending=*/true)
+                    .has_value());
+    histogram_tester.ExpectUniqueSample(
+        "Omnibox.GeolocationHeaderService.GetLocationOutcome.Automatic",
+        0 /* kSuccess */, 1);
+  }
+
+  // Advance time by 2 more hours (25 total). Location should be expired.
+  task_environment_.FastForwardBy(base::Hours(2));
+  EXPECT_FALSE(service->HasCachedLocation());
+
+  base::HistogramTester histogram_tester;
+  EXPECT_FALSE(service->GetLocationHeader(url, /*for_automatic_sending=*/true)
+                   .has_value());
+
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.GetLocationOutcome.Automatic",
+      1 /* kNoCachedLocation */, 1);
+}
+
+// Verifies that location headers are not appended to arbitrary non-Default
+// Search Engine URLs.
+TEST_F(GeolocationHeaderServiceTest, NonDseUrl) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  GURL dse_url("https://www.bing.com");
+  SetDefaultSearchProviderUrl(dse_url.spec());
+  SetSitePermissionWithOptions(
+      dse_url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  // Prime location with the DSE URL
+  service->PrimeLocation();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  // Try to get header for a completely different URL
+  GURL non_dse_url("https://www.yahoo.com");
+  SetSitePermissionWithOptions(
+      non_dse_url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+  base::HistogramTester histogram_tester;
+  std::optional<std::string> header =
+      service->GetLocationHeader(non_dse_url, /*for_automatic_sending=*/true);
+  EXPECT_FALSE(header.has_value());
+
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.GetLocationOutcome.Automatic",
+      4 /* kIneligibleUrl */, 1);
+}
+
+// Verifies that Google domains are NOT eligible for the header if their origin
+// differs from the DSE origin, preventing cross-TLD leakage.
+TEST_F(GeolocationHeaderServiceTest, GoogleFallbackUrl) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+
+  // Use a static search URL without {searchTerms} so GenerateSearchURL returns
+  // it identically.
+  GURL dse_url("https://www.google.com/search?q=test");
+  SetDefaultSearchProviderUrl(dse_url.spec());
+
+  SetSitePermissionWithOptions(
+      dse_url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  // Use a Google search URL that is not exactly the DSE origin but is Google
+  GURL google_fallback_url("https://www.google.co.uk/search?q=test");
+  SetSitePermissionWithOptions(
+      google_fallback_url,
+      {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  // Prime location with the DSE URL
+  service->PrimeLocation();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  base::HistogramTester histogram_tester;
+  std::optional<std::string> header = service->GetLocationHeader(
+      google_fallback_url, /*for_automatic_sending=*/true);
+  EXPECT_FALSE(header.has_value());
+
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.GetLocationOutcome.Automatic",
+      4 /* kIneligibleUrl */, 1);
+}
+
+// Verifies behavior when the OS grants only coarse location, but the site has
+// precise location allowed.
+TEST_F(GeolocationHeaderServiceTest, AppCoarseSitePrecisePermission) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/false);
+
+  GURL url(kGoogleUrl);
+  SetupGoogleDseWithPermissions();
+
+  SetAppLevelPermission(/*granted=*/true, /*fine_granted=*/false);
+
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+
+  service->PrimeLocation();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  base::HistogramTester histogram_tester;
+  std::optional<std::string> header =
+      service->GetLocationHeader(url, /*for_automatic_sending=*/true);
+  EXPECT_THAT(header, Optional(StartsWith(kLocationProtoPrefix)));
+
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.GetLocationOutcome.Automatic",
+      0 /* kSuccess */, 1);
+}
+
+// Verifies that a precise location from the device is appropriately handled
+// when the site only grants coarse permissions.
+TEST_F(GeolocationHeaderServiceTest, PositionPreciseSiteCoarsePermission) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  GURL url(kGoogleUrl);
+  SetDefaultSearchProviderUrl(url.spec());
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAllowed, PermissionOption::kDenied});
+
+  SetAppLevelPermission(/*granted=*/true, /*fine_granted=*/true);
+
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+
+  service->PrimeLocation();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  base::HistogramTester histogram_tester;
+  std::optional<std::string> header =
+      service->GetLocationHeader(url, /*for_automatic_sending=*/true);
+  EXPECT_FALSE(header.has_value());
+
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.GetLocationOutcome.Automatic",
+      5 /* kHeaderGranularityMismatch */, 1);
+}
+
+// Verifies that a cached precise location is not sent if precise permission is
+// revoked before GetLocationHeader.
+TEST_F(GeolocationHeaderServiceTest, PreciseToCoarseDowngradeLeak) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  GURL url(kGoogleUrl);
+  SetupGoogleDseWithPermissions();
+  SetAppLevelPermission(/*granted=*/true, /*fine_granted=*/true);
+
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+
+  service->PrimeLocation();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  // Downgrade permission to coarse.
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAllowed, PermissionOption::kDenied});
+
+  base::HistogramTester histogram_tester;
+  // The cached location should be dropped and nullopt returned.
+  std::optional<std::string> header =
+      service->GetLocationHeader(url, /*for_automatic_sending=*/true);
+  EXPECT_FALSE(header.has_value());
+
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.GetLocationOutcome.Automatic",
+      5 /* kHeaderGranularityMismatch */, 1);
+}
+
+// Verifies that only a search URL receives location.
+TEST_F(GeolocationHeaderServiceTest, ConsistentHeader) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+
+  GURL dse_url(kGoogleUrl);
+  SetDefaultSearchProviderUrl(dse_url.spec());
+  SetSitePermissionWithOptions(
+      dse_url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  service->PrimeLocation();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  // X-Geo should be sent for Google search results page URLs.
+  std::optional<std::string> header =
+      service->GetLocationHeader(dse_url, /*for_automatic_sending=*/true);
+  EXPECT_THAT(header, Optional(StartsWith(kLocationProtoPrefix)));
+
+  // Legacy Google search URLs (e.g. /webhp) should also be supported via the
+  // fallback if the origin matches the DSE.
+  GURL legacy_search_url("https://www.google.com/webhp?#q=dinosaurs");
+  SetSitePermissionWithOptions(legacy_search_url, {PermissionOption::kAllowed,
+                                                   PermissionOption::kAllowed});
+  std::optional<std::string> legacy_header = service->GetLocationHeader(
+      legacy_search_url, /*for_automatic_sending=*/true);
+  EXPECT_THAT(legacy_header, Optional(StartsWith(kLocationProtoPrefix)));
+
+  // But only the current CCTLD.
+  GURL diff_cctld("https://www.google.co.jp/webhp?#q=dinosaurs");
+  SetSitePermissionWithOptions(
+      diff_cctld, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+  EXPECT_FALSE(
+      service->GetLocationHeader(diff_cctld, /*for_automatic_sending=*/true)
+          .has_value());
+
+  // X-Geo shouldn't be sent with URLs that aren't the Google search results
+  // page.
+  GURL invalid_url("invalid$url");
+  EXPECT_FALSE(
+      service->GetLocationHeader(invalid_url, /*for_automatic_sending=*/true)
+          .has_value());
+
+  GURL chrome_fr("https://www.chrome.fr/");
+  SetSitePermissionWithOptions(
+      chrome_fr, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+  EXPECT_FALSE(
+      service->GetLocationHeader(chrome_fr, /*for_automatic_sending=*/true)
+          .has_value());
+
+  GURL google_homepage("https://www.google.com/");
+  EXPECT_FALSE(
+      service
+          ->GetLocationHeader(google_homepage, /*for_automatic_sending=*/true)
+          .has_value());
+
+  GURL google_maps("https://www.google.com/maps");
+  EXPECT_FALSE(
+      service->GetLocationHeader(google_maps, /*for_automatic_sending=*/true)
+          .has_value());
+
+  // X-Geo shouldn't be sent over HTTP.
+  GURL http_search("http://www.google.com/search?q=potatoes");
+  SetSitePermissionWithOptions(
+      http_search, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+  EXPECT_FALSE(
+      service->GetLocationHeader(http_search, /*for_automatic_sending=*/true)
+          .has_value());
+
+  GURL http_webhp("http://www.google.com/webhp?#q=dinosaurs");
+  SetSitePermissionWithOptions(
+      http_webhp, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+  EXPECT_FALSE(
+      service->GetLocationHeader(http_webhp, /*for_automatic_sending=*/true)
+          .has_value());
+}
+
+// Verifies that a fresh cached location prevents querying for a new one.
+TEST_F(GeolocationHeaderServiceTest, FreshLocationPreventsQuery) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  auto service = CreateService();
+  SetupGoogleDseWithPermissions();
+
+  // 1. First call should fetch.
+  geolocation_overrider_.Pause();
+  service->PrimeLocation();
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return geolocation_overrider_.GetGeolocationInstanceCount() == 1u;
+  }));
+  geolocation_overrider_.Resume();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  // 2. Second call should return early, not fetching a new location.
+  service->PrimeLocation();
+  EXPECT_EQ(0u, geolocation_overrider_.GetGeolocationInstanceCount());
+}
+
+// Verifies that the service requests high accuracy from the device service when
+// precise permissions are granted.
+TEST_F(GeolocationHeaderServiceTest, HighAccuracyHint) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  auto service = CreateService();
+  GURL url(kGoogleUrl);
+  SetDefaultSearchProviderUrl(url.spec());
+
+  // 1. Grant precise permission.
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+  SetAppLevelPermission(/*granted=*/true, /*fine_granted=*/true);
+
+  // Prime location and wait for connection.
+  geolocation_overrider_.Pause();
+  service->PrimeLocation();
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return geolocation_overrider_.GetGeolocationInstanceCount() == 1u;
+  }));
+  geolocation_overrider_.Resume();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  // 2. Revoke precise permission (downgrade to approximate).
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAllowed, PermissionOption::kDenied});
+
+  // GetLocationHeader should reset the connection.
+  EXPECT_FALSE(service->GetLocationHeader(url, /*for_automatic_sending=*/true)
+                   .has_value());
+
+  // Prime again. This should create a new connection.
+  geolocation_overrider_.Pause();
+  service->PrimeLocation();
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return geolocation_overrider_.GetGeolocationInstanceCount() == 1u;
+  }));
+  geolocation_overrider_.Resume();
+
+  // Wait for the new connection to be established.
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+}
+
+class GeolocationHeaderServiceInlineLocationTest
+    : public GeolocationHeaderServiceTest {
+ public:
+  GeolocationHeaderServiceInlineLocationTest() {
+    feature_list_.InitWithFeatures(
+        {omnibox::kPlatformAgnosticXGeo,
+         omnibox::kOmniboxXGeoPermissionGranularity,
+         omnibox::kInlineLocationSignaling,
+         content_settings::features::kApproximateGeolocationPermission},
+        {});
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+// Tests that when the InlineLocationSignaling flag is enabled and the DSE
+// lacks permission, PrimeLocation uses the cache-only flow and does not
+// trigger active scans.
+TEST_F(GeolocationHeaderServiceInlineLocationTest, PrimeLocationCacheOnly) {
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+
+  // Setup DSE but without permissions (ASK)
+  SetDefaultSearchProviderUrl(kGoogleUrl);
+  SetSitePermissionWithOptions(
+      GURL(kGoogleUrl), {PermissionOption::kAsk, PermissionOption::kAsk});
+
+  // Clear the mock service location by overriding with an error
+  geolocation_overrider_.OverrideGeolocation(
+      device::mojom::GeopositionResult::NewError(
+          device::mojom::GeopositionError::New(
+              device::mojom::GeopositionErrorCode::kPositionUnavailable, "",
+              "")));
+
+  service->PrimeLocation();
+
+  // Wait for the call to complete (connection reset). If a non-cached location
+  // was used, it would stay bound waiting for an update.
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return !GeolocationHeaderServiceTestApi(service.get())
+                .is_geolocation_bound();
+  }));
+
+  EXPECT_EQ(geolocation_overrider_.GetQueryCachedPositionCount(), 1u);
+  EXPECT_EQ(geolocation_overrider_.GetQueryNextPositionCount(), 0u);
+  EXPECT_FALSE(service->HasCachedLocation());
+}
+
+// Tests that when the InlineLocationSignaling flag is enabled and the DSE
+// has permission, PrimeLocation uses the standard flow and waits for active
+// scans.
+TEST_F(GeolocationHeaderServiceInlineLocationTest, PrimeLocationStandard) {
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+
+  SetupGoogleDseWithPermissions();
+
+  // Clear the mock service location by overriding with an error
+  geolocation_overrider_.OverrideGeolocation(
+      device::mojom::GeopositionResult::NewError(
+          device::mojom::GeopositionError::New(
+              device::mojom::GeopositionErrorCode::kPositionUnavailable, "",
+              "")));
+
+  service->PrimeLocation();
+
+  // Verify it is waiting for update (connection remains bound)
+  EXPECT_TRUE(
+      GeolocationHeaderServiceTestApi(service.get()).is_geolocation_bound());
+
+  // Now simulate a fresh update.
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  // Wait for the call to complete (connection reset)
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return !GeolocationHeaderServiceTestApi(service.get())
+                .is_geolocation_bound();
+  }));
+
+  EXPECT_EQ(geolocation_overrider_.GetQueryCachedPositionCount(), 0u);
+  EXPECT_EQ(geolocation_overrider_.GetQueryNextPositionCount(), 1u);
+  EXPECT_TRUE(service->HasCachedLocation());
+}
+
+// Tests that when the InlineLocationSignaling flag is disabled and the DSE
+// lacks permission, PrimeLocation aborts early and does not query the service.
+TEST_F(GeolocationHeaderServiceTest, PrimeLocationFlagDisabled) {
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+
+  // Setup DSE but without permissions (ASK)
+  SetDefaultSearchProviderUrl(kGoogleUrl);
+  SetSitePermissionWithOptions(
+      GURL(kGoogleUrl), {PermissionOption::kAsk, PermissionOption::kAsk});
+
+  // Clear the mock service location by overriding with an error
+  geolocation_overrider_.OverrideGeolocation(
+      device::mojom::GeopositionResult::NewError(
+          device::mojom::GeopositionError::New(
+              device::mojom::GeopositionErrorCode::kPositionUnavailable, "",
+              "")));
+
+  service->PrimeLocation();
+
+  // Since the flag was disabled and DSE not allowed, it should have aborted
+  // early.
+  EXPECT_EQ(geolocation_overrider_.GetQueryCachedPositionCount(), 0u);
+  EXPECT_EQ(geolocation_overrider_.GetQueryNextPositionCount(), 0u);
+  EXPECT_FALSE(service->HasCachedLocation());
+  EXPECT_FALSE(
+      GeolocationHeaderServiceTestApi(service.get()).is_geolocation_bound());
+
+  // Now grant permission to the DSE and verify that PrimeLocation proceeds.
+  SetupGoogleDseWithPermissions();
+
+  service->PrimeLocation();
+
+  // Verify it is waiting for update (connection remains bound)
+  EXPECT_TRUE(
+      GeolocationHeaderServiceTestApi(service.get()).is_geolocation_bound());
+
+  // Now simulate a fresh update.
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  // Wait for the call to complete (connection reset)
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return !GeolocationHeaderServiceTestApi(service.get())
+                .is_geolocation_bound();
+  }));
+
+  EXPECT_EQ(geolocation_overrider_.GetQueryNextPositionCount(), 1u);
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+}
+
+// Verifies that if send_x_geo_header is omitted, it defaults to opted-out.
+// This tests a DuckDuckGo URL as a 3rd-party engine case.
+TEST_F(GeolocationHeaderServiceTest, SearchEngineOptInOmitted) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  TemplateURLData data;
+  data.SetURL("https://duckduckgo.com/?q={searchTerms}");
+  auto* t_url =
+      template_url_service()->Add(std::make_unique<TemplateURL>(data));
+  template_url_service()->SetUserSelectedDefaultSearchProvider(t_url);
+
+  GURL url("https://duckduckgo.com/?q=test");
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  auto service = CreateService();
+  service->PrimeLocation();
+  EXPECT_FALSE(service->HasCachedLocation());
+  EXPECT_FALSE(service->GetLocationHeader(url, /*for_automatic_sending=*/true)
+                   .has_value());
+  EXPECT_FALSE(
+      GeolocationHeaderServiceTestApi(service.get()).is_geolocation_bound());
+}
+
+// Verifies that if send_x_geo_header is explicitly set to false, it is
+// opted-out. This tests a Google URL case.
+TEST_F(GeolocationHeaderServiceTest, SearchEngineOptInExplicitFalse) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  TemplateURLData data;
+  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  data.send_x_geo_header = false;
+  auto* t_url =
+      template_url_service()->Add(std::make_unique<TemplateURL>(data));
+  template_url_service()->SetUserSelectedDefaultSearchProvider(t_url);
+
+  GURL url("https://www.google.com/search?q=test");
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  auto service = CreateService();
+  service->PrimeLocation();
+  EXPECT_FALSE(service->HasCachedLocation());
+  EXPECT_FALSE(service->GetLocationHeader(url, /*for_automatic_sending=*/true)
+                   .has_value());
+  EXPECT_FALSE(
+      GeolocationHeaderServiceTestApi(service.get()).is_geolocation_bound());
+}
+
+// Verifies that if send_x_geo_header is explicitly set to true, it is opted-in.
+// This tests a Bing URL case.
+TEST_F(GeolocationHeaderServiceTest, SearchEngineOptInExplicitTrue) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  TemplateURLData data;
+  data.SetURL("https://www.bing.com/search?q={searchTerms}");
+  data.send_x_geo_header = true;
+  auto* t_url =
+      template_url_service()->Add(std::make_unique<TemplateURL>(data));
+  template_url_service()->SetUserSelectedDefaultSearchProvider(t_url);
+
+  GURL url("https://www.bing.com/search?q=test");
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  auto service = CreateService();
+  service->PrimeLocation();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+  EXPECT_TRUE(service->GetLocationHeader(url, /*for_automatic_sending=*/true)
+                  .has_value());
+}
+
+// Verifies that a change in DSE updates the opt-in value at runtime.
+TEST_F(GeolocationHeaderServiceTest, SearchEngineOptInRuntimeChange) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  auto service = CreateService();
+  GURL url(kGoogleUrl);
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  // 1. DSE opted in.
+  SetDefaultSearchProviderUrl(url.spec(), /*send_x_geo_header=*/true);
+  service->PrimeLocation();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+  EXPECT_TRUE(service->GetLocationHeader(url, /*for_automatic_sending=*/true)
+                  .has_value());
+
+  // 2. Change DSE to opted out at runtime.
+  SetDefaultSearchProviderUrl(url.spec(), /*send_x_geo_header=*/false);
+  EXPECT_FALSE(service->GetLocationHeader(url, /*for_automatic_sending=*/true)
+                   .has_value());
+}
+
+// Verifies that the header is NOT sent if the URL is not same-origin with DSE,
+// even if it's a valid search URL for another engine.
+TEST_F(GeolocationHeaderServiceTest, NonDseOriginRedirect) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  auto service = CreateService();
+  GURL dse_url(kGoogleUrl);
+  SetDefaultSearchProviderUrl(dse_url.spec(), /*send_x_geo_header=*/true);
+  SetSitePermissionWithOptions(
+      dse_url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  service->PrimeLocation();
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  // URL with different origin (even if it's a valid search URL template for
+  // another engine).
+  GURL non_dse_url("https://www.bing.com/search?q=test");
+  SetSitePermissionWithOptions(
+      non_dse_url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  EXPECT_FALSE(
+      service->GetLocationHeader(non_dse_url, /*for_automatic_sending=*/true)
+          .has_value());
+}
+
+// Verifies that the Google fallback path respects the opt-in flag.
+TEST_F(GeolocationHeaderServiceTest, GoogleFallbackOptIn) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  auto service = CreateService();
+  GURL dse_url(kGoogleUrl);
+  SetDefaultSearchProviderUrl(dse_url.spec(), /*send_x_geo_header=*/false);
+  SetSitePermissionWithOptions(
+      dse_url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  service->PrimeLocation();
+  EXPECT_FALSE(service->HasCachedLocation());
+  EXPECT_FALSE(
+      GeolocationHeaderServiceTestApi(service.get()).is_geolocation_bound());
+
+  // Google fallback URL (e.g. /webhp)
+  GURL fallback_url("https://www.google.com/webhp?#q=dinosaurs");
+  SetSitePermissionWithOptions(
+      fallback_url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  base::HistogramTester histogram_tester;
+  EXPECT_FALSE(
+      service->GetLocationHeader(fallback_url, /*for_automatic_sending=*/true)
+          .has_value());
+
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.GetLocationOutcome.Automatic",
+      4 /* kIneligibleUrl */, 1);
+}
+
+// Test location retrieval for omnibox inline location suggestions.
+TEST_F(GeolocationHeaderServiceInlineLocationTest,
+       GetLocationHeaderInlineLocationSuggestion) {
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/false);
+
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  GURL url(kGoogleUrl);
+
+  SetDefaultSearchProviderUrl(url.spec());
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAsk, PermissionOption::kAsk});
+
+  EXPECT_FALSE(service->HasCachedLocation());
+
+  service->PrimeLocation();
+
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  base::HistogramTester histogram_tester;
+  std::optional<std::string> omnibox_suggestion_header =
+      service->GetLocationHeader(url, /*for_automatic_sending=*/false);
+  EXPECT_THAT(omnibox_suggestion_header,
+              Optional(StartsWith(kLocationProtoPrefix)));
+
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.GetLocationOutcome.InlineSuggestion",
+      0 /* kSuccess */, 1);
+
+  std::optional<std::string> automatic_header =
+      service->GetLocationHeader(url, /*for_automatic_sending=*/true);
+  EXPECT_FALSE(automatic_header.has_value());
+
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.GetLocationOutcome.Automatic",
+      2 /* kPermissionStateMismatch */, 1);
+}
+
+// Verifies that GetCachedLocationAccuracy returns the correct accuracy level.
+TEST_F(GeolocationHeaderServiceInlineLocationTest, GetCachedLocationAccuracy) {
+  auto service = CreateService();
+  GURL url(kGoogleUrl);
+  SetupGoogleDseWithPermissions();
+
+  // 1. When cache is empty, it should return std::nullopt.
+  EXPECT_EQ(service->GetCachedLocationAccuracy(), std::nullopt);
+
+  // 2. When coarse location is cached.
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/false);
+  service->PrimeLocation();
+  ASSERT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+  EXPECT_EQ(service->GetCachedLocationAccuracy(),
+            GeolocationAccuracy::kApproximate);
+
+  // 3. When precise location is cached. We recreate the service to ensure its
+  // cache is cleared and it actively primes the new precise location.
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+  service = CreateService();
+  service->PrimeLocation();
+  ASSERT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+  EXPECT_EQ(service->GetCachedLocationAccuracy(),
+            GeolocationAccuracy::kPrecise);
+}
+
+// Verifies that interactive inline suggestion retrieval bypasses the permission
+// granularity checks.
+TEST_F(GeolocationHeaderServiceInlineLocationTest,
+       GetLocationHeaderInteractiveBypass) {
+  // Cache a precise location.
+  UpdateLocation(kTestLat, kTestLong, kTestAccuracy, base::Time::Now(),
+                 /*is_precise=*/true);
+
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  GURL url(kGoogleUrl);
+  SetDefaultSearchProviderUrl(url.spec());
+
+  // The DSE is in ASK state to trigger the suggestions flow.
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAsk, PermissionOption::kAsk});
+  SetAppLevelPermission(/*granted=*/true, /*fine_granted=*/true);
+
+  service->PrimeLocation();
+  ASSERT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  // The interactive flow (for_automatic_sending = false) should bypass the
+  // precision check and return a valid precise header.
+  std::optional<std::string> suggestion_header =
+      service->GetLocationHeader(url, /*for_automatic_sending=*/false);
+  EXPECT_THAT(suggestion_header, Optional(StartsWith(kLocationProtoPrefix)));
+
+  // The automatic flow (for_automatic_sending = true) should fail because DSE
+  // permission is ASK.
+  std::optional<std::string> automatic_header =
+      service->GetLocationHeader(url, /*for_automatic_sending=*/true);
+  EXPECT_FALSE(automatic_header.has_value());
+}
+
+TEST_F(GeolocationHeaderServiceInlineLocationTest,
+       MaybeRecordInlineLocationSuggestionClicked_DsePermissionAsk) {
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  GURL url(kGoogleUrl);
+  SetDefaultSearchProviderUrl(url.spec());
+
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAsk, PermissionOption::kAsk});
+
+  base::HistogramTester histograms;
+
+  // Normal non-inline location suggestion match -> should not log.
+  AutocompleteMatch match(nullptr, 0, false,
+                          AutocompleteMatchType::SEARCH_WHAT_YOU_TYPED);
+  service->MaybeRecordInlineLocationSuggestionClicked(match);
+  histograms.ExpectTotalCount("Omnibox.InlineLocationSuggestion.Ask.Clicked",
+                              0);
+  histograms.ExpectTotalCount(
+      "Omnibox.InlineLocationSuggestion.Ask.ParentClicked", 0);
+
+  // Clicked inline location suggestion match.
+  AutocompleteMatch inline_match(nullptr, 0, false,
+                                 AutocompleteMatchType::SEARCH_WHAT_YOU_TYPED);
+  inline_match.subtypes.insert(omnibox::SUBTYPE_LOCATION_SUGGEST_TRIGGER);
+  inline_match.extra_headers[kXGeoHeader] = "dummy";
+  service->MaybeRecordInlineLocationSuggestionClicked(inline_match);
+  histograms.ExpectUniqueSample("Omnibox.InlineLocationSuggestion.Ask.Clicked",
+                                true, 1);
+  histograms.ExpectTotalCount(
+      "Omnibox.InlineLocationSuggestion.Ask.ParentClicked", 0);
+
+  // Parent clicked inline location suggestion match.
+  AutocompleteMatch parent_match(nullptr, 0, false,
+                                 AutocompleteMatchType::SEARCH_WHAT_YOU_TYPED);
+  parent_match.subtypes.insert(omnibox::SUBTYPE_LOCATION_SUGGEST_TRIGGER);
+  service->MaybeRecordInlineLocationSuggestionClicked(parent_match);
+  histograms.ExpectUniqueSample("Omnibox.InlineLocationSuggestion.Ask.Clicked",
+                                true, 1);
+  histograms.ExpectUniqueSample(
+      "Omnibox.InlineLocationSuggestion.Ask.ParentClicked", true, 1);
+}
+
+TEST_F(GeolocationHeaderServiceInlineLocationTest,
+       MaybeRecordInlineLocationSuggestionClicked_DsePermissionDenied) {
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  GURL url(kGoogleUrl);
+  SetDefaultSearchProviderUrl(url.spec());
+
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kDenied, PermissionOption::kDenied});
+
+  base::HistogramTester histograms;
+
+  // Clicked inline location suggestion match.
+  AutocompleteMatch inline_match(nullptr, 0, false,
+                                 AutocompleteMatchType::SEARCH_WHAT_YOU_TYPED);
+  inline_match.subtypes.insert(omnibox::SUBTYPE_LOCATION_SUGGEST_TRIGGER);
+  inline_match.extra_headers[kXGeoHeader] = "dummy";
+  service->MaybeRecordInlineLocationSuggestionClicked(inline_match);
+  histograms.ExpectUniqueSample("Omnibox.InlineLocationSuggestion.Deny.Clicked",
+                                true, 1);
+  histograms.ExpectTotalCount(
+      "Omnibox.InlineLocationSuggestion.Deny.ParentClicked", 0);
+
+  // Parent clicked inline location suggestion match.
+  AutocompleteMatch parent_match(nullptr, 0, false,
+                                 AutocompleteMatchType::SEARCH_WHAT_YOU_TYPED);
+  parent_match.subtypes.insert(omnibox::SUBTYPE_LOCATION_SUGGEST_TRIGGER);
+  service->MaybeRecordInlineLocationSuggestionClicked(parent_match);
+  histograms.ExpectUniqueSample("Omnibox.InlineLocationSuggestion.Deny.Clicked",
+                                true, 1);
+  histograms.ExpectUniqueSample(
+      "Omnibox.InlineLocationSuggestion.Deny.ParentClicked", true, 1);
+}
+
+TEST_F(GeolocationHeaderServiceInlineLocationTest,
+       MaybeRecordInlineLocationSuggestionClicked_DsePermissionAllowed) {
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  GURL url(kGoogleUrl);
+  SetDefaultSearchProviderUrl(url.spec());
+
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  base::HistogramTester histograms;
+
+  AutocompleteMatch inline_match(nullptr, 0, false,
+                                 AutocompleteMatchType::SEARCH_WHAT_YOU_TYPED);
+  inline_match.subtypes.insert(omnibox::SUBTYPE_LOCATION_SUGGEST_TRIGGER);
+  inline_match.extra_headers[kXGeoHeader] = "dummy";
+  service->MaybeRecordInlineLocationSuggestionClicked(inline_match);
+
+  AutocompleteMatch parent_match(nullptr, 0, false,
+                                 AutocompleteMatchType::SEARCH_WHAT_YOU_TYPED);
+  parent_match.subtypes.insert(omnibox::SUBTYPE_LOCATION_SUGGEST_TRIGGER);
+  service->MaybeRecordInlineLocationSuggestionClicked(parent_match);
+
+  histograms.ExpectTotalCount("Omnibox.InlineLocationSuggestion.Ask.Clicked",
+                              0);
+  histograms.ExpectTotalCount(
+      "Omnibox.InlineLocationSuggestion.Ask.ParentClicked", 0);
+  histograms.ExpectTotalCount("Omnibox.InlineLocationSuggestion.Deny.Clicked",
+                              0);
+  histograms.ExpectTotalCount(
+      "Omnibox.InlineLocationSuggestion.Deny.ParentClicked", 0);
+}
+
+TEST_F(GeolocationHeaderServiceTest, PrimeLocationTelemetry) {
+  base::HistogramTester histogram_tester;
+
+  // 1. kNotTriedNoDefaultProvider (no default provider / template URL service
+  // is null)
+  auto service_no_turl = std::make_unique<GeolocationHeaderService>(
+      settings_map(), /*template_url_service=*/nullptr);
+  service_no_turl->PrimeLocation();
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.PrimeLocationOutcome",
+      1 /* kNotTriedNoDefaultProvider */, 1);
+
+  // Set up DSE but with send_x_geo_header = false
+  SetDefaultSearchProviderUrl(kGoogleUrl, /*send_x_geo_header=*/false);
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  service->PrimeLocation();
+  histogram_tester.ExpectBucketCount(
+      "Omnibox.GeolocationHeaderService.PrimeLocationOutcome",
+      2 /* kNotTriedProviderDoesNotAcceptHeader */, 1);
+
+  // Set up DSE with send_x_geo_header = true, but insecure URL
+  SetDefaultSearchProviderUrl("http://www.google.com/search?q=test");
+  service = CreateService();
+  service->PrimeLocation();
+  histogram_tester.ExpectBucketCount(
+      "Omnibox.GeolocationHeaderService.PrimeLocationOutcome",
+      3 /* kNotTriedInvalidUrlOrInsecure */, 1);
+
+  // Set default search provider back to secure URL
+  SetupGoogleDseWithPermissions();
+  SetAppLevelPermission(/*granted=*/true);
+
+  // We are currently in ASK permission state. ILLS is disabled by default.
+  // So permission is denied, resulting in kNotTriedPermissionStatusMismatch.
+  GURL url(kGoogleUrl);
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAsk, PermissionOption::kAsk});
+  service = CreateService();
+  service->PrimeLocation();
+  histogram_tester.ExpectBucketCount(
+      "Omnibox.GeolocationHeaderService.PrimeLocationOutcome",
+      4 /* kNotTriedPermissionStatusMismatch */, 1);
+
+  // Set site permission to ALLOW. Allowed, so it starts standard query.
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAllowed, PermissionOption::kAllowed});
+
+  // Pause overrider so it stays bound
+  geolocation_overrider_.Pause();
+  service = CreateService();
+  service->PrimeLocation();
+  histogram_tester.ExpectBucketCount(
+      "Omnibox.GeolocationHeaderService.PrimeLocationOutcome",
+      8 /* kTriedQueryNextPosition */, 1);
+
+  // Call PrimeLocation again while it's already bound -> kNotTriedAlreadyBound
+  service->PrimeLocation();
+  histogram_tester.ExpectBucketCount(
+      "Omnibox.GeolocationHeaderService.PrimeLocationOutcome",
+      0 /* kNotTriedAlreadyBound */, 1);
+
+  // Resume overrider to let the position be updated
+  geolocation_overrider_.Resume();
+  ASSERT_TRUE(
+      base::test::RunUntil([&]() { return service->HasCachedLocation(); }));
+
+  // Call PrimeLocation again. Since location is fresh ->
+  // kNotTriedCachedLocationFresh
+  service->PrimeLocation();
+  histogram_tester.ExpectBucketCount(
+      "Omnibox.GeolocationHeaderService.PrimeLocationOutcome",
+      5 /* kNotTriedCachedLocationFresh */, 1);
+}
+
+TEST_F(GeolocationHeaderServiceInlineLocationTest, PrimeLocationTelemetryIlls) {
+  base::HistogramTester histogram_tester;
+  std::unique_ptr<GeolocationHeaderService> service = CreateService();
+  GURL url(kGoogleUrl);
+  SetupGoogleDseWithPermissions();
+  SetAppLevelPermission(/*granted=*/true);
+
+  // In ASK permission state, but ILLS is enabled, so it should trigger
+  // cached-only query
+  SetSitePermissionWithOptions(
+      url, {PermissionOption::kAsk, PermissionOption::kAsk});
+  service->PrimeLocation();
+  histogram_tester.ExpectUniqueSample(
+      "Omnibox.GeolocationHeaderService.PrimeLocationOutcome",
+      7 /* kTriedQueryCachedPosition */, 1);
+
+  // Run pending tasks to ensure background Geolocation service connections are
+  // torn down.
+  // RunUntilIdle is never good, use a different approach, wait for some
+  // specific event.
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return !GeolocationHeaderServiceTestApi(service.get())
+                .is_geolocation_bound();
+  }));
+}

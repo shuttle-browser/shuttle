@@ -1,0 +1,116 @@
+/*
+ * (C) 1999-2003 Lars Knoll (knoll@kde.org)
+ * Copyright (C) 2004, 2005, 2006, 2008 Apple Inc. All rights reserved.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Library General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Library General Public License for more details.
+ *
+ * You should have received a copy of the GNU Library General Public License
+ * along with this library; see the file COPYING.LIB.  If not, write to
+ * the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA 02110-1301, USA.
+ */
+
+#ifndef THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_COUNTER_CONTENT_VALUE_H_
+#define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_COUNTER_CONTENT_VALUE_H_
+
+#include "third_party/blink/renderer/core/css/css_custom_ident_value.h"
+#include "third_party/blink/renderer/core/css/css_identifier_value.h"
+#include "third_party/blink/renderer/core/css/css_string_value.h"
+#include "third_party/blink/renderer/core/css/css_symbols_value.h"
+#include "third_party/blink/renderer/platform/wtf/casting.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+
+namespace blink {
+
+namespace cssvalue {
+
+class CSSCounterContentValue : public CSSValue {
+ public:
+  // `list_style` is the <counter-style> argument: either a
+  // <counter-style-name> (a `CSSCustomIdentValue`) or a symbols() function (a
+  // `CSSSymbolsValue`).
+  CSSCounterContentValue(const CSSCustomIdentValue* identifier,
+                         const CSSValue* list_style,
+                         const CSSStringValue* separator)
+      : CSSValue(kCounterContentClass),
+        identifier_(identifier),
+        list_style_(list_style),
+        separator_(separator) {
+    if (list_style->IsSymbolsValue()) {
+      // A symbols() function is a self-contained inline value with no tree
+      // scope of its own, so only the identifier can carry a scope; base
+      // tree-scope population on it alone.
+      needs_tree_scope_population_ = !identifier->IsScopedValue();
+    } else {
+      // There's no way to define a counter() function value where the
+      // identifiers are associated with different tree scopes.
+      DCHECK_EQ(identifier->IsScopedValue(), list_style->IsScopedValue());
+      DCHECK_EQ(identifier->GetTreeScope(),
+                To<CSSCustomIdentValue>(list_style)->GetTreeScope());
+      needs_tree_scope_population_ = !list_style->IsScopedValue();
+    }
+  }
+
+  const String& Identifier() const { return identifier_->Value(); }
+  bool ListStyleIsSymbolsFunction() const {
+    return list_style_->IsSymbolsValue();
+  }
+  // Only valid when the <counter-style> is a name, not a symbols() function;
+  // callers must guard with `!ListStyleIsSymbolsFunction()`.
+  const AtomicString& ListStyleName() const {
+    return To<CSSCustomIdentValue>(*list_style_).Value();
+  }
+  // Only valid when the <counter-style> is a symbols() function, not a name;
+  // callers must guard with `ListStyleIsSymbolsFunction()`.
+  const CSSSymbolsValue& ListStyleSymbolsFunction() const {
+    return To<CSSSymbolsValue>(*list_style_);
+  }
+  const String& Separator() const { return separator_->Value(); }
+  const TreeScope* GetTreeScope() const { return identifier_->GetTreeScope(); }
+  const TreeScope* GetPopulatedTreeScope() const {
+    CHECK(IsScopedValue());
+    return GetTreeScope();
+  }
+
+  bool Equals(const CSSCounterContentValue& other) const {
+    return Identifier() == other.Identifier() &&
+           base::ValuesEquivalent(list_style_, other.list_style_) &&
+           Separator() == other.Separator() &&
+           IsScopedValue() == other.IsScopedValue() &&
+           GetTreeScope() == other.GetTreeScope();
+  }
+
+  const CSSCounterContentValue& PopulateWithTreeScope(const TreeScope*) const;
+
+  String CustomCSSText() const;
+
+  bool HasRandomFunctions() const;
+
+  void TraceAfterDispatch(blink::Visitor*) const;
+
+ private:
+  Member<const CSSCustomIdentValue> identifier_;  // string
+  Member<const CSSValue> list_style_;  // <counter-style-name> or symbols()
+  Member<const CSSStringValue> separator_;        // string
+};
+
+}  // namespace cssvalue
+
+template <>
+struct DowncastTraits<cssvalue::CSSCounterContentValue> {
+  static bool AllowFrom(const CSSValue& value) {
+    return value.IsCounterContentValue();
+  }
+};
+
+}  // namespace blink
+
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_COUNTER_CONTENT_VALUE_H_

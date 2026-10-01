@@ -1,0 +1,92 @@
+# Copyright 2020 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/ui.gni")
+import("//third_party/protobuf/proto_library.gni")
+
+assert(is_chromeos)
+
+component("account_manager_core") {
+  sources = [
+    "account.cc",
+    "account.h",
+    "account_addition_options.h",
+    "account_manager_facade.cc",
+    "account_manager_facade.h",
+    "account_manager_facade_impl.cc",
+    "account_manager_facade_impl.h",
+    "account_manager_metrics.cc",
+    "account_manager_metrics.h",
+    "account_upsertion_result.cc",
+    "account_upsertion_result.h",
+    "chromeos/account_manager.cc",
+    "chromeos/account_manager.h",
+    "pref_names.cc",
+    "pref_names.h",
+  ]
+
+  deps = [
+    "//base",
+    "//components/prefs",
+    "//google_apis",
+    "//services/network/public/cpp",
+  ]
+
+  public_deps = [
+    ":account_manager_proto",
+    "//third_party/abseil-cpp:absl",
+  ]
+
+  defines = [ "IS_ACCOUNT_MANAGER_CORE_IMPL" ]
+}
+
+source_set("test_support") {
+  testonly = true
+
+  sources = [
+    "account_manager_test_util.cc",
+    "account_manager_test_util.h",
+    "mock_account_manager_facade.cc",
+    "mock_account_manager_facade.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//google_apis",
+    "//testing/gmock",
+  ]
+
+  deps = [ ":account_manager_core" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  sources = [
+    "account_manager_facade_impl_unittest.cc",
+    "chromeos/account_manager_unittest.cc",
+  ]
+
+  deps = [
+    ":account_manager_core",
+    ":test_support",
+    "//base/test:test_support",
+    "//components/prefs:test_support",
+    "//google_apis",
+    "//services/network:test_support",
+    "//services/network/public/cpp",
+    "//testing/gtest",
+  ]
+
+  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
+  # enable the diagnostic by removing this line.
+  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+}
+
+proto_library("account_manager_proto") {
+  visibility = [ ":*" ]
+  sources = [ "chromeos/tokens.proto" ]
+
+  proto_out_dir = "components/account_manager_core/chromeos"
+}

@@ -1,0 +1,141 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module viz.mojom;
+
+import "gpu/ipc/common/gpu_disk_cache_type.mojom";
+import "gpu/ipc/common/gpu_feature_info.mojom";
+import "gpu/ipc/common/gpu_info.mojom";
+import "gpu/ipc/common/surface_handle.mojom";
+import "mojo/public/mojom/base/byte_string.mojom";
+import "mojo/public/mojom/base/file.mojom";
+import "services/viz/privileged/mojom/gl/context_lost_reason.mojom";
+import "third_party/blink/public/mojom/tokens/tokens.mojom";
+import "ui/gfx/mojom/gpu_extra_info.mojom";
+import "url/mojom/url.mojom";
+
+[EnableIf=is_win]
+import "services/webnn/public/mojom/ep_device_info.mojom";
+
+[EnableIf=is_win]
+import "services/webnn/public/mojom/ep_package_info.mojom";
+
+[EnableIf=is_win]
+import "services/webnn/public/mojom/webnn_model_loader.mojom";
+
+[EnableIf=is_win]
+import "services/webnn/public/mojom/webnn_compiler_context.mojom";
+
+[EnableIf=is_apple]
+import "mojo/public/mojom/base/file_path.mojom";
+
+[EnableIf=is_win]
+import "services/webnn/public/mojom/webnn_context_properties.mojom";
+
+[EnableIf=is_win]
+import "services/webnn/public/mojom/webnn_context_provider.mojom";
+
+[EnableIf=is_win]
+import "ui/gfx/mojom/dxgi_info.mojom";
+
+// Communication channel from the gpu process to the gpu host. This interface
+// should never have any sync function calls.
+interface GpuHost {
+  // If |gpu_info| and |gpu_feature_info| are for hardware GPU, then
+  // |gpu_info_for_hardware_gpu| and |gpu_feature_info_for_hardware_gpu| can
+  // be uninitialized data.
+  DidInitialize(gpu.mojom.GpuInfo gpu_info,
+                gpu.mojom.GpuFeatureInfo gpu_feature_info,
+                gpu.mojom.GpuInfo? gpu_info_for_hardware_gpu,
+                gpu.mojom.GpuFeatureInfo? gpu_feature_info_for_hardware_gpu,
+                gfx.mojom.GpuExtraInfo gpu_extra_info);
+  DidFailInitialize();
+
+  DidCreateContextSuccessfully();
+  DidCreateOffscreenContext(url.mojom.Url url);
+  DidDestroyOffscreenContext(url.mojom.Url url);
+
+  DidDestroyChannel(int32 client_id);
+  // Called when all channels are destroyed by client. Not called for tearing
+  // down all channels due to lost context.
+  DidDestroyAllChannels();
+
+  // Called when gpu service lost one of the contexts.
+  DidLoseContext(ContextLostReason reason,
+                 url.mojom.Url active_url);
+
+  // Tells the GPU host that the GPUInfo has been updated in the GPU
+  // process.
+  DidUpdateGPUInfo(gpu.mojom.GpuInfo gpu_info);
+
+  // Tells the GPU host that the overlay info has been updated in the GPU
+  // process.
+  [EnableIf=is_win]
+  DidUpdateOverlayInfo(gpu.mojom.OverlayInfo overlay_info);
+
+  // Tells the GPU host that the DXGI adapter and output information has been
+  // updated in the GPU process.
+  [EnableIf=is_win]
+  DidUpdateDXGIInfo(gfx.mojom.DXGIInfo dxgi_info);
+
+  // GPU process has decided to disable GPU compositing. Host process keeps
+  // track of this decision in case the GPU process crashes.
+  DisableGpuCompositing();
+
+  // Asks the host to pass an isolation key for a given token. The client id
+  // corresponds to the render process id.
+  // TODO(dawn:549) Consider using ExecutionContextToken if DocumentToken
+  //     becomes a part of the ExecutionContextToken.
+  GetIsolationKey(int32 client_id,
+                  blink.mojom.WebGPUExecutionContextToken wgpu_context_token)
+      => (string isolation_key);
+
+  // Tells the GPU host to store the blob on the given cache handle.
+  StoreBlobToDisk(gpu.mojom.GpuDiskCacheHandle cache_handle,
+                  mojo_base.mojom.ByteString key,
+                  mojo_base.mojom.ByteString blob);
+
+  // Tells the GPU host to clear the shader disk cache.
+  ClearGrShaderDiskCache();
+
+  // Tells the GPU host to ensure the execution providers used by WebNN are
+  // ready. Returns the package info of available execution providers.
+  [EnableIf=is_win]
+  EnsureWebNNExecutionProvidersReady()
+      => (map<string, webnn.mojom.EpPackageInfo> ep_package_info);
+
+  // Tells the GPU host to create a compiler context in the Compiler process for
+  // a specific EP device. Each EP device has its own dedicated Compiler
+  // process, launched on first use.
+  //
+  // The GPU process creates both pipes, and the host forwards the endpoints to
+  // the Compiler process. The host returns true if the compiler context was
+  // created successfully, false otherwise.
+  [EnableIf=is_win]
+  RequestWebNNCompilerContext(
+      webnn.mojom.CreateContextOptions context_options,
+      webnn.mojom.ContextProperties context_properties,
+      webnn.mojom.EpDeviceInfo target_device,
+      pending_receiver<webnn.mojom.WebNNCompilerContext>
+          compiler_context_receiver,
+      pending_remote<webnn.mojom.WebNNModelLoader> model_loader_remote)
+      => (bool success);
+
+  // Tells the GPU host to create a temporary file that can be used to save all
+  // weights in the WebNN graph. Returns the open file handle if the file was
+  // successfully created, otherwise return invalid file handle that will be
+  // caught and prevent the graph from being built.
+  //
+  // TODO(crbug.com/364445586): Once the LiteRT MLDrift delegate moves from GPU
+  // to the renderer process, this interface can be removed entirely.
+  CreateWebNNWeightsFile() => (mojo_base.mojom.File? file);
+
+  // Tells the GPU host to copy a compiled CoreML model directory from the
+  // Compiler process's temp directory to the GPU process's temp directory.
+  // Returns the new path in the GPU process's temp directory, or null if the
+  // copy failed.
+  [EnableIf=is_apple]
+  CopyWebNNCompiledModel(mojo_base.mojom.FilePath compiler_model_path)
+    => (mojo_base.mojom.FilePath? gpu_model_path);
+};

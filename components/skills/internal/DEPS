@@ -1,0 +1,21 @@
+include_rules = [
+  "+components/sync/protocol",
+  "+components/policy/core/common/policy_logger.h",
+  "+crypto",
+  "+net/http",
+  "+net/base",
+  "+net/traffic_annotation",
+  "+net/test",
+  "+services/network/public/cpp",
+  "+services/network/public/mojom",
+  "+services/network/test",
+  "+services/network/network_context.h",
+  "+services/network/network_service.h",
+  "+mojo/public/cpp/bindings",
+]
+
+specific_include_rules = {
+  ".*unittest\\.cc": [
+    "+net/url_request/redirect_info.h",
+  ],
+}

@@ -1,0 +1,285 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/custom_handlers/protocol_handler.h"
+
+#include <string_view>
+
+#include "base/json/values_util.h"
+#include "base/strings/escape.h"
+#include "base/strings/string_util.h"
+#include "base/strings/utf_string_conversions.h"
+#include "components/strings/grit/components_strings.h"
+#include "content/public/browser/browser_thread.h"
+#include "content/public/common/content_client.h"
+#include "content/public/common/origin_util.h"
+#include "services/network/public/cpp/features.h"
+#include "services/network/public/cpp/is_potentially_trustworthy.h"
+#include "third_party/blink/public/common/custom_handlers/protocol_handler_utils.h"
+#include "third_party/blink/public/common/scheme_registry.h"
+#include "third_party/blink/public/common/security/protocol_handler_security_level.h"
+#include "ui/base/l10n/l10n_util.h"
+
+using content::BrowserThread;
+
+namespace custom_handlers {
+
+namespace features {
+
+// https://html.spec.whatwg.org/multipage/system-state.html#security-and-privacy
+BASE_FEATURE(kStripCredentialsForExternalProtocolHandler,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+}  // namespace features
+
+ProtocolHandler::ProtocolHandler(
+    const std::string& protocol,
+    const GURL& url,
+    base::Time last_modified,
+    blink::ProtocolHandlerSecurityLevel security_level)
+    : protocol_(base::ToLowerASCII(protocol)),
+      url_(url),
+      last_modified_(last_modified),
+      security_level_(security_level) {}
+
+ProtocolHandler::ProtocolHandler(const ProtocolHandler&) = default;
+ProtocolHandler::~ProtocolHandler() = default;
+
+ProtocolHandler ProtocolHandler::CreateProtocolHandler(
+    const std::string& protocol,
+    const GURL& url,
+    blink::ProtocolHandlerSecurityLevel security_level) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  return ProtocolHandler(protocol, url, /*app_id=*/std::nullopt,
+                         /*extension_id=*/std::nullopt, base::Time::Now(),
+                         /*is_confirmed=*/true,
+                         /*is_allowed_in_incognito=*/false, security_level);
+}
+
+ProtocolHandler::ProtocolHandler(
+    const std::string& protocol,
+    const GURL& url,
+    std::optional<std::string> app_id,
+    std::optional<std::string> extension_id,
+    base::Time last_modified,
+    bool is_confirmed,
+    bool is_allowed_in_incognito,
+    blink::ProtocolHandlerSecurityLevel security_level)
+    : protocol_(base::ToLowerASCII(protocol)),
+      url_(url),
+      web_app_id_(app_id),
+      extension_id_(extension_id),
+      last_modified_(last_modified),
+      is_confirmed_(is_confirmed),
+      is_allowed_in_incognito_(is_allowed_in_incognito),
+      security_level_(security_level) {}
+
+// static
+ProtocolHandler ProtocolHandler::CreateWebAppProtocolHandler(
+    const std::string& protocol,
+    const GURL& url,
+    const std::string& app_id) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  return ProtocolHandler(protocol, url, app_id, /*extension_id=*/std::nullopt,
+                         base::Time::Now(), /*is_confirmed=*/true,
+                         /*is_allowed_in_incognito=*/true,
+                         blink::ProtocolHandlerSecurityLevel::kStrict);
+}
+
+// static
+ProtocolHandler ProtocolHandler::CreateExtensionProtocolHandler(
+    const std::string& protocol,
+    const GURL& url,
+    const std::string& extension_id,
+    bool is_allowed_in_incognito) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  return ProtocolHandler(
+      protocol, url, /*app_id=*/std::nullopt, extension_id, base::Time::Now(),
+      /*is_confirmed=*/false, is_allowed_in_incognito,
+      blink::ProtocolHandlerSecurityLevel::kExtensionFeatures);
+}
+
+ProtocolHandler::ProtocolHandler() = default;
+
+bool ProtocolHandler::IsValidDict(const base::DictValue& value) {
+  // Note that "title" parameter is ignored.
+  // The |last_modified| field is optional as it was introduced in M68.
+  return value.FindString("protocol") && value.FindString("url");
+}
+
+bool ProtocolHandler::IsValid() const {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  // We don't want to include URL's syntax checks because there are use cases of
+  // the protocol handlers logic that require more flexibility than the one
+  // specified for the registerProtocolHandler API (eg, Predefined Handlers).
+  if (!blink::IsAllowedCustomHandlerURL(url_, security_level_))
+    return false;
+
+  return blink::IsValidCustomHandlerScheme(protocol_, security_level_);
+}
+
+bool ProtocolHandler::IsAllowedExtensionHandler() const {
+  // A handler that claims extension-level privileges (kExtensionFeatures, which
+  // relaxes the HTML-spec restrictions to allow e.g. cross-origin target URLs
+  // and the ext+/chrome-extension schemes) must be associated with the
+  // extension that registered it. Extension cleanup -- uninstall/disable
+  // handling and the periodic sanity check -- keys off the extension id, so a
+  // handler with the elevated level but no id can never be removed and its
+  // privileges would persist even after the extension is gone. This also drops
+  // orphaned handlers persisted by builds that predate recording the extension
+  // id at registration time. This check is layered on top of, and kept
+  // separate from, the HTML-spec validity enforced by IsValid().
+  if (security_level_ ==
+      blink::ProtocolHandlerSecurityLevel::kExtensionFeatures) {
+    return IsExtensionHandler();
+  }
+  return true;
+}
+
+bool ProtocolHandler::IsSameOrigin(const ProtocolHandler& handler) const {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  return handler.url().DeprecatedGetOriginAsURL() ==
+         url_.DeprecatedGetOriginAsURL();
+}
+
+const ProtocolHandler& ProtocolHandler::EmptyProtocolHandler() {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  static const ProtocolHandler* const kEmpty = new ProtocolHandler();
+  return *kEmpty;
+}
+
+ProtocolHandler ProtocolHandler::CreateProtocolHandler(
+    const base::DictValue& value) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  if (!IsValidDict(value)) {
+    return EmptyProtocolHandler();
+  }
+  std::string protocol, url;
+  // |time| defaults to the beginning of time if it is not specified.
+  base::Time time;
+  bool is_confirmed = true;
+  bool is_allowed_in_incognito = false;
+  blink::ProtocolHandlerSecurityLevel security_level =
+      blink::ProtocolHandlerSecurityLevel::kStrict;
+  if (const std::string* protocol_in = value.FindString("protocol"))
+    protocol = *protocol_in;
+  if (const std::string* url_in = value.FindString("url"))
+    url = *url_in;
+  std::optional<base::Time> time_value =
+      base::ValueToTime(value.Find("last_modified"));
+  // Treat invalid times as the default value.
+  if (time_value)
+    time = *time_value;
+  if (std::optional<bool> is_confirmed_value = value.FindBool("is_confirmed")) {
+    is_confirmed = *is_confirmed_value;
+  }
+  if (std::optional<bool> is_allowed_in_incognito_value =
+          value.FindBool("is_allowed_in_incognito")) {
+    is_allowed_in_incognito = *is_allowed_in_incognito_value;
+  }
+  std::optional<int> security_level_value = value.FindInt("security_level");
+  if (security_level_value) {
+    security_level =
+        blink::ProtocolHandlerSecurityLevelFrom(*security_level_value);
+  }
+
+  std::optional<std::string> app_id;
+  if (const base::Value* app_id_val = value.Find("app_id")) {
+    if (app_id_val->is_string()) {
+      app_id = app_id_val->GetString();
+    }
+  }
+
+  std::optional<std::string> extension_id;
+  if (const base::Value* extension_id_val = value.Find("extension_id")) {
+    if (extension_id_val->is_string()) {
+      extension_id = extension_id_val->GetString();
+    }
+  }
+
+  return ProtocolHandler(protocol, GURL(url), app_id, extension_id, time,
+                         is_confirmed, is_allowed_in_incognito, security_level);
+}
+
+GURL ProtocolHandler::TranslateUrl(const GURL& url) const {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  std::string clean_url;
+  std::string_view url_spec(url.spec());
+
+  // Remove credentials from the url if present, in order to mitigate the risk
+  // of credential leakage
+  if ((url.has_username() || url.has_password()) &&
+      base::FeatureList::IsEnabled(
+          features::kStripCredentialsForExternalProtocolHandler)) {
+    GURL::Replacements replacements;
+    replacements.ClearUsername();
+    replacements.ClearPassword();
+    clean_url = url.ReplaceComponents(replacements).spec();
+    url_spec = clean_url;
+  }
+
+  std::string translatedUrlSpec(url_.spec());
+  base::ReplaceFirstSubstringAfterOffset(
+      &translatedUrlSpec, 0, "%s",
+      base::EscapeQueryParamValue(url_spec, false));
+  return GURL(translatedUrlSpec);
+}
+
+base::DictValue ProtocolHandler::Encode() const {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  base::DictValue d;
+  d.Set("protocol", protocol_);
+  d.Set("url", url_.spec());
+  d.Set("last_modified", base::TimeToValue(last_modified_));
+  d.Set("is_confirmed", is_confirmed_);
+  d.Set("is_allowed_in_incognito", is_allowed_in_incognito_);
+  d.Set("security_level", static_cast<int>(security_level_));
+
+  if (web_app_id_.has_value())
+    d.Set("app_id", web_app_id_.value());
+  if (extension_id_.has_value()) {
+    d.Set("extension_id", extension_id_.value());
+  }
+
+  return d;
+}
+
+std::u16string ProtocolHandler::GetProtocolDisplayName(
+    const std::string& protocol) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  if (protocol == "mailto")
+    return l10n_util::GetStringUTF16(IDS_REGISTER_PROTOCOL_HANDLER_MAILTO_NAME);
+  if (protocol == "webcal")
+    return l10n_util::GetStringUTF16(IDS_REGISTER_PROTOCOL_HANDLER_WEBCAL_NAME);
+  return base::UTF8ToUTF16(protocol);
+}
+
+std::u16string ProtocolHandler::GetProtocolDisplayName() const {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  return GetProtocolDisplayName(protocol_);
+}
+
+#if !defined(NDEBUG)
+std::string ProtocolHandler::ToString() const {
+  std::string web_app_id_str =
+      web_app_id_.has_value() ? ", web_app_id= " + *web_app_id_ : "";
+  std::string extension_id_str =
+      extension_id_.has_value() ? ", extension_id= " + *extension_id_ : "";
+  return "{ protocol=" + protocol_ + ", url=" + url_.spec() + web_app_id_str +
+         extension_id_str + " }";
+}
+#endif
+
+bool ProtocolHandler::operator==(const ProtocolHandler& other) const {
+  return protocol_ == other.protocol_ && url_ == other.url_;
+}
+
+bool ProtocolHandler::IsEquivalent(const ProtocolHandler& other) const {
+  return protocol_ == other.protocol_ && url_ == other.url_;
+}
+
+bool ProtocolHandler::operator<(const ProtocolHandler& other) const {
+  return url_ < other.url_;
+}
+
+}  // namespace custom_handlers

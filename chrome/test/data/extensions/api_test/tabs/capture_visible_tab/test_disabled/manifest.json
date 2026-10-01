@@ -1,0 +1,15 @@
+{
+  "name": "chrome.tabs.captureVisibleTab test: jpeg",
+  "version": "0.1",
+  "manifest_version": 3,
+  "description": "end-to-end browser test for chrome.tabs.captureVisibleTab",
+  "background": {
+    "service_worker": "test_disabled.js"
+  },
+  "permissions": [
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ]
+}

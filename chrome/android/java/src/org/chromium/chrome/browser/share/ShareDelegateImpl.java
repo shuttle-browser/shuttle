@@ -1,0 +1,500 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.share;
+
+import static org.chromium.build.NullUtil.assertNonNull;
+
+import android.app.Activity;
+import android.content.Context;
+import android.net.Uri;
+import android.os.Build;
+import android.text.TextUtils;
+
+import androidx.annotation.IntDef;
+import androidx.annotation.VisibleForTesting;
+
+import org.chromium.base.Callback;
+import org.chromium.base.DeviceInfo;
+import org.chromium.base.ResettersForTesting;
+import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.data_sharing.DataSharingTabManager;
+import org.chromium.chrome.browser.device_lock.DeviceLockActivityLauncherImpl;
+import org.chromium.chrome.browser.enterprise.util.DataProtectionBridge;
+import org.chromium.chrome.browser.feature_engagement.TrackerFactory;
+import org.chromium.chrome.browser.history_clusters.HistoryClustersTabHelper;
+import org.chromium.chrome.browser.lifecycle.ActivityLifecycleDispatcher;
+import org.chromium.chrome.browser.offlinepages.OfflinePageUtils;
+import org.chromium.chrome.browser.pdf.PdfUtils;
+import org.chromium.chrome.browser.printing.PrintHelper;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.share.ShareContentTypeHelper.ContentType;
+import org.chromium.chrome.browser.share.android_share_sheet.AndroidShareSheetController;
+import org.chromium.chrome.browser.share.android_share_sheet.TabGroupSharingController;
+import org.chromium.chrome.browser.share.send_tab_to_self.SendTabToSelfCoordinator;
+import org.chromium.chrome.browser.share.send_tab_to_self.ShareEntryPoint;
+import org.chromium.chrome.browser.share.share_sheet.ShareSheetCoordinator;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tabmodel.TabModelSelector;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
+import org.chromium.chrome.browser.ui.signin.SigninAndHistorySyncActivityLauncher;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
+import org.chromium.components.browser_ui.share.ShareParams;
+import org.chromium.components.browser_ui.util.AutomotiveUtils;
+import org.chromium.components.favicon.LargeIconBridge;
+import org.chromium.content_public.browser.RenderFrameHost;
+import org.chromium.content_public.browser.WebContents;
+import org.chromium.ui.base.ActivityResultTracker;
+import org.chromium.ui.base.MimeTypeUtils;
+import org.chromium.ui.base.WindowAndroid;
+import org.chromium.ui.modaldialog.ModalDialogManager;
+import org.chromium.url.GURL;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.util.ArrayList;
+import java.util.Set;
+import java.util.function.Supplier;
+
+/** Implementation of share interface. Mostly a wrapper around ShareSheetCoordinator. */
+@NullMarked
+public class ShareDelegateImpl implements ShareDelegate {
+
+    private final Context mContext;
+    private final @Nullable BottomSheetController mBottomSheetController;
+    private final ActivityLifecycleDispatcher mLifecycleDispatcher;
+    private final Supplier<@Nullable Tab> mTabProvider;
+    private final Supplier<@Nullable TabModelSelector> mTabModelSelectorProvider;
+    private final Supplier<@Nullable Profile> mProfileSupplier;
+    private final ShareSheetDelegate mDelegate;
+    private final boolean mIsCustomTab;
+    private final @Nullable DataSharingTabManager mDataSharingTabManager;
+    private final SigninAndHistorySyncActivityLauncher mSigninAndHistorySyncActivityLauncher;
+    private final ActivityResultTracker mActivityResultTracker;
+    private final MonotonicObservableSupplier<ModalDialogManager> mModalDialogManagerSupplier;
+    private final SnackbarManager mSnackbarManager;
+    private long mShareStartTime;
+
+    private static @Nullable Callback<Boolean> sShowShareSheetHookForTesting;
+
+    /**
+     * Constructs a new {@link ShareDelegateImpl}.
+     *
+     * @param context The context for the current activity.
+     * @param controller The BottomSheetController for the current activity.
+     * @param lifecycleDispatcher Dispatcher for activity lifecycle events, e.g. configuration
+     *     changes.
+     * @param tabProvider Supplier for the current activity tab.
+     * @param tabModelSelectorProvider Supplier for the {@link TabModelSelector}. Used to determine
+     *     whether incognito mode is selected or not.
+     * @param profileSupplier Supplier for {@link Profile}.
+     * @param delegate The ShareSheetDelegate for the current activity.
+     * @param isCustomTab This share delegate is associated with a CCT.
+     * @param dataSharingTabManager Tab data sharing helpers, for collaboration actions.
+     * @param signinAndHistorySyncActivityLauncher The launcher for sign-in and history sync.
+     * @param activityResultTracker The launcher to track activity results.
+     * @param mModalDialogManagerSupplier The manager supplier for modal dialogs.
+     * @param snackbarManager The manager for snackbars.
+     */
+    public ShareDelegateImpl(
+            Context context,
+            @Nullable BottomSheetController controller,
+            ActivityLifecycleDispatcher lifecycleDispatcher,
+            Supplier<@Nullable Tab> tabProvider,
+            Supplier<@Nullable TabModelSelector> tabModelSelectorProvider,
+            Supplier<@Nullable Profile> profileSupplier,
+            ShareSheetDelegate delegate,
+            boolean isCustomTab,
+            @Nullable DataSharingTabManager dataSharingTabManager,
+            SigninAndHistorySyncActivityLauncher signinAndHistorySyncActivityLauncher,
+            ActivityResultTracker activityResultTracker,
+            MonotonicObservableSupplier<ModalDialogManager> modalDialogManagerSupplier,
+            SnackbarManager snackbarManager) {
+        mContext = context;
+        mBottomSheetController = controller;
+        mLifecycleDispatcher = lifecycleDispatcher;
+        mTabProvider = tabProvider;
+        mTabModelSelectorProvider = tabModelSelectorProvider;
+        mProfileSupplier = profileSupplier;
+        mDelegate = delegate;
+        mIsCustomTab = isCustomTab;
+        mDataSharingTabManager = dataSharingTabManager;
+        mSigninAndHistorySyncActivityLauncher = signinAndHistorySyncActivityLauncher;
+        mActivityResultTracker = activityResultTracker;
+        mModalDialogManagerSupplier = modalDialogManagerSupplier;
+        mSnackbarManager = snackbarManager;
+    }
+
+    // ShareDelegate implementation.
+    @Override
+    public void share(
+            ShareParams params, ChromeShareExtras chromeShareExtras, @ShareOrigin int shareOrigin) {
+        if (mShareStartTime == 0L) {
+            mShareStartTime = System.currentTimeMillis();
+        }
+        shareIfAllowedByPolicy(
+                params,
+                chromeShareExtras,
+                (Boolean isAllowed) -> {
+                    if (!isAllowed) return;
+                    assert mBottomSheetController != null;
+                    mDelegate.share(
+                            params,
+                            chromeShareExtras,
+                            mBottomSheetController,
+                            mLifecycleDispatcher,
+                            mTabProvider,
+                            mTabModelSelectorProvider,
+                            assertNonNull(mProfileSupplier.get()),
+                            this::printTab,
+                            new TabGroupSharingControllerImpl(mDataSharingTabManager),
+                            shareOrigin,
+                            mShareStartTime,
+                            isSharingHubEnabled(),
+                            mSigninAndHistorySyncActivityLauncher,
+                            mActivityResultTracker,
+                            mModalDialogManagerSupplier,
+                            mSnackbarManager);
+                    mShareStartTime = 0;
+                });
+    }
+
+    private void shareIfAllowedByPolicy(
+            ShareParams params,
+            ChromeShareExtras chromeShareExtras,
+            Callback<Boolean> shareCallback) {
+        @Nullable RenderFrameHost renderFrameHost = chromeShareExtras.getRenderFrameHost();
+        if (renderFrameHost == null) {
+            shareCallback.onResult(true);
+            return;
+        }
+
+        @ShareContentType int type = getShareContentType(params, chromeShareExtras);
+        if ((type == ShareContentType.TEXT || type == ShareContentType.TEXT_WITH_LINK)
+                && !TextUtils.isEmpty(params.getText())) {
+            DataProtectionBridge.verifyShareTextIsAllowedByPolicy(
+                    params.getText(), renderFrameHost, shareCallback);
+            return;
+        }
+        if (type == ShareContentType.LINK && !TextUtils.isEmpty(params.getUrl())) {
+            DataProtectionBridge.verifyShareUrlIsAllowedByPolicy(
+                    params.getUrl(), renderFrameHost, shareCallback);
+            return;
+        }
+        if ((type == ShareContentType.IMAGE || type == ShareContentType.IMAGE_WITH_LINK)
+                && params.getSingleImageUri() != null
+                && params.getSingleImageUri().getPath() != null) {
+            DataProtectionBridge.verifyShareImageIsAllowedByPolicy(
+                    params.getSingleImageUri().getPath(), renderFrameHost, shareCallback);
+            return;
+        }
+
+        // TODO(crbug.com/411706381): Account for web share.
+
+        shareCallback.onResult(true);
+    }
+
+    // ShareDelegate implementation.
+    @Override
+    public void share(
+            @Nullable Tab currentTab, boolean shareDirectly, @ShareOrigin int shareOrigin) {
+        mShareStartTime = System.currentTimeMillis();
+        onShareSelected(currentTab, shareOrigin, shareDirectly);
+    }
+
+    /**
+     * Triggered when the share menu item is selected. This creates and shows a share intent picker
+     * dialog or starts a share intent directly.
+     *
+     * @param currentTab The current tab.
+     * @param shareOrigin Where the share originated.
+     * @param shareDirectly Whether it should share directly with the activity that was most
+     *     recently used to share.
+     */
+    private void onShareSelected(
+            @Nullable Tab currentTab, @ShareOrigin int shareOrigin, boolean shareDirectly) {
+        if (currentTab == null) return;
+
+        triggerShare(currentTab, shareOrigin, shareDirectly);
+    }
+
+    private void triggerShare(Tab currentTab, @ShareOrigin int shareOrigin, boolean shareDirectly) {
+        OfflinePageUtils.maybeShareOfflinePage(
+                currentTab,
+                (@Nullable ShareParams p) -> {
+                    if (p != null) {
+                        var webContents = currentTab.getWebContents();
+                        var renderFrameHost =
+                                webContents != null ? webContents.getMainFrame() : null;
+
+                        var extras =
+                                new ChromeShareExtras.Builder()
+                                        .setIsUrlOfVisiblePage(true)
+                                        .setRenderFrameHost(renderFrameHost)
+                                        .build();
+                        share(p, extras, shareOrigin);
+                        return;
+                    }
+                    // Could not share as an offline page. Share the visible URL.
+                    assert currentTab.getWindowAndroid() != null;
+                    triggerShareWithUrl(
+                            currentTab.getWindowAndroid(),
+                            currentTab.getWebContents(),
+                            currentTab.getTitle(),
+                            currentTab.getUrl(),
+                            shareOrigin,
+                            shareDirectly);
+                });
+    }
+
+    private void triggerShareWithUrl(
+            final WindowAndroid window,
+            final @Nullable WebContents webContents,
+            final String title,
+            final GURL visibleUrl,
+            @ShareOrigin final int shareOrigin,
+            final boolean shareDirectly) {
+        ShareParams.Builder shareParamsBuilder =
+                new ShareParams.Builder(window, title, getUrlToShare(visibleUrl, mContext));
+
+        shareParamsBuilder.setOrigin(shareOrigin);
+        String decodedUrl = PdfUtils.decodePdfPageUrl(visibleUrl.getSpec());
+        Uri pdfUri = decodedUrl != null ? Uri.parse(decodedUrl) : null;
+        boolean isDownloadedPdf =
+                PdfUtils.isDownloadedPdf(visibleUrl.getSpec())
+                        && PdfUtils.isUriSafeForSharing(pdfUri, mContext);
+        if (isDownloadedPdf && pdfUri != null) {
+            ArrayList<Uri> fileToShare = new ArrayList<>();
+            fileToShare.add(pdfUri);
+            shareParamsBuilder
+                    .setFileUris(fileToShare)
+                    .setFileContentType(MimeTypeUtils.PDF_MIME_TYPE);
+        }
+
+        share(
+                shareParamsBuilder.build(),
+                new ChromeShareExtras.Builder()
+                        .setSaveLastUsed(!shareDirectly)
+                        .setShareDirectly(shareDirectly)
+                        .setIsUrlOfVisiblePage(!isDownloadedPdf)
+                        .setRenderFrameHost(webContents != null ? webContents.getMainFrame() : null)
+                        .build(),
+                shareOrigin);
+
+        HistoryClustersTabHelper.onCurrentTabUrlShared(webContents);
+    }
+
+    @VisibleForTesting
+    static String getUrlToShare(GURL visibleUrl, @Nullable Context context) {
+        if (PdfUtils.isDownloadedPdf(visibleUrl.getSpec())) {
+            String decodedUrl = PdfUtils.decodePdfPageUrl(visibleUrl.getSpec());
+            Uri pdfUri = decodedUrl != null ? Uri.parse(decodedUrl) : null;
+            if (context == null || PdfUtils.isUriSafeForSharing(pdfUri, context)) {
+                return "";
+            }
+        }
+        return visibleUrl.getSpec();
+    }
+
+    private void printTab(Tab tab) {
+        PrintHelper.printTab(tab);
+    }
+
+    @Override
+    public boolean isSharingHubEnabled() {
+        if (DeviceInfo.isAutomotive() && !AutomotiveUtils.doesDeviceSupportOsShareSheet(mContext)) {
+            return true;
+        }
+        return !(mIsCustomTab || Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE);
+    }
+
+    @Override
+    public void sendTabToSelf(Tab tab) {
+        // Early return if critical dependencies are missing.
+        if (mBottomSheetController == null) return;
+
+        Profile profile = mProfileSupplier.get();
+        if (profile == null) return;
+
+        // WindowAndroid hosts the STTS bottom sheet and sign-in promo.
+        WindowAndroid windowAndroid = tab.getWindowAndroid();
+        if (windowAndroid == null) return;
+
+        // Safely resolve the Activity (weak reference might be null during teardown).
+        Activity activity = windowAndroid.getActivity().get();
+        if (activity == null) {
+            if (mContext instanceof Activity) {
+                activity = (Activity) mContext;
+            } else {
+                return;
+            }
+        }
+
+        SendTabToSelfCoordinator sttsCoordinator =
+                new SendTabToSelfCoordinator(
+                        mContext,
+                        windowAndroid,
+                        tab.getUrl().getSpec(),
+                        tab.getTitle(),
+                        mBottomSheetController,
+                        profile,
+                        DeviceLockActivityLauncherImpl.get(),
+                        () -> tab,
+                        activity,
+                        mSigninAndHistorySyncActivityLauncher,
+                        mActivityResultTracker,
+                        mModalDialogManagerSupplier,
+                        mSnackbarManager,
+                        ShareEntryPoint.SHARE_SHEET);
+        sttsCoordinator.show();
+    }
+
+    public static void setShowShareSheetHookForTesting(Callback<Boolean> hook) {
+        sShowShareSheetHookForTesting = hook;
+        ResettersForTesting.register(() -> sShowShareSheetHookForTesting = null);
+    }
+
+    /** Delegate for share handling. */
+    public static class ShareSheetDelegate {
+        /** Trigger the share action for the specified params. */
+        void share(
+                ShareParams params,
+                ChromeShareExtras chromeShareExtras,
+                BottomSheetController controller,
+                ActivityLifecycleDispatcher lifecycleDispatcher,
+                Supplier<@Nullable Tab> tabProvider,
+                Supplier<@Nullable TabModelSelector> tabModelSelectorSupplier,
+                Profile profile,
+                Callback<Tab> printCallback,
+                TabGroupSharingController tabGroupSharingController,
+                @ShareOrigin int shareOrigin,
+                long shareStartTime,
+                boolean sharingHubEnabled,
+                SigninAndHistorySyncActivityLauncher signinAndHistorySyncActivityLauncher,
+                ActivityResultTracker activityResultTracker,
+                MonotonicObservableSupplier<ModalDialogManager> modalDialogManagerSupplier,
+                SnackbarManager snackbarManager) {
+            if (chromeShareExtras.shareDirectly()) {
+                ShareHelper.shareWithLastUsedComponent(params);
+                return;
+            }
+            String histogramName =
+                    sharingHubEnabled
+                            ? "Sharing.SharingHubAndroid.Opened"
+                            : "Sharing.DefaultSharesheetAndroid.Opened";
+            RecordHistogram.recordEnumeratedHistogram(
+                    histogramName, shareOrigin, ShareOrigin.COUNT);
+            if (sharingHubEnabled) {
+                // TODO(crbug.com/40132040): Sharing hub is suppressed for tab group sharing.
+                // Re-enable it when tab group sharing is supported by sharing hub.
+                ShareHelper.recordShareSource(ShareHelper.ShareSourceAndroid.CHROME_SHARE_SHEET);
+                if (sShowShareSheetHookForTesting != null) {
+                    sShowShareSheetHookForTesting.onResult(true);
+                } else {
+                    boolean isIncognito =
+                            tabModelSelectorSupplier.get() != null
+                                    && tabModelSelectorSupplier.get().isIncognitoSelected();
+                    ShareSheetCoordinator coordinator =
+                            new ShareSheetCoordinator(
+                                    controller,
+                                    lifecycleDispatcher,
+                                    tabProvider,
+                                    printCallback,
+                                    new LargeIconBridge(profile),
+                                    isIncognito,
+                                    TrackerFactory.getTrackerForProfile(profile),
+                                    profile,
+                                    DeviceLockActivityLauncherImpl.get(),
+                                    signinAndHistorySyncActivityLauncher,
+                                    activityResultTracker,
+                                    modalDialogManagerSupplier,
+                                    snackbarManager);
+                    coordinator.showInitialShareSheet(params, chromeShareExtras, shareStartTime);
+                }
+            } else {
+                RecordHistogram.recordEnumeratedHistogram(
+                        "Sharing.DefaultSharesheetAndroid.ShareContentType",
+                        getShareContentType(params, chromeShareExtras),
+                        ShareContentType.COUNT);
+                if (sShowShareSheetHookForTesting != null) {
+                    sShowShareSheetHookForTesting.onResult(false);
+                } else {
+                    AndroidShareSheetController.showShareSheet(
+                            params,
+                            chromeShareExtras,
+                            controller,
+                            tabProvider,
+                            tabModelSelectorSupplier,
+                            profile,
+                            printCallback,
+                            tabGroupSharingController,
+                            DeviceLockActivityLauncherImpl.get(),
+                            signinAndHistorySyncActivityLauncher,
+                            activityResultTracker,
+                            modalDialogManagerSupplier,
+                            snackbarManager);
+                }
+            }
+            RecordHistogram.recordEnumeratedHistogram(
+                    "Sharing.SharingHubAndroid.ShareContentType",
+                    getShareContentType(params, chromeShareExtras),
+                    ShareContentType.COUNT);
+        }
+    }
+
+    // These values are recorded as histogram values. Entries should not be
+    // renumbered and numeric values should never be reused.
+    @IntDef({
+        ShareContentType.UNKNOWN,
+        ShareContentType.TEXT,
+        ShareContentType.TEXT_WITH_LINK,
+        ShareContentType.LINK,
+        ShareContentType.IMAGE,
+        ShareContentType.IMAGE_WITH_LINK,
+        ShareContentType.FILES,
+        ShareContentType.COUNT
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    @interface ShareContentType {
+        int UNKNOWN = 0;
+        int TEXT = 1;
+        int TEXT_WITH_LINK = 2;
+        int LINK = 3;
+        int IMAGE = 4;
+        int IMAGE_WITH_LINK = 5;
+        int FILES = 6;
+
+        int COUNT = 7;
+    }
+
+    static @ShareContentType int getShareContentType(
+            ShareParams params, ChromeShareExtras chromeShareExtras) {
+        @ContentType
+        Set<Integer> types = ShareContentTypeHelper.getContentTypes(params, chromeShareExtras);
+        if (types.contains(ContentType.OTHER_FILE_TYPE)) {
+            return ShareContentType.FILES;
+        }
+        if (types.contains(ContentType.IMAGE_AND_LINK)) {
+            return ShareContentType.IMAGE_WITH_LINK;
+        }
+        if (types.contains(ContentType.IMAGE)) {
+            return ShareContentType.IMAGE;
+        }
+        if (types.contains(ContentType.HIGHLIGHTED_TEXT)
+                || types.contains(ContentType.LINK_AND_TEXT)) {
+            return ShareContentType.TEXT_WITH_LINK;
+        }
+        if (types.contains(ContentType.LINK_PAGE_NOT_VISIBLE)
+                || types.contains(ContentType.LINK_PAGE_VISIBLE)) {
+            return ShareContentType.LINK;
+        }
+        if (types.contains(ContentType.TEXT)) {
+            return ShareContentType.TEXT;
+        }
+        return ShareContentType.UNKNOWN;
+    }
+}

@@ -1,0 +1,59 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.components.webauthn.cred_man;
+
+import android.credentials.CreateCredentialRequest.Builder;
+import android.credentials.CredentialOption;
+import android.credentials.GetCredentialRequest;
+import android.os.Bundle;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+
+@NullMarked
+public class AppCredManRequestDecorator implements CredManRequestDecorator {
+    private static @Nullable AppCredManRequestDecorator sInstance;
+
+    public static AppCredManRequestDecorator getInstance() {
+        if (sInstance == null) {
+            sInstance = new AppCredManRequestDecorator();
+        }
+        return sInstance;
+    }
+
+    @Override
+    public void updateCreateCredentialRequestBundle(
+            Bundle input, CredManCreateCredentialRequestHelper helper) {}
+
+    @Override
+    public void updateCreateCredentialRequestBuilder(
+            Builder builder, CredManCreateCredentialRequestHelper helper) {}
+
+    @Override
+    public void updateGetCredentialRequestBundle(
+            Bundle bundle, CredManGetCredentialRequestHelper helper) {}
+
+    @Override
+    public void updateGetCredentialRequestBuilder(
+            GetCredentialRequest.Builder builder, CredManGetCredentialRequestHelper helper) {}
+
+    @Override
+    public void updatePublicKeyCredentialOptionBundle(
+            Bundle bundle, CredManGetCredentialRequestHelper helper) {}
+
+    @Override
+    public void updatePublicKeyCredentialOptionBuilder(
+            CredentialOption.Builder builder, CredManGetCredentialRequestHelper helper) {}
+
+    @Override
+    public void updatePasswordCredentialOptionBundle(
+            Bundle bundle, CredManGetCredentialRequestHelper helper) {}
+
+    @Override
+    public void updatePasswordCredentialOptionBuilder(
+            CredentialOption.Builder builder, CredManGetCredentialRequestHelper helper) {}
+
+    private AppCredManRequestDecorator() {}
+}

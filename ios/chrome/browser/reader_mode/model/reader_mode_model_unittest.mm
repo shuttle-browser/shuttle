@@ -1,0 +1,165 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/reader_mode/model/reader_mode_model.h"
+
+#import "base/test/task_environment.h"
+#import "components/feature_engagement/test/mock_tracker.h"
+#import "ios/chrome/browser/contextual_panel/model/contextual_panel_item_configuration.h"
+#import "ios/chrome/browser/contextual_panel/model/contextual_panel_item_type.h"
+#import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
+#import "ios/chrome/browser/intelligence/bwg/model/gemini_tab_helper.h"
+#import "ios/chrome/browser/reader_mode/model/reader_mode_tab_helper.h"
+#import "ios/chrome/browser/reader_mode/model/reader_mode_test.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/model/url/chrome_url_constants.h"
+#import "ios/web/public/test/fakes/fake_web_state.h"
+#import "testing/platform_test.h"
+
+class ReaderModeModelTest : public ReaderModeTest {
+ public:
+  void SetUp() override {
+    ReaderModeTest::SetUp();
+    web_state_ = CreateWebState();
+
+    mock_tracker_ = static_cast<feature_engagement::test::MockTracker*>(
+        feature_engagement::TrackerFactory::GetForProfile(profile()));
+
+    EXPECT_CALL(*mock_tracker_,
+                ShouldTriggerHelpUI(testing::Ref(
+                    feature_engagement::
+                        kIPHiOSReaderModeLargeOmniboxEntrypointFeature)))
+        .WillRepeatedly(testing::Return(true));
+  }
+
+  void DetachReaderModeTabHelper() {
+    ReaderModeTabHelper::RemoveFromWebState(web_state());
+  }
+
+  web::FakeWebState* web_state() { return web_state_.get(); }
+
+ private:
+  raw_ptr<feature_engagement::test::MockTracker> mock_tracker_;
+  std::unique_ptr<web::FakeWebState> web_state_;
+};
+
+// NTP should return a null configuration.
+TEST_F(ReaderModeModelTest, FetchConfigurationForNTP) {
+  ReaderModeModel model(profile());
+  __block std::unique_ptr<ContextualPanelItemConfiguration> configuration;
+
+  web_state()->SetContentIsHTML(true);
+  LoadWebpage(web_state(), GURL(kChromeUIAboutNewTabURL));
+  model.FetchConfigurationForWebState(
+      web_state(),
+      base::BindOnce(
+          ^(base::OnceClosure quit_closure,
+            std::unique_ptr<ContextualPanelItemConfiguration> config) {
+            configuration = std::move(config);
+            std::move(quit_closure).Run();
+          },
+          task_environment()->QuitClosure()));
+  task_environment()->RunUntilQuit();
+  EXPECT_EQ(configuration, nullptr);
+}
+
+// Non-HTML content should return a null configuration.
+TEST_F(ReaderModeModelTest, FetchConfigurationForNonHTMLContent) {
+  ReaderModeModel model(profile());
+  __block std::unique_ptr<ContextualPanelItemConfiguration> configuration;
+
+  web_state()->SetContentIsHTML(false);
+  LoadWebpage(web_state(), GURL("https://test.org/doc.pdf"));
+  model.FetchConfigurationForWebState(
+      web_state(),
+      base::BindOnce(
+          ^(base::OnceClosure quit_closure,
+            std::unique_ptr<ContextualPanelItemConfiguration> config) {
+            configuration = std::move(config);
+            std::move(quit_closure).Run();
+          },
+          task_environment()->QuitClosure()));
+  task_environment()->RunUntilQuit();
+  EXPECT_EQ(configuration, nullptr);
+}
+
+// HTML content should return the expected non-null configuration.
+TEST_F(ReaderModeModelTest, FetchConfigurationForHTMLContent) {
+  ReaderModeModel model(profile());
+  __block std::unique_ptr<ContextualPanelItemConfiguration> configuration;
+
+  GURL test_url("https://test.org/doc.html");
+  SetReaderModeState(web_state(), test_url,
+                     ReaderModeHeuristicResult::kReaderModeEligible, "");
+  LoadWebpage(web_state(), test_url);
+  WaitForPageLoadDelayAndRunUntilIdle();
+
+  model.FetchConfigurationForWebState(
+      web_state(),
+      base::BindOnce(
+          ^(base::OnceClosure quit_closure,
+            std::unique_ptr<ContextualPanelItemConfiguration> config) {
+            configuration = std::move(config);
+            std::move(quit_closure).Run();
+          },
+          task_environment()->QuitClosure()));
+  task_environment()->RunUntilQuit();
+  EXPECT_NE(configuration, nullptr);
+
+  EXPECT_EQ(configuration->item_type, ContextualPanelItemType::ReaderModeItem);
+  EXPECT_EQ(SymbolReaderMode, configuration->entrypoint_symbol);
+  EXPECT_EQ(configuration->relevance,
+            ContextualPanelItemConfiguration::low_relevance - 1);
+  EXPECT_TRUE(configuration->entrypoint_message_large_entrypoint_always_shown);
+  EXPECT_TRUE(configuration->entrypoint_custom_action);
+}
+
+// WebState without a ReaderModeTabHelper should return a null configuration.
+TEST_F(ReaderModeModelTest, FetchConfigurationWithoutReaderModeTabHelper) {
+  DetachReaderModeTabHelper();
+  ReaderModeModel model(profile());
+  __block std::unique_ptr<ContextualPanelItemConfiguration> configuration;
+
+  model.FetchConfigurationForWebState(
+      web_state(),
+      base::BindOnce(
+          ^(base::OnceClosure quit_closure,
+            std::unique_ptr<ContextualPanelItemConfiguration> config) {
+            configuration = std::move(config);
+            std::move(quit_closure).Run();
+          },
+          task_environment()->QuitClosure()));
+  task_environment()->RunUntilQuit();
+  EXPECT_EQ(configuration, nullptr);
+}
+
+// Fetching the configuration while GeminiTabHelper is preventing the Contextual
+// Panel entrypoint should result in a null configuration.
+TEST_F(ReaderModeModelTest, FetchConfigurationPreventedByGemini) {
+  ReaderModeModel model(profile());
+  __block std::unique_ptr<ContextualPanelItemConfiguration> configuration;
+
+  GURL test_url("https://test.org/doc.html");
+  SetReaderModeState(web_state(), test_url,
+                     ReaderModeHeuristicResult::kReaderModeEligible, "");
+  LoadWebpage(web_state(), test_url);
+  task_environment()->FastForwardBy(base::Seconds(1));
+
+  GeminiTabHelper::CreateForWebState(web_state());
+  GeminiTabHelper* gemini_tab_helper =
+      GeminiTabHelper::FromWebState(web_state());
+  gemini_tab_helper->SetPreventContextualPanelEntryPoint(true);
+
+  model.FetchConfigurationForWebState(
+      web_state(),
+      base::BindOnce(
+          ^(base::OnceClosure quit_closure,
+            std::unique_ptr<ContextualPanelItemConfiguration> config) {
+            configuration = std::move(config);
+            std::move(quit_closure).Run();
+          },
+          task_environment()->QuitClosure()));
+  task_environment()->RunUntilQuit();
+  EXPECT_EQ(configuration, nullptr);
+}

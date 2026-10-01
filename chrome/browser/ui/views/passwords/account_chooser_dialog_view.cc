@@ -1,0 +1,179 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/passwords/account_chooser_dialog_view.h"
+
+#include <algorithm>
+#include <memory>
+#include <utility>
+
+#include "build/build_config.h"
+#include "chrome/browser/ui/passwords/credential_manager_dialog_controller.h"
+#include "chrome/browser/ui/passwords/ui_utils.h"
+#include "chrome/browser/ui/views/chrome_layout_provider.h"
+#include "chrome/browser/ui/views/chrome_typography.h"
+#include "chrome/browser/ui/views/passwords/credentials_item_view.h"
+#include "chrome/browser/ui/views/passwords/password_combined_selector_view.h"
+#include "chrome/grit/generated_resources.h"
+#include "components/constrained_window/constrained_window_views.h"
+#include "components/password_manager/core/browser/features/password_features.h"
+#include "components/password_manager/core/browser/password_form.h"
+#include "content/public/browser/web_contents.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/dialog_button.mojom.h"
+#include "ui/base/mojom/ui_base_types.mojom-shared.h"
+#include "ui/events/event.h"
+#include "ui/gfx/geometry/insets.h"
+#include "ui/views/border.h"
+#include "ui/views/controls/label.h"
+#include "ui/views/controls/scroll_view.h"
+#include "ui/views/layout/box_layout.h"
+#include "ui/views/layout/fill_layout.h"
+#include "ui/views/layout/layout_provider.h"
+#include "ui/views/style/typography.h"
+#include "ui/views/widget/widget.h"
+#include "ui/views/window/dialog_client_view.h"
+
+AccountChooserDialogView::AccountChooserDialogView(
+    CredentialManagerDialogController* controller,
+    content::WebContents* web_contents)
+    : controller_(controller), web_contents_(web_contents->GetWeakPtr()) {
+  DCHECK(controller);
+  DCHECK(web_contents);
+  SetButtons(static_cast<int>(ui::mojom::DialogButton::kCancel));
+  SetButtonLabel(
+      ui::mojom::DialogButton::kOk,
+      l10n_util::GetStringUTF16(IDS_PASSWORD_MANAGER_ACCOUNT_CHOOSER_SIGN_IN));
+  SetModalType(ui::mojom::ModalType::kChild);
+  if (controller_->ShouldShowFooter()) {
+    auto* label = SetFootnoteView(std::make_unique<views::Label>(
+        l10n_util::GetStringUTF16(IDS_SAVE_PASSWORD_FOOTER),
+        ChromeTextContext::CONTEXT_DIALOG_BODY_TEXT_SMALL,
+        views::style::STYLE_SECONDARY));
+    label->SetMultiLine(true);
+    label->SetHorizontalAlignment(gfx::ALIGN_LEFT);
+  }
+  const auto insets =
+      views::LayoutProvider::Get()->GetDialogInsetsForContentType(
+          views::DialogContentType::kText, views::DialogContentType::kText);
+  set_margins(gfx::Insets::TLBR(insets.top(), 0, insets.bottom(), 0));
+  set_footnote_margins(ChromeLayoutProvider::Get()->GetInsetsMetric(
+      views::INSETS_DIALOG_FOOTNOTE));
+}
+
+AccountChooserDialogView::~AccountChooserDialogView() = default;
+
+void AccountChooserDialogView::ShowAccountChooser() {
+  // It isn't known until after the creation of this dialog whether the sign-in
+  // button should be shown, so always reset the button state here.
+  SetButtons(controller_->ShouldShowSignInButton()
+                 ? static_cast<int>(ui::mojom::DialogButton::kOk) |
+                       static_cast<int>(ui::mojom::DialogButton::kCancel)
+                 : static_cast<int>(ui::mojom::DialogButton::kCancel));
+  DialogModelChanged();
+  InitWindow();
+
+  DCHECK(!widget_);
+  SetOwnershipOfNewWidget(views::Widget::InitParams::CLIENT_OWNS_WIDGET);
+  widget_ = base::WrapUnique(
+      constrained_window::ShowWebModalDialogViews(this, web_contents_.get()));
+}
+
+void AccountChooserDialogView::ControllerGone() {
+  // During Widget::Close() phase some accessibility event may occur. Thus,
+  // |controller_| should be kept around.
+  GetWidget()->Close();
+  controller_ = nullptr;
+}
+
+std::u16string AccountChooserDialogView::GetWindowTitle() const {
+  return controller_->GetAccountChooserTitle();
+}
+
+bool AccountChooserDialogView::ShouldShowCloseButton() const {
+  return false;
+}
+
+void AccountChooserDialogView::WindowClosing() {
+  if (controller_) {
+    // Clear the controller pointer before calling OnCloseDialog() to prevent
+    // re-entrancy issues during widget destruction. The controller tries
+    // deleting `this`.
+    controller_.ExtractAsDangling()->OnCloseDialog();
+  }
+}
+
+bool AccountChooserDialogView::Accept() {
+  DCHECK(controller_);
+  controller_->OnSignInClicked();
+  // The dialog is closed by the controller.
+  return false;
+}
+
+bool AccountChooserDialogView::ShouldAllowKeyEventsDuringInputProtection()
+    const {
+  return false;
+}
+
+void AccountChooserDialogView::InitWindow() {
+  auto contents_view = std::make_unique<views::View>();
+  contents_view->SetLayoutManager(std::make_unique<views::FillLayout>());
+
+  views::ScrollView* scroll_view =
+      contents_view->AddChildView(std::make_unique<views::ScrollView>());
+  auto* list_view = scroll_view->SetContents(std::make_unique<views::View>());
+  list_view->SetLayoutManager(std::make_unique<views::BoxLayout>(
+      views::BoxLayout::Orientation::kVertical));
+  int item_height = 0;
+  for (const auto& form : controller_->GetLocalForms()) {
+    const auto titles = GetCredentialLabelsForAccountChooser(*form);
+    auto* credential_view =
+        list_view->AddChildView(std::make_unique<CredentialsItemView>(
+            base::BindRepeating(
+                &AccountChooserDialogView::CredentialsItemPressed,
+                base::Unretained(this), base::Unretained(form.get())),
+            titles.first, titles.second, form.get(),
+            GetURLLoaderForMainFrame(web_contents_.get()).get(),
+            web_contents_->GetPrimaryMainFrame()->GetLastCommittedOrigin()));
+    ChromeLayoutProvider* layout_provider = ChromeLayoutProvider::Get();
+    gfx::Insets insets =
+        layout_provider->GetInsetsMetric(views::INSETS_DIALOG_SUBSECTION);
+    const int vertical_padding = layout_provider->GetDistanceMetric(
+        views::DISTANCE_RELATED_CONTROL_VERTICAL);
+    credential_view->SetBorder(views::CreateEmptyBorder(gfx::Insets::TLBR(
+        vertical_padding, insets.left(), vertical_padding, insets.right())));
+    item_height = std::max(item_height, credential_view->GetPreferredHeight());
+  }
+  constexpr float kMaxVisibleItems = 3.5;
+  scroll_view->ClipHeightTo(0, kMaxVisibleItems * item_height);
+  SetContentsView(std::move(contents_view));
+}
+
+void AccountChooserDialogView::CredentialsItemPressed(
+    const password_manager::PasswordForm* form,
+    const ui::Event& event) {
+  if (GetDialogClientView() &&
+      GetDialogClientView()->IsPossiblyUnintendedInteraction(
+          event, /*allow_key_events=*/
+          ShouldAllowKeyEventsDuringInputProtection())) {
+    return;
+  }
+  // On Mac the button click event may be dispatched after the dialog was
+  // hidden. Thus, the controller can be null.
+  if (controller_) {
+    controller_->OnChooseCredentials(
+        *form, password_manager::CredentialType::CREDENTIAL_TYPE_PASSWORD);
+  }
+}
+
+std::unique_ptr<AccountChooserPrompt> CreateAccountChooserPromptView(
+    CredentialManagerDialogController* controller,
+    content::WebContents* web_contents) {
+  if (base::FeatureList::IsEnabled(
+          password_manager::features::kCredentialManagementUnifiedUi)) {
+    return std::make_unique<PasswordCombinedSelectorView>(controller,
+                                                          web_contents);
+  }
+  return std::make_unique<AccountChooserDialogView>(controller, web_contents);
+}

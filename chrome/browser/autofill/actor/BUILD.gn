@@ -1,0 +1,68 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+static_library("actor") {
+  sources = [
+    "one_time_tokens/actor_login_context.cc",
+    "one_time_tokens/actor_login_context.h",
+    "one_time_tokens/actor_one_time_token_filling_service.h",
+    "one_time_tokens/actor_one_time_token_filling_service_impl.cc",
+    "one_time_tokens/actor_one_time_token_filling_service_impl.h",
+    "one_time_tokens/actor_one_time_token_filling_service_metrics.cc",
+    "one_time_tokens/actor_one_time_token_filling_service_metrics.h",
+  ]
+
+  deps = [
+    "//chrome/browser/actor",
+    "//chrome/browser/affiliations",
+    "//chrome/browser/autofill",
+    "//chrome/browser/profiles",
+    "//chrome/browser/ssl",
+    "//chrome/browser/ui/autofill",
+    "//chrome/common:chrome_features",
+    "//components/actor/core:journal",
+    "//components/affiliations/core/browser:affiliations",
+    "//components/affiliations/core/browser/domain_matching",
+    "//components/autofill/content/browser",
+    "//components/one_time_tokens/core/browser",
+    "//components/security_state/content",
+    "//components/tabs:public",
+    "//url",
+  ]
+
+  public_deps = [
+    "//base",
+    "//components/autofill/core/browser",
+    "//components/autofill/core/browser/actor",
+    "//components/autofill/core/browser/integrators/actor:actor_form_filling_types",
+    "//components/autofill/core/common",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "one_time_tokens/actor_one_time_token_filling_service_impl_unittest.cc",
+  ]
+
+  deps = [
+    ":actor",
+    "//base/test:test_support",
+    "//chrome/browser/actor",
+    "//chrome/browser/affiliations",
+    "//chrome/browser/autofill",
+    "//chrome/test:test_support",
+    "//components/affiliations/core/browser:affiliations",
+    "//components/affiliations/core/browser:test_support",
+    "//components/autofill/content/browser:test_support",
+    "//components/autofill/core/browser:test_support",
+    "//components/autofill/core/browser/actor:test_support",
+    "//components/one_time_tokens/core/browser",
+    "//components/security_state/content",
+    "//components/tabs:test_support",
+    "//content/test:test_support",
+    "//testing/gmock",
+    "//testing/gtest",
+  ]
+}

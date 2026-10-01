@@ -1,0 +1,80 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_PERMISSIONS_ANDROID_PERMISSION_PROMPT_EMBEDDED_PERMISSION_PROMPT_ANDROID_H_
+#define COMPONENTS_PERMISSIONS_ANDROID_PERMISSION_PROMPT_EMBEDDED_PERMISSION_PROMPT_ANDROID_H_
+
+#include <memory>
+
+#include "base/memory/raw_ptr.h"
+#include "components/permissions/android/permission_prompt/permission_prompt_android.h"
+#include "components/permissions/embedded_permission_prompt_flow_model.h"
+
+namespace content {
+class WebContents;
+}
+
+namespace permissions {
+
+// Permission prompt for PEPC requests (permission requests when users click on
+// <permission> element).
+class EmbeddedPermissionPromptAndroid : public PermissionPromptAndroid {
+ public:
+  EmbeddedPermissionPromptAndroid(content::WebContents* web_contents,
+                                  Delegate* delegate);
+
+  EmbeddedPermissionPromptAndroid(const EmbeddedPermissionPromptAndroid&) =
+      delete;
+  EmbeddedPermissionPromptAndroid& operator=(
+      const EmbeddedPermissionPromptAndroid&) = delete;
+
+  ~EmbeddedPermissionPromptAndroid() override;
+
+  static std::unique_ptr<EmbeddedPermissionPromptAndroid> Create(
+      content::WebContents* web_contents,
+      Delegate* delegate);
+
+  // PermissionPrompt:
+  PermissionPromptDisposition GetPromptDisposition() const override;
+  std::optional<gfx::Rect> GetViewBoundsInScreen() const override;
+  bool IsAskPrompt() const override;
+
+  // PermissionPromptAndroid:
+  EmbeddedPermissionPromptFlowModel::Variant GetEmbeddedPromptVariant()
+      const override;
+  void Dismiss(const PromptOptions& prompt_options) override;
+  void Accept(const PromptOptions& prompt_options) override;
+  void AcceptThisTime(const PromptOptions& prompt_options) override;
+  void Acknowledge(const PromptOptions& prompt_options) override;
+  void Deny(const PromptOptions& prompt_options) override;
+  void Resumed() override;
+  void SystemSettingsShown() override;
+  void SystemPermissionResolved(bool accepted) override;
+  bool ShouldCurrentRequestUseQuietUI() override;
+  std::optional<PermissionUiSelector::QuietUiReason> ReasonForUsingQuietUi()
+      const override;
+  PermissionRequest::AnnotatedMessageText GetAnnotatedMessageText()
+      const override;
+  std::u16string GetPositiveButtonText(bool is_one_time) const override;
+  std::u16string GetNegativeButtonText(bool is_one_time) const override;
+  std::u16string GetPositiveEphemeralButtonText(
+      bool is_one_time) const override;
+
+  bool ShouldUseRequestingOriginFavicon() const override;
+  std::vector<permissions::ElementAnchoredBubbleVariant> GetPromptVariants()
+      const override;
+  int GetIconId() const override;
+
+ private:
+  PermissionRequest::AnnotatedMessageText
+  GetDialogAnnotatedMessageTextWithOrigin(int message_id) const;
+
+  std::u16string GetPermissionNameTextFragment() const;
+
+  raw_ptr<EmbeddedPermissionPromptFlowModel> prompt_model_;
+};
+
+}  // namespace permissions
+
+#endif  // COMPONENTS_PERMISSIONS_ANDROID_PERMISSION_PROMPT_EMBEDDED_PERMISSION_PROMPT_ANDROID_H_

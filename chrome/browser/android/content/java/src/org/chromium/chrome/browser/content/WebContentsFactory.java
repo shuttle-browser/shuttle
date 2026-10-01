@@ -1,0 +1,152 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.content;
+
+import org.jni_zero.JniType;
+import org.jni_zero.NativeMethods;
+
+import org.chromium.base.ResettersForTesting;
+import org.chromium.build.BuildConfig;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.content_public.browser.WebContents;
+import org.chromium.net.NetId;
+
+/**
+ * This factory creates WebContents objects and the associated native counterpart. TODO(dtrainor):
+ * Move this to the content/ layer if BrowserContext is ever supported in Java.
+ */
+@NullMarked
+public class WebContentsFactory {
+    private static @Nullable WebContents sWebContentsForTesting;
+
+    private WebContentsFactory() {}
+
+    public static void setWebContentsForTesting(WebContents webContents) {
+        sWebContentsForTesting = webContents;
+        ResettersForTesting.register(() -> sWebContentsForTesting = null);
+    }
+
+    /** For capturing where WebContentsImpl is created. */
+    // TODO(crbug.com/40062641): This should be removed once the off-the-record WebContents no
+    // longer outlive the corresponding profile and crash.
+    private static class WebContentsCreationException extends RuntimeException {
+        WebContentsCreationException() {
+            super("vvv This is where WebContents was created. vvv");
+        }
+    }
+
+    private static @Nullable WebContentsCreationException maybeCreateWebContentsCreationException(
+            Profile profile) {
+        // TODO(crbug.com/40062641): This is only needed for debugging off-the-record WebContents
+        // that outlive the corresponding profile and crash. Stack traces are not free so limit
+        // this to only applicable cases.
+        if (profile.isOffTheRecord() || BuildConfig.ENABLE_ASSERTS) {
+            return new WebContentsCreationException();
+        }
+        return null;
+    }
+
+    /**
+     * A factory method to build a {@link WebContents} object with an separate and ephemeral
+     * StoragePartition. This functionality is for an experiment and is tailored to that
+     * experiment's use case. This WebContents is also initially hidden and does not initialize the
+     * renderer.
+     *
+     * @param profile The profile with which the {@link WebContents} should be built.
+     * @return A newly created {@link WebContents} object.
+     */
+    public static WebContents createWebContentsWithSeparateStoragePartitionForExperiment(
+            Profile profile) {
+        if (sWebContentsForTesting != null) {
+            return sWebContentsForTesting;
+        }
+        return WebContentsFactoryJni.get()
+                .createWebContentsWithSeparateStoragePartitionForExperiment(
+                        profile, maybeCreateWebContentsCreationException(profile));
+    }
+
+    /**
+     * A factory method to build a {@link WebContents} object.
+     *
+     * @param profile The profile with which the {@link WebContents} should be built.
+     * @param initiallyHidden Whether or not the {@link WebContents} should be initially hidden.
+     * @param initializeRenderer Whether or not the {@link WebContents} should initialize renderer.
+     * @param targetNetwork target bound network, also refer to the documentation of {@link
+     *     ChromeContentBrowserClient::MaybeSetTargetNetwork} on how to use targetNetwork at the
+     *     native layer.
+     * @return A newly created {@link WebContents} object.
+     */
+    public static WebContents createWebContents(
+            Profile profile,
+            boolean initiallyHidden,
+            boolean initializeRenderer,
+            boolean usesPlatformAutofill,
+            long targetNetwork) {
+        if (sWebContentsForTesting != null) {
+            return sWebContentsForTesting;
+        }
+        return WebContentsFactoryJni.get()
+                .createWebContents(
+                        profile,
+                        initiallyHidden,
+                        initializeRenderer,
+                        usesPlatformAutofill,
+                        targetNetwork,
+                        maybeCreateWebContentsCreationException(profile));
+    }
+
+    /**
+     * A factory method to build a {@link WebContents} object.
+     *
+     * @param profile The profile with which the {@link WebContents} should be built.
+     * @param initiallyHidden Whether or not the {@link WebContents} should be initially hidden.
+     * @param initializeRenderer Whether or not the {@link WebContents} should initialize renderer.
+     * @return A newly created {@link WebContents} object.
+     */
+    public static WebContents createWebContents(
+            Profile profile, boolean initiallyHidden, boolean initializeRenderer) {
+        return createWebContents(
+                profile,
+                initiallyHidden,
+                initializeRenderer,
+                /* usesPlatformAutofill= */ false,
+                /* targetNetwork= */ NetId.INVALID);
+    }
+
+    /**
+     * A factory method to build a {@link WebContents} object.
+     *
+     * <p>Also creates and initializes the renderer.
+     *
+     * @param profile The profile to be used by the WebContents.
+     * @param initiallyHidden Whether or not the {@link WebContents} should be initially hidden.
+     * @param targetNetwork target network handle.
+     * @return A newly created {@link WebContents} object.
+     */
+    public static WebContents createWebContentsWithWarmRenderer(
+            Profile profile,
+            boolean initiallyHidden,
+            boolean usesPlatformAutofill,
+            long targetNetwork) {
+        return createWebContents(
+                profile, initiallyHidden, true, usesPlatformAutofill, targetNetwork);
+    }
+
+    @NativeMethods
+    public interface Natives {
+        WebContents createWebContents(
+                @JniType("Profile*") Profile profile,
+                boolean initiallyHidden,
+                boolean initializeRenderer,
+                boolean usesPlatformAutofill,
+                long targetNetwork,
+                @Nullable Throwable javaCreator);
+
+        WebContents createWebContentsWithSeparateStoragePartitionForExperiment(
+                @JniType("Profile*") Profile profile, @Nullable Throwable javaCreator);
+    }
+}

@@ -1,0 +1,217 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.webid;
+
+import android.content.ComponentName;
+import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.Message;
+import android.os.Messenger;
+import android.os.RemoteException;
+
+import org.jni_zero.CalledByNative;
+import org.jni_zero.JNINamespace;
+import org.jni_zero.JniType;
+import org.jni_zero.NativeMethods;
+
+import org.chromium.base.ContextUtils;
+import org.chromium.base.Log;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+
+/** This class connects to Android apps through bound services. */
+@JNINamespace("content::webid")
+@NullMarked
+public class IdentityProviderService extends Handler implements ServiceConnection {
+    private static final String TAG = "FedCMBoundService";
+
+    // TODO(crbug.com/465181345): decide if we should use AIDL or not here,
+    // rather than.defining these manually.
+
+    // The action string that the FedCM bound service must register for in its
+    // intent filter.
+    static final String FEDCM_BOUND_SERVICE_INTENT_ACTION = "org.w3.FedCM";
+    // Keys for the request and reply strings in the message bundles.
+    static final String FEDCM_BOUND_SERVICE_INTENT_URL = "url";
+    static final String FEDCM_BOUND_SERVICE_INTENT_BODY = "body";
+    static final String FEDCM_BOUND_SERVICE_INTENT_HEADERS = "headers";
+    static final String FEDCM_BOUND_SERVICE_INTENT_REPLY = "reply";
+    // The message code that the recipient can use to identify the request and
+    // response message.
+    static final int MSG_FEDCM_REQUEST = 1;
+    static final int MSG_FEDCM_RESPONSE = 2;
+
+    private long mNativeIdentityProviderService;
+    private boolean mIsBound;
+    private @Nullable IBinder mService;
+
+    private IdentityProviderService(long nativeIdentityProviderService) {
+        super(Looper.getMainLooper());
+        mNativeIdentityProviderService = nativeIdentityProviderService;
+    }
+
+    @CalledByNative
+    private static IdentityProviderService create(long nativeIdentityProviderService) {
+        return new IdentityProviderService(nativeIdentityProviderService);
+    }
+
+    @CalledByNative
+    private void connect(
+            @JniType("std::string") String packageName,
+            @JniType("std::string") String serviceName) {
+        if (mIsBound) {
+            Log.d(TAG, "Already bound");
+            if (mNativeIdentityProviderService != 0) {
+                IdentityProviderServiceJni.get().onConnected(mNativeIdentityProviderService, true);
+            }
+            return;
+        }
+
+        Intent intent = new Intent(FEDCM_BOUND_SERVICE_INTENT_ACTION);
+        Context context = ContextUtils.getApplicationContext();
+        ComponentName name = new ComponentName(packageName, serviceName);
+        intent.setComponent(name);
+
+        Log.d(TAG, "Binding service: %s/%s", packageName, serviceName);
+        boolean binding = context.bindService(intent, this, Context.BIND_AUTO_CREATE);
+
+        if (!binding) {
+            Log.d(TAG, "Binding failed");
+            if (mNativeIdentityProviderService != 0) {
+                IdentityProviderServiceJni.get().onConnected(mNativeIdentityProviderService, false);
+            }
+        }
+    }
+
+    @Override
+    public void onBindingDied(ComponentName name) {
+        Log.d(TAG, "onBindingDied");
+        mIsBound = false;
+        if (mNativeIdentityProviderService != 0) {
+            IdentityProviderServiceJni.get().onDisconnected(mNativeIdentityProviderService);
+        }
+    }
+
+    @Override
+    public void onNullBinding(ComponentName name) {
+        Log.d(TAG, "onNullBinding");
+        mIsBound = false;
+        if (mNativeIdentityProviderService != 0) {
+            IdentityProviderServiceJni.get().onDisconnected(mNativeIdentityProviderService);
+        }
+    }
+
+    @Override
+    public void onServiceConnected(ComponentName name, IBinder service) {
+        Log.d(TAG, "Connected");
+        mService = service;
+        mIsBound = true;
+        if (mNativeIdentityProviderService != 0) {
+            IdentityProviderServiceJni.get().onConnected(mNativeIdentityProviderService, mIsBound);
+        }
+    }
+
+    @Override
+    public void onServiceDisconnected(ComponentName name) {
+        Log.d(TAG, "Disconnected");
+        mIsBound = false;
+        if (mNativeIdentityProviderService != 0) {
+            IdentityProviderServiceJni.get().onDisconnected(mNativeIdentityProviderService);
+        }
+    }
+
+    @CalledByNative
+    private void fetch(
+            @JniType("std::string") String url,
+            @JniType("std::optional<std::string>") @Nullable String body,
+            @JniType("std::vector<std::string>") String[] headerKeys,
+            @JniType("std::vector<std::string>") String[] headerValues) {
+        if (!mIsBound) {
+            if (mNativeIdentityProviderService != 0) {
+                IdentityProviderServiceJni.get()
+                        .onDataFetched(mNativeIdentityProviderService, null);
+            }
+            return;
+        }
+        Messenger serviceMessenger = new Messenger(mService);
+        Message msg = Message.obtain();
+        msg.what = MSG_FEDCM_REQUEST;
+        Bundle bundle = new Bundle();
+        bundle.putString(FEDCM_BOUND_SERVICE_INTENT_URL, url);
+        if (body != null) {
+            bundle.putString(FEDCM_BOUND_SERVICE_INTENT_BODY, body);
+        }
+        if (headerKeys != null && headerValues != null && headerKeys.length > 0) {
+            Bundle headersBundle = new Bundle();
+            for (int i = 0; i < headerKeys.length && i < headerValues.length; ++i) {
+                headersBundle.putString(headerKeys[i], headerValues[i]);
+            }
+            bundle.putBundle(FEDCM_BOUND_SERVICE_INTENT_HEADERS, headersBundle);
+        }
+        msg.setData(bundle);
+        Messenger responseMessenger = new Messenger(this);
+        msg.replyTo = responseMessenger;
+        try {
+            serviceMessenger.send(msg);
+        } catch (RemoteException e) {
+            Log.e(TAG, "RemoteException while fetching: %s", e);
+            if (mNativeIdentityProviderService != 0) {
+                IdentityProviderServiceJni.get()
+                        .onDataFetched(mNativeIdentityProviderService, null);
+            }
+        }
+    }
+
+    @Override
+    public void handleMessage(Message msg) {
+        Log.d(TAG, "Got message back");
+        if (msg.what != MSG_FEDCM_RESPONSE) {
+            if (mNativeIdentityProviderService != 0) {
+                IdentityProviderServiceJni.get()
+                        .onDataFetched(mNativeIdentityProviderService, null);
+            }
+            return;
+        }
+
+        String reply = msg.getData().getString(FEDCM_BOUND_SERVICE_INTENT_REPLY);
+        if (mNativeIdentityProviderService != 0) {
+            IdentityProviderServiceJni.get().onDataFetched(mNativeIdentityProviderService, reply);
+        }
+    }
+
+    @CalledByNative
+    private void disconnect() {
+        if (mIsBound) {
+            Context context = ContextUtils.getApplicationContext();
+            context.unbindService(this);
+            mIsBound = false;
+        }
+
+        if (mNativeIdentityProviderService != 0) {
+            IdentityProviderServiceJni.get().onDisconnected(mNativeIdentityProviderService);
+        }
+    }
+
+    @CalledByNative
+    private void destroy() {
+        mNativeIdentityProviderService = 0;
+    }
+
+    @NativeMethods
+    interface Natives {
+        void onDataFetched(
+                long nativeIdentityProviderService,
+                @JniType("std::optional<std::string>") @Nullable String data);
+
+        void onConnected(long nativeIdentityProviderService, boolean success);
+
+        void onDisconnected(long nativeIdentityProviderService);
+    }
+}

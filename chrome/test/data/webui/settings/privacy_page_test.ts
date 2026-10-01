@@ -1,0 +1,366 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// clang-format off
+import {webUIListenerCallback} from 'chrome://resources/js/cr.js';
+import {flush} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+import type {CrToastElement} from 'chrome://settings/lazy_load.js';
+import {ClearBrowsingDataBrowserProxyImpl, CookieControlsMode} from 'chrome://settings/lazy_load.js';
+import type {CrLinkRowElement, SettingsPrefsElement, SettingsPrivacyPageElement, SyncStatus} from 'chrome://settings/settings.js';
+import {CrSettingsPrefs, HatsBrowserProxyImpl, loadTimeData, MetricsBrowserProxyImpl, PrivacyGuideInteractions, resetRouterForTesting, Router, routes, StatusAction, TrustSafetyInteraction} from 'chrome://settings/settings.js';
+import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import {eventToPromise, isChildVisible} from 'chrome://webui-test/test_util.js';
+import {flushTasks} from 'chrome://webui-test/polymer_test_util.js';
+
+import {TestClearBrowsingDataBrowserProxy} from './test_clear_browsing_data_browser_proxy.js';
+import {TestHatsBrowserProxy} from './test_hats_browser_proxy.js';
+import {TestMetricsBrowserProxy} from './test_metrics_browser_proxy.js';
+
+
+
+// clang-format on
+
+suite('PrivacyPage', function() {
+  let page: SettingsPrivacyPageElement;
+  let settingsPrefs: SettingsPrefsElement;
+  let testClearBrowsingDataBrowserProxy: TestClearBrowsingDataBrowserProxy;
+  let metricsBrowserProxy: TestMetricsBrowserProxy;
+
+  suiteSetup(function() {
+    resetRouterForTesting();
+
+    settingsPrefs = document.createElement('settings-prefs');
+    return CrSettingsPrefs.initialized;
+  });
+
+  function createPage() {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    page = document.createElement('settings-privacy-page');
+    page.prefs = settingsPrefs.prefs!;
+    document.body.appendChild(page);
+
+    return flushTasks();
+  }
+
+  setup(function() {
+    testClearBrowsingDataBrowserProxy = new TestClearBrowsingDataBrowserProxy();
+    ClearBrowsingDataBrowserProxyImpl.setInstance(
+        testClearBrowsingDataBrowserProxy);
+    metricsBrowserProxy = new TestMetricsBrowserProxy();
+    MetricsBrowserProxyImpl.setInstance(metricsBrowserProxy);
+
+    return createPage();
+  });
+
+  teardown(function() {
+    page.remove();
+    Router.getInstance().navigateTo(routes.BASIC);
+    resetRouterForTesting();
+  });
+
+  test('showDeleteBrowsingDataDialog', function() {
+    assertFalse(!!page.shadowRoot!.querySelector(
+        'settings-clear-browsing-data-dialog'));
+    page.$.clearBrowsingData.click();
+    flush();
+
+    const dialog =
+        page.shadowRoot!.querySelector('settings-clear-browsing-data-dialog');
+    assertTrue(!!dialog);
+  });
+
+  test('showDeletionConfirmationToast', async function() {
+    const toast = page.shadowRoot!.querySelector<CrToastElement>(
+        '#deleteBrowsingDataToast');
+    assertTrue(!!toast);
+    assertFalse(toast.open);
+    page.$.clearBrowsingData.click();
+    flush();
+
+    const dialog =
+        page.shadowRoot!.querySelector('settings-clear-browsing-data-dialog');
+    assertTrue(!!dialog);
+    dialog.dispatchEvent(new CustomEvent('browsing-data-deleted', {
+      bubbles: true,
+      composed: true,
+      detail: {deletionConfirmationText: 'test'},
+    }));
+    dialog.$.deleteBrowsingDataDialog.close();
+    await eventToPromise('close', dialog);
+    flush();
+
+    assertTrue(toast.open);
+    assertEquals('test', toast.textContent.trim());
+  });
+
+  // Test that clicking on the security page row navigates to
+  // chrome://settings/security
+  test('onSecurityPageClick', function() {
+    page.$.securityLinkRow.click();
+    flush();
+    assertEquals(routes.SECURITY, Router.getInstance().getCurrentRoute());
+  });
+});
+
+
+suite(`CookiesSubpage`, function() {
+  let page: SettingsPrivacyPageElement;
+  let settingsPrefs: SettingsPrefsElement;
+
+  suiteSetup(function() {
+    resetRouterForTesting();
+
+    settingsPrefs = document.createElement('settings-prefs');
+    return CrSettingsPrefs.initialized;
+  });
+
+  setup(function() {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+
+    page = document.createElement('settings-privacy-page');
+    page.prefs = settingsPrefs.prefs!;
+    document.body.appendChild(page);
+    return flushTasks();
+  });
+
+  test('clickCookiesRow', async function() {
+    const thirdPartyCookiesLinkRow =
+        page.shadowRoot!.querySelector<HTMLElement>(
+            '#thirdPartyCookiesLinkRow');
+    assertTrue(!!thirdPartyCookiesLinkRow);
+    thirdPartyCookiesLinkRow.click();
+    // Check that the correct page was navigated to.
+    await flushTasks();
+    assertEquals(routes.COOKIES, Router.getInstance().getCurrentRoute());
+  });
+});
+
+suite('CookiesSubpageRedesignDisabled', function() {
+  let page: SettingsPrivacyPageElement;
+  let settingsPrefs: SettingsPrefsElement;
+
+  suiteSetup(function() {
+    settingsPrefs = document.createElement('settings-prefs');
+    return CrSettingsPrefs.initialized;
+  });
+
+  function createPage() {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    page = document.createElement('settings-privacy-page');
+    page.prefs = settingsPrefs.prefs!;
+    document.body.appendChild(page);
+
+    return flushTasks();
+  }
+
+  test(
+      'cookiesLinkRow', async function() {
+        resetRouterForTesting();
+
+        await createPage();
+
+        const thirdPartyCookiesLinkRow =
+            page.shadowRoot!.querySelector<CrLinkRowElement>(
+                '#thirdPartyCookiesLinkRow');
+        assertTrue(!!thirdPartyCookiesLinkRow);
+        assertEquals(
+            page.i18n('thirdPartyCookiesLinkRowLabel'),
+            thirdPartyCookiesLinkRow.label);
+
+        page.setPrefValue(
+            'profile.cookie_controls_mode', CookieControlsMode.OFF);
+        assertEquals(
+            page.i18n('thirdPartyCookiesLinkRowSublabelEnabled'),
+            thirdPartyCookiesLinkRow.subLabel);
+
+        page.setPrefValue(
+            'profile.cookie_controls_mode', CookieControlsMode.INCOGNITO_ONLY);
+        assertEquals(
+            page.i18n('thirdPartyCookiesLinkRowSublabelEnabled'),
+            thirdPartyCookiesLinkRow.subLabel,
+        );
+
+        page.setPrefValue(
+            'profile.cookie_controls_mode',
+            CookieControlsMode.BLOCK_THIRD_PARTY);
+        assertEquals(
+            page.i18n('thirdPartyCookiesLinkRowSublabelDisabled'),
+            thirdPartyCookiesLinkRow.subLabel);
+      });
+
+  test('cookiesLinkRowWithUniversalOptOut', async function() {
+    loadTimeData.overrideValues({showUniversalOptOutSettings: true});
+    resetRouterForTesting();
+
+    await createPage();
+
+    const thirdPartyCookiesLinkRow =
+        page.shadowRoot!.querySelector<CrLinkRowElement>(
+            '#thirdPartyCookiesLinkRow');
+    assertTrue(!!thirdPartyCookiesLinkRow);
+    assertEquals(
+        page.i18n('thirdPartyCookiesAndSiteDataLinkRowLabel'),
+        thirdPartyCookiesLinkRow.label);
+    assertEquals(
+        page.i18n('thirdPartyCookiesAndSiteDataLinkRowSublabel'),
+        thirdPartyCookiesLinkRow.subLabel);
+  });
+});
+
+suite('PrivacyGuideRow', function() {
+  let page: SettingsPrivacyPageElement;
+  let settingsPrefs: SettingsPrefsElement;
+  let metricsBrowserProxy: TestMetricsBrowserProxy;
+
+  suiteSetup(function() {
+    settingsPrefs = document.createElement('settings-prefs');
+    return CrSettingsPrefs.initialized;
+  });
+
+  setup(function() {
+    loadTimeData.overrideValues({showPrivacyGuide: true});
+    resetRouterForTesting();
+
+    metricsBrowserProxy = new TestMetricsBrowserProxy();
+    MetricsBrowserProxyImpl.setInstance(metricsBrowserProxy);
+
+    return createPage();
+  });
+
+  async function createPage() {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    page = document.createElement('settings-privacy-page');
+    page.prefs = settingsPrefs.prefs!;
+    document.body.appendChild(page);
+    return flushTasks();
+  }
+
+  test('rowNotShown', async function() {
+    loadTimeData.overrideValues({showPrivacyGuide: false});
+    resetRouterForTesting();
+
+    page.remove();
+    await createPage();
+
+    assertFalse(
+        loadTimeData.getBoolean('showPrivacyGuide'),
+        'showPrivacyGuide was not overwritten');
+    assertFalse(
+        isChildVisible(page, '#privacyGuideLinkRow'),
+        'privacyGuideLinkRow is visible');
+  });
+
+  test('privacyGuideRowVisibleSupervisedAccount', function() {
+    assertTrue(isChildVisible(page, '#privacyGuideLinkRow'));
+
+    // The user signs in to a supervised user account. This hides the privacy
+    // guide entry point.
+    const syncStatus: SyncStatus = {
+      supervisedUser: true,
+      statusAction: StatusAction.NO_ACTION,
+    };
+    webUIListenerCallback('sync-status-changed', syncStatus);
+    flush();
+    assertFalse(isChildVisible(page, '#privacyGuideLinkRow'));
+
+    // The user is no longer signed in to a supervised user account. This
+    // doesn't show the entry point.
+    syncStatus.supervisedUser = false;
+    webUIListenerCallback('sync-status-changed', syncStatus);
+    flush();
+    assertFalse(isChildVisible(page, '#privacyGuideLinkRow'));
+  });
+
+  test('privacyGuideRowVisibleManaged', function() {
+    assertTrue(isChildVisible(page, '#privacyGuideLinkRow'));
+
+    // The user becomes managed. This hides the privacy guide entry point.
+    webUIListenerCallback('is-managed-changed', true);
+    flush();
+    assertFalse(isChildVisible(page, '#privacyGuideLinkRow'));
+
+    // The user is no longer managed. This doesn't show the entry point.
+    webUIListenerCallback('is-managed-changed', false);
+    flush();
+    assertFalse(isChildVisible(page, '#privacyGuideLinkRow'));
+  });
+
+  test('privacyGuideRowClick', async function() {
+    const privacyGuideLinkRow =
+        page.shadowRoot!.querySelector<HTMLElement>('#privacyGuideLinkRow');
+    assertTrue(!!privacyGuideLinkRow);
+    privacyGuideLinkRow.click();
+
+    const result = await metricsBrowserProxy.whenCalled(
+        'recordPrivacyGuideEntryExitHistogram');
+    assertEquals(PrivacyGuideInteractions.SETTINGS_LINK_ROW_ENTRY, result);
+
+    // Ensure the correct route has been navigated to.
+    assertEquals(routes.PRIVACY_GUIDE, Router.getInstance().getCurrentRoute());
+
+    // Ensure the privacy guide dialog is shown.
+    assertTrue(
+        !!page.shadowRoot!.querySelector<HTMLElement>('#privacyGuideDialog'));
+  });
+});
+
+suite('HappinessTrackingSurveys', function() {
+  let testHatsBrowserProxy: TestHatsBrowserProxy;
+  let settingsPrefs: SettingsPrefsElement;
+  let page: SettingsPrivacyPageElement;
+
+  suiteSetup(function() {
+    settingsPrefs = document.createElement('settings-prefs');
+    return CrSettingsPrefs.initialized;
+  });
+
+  setup(function() {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+
+    testHatsBrowserProxy = new TestHatsBrowserProxy();
+    HatsBrowserProxyImpl.setInstance(testHatsBrowserProxy);
+
+    page = document.createElement('settings-privacy-page');
+    page.prefs = settingsPrefs.prefs!;
+    document.body.appendChild(page);
+    return flushTasks();
+  });
+
+  teardown(function() {
+    page.remove();
+    Router.getInstance().navigateTo(routes.BASIC);
+  });
+
+  test('ClearBrowsingDataTrigger', async function() {
+    page.$.clearBrowsingData.click();
+    const interaction =
+        await testHatsBrowserProxy.whenCalled('trustSafetyInteractionOccurred');
+    assertEquals(TrustSafetyInteraction.USED_PRIVACY_CARD, interaction);
+  });
+
+  test('CookiesTrigger', async function() {
+    const thirdPartyCookiesLinkRow =
+        page.shadowRoot!.querySelector<HTMLElement>(
+            '#thirdPartyCookiesLinkRow');
+    assertTrue(!!thirdPartyCookiesLinkRow);
+    thirdPartyCookiesLinkRow.click();
+    const interaction =
+        await testHatsBrowserProxy.whenCalled('trustSafetyInteractionOccurred');
+    assertEquals(TrustSafetyInteraction.USED_PRIVACY_CARD, interaction);
+  });
+
+  test('SecurityTrigger', async function() {
+    page.$.securityLinkRow.click();
+    const interaction =
+        await testHatsBrowserProxy.whenCalled('trustSafetyInteractionOccurred');
+    assertEquals(TrustSafetyInteraction.USED_PRIVACY_CARD, interaction);
+  });
+
+  test('SiteSettingsTrigger', async function() {
+    page.$.siteSettingsLinkRow.click();
+    const interaction =
+        await testHatsBrowserProxy.whenCalled('trustSafetyInteractionOccurred');
+    assertEquals(TrustSafetyInteraction.USED_PRIVACY_CARD, interaction);
+  });
+});

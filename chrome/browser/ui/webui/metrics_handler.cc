@@ -1,0 +1,103 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webui/metrics_handler.h"
+
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/metrics/user_metrics.h"
+#include "base/notreached.h"
+#include "base/time/time.h"
+#include "base/values.h"
+#include "build/build_config.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_ui.h"
+
+MetricsHandler::MetricsHandler() = default;
+
+MetricsHandler::~MetricsHandler() = default;
+
+void MetricsHandler::RegisterMessages() {
+  web_ui()->RegisterMessageCallback(
+      "metricsHandler:recordAction",
+      base::BindRepeating(&MetricsHandler::HandleRecordAction,
+                          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "metricsHandler:recordInHistogram",
+      base::BindRepeating(&MetricsHandler::HandleRecordInHistogram,
+                          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "metricsHandler:recordBooleanHistogram",
+      base::BindRepeating(&MetricsHandler::HandleRecordBooleanHistogram,
+                          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "metricsHandler:recordTime",
+      base::BindRepeating(&MetricsHandler::HandleRecordTime,
+                          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "metricsHandler:recordMediumTime",
+      base::BindRepeating(&MetricsHandler::HandleRecordMediumTime,
+                          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "metricsHandler:recordSparseHistogram",
+      base::BindRepeating(&MetricsHandler::HandleRecordSparseHistogram,
+                          base::Unretained(this)));
+}
+
+void MetricsHandler::HandleRecordAction(const base::ListValue& args) {
+  CHECK_EQ(1U, args.size());
+  const std::string& string_action = args[0].GetString();
+  base::RecordComputedAction(string_action);
+}
+
+void MetricsHandler::HandleRecordInHistogram(const base::ListValue& args) {
+  const std::string& histogram_name = args[0].GetString();
+  int int_value = static_cast<int>(args[1].GetDouble());
+  int int_exclusive_max = static_cast<int>(args[2].GetDouble());
+
+  DCHECK_GE(int_value, 0);
+  // Note: int_exclusive_max must be strictly greater than all logged values,
+  // i.e. MAX_VALUE + 1 or COUNT for enum histograms.
+  DCHECK_LT(int_value, int_exclusive_max);
+
+  // As |histogram_name| may change between calls, the UMA_HISTOGRAM_ENUMERATION
+  // macro cannot be used here.
+  base::UmaHistogramExactLinear(histogram_name, int_value, int_exclusive_max);
+}
+
+void MetricsHandler::HandleRecordBooleanHistogram(const base::ListValue& args) {
+  if (args.size() < 2 || !args[0].is_string() || !args[1].is_bool()) {
+    NOTREACHED();
+  }
+  const std::string histogram_name = args[0].GetString();
+  const bool value = args[1].GetBool();
+
+  base::UmaHistogramBoolean(histogram_name, value);
+}
+
+void MetricsHandler::HandleRecordTime(const base::ListValue& args) {
+  const std::string& histogram_name = args[0].GetString();
+  double value = args[1].GetDouble();
+
+  DCHECK_GE(value, 0);
+
+  base::UmaHistogramTimes(histogram_name, base::Milliseconds(value));
+}
+
+void MetricsHandler::HandleRecordMediumTime(const base::ListValue& args) {
+  const std::string& histogram_name = args[0].GetString();
+  double value = args[1].GetDouble();
+
+  DCHECK_GE(value, 0);
+
+  base::UmaHistogramMediumTimes(histogram_name, base::Milliseconds(value));
+}
+
+void MetricsHandler::HandleRecordSparseHistogram(const base::ListValue& args) {
+  const std::string& histogram_name = args[0].GetString();
+  int sample = args[1].GetInt();
+
+  base::UmaHistogramSparse(histogram_name, sample);
+}

@@ -1,0 +1,358 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_TRACING_COMMON_ETW_CONSUMER_WIN_H_
+#define COMPONENTS_TRACING_COMMON_ETW_CONSUMER_WIN_H_
+
+#include <stdint.h>
+
+#include <atomic>
+#include <memory>
+#include <string>
+#include <unordered_map>
+
+#include "absl/container/flat_hash_map.h"
+#include "base/containers/span.h"
+#include "base/files/file_path.h"
+#include "base/memory/raw_ptr.h"
+#include "base/process/process_handle.h"
+#include "base/sequence_checker.h"
+#include "base/thread_annotations.h"
+#include "base/win/event_trace_consumer.h"
+#include "components/tracing/common/active_processes_win.h"
+#include "components/tracing/common/inclusion_policy_win.h"
+#include "components/tracing/tracing_export.h"
+#include "services/tracing/public/cpp/perfetto/interning_index.h"
+#include "third_party/perfetto/include/perfetto/ext/tracing/core/trace_writer.h"
+#include "third_party/perfetto/include/perfetto/tracing/trace_writer_base.h"
+#include "third_party/perfetto/protos/perfetto/trace/interned_data/interned_data.pbzero.h"
+
+namespace perfetto::protos::pbzero {
+class EtwTraceEvent;
+class EtwTraceEventBundle;
+}  // namespace perfetto::protos::pbzero
+
+namespace tracing {
+
+// A consumer of events from the Windows system trace provider that emits
+// corresponding Perfetto trace events. An instance may be constructed on any
+// sequence. Its `ConsumeEvents()` method and its destructor must be called on
+// the same sequence.
+class TRACING_EXPORT EtwConsumer
+    : public base::win::EtwTraceConsumerBase<EtwConsumer> {
+ public:
+  // Receive events in the new EVENT_RECORD format.
+  static constexpr bool kEnableRecordMode = true;
+  // Do not convert timestampts to system time.
+  static constexpr bool kRawTimestamp = true;
+
+  // Constructs an instance that will consume ETW events on behalf of the client
+  // process identified by `client_pid` and emit Perfetto events via
+  // `trace_writer`. If `privacy_filtering_enabled` is true, omits strings from
+  // the trace.
+  EtwConsumer(
+      base::ProcessId client_pid,
+      std::unique_ptr<perfetto::TraceWriterBase> trace_writer,
+      bool privacy_filtering_enabled,
+      absl::flat_hash_map<base::FilePath, std::string> known_debug_ids = {});
+  EtwConsumer(const EtwConsumer&) = delete;
+  EtwConsumer& operator=(const EtwConsumer&) = delete;
+  ~EtwConsumer();
+
+  // Consumes ETW events; blocking the calling thread. Returns when the ETW
+  // trace session is stopped.
+  void ConsumeEvents();
+
+  // Calls Flush() on the trace writer to ensure that pending data is committed.
+  // |callback| is an optional callback, when non-null it will request the
+  // service to ACK the flush and will be invoked after the service has
+  // acknowledged it.
+  void Flush(std::function<void()> callback);
+
+  // When called, any interned data emitted so far will be reset before the next
+  // time data is interned.
+  void WillClearIncrementalState();
+
+  // base::win::EtwTraceConsumerBase<>:
+  static void ProcessEventRecord(EVENT_RECORD* event_record);
+  static bool ProcessBuffer(EVENT_TRACE_LOGFILE* buffer);
+
+ private:
+  friend class EtwConsumerTest;
+
+  // The type of a member function that handles an event originating from a
+  // specific provider.
+  using EventHandlerFunction =
+      void (EtwConsumer::*)(const EVENT_HEADER& header,
+                            const ETW_BUFFER_CONTEXT& buffer_context,
+                            size_t pointer_size,
+                            base::span<const uint8_t> packet_data);
+
+  // Returns the size, in bytes, of a pointer-sized value in an event based on
+  // the `Flags` member of an event's `EVENT_HEADER`.
+  static size_t GetPointerSize(uint16_t event_header_flags);
+
+  // Per-provider event handlers. `ProcessEventRecord` dispatches to these based
+  // on the ProviderId in the record's EventHeader.
+  void HandleProcessEvent(const EVENT_HEADER& header,
+                          const ETW_BUFFER_CONTEXT& buffer_context,
+                          size_t pointer_size,
+                          base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+  void HandleThreadEvent(const EVENT_HEADER& header,
+                         const ETW_BUFFER_CONTEXT& buffer_context,
+                         size_t pointer_size,
+                         base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+  void HandleFileIoEvent(const EVENT_HEADER& header,
+                         const ETW_BUFFER_CONTEXT& buffer_context,
+                         size_t pointer_size,
+                         base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+  void HandleDiskIoEvent(const EVENT_HEADER& header,
+                         const ETW_BUFFER_CONTEXT& buffer_context,
+                         size_t pointer_size,
+                         base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+  void HandleLostEvent(const EVENT_HEADER& header,
+                       const ETW_BUFFER_CONTEXT& buffer_context,
+                       size_t pointer_size,
+                       base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+  void HandleMemInfoEvent(const EVENT_HEADER& header,
+                          const ETW_BUFFER_CONTEXT& buffer_context,
+                          size_t pointer_size,
+                          base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+  void HandleImageLoadEvent(const EVENT_HEADER& header,
+                            const ETW_BUFFER_CONTEXT& buffer_context,
+                            size_t pointer_size,
+                            base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+  void HandleStackWalkEvent(const EVENT_HEADER& header,
+                            const ETW_BUFFER_CONTEXT& buffer_context,
+                            size_t pointer_size,
+                            base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  void OnProcessStart(const EVENT_HEADER& header,
+                      const ETW_BUFFER_CONTEXT& buffer_context,
+                      size_t pointer_size,
+                      base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+  void OnProcessEnd(const EVENT_HEADER& header,
+                    const ETW_BUFFER_CONTEXT& buffer_context,
+                    size_t pointer_size,
+                    base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+  void OnThreadStart(const EVENT_HEADER& header,
+                     const ETW_BUFFER_CONTEXT& buffer_context,
+                     size_t pointer_size,
+                     base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+  void OnThreadEnd(const EVENT_HEADER& header,
+                   const ETW_BUFFER_CONTEXT& buffer_context,
+                   size_t pointer_size,
+                   base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+  void OnThreadSetName(const EVENT_HEADER& header,
+                       const ETW_BUFFER_CONTEXT& buffer_context,
+                       base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+  void OnMemoryCounters(const EVENT_HEADER& header,
+                        const ETW_BUFFER_CONTEXT& buffer_context,
+                        size_t pointer_size,
+                        base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Decodes a CSwitch Event and emits a Perfetto trace event; see
+  // https://learn.microsoft.com/en-us/windows/win32/etw/cswitch.
+  // Returns true on success, or false if `packet_data` is invalid.
+  bool DecodeCSwitchEvent(const EVENT_HEADER& header,
+                          const ETW_BUFFER_CONTEXT& buffer_context,
+                          base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Decodes a ReadyThread Event and emits a Perfetto trace event; see
+  // https://learn.microsoft.com/en-us/windows/win32/etw/readythread.
+  // Returns true on success, or false if `packet_data` is invalid.
+  bool DecodeReadyThreadEvent(const EVENT_HEADER& header,
+                              const ETW_BUFFER_CONTEXT& buffer_context,
+                              base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Decodes a `FileIo_Create` event and emits a Perfetto trace event.
+  // Returns true on success, or false if `packet_data` is invalid.
+  bool DecodeFileIoCreateEvent(const EVENT_HEADER& header,
+                               const ETW_BUFFER_CONTEXT& buffer_context,
+                               size_t pointer_size,
+                               base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Decodes a `FileIo_DirEnum` event and emits a Perfetto trace event.
+  // Returns true on success, or false if `packet_data` is invalid.
+  bool DecodeFileIoDirEnumEvent(const EVENT_HEADER& header,
+                                const ETW_BUFFER_CONTEXT& buffer_context,
+                                size_t pointer_size,
+                                base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Decodes a `FileIo_Info` event and emits a Perfetto trace event.
+  // Returns true on success, or false if `packet_data` is invalid.
+  bool DecodeFileIoInfoEvent(const EVENT_HEADER& header,
+                             const ETW_BUFFER_CONTEXT& buffer_context,
+                             size_t pointer_size,
+                             base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Decodes a `FileIo_PathOperation` event and emits a Perfetto trace event.
+  // Returns true on success, or false if `packet_data` is invalid.
+  bool DecodeFileIoPathOperationEvent(const EVENT_HEADER& header,
+                                      const ETW_BUFFER_CONTEXT& buffer_context,
+                                      size_t pointer_size,
+                                      base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Decodes a FileIo_FltOp event and emits a Perfetto trace event.
+  // Returns true on success, or false if `packet_data` is invalid.
+  bool DecodeFileIoFltOpEvent(const EVENT_HEADER& header,
+                              const ETW_BUFFER_CONTEXT& buffer_context,
+                              size_t pointer_size,
+                              base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Decodes a `FileIo_ReadWrite` event
+  // and emits a Perfetto trace event.
+  // Returns true on success, or false if `packet_data` is invalid.
+  bool DecodeFileIoReadWriteEvent(const EVENT_HEADER& header,
+                                  const ETW_BUFFER_CONTEXT& buffer_context,
+                                  size_t pointer_size,
+                                  base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Decodes a `FileIo_SimpleOp` event and emits a Perfetto trace event.
+  // Returns true on success, or false if `packet_data` is invalid.
+  bool DecodeFileIoSimpleOpEvent(const EVENT_HEADER& header,
+                                 const ETW_BUFFER_CONTEXT& buffer_context,
+                                 size_t pointer_size,
+                                 base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Decodes a `FileIo_OpEnd` event and emits a Perfetto trace event.
+  // Returns true on success, or false if `packet_data` is invalid.
+  bool DecodeFileIoOpEndEvent(const EVENT_HEADER& header,
+                              const ETW_BUFFER_CONTEXT& buffer_context,
+                              size_t pointer_size,
+                              base::span<const uint8_t> packet_data,
+                              bool should_record)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Registers a File I/O start event, tracking active IRPs for Chrome threads.
+  // Populates `active_irps_from_chrome_threads_`, which is used when an OpEnd
+  // event for a Chrome event is run on a non-Chrome thread.
+  // Returns the irp_ptr passed in.
+  uint64_t RegisterFileIoStart(const EVENT_HEADER& header,
+                               uint64_t irp_ptr,
+                               size_t pointer_size)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Decodes a `DiskIo_TypeGroup1` event and emits a Perfetto trace event if
+  // the event comes from Chrome and `packet_data` is valid.
+  void DecodeDiskIoEventTypeGroup1(const EVENT_HEADER& header,
+                                   const ETW_BUFFER_CONTEXT& buffer_context,
+                                   size_t pointer_size,
+                                   base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Decodes a `DiskIo_TypeGroup2` event and emits a Perfetto trace event if
+  // the event comes from Chrome and `packet_data` is valid.
+  void DecodeDiskIoEventTypeGroup2(const EVENT_HEADER& header,
+                                   const ETW_BUFFER_CONTEXT& buffer_context,
+                                   size_t pointer_size,
+                                   base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Decodes a `DiskIo_TypeGroup3` event and emits a Perfetto trace event if
+  // the event comes from Chrome and `packet_data` is valid.
+  void DecodeDiskIoEventTypeGroup3(const EVENT_HEADER& header,
+                                   const ETW_BUFFER_CONTEXT& buffer_context,
+                                   size_t pointer_size,
+                                   base::span<const uint8_t> packet_data)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Returns a new perfetto trace event to be emitted for an ETW event with a
+  // given event header. The timestamp and cpu fields of the returned event are
+  // prepopulated.
+  perfetto::protos::pbzero::EtwTraceEvent* MakeNextEvent(
+      const EVENT_HEADER& header,
+      const ETW_BUFFER_CONTEXT& buffer_context)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Determines whether either `header_thread id` or `issuing_thread_id`
+  // are Chrome threads and thus the disk io event should be included in the
+  // trace. If so, sets `event_thread_id` to the thread_id to set on the event,
+  // and returns true, false otherwise.
+  bool CalculateDiskIoEventInclusionAndThreadId(uint32_t header_thread_id,
+                                                uint32_t issuing_thread_id,
+                                                int32_t& event_thread_id)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Returns a new perfetto trace event to be emitted for an ETW event with a
+  // given `QueryPerformanceCounter` (QPC) timestamp.
+  perfetto::protos::pbzero::EtwTraceEvent* MakeNextEventWithTimestamp(
+      uint64_t qpc_timestamp,
+      const ETW_BUFFER_CONTEXT& buffer_context)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Finalizes the previous event bundle so that a new packet can be started.
+  void FinalizePreviousData() VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Finalizes previous data and starts a new packet, i.e., event bundle.
+  void StartNewPacket(uint64_t qpc_timestamp)
+      VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  // Clears interned data.
+  void ResetEmittedState() VALID_CONTEXT_REQUIRED(sequence_checker_);
+
+  const ActiveProcesses& active_processes() const { return active_processes_; }
+
+  ActiveProcesses active_processes_ GUARDED_BY_CONTEXT(sequence_checker_);
+  InclusionPolicy inclusion_policy_ GUARDED_BY_CONTEXT(sequence_checker_){
+      active_processes_};
+  std::unique_ptr<perfetto::TraceWriterBase> trace_writer_
+      GUARDED_BY_CONTEXT(sequence_checker_);
+  perfetto::TraceWriter::TracePacketHandle packet_handle_
+      GUARDED_BY_CONTEXT(sequence_checker_);
+  raw_ptr<perfetto::protos::pbzero::EtwTraceEventBundle> etw_events_
+      GUARDED_BY_CONTEXT(sequence_checker_) = nullptr;
+  // Whether to omit sensitive fields, like strings, from the trace.
+  bool privacy_filtering_enabled_;
+
+  // Call stacks, each interned by a hash of the entire call stack.
+  InterningIndex<TypeList<size_t>, SizeList<1024>> interned_callstacks_;
+  // Stack frames, each interned by a [process ID, address] pair.
+  InterningIndex<TypeList<std::pair<uint32_t, uint64_t>>, SizeList<1024>>
+      interned_frames_;
+  // Filenames for loaded modules.
+  InterningIndex<TypeList<std::wstring>, SizeList<1024>> interned_module_names_;
+  // Debug IDs for loaded modules.
+  InterningIndex<TypeList<std::string>, SizeList<1024>>
+      interned_module_debug_ids_;
+  // Loaded modules, each interned by a [process ID, base address] pair.
+  InterningIndex<TypeList<std::pair<uint32_t, uint64_t>>, SizeList<1024>>
+      interned_modules_;
+
+  // If true, interned data will be reset before the next event is processed.
+  std::atomic<bool> reset_emitted_state_{true};
+
+  // Outstanding IRP pointers initiated by Chrome (kClient) threads.
+  std::unordered_map<uint64_t, uint32_t> active_irps_from_chrome_threads_
+      GUARDED_BY_CONTEXT(sequence_checker_);
+
+  SEQUENCE_CHECKER(sequence_checker_);
+};
+
+}  // namespace tracing
+
+#endif  // COMPONENTS_TRACING_COMMON_ETW_CONSUMER_WIN_H_

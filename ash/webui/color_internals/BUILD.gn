@@ -1,0 +1,26 @@
+# Copyright 2022 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//third_party/closure_compiler/compile_js.gni")
+import("//ui/webui/resources/tools/generate_grd.gni")
+
+assert(is_chromeos, "Color Internals is ChromeOS only")
+
+static_library("color_internals") {
+  sources = [
+    "color_internals_ui.cc",
+    "color_internals_ui.h",
+    "url_constants.cc",
+    "url_constants.h",
+    "wallpaper_colors_handler_impl.cc",
+    "wallpaper_colors_handler_impl.h",
+  ]
+
+  deps = [
+    "//ash/webui/color_internals/mojom",
+    "//ash/webui/color_internals/resources",
+    "//content/public/browser",
+    "//ui/webui",
+  ]
+}

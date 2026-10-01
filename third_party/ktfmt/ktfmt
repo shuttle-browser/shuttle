@@ -1,0 +1,30 @@
+#!/bin/bash
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+THIS_DIR=$(dirname "$0")
+
+if [[ -n "$JAVA_HOME" ]]; then
+  JAVA="$JAVA_HOME/bin/java"
+elif [[ $(uname) = Linux ]]; then
+  # Chromium bundles Java prebuilts only for Linux.
+  JAVA="$THIS_DIR/../jdk/current/bin/java"
+else
+  JAVA=java
+fi
+
+# Suppress JVM warnings regarding terminally deprecated sun.misc.Unsafe memory
+# access methods called by Kotlin's compiler containers on JDK 23+.
+# This flag can go away once Kotlin 2.5 is released:
+# https://youtrack.jetbrains.com/issue/KT-82657
+JAVA_ARGS=("-Xms512M")
+if "$JAVA" --sun-misc-unsafe-memory-access=allow -version >/dev/null 2>&1; then
+  JAVA_ARGS+=("--sun-misc-unsafe-memory-access=allow")
+fi
+
+exec "$JAVA" \
+    "${JAVA_ARGS[@]}" \
+    -jar "$THIS_DIR/cipd/ktfmt.jar" \
+    --google-style \
+    "$@"

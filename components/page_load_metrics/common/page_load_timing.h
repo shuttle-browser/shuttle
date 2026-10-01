@@ -1,0 +1,37 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_PAGE_LOAD_METRICS_COMMON_PAGE_LOAD_TIMING_H_
+#define COMPONENTS_PAGE_LOAD_METRICS_COMMON_PAGE_LOAD_TIMING_H_
+
+#include <stdint.h>
+
+#include "components/page_load_metrics/common/page_load_metrics.mojom-forward.h"
+
+namespace page_load_metrics {
+
+// Monotonic performance timeline navigation ID for initial (hard)
+// navigations.
+inline constexpr uint64_t kHardNavigationPerformanceTimelineNavigationId = 1;
+
+// Initialize an empty PageLoadTiming with initialized empty sub-members.
+mojom::PageLoadTimingPtr CreatePageLoadTiming();
+mojom::LargestContentfulPaintTimingPtr CreateLargestContentfulPaintTiming();
+
+bool IsEmpty(const mojom::DocumentTiming& timing);
+bool IsEmpty(const mojom::DomainLookupTiming& timing);
+bool IsEmpty(const mojom::PaintTiming& timing);
+bool IsEmpty(const mojom::ParseTiming& timing);
+bool IsEmpty(const mojom::PageLoadTiming& timing);
+bool IsEmpty(const mojom::InteractiveTiming& timing);
+bool IsEmpty(const mojom::LcpResourceLoadTimings& timing);
+bool IsEmpty(const mojom::LargestContentfulPaintTiming& timing);
+bool IsEmpty(const mojom::MonotonicPaintTiming& timing);
+bool IsEmpty(const mojom::SoftNavigationMetrics& timing);
+
+void InitPageLoadTimingForTest(mojom::PageLoadTiming* timing);
+
+}  // namespace page_load_metrics
+
+#endif  // COMPONENTS_PAGE_LOAD_METRICS_COMMON_PAGE_LOAD_TIMING_H_

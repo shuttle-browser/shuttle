@@ -1,0 +1,66 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "base/android/jni_string.h"
+#include "components/embedder_support/user_agent_utils.h"
+#include "components/version_info/version_info.h"
+#include "content/public/browser/web_contents.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "chrome/browser/android/content/jni_headers/ContentUtils_jni.h"
+
+static std::string JNI_ContentUtils_GetBrowserUserAgent(JNIEnv* env) {
+  return embedder_support::GetUserAgent();
+}
+
+static void JNI_ContentUtils_SetUserAgentOverride(
+    JNIEnv* env,
+    const base::android::JavaRef<jobject>& jweb_contents,
+    bool j_override_in_new_tabs) {
+  constexpr char kLinuxInfoStr[] = "X11; Linux x86_64";
+  constexpr char kChromeOSInfoStr[] = "X11; CrOS x86_64 14541.0.0";
+
+  bool spoof_as_chromeos = base::FeatureList::IsEnabled(
+      blink::features::kAndroidDesktopUASpoofAsChromeOS);
+  bool android_desktop_ua_platform =
+      base::FeatureList::IsEnabled(blink::features::kAndroidDesktopUAPlatform);
+
+  // Note: Any updates to desktop overrides here should also be applied to
+  // DESKTOP form factor defaults in embedder_support::GetUserAgentMetadata.
+  const blink::UserAgentMetadata metadata =
+      embedder_support::GetUserAgentMetadata();
+
+  blink::UserAgentOverride spoofed_ua;
+  spoofed_ua.ua_string_override =
+      embedder_support::BuildUserAgentFromOSAndProduct(
+          spoof_as_chromeos ? kChromeOSInfoStr : kLinuxInfoStr,
+          embedder_support::GetProductAndVersion());
+  spoofed_ua.ua_metadata_override = metadata;
+  spoofed_ua.ua_metadata_override->platform =
+      android_desktop_ua_platform ? "Android"
+                                  : (spoof_as_chromeos ? "Chrome OS" : "Linux");
+  if (!android_desktop_ua_platform) {
+    // Match content::GetOSVersion(false) on Linux. When the platform is
+    // reported honestly as "Android", keep the real platform version from
+    // GetUserAgentMetadata() for consistency with the non-override path.
+    spoofed_ua.ua_metadata_override->platform_version = std::string();
+  }
+  spoofed_ua.ua_metadata_override->model = std::string();
+  spoofed_ua.ua_metadata_override->mobile = false;
+  spoofed_ua.ua_metadata_override->form_factors =
+      embedder_support::GetFormFactorsClientHint(metadata, /*is_mobile=*/false);
+  // Match the above "CpuInfo" string, which is also the most common Linux
+  // CPU architecture and bitness.
+  spoofed_ua.ua_metadata_override->architecture =
+      embedder_support::GetAndroidDesktopCpuArchitecture();
+  spoofed_ua.ua_metadata_override->bitness = "64";
+  spoofed_ua.ua_metadata_override->wow64 = false;
+
+  content::WebContents::FromJavaWebContents(jweb_contents)
+      ->SetUserAgentOverride(spoofed_ua, j_override_in_new_tabs);
+}
+
+DEFINE_JNI(ContentUtils)

@@ -1,0 +1,56 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/tabs/tab_strip_nudge_button.h"
+
+#include <memory>
+
+#include "chrome/browser/ui/browser_element_identifiers.h"
+#include "chrome/browser/ui/browser_window/test/mock_browser_window_interface.h"
+#include "chrome/grit/generated_resources.h"
+#include "chrome/test/views/chrome_views_test_base.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/gfx/vector_icon_types.h"
+
+class TabStripNudgeButtonTest : public ChromeViewsTestBase {
+ public:
+  void SetUp() override {
+    ChromeViewsTestBase::SetUp();
+    browser_window_interface_ = std::make_unique<MockBrowserWindowInterface>();
+    button_ = std::make_unique<TabStripNudgeButton>(
+        browser_window_interface_.get(),
+        base::BindRepeating(&TabStripNudgeButtonTest::MockButtonCallback,
+                            base::Unretained(this)),
+        base::BindRepeating(&TabStripNudgeButtonTest::MockButtonCallback,
+                            base::Unretained(this)),
+        l10n_util::GetStringUTF16(IDS_GLIC_BUTTON_ENTRYPOINT_ASK_GEMINI_LABEL),
+        kGlicNudgeButtonElementId, Edge::kRight, gfx::VectorIcon::EmptyIcon(),
+        /*show_close_button=*/true);
+  }
+
+  void MockButtonCallback() { button_callback_count_++; }
+
+ protected:
+  std::unique_ptr<MockBrowserWindowInterface> browser_window_interface_;
+  std::unique_ptr<TabStripNudgeButton> button_;
+  int button_callback_count_ = 0;
+};
+
+TEST_F(TabStripNudgeButtonTest, AppliesWidthFactor) {
+  ASSERT_EQ(0, button_->width_factor_for_testing());
+  ASSERT_EQ(0, button_->CalculatePreferredSize({}).width());
+
+  button_->SetWidthFactor(0.5);
+
+  const int half_width = button_->CalculatePreferredSize({}).width();
+  ASSERT_LT(0, half_width);
+
+  button_->SetWidthFactor(1);
+
+  const int full_width = button_->CalculatePreferredSize({}).width();
+  const int half_full_width = full_width / 2;
+  ASSERT_LT(0, full_width);
+  ASSERT_EQ(half_width, half_full_width);
+}

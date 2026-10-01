@@ -1,0 +1,103 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/devtools/worker_devtools_manager.h"
+
+#include "base/metrics/histogram_functions.h"
+#include "content/browser/devtools/dedicated_worker_devtools_agent_host.h"
+#include "content/browser/devtools/devtools_instrumentation.h"
+#include "content/browser/devtools/render_frame_devtools_agent_host.h"
+#include "content/browser/renderer_host/render_frame_host_impl.h"
+#include "content/browser/worker_host/dedicated_worker_host.h"
+#include "content/public/browser/browser_thread.h"
+
+namespace content {
+
+// static
+WorkerDevToolsManager& WorkerDevToolsManager::GetInstance() {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  return *base::Singleton<WorkerDevToolsManager>::get();
+}
+
+WorkerDevToolsManager::WorkerDevToolsManager() = default;
+WorkerDevToolsManager::~WorkerDevToolsManager() = default;
+
+DedicatedWorkerDevToolsAgentHost* WorkerDevToolsManager::GetDevToolsHost(
+    const DedicatedWorkerHost* host) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+
+  auto it = hosts_.find(host);
+  return it == hosts_.end() ? nullptr : it->second.get();
+}
+
+DedicatedWorkerDevToolsAgentHost*
+WorkerDevToolsManager::GetDevToolsHostFromToken(
+    const base::UnguessableToken& token) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+
+  for (const auto& it : hosts_) {
+    if (it.second->devtools_worker_token() == token) {
+      return it.second.get();
+    }
+  }
+
+  return nullptr;
+}
+
+void WorkerDevToolsManager::WorkerCreated(
+    const DedicatedWorkerHost* host,
+    int process_id,
+    const GlobalRenderFrameHostId& ancestor_render_frame_host_id,
+    const DedicatedWorkerHost* parent_worker_host,
+    scoped_refptr<DevToolsThrottleHandle> throttle_handle) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  DCHECK(!hosts_.contains(host));
+
+  auto* rfh = RenderFrameHostImpl::FromID(ancestor_render_frame_host_id);
+  std::string parent_frame_id =
+      rfh ? rfh->GetDevToolsFrameToken().ToString() : std::string();
+  std::string parent_id;
+  if (parent_worker_host) {
+    parent_id = parent_worker_host->GetToken().value().ToString();
+  } else {
+    auto* frame_devtools_host =
+        rfh ? RenderFrameDevToolsAgentHost::GetFor(rfh) : nullptr;
+    if (frame_devtools_host) {
+      parent_id = frame_devtools_host->GetId();
+    }
+  }
+  hosts_[host] = base::MakeRefCounted<DedicatedWorkerDevToolsAgentHost>(
+      process_id,
+      /*url=*/GURL(), /*name=*/"", host->GetToken().value(), parent_id,
+      parent_frame_id,
+      /*destroyed_callback=*/base::DoNothing());
+  base::UmaHistogramCounts1000("Worker.DevTools.AgentHost.Size", hosts_.size());
+
+  devtools_instrumentation::ThrottleWorkerMainScriptFetch(
+      host->GetToken().value(), ancestor_render_frame_host_id,
+      std::move(throttle_handle));
+}
+
+void WorkerDevToolsManager::WorkerDestroyed(const DedicatedWorkerHost* host) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  // If the worker thread in the renderer has never establiashed a mojo
+  // connection to the DedicatedWorkerDevToolsAgentHost we need to
+  // explicitly run disconnect.
+  // Generally, the host should be there except for unit tests.
+  auto it = hosts_.find(host);
+  if (it == hosts_.end()) {
+    return;
+  }
+  it->second->MarkAsTerminated();
+  it->second->DisconnectIfNotCreated();
+  hosts_.erase(it);
+}
+
+void WorkerDevToolsManager::AddAllAgentHosts(DevToolsAgentHost::List* result) {
+  for (const auto& it : hosts_) {
+    result->push_back(it.second);
+  }
+}
+
+}  // namespace content

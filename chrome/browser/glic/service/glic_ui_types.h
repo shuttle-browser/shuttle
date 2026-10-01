@@ -1,0 +1,158 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_GLIC_SERVICE_GLIC_UI_TYPES_H_
+#define CHROME_BROWSER_GLIC_SERVICE_GLIC_UI_TYPES_H_
+
+#include <variant>
+
+#include "base/check.h"
+#include "base/check_deref.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ref.h"
+#include "build/build_config.h"
+#include "chrome/browser/glic/host/glic.mojom-shared.h"
+#include "chrome/browser/glic/public/context/glic_sharing_manager.h"
+#include "chrome/browser/ui/side_panel/side_panel_enums.h"
+#include "components/tabs/public/tab_interface.h"
+#include "third_party/abseil-cpp/absl/functional/overload.h"
+#include "ui/gfx/geometry/rect.h"
+
+namespace glic {
+
+// Key for the floating embedder. This is a struct to make it a distinct type
+// for the variant, even though it's empty.
+struct FloatingEmbedderKey {
+  // Add a comparison operator to allow it to be a key in std::map/flat_map.
+  auto operator<=>(const FloatingEmbedderKey&) const = default;
+};
+
+struct TabEmbedderKey {
+  auto operator<=>(const TabEmbedderKey&) const = default;
+};
+
+struct SidePanelEmbedderKey {
+  explicit SidePanelEmbedderKey(tabs::TabInterface& tab) : tab(tab) {}
+  explicit SidePanelEmbedderKey(tabs::TabInterface* tab)
+      : tab(CHECK_DEREF(tab)) {}
+  explicit SidePanelEmbedderKey(const raw_ref<tabs::TabInterface>& tab)
+      : tab(tab) {}
+
+  raw_ref<tabs::TabInterface> tab;
+  auto operator<=>(const SidePanelEmbedderKey&) const = default;
+};
+
+// A key representing a unique embedder.
+using EmbedderKey =
+    std::variant<TabEmbedderKey, SidePanelEmbedderKey, FloatingEmbedderKey>;
+std::string DescribeEmbedderKeyForTesting(const EmbedderKey& key);
+
+enum class EmbedderCloseReason {
+  kExplicitlyClosed,
+  kBackgrounded,
+  kPeek,
+};
+
+struct SidePanelShowOptions {
+  explicit SidePanelShowOptions(tabs::TabInterface& bound_tab);
+  SidePanelShowOptions(const SidePanelShowOptions&);
+  SidePanelShowOptions(SidePanelShowOptions&&);
+  SidePanelShowOptions& operator=(const SidePanelShowOptions&);
+  ~SidePanelShowOptions();
+
+  raw_ref<tabs::TabInterface> tab;
+  bool suppress_opening_animation = false;
+  bool pin_on_bind = true;
+  GlicPinTrigger pin_trigger = GlicPinTrigger::kUnknown;
+  bool prefer_peek = false;
+  SidePanelOpenTrigger open_trigger = SidePanelOpenTrigger::kGlicOpened;
+};
+
+struct FloatingShowOptions {
+  gfx::Rect initial_bounds;
+  tabs::TabInterface::Handle source_tab;
+  mojom::WebClientMode initial_mode = mojom::WebClientMode::kUnknown;
+};
+
+struct TabShowOptions {
+  TabShowOptions();
+  explicit TabShowOptions(tabs::TabInterface& bound_tab);
+  explicit TabShowOptions(tabs::TabHandle bound_tab_handle);
+  TabShowOptions(const TabShowOptions&);
+  TabShowOptions(TabShowOptions&&);
+  TabShowOptions& operator=(const TabShowOptions&);
+  ~TabShowOptions();
+
+  tabs::TabHandle tab_handle = tabs::TabHandle::Null();
+};
+
+using EmbedderOptions =
+    std::variant<SidePanelShowOptions, FloatingShowOptions, TabShowOptions>;
+struct ShowOptions {
+  explicit ShowOptions(EmbedderOptions panel_options);
+  explicit ShowOptions(EmbedderOptions panel_options, bool focus);
+  explicit ShowOptions(EmbedderOptions panel_options,
+                       mojom::InvocationSource source);
+  ShowOptions(const ShowOptions&);
+  ShowOptions(ShowOptions&&);
+  ShowOptions& operator=(const ShowOptions&);
+  ~ShowOptions();
+
+  // Uses `anchor_browser` to get initial location. If `anchor_browser` is
+  // nullptr, it will use default location values.
+  static ShowOptions ForFloating(
+      tabs::TabInterface::Handle source_tab,
+      mojom::WebClientMode initial_mode = mojom::WebClientMode::kUnknown);
+  static ShowOptions ForFloating(
+      gfx::Rect initial_bounds,
+      mojom::WebClientMode initial_mode = mojom::WebClientMode::kUnknown);
+  static ShowOptions ForSidePanel(tabs::TabInterface& bound_tab);
+  static ShowOptions ForSidePanel(tabs::TabInterface& bound_tab,
+                                  GlicPinTrigger pin_trigger);
+  static ShowOptions ForSidePanel(tabs::TabInterface& bound_tab,
+                                  GlicPinTrigger pin_trigger,
+                                  mojom::InvocationSource invocation_source);
+  static ShowOptions ForTab(tabs::TabInterface& bound_tab);
+
+  // Shared show options
+  bool focus_on_show = false;
+  bool reinitialize_if_already_active = false;
+  std::optional<std::string> prompt_suggestion;
+  mojom::InvocationSource invocation_source =
+      mojom::InvocationSource::kUnsupported;
+  mojom::FreOverride fre_override = mojom::FreOverride::kUnspecified;
+  bool propagate_to_group = true;
+
+  // Container for options that are different between side panel and floaty.
+  EmbedderOptions embedder_options;
+};
+
+inline EmbedderKey GetEmbedderKey(const ShowOptions& options) {
+  return std::visit(
+      absl::Overload{[](const SidePanelShowOptions& opts) -> EmbedderKey {
+                       return SidePanelEmbedderKey{opts.tab};
+                     },
+                     [](const FloatingShowOptions& opts) -> EmbedderKey {
+                       return FloatingEmbedderKey();
+                     },
+                     [](const TabShowOptions& opts) -> EmbedderKey {
+                       return TabEmbedderKey{};
+                     }},
+      options.embedder_options);
+}
+inline tabs::TabInterface* GetTabFromEmbedderKey(const EmbedderKey& key) {
+  return std::visit(
+      absl::Overload{
+          [](const SidePanelEmbedderKey& key) -> tabs::TabInterface* {
+            return &key.tab.get();
+          },
+          [](const FloatingEmbedderKey&) -> tabs::TabInterface* {
+            return nullptr;
+          },
+          [](const TabEmbedderKey&) -> tabs::TabInterface* { return nullptr; }},
+      key);
+}
+}  // namespace glic
+
+#endif  // CHROME_BROWSER_GLIC_SERVICE_GLIC_UI_TYPES_H_

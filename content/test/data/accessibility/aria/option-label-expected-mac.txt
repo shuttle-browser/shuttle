@@ -1,0 +1,17 @@
+AXWebArea
+++AXList
+++++AXStaticText AXValue='A B'
+++++++AXStaticText AXValue='A'
+++++++AXGroup
+++++++++AXStaticText AXValue='B'
+++AXList
+++++AXStaticText AXValue='Other'
+++++++AXStaticText AXValue='C'
+++++++AXGroup
+++++++++AXStaticText AXValue='D'
+++AXList
+++++AXStaticText AXValue='E F'
+++++++AXGroup
+++++++++AXStaticText AXValue='E'
+++++++AXGroup
+++++++++AXStaticText AXValue='F'

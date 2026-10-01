@@ -1,0 +1,122 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/web_applications/web_app_install_manager.h"
+
+#include <iterator>
+#include <memory>
+#include <utility>
+
+#include "base/feature_list.h"
+#include "base/files/file_path.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
+#include "base/observer_list.h"
+#include "chrome/browser/web_applications/install_bounce_metric.h"
+#include "chrome/browser/web_applications/web_app_command_manager.h"
+#include "chrome/browser/web_applications/web_app_constants.h"
+#include "chrome/browser/web_applications/web_app_install_manager_observer.h"
+#include "chrome/browser/web_applications/web_app_logging.h"
+#include "chrome/browser/web_applications/web_app_provider.h"
+#include "chrome/browser/web_applications/web_app_utils.h"
+#include "components/prefs/pref_service.h"
+#include "components/webapps/browser/installable/installable_metrics.h"
+
+namespace web_app {
+
+WebAppInstallManager::WebAppInstallManager(PrefService* pref_service)
+    : pref_service_(pref_service) {}
+
+WebAppInstallManager::~WebAppInstallManager() {
+  NotifyWebAppInstallManagerDestroyed();
+}
+
+void WebAppInstallManager::SetProvider(base::PassKey<WebAppProvider>,
+                                       WebAppProvider& provider) {
+  provider_ = &provider;
+}
+
+void WebAppInstallManager::Start() {}
+
+void WebAppInstallManager::Shutdown() {}
+
+void WebAppInstallManager::AddObserver(WebAppInstallManagerObserver* observer) {
+  observers_.AddObserver(observer);
+}
+
+void WebAppInstallManager::RemoveObserver(
+    WebAppInstallManagerObserver* observer) {
+  observers_.RemoveObserver(observer);
+}
+
+void WebAppInstallManager::NotifyWebAppInstalled(const webapps::AppId& app_id) {
+  DVLOG(1) << "NotifyWebAppInstalled " << app_id;
+  for (WebAppInstallManagerObserver& observer : observers_) {
+    observer.OnWebAppInstalled(app_id);
+  }
+  // TODO(alancutter): Call RecordWebAppInstallation here when we get access to
+  // the webapps::WebappInstallSource in this event.
+}
+
+void WebAppInstallManager::NotifyWebAppInstalledWithOsHooks(
+    const webapps::AppId& app_id) {
+  DVLOG(1) << "NotifyWebAppInstalledWithOsHooks " << app_id;
+  for (WebAppInstallManagerObserver& obs : observers_) {
+    obs.OnWebAppInstalledWithOsHooks(app_id);
+  }
+}
+
+void WebAppInstallManager::NotifyWebAppSourceRemoved(
+    const webapps::AppId& app_id) {
+  DVLOG(1) << "NotifyWebAppSourceRemoved " << app_id;
+  for (WebAppInstallManagerObserver& observer : observers_) {
+    observer.OnWebAppSourceRemoved(app_id);
+  }
+}
+
+void WebAppInstallManager::NotifyWebAppUninstalled(
+    const webapps::AppId& app_id,
+    webapps::WebappUninstallSource uninstall_source) {
+  DVLOG(1) << "NotifyWebAppUninstalled " << app_id;
+  for (WebAppInstallManagerObserver& observer : observers_) {
+    observer.OnWebAppUninstalled(app_id, uninstall_source);
+  }
+}
+
+void WebAppInstallManager::NotifyWebAppManifestUpdated(
+    const webapps::AppId& app_id) {
+  DVLOG(1) << "NotifyWebAppManifestUpdated " << app_id;
+  for (WebAppInstallManagerObserver& observer : observers_) {
+    observer.OnWebAppManifestUpdated(app_id);
+  }
+}
+
+void WebAppInstallManager::NotifyWebAppWillBeUninstalled(
+    const webapps::AppId& app_id) {
+  DVLOG(1) << "NotifyWebAppWillBeUninstalled " << app_id;
+  for (WebAppInstallManagerObserver& observer : observers_) {
+    observer.OnWebAppWillBeUninstalled(app_id);
+  }
+  RecordWebAppUninstallation(pref_service_, app_id);
+}
+
+void WebAppInstallManager::NotifyWebAppInstallManagerDestroyed() {
+  DVLOG(1) << "NotifyWebAppInstallManagerDestroyed";
+  for (WebAppInstallManagerObserver& observer : observers_) {
+    observer.OnWebAppInstallManagerDestroyed();
+  }
+}
+
+void WebAppInstallManager::NotifyWebAppMigrated(
+    const webapps::AppId& source_app_id,
+    const webapps::AppId& target_app_id) {
+  DVLOG(1) << "NotifyWebAppMigrated " << source_app_id << " to "
+           << target_app_id;
+  for (WebAppInstallManagerObserver& observer : observers_) {
+    observer.OnWebAppMigrated(source_app_id, target_app_id);
+  }
+}
+
+}  // namespace web_app

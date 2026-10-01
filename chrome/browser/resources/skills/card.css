@@ -1,0 +1,167 @@
+/* Copyright 2026 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=//resources/cr_elements/cr_shared_style_lit.css.js
+ * #import=chrome://resources/cr_elements/cr_shared_vars.css.js
+ * #import=./shared_vars.css.js
+ * #scheme=relative
+ * #include=cr-shared-style-lit
+ * #css_wrapper_metadata_end */
+
+:host {
+  --more-menu-icon-container: 40px;
+  --skill-icon: 26px;
+  display: flex;
+  flex-direction: column;
+  height: var(--skills-card-height);
+  width: var(--skills-card-width);
+}
+
+.card {
+  align-items: flex-start;
+  background-color: var(--color-sys-surface2);
+  border-radius: 16px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  margin: 0 auto;
+  padding: var(--skills-card-gap);
+  width: 100%;
+}
+
+
+#illustrationContainer {
+  align-items: center;
+  background-color: var(--color-sys-secondary-container);
+  display: flex;
+  height: 119px;
+  border-radius: 8px;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+  flex-shrink: 0;
+  margin-bottom: 16px;
+}
+
+#illustrationImage {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+#editIcon {
+  --cr-icon-size: 16px;
+}
+
+#cardHeader {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  width: 100%;
+}
+
+#cardHeader:has(#curatedLabel) {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+#cardHeader:has(#curatedLabel) > * {
+  align-self: stretch;
+}
+
+#infoContainer {
+  color: var(--color-sys-on-surface);
+  display: flex;
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  min-width: 0;
+}
+
+#icon {
+  box-sizing: border-box;
+  padding-right: 8px;
+  width: var(--skill-icon);
+}
+
+cr-tooltip {
+  --paper-tooltip-min-width: 0;
+  max-width: 216px;
+}
+
+#name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#curatedLabel {
+  color: var(--color-sys-on-surface-subtle);
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.card-body {
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  /* Using -webkit-box to support multi-line text truncation. */
+  color: var(--color-sys-on-surface-subtle);
+  display: -webkit-box;
+  height: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+#user-skill-cardBody {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+}
+
+#discover-skill-cardBody {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  -webkit-line-clamp: 3;
+}
+
+#cardFooter {
+  margin-top: auto;
+}
+
+#editButton,
+#saveButton {
+  --cr-button-border-color: transparent;
+}
+
+.dropdown-item {
+  justify-content: flex-start;
+  gap: 16px;
+  --iron-icon-width: 16px;
+  --iron-icon-height: 16px;
+  color: var(--color-sys-on-surface);
+}
+
+/* HCM */
+@media (forced-colors: active) {
+  .dropdown-item:hover,
+  .dropdown-item:focus {
+    outline: 1px solid Highlight;
+  }
+
+  .dropdown-item {
+    color: ButtonText;
+  }
+}

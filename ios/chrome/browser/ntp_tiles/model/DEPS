@@ -1,0 +1,15 @@
+include_rules = [
+  # keep-sorted start
+  "+ios/chrome/browser/favicon/model",
+  "+ios/chrome/browser/history/model",
+  "+ios/chrome/browser/search_engines/model",
+  "+ios/chrome/browser/signin/model",
+  "+ios/chrome/browser/supervised_user/model",
+  # keep-sorted end
+]
+
+specific_include_rules = {
+  "ios_most_visited_sites_factory\\.cc": [
+    "+services/data_decoder/public/cpp/data_decoder.h",
+  ],
+}

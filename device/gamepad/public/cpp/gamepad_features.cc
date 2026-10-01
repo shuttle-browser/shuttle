@@ -1,0 +1,67 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "device/gamepad/public/cpp/gamepad_features.h"
+
+#include <algorithm>
+
+#include "base/command_line.h"
+#include "base/feature_list.h"
+#include "base/metrics/field_trial_params.h"
+#include "base/strings/string_number_conversions.h"
+#include "device/gamepad/public/cpp/gamepad_switches.h"
+
+namespace features {
+
+// Enables gamepad multitouch
+BASE_FEATURE(kEnableGamepadMultitouch, base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enables gamepad simulation in GamepadService.
+BASE_FEATURE(kEnableSimulatedGamepadDataFetcher,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enables `OnGamepadRawInputChanged` for the `GamepadConsumer` interface.
+BASE_FEATURE(kGamepadRawInputChangeEvent, base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Enable claiming of enumerated gamepads by product identifier.
+BASE_FEATURE(kClaimDuplicateGamepadsProductIdentifier,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+#if BUILDFLAG(IS_WIN)
+// Ignores PlayStation 5 gamepads (DualSense, DualSense Edge) in
+// WgiDataFetcherWin to avoid double enumeration.
+BASE_FEATURE(kIgnorePS5GamepadsInWgi, base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_WIN)
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+// Enabling this feature causes GamepadPlatformDataFetcherLinux to check device
+// IDs before opening the hidraw device node to avoid interfering with devices
+// that are not gamepads or do not require hidraw access.
+BASE_FEATURE(kAllowlistHidrawGamepads, base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+
+#if BUILDFLAG(IS_APPLE)
+// Enable Xbox gamepad support in GameControllerDataFetcherMac
+BASE_FEATURE(kXboxUseGameControllerDataFetcherMac,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+// Enable PlayStation gamepad support in
+// GameControllerDataFetcherMac
+BASE_FEATURE(kPlayStationUseGameControllerDataFetcherMac,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_APPLE)
+
+#if BUILDFLAG(IS_WIN)
+BASE_FEATURE(kEnableWindowsGameInputDataFetcher,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_WIN)
+
+bool IsGamepadMultitouchEnabled() {
+  if (base::FeatureList::IsEnabled(kEnableGamepadMultitouch)) {
+    return true;
+  }
+
+  return false;
+}
+
+}  // namespace features

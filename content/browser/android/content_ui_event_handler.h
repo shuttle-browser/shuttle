@@ -1,0 +1,63 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CONTENT_BROWSER_ANDROID_CONTENT_UI_EVENT_HANDLER_H_
+#define CONTENT_BROWSER_ANDROID_CONTENT_UI_EVENT_HANDLER_H_
+
+#include "base/android/jni_android.h"
+#include "base/android/jni_weak_ref.h"
+#include "base/android/scoped_java_ref.h"
+#include "base/memory/raw_ptr.h"
+
+namespace ui {
+class KeyEventAndroid;
+class MotionEventAndroid;
+}  // namespace ui
+
+namespace content {
+
+class RenderWidgetHostViewAndroid;
+class WebContentsImpl;
+
+// Handles UI events that need Java layer access.
+// Owned by |WebContentsViewAndroid|.
+class ContentUiEventHandler {
+ public:
+  explicit ContentUiEventHandler(WebContentsImpl* web_contents);
+  ~ContentUiEventHandler();
+
+  ContentUiEventHandler(const ContentUiEventHandler&) = delete;
+  ContentUiEventHandler& operator=(const ContentUiEventHandler&) = delete;
+
+  base::android::ScopedJavaLocalRef<jobject> GetJavaObject();
+
+  bool OnGenericMotionEvent(const ui::MotionEventAndroid& event);
+  bool OnKeyUp(const ui::KeyEventAndroid& event);
+  bool DispatchKeyEvent(const ui::KeyEventAndroid& event);
+  bool ScrollBy(float delta_x, float delta_y);
+  bool ScrollTo(float x, float y);
+
+  void SendMouseWheelEvent(JNIEnv* env,
+                           const base::android::JavaRef<jobject>& event,
+                           int64_t time_ns);
+  void SendMouseEvent(JNIEnv* env,
+                      const base::android::JavaRef<jobject>& event,
+                      int64_t time_ns,
+                      int32_t android_action_button,
+                      int32_t android_tool_type);
+  void SendScrollEvent(JNIEnv* env,
+                       int64_t time_ms,
+                       float delta_x,
+                       float delta_y);
+  void CancelFling(JNIEnv* env, int64_t time_ms);
+
+ private:
+  RenderWidgetHostViewAndroid* GetRenderWidgetHostView();
+
+  const raw_ptr<WebContentsImpl> web_contents_;
+};
+
+}  // namespace content
+
+#endif  // CONTENT_BROWSER_ANDROID_CONTENT_UI_EVENT_HANDLER_H_

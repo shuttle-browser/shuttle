@@ -1,0 +1,105 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CONTENT_PUBLIC_BROWSER_DESKTOP_CAPTURE_H_
+#define CONTENT_PUBLIC_BROWSER_DESKTOP_CAPTURE_H_
+
+class SkBitmap;
+
+#include <optional>
+
+#include "base/functional/callback.h"
+#include "build/build_config.h"
+#include "content/common/content_export.h"
+#include "content/public/browser/desktop_media_id.h"
+#include "third_party/webrtc/modules/desktop_capture/desktop_capture_options.h"
+#include "third_party/webrtc/modules/desktop_capture/desktop_capturer.h"
+
+#if BUILDFLAG(IS_MAC)
+#include <sys/types.h>
+
+#include <string>
+#endif
+
+namespace content::desktop_capture {
+
+// Creates a DesktopCaptureOptions with required settings.
+CONTENT_EXPORT webrtc::DesktopCaptureOptions CreateDesktopCaptureOptions();
+
+// Creates specific DesktopCapturer with required settings.
+CONTENT_EXPORT std::unique_ptr<webrtc::DesktopCapturer> CreateScreenCapturer(
+    webrtc::DesktopCaptureOptions options,
+    bool for_snapshot);
+CONTENT_EXPORT std::unique_ptr<webrtc::DesktopCapturer> CreateWindowCapturer(
+    webrtc::DesktopCaptureOptions options);
+
+// Returns whether we can use PipeWire capturer based on:
+// 1) We run Linux Wayland session
+// 2) WebRTC is built with PipeWire enabled
+CONTENT_EXPORT bool CanUsePipeWire();
+
+// Whether the capturer should find windows owned by the current process.
+CONTENT_EXPORT bool ShouldEnumerateCurrentProcessWindows();
+
+// Opens the native screen capture picker dialog.
+// `type` is the type of the source being selected (screen, window, tab).
+// `created_callback` is called after the picker is created to pass the created
+// source_id back to the DelegatedSourceListCapturer.
+// `picker_callback` is called when a source has been selected.
+// `cancel_callback` is called when the picker is closed without selecting a
+// source.
+// `error_callback` is called if an error occurs when opening the picker.
+// Exactly one of `picker_callback`, `cancel_callback` and `error_callback` will
+// be called.
+CONTENT_EXPORT void OpenNativeScreenCapturePicker(
+    content::DesktopMediaID::Type type,
+    base::OnceCallback<void(DesktopMediaID::Id)> created_callback,
+    base::OnceCallback<void(webrtc::DesktopCapturer::Source)> picker_callback,
+    base::OnceCallback<void()> cancel_callback,
+    base::OnceCallback<void()> error_callback);
+
+// Makes the native screen capture picker dialog stop observing `source_id` and
+// closes the picker dialog if it is not observing anything else.
+CONTENT_EXPORT void CloseNativeScreenCapturePicker(DesktopMediaID source_id);
+
+#if BUILDFLAG(IS_MAC)
+struct ApplicationAudioCaptureId {
+  std::string bundle_id;
+  std::optional<pid_t> pid;
+
+  bool operator==(const ApplicationAudioCaptureId& other) const = default;
+};
+
+using GetApplicationAudioCaptureIdCallback =
+    base::OnceCallback<void(const std::optional<ApplicationAudioCaptureId>&)>;
+
+// Resolves a DesktopMediaID (session or native) into its main
+// ApplicationAudioCaptureId. Must be called from a sequenced
+// thread. Callback will be invoked on the calling sequence.
+CONTENT_EXPORT void GetApplicationAudioCaptureId(
+    DesktopMediaID desktop_media_id,
+    GetApplicationAudioCaptureIdCallback callback);
+#endif  // #if BUILDFLAG(IS_MAC)
+
+// An opaque RAII handle representing an in-flight screenshot capture request.
+// Callers retain ownership of this object for the duration of the capture.
+// Destroying the handle aborts any pending capture operation and guarantees
+// that the completion callback will not be invoked.
+class CONTENT_EXPORT ScreenshotCaptureRequest {
+ public:
+  virtual ~ScreenshotCaptureRequest() = default;
+};
+
+// Captures a screenshot from the specified desktop media source. Returns an
+// RAII handle representing the in-flight capture request, or nullptr if
+// initialization failed (in which case `callback` will not be executed).
+// Destructing the handle cancels the capture and prevents `callback` from
+// being called.
+CONTENT_EXPORT std::unique_ptr<ScreenshotCaptureRequest> CaptureScreenshot(
+    DesktopMediaID source,
+    base::OnceCallback<void(const ::SkBitmap&)> callback);
+
+}  // namespace content::desktop_capture
+
+#endif  // CONTENT_PUBLIC_BROWSER_DESKTOP_CAPTURE_H_

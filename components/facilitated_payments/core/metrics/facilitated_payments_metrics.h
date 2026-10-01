@@ -1,0 +1,555 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_FACILITATED_PAYMENTS_CORE_METRICS_FACILITATED_PAYMENTS_METRICS_H_
+#define COMPONENTS_FACILITATED_PAYMENTS_CORE_METRICS_FACILITATED_PAYMENTS_METRICS_H_
+
+#include <optional>
+
+#include "base/types/expected.h"
+#include "components/facilitated_payments/core/mojom/pix_code_validator.mojom.h"
+#include "components/facilitated_payments/core/utils/facilitated_payments_ui_utils.h"
+#include "components/facilitated_payments/core/utils/facilitated_payments_utils.h"
+#include "components/facilitated_payments/core/validation/payment_link_validator.h"
+#include "services/metrics/public/cpp/ukm_source_id.h"
+
+namespace base {
+class TimeDelta;
+}
+
+namespace payments::facilitated {
+
+// A payment system that is currently running.
+// GENERATED_JAVA_ENUM_PACKAGE: (
+//   org.chromium.components.facilitated_payments.core.metrics)
+enum class FacilitatedPaymentsType {
+  kEwallet = 0,
+  kPix = 1,
+};
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// GENERATED_JAVA_ENUM_PACKAGE: (
+//   org.chromium.components.facilitated_payments.core.metrics)
+// LINT.IfChange(AccountLinkingPromptUserAction)
+enum class AccountLinkingPromptUserAction {
+  kShown = 0,
+  kAccepted = 1,
+  kDeclined = 2,
+  kDismissed = 3,
+  kMaxValue = kDismissed,
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/facilitated_payments/enums.xml:FacilitatedPayments.AccountLinking.PromptUserAction)
+
+// Different types of payment link fop selector option available.
+enum class PaymentLinkFopSelectorTypes {
+  // Only eWallets are available.
+  kEwalletOnly = 0,
+  // Only A2A payment methods are available.
+  kA2AOnly = 1,
+  // Both eWallets and A2A payment methods are available.
+  kEwalletAndA2A = 2
+};
+
+// Available ewallet accounts type for this current profile. Indicates the count
+// of available eWallets and whether they’re device bound or not.
+enum class AvailableEwalletsConfiguration {
+  // Only one eWallet is available, and it is already bound to the device.
+  kSingleBoundEwallet = 0,
+  // Only one eWallet is available, and it’s not bound to the device.
+  kSingleUnboundEwallet = 1,
+  // Multiple eWallets are available.
+  kMultipleEwallets = 2,
+};
+
+// Reasons for why the A2A payflow was exited early. These only include the
+// reasons after the renderer has detected a valid payment link and sent the
+// signal to the browser process.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(A2AFlowExitedReason)
+enum class A2AFlowExitedReason {
+  // The domain of the website is not allowlisted.
+  kNotInAllowlist = 0,
+  // The user has opted out of the payflow.
+  kUserOptedOut = 1,
+  // The user has no supported payment apps available for the payflow.
+  kNoSupportedPaymentApp = 2,
+  // The FOP selector either wasn't shown, or was dismissed not as a result of a
+  // user action.
+  kFopSelectorClosedNotByUser = 3,
+  // The FOP selector was dismissed by a user action e.g., swiping down, tapping
+  // on the webpage behind the FOP selector, or tapping on the omnibox.
+  kFopSelectorClosedByUser = 4,
+  // Another type of FOP selected.
+  kOtherFopSelected = 5,
+  // The A2A payment flag is not enabled.
+  kFlagNotEnabled = 6,
+  kMaxValue = kFlagNotEnabled
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/facilitated_payments/enums.xml:FacilitatedPayments.A2AFlowExitedReason)
+
+// Reasons for why the eWallet payflow was exited early. These only include the
+// reasons after the renderer has detected a valid payment link and sent the
+// signal to the browser process.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(EwalletFlowExitedReason)
+enum class EwalletFlowExitedReason {
+  // The code for the payflow is not valid.
+  kLinkIsInvalid = 0,
+  // The user has opted out of the payflow.
+  kUserOptedOut = 1,
+  // The user has no supported accounts available for the payflow.
+  kNoSupportedEwallet = 2,
+  // The device is in landscape orientation when payflow was to be triggered.
+  kLandscapeScreenOrientation = 3,
+  // The domain for the payment link is not allowlisted.
+  kNotInAllowlist = 4,
+  // The API Client is not available when the payflow was to be triggered.
+  kApiClientNotAvailable = 5,
+  // The risk data needed to send the server request is not available.
+  kRiskDataEmpty = 6,
+  // The client token needed to send the server request is not available.
+  kClientTokenNotAvailable = 7,
+  // The InitiatePayment response indicated a failure.
+  kInitiatePaymentFailed = 8,
+  // The action token returned in the InitiatePayment response is not available.
+  kActionTokenNotAvailable = 9,
+  // The user has logged out after selecting a payment method.
+  kUserLoggedOut = 10,
+  // The FOP selector either wasn't shown, or was dismissed not as a result of a
+  // user action.
+  kFopSelectorClosedNotByUser = 11,
+  // The FOP selector was dismissed by a user action e.g., swiping down, tapping
+  // on the webpage behind the FOP selector, or tapping on the omnibox.
+  kFopSelectorClosedByUser = 12,
+  // The device is a foldable device which we don't support yet.
+  kFoldableDevice = 13,
+  kMaxStrikes = 14,
+  // Another type of FOP selected.
+  kOtherFopSelected = 15,
+  kMaxValue = kOtherFopSelected
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/facilitated_payments/enums.xml:FacilitatedPayments.EwalletFlowExitedReason)
+
+// Reasons for why the eWallet new account linking onboarding flow was
+// exited early. These values are persisted to logs. Entries should not be
+// renumbered and numeric values should never be reused.
+// LINT.IfChange(EwalletNewAccountLinkingFlowExitedReason)
+enum class EwalletNewAccountLinkingFlowExitedReason {
+  // The user has no supported eWallet creation options available.
+  kNoSupportedCreationOption = 0,
+  // Multiple supported eWallet creation options were found (currently
+  // unsupported).
+  kMultipleSupportedCreationOptions = 1,
+  kMaxValue = kMultipleSupportedCreationOptions
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/facilitated_payments/enums.xml:FacilitatedPayments.EwalletNewAccountLinkingFlowExitedReason)
+
+// Reasons for why the Pix payflow was exited early. These only include the
+// reasons after the renderer has detected a valid code and sent the signal to
+// the browser process.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+//
+// LINT.IfChange(PixFlowExitedReason)
+enum class PixFlowExitedReason {
+  // The code validator encountered an error.
+  kCodeValidatorFailed = 0,
+  // The code for the payflow is not valid.
+  kInvalidCode = 1,
+  // The user has opted out of the payflow.
+  kUserOptedOut = 2,
+  // The user has no linked accounts available for the payflow.
+  kNoLinkedAccount = 3,
+  // The device is in landscape orientation when payflow was to be triggered.
+  kLandscapeScreenOrientation = 4,
+  // The API Client is not available when the payflow was to be triggered.
+  kApiClientNotAvailable = 5,
+  // The risk data needed to send the server request is not available.
+  kRiskDataNotAvailable = 6,
+  // The client token needed to send the server request is not available.
+  kClientTokenNotAvailable = 7,
+  // The InitiatePayment response indicated a failure.
+  kInitiatePaymentFailed = 8,
+  // The action token returned in the InitiatePayment response is not available.
+  kActionTokenNotAvailable = 9,
+  // The user has logged out after selecting a payment method.
+  kUserLoggedOut = 10,
+  // The FOP selector either wasn't shown, or was dismissed not as a result of a
+  // user action.
+  kFopSelectorClosedNotByUser = 11,
+  // The FOP selector was dismissed by a user action e.g., swiping down, tapping
+  // on the webpage behind the FOP selector, or tapping on the omnibox.
+  kFopSelectorClosedByUser = 12,
+  // Chrome attempted, but was unable to invoke purchase action.
+  kPurchaseActionCouldNotBeInvoked = 13,
+  // Autofilling payment FOPs disabled.
+  kAutofillPaymentMethodsDisabled = 14,
+  // Pix code was copied on a merchant website that wasn't allowlisted.
+  kMerchantNotAllowlisted = 15,
+  // Pix code was copied within an iframe.
+  kPixCodeInIFrame = 16,
+  // Pix code was copied in an inactive frame.
+  kFrameNotActive = 17,
+  // Pix code was copied in CCT with Gboard as the default IME provider.
+  kCctWithGboardAsDefaultIme = 18,
+  // Pix code was static and not supported.
+  kStaticCode = 19,
+  // Pix code was copied within an iframe whose URL is not in the allowlist.
+  kIframeUrlNotAllowlisted = 20,
+  // Pix code was copied when a payflow has already started.
+  kFlowAlreadyStarted = 21,
+  // Pix code was copied in a same-origin iframe but the merchant is not
+  // allowlisted.
+  kSameOriginMerchantNotAllowlisted = 22,
+  // Pix code was copied in an error document frame.
+  kFrameIsErrorDocument = 23,
+  kMaxValue = kFrameIsErrorDocument
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/facilitated_payments/enums.xml:FacilitatedPayments.PixFlowExitedReason)
+
+// LINT.IfChange(AccountLinkingFlowExitedReason)
+enum class AccountLinkingFlowExitedReason {
+  kScreenNotShown = 0,
+  kScreenClosedNotByUser = 1,
+  kScreenClosedByUser = 2,
+  kUserDeclined = 3,
+  kWalletNotInstalled = 4,
+  kWalletVersionNotSupported = 5,
+  kUserOptedOut = 6,
+  kNoScreenlockOrBiometricSetup = 7,
+  kServerSideIneligible = 8,
+  kTabIsNotActive = 9,
+  kUserSwitchedWebsite = 10,
+  kMaxStrikes = 11,
+  kRequiredDelayNotPassed = 12,
+  kClientTokenNotAvailable = 13,
+  kNetworkInterfaceUnavailable = 14,
+  kGetDetailsFailed = 15,
+  kNotEligiblePerPaymentsBackend = 16,
+  kActionTokenNotAvailable = 17,
+  kUserLoggedOut = 18,
+  kApiClientNotAvailable = 19,
+  kUserCanceledInGmsCore = 20,
+  kGmsCoreFlowFailed = 21,
+  kMaxValue = kGmsCoreFlowFailed
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/facilitated_payments/enums.xml:FacilitatedPayments.AccountLinking.FlowExitedReason)
+
+// This contains a subset of the variants in the Rust `PixQrCodeResult` enum, as
+// some values are not interesting for metrics, e.g. they'd be too noisy/spammy.
+// LINT.IfChange(PixCodeRustValidationResult)
+enum class PixCodeRustValidationResult {
+  // The input was successfully parsed as a dynamic Pix code.
+  kDynamic = 0,
+  // The input was successfully parsed as a static Pix code.
+  kStatic = 1,
+
+  // The input appears to be a EMV Merchant-Presented QR code, but the
+  // globally unique identifier is not the Pix identifier.
+  kNonPixMerchantPresentedCode = 2,
+  // The additional data field template data object is present but empty,
+  // which violates the EMV Merchant-Presented QR code
+  // requirements.
+  kEmptyAdditionalDataFieldTemplate = 3,
+  // The CRC data object was not the final data object in the input.
+  kNonFinalCrc = 4,
+  // The input is a Pix code, but of unknown type.
+  kUnknownPixCodeType = 5,
+  kMaxValue = kUnknownPixCodeType,
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/facilitated_payments/enums.xml:FacilitatedPayments.Pix.PaymentCodeValidation.RustResult)
+
+// LINT.IfChange(PixCodeValidationResult)
+enum class PixCodeValidationResult {
+  // The code is dynamic.
+  kDynamic = 0,
+  // The code is static.
+  kStatic = 1,
+  // The code is invalid.
+  kInvalid = 2,
+  // The validator failed to validate the code.
+  kValidatorFailed = 3,
+  kMaxValue = kValidatorFailed
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/facilitated_payments/enums.xml:FacilitatedPayments.PixCodeValidationResult)
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+//
+// LINT.IfChange(PixIframeUrlType)
+enum class PixIframeUrlType {
+  kOtherNonEmptyUrl = 0,
+  kAboutBlank = 1,
+  kEmpty = 2,
+  kAboutSrcDoc = 3,
+  kNonEmptyAndSameOriginAsMainFrame = 4,
+  kMaxValue = kNonEmptyAndSameOriginAsMainFrame
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/facilitated_payments/enums.xml:FacilitatedPayments.Pix.IframeUrlType)
+
+// Converts `PaymentLinkValidator::Scheme` to a string for logging.
+std::string SchemeToString(PaymentLinkValidator::Scheme scheme);
+
+// Log when a Pix code is copied to the clipboard on any merchant
+// website. It includes whether the copy event occurred within an iframe.
+void LogPixCodeCopied(ukm::SourceId ukm_source_id, bool has_iframe);
+
+// Log that a Pix code is copied to the clipboard within any iframe.
+void LogPixCodeCopiedInIframe();
+
+// Log the URL type of the iframe when a Pix code is copied in an iframe.
+void LogPixIframeUrlType(PixIframeUrlType url_type);
+
+// Log if the iframe is same-origin with the main frame when a Pix code is
+// copied in an iframe.
+void LogPixIframeIsSameOriginAsMainFrame(bool is_same_origin);
+
+// Log when a given payment link in a certain page for an eWallet push payment
+// flow is detected.
+void LogPaymentLinkDetected(ukm::SourceId ukm_source_id,
+                            PaymentLinkValidator::Scheme scheme);
+
+// Log when a valid payment link is detected and the user is eligible for the
+// eWallet new account linking onboarding flow (meaning they have no
+// linked eWallet accounts but have unlinked creation options available).
+void LogPaymentLinkDetectedAndEligibleForAccountLinking();
+
+// Log when the eWallet new account linking onboarding flow was exited early.
+void LogEwalletNewAccountLinkingFlowExitedReason(
+    EwalletNewAccountLinkingFlowExitedReason reason,
+    PaymentLinkValidator::Scheme scheme);
+
+// Log when the eWallet FOP selector UI is shown.
+void LogEwalletFopSelectorShownUkm(ukm::SourceId ukm_source_id,
+                                   PaymentLinkValidator::Scheme scheme);
+
+// Log when the Pix FOP selector UI is shown.
+void LogPixFopSelectorShownUkm(ukm::SourceId ukm_source_id);
+
+// Log after user accepts / rejects the Pix UI. The `accepted` will be false
+// if the user rejects the UI, and it will be true if the user accepts the
+// selector UI and selects a FoP to use.
+void LogPixFopSelectorResultUkm(bool accepted, ukm::SourceId ukm_source_id);
+
+// Log after user accepts / rejects the eWallet UI. The `accepted` will be false
+// if the user rejects the UI, and it will be true if the user accepts the
+// selector UI and selects a FoP to use.
+void LogEwalletFopSelectorResultUkm(bool accepted,
+                                    ukm::SourceId ukm_source_id,
+                                    PaymentLinkValidator::Scheme scheme);
+
+// Logs that the user has selected a Pix FOP to pay with. Also logs the time
+// taken by the user to select the Pix account after the FOP selector is shown.
+void LogPixFopSelectedAndLatency(base::TimeDelta duration);
+
+// Log when user selects an eWallet FOP to pay with.
+void LogEwalletFopSelected(AvailableEwalletsConfiguration type);
+
+// Log when user selects a FOP to pay with from the non-card FOP selector.
+void LogNonCardPaymentMethodsFopSelected(
+    PaymentLinkFopSelectorTypes non_card_fop_selector_fop_type,
+    PaymentLinkFopSelectorAction payment_link_fop_selector_action,
+    std::optional<PaymentLinkValidator::Scheme> scheme);
+
+// Logs the result of the Rust Pix code validator. Always logged, even when the
+// C++ validator is in use.
+void LogPaymentCodeRustValidationResult(PixCodeRustValidationResult result);
+
+// Log the result and latency for validating a payment code using
+// `data_decoder::DataDecoder`, as well as whether the C++ validator agrees with
+// the Rust validator.
+void LogPaymentCodeValidationResultAndLatency(
+    PixCodeValidationResult result,
+    std::optional<PixCodeRustValidationResult> rust_result,
+    base::TimeDelta duration);
+
+// Log the result of whether the facilitated payments is available or not and
+// the check's latency.
+// `payment_type` must be either `kEwallet` or `kPix`.
+// The `scheme` parameter is required for the 'kEwallet' payment type and should
+// not be `kInvalid`.
+void LogApiAvailabilityCheckResultAndLatency(
+    FacilitatedPaymentsType payment_type,
+    bool result,
+    base::TimeDelta duration,
+    std::optional<PaymentLinkValidator::Scheme> scheme = std::nullopt);
+
+// Logs the result and latency for fetching the risk data. If the risk data was
+// fetched successfully, `was_successful` is true. The call took `duration` to
+// complete.
+// `payment_type` must be either `kEwallet` or `kPix`.
+// The `scheme` parameter is required for the 'kEwallet' payment type and should
+// not be `kInvalid`.
+void LogLoadRiskDataResultAndLatency(
+    FacilitatedPaymentsType payment_type,
+    bool was_successful,
+    base::TimeDelta duration,
+    std::optional<PaymentLinkValidator::Scheme> scheme = std::nullopt);
+
+// Log the result and the latency of the GetClientToken call made to api client.
+// `payment_type` must be either `kEwallet` or `kPix`.
+// The `scheme` parameter is required for the 'kEwallet' payment type and should
+// not be `kInvalid`.
+void LogGetClientTokenResultAndLatency(
+    FacilitatedPaymentsType payment_type,
+    bool result,
+    base::TimeDelta duration,
+    std::optional<PaymentLinkValidator::Scheme> scheme = std::nullopt);
+
+// Log the reason for the eWallet flow was exited early. This includes all the
+// reasons after receiving a signal from the renderer process that a valid
+// payment link has been found.
+void LogEwalletFlowExitedReason(
+    EwalletFlowExitedReason reason,
+    std::optional<PaymentLinkValidator::Scheme> scheme = std::nullopt);
+
+// Log the reason for the A2A flow was exited early. This includes all the
+// reasons after receiving a signal from the renderer process that a valid
+// payment link has been found.
+void LogA2APayflowExitedReason(
+    A2AFlowExitedReason reason,
+    std::optional<PaymentLinkValidator::Scheme> scheme = std::nullopt);
+
+// Log the reason for the Pix flow was exited early. This includes all the
+// reasons after receiving a signal from the renderer process that a valid code
+// has been found.
+void LogPixFlowExitedReason(PixFlowExitedReason reason);
+
+// Log the attempt to send the call to the InitiatePayment backend endpoint.
+// `payment_type` must be either `kEwallet` or `kPix`.
+// The `scheme` parameter is required for the 'kEwallet' payment type and should
+// not be `kInvalid`.
+void LogInitiatePaymentAttempt(
+    FacilitatedPaymentsType payment_type,
+    std::optional<PaymentLinkValidator::Scheme> scheme = std::nullopt);
+
+// Log the result and latency for the InitiatePayment backend endpoint.
+// `payment_type` must be either `kEwallet` or `kPix`.
+// The `scheme` parameter is required for the 'kEwallet' payment type and should
+// not be `kInvalid`.
+void LogInitiatePaymentResultAndLatency(
+    FacilitatedPaymentsType payment_type,
+    bool result,
+    base::TimeDelta duration,
+    std::optional<PaymentLinkValidator::Scheme> scheme = std::nullopt);
+
+// Log the attempt to send the call to the InitiatePurchaseAction backend
+// endpoint.
+// `payment_type` must be either `kEwallet` or `kPix`.
+// The `scheme` parameter is required for the 'kEwallet' payment type and should
+// not be `kInvalid`.
+void LogInitiatePurchaseActionAttempt(
+    FacilitatedPaymentsType payment_type,
+    std::optional<PaymentLinkValidator::Scheme> scheme = std::nullopt);
+
+// Log the result and latency for the InitiatePurchaseAction call made to the
+// payments platform (client) during Pix payflow.
+void LogPixInitiatePurchaseActionResultAndLatency(PurchaseActionResult result,
+                                                  base::TimeDelta duration);
+
+// Logs the result and the overall latency for the Pix transaction. The latency
+// is measured between the time when the Pix code was copied to the time when
+// Chrome receives `PurchaseActionResult` from the payments backend.
+void LogPixTransactionResultAndLatency(PurchaseActionResult result,
+                                       base::TimeDelta duration);
+
+// Logs the result of the Pix transaction, broken down by whether the purchase
+// action was invoked in the iframe or main frame.
+void LogPixTransactionResultPerFrameType(bool pix_code_is_in_iframe,
+                                         PurchaseActionResult result);
+
+// Log the result and latency for the InitiatePurchaseAction call made to the
+// payments platform (client) during eWallet payflow.
+void LogEwalletInitiatePurchaseActionResultAndLatency(
+    PurchaseActionResult result,
+    base::TimeDelta duration,
+    PaymentLinkValidator::Scheme scheme,
+    bool is_device_bound);
+
+// Log the UKM for the InitiatePurchaseAction result.
+void LogInitiatePurchaseActionResultUkm(PurchaseActionResult result,
+                                        ukm::SourceId ukm_source_id);
+
+// Logs showing a new UI screen.
+// The `scheme` parameter is required for the 'kEwallet' payment type and should
+// not be `kInvalid`.
+void LogUiScreenShown(
+    FacilitatedPaymentsType payment_type,
+    UiState ui_screen,
+    std::optional<PaymentLinkValidator::Scheme> scheme = std::nullopt);
+
+// Logs the latency for displaying the FOP selector
+// - Pix: Measures latency from Pix payment code copy to FOP selector display.
+// - Ewallet: Measures latency from payment link detection to FOP selector
+// display. The `scheme` parameter is required for the 'kEwallet' payment type
+// and should not be `kInvalid`.
+void LogFopSelectorShownLatency(
+    FacilitatedPaymentsType payment_type,
+    base::TimeDelta latency,
+    std::optional<PaymentLinkValidator::Scheme> scheme = std::nullopt);
+
+// Logs the latency for displaying the payment link FOP selector
+//   - EwalletAndA2A: Latency when both eWallet and
+//     payment app are available.
+//   - A2AOnly: Latency when only payment app is available.
+//   - EwalletOnly: Latency when only eWallet is
+//   available.
+void LogPaymentLinkFopSelectorShownLatency(
+    PaymentLinkFopSelectorTypes payment_link_fop_selector_type,
+    base::TimeDelta latency,
+    std::optional<PaymentLinkValidator::Scheme> scheme = std::nullopt);
+
+// Logs the result and latency for invoking a payment app after a payment link
+// was detected.
+void LogInvokePaymentAppResultAndLatency(
+    bool result,
+    base::TimeDelta latency,
+    std::optional<PaymentLinkValidator::Scheme> scheme);
+
+// Logs the user action taken on the account linking prompt.
+void LogAccountLinkingPromptUserAction(
+    FacilitatedPaymentsType payment_type,
+    AccountLinkingPromptUserAction user_action);
+
+// Logs that the account linking prompt failed to show.
+void LogAccountLinkingPromptFailedToShow(FacilitatedPaymentsType payment_type);
+
+// Logs the user interaction duration for the account linking prompt.
+void LogAccountLinkingPromptInteractionDuration(
+    FacilitatedPaymentsType payment_type,
+    AccountLinkingPromptUserAction user_action,
+    base::TimeDelta duration);
+
+// Logs that the Pix account linking prompt was shown.
+void LogPixAccountLinkingPromptShown();
+
+// Logs that the Pix account linking prompt was accepted by user.
+void LogPixAccountLinkingPromptAccepted();
+
+// Logs the result and latency of the client token fetch during account linking.
+void LogAccountLinkingGetClientTokenResultAndLatency(
+    std::string_view fop_suffix,
+    bool result,
+    base::TimeDelta duration);
+
+// Logs the result and latency for GetDetailsForCreatePaymentInstrument
+// endpoint during account linking.
+void LogAccountLinkingGetDetailsForCreatePaymentInstrumentResultAndLatency(
+    std::string_view fop_suffix,
+    bool is_eligible,
+    base::TimeDelta latency);
+
+// Log the reason for the account linking flow was exited early.
+void LogAccountLinkingFlowExitedReason(std::string_view fop_suffix,
+                                       AccountLinkingFlowExitedReason reason);
+
+// Logs the final result (success/failure) of the account linking flow.
+void LogAccountLinkingResult(std::string_view fop_suffix, bool is_successful);
+
+}  // namespace payments::facilitated
+
+#endif  // COMPONENTS_FACILITATED_PAYMENTS_CORE_METRICS_FACILITATED_PAYMENTS_METRICS_H_

@@ -1,0 +1,360 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/app/application_delegate/metric_kit_subscriber.h"
+
+#import <Foundation/Foundation.h>
+#import <MetricKit/MetricKit.h>
+
+#import "base/files/file_path.h"
+#import "base/files/scoped_temp_dir.h"
+#import "base/ios/ios_util.h"
+#import "base/run_loop.h"
+#import "base/strings/sys_string_conversions.h"
+#import "base/test/ios/wait_util.h"
+#import "base/test/metrics/histogram_tester.h"
+#import "base/test/scoped_feature_list.h"
+#import "base/test/task_environment.h"
+#import "components/crash/core/app/crashpad.h"
+#import "components/crash/core/common/reporter_running_ios.h"
+#import "components/previous_session_info/previous_session_info.h"
+#import "ios/chrome/app/application_delegate/mock_metrickit_metric_payload.h"
+#import "ios/chrome/browser/crash_report/model/features.h"
+#import "testing/gtest_mac.h"
+#import "testing/platform_test.h"
+#import "third_party/crashpad/crashpad/client/crash_report_database.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+#import "third_party/ocmock/gtest_support.h"
+
+class MetricKitSubscriberTest : public PlatformTest {
+ public:
+  void SetUp() override {
+    ASSERT_FALSE(crash_reporter::internal::GetCrashReportDatabase());
+    ASSERT_TRUE(database_dir_.CreateUniqueTempDir());
+    database_dir_path_ = database_dir_.GetPath();
+    database_ = crashpad::CrashReportDatabase::Initialize(database_dir_path_);
+    crash_reporter::internal::SetCrashReportDatabaseForTesting(
+        database_.get(), &database_dir_path_);
+
+    std::vector<crash_reporter::Report> reports;
+    crash_reporter::GetReports(&reports);
+    ASSERT_EQ(reports.size(), 0u);
+    crash_reporter::SetCrashpadRunning(true);
+  }
+
+  void TearDown() override {
+    crash_reporter::internal::SetCrashReportDatabaseForTesting(nullptr,
+                                                               nullptr);
+    crash_reporter::SetCrashpadRunning(false);
+  }
+
+  auto Database() { return database_.get(); }
+
+ private:
+  base::ScopedTempDir database_dir_;
+  base::FilePath database_dir_path_;
+  base::test::TaskEnvironment task_environment_;
+  std::unique_ptr<crashpad::CrashReportDatabase> database_;
+};
+
+TEST_F(MetricKitSubscriberTest, Metrics) {
+  NSDictionary* dictionary_report = @{
+    @"applicationTimeMetrics" :
+        @{@"cumulativeForegroundTime" : @1, @"cumulativeBackgroundTime" : @2},
+    @"memoryMetrics" :
+        @{@"peakMemoryUsage" : @3, @"averageSuspendedMemory" : @4},
+    @"applicationLaunchMetrics" : @{
+      @"histogrammedResumeTime" : @{@25 : @5, @35 : @7},
+      @"histogrammedTimeToFirstDrawKey" : @{@5 : @2, @15 : @4}
+    },
+    @"applicationExitMetrics" : @{
+      @"backgroundExitData" : @{
+        @"cumulativeAppWatchdogExitCount" : @1,
+        @"cumulativeMemoryResourceLimitExitCount" : @2,
+        // These two entries are present in the simulated payload but not in
+        // the SDK.
+        // @"cumulativeBackgroundURLSessionCompletionTimeoutExitCount" : @3,
+        // @"cumulativeBackgroundFetchCompletionTimeoutExitCount" : @4,
+        @"cumulativeAbnormalExitCount" : @5,
+        @"cumulativeSuspendedWithLockedFileExitCount" : @6,
+        @"cumulativeIllegalInstructionExitCount" : @7,
+        @"cumulativeMemoryPressureExitCount" : @8,
+        @"cumulativeBadAccessExitCount" : @9,
+        @"cumulativeCPUResourceLimitExitCount" : @10,
+        @"cumulativeBackgroundTaskAssertionTimeoutExitCount" : @11,
+        @"cumulativeNormalAppExitCount" : @12
+      },
+      @"foregroundExitData" : @{
+        @"cumulativeBadAccessExitCount" : @13,
+        @"cumulativeAbnormalExitCount" : @14,
+        @"cumulativeMemoryResourceLimitExitCount" : @15,
+        @"cumulativeNormalAppExitCount" : @16,
+        // This entry is present in the simulated payload but not in the SDK.
+        // @"cumulativeCPUResourceLimitExitCount" : @17,
+        @"cumulativeIllegalInstructionExitCount" : @18,
+        @"cumulativeAppWatchdogExitCount" : @19
+      }
+    },
+  };
+
+  {
+    MXMetricPayload* mock_report = MockMetricPayload(dictionary_report);
+    OCMStub([mock_report includesMultipleApplicationVersions]).andReturn(NO);
+    NSArray* array = @[ mock_report ];
+
+    base::HistogramTester tester;
+    [[MetricKitSubscriber sharedInstance] didReceiveMetricPayloads:array];
+    for (const std::string& prefix :
+         {"IOS.MetricKit.IncludingMismatch.", "IOS.MetricKit."}) {
+      tester.ExpectUniqueTimeSample(prefix + "ForegroundTimePerDay",
+                                    base::Seconds(1), 1);
+      tester.ExpectUniqueTimeSample(prefix + "BackgroundTimePerDay",
+                                    base::Seconds(2), 1);
+      tester.ExpectUniqueSample(prefix + "PeakMemoryUsage", 3, 1);
+      tester.ExpectUniqueSample(prefix + "AverageSuspendedMemory", 4, 1);
+
+      tester.ExpectTotalCount(prefix + "ApplicationResumeTime", 12);
+      tester.ExpectBucketCount(prefix + "ApplicationResumeTime", 25, 5);
+      tester.ExpectBucketCount(prefix + "ApplicationResumeTime", 35, 7);
+
+      tester.ExpectTotalCount(prefix + "TimeToFirstDraw", 6);
+      tester.ExpectBucketCount(prefix + "TimeToFirstDraw", 5, 2);
+      tester.ExpectBucketCount(prefix + "TimeToFirstDraw", 15, 4);
+
+      tester.ExpectTotalCount(prefix + "BackgroundExitData", 71);
+      tester.ExpectBucketCount(prefix + "BackgroundExitData", 2, 1);
+      tester.ExpectBucketCount(prefix + "BackgroundExitData", 4, 2);
+      tester.ExpectBucketCount(prefix + "BackgroundExitData", 1, 5);
+      tester.ExpectBucketCount(prefix + "BackgroundExitData", 6, 6);
+      tester.ExpectBucketCount(prefix + "BackgroundExitData", 8, 7);
+      tester.ExpectBucketCount(prefix + "BackgroundExitData", 5, 8);
+      tester.ExpectBucketCount(prefix + "BackgroundExitData", 7, 9);
+      tester.ExpectBucketCount(prefix + "BackgroundExitData", 3, 10);
+      tester.ExpectBucketCount(prefix + "BackgroundExitData", 9, 11);
+      tester.ExpectBucketCount(prefix + "BackgroundExitData", 0, 12);
+
+      tester.ExpectTotalCount(prefix + "ForegroundExitData", 95);
+      tester.ExpectBucketCount(prefix + "ForegroundExitData", 7, 13);
+      tester.ExpectBucketCount(prefix + "ForegroundExitData", 1, 14);
+      tester.ExpectBucketCount(prefix + "ForegroundExitData", 4, 15);
+      tester.ExpectBucketCount(prefix + "ForegroundExitData", 0, 16);
+      tester.ExpectBucketCount(prefix + "ForegroundExitData", 8, 18);
+      tester.ExpectBucketCount(prefix + "ForegroundExitData", 2, 19);
+    }
+  }
+
+  {
+    MXMetricPayload* mock_report = MockMetricPayload(dictionary_report);
+    OCMStub([mock_report includesMultipleApplicationVersions]).andReturn(YES);
+    NSArray* array = @[ mock_report ];
+
+    base::HistogramTester tester;
+    [[MetricKitSubscriber sharedInstance] didReceiveMetricPayloads:array];
+    tester.ExpectTotalCount("IOS.MetricKit.ApplicationResumeTime", 0);
+    tester.ExpectTotalCount("IOS.MetricKit.TimeToFirstDraw", 0);
+    tester.ExpectTotalCount("IOS.MetricKit.BackgroundExitData", 0);
+    tester.ExpectTotalCount("IOS.MetricKit.ForegroundExitData", 0);
+
+    const std::string prefix = "IOS.MetricKit.IncludingMismatch.";
+    tester.ExpectUniqueTimeSample(prefix + "ForegroundTimePerDay",
+                                  base::Seconds(1), 1);
+    tester.ExpectUniqueTimeSample(prefix + "BackgroundTimePerDay",
+                                  base::Seconds(2), 1);
+    tester.ExpectUniqueSample(prefix + "PeakMemoryUsage", 3, 1);
+    tester.ExpectUniqueSample(prefix + "AverageSuspendedMemory", 4, 1);
+    tester.ExpectTotalCount(prefix + "ApplicationResumeTime", 12);
+    tester.ExpectTotalCount(prefix + "TimeToFirstDraw", 6);
+    tester.ExpectTotalCount(prefix + "BackgroundExitData", 71);
+    tester.ExpectTotalCount(prefix + "ForegroundExitData", 95);
+  }
+}
+
+TEST_F(MetricKitSubscriberTest, SaveDiagnosticReport) {
+  id mock_report = OCMClassMock([MXDiagnosticPayload class]);
+  NSDate* date = [NSDate date];
+  std::string file_data("report content");
+  NSData* data = [NSData dataWithBytes:file_data.c_str()
+                                length:file_data.size()];
+  NSDateFormatter* formatter = [[NSDateFormatter alloc] init];
+  [formatter setDateFormat:@"yyyyMMdd_HHmmss"];
+  [formatter setTimeZone:[NSTimeZone timeZoneWithName:@"UTC"]];
+  OCMStub([mock_report timeStampEnd]).andReturn(date);
+  OCMStub([mock_report JSONRepresentation]).andReturn(data);
+  NSArray* array = @[ mock_report ];
+
+  id mock_diagnostic = OCMClassMock([MXCrashDiagnostic class]);
+  OCMStub([mock_diagnostic JSONRepresentation]).andReturn(data);
+  NSArray* mock_diagnostics = @[ mock_diagnostic ];
+  OCMStub([mock_report crashDiagnostics]).andReturn(mock_diagnostics);
+  [[MetricKitSubscriber sharedInstance] didReceiveDiagnosticPayloads:array];
+
+  EXPECT_TRUE(base::test::ios::WaitUntilConditionOrTimeout(
+      base::test::ios::kWaitForFileOperationTimeout, true, ^bool() {
+        std::vector<crash_reporter::Report> reports;
+        crash_reporter::GetReports(&reports);
+        return reports.size() == 1;
+      }));
+
+  std::vector<crash_reporter::Report> reports;
+  crash_reporter::GetReports(&reports);
+  ASSERT_EQ(reports.size(), 1u);
+
+  std::unique_ptr<const crashpad::CrashReportDatabase::UploadReport>
+      upload_report;
+  crashpad::UUID uuid;
+  uuid.InitializeFromString(reports[0].local_id);
+  EXPECT_EQ(Database()->GetReportForUploading(uuid, &upload_report),
+            crashpad::CrashReportDatabase::kNoError);
+
+  std::map<std::string, crashpad::FileReader*> attachments =
+      upload_report->GetAttachments();
+  EXPECT_EQ(attachments.size(), 1u);
+  ASSERT_TRUE(attachments.contains("MetricKit"));
+  char result_buffer[sizeof(file_data)];
+  attachments["MetricKit"]->Read(result_buffer, sizeof(result_buffer));
+
+  NSData* result_data = [NSData dataWithBytes:result_buffer
+                                       length:sizeof(result_buffer)];
+
+  NSError* error = nil;
+  result_data =
+      [result_data decompressedDataUsingAlgorithm:NSDataCompressionAlgorithmZlib
+                                            error:&error];
+  EXPECT_NSEQ(data, result_data);
+}
+
+// Test that PreviousSessionInfo report parameters are snapshotted and passed
+// to Crashpad when saving diagnostic payloads.
+TEST_F(MetricKitSubscriberTest, SaveDiagnosticReportWithParameters) {
+  PreviousSessionInfo* previous_session = [PreviousSessionInfo sharedInstance];
+  [previous_session setReportParameterValue:@"test_value" forKey:@"test_param"];
+
+  id mock_report = OCMClassMock([MXDiagnosticPayload class]);
+  NSDate* date = [NSDate date];
+  std::string file_data("report content with params");
+  NSData* data = [NSData dataWithBytes:file_data.c_str()
+                                length:file_data.size()];
+  NSDateFormatter* formatter = [[NSDateFormatter alloc] init];
+  [formatter setDateFormat:@"yyyyMMdd_HHmmss"];
+  [formatter setTimeZone:[NSTimeZone timeZoneWithName:@"UTC"]];
+  OCMStub([mock_report timeStampEnd]).andReturn(date);
+  OCMStub([mock_report JSONRepresentation]).andReturn(data);
+  NSArray* array = @[ mock_report ];
+
+  id mock_diagnostic = OCMClassMock([MXCrashDiagnostic class]);
+  OCMStub([mock_diagnostic JSONRepresentation]).andReturn(data);
+  NSArray* mock_diagnostics = @[ mock_diagnostic ];
+  OCMStub([mock_report crashDiagnostics]).andReturn(mock_diagnostics);
+  [[MetricKitSubscriber sharedInstance] didReceiveDiagnosticPayloads:array];
+
+  EXPECT_TRUE(base::test::ios::WaitUntilConditionOrTimeout(
+      base::test::ios::kWaitForFileOperationTimeout, true, ^bool() {
+        std::vector<crash_reporter::Report> reports;
+        crash_reporter::GetReports(&reports);
+        return reports.size() == 1;
+      }));
+
+  std::vector<crash_reporter::Report> reports;
+  crash_reporter::GetReports(&reports);
+  ASSERT_EQ(reports.size(), 1u);
+
+  [previous_session removeReportParameterForKey:@"test_param"];
+}
+
+// Test that enabling and disabling the subscriber registers and unregisters
+// with MXMetricManager, and that redundant setEnabled calls are no-ops.
+TEST_F(MetricKitSubscriberTest, EnableDisable) {
+  id mock_manager = OCMStrictClassMock([MXMetricManager class]);
+  OCMStub([mock_manager sharedManager]).andReturn(mock_manager);
+
+  MetricKitSubscriber* subscriber = [[MetricKitSubscriber alloc] init];
+
+  // Initial state is disabled (NO).
+  EXPECT_FALSE(subscriber.enabled);
+
+  // Calling setEnabled:NO when already NO is a no-op.
+  [subscriber setEnabled:NO];
+  EXPECT_FALSE(subscriber.enabled);
+
+  // Enabling sets enabled to YES and adds subscriber.
+  OCMExpect([mock_manager addSubscriber:subscriber]);
+  [subscriber setEnabled:YES];
+  EXPECT_TRUE(subscriber.enabled);
+  EXPECT_OCMOCK_VERIFY(mock_manager);
+
+  // Calling setEnabled:YES when already YES is a no-op.
+  [subscriber setEnabled:YES];
+  EXPECT_TRUE(subscriber.enabled);
+
+  // Disabling sets enabled to NO and removes subscriber.
+  OCMExpect([mock_manager removeSubscriber:subscriber]);
+  [subscriber setEnabled:NO];
+  EXPECT_FALSE(subscriber.enabled);
+  EXPECT_OCMOCK_VERIFY(mock_manager);
+
+  [mock_manager stopMocking];
+}
+
+// Tests that delivering an `MXMetricPayload` whose `MXSignpostIntervalData`
+// has `averageMemory.averageMeasurement = nil` to all registered MetricKit
+// subscribers does not crash (crbug.com/557114418).
+// Passing this test is a pre-condition to enabling the
+// MetrickitSwiftReportSubscriber feature flag
+TEST_F(MetricKitSubscriberTest,
+       NilSignpostAverageMemoryMeasurementDoesNotCrash) {
+  if (@available(iOS 27.0, *)) {
+    MetricKitSubscriber* subscriber = [MetricKitSubscriber sharedInstance];
+    [subscriber setEnabled:YES];
+
+    MXAverage* average_memory = [[MXAverage alloc] init];
+    [average_memory setValue:nil forKey:@"averageMeasurement"];
+
+    MXSignpostIntervalData* interval_data =
+        [[MXSignpostIntervalData alloc] init];
+    MXHistogram* durations_histogram = [[MXHistogram alloc] init];
+    [interval_data setValue:durations_histogram
+                     forKey:@"histogrammedSignpostDuration"];
+    [interval_data setValue:average_memory forKey:@"averageMemory"];
+
+    MXSignpostMetric* signpost_metric = [[MXSignpostMetric alloc] init];
+    [signpost_metric setValue:@"TestSignpost" forKey:@"signpostName"];
+    [signpost_metric setValue:@"TestCategory" forKey:@"signpostCategory"];
+    [signpost_metric setValue:@1 forKey:@"totalCount"];
+    [signpost_metric setValue:interval_data forKey:@"signpostIntervalData"];
+
+    MXMetricPayload* payload = [[MXMetricPayload alloc] init];
+    NSDate* now = [NSDate date];
+    [payload setValue:now forKey:@"timeStampBegin"];
+    [payload setValue:now forKey:@"timeStampEnd"];
+    [payload setValue:@[ signpost_metric ] forKey:@"signpostMetrics"];
+
+    // Allow any asynchronous Swift `MetricKitReportSubscriber` task (if
+    // enabled) to register its `MetricKit.MetricManagerSubscription` with
+    // `+[MXMetricManager stateAwareSharedManager]`, then deliver `payload` to
+    // all registered subscribers.
+    for (int i = 0; i < 20; ++i) {
+      [[NSRunLoop currentRunLoop]
+          runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+    }
+
+    SEL did_receive_sel = @selector(didReceiveMetricPayloads:);
+    SEL state_manager_sel = NSSelectorFromString(@"stateAwareSharedManager");
+    if ([[MXMetricManager class] respondsToSelector:state_manager_sel]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+      id state_manager =
+          [[MXMetricManager class] performSelector:state_manager_sel];
+      NSArray* subscribers = [[state_manager valueForKey:@"subscribers"] copy];
+      for (id sub in subscribers) {
+        if ([sub respondsToSelector:did_receive_sel]) {
+          [sub performSelector:did_receive_sel withObject:@[ payload ]];
+        }
+      }
+#pragma clang diagnostic pop
+    }
+    [subscriber didReceiveMetricPayloads:@[ payload ]];
+
+    [subscriber setEnabled:NO];
+  }
+}

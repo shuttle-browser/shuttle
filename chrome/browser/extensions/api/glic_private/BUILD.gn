@@ -1,0 +1,42 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//extensions/buildflags/buildflags.gni")
+import("//third_party/protobuf/proto_library.gni")
+
+assert(enable_extensions_core,
+       "Cannot depend on extensions because enable_extensions_core=false.")
+
+source_set("glic_private") {
+  sources = [
+    "glic_private_api.cc",
+    "glic_private_api.h",
+  ]
+
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+
+  deps = [
+    "//base",
+    "//chrome/browser/contextual_tasks",
+    "//chrome/browser/extensions",
+    "//chrome/browser/glic",
+    "//chrome/browser/glic/actor",
+    "//chrome/browser/metrics",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/signin",
+    "//chrome/browser/tab_list",
+    "//chrome/browser/ui",
+    "//chrome/browser/ui/navigator",
+    "//chrome/common/extensions/api",
+    "//components/contextual_tasks/public",
+    "//components/endpoint_fetcher",
+    "//components/google/core/common",
+    "//components/signin/public/identity_manager",
+    "//components/variations",
+    "//content/public/browser",
+    "//extensions/browser",
+    "//extensions/common",
+    "//url",
+  ]
+}

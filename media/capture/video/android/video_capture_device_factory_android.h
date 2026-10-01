@@ -1,0 +1,61 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef MEDIA_CAPTURE_VIDEO_ANDROID_VIDEO_CAPTURE_DEVICE_FACTORY_ANDROID_H_
+#define MEDIA_CAPTURE_VIDEO_ANDROID_VIDEO_CAPTURE_DEVICE_FACTORY_ANDROID_H_
+
+#include <jni.h>
+
+#include "base/android/scoped_java_ref.h"
+#include "base/containers/flat_map.h"
+#include "gpu/config/gpu_driver_bug_workarounds.h"
+#include "media/capture/video/android/camera_availability_observer.h"
+#include "media/capture/video/video_capture_device.h"
+#include "media/capture/video/video_capture_device_factory.h"
+
+namespace media {
+
+// VideoCaptureDeviceFactory on Android. This class implements the static
+// VideoCapture methods and the factory of VideoCaptureAndroid.
+class CAPTURE_EXPORT VideoCaptureDeviceFactoryAndroid
+    : public VideoCaptureDeviceFactory {
+ public:
+  static base::android::ScopedJavaLocalRef<jobject> createVideoCaptureAndroid(
+      const std::string& id,
+      int64_t nativeVideoCaptureDeviceAndroid);
+
+  explicit VideoCaptureDeviceFactoryAndroid(
+      const gpu::GpuDriverBugWorkarounds& gpu_workarounds);
+
+  VideoCaptureDeviceFactoryAndroid(const VideoCaptureDeviceFactoryAndroid&) =
+      delete;
+  VideoCaptureDeviceFactoryAndroid& operator=(
+      const VideoCaptureDeviceFactoryAndroid&) = delete;
+
+  ~VideoCaptureDeviceFactoryAndroid() override;
+
+  VideoCaptureErrorOrDevice CreateDevice(
+      const VideoCaptureDeviceDescriptor& device_descriptor) override;
+  void GetDevicesInfo(GetDevicesInfoCallback callback) override;
+
+ private:
+  VideoCaptureFormats GetSupportedFormats(int device_index,
+                                          const std::string& display_name);
+
+  // VideoCaptureFormats and zooms are cached, so GetSupportedFormats() and
+  // Java_VideoCaptureFactory_isZoomSupported() respectively don't need to be
+  // called for every device every time GetDevicesInfo() is called. It also
+  // allows to workaround bugs on some devices that don't handle the case when
+  // an actively used camera is opened again (see https://crbug.com/1138608).
+  base::flat_map<std::string, VideoCaptureFormats> supported_formats_cache_;
+  base::flat_map<std::string, bool> zooms_cache_;
+
+  const gpu::GpuDriverBugWorkarounds gpu_workarounds_;
+
+  CameraAvailabilityObserver camera_availability_observer_;
+};
+
+}  // namespace media
+
+#endif  // MEDIA_CAPTURE_VIDEO_ANDROID_VIDEO_CAPTURE_DEVICE_FACTORY_ANDROID_H_

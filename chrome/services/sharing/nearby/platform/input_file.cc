@@ -1,0 +1,70 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/services/sharing/nearby/platform/input_file.h"
+
+#include <optional>
+#include <vector>
+
+#include "base/containers/span.h"
+#include "base/logging.h"
+#include "base/notimplemented.h"
+#include "third_party/abseil-cpp/absl/time/time.h"
+
+namespace nearby::chrome {
+
+InputFile::InputFile(base::File file) : file_(std::move(file)) {}
+
+InputFile::~InputFile() = default;
+
+std::string InputFile::GetFilePath() const {
+  // File path is not supported.
+  return std::string();
+}
+
+std::int64_t InputFile::GetTotalSize() const {
+  if (!file_.IsValid())
+    return -1;
+
+  return file_.GetLength();
+}
+
+absl::Time InputFile::GetLastModifiedTime() const {
+  // Intentionally left not implemented. Not supported in Chromium Nearby.
+  NOTIMPLEMENTED();
+  return absl::Now();
+}
+
+ExceptionOr<ByteArray> InputFile::Read(std::int64_t size) {
+  if (!file_.IsValid())
+    return Exception::kIo;
+
+  if (size == 0) {
+    return ExceptionOr<ByteArray>(ByteArray());
+  }
+
+  std::vector<char> buf(size);
+  const std::optional<size_t> bytes_read =
+      file_.ReadAtCurrentPos(base::as_writable_byte_span(buf));
+  if (!bytes_read ||
+      base::checked_cast<int64_t>(*bytes_read) > GetTotalSize()) {
+    return Exception::kIo;
+  }
+
+  return ExceptionOr<ByteArray>(ByteArray(buf.data(), *bytes_read));
+}
+
+Exception InputFile::Close() {
+  if (!file_.IsValid())
+    return {Exception::kIo};
+
+  file_.Close();
+  return {Exception::kSuccess};
+}
+
+base::File InputFile::ExtractUnderlyingFile() {
+  return std::move(file_);
+}
+
+}  // namespace nearby::chrome

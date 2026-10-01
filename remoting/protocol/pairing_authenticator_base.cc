@@ -1,0 +1,151 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "remoting/protocol/pairing_authenticator_base.h"
+
+#include <utility>
+
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/location.h"
+#include "base/logging.h"
+#include "remoting/base/constants.h"
+#include "remoting/protocol/authenticator.h"
+#include "remoting/protocol/credentials_type.h"
+
+namespace remoting::protocol {
+
+PairingAuthenticatorBase::PairingAuthenticatorBase() {}
+PairingAuthenticatorBase::~PairingAuthenticatorBase() = default;
+
+CredentialsType PairingAuthenticatorBase::credentials_type() const {
+  return CredentialsType::PAIRED;
+}
+
+const Authenticator& PairingAuthenticatorBase::implementing_authenticator()
+    const {
+  return *this;
+}
+
+Authenticator::State PairingAuthenticatorBase::state() const {
+  DCHECK(spake2_authenticator_);
+  return spake2_authenticator_->state();
+}
+
+bool PairingAuthenticatorBase::started() const {
+  if (!spake2_authenticator_) {
+    return false;
+  }
+  return spake2_authenticator_->started();
+}
+
+Authenticator::RejectionReason PairingAuthenticatorBase::rejection_reason()
+    const {
+  if (!spake2_authenticator_) {
+    return RejectionReason::INVALID_STATE;
+  }
+  return spake2_authenticator_->rejection_reason();
+}
+
+Authenticator::RejectionDetails PairingAuthenticatorBase::rejection_details()
+    const {
+  if (spake2_authenticator_ &&
+      spake2_authenticator_->state() == State::REJECTED) {
+    Authenticator::RejectionDetails spake2_rejection_details =
+        spake2_authenticator_->rejection_details();
+    if (!spake2_rejection_details.is_null()) {
+      return spake2_rejection_details;
+    }
+  }
+  return RejectionDetails(error_message_);
+}
+
+void PairingAuthenticatorBase::ProcessMessage(
+    const JingleAuthentication& message,
+    base::OnceClosure resume_callback) {
+  DCHECK_EQ(state(), WAITING_MESSAGE);
+
+  // The client authenticator creates the underlying authenticator in the ctor
+  // and the host creates it in response to the first message before deferring
+  // to this class to process it. Either way, it should exist here.
+  DCHECK(spake2_authenticator_);
+
+  // If pairing failed, and we haven't already done so, try again with the PIN.
+  if (using_paired_secret_ && HasErrorMessage(message)) {
+    using_paired_secret_ = false;
+    spake2_authenticator_.reset();
+    CreateSpakeAuthenticatorWithPin(
+        WAITING_MESSAGE,
+        base::BindOnce(&PairingAuthenticatorBase::ProcessMessage,
+                       weak_factory_.GetWeakPtr(), message,
+                       std::move(resume_callback)));
+    return;
+  }
+
+  // Pass the message to the underlying authenticator for processing, but
+  // check for a failed SPAKE exchange if we're using the paired secret. In
+  // this case the pairing protocol can continue by communicating the error
+  // to the peer and retrying with the PIN.
+  spake2_authenticator_->ProcessMessage(
+      message,
+      base::BindOnce(&PairingAuthenticatorBase::CheckForFailedSpakeExchange,
+                     weak_factory_.GetWeakPtr(), std::move(resume_callback)));
+}
+
+JingleAuthentication PairingAuthenticatorBase::GetNextMessage() {
+  DCHECK_EQ(state(), MESSAGE_READY);
+  auto self = weak_factory_.GetWeakPtr();
+  JingleAuthentication result = spake2_authenticator_->GetNextMessage();
+  if (!self) {
+    return result;
+  }
+  MaybeAddErrorMessage(result);
+  return result;
+}
+
+const std::string& PairingAuthenticatorBase::GetAuthKey() const {
+  return spake2_authenticator_->GetAuthKey();
+}
+
+const SessionPolicies* PairingAuthenticatorBase::GetSessionPolicies() const {
+  return nullptr;
+}
+
+void PairingAuthenticatorBase::MaybeAddErrorMessage(
+    JingleAuthentication& message) {
+  if (!error_message_.empty()) {
+    message.pairing_error = error_message_;
+    error_message_.clear();
+  }
+}
+
+bool PairingAuthenticatorBase::HasErrorMessage(
+    const JingleAuthentication& message) const {
+  if (!message.pairing_error.empty()) {
+    LOG(ERROR) << "Pairing failed: " << message.pairing_error;
+    return true;
+  }
+  return false;
+}
+
+void PairingAuthenticatorBase::CheckForFailedSpakeExchange(
+    base::OnceClosure resume_callback) {
+  // If the SPAKE exchange failed due to invalid credentials, and those
+  // credentials were the paired secret, then notify the peer that the
+  // PIN-less connection failed and retry using the PIN.
+  if (spake2_authenticator_->state() == REJECTED &&
+      spake2_authenticator_->rejection_reason() ==
+          RejectionReason::INVALID_CREDENTIALS &&
+      using_paired_secret_) {
+    using_paired_secret_ = false;
+    error_message_ = "invalid-shared-secret";
+    spake2_authenticator_.reset();
+    CreateSpakeAuthenticatorWithPin(MESSAGE_READY, std::move(resume_callback));
+    return;
+  }
+
+  std::move(resume_callback).Run();
+}
+
+}  // namespace remoting::protocol

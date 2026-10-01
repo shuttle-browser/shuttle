@@ -1,0 +1,4 @@
+file://components/update_client/OWNERS
+
+# if the above are unavailable
+file://extensions/OWNERS

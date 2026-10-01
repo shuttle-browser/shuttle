@@ -1,0 +1,87 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//mojo/public/tools/bindings/mojom.gni")
+
+mojom("test_mojom") {
+  testonly = true
+  sources = [ "xr_test_hook.test-mojom" ]
+
+  public_deps = [
+    "//device/gamepad/public/mojom",
+    "//device/vr/public/mojom:vr_service",
+    "//mojo/public/mojom/base",
+    "//skia/public/mojom",
+    "//ui/gfx/geometry/mojom",
+    "//ui/gfx/mojom",
+  ]
+
+  cpp_typemaps = [
+    {
+      types = [
+        {
+          mojom = "device_test.mojom.LayerData"
+          cpp = "::device::LayerData"
+        },
+        {
+          mojom = "device_test.mojom.ViewData"
+          cpp = "::device::ViewData"
+        },
+        {
+          mojom = "device_test.mojom.DeviceConfig"
+          cpp = "::device::DeviceConfig"
+        },
+        {
+          mojom = "device_test.mojom.InputSourceType"
+          cpp = "::device::InputSourceType"
+        },
+        {
+          mojom = "device_test.mojom.ControllerFrameData"
+          cpp = "::device::ControllerFrameData"
+        },
+      ]
+      traits_headers = [
+        "//device/vr/public/mojom/test/controller_frame_data.h",
+        "//device/vr/public/mojom/test/device_config.h",
+        "//device/vr/public/mojom/test/layer_data.h",
+        "//device/vr/public/mojom/test/view_data.h",
+        "//device/vr/public/mojom/test/xr_test_hook_mojom_traits.h",
+      ]
+      traits_public_deps = [
+        ":vr_public_test_typemaps",
+        "//device/gamepad/public/mojom",
+        "//device/vr/public/mojom:vr_service",
+      ]
+    },
+  ]
+}
+
+component("vr_public_test_typemaps") {
+  testonly = true
+  output_name = "device_vr_public_test_typemaps"
+
+  defines = [ "IS_VR_PUBLIC_TEST_TYPEMAPS_IMPL" ]
+
+  sources = [
+    "controller_frame_data.cc",
+    "controller_frame_data.h",
+    "device_config.h",
+    "layer_data.cc",
+    "layer_data.h",
+    "view_data.h",
+  ]
+
+  deps = [
+    "//base",
+    "//ui/gfx/geometry",
+    "//ui/gfx/mojom",
+  ]
+
+  public_deps = [
+    "//device/gamepad/public/cpp:shared_with_blink",
+    "//device/gamepad/public/mojom",
+    "//device/vr/public/mojom:vr_service",
+    "//skia/public/mojom",
+  ]
+}

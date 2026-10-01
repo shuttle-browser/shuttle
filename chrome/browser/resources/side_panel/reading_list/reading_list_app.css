@@ -1,0 +1,46 @@
+/* Copyright 2024 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=chrome://read-later.top-chrome/shared/sp_shared_style.css.js
+ * #import=chrome://resources/cr_elements/cr_hidden_style_lit.css.js
+ * #scheme=relative
+ * #include=cr-hidden-style-lit sp-shared-style
+ * #css_wrapper_metadata_end */
+
+#content {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.sp-scroller {
+  flex: 1;
+  min-height: 0;
+}
+
+cr-icon-button {
+  --cr-icon-button-icon-size: var(--mwb-icon-size);
+  --cr-icon-button-size: calc(var(--mwb-icon-size) * 1.5);
+}
+
+/* Transition required to ensure focus highlight after button press.
+ * See crbug.com/40862069.
+ */
+reading-list-item:first-of-type:last-of-type {
+  transition: background 100ms;
+}
+
+#readingListList {
+  margin-top: var(--sp-body-padding);
+}
+
+.sp-card sp-heading {
+  margin-top: var(--sp-card-gap);
+
+  &:first-child {
+    margin-top: 0;
+  }
+}

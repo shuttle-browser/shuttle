@@ -1,0 +1,203 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.composeplate;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import android.content.Context;
+import android.content.res.ColorStateList;
+import android.view.ContextThemeWrapper;
+import android.view.View;
+import android.view.ViewGroup;
+
+import androidx.test.core.app.ApplicationProvider;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.robolectric.annotation.Config;
+
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.base.test.util.HistogramWatcher;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.incognito.IncognitoUtils;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.util.BrowserUiUtils.ModuleTypeOnStartAndNtp;
+import org.chromium.ui.modelutil.PropertyModel;
+
+/** Unit tests for {@link ComposeplateCoordinator}. */
+@RunWith(BaseRobolectricTestRunner.class)
+@Config(manifest = Config.NONE)
+public class ComposeplateCoordinatorUnitTest {
+    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Mock private ViewGroup mParentView;
+    @Mock private ComposeplateView mComposeplateView;
+    @Mock private View mIncognitoButton;
+    @Mock private View mComposeplateButton;
+    @Mock private View.OnClickListener mOriginalOnClickListener;
+    @Mock private Profile mProfile;
+
+    private Context mContext;
+    private ComposeplateCoordinator mCoordinator;
+    private PropertyModel mPropertyModel;
+
+    @Before
+    public void setUp() {
+        mContext =
+                new ContextThemeWrapper(
+                        ApplicationProvider.getApplicationContext(),
+                        R.style.Theme_BrowserUI_DayNight);
+        IncognitoUtils.setEnabledForTesting(true);
+        assertTrue(IncognitoUtils.isIncognitoModeEnabled(mProfile));
+
+        when(mParentView.findViewById(R.id.composeplate_view)).thenReturn(mComposeplateView);
+        when(mParentView.getResources()).thenReturn(mContext.getResources());
+        when(mComposeplateView.getContext()).thenReturn(mContext);
+        when(mComposeplateView.getResources()).thenReturn(mContext.getResources());
+        when(mComposeplateView.findViewById(R.id.incognito_button)).thenReturn(mIncognitoButton);
+        when(mComposeplateView.findViewById(R.id.composeplate_button))
+                .thenReturn(mComposeplateButton);
+
+        mCoordinator = new ComposeplateCoordinator(mParentView, mProfile);
+        mPropertyModel = mCoordinator.getModelForTesting();
+    }
+
+    @Test
+    public void testSetVisibility() {
+        HistogramWatcher histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        ComposeplateMetricsUtils.HISTOGRAM_COMPOSEPLATE_IMPRESSION, true);
+        mCoordinator.setVisibility(/* visible= */ true, /* isCurrentPage= */ true);
+        verify(mComposeplateView).setVisibility(View.VISIBLE);
+        histogramWatcher.assertExpected();
+
+        histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        ComposeplateMetricsUtils.HISTOGRAM_COMPOSEPLATE_IMPRESSION, false);
+        mCoordinator.setVisibility(/* visible= */ false, /* isCurrentPage= */ true);
+        verify(mComposeplateView).setVisibility(View.GONE);
+        histogramWatcher.assertExpected();
+    }
+
+    @Test
+    public void testSetIncognitoClickListener() {
+        mCoordinator.setIncognitoClickListener(mOriginalOnClickListener);
+        View.OnClickListener enhancedListener = getCapturedOnClickListener(mIncognitoButton);
+
+        HistogramWatcher histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "NewTabPage.Module.Click",
+                        ModuleTypeOnStartAndNtp.COMPOSEPLATE_VIEW_INCOGNITO_BUTTON);
+
+        View clickedView = mock(View.class);
+        enhancedListener.onClick(clickedView);
+
+        histogramWatcher.assertExpected();
+        verify(mOriginalOnClickListener).onClick(clickedView);
+    }
+
+    @Test
+    public void testComposeplateButtonClickListener() {
+        mCoordinator.setComposeplateButtonClickListener(mOriginalOnClickListener);
+        View.OnClickListener enhancedListener = getCapturedOnClickListener(mComposeplateButton);
+
+        HistogramWatcher histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "NewTabPage.Module.Click", ModuleTypeOnStartAndNtp.COMPOSEPLATE_BUTTON);
+
+        View clickedView = mock(View.class);
+        enhancedListener.onClick(clickedView);
+
+        histogramWatcher.assertExpected();
+        verify(mOriginalOnClickListener).onClick(clickedView);
+    }
+
+    @Test
+    public void testDestroy() {
+        mCoordinator.setIncognitoClickListener(mOriginalOnClickListener);
+        mCoordinator.setComposeplateButtonClickListener(mOriginalOnClickListener);
+
+        assertNotNull(mPropertyModel.get(ComposeplateProperties.INCOGNITO_CLICK_LISTENER));
+        assertNotNull(
+                mPropertyModel.get(ComposeplateProperties.COMPOSEPLATE_BUTTON_CLICK_LISTENER));
+
+        mCoordinator.destroy();
+        assertNull(mPropertyModel.get(ComposeplateProperties.INCOGNITO_CLICK_LISTENER));
+        assertNull(mPropertyModel.get(ComposeplateProperties.COMPOSEPLATE_BUTTON_CLICK_LISTENER));
+    }
+
+    @Test
+    public void testApplyWhiteBackgroundWithShadow() {
+        // Tests the case to apply a white background with shadow.
+        boolean apply = true;
+        int textStyleResId = ComposeplateUtils.getSearchBoxTextStyleResId(apply);
+        ColorStateList colorStateList =
+                ComposeplateUtils.getSearchBoxIconColorTint(mContext, apply);
+        mCoordinator.applyWhiteBackground(true);
+        assertTrue(mPropertyModel.get(ComposeplateProperties.APPLY_WHITE_BACKGROUND));
+        assertEquals(colorStateList, mPropertyModel.get(ComposeplateProperties.COLOR_STATE_LIST));
+        assertEquals(textStyleResId, mPropertyModel.get(ComposeplateProperties.TEXT_STYLE_RES_ID));
+        verify(mComposeplateView).applyWhiteBackground(eq(true));
+
+        // Tests the case to remove the white background with shadow.
+        apply = false;
+        textStyleResId = ComposeplateUtils.getSearchBoxTextStyleResId(apply);
+        colorStateList = ComposeplateUtils.getSearchBoxIconColorTint(mContext, apply);
+        mCoordinator.applyWhiteBackground(false);
+        assertFalse(mPropertyModel.get(ComposeplateProperties.APPLY_WHITE_BACKGROUND));
+        assertEquals(colorStateList, mPropertyModel.get(ComposeplateProperties.COLOR_STATE_LIST));
+        assertEquals(textStyleResId, mPropertyModel.get(ComposeplateProperties.TEXT_STYLE_RES_ID));
+        verify(mComposeplateView).applyWhiteBackground(eq(false));
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.NTP_AURORA + ":change_button_color/true")
+    public void testSetLayoutWidth_buttonColorEnabled_phone() {
+        verifyComposeplateWidth(
+                /* lateralMargin= */ mContext.getResources()
+                        .getDimensionPixelSize(R.dimen.composeplate_view_lateral_margin));
+    }
+
+    @Test
+    @Config(qualifiers = "sw600dp")
+    @EnableFeatures(ChromeFeatureList.NTP_AURORA + ":change_button_color/true")
+    public void testSetLayoutWidth_buttonColorEnabled_tablet() {
+        verifyComposeplateWidth(
+                /* lateralMargin= */ mContext.getResources()
+                        .getDimensionPixelSize(R.dimen.composeplate_view_lateral_margin));
+    }
+
+    private void verifyComposeplateWidth(int lateralMargin) {
+        ViewGroup.MarginLayoutParams layoutParams = new ViewGroup.MarginLayoutParams(100, 100);
+        when(mComposeplateView.getLayoutParams()).thenReturn(layoutParams);
+
+        int searchBoxWidth = 400;
+        mCoordinator.setLayoutWidth(searchBoxWidth);
+
+        assertEquals(searchBoxWidth - 2 * lateralMargin, layoutParams.width);
+    }
+
+    private View.OnClickListener getCapturedOnClickListener(View button) {
+        ArgumentCaptor<View.OnClickListener> listenerCaptor =
+                ArgumentCaptor.forClass(View.OnClickListener.class);
+        verify(button).setOnClickListener(listenerCaptor.capture());
+        return listenerCaptor.getValue();
+    }
+}

@@ -1,0 +1,471 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.content.browser.accessibility;
+
+import static androidx.core.view.accessibility.AccessibilityEventCompat.CONTENT_CHANGE_TYPE_SORT_DIRECTION;
+
+import android.os.Bundle;
+import android.view.View;
+import android.view.accessibility.AccessibilityEvent;
+
+import androidx.annotation.IntDef;
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.ui.accessibility.AccessibilityNodeInfoCompatDumper;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.util.ArrayList;
+import java.util.concurrent.CountDownLatch;
+
+/** Helper class for tracking accessibility actions and events for end-to-end tests. */
+@NullMarked
+public class AccessibilityActionAndEventTracker {
+    private final ArrayList<String> mEvents;
+    private final boolean mShouldFilterTrivialEvents;
+    private boolean mTestComplete;
+    private @Nullable CountDownLatch mEventLatch;
+    private @Nullable WebContentsAccessibilityImpl mWebContentsAccessibilityImpl;
+
+    public AccessibilityActionAndEventTracker() {
+        mEvents = new ArrayList<String>();
+        mTestComplete = false;
+        mShouldFilterTrivialEvents = true;
+    }
+
+    public AccessibilityActionAndEventTracker(boolean shouldFilterTrivialEvents) {
+        // TODO(crbug.com/414363686) this overloaded constructor should be removed after flakiness
+        // of event test with trivial events included is solved. mShouldFilterTrivialEvents should
+        // also be removed after fixing the flakiness.
+        mEvents = new ArrayList<String>();
+        mTestComplete = false;
+        mShouldFilterTrivialEvents = shouldFilterTrivialEvents;
+    }
+
+    // This interface allows us to store additional information about WINDOW_CONTENT_CHANGED events
+    // that do not have an assigned content type (i.e. LIVE_REGION_NODE_CHANGED events).
+    @IntDef({
+        WindowContentChangedSubtype.NONE,
+        WindowContentChangedSubtype.LIVE_REGION_NODE_CHANGED
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface WindowContentChangedSubtype {
+        int NONE = 0;
+        int LIVE_REGION_NODE_CHANGED = 1;
+    }
+
+    // WINDOW_CONTENT_CHANGED events are eligible to be tracked if they have a specific subtype.
+    public boolean shouldWindowContentChangedSubtypeBeTracked(
+            @WindowContentChangedSubtype int subtype) {
+        return subtype == WindowContentChangedSubtype.LIVE_REGION_NODE_CHANGED;
+    }
+
+    public void setEventLatch(@Nullable CountDownLatch latch) {
+        mEventLatch = latch;
+    }
+
+    public void setWebContentsAccessibilityImpl(
+            @Nullable WebContentsAccessibilityImpl webContentsAccessibilityImpl) {
+        mWebContentsAccessibilityImpl = webContentsAccessibilityImpl;
+    }
+
+    public void addEvent(
+            AccessibilityEvent event, @WindowContentChangedSubtype int subtype, int virtualViewId) {
+        // In rare cases there may be a lingering event, so only add if the test is not complete.
+        if (!mTestComplete) {
+            if (mShouldFilterTrivialEvents) {
+                // Convert event type to a human readable String (except TYPE_WINDOW_CONTENT_CHANGED
+                // with an ineligible subtype, no CONTENT_CHANGE_TYPE_STATE_DESCRIPTION flag, and no
+                // CONTENT_CHANGE_TYPE_PANE_TITLE flag)
+                if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                    boolean hasNoStateDescriptionChange =
+                            (event.getContentChangeTypes()
+                                            & AccessibilityEvent
+                                                    .CONTENT_CHANGE_TYPE_STATE_DESCRIPTION)
+                                    == 0;
+                    boolean hasNoPaneTitleChange =
+                            (event.getContentChangeTypes()
+                                            & AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_TITLE)
+                                    == 0;
+                    if (hasNoStateDescriptionChange
+                            && hasNoPaneTitleChange
+                            && !shouldWindowContentChangedSubtypeBeTracked(subtype)) {
+                        return;
+                    }
+                }
+            }
+            mEvents.add(eventToString(event, mWebContentsAccessibilityImpl, virtualViewId));
+        }
+    }
+
+    public void addAction(int action, @Nullable Bundle arguments) {
+        // In rare cases there may be a lingering action, so only add if the test is not complete.
+        if (!mTestComplete) {
+            mEvents.add(actionToString(action, arguments));
+        }
+    }
+
+    public String results() {
+        StringBuilder results = new StringBuilder();
+
+        for (String event : new ArrayList<String>(mEvents)) {
+            if (event != null && !event.isEmpty()) {
+                results.append(event);
+                results.append('\n');
+            }
+        }
+
+        return results.toString().trim();
+    }
+
+    /** Helper method to signal the beginning of a given unit test. */
+    public void signalReadyForTest() {
+        mTestComplete = false;
+    }
+
+    /** Add a custom comment or annotation to the tracked events list. */
+    public void addComment(String comment) {
+        if (!mTestComplete) {
+            mEvents.add(comment);
+        }
+    }
+
+    /** Helper method to signal the end of a given unit test. */
+    public void signalEndOfTest() {
+        mTestComplete = true;
+        // If a latch is waiting, signal it.
+        if (mEventLatch != null) {
+            mEventLatch.countDown();
+        }
+    }
+
+    /**
+     * Helper method for polling, used to tell main thread when a test is complete.
+     * @return  boolean     Whether the tracker has received a signal that the test is complete.
+     */
+    public boolean testComplete() {
+        return mTestComplete;
+    }
+
+    /**
+     * Helper method to take an accessibility action and convert it to a string of useful
+     * information for testing.
+     *
+     * @param action int action
+     * @param arguments Bundle arguments
+     * @return String representation of the given action
+     */
+    private String actionToString(int action, @Nullable Bundle arguments) {
+        StringBuilder builder = new StringBuilder();
+        builder.append(AccessibilityNodeInfoCompatDumper.toString(action));
+
+        // If we have non-null arguments, add them to our String for this action.
+        if (arguments != null) {
+            StringBuilder argsBuilder = new StringBuilder();
+            argsBuilder.append("[");
+
+            for (String key : arguments.keySet()) {
+                argsBuilder.append(" {");
+                argsBuilder.append(key);
+                // In case of null values, use "null".
+                argsBuilder.append(arguments.get(key));
+                argsBuilder.append("},");
+            }
+            argsBuilder.append(" ]");
+
+            builder.append(", ");
+            builder.append(argsBuilder.toString());
+        }
+
+        return builder.toString();
+    }
+
+    /**
+     * Helper method to take an event and convert it to a string of useful information for testing.
+     * For any events with significant info, we append this to the end of the string in square
+     * braces. For example, for the TYPE_ANNOUNCEMENT events we append the announcement text.
+     * getSource(), getMaxScrollX(), and getMaxScrollY() properties are not included.
+     *
+     * @param event AccessibilityEvent event to get a string for.
+     * @param WebContentsAccessibilityImpl The WebContentsAccessibilityImpl instance.
+     * @param virtualViewId The virtual view ID for the node associated with the event.
+     * @return String representation of the given event.
+     */
+    private static String eventToString(
+            AccessibilityEvent event,
+            @Nullable WebContentsAccessibilityImpl webContentsAccessibilityImpl,
+            int virtualViewId) {
+        // Convert event type to a human readable String
+        StringBuilder builder = new StringBuilder();
+        builder.append(AccessibilityEvent.eventTypeToString(event.getEventType()));
+
+        if (event.getClassName() != null) {
+            builder.append(" class_name=");
+            builder.append(event.getClassName());
+        }
+
+        switch (event.getEventType()) {
+            // For announcements, track the text announced to the user.
+            case AccessibilityEvent.TYPE_ANNOUNCEMENT:
+                {
+                    builder.append(" [");
+                    if (event.getText() != null) {
+                        builder.append(event.getText().get(0).toString());
+                    }
+                    builder.append("]");
+                    break;
+                }
+
+            // For text selection, track the To and From indices if they are available.
+            case AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED:
+                {
+                    if (event.getFromIndex() != -1 && event.getToIndex() != -1) {
+                        builder.append(" [");
+                        builder.append(event.getFromIndex());
+                        builder.append(", ");
+                        builder.append(event.getToIndex());
+                        builder.append("]");
+                    }
+                    break;
+                }
+
+            // For text traversal, track the To and From indices.
+            case AccessibilityEvent.TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY:
+                {
+                    builder.append(" [");
+                    builder.append(event.getFromIndex());
+                    builder.append(", ");
+                    builder.append(event.getToIndex());
+                    builder.append(", granularity=").append(event.getMovementGranularity());
+                    builder.append(", action=").append(event.getAction());
+                    builder.append("]");
+                    if (event.getText() != null) {
+                        builder.append(" text=").append(event.getText());
+                    }
+                    break;
+                }
+
+            // For appearance of dialogs, track the content types.
+            case AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED:
+                {
+                    builder.append(" [contentTypes=");
+                    builder.append(contentChangeTypeToString(event.getContentChangeTypes()));
+                    builder.append("]");
+                    if (event.getText() != null) {
+                        builder.append(" text=").append(event.getText());
+                    }
+                    break;
+                }
+
+            // Any TYPE_WINDOW_CONTENT_CHANGED event here should have the
+            // CONTENT_CHANGE_TYPE_STATE_DESCRIPTION flag.
+            case AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED:
+                {
+                    builder.append(" [contentTypes=");
+                    builder.append(contentChangeTypeToString(event.getContentChangeTypes()));
+                    builder.append("]");
+                    break;
+                }
+
+            case AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED:
+                {
+                    builder.append(" [");
+                    builder.append(event.getFromIndex());
+                    builder.append(", ");
+                    builder.append(event.getAddedCount());
+                    builder.append(", ");
+                    builder.append(event.getRemovedCount());
+                    builder.append("]");
+                    if (event.getText() != null) {
+                        builder.append(" text=").append(event.getText());
+                    }
+                    if (event.getBeforeText() != null) {
+                        builder.append(" beforeText=").append(event.getBeforeText());
+                    }
+                    break;
+                }
+
+            case AccessibilityEvent.TYPE_VIEW_SCROLLED:
+                {
+                    builder.append(" [scrollDeltaX=").append(event.getScrollDeltaX());
+                    builder.append(", scrollDeltaY=").append(event.getScrollDeltaY());
+                    builder.append("]");
+                    break;
+                }
+
+            case AccessibilityEvent.TYPE_WINDOWS_CHANGED:
+                {
+                    builder.append(" [windowChanges=").append(event.getWindowChanges()).append("]");
+                    break;
+                }
+
+            case AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED:
+                {
+                    if (event.getText() != null) {
+                        builder.append(" [text=").append(event.getText()).append("]");
+                    }
+                    if (event.getParcelableData() != null) {
+                        builder.append(" [parcelableData=")
+                                .append(event.getParcelableData())
+                                .append("]");
+                    }
+                    break;
+                }
+
+            case AccessibilityEvent.TYPE_ASSIST_READING_CONTEXT:
+            case AccessibilityEvent.TYPE_GESTURE_DETECTION_END:
+            case AccessibilityEvent.TYPE_GESTURE_DETECTION_START:
+            case AccessibilityEvent.TYPE_TOUCH_EXPLORATION_GESTURE_END:
+            case AccessibilityEvent.TYPE_TOUCH_EXPLORATION_GESTURE_START:
+            case AccessibilityEvent.TYPE_TOUCH_INTERACTION_END:
+            case AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED:
+            case AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED:
+            case AccessibilityEvent.TYPE_VIEW_CLICKED:
+            case AccessibilityEvent.TYPE_VIEW_FOCUSED:
+            case AccessibilityEvent.TYPE_VIEW_HOVER_ENTER:
+            case AccessibilityEvent.TYPE_VIEW_HOVER_EXIT:
+            case AccessibilityEvent.TYPE_VIEW_LONG_CLICKED:
+            case AccessibilityEvent.TYPE_VIEW_SELECTED:
+            case AccessibilityEvent.TYPE_VIEW_TARGETED_BY_SCROLL:
+            default:
+                break;
+        }
+
+        if (eventHasSourceNode(event.getEventType())) {
+            String label =
+                    getSourceNodeLabelForTesting(webContentsAccessibilityImpl, virtualViewId);
+            if (label != null && !label.isEmpty()) {
+                builder.append(" on ");
+                builder.append(label);
+            }
+        }
+
+        // Return generated String.
+        return builder.toString();
+    }
+
+    private static boolean eventHasSourceNode(int eventType) {
+        switch (eventType) {
+            case AccessibilityEvent.TYPE_VIEW_CLICKED:
+            case AccessibilityEvent.TYPE_VIEW_LONG_CLICKED:
+            case AccessibilityEvent.TYPE_VIEW_SELECTED:
+            case AccessibilityEvent.TYPE_VIEW_FOCUSED:
+            case AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED:
+            case AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED:
+            case AccessibilityEvent.TYPE_VIEW_HOVER_ENTER:
+            case AccessibilityEvent.TYPE_VIEW_HOVER_EXIT:
+            case AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED:
+            case AccessibilityEvent.TYPE_VIEW_SCROLLED:
+            case AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED:
+            case AccessibilityEvent.TYPE_ANNOUNCEMENT:
+            case AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED:
+            case AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED:
+            case AccessibilityEvent.TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY:
+            case AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED:
+            case AccessibilityEvent.TYPE_ASSIST_READING_CONTEXT:
+            case AccessibilityEvent.TYPE_VIEW_TARGETED_BY_SCROLL:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static @Nullable String getSourceNodeLabelForTesting(
+            @Nullable WebContentsAccessibilityImpl webContentsAccessibilityImpl,
+            int virtualViewId) {
+        if (webContentsAccessibilityImpl == null || virtualViewId == View.NO_ID) {
+            return null;
+        }
+        AccessibilityNodeInfoCompat info =
+                webContentsAccessibilityImpl.createAccessibilityNodeInfo(virtualViewId);
+        if (info == null) {
+            return null;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        String nodeDescription = toStringOrNull(info.getText());
+        if (nodeDescription == null) nodeDescription = toStringOrNull(info.getContentDescription());
+        if (nodeDescription == null) nodeDescription = toStringOrNull(info.getHintText());
+        if (nodeDescription == null) nodeDescription = toStringOrNull(info.getPaneTitle());
+        if (nodeDescription == null) {
+            nodeDescription = toStringOrNull(info.getSupplementalDescription());
+        }
+
+        if (nodeDescription != null && !nodeDescription.isEmpty()) {
+            if (sb.length() > 0) {
+                sb.append(" ");
+            }
+            sb.append("[").append(nodeDescription).append("]");
+        }
+
+        CharSequence classNameSeq = info.getClassName();
+        if (classNameSeq != null && classNameSeq.length() > 0) {
+            if (sb.length() > 0) {
+                sb.append(" ");
+            }
+            sb.append("class_name=").append(classNameSeq.toString());
+        }
+
+        return sb.toString();
+    }
+
+    private static @Nullable String toStringOrNull(@Nullable CharSequence cs) {
+        return (cs != null && cs.length() > 0) ? cs.toString() : null;
+    }
+
+    private static String contentChangeTypeToString(int contentChangeTypes) {
+        ArrayList<String> types = new ArrayList<>();
+        if ((contentChangeTypes & AccessibilityEvent.CONTENT_CHANGE_TYPE_CONTENT_DESCRIPTION)
+                != 0) {
+            types.add("CONTENT_DESCRIPTION");
+        }
+        if ((contentChangeTypes & AccessibilityEvent.CONTENT_CHANGE_TYPE_STATE_DESCRIPTION) != 0) {
+            types.add("STATE_DESCRIPTION");
+        }
+        if ((contentChangeTypes & AccessibilityEvent.CONTENT_CHANGE_TYPE_SUBTREE) != 0) {
+            types.add("SUBTREE");
+        }
+        if ((contentChangeTypes & AccessibilityEvent.CONTENT_CHANGE_TYPE_TEXT) != 0) {
+            types.add("TEXT");
+        }
+        if ((contentChangeTypes & AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_TITLE) != 0) {
+            types.add("PANE_TITLE");
+        }
+        if (contentChangeTypes == AccessibilityEvent.CONTENT_CHANGE_TYPE_UNDEFINED) {
+            types.add("UNDEFINED");
+        }
+        if ((contentChangeTypes & AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_APPEARED) != 0) {
+            types.add("PANE_APPEARED");
+        }
+        if ((contentChangeTypes & AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_DISAPPEARED) != 0) {
+            types.add("PANE_DISAPPEARED");
+        }
+        if ((contentChangeTypes & AccessibilityEvent.CONTENT_CHANGE_TYPE_DRAG_STARTED) != 0) {
+            types.add("DRAG_STARTED");
+        }
+        if ((contentChangeTypes & AccessibilityEvent.CONTENT_CHANGE_TYPE_DRAG_DROPPED) != 0) {
+            types.add("DRAG_DROPPED");
+        }
+        if ((contentChangeTypes & AccessibilityEvent.CONTENT_CHANGE_TYPE_DRAG_CANCELLED) != 0) {
+            types.add("DRAG_CANCELLED");
+        }
+        if ((contentChangeTypes & AccessibilityEvent.CONTENT_CHANGE_TYPE_CONTENT_INVALID) != 0) {
+            types.add("CONTENT_INVALID");
+        }
+        if ((contentChangeTypes & AccessibilityEvent.CONTENT_CHANGE_TYPE_ERROR) != 0) {
+            types.add("ERROR");
+        }
+        if ((contentChangeTypes & AccessibilityEvent.CONTENT_CHANGE_TYPE_ENABLED) != 0) {
+            types.add("ENABLED");
+        }
+        if ((contentChangeTypes & CONTENT_CHANGE_TYPE_SORT_DIRECTION) != 0) {
+            types.add("SORT_DIRECTION");
+        }
+
+        return String.join(" | ", types);
+    }
+}

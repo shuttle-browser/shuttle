@@ -1,0 +1,100 @@
+/* Copyright 2026 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=//resources/cr_elements/cr_hidden_style_lit.css.js
+ * #import=/shared/help_bubble_anchor.css.js
+ * #scheme=relative
+ * #include=cr-hidden-style-lit help-bubble-anchor
+ * #css_wrapper_metadata_end */
+
+:host {
+  align-items: center;
+  display: inline-flex;
+  flex: none;
+  justify-content: center;
+  position: relative;
+  --button-height: var(--toolbar-button-height);
+  --button-width: var(--toolbar-button-height);
+  height: var(--button-height);
+  width: var(--button-width);
+}
+
+:host([overflow-display-none]) {
+  display: none !important;
+}
+
+cr-icon-button {
+  cursor: default;
+  margin: 0;
+  --cr-icon-button-size: var(--toolbar-button-height);
+  --cr-icon-button-icon-size: var(--toolbar-button-icon-size);
+  --cr-icon-button-fill-color: var(--color-toolbar-button-icon);
+}
+
+cr-button {
+  cursor: default;
+  /* Zero out font-size and line-height because cr-button wraps slotted content
+   * in an inline span. This collapses the font baseline offset, ensuring the
+   * icon is vertically centered. This is safe as toolbar buttons using
+   * cr-button are strictly icon-only and have no text. */
+  font-size: 0;
+  line-height: 0;
+  margin: 0;
+  padding: 0;
+  min-width: var(--toolbar-button-height);
+  --cr-button-size: var(--toolbar-button-height);
+  --cr-button-height: var(--toolbar-button-height);
+  --cr-button-icon-size: var(--toolbar-button-icon-size);
+  --cr-button-fill-color: var(--color-toolbar-button-icon);
+  --cr-button-background-color: transparent;
+  --cr-button-border-color: transparent;
+  --cr-button-border: 0;
+}
+
+cr-icon-button[is-menu-open],
+cr-button[is-menu-open],
+:host(.anchor-highlight) cr-icon-button {
+  background-color: var(--cr-active-background-color);
+}
+
+/* The "Blue Bar" status indicator that appears when a split is active */
+.status-indicator {
+  background-color: var(--color-toolbar-action-item-engaged,
+      var(--google-blue-600));
+
+  height: var(--split-tabs-indicator-height);
+  width: var(--split-tabs-indicator-width);
+  border-radius: 1px;
+
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+
+  /* Calculated to align with icon bottom */
+  bottom: calc((var(--toolbar-button-height) -
+                var(--toolbar-button-icon-size)) / 2 -
+               var(--split-tabs-indicator-spacing) -
+               var(--split-tabs-indicator-height));
+
+  pointer-events: none; /* Allows clicks to pass through to the button */
+  z-index: 1; /* Renders above the button background */
+}
+
+cr-icon-button[is-activated] {
+  --cr-icon-button-fill-color: var(--color-toolbar-action-item-engaged,
+      var(--google-blue-600));
+}
+
+cr-button[is-activated] {
+  --cr-button-fill-color: var(--color-toolbar-action-item-engaged,
+      var(--google-blue-600));
+}
+
+icon-from-table {
+  width: var(--toolbar-button-icon-size);
+  height: var(--toolbar-button-icon-size);
+  --icon-size: var(--toolbar-button-icon-size);
+}

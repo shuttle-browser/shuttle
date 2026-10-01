@@ -1,0 +1,400 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/renderer_host/navigation_policy_container_builder.h"
+
+#include <utility>
+
+#include "content/browser/renderer_host/frame_navigation_entry.h"
+#include "content/browser/renderer_host/navigation_state_keep_alive.h"
+#include "content/browser/renderer_host/policy_container_host.h"
+#include "content/browser/renderer_host/render_frame_host_impl.h"
+#include "content/public/browser/content_browser_client.h"
+#include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/site_isolation_policy.h"
+#include "services/network/public/cpp/web_sandbox_flags.h"
+#include "services/network/public/mojom/content_security_policy.mojom-forward.h"
+#include "services/network/public/mojom/ip_address_space.mojom.h"
+#include "services/network/public/mojom/web_sandbox_flags.mojom.h"
+
+namespace content {
+namespace {
+
+// Returns a copy of |parent|'s policies, or nullopt if |parent| is nullptr.
+std::unique_ptr<PolicyContainerPolicies> GetParentPolicies(
+    RenderFrameHostImpl* parent) {
+  if (!parent) {
+    return nullptr;
+  }
+
+  return parent->policy_container_host()->policies().ClonePtr();
+}
+
+// Returns a copy of the given history |entry|'s policies, if any.
+std::unique_ptr<PolicyContainerPolicies> GetHistoryPolicies(
+    const FrameNavigationEntry* entry) {
+  if (!entry) {
+    return nullptr;
+  }
+
+  const PolicyContainerPolicies* policies = entry->policy_container_policies();
+  if (!policies) {
+    return nullptr;
+  }
+
+  return policies->ClonePtr();
+}
+
+}  // namespace
+
+NavigationPolicyContainerBuilder::NavigationPolicyContainerBuilder(
+    RenderFrameHostImpl* parent,
+    const FrameNavigationEntry* history_entry)
+    : parent_policies_(GetParentPolicies(parent)),
+      history_policies_(GetHistoryPolicies(history_entry)) {}
+
+NavigationPolicyContainerBuilder::~NavigationPolicyContainerBuilder() {
+  // The `host_` will have set the NavigationRequest as client, so ensure that
+  // it is reset here before destroying it.
+  if (host_) {
+    host_->SetClient(nullptr);
+  }
+}
+
+const PolicyContainerPolicies*
+NavigationPolicyContainerBuilder::ParentPolicies() const {
+  return parent_policies_.get();
+}
+
+const PolicyContainerPolicies*
+NavigationPolicyContainerBuilder::HistoryPolicies() const {
+  return history_policies_.get();
+}
+
+void NavigationPolicyContainerBuilder::SetIPAddressSpace(
+    network::mojom::IPAddressSpace address_space) {
+  DCHECK(!HasComputedPolicies());
+  delivered_policies_.ip_address_space = address_space;
+}
+
+void NavigationPolicyContainerBuilder::SetIsOriginPotentiallyTrustworthy(
+    bool value) {
+  DCHECK(!HasComputedPolicies());
+  delivered_policies_.is_web_secure_context = value;
+}
+
+void NavigationPolicyContainerBuilder::SetCrossOriginIsolationEnabledByDIP() {
+  DCHECK(HasComputedPolicies());
+  host_->SetCrossOriginIsolationEnabledByDIP(
+      base::PassKey<NavigationPolicyContainerBuilder>());
+}
+
+void NavigationPolicyContainerBuilder::SetCrossOriginIsolationKeyOverride(
+    const AgentClusterKey::CrossOriginIsolationKey& coi_key) {
+  // This should only be used after having computed policies and when no
+  // SiteIsolation is available, nor SiteInstanceGroups.
+  DCHECK(HasComputedPolicies());
+  CHECK(!SiteIsolationPolicy::UseDedicatedProcessesForAllSites() &&
+        !SiteIsolationPolicy::AreDynamicIsolatedOriginsEnabled() &&
+        !ShouldUseDefaultSiteInstanceGroup());
+  host_->set_cross_origin_isolation_key_override(
+      coi_key, base::PassKey<NavigationPolicyContainerBuilder>());
+}
+
+void NavigationPolicyContainerBuilder::AddContentSecurityPolicy(
+    network::mojom::ContentSecurityPolicyPtr policy) {
+  DCHECK(!HasComputedPolicies());
+  DCHECK(policy);
+
+  delivered_policies_.content_security_policies.push_back(std::move(policy));
+}
+
+void NavigationPolicyContainerBuilder::AddContentSecurityPolicies(
+    std::vector<network::mojom::ContentSecurityPolicyPtr> policies) {
+  DCHECK(!HasComputedPolicies());
+
+  delivered_policies_.AddContentSecurityPolicies(std::move(policies));
+}
+
+void NavigationPolicyContainerBuilder::SetConnectionAllowlists(
+    network::ConnectionAllowlists allowlists) {
+  DCHECK(!HasComputedPolicies());
+  delivered_policies_.connection_allowlists = std::move(allowlists);
+}
+
+void NavigationPolicyContainerBuilder::SetCrossOriginOpenerPolicy(
+    network::CrossOriginOpenerPolicy coop) {
+  if (HasComputedPolicies()) {
+    host_->set_cross_origin_opener_policy(
+        coop, base::PassKey<NavigationPolicyContainerBuilder>());
+  } else {
+    delivered_policies_.cross_origin_opener_policy = std::move(coop);
+  }
+}
+
+void NavigationPolicyContainerBuilder::SetCrossOriginEmbedderPolicy(
+    network::CrossOriginEmbedderPolicy coep) {
+  DCHECK(!HasComputedPolicies());
+
+  delivered_policies_.cross_origin_embedder_policy = coep;
+}
+
+void NavigationPolicyContainerBuilder::SetDocumentIsolationPolicy(
+    const network::DocumentIsolationPolicy& dip) {
+  DCHECK(!HasComputedPolicies());
+
+  delivered_policies_.document_isolation_policy = dip;
+}
+
+void NavigationPolicyContainerBuilder::SetIntegrityPolicy(
+    network::IntegrityPolicy ip) {
+  DCHECK(!HasComputedPolicies());
+
+  delivered_policies_.integrity_policy = std::move(ip);
+}
+
+void NavigationPolicyContainerBuilder::SetIntegrityPolicyReportOnly(
+    network::IntegrityPolicy ip) {
+  DCHECK(!HasComputedPolicies());
+
+  delivered_policies_.integrity_policy_report_only = std::move(ip);
+}
+
+const PolicyContainerPolicies&
+NavigationPolicyContainerBuilder::DeliveredPoliciesForTesting() const {
+  DCHECK(!HasComputedPolicies());
+
+  return delivered_policies_;
+}
+
+void NavigationPolicyContainerBuilder::ComputePoliciesForError() {
+  // The decision to commit an error page can happen after receiving the
+  // response for a regular document. It overrides any previous attempt to
+  // |ComputePolicies()|.
+  host_ = nullptr;
+
+  DCHECK(!HasComputedPolicies());
+
+  // TODO(crbug.com/40747546): We should enforce strict policies on error
+  // pages.
+  PolicyContainerPolicies policies;
+
+  // We commit error pages with the same address space as the underlying page,
+  // so that auto-reloading error pages does not show up as a private network
+  // request (from the unknown/public address space to private). See also
+  // crbug.com/1180140.
+  policies.ip_address_space = delivered_policies_.ip_address_space;
+
+  SetFinalPolicies(std::move(policies));
+
+  DCHECK(HasComputedPolicies());
+}
+
+void NavigationPolicyContainerBuilder::ComputeIsWebSecureContext(
+    bool is_secure_context_root) {
+  DCHECK(!HasComputedPolicies());
+
+  if (!parent_policies_ || is_secure_context_root) {
+    // No parent, or the new document is a secure-context inheritance root.
+    // Only the trustworthiness of the origin matters.
+    return;
+  }
+
+  // The child can only be a secure context if the parent is too.
+  delivered_policies_.is_web_secure_context &=
+      parent_policies_->is_web_secure_context;
+}
+
+void NavigationPolicyContainerBuilder::ComputeSandboxFlags(
+    bool is_inside_mhtml,
+    network::mojom::WebSandboxFlags frame_sandbox_flags,
+    PolicyContainerPolicies& policies) {
+  DCHECK(!HasComputedPolicies());
+
+  auto sandbox_flags_to_commit = frame_sandbox_flags;
+
+  // The document can also restrict sandbox further, via its CSP.
+  for (const auto& csp : policies.content_security_policies) {
+    sandbox_flags_to_commit |= csp->sandbox;
+  }
+
+  // The URL of a document loaded from a MHTML archive is controlled by the
+  // Content-Location header. This can be set to an arbitrary URL. This is
+  // potentially dangerous. For this reason we force the document to be
+  // sandboxed, providing exceptions only for creating new windows. This
+  // includes disallowing javascript and using an opaque origin.
+  if (is_inside_mhtml) {
+    network::mojom::WebSandboxFlags allowed_flags =
+        network::mojom::WebSandboxFlags::kPopups |
+        network::mojom::WebSandboxFlags::kPropagatesToAuxiliaryBrowsingContexts;
+
+    // Allow JS to execute in saved MHTML documents, since certain constructs
+    // like custom elements, require additional JS to support. This is believed
+    // to be safe because:
+    // - MHTML serialization generally tries to drop script, though this is on
+    //   a best-effort basis
+    // - a MHTML document and all its descendant frames are sandboxed without
+    //   the allow-same-origin flag, so even though an MHTML archive can claim
+    //   to contain resources from arbitrary URLs, each frame will have a
+    //   unique opaque origin, which should limit any potential damage.
+    if (base::FeatureList::IsEnabled(blink::features::kMHTML_Improvements)) {
+      allowed_flags |= network::mojom::WebSandboxFlags::kScripts;
+    }
+    sandbox_flags_to_commit |= ~allowed_flags;
+  }
+
+  policies.sandbox_flags = sandbox_flags_to_commit;
+}
+
+void NavigationPolicyContainerBuilder::IncorporateDeliveredPoliciesForLocalURL(
+    PolicyContainerPolicies& policies) {
+  // Delivered content security policies must be appended.
+  policies.AddContentSecurityPolicies(
+      mojo::Clone(delivered_policies_.content_security_policies));
+
+  // The delivered IP address space (if any) overrides the IP address space.
+  if (delivered_policies_.ip_address_space !=
+      network::mojom::IPAddressSpace::kUnknown) {
+    policies.ip_address_space = delivered_policies_.ip_address_space;
+  }
+}
+
+PolicyContainerPolicies
+NavigationPolicyContainerBuilder::ComputeInheritedPolicies(
+    const GURL& url,
+    const PolicyContainerPolicies* initiator_policies) {
+  DCHECK(url.SchemeIsLocal()) << url << " should not inherit policies";
+
+  if (url.IsAboutSrcdoc()) {
+    DCHECK(parent_policies_)
+        << "About:srcdoc documents should always have a parent frame.";
+    return parent_policies_->Clone();
+  }
+
+  if (initiator_policies) {
+    return initiator_policies->Clone();
+  }
+
+  return PolicyContainerPolicies();
+}
+
+PolicyContainerPolicies NavigationPolicyContainerBuilder::ComputeFinalPolicies(
+    NavigationHandle* navigation_handle,
+    const PolicyContainerPolicies* initiator_policies,
+    bool is_inside_mhtml,
+    network::mojom::WebSandboxFlags frame_sandbox_flags,
+    bool is_credentialless) {
+  PolicyContainerPolicies policies;
+
+  // Policies are either inherited from another document for local scheme, or
+  // directly set from the delivered response.
+  const GURL& url = navigation_handle->GetURL();
+  if (!url.SchemeIsLocal()) {
+    policies = delivered_policies_.Clone();
+  } else if (history_policies_) {
+    // For a local scheme, history policies should not incorporate delivered
+    // ones as this may lead to duplication of some policies already stored in
+    // history. For example, consider the following HTML:
+    //    <iframe src="about:blank" csp="something">
+    // This will store CSP: something in history. The next time we have a
+    // history navigation we will have CSP: something twice.
+    policies = history_policies_->Clone();
+  } else {
+    policies = ComputeInheritedPolicies(url, initiator_policies);
+    IncorporateDeliveredPoliciesForLocalURL(policies);
+
+    // TODO(crbug.com/40053796): Persist the policy container for URLs with
+    // local schemes so this override is not needed.
+    std::optional<network::CrossOriginEmbedderPolicy>
+        override_cross_origin_embedder_policy =
+            GetContentClient()
+                ->browser()
+                ->MaybeOverrideLocalURLCrossOriginEmbedderPolicy(
+                    navigation_handle);
+    if (override_cross_origin_embedder_policy) {
+      policies.cross_origin_embedder_policy =
+          override_cross_origin_embedder_policy.value();
+    }
+  }
+
+  // `can_navigate_top_without_user_gesture` is inherited from the parent.
+  // Later in `NavigationRequest::CommitNavigation()` it will either be made
+  // less strict for same-origin navigations, or stricter for cross-origin
+  // navigations that do not explicitly allow top-level navigation without user
+  // gesture.
+  policies.can_navigate_top_without_user_gesture =
+      parent_policies_ ? parent_policies_->can_navigate_top_without_user_gesture
+                       : true;
+
+  ComputeSandboxFlags(is_inside_mhtml, frame_sandbox_flags, policies);
+  policies.is_credentialless = is_credentialless;
+  return policies;
+}
+
+void NavigationPolicyContainerBuilder::ComputePolicies(
+    NavigationHandle* navigation_handle,
+    const PolicyContainerPolicies* initiator_policies,
+    bool is_inside_mhtml,
+    network::mojom::WebSandboxFlags frame_sandbox_flags,
+    bool is_credentialless,
+    bool is_secure_context_root) {
+  DCHECK(!HasComputedPolicies());
+  ComputeIsWebSecureContext(is_secure_context_root);
+  SetFinalPolicies(ComputeFinalPolicies(navigation_handle, initiator_policies,
+                                        is_inside_mhtml, frame_sandbox_flags,
+                                        is_credentialless));
+}
+
+bool NavigationPolicyContainerBuilder::HasComputedPolicies() const {
+  return host_ != nullptr;
+}
+
+void NavigationPolicyContainerBuilder::SetAllowTopNavigationWithoutUserGesture(
+    bool allow_top) {
+  host_->SetCanNavigateTopWithoutUserGesture(
+      allow_top, base::PassKey<NavigationPolicyContainerBuilder>());
+}
+
+void NavigationPolicyContainerBuilder::SetFinalPolicies(
+    PolicyContainerPolicies policies) {
+  DCHECK(!HasComputedPolicies());
+
+  host_ = base::MakeRefCounted<PolicyContainerHost>(std::move(policies));
+}
+
+const PolicyContainerPolicies& NavigationPolicyContainerBuilder::FinalPolicies()
+    const {
+  DCHECK(HasComputedPolicies());
+
+  return host_->policies();
+}
+
+blink::mojom::PolicyContainerPtr
+NavigationPolicyContainerBuilder::CreatePolicyContainerForBlink() {
+  DCHECK(HasComputedPolicies());
+
+  return host_->CreatePolicyContainerForBlink();
+}
+
+scoped_refptr<PolicyContainerHost>
+NavigationPolicyContainerBuilder::GetPolicyContainerHost() {
+  DCHECK(HasComputedPolicies());
+  CHECK(host_);
+
+  return host_;
+}
+
+scoped_refptr<PolicyContainerHost>
+NavigationPolicyContainerBuilder::TakePolicyContainerHost() && {
+  DCHECK(HasComputedPolicies());
+
+  return std::move(host_);
+}
+
+void NavigationPolicyContainerBuilder::ResetForCrossDocumentRestart() {
+  host_ = nullptr;
+  delivered_policies_ = PolicyContainerPolicies();
+}
+
+}  // namespace content

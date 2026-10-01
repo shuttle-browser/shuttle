@@ -1,0 +1,5 @@
+include_rules = [
+  # keep-sorted start
+  "+components/data_sharing",
+  # keep-sorted end
+]

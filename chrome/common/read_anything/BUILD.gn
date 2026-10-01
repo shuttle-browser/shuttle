@@ -1,0 +1,21 @@
+# Copyright 2021 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//mojo/public/tools/bindings/mojom.gni")
+
+assert(!is_android)
+
+mojom("mojo_bindings") {
+  sources = [
+    "distillation_evaluator.mojom",
+    "read_anything.mojom",
+  ]
+  public_deps = [
+    "//mojo/public/mojom/base",
+    "//sandbox/policy/mojom",
+    "//ui/accessibility:ax_features_mojo",
+    "//ui/accessibility/mojom",
+    "//url/mojom:url_mojom_gurl",
+  ]
+}

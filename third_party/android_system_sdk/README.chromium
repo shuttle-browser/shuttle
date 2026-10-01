@@ -1,0 +1,20 @@
+Name: Android System SDK
+URL: https://android.googlesource.com/platform/frameworks/base
+Short Name: Android System SDK
+Version: 15087165
+Update Mechanism: Manual
+License: GPL-2.0-with-classpath-exception
+License File: LICENSE
+Security Critical: No
+Shipped: no
+
+Description:
+System SDK stubs for compiling Android Webview and Monochrome targets.
+Version is the BUILD ID of the SDK.
+
+Because prebuilt system SDKs are not distributed publicly, Googlers will need to
+update this using the instructions at:
+//clank/third_party/android_system_sdk/README.chromium
+
+Local Modifications:
+None

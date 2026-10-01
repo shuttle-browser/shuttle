@@ -1,0 +1,237 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/autofill/core/browser/geo/address_rewriter.h"
+
+#include <memory>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "base/check_op.h"
+#include "base/feature_list.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/no_destructor.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_split.h"
+#include "base/strings/string_util.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/synchronization/lock.h"
+#include "base/timer/elapsed_timer.h"
+#include "components/autofill/core/browser/country_type.h"
+#include "components/autofill/core/browser/geo/grit/autofill_address_rewriter_resources_map.h"
+#include "components/autofill/core/common/autofill_features.h"
+#include "components/autofill/core/common/autofill_regexes.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
+#include "third_party/icu/source/i18n/unicode/regex.h"
+#include "third_party/icu/source/i18n/unicode/uregex.h"
+#include "third_party/zlib/google/compression_utils.h"
+#include "ui/base/resource/resource_bundle.h"
+#include "ui/base/webui/resource_path.h"
+
+namespace autofill {
+namespace {
+
+// Helper function to convert region to mapping key string.
+std::string GetMapKey(const std::string& region) {
+  return base::StrCat({"IDR_ADDRESS_REWRITER_", region, "_RULES"});
+}
+
+// Helper function to retrieve resource data.
+std::string GetResourceData(const std::string& resource_key) {
+  for (const webui::ResourcePath& resource :
+       kAutofillAddressRewriterResources) {
+    if (resource.path == resource_key) {
+      std::string_view raw_resource =
+          ui::ResourceBundle::GetSharedInstance().GetRawDataResource(
+              resource.id);
+      std::string data;
+      compression::GzipUncompress(raw_resource, &data);
+      return data;
+    }
+  }
+  return std::string();
+}
+
+// Helper function to extract region rules data.
+std::string ExtractRegionRulesData(const std::string& region) {
+  std::string resource_key = GetMapKey(region);
+
+  if (base::FeatureList::IsEnabled(features::kAutofillFixRewriterRules)) {
+    std::string resource_data =
+        GetResourceData(base::StrCat({resource_key, "_UPDATED"}));
+    if (!resource_data.empty()) {
+      return resource_data;
+    }
+  }
+
+  return GetResourceData(resource_key);
+}
+
+}  // namespace
+
+// Helper function to populate `compiled_rules` by parsing `data_string`.
+// static
+void AddressRewriter::CompileRulesFromData(std::string_view data_string,
+                                           CompiledRuleVector& compiled_rules) {
+  std::vector<std::string_view> lines = base::SplitStringPiece(
+      data_string, "\n", base::KEEP_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
+
+  for (std::string_view line : lines) {
+    // `base::SPLIT_WANT_ALL` is needed to ensure that rules rewriting to an
+    // empty string work.
+    std::vector<std::string_view> parts = base::SplitStringPiece(
+        line, "\t", base::KEEP_WHITESPACE, base::SPLIT_WANT_ALL);
+    DCHECK_EQ(parts.size(), 2U);
+    std::unique_ptr<const icu::RegexPattern> pattern = CompileRegex(
+        base::UTF8ToUTF16(parts[0]), UREGEX_UWORD | UREGEX_CASE_INSENSITIVE);
+    compiled_rules.emplace_back(std::move(pattern), std::string(parts[1]));
+  }
+}
+
+// The cache of compiled string replacement rules, keyed by region. This class
+// is a singleton that compiles the rules for a given region the first time
+// they are requested.
+class AddressRewriter::Cache {
+ public:
+  // Return the singleton instance of the cache.
+  static Cache* GetInstance() {
+    static base::NoDestructor<Cache> instance;
+    return instance.get();
+  }
+
+  Cache(const Cache&) = delete;
+  Cache& operator=(const Cache&) = delete;
+
+  // If the rules for |region| have already been compiled and cached, return a
+  // pointer to them. Otherwise, find the rules for |region| (returning nullptr
+  // if there are no such rules exist), compile them, cache them, and return a
+  // pointer to the cached rules.
+  const CompiledRuleVector* GetRulesForRegion(const std::string& region) {
+    // Take the lock so that we don't update the data cache concurrently. Note
+    // that the returned data is const and can be concurrently accessed, just
+    // not the data cache.
+    base::AutoLock auto_lock(lock_);
+
+    // If we find a cached set of rules, return a pointer to the data.
+    auto cache_iter = data_.find(region);
+    if (cache_iter != data_.end()) {
+      return cache_iter->second.get();
+    }
+
+    // Cache miss. Look for the raw rules. If none, then return nullptr.
+    std::string region_rules = ExtractRegionRulesData(region);
+    if (region_rules.empty()) {
+      return nullptr;
+    }
+
+    // Add a new rule vector to the cache and populate it with compiled rules.
+    std::unique_ptr<CompiledRuleVector>& compiled_rules = data_[region];
+    if (!compiled_rules) {
+      compiled_rules = std::make_unique<CompiledRuleVector>();
+    }
+    CompileRulesFromData(region_rules, *compiled_rules);
+
+    // Return a pointer to the data.
+    return compiled_rules.get();
+  }
+
+  // Uses a string of data to create and return a pointer to a
+  // CompiledRuleVector. Used for creating unit_tests.
+  const CompiledRuleVector* CreateRulesForData(const std::string& data) {
+    // Compiled rules vector must be kept in cache to be used elsewhere.
+    std::unique_ptr<CompiledRuleVector>& compiled_rules = data_[data];
+    if (!compiled_rules) {
+      compiled_rules = std::make_unique<CompiledRuleVector>();
+    }
+    CompileRulesFromData(data, *compiled_rules);
+
+    // Return a pointer to the data.
+    return compiled_rules.get();
+  }
+
+ private:
+  Cache() = default;
+
+  // Synchronizes access to |data_|, ensuring that a given set of rules is
+  // only compiled once.
+  base::Lock lock_;
+
+  // The cache of compiled rules, keyed by region.
+  absl::flat_hash_map<std::string, std::unique_ptr<CompiledRuleVector>> data_;
+
+  friend class base::NoDestructor<Cache>;
+};
+
+AddressRewriter::AddressRewriter(const CompiledRuleVector* compiled_rules,
+                                 Type type)
+    : compiled_rules_(compiled_rules), type_(type) {}
+
+// static
+std::u16string AddressRewriter::RewriteForCountryCode(
+    const AddressCountryCode& country_code,
+    const std::u16string& normalized_text) {
+  return ForCountryCode(country_code).Rewrite(normalized_text);
+}
+
+// static
+std::u16string AddressRewriter::RewriteUsingGlobalRules(
+    const std::u16string& normalized_text) {
+  return ForGlobalRules().Rewrite(normalized_text);
+}
+
+// static
+AddressRewriter AddressRewriter::ForCountryCode(
+    const AddressCountryCode& country_code) {
+  const std::string region = base::ToUpperASCII(country_code.value());
+  const CompiledRuleVector* rules =
+      Cache::GetInstance()->GetRulesForRegion(region);
+  return AddressRewriter(rules, Type::kCountrySpecific);
+}
+
+// static
+AddressRewriter AddressRewriter::ForGlobalRules() {
+  const CompiledRuleVector* rules =
+      Cache::GetInstance()->GetRulesForRegion("GLOBAL");
+  return AddressRewriter(rules, Type::kGlobal);
+}
+
+// static
+AddressRewriter AddressRewriter::ForCustomRules(
+    const std::string& custom_rules) {
+  const CompiledRuleVector* rules =
+      Cache::GetInstance()->CreateRulesForData(custom_rules);
+  return AddressRewriter(rules, Type::kCustom);
+}
+
+std::u16string AddressRewriter::Rewrite(const std::u16string& text) const {
+  if (compiled_rules_ == nullptr || compiled_rules_->empty()) {
+    return base::CollapseWhitespace(text, true);
+  }
+
+  base::ElapsedTimer timer;
+  // Apply all of the string replacement rules. We don't have to worry about
+  // whitespace during these passes because the patterns are all whitespace
+  // tolerant regular expressions.
+  std::u16string result = text;
+  for (const CompiledRule& rule : *compiled_rules_) {
+    result = MatchAndReplace(result, *rule.first, rule.second);
+  }
+
+  result = base::CollapseWhitespace(result, true);
+
+  base::TimeDelta elapsed = timer.Elapsed();
+  if (type_ == Type::kCountrySpecific) {
+    base::UmaHistogramTimes(
+        "Autofill.Timing.AddressRewriter.Rewrite.CountrySpecific", elapsed);
+  } else if (type_ == Type::kGlobal) {
+    base::UmaHistogramTimes("Autofill.Timing.AddressRewriter.Rewrite.Global",
+                            elapsed);
+  }
+
+  return result;
+}
+
+}  // namespace autofill

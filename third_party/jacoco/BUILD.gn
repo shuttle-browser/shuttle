@@ -1,0 +1,64 @@
+# Copyright 2019 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/rules.gni")
+
+# JaCoCo version as packaged by CIPD. Must match the version inside the
+# `/lib/org.jacoco.*-.jar` files. Download the CIPD package from:
+# https://chrome-infra-packages.appspot.com/p/chromium/third_party/jacoco/
+_jacoco_version = "0.8.14.202605050529"
+
+java_group("jacoco_all_java") {
+  testonly = true
+  deps = [
+    ":jacocoagent_java",
+    ":jacocoant_java",
+    ":jacococli_java",
+    ":org_jacocoagent_java",
+    ":org_jacocoant_java",
+    ":org_jacococore_java",
+    ":org_jacocoreport_java",
+  ]
+}
+
+java_prebuilt("jacocoagent_java") {
+  include_java_resources = true
+  supports_android = true
+  jar_path = "cipd/lib/jacocoagent.jar"
+  proguard_configs = [ "jacoco_instrument.flags" ]
+
+  # Complains about java/util/jar/Pack200, and this isn't a library which gets
+  # used clientside anyways, so can just ignore this.
+  enable_bytecode_checks = false
+}
+
+java_prebuilt("jacocoant_java") {
+  testonly = true
+  jar_path = "cipd/lib/jacocoant.jar"
+}
+
+java_prebuilt("jacococli_java") {
+  testonly = true
+  jar_path = "cipd/lib/jacococli.jar"
+}
+
+java_prebuilt("org_jacocoagent_java") {
+  testonly = true
+  jar_path = "cipd/lib/org.jacoco.agent-$_jacoco_version.jar"
+}
+
+java_prebuilt("org_jacocoant_java") {
+  testonly = true
+  jar_path = "cipd/lib/org.jacoco.ant-$_jacoco_version.jar"
+}
+
+java_prebuilt("org_jacococore_java") {
+  testonly = true
+  jar_path = "cipd/lib/org.jacoco.core-$_jacoco_version.jar"
+}
+
+java_prebuilt("org_jacocoreport_java") {
+  testonly = true
+  jar_path = "cipd/lib/org.jacoco.report-$_jacoco_version.jar"
+}

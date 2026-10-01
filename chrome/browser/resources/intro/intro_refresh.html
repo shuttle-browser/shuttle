@@ -1,0 +1,25 @@
+<!doctype html>
+<html dir="$i18n{textdirection}" lang="$i18n{language}" $i18n{webuiRoundedIconsAttribute}>
+  <head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="chrome://resources/css/md_colors.css">
+    <link rel="stylesheet" href="chrome://resources/css/text_defaults.css">
+    <style>
+      body {
+        height: 100vh;
+        margin: 0;
+        width: 100vw;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          --md-background-color: var(--cr-fallback-color-surface);
+          background-color: var(--md-background-color);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <sign-in-promo-refresh></sign-in-promo-refresh>
+    <script type="module" src="sign_in_promo_refresh.js"></script>
+  </body>
+</html>

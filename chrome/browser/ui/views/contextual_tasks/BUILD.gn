@@ -1,0 +1,70 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD - style license that can be
+# found in the LICENSE file.
+
+assert(is_win || is_mac || is_linux || is_chromeos)
+
+source_set("contextual_tasks") {
+  sources = [
+    "contextual_tasks_browser_controller.h",
+    "contextual_tasks_button.h",
+    "contextual_tasks_close_button_controller.h",
+    "contextual_tasks_close_tab_button.h",
+    "contextual_tasks_ephemeral_button_controller.h",
+  ]
+
+  public_deps = [
+    "//chrome/browser/contextual_tasks:ui",
+    "//chrome/browser/ui/side_panel",
+    "//chrome/browser/ui/views/page_action",
+    "//chrome/browser/ui/views/side_panel",
+    "//chrome/browser/ui/views/toolbar",
+    "//components/contextual_tasks/public",
+  ]
+
+  deps = [ "//chrome/browser/contextual_tasks" ]
+}
+
+source_set("impl") {
+  sources = [
+    "contextual_tasks_browser_controller.cc",
+    "contextual_tasks_button.cc",
+    "contextual_tasks_close_button_controller.cc",
+    "contextual_tasks_close_tab_button.cc",
+    "contextual_tasks_ephemeral_button_controller.cc",
+  ]
+
+  deps = [
+    ":contextual_tasks",
+    "//chrome/browser/ui:browser_actions",
+    "//chrome/browser/ui:ui_features",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/user_education",
+    "//chrome/browser/ui/views/side_panel",
+    "//components/contextual_tasks/public:feature_list",
+    "//components/feature_engagement/public",
+    "//components/vector_icons",
+  ]
+}
+
+source_set("interactive_ui_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+  sources = [ "contextual_tasks_button_interactive_ui_test.cc" ]
+  deps = [
+    ":contextual_tasks",
+    "//chrome/browser/autocomplete:aim_eligibility_service",
+    "//chrome/browser/contextual_tasks",
+    "//chrome/browser/contextual_tasks:test_support",
+    "//chrome/browser/contextual_tasks:ui",
+    "//chrome/browser/search_engines",
+    "//chrome/browser/ui:browser_actions",
+    "//chrome/browser/ui:ui_features",
+    "//chrome/test:test_support",
+    "//chrome/test/user_education:impl",
+    "//components/contextual_tasks/public",
+    "//components/feature_engagement/public",
+    "//components/user_education/views",
+    "//testing/gtest",
+  ]
+}

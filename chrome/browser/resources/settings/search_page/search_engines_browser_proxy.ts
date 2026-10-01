@@ -1,0 +1,221 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// clang-format off
+import {sendWithPromise} from 'chrome://resources/js/cr.js';
+// clang-format on
+
+/**
+ * @fileoverview A helper object used from the "Manage search engines" section
+ * to interact with the browser.
+ */
+
+/**
+ * @see chrome/browser/ui/webui/settings/search_engines_handler.cc
+ */
+export interface SearchEngine {
+  canBeDefault: boolean;
+  canBeEdited: boolean;
+  canBeRemoved: boolean;
+  canBeActivated: boolean;
+  canBeDeactivated: boolean;
+  default: boolean;
+  displayName: string;
+  extension?: {id: string, name: string, canBeDisabled: boolean, icon: string};
+  iconURL?: string;
+  iconPath: string;
+  id: number;
+  isManaged: boolean;
+  isRecommendedFromPolicy: boolean;
+  isOmniboxExtension: boolean;
+  isPrepopulated: boolean;
+  isStarterPack: boolean;
+  keyword: string;
+  name: string;
+  shouldConfirmRemoval: boolean;
+  url: string;
+  urlLocked: boolean;
+}
+
+export interface SearchEnginesInfo {
+  defaults: SearchEngine[];
+  actives: SearchEngine[];
+  others: SearchEngine[];
+  extensions: SearchEngine[];
+  [key: string]: SearchEngine[];
+}
+
+export interface CategorizedTemplateUrls {
+  /**
+   * Active site shortcut search engines (normal search engines including
+   * prepopulated regional engines, user-added custom engines, managed policy
+   * engines, and recommended policy engines) that are enabled for site search
+   * or are the active default search engine.
+   */
+  activeSiteShortcuts: SearchEngine[];
+  inactiveSiteShortcuts: SearchEngine[];
+  activeFeatureShortcuts: SearchEngine[];
+  inactiveFeatureShortcuts: SearchEngine[];
+  [key: string]: SearchEngine[];
+}
+
+/**
+ * Contains all recorded interactions on the search engines settings page.
+ *
+ * These values are persisted to logs. Entries should not be renumbered and
+ * numeric values should never be reused.
+ *
+ * Must be kept in sync with the SettingsSearchEnginesInteractions enum in
+ * histograms/enums.xml
+ */
+export enum SearchEnginesInteractions {
+  ACTIVATE = 0,
+  DEACTIVATE = 1,
+  KEYBOARD_SHORTCUT_TAB = 2,
+  KEYBOARD_SHORTCUT_SPACE_OR_TAB = 3,
+  SITE_SHORTCUTS_SECTION_EXPANDED = 4,
+  SITE_SHORTCUTS_SECTION_COLLAPSED = 5,
+  FEATURE_SHORTCUTS_SECTION_EXPANDED = 6,
+  FEATURE_SHORTCUTS_SECTION_COLLAPSED = 7,
+  MORE_ACTIONS = 8,
+  EDIT_SEARCH_ENGINE = 9,
+  ADD_SEARCH_ENGINE = 10,
+  SUBPAGE_NAVIGATED = 11,
+  EXTENSION_DISABLE = 12,
+  EXTENSION_MANAGE = 13,
+
+  // Leave this at the end.
+  COUNT = 14,
+}
+
+/**
+ * The location from which the search engine choice was made.
+ *
+ * Must be kept in sync with the ChoiceMadeLocation enum in
+ * //components/search_engines/choice_made_location.h
+ */
+export enum ChoiceMadeLocation {
+  // Some unspecified source, not matching some requirements that the full
+  // search engine choice surfaces are compatible with. Might be used for
+  // example when automatically changing default search engine via an extension,
+  // or some enterprise policy.
+  OTHER = 0,
+  // `chrome://settings/search`
+  SEARCH_SETTINGS = 1,
+  // `chrome://settings/searchEngines`
+  SEARCH_ENGINE_SETTINGS = 2,
+  // The search engine choice dialog for existing users or the profile picker
+  // for new users. This value should not be used in settings.
+  CHOICE_SCREEN = 3,
+  // Programmatic import of a search engine choice selected at the device level
+  // (e.g., Android Play API). Behaves mostly like `CHOICE_SCREEN` for initial
+  // recording, but allows repeated signals from the OS to be dropped silently
+  // without triggering assertion failures or creating duplicate records.
+  DEVICE_CHOICE_IMPORT = 4,
+}
+
+export interface SearchEnginesBrowserProxy {
+  setDefaultSearchEngine(
+      id: number, choiceMadeLocation: ChoiceMadeLocation,
+      saveGuestChoice: boolean|null): void;
+
+  setIsActiveSearchEngine(id: number, isActive: boolean): void;
+
+  removeSearchEngine(id: number): void;
+
+  searchEngineEditStarted(id: number): void;
+
+  searchEngineEditCancelled(): void;
+
+  searchEngineEditCompleted(
+      searchEngine: string, keyword: string, queryUrl: string): void;
+
+  getCategorizedTemplateUrls(): Promise<CategorizedTemplateUrls>;
+
+  getSearchEnginesList(): Promise<SearchEnginesInfo>;
+
+  getSaveGuestChoice(): Promise<boolean|null>;
+
+  validateSearchEngineInput(fieldName: string, fieldValue: string):
+      Promise<boolean>;
+
+  /**
+   * Helper function that calls recordHistogram for the
+   * Settings.SearchEngines.Interactions histogram
+   */
+  recordSearchEnginesPageHistogram(interaction: SearchEnginesInteractions):
+      void;
+}
+
+export class SearchEnginesBrowserProxyImpl implements
+    SearchEnginesBrowserProxy {
+  setDefaultSearchEngine(
+      id: number, choiceMadeLocation: ChoiceMadeLocation,
+      saveGuestChoice?: boolean|null) {
+    chrome.send(
+        'setDefaultSearchEngine', [id, choiceMadeLocation, saveGuestChoice]);
+  }
+
+  setIsActiveSearchEngine(id: number, isActive: boolean) {
+    chrome.send('setIsActiveSearchEngine', [id, isActive]);
+    this.recordSearchEnginesPageHistogram(
+        isActive ? SearchEnginesInteractions.ACTIVATE :
+                   SearchEnginesInteractions.DEACTIVATE);
+  }
+
+  removeSearchEngine(id: number) {
+    chrome.send('removeSearchEngine', [id]);
+  }
+
+  searchEngineEditStarted(id: number) {
+    chrome.send('searchEngineEditStarted', [id]);
+  }
+
+  searchEngineEditCancelled() {
+    chrome.send('searchEngineEditCancelled');
+  }
+
+  searchEngineEditCompleted(
+      searchEngine: string, keyword: string, queryUrl: string) {
+    chrome.send('searchEngineEditCompleted', [
+      searchEngine,
+      keyword,
+      queryUrl,
+    ]);
+  }
+
+  getCategorizedTemplateUrls() {
+    return sendWithPromise<CategorizedTemplateUrls>(
+        'getCategorizedTemplateUrls');
+  }
+
+  getSearchEnginesList() {
+    return sendWithPromise<SearchEnginesInfo>('getSearchEnginesList');
+  }
+
+  getSaveGuestChoice() {
+    return sendWithPromise<boolean|null>('getSaveGuestChoice');
+  }
+
+  validateSearchEngineInput(fieldName: string, fieldValue: string) {
+    return sendWithPromise<boolean>(
+        'validateSearchEngineInput', fieldName, fieldValue);
+  }
+
+  recordSearchEnginesPageHistogram(interaction: SearchEnginesInteractions) {
+    chrome.metricsPrivate.recordEnumerationValue(
+        'Settings.SearchEngines.Interactions', interaction,
+        SearchEnginesInteractions.COUNT);
+  }
+
+  static getInstance(): SearchEnginesBrowserProxy {
+    return instance || (instance = new SearchEnginesBrowserProxyImpl());
+  }
+
+  static setInstance(obj: SearchEnginesBrowserProxy) {
+    instance = obj;
+  }
+}
+
+let instance: SearchEnginesBrowserProxy|null = null;

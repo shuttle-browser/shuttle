@@ -1,0 +1,72 @@
+include_rules = [
+  # Existing dependencies within //chrome. There is an active effort to
+  # refactor //chrome/browser/ash to break these dependencies; see b/332804822.
+  # Whenever possible, avoid adding new //chrome dependencies to this list.
+  #
+  # Files residing in certain directories (e.g., //chrome/browser) are listed
+  # individually. Other dependencies within //chrome are listed on a per-
+  # directory basis. See //tools/chromeos/gen_deps.sh for details.
+  "+chrome/browser/ash/lobster/lobster_event_sink.h",
+  "+chrome/browser/ash/lobster/lobster_service_provider.h",
+  "+chrome/browser/ash/magic_boost/magic_boost_controller.h",
+  "+chrome/browser/ash/profiles",
+  "+chrome/browser/browser_process.h",
+  "+chrome/browser/browser_process_platform_part_ash.h",
+  "+chrome/browser/extensions/component_loader.h",
+  "+chrome/browser/feedback",
+  "+chrome/browser/global_features.h",
+  "+chrome/browser/manta",
+  "+chrome/browser/metrics",
+  "+chrome/browser/profiles",
+  "+chrome/browser/ui/ash/input_method",
+  "+chrome/browser/ui/ash/keyboard",
+  "+chrome/browser/ui/aura/accessibility",
+  "+chrome/browser/ui/webui/ash/mako",
+  "+chrome/browser/ui/webui/ash/settings/search",
+  "+chrome/common/chrome_features.h",
+  "+chrome/common/chrome_paths.h",
+  "+chrome/common/extensions",
+
+  # Dependencies outside of //chrome:
+  "-content",
+  "+content/public/browser/web_contents.h"
+]
+
+specific_include_rules = {
+  "component_extension_ime_manager_delegate_impl\\.cc": [
+    "+chrome/grit",
+  ],
+
+  # The configuration layer.
+  "(input_method_delegate_impl|input_method_persistence|browser_state_monitor)"
+  "\\.(h|cc)": [
+    "+chrome/common",
+    "+chrome/browser",
+    "+chrome/test",
+    "+content/public",
+  ],
+
+  # For testing.
+  ".*(_browsertest|_browsertests|_unittest|_test_helper)\\.(h|cc)": [
+    "+chrome/common",
+    "+chrome/browser",
+    "+chrome/test",
+    "+content/public",
+    "+mojo/core/embedder/embedder.h",
+  ],
+  "xkeyboard_unittest\\.cc": [
+    "!content/public/test/test_browser_thread.h",
+  ],
+
+  # TODO: This should not be an allowed dep; see
+  # http://crbug.com/40731089 and
+  # http://b/173144152.
+  "tts_handler\\.h": [
+    "!content/public/browser/tts_controller.h",
+  ],
+
+  # TODO: input method owners should audit this block.
+  "(input|ime|editor).*\\.(h|cc)": [
+    "+content/public/browser",
+  ],
+}

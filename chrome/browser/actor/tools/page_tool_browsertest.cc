@@ -1,0 +1,547 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "base/location.h"
+#include "base/memory/raw_ptr.h"
+#include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/test_future.h"
+#include "base/time/time.h"
+#include "base/values.h"
+#include "chrome/browser/actor/actor_keyed_service.h"
+#include "chrome/browser/actor/actor_metrics.h"
+#include "chrome/browser/actor/actor_task.h"
+#include "chrome/browser/actor/actor_test_util.h"
+#include "chrome/browser/actor/tools/tool_request.h"
+#include "chrome/browser/actor/tools/tools_test_util.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/common/actor.mojom.h"
+#include "chrome/common/chrome_features.h"
+#include "chrome/common/chrome_render_frame.mojom.h"
+#include "components/actor/public/mojom/actor_types.mojom.h"
+#include "components/enterprise/connectors/core/features.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/browser_test_utils.h"
+#include "mojo/public/cpp/bindings/associated_remote.h"
+#include "net/test/embedded_test_server/embedded_test_server.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
+#include "url/gurl.h"
+
+using base::test::TestFuture;
+using content::GetDOMNodeId;
+
+namespace actor {
+
+namespace {
+
+void FlushChromeRenderFrameForTesting(content::RenderFrameHost& rfh) {
+  mojo::AssociatedRemote<chrome::mojom::ChromeRenderFrame> chrome_render_frame;
+  rfh.GetRemoteAssociatedInterfaces()->GetInterface(&chrome_render_frame);
+  chrome_render_frame.FlushForTesting();
+}
+
+class ActorPageToolBrowserTest : public ActorToolsTest {
+ public:
+  void SetUpOnMainThread() override {
+    ActorToolsTest::SetUpOnMainThread();
+    ASSERT_TRUE(embedded_https_test_server().Start());
+  }
+};
+
+class ActorPageToolMagicCursorTest : public ActorPageToolBrowserTest,
+                                     public testing::WithParamInterface<bool> {
+ public:
+  ActorPageToolMagicCursorTest() {
+    if (GetParam()) {
+      feature_list_.InitWithFeatures(
+          {features::kGlicActorSplitValidateAndExecute,
+           features::kGlicActorUiMagicCursor},
+          {});
+    } else {
+      feature_list_.InitWithFeatures(
+          {}, {features::kGlicActorSplitValidateAndExecute,
+               features::kGlicActorUiMagicCursor});
+    }
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_P(ActorPageToolMagicCursorTest, RemovedElement) {
+  const GURL url =
+      embedded_https_test_server().GetURL("example.com", "/actor/link.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  std::optional<int> input_id = GetDOMNodeId(*main_frame(), "#link");
+  ASSERT_TRUE(input_id);
+  base::HistogramTester histogram_tester;
+  {
+    // Click initially works.
+    ActResultFuture result;
+    std::unique_ptr<ToolRequest> action =
+        MakeClickRequest(*main_frame(), input_id.value());
+    actor_task().Act(ToRequestList(action), result.GetCallback());
+    ExpectOkResult(result);
+
+    histogram_tester.ExpectBucketCount(
+        "Actor.PageTool.TimeOfUseObservationSuccess", true, 1);
+  }
+  ASSERT_TRUE(content::EvalJs(web_contents(), R"(
+    let el = document.querySelector('#link');
+    el.parentNode.removeChild(el);
+  )")
+                  .is_ok());
+  {
+    // After element removed, it doesn't work
+    ActResultFuture result;
+    std::unique_ptr<ToolRequest> action =
+        MakeClickRequest(*main_frame(), input_id.value());
+    actor_task().Act(ToRequestList(action), result.GetCallback());
+    ExpectErrorResult(result, mojom::ActionResultCode::kInvalidDomNodeId);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(All, ActorPageToolMagicCursorTest, testing::Bool());
+
+class ActorPageToolTimeoutBrowserTest : public ActorPageToolBrowserTest {
+ public:
+  ActorPageToolTimeoutBrowserTest() {
+    feature_list_.InitWithFeaturesAndParameters(
+        /*enabled_features=*/
+        {{features::kGlicActor,
+          {{"glic-actor-page-tool-timeout", "2s"},
+           {features::kGlicActorPolicyControlExemption.name, "true"}}},
+         {features::kGlicActorIncrementalTyping,
+          {{"glic-actor-long-text-paste-threshold", "1000000000"},
+           {"glic-actor-incremental-typing-long-text-threshold",
+            "1000000000"}}}},
+        /*disabled_features=*/{});
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+// Type so much text that a timeout occurs. Then, try again typing a single
+// character, which should succeed.
+// TODO(crbug.com/475288640): Fix and re-enable test.
+#if defined(ADDRESS_SANITIZER) || defined(MEMORY_SANITIZER)
+#define MAYBE_Timeout DISABLED_Timeout
+#else
+#define MAYBE_Timeout Timeout
+#endif
+IN_PROC_BROWSER_TEST_F(ActorPageToolTimeoutBrowserTest, MAYBE_Timeout) {
+  const GURL url = embedded_https_test_server().GetURL(
+      "example.com", "/actor/cancel_typing.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  // Create a very long string (512KB) to type. This should take much longer
+  // than the 2 sec timeout and ensure the test doesn't pass without the fix.
+  std::string long_string(512 * 1024, 'a');
+
+  std::optional<int> input_id = GetDOMNodeId(*main_frame(), "#input");
+  ASSERT_TRUE(input_id);
+  {
+    std::unique_ptr<ToolRequest> action =
+        MakeTypeRequest(*main_frame(), input_id.value(), long_string,
+                        /*follow_by_enter=*/false);
+
+    ActResultFuture result;
+    actor_task().Act(ToRequestList(action), result.GetCallback());
+    ExpectErrorResult(result, mojom::ActionResultCode::kToolTimeout);
+  }
+
+  // Now, try typing a short string. It should succeed.
+  std::string short_string = "a";
+  {
+    std::unique_ptr<ToolRequest> action =
+        MakeTypeRequest(*main_frame(), input_id.value(), short_string,
+                        /*follow_by_enter=*/false);
+
+    ActResultFuture result;
+    actor_task().Act(ToRequestList(action), result.GetCallback());
+    ExpectOkResult(result);
+  }
+}
+
+class ActorPageToolLongClickDelayBrowserTest
+    : public ActorPageToolBrowserTest,
+      public testing::WithParamInterface<bool> {
+ public:
+  ActorPageToolLongClickDelayBrowserTest() {
+    std::vector<base::test::FeatureRefAndParams> enabled_features_and_params;
+    std::vector<base::test::FeatureRef> disabled_features;
+
+    enabled_features_and_params.push_back(
+        {features::kGlicActor,
+         // Delay holding the mouse down before mouse up.
+         {{"glic-actor-click-delay", "2d"},
+          {"glic-actor-page-tool-timeout", "2d"},
+          {features::kGlicActorPolicyControlExemption.name, "true"}}});
+
+    if (GetParam()) {
+      enabled_features_and_params.push_back(
+          {features::kGlicActorMoveBeforeClick, {}});
+    } else {
+      disabled_features.push_back(features::kGlicActorMoveBeforeClick);
+    }
+
+    feature_list_.InitWithFeaturesAndParameters(enabled_features_and_params,
+                                                disabled_features);
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+// Click, then pause after mouse down. The click gets canceled, and the mouse
+// button is lifted.
+IN_PROC_BROWSER_TEST_P(ActorPageToolLongClickDelayBrowserTest, CancelClick) {
+  const GURL url = embedded_https_test_server().GetURL(
+      "example.com", "/actor/cancel_click.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  std::optional<int> button_id = GetDOMNodeId(*main_frame(), "#clickable");
+  ASSERT_TRUE(button_id);
+
+  const bool move_before_click = GetParam();
+
+  // First, try clicking and canceling. The mouse up should be sent right away.
+  {
+    std::unique_ptr<ToolRequest> action =
+        MakeClickRequest(*main_frame(), button_id.value());
+
+    EXPECT_TRUE(content::ExecJs(main_frame(), R"(
+      window.mousedownPromise = new Promise(resolve => {
+        document.getElementById('clickable').addEventListener('mousedown',
+                                                              resolve);
+      });
+      window.clickPromise = new Promise(resolve => {
+        document.getElementById('clickable').addEventListener('click',
+                                                              resolve);
+      });)",
+                                content::EXECUTE_SCRIPT_NO_RESOLVE_PROMISES));
+    ActResultFuture result_for_cancel;
+    actor_task().Act(ToRequestList(action), result_for_cancel.GetCallback());
+
+    // Wait for the mousedown event to be processed before pausing. This is
+    // needed because the action starts asynchronously. Pausing the task will
+    // immediately cancel the click before it can even start its delay.
+    EXPECT_TRUE(content::ExecJs(main_frame(), "window.mousedownPromise"));
+
+    // Pause the task, which should cancel the click and send the mouse
+    // up right away.
+    actor_task().Pause(/*from_actor=*/true);
+
+    ExpectErrorResult(result_for_cancel, mojom::ActionResultCode::kTaskPaused);
+    FlushChromeRenderFrameForTesting(*main_frame());
+
+    // Wait for the simulated mouseup and click events to be dispatched to and
+    // processed by the renderer before checking the event log.
+    EXPECT_TRUE(content::ExecJs(main_frame(), "window.clickPromise"));
+
+    const content::EvalJsResult eval_result =
+        content::EvalJs(main_frame(), "event_log.join(',')");
+    if (move_before_click) {
+      EXPECT_EQ(
+          "mousemove[BUTTON#clickable],mousedown[BUTTON#clickable],"
+          "mouseup[BUTTON#clickable],click[BUTTON#clickable]",
+          eval_result.ExtractString());
+    } else {
+      EXPECT_EQ(
+          "mousedown[BUTTON#clickable],mouseup[BUTTON#clickable],"
+          "click[BUTTON#clickable]",
+          eval_result.ExtractString());
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         ActorPageToolLongClickDelayBrowserTest,
+                         testing::Bool());
+
+class ActorPageToolLongMouseMoveDelayBrowserTest
+    : public ActorPageToolBrowserTest {
+ public:
+  ActorPageToolLongMouseMoveDelayBrowserTest() {
+    feature_list_.InitWithFeaturesAndParameters(
+        /*enabled_features=*/{{features::kGlicActor,
+                               {{features::kGlicActorPolicyControlExemption
+                                     .name,
+                                 "true"}}},
+                              {features::kGlicActorMoveBeforeClick,
+                               // Delay after mouse move to target and before
+                               // mouse down.
+                               {{"glic-actor-move-before-click-delay", "2d"}}}},
+        /*disabled_features=*/{});
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+// Move mouse to target, then pause. The click gets canceled, but there's no
+// mouse down or up.
+IN_PROC_BROWSER_TEST_F(ActorPageToolLongMouseMoveDelayBrowserTest,
+                       CancelDuringMouseMove) {
+  const GURL url = embedded_https_test_server().GetURL(
+      "example.com", "/actor/cancel_click.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  std::optional<int> button_id = GetDOMNodeId(*main_frame(), "#clickable");
+  ASSERT_TRUE(button_id);
+
+  // First, try clicking and canceling during the mouse move.
+  {
+    std::unique_ptr<ToolRequest> action =
+        MakeClickRequest(*main_frame(), button_id.value());
+
+    EXPECT_TRUE(content::ExecJs(main_frame(), R"(
+      window.mousemovePromise = new Promise(resolve => {
+        document.getElementById('clickable').addEventListener('mousemove',
+                                                              resolve);
+      });)",
+                                content::EXECUTE_SCRIPT_NO_RESOLVE_PROMISES));
+    ActResultFuture result_for_cancel;
+    actor_task().Act(ToRequestList(action), result_for_cancel.GetCallback());
+
+    // Wait for the mousemove event to be processed before pausing.
+    EXPECT_TRUE(content::ExecJs(main_frame(), "window.mousemovePromise"));
+
+    // Pause the task, which should cancel the click.
+    actor_task().Pause(/*from_actor=*/true);
+
+    ExpectErrorResult(result_for_cancel, mojom::ActionResultCode::kTaskPaused);
+    FlushChromeRenderFrameForTesting(*main_frame());
+
+    // There should be a mouse move, but no other events.
+    const content::EvalJsResult eval_result =
+        content::EvalJs(main_frame(), "event_log.join(',')");
+    EXPECT_EQ("mousemove[BUTTON#clickable]", eval_result.ExtractString());
+  }
+}
+
+class ActorPageToolLongKeyDownDelayBrowserTest
+    : public ActorPageToolBrowserTest {
+ public:
+  ActorPageToolLongKeyDownDelayBrowserTest() {
+    feature_list_.InitWithFeaturesAndParameters(
+        /*enabled_features=*/
+        {{features::kGlicActor,
+          // Delay holding down the keyboard key.
+          {{"glic-actor-incremental-typing-key-down-duration", "2d"},
+           {"glic-actor-page-tool-timeout", "2d"},
+           {features::kGlicActorPolicyControlExemption.name, "true"}}}},
+        /*disabled_features=*/{});
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+// Hold down a keyboard key, then pause. The key press gets canceled, and the
+// key is lifted.
+IN_PROC_BROWSER_TEST_F(ActorPageToolLongKeyDownDelayBrowserTest, CancelTyping) {
+  const GURL url = embedded_https_test_server().GetURL(
+      "example.com", "/actor/cancel_typing.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  std::optional<int> input_id = GetDOMNodeId(*main_frame(), "#input");
+  ASSERT_TRUE(input_id);
+
+  // First, try typing and canceling. The key up should be sent right away.
+  {
+    std::unique_ptr<ToolRequest> action =
+        MakeTypeRequest(*main_frame(), input_id.value(), "a",
+                        /*follow_by_enter=*/false);
+
+    EXPECT_TRUE(content::ExecJs(main_frame(), R"(
+      window.keydownPromise = new Promise(resolve => {
+        document.getElementById('input').addEventListener('keydown',
+                                                          resolve);
+      });)",
+                                content::EXECUTE_SCRIPT_NO_RESOLVE_PROMISES));
+    ActResultFuture result_for_cancel;
+    actor_task().Act(ToRequestList(action), result_for_cancel.GetCallback());
+
+    // Wait for the keydown event to be processed before pausing.
+    EXPECT_TRUE(content::ExecJs(main_frame(), "window.keydownPromise"));
+
+    // Pause the task, which should cancel the typing and send the key up right
+    // away.
+    actor_task().Pause(/*from_actor=*/true);
+
+    ExpectErrorResult(result_for_cancel, mojom::ActionResultCode::kTaskPaused);
+    FlushChromeRenderFrameForTesting(*main_frame());
+
+    content::EvalJsResult events_obj =
+        content::EvalJs(main_frame(), "event_log.join(',')");
+    EXPECT_EQ("keydown[INPUT#input],input[INPUT#input],keyup[INPUT#input]",
+              events_obj.ExtractString());
+  }
+}
+
+class ActorPageToolMagicCursorRendererResolvedTest
+    : public ActorPageToolBrowserTest {
+ public:
+  ActorPageToolMagicCursorRendererResolvedTest() {
+    feature_list_.InitWithFeatures({features::kGlicActorSplitValidateAndExecute,
+                                    features::kGlicActorUiMagicCursor},
+                                   {});
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(ActorPageToolMagicCursorRendererResolvedTest,
+                       RecordsMatchOnSuccess) {
+  const GURL url =
+      embedded_https_test_server().GetURL("example.com", "/actor/link.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  std::optional<int> input_id = GetDOMNodeId(*main_frame(), "#link");
+  ASSERT_TRUE(input_id);
+
+  base::HistogramTester histogram_tester;
+
+  ActResultFuture result;
+  std::unique_ptr<ToolRequest> action =
+      MakeClickRequest(*main_frame(), input_id.value());
+  actor_task().Act(ToRequestList(action), result.GetCallback());
+
+  ExpectOkResult(result);
+
+  histogram_tester.ExpectUniqueSample(
+      "Actor.PageTool.SplitModeTimeOfUseFrameStatus",
+      SplitModeTimeOfUseFrameStatus::kMatch, 1);
+}
+
+class ActorPageToolContentScanningTest
+    : public ActorPageToolBrowserTest,
+      public testing::WithParamInterface<bool> {
+ public:
+  ActorPageToolContentScanningTest() {
+    std::vector<base::test::FeatureRef> enabled = {
+        enterprise_connectors::kGlicBulkDataEntrySupport};
+    std::vector<base::test::FeatureRef> disabled;
+    if (GetParam()) {
+      enabled.push_back(features::kGlicActorSplitValidateAndExecute);
+      enabled.push_back(features::kGlicActorUiMagicCursor);
+    } else {
+      disabled.push_back(features::kGlicActorSplitValidateAndExecute);
+      disabled.push_back(features::kGlicActorUiMagicCursor);
+    }
+    feature_list_.InitWithFeatures(enabled, disabled);
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_P(ActorPageToolContentScanningTest,
+                       ContentScanningBlocked) {
+  const GURL url = embedded_https_test_server().GetURL(
+      "example.com", "/actor/cancel_typing.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  std::optional<int> input_id = GetDOMNodeId(*main_frame(), "#input");
+  ASSERT_TRUE(input_id);
+
+  MockPolicyChecker blocked_checker(
+      EnterprisePolicyChecker::UrlBlockReason::kNotBlocked,
+      EnterprisePolicyChecker::ContentValidationReason::kBlocked);
+
+  TaskId task_id = ActorKeyedService::Get(GetProfile())
+                       ->CreateTask(TestTaskSourceInfo(), &blocked_checker);
+
+  std::unique_ptr<ToolRequest> action =
+      MakeTypeRequest(*main_frame(), input_id.value(), "sensitive data",
+                      /*follow_by_enter=*/false);
+
+  ActResultFuture result;
+  ActorKeyedService::Get(GetProfile())
+      ->GetTask(task_id)
+      ->Act(ToRequestList(action), result.GetCallback());
+
+  ExpectErrorResult(
+      result, mojom::ActionResultCode::kActionBlockedByEnterpriseContentScan);
+}
+
+IN_PROC_BROWSER_TEST_P(ActorPageToolContentScanningTest,
+                       ContentScanningAllowed) {
+  const GURL url = embedded_https_test_server().GetURL(
+      "example.com", "/actor/cancel_typing.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  std::optional<int> input_id = GetDOMNodeId(*main_frame(), "#input");
+  ASSERT_TRUE(input_id);
+
+  MockPolicyChecker allowed_checker(
+      EnterprisePolicyChecker::UrlBlockReason::kNotBlocked,
+      EnterprisePolicyChecker::ContentValidationReason::kAllowed);
+
+  TaskId task_id = ActorKeyedService::Get(GetProfile())
+                       ->CreateTask(TestTaskSourceInfo(), &allowed_checker);
+
+  std::unique_ptr<ToolRequest> action =
+      MakeTypeRequest(*main_frame(), input_id.value(), "safe data",
+                      /*follow_by_enter=*/false);
+
+  ActResultFuture result;
+  ActorKeyedService::Get(GetProfile())
+      ->GetTask(task_id)
+      ->Act(ToRequestList(action), result.GetCallback());
+
+  ExpectOkResult(result);
+}
+
+IN_PROC_BROWSER_TEST_P(ActorPageToolContentScanningTest,
+                       ContentScanningDropped) {
+  const GURL url = embedded_https_test_server().GetURL(
+      "example.com", "/actor/cancel_typing.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  std::optional<int> input_id = GetDOMNodeId(*main_frame(), "#input");
+  ASSERT_TRUE(input_id);
+
+  MockPolicyChecker dropped_checker(
+      EnterprisePolicyChecker::UrlBlockReason::kNotBlocked, std::nullopt);
+
+  TaskId task_id = ActorKeyedService::Get(GetProfile())
+                       ->CreateTask(TestTaskSourceInfo(), &dropped_checker);
+
+  std::unique_ptr<ToolRequest> action =
+      MakeTypeRequest(*main_frame(), input_id.value(), "some data",
+                      /*follow_by_enter=*/false);
+
+  ActResultFuture result;
+  ActorKeyedService::Get(GetProfile())
+      ->GetTask(task_id)
+      ->Act(ToRequestList(action), result.GetCallback());
+
+  // Because the callback is dropped without being run,
+  // WrapCallbackWithDefaultInvokeIfNotRun should automatically invoke the
+  // fallback, resolving to kFrameWentAway and preventing a hang.
+  ExpectErrorResult(result, mojom::ActionResultCode::kFrameWentAway);
+}
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         ActorPageToolContentScanningTest,
+                         testing::Bool());
+
+}  // namespace
+
+}  // namespace actor

@@ -1,0 +1,31 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// https://github.com/WICG/PEPC/blob/main/usermedia_element.md
+[
+    Exposed=Window,
+    RuntimeEnabled=UserMediaElement,
+    HTMLConstructor
+] interface HTMLUserMediaElement : HTMLElement {
+  // Legacy migration support: presence of this attribute indicates the legacy
+  // behavior. When the 'type' attribute is explicitly defined, the element
+  // falls back to legacy behavior, the same as the legacy <permission> element.
+  // TODO(crbug.com/493632110): Deprecate `type` attribute once the adoption of
+  // <usermedia> element is stable.
+  [CEReactions, Reflect, RuntimeEnabled=UserMediaElementLegacy] attribute DOMString type;
+
+  [RuntimeEnabled=UserMediaElementLegacy] static boolean isTypeSupported(DOMString type);
+
+  [MeasureAs=CapabilityElementIsValid, RuntimeEnabled=UserMediaElementLegacy] readonly attribute boolean isValid;
+  [MeasureAs=CapabilityElementInvalidReason, RuntimeEnabled=UserMediaElementLegacy] readonly attribute DOMString invalidReason;
+  [MeasureAs=CapabilityElementInitialPermissionStatus, RuntimeEnabled=UserMediaElementLegacy] readonly attribute PermissionState initialPermissionStatus;
+  [MeasureAs=CapabilityElementPermissionStatus, RuntimeEnabled=UserMediaElementLegacy] readonly attribute PermissionState permissionStatus;
+
+  attribute EventHandler onstream;
+
+  [MeasureAs=CapabilityElementOnPromptAction, RuntimeEnabled=UserMediaElementLegacy] attribute EventHandler onpromptaction;
+  [MeasureAs=CapabilityElementOnPromptDismiss, RuntimeEnabled=UserMediaElementLegacy] attribute EventHandler onpromptdismiss;
+  [MeasureAs=CapabilityElementOnValidationStatusChange, RuntimeEnabled=UserMediaElementLegacy] attribute EventHandler onvalidationstatuschange;
+};
+HTMLUserMediaElement includes HTMLMediaCaptureElementBase;

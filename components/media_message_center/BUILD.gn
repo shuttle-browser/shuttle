@@ -1,0 +1,46 @@
+# Copyright 2019 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+component("media_message_center") {
+  sources = [
+    "media_notification_container.h",
+    "media_notification_item.cc",
+    "media_notification_item.h",
+    "media_notification_util.cc",
+    "media_notification_util.h",
+    "media_notification_view.cc",
+    "media_notification_view.h",
+    "notification_theme.cc",
+    "notification_theme.h",
+  ]
+
+  defines = [ "IS_MEDIA_MESSAGE_CENTER_IMPL" ]
+
+  public_deps = [ "//services/media_session/public/mojom" ]
+
+  deps = [
+    "//base",
+    "//components/url_formatter",
+    "//services/media_session/public/cpp",
+    "//skia",
+    "//ui/color",
+    "//ui/views",
+  ]
+}
+
+static_library("test_support") {
+  testonly = true
+
+  sources = [
+    "mock_media_notification_item.cc",
+    "mock_media_notification_item.h",
+    "mock_media_notification_view.cc",
+    "mock_media_notification_view.h",
+  ]
+
+  deps = [
+    ":media_message_center",
+    "//testing/gmock",
+  ]
+}

@@ -1,0 +1,46 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ui/gfx/mojom/color_space_mojom_traits.h"
+
+#include <cmath>
+
+namespace mojo {
+
+// static
+bool StructTraits<gfx::mojom::ColorSpaceDataView, gfx::ColorSpace>::Read(
+    gfx::mojom::ColorSpaceDataView input,
+    gfx::ColorSpace* out) {
+  if (!input.ReadPrimaries(&out->primaries_))
+    return false;
+  if (!input.ReadTransfer(&out->transfer_))
+    return false;
+  if (!input.ReadMatrix(&out->matrix_))
+    return false;
+  if (!input.ReadRange(&out->range_))
+    return false;
+  {
+    base::span<float> matrix(out->custom_primary_matrix_);
+    if (!input.ReadCustomPrimaryMatrix(&matrix))
+      return false;
+    for (float val : matrix) {
+      if (!std::isfinite(val)) [[unlikely]] {
+        return false;
+      }
+    }
+  }
+  {
+    base::span<float> matrix(out->transfer_params_);
+    if (!input.ReadTransferParams(&matrix))
+      return false;
+    for (float val : matrix) {
+      if (!std::isfinite(val)) [[unlikely]] {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+}  // namespace mojo

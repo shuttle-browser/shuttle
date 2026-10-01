@@ -1,0 +1,16 @@
+# Copyright 2021 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//extensions/buildflags/buildflags.gni")
+
+# IMPORTANT
+# We are not accepting any new build flags in //chrome. See
+# docs/chrome_browser_design_principles.md.
+
+declare_args() {
+  # Whether the file_util service supports .TAR.XZ and .TAR file extraction.
+  # Currently only used by imageWriterPrivate extension API, so only enabled
+  # when Extensions are enabled.
+  enable_extractors = enable_extensions
+}

@@ -1,0 +1,253 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/common/request_header_integrity/request_header_integrity_url_loader_throttle.h"
+
+#include <algorithm>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "base/base64.h"
+#include "base/command_line.h"
+#include "base/compiler_specific.h"
+#include "base/containers/span.h"
+#include "base/feature_list.h"
+#include "base/hash/sha1.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/strings/string_util.h"
+#include "build/branding_buildflags.h"
+#include "chrome/common/channel_info.h"
+#include "chrome/common/platform_runtime/platform_runtime_impl.h"
+#include "components/embedder_support/user_agent_utils.h"
+#include "components/google/core/common/google_util.h"
+#include "content/public/common/content_switches.h"
+#include "google_apis/google_api_keys.h"
+#include "net/url_request/redirect_info.h"
+#include "services/network/public/cpp/http_request_headers_update_params.h"
+#include "services/network/public/cpp/resource_request.h"
+#include "services/network/public/mojom/network_context.mojom.h"
+#include "url/gurl.h"
+
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+#include "chrome/common/request_header_integrity/internal/build_derived_values.h"
+#include "chrome/common/request_header_integrity/internal/google_header_names.h"
+#include "chrome/common/request_header_integrity/internal/integrity_seed_internal.h"
+#endif
+
+#if !defined(CHANNEL_NAME_HEADER_NAME)
+#define CHANNEL_NAME_HEADER_NAME "X-Placeholder-1"
+#endif
+
+#if !defined(LASTCHANGE_YEAR_HEADER_NAME)
+#define LASTCHANGE_YEAR_HEADER_NAME "X-Placeholder-2"
+#endif
+
+#if !defined(VALIDATE_HEADER_NAME)
+#define VALIDATE_HEADER_NAME "X-Placeholder-3"
+#endif
+
+#if !defined(COPYRIGHT_HEADER_NAME)
+#define COPYRIGHT_HEADER_NAME "X-Placeholder-4"
+#endif
+
+#if !defined(CHROME_COPYRIGHT)
+#define CHROME_COPYRIGHT "X-COPYRIGHT"
+#endif
+
+#if !defined(LASTCHANGE_YEAR)
+#define LASTCHANGE_YEAR "1969"
+#endif
+
+namespace request_header_integrity {
+
+namespace {
+
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+// These values are persisted to UMA logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class PlatformRuntimeIntegrityResult {
+  // kComponentUnavailable = 0, // OBSOLETE.
+  kLibraryUnavailable = 1,
+  kSuccess = 2,
+  kFailure = 3,
+  kMaxValue = kFailure,
+};
+#endif
+
+BASE_FEATURE(kRequestHeaderIntegrity, base::FEATURE_ENABLED_BY_DEFAULT);
+
+#if !BUILDFLAG(GOOGLE_CHROME_BRANDING)
+// Seed for header integrity (empty for unbranded builds).
+constexpr char kIntegritySeed[] = "";
+#endif
+
+// Returns extended, stable, beta, dev, or canary if a channel is available,
+// otherwise the empty string.
+std::string GetChannelName() {
+  std::string channel_name =
+      chrome::GetChannelName(chrome::WithExtendedStable(true));
+
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  if (channel_name.empty()) {
+    // For branded builds, stable is represented as the empty string.
+    channel_name = "stable";
+  }
+#endif
+
+  if (base::EqualsCaseInsensitiveASCII(channel_name, "unknown")) {
+    return "";
+  }
+
+  return channel_name;
+}
+
+void AddRequestIntegrityHeaders(net::HttpRequestHeaders* headers) {
+  const std::string digest =
+      base::Base64Encode(base::SHA1Hash(base::as_byte_span(
+          std::string(kIntegritySeed) + google_apis::GetAPIKey() +
+          embedder_support::GetUserAgent())));
+  const std::string channel_name = GetChannelName();
+  if (!channel_name.empty()) {
+    headers->SetHeader(CHANNEL_NAME_HEADER_NAME, channel_name);
+  }
+  headers->SetHeader(LASTCHANGE_YEAR_HEADER_NAME, LASTCHANGE_YEAR);
+  headers->SetHeader(VALIDATE_HEADER_NAME, digest);
+  headers->SetHeader(COPYRIGHT_HEADER_NAME, CHROME_COPYRIGHT);
+}
+
+void AddRequestIntegrityHeaderNamesToVector(std::vector<std::string>* vector) {
+  vector->push_back(CHANNEL_NAME_HEADER_NAME);
+  vector->push_back(LASTCHANGE_YEAR_HEADER_NAME);
+  vector->push_back(VALIDATE_HEADER_NAME);
+  vector->push_back(COPYRIGHT_HEADER_NAME);
+}
+
+void SetHeader(void* headers, const char* name, const char* value) {
+  if (!name || !value) {
+    return;
+  }
+  static_cast<net::HttpRequestHeaders*>(headers)->SetHeader(name, value);
+}
+
+bool GetHeader(void* headers,
+               const char* name,
+               char* value_buf,
+               size_t value_buf_size) {
+  if (!name || !value_buf || value_buf_size == 0) {
+    return false;
+  }
+  auto* req_headers = static_cast<net::HttpRequestHeaders*>(headers);
+  std::optional<std::string> value = req_headers->GetHeader(name);
+  if (!value) {
+    return false;
+  }
+  // SAFETY: This is a callback implementing the C-style GetHeaderFunction API.
+  // The raw pointer and size are wrapped in a base::span and use bounds-safe
+  // operations for all copying.
+  auto value_span = UNSAFE_BUFFERS(base::span(value_buf, value_buf_size));
+  size_t copy_len = std::min(value->length(), value_buf_size - 1);
+  value_span.first(copy_len).copy_from(base::span(*value).first(copy_len));
+  value_span[copy_len] = '\0';
+  return true;
+}
+
+void ProcessRequestHeaders(net::HttpRequestHeaders* headers, const GURL& url) {
+  // Don't process request headers in non-browser processes since the Platform
+  // Runtime component is not loaded there, and only main frame requests need
+  // header processing.
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kProcessType)) {
+    return;
+  }
+  platform_runtime::PlatformRuntimeImpl* runtime =
+      platform_runtime::PlatformRuntimeImpl::GetInstance();
+  CHECK(runtime);
+  scoped_refptr<platform_runtime::PlatformRuntimeLibrary> loaded_lib =
+      runtime->GetLoadedLibrary();
+  if (!loaded_lib) {
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+    base::UmaHistogramEnumeration(
+        "ComponentUpdater.PlatformRuntime.RequestHeaderIntegrityResult",
+        PlatformRuntimeIntegrityResult::kLibraryUnavailable);
+#endif
+    return;
+  }
+
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  bool result = loaded_lib->ProcessRequestHeaders(headers, GetHeader, SetHeader,
+                                                  url.spec().c_str());
+  base::UmaHistogramEnumeration(
+      "ComponentUpdater.PlatformRuntime.RequestHeaderIntegrityResult",
+      result ? PlatformRuntimeIntegrityResult::kSuccess
+             : PlatformRuntimeIntegrityResult::kFailure);
+#else
+  loaded_lib->ProcessRequestHeaders(headers, GetHeader, SetHeader,
+                                    url.spec().c_str());
+#endif
+}
+
+}  // namespace
+
+RequestHeaderIntegrityURLLoaderThrottle::
+    RequestHeaderIntegrityURLLoaderThrottle() = default;
+
+RequestHeaderIntegrityURLLoaderThrottle::
+    ~RequestHeaderIntegrityURLLoaderThrottle() = default;
+
+void RequestHeaderIntegrityURLLoaderThrottle::DetachFromCurrentSequence() {}
+
+void RequestHeaderIntegrityURLLoaderThrottle::WillStartRequest(
+    network::ResourceRequest* request,
+    bool* defer) {
+  if (google_util::IsGoogleAssociatedDomainUrl(request->url)) {
+    AddRequestIntegrityHeaders(&(request->cors_exempt_headers));
+  }
+  ProcessRequestHeaders(&(request->cors_exempt_headers), request->url);
+}
+
+void RequestHeaderIntegrityURLLoaderThrottle::WillRedirectRequest(
+    net::RedirectInfo* redirect_info,
+    const network::mojom::URLResponseHead& response_head,
+    bool* defer,
+    network::HttpRequestHeadersUpdateParams* headers_update_params) {
+  if (google_util::IsGoogleAssociatedDomainUrl(redirect_info->new_url)) {
+    AddRequestIntegrityHeaders(
+        &headers_update_params->modified_cors_exempt_headers);
+  } else {
+    AddRequestIntegrityHeaderNamesToVector(
+        &headers_update_params->removed_headers);
+  }
+  ProcessRequestHeaders(&headers_update_params->modified_cors_exempt_headers,
+                        redirect_info->new_url);
+}
+
+// static
+bool RequestHeaderIntegrityURLLoaderThrottle::IsFeatureEnabled() {
+  return base::FeatureList::IsEnabled(kRequestHeaderIntegrity);
+}
+
+// static
+void RequestHeaderIntegrityURLLoaderThrottle::UpdateCorsExemptHeaders(
+    network::mojom::NetworkContextParams* params) {
+  AddRequestIntegrityHeaderNamesToVector(&(params->cors_exempt_header_list));
+}
+
+// static
+void RequestHeaderIntegrityURLLoaderThrottle::
+    ModifyRequestIntegrityHeadersForPrefetch(
+        const GURL& url,
+        std::vector<std::string>& removed_headers,
+        net::HttpRequestHeaders& cors_exempt_headers) {
+  CHECK(IsFeatureEnabled());
+  if (google_util::IsGoogleAssociatedDomainUrl(url)) {
+    AddRequestIntegrityHeaders(&cors_exempt_headers);
+  } else {
+    AddRequestIntegrityHeaderNamesToVector(&removed_headers);
+  }
+  ProcessRequestHeaders(&cors_exempt_headers, url);
+}
+
+}  // namespace request_header_integrity

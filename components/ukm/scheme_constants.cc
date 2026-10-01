@@ -1,0 +1,15 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/ukm/scheme_constants.h"
+
+namespace ukm {
+
+const char kAppScheme[] = "app";
+const char kChromeUIScheme[] = "chrome";
+const char kExtensionScheme[] = "chrome-extension";
+const char kChromeDevToolsScheme[] = "devtools";
+const char kIsolatedAppScheme[] = "isolated-app";
+
+}  // namespace ukm

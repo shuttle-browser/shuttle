@@ -1,0 +1,196 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.ui.appmenu;
+
+import android.view.View;
+
+import androidx.annotation.IntDef;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+
+/**
+ * Responsible for handling the creation, showing, hiding of the AppMenu and notifying the
+ * AppMenuObservers about these actions. This interface may be used by classes outside of app_menu
+ * to interact with the app menu.
+ */
+@NullMarked
+public interface AppMenuHandler {
+    @IntDef({
+        AppMenuItemType.STANDARD,
+        AppMenuItemType.STANDARD_NO_ICON,
+        AppMenuItemType.TITLE_BUTTON,
+        AppMenuItemType.BUTTON_ROW,
+        AppMenuItemType.MENU_ITEM_WITH_SUBMENU,
+        AppMenuItemType.MENU_ITEM_WITH_SUBMENU_NO_ICON,
+        AppMenuItemType.SUBMENU_HEADER,
+        AppMenuItemType.DIVIDER,
+        AppMenuItemType.BOOKMARK,
+        AppMenuItemType.TAB,
+        AppMenuItemType.RECENT_ENTRY,
+        AppMenuItemType.RECENT_ENTRY_NO_ICON,
+        AppMenuItemType.EMPTY,
+        AppMenuItemType.HEADER
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    @interface AppMenuItemType {
+        /** Regular Android menu item that contains a title and an icon if icon is specified. */
+        int STANDARD = 0;
+
+        /**
+         * Regular Android menu item that contains only a title, without an icon or start padding.
+         */
+        int STANDARD_NO_ICON = 1;
+
+        /**
+         * Menu item that has two buttons, the first one is a title and the second one is an icon.
+         * It is different from the regular menu item because it contains two separate buttons.
+         */
+        int TITLE_BUTTON = 2;
+
+        /**
+         * Menu item that has multiple buttons (no more than 5). Every one of these buttons is
+         * displayed as an icon.
+         */
+        int BUTTON_ROW = 3;
+
+        /** Menu item that when contains submenus. */
+        int MENU_ITEM_WITH_SUBMENU = 4;
+
+        /** Menu item that contains submenus, without an icon or start padding. */
+        int MENU_ITEM_WITH_SUBMENU_NO_ICON = 5;
+
+        /** The header for submenus when submenus are displayed in drilldown. */
+        int SUBMENU_HEADER = 6;
+
+        /** A divider item to distinguish between menu item groupings. */
+        int DIVIDER = 7;
+
+        /** A bookmark item. */
+        int BOOKMARK = 8;
+
+        /** A tab item for tab groups. */
+        int TAB = 9;
+
+        /** A recent entry item. */
+        int RECENT_ENTRY = 10;
+
+        /** A recent entry item with no icon. */
+        int RECENT_ENTRY_NO_ICON = 11;
+
+        /** An item indicating that a submenu is empty. */
+        int EMPTY = 12;
+
+        /** A header item. */
+        int HEADER = 13;
+
+        /**
+         * The number of menu item types specified above. If you add a menu item type you MUST
+         * increment this.
+         */
+        int NUM_ENTRIES = 14;
+    }
+
+    /**
+     * Adds the observer to App Menu.
+     * @param observer Observer that should be notified about App Menu changes.
+     */
+    void addObserver(AppMenuObserver observer);
+
+    /**
+     * Removes the observer from the App Menu.
+     *
+     * @param observer Observer that should no longer be notified about App Menu changes.
+     */
+    void removeObserver(AppMenuObserver observer);
+
+    /**
+     * Calls attention to this menu and a particular item in it. The menu will only stay highlighted
+     * for one menu usage. After that the highlight will be cleared.
+     *
+     * @param highlightItemId The id of a menu item to highlight or {@code null} to turn off the
+     *     highlight.
+     */
+    void setMenuHighlight(Integer highlightItemId);
+
+    /**
+     * Overloaded setMenuHighlight method to control whether the menu button itself is highlighted
+     * or not.
+     *
+     * @param highlightItemId The id of a menu item to highlight or {@code null} to turn off the
+     *     highlight.
+     * @param shouldHighlightMenuButton Whether the triple dot app menu button should be
+     *     highlighted.
+     */
+    void setMenuHighlight(Integer highlightItemId, boolean shouldHighlightMenuButton);
+
+    /**
+     * Overloaded setMenuHighlight method to control whether the menu is highlighted, and whether
+     * the menu list should automatically scroll the item into view when shown.
+     *
+     * @param highlightItemId The id of a menu item to highlight or {@code null} to turn off the
+     *     highlight.
+     * @param shouldHighlightMenuButton Whether the triple dot app menu button should be
+     *     highlighted.
+     * @param shouldScroll Whether the list should automatically scroll the item into view.
+     */
+    default void setMenuHighlight(
+            Integer highlightItemId, boolean shouldHighlightMenuButton, boolean shouldScroll) {
+        setMenuHighlight(highlightItemId, shouldHighlightMenuButton);
+    }
+
+    /** Clears the menu highlight. */
+    void clearMenuHighlight();
+
+    /**
+     * @return Whether the App Menu is currently showing.
+     */
+    boolean isAppMenuShowing();
+
+    /** Requests to hide the App Menu. */
+    void hideAppMenu();
+
+    /**
+     * Show the app menu.
+     *
+     * @param anchorView Anchor view used for the popup
+     * @param startDragging Whether dragging is started
+     * @return True, if the menu is shown, false, if menu is not shown.
+     */
+    boolean showAppMenu(@Nullable View anchorView, boolean startDragging);
+
+    /**
+     * Show the app menu.
+     *
+     * @param anchorView Anchor view used for the popup
+     * @param startDragging Whether dragging is started
+     * @param isFromBottomBar Whether the menu is anchored to the bottom bar
+     * @return True, if the menu is shown, false, if menu is not shown.
+     */
+    default boolean showAppMenu(
+            @Nullable View anchorView, boolean startDragging, boolean isFromBottomBar) {
+        return showAppMenu(anchorView, startDragging);
+    }
+
+    /**
+     * @return A new {@link AppMenuButtonHelper} to hook up to a view containing a menu button.
+     */
+    AppMenuButtonHelper createAppMenuButtonHelper();
+
+    /**
+     * @return {@link AppMenuPropertiesDelegate} that builds the menu list.
+     */
+    AppMenuPropertiesDelegate getMenuPropertiesDelegate();
+
+    /**
+     * Sets the content description text for the app menu view.
+     *
+     * @param desc Content description.
+     */
+    void setContentDescription(@Nullable String desc);
+}

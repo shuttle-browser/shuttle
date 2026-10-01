@@ -1,0 +1,24 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+/**
+ * @fileoverview Defines StoreClient, a Polymer mixin to tie a front-end
+ * element to back-end data from the store.
+ */
+
+import {makeStoreClientMixin} from 'chrome://resources/ash/common/cr_elements/store_client/store_client.js';
+import type {StoreClientInterface} from 'chrome://resources/ash/common/cr_elements/store_client/store_client.js';
+
+import type {AppManagementActions} from './actions.js';
+import {initStoreAndListeners} from './api_listener.js';
+import {AppManagementStore} from './store.js';
+import type {AppManagementPageState} from './store.js';
+
+initStoreAndListeners();
+
+export interface AppManagementStoreMixinInterface extends
+    StoreClientInterface<AppManagementPageState, AppManagementActions> {}
+
+export const AppManagementStoreMixin =
+    makeStoreClientMixin(AppManagementStore.getInstance);

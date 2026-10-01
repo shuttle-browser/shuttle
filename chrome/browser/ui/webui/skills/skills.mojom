@@ -1,0 +1,195 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module skills.mojom;
+
+import "components/skills/public/skill.mojom";
+import "components/skills/public/skill_metrics.mojom";
+import "url/mojom/url.mojom";
+
+// Initial data needed when opening a dialog.
+struct InitialDialogState {
+  // The type of dialog to open.
+  skills.mojom.SkillsDialogType dialog_type;
+  // The skill to be edited or remixed.
+  skills.mojom.Skill skill;
+};
+
+// ----------------------------------------------------------------------------
+// V1 skills interfaces.
+// ----------------------------------------------------------------------------
+
+// Factory ensures that the Page and PageHandler interfaces are always created
+// together without requiring an initialization call from the WebUI to the
+// handler.
+// Used by the WebUI page for communication.
+interface PageHandlerFactory {
+  // The WebUI page's |SkillsPageBrowserProxy| singleton calls this method
+  // when the page is first initialized.
+  CreatePageHandler(pending_remote<SkillsPage> page,
+                    pending_receiver<PageHandler> handler);
+
+  // The dialog WebUI's |SkillsDialogBrowserProxy| singleton calls this method
+  // when the page is first initialized.
+  CreateDialogHandler(pending_receiver<DialogHandler> handler);
+};
+
+// Holds the initial data for the browse skills page.
+struct BrowseSkillsInitialState {
+  // Map of skill category to a list of skills.
+  map<string, array<skills.mojom.Skill>> skill_map;
+  // Special list of topics to be displayed on chrome://skills/browse.
+  array<TopicInfo> topics_info_list;
+};
+
+// Called from TS side of chrome://skills (Renderer -> Browser).
+interface PageHandler {
+  // Called when the user wants to either add or edit a skill.
+  // `dialog_type` determines whether to open the add or edit dialog.
+  // `skill`:
+  // - If `skill` is passed in add, populates the dialog with passed in
+  //   skill information.
+  //   If 'skill' is null, uses a default template.
+  // - If `skill` is passed in edit, populates the dialog with passed in
+  //   skill information.
+  //   In edit mode, the `skill` should always be passed in.
+  OpenSkillsDialog(skills.mojom.SkillsDialogType dialog_type,
+                   skills.mojom.Skill? skill);
+
+  // Gets the initial list of user skills.
+  GetInitialUserSkills() => (array<skills.mojom.Skill> skills);
+
+  // Gets the initial list of 1P skills, called whenever the
+  // browse skills page is inserted into the DOM.
+  GetInitial1PSkills() => (BrowseSkillsInitialState initial_state);
+
+  // Called whenever the user navigates to chrome://skills/browse-skills.
+  // Requests a new download of 1P skills from the skills service.
+  Request1PSkills();
+
+  // Called when the user wants to delete a skill.
+  DeleteSkill(string skill_id);
+
+  // Called whenever the user wants to save a 1P skill.
+  // `success` is true if the skill still exists, false if it was deleted.
+  // If fetching the new set of 1P skills fails, `success` will be false.
+  MaybeSave1PSkill(string skill_id) => (bool success);
+
+  // Records user actions on the Skills management pages.
+  RecordSkillsManagementAction(skills.mojom.SkillsManagementPage page,
+                               skills.mojom.SkillsManagementAction action);
+};
+
+// Called from C++ side of chrome://skills (Browser -> Renderer)
+interface SkillsPage {
+  // Notifies the UI that a skill has been updated or added. All skills
+  // should be rerendered to show in the correct order.
+  UpdateSkills(array<skills.mojom.Skill> skills);
+
+  // Notifies the UI that a skill has been deleted.
+  // This may be extended to support multiple skill deletions in the future.
+  RemoveSkill(string skill_id);
+
+  // Notifies the UI that there is an updated state of 1P skills.
+  Update1PSkills(BrowseSkillsInitialState state);
+
+  // Notifies the UI that the Skills feature enabled status changed.
+  SetSkillsEnabled(bool enabled);
+};
+
+// Called from TS side of chrome://skills/dialog (Renderer -> Browser)
+// Handler for the add/edit skill dialog.
+interface DialogHandler {
+  // Called when the user clicks the "Save" button in the dialog.
+  SubmitSkill(skills.mojom.Skill skill,
+              SkillsPromptRefinementOutcome refinement_outcome) => (bool success);
+
+  // Called when the user clicks the "Delete" button in the dialog.
+  DeleteSkill(string skill_id);
+
+  // Called when the user clicks the "Refine" button in the dialog.
+  RefineSkill(skills.mojom.Skill skill) => (skills.mojom.Skill? refined_skill);
+
+  // Called when to automatically generate name and emoji for a skill.
+  GenerateNameAndEmoji(skills.mojom.Skill skill)
+    => (skills.mojom.Skill? refined_skill);
+
+  // Called when the user clicks the "Cancel" button in the dialog.
+  CloseDialog();
+
+  // Trigger the OS picker
+  ShowEmojiPicker();
+
+  // Called when dialog is opened to get the initial state.
+  GetInitialState() => (InitialDialogState initial_dialog_state);
+
+  // Gets the signed in user's email.
+  GetSignedInEmail() => (string email);
+};
+
+// ----------------------------------------------------------------------------
+// V2 skills interfaces.
+// ----------------------------------------------------------------------------
+
+// Holds temporary unsaved data for a skill that is transitioning from
+// a dialog to the full page editor.
+struct PendingEditorData {
+  string name;
+  string description;
+  string instructions;
+  string icon;
+  url.mojom.Url url;
+};
+
+// Called from C++ side of chrome://skills (Browser -> Renderer)
+interface SkillsPageV2 {
+  // Notifies the UI that provided skills changed and need refreshing.
+  LoadProvidedSkills(array<skills.mojom.Skill> skills);
+};
+
+// Called from TS side of chrome://skills (Renderer -> Browser).
+interface SkillsPageHandler {
+  // Sets the page remote for Chrome -> WebUI communication.
+  SetPage(pending_remote<SkillsPageV2> page);
+
+  // Gets the full skill details for the given provided skill id (sent to client
+  // when requested). Returns null if no skill with the given id is found.
+  GetProvidedSkill(string skill_id) => (skills.mojom.Skill? skill);
+
+  // Gets the list of provided skills (sent to client on load).
+  GetProvidedSkills() => (array<skills.mojom.Skill> skills);
+
+  // Sync necessary cookies to the webview partition.
+  SyncCookies() => (bool success);
+
+  // Shows a save toast.
+  ShowSaveToast();
+
+  // Shows a save and invoke toast.
+  // `skill_id` is a unique identifier. We use a string type (instead of a native
+  // UUID type) to match the proto definition, and to allow potential format
+  // changes in the future, even though it currently contains a UUID.
+  // `skill_icon` is an emoji.
+  ShowSaveAndInvokeToast(string skill_id, string skill_name, string skill_icon);
+
+  // Shows a delete toast. Returns true if the undo button was clicked.
+  ShowDeleteToast(string skill_id) => (bool action_clicked);
+
+  // Invokes a skill.
+  // skill_name and skill_icon are only forwarded to the
+  // Glic WebUI and not used or stored in the browser.
+  InvokeSkill(string skill_id, string skill_name, string skill_icon);
+
+  // Sends a prompt to the side panel.
+  SendPrompt(string prompt);
+
+  // Closes the skills dialog. If `data` is provided, it stores it and opens
+  // the full page editor.
+  CloseDialog(PendingEditorData? data);
+
+  // Retrieves pending editor data.
+  GetPendingEditorData() => (PendingEditorData? data);
+};
+
+

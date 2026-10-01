@@ -1,0 +1,47 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/modules/gamepad/gamepad_button.h"
+
+#include "base/notreached.h"
+#include "device/gamepad/public/cpp/gamepad.h"
+
+namespace blink {
+
+GamepadButton::GamepadButton() : value_(0.), pressed_(false), touched_(false) {}
+
+namespace {
+
+V8GamepadButtonType::Enum ToV8GamepadButtonType(
+    device::GamepadButtonType type) {
+  switch (type) {
+    case device::GamepadButtonType::kNonStandard:
+      return V8GamepadButtonType::Enum::kNonStandard;
+    case device::GamepadButtonType::kStandard:
+      return V8GamepadButtonType::Enum::kStandard;
+    case device::GamepadButtonType::kTrackpad:
+      return V8GamepadButtonType::Enum::kTrackpad;
+  }
+  NOTREACHED();
+}
+
+}  // namespace
+
+bool GamepadButton::IsEqual(const device::GamepadButton& device_button) const {
+  return value_ == device_button.value && pressed_ == device_button.pressed &&
+         touched_ == (device_button.touched || device_button.pressed ||
+                      (device_button.value > 0.0f)) &&
+         type_ == ToV8GamepadButtonType(device_button.type);
+}
+
+void GamepadButton::UpdateValuesFrom(
+    const device::GamepadButton& device_button) {
+  value_ = device_button.value;
+  pressed_ = device_button.pressed;
+  touched_ = (device_button.touched || device_button.pressed ||
+              (device_button.value > 0.0f));
+  type_ = ToV8GamepadButtonType(device_button.type);
+}
+
+}  // namespace blink

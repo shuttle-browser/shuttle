@@ -1,0 +1,18 @@
+include_rules = [
+  "+chromeos/dbus/constants",
+  "+components/enterprise/connectors/core",
+  "+components/certificate_matching",
+  "+components/keyed_service/core",
+  "+components/signin/public",
+  "+components/policy/core",
+  "+components/policy/proto",
+  "+components/prefs",
+  "+components/safe_browsing/android",
+  "+components/safe_browsing/core",
+  "+components/version_info",
+  "+content/public/browser",
+  "+content/public/test",
+  "+net",
+  "+mojo/public/cpp/bindings",
+  "+third_party/boringssl/src/include",
+]

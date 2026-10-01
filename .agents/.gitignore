@@ -1,0 +1,15 @@
+/*
+!.gitignore
+!OWNERS
+
+# We want to ignore rules besides any that we check in
+# to allow users to make their own.
+!rules/
+/rules/*
+!/rules/README.md
+
+# We want to ignore skills besides any that we check in (elsewhere)
+# to allow users to make their own.
+!skills/
+/skills/*
+!/skills/README.md

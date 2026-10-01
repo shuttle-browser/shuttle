@@ -1,0 +1,476 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/location_bar/ui_bundled/location_bar_coordinator.h"
+
+#import <memory>
+#import <string>
+#import <vector>
+
+#import "base/test/scoped_feature_list.h"
+#import "components/feature_engagement/public/event_constants.h"
+#import "components/feature_engagement/public/feature_constants.h"
+#import "components/feature_engagement/public/tracker.h"
+#import "components/feature_engagement/test/mock_tracker.h"
+#import "components/omnibox/browser/test_location_bar_model.h"
+#import "components/send_tab_to_self/features.h"
+#import "components/send_tab_to_self/metrics_util.h"
+#import "components/variations/scoped_variations_ids_provider.h"
+#import "components/variations/variations_ids_provider.h"
+#import "ios/chrome/browser/autocomplete/model/autocomplete_browser_agent.h"
+#import "ios/chrome/browser/autocomplete/model/autocomplete_classifier_factory.h"
+#import "ios/chrome/browser/favicon/model/favicon_service_factory.h"
+#import "ios/chrome/browser/favicon/model/ios_chrome_favicon_loader_factory.h"
+#import "ios/chrome/browser/favicon/model/ios_chrome_large_icon_service_factory.h"
+#import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
+#import "ios/chrome/browser/fullscreen/ui_bundled/fullscreen_controller.h"
+#import "ios/chrome/browser/history/model/history_service_factory.h"
+#import "ios/chrome/browser/intelligence/bwg/model/gemini_service_factory.h"
+#import "ios/chrome/browser/intelligence/features/features.h"
+#import "ios/chrome/browser/location_bar/ui_bundled/location_bar_view_controller.h"
+#import "ios/chrome/browser/omnibox/ui/omnibox_focus_delegate.h"
+#import "ios/chrome/browser/search_engines/model/template_url_service_factory.h"
+#import "ios/chrome/browser/shared/coordinator/layout_guide/layout_guide_scene_agent.h"
+#import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
+#import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
+#import "ios/chrome/browser/shared/model/web_state_list/web_state_opener.h"
+#import "ios/chrome/browser/shared/public/commands/browser_coordinator_commands.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/contextual_panel_entrypoint_iph_commands.h"
+#import "ios/chrome/browser/shared/public/commands/contextual_sheet_commands.h"
+#import "ios/chrome/browser/shared/public/commands/gemini_commands.h"
+#import "ios/chrome/browser/shared/public/commands/help_commands.h"
+#import "ios/chrome/browser/shared/public/commands/lens_commands.h"
+#import "ios/chrome/browser/shared/public/commands/page_action_menu_commands.h"
+#import "ios/chrome/browser/shared/public/commands/qr_scanner_commands.h"
+#import "ios/chrome/browser/shared/public/commands/quick_delete_commands.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/shared/public/commands/send_tab_to_self_commands.h"
+#import "ios/chrome/browser/shared/public/commands/settings_commands.h"
+#import "ios/chrome/browser/shared/public/commands/toolbar_commands.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
+#import "ios/chrome/browser/toolbar/legacy/ui_bundled/fullscreen/toolbars_size_browser_agent.h"
+#import "ios/chrome/browser/url_loading/model/fake_url_loading_browser_agent.h"
+#import "ios/chrome/browser/url_loading/model/url_loading_notifier_browser_agent.h"
+#import "ios/chrome/browser/url_loading/model/url_loading_params.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
+#import "ios/web/public/test/fakes/fake_web_state.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "testing/platform_test.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+#import "third_party/ocmock/gtest_support.h"
+
+using variations::VariationsIdsProvider;
+
+@interface TestOmniboxFocusDelegate : NSObject <OmniboxFocusDelegate>
+
+@end
+
+@implementation TestOmniboxFocusDelegate {
+  std::unique_ptr<LocationBarModel> _model;
+}
+
+- (void)omniboxDidBecomeFirstResponder {
+}
+- (void)omniboxDidResignFirstResponder {
+}
+- (void)omniboxDidEndEditing {
+}
+
+- (LocationBarModel*)locationBarModel {
+  if (!_model) {
+    _model = std::make_unique<TestLocationBarModel>();
+  }
+
+  return _model.get();
+}
+
+@end
+
+@interface LocationBarCoordinator (Testing)
+- (BOOL)shouldShowAIHubNewFeatureBadge;
+- (void)locationBarDidTapAIHubNewBadge;
+- (web::WebState*)webState;
+@end
+
+namespace {
+
+std::unique_ptr<KeyedService> CreateTestTracker(ProfileIOS* context) {
+  return std::make_unique<
+      testing::NiceMock<feature_engagement::test::MockTracker>>();
+}
+
+class LocationBarCoordinatorTest : public PlatformTest {
+ protected:
+  LocationBarCoordinatorTest() {}
+
+  void SetUp() override {
+    PlatformTest::SetUp();
+
+    TestProfileIOS::Builder test_profile_builder;
+
+    test_profile_builder.AddTestingFactory(
+        feature_engagement::TrackerFactory::GetInstance(),
+        base::BindRepeating(&CreateTestTracker));
+    test_profile_builder.AddTestingFactory(
+        GeminiServiceFactory::GetInstance(),
+        base::BindRepeating([](ProfileIOS*) -> std::unique_ptr<KeyedService> {
+          return nullptr;
+        }));
+
+    test_profile_builder.AddTestingFactory(
+        ios::TemplateURLServiceFactory::GetInstance(),
+        ios::TemplateURLServiceFactory::GetDefaultFactory());
+    test_profile_builder.AddTestingFactory(
+        ios::AutocompleteClassifierFactory::GetInstance(),
+        ios::AutocompleteClassifierFactory::GetDefaultFactory());
+    test_profile_builder.AddTestingFactory(
+        IOSChromeFaviconLoaderFactory::GetInstance(),
+        IOSChromeFaviconLoaderFactory::GetDefaultFactory());
+    test_profile_builder.AddTestingFactory(
+        IOSChromeLargeIconServiceFactory::GetInstance(),
+        IOSChromeLargeIconServiceFactory::GetDefaultFactory());
+    test_profile_builder.AddTestingFactory(
+        ios::FaviconServiceFactory::GetInstance(),
+        ios::FaviconServiceFactory::GetDefaultFactory());
+    test_profile_builder.AddTestingFactory(
+        ios::HistoryServiceFactory::GetInstance(),
+        ios::HistoryServiceFactory::GetDefaultFactory());
+    test_profile_builder.AddTestingFactory(
+        SyncServiceFactory::GetInstance(),
+        SyncServiceFactory::GetDefaultFactory());
+
+    profile_ = std::move(test_profile_builder).Build();
+
+    scene_state_ = [[SceneState alloc] init];
+    LayoutGuideSceneAgent* layout_guide_scene_agent =
+        [[LayoutGuideSceneAgent alloc] init];
+    [scene_state_ addAgent:layout_guide_scene_agent];
+    browser_ = std::make_unique<TestBrowser>(profile_.get(), scene_state_);
+    UrlLoadingNotifierBrowserAgent::CreateForBrowser(browser_.get());
+    FakeUrlLoadingBrowserAgent::InjectForBrowser(browser_.get());
+    // FullscreenController depends on ToolbarsSizeBrowserAgent, so the agent
+    // must be created first. Please maintain this order.
+    ToolbarsSizeBrowserAgent::CreateForBrowser(browser_.get());
+    FullscreenController::CreateForBrowser(browser_.get());
+    AutocompleteBrowserAgent::CreateForBrowser(browser_.get());
+
+    auto web_state = std::make_unique<web::FakeWebState>();
+    web_state->SetBrowserState(profile_.get());
+    web_state->SetCurrentURL(GURL("http://test/"));
+    browser_->GetWebStateList()->InsertWebState(
+        std::move(web_state), WebStateList::InsertionParams::AtIndex(0));
+
+    CommandDispatcher* dispatcher = browser_->GetCommandDispatcher();
+
+    id mock_qr_scanner_handler = OCMProtocolMock(@protocol(QRScannerCommands));
+    [dispatcher startDispatchingToTarget:mock_qr_scanner_handler
+                             forProtocol:@protocol(QRScannerCommands)];
+    id mock_lens_handler = OCMProtocolMock(@protocol(LensCommands));
+    [dispatcher startDispatchingToTarget:mock_lens_handler
+                             forProtocol:@protocol(LensCommands)];
+    id mock_help_handler = OCMProtocolMock(@protocol(HelpCommands));
+    [dispatcher startDispatchingToTarget:mock_help_handler
+                             forProtocol:@protocol(HelpCommands)];
+    id mock_toolbar_handler = OCMProtocolMock(@protocol(ToolbarCommands));
+    [dispatcher startDispatchingToTarget:mock_toolbar_handler
+                             forProtocol:@protocol(ToolbarCommands)];
+    id mock_contextual_sheet_handler =
+        OCMProtocolMock(@protocol(ContextualSheetCommands));
+    [dispatcher startDispatchingToTarget:mock_contextual_sheet_handler
+                             forProtocol:@protocol(ContextualSheetCommands)];
+    id mock_contextual_panel_entrypoint_iph_handler =
+        OCMProtocolMock(@protocol(ContextualPanelEntrypointIPHCommands));
+    [dispatcher
+        startDispatchingToTarget:mock_contextual_panel_entrypoint_iph_handler
+                     forProtocol:@protocol(
+                                     ContextualPanelEntrypointIPHCommands)];
+
+    // Set up application and settings handler mocks.
+    id mock_application_handler = OCMProtocolMock(@protocol(SceneCommands));
+    id mock_settings_handler = OCMProtocolMock(@protocol(SettingsCommands));
+    [dispatcher startDispatchingToTarget:mock_application_handler
+                             forProtocol:@protocol(SceneCommands)];
+    [dispatcher startDispatchingToTarget:mock_settings_handler
+                             forProtocol:@protocol(SettingsCommands)];
+
+    id mock_quick_delete_handler =
+        OCMProtocolMock(@protocol(QuickDeleteCommands));
+    [dispatcher startDispatchingToTarget:mock_quick_delete_handler
+                             forProtocol:@protocol(QuickDeleteCommands)];
+
+    id mock_page_action_menu_handler =
+        OCMProtocolMock(@protocol(PageActionMenuCommands));
+    [dispatcher startDispatchingToTarget:mock_page_action_menu_handler
+                             forProtocol:@protocol(PageActionMenuCommands)];
+
+    id mock_gemini_handler = OCMProtocolMock(@protocol(GeminiCommands));
+    [dispatcher startDispatchingToTarget:mock_gemini_handler
+                             forProtocol:@protocol(GeminiCommands)];
+
+    mock_browser_coordinator_handler_ =
+        OCMProtocolMock(@protocol(BrowserCoordinatorCommands));
+    [dispatcher startDispatchingToTarget:mock_browser_coordinator_handler_
+                             forProtocol:@protocol(BrowserCoordinatorCommands)];
+    mock_send_tab_to_self_handler_ =
+        OCMProtocolMock(@protocol(SendTabToSelfCommands));
+    [dispatcher startDispatchingToTarget:mock_send_tab_to_self_handler_
+                             forProtocol:@protocol(SendTabToSelfCommands)];
+
+    delegate_ = [[TestOmniboxFocusDelegate alloc] init];
+
+    coordinator_ =
+        [[LocationBarCoordinator alloc] initWithBrowser:browser_.get()];
+    coordinator_.delegate = delegate_;
+  }
+
+  void TearDown() override {
+    // Started coordinator has to be stopped before WebStateList destruction.
+    [coordinator_ stop];
+
+    PlatformTest::TearDown();
+  }
+
+  web::WebTaskEnvironment task_environment_;
+  IOSChromeScopedTestingLocalState scoped_testing_local_state_;
+  variations::test::ScopedVariationsIdsProvider scoped_variations_ids_provider_{
+      variations::VariationsIdsProvider::Mode::kUseSignedInState};
+  LocationBarCoordinator* coordinator_;
+  std::unique_ptr<TestProfileIOS> profile_;
+  std::unique_ptr<Browser> browser_;
+  TestOmniboxFocusDelegate* delegate_;
+  SceneState* scene_state_;
+  id mock_browser_coordinator_handler_;
+  id mock_send_tab_to_self_handler_;
+};
+
+TEST_F(LocationBarCoordinatorTest, Stops) {
+  EXPECT_TRUE(coordinator_.locationBarViewController == nil);
+  [coordinator_ start];
+  EXPECT_TRUE(coordinator_.locationBarViewController != nil);
+  [coordinator_ stop];
+  EXPECT_TRUE(coordinator_.locationBarViewController == nil);
+}
+
+// Removes the existing WebState to ensure that nothing breaks when there is no
+// active WebState.
+TEST_F(LocationBarCoordinatorTest, RemoveLastWebState) {
+  browser_->GetWebStateList()->CloseWebStateAt(
+      0, WebStateList::ClosingReason::kDefault);
+}
+
+// Calls -loadGURLFromLocationBar:transition: with https://www.google.com/ URL.
+// Verifies that URLLoader receives correct load request, which also includes
+// variations header.
+TEST_F(LocationBarCoordinatorTest, LoadGoogleUrl) {
+  ASSERT_EQ(VariationsIdsProvider::ForceIdsResult::SUCCESS,
+            VariationsIdsProvider::GetInstance()->ForceVariationIdsForTesting(
+                /*variation_ids=*/{"100"}, /*command_line_variation_ids=*/""));
+
+  GURL url("https://www.google.com/");
+  ui::PageTransition transition = ui::PAGE_TRANSITION_TYPED;
+  WindowOpenDisposition disposition = WindowOpenDisposition::SWITCH_TO_TAB;
+  [coordinator_ start];
+  [coordinator_ loadGURLFromLocationBar:url
+                                 postContent:nil
+                                  transition:transition
+                                 disposition:disposition
+      destination_url_entered_without_scheme:false];
+
+  FakeUrlLoadingBrowserAgent* url_loader =
+      FakeUrlLoadingBrowserAgent::FromUrlLoadingBrowserAgent(
+          UrlLoadingBrowserAgent::FromBrowser(browser_.get()));
+  EXPECT_EQ(url, url_loader->last_params.web_params.url);
+  EXPECT_TRUE(url_loader->last_params.web_params.referrer.url.is_empty());
+  EXPECT_EQ(web::ReferrerPolicyDefault,
+            url_loader->last_params.web_params.referrer.policy);
+  EXPECT_TRUE(ui::PageTransitionCoreTypeIs(
+      transition, PageTransitionStripQualifier(
+                      url_loader->last_params.web_params.transition_type)));
+  EXPECT_FALSE(url_loader->last_params.web_params.is_renderer_initiated);
+  ASSERT_EQ(1U, url_loader->last_params.web_params.extra_headers.count);
+  EXPECT_GT([url_loader->last_params.web_params.extra_headers[@"X-Client-Data"]
+                length],
+            0U);
+  EXPECT_EQ(disposition, url_loader->last_params.disposition);
+}
+
+// Calls -loadGURLFromLocationBar:transition: with https://www.nongoogle.com/
+// URL. Verifies that URLLoader receives correct load request without variations
+// header.
+TEST_F(LocationBarCoordinatorTest, LoadNonGoogleUrl) {
+  ASSERT_EQ(VariationsIdsProvider::ForceIdsResult::SUCCESS,
+            VariationsIdsProvider::GetInstance()->ForceVariationIdsForTesting(
+                /*variation_ids=*/{"100"}, /*command_line_variation_ids=*/""));
+
+  GURL url("https://www.nongoogle.com/");
+  ui::PageTransition transition = ui::PAGE_TRANSITION_TYPED;
+  WindowOpenDisposition disposition = WindowOpenDisposition::CURRENT_TAB;
+  [coordinator_ start];
+  [coordinator_ loadGURLFromLocationBar:url
+                                 postContent:nil
+                                  transition:transition
+                                 disposition:disposition
+      destination_url_entered_without_scheme:false];
+
+  FakeUrlLoadingBrowserAgent* url_loader =
+      FakeUrlLoadingBrowserAgent::FromUrlLoadingBrowserAgent(
+          UrlLoadingBrowserAgent::FromBrowser(browser_.get()));
+
+  EXPECT_EQ(url, url_loader->last_params.web_params.url);
+  EXPECT_TRUE(url_loader->last_params.web_params.referrer.url.is_empty());
+  EXPECT_EQ(web::ReferrerPolicyDefault,
+            url_loader->last_params.web_params.referrer.policy);
+  EXPECT_TRUE(ui::PageTransitionCoreTypeIs(
+      transition, PageTransitionStripQualifier(
+                      url_loader->last_params.web_params.transition_type)));
+  EXPECT_FALSE(url_loader->last_params.web_params.is_renderer_initiated);
+  ASSERT_EQ(0U, url_loader->last_params.web_params.extra_headers.count);
+  EXPECT_EQ(disposition, url_loader->last_params.disposition);
+}
+
+// Tests that invoking delegate calls triggers the proper interaction with the
+// feature_engagement::Tracker for displaying and dismissing the AI Hub badge.
+TEST_F(LocationBarCoordinatorTest, TriggersAIHubNewBadge) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures({kAIHubNewBadge, kPageActionMenu}, {});
+
+  feature_engagement::test::MockTracker* tracker =
+      static_cast<feature_engagement::test::MockTracker*>(
+          feature_engagement::TrackerFactory::GetForProfile(profile_.get()));
+
+  [coordinator_ start];
+
+  // Checking if the badge should show should trigger the help UI.
+  EXPECT_CALL(*tracker, ShouldTriggerHelpUI(testing::_))
+      .WillOnce(testing::Return(true));
+  EXPECT_TRUE([coordinator_ shouldShowAIHubNewFeatureBadge]);
+
+  // Tapping the badge should dismiss the IPH and log the event.
+  EXPECT_CALL(*tracker,
+              Dismissed(testing::Ref(feature_engagement::kIPHiOSAIHubNewBadge)))
+      .Times(1);
+  EXPECT_CALL(
+      *tracker,
+      NotifyUsedEvent(testing::Ref(feature_engagement::kIPHiOSAIHubNewBadge)))
+      .Times(1);
+  [coordinator_ locationBarDidTapAIHubNewBadge];
+
+  [coordinator_ stop];
+}
+
+// Tests that calling shouldShowAIHubNewFeatureBadge multiple times only calls
+// ShouldTriggerHelpUI once, and locationBarDidTapAIHubNewBadge only dismisses
+// the badge once all active window counts are decremented.
+TEST_F(LocationBarCoordinatorTest, MultipleTriggersAIHubNewBadge) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures({kAIHubNewBadge, kPageActionMenu}, {});
+
+  feature_engagement::test::MockTracker* tracker =
+      static_cast<feature_engagement::test::MockTracker*>(
+          feature_engagement::TrackerFactory::GetForProfile(profile_.get()));
+
+  [coordinator_ start];
+
+  // First call should trigger the help UI.
+  EXPECT_CALL(*tracker, ShouldTriggerHelpUI(testing::_))
+      .Times(1)
+      .WillOnce(testing::Return(true));
+  EXPECT_TRUE([coordinator_ shouldShowAIHubNewFeatureBadge]);
+
+  // Second call should return YES immediately without hitting the tracker again
+  // because hasTriggeredAIHubNewBadge is now YES.
+  EXPECT_TRUE([coordinator_ shouldShowAIHubNewFeatureBadge]);
+
+  // Tapping the badge should dismiss the IPH and log the event.
+  EXPECT_CALL(*tracker,
+              Dismissed(testing::Ref(feature_engagement::kIPHiOSAIHubNewBadge)))
+      .Times(1);
+  EXPECT_CALL(
+      *tracker,
+      NotifyUsedEvent(testing::Ref(feature_engagement::kIPHiOSAIHubNewBadge)))
+      .Times(1);
+  [coordinator_ locationBarDidTapAIHubNewBadge];
+
+  [coordinator_ stop];
+}
+
+// Test that locationBarCanSendTabToSelf returns NO when the feature flag is
+// disabled.
+TEST_F(LocationBarCoordinatorTest, CanSendTabToSelfDisabledByFeatureFlag) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      send_tab_to_self::kSendTabToSelfExtraEntryPoints);
+
+  [coordinator_ start];
+
+  auto fake_web_state = std::make_unique<web::FakeWebState>();
+  fake_web_state->SetCurrentURL(GURL("http://test/"));
+
+  id partial_mock_coordinator = OCMPartialMock(coordinator_);
+  OCMStub([partial_mock_coordinator webState]).andReturn(fake_web_state.get());
+
+  EXPECT_FALSE([partial_mock_coordinator locationBarCanSendTabToSelf]);
+}
+
+// Test that locationBarCanSendTabToSelf returns NO when the feature flag is
+// enabled but there is no active web state or SendTabToSelfSyncService does not
+// offer it.
+TEST_F(LocationBarCoordinatorTest, CanSendTabToSelfNoService) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      send_tab_to_self::kSendTabToSelfExtraEntryPoints);
+
+  [coordinator_ start];
+
+  auto fake_web_state = std::make_unique<web::FakeWebState>();
+  fake_web_state->SetCurrentURL(GURL("chrome://newtab/"));
+
+  id partial_mock_coordinator = OCMPartialMock(coordinator_);
+  OCMStub([partial_mock_coordinator webState]).andReturn(fake_web_state.get());
+
+  // No SendTabToSelfSyncService is registered by default in TestProfileIOS, so
+  // it should return NO.
+  EXPECT_FALSE([partial_mock_coordinator locationBarCanSendTabToSelf]);
+}
+
+// Test that locationBarSendTabToSelfTapped triggers the browser coordinator
+// command to show the UI and notifies the feature engagement tracker.
+TEST_F(LocationBarCoordinatorTest, SendTabToSelfTapped) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      send_tab_to_self::kSendTabToSelfExtraEntryPoints);
+
+  [coordinator_ start];
+
+  auto fake_web_state = std::make_unique<web::FakeWebState>();
+  fake_web_state->SetCurrentURL(GURL("http://test/"));
+  fake_web_state->SetTitle(u"Test Title");
+
+  id partial_mock_coordinator = OCMPartialMock(coordinator_);
+  OCMStub([partial_mock_coordinator webState]).andReturn(fake_web_state.get());
+
+  feature_engagement::test::MockTracker* tracker =
+      static_cast<feature_engagement::test::MockTracker*>(
+          feature_engagement::TrackerFactory::GetForProfile(profile_.get()));
+  EXPECT_CALL(
+      *tracker,
+      NotifyEvent(feature_engagement::events::kSendTabToSelfOmniboxUsed));
+
+  // Note: `ignoringNonObjectArgs` because OCMock cannot handle C++ references.
+  [[[mock_send_tab_to_self_handler_ expect] ignoringNonObjectArgs]
+      showSendTabToSelfUI:GURL()
+                    title:@"Test Title"
+               entryPoint:send_tab_to_self::ShareEntryPoint::kOmniboxMenu];
+
+  [partial_mock_coordinator locationBarSendTabToSelfTapped];
+
+  // `self` is needed by OCMVerifyAll macro in C++ tests.
+  id self = nil;
+  OCMVerifyAll(mock_send_tab_to_self_handler_);
+}
+
+}  // namespace

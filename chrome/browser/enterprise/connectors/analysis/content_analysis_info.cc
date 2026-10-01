@@ -1,0 +1,243 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/enterprise/connectors/analysis/content_analysis_info.h"
+
+#include "base/containers/fixed_flat_set.h"
+#include "base/feature_list.h"
+#include "base/strings/string_number_conversions.h"
+#include "chrome/browser/enterprise/connectors/referrer_cache_utils.h"
+#include "chrome/browser/safe_browsing/download_protection/download_protection_util.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
+#include "components/download/public/common/download_item.h"
+#include "components/enterprise/connectors/core/cloud_content_scanning/deep_scanning_utils.h"
+#include "components/enterprise/connectors/core/content_area_user_provider.h"
+#include "components/enterprise/connectors/core/features.h"
+#include "components/enterprise/connectors/core/reporting_utils.h"
+#include "components/safe_browsing/core/common/features.h"
+#include "components/sessions/content/session_tab_helper.h"
+#include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "content/public/browser/download_item_utils.h"
+#include "content/public/browser/web_contents.h"
+#include "net/base/url_util.h"
+#include "third_party/re2/src/re2/re2.h"
+
+namespace enterprise_connectors {
+
+void ContentAnalysisInfo::InitializeRequest(
+    BinaryUploadRequest* request,
+    bool include_enterprise_only_fields) {
+  InitializeBinaryUploadRequest(request, *this, include_enterprise_only_fields);
+}
+
+std::string ContentAnalysisInfo::GetContentAreaAccountEmail() const {
+  if (!CanRetrieveActiveUser(tab_url())) {
+    return "";
+  }
+
+  std::string email = GetActiveContentAreaUser(identity_manager(), tab_url());
+  if (!email.empty()) {
+    return email;
+  }
+
+  if (web_contents()) {
+    web_contents()->GetOutermostWebContents()->ForEachRenderFrameHost(
+        [&email, this](content::RenderFrameHost* rfh) {
+          if (email.empty()) {
+            email = GetActiveFrameUser(identity_manager(), tab_url(),
+                                       rfh->GetLastCommittedURL());
+          }
+        });
+  }
+
+  if (!email.empty()) {
+    return email;
+  }
+
+  auto referrers = referrer_chain();
+  for (const auto& referrer : referrers) {
+    GURL referrer_url(referrer.url());
+    if (referrer_url.is_valid()) {
+      email = GetActiveContentAreaUser(identity_manager(), referrer_url);
+
+      if (!email.empty()) {
+        return email;
+      }
+    }
+  }
+
+  return GetDefaultActiveUser(identity_manager(), tab_url());
+}
+
+// static
+std::string ContentAreaUserProvider::GetUser(Profile* profile,
+                                             content::WebContents* web_contents,
+                                             const GURL& tab_url) {
+  return ContentAreaUserProvider(
+             IdentityManagerFactory::GetForProfile(profile),
+             web_contents, tab_url)
+      .GetContentAreaAccountEmail();
+}
+
+// static
+std::string ContentAreaUserProvider::GetUser(
+    const content::ClipboardEndpoint& endpoint) {
+  if (!endpoint.data_transfer_endpoint() ||
+      !endpoint.data_transfer_endpoint()->IsUrlType() ||
+      !endpoint.data_transfer_endpoint()->GetURL() ||
+      !endpoint.browser_context()) {
+    return "";
+  }
+
+  return GetUser(Profile::FromBrowserContext(endpoint.browser_context()),
+                 endpoint.web_contents(),
+                 *endpoint.data_transfer_endpoint()->GetURL());
+}
+
+const GURL& ContentAreaUserProvider::tab_url() const {
+  return *tab_url_;
+}
+
+signin::IdentityManager* ContentAreaUserProvider::identity_manager() const {
+  return im_;
+}
+
+const enterprise_connectors::AnalysisSettings&
+ContentAreaUserProvider::settings() const {
+  NOTREACHED();
+}
+
+int ContentAreaUserProvider::user_action_requests_count() const {
+  NOTREACHED();
+}
+
+std::string ContentAreaUserProvider::tab_title() const {
+  NOTREACHED();
+}
+
+std::string ContentAreaUserProvider::user_action_id() const {
+  NOTREACHED();
+}
+
+std::string ContentAreaUserProvider::email() const {
+  NOTREACHED();
+}
+
+const GURL& ContentAreaUserProvider::url() const {
+  NOTREACHED();
+}
+
+enterprise_connectors::ContentAnalysisRequest::Reason
+ContentAreaUserProvider::reason() const {
+  NOTREACHED();
+}
+
+google::protobuf::RepeatedPtrField<::safe_browsing::ReferrerChainEntry>
+ContentAreaUserProvider::referrer_chain() const {
+  return referrer_chain_;
+}
+
+google::protobuf::RepeatedPtrField<std::string>
+ContentAreaUserProvider::frame_url_chain() const {
+  NOTREACHED();
+}
+
+content::WebContents* ContentAreaUserProvider::web_contents() const {
+  return web_contents_.get();
+}
+
+ContentAreaUserProvider::ContentAreaUserProvider(
+    signin::IdentityManager* im,
+    content::WebContents* web_contents,
+    const GURL& tab_url)
+    : im_(im),
+      web_contents_(web_contents ? web_contents->GetWeakPtr() : nullptr),
+      tab_url_(tab_url) {
+  if (web_contents) {
+    referrer_chain_ =
+        enterprise_connectors::GetReferrerChain(tab_url, *web_contents);
+  }
+}
+
+ContentAreaUserProvider::~ContentAreaUserProvider() = default;
+
+DownloadContentAreaUserProvider::DownloadContentAreaUserProvider(
+    download::DownloadItem& download_item)
+    : url_(download_item.GetURL()),
+      tab_url_(download_item.GetTabUrl()),
+      im_(IdentityManagerFactory::GetForProfile(Profile::FromBrowserContext(
+          content::DownloadItemUtils::GetBrowserContext(&download_item)))),
+      web_contents_(
+          content::DownloadItemUtils::GetOriginalWebContents(&download_item)
+              ? content::DownloadItemUtils::GetOriginalWebContents(
+                    &download_item)
+                    ->GetWeakPtr()
+              : nullptr) {
+  if (base::FeatureList::IsEnabled(safe_browsing::kEnhancedFieldsForSecOps)) {
+    referrer_chain_ =
+        safe_browsing::GetOrIdentifyReferrerChainForEnterprise(download_item);
+  }
+  frame_url_chain_ = enterprise_connectors::CollectFrameUrls(
+      web_contents_.get(), enterprise_connectors::DeepScanAccessPoint::DOWNLOAD,
+      std::make_optional(
+          content::DownloadItemUtils::GetRenderFrameHostId(&download_item)));
+}
+
+DownloadContentAreaUserProvider::~DownloadContentAreaUserProvider() = default;
+
+const GURL& DownloadContentAreaUserProvider::url() const {
+  return url_;
+}
+
+const GURL& DownloadContentAreaUserProvider::tab_url() const {
+  return tab_url_;
+}
+
+signin::IdentityManager* DownloadContentAreaUserProvider::identity_manager()
+    const {
+  return im_;
+}
+
+content::WebContents* DownloadContentAreaUserProvider::web_contents() const {
+  return web_contents_.get();
+}
+
+const enterprise_connectors::AnalysisSettings&
+DownloadContentAreaUserProvider::settings() const {
+  NOTREACHED();
+}
+
+int DownloadContentAreaUserProvider::user_action_requests_count() const {
+  NOTREACHED();
+}
+
+std::string DownloadContentAreaUserProvider::tab_title() const {
+  NOTREACHED();
+}
+
+std::string DownloadContentAreaUserProvider::user_action_id() const {
+  NOTREACHED();
+}
+
+std::string DownloadContentAreaUserProvider::email() const {
+  NOTREACHED();
+}
+
+enterprise_connectors::ContentAnalysisRequest::Reason
+DownloadContentAreaUserProvider::reason() const {
+  NOTREACHED();
+}
+
+google::protobuf::RepeatedPtrField<::safe_browsing::ReferrerChainEntry>
+DownloadContentAreaUserProvider::referrer_chain() const {
+  return referrer_chain_;
+}
+
+google::protobuf::RepeatedPtrField<std::string>
+DownloadContentAreaUserProvider::frame_url_chain() const {
+  return frame_url_chain_;
+}
+
+}  // namespace enterprise_connectors

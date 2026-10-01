@@ -1,0 +1,76 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/platform/fonts/opentype/font_format_check.h"
+
+#include "base/containers/span.h"
+#include "base/containers/span_rust.h"
+#include "base/numerics/byte_conversions.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/wtf/vector.h"
+#include "third_party/skia/include/core/SkTypeface.h"
+
+namespace blink {
+
+FontFormatCheck::FontFormatCheck(sk_sp<SkData> sk_data)
+    : format_info_(font_format::get_font_format_info(
+          base::SpanToRustSlice(sk_data->byteSpan()))) {}
+
+FontFormatCheck::~FontFormatCheck() = default;
+
+bool FontFormatCheck::IsVariableFont() const {
+  return font_format::is_variable(format_info_);
+}
+
+bool FontFormatCheck::IsCbdtCblcColorFont() const {
+  return font_format::is_cbdt_cblc(format_info_);
+}
+
+bool FontFormatCheck::IsEbdtEblcMonochromeFont() const {
+  return font_format::is_ebdt_eblc(format_info_);
+}
+
+bool FontFormatCheck::IsColrCpalColorFontV0() const {
+  return font_format::is_colrv0(format_info_);
+}
+
+bool FontFormatCheck::IsColrCpalColorFontV1() const {
+  return font_format::is_colrv1(format_info_);
+}
+
+bool FontFormatCheck::IsSbixColorFont() const {
+  return font_format::is_sbix(format_info_);
+}
+
+bool FontFormatCheck::IsCff2OutlineFont() const {
+  return font_format::is_cff2(format_info_);
+}
+
+bool FontFormatCheck::IsVariableColrV0Font() const {
+  return IsColrCpalColorFontV0() && IsVariableFont();
+}
+
+bool FontFormatCheck::IsColorFont() const {
+  return IsSbixColorFont() || IsCbdtCblcColorFont() ||
+         IsColrCpalColorFontV0() || IsColrCpalColorFontV1();
+}
+
+bool FontFormatCheck::IsAvar2Font() const {
+  return RuntimeEnabledFeatures::FontFormatAvar2Enabled() &&
+         font_format::is_avar2(format_info_);
+}
+
+FontFormatCheck::VariableFontSubType FontFormatCheck::ProbeVariableFont(
+    sk_sp<SkTypeface> typeface) {
+  if (!typeface->getTableSize(
+          SkFontTableTag(SkSetFourByteTag('f', 'v', 'a', 'r'))))
+    return VariableFontSubType::kNotVariable;
+
+  if (typeface->getTableSize(
+          SkFontTableTag(SkSetFourByteTag('C', 'F', 'F', '2'))))
+    return VariableFontSubType::kVariableCFF2;
+  return VariableFontSubType::kVariableTrueType;
+}
+
+}  // namespace blink

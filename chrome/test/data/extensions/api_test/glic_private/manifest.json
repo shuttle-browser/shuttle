@@ -1,0 +1,11 @@
+{
+  "name": "glicPrivate test",
+  "version": "1.0",
+  "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmXEAMP+pPV/eGfsrDMku2ftKAbJ0JV4ao9jhq1+b36wHEDYShjUVdQjHw6ygAv35v8F8vu8xEKqqY/vguTD8u/Xz3g0lhytN9xCR/YUaJxLGbf8Vfz39LcQxg56pHddCTDOJqUOAw3Wuq1v5TYFpuHlC3XNBL8qjWsrwVbdrOsyIum9PBNyzKX2hxpYSWIf12TRixU+ZJoEhEnh8CWodZJ2tGbptMNl03hPpGydJeTv/Tug4U6dhOIEdWzkLhaX3znm+Nn+jj0lxvcnbN79H43e79ASt1P0IRWsVI79MAvt1oyQsAvfVp6L/qCxejjzZDD/Ps0HarahFk7LLLHBcRwIDAQAB",
+  "permissions": ["glicPrivate", "glicPrivate.invoke", "tabs", "webNavigation"],
+  "background": {
+    "service_worker": "test.js",
+    "type": "module"
+  }
+}

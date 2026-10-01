@@ -1,0 +1,38 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/autofill/core/browser/form_parsing/search_field_parser.h"
+
+#include <memory>
+#include <optional>
+#include <utility>
+
+#include "components/autofill/core/browser/field_types.h"
+#include "components/autofill/core/browser/form_parsing/autofill_scanner.h"
+#include "components/autofill/core/browser/form_parsing/field_candidates.h"
+#include "components/autofill/core/browser/form_parsing/form_field_parser.h"
+
+namespace autofill {
+
+// static
+std::unique_ptr<FormFieldParser> SearchFieldParser::Parse(
+    ParsingContext& context,
+    AutofillScanner& scanner) {
+  std::optional<FieldAndMatchInfo> match;
+  if (ParseField(context, scanner, "SEARCH_TERM", &match)) {
+    return std::make_unique<SearchFieldParser>(std::move(*match));
+  }
+  return nullptr;
+}
+
+SearchFieldParser::SearchFieldParser(FieldAndMatchInfo match)
+    : match_(std::move(match)) {}
+
+void SearchFieldParser::AddClassifications(
+    FieldCandidatesMap& field_candidates) const {
+  AddClassification(match_, SEARCH_TERM, HeuristicParser::kSearch,
+                    field_candidates);
+}
+
+}  // namespace autofill

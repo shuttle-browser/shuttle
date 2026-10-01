@@ -1,0 +1,9 @@
+[document web] name='Meter Example'
+++[section]
+++++[paragraph]
+++++++[static] name='The value of this meter changes every 5 seconds. Use the pause button to stop changes.'
+++++[heading] name='Central Processing Unit (CPU) Usage' label-for=[level bar]
+++++++[static] name='Central Processing Unit (CPU) Usage'
+++++[paragraph]
+++++++[push button] name='Pause Updates'
+++++[level bar] name='Central Processing Unit (CPU) Usage' labelled-by=[heading] current=90.000000 minimum=0.000000 maximum=100.000000

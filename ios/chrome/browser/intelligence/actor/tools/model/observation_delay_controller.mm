@@ -1,0 +1,377 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/intelligence/actor/tools/model/observation_delay_controller.h"
+
+#import <ostream>
+#import <string>
+#import <utility>
+
+#import "base/functional/bind.h"
+#import "base/no_destructor.h"
+#import "base/notreached.h"
+#import "base/state_transitions.h"
+#import "base/task/sequenced_task_runner.h"
+#import "components/actor/core/aggregated_journal.h"
+#import "components/actor/core/journal_details_builder.h"
+#import "components/autofill/core/browser/form_predictions_tracker.h"
+#import "components/autofill/core/common/autofill_features.h"
+#import "components/autofill/ios/browser/autofill_client_ios.h"
+#import "ios/chrome/browser/intelligence/actor/public/actor_types.h"
+#import "ios/chrome/browser/intelligence/actor/tools/model/ios_page_stability_monitor_delegate.h"
+#import "ios/chrome/browser/intelligence/actor/tools/model/page_stability_java_script_feature.h"
+#import "ios/chrome/browser/intelligence/actor/tools/model/page_stability_monitor.h"
+#import "ios/chrome/browser/intelligence/features/features.h"
+#import "ios/web/public/js_messaging/web_frame.h"
+#import "ios/web/public/js_messaging/web_frames_manager.h"
+#import "ios/web/public/navigation/navigation_context.h"
+#import "ios/web/public/web_state.h"
+#import "url/gurl.h"
+
+namespace actor {
+
+namespace {
+// The maximum number of times a navigation can restart the
+// ObservationDelayController. Beyond this limit, subsequent navigations are
+// ignored and do not trigger a restart.
+constexpr size_t kMaxNavigations = 20;
+}  // namespace
+
+ObservationDelayController::ObservationDelayController(
+    ActorTaskId task_id,
+    AggregatedJournal* journal)
+    : task_id_(task_id) {
+  if (journal) {
+    journal_ = journal->GetWeakPtr();
+  }
+}
+
+ObservationDelayController::~ObservationDelayController() {
+  web_state_observation_.Reset();
+  web_state_ = nullptr;
+  if (web_frame_) {
+    PageStabilityJavaScriptFeature::GetInstance()->CancelWaitForLcp(web_frame_);
+  }
+}
+
+void ObservationDelayController::Wait(base::WeakPtr<web::WebState> web_state,
+                                      base::WeakPtr<web::WebFrame> web_frame,
+                                      ReadyCallback callback) {
+  CHECK(web_state);
+  if (journal_) {
+    journal_->Log(GURL(), task_id_, "ObservationDelay: Wait",
+                  /*details=*/{});
+  }
+  web_state_ = web_state;
+  web_state_observation_.Observe(web_state.get());
+  if (web_frame) {
+    web_frame_ = web_frame;
+    page_stability_monitor_ = std::make_unique<PageStabilityMonitor>(
+        web_frame,
+        std::make_unique<IOSPageStabilityMonitorDelegate>(task_id_, journal_));
+  } else {
+    UpdateTargetFrameIfNeeded();
+  }
+  ready_callback_ = std::move(callback);
+  // Schedule a kDidTimeout state transition to happen later.
+  PostMoveToStateClosure(State::kDidTimeout, GetActorObservationDelayTimeout())
+      .Run();
+  // Immediately transition to start waiting for page stability.
+  PostMoveToStateClosure(State::kWaitForPageStability).Run();
+}
+
+void ObservationDelayController::DidStartNavigation(
+    web::WebState* web_state,
+    web::NavigationContext* navigation_context) {
+  CHECK_EQ(web_state_.get(), web_state);
+  // This is only called for main frame navigations so we don't check it here.
+  if (!navigation_context || navigation_context->IsSameDocument()) {
+    return;
+  }
+  if (state_ == State::kInitial) {
+    return;
+  }
+  // If we exceed the number of navigations just keep observing.
+  if (navigation_count_ >= kMaxNavigations) {
+    return;
+  }
+  MoveToState(State::kPageNavigated);
+}
+
+void ObservationDelayController::DidStopLoading(web::WebState* web_state) {
+  CHECK_EQ(web_state_.get(), web_state);
+  if (state_ != State::kWaitForLoadCompletion) {
+    return;
+  }
+  UpdateTargetFrameIfNeeded();
+  MoveToState(State::kDelayForLcp);
+}
+
+void ObservationDelayController::WebStateDestroyed(web::WebState* web_state) {
+  CHECK_EQ(web_state_.get(), web_state);
+  web_state_observation_.Reset();
+  web_state_ = nullptr;
+  web_frame_ = nullptr;
+  MoveToState(State::kDone);
+}
+
+void ObservationDelayController::UpdateTargetFrameIfNeeded() {
+  // Don't update `web_frame_` if it's still valid or if there isn't a
+  // `web_state_` to pull the main WebFrame from.
+  if (web_frame_ || !web_state_) {
+    return;
+  }
+  web::WebFramesManager* frames_manager =
+      web_state_->GetPageWorldWebFramesManager();
+  if (frames_manager) {
+    web::WebFrame* main_frame = frames_manager->GetMainWebFrame();
+    web_frame_ = main_frame ? main_frame->AsWeakPtr() : nullptr;
+    if (main_frame &&
+        (state_ == State::kInitial || state_ == State::kWaitForPageStability) &&
+        !page_stability_monitor_) {
+      page_stability_monitor_ = std::make_unique<PageStabilityMonitor>(
+          web_frame_, std::make_unique<IOSPageStabilityMonitorDelegate>(
+                          task_id_, journal_));
+    }
+  }
+}
+
+void ObservationDelayController::MoveToState(State state) {
+  if (state_ == State::kDone) {
+    return;
+  }
+  CheckStateTransition(state_, state);
+  if (journal_) {
+    std::vector<mojom::JournalDetailsPtr> details =
+        JournalDetailsBuilder()
+            .Add("old_state", std::string(StateToString(state_)))
+            .Add("new_state", std::string(StateToString(state)))
+            .Build();
+    journal_->Log(GURL(), task_id_, "ObservationDelay: State Change",
+                  std::move(details));
+  }
+
+  state_ = state;
+  state_history_.push_back(state_);
+  if (state_change_testing_callback_) {
+    state_change_testing_callback_.Run(state_);
+  }
+  switch (state_) {
+    case State::kInitial:
+      NOTREACHED();
+    case State::kWaitForPageStability:
+      WaitForPageStability();
+      break;
+    case State::kWaitForLoadCompletion:
+      if (web_state_ && web_state_->IsLoading()) {
+        // The state transition will happen in DidStopLoading().
+        break;
+      }
+      UpdateTargetFrameIfNeeded();
+      PostMoveToStateClosure(State::kDelayForLcp).Run();
+      break;
+    case State::kDelayForLcp:
+      DelayForLcp();
+      break;
+    case State::kWaitForAutofillPredictions:
+      WaitForAutofillPredictions();
+      break;
+    case State::kPageNavigated:
+      result_ = Result::kPageNavigated;
+      MoveToState(State::kDone);
+      break;
+    case State::kDidTimeout:
+      MoveToState(State::kDone);
+      break;
+    case State::kDone:
+      // The state machine is never entered until Wait is called so a callback
+      // must be provided.
+      CHECK(ready_callback_);
+      web_state_observation_.Reset();
+      web_state_ = nullptr;
+      // Post a task to run the callback so that it's not tied to the lifetime
+      // of this class.
+      base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE, base::BindOnce(std::move(ready_callback_), result_));
+      break;
+  }
+}
+
+base::OnceClosure ObservationDelayController::PostMoveToStateClosure(
+    State new_state,
+    base::TimeDelta delay) {
+  return base::BindOnce(
+      [](scoped_refptr<base::SequencedTaskRunner> task_runner,
+         base::OnceClosure task, base::TimeDelta delay) {
+        task_runner->PostDelayedTask(FROM_HERE, std::move(task), delay);
+      },
+      base::SequencedTaskRunner::GetCurrentDefault(),
+      base::BindOnce(&ObservationDelayController::MoveToState,
+                     weak_ptr_factory_.GetWeakPtr(), new_state),
+      delay);
+}
+
+void ObservationDelayController::WaitForPageStability() {
+  if (state_ != State::kWaitForPageStability) {
+    return;
+  }
+  if (!page_stability_monitor_) {
+    MoveToState(State::kWaitForLoadCompletion);
+    return;
+  }
+  // Wait for the targeted WebFrame to be stable before transitioning to the
+  // next state.
+  page_stability_monitor_->NotifyWhenStable(
+      // TODO(crbug.com/498991756): Use a delegate to provide this value,
+      // matching Desktop's ability to configure it per tool.
+      base::TimeDelta(),
+      base::BindOnce(&ObservationDelayController::MoveToState,
+                     weak_ptr_factory_.GetWeakPtr(),
+                     State::kWaitForLoadCompletion));
+}
+
+void ObservationDelayController::DelayForLcp() {
+  if (state_ != State::kDelayForLcp) {
+    return;
+  }
+  if (!web_frame_ || !ShouldDelayForLcp()) {
+    PostMoveToStateClosure(State::kWaitForAutofillPredictions).Run();
+    return;
+  }
+  PageStabilityJavaScriptFeature::GetInstance()->WaitForLcp(
+      web_frame_, /*timeout=*/GetActorPageStabilityLcpDelay(),
+      base::BindOnce(
+          [](base::WeakPtr<ObservationDelayController> controller,
+             ToolExecutionResult result) {
+            // Proceed even if LCP checking fails or times out, as LCP checking
+            // is best-effort.
+            if (controller && controller->state_ == State::kDelayForLcp) {
+              controller->MoveToState(State::kWaitForAutofillPredictions);
+            }
+          },
+          weak_ptr_factory_.GetWeakPtr()));
+}
+
+void ObservationDelayController::WaitForAutofillPredictions() {
+  if (state_ != State::kWaitForAutofillPredictions) {
+    return;
+  }
+  autofill::AutofillClientIOS* client =
+      web_state_ ? autofill::AutofillClientIOS::FromWebState(web_state_.get())
+                 : nullptr;
+  autofill::FormPredictionsTracker* tracker =
+      (client && base::FeatureList::IsEnabled(
+                     autofill::features::kAutofillDelayApcForPredictions))
+          ? client->GetFormPredictionsTracker()
+          : nullptr;
+  if (!tracker) {
+    PostMoveToStateClosure(State::kDone).Run();
+    return;
+  }
+  tracker->Wait(
+      base::BindOnce(&ObservationDelayController::OnAutofillPredictionsFinished,
+                     weak_ptr_factory_.GetWeakPtr()),
+      GetActorPageStabilityAutofillPredictionsTimeout());
+}
+
+void ObservationDelayController::OnAutofillPredictionsFinished() {
+  // Ignore callback if the controller already timed out, navigated away, or
+  // completed (e.g. WebState destroyed).
+  if (state_ != State::kWaitForAutofillPredictions) {
+    return;
+  }
+  MoveToState(State::kDone);
+}
+
+void ObservationDelayController::CheckStateTransition(State old_state,
+                                                      State new_state) {
+  // Note: the transitions listed as "async transitions" below can occur at any
+  // point in the state machine and should be tolerated even when unexpected.
+  static const base::NoDestructor<base::StateTransitions<State>> transitions(
+      base::StateTransitions<State>({
+          // clang-format off
+          {State::kInitial,
+              {State::kWaitForPageStability,
+               /* async transitions */
+               State::kDidTimeout,
+               State::kDone, // if WebStateDestroyed
+               State::kPageNavigated}},
+          {State::kWaitForPageStability,
+              {State::kWaitForLoadCompletion,
+               /* async transitions */
+               State::kDidTimeout,
+               State::kDone, // if WebStateDestroyed
+               State::kPageNavigated}},
+          {State::kWaitForLoadCompletion,
+              {State::kDelayForLcp,
+               /* async transitions */
+               State::kDidTimeout,
+               State::kDone,  // if WebStateDestroyed
+               State::kPageNavigated}},
+          {State::kDelayForLcp,
+              {State::kWaitForAutofillPredictions,
+               /* async transitions */
+               State::kDidTimeout,
+               State::kDone, // if WebStateDestroyed
+               State::kPageNavigated}},
+          {State::kWaitForAutofillPredictions,
+               {State::kDone,
+                /* async transitions */
+                State::kDidTimeout,
+                State::kPageNavigated}},
+          {State::kPageNavigated,
+               /* async transitions */
+               {State::kDone, // can happen if WebStateDestroyed
+               State::kDidTimeout}},
+          {State::kDidTimeout,
+               /* async transitions */
+               {State::kDone, // can happen if WebStateDestroyed
+               State::kPageNavigated}}
+          // clang-format on
+      }));
+  CHECK((transitions)->IsTransitionValid((old_state), (new_state)),
+        base::NotFatalUntil::M160)
+      << "Invalid transition: " << old_state << " -> " << new_state;
+}
+
+std::ostream& operator<<(std::ostream& o,
+                         const ObservationDelayController::State& state) {
+  return o << ObservationDelayController::StateToString(state);
+}
+
+std::string_view ObservationDelayController::StateToString(State state) {
+  switch (state) {
+    case State::kInitial:
+      return "Initial";
+    case State::kWaitForPageStability:
+      return "WaitForPageStability";
+    case State::kWaitForLoadCompletion:
+      return "WaitForLoadCompletion";
+    case State::kDelayForLcp:
+      return "DelayForLcp";
+    case State::kWaitForAutofillPredictions:
+      return "WaitForAutofillPredictions";
+    case State::kPageNavigated:
+      return "PageNavigated";
+    case State::kDidTimeout:
+      return "DidTimeout";
+    case State::kDone:
+      return "Done";
+  }
+}
+
+size_t ObservationDelayController::NavigationCount() const {
+  return navigation_count_;
+}
+
+void ObservationDelayController::SetNavigationCount(size_t count) {
+  navigation_count_ = count;
+}
+
+bool ObservationDelayController::ShouldDelayForLcp() const {
+  return web_frame_ && IsPageStabilityEnabled() &&
+         GetActorPageStabilityLcpDelay().is_positive();
+}
+
+}  // namespace actor

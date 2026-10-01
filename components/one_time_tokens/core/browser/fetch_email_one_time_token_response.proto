@@ -1,0 +1,33 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+syntax = "proto3";
+
+package google.internal.chrome.passwords.onetimetoken.v1;
+
+option optimize_for = LITE_RUNTIME;
+
+// Response message for FetchEmailOneTimeToken.
+message FetchEmailOneTimeTokenResponse {
+  // The address of the sender specified in standard email format.
+  string sender_address = 1;
+
+  // The email address that the message was sent to. In many cases this will be
+  // the Gmail address of the user, but it's not guaranteed.
+  string recipient_address = 2;
+
+  // A holder for potentially different types of OneTimeTokens.
+  oneof value {
+    // A one time token represented as a password.
+    OneTimePasswordValue one_time_password = 5;
+  }
+
+  // A wrapper for the value of one time password.
+  message OneTimePasswordValue {
+    // The actual value of the one time password.
+    string one_time_password = 1;
+  }
+
+  reserved 3, 4;
+}

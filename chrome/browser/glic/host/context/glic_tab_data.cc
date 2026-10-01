@@ -1,0 +1,397 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/glic/host/context/glic_tab_data.h"
+
+#include <cstdint>
+#include <optional>
+#include <utility>
+
+#include "base/check_op.h"
+#include "base/containers/span.h"
+#include "base/memory/weak_ptr.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/time/time.h"
+#include "base/values.h"
+#include "build/build_config.h"
+#include "chrome/browser/glic/common/future_browser_features.h"
+#include "chrome/browser/glic/host/context/glic_page_features_manager.h"
+#include "chrome/browser/glic/public/features.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/tabs/public/tab_features.h"
+#include "chrome/common/chrome_features.h"
+#include "components/favicon/content/content_favicon_driver.h"
+#include "components/favicon/core/favicon_driver_observer.h"
+#include "components/sessions/content/session_tab_helper.h"
+#include "components/sessions/core/session_id.h"
+#include "content/public/browser/web_contents.h"
+#include "skia/ext/codec_utils.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "ui/gfx/image/image_skia.h"
+#include "ui/gfx/image/image_skia_rep.h"
+#include "ui/gfx/skia_util.h"
+
+namespace glic {
+
+namespace {
+// Rate limit tab updates if more than this many have happened since the last
+// (cross-document) navigation. This is > 0 so that we propagate changes rapidly
+// for pages that do not have strange behavior of updating too often.
+constexpr size_t kMaxTabUpdatesBeforeRateLimiting = 4;
+
+bool IsForeground(content::Visibility visibility) {
+  return visibility != content::Visibility::HIDDEN;
+}
+
+}  // namespace
+
+// For testing and debugging.
+std::string TabDataDebugString(const mojom::TabData& tab_data) {
+  auto dict = base::DictValue()
+                  .Set("tab_id", tab_data.tab_id)
+                  .Set("url", tab_data.url.spec())
+                  .Set("document_mime_type", tab_data.document_mime_type);
+  if (tab_data.title) {
+    dict.Set("title", *tab_data.title);
+  }
+  if (tab_data.is_media_active) {
+    dict.Set("is_media_active", *tab_data.is_media_active);
+  }
+  if (tab_data.is_observable) {
+    dict.Set("is_observable", *tab_data.is_observable);
+  }
+  if (tab_data.lightweight_page_features) {
+    base::ListValue features_list;
+    for (const mojom::LightweightPageFeature feature :
+         *tab_data.lightweight_page_features) {
+      features_list.Append(static_cast<int>(feature));
+    }
+    dict.Set("lightweight_page_features", std::move(features_list));
+  }
+  return dict.DebugString();
+}
+
+TabDataChange::TabDataChange() = default;
+TabDataChange::TabDataChange(TabDataChangeCauseSet causes,
+                             glic::mojom::TabDataPtr tab_data)
+    : causes(causes), tab_data(std::move(tab_data)) {}
+TabDataChange::~TabDataChange() = default;
+TabDataChange::TabDataChange(TabDataChange&& src) = default;
+TabDataChange& TabDataChange::operator=(TabDataChange&& src) = default;
+std::ostream& operator<<(std::ostream& os, const TabDataChangeCause& cause) {
+  switch (cause) {
+    case TabDataChangeCause::kFavicon:
+      return os << "Favicon";
+    case TabDataChangeCause::kTitle:
+      return os << "Title";
+    case TabDataChangeCause::kAudioState:
+      return os << "AudioState";
+    case TabDataChangeCause::kVisibility:
+      return os << "Visibility";
+    case TabDataChangeCause::kSameDocNavigation:
+      return os << "SameDocNavigation";
+    case TabDataChangeCause::kCrossDocNavigation:
+      return os << "CrossDocNavigation";
+    case TabDataChangeCause::kTabChanged:
+      return os << "TabChanged";
+  }
+}
+std::ostream& operator<<(std::ostream& os,
+                         const TabDataChangeCauseSet& causes) {
+  os << "Causes(";
+  for (auto cause : causes) {
+    os << cause << ", ";
+  }
+  return os << ")";
+}
+
+std::ostream& operator<<(std::ostream& os, const TabDataChange& change) {
+  os << "(" << change.causes << ", ";
+  if (change.tab_data) {
+    os << TabDataDebugString(*change.tab_data);
+  } else {
+    os << "null TabDataPtr";
+  }
+  return os << ")";
+}
+
+TabDataObserver::TabDataObserver(
+    content::WebContents* web_contents,
+    base::RepeatingCallback<void(TabDataChange)> tab_data_changed)
+    : TabDataObserver(web_contents
+                          ? tabs::TabInterface::GetFromContents(web_contents)
+                          : nullptr,
+                      web_contents,
+                      std::move(tab_data_changed)) {}
+
+TabDataObserver::TabDataObserver(
+    tabs::TabInterface* tab,
+    content::WebContents* web_contents,
+    base::RepeatingCallback<void(TabDataChange)> tab_data_changed)
+    : content::WebContentsObserver(web_contents),
+      tab_data_changed_(std::move(tab_data_changed)),
+      tab_(tab) {
+  if (web_contents) {
+#if !BUILDFLAG(IS_ANDROID)
+    auto* favicon_driver =
+        favicon::ContentFaviconDriver::FromWebContents(web_contents);
+    if (favicon_driver) {
+      favicon_driver->AddObserver(this);
+    }
+#endif
+    tab_detach_subscription_ = tab->RegisterWillDetach(base::BindRepeating(
+        &TabDataObserver::OnTabWillDetach, base::Unretained(this)));
+  }
+}
+
+TabDataObserver::~TabDataObserver() {
+  ClearObservation();
+}
+
+void TabDataObserver::ClearObservation() {
+  // If the web contents is destroyed, web_contents() returns null. The favicon
+  // driver is owned by the web contents, so it's not necessary to remove our
+  // observer if the web contents is destroyed.
+  // Note, we do not used a scoped observation because there is no event
+  // notifying us when a web contents is destroyed.
+#if !BUILDFLAG(IS_ANDROID)
+  if (web_contents()) {
+    auto* favicon_driver =
+        favicon::ContentFaviconDriver::FromWebContents(web_contents());
+    if (favicon_driver) {
+      favicon_driver->RemoveObserver(this);
+    }
+  }
+#endif
+  Observe(nullptr);
+  deferred_update_.Stop();
+  updates_since_navigation_ = 0;
+  tab_detach_subscription_ = {};
+  tab_ = nullptr;
+}
+
+void TabDataObserver::DidFinishNavigation(
+    content::NavigationHandle* navigation_handle) {
+  if (!navigation_handle->IsInPrimaryMainFrame() ||
+      !navigation_handle->HasCommitted()) {
+    return;
+  }
+  if (!navigation_handle->IsSameDocument()) {
+    change_causes_.Put(TabDataChangeCause::kCrossDocNavigation);
+    SendUpdate();
+    updates_since_navigation_ = 0;
+    return;
+  }
+
+  // Same document navigations can be made rapidly from javascript.
+  change_causes_.Put(TabDataChangeCause::kSameDocNavigation);
+  SendRateLimitedUpdate();
+}
+
+void TabDataObserver::TitleWasSetForMainFrame(
+    content::RenderFrameHost* render_frame_host) {
+  // Title changes can be made rapidly from javascript.
+  change_causes_.Put(TabDataChangeCause::kTitle);
+  SendRateLimitedUpdate();
+}
+
+void TabDataObserver::SendRateLimitedUpdate() {
+  if (updates_since_navigation_ < kMaxTabUpdatesBeforeRateLimiting) {
+    SendUpdate();
+    return;
+  }
+  if (!deferred_update_.IsRunning()) {
+    deferred_update_.Start(
+        FROM_HERE, base::Milliseconds(250),
+        base::BindOnce(&TabDataObserver::SendUpdate, base::Unretained(this)));
+  }
+}
+
+void TabDataObserver::SendUpdate() {
+  deferred_update_.Stop();
+  ++updates_since_navigation_;
+  tab_data_changed_.Run({change_causes_, CreateTabData(tab_)});
+  change_causes_ = {};
+}
+
+#if !BUILDFLAG(IS_ANDROID)
+void TabDataObserver::OnFaviconUpdated(
+    favicon::FaviconDriver* favicon_driver,
+    NotificationIconType notification_icon_type,
+    const GURL& icon_url,
+    bool icon_url_changed,
+    const gfx::Image& image) {
+  change_causes_.Put(TabDataChangeCause::kFavicon);
+  SendUpdate();
+}
+#endif
+
+void TabDataObserver::OnTabWillDetach(tabs::TabInterface* tab,
+                                      tabs::TabInterface::DetachReason reason) {
+  if (reason == tabs::TabInterface::DetachReason::kDelete) {
+    ClearObservation();
+  }
+}
+
+void TabDataObserver::SetTaskRunnerForTesting(
+    scoped_refptr<base::SequencedTaskRunner> task_runner) {
+  deferred_update_.SetTaskRunner(std::move(task_runner));
+}
+
+int GetTabId(content::WebContents* web_contents) {
+  tabs::TabInterface* tab =
+      tabs::TabInterface::MaybeGetFromContents(web_contents);
+  if (tab) {
+    return tab->GetHandle().raw_value();
+  } else {
+    return tabs::TabHandle::Null().raw_value();
+  }
+}
+
+int GetTabId(tabs::TabInterface* tab) {
+  if (tab) {
+    return tab->GetHandle().raw_value();
+  } else {
+    return tabs::TabHandle::Null().raw_value();
+  }
+}
+
+const GURL& GetTabUrl(content::WebContents* web_contents) {
+  return web_contents->GetLastCommittedURL();
+}
+
+GURL GetTabUrl(tabs::TabInterface* tab) {
+  if (!tab) {
+    return GURL();
+  }
+  return tab->GetURL();
+}
+
+// CreateTabData Implementation:
+glic::mojom::TabDataPtr CreateTabData(tabs::TabInterface* tab) {
+  if (!tab) {
+    return nullptr;
+  }
+  content::WebContents* web_contents = tab->GetContents();
+#if !BUILDFLAG(IS_ANDROID)
+  if (!web_contents) {
+    return nullptr;
+  }
+#endif
+
+  int tab_id = GetTabId(tab);
+
+  int window_id = SessionID::InvalidValue().id();
+  if (web_contents) {
+    window_id =
+        sessions::SessionTabHelper::IdForWindowContainingTab(web_contents).id();
+  } else if (tab->GetBrowserWindowInterface()) {
+    window_id = tab->GetBrowserWindowInterface()->GetSessionID().id();
+  }
+
+  GURL url = web_contents ? GetTabUrl(web_contents) : tab->GetURL();
+  std::string title = base::UTF16ToUTF8(web_contents ? web_contents->GetTitle()
+                                                     : tab->GetTitle());
+
+  SkBitmap favicon;
+  std::optional<GURL> favicon_url;
+#if !BUILDFLAG(IS_ANDROID)
+  if (web_contents) {
+    auto* favicon_driver =
+        favicon::ContentFaviconDriver::FromWebContents(web_contents);
+    if (favicon_driver && favicon_driver->FaviconIsValid()) {
+      // Attempt to get a 32x32 favicon by default (16x16 DIP at 2x scale).
+      favicon = favicon_driver->GetFavicon()
+                    .ToImageSkia()
+                    ->GetRepresentation(2.0f)
+                    .GetBitmap();
+      if (base::FeatureList::IsEnabled(features::kGlicFaviconDataUrls)) {
+        favicon_url = GURL(skia::EncodePngAsDataUri(favicon.pixmap()));
+      }
+    }
+  }
+#endif
+
+  std::string mime_type =
+      web_contents ? web_contents->GetContentsMimeType() : "";
+
+  bool is_observable = false;
+  bool is_audible = false;
+  bool is_tab_content_captured = false;
+  if (web_contents) {
+    // TODO(b/426644734): investigate triggering updates due to changes to
+    // observability for focused tab data.
+    is_audible = web_contents->IsCurrentlyAudible();
+    is_tab_content_captured = web_contents->IsBeingCaptured();
+    is_observable = is_audible || IsForeground(web_contents->GetVisibility());
+  }
+
+  bool is_active_in_window = false;
+  bool is_window_active = false;
+  if (base::FeatureList::IsEnabled(features::kGlicGetTabByIdApi)) {
+    is_active_in_window = tab->IsActivated();
+#if !BUILDFLAG(IS_ANDROID)
+    is_window_active = tab->GetBrowserWindowInterface()
+                           ? IsActive(tab->GetBrowserWindowInterface())
+                           : false;
+#else
+    // Not implemented on Android. It's currently not used, so this may never
+    // be implemented.
+    is_window_active = true;
+#endif
+  }
+  std::optional<std::vector<mojom::LightweightPageFeature>>
+      lightweight_page_features;
+  if (base::FeatureList::IsEnabled(features::kGlicSummarizeVideoSuggestion)) {
+    if (auto* manager = glic::GlicPageFeaturesManager::From(tab)) {
+      lightweight_page_features = manager->GetFeatures();
+    }
+  }
+
+  return glic::mojom::TabData::New(
+      tab_id, window_id, url, title, favicon, favicon_url, mime_type,
+      is_observable, is_audible, is_tab_content_captured, is_active_in_window,
+      is_window_active, std::move(lightweight_page_features));
+}
+
+// CreateFocusedTabData Implementation:
+glic::mojom::FocusedTabDataPtr CreateFocusedTabData(
+    const FocusedTabData& focused_tab_data) {
+  if (focused_tab_data.is_focus()) {
+    return mojom::FocusedTabData::NewFocusedTab(
+        CreateTabData(focused_tab_data.focus()));
+  }
+  return mojom::FocusedTabData::NewNoFocusedTabData(
+      mojom::NoFocusedTabData::New(
+          CreateTabData(focused_tab_data.unfocused_tab()),
+          focused_tab_data.GetFocus().error()));
+}
+
+FocusedTabData::FocusedTabData(tabs::TabInterface* tab) : data_(tab) {}
+FocusedTabData::FocusedTabData(const std::string& error,
+                               tabs::TabInterface* unfocused_tab)
+    : data_(error), unfocused_tab_(unfocused_tab) {}
+FocusedTabData::~FocusedTabData() = default;
+
+base::expected<tabs::TabInterface*, std::string> FocusedTabData::GetFocus()
+    const {
+  if (is_focus()) {
+    return focus();
+  }
+  return base::unexpected(std::get<1>(data_));
+}
+
+bool FaviconEquals(const ::SkBitmap& a, const ::SkBitmap& b) {
+  if (&a == &b) {
+    return true;
+  }
+  // Compare image properties.
+  if (a.info() != b.info()) {
+    return false;
+  }
+  return gfx::BitmapsAreEqual(a, b);
+}
+
+}  // namespace glic

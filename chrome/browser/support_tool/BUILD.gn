@@ -1,0 +1,168 @@
+# Copyright 2022 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//third_party/protobuf/proto_library.gni")
+
+group("proto_lite") {
+  public_deps = [
+    ":support_tool_proto",
+    "//third_party/protobuf:protobuf_lite",
+  ]
+}
+
+proto_library("support_tool_proto") {
+  sources = [ "data_collection_module.proto" ]
+}
+
+if (!is_android) {
+  source_set("support_tool") {
+    public = [
+      "data_collector.h",
+      "data_collector_utils.h",
+      "policy_data_collector.h",
+      "signin_data_collector.h",
+      "support_packet_metadata.h",
+      "support_tool_handler.h",
+      "support_tool_util.h",
+      "system_log_source_data_collector_adaptor.h",
+    ]
+
+    public_deps = [
+      ":proto_lite",
+      "//base",
+      "//chrome/browser/policy",
+      "//chrome/browser/profiles:profile",
+      "//components/feedback",
+      "//components/feedback/redaction_tool",
+      "//components/policy/core/browser",
+    ]
+
+    if (is_linux || is_win || is_mac) {
+      public += [ "updater_data_collector.h" ]
+      public_deps += [
+        "//chrome/updater:public_sources",
+        "//chrome/updater:public_util",
+      ]
+    }
+  }
+
+  source_set("impl") {
+    sources = [
+      "data_collector_utils.cc",
+      "policy_data_collector.cc",
+      "signin_data_collector.cc",
+      "support_packet_metadata.cc",
+      "support_tool_handler.cc",
+      "support_tool_util.cc",
+      "system_log_source_data_collector_adaptor.cc",
+    ]
+
+    public_deps = [
+      ":support_tool",
+      "//chrome/browser:browser_public_dependencies",
+    ]
+
+    deps = [
+      "//base",
+      "//chrome/browser/feedback:feedback_impl",
+      "//components/feedback",
+      "//components/feedback/redaction_tool",
+      "//components/policy/core/browser",
+      "//components/signin/core/browser",
+      "//third_party/icu",
+      "//third_party/zlib/google:zip",
+    ]
+
+    if (is_chromeos) {
+      deps += [
+        "//chrome/browser/ash/system_logs",
+        "//chrome/browser/support_tool/ash",
+        "//chromeos/ash/components/browser_context_helper",
+        "//chromeos/ash/components/system",
+        "//chromeos/components/kiosk",
+        "//components/user_manager",
+      ]
+    }
+
+    if (is_linux || is_win || is_mac) {
+      sources += [ "updater_data_collector.cc" ]
+      deps += [ "//chrome/updater:public_sources" ]
+    }
+  }
+
+  source_set("unit_tests") {
+    testonly = true
+
+    # system_log_source_data_collector_adaptor_unittest.cc has file-scope
+    # statics of non-trivial-destructor types, which -Wexit-time-destructors
+    # rejects.
+    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+
+    sources = [
+      "support_tool_handler_unittest.cc",
+      "system_log_source_data_collector_adaptor_unittest.cc",
+    ]
+
+    deps = [
+      ":impl",
+      ":support_tool",
+      "//base",
+      "//base/test:test_support",
+      "//chrome/test:test_support",
+      "//components/feedback/redaction_tool",
+      "//content/test:test_support",
+      "//testing/gmock",
+      "//testing/gtest",
+    ]
+
+    if (is_chromeos) {
+      deps += [ "//chromeos/ash/components/system" ]
+    }
+
+    if (is_linux || is_win || is_mac) {
+      sources += [ "updater_data_collector_unittest.cc" ]
+      deps += [ "//chrome/updater:public_sources" ]
+    }
+  }
+
+  source_set("browser_tests") {
+    testonly = true
+
+    # The *_data_collector_browsertest.cc files have file-scope statics of
+    # non-trivial-destructor types, which -Wexit-time-destructors rejects.
+    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+    sources = [
+      "policy_data_collector_browsertest.cc",
+      "support_tool_util_browsertest.cc",
+    ]
+
+    deps = [
+      ":impl",
+      ":support_tool",
+      "//base",
+      "//chrome/browser/policy:policy_util",
+      "//chrome/browser/profiles:profile",
+      "//chrome/browser/ui",
+      "//chrome/test:test_support",
+      "//chrome/test:test_support_ui",
+      "//content/test:test_support",
+      "//testing/gtest",
+    ]
+
+    if (is_chromeos) {
+      sources += [ "signin_data_collector_browsertest.cc" ]
+      deps += [
+        "//chrome/browser/ash/app_mode/test:test_support",
+        "//chrome/browser/ash/login:test_support",
+        "//chrome/browser/ash/login/app_mode/test:test_support",
+        "//chrome/browser/ash/login/test:test_support",
+        "//chromeos/ash/components/cryptohome",
+        "//chromeos/components/kiosk",
+      ]
+    }
+  }
+}

@@ -1,0 +1,169 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(!is_android)
+
+source_set("device_notifications") {
+  sources = []
+  public_deps = []
+
+  if (!is_android) {
+    sources += [
+      "device_connection_tracker.h",
+      "device_system_tray_icon.h",
+      "device_system_tray_icon_renderer.h",
+    ]
+    public_deps += [
+      "//base",
+      "//chrome/browser/profiles:profile",
+      "//components/keyed_service/core",
+      "//ui/gfx",
+      "//url",
+    ]
+
+    if (!is_chromeos) {
+      sources += [ "device_status_icon_renderer.h" ]
+      public_deps += [
+        "//chrome/browser/profiles:profile_util",
+        "//chrome/browser/status_icons",
+      ]
+    } else {
+      sources += [ "device_pinned_notification_renderer.h" ]
+      public_deps += [
+        "//ash/constants",
+        "//ui/message_center/public/cpp",
+      ]
+    }
+  }
+}
+
+source_set("impl") {
+  sources = []
+  deps = [ ":device_notifications" ]
+
+  if (!is_android) {
+    sources += [
+      "device_connection_tracker.cc",
+      "device_system_tray_icon.cc",
+    ]
+
+    deps += [
+      "//chrome/browser/notifications:system_notification_helper",
+      "//chrome/browser/profiles:profile",
+      "//chrome/browser/profiles:profile_manager",
+      "//chrome/browser/ui",
+      "//chrome/browser/ui:chrome_pages",
+      "//content/public/browser",
+      "//url",
+    ]
+
+    if (!is_chromeos) {
+      sources += [ "device_status_icon_renderer.cc" ]
+      deps += [
+        "//base:i18n",
+        "//chrome/app:command_ids",
+        "//chrome/app:generated_resources",
+        "//chrome/browser:browser_process",
+        "//ui/base",
+        "//ui/gfx",
+        "//ui/gfx:color_utils",
+      ]
+    } else {
+      sources += [ "device_pinned_notification_renderer.cc" ]
+      deps += [ "//components/vector_icons" ]
+    }
+  }
+  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+}
+
+source_set("test_support") {
+  testonly = true
+  sources = [
+    "device_test_utils.cc",
+    "device_test_utils.h",
+  ]
+  public_deps = [
+    ":device_notifications",
+    "//testing/gmock",
+  ]
+  deps = [
+    "//base",
+    "//chrome/browser",
+    "//chrome/test:test_support",
+    "//url",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = []
+  deps = [
+    ":device_notifications",
+    ":test_support",
+    "//base",
+    "//build:chromeos_buildflags",
+    "//chrome/test:test_support",
+    "//testing/gmock",
+    "//url",
+  ]
+  public_deps = []
+
+  if (!is_android) {
+    sources += [
+      "device_system_tray_icon_unittest.cc",
+      "device_system_tray_icon_unittest.h",
+    ]
+    public_deps += [
+      "//chrome/browser/extensions",
+      "//chrome/browser/extensions:test_support",
+      "//chrome/browser/notifications:system_notification_helper",
+      "//extensions:test_support",
+      "//extensions/common",
+    ]
+  }
+
+  if (!is_android && !is_chromeos) {
+    sources += [
+      "device_status_icon_unittest.cc",
+      "device_status_icon_unittest.h",
+    ]
+    public_deps += [ "//chrome/browser/status_icons" ]
+  }
+
+  if (is_chromeos) {
+    sources += [
+      "device_pinned_notification_unittest.cc",
+      "device_pinned_notification_unittest.h",
+    ]
+  }
+}
+
+source_set("browser_test_support") {
+  testonly = true
+  sources = [
+    "device_connection_tracker_test_base.cc",
+    "device_connection_tracker_test_base.h",
+  ]
+  public_deps = [
+    ":device_notifications",
+    ":test_support",
+    "//base",
+    "//chrome/test:test_support",
+    "//testing/gmock",
+    "//url",
+  ]
+  deps = [ "//content/test:test_support" ]
+
+  if (!is_android) {
+    deps += [
+      "//chrome/browser",
+      "//chrome/browser/extensions",
+      "//chrome/browser/extensions:test_support",
+      "//chrome/browser/notifications:system_notification_helper",
+      "//chrome/browser/ui/browser_window",
+      "//extensions:test_support",
+      "//extensions/common",
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef ASH_WEBUI_SETTINGS_PUBLIC_CONSTANTS_ROUTES_UTIL_H_
+#define ASH_WEBUI_SETTINGS_PUBLIC_CONSTANTS_ROUTES_UTIL_H_
+
+#include <string_view>
+
+#include "base/component_export.h"
+
+class GURL;
+
+namespace chromeos::settings {
+
+// Returns true if the sub-page is one defined in `routes.mojom`.
+COMPONENT_EXPORT(ASH_WEBUI_SETTINGS_PUBLIC_CONSTANTS)
+bool IsOSSettingsSubPage(std::string_view sub_page);
+
+// Constructs an OS settings GURL for the specified `sub_page`.
+COMPONENT_EXPORT(ASH_WEBUI_SETTINGS_PUBLIC_CONSTANTS)
+GURL GetOSSettingsUrl(std::string_view sub_page);
+
+}  // namespace chromeos::settings
+
+#endif  // ASH_WEBUI_SETTINGS_PUBLIC_CONSTANTS_ROUTES_UTIL_H_

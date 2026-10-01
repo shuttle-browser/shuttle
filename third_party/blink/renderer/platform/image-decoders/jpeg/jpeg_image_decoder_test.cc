@@ -1,0 +1,1558 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/platform/image-decoders/jpeg/jpeg_image_decoder.h"
+
+#include <algorithm>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <string>
+
+#include "base/compiler_specific.h"
+#include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
+#include "build/build_config.h"
+#include "build/buildflag.h"
+#include "build/chromecast_buildflags.h"
+#include "skia/rusty_jpeg_feature.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/platform/web_data.h"
+#include "third_party/blink/renderer/platform/graphics/bitmap_image_metrics.h"
+#include "third_party/blink/renderer/platform/image-decoders/image_animation.h"
+#include "third_party/blink/renderer/platform/image-decoders/image_decoder_test_helpers.h"
+#include "third_party/blink/renderer/platform/image-decoders/jpeg/jpeg_decoder_factory.h"
+#include "third_party/blink/renderer/platform/image-decoders/jpeg/jpeg_rust_image_decoder.h"
+#include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
+#include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+#include "ui/base/test/skia_gold_matching_algorithm.h"  // nogncheck
+#include "ui/base/test/skia_gold_pixel_diff.h"          // nogncheck
+#endif
+
+namespace blink {
+
+static const size_t kLargeEnoughSize = 1000 * 1000;
+
+namespace {
+
+std::unique_ptr<JPEGImageDecoder> CreateJPEGDecoder(size_t max_decoded_bytes) {
+  return std::make_unique<JPEGImageDecoder>(
+      ImageDecoder::kAlphaNotPremultiplied, ColorBehavior::kTransformToSRGB,
+      cc::AuxImage::kDefault, max_decoded_bytes);
+}
+
+std::unique_ptr<ImageDecoder> CreateJPEGDecoder() {
+  return CreateJPEGDecoder(ImageDecoder::kNoDecodedImageByteLimit);
+}
+
+std::unique_ptr<ImageDecoder> CreateCppJPEGDecoder() {
+  return std::make_unique<JPEGImageDecoder>(
+      ImageDecoder::kAlphaNotPremultiplied, ColorBehavior::kTransformToSRGB,
+      cc::AuxImage::kDefault, ImageDecoder::kNoDecodedImageByteLimit);
+}
+
+std::unique_ptr<ImageDecoder> CreateRustJPEGDecoder() {
+  return std::make_unique<JpegRustImageDecoder>(
+      ImageDecoder::kAlphaNotPremultiplied, ColorBehavior::kTransformToSRGB,
+      ImageDecoder::kNoDecodedImageByteLimit);
+}
+
+std::unique_ptr<ImageDecoder> CreateFactoryJPEGDecoder() {
+  return CreateJpegImageDecoder(
+      ImageDecoder::kAlphaNotPremultiplied, ColorBehavior::kTransformToSRGB,
+      cc::AuxImage::kDefault, ImageDecoder::kNoDecodedImageByteLimit);
+}
+
+enum class JPEGExpectedDifference {
+  kNone,
+  kSizeAvailability,
+  kLibjpegTurboDecodeFailure,
+};
+
+struct JPEGComparisonTestCase {
+  const char* path;
+  JPEGExpectedDifference expected_difference;
+  int max_channel_delta;
+  double average_channel_delta;
+  const char* description;
+};
+
+std::string JPEGComparisonTestName(
+    const testing::TestParamInfo<JPEGComparisonTestCase>& info) {
+  std::string name = info.param.path;
+  constexpr char kImagePrefix[] = "/images/";
+  if (base::StartsWith(name, kImagePrefix)) {
+    name.erase(0, std::size(kImagePrefix) - 1);
+  }
+  if (base::EndsWith(name, ".jpg")) {
+    name.erase(name.size() - 4);
+  }
+  // Parameterized test names may only contain alphanumeric characters or '_'.
+  std::ranges::replace_if(
+      name, std::not_fn([](char c) { return IsAsciiAlphanumeric(c); }), '_');
+  return name;
+}
+
+JPEGComparisonTestCase NoDifference(const char* path) {
+  return JPEGComparisonTestCase{path, JPEGExpectedDifference::kNone, 2, 1.0,
+                                nullptr};
+}
+
+JPEGComparisonTestCase SmallPixelDifference(const char* path,
+                                            int max_channel_delta,
+                                            const char* description) {
+  return JPEGComparisonTestCase{path, JPEGExpectedDifference::kNone,
+                                max_channel_delta, 1.0, description};
+}
+
+JPEGComparisonTestCase SizeAvailabilityDifference(const char* path,
+                                                  const char* description) {
+  return JPEGComparisonTestCase{path, JPEGExpectedDifference::kSizeAvailability,
+                                0, 0, description};
+}
+
+JPEGComparisonTestCase LibjpegTurboDecodeFailure(const char* path,
+                                                 const char* description) {
+  return JPEGComparisonTestCase{
+      path, JPEGExpectedDifference::kLibjpegTurboDecodeFailure, 0, 0,
+      description};
+}
+
+JPEGComparisonTestCase ArithmeticDecodeDifference(const char* path) {
+  return LibjpegTurboDecodeFailure(
+      path,
+      "The libjpeg-turbo build omits arithmetic decoding while zune-jpeg "
+      "decodes this image.");
+}
+
+int ChannelDelta(uint8_t a, uint8_t b) {
+  return std::abs(static_cast<int>(a) - static_cast<int>(b));
+}
+
+void Downsample(size_t max_decoded_bytes,
+                const char* image_file_path,
+                const gfx::Size& expected_size) {
+  scoped_refptr<SharedBuffer> data = ReadFileToSharedBuffer(image_file_path);
+  ASSERT_TRUE(data);
+
+  std::unique_ptr<ImageDecoder> decoder = CreateJPEGDecoder(max_decoded_bytes);
+  decoder->SetData(data.get(), true);
+
+  ImageFrame* frame = decoder->DecodeFrameBufferAtIndex(0);
+  ASSERT_TRUE(frame);
+  EXPECT_EQ(expected_size.width(), frame->Bitmap().width());
+  EXPECT_EQ(expected_size.height(), frame->Bitmap().height());
+  EXPECT_EQ(expected_size, decoder->DecodedSize());
+}
+
+void ReadYUV(size_t max_decoded_bytes,
+             const char* image_file_path,
+             const gfx::Size& expected_y_size,
+             const gfx::Size& expected_uv_size,
+             const bool expect_decoding_failure = false) {
+  scoped_refptr<SharedBuffer> data = ReadFileToSharedBuffer(image_file_path);
+  ASSERT_TRUE(data);
+
+  std::unique_ptr<JPEGImageDecoder> decoder =
+      CreateJPEGDecoder(max_decoded_bytes);
+  decoder->SetData(data.get(), true);
+
+  ASSERT_TRUE(decoder->IsSizeAvailable());
+  ASSERT_TRUE(decoder->CanDecodeToYUV());
+
+  gfx::Size size = decoder->DecodedSize();
+
+  gfx::Size y_size = decoder->DecodedYUVSize(cc::YUVIndex::kY);
+  gfx::Size u_size = decoder->DecodedYUVSize(cc::YUVIndex::kU);
+  gfx::Size v_size = decoder->DecodedYUVSize(cc::YUVIndex::kV);
+
+  EXPECT_EQ(size, y_size);
+  EXPECT_EQ(u_size, v_size);
+
+  EXPECT_EQ(expected_y_size, y_size);
+  EXPECT_EQ(expected_uv_size, u_size);
+
+  wtf_size_t row_bytes[3];
+  row_bytes[0] = decoder->DecodedYUVWidthBytes(cc::YUVIndex::kY);
+  row_bytes[1] = decoder->DecodedYUVWidthBytes(cc::YUVIndex::kU);
+  row_bytes[2] = decoder->DecodedYUVWidthBytes(cc::YUVIndex::kV);
+
+  size_t planes_data_size = row_bytes[0] * y_size.height() +
+                            row_bytes[1] * u_size.height() +
+                            row_bytes[2] * v_size.height();
+  auto planes_data = std::make_unique<char[]>(planes_data_size);
+
+  void* planes[3];
+  planes[0] = planes_data.get();
+  planes[1] = UNSAFE_TODO(static_cast<char*>(planes[0]) +
+                          row_bytes[0] * y_size.height());
+  planes[2] = UNSAFE_TODO(static_cast<char*>(planes[1]) +
+                          row_bytes[1] * u_size.height());
+
+  decoder->SetImagePlanes(
+      std::make_unique<ImagePlanes>(planes, row_bytes, kGray_8_SkColorType));
+
+  decoder->DecodeToYUV();
+
+  EXPECT_EQ(expect_decoding_failure, decoder->Failed());
+  EXPECT_TRUE(decoder->HasDisplayableYUVData());
+}
+
+void TestJpegBppHistogram(const char* image_name,
+                          const char* histogram_name = nullptr,
+                          base::HistogramBase::Sample32 sample = 0) {
+  TestBppHistogram(CreateJPEGDecoder, "Jpeg", image_name, histogram_name,
+                   sample);
+}
+
+}  // anonymous namespace
+
+// Tests failure on a too big image.
+TEST(JPEGImageDecoderTest, tooBig) {
+  std::unique_ptr<ImageDecoder> decoder = CreateJPEGDecoder(100);
+  EXPECT_FALSE(decoder->SetSize(10000u, 10000u));
+  EXPECT_TRUE(decoder->Failed());
+}
+
+TEST(JPEGImageDecoderTest, RustFeaturePreservesDecodedMemoryBudget) {
+  base::test::ScopedFeatureList features(skia::kRustyJpegFeature);
+  scoped_refptr<SharedBuffer> data =
+      ReadFileToSharedBuffer("/images/resources/gracehopper.jpg");
+  ASSERT_TRUE(data);
+
+  auto decoder = CreateJpegImageDecoder(ImageDecoder::kAlphaNotPremultiplied,
+                                        ColorBehavior::kTransformToSRGB,
+                                        cc::AuxImage::kDefault, 40 * 40 * 4);
+  decoder->SetData(data.get(), true);
+
+  ImageFrame* frame = decoder->DecodeFrameBufferAtIndex(0);
+  ASSERT_TRUE(frame);
+  EXPECT_EQ(gfx::Size(32, 32), decoder->DecodedSize());
+  EXPECT_FALSE(decoder->Failed());
+}
+
+// Tests that the JPEG decoder can downsample image whose width and height are
+// multiples of 8, to ensure we compute the correct DecodedSize and pass correct
+// parameters to libjpeg to output the image with the expected size.
+TEST(JPEGImageDecoderTest, downsampleImageSizeMultipleOf8) {
+  const char* jpeg_file = "/images/resources/gracehopper.jpg";  // 256x256
+
+  // 1/8 downsample.
+  Downsample(40 * 40 * 4, jpeg_file, gfx::Size(32, 32));
+
+  // 2/8 downsample.
+  Downsample(70 * 70 * 4, jpeg_file, gfx::Size(64, 64));
+
+  // 3/8 downsample.
+  Downsample(100 * 100 * 4, jpeg_file, gfx::Size(96, 96));
+
+  // 4/8 downsample.
+  Downsample(130 * 130 * 4, jpeg_file, gfx::Size(128, 128));
+
+  // 5/8 downsample.
+  Downsample(170 * 170 * 4, jpeg_file, gfx::Size(160, 160));
+
+  // 6/8 downsample.
+  Downsample(200 * 200 * 4, jpeg_file, gfx::Size(192, 192));
+
+  // 7/8 downsample.
+  Downsample(230 * 230 * 4, jpeg_file, gfx::Size(224, 224));
+}
+
+// Tests that JPEG decoder can downsample image whose width and height are not
+// multiple of 8. Ensures that we round using the same algorithm as libjpeg.
+TEST(JPEGImageDecoderTest, downsampleImageSizeNotMultipleOf8) {
+  const char* jpeg_file = "/images/resources/icc-v2-gbr.jpg";  // 275x207
+
+  // 1/8 downsample.
+  Downsample(40 * 40 * 4, jpeg_file, gfx::Size(35, 26));
+
+  // 2/8 downsample.
+  Downsample(70 * 70 * 4, jpeg_file, gfx::Size(69, 52));
+
+  // 3/8 downsample.
+  Downsample(100 * 100 * 4, jpeg_file, gfx::Size(104, 78));
+
+  // 4/8 downsample.
+  Downsample(130 * 130 * 4, jpeg_file, gfx::Size(138, 104));
+
+  // 5/8 downsample.
+  Downsample(170 * 170 * 4, jpeg_file, gfx::Size(172, 130));
+
+  // 6/8 downsample.
+  Downsample(200 * 200 * 4, jpeg_file, gfx::Size(207, 156));
+
+  // 7/8 downsample.
+  Downsample(230 * 230 * 4, jpeg_file, gfx::Size(241, 182));
+}
+
+// Tests that upsampling is not allowed.
+TEST(JPEGImageDecoderTest, upsample) {
+  const char* jpeg_file = "/images/resources/gracehopper.jpg";  // 256x256
+  Downsample(kLargeEnoughSize, jpeg_file, gfx::Size(256, 256));
+}
+
+TEST(JPEGImageDecoderTest, yuv) {
+  // This image is 256x256 with YUV 4:2:0
+  const char* jpeg_file = "/images/resources/gracehopper.jpg";
+  ReadYUV(kLargeEnoughSize, jpeg_file, gfx::Size(256, 256),
+          gfx::Size(128, 128));
+
+  // Each plane is in its own scan.
+  const char* jpeg_file_non_interleaved =
+      "/images/resources/cs-uma-ycbcr-420-non-interleaved.jpg";  // 64x64
+  ReadYUV(kLargeEnoughSize, jpeg_file_non_interleaved, gfx::Size(64, 64),
+          gfx::Size(32, 32));
+
+  const char* jpeg_file_image_size_not_multiple_of8 =
+      "/images/resources/cropped_mandrill.jpg";  // 439x154
+  ReadYUV(kLargeEnoughSize, jpeg_file_image_size_not_multiple_of8,
+          gfx::Size(439, 154), gfx::Size(220, 77));
+
+  // Make sure we revert to RGBA decoding when we're about to downscale,
+  // which can occur on memory-constrained android devices.
+  scoped_refptr<SharedBuffer> data = ReadFileToSharedBuffer(jpeg_file);
+  ASSERT_TRUE(data);
+
+  std::unique_ptr<JPEGImageDecoder> decoder = CreateJPEGDecoder(230 * 230 * 4);
+  decoder->SetData(data.get(), true);
+
+  ASSERT_TRUE(decoder->IsSizeAvailable());
+  ASSERT_FALSE(decoder->CanDecodeToYUV());
+}
+
+// Tests that a progressive image missing an EOI marker causes a YUV decoding
+// failure but also results in displayable YUV data.
+TEST(JPEGImageDecoderTest, missingEoi) {
+  const char* jpeg_file = "/images/resources/missing-eoi.jpg";  // 1599x899
+  ReadYUV((1599 * 899 * 4), jpeg_file, gfx::Size(1599, 899),
+          gfx::Size(800, 450),
+          /*expect_decoding_failure=*/true);
+}
+
+TEST(JPEGImageDecoderTest,
+     byteByByteBaselineJPEGWithColorProfileAndRestartMarkers) {
+  TestByteByByteDecode(&CreateJPEGDecoder,
+                       "/images/resources/"
+                       "small-square-with-colorspin-profile.jpg",
+                       1u, kAnimationNone);
+}
+
+TEST(JPEGImageDecoderTest, byteByByteProgressiveJPEG) {
+  TestByteByByteDecode(&CreateJPEGDecoder, "/images/resources/bug106024.jpg",
+                       1u, kAnimationNone);
+}
+
+TEST(JPEGImageDecoderTest, byteByByteProgressiveJPEGWithRustEnabled) {
+  base::test::ScopedFeatureList features(skia::kRustyJpegFeature);
+  TestByteByByteDecode(&CreateFactoryJPEGDecoder,
+                       "/images/resources/bug106024.jpg", 1u, kAnimationNone);
+}
+
+TEST(JPEGImageDecoderTest, byteByByteRGBJPEGWithAdobeMarkers) {
+  TestByteByByteDecode(&CreateJPEGDecoder,
+                       "/images/resources/rgb-jpeg-with-adobe-marker-only.jpg",
+                       1u, kAnimationNone);
+}
+
+class JPEGDecoderComparisonTest
+    : public testing::TestWithParam<JPEGComparisonTestCase> {};
+
+TEST_P(JPEGDecoderComparisonTest, CompareDecoders) {
+  const JPEGComparisonTestCase& test_case = GetParam();
+  const char* jpeg_path = test_case.path;
+  if (test_case.description) {
+    SCOPED_TRACE(test_case.description);
+  }
+
+  scoped_refptr<SharedBuffer> data = ReadFileToSharedBuffer(jpeg_path);
+  ASSERT_NE(data.get(), nullptr) << "Unable to load: " << jpeg_path;
+  ASSERT_FALSE(data->empty());
+
+  std::unique_ptr<ImageDecoder> cpp_decoder = CreateCppJPEGDecoder();
+  std::unique_ptr<ImageDecoder> rust_decoder = CreateRustJPEGDecoder();
+
+  cpp_decoder->SetData(data.get(), true);
+  rust_decoder->SetData(data.get(), true);
+
+  bool cpp_size_available = cpp_decoder->IsSizeAvailable();
+  bool rust_size_available = rust_decoder->IsSizeAvailable();
+  if (test_case.expected_difference ==
+      JPEGExpectedDifference::kSizeAvailability) {
+    EXPECT_NE(cpp_size_available, rust_size_available)
+        << jpeg_path << ": expected IsSizeAvailable difference";
+    return;
+  }
+  EXPECT_EQ(cpp_size_available, rust_size_available)
+      << jpeg_path << ": IsSizeAvailable mismatch"
+      << " (JPEGImageDecoder: " << cpp_size_available
+      << ", JpegRustImageDecoder: " << rust_size_available << ")";
+  if (!cpp_size_available || !rust_size_available) {
+    return;
+  }
+
+  EXPECT_EQ(cpp_decoder->Size().width(), rust_decoder->Size().width())
+      << jpeg_path << ": Width mismatch";
+  EXPECT_EQ(cpp_decoder->Size().height(), rust_decoder->Size().height())
+      << jpeg_path << ": Height mismatch";
+
+  ImageFrame* cpp_frame = cpp_decoder->DecodeFrameBufferAtIndex(0);
+  ImageFrame* rust_frame = rust_decoder->DecodeFrameBufferAtIndex(0);
+
+  bool cpp_failed = cpp_decoder->Failed();
+  bool rust_failed = rust_decoder->Failed();
+  if (test_case.expected_difference ==
+      JPEGExpectedDifference::kLibjpegTurboDecodeFailure) {
+    EXPECT_TRUE(cpp_failed)
+        << jpeg_path << ": expected libjpeg-turbo decode failure";
+    EXPECT_FALSE(rust_failed)
+        << jpeg_path << ": expected zune-jpeg decode success";
+    return;
+  }
+  EXPECT_EQ(cpp_failed, rust_failed)
+      << jpeg_path << ": Failed state mismatch after decode"
+      << " (JPEGImageDecoder: " << cpp_failed
+      << ", JpegRustImageDecoder: " << rust_failed << ")";
+  if (cpp_failed || rust_failed) {
+    return;
+  }
+
+  if (!cpp_frame || !rust_frame) {
+    EXPECT_EQ(cpp_frame == nullptr, rust_frame == nullptr)
+        << jpeg_path << ": Frame null mismatch";
+    return;
+  }
+
+  EXPECT_EQ(cpp_frame->GetStatus(), rust_frame->GetStatus())
+      << jpeg_path << ": Frame status mismatch";
+  if (cpp_frame->GetStatus() != ImageFrame::kFrameComplete ||
+      rust_frame->GetStatus() != ImageFrame::kFrameComplete) {
+    return;
+  }
+
+  const SkBitmap& cpp_bitmap = cpp_frame->Bitmap();
+  const SkBitmap& rust_bitmap = rust_frame->Bitmap();
+
+  EXPECT_EQ(cpp_bitmap.width(), rust_bitmap.width())
+      << jpeg_path << ": Bitmap width mismatch";
+  EXPECT_EQ(cpp_bitmap.height(), rust_bitmap.height())
+      << jpeg_path << ": Bitmap height mismatch";
+  ASSERT_EQ(cpp_bitmap.width(), rust_bitmap.width());
+  ASSERT_EQ(cpp_bitmap.height(), rust_bitmap.height());
+
+  uint64_t total_channel_delta = 0;
+  int max_channel_delta = 0;
+  for (int y = 0; y < cpp_bitmap.height(); ++y) {
+    for (int x = 0; x < cpp_bitmap.width(); ++x) {
+      SkColor cpp_color = cpp_bitmap.getColor(x, y);
+      SkColor rust_color = rust_bitmap.getColor(x, y);
+      int channel_deltas[] = {
+          ChannelDelta(SkColorGetA(cpp_color), SkColorGetA(rust_color)),
+          ChannelDelta(SkColorGetR(cpp_color), SkColorGetR(rust_color)),
+          ChannelDelta(SkColorGetG(cpp_color), SkColorGetG(rust_color)),
+          ChannelDelta(SkColorGetB(cpp_color), SkColorGetB(rust_color))};
+      for (int channel_delta : channel_deltas) {
+        total_channel_delta += channel_delta;
+        max_channel_delta = std::max(max_channel_delta, channel_delta);
+      }
+    }
+  }
+
+  const double average_channel_delta =
+      static_cast<double>(total_channel_delta) /
+      (cpp_bitmap.width() * cpp_bitmap.height() * 4);
+  EXPECT_LE(max_channel_delta, test_case.max_channel_delta)
+      << jpeg_path << ": maximum channel delta exceeds tolerance";
+  EXPECT_LE(average_channel_delta, test_case.average_channel_delta)
+      << jpeg_path << ": average channel delta exceeds tolerance";
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    JPEGComparison,
+    JPEGDecoderComparisonTest,
+    testing::Values(
+        NoDifference("/images/jpeg-suite/baseline/16x16x8_grayscale.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/1x1x8_grayscale.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/32x32x8_cmyk.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/baseline/32x32x8_cmyk_interleaved.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/32x32x8_comment.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/32x32x8_comments.jpg"),
+        SizeAvailabilityDifference(
+            "/images/jpeg-suite/baseline/32x32x8_dnl.jpg",
+            "DNL (Define Number of Lines) changes size discovery behavior: "
+            "libjpeg-turbo/Blink does not expose size up front here, while "
+            "zune-jpeg accepts the header."),
+        NoDifference("/images/jpeg-suite/baseline/32x32x8_grayscale.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/baseline/32x32x8_grayscale_quantization.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/32x32x8_restarts.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/32x32x8_rgb.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/32x32x8_rgb_interleaved.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/32x32x8_ycbcr.jpg"),
+        SmallPixelDifference(
+            "/images/jpeg-suite/baseline/32x32x8_ycbcr_2x2_1x1_1x1.jpg",
+            3,
+            "Non-interleaved mixed-sampling YCbCr is visually equivalent but "
+            "not bit-exact between libjpeg-turbo and zune-jpeg."),
+        SmallPixelDifference(
+            "/images/jpeg-suite/baseline/"
+            "32x32x8_ycbcr_2x2_1x1_1x1_interleaved.jpg",
+            3,
+            "Interleaved mixed-sampling YCbCr is visually equivalent but not "
+            "bit-exact between libjpeg-turbo and zune-jpeg."),
+        NoDifference(
+            "/images/jpeg-suite/baseline/32x32x8_ycbcr_2x2_2x1_1x2.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/"
+                     "32x32x8_ycbcr_2x2_2x1_1x2_interleaved.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/baseline/32x32x8_ycbcr_interleaved.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/baseline/32x32x8_ycbcr_quantization.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/5x5x8_grayscale.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/8x8x8_grayscale.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/8x8x8_grayscale_black.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/8x8x8_grayscale_white.jpg"),
+        NoDifference("/images/jpeg-suite/baseline/"
+                     "8x8x8_grayscale_zero_coefficients.jpg"),
+        ArithmeticDecodeDifference("/images/jpeg-suite/extended_arithmetic/"
+                                   "32x32x8_conditioning_bounds_4_6.jpg"),
+        ArithmeticDecodeDifference(
+            "/images/jpeg-suite/extended_arithmetic/32x32x8_conditioning_kx_6."
+            "jpg"),
+        ArithmeticDecodeDifference(
+            "/images/jpeg-suite/extended_arithmetic/32x32x8_grayscale.jpg"),
+        ArithmeticDecodeDifference(
+            "/images/jpeg-suite/extended_arithmetic/32x32x8_ycbcr.jpg"),
+        ArithmeticDecodeDifference("/images/jpeg-suite/extended_arithmetic/"
+                                   "32x32x8_ycbcr_interleaved.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/extended_huffman/32x32x12_grayscale.jpg"),
+        NoDifference("/images/jpeg-suite/extended_huffman/32x32x8_cmyk.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/extended_huffman/32x32x8_cmyk_interleaved.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/extended_huffman/32x32x8_grayscale.jpg"),
+        NoDifference("/images/jpeg-suite/extended_huffman/"
+                     "32x32x8_grayscale_quantization.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/extended_huffman/32x32x8_restarts.jpg"),
+        NoDifference("/images/jpeg-suite/extended_huffman/32x32x8_rgb.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/extended_huffman/32x32x8_rgb_interleaved.jpg"),
+        NoDifference("/images/jpeg-suite/extended_huffman/32x32x8_ycbcr.jpg"),
+        SmallPixelDifference(
+            "/images/jpeg-suite/extended_huffman/"
+            "32x32x8_ycbcr_2x2_1x1_1x1.jpg",
+            3,
+            "Non-interleaved mixed-sampling YCbCr is visually equivalent but "
+            "not bit-exact between libjpeg-turbo and zune-jpeg."),
+        SmallPixelDifference(
+            "/images/jpeg-suite/extended_huffman/"
+            "32x32x8_ycbcr_2x2_1x1_1x1_interleaved.jpg",
+            3,
+            "Interleaved mixed-sampling YCbCr is visually equivalent but not "
+            "bit-exact between libjpeg-turbo and zune-jpeg."),
+        NoDifference("/images/jpeg-suite/extended_huffman/"
+                     "32x32x8_ycbcr_2x2_2x1_1x2.jpg"),
+        NoDifference("/images/jpeg-suite/extended_huffman/"
+                     "32x32x8_ycbcr_2x2_2x1_1x2_interleaved.jpg"),
+        NoDifference("/images/jpeg-suite/extended_huffman/"
+                     "32x32x8_ycbcr_interleaved.jpg"),
+        NoDifference("/images/jpeg-suite/extended_huffman/"
+                     "32x32x8_ycbcr_quantization.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/lossless_arithmetic/32x32x8_grayscale.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/lossless_arithmetic/32x32x8_ycbcr.jpg"),
+        NoDifference("/images/jpeg-suite/lossless_arithmetic/"
+                     "32x32x8_ycbcr_interleaved.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/lossless_huffman/32x32x16_grayscale.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/lossless_huffman/32x32x8_grayscale.jpg"),
+        NoDifference("/images/jpeg-suite/lossless_huffman/"
+                     "32x32x8_grayscale_predictor1.jpg"),
+        NoDifference("/images/jpeg-suite/lossless_huffman/"
+                     "32x32x8_grayscale_predictor7.jpg"),
+        NoDifference("/images/jpeg-suite/lossless_huffman/32x32x8_ycbcr.jpg"),
+        NoDifference("/images/jpeg-suite/lossless_huffman/"
+                     "32x32x8_ycbcr_interleaved.jpg"),
+        ArithmeticDecodeDifference(
+            "/images/jpeg-suite/progressive_arithmetic/32x32x8_grayscale.jpg"),
+        ArithmeticDecodeDifference("/images/jpeg-suite/progressive_arithmetic/"
+                                   "32x32x8_grayscale_spectral.jpg"),
+        ArithmeticDecodeDifference("/images/jpeg-suite/progressive_arithmetic/"
+                                   "32x32x8_grayscale_spectral_all.jpg"),
+        ArithmeticDecodeDifference(
+            "/images/jpeg-suite/progressive_arithmetic/"
+            "32x32x8_grayscale_spectral_all_reverse.jpg"),
+        ArithmeticDecodeDifference("/images/jpeg-suite/progressive_arithmetic/"
+                                   "32x32x8_grayscale_successive.jpg"),
+        ArithmeticDecodeDifference("/images/jpeg-suite/progressive_arithmetic/"
+                                   "32x32x8_grayscale_successive_ac.jpg"),
+        ArithmeticDecodeDifference("/images/jpeg-suite/progressive_arithmetic/"
+                                   "32x32x8_grayscale_successive_dc.jpg"),
+        ArithmeticDecodeDifference(
+            "/images/jpeg-suite/progressive_arithmetic/32x32x8_ycbcr.jpg"),
+        ArithmeticDecodeDifference("/images/jpeg-suite/progressive_arithmetic/"
+                                   "32x32x8_ycbcr_interleaved.jpg"),
+        NoDifference(
+            "/images/jpeg-suite/progressive_huffman/32x32x12_grayscale.jpg"),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/32x32x8_cmyk.jpg",
+            "Progressive CMYK JPEG: libjpeg-turbo reports decode failure in "
+            "Blink while zune-jpeg decodes the image."),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/"
+            "32x32x8_cmyk_interleaved.jpg",
+            "Progressive interleaved CMYK JPEG: libjpeg-turbo reports decode "
+            "failure in Blink while zune-jpeg decodes the image."),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/32x32x8_grayscale.jpg",
+            "Progressive Huffman grayscale JPEG: libjpeg-turbo reports decode "
+            "failure in Blink while zune-jpeg decodes the image."),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/"
+            "32x32x8_grayscale_quantization.jpg",
+            "Progressive Huffman grayscale JPEG with quantization-table "
+            "variation: libjpeg-turbo reports decode failure in Blink while "
+            "zune-jpeg decodes the image."),
+        NoDifference("/images/jpeg-suite/progressive_huffman/"
+                     "32x32x8_grayscale_spectral.jpg"),
+        NoDifference("/images/jpeg-suite/progressive_huffman/"
+                     "32x32x8_grayscale_spectral_all.jpg"),
+        NoDifference("/images/jpeg-suite/progressive_huffman/"
+                     "32x32x8_grayscale_spectral_all_reverse.jpg"),
+        NoDifference("/images/jpeg-suite/progressive_huffman/"
+                     "32x32x8_grayscale_successive.jpg"),
+        NoDifference("/images/jpeg-suite/progressive_huffman/"
+                     "32x32x8_grayscale_successive_ac.jpg"),
+        NoDifference("/images/jpeg-suite/progressive_huffman/"
+                     "32x32x8_grayscale_successive_dc.jpg"),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/32x32x8_restarts.jpg",
+            "Progressive Huffman JPEG with restart markers: libjpeg-turbo "
+            "reports decode failure in Blink while zune-jpeg decodes the "
+            "image."),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/32x32x8_rgb.jpg",
+            "Progressive RGB JPEG has a malformed combined DC+AC scan: "
+            "libjpeg-turbo reports decode failure while zune-jpeg accepts it."),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/"
+            "32x32x8_rgb_interleaved.jpg",
+            "Progressive interleaved RGB JPEG has a malformed combined DC+AC "
+            "scan: libjpeg-turbo reports decode failure while zune-jpeg "
+            "accepts it."),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/32x32x8_ycbcr.jpg",
+            "Progressive Huffman YCbCr JPEG: libjpeg-turbo reports decode "
+            "failure in Blink while zune-jpeg decodes the image."),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/"
+            "32x32x8_ycbcr_2x2_1x1_1x1.jpg",
+            "Progressive Huffman mixed-sampling YCbCr JPEG: libjpeg-turbo "
+            "reports decode failure in Blink while zune-jpeg decodes the "
+            "image."),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/"
+            "32x32x8_ycbcr_2x2_1x1_1x1_interleaved.jpg",
+            "Progressive Huffman interleaved mixed-sampling YCbCr JPEG: "
+            "libjpeg-turbo reports decode failure in Blink while zune-jpeg "
+            "decodes the image."),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/"
+            "32x32x8_ycbcr_2x2_2x1_1x2.jpg",
+            "Progressive Huffman mixed-sampling YCbCr JPEG: libjpeg-turbo "
+            "reports decode failure in Blink while zune-jpeg decodes the "
+            "image."),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/"
+            "32x32x8_ycbcr_2x2_2x1_1x2_interleaved.jpg",
+            "Progressive Huffman interleaved mixed-sampling YCbCr JPEG: "
+            "libjpeg-turbo reports decode failure in Blink while zune-jpeg "
+            "decodes the image."),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/"
+            "32x32x8_ycbcr_interleaved.jpg",
+            "Progressive Huffman interleaved YCbCr JPEG: libjpeg-turbo reports "
+            "decode failure in Blink while zune-jpeg decodes the image."),
+        LibjpegTurboDecodeFailure(
+            "/images/jpeg-suite/progressive_huffman/"
+            "32x32x8_ycbcr_quantization.jpg",
+            "Progressive Huffman YCbCr JPEG with quantization-table variation: "
+            "libjpeg-turbo reports decode failure in Blink while zune-jpeg "
+            "decodes the image."),
+        SmallPixelDifference(
+            "/images/resources/gracehopper.jpg",
+            5,
+            "libjpeg-turbo and zune-jpeg are not bit-exact for this baseline "
+            "YCbCr image, but the average channel delta remains low."),
+        SmallPixelDifference(
+            "/images/resources/bug106024.jpg",
+            4,
+            "libjpeg-turbo and zune-jpeg are not bit-exact for this "
+            "progressive "
+            "image, but the average channel delta remains low."),
+        NoDifference(
+            "/images/resources/small-square-with-colorspin-profile.jpg"),
+        NoDifference("/images/resources/rgb-jpeg-with-adobe-marker-only.jpg")),
+    JPEGComparisonTestName);
+
+// This tests decoding a JPEG with many progressive scans.  Decoding should
+// fail, but not hang (crbug.com/642462).
+TEST(JPEGImageDecoderTest, manyProgressiveScans) {
+  scoped_refptr<SharedBuffer> test_data =
+      ReadFileToSharedBuffer(kDecodersTestingDir, "many-progressive-scans.jpg");
+  ASSERT_TRUE(test_data.get());
+
+  std::unique_ptr<ImageDecoder> test_decoder = CreateJPEGDecoder();
+  test_decoder->SetData(test_data.get(), true);
+  EXPECT_EQ(1u, test_decoder->FrameCount());
+  ASSERT_TRUE(test_decoder->DecodeFrameBufferAtIndex(0));
+  EXPECT_TRUE(test_decoder->Failed());
+}
+
+// This tests decoding a multi-scan non-interleaved sequential JPEG.
+// Decoding should fail with incomplete data.
+TEST(JPEGImageDecoderTest, nonInterleavedSequentialBufferedDecompress) {
+  Vector<char> test_data =
+      ReadFile("/images/jpeg-suite/baseline/32x32x8_ycbcr.jpg");
+  ASSERT_FALSE(test_data.empty());
+
+  const size_t partial_size = test_data.size() / 2;
+  scoped_refptr<SharedBuffer> partial_buffer = SharedBuffer::Create();
+  partial_buffer->Append(base::span<const char>(test_data).first(partial_size));
+
+  std::unique_ptr<ImageDecoder> test_decoder = CreateJPEGDecoder();
+  test_decoder->SetData(partial_buffer, false);
+
+  ImageFrame* frame = test_decoder->DecodeFrameBufferAtIndex(0);
+  ASSERT_TRUE(frame);
+  EXPECT_NE(frame->GetStatus(), ImageFrame::kFramePartial);
+  EXPECT_NE(frame->GetStatus(), ImageFrame::kFrameComplete);
+  EXPECT_FALSE(test_decoder->Failed());
+
+  scoped_refptr<SharedBuffer> full_buffer = SharedBuffer::Create();
+  full_buffer->Append(base::span<const char>(test_data));
+  test_decoder->SetData(full_buffer, true);
+
+  frame = test_decoder->DecodeFrameBufferAtIndex(0);
+  ASSERT_TRUE(frame);
+  EXPECT_EQ(frame->GetStatus(), ImageFrame::kFrameComplete);
+}
+
+// Decode a JPEG with EXIF data that defines a density corrected size. The EXIF
+// data has the initial IFD at the end of the data blob, and out-of-line data
+// defined just after the header.
+// The order of the EXIF data is:
+//   <header> <out-of-line data> <Exif IFD> <0th IFD>
+TEST(JPEGImageDecoderTest, exifWithInitialIfdLast) {
+  scoped_refptr<SharedBuffer> test_data =
+      ReadFileToSharedBuffer(kDecodersTestingDir, "green-exif-ifd-last.jpg");
+  ASSERT_TRUE(test_data.get());
+
+  std::unique_ptr<ImageDecoder> test_decoder = CreateJPEGDecoder();
+  test_decoder->SetData(test_data.get(), true);
+  EXPECT_EQ(1u, test_decoder->FrameCount());
+  ASSERT_TRUE(test_decoder->DecodeFrameBufferAtIndex(0));
+  EXPECT_EQ(test_decoder->Orientation(), ImageOrientationEnum::kOriginTopRight);
+  EXPECT_EQ(test_decoder->DensityCorrectedSize(), gfx::Size(32, 32));
+}
+
+TEST(JPEGImageDecoderTest, SupportedSizesSquare) {
+  const char* jpeg_file = "/images/resources/gracehopper.jpg";  // 256x256
+  scoped_refptr<SharedBuffer> data = ReadFileToSharedBuffer(jpeg_file);
+  ASSERT_TRUE(data);
+
+  std::unique_ptr<ImageDecoder> decoder =
+      CreateJPEGDecoder(std::numeric_limits<int>::max());
+  decoder->SetData(data.get(), true);
+  // This will decode the size and needs to be called to avoid DCHECKs
+  ASSERT_TRUE(decoder->IsSizeAvailable());
+  Vector<SkISize> expected_sizes = {
+      SkISize::Make(32, 32),   SkISize::Make(64, 64),   SkISize::Make(96, 96),
+      SkISize::Make(128, 128), SkISize::Make(160, 160), SkISize::Make(192, 192),
+      SkISize::Make(224, 224), SkISize::Make(256, 256)};
+  auto sizes = decoder->GetSupportedDecodeSizes();
+  ASSERT_EQ(expected_sizes.size(), sizes.size());
+  for (size_t i = 0; i < sizes.size(); ++i) {
+    EXPECT_TRUE(expected_sizes[i] == sizes[i])
+        << "Expected " << expected_sizes[i].width() << "x"
+        << expected_sizes[i].height() << ". Got " << sizes[i].width() << "x"
+        << sizes[i].height();
+  }
+}
+
+TEST(JPEGImageDecoderTest, SupportedSizesRectangle) {
+  // This 272x200 image uses 4:2:2 sampling format. The MCU is therefore 16x8.
+  // The width is a multiple of 16 and the height is a multiple of 8, so it's
+  // okay for the decoder to downscale it.
+  const char* jpeg_file = "/images/resources/icc-v2-gbr-422-whole-mcus.jpg";
+
+  scoped_refptr<SharedBuffer> data = ReadFileToSharedBuffer(jpeg_file);
+  ASSERT_TRUE(data);
+
+  std::unique_ptr<ImageDecoder> decoder =
+      CreateJPEGDecoder(std::numeric_limits<int>::max());
+  decoder->SetData(data.get(), true);
+  // This will decode the size and needs to be called to avoid DCHECKs
+  ASSERT_TRUE(decoder->IsSizeAvailable());
+  Vector<SkISize> expected_sizes = {
+      SkISize::Make(34, 25),   SkISize::Make(68, 50),   SkISize::Make(102, 75),
+      SkISize::Make(136, 100), SkISize::Make(170, 125), SkISize::Make(204, 150),
+      SkISize::Make(238, 175), SkISize::Make(272, 200)};
+
+  auto sizes = decoder->GetSupportedDecodeSizes();
+  ASSERT_EQ(expected_sizes.size(), sizes.size());
+  for (size_t i = 0; i < sizes.size(); ++i) {
+    EXPECT_TRUE(expected_sizes[i] == sizes[i])
+        << "Expected " << expected_sizes[i].width() << "x"
+        << expected_sizes[i].height() << ". Got " << sizes[i].width() << "x"
+        << sizes[i].height();
+  }
+}
+
+TEST(JPEGImageDecoderTest,
+     SupportedSizesRectangleNotMultipleOfMCUIfMemoryBound) {
+  // This 275x207 image uses 4:2:0 sampling format. The MCU is therefore 16x16.
+  // Neither the width nor the height is a multiple of the MCU, so downscaling
+  // should not be supported. However, we limit the memory so that the decoder
+  // is forced to support downscaling.
+  const char* jpeg_file = "/images/resources/icc-v2-gbr.jpg";
+
+  scoped_refptr<SharedBuffer> data = ReadFileToSharedBuffer(jpeg_file);
+  ASSERT_TRUE(data);
+
+  // Make the memory limit one fewer byte than what is needed in order to force
+  // downscaling.
+  std::unique_ptr<ImageDecoder> decoder = CreateJPEGDecoder(275 * 207 * 4 - 1);
+  decoder->SetData(data.get(), true);
+  // This will decode the size and needs to be called to avoid DCHECKs
+  ASSERT_TRUE(decoder->IsSizeAvailable());
+  Vector<SkISize> expected_sizes = {
+      SkISize::Make(35, 26),   SkISize::Make(69, 52),   SkISize::Make(104, 78),
+      SkISize::Make(138, 104), SkISize::Make(172, 130), SkISize::Make(207, 156),
+      SkISize::Make(241, 182)};
+
+  auto sizes = decoder->GetSupportedDecodeSizes();
+  ASSERT_EQ(expected_sizes.size(), sizes.size());
+  for (size_t i = 0; i < sizes.size(); ++i) {
+    EXPECT_TRUE(expected_sizes[i] == sizes[i])
+        << "Expected " << expected_sizes[i].width() << "x"
+        << expected_sizes[i].height() << ". Got " << sizes[i].width() << "x"
+        << sizes[i].height();
+  }
+}
+
+TEST(JPEGImageDecoderTest, SupportedSizesRectangleNotMultipleOfMCU) {
+  struct {
+    const char* jpeg_file;
+    SkISize expected_size;
+  } recs[] = {
+      {// This 264x192 image uses 4:2:0 sampling format. The MCU is therefore
+       // 16x16. The height is a multiple of 16, but the width is not a
+       // multiple of 16, so it's not okay for the decoder to downscale it.
+       "/images/resources/icc-v2-gbr-420-width-not-whole-mcu.jpg",
+       SkISize::Make(264, 192)},
+      {// This 272x200 image uses 4:2:0 sampling format. The MCU is therefore
+       // 16x16. The width is a multiple of 16, but the width is not a multiple
+       // of 16, so it's not okay for the decoder to downscale it.
+       "/images/resources/icc-v2-gbr-420-height-not-whole-mcu.jpg",
+       SkISize::Make(272, 200)}};
+  for (const auto& rec : recs) {
+    scoped_refptr<SharedBuffer> data = ReadFileToSharedBuffer(rec.jpeg_file);
+    ASSERT_TRUE(data);
+    std::unique_ptr<ImageDecoder> decoder =
+        CreateJPEGDecoder(std::numeric_limits<int>::max());
+    decoder->SetData(data.get(), true);
+    // This will decode the size and needs to be called to avoid DCHECKs
+    ASSERT_TRUE(decoder->IsSizeAvailable());
+    auto sizes = decoder->GetSupportedDecodeSizes();
+    ASSERT_EQ(1u, sizes.size());
+    EXPECT_EQ(rec.expected_size, sizes[0])
+        << "Expected " << rec.expected_size.width() << "x"
+        << rec.expected_size.height() << ". Got " << sizes[0].width() << "x"
+        << sizes[0].height();
+  }
+}
+
+TEST(JPEGImageDecoderTest, SupportedSizesTruncatedIfMemoryBound) {
+  const char* jpeg_file = "/images/resources/gracehopper.jpg";  // 256x256
+  scoped_refptr<SharedBuffer> data = ReadFileToSharedBuffer(jpeg_file);
+  ASSERT_TRUE(data);
+
+  // Limit the memory so that 128 would be the largest size possible.
+  std::unique_ptr<ImageDecoder> decoder = CreateJPEGDecoder(130 * 130 * 4);
+  decoder->SetData(data.get(), true);
+  // This will decode the size and needs to be called to avoid DCHECKs
+  ASSERT_TRUE(decoder->IsSizeAvailable());
+  Vector<SkISize> expected_sizes = {
+      SkISize::Make(32, 32), SkISize::Make(64, 64), SkISize::Make(96, 96),
+      SkISize::Make(128, 128)};
+  auto sizes = decoder->GetSupportedDecodeSizes();
+  ASSERT_EQ(expected_sizes.size(), sizes.size());
+  for (size_t i = 0; i < sizes.size(); ++i) {
+    EXPECT_TRUE(expected_sizes[i] == sizes[i])
+        << "Expected " << expected_sizes[i].width() << "x"
+        << expected_sizes[i].height() << ". Got " << sizes[i].width() << "x"
+        << sizes[i].height();
+  }
+}
+
+TEST(JPEGImageDecoderTest, SupportedScaleNumeratorBound) {
+  auto numerator_default = JPEGImageDecoder::DesiredScaleNumerator(10, 9, 8);
+  ASSERT_EQ(numerator_default, static_cast<unsigned>(8));
+
+  auto numerator_normal =
+      JPEGImageDecoder::DesiredScaleNumerator(1024, 2048, 8);
+  ASSERT_EQ(numerator_normal, static_cast<unsigned>(5));
+
+  auto numerator_overflow =
+      JPEGImageDecoder::DesiredScaleNumerator(0x4000000, 0x4100000, 8);
+  ASSERT_EQ(numerator_overflow, static_cast<unsigned>(7));
+}
+
+// Regression test for crbug.com/500104917.
+TEST(JPEGImageDecoderTest, DesiredScaleNumeratorPrecision) {
+  // 16777216 = 2^24. Single-precision float can represent integers exactly
+  // up to this value. 16777217 is rounded to 16777216.0f.
+  wtf_size_t max_decoded_bytes = 16777216;
+  wtf_size_t original_bytes = 16777217;
+  unsigned scale_denominator = 8;
+
+  // With float:
+  // floor(sqrt(16777216.0f / 16777216.0f) * 8) = 8
+  // With double:
+  // floor(sqrt(16777216.0 / 16777217.0) * 8) = 7
+  auto numerator = JPEGImageDecoder::DesiredScaleNumerator(
+      max_decoded_bytes, original_bytes, scale_denominator);
+  EXPECT_EQ(numerator, 7u);
+}
+
+struct ColorSpaceTestParam {
+  std::string file;
+  bool expected_success = false;
+  bool expect_yuv_decoding = false;
+  gfx::Size expected_uv_size;
+};
+
+void PrintTo(const ColorSpaceTestParam& param, std::ostream* os) {
+  *os << "{\"" << param.file << "\", " << param.expected_success << ","
+      << param.expected_uv_size.ToString() << "," << param.expect_yuv_decoding
+      << "}";
+}
+
+class ColorSpaceTest : public ::testing::TestWithParam<ColorSpaceTestParam> {};
+
+// Tests YUV decoding path with different color encodings (and chroma
+// subsamplings if applicable).
+TEST_P(ColorSpaceTest, YuvDecode) {
+  // Test only successful decoding
+  if (!GetParam().expected_success) {
+    return;
+  }
+
+  if (GetParam().expect_yuv_decoding) {
+    const auto jpeg_file = ("/images/resources/" + GetParam().file);
+    ReadYUV(kLargeEnoughSize, jpeg_file.c_str(), gfx::Size(64, 64),
+            GetParam().expected_uv_size,
+            /*expect_decoding_failure=*/false);
+  }
+}
+
+// Tests RGB decoding path with different color encodings (and chroma
+// subsamplings if applicable).
+TEST_P(ColorSpaceTest, RgbDecode) {
+  // Test only successful decoding
+  if (!GetParam().expected_success) {
+    return;
+  }
+
+  if (!GetParam().expect_yuv_decoding) {
+    const auto jpeg_file = ("/images/resources/" + GetParam().file);
+    scoped_refptr<SharedBuffer> data =
+        ReadFileToSharedBuffer(jpeg_file.c_str());
+    ASSERT_TRUE(data);
+
+    std::unique_ptr<ImageDecoder> decoder = CreateJPEGDecoder(kLargeEnoughSize);
+    decoder->SetData(data.get(), true);
+
+    gfx::Size size = decoder->DecodedSize();
+    EXPECT_EQ(gfx::Size(64, 64), size);
+    ASSERT_FALSE(decoder->CanDecodeToYUV());
+
+    const ImageFrame* frame = decoder->DecodeFrameBufferAtIndex(0);
+    ASSERT_TRUE(frame);
+    EXPECT_EQ(frame->GetStatus(), ImageFrame::kFrameComplete);
+    EXPECT_FALSE(decoder->Failed());
+    return;
+  }
+}
+
+const ColorSpaceTest::ParamType kColorSpaceTestParams[] = {
+    {"cs-uma-grayscale.jpg", true},
+    {"cs-uma-rgb.jpg", true},
+    // Each component is in a separate scan. Should not make a difference.
+    {"cs-uma-rgb-non-interleaved.jpg", true},
+    {"cs-uma-cmyk.jpg", true},
+    // 4 components/no markers, so we expect libjpeg_turbo to guess CMYK.
+    {"cs-uma-cmyk-no-jfif-or-adobe-markers.jpg", true},
+    // 4 components are not legal in JFIF, but we expect libjpeg_turbo to guess
+    // CMYK.
+    {"cs-uma-cmyk-jfif-marker.jpg", true},
+    {"cs-uma-ycck.jpg", true},
+    // Contains CMYK data but uses a bad Adobe color transform, so libjpeg_turbo
+    // will guess YCCK.
+    {"cs-uma-cmyk-unknown-transform.jpg", true},
+    {"cs-uma-ycbcr-410.jpg", true, false},
+    {"cs-uma-ycbcr-411.jpg", true, false},
+    {"cs-uma-ycbcr-420.jpg", true, true, gfx::Size(32, 32)},
+    // Each component is in a separate scan. Should not make a difference.
+    {"cs-uma-ycbcr-420-non-interleaved.jpg", true, true, gfx::Size(32, 32)},
+    // 3 components/both JFIF and Adobe markers, so we expect libjpeg_turbo to
+    // guess YCbCr.
+    {"cs-uma-ycbcr-420-both-jfif-adobe.jpg", true, true, gfx::Size(32, 32)},
+    {"cs-uma-ycbcr-422.jpg", true, true, gfx::Size(32, 64)},
+    {"cs-uma-ycbcr-440.jpg", true, false},
+    {"cs-uma-ycbcr-444.jpg", true, true, gfx::Size(64, 64)},
+    // Contains RGB data but uses a bad Adobe color transform, so libjpeg_turbo
+    // will guess YCbCr.
+    {"cs-uma-rgb-unknown-transform.jpg", true, true, gfx::Size(64, 64)},
+    {"cs-uma-ycbcr-other.jpg", true, false},
+    // Contains only 2 components. We expect the decode to fail and not produce
+    // any samples.
+    {"cs-uma-two-channels-jfif-marker.jpg", false}};
+
+INSTANTIATE_TEST_SUITE_P(JPEGImageDecoderTest,
+                         ColorSpaceTest,
+                         ::testing::ValuesIn(kColorSpaceTestParams));
+
+TEST(JPEGImageDecoderTest, PartialDataWithoutSize) {
+  const char* jpeg_file = "/images/resources/gracehopper.jpg";
+  Vector<char> full_data = ReadFile(jpeg_file);
+
+  constexpr size_t kDataLengthWithoutSize = 4;
+  ASSERT_LT(kDataLengthWithoutSize, full_data.size());
+  scoped_refptr<SharedBuffer> partial_data =
+      SharedBuffer::Create(base::span(full_data).first(kDataLengthWithoutSize));
+
+  std::unique_ptr<ImageDecoder> decoder = CreateJPEGDecoder();
+  decoder->SetData(partial_data.get(), false);
+  EXPECT_FALSE(decoder->IsSizeAvailable());
+  EXPECT_FALSE(decoder->Failed());
+  decoder->SetData(SharedBuffer::Create(std::move(full_data)), true);
+  EXPECT_TRUE(decoder->IsSizeAvailable());
+  EXPECT_FALSE(decoder->Failed());
+}
+
+TEST(JPEGImageDecoderTest, PartialRgbDecodeBlocksYuvDecoding) {
+  const char* jpeg_file = "/images/resources/non-interleaved_progressive.jpg";
+  Vector<char> full_data = ReadFile(jpeg_file);
+
+  {
+    auto yuv_decoder = CreateJPEGDecoder();
+    yuv_decoder->SetData(SharedBuffer::Create(full_data), true);
+    EXPECT_TRUE(yuv_decoder->IsSizeAvailable());
+    EXPECT_FALSE(yuv_decoder->Failed());
+    EXPECT_TRUE(yuv_decoder->CanDecodeToYUV());
+  }
+
+  const size_t kJustEnoughDataToStartHeaderParsing = (full_data.size() + 1) / 2;
+  auto partial_data = SharedBuffer::Create(
+      base::span(full_data).first(kJustEnoughDataToStartHeaderParsing));
+  ASSERT_TRUE(partial_data);
+
+  auto decoder = CreateJPEGDecoder();
+  decoder->SetData(partial_data.get(), false);
+  EXPECT_TRUE(decoder->IsSizeAvailable());
+  EXPECT_FALSE(decoder->Failed());
+  EXPECT_FALSE(decoder->CanDecodeToYUV());
+
+  const ImageFrame* frame = decoder->DecodeFrameBufferAtIndex(0);
+  ASSERT_TRUE(frame);
+  EXPECT_NE(frame->GetStatus(), ImageFrame::kFrameComplete);
+  decoder->SetData(SharedBuffer::Create(std::move(full_data)), true);
+  EXPECT_FALSE(decoder->CanDecodeToYUV());
+}
+
+TEST(JPEGImageDecoderTest, Gainmap) {
+  base::test::ScopedFeatureList features(skia::kRustyJpegFeature);
+  const char* jpeg_file = "/images/resources/gainmap-trattore0.jpg";
+  scoped_refptr<SharedBuffer> full_data = ReadFileToSharedBuffer(jpeg_file);
+  ASSERT_TRUE(full_data);
+
+  auto base_decoder = CreateFactoryJPEGDecoder();
+  base_decoder->SetData(full_data.get(), true);
+  ASSERT_TRUE(base_decoder->IsSizeAvailable());
+  EXPECT_EQ(gfx::Size(134, 100), base_decoder->DecodedSize());
+
+  SkGainmapInfo gainmap_info;
+  scoped_refptr<SegmentReader> gainmap_data;
+  ASSERT_TRUE(base_decoder->GetGainmapInfoAndData(gainmap_info, gainmap_data));
+
+  // Ensure that the gainmap information was extracted.
+  EXPECT_NEAR(gainmap_info.fDisplayRatioHdr, 2.718f, 1.0e-3f);
+
+  // Ensure that the extracted gainmap image contains an appropriately-sized
+  // image.
+  auto gainmap_decoder = CreateJpegImageDecoder(
+      ImageDecoder::kAlphaNotPremultiplied, ColorBehavior::kTransformToSRGB,
+      cc::AuxImage::kGainmap, ImageDecoder::kNoDecodedImageByteLimit);
+
+  gainmap_decoder->SetData(gainmap_data.get(), true);
+  ASSERT_TRUE(gainmap_decoder->IsSizeAvailable());
+  EXPECT_FALSE(gainmap_decoder->Failed());
+  EXPECT_EQ(gfx::Size(33, 25), gainmap_decoder->DecodedSize());
+}
+
+TEST(JPEGImageDecoderTest, RustMetadataWithoutGainmap) {
+  auto decoder = CreateRustJPEGDecoder();
+  EXPECT_EQ(String("jpg"), decoder->FilenameExtension());
+  EXPECT_EQ(AtomicString("image/jpeg"), decoder->MimeType());
+
+  SkGainmapInfo gainmap_info;
+  scoped_refptr<SegmentReader> gainmap_data;
+  EXPECT_FALSE(decoder->GetGainmapInfoAndData(gainmap_info, gainmap_data));
+
+  decoder->SetData(SegmentReader::CreateFromROBuffer(nullptr), true);
+  EXPECT_FALSE(decoder->GetGainmapInfoAndData(gainmap_info, gainmap_data));
+
+  decoder->SetData(SharedBuffer::Create(), true);
+  EXPECT_FALSE(decoder->GetGainmapInfoAndData(gainmap_info, gainmap_data));
+
+  scoped_refptr<SharedBuffer> jpeg_data =
+      ReadFileToSharedBuffer("/images/resources/green.jpg");
+  ASSERT_TRUE(jpeg_data);
+  decoder->SetData(std::move(jpeg_data), true);
+  EXPECT_FALSE(decoder->GetGainmapInfoAndData(gainmap_info, gainmap_data));
+}
+
+TEST(JPEGImageDecoderTest, BppHistogramSmall) {
+  constexpr int kImageArea = 500 * 644;  // = 322000
+  constexpr int kFileSize = 98527;
+  constexpr int kSample =
+      (kFileSize * 100 * 8 + kImageArea / 2) / kImageArea;  // = 245
+  TestJpegBppHistogram("/images/resources/flowchart.jpg",
+                       "Blink.DecodedImage.JpegDensity.Count.0.4MP", kSample);
+}
+
+TEST(JPEGImageDecoderTest, BppHistogramSmall16x16) {
+  // The centi bpp = 764 * 100 * 8 / (16 * 16) ~= 2388, which is greater than
+  // the histogram's max value (1000), so this sample goes into the overflow
+  // bucket.
+  constexpr int kSample = 1000;
+  TestJpegBppHistogram("/images/resources/green.jpg",
+                       "Blink.DecodedImage.JpegDensity.Count.0.1MP", kSample);
+}
+
+TEST(JPEGImageDecoderTest, BppHistogramSmall900000) {
+  constexpr int kImageArea = 1200 * 750;  // = 900000
+  constexpr int kFileSize = 13726;
+  constexpr int kSample =
+      (kFileSize * 100 * 8 + kImageArea / 2) / kImageArea;  // = 12
+  TestJpegBppHistogram("/images/resources/peach_900000.jpg",
+                       "Blink.DecodedImage.JpegDensity.Count.0.9MP", kSample);
+}
+
+TEST(JPEGImageDecoderTest, BppHistogramBig) {
+  constexpr int kImageArea = 4032 * 3024;  // = 12192768
+  constexpr int kFileSize = 54423;
+  constexpr int kSample =
+      (kFileSize * 100 * 8 + kImageArea / 2) / kImageArea;  // = 4
+  TestJpegBppHistogram("/images/resources/bee.jpg",
+                       "Blink.DecodedImage.JpegDensity.Count.13MP", kSample);
+}
+
+TEST(JPEGImageDecoderTest, BppHistogramBig13000000) {
+  constexpr int kImageArea = 4000 * 3250;  // = 13000000
+  constexpr int kFileSize = 49203;
+  constexpr int kSample =
+      (kFileSize * 100 * 8 + kImageArea / 2) / kImageArea;  // = 3
+  TestJpegBppHistogram("/images/resources/peach_13000000.jpg",
+                       "Blink.DecodedImage.JpegDensity.Count.13MP", kSample);
+}
+
+TEST(JPEGImageDecoderTest, BppHistogramHuge) {
+  constexpr int kImageArea = 4624 * 3472;  // = 16054528
+  constexpr int kFileSize = 60007;
+  constexpr int kSample =
+      (kFileSize * 100 * 8 + kImageArea / 2) / kImageArea;  // = 3
+  TestJpegBppHistogram("/images/resources/peach.jpg",
+                       "Blink.DecodedImage.JpegDensity.Count.14+MP", kSample);
+}
+
+TEST(JPEGImageDecoderTest, BppHistogramHuge13000002) {
+  constexpr int kImageArea = 3961 * 3282;  // = 13000002
+  constexpr int kFileSize = 49325;
+  constexpr int kSample =
+      (kFileSize * 100 * 8 + kImageArea / 2) / kImageArea;  // = 3
+  TestJpegBppHistogram("/images/resources/peach_13000002.jpg",
+                       "Blink.DecodedImage.JpegDensity.Count.14+MP", kSample);
+}
+
+TEST(JPEGImageDecoderTest, BppHistogramInvalid) {
+  base::HistogramTester histogram_tester;
+  std::unique_ptr<ImageDecoder> decoder = CreateJPEGDecoder();
+  decoder->SetData(
+      ReadFileToSharedBuffer("/images/resources/green-truncated.jpg"), true);
+  ASSERT_TRUE(decoder->IsSizeAvailable());
+  EXPECT_FALSE(decoder->Failed());
+  EXPECT_EQ(decoder->FrameCount(), 1u);
+  ImageFrame* frame = decoder->DecodeFrameBufferAtIndex(0);
+  ASSERT_TRUE(frame);
+  EXPECT_NE(ImageFrame::kFrameComplete, frame->GetStatus());
+  EXPECT_TRUE(decoder->Failed());
+  const base::HistogramTester::CountsMap empty_counts;
+  EXPECT_THAT(histogram_tester.GetTotalCountsForPrefix(
+                  "Blink.DecodedImage.JpegDensity.Count."),
+              testing::ContainerEq(empty_counts));
+}
+
+TEST(JPEGImageDecoderTest, BppHistogramGrayscale) {
+  TestJpegBppHistogram("/images/resources/cs-uma-grayscale.jpg");
+}
+
+// Decode a JPEG with C2PA metadata, and verify that it is detected correctly
+TEST(JPEGImageDecoderTest, c2paManifestPresent) {
+  scoped_refptr<SharedBuffer> test_data = ReadFileToSharedBuffer(
+      "/images/resources/jpeg-with-c2pa-adobe-20220124-C.jpg");
+  ASSERT_TRUE(test_data.get());
+
+  std::unique_ptr<ImageDecoder> test_decoder = CreateJPEGDecoder();
+  test_decoder->SetData(test_data.get(), true);
+  EXPECT_TRUE(test_decoder->HasC2PAManifest());
+}
+
+// Decode a JPEG without C2PA metadata, verify that none is found
+TEST(JPEGImageDecoderTest, c2paManifestNotPresent) {
+  scoped_refptr<SharedBuffer> test_data =
+      ReadFileToSharedBuffer("/images/resources/gracehopper.jpg");
+  ASSERT_TRUE(test_data.get());
+
+  std::unique_ptr<ImageDecoder> test_decoder = CreateJPEGDecoder();
+  test_decoder->SetData(test_data.get(), true);
+  EXPECT_FALSE(test_decoder->HasC2PAManifest());
+}
+
+// JPEG Suite parameterized tests, modeled after BMPImageDecoderSuiteTest.
+// Test images are sourced from https://github.com/robert-ancell/jpegsuite
+// using a representative subset across all 7 upstream encoding-mode
+// directories.
+class JPEGSuiteEntry {
+ public:
+  // `entry_dir` and `entry_jpg` locate the test file at:
+  // `third_party/blink/web_tests/images/jpeg-suite/<entry_dir>/<entry_jpg>.jpg`
+  //
+  // `expected_result` indicates whether Chromium's JPEG decoder (libjpeg-turbo)
+  // is expected to succeed or fail decoding this image. This is set empirically
+  // based on actual decoder behavior, not assumed from the encoding mode.
+  //
+  // `revision` is a Skia Gold revision string that must be incremented
+  // whenever test expectations change.
+  //
+  // `expected_width` and `expected_height` specify the expected decoded image
+  // dimensions. Only meaningful for images expected to succeed decoding.
+  enum class ExpectedResult { kSuccess, kFailure };
+
+  JPEGSuiteEntry(std::string entry_dir,
+                 std::string entry_jpg,
+                 ExpectedResult expected_result = ExpectedResult::kSuccess,
+                 int expected_width = 0,
+                 int expected_height = 0,
+                 std::string revision = "rev0")
+      : entry_dir_(std::move(entry_dir)),
+        entry_jpg_(std::move(entry_jpg)),
+        expected_width_(expected_width),
+        expected_height_(expected_height),
+        expected_result_(expected_result),
+        revision_(std::move(revision)) {}
+
+  const std::string& entry_dir() const { return entry_dir_; }
+  const std::string& entry_jpg() const { return entry_jpg_; }
+  int expected_width() const { return expected_width_; }
+  int expected_height() const { return expected_height_; }
+  ExpectedResult expected_result() const { return expected_result_; }
+  const std::string& revision() const { return revision_; }
+
+ private:
+  std::string entry_dir_;
+  std::string entry_jpg_;
+  int expected_width_;
+  int expected_height_;
+  ExpectedResult expected_result_;
+  std::string revision_;
+};
+
+class JPEGImageDecoderSuiteTest
+    : public testing::TestWithParam<JPEGSuiteEntry> {};
+
+TEST_P(JPEGImageDecoderSuiteTest, VerifyJPEGSuiteImage) {
+  const JPEGSuiteEntry& entry = GetParam();
+  std::string jpg_path = base::StringPrintf(
+      "/images/jpeg-suite/%s/%s.jpg", entry.entry_dir(), entry.entry_jpg());
+  scoped_refptr<SharedBuffer> data = ReadFileToSharedBuffer(jpg_path.c_str());
+  ASSERT_NE(data.get(), nullptr) << "unable to load '" << jpg_path << "'";
+  ASSERT_FALSE(data->empty());
+
+  std::unique_ptr<ImageDecoder> decoder = CreateJPEGDecoder();
+  // Note: We intentionally pass all data at once. Testing incremental/
+  // progressive decoding with partial data is out of scope for this suite,
+  // since intermediate output depends on decoder implementation details.
+  decoder->SetData(data, /*all_data_received=*/true);
+  ImageFrame* frame = decoder->DecodeFrameBufferAtIndex(0);
+
+  [[maybe_unused]] const SkBitmap* result_image = nullptr;
+  SkBitmap empty_bitmap;
+  if (frame && frame->GetStatus() == ImageFrame::kFrameComplete) {
+    EXPECT_FALSE(decoder->Failed());
+    EXPECT_NE(entry.expected_result(), JPEGSuiteEntry::ExpectedResult::kFailure)
+        << "Expected decode failure but succeeded: " << jpg_path;
+    result_image = &frame->Bitmap();
+    // Validate decoded image dimensions on all platforms.
+    EXPECT_EQ(entry.expected_width(), frame->Bitmap().width())
+        << "Width mismatch for " << jpg_path;
+    EXPECT_EQ(entry.expected_height(), frame->Bitmap().height())
+        << "Height mismatch for " << jpg_path;
+  } else {
+    EXPECT_EQ(entry.expected_result(), JPEGSuiteEntry::ExpectedResult::kFailure)
+        << "Expected decode success but failed: " << jpg_path;
+    // Represent failures as a 1x1 transparent black pixel in Skia Gold.
+    empty_bitmap.allocPixels(SkImageInfo::MakeN32(1, 1, kPremul_SkAlphaType));
+    empty_bitmap.eraseColor(SK_ColorTRANSPARENT);
+    result_image = &empty_bitmap;
+  }
+
+// On Linux, skip Skia Gold pixel comparison due to flaky goldctl network
+// timeouts (crbug.com/422362214). Size validation above is sufficient.
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+  raw_ptr<ui::test::SkiaGoldPixelDiff> skia_gold =
+      ui::test::SkiaGoldPixelDiff::GetSession();
+  ui::test::PositiveIfOnlyImageAlgorithm positive_if_exact_image_only;
+  std::string golden_name = ui::test::SkiaGoldPixelDiff::GetGoldenImageName(
+      "JPEGImageDecoderTest", "VerifyJPEGSuite",
+      base::StringPrintf("%s_%s.%s", entry.entry_dir(), entry.entry_jpg(),
+                         entry.revision()));
+  EXPECT_TRUE(skia_gold->CompareScreenshot(golden_name, *result_image,
+                                           &positive_if_exact_image_only))
+      << jpg_path;
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+}
+
+// The ExpectedResult is determined empirically. Files using arithmetic
+// coding, lossless encoding, or 12-bit precision are not supported by
+// libjpeg-turbo as built in Chromium. The expected result should be updated
+// if decoder support changes.
+INSTANTIATE_TEST_SUITE_P(
+    JPEGSuite,
+    JPEGImageDecoderSuiteTest,
+    testing::Values(
+        // baseline/ — size variations (partial MCU handling)
+        JPEGSuiteEntry{"baseline", "1x1x8_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 1, 1},
+        JPEGSuiteEntry{"baseline", "5x5x8_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 5, 5},
+        JPEGSuiteEntry{"baseline", "8x8x8_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 8, 8},
+        JPEGSuiteEntry{"baseline", "16x16x8_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 16, 16},
+        // baseline/ — extreme values
+        JPEGSuiteEntry{"baseline", "8x8x8_grayscale_black",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 8, 8},
+        JPEGSuiteEntry{"baseline", "8x8x8_grayscale_white",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 8, 8},
+        JPEGSuiteEntry{"baseline", "8x8x8_grayscale_zero_coefficients",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 8, 8},
+        // baseline/ — marker features
+        JPEGSuiteEntry{"baseline", "32x32x8_comment",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_comments",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        // baseline/ — core color/interleaving/subsampling
+        JPEGSuiteEntry{"baseline", "32x32x8_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_ycbcr",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_ycbcr_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_rgb",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_rgb_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_cmyk",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_cmyk_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_ycbcr_2x2_1x1_1x1",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_ycbcr_2x2_1x1_1x1_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_ycbcr_2x2_2x1_1x2",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_ycbcr_2x2_2x1_1x2_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_restarts",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_grayscale_quantization",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"baseline", "32x32x8_ycbcr_quantization",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+
+        // extended_huffman/ — core color/interleaving/subsampling
+        JPEGSuiteEntry{"extended_huffman", "32x32x8_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"extended_huffman", "32x32x8_ycbcr",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"extended_huffman", "32x32x8_ycbcr_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"extended_huffman", "32x32x8_rgb",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"extended_huffman", "32x32x8_rgb_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"extended_huffman", "32x32x8_cmyk",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"extended_huffman", "32x32x8_cmyk_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"extended_huffman", "32x32x8_ycbcr_2x2_1x1_1x1",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"extended_huffman",
+                       "32x32x8_ycbcr_2x2_1x1_1x1_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"extended_huffman", "32x32x8_ycbcr_2x2_2x1_1x2",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"extended_huffman",
+                       "32x32x8_ycbcr_2x2_2x1_1x2_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"extended_huffman", "32x32x8_restarts",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"extended_huffman", "32x32x8_grayscale_quantization",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"extended_huffman", "32x32x8_ycbcr_quantization",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+
+        // progressive_huffman/ — scan variations
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_grayscale_spectral",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_grayscale_spectral_all",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"progressive_huffman",
+                       "32x32x8_grayscale_spectral_all_reverse",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_grayscale_successive",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_grayscale_successive_ac",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_grayscale_successive_dc",
+                       JPEGSuiteEntry::ExpectedResult::kSuccess, 32, 32},
+
+        // ===== Images expected to fail decoding (arithmetic coding, =====
+        // ===== lossless, 12-bit, DNL, or broken progressive scans)  =====
+
+        // baseline/ — DNL marker
+        JPEGSuiteEntry{"baseline", "32x32x8_dnl",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+
+        // extended_huffman/ — 12-bit
+        JPEGSuiteEntry{"extended_huffman", "32x32x12_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+
+        // extended_arithmetic/ — core + conditioning
+        JPEGSuiteEntry{"extended_arithmetic", "32x32x8_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"extended_arithmetic", "32x32x8_ycbcr",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"extended_arithmetic", "32x32x8_ycbcr_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"extended_arithmetic", "32x32x8_conditioning_bounds_4_6",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"extended_arithmetic", "32x32x8_conditioning_kx_6",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+
+        // progressive_huffman/ — core (broken data stream in these files)
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_ycbcr",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_ycbcr_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_rgb",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_rgb_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_cmyk",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_cmyk_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_ycbcr_2x2_1x1_1x1",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_huffman",
+                       "32x32x8_ycbcr_2x2_1x1_1x1_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_ycbcr_2x2_2x1_1x2",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_huffman",
+                       "32x32x8_ycbcr_2x2_2x1_1x2_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_restarts",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_grayscale_quantization",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_huffman", "32x32x8_ycbcr_quantization",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        // progressive_huffman/ — 12-bit
+        JPEGSuiteEntry{"progressive_huffman", "32x32x12_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+
+        // progressive_arithmetic/
+        JPEGSuiteEntry{"progressive_arithmetic", "32x32x8_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_arithmetic", "32x32x8_ycbcr",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_arithmetic", "32x32x8_ycbcr_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_arithmetic", "32x32x8_grayscale_spectral",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_arithmetic",
+                       "32x32x8_grayscale_spectral_all",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_arithmetic",
+                       "32x32x8_grayscale_spectral_all_reverse",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_arithmetic", "32x32x8_grayscale_successive",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_arithmetic",
+                       "32x32x8_grayscale_successive_ac",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"progressive_arithmetic",
+                       "32x32x8_grayscale_successive_dc",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+
+        // lossless_huffman/
+        JPEGSuiteEntry{"lossless_huffman", "32x32x8_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"lossless_huffman", "32x32x8_ycbcr",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"lossless_huffman", "32x32x8_ycbcr_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"lossless_huffman", "32x32x8_grayscale_predictor1",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"lossless_huffman", "32x32x8_grayscale_predictor7",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"lossless_huffman", "32x32x16_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+
+        // lossless_arithmetic/
+        JPEGSuiteEntry{"lossless_arithmetic", "32x32x8_grayscale",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"lossless_arithmetic", "32x32x8_ycbcr",
+                       JPEGSuiteEntry::ExpectedResult::kFailure},
+        JPEGSuiteEntry{"lossless_arithmetic", "32x32x8_ycbcr_interleaved",
+                       JPEGSuiteEntry::ExpectedResult::kFailure}));
+
+}  // namespace blink

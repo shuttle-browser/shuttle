@@ -1,0 +1,30 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef SERVICES_WEBNN_ORT_ORT_DATA_TYPE_H_
+#define SERVICES_WEBNN_ORT_ORT_DATA_TYPE_H_
+
+#include <optional>
+
+#include "base/containers/span.h"
+#include "services/webnn/public/cpp/operand_descriptor.h"
+#include "services/webnn/public/mojom/webnn_device.mojom.h"
+#include "third_party/windows_app_sdk_headers/src/inc/abi/winml/winml/onnxruntime_c_api.h"
+
+namespace webnn::ort {
+
+ONNXTensorElementDataType WebnnToOnnxDataType(OperandDataType data_type);
+std::optional<OperandDataType> OnnxToWebnnDataType(
+    ONNXTensorElementDataType onnx_type);
+
+OrtHardwareDeviceType WebnnToOrtDeviceType(mojom::Device device_type);
+mojom::Device OrtToWebnnDeviceType(OrtHardwareDeviceType device_type);
+
+std::vector<int64_t> WebnnToOnnxShape(base::span<const uint32_t> shape);
+std::optional<std::vector<uint32_t>> OnnxToWebnnShape(
+    base::span<const int64_t> shape);
+
+}  // namespace webnn::ort
+
+#endif  // SERVICES_WEBNN_ORT_ORT_DATA_TYPE_H_

@@ -1,0 +1,140 @@
+# Copyright 2015 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# app_shim_listener and mach_bootstrap_acceptor are split out so that
+# //chrome/browser:browser_process_platform_part can include
+# browser_process_platform_part_mac.h (which transitively includes
+# app_shim_listener.h) without depending on the rest of :app_shim.
+source_set("app_shim_listener") {
+  public = [
+    "app_shim_listener.h",
+    "mach_bootstrap_acceptor.h",
+  ]
+  public_deps = [
+    "//base",
+    "//content/public/browser",
+    "//mojo/public/cpp/platform",
+  ]
+}
+
+# This is the part of the Chrome browser process responsible for launching and
+# communicating with app_shim processes on Mac.
+source_set("app_shim") {
+  sources = [
+    "app_shim_host_bootstrap_mac.cc",
+    "app_shim_host_bootstrap_mac.h",
+    "app_shim_host_mac.cc",
+    "app_shim_host_mac.h",
+    "app_shim_listener.mm",
+    "app_shim_manager_mac.cc",
+    "app_shim_manager_mac.h",
+    "app_shim_termination_manager.cc",
+    "app_shim_termination_manager.h",
+    "code_signature_mac.cc",
+    "code_signature_mac.h",
+    "mach_bootstrap_acceptor.cc",
+    "web_app_shim_manager_delegate_mac.cc",
+    "web_app_shim_manager_delegate_mac.h",
+  ]
+
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+
+  public_deps = [
+    ":app_shim_listener",
+    "//chrome/browser:browser_public_dependencies",
+  ]
+
+  deps = [
+    "//apps",
+    "//chrome/browser:app_controller_mac",
+    "//chrome/browser:browser_process",
+    "//chrome/browser:browser_process_platform_part",
+    "//chrome/browser/apps/app_service",
+    "//chrome/browser/badging",
+    "//chrome/browser/lifetime",
+    "//chrome/browser/notifications",
+    "//chrome/browser/profiles",
+    "//chrome/browser/profiles:misc",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/profiles:profile_manager",
+    "//chrome/browser/profiles:profile_util",
+    "//chrome/browser/ui:ui_features",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/browser_window:create_browser_window",
+    "//chrome/browser/ui/profiles",
+    "//chrome/browser/ui/web_applications",
+    "//chrome/browser/web_applications",
+    "//chrome/browser/web_applications/extensions",
+    "//chrome/common",
+    "//chrome/common:app_mode_app_support",
+    "//chrome/common:constants",
+    "//chrome/common:mojo_bindings",
+    "//chrome/common:non_code_constants",
+    "//components/crx_file",
+    "//components/metrics:content",
+    "//components/remote_cocoa/browser",
+    "//components/services/app_service",
+    "//components/version_info",
+    "//components/webapps/common",
+    "//content/public/browser",
+    "//content/public/common",
+    "//services/preferences/public/cpp",
+    "//ui/views",
+  ]
+
+  if (is_mac) {
+    # app_shim_manager_mac.cc includes chrome/browser/ui/chrome_pages.h, which
+    # is a desktop-only (!is_android) target.
+    deps += [ "//chrome/browser/ui:chrome_pages" ]
+  }
+}
+
+if (is_mac) {
+  source_set("unit_tests") {
+    testonly = true
+    sources = [
+      "app_shim_host_mac_unittest.cc",
+      "app_shim_manager_mac_unittest.cc",
+      "mach_bootstrap_acceptor_unittest.mm",
+      "web_app_shim_manager_delegate_mac_unittest.cc",
+    ]
+    deps = [
+      ":app_shim",
+      "//base",
+      "//base/test:test_support",
+      "//chrome/app_shim",
+      "//chrome/browser/profiles:misc",
+      "//chrome/browser/ui/web_applications",
+      "//chrome/browser/web_applications",
+      "//chrome/browser/web_applications:web_app_test",
+      "//chrome/browser/web_applications:web_applications_test_support",
+      "//chrome/common:constants",
+      "//chrome/common:mojo_bindings",
+      "//chrome/test:test_support",
+      "//components/remote_cocoa/browser",
+      "//content/test:test_support",
+      "//testing/gtest",
+    ]
+  }
+
+  source_set("browser_tests") {
+    testonly = true
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+    sources = [
+      "app_shim_listener_browsertest.mm",
+      "test/app_shim_listener_test_api_mac.cc",
+      "test/app_shim_listener_test_api_mac.h",
+    ]
+    deps = [
+      ":app_shim",
+      "//chrome/app_shim",
+      "//chrome/browser:browser_process_platform_part",
+      "//chrome/browser/web_applications:web_applications_test_support",
+      "//chrome/test:test_support",
+      "//content/test:test_support",
+      "//testing/gmock",
+      "//testing/gtest",
+    ]
+  }
+}

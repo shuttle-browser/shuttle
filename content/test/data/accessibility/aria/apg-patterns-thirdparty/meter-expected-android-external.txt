@@ -1,0 +1,7 @@
+WebView supplementalDescription:"Meter Example" focusable focused actions:[CLEAR_FOCUS, AX_FOCUS] bundle:[chromeRole="rootWebArea"]
+++View viewIdResName:"example" actions:[AX_FOCUS] bundle:[chromeRole="genericContainer"]
+++++TextView text:"The value of this meter changes every 5 seconds. Use the pause button to stop changes." actions:[AX_FOCUS, NEXT, PREVIOUS] bundle:[chromeRole="paragraph"]
+++++TextView text:"Central Processing Unit (CPU) Usage" viewIdResName:"cpu_usage_label" heading actions:[AX_FOCUS, NEXT, PREVIOUS] bundle:[chromeRole="heading", roleDescription="heading 3"]
+++++View actions:[AX_FOCUS] bundle:[chromeRole="paragraph"]
+++++++Button text:"Pause Updates" clickable focusable actions:[FOCUS, CLICK, AX_FOCUS, NEXT, PREVIOUS] bundle:[chromeRole="button", clickableScore="300"]
+++++ProgressBar supplementalDescription:"Central Processing Unit (CPU) Usage" RangeInfo:[current=90.0, min=0.0, max=100.0] actions:[AX_FOCUS, SET_PROGRESS] bundle:[chromeRole="meter", roleDescription="meter"]

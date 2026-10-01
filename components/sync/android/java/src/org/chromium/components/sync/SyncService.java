@@ -1,0 +1,258 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.components.sync;
+
+import androidx.annotation.VisibleForTesting;
+
+import org.jni_zero.CalledByNative;
+import org.json.JSONArray;
+
+import org.chromium.base.Callback;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.components.signin.base.CoreAccountInfo;
+import org.chromium.google_apis.gaia.GoogleServiceAuthError;
+
+import java.util.HashMap;
+import java.util.Set;
+
+/**
+ * Java version of the native SyncService interface. Must only be used on the UI thread.
+ * TODO(crbug.com/40161455): Document the remaining methods.
+ */
+@NullMarked
+public interface SyncService {
+    /** Listener for the underlying sync status. */
+    interface SyncStateChangedListener {
+        // Invoked when the status has changed.
+        void syncStateChanged();
+    }
+
+    /**
+     * Checks if the sync engine is initialized. Note that this refers to Sync-the-transport, i.e.
+     * it can be true even if the user has *not* enabled Sync-the-feature. This mostly needs to be
+     * checked as a precondition for the various encryption-related methods (see below).
+     *
+     * @return true if the sync engine is initialized.
+     */
+    boolean isEngineInitialized();
+
+    GoogleServiceAuthError getAuthError();
+
+    /**
+     * Checks whether Sync is disabled by enterprise policy (through prefs) or account policy
+     * received from the sync server.
+     *
+     * @return true if Sync is disabled, false otherwise.
+     */
+    boolean isSyncDisabledByEnterprisePolicy();
+
+    @Nullable CoreAccountInfo getAccountInfo();
+
+    /**
+     * Gets the set of data types that are currently syncing.
+     *
+     * <p>This is affected by whether sync is on.
+     *
+     * @return DataType set of active data types.
+     */
+    Set<Integer> getActiveDataTypes();
+
+    /**
+     * Gets the set of types that the user has selected.
+     *
+     * @return UserSelectableType set of selected types.
+     */
+    Set<Integer> getSelectedTypes();
+
+    /**
+     * Returns the datatypes which have local changes that have not yet been synced with the server.
+     * Note: This includes deletions as well.
+     */
+    void getTypesWithUnsyncedData(Callback<Set<Integer>> callback);
+
+    /**
+     * Queries the count and description/preview of existing local data for `types` data types. This
+     * is an asynchronous method which returns the result via the callback `callback` once the
+     * information for all the data types in `types` is available. Note: Only data types that are
+     * enabled and support this functionality are part of the response. Note: Only data types that
+     * are ready for migration are returned.
+     */
+    void getLocalDataDescriptions(
+            Set<Integer> types, Callback<HashMap<Integer, LocalDataDescription>> callback);
+
+    void triggerLocalDataMigration(Set<Integer> types);
+
+    boolean isTypeManagedByPolicy(@UserSelectableType int type);
+
+    boolean isTypeManagedByCustodian(@UserSelectableType int type);
+
+    /**
+     * Sets an individual type selection.
+     *
+     * @param type The type that should be enabled or disabled.
+     * @param isTypeOn Set to true if the type should be enabled, false otherwise.
+     */
+    void setSelectedType(@UserSelectableType int type, boolean isTypeOn);
+
+    void addSyncStateChangedListener(SyncStateChangedListener listener);
+
+    void removeSyncStateChangedListener(SyncStateChangedListener listener);
+
+    /**
+     * Returns the actual passphrase type being used for encryption. The sync engine must be running
+     * (isEngineInitialized() returns true) before calling this function.
+     *
+     * <p>This method should only be used if you want to know the raw value. For checking whether we
+     * should ask the user for a passphrase, use isPassphraseRequiredForPreferredDataTypes().
+     */
+    @PassphraseType
+    int getPassphraseType();
+
+    /**
+     * The overall state of Sync-the-transport, in ascending order of "activeness". Note that this
+     * refers to the transport layer, which may be active even if Sync-the-feature is turned off.
+     */
+    @TransportState
+    int getTransportState();
+
+    /**
+     * Returns errors that prevent SyncService from working at all or partially. Usually these
+     * errors are displayed to the user in the UI.
+     */
+    @UserActionableError
+    int getUserActionableError();
+
+    /**
+     * Checks if sync is currently set to use a custom passphrase (or the similar -and legacy-
+     * frozen implicit passphrase). The sync engine must be running (isEngineInitialized() returns
+     * true) before calling this function.
+     *
+     * @return true if sync is using a custom passphrase.
+     */
+    boolean isUsingExplicitPassphrase();
+
+    /**
+     * Checks if we need a passphrase to decrypt a currently-enabled data type. This returns false
+     * if a passphrase is needed for a type that is not currently enabled.
+     *
+     * @return true if we need a passphrase.
+     */
+    boolean isPassphraseRequiredForPreferredDataTypes();
+
+    /**
+     * Checks if trusted vault encryption keys are needed, independently of the currently-enabled
+     * data types.
+     *
+     * @return true if we need an encryption key.
+     */
+    boolean isTrustedVaultKeyRequired();
+
+    /**
+     * Checks if trusted vault encryption keys are needed to decrypt a currently-enabled data type.
+     *
+     * @return true if we need an encryption key for a type that is currently enabled.
+     */
+    boolean isTrustedVaultKeyRequiredForPreferredDataTypes();
+
+    /**
+     * Checks if recoverability of the trusted vault keys is degraded and user action is required,
+     * affecting currently enabled data types.
+     *
+     * @return true if recoverability is degraded.
+     */
+    boolean isTrustedVaultRecoverabilityDegraded();
+
+    /**
+     * @return Whether setting a custom passphrase is allowed.
+     */
+    boolean isCustomPassphraseAllowed();
+
+    /**
+     * Checks if the user has chosen to encrypt all data types. Note that some data types (e.g.
+     * DEVICE_INFO) are never encrypted.
+     *
+     * @return true if all data types are encrypted, false if only passwords are encrypted.
+     */
+    boolean isEncryptEverythingEnabled();
+
+    void setEncryptionPassphrase(String passphrase);
+
+    boolean setDecryptionPassphrase(String passphrase);
+
+    /**
+     * Returns whether this client has previously prompted the user for a passphrase error via the
+     * android system notifications for the current product major version (i.e. gets reset upon
+     * browser upgrade). More specifically, it returns whether the method
+     * markPassphrasePromptMutedForCurrentProductVersion() has been invoked before, since the last
+     * time the browser was upgraded to a new major version.
+     *
+     * <p>Can be called whether or not sync is initialized.
+     *
+     * @return Whether client has prompted for a passphrase error previously for the current product
+     *     major version.
+     */
+    boolean isPassphrasePromptMutedForCurrentProductVersion();
+
+    /**
+     * Mutes passphrase error via the android system notifications until the browser is upgraded to
+     * a new major version.
+     *
+     * <p>Can be called whether or not sync is initialized.
+     */
+    void markPassphrasePromptMutedForCurrentProductVersion();
+
+    /**
+     * Acknowledges the bookmarks limit exceeded error. The error will not be shown to the user
+     * again.
+     *
+     * @param source The UI surface that triggered the acknowledgment.
+     */
+    void acknowledgeBookmarksLimitExceededError(
+            @BookmarksLimitExceededHelpClickedSource int source);
+
+    /**
+     * @return The limit for the number of bookmarks.
+     */
+    // LINT.IfChange(SyncBookmarksLimit)
+    int SYNC_BOOKMARKS_LIMIT = 100000;
+
+    // LINT.ThenChange(//components/sync_bookmarks/constants.h:SyncBookmarksLimit)
+
+    /**
+     * @return Whether the user should be offered to opt in to trusted vault encryption.
+     */
+    boolean shouldOfferTrustedVaultOptIn();
+
+    /**
+     * @return Whether sync is enabled to sync urls with a non custom passphrase.
+     */
+    boolean isSyncingUnencryptedUrls();
+
+    /**
+     * @return Returns the pointer the corresponding native object.
+     */
+    @CalledByNative
+    long getNativeSyncServiceAndroidBridge();
+
+    /**
+     * Returns the time when the last sync cycle was completed.
+     *
+     * @return The difference measured in microseconds, between last sync cycle completion time and
+     *     1 January 1970 00:00:00 UTC.
+     */
+    @VisibleForTesting
+    long getLastSyncedTimeForDebugging();
+
+    @VisibleForTesting
+    void triggerRefresh();
+
+    /**
+     * Retrieves a JSON version of local Sync data via the native GetAllNodes method. This method is
+     * asynchronous; the result will be sent to the callback.
+     */
+    @VisibleForTesting
+    void getAllNodes(Callback<JSONArray> callback);
+}

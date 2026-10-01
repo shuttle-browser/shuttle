@@ -1,0 +1,379 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_PERMISSIONS_PERMISSIONS_CLIENT_H_
+#define COMPONENTS_PERMISSIONS_PERMISSIONS_CLIENT_H_
+
+#include <optional>
+
+#include "base/functional/callback_forward.h"
+#include "base/memory/weak_ptr.h"
+#include "build/build_config.h"
+#include "components/content_settings/core/common/content_settings.h"
+#include "components/content_settings/core/common/content_settings_types.h"
+#include "components/favicon/core/favicon_service.h"
+#include "components/permissions/embedded_permission_prompt_flow_model.h"
+#include "components/permissions/features.h"
+#include "components/permissions/origin_keyed_permission_action_service.h"
+#include "components/permissions/permission_prompt.h"
+#include "components/permissions/permission_uma_constants.h"
+#include "components/permissions/permission_util.h"
+#include "components/permissions/prediction_service/permission_ui_selector.h"
+#include "components/permissions/request_type.h"
+#include "components/permissions/resolvers/permission_prompt_options.h"
+#include "services/metrics/public/cpp/ukm_source_id.h"
+#include "url/origin.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "components/messages/android/message_wrapper.h"
+#endif
+
+class GURL;
+class HostContentSettingsMap;
+
+namespace content {
+class BrowserContext;
+class RenderFrameHost;
+class WebContents;
+}  // namespace content
+
+namespace content_settings {
+class CookieSettings;
+}
+
+namespace permissions {
+class ObjectPermissionContextBase;
+class PermissionActionsHistory;
+class PermissionDecisionAutoBlocker;
+class PermissionPromptAndroid;
+
+// Interface to be implemented by permissions embedder to access embedder
+// specific logic.
+class PermissionsClient {
+ public:
+#if BUILDFLAG(IS_ANDROID)
+  class PermissionMessageDelegate {
+   public:
+    virtual ~PermissionMessageDelegate() = default;
+  };
+#endif
+
+  PermissionsClient(const PermissionsClient&) = delete;
+  PermissionsClient& operator=(const PermissionsClient&) = delete;
+
+  PermissionsClient();
+  virtual ~PermissionsClient();
+
+  // Return the permissions client.
+  static PermissionsClient* Get();
+
+  // Returns true if the surface is omnibox everywhere, or if the embedded
+  // permission prompt flag is enabled for allowlisted surfaces (such as
+  // contextual tasks, NTP, omnibox popup).
+  static bool AllowEmbeddedPermissionPromptForSurface(
+      content::WebContents* web_contents);
+
+  virtual bool IsOmniboxEverywhere(content::WebContents* web_contents);
+
+  // Retrieves the HostContentSettingsMap for this context. The returned pointer
+  // has the same lifetime as |browser_context|.
+  virtual HostContentSettingsMap* GetSettingsMap(
+      content::BrowserContext* browser_context) = 0;
+
+  // Retrieves the CookieSettings for this context.
+  virtual scoped_refptr<content_settings::CookieSettings> GetCookieSettings(
+      content::BrowserContext* browser_context) = 0;
+
+  // Retrieves the subresource filter activation from browser website settings.
+  virtual bool IsSubresourceFilterActivated(
+      content::BrowserContext* browser_context,
+      const GURL& url) = 0;
+
+  // Holds and mediates access to an in-memory origin-keyed map, that holds the
+  // last PermissionAction and its  timestamp for each Content Setting. Used for
+  // metrics collection.
+  virtual OriginKeyedPermissionActionService*
+  GetOriginKeyedPermissionActionService(
+      content::BrowserContext* browser_context) = 0;
+  virtual PermissionActionsHistory* GetPermissionActionsHistory(
+      content::BrowserContext* browser_context) = 0;
+  // Retrieves the PermissionDecisionAutoBlocker for this context. The returned
+  // pointer has the same lifetime as |browser_context|.
+  virtual PermissionDecisionAutoBlocker* GetPermissionDecisionAutoBlocker(
+      content::BrowserContext* browser_context) = 0;
+
+  // Gets the ObjectPermissionContextBase for the given type and context, which
+  // must be a
+  // *_CHOOSER_DATA value. May return null if the context does not exist.
+  virtual ObjectPermissionContextBase* GetChooserContext(
+      content::BrowserContext* browser_context,
+      ContentSettingsType type) = 0;
+
+  // Gets the embedder defined engagement score for this |origin|.
+  virtual double GetSiteEngagementScore(
+      content::BrowserContext* browser_context,
+      const GURL& origin);
+
+  // Determines whether some origins are "important". |origins| is an in-out
+  // param that passes in the list of origins which need judgment as the first
+  // item in each pair, and the determination of importance should be stored in
+  // the second item in the pair (true meaning important).
+  virtual void AreSitesImportant(
+      content::BrowserContext* browser_context,
+      std::vector<std::pair<url::Origin, bool>>* origins);
+
+  // Returns whether cookie deletion is allowed for |browser_context| and
+  // |origin|.
+  // TODO(crbug.com/40130734): Remove this method and all code depending on it
+  // when a proper fix is landed.
+  virtual bool IsCookieDeletionDisabled(
+      content::BrowserContext* browser_context,
+      const GURL& origin);
+
+  // Retrieves the ukm::SourceId (if any) associated with this
+  // |permission_type|, |browser_context|, and |render_frame_host|.
+  // |render_frame_host| may be null. |callback| will be called with the result,
+  // and may be run synchronously if the result is available immediately.
+  using GetUkmSourceIdCallback =
+      base::OnceCallback<void(std::optional<ukm::SourceId>)>;
+  virtual void GetUkmSourceId(ContentSettingsType permission_type,
+                              content::BrowserContext* browser_context,
+                              content::RenderFrameHost* render_frame_host,
+                              const GURL& requesting_origin,
+                              GetUkmSourceIdCallback callback);
+
+  // Returns the icon ID that should be used for permissions UI for |type|. If
+  // the embedder returns an empty IconId, the default icon for |type| will be
+  // used.
+  virtual IconId GetOverrideIconId(RequestType request_type);
+
+  // Allows the embedder to provide a list of selectors for choosing the UI to
+  // use for permission requests. If the embedder returns an empty list, the
+  // normal UI will be used always. Then for each request, if none of the
+  // returned selectors prescribe the quiet UI, the normal UI will be used.
+  // Otherwise the quiet UI will be used. Selectors at lower indices have higher
+  // priority when determining the quiet UI flavor.
+  virtual std::vector<std::unique_ptr<PermissionUiSelector>>
+  CreatePermissionUiSelectors(content::BrowserContext* browser_context);
+
+  using QuietUiReason = PermissionUiSelector::QuietUiReason;
+
+  virtual void TriggerPromptHatsSurveyIfEnabled(
+      content::WebContents* web_contents,
+      permissions::RequestType request_type,
+      std::optional<permissions::PermissionAction> action,
+      permissions::PermissionPromptDisposition prompt_disposition,
+      permissions::PermissionPromptDispositionReason prompt_disposition_reason,
+      permissions::PermissionRequestGestureType gesture_type,
+      std::optional<base::TimeDelta> prompt_display_duration,
+      bool is_post_prompt,
+      const GURL& gurl,
+      std::optional<
+          permissions::feature_params::PermissionElementPromptPosition>
+          pepc_prompt_position,
+      ContentSetting initial_permission_status,
+      base::OnceCallback<void()> hats_shown_callback_,
+      PromptOptions prompt_options);
+
+  // Called for each request type when a permission prompt is resolved.
+  virtual void OnPromptResolved(
+      const PermissionRequest* request,
+      PermissionAction action,
+      const PromptOptions& prompt_options,
+      PermissionPromptDisposition prompt_disposition,
+      PermissionPromptDispositionReason prompt_disposition_reason,
+      std::optional<QuietUiReason> quiet_ui_reason,
+      base::TimeDelta prompt_display_duration,
+      std::optional<
+          permissions::feature_params::PermissionElementPromptPosition>
+          pepc_prompt_position,
+      ContentSetting initial_permission_status,
+      content::WebContents* web_contents);
+
+  // Returns true if user has 3 consecutive notifications permission denies,
+  // returns false otherwise.
+  // Returns std::nullopt if the user is not in the adoptive activation quiet
+  // ui dry run experiment group.
+  virtual std::optional<bool> HadThreeConsecutiveNotificationPermissionDenies(
+      content::BrowserContext* browser_context);
+
+  // Returns whether the |permission| has already been auto-revoked due to abuse
+  // at least once for the given |origin|. Returns `nullopt` if permission
+  // auto-revocation is not supported for a given permission type.
+  virtual std::optional<bool> HasPreviouslyAutoRevokedPermission(
+      content::BrowserContext* browser_context,
+      const GURL& origin,
+      ContentSettingsType permission);
+
+  // If the embedder returns an origin here, any requests matching that origin
+  // will be approved. Requests that do not match the returned origin will
+  // immediately be finished without granting/denying the permission.
+  virtual std::optional<url::Origin> GetAutoApprovalOrigin(
+      content::BrowserContext* browser_context);
+
+  // If the embedder returns whether the requesting origin should be able to
+  // access browser permissions. The browser permissions would be auto approved.
+  virtual std::optional<PermissionAction> GetAutoApprovalStatus(
+      content::BrowserContext* browser_context,
+      const GURL& origin);
+
+  // Allows the embedder to bypass checking the embedding origin when performing
+  // permission availability checks. This is used for example when a permission
+  // should only be available on secure origins. Return true to bypass embedding
+  // origin checks for the passed in origins. Less strict ID checks than
+  // `GetCanonicalOriginOverride`.
+  virtual bool CanBypassEmbeddingOriginCheck(const GURL& requesting_origin,
+                                             const GURL& embedding_origin);
+
+  // Allows embedder to override the canonical origin for a permission request.
+  // This is the origin that will be used for requesting/storing/displaying
+  // permissions. Stricter ID checks than `GetEmbeddingOriginOverride` and
+  // `CanBypassEmbeddingOriginCheck` since `embedding_origin` outside of
+  // `WebContents` is expected to follow the new tab -> new tab page hierarchy.
+  virtual std::optional<GURL> GetCanonicalOriginOverride(
+      const GURL& requesting_origin,
+      const GURL& embedding_origin);
+
+  // Returns the GURL to use as the embedding origin when special handling is
+  // needed, or std::nullopt to use the default main frame origin. Less strict
+  // ID checks than `GetCanonicalOriginOverride` since the embedding origin
+  // does not follow the new tab -> new tab page hierarchy.
+  // `render_frame_host` is the frame that issued the permission request;
+  // embedders that key the embedding origin on frame-tree position (e.g. a
+  // MIME handler OOPIF subtree) must consult it directly rather than inferring
+  // the frame from `requesting_origin`, which two distinct frames can share.
+  virtual std::optional<GURL> GetEmbeddingOriginOverride(
+      const GURL& requesting_origin,
+      content::RenderFrameHost* render_frame_host);
+
+  // Only verifies that WebUI is internal (chrome://) and trusted enough to skip
+  // tab interface usage and use embedded permission prompt. Its identity is
+  // determined by just `embedded_origin` instead of both `embedded_origin` and
+  // `requester_origin`.
+  virtual bool IsPrivilegedInternalWebUIForUIRouting(
+      content::WebContents* web_contents);
+
+  // Returns if the permission request is from a WebUI or New Tab Page based on
+  // the `embedded_origin` and `requester_origin`. This check is less strict
+  // than the canonical origin check (which has different inputs) since
+  // `WebContents` does not follow the new tab -> new tab page hierarchy.
+  // Therefore, any combination of `new tab page` and `new tab` requester and
+  // embedders counts as being "from" a new tab page according to this function.
+  virtual bool IsFromNewTabPage(content::WebContents* web_contents,
+                                const GURL& requester,
+                                bool already_overrode_requester);
+
+  // Returns if the permission request is from a WebUI (contextual tasks,
+  // omnibox popup) based on its `embedded_origin` and `requester_origin`.
+  virtual bool IsPrivilegedInternalWebUI(content::WebContents* web_contents,
+                                         const GURL& requester,
+                                         bool already_overrode_requester);
+
+  // Returns if the permission request is from a WebUI (that is allowlisted for
+  // embedded permission prompts) or the new tab page based on the
+  // `embedded_origin` and `requester_origin`.
+  // This function calls `IsPrivilegedInternalWebUI` and `IsFromNewTabPage`.
+  bool IsPrivilegedInternalWebUIOrNewTabPage(content::WebContents* web_contents,
+                                             const GURL& requester,
+                                             bool already_overrode_requester);
+
+  // Determines the reason why a prompt was ignored.
+  virtual permissions::PermissionIgnoredReason DetermineIgnoreReason(
+      content::WebContents* web_contents);
+
+#if BUILDFLAG(IS_ANDROID)
+  // Returns whether the given origin matches the default search
+  // engine (DSE) origin.
+  virtual bool IsDseOrigin(content::BrowserContext* browser_context,
+                           const url::Origin& origin);
+
+  // Allows the embedder to create a message UI to use as the
+  // permission prompt. Returns the pointer to the message UI if the
+  // message UI is successfully created, nullptr otherwise, e.g. if
+  // the messages-prompt is not supported for `request`.
+  virtual std::unique_ptr<PermissionMessageDelegate> MaybeCreateMessageUI(
+      content::WebContents* web_contents,
+      const PermissionRequest& request,
+      base::WeakPtr<PermissionPromptAndroid> prompt);
+
+  using PermissionsUpdatedCallback = base::OnceCallback<void(bool)>;
+
+  // Prompts the user to accept system permissions for
+  // |content_settings_types|, after they've already been denied. In
+  // Chrome, this shows an infobar. |callback| will be run with
+  // |true| for success and |false| otherwise.
+  virtual void RepromptForAndroidPermissions(
+      content::WebContents* web_contents,
+      const std::vector<ContentSettingsType>& content_settings_types,
+      const std::vector<ContentSettingsType>& filtered_content_settings_types,
+      const std::vector<std::string>& required_permissions,
+      const std::vector<std::string>& optional_permissions,
+      PermissionsUpdatedCallback callback);
+
+  // Converts the given chromium |resource_id| (e.g.
+  // IDR_INFOBAR_TRANSLATE) to an Android drawable resource ID.
+  // Returns 0 if a mapping wasn't found.
+  virtual int MapToJavaDrawableId(int resource_id);
+
+  // Gets the name of the embedder.
+  virtual const std::u16string GetClientApplicationName() const = 0;
+#else
+  // Creates a permission prompt.
+  // TODO(crbug.com/40107932): Move the desktop permission prompt
+  // implementation into //components/permissions and remove this.
+  virtual std::unique_ptr<PermissionPrompt> CreatePrompt(
+      content::WebContents* web_contents,
+      PermissionPrompt::Delegate* delegate);
+#endif
+
+  virtual std::unique_ptr<EmbeddedPermissionPromptFlowModel::PromptContentScrim>
+  CreatePromptContentScrim(content::WebContents* web_contents,
+                           EmbeddedPermissionPromptFlowModel* flow_model);
+
+  // Returns true if the browser has the necessary permission(s) from the
+  // platform to provide a particular permission-gated capability to sites. This
+  // can include both app-specific permissions relevant to the browser and
+  // device-wide permissions.
+  virtual bool HasDevicePermission(ContentSettingsType type) const;
+
+  // Returns true if the browser is able to request from the platform the
+  // necessary permission(s) needed to provide a particular permission-gated
+  // capability to sites.
+  virtual bool CanRequestDevicePermission(ContentSettingsType type) const;
+
+  // Returns true if the |type| can be blocked by device policy, for example, by
+  // the custodian of a supervised user.
+  virtual bool IsPermissionBlockedByDevicePolicy(
+      content::WebContents* web_contents,
+      PermissionSetting setting,
+      const content_settings::SettingInfo& info,
+      ContentSettingsType type) const;
+
+  // Returns true if the |type| can be allowed by device policy, for example
+  // admins can use the whitelist to allow device access without prompt.
+  virtual bool IsPermissionAllowedByDevicePolicy(
+      content::WebContents* web_contents,
+      PermissionSetting setting,
+      const content_settings::SettingInfo& info,
+      ContentSettingsType type) const;
+
+  // Returns true if the system blocks the access to the specified content type
+  // permission.
+  virtual bool IsSystemDenied(ContentSettingsType type) const;
+
+  // Returns `true` if Chrome can request system-level permission. Returns
+  // `false` otherwise.
+  virtual bool CanPromptSystemPermission(ContentSettingsType type) const;
+
+  // Returns true if an actor is currently operating on a tab.
+  virtual bool IsActorOperatingOnWebContents(
+      content::WebContents* web_contents) const;
+
+  virtual favicon::FaviconService* GetFaviconService(
+      content::BrowserContext* browser_context);
+};
+
+}  // namespace permissions
+
+#endif  // COMPONENTS_PERMISSIONS_PERMISSIONS_CLIENT_H_

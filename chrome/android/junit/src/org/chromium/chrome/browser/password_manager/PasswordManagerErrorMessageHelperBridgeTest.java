@@ -1,0 +1,348 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.password_manager;
+
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import android.app.Activity;
+import android.app.PendingIntent;
+
+import androidx.activity.result.ActivityResult;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+
+import org.chromium.base.FakeTimeTestRule;
+import org.chromium.base.Promise;
+import org.chromium.base.TimeUtils;
+import org.chromium.base.shared_preferences.SharedPreferencesManager;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.RobolectricUtil;
+import org.chromium.chrome.browser.ChromeBaseAppCompatActivity;
+import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
+import org.chromium.chrome.browser.preferences.Pref;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.signin.services.IdentityServicesProvider;
+import org.chromium.chrome.browser.sync.SyncServiceFactory;
+import org.chromium.chrome.test.util.browser.signin.AccountManagerTestRule;
+import org.chromium.components.prefs.PrefService;
+import org.chromium.components.signin.identitymanager.IdentityManager;
+import org.chromium.components.signin.test.util.FakeAccountManagerFacade;
+import org.chromium.components.signin.test.util.TestAccounts;
+import org.chromium.components.sync.SyncService;
+import org.chromium.components.trusted_vault.TrustedVaultClient;
+import org.chromium.components.trusted_vault.TrustedVaultUserActionTriggerForUMA;
+import org.chromium.components.user_prefs.UserPrefs;
+import org.chromium.components.user_prefs.UserPrefsJni;
+import org.chromium.google_apis.gaia.CoreAccountId;
+import org.chromium.ui.base.ActivityResultTracker;
+import org.chromium.ui.base.WindowAndroid;
+import org.chromium.ui.test.util.MockitoHelper;
+
+import java.lang.ref.WeakReference;
+
+/** Unit tests for the error message helper bridge. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class PasswordManagerErrorMessageHelperBridgeTest {
+    private final FakeAccountManagerFacade mFakeAccountManagerFacade =
+            spy(new FakeAccountManagerFacade());
+
+    @Rule
+    public AccountManagerTestRule mAccountManagerTestRule =
+            new AccountManagerTestRule(mFakeAccountManagerFacade);
+
+    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Rule public FakeTimeTestRule mFakeTimeTestRule = new FakeTimeTestRule();
+
+    @Mock private Profile mProfile;
+
+    @Mock private PrefService mPrefService;
+
+    @Mock private UserPrefs.Natives mUserPrefsJniMock;
+
+    @Mock private IdentityServicesProvider mIdentityServicesProviderMock;
+
+    @Mock private WindowAndroid mWindowAndroidMock;
+
+    @Mock private IdentityManager mIdentityManagerMock;
+
+    @Mock private TrustedVaultClient.Backend mTrustedVaultBackend;
+
+    @Mock private SyncService mSyncService;
+
+    @Mock private PendingIntent mPendingIntent;
+
+    private SharedPreferencesManager mSharedPrefsManager;
+
+    @Before
+    public void setUp() {
+        UserPrefsJni.setInstanceForTesting(mUserPrefsJniMock);
+        when(mUserPrefsJniMock.get(mProfile)).thenReturn(mPrefService);
+        mSharedPrefsManager = ChromeSharedPreferences.getInstance();
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        when(mIdentityServicesProviderMock.getIdentityManager(mProfile))
+                .thenReturn(mIdentityManagerMock);
+        when(mIdentityManagerMock.getPrimaryAccountInfo()).thenReturn(TestAccounts.ACCOUNT1);
+        IdentityServicesProvider.setInstanceForTests(mIdentityServicesProviderMock);
+        TrustedVaultClient.get().setBackendForTesting(mTrustedVaultBackend);
+        SyncServiceFactory.setInstanceForTesting(mSyncService);
+    }
+
+    @After
+    public void tearDown() {
+        mSharedPrefsManager.removeKey(ChromePreferenceKeys.SYNC_ERROR_MESSAGE_SHOWN_AT_TIME);
+        mFakeTimeTestRule.resetTimes();
+    }
+
+    @Test
+    public void testNotEnoughTimeSinceLastUi() {
+        final long timeOfFirstUpmPrompt = TimeUtils.currentTimeMillis();
+        final long timeOfSyncPrompt =
+                timeOfFirstUpmPrompt
+                        + PasswordManagerErrorMessageHelperBridge.MINIMAL_INTERVAL_TO_SYNC_ERROR_MS;
+        when(mPrefService.getString(Pref.UPM_ERROR_UI_SHOWN_TIMESTAMP))
+                .thenReturn(Long.toString(timeOfFirstUpmPrompt));
+        mSharedPrefsManager.writeLong(
+                ChromePreferenceKeys.SYNC_ERROR_MESSAGE_SHOWN_AT_TIME, timeOfSyncPrompt);
+        mFakeTimeTestRule.advanceMillis(
+                PasswordManagerErrorMessageHelperBridge.MINIMAL_INTERVAL_BETWEEN_PROMPTS_MS);
+        assertFalse(PasswordManagerErrorMessageHelperBridge.shouldShowSignInErrorUi(mProfile));
+    }
+
+    @Test
+    public void testNotEnoughTimeSinceLastSyncUi() {
+        final long timeOfFirstUpmPrompt = TimeUtils.currentTimeMillis();
+        mFakeTimeTestRule.advanceMillis(
+                PasswordManagerErrorMessageHelperBridge.MINIMAL_INTERVAL_BETWEEN_PROMPTS_MS + 1);
+        final long timeOfSyncPrompt =
+                TimeUtils.currentTimeMillis()
+                        - PasswordManagerErrorMessageHelperBridge.MINIMAL_INTERVAL_TO_SYNC_ERROR_MS;
+        when(mPrefService.getString(Pref.UPM_ERROR_UI_SHOWN_TIMESTAMP))
+                .thenReturn(Long.toString(timeOfFirstUpmPrompt));
+        mSharedPrefsManager.writeLong(
+                ChromePreferenceKeys.SYNC_ERROR_MESSAGE_SHOWN_AT_TIME, timeOfSyncPrompt);
+        assertFalse(PasswordManagerErrorMessageHelperBridge.shouldShowSignInErrorUi(mProfile));
+    }
+
+    @Test
+    public void testEnoughTimeSinceBothUis() {
+        final long timeOfFirstUpmPrompt = TimeUtils.currentTimeMillis();
+        final long timeOfSyncPrompt =
+                timeOfFirstUpmPrompt
+                        + PasswordManagerErrorMessageHelperBridge.MINIMAL_INTERVAL_TO_SYNC_ERROR_MS;
+
+        when(mPrefService.getString(Pref.UPM_ERROR_UI_SHOWN_TIMESTAMP))
+                .thenReturn(Long.toString(timeOfFirstUpmPrompt));
+        mSharedPrefsManager.writeLong(
+                ChromePreferenceKeys.SYNC_ERROR_MESSAGE_SHOWN_AT_TIME, timeOfSyncPrompt);
+        mFakeTimeTestRule.advanceMillis(
+                PasswordManagerErrorMessageHelperBridge.MINIMAL_INTERVAL_BETWEEN_PROMPTS_MS + 1);
+        assertTrue(PasswordManagerErrorMessageHelperBridge.shouldShowSignInErrorUi(mProfile));
+    }
+
+    @Test
+    public void testSaveErrorUiShownTimestamp() {
+        final long currentTimeMs = TimeUtils.currentTimeMillis();
+        final long timeIncrementMs = 30;
+        mFakeTimeTestRule.advanceMillis(timeIncrementMs);
+        PasswordManagerErrorMessageHelperBridge.saveErrorUiShownTimestamp(mProfile);
+        verify(mPrefService)
+                .setString(
+                        Pref.UPM_ERROR_UI_SHOWN_TIMESTAMP,
+                        Long.toString(currentTimeMs + timeIncrementMs));
+    }
+
+    @Test
+    public void testUpdateCredentialsCallsAccountManager() {
+        final Activity activity = mock(Activity.class);
+        when(mWindowAndroidMock.getActivity()).thenReturn(new WeakReference<>(activity));
+
+        PasswordManagerErrorMessageHelperBridge.startUpdateAccountCredentialsFlow(
+                mWindowAndroidMock, mProfile);
+
+        verify(mFakeAccountManagerFacade)
+                .updateCredentials(eq(TestAccounts.ACCOUNT1.getId()), eq(activity), any());
+    }
+
+    @Test
+    public void testDontShowMessageOnIncognito() {
+        when(mIdentityServicesProviderMock.getIdentityManager(mProfile)).thenReturn(null);
+        final long timeOfFirstUpmPrompt = TimeUtils.currentTimeMillis();
+        final long timeOfSyncPrompt =
+                timeOfFirstUpmPrompt
+                        + PasswordManagerErrorMessageHelperBridge.MINIMAL_INTERVAL_TO_SYNC_ERROR_MS;
+        when(mPrefService.getString(Pref.UPM_ERROR_UI_SHOWN_TIMESTAMP))
+                .thenReturn(Long.toString(timeOfFirstUpmPrompt));
+        mSharedPrefsManager.writeLong(
+                ChromePreferenceKeys.SYNC_ERROR_MESSAGE_SHOWN_AT_TIME, timeOfSyncPrompt);
+        mFakeTimeTestRule.advanceMillis(
+                PasswordManagerErrorMessageHelperBridge.MINIMAL_INTERVAL_BETWEEN_PROMPTS_MS + 1);
+
+        assertFalse(PasswordManagerErrorMessageHelperBridge.shouldShowSignInErrorUi(mProfile));
+    }
+
+    @Test
+    public void testDontShowMessageWithtoutAccount() {
+        when(mIdentityManagerMock.getPrimaryAccountInfo()).thenReturn(null);
+        assertFalse(PasswordManagerErrorMessageHelperBridge.shouldShowSignInErrorUi(mProfile));
+    }
+
+    @Test
+    public void testDontTryToUpdateCredentialWithNoAccount() {
+        when(mIdentityManagerMock.getPrimaryAccountInfo()).thenReturn(null);
+        PasswordManagerErrorMessageHelperBridge.startUpdateAccountCredentialsFlow(
+                mWindowAndroidMock, mProfile);
+        verify(mFakeAccountManagerFacade, never())
+                .updateCredentials(
+                        any(CoreAccountId.class), any(Activity.class), MockitoHelper.anyCallback());
+    }
+
+    @Test
+    public void testStartTrustedVaultKeyRetrievalFlow_WithActivityResultTracker_Success() {
+        final ChromeBaseAppCompatActivity activity = mock(ChromeBaseAppCompatActivity.class);
+        final ActivityResultTracker tracker = mock(ActivityResultTracker.class);
+        when(activity.getActivityResultTracker()).thenReturn(tracker);
+        when(mWindowAndroidMock.getActivity()).thenReturn(new WeakReference<>(activity));
+        when(mSyncService.getAccountInfo()).thenReturn(TestAccounts.ACCOUNT1);
+
+        Promise<PendingIntent> intentPromise = new Promise<>();
+        when(mTrustedVaultBackend.createKeyRetrievalIntent(any())).thenReturn(intentPromise);
+
+        Runnable completionCallback = mock(Runnable.class);
+
+        PasswordManagerErrorMessageHelperBridge.startTrustedVaultKeyRetrievalFlow(
+                mWindowAndroidMock,
+                mProfile,
+                TrustedVaultUserActionTriggerForUMA.ACCOUNT_MENU,
+                completionCallback);
+
+        intentPromise.fulfill(mPendingIntent);
+        RobolectricUtil.runAllBackgroundAndUi();
+
+        ArgumentCaptor<ActivityResultTracker.ResultListener> listenerCaptor =
+                ArgumentCaptor.forClass(ActivityResultTracker.ResultListener.class);
+        verify(tracker).register(listenerCaptor.capture());
+        verify(tracker).startActivity(eq(listenerCaptor.getValue()), any(), eq(null));
+
+        ActivityResultTracker.ResultListener capturedListener = listenerCaptor.getValue();
+        assertTrue(
+                capturedListener
+                        .getRestorationKey()
+                        .startsWith(
+                                PasswordManagerErrorMessageHelperBridge
+                                        .TRUSTED_VAULT_KEY_RETRIEVAL_RESTORATION_KEY_NOT_TO_BE_RESTORED));
+
+        // Verify callback is not called before activity result is delivered.
+        verify(completionCallback, never()).run();
+
+        // Simulate activity result returning.
+        ActivityResult result = new ActivityResult(Activity.RESULT_OK, /* data= */ null);
+        capturedListener.onActivityResult(result, null);
+
+        verify(tracker).unregister(capturedListener);
+        verify(completionCallback).run();
+    }
+
+    @Test
+    public void testStartTrustedVaultKeyRetrievalFlow_TrackerStartActivityThrows() {
+        final ChromeBaseAppCompatActivity activity = mock(ChromeBaseAppCompatActivity.class);
+        final ActivityResultTracker tracker = mock(ActivityResultTracker.class);
+        when(activity.getActivityResultTracker()).thenReturn(tracker);
+        when(mWindowAndroidMock.getActivity()).thenReturn(new WeakReference<>(activity));
+        when(mSyncService.getAccountInfo()).thenReturn(TestAccounts.ACCOUNT1);
+
+        doThrow(new RuntimeException()).when(tracker).startActivity(any(), any(), any());
+
+        Promise<PendingIntent> intentPromise = new Promise<>();
+        when(mTrustedVaultBackend.createKeyRetrievalIntent(any())).thenReturn(intentPromise);
+
+        Runnable completionCallback = mock(Runnable.class);
+
+        PasswordManagerErrorMessageHelperBridge.startTrustedVaultKeyRetrievalFlow(
+                mWindowAndroidMock,
+                mProfile,
+                TrustedVaultUserActionTriggerForUMA.ACCOUNT_MENU,
+                completionCallback);
+
+        intentPromise.fulfill(mPendingIntent);
+        RobolectricUtil.runAllBackgroundAndUi();
+
+        verify(tracker).unregister(any());
+        verify(completionCallback).run();
+    }
+
+    @Test
+    public void testStartTrustedVaultKeyRetrievalFlow_IntentPromiseFails() {
+        final ChromeBaseAppCompatActivity activity = mock(ChromeBaseAppCompatActivity.class);
+        when(mWindowAndroidMock.getActivity()).thenReturn(new WeakReference<>(activity));
+        when(mSyncService.getAccountInfo()).thenReturn(TestAccounts.ACCOUNT1);
+
+        Promise<PendingIntent> intentPromise = new Promise<>();
+        when(mTrustedVaultBackend.createKeyRetrievalIntent(any())).thenReturn(intentPromise);
+
+        Runnable completionCallback = mock(Runnable.class);
+
+        PasswordManagerErrorMessageHelperBridge.startTrustedVaultKeyRetrievalFlow(
+                mWindowAndroidMock,
+                mProfile,
+                TrustedVaultUserActionTriggerForUMA.ACCOUNT_MENU,
+                completionCallback);
+
+        intentPromise.reject(new Exception());
+        RobolectricUtil.runAllBackgroundAndUi();
+
+        verify(completionCallback).run();
+    }
+
+    @Test
+    public void testStartTrustedVaultKeyRetrievalFlow_NoAccount() {
+        when(mSyncService.getAccountInfo()).thenReturn(null);
+
+        Runnable completionCallback = mock(Runnable.class);
+
+        PasswordManagerErrorMessageHelperBridge.startTrustedVaultKeyRetrievalFlow(
+                mWindowAndroidMock,
+                mProfile,
+                TrustedVaultUserActionTriggerForUMA.ACCOUNT_MENU,
+                completionCallback);
+
+        verify(completionCallback).run();
+    }
+
+    @Test
+    public void testStartTrustedVaultKeyRetrievalFlow_NullActivityRunsCallback() {
+        when(mWindowAndroidMock.getActivity()).thenReturn(new WeakReference<>(null));
+        when(mSyncService.getAccountInfo()).thenReturn(TestAccounts.ACCOUNT1);
+
+        Runnable completionCallback = mock(Runnable.class);
+
+        PasswordManagerErrorMessageHelperBridge.startTrustedVaultKeyRetrievalFlow(
+                mWindowAndroidMock,
+                mProfile,
+                TrustedVaultUserActionTriggerForUMA.ACCOUNT_MENU,
+                completionCallback);
+
+        verify(mTrustedVaultBackend, never()).createKeyRetrievalIntent(any());
+        verify(completionCallback).run();
+    }
+}

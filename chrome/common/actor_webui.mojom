@@ -1,0 +1,368 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module actor.webui.mojom;
+
+import "chrome/common/glic_enums.mojom";
+import "skia/public/mojom/bitmap.mojom";
+import "url/mojom/origin.mojom";
+
+//
+// Place the mojom structs that require Javascript bindings here.
+//
+
+// @generate glic_api
+// Describes the duration of the actions in the task.  This is used by the actor
+// to customize the task UI.
+[Extensible]
+enum TaskDuration {
+  // The task has actions that permit user observation and intervention in the
+  // browser.
+  [Default] kDefault = 1,
+  // The task has fast actions that do not permit observation and intervention.
+  kTransient = 2,
+};
+
+// @generate glic_api
+// Contains information about the task.
+struct TaskOptions {
+  // A user-facing string that describes the task.
+  string? title;
+  // The expected duration of the the task.
+  TaskDuration? duration;
+  // The feature mode for the task.
+  glic.mojom.FeatureMode? feature_mode;
+  // The initial target tab to actuate on.
+  int32? actuation_tab_id;
+};
+
+// @generate glic_api
+// Describes how long the user grants the actor with the permission to actuate.
+// Used when the actor is to actuate with sensitive data, such as entering
+// payment information or login credentials.
+[Extensible]
+enum UserGrantedPermissionDuration {
+  // The user only grants a one-time permission. The user will be asked again.
+  // This is the default behavior.
+  [Default] kOneTime = 0,
+  // The user grants a permission to always allow the actor to actuate with
+  // sensitive data. The persistence of this permission is defined differently
+  // for different features.
+  kAlwaysAllow = 1,
+};
+
+// @generate glic_api
+// Describes the login method for the credential.
+[Extensible]
+enum CredentialType {
+  // Used to fill in a username/password form.
+  [Default] kPassword = 0,
+  // Used with an identity provider (e.g. Sign in with Google).
+  kFederated = 1,
+};
+
+//
+// Credential selection dialog.
+//
+
+// @generate glic_api
+// A credential used for the auto-login.
+struct Credential {
+  // A unique identifier for this credential. Should not be displayed to the
+  // user.
+  int32 id;
+  // The username of the credential. Unique for a given sourceSiteOrApp. It can
+  // be empty if, for example, the credential is stored as a password only.
+  // For federated credentials, this is the user's email, if used by the
+  // identity provider, otherwise the account display identifier.
+  string username;
+  // The original website or application for which this credential was saved.
+  // For federated credentials, this is the site of the identity provider
+  // formatted for display.
+  string source_site_or_app;
+  // The origin for which this credential was requested.
+  // @glic_optional
+  url.mojom.Origin request_origin;
+  // @glic_ignore
+  string display_origin;
+  // The login method for this credential.
+  // @glic_optional
+  CredentialType type;
+
+  // For federated credentials, this is the account picture provided by the
+  // identity provider.
+  // Empty for other credential types.
+  // @glic_ignore
+  skia.mojom.BitmapN32? account_picture;
+};
+
+// @generate glic_api
+struct SelectCredentialDialogRequest {
+  // The task ID that is requesting the credential selection.
+  int32 task_id;
+  // Whether the web client should show a dialog to let the user select a
+  // credential. The web client doesn't have to show the dialog if the user has
+  // granted UserGrantedPermissionDuration.ALWAYS_ALLOW to the actor.
+  bool show_dialog;
+  // The order of `credentials` is based on what the browser believes to be the
+  // best match to use.
+  array<Credential> credentials;
+  // The optional icons for each credential. The key is
+  // Credential.source_site_or_app. The icons are separated from the credentials
+  // as an optimisation to avoid serializing the same icon multiple times.
+  // @glic_ignore
+  map<string, skia.mojom.BitmapN32> icons;
+};
+
+[Extensible]
+enum SelectCredentialDialogErrorReason {
+  // The hosting WebUI received the request, but the web client has not
+  // subscribed to the request yet. We couldn't show the dialog in this case.
+  [Default] kDialogPromiseNoSubscriber = 0,
+};
+
+// @generate glic_api
+// The response from the web client when the dialog is closed.
+struct SelectCredentialDialogResponse {
+  // The response is associated with the request that has the same task ID.
+  int32 task_id;
+  // @glic_ignore
+  SelectCredentialDialogErrorReason? error_reason;
+  // Only set if the user changes the permission duration.
+  // @glic_optional
+  UserGrantedPermissionDuration? permission_duration;
+  // The ID of the selected credential. Unset if the user closed the UI without
+  // making a selection.
+  // @glic_optional
+  int32? selected_credential_id;
+};
+
+//
+// Autofill suggestion selection dialog.
+//
+
+// @generate glic_api
+// A single autofill suggestion for a form.
+struct AutofillSuggestion {
+  // A unique identifier for this suggestion. Should not be displayed to the
+  // user. This string is generated by Autofill for the duration of the
+  // suggestions dialog request, which Autofill internally uses to maps to a
+  // payload that can be filled.
+  string id;
+  // The primary label of the suggestion shown to the user.
+  string title;
+  // A secondary label shown below the title shown to the user.
+  // Autofill will create this string for display by, possibly, combining
+  // other (not exposed) properties of the suggestion.
+  string details;
+  // @glic_ignore
+  skia.mojom.BitmapN32? icon;
+};
+
+// @generate glic_api
+// A request to fill a form includes the requested data type and available
+// options.
+struct FormFillingRequest {
+  // The specific purpose of the form. For example for forms of address type:
+  // BILLING_ADDRESS, SHIPPING_ADDRESS, etc.
+  // See the FormFillingRequest.RequestedData enum in actions_data.proto.
+  int64 requested_data;
+  // The origin formatted without a scheme for security display only. This
+  // property may be undefined in older hosts.
+  // @glic_optional
+  string formatted_request_origin;
+  // The label for the section that this form is in. Displayed by the UI to
+  // provide filling context in addition to the selection.
+  // @glic_optional
+  string section_label;
+  // The list of suggestions for this form. The web client shows a selector with
+  // these suggestions.
+  array<AutofillSuggestion> suggestions;
+};
+
+// @generate glic_api
+// A request for the web client to show suggestion selectors for a number of
+// forms.
+struct SelectAutofillSuggestionsDialogRequest {
+  // @glic_ignore
+  // The task ID that is requesting the autofill suggestion selection.
+  int32 task_id;
+  // The list of requested forms to be filled.
+  //
+  // For example a shipping address with a list of address suggestions and a
+  // credit card with another list of suggestions. The web client should show
+  // two selectors.
+  array<FormFillingRequest> form_filling_requests;
+};
+
+// LINT.IfChange(SelectAutofillSuggestionsDialogErrorReason)
+enum SelectAutofillSuggestionsDialogErrorReason {
+  // The hosting WebUI received the request, but the web client has not
+  // subscribed to the request yet. We couldn't show the dialog in this case.
+  kDialogPromiseNoSubscriber = 0,
+  // The requested task id did not match the response task id. This error is
+  // internal to the browser and not sent by the client over mojo.
+  kMismatchedTaskId = 1,
+  // The task is not connected to a delegate. I.e. attempting to run the task
+  // from the experimental actor API. This error is internal to the browser and
+  // not sent by the client over mojo.
+  kNoActorTaskDelegate = 2,
+};
+
+// LINT.ThenChange(//chrome/browser/resources/glic/glic_api_impl/actor/actor_types.ts:SelectAutofillSuggestionsDialogErrorReason)
+// @generate glic_api
+// The chosen suggestion from the web client for a single form.
+struct FormFillingResponse {
+  // The ID corresponding to the user selected suggestion.
+  string selected_suggestion_id;
+};
+
+// Represents a form having been shown in the Chat UI.
+struct AutofillSuggestionDialogOnFormPresentedParams {
+  // The index corresponding to the form in array
+  // SelectAutofillSuggestionsDialogRequest.form_filling_requests
+  int32 form_filling_request_index;
+};
+
+// Represents a form preview event from Chat UI.
+struct AutofillSuggestionDialogOnFormPreviewChangedParams {
+  // The index corresponding to the form in array
+  // SelectAutofillSuggestionsDialogRequest.form_filling_requests
+  int32 form_filling_request_index;
+  // The form filling response for the suggestion to be previewed. Null when
+  // the preview should be hidden.
+  FormFillingResponse? response;
+};
+
+// Represents the event when a form is confirmed by the user.
+struct AutofillSuggestionDialogOnFormConfirmedParams {
+  // The index corresponding to the form in array
+  // SelectAutofillSuggestionsDialogRequest.form_filling_requests
+  int32 form_filling_request_index;
+  FormFillingResponse response;
+};
+
+// Contains either an error or the users' response to the offered autofill
+// suggestions.
+union SelectAutofillSuggestionsDialogResult {
+  SelectAutofillSuggestionsDialogErrorReason error_reason;
+  // The responses to each FormFillingRequest. The order of this list
+  // corresponds to the order of `requests` in the
+  // `SelectAutofillSuggestionsDialogRequest`.
+  array<FormFillingResponse> selected_suggestions;
+};
+
+// The response from the web client containing the chosen suggestions for each
+// form.
+struct SelectAutofillSuggestionsDialogResponse {
+  // @glic_ignore
+  // The response is associated with the request that has the same task ID.
+  int32 task_id;
+  // @glic_ignore
+  // The result will be either an error or the selected suggestion responses.
+  SelectAutofillSuggestionsDialogResult result;
+};
+
+// Contains information about the confirmation request
+// that also encodes what type of request is being sent.
+struct UserConfirmationDialogPayload {
+  url.mojom.Origin navigation_origin;
+  bool for_blocklisted_origin;
+};
+
+struct UserConfirmationDialogRequest {
+  UserConfirmationDialogPayload payload;
+};
+
+// Contains result of user confirmation dialog request.
+// Either a boolean indicating user decision, or an error.
+union UserConfirmationDialogResult {
+  bool permission_granted;
+  ConfirmationRequestErrorReason error_reason;
+};
+
+union ConfirmationRequestResult {
+  bool permission_granted;
+  ConfirmationRequestErrorReason error_reason;
+};
+
+struct UserConfirmationDialogResponse {
+  ConfirmationRequestResult result;
+};
+
+[Extensible]
+enum ConfirmationRequestErrorReason {
+  // The hosting WebUI received the request, but the web client has not
+  // subscribed to the request yet. We couldn't show the dialog in this case.
+  [Default] kRequestPromiseNoSubscriber = 0,
+  // The task requested a new user confirmation dialog before the current
+  // one completed.
+  kPreemptedByNewRequest = 1,
+};
+
+struct NavigationConfirmationRequest {
+  // The task ID that is checking the navigation.
+  int32 task_id;
+  url.mojom.Origin navigation_origin;
+};
+
+// Contains result of a navigation confirmation request.
+// Either a boolean indicating user decision, or an error.
+struct NavigationConfirmationResponse {
+  ConfirmationRequestResult result;
+};
+
+// LINT.IfChange(GmailOtpErrorReason)
+// Error reasons for why showing a Gmail OTP dialog failed.
+[Extensible]
+enum GmailOtpErrorReason {
+  // The hosting WebUI received the request, but the web client has not
+  // subscribed to the request yet. We couldn't show the dialog in this case.
+  [Default] kRequestPromiseNoSubscriber = 0,
+};
+// LINT.ThenChange(//chrome/browser/resources/glic/glic_api_impl/actor/actor_types.ts:GmailOtpErrorReason)
+
+// @generate glic_api
+// Request to show a Gmail OTP opt-in dialog.
+struct GmailOtpOptInRequest {
+  // ID of the actor's task.
+  int32 task_id;
+};
+
+// @generate glic_api
+// Response for the Gmail OTP opt-in dialog.
+struct GmailOtpOptInResponse {
+  // True if the user clicked the opt-in button, false if they
+  // cancelled/closed it.
+  bool permission_granted;
+};
+
+union GmailOtpOptInResult {
+  GmailOtpOptInResponse response;
+  GmailOtpErrorReason error_reason;
+};
+
+// @generate glic_api
+// Request to show a Gmail OTP confirmation dialog.
+struct GmailOtpConfirmationRequest {
+  // ID of the actor's task.
+  int32 task_id;
+  // The verification code that the user needs to confirm.
+  string verification_code;
+};
+
+// @generate glic_api
+// Response for the Gmail OTP confirmation dialog.
+struct GmailOtpConfirmationResponse {
+  // True if the user clicked the confirmation button, false if they
+  // cancelled/closed it.
+  bool permission_granted;
+};
+
+union GmailOtpConfirmationResult {
+  GmailOtpConfirmationResponse response;
+  GmailOtpErrorReason error_reason;
+};
+
+

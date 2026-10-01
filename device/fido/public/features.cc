@@ -1,0 +1,190 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "device/fido/public/features.h"
+
+#include "base/feature_list.h"
+#include "build/build_config.h"
+
+namespace {
+
+// Default ttl (in seconds) for keeping the cached opportunistically retrieved
+// key in case its Gaia Id doesn't match to primary signed-in account.
+constexpr int kDefaultOpportunisticRetrievalTimeToKeepCachedKeySeconds = 300;
+
+}  // namespace
+
+namespace device {
+
+// Flags defined in this file should have a comment above them that either
+// marks them as permanent flags, or specifies what lifecycle stage they're at.
+//
+// Permanent flags are those that we'll keep around indefinitely because
+// they're useful for testing, debugging, etc. These should be commented with
+//    // Permanent flag
+//
+// Standard flags progress through a lifecycle and are eliminated at the end of
+// it. The comments above them should be one of the following:
+//    // Not yet enabled by default.
+//    // Enabled in M123. Remove in or after M126.
+//
+// Every release or so we should cleanup and delete flags which have been
+// default-enabled for long enough, based on the removal milestone in their
+// comment.
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_CHROMEOS)
+// Not yet enabled by default.
+BASE_FEATURE(kPasskeyUnlockErrorUi, base::FEATURE_DISABLED_BY_DEFAULT);
+
+constexpr base::FeatureParam<PasskeyUnlockErrorUiExperimentArm>::Option
+    kPasskeyUnlockErrorUiExperimentArms[] = {
+        {PasskeyUnlockErrorUiExperimentArm::kUnlock,
+         "text_with_unlock_wording"},
+        {PasskeyUnlockErrorUiExperimentArm::kGet, "text_with_get_wording"},
+        {PasskeyUnlockErrorUiExperimentArm::kVerify,
+         "text_with_verify_wording"},
+};
+constexpr base::FeatureParam<PasskeyUnlockErrorUiExperimentArm>
+    kPasskeyUnlockErrorUiExperimentArm{
+        &kPasskeyUnlockErrorUi, "passkey_unlock_ui_experiment_arm",
+        PasskeyUnlockErrorUiExperimentArm::kVerify,
+        &kPasskeyUnlockErrorUiExperimentArms};
+#endif
+
+#if BUILDFLAG(IS_WIN)
+// Permanent flag
+BASE_FEATURE(kWebAuthUseNativeWinApi,
+             "WebAuthenticationUseNativeWinApi",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_WIN)
+
+// This is used to enable an experiment to reject WebAuthn requests
+// when actor mode is on.
+BASE_FEATURE(kWebAuthnActorCheck, base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Enabled in M118. Remove in or after M121.
+BASE_FEATURE(kWebAuthnICloudKeychainForGoogle,
+             "WebAuthenticationICloudKeychainForGoogle",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Enabled in M118. Remove in or after M121.
+BASE_FEATURE(kWebAuthnICloudKeychainForActiveWithDrive,
+             "WebAuthenticationICloudKeychainForActiveWithDrive",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Not yet enabled by default.
+BASE_FEATURE(kWebAuthnICloudKeychainForActiveWithoutDrive,
+             "WebAuthenticationICloudKeychainForActiveWithoutDrive",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enabled in M118. Remove in or after M121.
+BASE_FEATURE(kWebAuthnICloudKeychainForInactiveWithDrive,
+             "WebAuthenticationICloudKeychainForInactiveWithDrive",
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Not yet enabled by default.
+BASE_FEATURE(kWebAuthnICloudKeychainForInactiveWithoutDrive,
+             "WebAuthenticationICloudKeychainForInactiveWithoutDrive",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Development flag. Must not be enabled by default once
+// kWebAuthnEnclaveAuthenticator is enabled.
+BASE_FEATURE(kWebAuthnUseInsecureSoftwareUnexportableKeys,
+             "WebAuthenticationUseInsecureSoftwareUnexportableKeys",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Development flag. Must not be enabled by default.
+BASE_FEATURE(kWebAuthnEnclaveAuthenticatorDelay,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Not yet enabled by default.
+BASE_FEATURE(kWebAuthnAmbientSignin,
+             "WebAuthenticationAmbientSignin",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Deprecation flag. Disabled by default in M145. Remove in or after M148.
+#if BUILDFLAG(IS_ANDROID)
+BASE_FEATURE(kWebAuthnPublishPrelinkingInfo,
+             "WebAuthenticationPublishPrelinkingInfo",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_ANDROID)
+
+// Disabled by default.
+BASE_FEATURE(kWebAuthnHelloSignal,
+             "WebAuthenticationHelloSignal",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Disabled by default.
+BASE_FEATURE(kDigitalCredentialsHybridLinking,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Disabled by default.
+BASE_FEATURE(kWebAuthnEnclaveAttestation,
+             "WebAuthenticationEnclaveAttestation",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+
+
+BASE_FEATURE(kWebAuthnCrossDeviceFallbackUrl,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kWebAuthnRemoteClientDataJson, base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enabled by default in M149. Remove in or after M152.
+BASE_FEATURE(kWebAuthnIWARemoteDesktopAllowedOriginsPolicy,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Enabled by default in M152. Remove in or after M155.
+BASE_FEATURE(kWebAuthnOpportunisticRetrieval, base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE_PARAM(int,
+                   kWebAuthnOpportunisticRetrievalTimeToKeepCachedKeySeconds,
+                   &kWebAuthnOpportunisticRetrieval,
+                   "cached_key_ttl",
+                   kDefaultOpportunisticRetrievalTimeToKeepCachedKeySeconds);
+
+// Enabled by default in M148. Remove in or after M152.
+BASE_FEATURE(kWebAuthnDoNotAlwaysTerminateStateMachineDuringIdentityChange,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Enabled by default in M149. Remove in or after M152.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_FEATURE(kWebAuthnCreatePinWhenSystemUvDisabled,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Enabled by default in M150. Remove in or after M153.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_FEATURE(kWebAuthnGpmPinResetUsesAccountIndex,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+#if BUILDFLAG(IS_WIN)
+// Enabled by default in M147. Remove in or after M150.
+BASE_FEATURE(kWebAuthnWinPrfOnCreate, base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_WIN)
+
+// Enabled by default in M150. Remove in or after M153.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_FEATURE(kWebAuthnSocketMaxPriorityMode, base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Enabled by default in M151. Remove in or after M154.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_FEATURE(kWebAuthnStripUnusedEnclaveParameters,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Disabled by default.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_FEATURE(kWebAuthnGpmPasskeyEmbeddedRecoveryUrl,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Enabled by default in M152. Remove in or after M155.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_FEATURE(kWebAuthnEnclaveUseAuthDataFromEnclave,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Enabled by default in M152. Remove in or after M155.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_FEATURE(kWebAuthnModalProviderIcons, base::FEATURE_ENABLED_BY_DEFAULT);
+
+}  // namespace device

@@ -1,0 +1,74 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/platform/theme/web_theme_engine_helper.h"
+
+#include "base/command_line.h"
+#include "build/build_config.h"
+#include "third_party/blink/public/common/switches.h"
+#include "third_party/blink/renderer/platform/graphics/scrollbar_theme_settings.h"
+#include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
+#include "ui/native_theme/overlay_scrollbar_constants.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "third_party/blink/renderer/platform/theme/web_theme_engine_android.h"
+#elif BUILDFLAG(IS_MAC)
+#include "third_party/blink/renderer/platform/theme/web_theme_engine_mac.h"
+#else
+#include "third_party/blink/renderer/platform/theme/web_theme_engine_default.h"
+#endif
+
+namespace blink {
+
+namespace {
+std::unique_ptr<WebThemeEngine> CreateWebThemeEngine() {
+#if BUILDFLAG(IS_ANDROID)
+  return std::make_unique<WebThemeEngineAndroid>();
+#elif BUILDFLAG(IS_MAC)
+  return std::make_unique<WebThemeEngineMac>();
+#else
+  return std::make_unique<WebThemeEngineDefault>();
+#endif
+}
+
+std::unique_ptr<WebThemeEngine>& ThemeEngine() {
+  DEFINE_STATIC_LOCAL(std::unique_ptr<WebThemeEngine>, theme_engine,
+                      {CreateWebThemeEngine()});
+  return theme_engine;
+}
+
+}  // namespace
+
+WebThemeEngine* WebThemeEngineHelper::GetNativeThemeEngine() {
+  return ThemeEngine().get();
+}
+
+std::unique_ptr<WebThemeEngine>
+WebThemeEngineHelper::SwapNativeThemeEngineForTesting(
+    std::unique_ptr<WebThemeEngine> new_theme) {
+  ThemeEngine().swap(new_theme);
+  return new_theme;
+}
+
+const WebThemeEngine::ScrollbarStyle&
+WebThemeEngineHelper::AndroidScrollbarStyle() {
+  if (ScrollbarThemeSettings::DesktopAndroidScrollbarsEnabled()) {
+    DEFINE_STATIC_LOCAL(
+        WebThemeEngine::ScrollbarStyle, desktop_style,
+        ({/*thumb_thickness=*/8,
+          /*scrollbar_margin=*/4,
+          /*color=*/{0.5f, 0.5f, 0.5f, 0.5f},
+          /*fade_out_delay=*/ui::GetOverlayScrollbarFadeDelay(),
+          /*fade_out_duration=*/ui::GetOverlayScrollbarFadeDuration(),
+          /*idle_thickness_scale=*/ui::kOverlayScrollbarIdleThicknessScale}));
+    return desktop_style;
+  }
+  DEFINE_STATIC_LOCAL(WebThemeEngine::ScrollbarStyle, style,
+                      ({/*thumb_thickness=*/4,
+                        /*scrollbar_margin=*/0,
+                        /*color=*/{0.5f, 0.5f, 0.5f, 0.5f}}));
+  return style;
+}
+
+}  // namespace blink

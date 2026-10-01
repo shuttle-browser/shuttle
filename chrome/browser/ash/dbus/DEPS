@@ -1,0 +1,52 @@
+include_rules = [
+  # ChromeOS should not depend on //chrome. See //docs/chromeos/code.md for
+  # details.
+  "-chrome",
+
+  # This directory is in //chrome, which violates the rule above. Allow this
+  # directory to #include its own files.
+  "+chrome/browser/ash/dbus",
+
+  # Existing dependencies within //chrome. There is an active effort to
+  # refactor //chrome/browser/ash to break these dependencies; see b/332804822.
+  # Whenever possible, avoid adding new //chrome dependencies to this list.
+  #
+  # Files residing in certain directories (e.g., //chrome/browser) are listed
+  # individually. Other dependencies within //chrome are listed on a per-
+  # directory basis. See //tools/chromeos/gen_deps.sh for details.
+  "+chrome/browser/ash/app_mode",
+  "+chrome/browser/ash/arc/fileapi",
+  "+chrome/browser/ash/arc/session",
+  "+chrome/browser/ash/arc/test",
+  "+chrome/browser/ash/arc/tracing",
+  "+chromeos/ash/experiences/arc/video",
+  "+chrome/browser/ash/bruschetta",
+  "+chrome/browser/ash/certificate_provider",
+  "+chrome/browser/ash/crostini",
+  "+chrome/browser/ash/fusebox",
+  "+chrome/browser/ash/login",
+  "+chrome/browser/ash/net",
+  "+chrome/browser/ash/policy/dlp",
+  "+chrome/browser/ash/policy/handlers",
+  "+chrome/browser/ash/power/ml",
+  "+chrome/browser/ash/printing",
+  "+chrome/browser/ash/profiles",
+  "+chrome/browser/ash/settings",
+  "+chrome/browser/chromeos/policy/dlp",
+  "+chrome/browser/component_updater",
+  "+chrome/browser/enterprise/browser_management",
+  "+chrome/browser/policy",
+  "+chrome/browser/profiles",
+  "+chrome/browser/ui/browser.h",
+  "+chrome/common/chrome_paths.h",
+  "+chrome/common/chrome_switches.h",
+  "+chrome/test/base",
+
+  "+mojo/core",
+]
+
+specific_include_rules = {
+  "cryptohome_key_delegate_service_provider_browsertest\\.cc": [
+    "+chrome/browser/browser_process.h",
+  ]
+}

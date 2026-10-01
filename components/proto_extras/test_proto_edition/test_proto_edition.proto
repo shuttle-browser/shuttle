@@ -1,0 +1,25 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+edition = "2024";
+
+option optimize_for = LITE_RUNTIME;
+
+package proto_extras;
+
+import option "components/proto_extras/proto_extras_options.proto";
+
+message TestMessageEdition {
+  string text = 1;
+}
+
+message CustomSerializedMessage {
+  option (proto_extras_options).has_custom_serialization = true;
+
+  int32 int_field = 1;
+}
+
+message CustomSerializedMessageEmbedder {
+  CustomSerializedMessage message = 1;
+}

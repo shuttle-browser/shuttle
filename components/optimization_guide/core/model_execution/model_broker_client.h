@@ -1,0 +1,216 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_OPTIMIZATION_GUIDE_CORE_MODEL_EXECUTION_MODEL_BROKER_CLIENT_H_
+#define COMPONENTS_OPTIMIZATION_GUIDE_CORE_MODEL_EXECUTION_MODEL_BROKER_CLIENT_H_
+
+#include <memory>
+#include <tuple>
+#include <vector>
+
+#include "base/functional/callback_forward.h"
+#include "base/memory/weak_ptr.h"
+#include "components/optimization_guide/core/model_execution/multimodal_message.h"
+#include "components/optimization_guide/core/model_execution/on_device_capability.h"
+#include "components/optimization_guide/core/model_execution/on_device_execution.h"
+#include "components/optimization_guide/core/model_execution/on_device_model_feature_adapter.h"
+#include "components/optimization_guide/core/model_execution/safety_checker.h"
+#include "components/optimization_guide/core/model_execution/safety_config.h"
+#include "components/optimization_guide/core/optimization_guide_logger.h"
+#include "components/optimization_guide/proto/model_quality_metadata.pb.h"
+#include "components/optimization_guide/public/mojom/model_broker.mojom.h"
+#include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "mojo/public/cpp/bindings/pending_remote.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "mojo/public/cpp/bindings/remote_set.h"
+#include "services/on_device_model/public/mojom/download_observer.mojom.h"
+#include "services/on_device_model/public/mojom/on_device_model.mojom.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
+
+namespace optimization_guide {
+
+class ModelClient final : public TextSafetyClient {
+ public:
+  ModelClient(mojo::PendingRemote<mojom::ModelSolution> remote,
+              mojom::ModelSolutionConfigPtr config,
+              on_device_model::Capabilities device_capabilities);
+  ~ModelClient() override;
+
+  // Construct a session for this capability.
+  std::unique_ptr<OnDeviceSession> CreateSession(
+      const SessionConfigParams& config_params,
+      base::WeakPtr<OptimizationGuideLogger> logger);
+
+  // TextSafetyClient:
+  void StartSession(
+      mojo::PendingReceiver<on_device_model::mojom::TextSafetySession> session)
+      override;
+
+  base::WeakPtr<ModelClient> GetWeakPtr() {
+    return weak_ptr_factory_.GetWeakPtr();
+  }
+
+  mojom::ModelSolution& solution() { return *remote_; }
+
+  const OnDeviceModelFeatureAdapter& feature_adapter() const {
+    return *feature_adapter_;
+  }
+
+  // The intersection of model capabilities and device capabilities.
+  const on_device_model::Capabilities& capabilities() const {
+    return capabilities_;
+  }
+
+  const proto::FeatureTextSafetyConfiguration& safety_config() const {
+    return safety_config_;
+  }
+
+  const TokenLimits& token_limits() const {
+    return feature_adapter_->GetTokenLimits();
+  }
+
+  const std::optional<SamplingParamsConfig> GetSamplingParamsConfig() const {
+    return feature_adapter_->GetSamplingParamsConfig();
+  }
+
+  const std::optional<const optimization_guide::proto::Any> GetFeatureMetadata()
+      const {
+    return feature_adapter_->GetFeatureMetadata();
+  }
+
+ private:
+  // Called when the remote disconnects.
+  void OnDisconnect();
+
+  class OnDeviceOptionsClient;
+
+  mojo::Remote<mojom::ModelSolution> remote_;
+  scoped_refptr<const OnDeviceModelFeatureAdapter> feature_adapter_;
+  proto::FeatureTextSafetyConfiguration safety_config_;
+  proto::OnDeviceModelVersions model_versions_;
+  on_device_model::Capabilities capabilities_;
+  mojom::OnDeviceFeature feature_;
+  base::WeakPtrFactory<ModelClient> weak_ptr_factory_{this};
+};
+
+class ModelSubscriberImpl : public mojom::ModelSubscriber {
+ public:
+  ModelSubscriberImpl();
+  ~ModelSubscriberImpl() override;
+
+  using CreateSessionResult = std::unique_ptr<OnDeviceSession>;
+  using CreateSessionCallback = base::OnceCallback<void(CreateSessionResult)>;
+  using ClientCallback = base::OnceCallback<void(base::WeakPtr<ModelClient>)>;
+  using CanCreateSessionCallback = base::OnceCallback<void(
+      std::optional<mojom::ModelUnavailableReason>,
+      std::optional<mojom::ModelNotSupportedDetailedReason>)>;
+
+  // Get info about whether the model is / will be available.
+  std::optional<mojom::ModelUnavailableReason> unavailable_reason() const {
+    return unavailable_reason_;
+  }
+
+  std::optional<ModelClient>& client() { return client_; }
+
+  // Creates and returns a session via callback as soon as a model is available.
+  // Calls the callback with nullptr if the state become NotSupported.
+  void CreateSession(const SessionConfigParams& config_params,
+                     CreateSessionCallback callback,
+                     base::WeakPtr<OptimizationGuideLogger> logger);
+
+  // Wait for the client to be available and call the callback with a reference.
+  // Calls the callback with nullptr if the state become NotSupported.
+  void WaitForClient(ClientCallback callback);
+
+  // Check whether a session can be created with the given capabilities, and
+  // return the reason if not.
+  void CanCreateSession(const on_device_model::Capabilities& capabilities,
+                        CanCreateSessionCallback callback);
+
+ protected:
+  // mojom::ModelSubscriber
+  void Unavailable(mojom::ModelUnavailableReason reason,
+                   std::optional<mojom::ModelNotSupportedDetailedReason>
+                       detailed_reason) override;
+  void Available(mojom::ModelSolutionConfigPtr config,
+                 mojo::PendingRemote<mojom::ModelSolution> remote) override;
+  void CapabilitiesUpdated(
+      const on_device_model::Capabilities& capabilities) override;
+
+  // Fire all pending callbacks
+  void FlushCallbacks();
+
+  // Fire all pending CanCreateSession callbacks.
+  void FlushCanCreateSessionCallbacks();
+
+  std::vector<ClientCallback> callbacks_;
+  std::optional<mojom::ModelUnavailableReason> unavailable_reason_;
+  std::optional<mojom::ModelNotSupportedDetailedReason> detailed_reason_;
+  std::vector<
+      std::pair<on_device_model::Capabilities, CanCreateSessionCallback>>
+      can_create_session_callbacks_;
+  std::optional<on_device_model::Capabilities> capabilities_;
+  std::optional<ModelClient> client_;
+};
+
+class ModelSubscriber final : public ModelSubscriberImpl {
+ public:
+  explicit ModelSubscriber(
+      mojo::PendingReceiver<mojom::ModelSubscriber> pending);
+  ~ModelSubscriber() override;
+
+ private:
+  void OnDisconnect();
+  mojo::Receiver<mojom::ModelSubscriber> receiver_;
+};
+
+class ModelBrokerClient final {
+ public:
+  explicit ModelBrokerClient(mojo::PendingRemote<mojom::ModelBroker> remote,
+                             base::WeakPtr<OptimizationGuideLogger> logger);
+  ~ModelBrokerClient();
+
+  using CreateSessionResult = ModelSubscriber::CreateSessionResult;
+  using CreateSessionCallback = ModelSubscriber::CreateSessionCallback;
+
+  // Get or create the subscriber for the given key.
+  ModelSubscriber& GetSubscriber(const std::string& use_case);
+  ModelSubscriber& GetSubscriber(mojom::OnDeviceFeature feature);
+
+  // Request that the model assets for this feature be made available.
+  void RequestAssetsFor(const std::string& use_case);
+  void RequestAssetsFor(mojom::OnDeviceFeature feature);
+
+  // Whether the subscriber for this key already exists.
+  bool HasSubscriber(const std::string& use_case);
+  bool HasSubscriber(mojom::OnDeviceFeature feature);
+
+  // Async session creation.
+  void CreateSession(const std::string& use_case,
+                     const SessionConfigParams& config_params,
+                     CreateSessionCallback callback);
+  void CreateSession(mojom::OnDeviceFeature feature,
+                     const SessionConfigParams& config_params,
+                     CreateSessionCallback callback);
+
+  using GetConfigCallback =
+      base::OnceCallback<void(std::optional<mojo_base::ProtoWrapper>)>;
+  void GetConfig(mojom::OnDeviceFeature feature, GetConfigCallback callback);
+
+  // Add DownloadProgressObserver.
+  void AddModelDownloadProgressObserver(
+      const std::string& use_case,
+      mojo::PendingRemote<on_device_model::mojom::DownloadObserver> observer);
+
+ private:
+  mojo::Remote<mojom::ModelBroker> remote_;
+  base::WeakPtr<OptimizationGuideLogger> logger_;
+
+  absl::flat_hash_map<std::string, std::unique_ptr<ModelSubscriber>>
+      subscribers_;
+};
+
+}  // namespace optimization_guide
+
+#endif  // COMPONENTS_OPTIMIZATION_GUIDE_CORE_MODEL_EXECUTION_MODEL_BROKER_CLIENT_H_

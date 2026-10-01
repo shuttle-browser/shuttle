@@ -1,0 +1,99 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_TAB_SWITCHER_UI_BUNDLED_TAB_GRID_TOOLBARS_TAB_GRID_TOP_TOOLBAR_H_
+#define IOS_CHROME_BROWSER_TAB_SWITCHER_UI_BUNDLED_TAB_GRID_TOOLBARS_TAB_GRID_TOP_TOOLBAR_H_
+
+#import <UIKit/UIKit.h>
+
+#import "ios/chrome/browser/keyboard/ui_bundled/key_command_actions.h"
+#import "ios/chrome/browser/tab_switcher/ui_bundled/tab_grid/tab_grid_paging.h"
+
+@class LayoutGuideCenter;
+@class TabGridPageControl;
+@protocol TabGridToolbarsGridDelegate;
+
+// Top toolbar for TabGrid. The appearance of the toolbar is decided by screen
+// size, current TabGrid page and mode:
+//
+// Horizontal-compact and vertical-regular screen size:
+//   Normal mode:     [Search         PageControl            ]
+//   Normal mode with Page Action Menu Entry Point enabled:
+//                    [Search         PageControl  PageActionMenu]
+//   Tab Groups page: [               PageControl            ]
+//   Remote page:     [               PageControl            ]
+//   Selection mode:  [SelectAll    SelectedTabsCount    Done]
+// Other screen size:
+//   Normal mode:     [CloseAll           PageControl      Select Done]
+//   Tab Groups page: [                   PageControl             Done]
+//   Remote page:     [                   PageControl             Done]
+//   Selection mode:  [SelectAll        SelectedTabsCount         Done]
+@interface TabGridTopToolbar : UIToolbar <KeyCommandActions>
+
+// These components are publicly available to allow the user to set their
+// contents, visibility and actions.
+@property(nonatomic, strong, readonly) TabGridPageControl* pageControl;
+// This property together with `mode` control the items shown in toolbar.
+@property(nonatomic, assign) TabGridPage page;
+// TabGrid mode, it controls the items shown in toolbar.
+@property(nonatomic, assign) TabGridMode mode;
+// This property indicates the count of selected tabs when the tab grid is in
+// selection mode. It will be used to update the buttons to use the correct
+// title (singular or plural).
+@property(nonatomic, assign) int selectedTabsCount;
+// Delegate to call when a button is tapped.
+@property(nonatomic, weak) id<TabGridToolbarsGridDelegate> buttonsDelegate;
+
+- (instancetype)initWithLayoutGuideCenter:(LayoutGuideCenter*)layoutGuideCenter
+    NS_DESIGNATED_INITIALIZER;
+
+- (instancetype)init NS_UNAVAILABLE;
+- (instancetype)initWithFrame:(CGRect)frame NS_UNAVAILABLE;
+- (instancetype)initWithCoder:(NSCoder*)aDecoder NS_UNAVAILABLE;
+
+// Sets the delegate for the searchbar.
+- (void)setSearchBarDelegate:(id<UISearchBarDelegate>)delegate;
+// Sets `enabled` on the search button.
+- (void)setSearchButtonEnabled:(BOOL)enabled;
+// Sets `enabled` on the select tabs action.
+- (void)setSelectTabsActionEnabled:(BOOL)enabled;
+// Sets `enabled` on the close all tabs and groups action.
+- (void)setCloseAllActionEnabled:(BOOL)enabled;
+// Sets `enabled` on the select all button.
+- (void)setSelectAllButtonEnabled:(BOOL)enabled;
+// Sets `enabled` on the close other tabs action.
+- (void)setCloseOtherTabsEnabled:(BOOL)enabled;
+// Sets `enabled` on the Exit Tab Grid button.
+- (void)setExitTabGridButtonEnabled:(BOOL)enabled;
+// Sets `enabled` on the page action menu entry point.
+- (void)setPageActionMenuButtonEnabled:(BOOL)enabled;
+// Sets `visible` on the page action menu entry point.
+- (void)setPageActionMenuButtonVisible:(BOOL)visible;
+
+// Sets `enabled` on the Overflow Menu.
+- (void)setOverflowMenuEnabled:(BOOL)enabled;
+
+// Sets the title of the (De)Select All button.
+- (void)configureSelectionButtonTitleSelectAll:(BOOL)selectAll;
+
+// Highlights (put a blue background) `page` of the page control.
+- (void)highlightPageControlItem:(TabGridPage)page;
+// Removes the last highlighted page, if there is one.
+- (void)resetLastPageControlHighlight;
+// Updates the appearance of the this toolbar, based on whether the content
+// below it is `scrolledToEdge` or not.
+- (void)setScrollViewScrolledToEdge:(BOOL)scrolledToEdge;
+// Relinquishs the searchBar status as first responder.
+- (void)unfocusSearchBar;
+// Sets the text of the UISearchBar.
+- (void)setSearchBarText:(NSString*)text;
+// Sets the toolbar background offset to match the content scroll view offset.
+- (void)setBackgroundContentOffset:(CGPoint)backgroundContentOffset
+                          animated:(BOOL)animated;
+// Sets whether the incognito toolbar background should be hidden.
+- (void)setIncognitoBackgroundHidden:(BOOL)hidden;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_TAB_SWITCHER_UI_BUNDLED_TAB_GRID_TOOLBARS_TAB_GRID_TOP_TOOLBAR_H_

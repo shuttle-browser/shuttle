@@ -1,0 +1,162 @@
+<style include="app-management-cros-shared-style settings-shared">
+
+  #infoIcon {
+    --paper-tooltip-min-width: max-content;
+    margin-inline-start: 3px;
+  }
+
+  #launchIcon {
+    --cr-icon-image: url(chrome://resources/images/open_in_new.svg);
+    --cr-icon-button-fill-color: var(--cr-link-color);
+    border-radius: 0;
+    height: var(--help-icon-size);
+    margin-inline-start: 3px;
+    width: var(--help-icon-size);
+  }
+
+  #tooltipText {
+    font-size: 10px;
+    line-height: 12px;
+    white-space: nowrap;
+  }
+
+  #typeAndSource {
+    display: flex;
+  }
+
+  .update-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-inline-end: 20px;
+  }
+
+  .update-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  .invisible {
+    visibility: hidden;
+  }
+
+  #checkUpdateButton {
+    width: 180px;
+    justify-content: center;
+  }
+
+  .last-check-text {
+    color: var(--cros-text-color-secondary);
+    font-size: 12px;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+  }
+
+  .spinner {
+    margin-inline-start: 8px;
+    width: 16px;
+    height: 16px;
+  }
+</style>
+<div class="permission-section-header">
+  <localized-link id="heading" class="header-text"
+    localized-string="$i18n{appManagementAppDetailsTitle}">
+  </localized-link>
+</div>
+<div class="indented-app-details" id="typeAndSource">
+  <localized-link
+    id="typeAndSourceText"
+    on-link-clicked="onStoreLinkClicked_"
+    localized-string="[[getTypeAndSourceString_(app)]]">
+    [[getTypeAndSourceString_(app)]] <!-- Do not delete for testing purposes -->
+  </localized-link>
+  <template is="dom-if" if="[[shouldShowLaunchIcon_(app)]]">
+    <!-- The following button is solely for visual representation and does not
+      need to be shown to a11y. -->
+    <cr-icon-button
+      id="launchIcon"
+      on-click="onStoreLinkClicked_"
+      aria-hidden="true"
+      tabindex="-1">
+    </cr-icon-button>
+  </template>
+  <template is="dom-if" if="[[shouldShowInfoIcon_(app)]]" restamp>
+    <div id="infoIcon">
+      <cr-tooltip-icon
+        tooltip-text="[[getTooltipText_(app)]]"
+        icon-class="cr:info-outline"
+        icon-aria-label="[[getTooltipA11yText_(app)]]">
+      </cr-tooltip-icon>
+    </div>
+  </template>
+</div>
+<template is="dom-if" if="[[shouldShowSubappDataSharingExplanation_(app, apps_, subAppToParentAppId_)]]" restamp>
+  <div class="indented-app-details" id="subappDataSharingExplanation">
+    [[getSubappDataSharingExplanationString_(app, apps_, subAppToParentAppId_)]]
+  </div>
+</template>
+<template is="dom-if" if="[[shouldShowVersion_(app)]]" restamp>
+  <div class="indented-app-details" id="version">
+    [[i18n('appManagementAppDetailsVersion', app.version)]]
+  </div>
+</template>
+<template is="dom-if" if="[[isIsolatedWebApp_(app)]]" restamp>
+  <div class="indented-app-details update-section">
+    <div class="update-info">
+      [[i18n('appManagementAppDetailsVersion', app.version)]]
+      <div class="last-check-text" aria-live="polite" aria-atomic="true">
+        [[getUpdateStatusString_(updateState_)]]
+        <template is="dom-if" if="[[isChecking_(updateState_)]]">
+          <paper-spinner-lite active class="spinner" aria-hidden="true">
+          </paper-spinner-lite>
+        </template>
+      </div>
+    </div>
+    <div class="update-controls">
+      <cr-button id="checkUpdateButton" on-click="onCheckUpdateButtonClick_"
+          disabled$="[[isChecking_(updateState_)]]">
+        [[i18n('appManagementCheckForUpdates')]]
+      </cr-button>
+    </div>
+  </div>
+
+  <!-- Update Found Dialog -->
+  <template is="dom-if" if="[[showUpdateFoundDialog_]]" restamp>
+    <cr-dialog show-on-attach id="updateFoundDialog"
+      close-text="[[i18n('close')]]" on-close="onUpdateFoundDialogClose_"
+      aria-describedby="updateFoundDialogBody">
+      <div slot="title">[[i18n('appManagementUpdateFoundDialogTitle')]]</div>
+      <div slot="body" id="updateFoundDialogBody">
+        [[getUpdateFoundDialogBody_(hasOpenWindows_, availableUpdateVersion_,
+        app.title)]]
+      </div>
+      <div slot="button-container">
+        <cr-button class="cancel-button" on-click="onUpdateFoundDialogCancel_"
+          id="cancelFound">
+          [[i18n('cancel')]]
+        </cr-button>
+        <cr-button class="action-button" on-click="onUpdateFoundDialogConfirm_"
+          id="confirmFound">
+          [[i18n('appManagementApplyUpdate')]]
+        </cr-button>
+      </div>
+    </cr-dialog>
+  </template>
+</template>
+<template is="dom-if" if="[[shouldShowStorage_(app)]]" restamp>
+  <div class="indented-app-details" id="storageTitle">
+    $i18n{appManagementAppDetailsStorageTitle}
+    <template is="dom-if" if="[[shouldShowAppSize_(app)]]" restamp>
+      <div class="indented-app-details" id="appSize">
+        [[i18n('appManagementAppDetailsAppSize', app.appSize)]]
+      </div>
+    </template>
+    <template is="dom-if" if="[[shouldShowDataSize_(app)]]" restamp>
+      <div class="indented-app-details" id="dataSize">
+        [[i18n('appManagementAppDetailsDataSize', app.dataSize)]]
+      </div>
+    </template>
+  </div>
+</template>

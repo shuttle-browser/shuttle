@@ -1,0 +1,205 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+edition = "2024";
+
+package personal_context.proto;
+
+import "components/personal_context/proto/features/common_data.proto";
+
+option optimize_for = LITE_RUNTIME;
+
+// Request payload for the AtMemory search query.
+message AtMemoryQueryRequest {
+  // The natural language search string entered by the user.
+  string input_query = 1;
+
+  // The list of Autofill data types supported by this client build.
+  repeated MemoryDataType supported_local_data_types = 2;
+
+  // The URL of the main frame where the popup has been triggered.
+  string url = 3;
+
+  // locale of a user's Chrome client: "en-us"
+  string locale = 4;
+
+  // The title of the main frame where the popup has been triggered.
+  string title = 5;
+}
+
+// The response payload returned to answer the query.
+message AtMemoryQueryResponse {
+  // Classification status of the user's query.
+  enum QueryClassification {
+    QUERY_CLASSIFICATION_UNSPECIFIED = 0;
+    // Valid, supported factual lookup.
+    QUERY_CLASSIFICATION_AT_MEMORY = 1;
+    // Query is not supported by AtMemory
+    QUERY_CLASSIFICATION_UNSUPPORTED = 2;
+    // Blocked by safety filters (CSAM, adult)
+    QUERY_CLASSIFICATION_SENSITIVE = 3;
+    // Blocked by recitation check
+    QUERY_CLASSIFICATION_RECITATION = 4;
+  }
+  QueryClassification query_classification = 1;
+
+  // Instructions returned to fetch local data.
+  AutofillFetchPlan autofill_fetch_plan = 2;
+
+  // List of resolved 1P candidate results (Gmail, Photos) ready to render.
+  repeated AtMemorySearchResult results = 3;
+}
+
+// A definition for what data type to retrieve from local Autofill storage and
+// what filters to apply to it.
+message AutofillFetchSpecification {
+  message StringFilter {
+    string value = 1;
+
+    // We can leave this out initially - just putting it here to motivate
+    // wrapping value in a StringFilter message.
+    enum StringFilterMode {
+      // The client decides on which mode to use.
+      STRING_FILTER_MODE_UNSPECIFIED = 0;
+      // The filter value is a substring of the attribute value (modulo case,
+      // diacritics, whitespace - see `autofill::NormalizeForComparison` in
+      // Chromium code).
+      STRING_FILTER_MODE_SUBSTRING = 1;
+      // The filter value must match the attribute value exactly (modulo case,
+      // diacritics, whitespace - see `autofill::NormalizeForComparison` in
+      // Chromium code).
+      STRING_FILTER_MODE_EXACT = 2;
+      // The filter value must be a fuzzy match of the attribute value (modulo
+      // case, diacritics, whitespace - see `autofill::NormalizeForComparison`
+      // in Chromium code).
+      STRING_FILTER_MODE_FUZZY = 3;
+    }
+    StringFilterMode mode = 2;
+  }
+
+  message TypedValueFilter {
+    TypedValue typed_value = 1;
+
+    enum FilterOperator {
+      FILTER_OPERATOR_UNSPECIFIED = 0;
+      FILTER_OPERATOR_EQUAL = 1;
+      FILTER_OPERATOR_NOT_EQUAL = 2;
+      // Applied only to typed values with numerical/temporal representation.
+      FILTER_OPERATOR_LESS_THAN = 3;
+      FILTER_OPERATOR_LESS_THAN_OR_EQUAL = 4;
+      FILTER_OPERATOR_GREATER_THAN = 5;
+      FILTER_OPERATOR_GREATER_THAN_OR_EQUAL = 6;
+    }
+    FilterOperator filter_operator = 2;
+  }
+
+  message Filter {
+    // The data types to apply the filter to. Allows, e.g., filtering
+    // by departure date while still showing flight number as the main value to
+    // fill.
+    // If unset, we try to find a match in any of the relevant attributes.
+    // Otherwise, we consider that the filter matches if it matches any of the
+    // `data_types`.
+    repeated MemoryDataType data_types = 1;
+
+    // The values used to filter.
+
+    // Used only if typed_filter is not set or cannot be read by client.
+    // Kept separately instead of in a oneof to allow backward compatibility
+    // if we add new entries to `TypedValue`.
+    StringFilter string_filter = 2;
+
+    // Used for filtering by date, time, or country code. The filter does not
+    // apply if the `MemoryDataType` it is applied to does not have a matching
+    // `TypedValue` representation.
+    TypedValueFilter typed_value_filter = 3;
+  }
+
+  // The data type to show in the main suggestion.
+  MemoryDataType data_type = 1;
+
+  // The filters applied to the full entity of which data_type represents
+  // an attribute. If multiple filters are specified, all of them are applied
+  // (i.e., logical conjunction / AND). Logical disjunction (OR) can be achieved
+  // by having multiple AutofillFetchSpecifications for the same data type.
+  repeated Filter filters = 2;
+}
+
+// Instructions for retrieving local Autofill data.
+message AutofillFetchPlan {
+  reserved 1, 2;
+
+  // The list of AutofillFetchSpecifications to use for fetching local data.
+  // Repeated to allow either fetching multiple data types or a single data type
+  // with a filter with OR conditions.
+  repeated AutofillFetchSpecification fetch_specifications = 3;
+}
+
+// An individual candidate result entry.
+message AtMemorySearchResult {
+  // The sources where the information was extracted.
+  repeated SourceReference sources = 1;
+
+  // The metadata attribute that should populate the primary line of the UI
+  // suggestion.
+  Attribute primary_attribute = 2;
+
+  // The metadata attributes that should populate the secondary description line
+  // of the UI suggestion. Ordered by relevance, starting from most helpful
+  // ones.
+  repeated Attribute secondary_attributes = 3;
+
+  // The relevance score of the result, between 0 and 1. AtMemorySearchResult
+  // will be returned sorted by relevance score. This score is returned to the
+  // client for additional sorting and deduping if needed.
+  float relevance_score = 4;
+}
+
+message StringList {
+  repeated string values = 1;
+}
+
+// Strongly-typed representation of an attribute value.
+message TypedValue {
+  oneof value {
+    // ISO 3166-1 alpha-2 country code (2-letter code, e.g. "US", "DE", "JP").
+    string country_code = 1;
+
+    // Calendar date (year, month, day). Used, e.g., for issue or expiry dates
+    // of identity documents. Uses Date from
+    // components/personal_context/proto/features/common_data.proto
+    Date date = 2;
+
+    // Date and time. Used, e.g., for flight departure times.
+    // Uses DateTime from
+    // components/personal_context/proto/features/common_data.proto
+    DateTime date_time = 3;
+
+    // A list of strings. Used, e.g., for listing product names contained in an
+    // order.
+    StringList string_list = 4;
+  }
+}
+
+message Attribute {
+  // The key can either be a known Chrome EntryType enum, or a free-form string
+  // label.
+  oneof key {
+    // This key should match Autofill data type, eg. FLIGHT_NUMBER.
+    MemoryDataType schemaful_key = 2;
+    // This should be the free-form localized type labels, such as "Health
+    // insurance number".
+    string schemaless_key = 3;
+  }
+  // The value to fill or display (e.g. "CX123" or "42").
+  // `value` should always be set. If `typed_value` is set, `value` should be a
+  // readable string representation of `typed_value` (e.g., a formatted date
+  // time string). Older clients that do not support (the newest version of)
+  // `typed_value` can fall back to using `value`.
+  string value = 4;
+
+  // Strongly-typed value to fill or display. Unset if the value does not have
+  // a strongly-typed representation.
+  TypedValue typed_value = 5;
+}

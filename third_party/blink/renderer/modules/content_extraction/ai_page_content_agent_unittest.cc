@@ -1,0 +1,9973 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/modules/content_extraction/ai_page_content_agent.h"
+
+#include <cstddef>
+#include <initializer_list>
+#include <limits>
+#include <optional>
+#include <string>
+
+#include "base/functional/bind.h"
+#include "base/logging.h"
+#include "base/run_loop.h"
+#include "base/strings/stringprintf.h"
+#include "base/test/bind.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/mock_log.h"
+#include "base/trace_event/trace_event.h"
+#include "mojo/public/cpp/base/big_buffer.h"
+#include "mojo/public/cpp/test_support/test_utils.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/frame/frame_ad_evidence.h"
+#include "third_party/blink/public/common/input/web_mouse_event.h"
+#include "third_party/blink/public/mojom/content_extraction/ai_page_content.mojom.h"
+#include "third_party/blink/public/web/web_script_source.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_testing.h"
+#include "third_party/blink/renderer/core/accessibility/ax_context.h"
+#include "third_party/blink/renderer/core/accessibility/ax_object_cache.h"
+#include "third_party/blink/renderer/core/css/style_engine.h"
+#include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/dom/document_lifecycle.h"
+#include "third_party/blink/renderer/core/dom/dom_node_ids.h"
+#include "third_party/blink/renderer/core/editing/editing_utilities.h"
+#include "third_party/blink/renderer/core/frame/frame_test_helpers.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
+#include "third_party/blink/renderer/core/frame/local_frame_view.h"
+#include "third_party/blink/renderer/core/frame/settings.h"
+#include "third_party/blink/renderer/core/frame/visual_viewport.h"
+#include "third_party/blink/renderer/core/html/forms/html_input_element.h"
+#include "third_party/blink/renderer/core/html/html_collection.h"
+#include "third_party/blink/renderer/core/html/html_iframe_element.h"
+#include "third_party/blink/renderer/core/html/html_image_element.h"
+#include "third_party/blink/renderer/core/input/event_handler.h"
+#include "third_party/blink/renderer/core/layout/hit_test_location.h"
+#include "third_party/blink/renderer/core/layout/hit_test_request.h"
+#include "third_party/blink/renderer/core/layout/hit_test_result.h"
+#include "third_party/blink/renderer/core/layout/layout_box_model_object.h"
+#include "third_party/blink/renderer/core/layout/layout_object.h"
+#include "third_party/blink/renderer/core/layout/layout_view.h"
+#include "third_party/blink/renderer/core/layout/map_coordinates_flags.h"
+#include "third_party/blink/renderer/core/page/chrome_client.h"
+#include "third_party/blink/renderer/core/scroll/scrollable_area.h"
+#include "third_party/blink/renderer/core/style/computed_style.h"
+#include "third_party/blink/renderer/core/testing/page_test_base.h"
+#include "third_party/blink/renderer/core/view_transition/view_transition_supplement.h"
+#include "third_party/blink/renderer/modules/accessibility/ax_object_cache_impl.h"
+#include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/bindings/script_state.h"
+#include "third_party/blink/renderer/platform/geometry/physical_offset.h"
+#include "third_party/blink/renderer/platform/graphics/visual_rect_flags.h"
+#include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
+#include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
+#include "third_party/blink/renderer/platform/testing/url_test_helpers.h"
+#include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
+#include "third_party/blink/renderer/platform/wtf/vector.h"
+#include "ui/accessibility/ax_action_data.h"
+#include "ui/accessibility/ax_mode.h"
+#include "ui/display/screen_info.h"
+#include "ui/gfx/geometry/point_f.h"
+#include "ui/gfx/geometry/quad_f.h"
+#include "ui/gfx/geometry/rect_conversions.h"
+
+namespace blink {
+using ClickabilityReason = mojom::blink::AIPageContentClickabilityReason;
+using InteractionDisabledReason =
+    mojom::blink::AIPageContentInteractionDisabledReason;
+
+namespace {
+
+constexpr gfx::Size kWindowSize{1000, 1000};
+constexpr char kSmallImage[] =
+    "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/"
+    "2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEB"
+    "EQCgwSExIQEw8QEBD/"
+    "2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB"
+    "AQEBAQEBAQEBAQEBD/wAARCAABAAEDASIAAhEBAxEB/"
+    "8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/"
+    "8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2J"
+    "yggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDh"
+    "IWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+"
+    "Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/"
+    "8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnL"
+    "RChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g"
+    "oOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uP"
+    "k5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD+/iiiigD/2Q==";
+
+class AIPageContentAgentTest : public testing::Test {
+ public:
+  AIPageContentAgentTest() = default;
+  ~AIPageContentAgentTest() override = default;
+
+  void SetUp() override {
+    helper_.InitializeWithSettings(&UpdateWebSettings);
+    helper_.Resize(kWindowSize);
+    helper_.LoadAhem();
+    ASSERT_TRUE(helper_.LocalMainFrame());
+  }
+
+  void TearDown() override {
+    url_test_helpers::UnregisterAllURLsAndClearMemoryCache();
+  }
+
+  void LoadAhem() {
+    helper_.LoadAhem();
+    test::RunPendingTasks();
+    helper_.LocalMainFrame()
+        ->GetFrame()
+        ->GetDocument()
+        ->View()
+        ->UpdateAllLifecyclePhasesForTest();
+  }
+
+  void CheckListItemWithText(const mojom::blink::AIPageContentNode& node,
+                             const String& expected_text) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kListItem);
+    EXPECT_EQ(node.children_nodes.size(), 1u);
+    CheckTextNode(*node.children_nodes[0], expected_text);
+  }
+
+  void CheckTextNode(const mojom::blink::AIPageContentNode& node,
+                     const String& expected_text) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kText);
+    ASSERT_TRUE(attributes.text_info);
+    EXPECT_EQ(attributes.text_info->text_content, expected_text);
+  }
+
+  bool TreeContainsTextSubstring(const mojom::blink::AIPageContentNode& node,
+                                 const String& substring) {
+    // Many tests only care that sensitive content does (or does not) appear
+    // anywhere in the extracted tree. Implement a small recursive helper to
+    // reduce coupling to the exact tree structure.
+    //
+    // Note: we intentionally check substrings rather than exact matches because
+    // extracted text nodes sometimes include newlines inserted by layout.
+    const auto& attributes = *node.content_attributes;
+    if (attributes.attribute_type ==
+            mojom::blink::AIPageContentAttributeType::kText &&
+        attributes.text_info &&
+        attributes.text_info->text_content.contains(substring)) {
+      return true;
+    }
+
+    for (const auto& child : node.children_nodes) {
+      if (TreeContainsTextSubstring(*child, substring)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const mojom::blink::AIPageContentNode* FindFormControlNodeWithTextSubstring(
+      const mojom::blink::AIPageContentNode& node,
+      const String& substring) {
+    const auto& attributes = *node.content_attributes;
+    if (attributes.attribute_type ==
+            mojom::blink::AIPageContentAttributeType::kFormControl &&
+        TreeContainsTextSubstring(node, substring)) {
+      return &node;
+    }
+
+    for (const auto& child : node.children_nodes) {
+      if (const auto* match =
+              FindFormControlNodeWithTextSubstring(*child, substring)) {
+        return match;
+      }
+    }
+    return nullptr;
+  }
+
+  void CheckTextSize(const mojom::blink::AIPageContentNode& node,
+                     mojom::blink::AIPageContentTextSize expected_text_size) {
+    const auto& attributes = *node.content_attributes;
+    ASSERT_TRUE(attributes.text_info);
+    EXPECT_EQ(attributes.text_info->text_style->text_size, expected_text_size);
+  }
+
+  void CheckTextEmphasis(const mojom::blink::AIPageContentNode& node,
+                         bool expected_has_emphasis) {
+    const auto& attributes = *node.content_attributes;
+    ASSERT_TRUE(attributes.text_info);
+    EXPECT_EQ(attributes.text_info->text_style->has_emphasis,
+              expected_has_emphasis);
+  }
+
+  void CheckTextColor(const mojom::blink::AIPageContentNode& node,
+                      RGBA32 expected_color) {
+    const auto& attributes = *node.content_attributes;
+    ASSERT_TRUE(attributes.text_info);
+    EXPECT_EQ(attributes.text_info->text_style->color, expected_color);
+  }
+
+  void CheckImageNode(const mojom::blink::AIPageContentNode& node,
+                      const String& expected_caption,
+                      const KURL& expected_url) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kImage);
+    ASSERT_TRUE(attributes.image_info);
+    EXPECT_EQ(attributes.image_info->image_caption, expected_caption);
+    EXPECT_EQ(attributes.image_info->url, expected_url);
+  }
+
+  void CheckAnchorNode(
+      const mojom::blink::AIPageContentNode& node,
+      const blink::KURL& expected_url,
+      const Vector<mojom::blink::AIPageContentAnchorRel>& expected_rels) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kAnchor);
+    ASSERT_TRUE(attributes.anchor_data);
+    EXPECT_EQ(attributes.anchor_data->url, expected_url);
+    ASSERT_EQ(attributes.anchor_data->rel.size(), expected_rels.size());
+    for (wtf_size_t i = 0; i < expected_rels.size(); ++i) {
+      EXPECT_EQ(attributes.anchor_data->rel[i], expected_rels[i]);
+    }
+  }
+
+  void CheckTableNode(const mojom::blink::AIPageContentNode& node,
+                      String expected_table_name = String()) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kTable);
+    ASSERT_TRUE(attributes.table_data);
+    if (!expected_table_name.IsNull()) {
+      EXPECT_EQ(attributes.table_data->table_name, expected_table_name);
+    }
+  }
+
+  void CheckTableCellNode(const mojom::blink::AIPageContentNode& node) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kTableCell);
+  }
+
+  void CheckTableRowNode(
+      const mojom::blink::AIPageContentNode& node,
+      const mojom::blink::AIPageContentTableRowType& expected_row_type) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kTableRow);
+    ASSERT_TRUE(attributes.table_row_data);
+    EXPECT_EQ(attributes.table_row_data->row_type, expected_row_type);
+  }
+
+  void CheckContainerNode(const mojom::blink::AIPageContentNode& node) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kContainer);
+  }
+
+  void CheckModalDialogNode(const mojom::blink::AIPageContentNode& node) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kDialogModal);
+  }
+
+  void CheckModelessDialogNode(const mojom::blink::AIPageContentNode& node) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kDialogModeless);
+  }
+
+  void CheckHeadingNode(const mojom::blink::AIPageContentNode& node) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kHeading);
+  }
+
+  void CheckParagraphNode(const mojom::blink::AIPageContentNode& node) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kParagraph);
+  }
+
+  void CheckUnorderedListNode(const mojom::blink::AIPageContentNode& node) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kUnorderedList);
+  }
+
+  void CheckOrderedListNode(const mojom::blink::AIPageContentNode& node) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kOrderedList);
+  }
+
+  void CheckAnnotatedRole(
+      const mojom::blink::AIPageContentNode& node,
+      const mojom::blink::AIPageContentAnnotatedRole& expected_role) {
+    const auto& attributes = *node.content_attributes;
+    ASSERT_EQ(attributes.annotated_roles.size(), 1u);
+    EXPECT_EQ(attributes.annotated_roles[0], expected_role);
+  }
+
+  void CheckAnnotatedRoles(
+      const mojom::blink::AIPageContentNode& node,
+      const std::vector<mojom::blink::AIPageContentAnnotatedRole>&
+          expected_roles) {
+    const auto& attributes = *node.content_attributes;
+    ASSERT_EQ(attributes.annotated_roles.size(), expected_roles.size());
+    EXPECT_THAT(attributes.annotated_roles,
+                testing::UnorderedElementsAreArray(expected_roles));
+  }
+
+  void CheckGeometry(const mojom::blink::AIPageContentNode& node,
+                     const gfx::Rect& expected_outer_bounding_box,
+                     const gfx::Rect& expected_visible_bounding_box) {
+    const auto& geometry = *node.content_attributes->geometry;
+    EXPECT_EQ(geometry.outer_bounding_box, expected_outer_bounding_box);
+    EXPECT_EQ(geometry.visible_bounding_box, expected_visible_bounding_box);
+  }
+
+  void CheckFormControlNode(
+      const mojom::blink::AIPageContentNode& node,
+      const mojom::blink::FormControlType& expected_form_control_type) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kFormControl);
+    EXPECT_EQ(attributes.form_control_data->form_control_type,
+              expected_form_control_type);
+  }
+
+  const mojom::blink::AIPageContentNode& GetSingleTableCell(
+      const mojom::blink::AIPageContentNode& table) {
+    CheckTableNode(table);
+    EXPECT_EQ(table.children_nodes.size(), 1u);
+
+    const auto& table_row = *table.children_nodes[0];
+    CheckTableRowNode(table_row,
+                      mojom::blink::AIPageContentTableRowType::kBody);
+    EXPECT_EQ(table_row.children_nodes.size(), 1u);
+
+    const auto& table_cell = *table_row.children_nodes[0];
+    CheckTableCellNode(table_cell);
+    return table_cell;
+  }
+
+  void CheckIframeNode(const mojom::blink::AIPageContentNode& node) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kIframe);
+  }
+
+  void CheckRootNode(const mojom::blink::AIPageContentNode& node) {
+    const auto& attributes = *node.content_attributes;
+    EXPECT_EQ(attributes.attribute_type,
+              mojom::blink::AIPageContentAttributeType::kRoot);
+  }
+
+  void CheckAlmostEquals(const gfx::Point& actual, const gfx::Point& expected) {
+    // Allow 1px difference for rounding.
+    const int kTolerance = 1;
+    EXPECT_LE(abs(actual.x() - expected.x()), kTolerance)
+        << "actual : " << actual.ToString()
+        << ", expected: " << expected.ToString();
+    EXPECT_LE(abs(actual.y() - expected.y()), kTolerance)
+        << "actual : " << actual.ToString()
+        << ", expected: " << expected.ToString();
+  }
+
+  void GetAIPageContentWithActionableElements() {
+    auto options = GetAIPageContentOptionsForTest();
+    options->mode = mojom::blink::AIPageContentMode::kActionableElements;
+    GetAIPageContent(std::move(options));
+  }
+
+  static mojom::blink::AIPageContentOptionsPtr
+  GetAIPageContentOptionsForTest() {
+    auto options = mojom::blink::AIPageContentOptions::New();
+    options->on_critical_path = true;
+    options->mode = mojom::blink::AIPageContentMode::kDefault;
+    return options;
+  }
+
+  static void SetNodeIdAllowlistForTest(
+      mojom::blink::AIPageContentOptionsPtr& options,
+      std::initializer_list<mojom::blink::AIPageContentAttributeType>
+          allowlisted_attribute_types) {
+    // Centralize node-id options setup so test bodies focus on policy intent.
+    // `emplace()` means the policy is explicitly requested for this test.
+    options->node_id_allowlist.emplace();
+    for (const auto attribute_type : allowlisted_attribute_types) {
+      options->node_id_allowlist->push_back(attribute_type);
+    }
+  }
+
+  static mojom::blink::AIPageContentOptionsPtr CreateNodeIdPolicyOptionsForTest(
+      std::initializer_list<mojom::blink::AIPageContentAttributeType>
+          allowlisted_attribute_types = {},
+      mojom::blink::AIPageContentMode mode =
+          mojom::blink::AIPageContentMode::kDefault) {
+    auto options = GetAIPageContentOptionsForTest();
+    options->mode = mode;
+    SetNodeIdAllowlistForTest(options, allowlisted_attribute_types);
+    return options;
+  }
+
+  static mojom::blink::AIPageContentOptionsPtr CreateNodeIdPolicyOptionsForTest(
+      mojom::blink::AIPageContentMode mode) {
+    return CreateNodeIdPolicyOptionsForTest(
+        /*allowlisted_attribute_types=*/{}, mode);
+  }
+
+  void LoadNodeIdPolicyParagraphFixture() {
+    // Shared fixture for default-mode type-policy tests. Keeping this in one
+    // helper makes test intent clearer and avoids repeated HTML boilerplate.
+    frame_test_helpers::LoadHTMLString(
+        helper_.LocalMainFrame(),
+        "<body>"
+        "  <p id='paragraph'>visible paragraph text</p>"
+        "</body>",
+        url_test_helpers::ToKURL("http://foobar.com"));
+  }
+
+  void GetAIPageContent(
+      mojom::blink::AIPageContentOptionsPtr options = nullptr) {
+    auto* agent = AIPageContentAgent::GetOrCreateForTesting(
+        *helper_.LocalMainFrame()->GetFrame()->GetDocument());
+    EXPECT_TRUE(agent);
+
+    last_options_ = options ? std::move(options) : default_options_->Clone();
+    auto content = agent->GetAIPageContentInternal(*last_options_);
+    CHECK(content);
+    CHECK(content->root_node);
+
+    // Always validate serialization.
+    mojom::blink::AIPageContentPtr output;
+    EXPECT_TRUE(
+        mojo::test::SerializeAndDeserialize<mojom::blink::AIPageContent>(
+            content, output));
+
+    last_content_ = std::move(content);
+  }
+
+  void FireMouseMoveEvent(const gfx::PointF& point) {
+    EventHandler& event_handler =
+        helper_.LocalMainFrame()->GetFrame()->GetEventHandler();
+    WebMouseEvent event(WebInputEvent::Type::kMouseMove, point, point,
+                        WebPointerProperties::Button::kLeft, 0,
+                        WebInputEvent::kLeftButtonDown,
+                        WebInputEvent::GetStaticTimeStampForTests());
+    event.SetFrameScale(1);
+    event_handler.HandleMouseMoveEvent(event, Vector<WebMouseEvent>(),
+                                       Vector<WebMouseEvent>());
+  }
+
+  const mojom::blink::AIPageContentNode& ContentRootNode() {
+    CHECK(last_content_);
+
+    EXPECT_TRUE(last_content_->root_node);
+    if (last_options_->mode !=
+        mojom::blink::AIPageContentMode::kActionableElements) {
+      return *last_content_->root_node;
+    }
+
+    EXPECT_EQ(last_content_->root_node->children_nodes.size(), 1u);
+    const auto& html = *last_content_->root_node->children_nodes[0];
+
+    EXPECT_EQ(html.children_nodes.size(), 1u);
+    return *html.children_nodes[0];
+  }
+
+  const mojom::blink::AIPageContentNode* FindNodeByDomNodeId(
+      const mojom::blink::AIPageContentNode& root,
+      DOMNodeId dom_node_id) {
+    Vector<const mojom::blink::AIPageContentNode*> stack;
+    stack.push_back(&root);
+    while (!stack.empty()) {
+      const auto* node = stack.back();
+      stack.pop_back();
+      if (node->content_attributes &&
+          node->content_attributes->dom_node_id.has_value() &&
+          *node->content_attributes->dom_node_id == dom_node_id) {
+        return node;
+      }
+      for (wtf_size_t i = node->children_nodes.size(); i > 0; --i) {
+        stack.push_back(node->children_nodes[i - 1].get());
+      }
+    }
+    return nullptr;
+  }
+
+  const mojom::blink::AIPageContentNode* FindNodeByDomNodeId(
+      DOMNodeId dom_node_id) {
+    return FindNodeByDomNodeId(ContentRootNode(), dom_node_id);
+  }
+
+  DOMNodeId GetDomNodeIdForSelector(String selector) {
+    Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+    EXPECT_TRUE(document);
+    if (!document) {
+      return kInvalidDOMNodeId;
+    }
+
+    Element* element = document->QuerySelector(AtomicString(selector));
+    EXPECT_TRUE(element) << "Couldn't find element with selector = "
+                         << selector;
+    if (!element) {
+      return kInvalidDOMNodeId;
+    }
+
+    DOMNodeId dom_node_id = DOMNodeIds::IdForNode(element);
+    EXPECT_GT(dom_node_id, kInvalidDOMNodeId);
+    return dom_node_id;
+  }
+
+  const mojom::blink::AIPageContentNode* FindNodeBySelector(String selector) {
+    const DOMNodeId dom_node_id = GetDomNodeIdForSelector(selector);
+    if (dom_node_id == kInvalidDOMNodeId) {
+      return nullptr;
+    }
+    return FindNodeByDomNodeId(dom_node_id);
+  }
+
+  void ExpectSelectorNotInApcOutput(String selector) {
+    // Validate that the selector resolves in the live DOM and has a valid
+    // DOMNodeId, then assert that APC output intentionally omitted it.
+    const DOMNodeId dom_node_id = GetDomNodeIdForSelector(selector);
+    ASSERT_GT(dom_node_id, kInvalidDOMNodeId);
+    EXPECT_FALSE(FindNodeByDomNodeId(dom_node_id));
+  }
+
+  void CheckHitTestableButNotInteractive(
+      const mojom::blink::AIPageContentNode& node) {
+    CHECK(node.content_attributes->node_interaction_info);
+    EXPECT_TRUE(node.content_attributes->node_interaction_info
+                    ->document_scoped_z_order);
+    EXPECT_TRUE(node.content_attributes->node_interaction_info
+                    ->clickability_reasons.empty());
+  }
+
+  void CheckHitTestableAndInteractive(
+      const mojom::blink::AIPageContentNode& node,
+      base::span<const ClickabilityReason> expected_reasons) {
+    CHECK(node.content_attributes->node_interaction_info);
+    EXPECT_TRUE(node.content_attributes->node_interaction_info
+                    ->document_scoped_z_order);
+    EXPECT_THAT(
+        node.content_attributes->node_interaction_info->clickability_reasons,
+        testing::UnorderedElementsAreArray(expected_reasons));
+  }
+
+  const mojom::blink::AIPageContentPtr& Content() { return last_content_; }
+
+ protected:
+  const mojom::blink::AIPageContentOptionsPtr default_options_ =
+      GetAIPageContentOptionsForTest();
+  test::TaskEnvironment task_environment_;
+  frame_test_helpers::WebViewHelper helper_;
+
+ private:
+  static void UpdateWebSettings(WebSettings* settings) {
+    settings->SetTextAreasAreResizable(true);
+  }
+
+  mojom::blink::AIPageContentPtr last_content_;
+  mojom::blink::AIPageContentOptionsPtr last_options_;
+};
+
+TEST_F(AIPageContentAgentTest, Basic) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    div {"
+      "      position: absolute;"
+      "      top: -10px;"
+      "      left: -20px;"
+      "    }"
+      "  </style>"
+      "  <div>text</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = *Content()->root_node;
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& attributes = *root.content_attributes;
+  EXPECT_TRUE(attributes.dom_node_id.has_value());
+
+  EXPECT_EQ(attributes.attribute_type,
+            mojom::blink::AIPageContentAttributeType::kRoot);
+
+  CheckGeometry(root, gfx::Rect(kWindowSize), gfx::Rect(kWindowSize));
+
+  const auto& text_node = *ContentRootNode().children_nodes[0];
+  CheckTextNode(text_node, "text");
+
+  const auto& text_attributes = *text_node.content_attributes;
+  ASSERT_TRUE(text_attributes.geometry);
+  EXPECT_FALSE(text_attributes.node_interaction_info);
+  EXPECT_EQ(text_attributes.geometry->outer_bounding_box.x(), -20);
+  EXPECT_EQ(text_attributes.geometry->outer_bounding_box.y(), -10);
+}
+
+TEST_F(AIPageContentAgentTest, VisibleBoundingBoxClampsToVisualViewport) {
+  // Keep this regression test pinned to the runtime-flagged clamp behavior.
+  ScopedAIPageContentVisualViewportClampForTest enable_viewport_clamp(true);
+
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    body {"
+      "      background-color: cornflowerblue;"
+      "      margin: 0;"
+      "    }"
+      "    #wideElement {"
+      "      position: absolute;"
+      "      top: 20px;"
+      "      left: 0;"
+      "      width: 800px;"
+      "      height: 100px;"
+      "      background-color: limegreen;"
+      "    }"
+      "    .corner {"
+      "      position: fixed;"
+      "      width: 100px;"
+      "      height: 100px;"
+      "      background-color: coral;"
+      "    }"
+      "    ::view-transition-group(*),"
+      "    ::view-transition-new(*),"
+      "    ::view-transition-old(*) {"
+      "      animation-play-state: paused;"
+      "    }"
+      "    ::view-transition-old(*) {"
+      "      display: none;"
+      "    }"
+      "    ::view-transition-new(*) {"
+      "      animation-name: none;"
+      "      opacity: 1;"
+      "    }"
+      "  </style>"
+      "  <div class='corner'"
+      "       style='top: 0; right: 0; view-transition-name: topright;'></div>"
+      "  <div id='wideElement'></div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  LocalFrameView* view = document->View();
+  ASSERT_TRUE(view);
+
+  // Establish a stable layout baseline before moving the visual viewport. This
+  // keeps the test focused on viewport coordinate mapping rather than pending
+  // layout or style work.
+  view->UpdateAllLifecyclePhasesForTest();
+
+  Page* page = document->GetPage();
+  ASSERT_TRUE(page);
+
+  // Simulate a visual viewport offset via browser controls. On mobile, the
+  // top controls can partially hide/show to reclaim screen space; that shifts
+  // the visual viewport origin without changing layout viewport coordinates.
+  // View transitions create a view-transition root layer that is positioned
+  // relative to the visual viewport, which is the same setup as the failing
+  // web test.
+  //
+  // Simple mental model (not to scale):
+  //
+  // Layout viewport coordinates (used for layout):
+  //   y=0  +----------------------+
+  //        |  <div id=target>     |
+  //        |  height=50           |
+  //        +----------------------+
+  //
+  // Visual viewport (what is actually visible):
+  //   y=0  +----------------------+
+  //        |  (starts 20px lower) |
+  //        |  so top 20px hidden  |
+  //        +----------------------+
+  //
+  // The browser-controls adjustment is a renderer-side representation of that
+  // shift. It should result in negative visual-viewport coordinates after
+  // mapping, which we clamp.
+  const int kVisualViewportOffset = 20;
+  document->GetPage()->GetChromeClient().SetBrowserControlsState(
+      kVisualViewportOffset, 0, /*shrinks_layout=*/true);
+
+  ScriptState* script_state =
+      ToScriptStateForMainWorld(helper_.LocalMainFrame()->GetFrame());
+  ScriptState::Scope scope(script_state);
+  ViewTransitionSupplement::startViewTransition(script_state, *document,
+                                                IGNORE_EXCEPTION_FOR_TESTING);
+  test::RunPendingTasks();
+  auto* view_transitions = document->GetViewTransitionsIfExists();
+  ASSERT_TRUE(view_transitions);
+  ASSERT_TRUE(view_transitions->GetTransition());
+
+  // Recompute layout and paint properties with the new visual viewport state
+  // so the geometry mapping observes the updated visual-viewport transform.
+  view->UpdateAllLifecyclePhasesForTest();
+
+  GetAIPageContentWithActionableElements();
+
+  int min_visible_y = std::numeric_limits<int>::max();
+  bool saw_geometry = false;
+  auto visit_nodes = [&](auto& self,
+                         const mojom::blink::AIPageContentNode* node) -> void {
+    if (!node) {
+      return;
+    }
+    if (node->content_attributes && node->content_attributes->geometry) {
+      const auto& geometry = *node->content_attributes->geometry;
+      if (!geometry.visible_bounding_box.IsEmpty()) {
+        min_visible_y =
+            std::min(min_visible_y, geometry.visible_bounding_box.y());
+        saw_geometry = true;
+      }
+    }
+    for (const auto& child : node->children_nodes) {
+      self(self, child.get());
+    }
+  };
+  visit_nodes(visit_nodes, Content()->root_node.get());
+  ASSERT_TRUE(saw_geometry);
+  EXPECT_EQ(min_visible_y, 0);
+}
+
+TEST_F(AIPageContentAgentTest,
+       VisibleBoundingBoxClampUsesConsistentUnitsOnHighDPI) {
+  // Keep this regression test pinned to the runtime-flagged clamp behavior.
+  ScopedAIPageContentVisualViewportClampForTest enable_viewport_clamp(true);
+
+  // This is a regression test for a subtle unit mismatch in
+  // ComputeVisibleBoundingBox().
+  //
+  // Background:
+  // - APC's visible_bounding_box is consumed by browser-side hit-testing
+  //   (e.g. Actor TOCTOU validation) in device pixels (BlinkSpace).
+  // - The visible-bounding-box calculation maps LayoutObject geometry using
+  //   MapToVisualRectInAncestorSpace(), which produces values in the same
+  //   coordinate space that the browser expects (BlinkSpace/device pixels).
+  //
+  // The geo-fixes branch introduced a clamp intended to normalize negative
+  // coordinates that can occur when the visual viewport is offset relative to
+  // the layout viewport (browser controls, pinch zoom). That clamp must use a
+  // viewport rect in the *same* coordinate space as the mapped object rect.
+  //
+  // If the clamp instead uses unscaled CSS/layout pixels (DIPs), HighDPI pages
+  // (device_scale_factor > 1) will have their geometry truncated by ~DSF. This
+  // makes APC look DIP-bounded and causes browser-side hit-testing at scaled
+  // points to miss.
+
+  // Configure the test WebView to behave like a HighDPI display.
+  //
+  // Important: The widget's ScreenInfo must be set during widget creation, not
+  // after initialization. Many coordinate conversions (including
+  // DIPsToBlinkSpace) cache the screen info early, and updating it late won't
+  // affect geometry computations.
+  frame_test_helpers::WebViewHelper high_dpi_helper(base::BindRepeating(
+      [](base::PassKey<WebLocalFrame> pass_key,
+         CrossVariantMojoAssociatedRemote<
+             mojom::blink::FrameWidgetHostInterfaceBase> frame_widget_host,
+         CrossVariantMojoAssociatedReceiver<
+             mojom::blink::FrameWidgetInterfaceBase> frame_widget,
+         CrossVariantMojoAssociatedRemote<mojom::blink::WidgetHostInterfaceBase>
+             widget_host,
+         CrossVariantMojoAssociatedReceiver<mojom::blink::WidgetInterfaceBase>
+             widget,
+         scoped_refptr<base::SingleThreadTaskRunner> task_runner,
+         const viz::FrameSinkId& frame_sink_id, bool hidden,
+         bool never_composited, bool is_for_child_local_root,
+         bool is_for_nested_main_frame,
+         bool is_for_scalable_page) -> frame_test_helpers::TestWebFrameWidget* {
+        auto* test_web_frame_widget =
+            MakeGarbageCollected<frame_test_helpers::TestWebFrameWidget>(
+                std::move(pass_key), std::move(frame_widget_host),
+                std::move(frame_widget), std::move(widget_host),
+                std::move(widget), std::move(task_runner), frame_sink_id,
+                hidden, never_composited, is_for_child_local_root,
+                is_for_nested_main_frame, is_for_scalable_page);
+        display::ScreenInfo screen_info;
+        screen_info.device_scale_factor = 2.f;
+        test_web_frame_widget->SetInitialScreenInfo(screen_info);
+        return test_web_frame_widget;
+      }));
+  // Keep WebSettings consistent with the main fixture's setup. We can't reuse
+  // AIPageContentAgentTest::UpdateWebSettings here because it's private to the
+  // fixture base class.
+  high_dpi_helper.InitializeWithSettings(
+      [](WebSettings* settings) { settings->SetTextAreasAreResizable(true); });
+  high_dpi_helper.LoadAhem();
+  ASSERT_TRUE(high_dpi_helper.LocalMainFrame());
+
+  // Use a small viewport size to make it easy to see clamping errors in the
+  // resulting bounding boxes.
+  //
+  // Note: WebViewHelper::Resize() takes the widget size in *device pixels*.
+  // With device_scale_factor=2, a 464x828 DIP viewport corresponds to a
+  // 928x1656 device-pixel widget size.
+  constexpr gfx::Size kDipViewportSize{464, 828};
+  constexpr int kDeviceScaleFactor = 2;
+  high_dpi_helper.Resize(
+      gfx::Size(kDipViewportSize.width() * kDeviceScaleFactor,
+                kDipViewportSize.height() * kDeviceScaleFactor));
+
+  frame_test_helpers::LoadHTMLString(
+      high_dpi_helper.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    body {"
+      "      margin: 0;"
+      "      padding: 0;"
+      "    }"
+      "    #target {"
+      "      position: absolute;"
+      "      left: 0;"
+      "      top: 0;"
+      "      width: 100%;"
+      "      height: 100%;"
+      "      background: limegreen;"
+      "    }"
+      "    ::view-transition-group(*),"
+      "    ::view-transition-new(*),"
+      "    ::view-transition-old(*) {"
+      "      animation-play-state: paused;"
+      "    }"
+      "    ::view-transition-old(*) {"
+      "      display: none;"
+      "    }"
+      "    ::view-transition-new(*) {"
+      "      animation-name: none;"
+      "      opacity: 1;"
+      "    }"
+      "  </style>"
+      "  <div id='target'></div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  Document* document =
+      high_dpi_helper.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  LocalFrameView* view = document->View();
+  ASSERT_TRUE(view);
+
+  // Establish a stable baseline before applying the visual viewport shift.
+  view->UpdateAllLifecyclePhasesForTest();
+
+  // Create a visual-viewport offset (same mechanism as the clamp test above).
+  constexpr int kVisualViewportOffsetDip = 20;
+  document->GetPage()->GetChromeClient().SetBrowserControlsState(
+      kVisualViewportOffsetDip, 0, /*shrinks_layout=*/true);
+
+  ScriptState* script_state =
+      ToScriptStateForMainWorld(high_dpi_helper.LocalMainFrame()->GetFrame());
+  ScriptState::Scope scope(script_state);
+  ViewTransitionSupplement::startViewTransition(script_state, *document,
+                                                IGNORE_EXCEPTION_FOR_TESTING);
+  test::RunPendingTasks();
+
+  // Recompute layout and paint properties so mapping sees the new viewport
+  // transform.
+  view->UpdateAllLifecyclePhasesForTest();
+
+  // Extract APC using the HighDPI document. We intentionally don't use the
+  // AIPageContentAgentTest fixture helpers here because those are wired to the
+  // fixture's `helper_` WebView, not the HighDPI helper created above.
+  mojom::blink::AIPageContentOptionsPtr options =
+      AIPageContentAgentTest::GetAIPageContentOptionsForTest();
+  options->mode = mojom::blink::AIPageContentMode::kActionableElements;
+  auto* agent = AIPageContentAgent::GetOrCreateForTesting(*document);
+  ASSERT_TRUE(agent);
+  auto content = agent->GetAIPageContentInternal(*options);
+  ASSERT_TRUE(content);
+  ASSERT_TRUE(content->root_node);
+
+  // We don't rely on a specific node ordering here. Instead, collect the
+  // maximum extents over all visible_bounding_box values and verify they match
+  // the device-pixel viewport size (BlinkSpace), not the DIP viewport size.
+  int max_right = 0;
+  int max_bottom = 0;
+  bool saw_geometry = false;
+
+  auto visit_nodes = [&](auto& self,
+                         const mojom::blink::AIPageContentNode* node) -> void {
+    if (!node) {
+      return;
+    }
+    if (node->content_attributes && node->content_attributes->geometry) {
+      const auto& geometry = *node->content_attributes->geometry;
+      if (!geometry.visible_bounding_box.IsEmpty()) {
+        saw_geometry = true;
+        max_right = std::max(max_right, geometry.visible_bounding_box.right());
+        max_bottom =
+            std::max(max_bottom, geometry.visible_bounding_box.bottom());
+      }
+    }
+    for (const auto& child : node->children_nodes) {
+      self(self, child.get());
+    }
+  };
+  visit_nodes(visit_nodes, content->root_node.get());
+
+  ASSERT_TRUE(saw_geometry);
+
+  // On HighDPI, the device-pixel viewport should be (layout viewport in CSS
+  // pixels) * DSF.
+  //
+  // Note: When browser controls are involved, the layout viewport height can be
+  // reduced by an implementation-defined amount (it is *not* guaranteed to be
+  // exactly kVisualViewportOffsetDip). Use LocalFrameView's post-adjustment
+  // viewport size to compute the expected BlinkSpace/device-pixel extents.
+  EXPECT_EQ(max_right, view->ViewportWidth() * kDeviceScaleFactor);
+  EXPECT_EQ(max_bottom, view->ViewportHeight() * kDeviceScaleFactor);
+}
+
+TEST_F(AIPageContentAgentTest, Image) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    img {"
+      "      position: absolute;"
+      "      top: -10px;"
+      "      left: -20px;"
+      "      width: 30px;"
+      "      height: 40px;"
+      "    }"
+      "  </style>"
+      "  <img alt=missing></img>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+  auto& document = *helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  document.getElementsByTagName(AtomicString("img"))
+      ->item(0)
+      ->setAttribute(html_names::kSrcAttr, AtomicString(kSmallImage));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  auto& image_node = *root.children_nodes[0];
+  CheckImageNode(image_node, "missing", KURL());
+  CheckGeometry(image_node, gfx::Rect(-20, -10, 30, 40),
+                gfx::Rect(0, 0, 10, 30));
+  ASSERT_TRUE(image_node.content_attributes->image_info);
+  ASSERT_TRUE(image_node.content_attributes->image_info->source_origin);
+  EXPECT_TRUE(
+      image_node.content_attributes->image_info->source_origin->IsOpaque());
+}
+
+TEST_F(AIPageContentAgentTest, ImageWithUrl) {
+  url_test_helpers::RegisterMockedURLLoad(
+      url_test_helpers::ToKURL("https://example.com/image.jpg"),
+      test::CoreTestDataPath("white-1x1.png"), "image/png");
+
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <img id='img' src='https://example.com/image.jpg' alt='hello alt "
+      "text'></img>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  auto& image_node = *root.children_nodes[0];
+  CheckImageNode(image_node, "hello alt text",
+                 blink::KURL("https://example.com/image.jpg"));
+  ASSERT_TRUE(image_node.content_attributes->image_info);
+  ASSERT_TRUE(image_node.content_attributes->image_info->source_origin);
+  EXPECT_EQ(
+      image_node.content_attributes->image_info->source_origin->ToString(),
+      "https://example.com");
+
+  url_test_helpers::RegisterMockedURLUnregister(
+      url_test_helpers::ToKURL("https://example.com/image.jpg"));
+}
+
+TEST_F(AIPageContentAgentTest, ImageWithAriaLabel) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <img aria-label='hello'></img>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  auto& image_node = *root.children_nodes[0];
+  EXPECT_EQ("hello", image_node.content_attributes->label);
+}
+
+TEST_F(AIPageContentAgentTest, ImageIsAdRelated) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <img id='ads'></img>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto& document = *helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  To<HTMLImageElement>(document.getElementById(AtomicString("ads")))
+      ->SetIsAdRelated(AdProvenance{});
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  auto& image_node = *root.children_nodes[0];
+  EXPECT_TRUE(image_node.content_attributes->is_ad_related);
+}
+
+TEST_F(AIPageContentAgentTest, ImageIsAdRelatedExcluded) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <img id='ads'></img>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto& document = *helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  To<HTMLImageElement>(document.getElementById(AtomicString("ads")))
+      ->SetIsAdRelated(AdProvenance{});
+
+  auto options = GetAIPageContentOptionsForTest();
+  options->non_salient_content_config =
+      mojom::blink::NonSalientContentConfig::New();
+  options->non_salient_content_config->exclude_ad_related = true;
+  GetAIPageContent(std::move(options));
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 0u);
+}
+
+TEST_F(AIPageContentAgentTest, ImageNoAltText) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      base::StringPrintf("<body>"
+                         "  <style>"
+                         "    div::before {"
+                         "      content: url(%s);"
+                         "    }"
+                         "  </style>"
+                         "  <div>text</div>"
+                         "</body>",
+                         kSmallImage),
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+}
+
+TEST_F(AIPageContentAgentTest, Video) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <video src='https://example.com/video.mp4'></video>"
+      "  <video "
+      "src='https://example.com/video.mp4?param1=value1&param2=value2'></video>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& video1 = *root.children_nodes[0];
+  EXPECT_EQ(video1.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kVideo);
+  ASSERT_TRUE(video1.content_attributes->video_data);
+  EXPECT_EQ(video1.content_attributes->video_data->url,
+            blink::KURL("https://example.com/video.mp4"));
+  ASSERT_TRUE(video1.content_attributes->video_data->source_origin);
+  EXPECT_EQ(video1.content_attributes->video_data->source_origin->ToString(),
+            "https://example.com");
+
+  const auto& video2 = *root.children_nodes[1];
+  EXPECT_EQ(video2.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kVideo);
+  ASSERT_TRUE(video2.content_attributes->video_data);
+  EXPECT_EQ(
+      video2.content_attributes->video_data->url,
+      blink::KURL("https://example.com/video.mp4?param1=value1&param2=value2"));
+  ASSERT_TRUE(video2.content_attributes->video_data->source_origin);
+  EXPECT_EQ(video2.content_attributes->video_data->source_origin->ToString(),
+            "https://example.com");
+}
+
+TEST_F(AIPageContentAgentTest, Headings) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <h1>Heading 1</h1>"
+      "  <h2>Heading 2</h2>"
+      "  <h3>Heading 3</h3>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 3u);
+
+  const auto& heading1 = *root.children_nodes[0];
+  CheckHeadingNode(heading1);
+  ASSERT_EQ(heading1.children_nodes.size(), 1u);
+  const auto& heading1_text_node = *heading1.children_nodes[0];
+  CheckTextNode(heading1_text_node, "Heading 1");
+
+  const auto& heading2 = *root.children_nodes[1];
+  CheckHeadingNode(heading2);
+  ASSERT_EQ(heading2.children_nodes.size(), 1u);
+  const auto& heading2_text_node = *heading2.children_nodes[0];
+  CheckTextNode(heading2_text_node, "Heading 2");
+
+  const auto& heading3 = *root.children_nodes[2];
+  CheckHeadingNode(heading3);
+  ASSERT_EQ(heading3.children_nodes.size(), 1u);
+  const auto& heading3_text_node = *heading3.children_nodes[0];
+  CheckTextNode(heading3_text_node, "Heading 3");
+}
+
+TEST_F(AIPageContentAgentTest, Paragraph) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    p {"
+      "      position: fixed;"
+      "      top: -10px;"
+      "      left: -20px;"
+      "      width: 200px;"
+      "      height: 40px;"
+      "      margin: 0;"
+      "    }"
+      "  </style>"
+      "  <p>text inside paragraph</p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& paragraph = *root.children_nodes[0];
+  CheckParagraphNode(paragraph);
+  CheckGeometry(paragraph, gfx::Rect(-20, -10, 200, 40),
+                gfx::Rect(0, 0, 180, 30));
+
+  ASSERT_EQ(paragraph.children_nodes.size(), 1u);
+  const auto& paragraph_text_node = *paragraph.children_nodes[0];
+  CheckTextNode(paragraph_text_node, "text inside paragraph");
+}
+
+TEST_F(AIPageContentAgentTest, Lists) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <ul>"
+      "    <li>Item 1</li>"
+      "    <li>Item 2</li>"
+      "  </ul>"
+      "  <ol>"
+      "    <li>Step 1</li>"
+      "    <li>Step 2</li>"
+      "  </ol>"
+      "  <dl>"
+      "    <dt>Detail 1 title</dt>"
+      "    <dd>Detail 1 description</dd>"
+      "    <dt>Detail 2 title</dt>"
+      "    <dd>Detail 2 description</dd>"
+      "  </dl>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 3u);
+
+  const auto& ul = *root.children_nodes[0];
+  CheckUnorderedListNode(ul);
+  ASSERT_EQ(ul.children_nodes.size(), 2u);
+  CheckListItemWithText(*ul.children_nodes[0], "Item 1");
+  CheckListItemWithText(*ul.children_nodes[1], "Item 2");
+
+  const auto& ol = *root.children_nodes[1];
+  CheckOrderedListNode(ol);
+  ASSERT_EQ(ol.children_nodes.size(), 2u);
+  CheckListItemWithText(*ol.children_nodes[0], "Step 1");
+  CheckListItemWithText(*ol.children_nodes[1], "Step 2");
+
+  const auto& dl = *root.children_nodes[2];
+  CheckUnorderedListNode(dl);
+  ASSERT_EQ(dl.children_nodes.size(), 4u);
+  CheckListItemWithText(*dl.children_nodes[0], "Detail 1 title");
+  CheckListItemWithText(*dl.children_nodes[1], "Detail 1 description");
+  CheckListItemWithText(*dl.children_nodes[2], "Detail 2 title");
+  CheckListItemWithText(*dl.children_nodes[3], "Detail 2 description");
+}
+
+TEST_F(AIPageContentAgentTest, IFrameWithContent) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <iframe src='about:blank'></iframe>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto* iframe_element =
+      To<HTMLIFrameElement>(helper_.LocalMainFrame()
+                                ->GetFrame()
+                                ->GetDocument()
+                                ->getElementsByTagName(AtomicString("iframe"))
+                                ->item(0));
+  ASSERT_TRUE(iframe_element);
+
+  // Access the iframe's document and set some content
+  auto* iframe_doc = iframe_element->contentDocument();
+  ASSERT_TRUE(iframe_doc);
+
+  iframe_doc->body()->SetInnerHTMLWithoutTrustedTypes(
+      "<body>inside iframe</body>");
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& iframe = *root.children_nodes[0];
+  const auto& iframe_attributes = *iframe.content_attributes;
+
+  EXPECT_EQ(iframe_attributes.attribute_type,
+            mojom::blink::AIPageContentAttributeType::kIframe);
+  EXPECT_FALSE(iframe_attributes.is_ad_related);
+
+  const auto& iframe_root = *iframe.children_nodes[0];
+  CheckTextNode(*iframe_root.children_nodes[0], "inside iframe");
+}
+
+TEST_F(AIPageContentAgentTest, IFrameAds) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <iframe src='about:blank'></iframe>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto* iframe_element =
+      To<HTMLIFrameElement>(helper_.LocalMainFrame()
+                                ->GetFrame()
+                                ->GetDocument()
+                                ->getElementsByTagName(AtomicString("iframe"))
+                                ->item(0));
+  ASSERT_TRUE(iframe_element);
+
+  // Mark iframe's ad evidence.
+  blink::FrameAdEvidence ad_evidence;
+  ad_evidence.set_created_by_ad_script(
+      blink::mojom::FrameCreationStackEvidence::kCreatedByAdScript);
+  ad_evidence.set_is_complete();
+  To<LocalFrame>(iframe_element->ContentFrame())->SetAdEvidence(ad_evidence);
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& iframe = *root.children_nodes[0];
+  const auto& iframe_attributes = *iframe.content_attributes;
+
+  EXPECT_EQ(iframe_attributes.attribute_type,
+            mojom::blink::AIPageContentAttributeType::kIframe);
+  EXPECT_TRUE(iframe_attributes.is_ad_related);
+}
+
+TEST_F(AIPageContentAgentTest, IFrameAdsExcluded) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <iframe src='about:blank'></iframe>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto* iframe_element =
+      To<HTMLIFrameElement>(helper_.LocalMainFrame()
+                                ->GetFrame()
+                                ->GetDocument()
+                                ->getElementsByTagName(AtomicString("iframe"))
+                                ->item(0));
+  ASSERT_TRUE(iframe_element);
+
+  // Mark iframe's ad evidence.
+  blink::FrameAdEvidence ad_evidence;
+  ad_evidence.set_created_by_ad_script(
+      blink::mojom::FrameCreationStackEvidence::kCreatedByAdScript);
+  ad_evidence.set_is_complete();
+  To<LocalFrame>(iframe_element->ContentFrame())->SetAdEvidence(ad_evidence);
+
+  auto options = GetAIPageContentOptionsForTest();
+  options->non_salient_content_config =
+      mojom::blink::NonSalientContentConfig::New();
+  options->non_salient_content_config->exclude_ad_related = true;
+  GetAIPageContent(std::move(options));
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 0u);
+}
+
+TEST_F(AIPageContentAgentTest, RootFrameAdExcluded) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <iframe src='about:blank'></iframe>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto* iframe_element =
+      To<HTMLIFrameElement>(helper_.LocalMainFrame()
+                                ->GetFrame()
+                                ->GetDocument()
+                                ->getElementsByTagName(AtomicString("iframe"))
+                                ->item(0));
+  ASSERT_TRUE(iframe_element);
+
+  // Mark iframe's ad evidence.
+  blink::FrameAdEvidence ad_evidence;
+  ad_evidence.set_created_by_ad_script(
+      blink::mojom::FrameCreationStackEvidence::kCreatedByAdScript);
+  ad_evidence.set_is_complete();
+  auto* child_frame = To<LocalFrame>(iframe_element->ContentFrame());
+  child_frame->SetAdEvidence(ad_evidence);
+  ASSERT_TRUE(child_frame->IsAdFrame());
+
+  auto* agent =
+      AIPageContentAgent::GetOrCreateForTesting(*child_frame->GetDocument());
+  ASSERT_TRUE(agent);
+
+  auto options = GetAIPageContentOptionsForTest();
+  options->non_salient_content_config =
+      mojom::blink::NonSalientContentConfig::New();
+  options->non_salient_content_config->exclude_ad_related = true;
+  auto content = agent->GetAIPageContentInternal(*options);
+
+  // The entire content should be null because the frame is an ad.
+  ASSERT_FALSE(content);
+}
+
+TEST_F(AIPageContentAgentTest, CrossSiteIframeIncluded) {
+  KURL main_url = url_test_helpers::ToKURL("http://example.com/main.html");
+  KURL cross_origin_url =
+      url_test_helpers::ToKURL("http://www.example.com/frame.html");
+  KURL cross_site_url =
+      url_test_helpers::ToKURL("http://altostrat.com/frame_another.html");
+
+  // Mock the cross origin, same-site iframe's content.
+  url_test_helpers::RegisterMockedURLLoadFromBase(
+      WebString("http://www.example.com/"), test::CoreTestDataPath(),
+      WebString("frame.html"));
+
+  // Mock the cross-site iframe's content.
+  url_test_helpers::RegisterMockedURLLoadFromBase(
+      WebString("http://altostrat.com/"), test::CoreTestDataPath(),
+      WebString("frame_another.html"));
+
+  // Load the main page which contains the same-site iframe and the cross-origin
+  // iframe.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "<iframe src='http://www.example.com/frame.html'></iframe>"
+      "<iframe src='http://altostrat.com/frame_another.html'></iframe>"
+      "</body>",
+      main_url);
+
+  // Let the iframe load.
+  test::RunPendingTasks();
+
+  auto options = GetAIPageContentOptionsForTest();
+
+  options->include_same_site_only = false;
+  GetAIPageContent(std::move(options));
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 2u);
+
+  // Both nodes should be present.
+  const auto& same_site_iframe_node = *root.children_nodes[0];
+  const auto& cross_site_iframe_node = *root.children_nodes[1];
+  CheckIframeNode(same_site_iframe_node);
+  CheckIframeNode(cross_site_iframe_node);
+
+  // The contents of both nodes should be present as well.
+  ASSERT_EQ(same_site_iframe_node.children_nodes.size(), 1u);
+  ASSERT_EQ(cross_site_iframe_node.children_nodes.size(), 1u);
+
+  const auto& same_site_iframe_root = *same_site_iframe_node.children_nodes[0];
+  const auto& cross_site_iframe_root =
+      *cross_site_iframe_node.children_nodes[0];
+
+  CheckRootNode(same_site_iframe_root);
+  CheckRootNode(cross_site_iframe_root);
+  ASSERT_EQ(same_site_iframe_root.children_nodes.size(), 1u);
+  ASSERT_EQ(cross_site_iframe_root.children_nodes.size(), 1u);
+
+  CheckTextNode(*same_site_iframe_root.children_nodes[0], "I am an iframe\n");
+  CheckTextNode(*cross_site_iframe_root.children_nodes[0],
+                "I am another iframe\n");
+}
+
+TEST_F(AIPageContentAgentTest, CrossSiteIframeExcluded) {
+  KURL main_url = url_test_helpers::ToKURL("http://example.com/main.html");
+  KURL cross_origin_url =
+      url_test_helpers::ToKURL("http://www.example.com/frame.html");
+  KURL cross_site_url =
+      url_test_helpers::ToKURL("http://altostrat.com/frame_another.html");
+
+  // Mock the cross origin, same-site iframe's content.
+  url_test_helpers::RegisterMockedURLLoadFromBase(
+      WebString("http://www.example.com/"), test::CoreTestDataPath(),
+      WebString("frame.html"));
+
+  // Mock the cross-site iframe's content.
+  url_test_helpers::RegisterMockedURLLoadFromBase(
+      WebString("http://altostrat.com/"), test::CoreTestDataPath(),
+      WebString("frame_another.html"));
+
+  // Load the main page which contains the same-site iframe and the cross-origin
+  // iframe.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "<iframe src='http://www.example.com/frame.html'></iframe>"
+      "<iframe src='http://altostrat.com/frame_another.html'></iframe>"
+      "</body>",
+      main_url);
+
+  // Let the iframe load.
+  test::RunPendingTasks();
+
+  auto options = GetAIPageContentOptionsForTest();
+
+  options->include_same_site_only = true;
+  GetAIPageContent(std::move(options));
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 2u);
+
+  // Both nodes should be present.
+  const auto& same_site_iframe_node = *root.children_nodes[0];
+  const auto& cross_site_iframe_node = *root.children_nodes[1];
+  CheckIframeNode(same_site_iframe_node);
+  CheckIframeNode(cross_site_iframe_node);
+
+  // Only the contents of the same-site iframe should be present.
+  ASSERT_EQ(same_site_iframe_node.children_nodes.size(), 1u);
+  ASSERT_TRUE(cross_site_iframe_node.children_nodes.empty());
+  ASSERT_EQ(cross_site_iframe_node.content_attributes->iframe_data->content
+                ->get_redacted_frame_metadata()
+                ->reason,
+            blink::mojom::RedactedFrameMetadata_Reason::kCrossSite);
+
+  const auto& same_site_iframe_root = *same_site_iframe_node.children_nodes[0];
+
+  CheckRootNode(same_site_iframe_root);
+  ASSERT_EQ(same_site_iframe_root.children_nodes.size(), 1u);
+
+  CheckTextNode(*same_site_iframe_root.children_nodes[0], "I am an iframe\n");
+}
+
+TEST_F(AIPageContentAgentTest, NoLayoutElement) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div style='display: none;'>Hidden Content</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_TRUE(root.children_nodes.empty());
+}
+
+TEST_F(AIPageContentAgentTest, VisibilityHidden) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div style='visibility: hidden;'>Hidden Content</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_TRUE(root.children_nodes.empty());
+}
+
+TEST_F(AIPageContentAgentTest, TextSize) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <h1>Extra large text</h1>"
+      "  <h2>Large text</h2>"
+      "  <p>Regular text</p>"
+      "  <h6>Small text</h6>"
+      "  <p style='font-size: 0.25em;'>Extra small text</p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 5u);
+
+  const auto& xl_text = *root.children_nodes[0];
+  CheckHeadingNode(xl_text);
+  CheckTextNode(*xl_text.children_nodes[0], "Extra large text");
+  CheckTextSize(*xl_text.children_nodes[0],
+                mojom::blink::AIPageContentTextSize::kXL);
+
+  const auto& l_text = *root.children_nodes[1];
+  CheckHeadingNode(l_text);
+  CheckTextNode(*l_text.children_nodes[0], "Large text");
+  CheckTextSize(*l_text.children_nodes[0],
+                mojom::blink::AIPageContentTextSize::kL);
+
+  const auto& m_text = *root.children_nodes[2];
+  CheckParagraphNode(m_text);
+  CheckTextNode(*m_text.children_nodes[0], "Regular text");
+  CheckTextSize(*m_text.children_nodes[0],
+                mojom::blink::AIPageContentTextSize::kM);
+
+  const auto& s_text = *root.children_nodes[3];
+  CheckHeadingNode(s_text);
+  CheckTextNode(*s_text.children_nodes[0], "Small text");
+  CheckTextSize(*s_text.children_nodes[0],
+                mojom::blink::AIPageContentTextSize::kS);
+
+  const auto& xs_text = *root.children_nodes[4];
+  CheckParagraphNode(xs_text);
+  CheckTextNode(*xs_text.children_nodes[0], "Extra small text");
+  CheckTextSize(*xs_text.children_nodes[0],
+                mojom::blink::AIPageContentTextSize::kXS);
+}
+
+TEST_F(AIPageContentAgentTest, TextEmphasis) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "<p>Regular text"
+      "<b>Bolded text</b>"
+      "<i>Italicized text</i>"
+      "<u>Underlined text</u>"
+      "<sub>Subscript text</sub>"
+      "<sup>Superscript text</sup>"
+      "<em>Emphasized text</em>"
+      "<strong>Strong text</strong>"
+      "</p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& paragraph = *root.children_nodes[0];
+  CheckParagraphNode(paragraph);
+  ASSERT_EQ(paragraph.children_nodes.size(), 8u);
+
+  const auto& regular_text = *paragraph.children_nodes[0];
+  CheckTextNode(regular_text, "Regular text");
+  CheckTextEmphasis(regular_text, false);
+
+  const auto& bolded_text = *paragraph.children_nodes[1];
+  CheckTextNode(bolded_text, "Bolded text");
+  CheckTextEmphasis(bolded_text, true);
+
+  const auto& italicized_text = *paragraph.children_nodes[2];
+  CheckTextNode(italicized_text, "Italicized text");
+  CheckTextEmphasis(italicized_text, true);
+
+  const auto& underlined_text = *paragraph.children_nodes[3];
+  CheckTextNode(underlined_text, "Underlined text");
+  CheckTextEmphasis(underlined_text, true);
+
+  const auto& subscript_text = *paragraph.children_nodes[4];
+  CheckTextNode(subscript_text, "Subscript text");
+  CheckTextEmphasis(subscript_text, true);
+
+  const auto& superscript_text = *paragraph.children_nodes[5];
+  CheckTextNode(superscript_text, "Superscript text");
+  CheckTextEmphasis(superscript_text, true);
+
+  const auto& emphasized_text = *paragraph.children_nodes[6];
+  CheckTextNode(emphasized_text, "Emphasized text");
+  CheckTextEmphasis(emphasized_text, true);
+
+  const auto& strong_text = *paragraph.children_nodes[7];
+  CheckTextNode(strong_text, "Strong text");
+  CheckTextEmphasis(strong_text, true);
+}
+
+TEST_F(AIPageContentAgentTest, TextColor) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "<p>Regular text</p>"
+      "<p style='color: red'>Red text</p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& paragraph = *root.children_nodes[0];
+  CheckParagraphNode(paragraph);
+  ASSERT_EQ(paragraph.children_nodes.size(), 1u);
+
+  const auto& regular_text = *paragraph.children_nodes[0];
+  CheckTextNode(regular_text, "Regular text");
+  CheckTextColor(regular_text, Color(0, 0, 0).Rgb());
+
+  const auto& red_paragraph = *root.children_nodes[1];
+  CheckParagraphNode(paragraph);
+  ASSERT_EQ(paragraph.children_nodes.size(), 1u);
+
+  const auto& bolded_text = *red_paragraph.children_nodes[0];
+  CheckTextNode(bolded_text, "Red text");
+  CheckTextColor(bolded_text, Color(255, 0, 0).Rgb());
+}
+
+TEST_F(AIPageContentAgentTest, Table) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <table>"
+      "    <caption>Table caption</caption>"
+      "    <thead>"
+      "      <th colspan='2'>Header</th>"
+      "    </thead>"
+      "    <tr>"
+      "      <td>Row 1 Column 1</td>"
+      "      <td>Row 1 Column 2</td>"
+      "    </tr>"
+      "    <tr>"
+      "      <td>Row 2 Column 1</td>"
+      "      <td>Row 2 Column 2</td>"
+      "    </tr>"
+      "    <tfoot>"
+      "      <td>Footer 1</td>"
+      "      <td>Footer 2</td>"
+      "    </tfoot>"
+      "  </table>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& table = *root.children_nodes[0];
+  CheckTableNode(table, "Table caption");
+  ASSERT_EQ(table.children_nodes.size(), 5u);
+
+  const auto& caption_text = *table.children_nodes[0];
+  CheckTextNode(caption_text, "Table caption");
+
+  const auto& header1 = *table.children_nodes[1];
+  CheckTableRowNode(header1, mojom::blink::AIPageContentTableRowType::kHeader);
+  ASSERT_EQ(header1.children_nodes.size(), 1u);
+
+  const auto& header1_cell1 = *header1.children_nodes[0];
+  CheckTableCellNode(header1_cell1);
+  CheckTextNode(*header1_cell1.children_nodes[0], "Header");
+
+  const auto& row1 = *table.children_nodes[2];
+  CheckTableRowNode(row1, mojom::blink::AIPageContentTableRowType::kBody);
+  ASSERT_EQ(row1.children_nodes.size(), 2u);
+
+  const auto& row1_cell1 = *row1.children_nodes[0];
+  CheckTableCellNode(row1_cell1);
+  CheckTextNode(*row1_cell1.children_nodes[0], "Row 1 Column 1");
+
+  const auto& row1_cell2 = *row1.children_nodes[1];
+  CheckTableCellNode(row1_cell2);
+  CheckTextNode(*row1_cell2.children_nodes[0], "Row 1 Column 2");
+
+  const auto& row2 = *table.children_nodes[3];
+  CheckTableRowNode(row2, mojom::blink::AIPageContentTableRowType::kBody);
+  ASSERT_EQ(row2.children_nodes.size(), 2u);
+
+  const auto& row2_cell1 = *row2.children_nodes[0];
+  CheckTableCellNode(row2_cell1);
+  CheckTextNode(*row2_cell1.children_nodes[0], "Row 2 Column 1");
+
+  const auto& row2_cell2 = *row2.children_nodes[1];
+  CheckTableCellNode(row2_cell2);
+  CheckTextNode(*row2_cell2.children_nodes[0], "Row 2 Column 2");
+
+  const auto& footer = *table.children_nodes[4];
+  CheckTableRowNode(footer, mojom::blink::AIPageContentTableRowType::kFooter);
+  ASSERT_EQ(footer.children_nodes.size(), 2u);
+
+  const auto& footer_cell1 = *footer.children_nodes[0];
+  CheckTableCellNode(footer_cell1);
+  CheckTextNode(*footer_cell1.children_nodes[0], "Footer 1");
+
+  const auto& footer_cell2 = *footer.children_nodes[1];
+  CheckTableCellNode(footer_cell2);
+  CheckTextNode(*footer_cell2.children_nodes[0], "Footer 2");
+}
+
+TEST_F(AIPageContentAgentTest, TableMadeWithCss) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "    <style>"
+      "        .table {"
+      "            display: table;"
+      "            border-collapse: collapse;"
+      "            width: 100%;"
+      "        }"
+      "        .row {"
+      "            display: table-row;"
+      "        }"
+      "        .cell {"
+      "            display: table-cell;"
+      "            border: 1px solid #000;"
+      "            padding: 8px;"
+      "            text-align: center;"
+      "        }"
+      "        .header {"
+      "            background-color: #f4f4f4;"
+      "            font-weight: bold;"
+      "        }"
+      "    </style>"
+      "    <div class='table'>"
+      //       Header Rows
+      "        <div class='row header'>"
+      "            <div class='cell' colspan='2'>Personal Info</div>"
+      "            <div class='cell' colspan='2'>Contact Info</div>"
+      "        </div>"
+      "        <div class='row header'>"
+      "            <div class='cell'>Name</div>"
+      "            <div class='cell'>Age</div>"
+      "            <div class='cell'>Email</div>"
+      "            <div class='cell'>Phone</div>"
+      "        </div>"
+      //       Body Rows
+      "        <div class='row'>"
+      "            <div class='cell'>John Doe</div>"
+      "            <div class='cell'>30</div>"
+      "            <div class='cell'>john.doe@example.com</div>"
+      "            <div class='cell'>123-456-7890</div>"
+      "        </div>"
+      "        <div class='row'>"
+      "            <div class='cell'>Jane Smith</div>"
+      "            <div class='cell'>28</div>"
+      "            <div class='cell'>jane.smith@example.com</div>"
+      "            <div class='cell'>987-654-3210</div>"
+      "        </div>"
+      "    </div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& table = *root.children_nodes[0];
+  CheckTableNode(table);
+  ASSERT_EQ(table.children_nodes.size(), 4u);
+
+  const auto& row1 = *table.children_nodes[0];
+  CheckTableRowNode(row1, mojom::blink::AIPageContentTableRowType::kBody);
+  ASSERT_EQ(row1.children_nodes.size(), 2u);
+
+  const auto& row1_cell1 = *row1.children_nodes[0];
+  CheckTableCellNode(row1_cell1);
+  CheckTextNode(*row1_cell1.children_nodes[0], "Personal Info");
+
+  const auto& row1_cell2 = *row1.children_nodes[1];
+  CheckTableCellNode(row1_cell2);
+  CheckTextNode(*row1_cell2.children_nodes[0], "Contact Info");
+
+  const auto& row2 = *table.children_nodes[1];
+  CheckTableRowNode(row2, mojom::blink::AIPageContentTableRowType::kBody);
+  ASSERT_EQ(row2.children_nodes.size(), 4u);
+
+  const auto& row2_cell1 = *row2.children_nodes[0];
+  CheckTableCellNode(row2_cell1);
+  CheckTextNode(*row2_cell1.children_nodes[0], "Name");
+
+  const auto& row2_cell2 = *row2.children_nodes[1];
+  CheckTableCellNode(row2_cell2);
+  CheckTextNode(*row2_cell2.children_nodes[0], "Age");
+
+  const auto& row2_cell3 = *row2.children_nodes[2];
+  CheckTableCellNode(row2_cell3);
+  CheckTextNode(*row2_cell3.children_nodes[0], "Email");
+
+  const auto& row2_cell4 = *row2.children_nodes[3];
+  CheckTableCellNode(row2_cell4);
+  CheckTextNode(*row2_cell4.children_nodes[0], "Phone");
+
+  const auto& row3 = *table.children_nodes[2];
+  CheckTableRowNode(row3, mojom::blink::AIPageContentTableRowType::kBody);
+  ASSERT_EQ(row3.children_nodes.size(), 4u);
+
+  const auto& row3_cell1 = *row3.children_nodes[0];
+  CheckTableCellNode(row3_cell1);
+  CheckTextNode(*row3_cell1.children_nodes[0], "John Doe");
+
+  const auto& row3_cell2 = *row3.children_nodes[1];
+  CheckTableCellNode(row3_cell2);
+  CheckTextNode(*row3_cell2.children_nodes[0], "30");
+
+  const auto& row3_cell3 = *row3.children_nodes[2];
+  CheckTableCellNode(row3_cell3);
+  CheckTextNode(*row3_cell3.children_nodes[0], "john.doe@example.com");
+
+  const auto& row3_cell4 = *row3.children_nodes[3];
+  CheckTableCellNode(row3_cell4);
+  CheckTextNode(*row3_cell4.children_nodes[0], "123-456-7890");
+
+  const auto& row4 = *table.children_nodes[3];
+  CheckTableRowNode(row4, mojom::blink::AIPageContentTableRowType::kBody);
+  ASSERT_EQ(row4.children_nodes.size(), 4u);
+
+  const auto& row4_cell1 = *row4.children_nodes[0];
+  CheckTableCellNode(row4_cell1);
+  CheckTextNode(*row4_cell1.children_nodes[0], "Jane Smith");
+
+  const auto& row4_cell2 = *row4.children_nodes[1];
+  CheckTableCellNode(row4_cell2);
+  CheckTextNode(*row4_cell2.children_nodes[0], "28");
+
+  const auto& row4_cell3 = *row4.children_nodes[2];
+  CheckTableCellNode(row4_cell3);
+  CheckTextNode(*row4_cell3.children_nodes[0], "jane.smith@example.com");
+
+  const auto& row4_cell4 = *row4.children_nodes[3];
+  CheckTableCellNode(row4_cell4);
+  CheckTextNode(*row4_cell4.children_nodes[0], "987-654-3210");
+}
+
+TEST_F(AIPageContentAgentTest, FigureCaptionDisplayAsTableCaption) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+        <body>
+          <figure style='display:table'>
+            <figcaption style='display:table-caption'>
+              <a href='https://www.youtube.com/'>Youtube</a>
+            </figcaption>
+          </figure>
+        </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& figure = *root.children_nodes.at(0);
+  ASSERT_TRUE(figure.content_attributes->node_interaction_info);
+  EXPECT_EQ(figure.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kTable);
+
+  ASSERT_EQ(figure.children_nodes.size(), 1u);
+  const auto& fig_caption = *figure.children_nodes.at(0);
+  ASSERT_TRUE(fig_caption.content_attributes->node_interaction_info);
+  EXPECT_EQ(fig_caption.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kContainer);
+
+  ASSERT_EQ(fig_caption.children_nodes.size(), 1u);
+  const auto& anchor = *fig_caption.children_nodes.at(0);
+  CheckAnchorNode(anchor, blink::KURL("https://www.youtube.com/"), {});
+}
+
+TEST_F(AIPageContentAgentTest, LandmarkSections) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <header>Header</header>"
+      "  <nav>Navigation</nav>"
+      "  <search>Search</search>"
+      "  <main>Main content</main>"
+      "  <article>Article</article>"
+      "  <section>Section</section>"
+      "  <aside>Aside</aside>"
+      "  <footer>Footer</footer>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 8u);
+
+  const auto& header = *root.children_nodes[0];
+  CheckContainerNode(header);
+  CheckAnnotatedRole(header, mojom::blink::AIPageContentAnnotatedRole::kHeader);
+  CheckTextNode(*header.children_nodes[0], "Header");
+
+  const auto& nav = *root.children_nodes[1];
+  CheckContainerNode(nav);
+  CheckAnnotatedRole(nav, mojom::blink::AIPageContentAnnotatedRole::kNav);
+  CheckTextNode(*nav.children_nodes[0], "Navigation");
+
+  const auto& search = *root.children_nodes[2];
+  CheckContainerNode(search);
+  CheckAnnotatedRole(search, mojom::blink::AIPageContentAnnotatedRole::kSearch);
+  CheckTextNode(*search.children_nodes[0], "Search");
+
+  const auto& main = *root.children_nodes[3];
+  CheckContainerNode(main);
+  CheckAnnotatedRole(main, mojom::blink::AIPageContentAnnotatedRole::kMain);
+  CheckTextNode(*main.children_nodes[0], "Main content");
+
+  const auto& article = *root.children_nodes[4];
+  CheckContainerNode(article);
+  CheckAnnotatedRole(article,
+                     mojom::blink::AIPageContentAnnotatedRole::kArticle);
+  CheckTextNode(*article.children_nodes[0], "Article");
+
+  const auto& section = *root.children_nodes[5];
+  CheckContainerNode(section);
+  CheckAnnotatedRole(section,
+                     mojom::blink::AIPageContentAnnotatedRole::kSection);
+  CheckTextNode(*section.children_nodes[0], "Section");
+
+  const auto& aside = *root.children_nodes[6];
+  CheckContainerNode(aside);
+  CheckAnnotatedRole(aside, mojom::blink::AIPageContentAnnotatedRole::kAside);
+  CheckTextNode(*aside.children_nodes[0], "Aside");
+
+  const auto& footer = *root.children_nodes[7];
+  CheckContainerNode(footer);
+  CheckAnnotatedRole(footer, mojom::blink::AIPageContentAnnotatedRole::kFooter);
+  CheckTextNode(*footer.children_nodes[0], "Footer");
+}
+
+TEST_F(AIPageContentAgentTest, LandmarkSectionsWithAriaRoles) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div role='banner'>Header</div>"
+      "  <div role='navigation'>Navigation</div>"
+      "  <div role='search'>Search</div>"
+      "  <div role='main'>Main content</div>"
+      "  <div role='article'>Article</div>"
+      "  <div role='region'>Section</div>"
+      "  <div role='complementary'>Aside</div>"
+      "  <div role='contentinfo'>Footer</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 8u);
+
+  const auto& header = *root.children_nodes[0];
+  CheckContainerNode(header);
+  CheckAnnotatedRole(header, mojom::blink::AIPageContentAnnotatedRole::kHeader);
+  CheckTextNode(*header.children_nodes[0], "Header");
+
+  const auto& nav = *root.children_nodes[1];
+  CheckContainerNode(nav);
+  CheckAnnotatedRole(nav, mojom::blink::AIPageContentAnnotatedRole::kNav);
+  CheckTextNode(*nav.children_nodes[0], "Navigation");
+
+  const auto& search = *root.children_nodes[2];
+  CheckContainerNode(search);
+  CheckAnnotatedRole(search, mojom::blink::AIPageContentAnnotatedRole::kSearch);
+  CheckTextNode(*search.children_nodes[0], "Search");
+
+  const auto& main = *root.children_nodes[3];
+  CheckContainerNode(main);
+  CheckAnnotatedRole(main, mojom::blink::AIPageContentAnnotatedRole::kMain);
+  CheckTextNode(*main.children_nodes[0], "Main content");
+
+  const auto& article = *root.children_nodes[4];
+  CheckContainerNode(article);
+  CheckAnnotatedRole(article,
+                     mojom::blink::AIPageContentAnnotatedRole::kArticle);
+  CheckTextNode(*article.children_nodes[0], "Article");
+
+  const auto& section = *root.children_nodes[5];
+  CheckContainerNode(section);
+  CheckAnnotatedRole(section,
+                     mojom::blink::AIPageContentAnnotatedRole::kSection);
+  CheckTextNode(*section.children_nodes[0], "Section");
+
+  const auto& aside = *root.children_nodes[6];
+  CheckContainerNode(aside);
+  CheckAnnotatedRole(aside, mojom::blink::AIPageContentAnnotatedRole::kAside);
+  CheckTextNode(*aside.children_nodes[0], "Aside");
+
+  const auto& footer = *root.children_nodes[7];
+  CheckContainerNode(footer);
+  CheckAnnotatedRole(footer, mojom::blink::AIPageContentAnnotatedRole::kFooter);
+  CheckTextNode(*footer.children_nodes[0], "Footer");
+}
+
+TEST_F(AIPageContentAgentTest, LandmarkSectionsWithUppercaseAriaRoles) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div id='banner' role='BANNER'>Header</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // ARIA role tokens are ASCII case-insensitive; APC should still annotate the
+  // landmark role even if authors use uppercase role names.
+  GetAIPageContent();
+
+  const auto* banner = FindNodeBySelector("#banner");
+  ASSERT_TRUE(banner);
+  CheckAnnotatedRoles(*banner,
+                      {mojom::blink::AIPageContentAnnotatedRole::kHeader});
+}
+
+TEST_F(AIPageContentAgentTest, RootScroller) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+        <body style='margin: 0px;'>
+          <div style='width: 200vw; height: 300vh; background: grey;'></div>
+          <script>
+            document.scrollingElement.scrollTop=100;
+            document.scrollingElement.scrollLeft=200;
+           </script>
+        </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_TRUE(root.content_attributes->node_interaction_info);
+  ASSERT_TRUE(root.content_attributes->node_interaction_info->scroller_info);
+
+  const auto& root_scroller =
+      *root.content_attributes->node_interaction_info->scroller_info;
+  EXPECT_EQ(root_scroller.scrolling_bounds.width(), 2 * kWindowSize.width());
+  EXPECT_EQ(root_scroller.scrolling_bounds.height(), 3 * kWindowSize.height());
+
+  EXPECT_EQ(root_scroller.visible_area,
+            gfx::Rect(200, 100, kWindowSize.width(), kWindowSize.height()));
+}
+
+class AIPageContentAgentTestWithSubScroller
+    : public AIPageContentAgentTest,
+      public testing::WithParamInterface<std::string> {};
+
+TEST_P(AIPageContentAgentTestWithSubScroller, Overflow) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      base::StringPrintf(
+          R"HTML(
+          <body style='margin: 0px;'>
+            <style>
+             #scroller {
+               overflow:%s; width: 100vw; height:100vh;
+               position:relative; top: 30px; left:50px;
+             }
+            </style>
+            <div id='scroller'>
+             <div style='width: 200vw; height: 300vh; background: grey;'></div>
+            </div>
+            <script>
+              let scroller = document.getElementById('scroller');
+              scroller.scrollTop=100;
+              scroller.scrollLeft=200;
+             </script>
+          </body>
+          )HTML",
+          GetParam()),
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_TRUE(root.content_attributes->node_interaction_info);
+  ASSERT_TRUE(root.content_attributes->node_interaction_info->scroller_info);
+
+  const auto& root_scroller =
+      *root.content_attributes->node_interaction_info->scroller_info;
+  EXPECT_EQ(root_scroller.scrolling_bounds.width(), kWindowSize.width() + 50);
+  EXPECT_EQ(root_scroller.scrolling_bounds.height(), kWindowSize.height() + 30);
+  EXPECT_EQ(root_scroller.visible_area, gfx::Rect(kWindowSize));
+
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& child = *root.children_nodes.at(0);
+  ASSERT_TRUE(child.content_attributes->node_interaction_info);
+  ASSERT_TRUE(child.content_attributes->node_interaction_info->scroller_info);
+
+  const auto& sub_scroller =
+      *child.content_attributes->node_interaction_info->scroller_info;
+  EXPECT_EQ(sub_scroller.scrolling_bounds.width(), 2 * kWindowSize.width());
+  EXPECT_EQ(sub_scroller.scrolling_bounds.height(), 3 * kWindowSize.height());
+
+  EXPECT_EQ(sub_scroller.visible_area,
+            gfx::Rect(200, 100, kWindowSize.width(), kWindowSize.height()));
+
+  bool user_scrollable = GetParam() != "hidden";
+  EXPECT_EQ(sub_scroller.user_scrollable_horizontal, user_scrollable);
+  EXPECT_EQ(sub_scroller.user_scrollable_vertical, user_scrollable);
+}
+
+INSTANTIATE_TEST_SUITE_P(AIPageContentAgentTestWithSubScroller,
+                         AIPageContentAgentTestWithSubScroller,
+                         ::testing::Values("auto", "scroll", "hidden"));
+
+TEST_F(AIPageContentAgentTest, OverflowVisible) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style='margin: 0px;'>
+        <style>
+         #scroller {
+           overflow:visible; width: 100vw; height:100vh;
+           position:relative; top: 30px; left:50px;
+         }
+        </style>
+        <div id='scroller'>
+         <div style='width: 200vw; height: 300vh; background: grey;'></div>
+        </div>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_TRUE(root.content_attributes->node_interaction_info);
+  ASSERT_TRUE(root.content_attributes->node_interaction_info->scroller_info);
+
+  const auto& root_scroller =
+      *root.content_attributes->node_interaction_info->scroller_info;
+  EXPECT_EQ(root_scroller.scrolling_bounds.width(),
+            kWindowSize.width() * 2 + 50);
+  EXPECT_EQ(root_scroller.scrolling_bounds.height(),
+            kWindowSize.height() * 3 + 30);
+  EXPECT_EQ(root_scroller.visible_area, gfx::Rect(kWindowSize));
+
+  EXPECT_EQ(root.children_nodes.size(), 0u);
+}
+
+TEST_F(AIPageContentAgentTest, OverflowClip) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style='margin: 0px;'>
+        <style>
+         #scroller {
+           overflow:clip; width: 100vw; height:100vh;
+           position:relative; top: 30px; left:50px;
+         }
+        </style>
+        <div id='scroller'>
+         <div style='width: 200vw; height: 300vh; background: grey;'></div>
+        </div>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_TRUE(root.content_attributes->node_interaction_info);
+  ASSERT_TRUE(root.content_attributes->node_interaction_info->scroller_info);
+
+  const auto& root_scroller =
+      *root.content_attributes->node_interaction_info->scroller_info;
+  EXPECT_EQ(root_scroller.scrolling_bounds.width(), kWindowSize.width() + 50);
+  EXPECT_EQ(root_scroller.scrolling_bounds.height(), kWindowSize.height() + 30);
+  EXPECT_EQ(root_scroller.visible_area, gfx::Rect(kWindowSize));
+
+  EXPECT_EQ(root.children_nodes.size(), 0u);
+}
+
+TEST_F(AIPageContentAgentTest, Anchors) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <a href='https://www.google.com'>Google</a>"
+      "  <a href='https://www.youtube.com' rel='noopener "
+      "noreferrer'>YouTube</a>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& link = *root.children_nodes[0];
+  CheckAnchorNode(link, blink::KURL("https://www.google.com/"), {});
+  const auto& link_text = *link.children_nodes[0];
+  CheckTextNode(link_text, "Google");
+
+  const auto& link_with_rel = *root.children_nodes[1];
+  CheckAnchorNode(link_with_rel, blink::KURL("https://www.youtube.com/"),
+                  {mojom::blink::AIPageContentAnchorRel::kRelationNoOpener,
+                   mojom::blink::AIPageContentAnchorRel::kRelationNoReferrer});
+  const auto& link_with_rel_text = *link_with_rel.children_nodes[0];
+  CheckTextNode(link_with_rel_text, "YouTube");
+}
+
+TEST_F(AIPageContentAgentTest, NativeModalDialog) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <dialog id='welcomeDialog' style='position: absolute; overflow: "
+      "visible;'>This is a dialog.</dialog>"
+      "  <script>"
+      "    const dialog = document.getElementById('welcomeDialog');"
+      "    dialog.showModal();"
+      "  </script>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  // Two nodes: the dialog and its backdrop.
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& backdrop = *root.children_nodes[0];
+  CheckContainerNode(backdrop);
+
+  const auto& dialog = *root.children_nodes[1];
+  CheckModalDialogNode(dialog);
+
+  ASSERT_EQ(dialog.children_nodes.size(), 1u);
+  const auto& dialog_text = *dialog.children_nodes[0];
+  CheckTextNode(dialog_text, "This is a dialog.");
+}
+
+TEST_F(AIPageContentAgentTest, NativeModelessDialog) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <dialog id='welcomeDialog'>This is a modeless dialog.</dialog>"
+      "  <script>"
+      "    const dialog = document.getElementById('welcomeDialog');"
+      "    dialog.show();"
+      "  </script>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& dialog = *root.children_nodes[0];
+  CheckModelessDialogNode(dialog);
+
+  ASSERT_EQ(dialog.children_nodes.size(), 1u);
+  const auto& dialog_text = *dialog.children_nodes[0];
+  CheckTextNode(dialog_text, "This is a modeless dialog.");
+}
+
+TEST_F(AIPageContentAgentTest, AriaModalDialog) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div role='dialog' aria-modal='true'>This is an ARIA modal dialog."
+      "</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& dialog = *root.children_nodes[0];
+  CheckModalDialogNode(dialog);
+
+  ASSERT_EQ(dialog.children_nodes.size(), 1u);
+  const auto& dialog_text = *dialog.children_nodes[0];
+  CheckTextNode(dialog_text, "This is an ARIA modal dialog.");
+}
+
+TEST_F(AIPageContentAgentTest, AriaModelessDialog) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div role='dialog'>This is an ARIA modeless dialog.</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& dialog = *root.children_nodes[0];
+  CheckModelessDialogNode(dialog);
+
+  ASSERT_EQ(dialog.children_nodes.size(), 1u);
+  const auto& dialog_text = *dialog.children_nodes[0];
+  CheckTextNode(dialog_text, "This is an ARIA modeless dialog.");
+}
+
+TEST_F(AIPageContentAgentTest, AriaAlertDialogDefaultsToModal) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div role='alertdialog'>This is an ARIA alert dialog.</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& dialog = *root.children_nodes[0];
+  CheckModalDialogNode(dialog);
+
+  ASSERT_EQ(dialog.children_nodes.size(), 1u);
+  const auto& dialog_text = *dialog.children_nodes[0];
+  CheckTextNode(dialog_text, "This is an ARIA alert dialog.");
+}
+
+TEST_F(AIPageContentAgentTest, TableWithAnonymousCells) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<html>"
+      "  <style>"
+      "    #target {"
+      "      display: table;"
+      "    }"
+      ""
+      "    #target::before {"
+      "      content: 'BEFORE';"
+      "      display: table;"
+      "    }"
+      "  </style>"
+      "  <div id='target'></div>"
+      "</html>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& outer_table = *root.children_nodes[0];
+  const auto& outer_table_cell = GetSingleTableCell(outer_table);
+  ASSERT_EQ(outer_table_cell.children_nodes.size(), 1u);
+
+  const auto& inner_table = *outer_table_cell.children_nodes[0];
+  const auto& inner_table_cell = GetSingleTableCell(inner_table);
+
+  EXPECT_EQ(inner_table_cell.children_nodes.size(), 1u);
+  CheckTextNode(*inner_table_cell.children_nodes[0], "BEFORE");
+}
+
+TEST_F(AIPageContentAgentTest, ContentVisibilityHidden) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    div {"
+      "      content-visibility: hidden"
+      "    }"
+      "  </style>"
+      "  <div>text</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& hidden_container = *root.children_nodes[0];
+  CheckContainerNode(hidden_container);
+  CheckAnnotatedRole(hidden_container,
+                     mojom::blink::AIPageContentAnnotatedRole::kContentHidden);
+  EXPECT_TRUE(hidden_container.children_nodes.empty());
+}
+
+TEST_F(AIPageContentAgentTest, ContentVisibilityHiddenActionable) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    #hidden {"
+      "      content-visibility: hidden"
+      "    }"
+      "  </style>"
+      "  <div id=hidden>hidden text</div>visible text"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // Actionable mode exercises geometry and hit-testing paths used in
+  // production APC requests.
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& hidden_container = *root.children_nodes[0];
+  CheckContainerNode(hidden_container);
+  CheckAnnotatedRole(hidden_container,
+                     mojom::blink::AIPageContentAnnotatedRole::kContentHidden);
+  // Content-visibility hidden subtrees are represented but not expanded.
+  EXPECT_TRUE(hidden_container.children_nodes.empty());
+  // The container itself is laid out; actionable mode should capture its
+  // geometry without forcing layout on descendants.
+  EXPECT_TRUE(hidden_container.content_attributes->geometry);
+
+  const auto& visible_text_node = *root.children_nodes[1];
+  CheckTextNode(visible_text_node, "visible text");
+  ASSERT_TRUE(visible_text_node.content_attributes->geometry);
+  EXPECT_FALSE(visible_text_node.content_attributes->geometry
+                   ->visible_bounding_box.IsEmpty());
+}
+
+TEST_F(AIPageContentAgentTest, ContentVisibilityHiddenIframeActionable) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body><style>iframe { content-visibility: hidden }</style>"
+      "<iframe srcdoc='<div>hidden iframe text</div>'></iframe>"
+      "  visible text</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // Actionable mode exercises iframe geometry and traversal paths.
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& iframe_node = *root.children_nodes[0];
+  CheckIframeNode(iframe_node);
+  CheckAnnotatedRole(iframe_node,
+                     mojom::blink::AIPageContentAnnotatedRole::kContentHidden);
+  // The iframe container is laid out, but its subtree should not be traversed
+  // when display locks block layout/prepaint on children.
+  EXPECT_TRUE(iframe_node.children_nodes.empty());
+  ASSERT_TRUE(iframe_node.content_attributes->geometry);
+  ASSERT_TRUE(iframe_node.content_attributes->iframe_data->content);
+  EXPECT_TRUE(iframe_node.content_attributes->iframe_data->content
+                  ->is_local_frame_data());
+  // Display-locked iframes still provide frame data for browser conversion.
+  EXPECT_GT(iframe_node.content_attributes->iframe_data->content
+                ->get_local_frame_data()
+                ->default_line_height_px,
+            0u);
+
+  const auto& visible_text_node = *root.children_nodes[1];
+  CheckTextNode(visible_text_node, "  visible text");
+  ASSERT_TRUE(visible_text_node.content_attributes->geometry);
+  EXPECT_FALSE(visible_text_node.content_attributes->geometry
+                   ->visible_bounding_box.IsEmpty());
+}
+
+TEST_F(AIPageContentAgentTest, ContentVisibilityAuto) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    #foo {"
+      "      position: relative;"
+      "      top: 8000px;"
+      "      content-visibility: auto"
+      "    }"
+      "  </style>"
+      "  <div id=foo><div>far text</div></div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& text_node = *root.children_nodes[0];
+  CheckTextNode(text_node, "far text");
+
+  const auto& attributes = *text_node.content_attributes;
+  EXPECT_TRUE(attributes.dom_node_id.has_value());
+}
+
+TEST_F(AIPageContentAgentTest, HiddenUntilFound) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    body {"
+      "      margin: 0; font-size: 100px;"
+      "    }"
+      "  </style>"
+      "  <header hidden=until-found>hidden text</header><div>visible text</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& hidden_container = *root.children_nodes[0];
+  CheckContainerNode(hidden_container);
+  CheckAnnotatedRoles(
+      hidden_container,
+      {mojom::blink::AIPageContentAnnotatedRole::kHeader,
+       mojom::blink::AIPageContentAnnotatedRole::kContentHidden});
+  EXPECT_EQ(hidden_container.children_nodes.size(), 1u);
+
+  const auto& hidden_text_node = *hidden_container.children_nodes[0];
+  CheckTextNode(hidden_text_node, "hidden text");
+
+  const auto& visible_text_node = *root.children_nodes[1];
+  CheckTextNode(visible_text_node, "visible text");
+}
+
+TEST_F(AIPageContentAgentTest, HiddenUntilFoundNoInvalidationAllowed) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body>
+        <style>
+          body {
+            margin: 0; font-size: 100px;
+          }
+        </style>
+        <header hidden=until-found>hidden text</header><div>visible text</div>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  LocalFrameView::InvalidationDisallowedScope disallow(
+      *helper_.LocalMainFrame()->GetFrame()->View());
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& hidden_container = *root.children_nodes[0];
+  CheckContainerNode(hidden_container);
+  CheckAnnotatedRoles(
+      hidden_container,
+      {mojom::blink::AIPageContentAnnotatedRole::kHeader,
+       mojom::blink::AIPageContentAnnotatedRole::kContentHidden});
+  EXPECT_TRUE(hidden_container.children_nodes.empty());
+
+  const auto& visible_text_node = *root.children_nodes[1];
+  CheckTextNode(visible_text_node, "visible text");
+}
+
+TEST_F(AIPageContentAgentTest, HiddenUntilFoundGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    body {"
+      "      margin: 0; font-size: 100px;"
+      "    }"
+      "  </style>"
+      "  <header hidden=until-found>hidden text</header>visible text"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& hidden_container = *root.children_nodes[0];
+  CheckContainerNode(hidden_container);
+  CheckAnnotatedRoles(
+      hidden_container,
+      {mojom::blink::AIPageContentAnnotatedRole::kHeader,
+       mojom::blink::AIPageContentAnnotatedRole::kContentHidden});
+  EXPECT_EQ(hidden_container.children_nodes.size(), 1u);
+
+  ASSERT_TRUE(hidden_container.content_attributes->geometry);
+  const auto& hidden_container_geometry =
+      *hidden_container.content_attributes->geometry;
+
+  const auto& hidden_text_node = *hidden_container.children_nodes[0];
+  CheckTextNode(hidden_text_node, "hidden text");
+  ASSERT_TRUE(hidden_text_node.content_attributes->geometry);
+  const auto& hidden_text_geometry =
+      *hidden_text_node.content_attributes->geometry;
+  CheckAlmostEquals(hidden_text_geometry.outer_bounding_box.origin(),
+                    gfx::Point(0, 0));
+  EXPECT_FALSE(hidden_text_geometry.outer_bounding_box.IsEmpty());
+  EXPECT_TRUE(hidden_text_geometry.visible_bounding_box.IsEmpty());
+
+  // The container's own layout size is empty. APC repairs its outer box from
+  // the hidden descendant, but does not give it visible geometry or fragments.
+  EXPECT_EQ(hidden_container_geometry.outer_bounding_box,
+            hidden_text_geometry.outer_bounding_box);
+  EXPECT_TRUE(hidden_container_geometry.visible_bounding_box.IsEmpty());
+  EXPECT_TRUE(
+      hidden_container_geometry.fragment_visible_bounding_boxes.empty());
+
+  const auto& visible_text_node = *root.children_nodes[1];
+  CheckTextNode(visible_text_node, "visible text");
+  EXPECT_TRUE(visible_text_node.content_attributes->geometry);
+  const auto& visible_text_geometry =
+      *visible_text_node.content_attributes->geometry;
+  CheckAlmostEquals(visible_text_geometry.outer_bounding_box.origin(),
+                    gfx::Point(0, 0));
+  EXPECT_FALSE(visible_text_geometry.outer_bounding_box.IsEmpty());
+  EXPECT_EQ(visible_text_geometry.outer_bounding_box,
+            visible_text_geometry.visible_bounding_box);
+}
+
+TEST_F(AIPageContentAgentTest, HiddenUntilFoundInsideIframe) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    body {"
+      "      margin: 0;"
+      "      font-size: 100px;"
+      "    }"
+      "  </style>"
+      "  <iframe srcdoc='<div hidden=until-found>hidden "
+      "text</div>'></iframe>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& iframe_node = *root.children_nodes[0];
+  EXPECT_EQ(iframe_node.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kIframe);
+  EXPECT_EQ(iframe_node.children_nodes.size(), 1u);
+  const auto& iframe_root = *iframe_node.children_nodes[0];
+
+  EXPECT_EQ(iframe_root.children_nodes.size(), 1u);
+  const auto& hidden_container = *iframe_root.children_nodes[0];
+  CheckContainerNode(hidden_container);
+  CheckAnnotatedRole(hidden_container,
+                     mojom::blink::AIPageContentAnnotatedRole::kContentHidden);
+  EXPECT_EQ(hidden_container.children_nodes.size(), 1u);
+
+  const auto& hidden_text_node = *hidden_container.children_nodes[0];
+  CheckTextNode(hidden_text_node, "hidden text");
+}
+
+TEST_F(AIPageContentAgentTest, HiddenUntilFoundOnIframe) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    body {"
+      "      margin: 0;"
+      "      font-size: 100px;"
+      "    }"
+      "  </style>"
+      "  <iframe hidden=until-found srcdoc='<div>hidden "
+      "text</div>'></iframe>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& iframe_node = *root.children_nodes[0];
+  EXPECT_EQ(iframe_node.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kIframe);
+  EXPECT_EQ(iframe_node.children_nodes.size(), 1u);
+  const auto& iframe_root = *iframe_node.children_nodes[0];
+
+  const auto& hidden_text_node = *iframe_root.children_nodes[0];
+  CheckTextNode(hidden_text_node, "hidden text");
+}
+
+#if DCHECK_IS_ON()
+TEST_F(AIPageContentAgentTest, AutoBuildRunsDuringDOMContentLoadedDispatch) {
+  base::test::MockLog log;
+  // Allow unrelated INFO logs; we only assert on the auto-build dump below.
+  EXPECT_CALL(log, Log(logging::LOGGING_INFO, testing::_, testing::_,
+                       testing::_, testing::Not(testing::HasSubstr("<Root>"))))
+      .Times(testing::AnyNumber());
+  // Start capturing early so we can assert that no auto-build dump appears
+  // until we invoke RunAutoBuildAfterDOMContentLoadedForTesting().
+  log.StartCapturingLogs();
+
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), "<body><div>Auto build content</div></body>",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  LocalFrameView* view = document->View();
+  ASSERT_TRUE(view);
+
+  // Establish a stable lifecycle baseline so the auto-build checks are not
+  // influenced by unrelated pending layout or style updates.
+  view->UpdateAllLifecyclePhasesForTest();
+
+  auto* agent = AIPageContentAgent::GetOrCreateForTesting(*document);
+  ASSERT_TRUE(agent);
+  EXPECT_EQ(AIPageContentAgent::From(*document), agent);
+
+  // Simulate DOMContentLoaded dispatch still being in progress by forcing the
+  // parsing state to "in DCL".
+  document->SetParsingState(Document::kInDOMContentLoaded);
+
+  // Auto-build should not run until we explicitly invoke it below. This
+  // enforces that the unit-test guard in ListenForDOMContentLoadedForAutoBuild
+  // keeps auto-build from being scheduled implicitly in blink_unittests.
+  EXPECT_CALL(log, Log(logging::LOGGING_INFO, testing::_, testing::_,
+                       testing::_, testing::HasSubstr("<Root>")))
+      .Times(0);
+  test::RunPendingTasks();
+  log.StopCapturingLogs();
+  testing::Mock::VerifyAndClearExpectations(&log);
+  EXPECT_CALL(log, Log(logging::LOGGING_INFO, testing::_, testing::_,
+                       testing::_, testing::Not(testing::HasSubstr("<Root>"))))
+      .Times(testing::AnyNumber());
+
+  // Invoke the auto-build entry point directly to keep the test deterministic;
+  // it should run while DOMContentLoaded dispatch is in progress.
+  EXPECT_CALL(log, Log(logging::LOGGING_INFO, testing::_, testing::_,
+                       testing::_, testing::HasSubstr("<Root>")))
+      .Times(1);
+  log.StartCapturingLogs();
+  agent->RunAutoBuildAfterDOMContentLoadedForTesting();
+  test::RunPendingTasks();
+  log.StopCapturingLogs();
+  testing::Mock::VerifyAndClearExpectations(&log);
+
+  // Auto-build runs while parsing is still in the DOMContentLoaded phase.
+
+  // Once parsing is finished and lifecycle updates complete, auto-build should
+  // still run without triggering lifecycle DCHECKs.
+  document->SetParsingState(Document::kFinishedParsing);
+  view->UpdateAllLifecyclePhasesForTest();
+  test::RunPendingTasks();
+  WebViewImpl* web_view = document->GetPage()->GetChromeClient().GetWebView();
+  ASSERT_TRUE(web_view);
+  EXPECT_FALSE(web_view->GetPagePopup());
+
+  // Re-run the auto-build entry point now that parsing is finished. This should
+  // synchronously execute the auto-build path without crashing.
+  EXPECT_CALL(log, Log(logging::LOGGING_INFO, testing::_, testing::_,
+                       testing::_, testing::HasSubstr("<Root>")))
+      .Times(1);
+  log.StartCapturingLogs();
+  agent->RunAutoBuildAfterDOMContentLoadedForTesting();
+  test::RunPendingTasks();
+  log.StopCapturingLogs();
+}
+#endif  // #if DCHECK_IS_ON()
+
+TEST_F(AIPageContentAgentTest, LineBreak) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "<div style=\"width: 100px; height:100px\">"
+      "Lorem Ipsum is simply dummy text of the printing and "
+      "typesetting industry.<br>Lorem Ipsum has been the "
+      "industry's standard dummy text ever since the 1500s, "
+      "when an unknown printer took a galley of type and "
+      "scrambled it to make a type specimen book. It has "
+      "survived not only five centuries, but also the leap "
+      "into electronic typesetting, remaining essentially "
+      "unchanged. It was popularised in the 1960s with the "
+      "release of Letraset sheets containing Lorem Ipsum "
+      "passages, and more recently with desktop publishing "
+      "software like Aldus PageMaker including versions of "
+      "Lorem Ipsum."
+      "</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 2u);
+  CheckTextNode(*root.children_nodes[0],
+                "Lorem Ipsum is simply dummy text of the printing and "
+                "typesetting industry.");
+  CheckTextNode(
+      *root.children_nodes[1],
+      "Lorem Ipsum has been the industry's standard dummy text ever since the "
+      "1500s, when an unknown printer took a galley of type and scrambled it "
+      "to make a type specimen book. It has survived not only five centuries, "
+      "but also the leap into electronic typesetting, remaining essentially "
+      "unchanged. It was popularised in the 1960s with the release of Letraset "
+      "sheets containing Lorem Ipsum passages, and more recently with desktop "
+      "publishing software like Aldus PageMaker including versions of Lorem "
+      "Ipsum.");
+}
+
+TEST_F(AIPageContentAgentTest, VisibilityHiddenOnSubtree) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    header {"
+      "      visibility: hidden"
+      "    }"
+      "  </style>"
+      "  <header>text</header>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 0u);
+}
+
+TEST_F(AIPageContentAgentTest, VisibilityHiddenOnParentOnly) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    #parent {"
+      "      visibility: hidden"
+      "    }"
+      "    #child {"
+      "      visibility: visible"
+      "    }"
+      "  </style>"
+      "  <header id=parent><div id=child>text</div></header>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& container = *root.children_nodes[0];
+  CheckContainerNode(container);
+  EXPECT_EQ(container.children_nodes.size(), 1u);
+
+  const auto& text_node = *container.children_nodes[0];
+  CheckTextNode(text_node, "text");
+}
+
+TEST_F(AIPageContentAgentTest, VisibilityHiddenOnIframe) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    iframe {"
+      "      visibility: hidden;"
+      "    }"
+      "  </style>"
+      "  <iframe srcdoc='<div style='visibility: visible'>hidden "
+      "text</div>'></iframe>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 0u);
+}
+
+TEST_F(AIPageContentAgentTest,
+       SkipUnclickableFixedOverlaysRespectsFeatureFlag) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+        <body style="margin: 0;">
+          <div id="unclickable"
+               style="position: fixed; inset: 0; pointer-events: none;">
+            Readable text
+          </div>
+          <div id="clickable" style="position: fixed;"></div>
+        </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  {
+    ScopedAIPageContentSkipUnclickableFixedOverlaysForTest disable_feature(
+        false);
+    GetAIPageContentWithActionableElements();
+
+    // Preserve the legacy output while the feature is off.
+    EXPECT_TRUE(FindNodeBySelector("#unclickable"));
+  }
+
+  {
+    ScopedAIPageContentSkipUnclickableFixedOverlaysForTest enable_feature(true);
+    GetAIPageContentWithActionableElements();
+
+    // Flatten the pointer-transparent wrapper without dropping its text.
+    ExpectSelectorNotInApcOutput("#unclickable");
+    EXPECT_TRUE(TreeContainsTextSubstring(ContentRootNode(), "Readable text"));
+    EXPECT_TRUE(FindNodeBySelector("#clickable"));
+  }
+}
+
+TEST_F(AIPageContentAgentTest, NoGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div>text</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_FALSE(root.content_attributes->geometry);
+
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+  const auto& text_node = *root.children_nodes[0];
+  CheckTextNode(text_node, "text");
+  EXPECT_FALSE(text_node.content_attributes->geometry);
+}
+
+TEST_F(AIPageContentAgentTest, FormWithTextInput) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form name='myform' action='https://example.com/submit'>"
+      "    <label for='input1'>Lorem Ipsum</label>"
+      "    <input type='text' id='input1' name='LI' value='Lorem'>"
+      "    <label for='input2'>Ipsum Dolor</label>"
+      "    <input type='text' id='input2' name='ID' value='Ipsum' required>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto* agent = AIPageContentAgent::GetOrCreateForTesting(
+      *helper_.LocalMainFrame()->GetFrame()->GetDocument());
+  ASSERT_TRUE(agent);
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& form = *root.children_nodes[0];
+  EXPECT_EQ(form.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kForm);
+  EXPECT_EQ(form.content_attributes->form_data->form_name, "myform");
+  // The form metadata must expose the normalized action URL so callers can
+  // surface the submit destination.
+  EXPECT_EQ(form.content_attributes->form_data->action_url,
+            url_test_helpers::ToKURL("https://example.com/submit"));
+  EXPECT_EQ(form.children_nodes.size(), 4u);
+
+  CheckTextNode(*form.children_nodes[0], "Lorem Ipsum");
+
+  const auto& text_input1 = *form.children_nodes[1];
+  CheckFormControlNode(text_input1, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(text_input1.content_attributes->form_control_data->field_name,
+            "LI");
+  EXPECT_EQ(text_input1.content_attributes->form_control_data->field_value,
+            "Lorem");
+  EXPECT_EQ(text_input1.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kNoRedactionNecessary);
+  EXPECT_FALSE(text_input1.content_attributes->form_control_data->is_required);
+  EXPECT_EQ(text_input1.children_nodes.size(), 1u);
+  CheckContainerNode(*text_input1.children_nodes[0]);
+  EXPECT_EQ(text_input1.children_nodes[0]->children_nodes.size(), 1u);
+  CheckTextNode(*text_input1.children_nodes[0]->children_nodes[0], "Lorem");
+
+  CheckTextNode(*form.children_nodes[2], "Ipsum Dolor");
+
+  const auto& text_input2 = *form.children_nodes[3];
+  CheckFormControlNode(text_input2, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(text_input2.content_attributes->form_control_data->field_name,
+            "ID");
+  EXPECT_EQ(text_input2.content_attributes->form_control_data->field_value,
+            "Ipsum");
+  EXPECT_EQ(text_input2.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kNoRedactionNecessary);
+  EXPECT_TRUE(text_input2.content_attributes->form_control_data->is_required);
+  EXPECT_EQ(text_input2.children_nodes.size(), 1u);
+  CheckContainerNode(*text_input2.children_nodes[0]);
+  EXPECT_EQ(text_input2.children_nodes[0]->children_nodes.size(), 1u);
+  CheckTextNode(*text_input2.children_nodes[0]->children_nodes[0], "Ipsum");
+}
+
+TEST_F(AIPageContentAgentTest, AriaRequiredAndPlaceholderOnTextInput) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <input id='input' type='text' aria-required='true' "
+      "aria-placeholder='Type here'>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // ARIA required/placeholder should be surfaced for native text inputs when
+  // the native attributes are not present, so we pick up author-provided ARIA
+  // metadata without overriding native semantics.
+  GetAIPageContent();
+
+  const auto* input = FindNodeBySelector("#input");
+  ASSERT_TRUE(input);
+  CheckFormControlNode(*input, mojom::blink::FormControlType::kInputText);
+  EXPECT_TRUE(input->content_attributes->form_control_data->is_required);
+  EXPECT_EQ(input->content_attributes->form_control_data->placeholder,
+            "Type here");
+}
+
+TEST_F(AIPageContentAgentTest, AriaCheckedOnRoleCheckbox) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div id='checkbox' role='checkbox' aria-checked='true'>"
+      "    ARIA Checkbox"
+      "  </div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // ARIA-based controls should produce form control data when aria-checked is
+  // provided, enabling actionable extraction for custom widgets.
+  GetAIPageContent();
+
+  const auto* checkbox = FindNodeBySelector("#checkbox");
+  ASSERT_TRUE(checkbox);
+  CheckFormControlNode(*checkbox,
+                       mojom::blink::FormControlType::kInputCheckbox);
+  EXPECT_TRUE(checkbox->content_attributes->form_control_data->is_checked);
+}
+
+TEST_F(AIPageContentAgentTest, AriaRoleCheckboxWithoutProperties) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div id='checkbox' role='checkbox'>"
+      "    ARIA Checkbox"
+      "  </div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // An explicit ARIA role should be enough to surface form control metadata,
+  // even when no other ARIA state or property is provided.
+  GetAIPageContent();
+
+  const auto* checkbox = FindNodeBySelector("#checkbox");
+  ASSERT_TRUE(checkbox);
+  CheckFormControlNode(*checkbox,
+                       mojom::blink::FormControlType::kInputCheckbox);
+}
+
+TEST_F(AIPageContentAgentTest, AriaCheckedMixedOnRoleCheckbox) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div id='checkbox' role='checkbox' aria-checked='mixed'>"
+      "    ARIA Checkbox"
+      "  </div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // Keep aria-checked handling simple by treating "mixed" as a truthy state
+  // when the attribute is present, matching IsAriaAttributeTrue semantics.
+  GetAIPageContent();
+
+  const auto* checkbox = FindNodeBySelector("#checkbox");
+  ASSERT_TRUE(checkbox);
+  CheckFormControlNode(*checkbox,
+                       mojom::blink::FormControlType::kInputCheckbox);
+  EXPECT_TRUE(checkbox->content_attributes->form_control_data->is_checked);
+}
+
+TEST_F(AIPageContentAgentTest, AriaReadOnlyOnRoleTextbox) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div id='textbox' role='textbox' aria-readonly='true'>"
+      "    ARIA Textbox"
+      "  </div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // Readonly state should be exposed for ARIA-based textboxes so consumers can
+  // avoid actions which would try to edit locked content.
+  GetAIPageContent();
+
+  const auto* textbox = FindNodeBySelector("#textbox");
+  ASSERT_TRUE(textbox);
+  CheckFormControlNode(*textbox, mojom::blink::FormControlType::kInputText);
+  EXPECT_TRUE(textbox->content_attributes->form_control_data->is_readonly);
+}
+
+TEST_F(AIPageContentAgentTest, NativeReadOnlyTextInput) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <input id='input' type='text' readonly>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // Native readonly must be surfaced so consumers can avoid editing.
+  GetAIPageContent();
+
+  const auto* input = FindNodeBySelector("#input");
+  ASSERT_TRUE(input);
+  CheckFormControlNode(*input, mojom::blink::FormControlType::kInputText);
+  EXPECT_TRUE(input->content_attributes->form_control_data->is_readonly);
+}
+
+TEST_F(AIPageContentAgentTest, FrameDefaultLineHeightUsesCssPixels) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<html style='font-size: 10px; line-height: 24px; zoom: 2'>"
+      "<body>"
+      // CSS zoom scales layout values internally, so this verifies APC reports
+      // the author-facing CSS px value rather than the zoomed layout value.
+      "  <input id='input' type='text' "
+      "style='font-size: 10px'>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto* input = FindNodeBySelector("#input");
+  ASSERT_TRUE(input);
+  CheckFormControlNode(*input, mojom::blink::FormControlType::kInputText);
+  // The default line height is frame data because popups are frame-owned.
+  EXPECT_EQ(Content()->frame_data->default_line_height_px, 24u);
+}
+
+TEST_F(AIPageContentAgentTest,
+       FrameDefaultLineHeightFallsBackWithoutDocumentElementLayoutObject) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<html style='display: none'>"
+      "<body>"
+      // The <html> element has no LayoutObject when it is display:none.
+      // APC should still emit frame data instead of crashing the renderer.
+      "  <input id='input' type='text'>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  ASSERT_TRUE(Content()->frame_data);
+  // Without a <html> LayoutObject, APC uses a fixed fallback row size.
+  EXPECT_EQ(Content()->frame_data->default_line_height_px, 12u);
+}
+
+TEST_F(AIPageContentAgentTest,
+       FrameDefaultLineHeightFallsBackWithoutDocumentElement) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<html>"
+      "<body>"
+      "  <input id='input' type='text'>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  ASSERT_TRUE(document->documentElement());
+  // APC can still serialize from the frame LayoutView after script removes
+  // the document element, but no author line-height source remains.
+  document->documentElement()->remove();
+
+  GetAIPageContent();
+
+  ASSERT_TRUE(Content()->frame_data);
+  EXPECT_EQ(Content()->frame_data->default_line_height_px, 12u);
+}
+
+TEST_F(AIPageContentAgentTest, AriaCheckedDoesNotOverrideNativeCheckbox) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <input id='native' type='checkbox' checked aria-checked='false'>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // Native checked state must remain authoritative over aria-checked, matching
+  // the HTML-AAM rule that ARIA must not override strong native semantics.
+  GetAIPageContent();
+
+  const auto* native_checkbox = FindNodeBySelector("#native");
+  ASSERT_TRUE(native_checkbox);
+  CheckFormControlNode(*native_checkbox,
+                       mojom::blink::FormControlType::kInputCheckbox);
+  EXPECT_TRUE(
+      native_checkbox->content_attributes->form_control_data->is_checked);
+}
+
+TEST_F(AIPageContentAgentTest, FormWithSelect) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form name='myform'>"
+      "    <select name='LI'>"
+      "      <option value='Lorem'>Lorem Text</option>"
+      "      <option value='Ipsum'>Ipsum Text</option>"
+      "    </select>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto* agent = AIPageContentAgent::GetOrCreateForTesting(
+      *helper_.LocalMainFrame()->GetFrame()->GetDocument());
+  ASSERT_TRUE(agent);
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& form = *root.children_nodes[0];
+  EXPECT_EQ(form.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kForm);
+  EXPECT_EQ(form.content_attributes->form_data->form_name, "myform");
+  EXPECT_EQ(form.children_nodes.size(), 1u);
+
+  const auto& select = *form.children_nodes[0];
+  CheckFormControlNode(select, mojom::blink::FormControlType::kSelectOne);
+  EXPECT_EQ(select.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kNoRedactionNecessary);
+
+  const auto& select_options =
+      select.content_attributes->form_control_data->select_options;
+  ASSERT_EQ(select_options.size(), 2u);
+
+  EXPECT_EQ(select_options[0]->value, "Lorem");
+  EXPECT_EQ(select_options[0]->text, "Lorem Text");
+  EXPECT_TRUE(select_options[0]->is_selected);
+
+  EXPECT_EQ(select_options[1]->value, "Ipsum");
+  EXPECT_EQ(select_options[1]->text, "Ipsum Text");
+  EXPECT_FALSE(select_options[1]->is_selected);
+
+  EXPECT_EQ(select.children_nodes.size(), 1u);
+  CheckTextNode(*select.children_nodes[0], "Lorem Text");
+}
+
+TEST_F(AIPageContentAgentTest, FormWithCheckbox) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form name='vehicles'>"
+      "    <input type='checkbox' id='vehicle1' name='vehicle1' value='Bike'>"
+      "    <label for='vehicle1'>I have a bike</label><br>"
+      "    <input type='checkbox' id='vehicle2' name='vehicle2' value='Car' "
+      "     checked>"
+      "    <label for='vehicle2'>I have a car</label><br>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto* agent = AIPageContentAgent::GetOrCreateForTesting(
+      *helper_.LocalMainFrame()->GetFrame()->GetDocument());
+  ASSERT_TRUE(agent);
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& form = *root.children_nodes[0];
+  EXPECT_EQ(form.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kForm);
+  EXPECT_EQ(form.content_attributes->form_data->form_name, "vehicles");
+  EXPECT_EQ(form.children_nodes.size(), 4u);
+
+  const auto& checkbox1 = *form.children_nodes[0];
+  CheckFormControlNode(checkbox1,
+                       mojom::blink::FormControlType::kInputCheckbox);
+  EXPECT_EQ(checkbox1.content_attributes->form_control_data->field_name,
+            "vehicle1");
+  EXPECT_EQ(checkbox1.content_attributes->form_control_data->field_value,
+            "Bike");
+  EXPECT_FALSE(checkbox1.content_attributes->form_control_data->is_checked);
+  EXPECT_EQ(checkbox1.children_nodes.size(), 0u);
+
+  CheckTextNode(*form.children_nodes[1], "I have a bike");
+
+  const auto& checkbox2 = *form.children_nodes[2];
+  CheckFormControlNode(checkbox2,
+                       mojom::blink::FormControlType::kInputCheckbox);
+  EXPECT_EQ(checkbox2.content_attributes->form_control_data->field_name,
+            "vehicle2");
+  EXPECT_EQ(checkbox2.content_attributes->form_control_data->field_value,
+            "Car");
+  EXPECT_TRUE(checkbox2.content_attributes->form_control_data->is_checked);
+  EXPECT_EQ(checkbox2.children_nodes.size(), 0u);
+
+  CheckTextNode(*form.children_nodes[3], "I have a car");
+}
+
+TEST_F(AIPageContentAgentTest, FormWithRadio) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form name='vehicles'>"
+      "    <input type='radio' id='vehicle1' name='vehicle1' value='Bike'>"
+      "    <label for='vehicle1'>I have a bike</label><br>"
+      "    <input type='radio' id='vehicle2' name='vehicle2' value='Car' "
+      "     checked>"
+      "    <label for='vehicle2'>I have a car</label><br>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto* agent = AIPageContentAgent::GetOrCreateForTesting(
+      *helper_.LocalMainFrame()->GetFrame()->GetDocument());
+  ASSERT_TRUE(agent);
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& form = *root.children_nodes[0];
+  EXPECT_EQ(form.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kForm);
+  EXPECT_EQ(form.content_attributes->form_data->form_name, "vehicles");
+  EXPECT_EQ(form.children_nodes.size(), 4u);
+
+  const auto& radio1 = *form.children_nodes[0];
+  CheckFormControlNode(radio1, mojom::blink::FormControlType::kInputRadio);
+  EXPECT_EQ(radio1.content_attributes->form_control_data->field_name,
+            "vehicle1");
+  EXPECT_EQ(radio1.content_attributes->form_control_data->field_value, "Bike");
+  EXPECT_EQ(radio1.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kNoRedactionNecessary);
+  EXPECT_FALSE(radio1.content_attributes->form_control_data->is_checked);
+  EXPECT_EQ(radio1.children_nodes.size(), 0u);
+
+  CheckTextNode(*form.children_nodes[1], "I have a bike");
+
+  const auto& radio2 = *form.children_nodes[2];
+  CheckFormControlNode(radio2, mojom::blink::FormControlType::kInputRadio);
+  EXPECT_EQ(radio2.content_attributes->form_control_data->field_name,
+            "vehicle2");
+  EXPECT_EQ(radio2.content_attributes->form_control_data->field_value, "Car");
+  EXPECT_TRUE(radio2.content_attributes->form_control_data->is_checked);
+  EXPECT_EQ(radio2.children_nodes.size(), 0u);
+
+  CheckTextNode(*form.children_nodes[3], "I have a car");
+}
+
+TEST_F(AIPageContentAgentTest, FormWithPassword) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='pwd' type='password' name='Enter password' "
+      "value='mypassword'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto* agent = AIPageContentAgent::GetOrCreateForTesting(
+      *helper_.LocalMainFrame()->GetFrame()->GetDocument());
+  ASSERT_TRUE(agent);
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& form = *root.children_nodes[0];
+  EXPECT_EQ(form.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kForm);
+  EXPECT_EQ(form.children_nodes.size(), 1u);
+
+  const auto& password = *form.children_nodes[0];
+  CheckFormControlNode(password, mojom::blink::FormControlType::kInputPassword);
+  EXPECT_EQ(password.content_attributes->form_control_data->field_name,
+            "Enter password");
+  EXPECT_EQ(password.content_attributes->form_control_data->field_value,
+            nullptr);
+  EXPECT_EQ(password.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kRedacted_HasBeenPassword);
+  EXPECT_EQ(password.children_nodes.size(), 0u);
+
+  // Now reveal the password (simulating clicking the eye icon)
+  // This mimics JavaScript: passwordInput.type = 'text';
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* input_element =
+      To<HTMLInputElement>(document->getElementById(AtomicString("pwd")));
+  ASSERT_TRUE(input_element);
+  input_element->setType(AtomicString("text"));
+
+  // Ensure the DOM is updated
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  // Get AI page content again - password should still be hidden
+  GetAIPageContent();
+
+  const auto& root2 = ContentRootNode();
+  EXPECT_EQ(root2.children_nodes.size(), 1u);
+
+  const auto& form2 = *root2.children_nodes[0];
+  EXPECT_EQ(form2.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kForm);
+  EXPECT_EQ(form2.children_nodes.size(), 1u);
+
+  const auto& revealed_password = *form2.children_nodes[0];
+  CheckFormControlNode(revealed_password,
+                       mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(revealed_password.content_attributes->form_control_data->field_name,
+            "Enter password");
+  // Even though the password is revealed, the value should still be hidden
+  // because HasBeenBeenPasswordField() is true.
+  EXPECT_EQ(
+      revealed_password.content_attributes->form_control_data->field_value,
+      nullptr);
+  EXPECT_EQ(revealed_password.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kRedacted_HasBeenPassword);
+  EXPECT_EQ(revealed_password.children_nodes.size(), 0u);
+
+  input_element->SetValue("");
+
+  // Ensure the DOM is updated
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  // Get AI page content again - empty passwords are unredacted.
+  GetAIPageContent();
+
+  const auto& root3 = ContentRootNode();
+  EXPECT_EQ(root3.children_nodes.size(), 1u);
+
+  const auto& form3 = *root3.children_nodes[0];
+  EXPECT_EQ(form3.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kForm);
+  EXPECT_EQ(form3.children_nodes.size(), 1u);
+
+  const auto& empty_password = *form3.children_nodes[0];
+  CheckFormControlNode(empty_password,
+                       mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(empty_password.content_attributes->form_control_data->field_name,
+            "Enter password");
+  EXPECT_EQ(empty_password.content_attributes->form_control_data->field_value,
+            "");
+  EXPECT_EQ(empty_password.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kUnredacted_EmptyPassword);
+  EXPECT_EQ(empty_password.children_nodes.size(), 1u);
+}
+
+TEST_F(AIPageContentAgentTest, FormWithWebkitTextSecurityRedactsAndPersists) {
+  // This test covers a common custom-password pattern where authors use
+  // `-webkit-text-security` on a normal <input type="text"> to visually mask
+  // the value without using <input type="password">.
+  //
+  // Acceptance criteria:
+  // - The value is redacted when `-webkit-text-security` is not `none`.
+  // - After the style is removed (simulating JS toggling the masking), the
+  //   value remains redacted for subsequent extractions.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='masked' type='text' name='Enter secret' "
+      "style='-webkit-text-security: disc;' value='supersecret'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& form = *root.children_nodes[0];
+  ASSERT_EQ(form.children_nodes.size(), 1u);
+
+  const auto& field = *form.children_nodes[0];
+  CheckFormControlNode(field, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field.content_attributes->form_control_data->field_name,
+            "Enter secret");
+  EXPECT_EQ(field.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(
+      field.content_attributes->redaction_decision,
+      mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_CSS);
+
+  // Now remove the masking style (simulating a "show password" eye icon).
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* input_element =
+      To<HTMLInputElement>(document->getElementById(AtomicString("masked")));
+  ASSERT_TRUE(input_element);
+  input_element->setAttribute(html_names::kStyleAttr,
+                              AtomicString("-webkit-text-security: none;"));
+
+  // Ensure the DOM is updated.
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  // Extract again: the field should remain redacted since it was previously
+  // classified as password-like.
+  GetAIPageContent();
+
+  const auto& root2 = ContentRootNode();
+  ASSERT_EQ(root2.children_nodes.size(), 1u);
+  const auto& form2 = *root2.children_nodes[0];
+  ASSERT_EQ(form2.children_nodes.size(), 1u);
+  const auto& field2 = *form2.children_nodes[0];
+  CheckFormControlNode(field2, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field2.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(
+      field2.content_attributes->redaction_decision,
+      mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_CSS);
+}
+
+TEST_F(AIPageContentAgentTest, FormWithMaskedValuePatternRedactsAndPersists) {
+  // Some custom controls implement password-style masking in JavaScript by
+  // writing a value that contains mostly mask characters (e.g. bullets) while
+  // revealing the last typed character.
+  //
+  // Acceptance criteria:
+  // - A masked-value pattern is treated as password-like and redacted.
+  // - After the value is changed to an unmasked string, the field remains
+  //   redacted for subsequent extractions.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='jsmasked' type='text' name='Enter secret' "
+      "value='&#8226;&#8226;&#8226;&#8226;a'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& form = *root.children_nodes[0];
+  ASSERT_EQ(form.children_nodes.size(), 1u);
+
+  const auto& field = *form.children_nodes[0];
+  CheckFormControlNode(field, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(field.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_JS);
+
+  // Now set an unmasked value; the field should remain redacted since it was
+  // previously classified as password-like.
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* input_element =
+      To<HTMLInputElement>(document->getElementById(AtomicString("jsmasked")));
+  ASSERT_TRUE(input_element);
+  input_element->SetValue("notmaskedanymore");
+
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  GetAIPageContent();
+  const auto& root2 = ContentRootNode();
+  ASSERT_EQ(root2.children_nodes.size(), 1u);
+  const auto& form2 = *root2.children_nodes[0];
+  ASSERT_EQ(form2.children_nodes.size(), 1u);
+  const auto& field2 = *form2.children_nodes[0];
+  CheckFormControlNode(field2, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field2.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(field2.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_JS);
+}
+
+TEST_F(AIPageContentAgentTest, FormWithAllMaskCharactersRedacts) {
+  // Some custom controls always fully mask the value, never revealing a
+  // character (e.g. "•••••"). This should still be treated as password-like.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='jsmasked' type='text' name='Enter secret' "
+      "value='&#8226;&#8226;&#8226;&#8226;&#8226;'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& form = *root.children_nodes[0];
+  ASSERT_EQ(form.children_nodes.size(), 1u);
+
+  const auto& field = *form.children_nodes[0];
+  CheckFormControlNode(field, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(field.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_JS);
+}
+
+TEST_F(AIPageContentAgentTest, FormWithMaskedValuePatternWithSpaceNotRedacted) {
+  // Guardrail: if the value contains whitespace, treat it as non-password-like.
+  // A common rich-text pattern is a bullet used as a list marker.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='maybe' type='text' name='Enter secret' "
+      "value='&#8226;&#8226; secret'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& form = *root.children_nodes[0];
+  ASSERT_EQ(form.children_nodes.size(), 1u);
+
+  const auto& field = *form.children_nodes[0];
+  CheckFormControlNode(field, mojom::blink::FormControlType::kInputText);
+  EXPECT_NE(field.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(field.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kNoRedactionNecessary);
+}
+
+TEST_F(AIPageContentAgentTest, FormWithEarlyJSMaskedValueRedacts) {
+  // Guard against leaking initial characters as the user types into a custom
+  // JS-masked password field. Some implementations show "•b" for a 2-character
+  // password while the last typed character remains visible.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='early' type='text' name='Enter secret' value='&#8226;b'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& form = *root.children_nodes[0];
+  ASSERT_EQ(form.children_nodes.size(), 1u);
+
+  const auto& field = *form.children_nodes[0];
+  CheckFormControlNode(field, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(field.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_JS);
+}
+
+TEST_F(AIPageContentAgentTest, CustomPasswordJSBecomesEmptyThenRedactsAgain) {
+  // Regression coverage: once a field is classified as a JS custom password
+  // field, it stays classified even if the value becomes empty and later
+  // becomes non-empty again.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='js' type='text' name='Enter secret' "
+      "value='&#8226;&#8226;&#8226;&#8226;a'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& form = *root.children_nodes[0];
+  ASSERT_EQ(form.children_nodes.size(), 1u);
+  const auto& field = *form.children_nodes[0];
+  CheckFormControlNode(field, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(field.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_JS);
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* input_element =
+      To<HTMLInputElement>(document->getElementById(AtomicString("js")));
+  ASSERT_TRUE(input_element);
+  input_element->SetValue("");
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  GetAIPageContent();
+  const auto& root2 = ContentRootNode();
+  ASSERT_EQ(root2.children_nodes.size(), 1u);
+  const auto& form2 = *root2.children_nodes[0];
+  ASSERT_EQ(form2.children_nodes.size(), 1u);
+  const auto& field2 = *form2.children_nodes[0];
+  CheckFormControlNode(field2, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field2.content_attributes->form_control_data->field_value, "");
+  EXPECT_EQ(
+      field2.content_attributes->redaction_decision,
+      mojom::AIPageContentRedactionDecision::kUnredacted_EmptyCustomPassword);
+
+  input_element->SetValue("notmaskedanymore");
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  GetAIPageContent();
+  const auto& root3 = ContentRootNode();
+  ASSERT_EQ(root3.children_nodes.size(), 1u);
+  const auto& form3 = *root3.children_nodes[0];
+  ASSERT_EQ(form3.children_nodes.size(), 1u);
+  const auto& field3 = *form3.children_nodes[0];
+  CheckFormControlNode(field3, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field3.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(field3.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_JS);
+}
+
+TEST_F(AIPageContentAgentTest, CustomPasswordJSPlainTextThenMaskedAgain) {
+  // Regression coverage: a JS custom password field may temporarily replace its
+  // value with plain text (e.g. "show password") and later resume masking. The
+  // value must remain redacted throughout.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='js' type='text' name='Enter secret' "
+      "value='&#8226;&#8226;&#8226;&#8226;a'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* input_element =
+      To<HTMLInputElement>(document->getElementById(AtomicString("js")));
+  ASSERT_TRUE(input_element);
+
+  GetAIPageContent();
+
+  input_element->SetValue("plain-text-temporary");
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  GetAIPageContent();
+  const auto& root2 = ContentRootNode();
+  ASSERT_EQ(root2.children_nodes.size(), 1u);
+  const auto& form2 = *root2.children_nodes[0];
+  ASSERT_EQ(form2.children_nodes.size(), 1u);
+  const auto& field2 = *form2.children_nodes[0];
+  CheckFormControlNode(field2, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field2.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(field2.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_JS);
+
+  input_element->SetValue(String::FromUtf8("••••z"));
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  GetAIPageContent();
+  const auto& root3 = ContentRootNode();
+  ASSERT_EQ(root3.children_nodes.size(), 1u);
+  const auto& form3 = *root3.children_nodes[0];
+  ASSERT_EQ(form3.children_nodes.size(), 1u);
+  const auto& field3 = *form3.children_nodes[0];
+  CheckFormControlNode(field3, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field3.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(field3.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_JS);
+}
+
+TEST_F(AIPageContentAgentTest, CustomPasswordCSSBecomesEmptyThenRedactsAgain) {
+  // Regression coverage: once a field is classified as a CSS custom password
+  // field, it stays classified even if the value becomes empty and later
+  // becomes non-empty again.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='css' type='text' name='Enter secret' "
+      "style='-webkit-text-security: disc;' value='supersecret'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& form = *root.children_nodes[0];
+  ASSERT_EQ(form.children_nodes.size(), 1u);
+  const auto& field = *form.children_nodes[0];
+  CheckFormControlNode(field, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(
+      field.content_attributes->redaction_decision,
+      mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_CSS);
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* input_element =
+      To<HTMLInputElement>(document->getElementById(AtomicString("css")));
+  ASSERT_TRUE(input_element);
+  input_element->SetValue("");
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  GetAIPageContent();
+  const auto& root2 = ContentRootNode();
+  ASSERT_EQ(root2.children_nodes.size(), 1u);
+  const auto& form2 = *root2.children_nodes[0];
+  ASSERT_EQ(form2.children_nodes.size(), 1u);
+  const auto& field2 = *form2.children_nodes[0];
+  CheckFormControlNode(field2, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field2.content_attributes->form_control_data->field_value, "");
+  EXPECT_EQ(
+      field2.content_attributes->redaction_decision,
+      mojom::AIPageContentRedactionDecision::kUnredacted_EmptyCustomPassword);
+
+  input_element->setAttribute(html_names::kStyleAttr,
+                              AtomicString("-webkit-text-security: none;"));
+  input_element->SetValue("plain-text-temporary");
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  GetAIPageContent();
+  const auto& root3 = ContentRootNode();
+  ASSERT_EQ(root3.children_nodes.size(), 1u);
+  const auto& form3 = *root3.children_nodes[0];
+  ASSERT_EQ(form3.children_nodes.size(), 1u);
+  const auto& field3 = *form3.children_nodes[0];
+  CheckFormControlNode(field3, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field3.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(
+      field3.content_attributes->redaction_decision,
+      mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_CSS);
+}
+
+TEST_F(AIPageContentAgentTest, CustomPasswordCSSPlainTextThenMaskedAgain) {
+  // Regression coverage: a CSS custom password field may temporarily disable
+  // masking (e.g. "show password") and later re-enable it. The value must
+  // remain redacted throughout.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='css' type='text' name='Enter secret' "
+      "style='-webkit-text-security: disc;' value='supersecret'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* input_element =
+      To<HTMLInputElement>(document->getElementById(AtomicString("css")));
+  ASSERT_TRUE(input_element);
+
+  GetAIPageContent();
+
+  input_element->setAttribute(html_names::kStyleAttr,
+                              AtomicString("-webkit-text-security: none;"));
+  input_element->SetValue("plain-text-temporary");
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  GetAIPageContent();
+  const auto& root2 = ContentRootNode();
+  ASSERT_EQ(root2.children_nodes.size(), 1u);
+  const auto& form2 = *root2.children_nodes[0];
+  ASSERT_EQ(form2.children_nodes.size(), 1u);
+  const auto& field2 = *form2.children_nodes[0];
+  CheckFormControlNode(field2, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field2.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(
+      field2.content_attributes->redaction_decision,
+      mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_CSS);
+
+  input_element->setAttribute(html_names::kStyleAttr,
+                              AtomicString("-webkit-text-security: disc;"));
+  input_element->SetValue("supersecret2");
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  GetAIPageContent();
+  const auto& root3 = ContentRootNode();
+  ASSERT_EQ(root3.children_nodes.size(), 1u);
+  const auto& form3 = *root3.children_nodes[0];
+  ASSERT_EQ(form3.children_nodes.size(), 1u);
+  const auto& field3 = *form3.children_nodes[0];
+  CheckFormControlNode(field3, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field3.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(
+      field3.content_attributes->redaction_decision,
+      mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_CSS);
+}
+
+TEST_F(
+    AIPageContentAgentTest,
+    DISABLED_ContentEditableWithMaskedValuePatternSingleLineRedactsAndPersists) {
+  // TODO(crbug.com/480179556): Treat contenteditable as a form control (or add
+  // a first-class editable field node) so we can attach structured redaction
+  // decisions and consistently skip editor/shadow subtrees for password-like
+  // contenteditables. This test covers a custom password control implemented
+  // with a contenteditable element. A common JS approach is to write mask
+  // characters (e.g. bullets) and reveal only the most recently typed
+  // character.
+  //
+  // Acceptance criteria:
+  // - The extracted content does not include the masked string.
+  // - After the field has been classified as password-like, it stays redacted
+  //   even if the page later writes an unmasked value.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div id='ce' "
+      "contenteditable='true'>&#8226;&#8226;&#8226;&#8226;a</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* editable =
+      To<HTMLElement>(document->getElementById(AtomicString("ce")));
+  ASSERT_TRUE(editable);
+  ASSERT_TRUE(IsRichlyEditable(*editable));
+  ASSERT_EQ(RootEditableElement(*editable), editable);
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_FALSE(TreeContainsTextSubstring(root, "a"));
+
+  editable->setInnerText("notmaskedanymore");
+
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  GetAIPageContent();
+  const auto& root2 = ContentRootNode();
+  EXPECT_FALSE(TreeContainsTextSubstring(root2, "notmaskedanymore"));
+}
+
+TEST_F(
+    AIPageContentAgentTest,
+    DISABLED_ContentEditableMultilineWithBulletIsNotClassifiedAsCustomPassword) {
+  // TODO(crbug.com/480179556): When adding contenteditable custom password
+  // redaction, keep a single-line guardrail to avoid false positives for rich
+  // text editors. Guardrail against false positives: rich text editors often
+  // use bullet characters (•) as list markers in normal prose, and we must not
+  // treat these as password-like fields. We require contenteditable masking
+  // heuristics to apply only to single-line fields.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div id='editor' contenteditable='true'>"
+      "    <div>&#8226; item</div>"
+      "    <div>more</div>"
+      "  </div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_TRUE(TreeContainsTextSubstring(root, "item"));
+  EXPECT_TRUE(TreeContainsTextSubstring(root, "more"));
+}
+
+TEST_F(AIPageContentAgentTest, InteractiveElementsTextArea) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <textarea>text</textarea>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& text_area = *root.children_nodes[0];
+  CheckFormControlNode(text_area, mojom::blink::FormControlType::kTextArea);
+  EXPECT_EQ(text_area.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kNoRedactionNecessary);
+  CheckHitTestableAndInteractive(text_area,
+                                 {ClickabilityReason::kClickableControl});
+
+  // Text area uses a UA shadow DOM internally to create an editable box.
+  const auto& shadow_div = *text_area.children_nodes[0];
+  EXPECT_EQ(shadow_div.children_nodes.size(), 1u);
+  CheckContainerNode(shadow_div);
+  CheckHitTestableAndInteractive(shadow_div, {ClickabilityReason::kEditable});
+
+  EXPECT_EQ(shadow_div.children_nodes.size(), 1u);
+  const auto& text_area_text = *shadow_div.children_nodes[0];
+  CheckTextNode(text_area_text, "text");
+  CheckHitTestableButNotInteractive(text_area_text);
+}
+
+TEST_F(AIPageContentAgentTest, InteractiveElementsButton) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <button>button</button>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& button = *root.children_nodes[0];
+  CheckFormControlNode(button, mojom::blink::FormControlType::kButtonSubmit);
+  EXPECT_EQ(button.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kNoRedactionNecessary);
+  CheckHitTestableAndInteractive(button,
+                                 {ClickabilityReason::kClickableControl,
+                                  ClickabilityReason::kHoverPseudoClass});
+  EXPECT_TRUE(button.content_attributes->node_interaction_info->is_focusable);
+
+  ASSERT_EQ(button.children_nodes.size(), 1u);
+  const auto& button_text = *button.children_nodes[0];
+  CheckTextNode(button_text, "button");
+  EXPECT_TRUE(button_text.content_attributes->node_interaction_info);
+  CheckHitTestableButNotInteractive(button_text);
+}
+
+TEST_F(AIPageContentAgentTest, InteractiveElementsResizableDiv) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    div {"
+      "      resize: both;"
+      "      overflow: auto;"
+      "      border: 1px solid black;"
+      "      width: 200px;"
+      "    }"
+      "  </style>"
+      "  <div>resize</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& resize = *ContentRootNode().children_nodes[0];
+  CheckContainerNode(resize);
+  ASSERT_TRUE(resize.content_attributes->node_interaction_info);
+  EXPECT_FALSE(resize.content_attributes->node_interaction_info->scroller_info);
+  CheckHitTestableButNotInteractive(resize);
+
+  ASSERT_EQ(resize.children_nodes.size(), 1u);
+  const auto& resize_text = *resize.children_nodes[0];
+  CheckTextNode(resize_text, "resize");
+  EXPECT_TRUE(resize_text.content_attributes->node_interaction_info);
+  CheckHitTestableButNotInteractive(resize_text);
+}
+
+TEST_F(AIPageContentAgentTest, Selection) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <p id='p1'>Paragraph 1</p>"
+      "  <p id='p2'>Paragraph 2</p>"
+      "  <p id='p3'>Paragraph 3</p>"
+      "  <script>"
+      "    const p1 = document.getElementById('p1');"
+      "    const p2 = document.getElementById('p2');"
+      "    const range = new Range();"
+      "    range.setStart(p1.childNodes[0], 10);"
+      "    range.setEnd(p2.childNodes[0], 9);"
+      "    const selection = window.getSelection();"
+      "    selection.removeAllRanges();"
+      "    selection.addRange(range);"
+      "  </script>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 3u);
+
+  const auto& paragraph1 = *root.children_nodes[0];
+  CheckTextNode(*paragraph1.children_nodes[0], "Paragraph 1");
+
+  const auto& paragraph2 = *root.children_nodes[1];
+  CheckTextNode(*paragraph2.children_nodes[0], "Paragraph 2");
+
+  const auto& paragraph3 = *root.children_nodes[2];
+  CheckTextNode(*paragraph3.children_nodes[0], "Paragraph 3");
+
+  const auto& frame_interaction_info =
+      Content()->frame_data->frame_interaction_info;
+  ASSERT_TRUE(frame_interaction_info->selection);
+  const auto& selection = *frame_interaction_info->selection;
+  EXPECT_EQ(selection.selected_text, "1\n\nParagraph");
+  EXPECT_EQ(selection.start_dom_node_id,
+            paragraph1.children_nodes[0]->content_attributes->dom_node_id);
+  EXPECT_EQ(selection.end_dom_node_id,
+            paragraph2.children_nodes[0]->content_attributes->dom_node_id);
+  EXPECT_EQ(selection.start_offset, 10);
+  EXPECT_EQ(selection.end_offset, 9);
+}
+
+TEST_F(AIPageContentAgentTest, SelectionInIframe) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <iframe srcdoc='"
+      "    <p id=\"p1\">Paragraph 1</p>"
+      "    <p id=\"p2\">Paragraph 2</p>"
+      "    <p id=\"p3\">Paragraph 3</p>"
+      "    <script>"
+      "      const p1 = document.getElementById(\"p1\");"
+      "      const p2 = document.getElementById(\"p2\");"
+      "      const range = new Range();"
+      "      range.setStart(p1.childNodes[0], 10);"
+      "      range.setEnd(p2.childNodes[0], 9);"
+      "      const selection = window.getSelection();"
+      "      selection.removeAllRanges();"
+      "      selection.addRange(range);"
+      "    </script>"
+      "  '></iframe>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& iframe = *root.children_nodes[0];
+  CheckIframeNode(iframe);
+  EXPECT_EQ(iframe.children_nodes.size(), 1u);
+
+  const auto& iframe_root = *iframe.children_nodes[0];
+  CheckRootNode(iframe_root);
+  EXPECT_EQ(iframe_root.children_nodes.size(), 3u);
+
+  const auto& paragraph1 = *iframe_root.children_nodes[0];
+  CheckTextNode(*paragraph1.children_nodes[0], "Paragraph 1");
+
+  const auto& paragraph2 = *iframe_root.children_nodes[1];
+  CheckTextNode(*paragraph2.children_nodes[0], "Paragraph 2");
+
+  const auto& paragraph3 = *iframe_root.children_nodes[2];
+  CheckTextNode(*paragraph3.children_nodes[0], "Paragraph 3");
+
+  const auto& frame_interaction_info =
+      Content()->frame_data->frame_interaction_info;
+  ASSERT_FALSE(frame_interaction_info->selection);
+
+  EXPECT_TRUE(iframe.content_attributes->iframe_data->content);
+  const auto& iframe_interaction_info =
+      iframe.content_attributes->iframe_data->content->get_local_frame_data()
+          ->frame_interaction_info;
+  ASSERT_TRUE(iframe_interaction_info->selection);
+  const auto& selection = *iframe_interaction_info->selection;
+  EXPECT_EQ(selection.selected_text, "1\n\nParagraph");
+  EXPECT_EQ(selection.start_dom_node_id,
+            paragraph1.children_nodes[0]->content_attributes->dom_node_id);
+  EXPECT_EQ(selection.end_dom_node_id,
+            paragraph2.children_nodes[0]->content_attributes->dom_node_id);
+  EXPECT_EQ(selection.start_offset, 10);
+  EXPECT_EQ(selection.end_offset, 9);
+}
+
+TEST_F(AIPageContentAgentTest, Focus) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <button id='button'>button</button>"
+      "  <script>"
+      "    const button = document.getElementById('button');"
+      "    button.focus();"
+      "  </script>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& button = *root.children_nodes[0];
+  const auto& page_interaction_info = Content()->page_interaction_info;
+  EXPECT_EQ(page_interaction_info->focused_dom_node_id,
+            button.content_attributes->dom_node_id);
+
+  const auto& frame_interaction_info =
+      Content()->frame_data->frame_interaction_info;
+  EXPECT_EQ(frame_interaction_info->focused_dom_node_id,
+            button.content_attributes->dom_node_id);
+}
+
+TEST_F(AIPageContentAgentTest, AccessibilityFocus) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    #button1 {"
+      "      position: absolute;"
+      "      top: -10px;"
+      "      left: -20px;"
+      "      width: 30px;"
+      "      height: 40px;"
+      "    }"
+      "  </style>"
+      "  <button id='button1'>button1</button>"
+      "  <div id='div2'>div2</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // Enable accessibility.
+  ui::AXMode ax_mode = ui::kAXModeComplete;
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto context = std::make_unique<AXContext>(*document, ax_mode);
+  EXPECT_TRUE(document->ExistingAXObjectCache());
+  auto* ax_object_cache =
+      To<AXObjectCacheImpl>(document->ExistingAXObjectCache());
+  EXPECT_EQ(ax_mode, ax_object_cache->GetAXMode());
+  ax_object_cache->UpdateAXForAllDocuments();
+
+  // Set accessibility focus to the button.
+  auto* button_element = document->getElementById(AtomicString("button1"));
+  auto* button_ax_object = ax_object_cache->Get(button_element);
+  ui::AXActionData action_data;
+  action_data.action = ax::mojom::blink::Action::kSetAccessibilityFocus;
+  button_ax_object->PerformAction(action_data);
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& button = *root.children_nodes[0];
+  const auto& div2 = *root.children_nodes[1];
+  const auto& page_interaction_info = Content()->page_interaction_info;
+  EXPECT_EQ(page_interaction_info->accessibility_focused_dom_node_id,
+            button.content_attributes->dom_node_id);
+  CheckGeometry(button, gfx::Rect(-20, -10, 30, 40), gfx::Rect(0, 0, 10, 30));
+  EXPECT_FALSE(div2.content_attributes->geometry);
+
+  const auto& frame_interaction_info =
+      Content()->frame_data->frame_interaction_info;
+  EXPECT_EQ(frame_interaction_info->accessibility_focused_dom_node_id,
+            button.content_attributes->dom_node_id);
+}
+
+TEST_F(AIPageContentAgentTest, MousePosition) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    div {"
+      "      position: absolute;"
+      "      top: 100px;"
+      "      left: 200px;"
+      "    }"
+      "  </style>"
+      "  <div>text</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // Move the mouse to the middle of the page.
+  FireMouseMoveEvent(gfx::PointF(150, 50));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& text = *root.children_nodes[0];
+  CheckTextNode(text, "text");
+
+  EXPECT_EQ(Content()->page_interaction_info->mouse_position->x(), 150);
+  EXPECT_EQ(Content()->page_interaction_info->mouse_position->y(), 50);
+}
+
+TEST_F(AIPageContentAgentTest, MetaTags) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<head>"
+      "  <meta charset='UTF-8'>"
+      "  <meta content='ignored'>"
+      "  <meta name='author' content='George'>"
+      "  <meta name='keywords' content='HTML, CSS, JavaScript'>"
+      "  <meta name='nocontent'>"
+      "  <meta name='emptycontent' content=''>"
+      "  <meta id='nullcontent' name='nullcontent'>"
+      "</head>"
+      "<body>"
+      "  <meta name='ignored'>"
+      "  <iframe srcdoc=\""
+      "    <head>"
+      "      <meta charset='UTF-8'>"
+      "      <meta name='author' content='Gary'>"
+      "      <meta name='keywords' content='HTML, CSS, JavaScript'>"
+      "    </head>"
+      "    <body>child frame</body>"
+      "  \""
+      "  </iframe>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // Explicitly set the content of the nullcontent meta tag to the null atom to
+  // test this case.
+  auto& document = *helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  document.getElementById(AtomicString("nullcontent"))
+      ->setAttribute(html_names::kContentAttr, g_null_atom);
+
+  auto options = mojom::blink::AIPageContentOptions::New();
+  options->max_meta_elements = 32;
+  GetAIPageContent(std::move(options));
+
+  EXPECT_EQ(Content()->frame_data->meta_data.size(), 5u);
+
+  EXPECT_EQ(Content()->frame_data->meta_data[0]->name, "author");
+  EXPECT_EQ(Content()->frame_data->meta_data[0]->content, "George");
+
+  EXPECT_EQ(Content()->frame_data->meta_data[1]->name, "keywords");
+  EXPECT_EQ(Content()->frame_data->meta_data[1]->content,
+            "HTML, CSS, JavaScript");
+
+  EXPECT_EQ(Content()->frame_data->meta_data[2]->name, "nocontent");
+  EXPECT_EQ(Content()->frame_data->meta_data[3]->content, "");
+
+  EXPECT_EQ(Content()->frame_data->meta_data[3]->name, "emptycontent");
+  EXPECT_EQ(Content()->frame_data->meta_data[3]->content, "");
+
+  EXPECT_EQ(Content()->frame_data->meta_data[4]->name, "nullcontent");
+  EXPECT_EQ(Content()->frame_data->meta_data[4]->content, "");
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& iframe = *root.children_nodes[0];
+  EXPECT_EQ(iframe.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kIframe);
+
+  const auto& iframe_data = *iframe.content_attributes->iframe_data;
+
+  EXPECT_TRUE(iframe.content_attributes->iframe_data->content);
+  EXPECT_EQ(iframe_data.content->get_local_frame_data()->meta_data.size(), 2u);
+  EXPECT_EQ(iframe_data.content->get_local_frame_data()->meta_data[0]->name,
+            "author");
+  EXPECT_EQ(iframe_data.content->get_local_frame_data()->meta_data[0]->content,
+            "Gary");
+
+  EXPECT_EQ(iframe_data.content->get_local_frame_data()->meta_data[1]->name,
+            "keywords");
+  EXPECT_EQ(iframe_data.content->get_local_frame_data()->meta_data[1]->content,
+            "HTML, CSS, JavaScript");
+}
+
+TEST_F(AIPageContentAgentTest, NestedIframesMetaTags) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<head><meta name=author content=George></head>"
+      "<body>parent"
+      "  <iframe srcdoc=\""
+      "    <head><meta name=author content=Gary></head>"
+      "    <body>child"
+      "      <iframe srcdoc='"
+      "        <head><meta name=author content=Jordan></head>"
+      "        <body>grandchild</body"
+      "      '></iframe>"
+      "    </body>"
+      "  \"></iframe>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto options = mojom::blink::AIPageContentOptions::New();
+  options->max_meta_elements = 32;
+  GetAIPageContent(std::move(options));
+
+  EXPECT_EQ(Content()->frame_data->meta_data.size(), 1u);
+
+  EXPECT_EQ(Content()->frame_data->meta_data[0]->name, "author");
+  EXPECT_EQ(Content()->frame_data->meta_data[0]->content, "George");
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& iframe = *root.children_nodes[1];
+  EXPECT_EQ(iframe.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kIframe);
+
+  const auto& iframe_data = *iframe.content_attributes->iframe_data;
+  EXPECT_TRUE(iframe_data.content);
+  EXPECT_EQ(iframe_data.content->get_local_frame_data()->meta_data.size(), 1u);
+
+  EXPECT_EQ(iframe_data.content->get_local_frame_data()->meta_data[0]->name,
+            "author");
+  EXPECT_EQ(iframe_data.content->get_local_frame_data()->meta_data[0]->content,
+            "Gary");
+
+  EXPECT_EQ(iframe.children_nodes.size(), 1u);
+
+  // In the iframe children_nodes there is a root node that has two children.
+  // The first child is a text node and the second is the subiframe. The key
+  // thing we want to check here is that the subiframe has the correct metadata.
+  const auto& subiframe = *iframe.children_nodes[0]->children_nodes[1];
+  EXPECT_EQ(subiframe.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kIframe);
+
+  const auto& subiframe_data = *subiframe.content_attributes->iframe_data;
+  EXPECT_TRUE(subiframe_data.content);
+  EXPECT_EQ(subiframe_data.content->get_local_frame_data()->meta_data.size(),
+            1u);
+
+  EXPECT_EQ(subiframe_data.content->get_local_frame_data()->meta_data[0]->name,
+            "author");
+  EXPECT_EQ(
+      subiframe_data.content->get_local_frame_data()->meta_data[0]->content,
+      "Jordan");
+}
+
+TEST_F(AIPageContentAgentTest, NodeIdAllowlist_DefaultModeTypePolicy) {
+  // This page has a paragraph with a text child. It gives us a simple shape to
+  // verify that type-based node-id policy does not implicitly propagate ids to
+  // descendants.
+  LoadNodeIdPolicyParagraphFixture();
+
+  GetAIPageContent(CreateNodeIdPolicyOptionsForTest(
+      {mojom::blink::AIPageContentAttributeType::kParagraph}));
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& paragraph = *root.children_nodes[0];
+  EXPECT_EQ(paragraph.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kParagraph);
+  ASSERT_TRUE(paragraph.content_attributes->dom_node_id.has_value());
+  EXPECT_GT(*paragraph.content_attributes->dom_node_id, kInvalidDOMNodeId);
+
+  ASSERT_EQ(paragraph.children_nodes.size(), 1u);
+  const auto& text = *paragraph.children_nodes[0];
+  EXPECT_EQ(text.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kText);
+  EXPECT_FALSE(text.content_attributes->dom_node_id.has_value());
+}
+
+TEST_F(AIPageContentAgentTest,
+       NodeIdAllowlist_UnsetOptionsPreserveLegacyIdEmission) {
+  // If `node_id_allowlist` is unset, APC should preserve legacy broad emission.
+  LoadNodeIdPolicyParagraphFixture();
+
+  GetAIPageContent(GetAIPageContentOptionsForTest());
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& paragraph = *root.children_nodes[0];
+  ASSERT_TRUE(paragraph.content_attributes->dom_node_id.has_value());
+
+  ASSERT_EQ(paragraph.children_nodes.size(), 1u);
+  const auto& text = *paragraph.children_nodes[0];
+  ASSERT_TRUE(text.content_attributes->dom_node_id.has_value());
+}
+
+TEST_F(AIPageContentAgentTest,
+       NodeIdAllowlist_EmptyOptionsSuppressTypeBasedIds) {
+  // With explicit but empty options, regular structural nodes should not emit
+  // ids. The APC root still needs one so later metadata can point back to it.
+  LoadNodeIdPolicyParagraphFixture();
+
+  GetAIPageContent(CreateNodeIdPolicyOptionsForTest());
+
+  const auto& root = ContentRootNode();
+  ASSERT_TRUE(root.content_attributes);
+  ASSERT_TRUE(root.content_attributes->dom_node_id.has_value());
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& paragraph = *root.children_nodes[0];
+  EXPECT_FALSE(paragraph.content_attributes->dom_node_id.has_value());
+
+  ASSERT_EQ(paragraph.children_nodes.size(), 1u);
+  const auto& text = *paragraph.children_nodes[0];
+  EXPECT_FALSE(text.content_attributes->dom_node_id.has_value());
+}
+
+TEST_F(AIPageContentAgentTest,
+       NodeIdAllowlist_EmptyOptionsDoNotGenerateIdForSuppressedTextNode) {
+  // Build a simple paragraph dynamically and verify APC does not generate a
+  // DOM id for its text node when empty node-id options suppress output ids.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), "<body></body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  ASSERT_TRUE(document->body());
+
+  auto* paragraph = document->CreateRawElement(html_names::kPTag);
+  paragraph->setAttribute(html_names::kIdAttr, AtomicString("dynamic_p"));
+  auto* text_node = document->createTextNode("dynamic paragraph text");
+  paragraph->appendChild(text_node);
+  document->body()->appendChild(paragraph);
+
+  // Precondition: this test is only meaningful if APC starts from an idless
+  // text node.
+  ASSERT_EQ(DOMNodeIds::ExistingIdForNode(text_node), kInvalidDOMNodeId);
+
+  GetAIPageContent(CreateNodeIdPolicyOptionsForTest());
+
+  // The text node is suppressed by policy, so APC must not generate its id.
+  EXPECT_EQ(DOMNodeIds::ExistingIdForNode(text_node), kInvalidDOMNodeId);
+
+  // Keep the output-side assertion as an additional behavior guard.
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& output_paragraph = *root.children_nodes[0];
+  ASSERT_EQ(output_paragraph.children_nodes.size(), 1u);
+  const auto& output_text = *output_paragraph.children_nodes[0];
+  EXPECT_FALSE(output_text.content_attributes->dom_node_id.has_value());
+}
+
+TEST_F(
+    AIPageContentAgentTest,
+    NodeIdAllowlist_AllowlistedParentDoesNotGenerateIdForSuppressedTextNode) {
+  // The parent paragraph is allowlisted and may emit its id. The text child is
+  // still suppressed and must remain idless before and after APC extraction.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), "<body></body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  ASSERT_TRUE(document->body());
+
+  auto* paragraph = document->CreateRawElement(html_names::kPTag);
+  paragraph->setTextContent("allowlisted parent text");
+  auto* text_node = paragraph->firstChild();
+  ASSERT_TRUE(text_node);
+
+  document->body()->appendChild(paragraph);
+  ASSERT_EQ(DOMNodeIds::ExistingIdForNode(text_node), kInvalidDOMNodeId);
+
+  GetAIPageContent(CreateNodeIdPolicyOptionsForTest(
+      {mojom::blink::AIPageContentAttributeType::kParagraph}));
+
+  EXPECT_EQ(DOMNodeIds::ExistingIdForNode(text_node), kInvalidDOMNodeId);
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& output_paragraph = *root.children_nodes[0];
+  ASSERT_TRUE(output_paragraph.content_attributes->dom_node_id.has_value());
+  ASSERT_EQ(output_paragraph.children_nodes.size(), 1u);
+  const auto& output_text = *output_paragraph.children_nodes[0];
+  EXPECT_FALSE(output_text.content_attributes->dom_node_id.has_value());
+}
+
+TEST_F(AIPageContentAgentTest, NodeIdAllowlist_ActionableNodesAlwaysShowId) {
+  // Action execution depends on ids for actionable targets. This override
+  // should apply even if the type allowlist is empty.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <button id='button'>button</button>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent(CreateNodeIdPolicyOptionsForTest(
+      mojom::blink::AIPageContentMode::kActionableElements));
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& button = *root.children_nodes[0];
+  ASSERT_TRUE(button.content_attributes->node_interaction_info);
+  ASSERT_TRUE(button.content_attributes->dom_node_id.has_value());
+  EXPECT_GT(*button.content_attributes->dom_node_id, kInvalidDOMNodeId);
+}
+
+TEST_F(AIPageContentAgentTest,
+       NodeIdAllowlist_AnchoredOffscreenActionableNodeLosesActionableState) {
+  // A fixed popup item parked below the viewport is not reachable by
+  // scrolling. It should therefore lose actionable metadata even if earlier
+  // output-policy decisions already caused APC to mint a DOM id for it.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <button id='trigger'>Open sizes</button>"
+      "  <div id='sheet' style='position: fixed; left: 0; right: 0; bottom: 0;"
+      "      transform: translateY(100%);'>"
+      "    <button id='item'>Size 6.5</button>"
+      "  </div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent(CreateNodeIdPolicyOptionsForTest(
+      mojom::blink::AIPageContentMode::kActionableElements));
+
+  const auto* trigger_node = FindNodeBySelector("#trigger");
+  ASSERT_TRUE(trigger_node);
+  ASSERT_TRUE(trigger_node->content_attributes->node_interaction_info);
+  ASSERT_TRUE(trigger_node->content_attributes->dom_node_id.has_value());
+
+  const auto* item_node =
+      FindFormControlNodeWithTextSubstring(ContentRootNode(), "Size 6.5");
+  ASSERT_TRUE(item_node);
+  EXPECT_FALSE(item_node->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTest, NodeIdAllowlist_FocusedNodeAlwaysShowsId) {
+  // Focus metadata is consumed browser-side. The focused node must remain
+  // id-backed even with an empty allowlist.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <input id='focused_input' value='x'>"
+      "  <p id='paragraph'>visible paragraph text</p>"
+      "  <script>"
+      "    document.getElementById('focused_input').focus();"
+      "  </script>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent(CreateNodeIdPolicyOptionsForTest());
+
+  const auto& page_interaction_info = Content()->page_interaction_info;
+  ASSERT_TRUE(page_interaction_info->focused_dom_node_id.has_value());
+  EXPECT_GT(*page_interaction_info->focused_dom_node_id, kInvalidDOMNodeId);
+
+  const mojom::blink::AIPageContentNode* focused_node =
+      FindNodeByDomNodeId(*page_interaction_info->focused_dom_node_id);
+  ASSERT_TRUE(focused_node);
+  ASSERT_TRUE(focused_node->content_attributes->dom_node_id.has_value());
+  EXPECT_EQ(*focused_node->content_attributes->dom_node_id,
+            *page_interaction_info->focused_dom_node_id);
+
+  // Non-focused nodes should continue to suppress ids under empty allowlist
+  // policy.
+  ExpectSelectorNotInApcOutput("#paragraph");
+}
+
+TEST_F(AIPageContentAgentTest, NodeIdAllowlist_LabelForTargetAlwaysShowsId) {
+  // `label_for_dom_node_id` is a metadata edge. The referenced control must
+  // still emit a node id so browser-side linking remains valid.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <label for='name_input' id='name_label'>Name</label>"
+      "  <input id='name_input' value='Ada'>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent(CreateNodeIdPolicyOptionsForTest(
+      mojom::blink::AIPageContentMode::kActionableElements));
+
+  const auto* label_node = FindNodeBySelector("#name_label");
+  ASSERT_TRUE(label_node);
+  ASSERT_TRUE(
+      label_node->content_attributes->label_for_dom_node_id.has_value());
+
+  const DOMNodeId target_dom_node_id =
+      *label_node->content_attributes->label_for_dom_node_id;
+  const auto* target_node = FindNodeByDomNodeId(target_dom_node_id);
+  ASSERT_TRUE(target_node);
+  ASSERT_TRUE(target_node->content_attributes->dom_node_id.has_value());
+  EXPECT_EQ(*target_node->content_attributes->dom_node_id, target_dom_node_id);
+}
+
+TEST_F(AIPageContentAgentTest,
+       NodeIdAllowlist_LabelTargetShowsIdWhenLabelFollowsControl) {
+  // The label can appear after its target control in layout order.
+  // The target must still remain id-backed for label metadata round-trips.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <input id='name_input' value='Ada'>"
+      "  <label for='name_input' id='name_label'>Name</label>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent(CreateNodeIdPolicyOptionsForTest(
+      mojom::blink::AIPageContentMode::kActionableElements));
+
+  const auto* label_node = FindNodeBySelector("#name_label");
+  ASSERT_TRUE(label_node);
+  ASSERT_TRUE(
+      label_node->content_attributes->label_for_dom_node_id.has_value());
+
+  const DOMNodeId target_dom_node_id =
+      *label_node->content_attributes->label_for_dom_node_id;
+  const auto* target_node = FindNodeByDomNodeId(target_dom_node_id);
+  ASSERT_TRUE(target_node);
+  ASSERT_TRUE(target_node->content_attributes->dom_node_id.has_value());
+  EXPECT_EQ(*target_node->content_attributes->dom_node_id, target_dom_node_id);
+}
+
+TEST_F(AIPageContentAgentTest,
+       NodeIdAllowlist_AccessibilityFocusedNodeAlwaysShowsId) {
+  // Accessibility focus should force id emission even when type policy would
+  // otherwise suppress ids.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <button id='button1'>button1</button>"
+      "  <div id='div2'>div2</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  ui::AXMode ax_mode = ui::kAXModeComplete;
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  auto context = std::make_unique<AXContext>(*document, ax_mode);
+  auto* ax_object_cache =
+      To<AXObjectCacheImpl>(document->ExistingAXObjectCache());
+  ASSERT_TRUE(ax_object_cache);
+  ax_object_cache->UpdateAXForAllDocuments();
+  auto* button_element = document->getElementById(AtomicString("button1"));
+  ASSERT_TRUE(button_element);
+  auto* button_ax_object = ax_object_cache->Get(button_element);
+  ASSERT_TRUE(button_ax_object);
+  ui::AXActionData action_data;
+  action_data.action = ax::mojom::blink::Action::kSetAccessibilityFocus;
+  button_ax_object->PerformAction(action_data);
+
+  GetAIPageContent(CreateNodeIdPolicyOptionsForTest());
+
+  const auto& page_interaction_info = Content()->page_interaction_info;
+  ASSERT_TRUE(
+      page_interaction_info->accessibility_focused_dom_node_id.has_value());
+  EXPECT_GT(*page_interaction_info->accessibility_focused_dom_node_id,
+            kInvalidDOMNodeId);
+
+  const mojom::blink::AIPageContentNode* focused_node = FindNodeByDomNodeId(
+      *page_interaction_info->accessibility_focused_dom_node_id);
+  ASSERT_TRUE(focused_node);
+  ASSERT_TRUE(focused_node->content_attributes->dom_node_id.has_value());
+
+  // Non-focused nodes should continue to suppress ids under empty allowlist
+  // policy.
+  ExpectSelectorNotInApcOutput("#div2");
+}
+
+TEST_F(AIPageContentAgentTest, NodeIdAllowlist_SelectionNodesAlwaysShowId) {
+  // Selection metadata references start/end DOM nodes and must remain
+  // round-trippable even when the policy allowlist is empty.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <p id='p1'>Paragraph 1</p>"
+      "  <p id='p2'>Paragraph 2</p>"
+      "  <p id='p3'>Paragraph 3</p>"
+      "  <script>"
+      "    const p1 = document.getElementById('p1');"
+      "    const p2 = document.getElementById('p2');"
+      "    const range = new Range();"
+      "    range.setStart(p1.childNodes[0], 10);"
+      "    range.setEnd(p2.childNodes[0], 9);"
+      "    const selection = window.getSelection();"
+      "    selection.removeAllRanges();"
+      "    selection.addRange(range);"
+      "  </script>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent(CreateNodeIdPolicyOptionsForTest());
+
+  const auto& frame_interaction_info =
+      Content()->frame_data->frame_interaction_info;
+  ASSERT_TRUE(frame_interaction_info->selection);
+  const auto& selection = *frame_interaction_info->selection;
+
+  EXPECT_GT(selection.start_dom_node_id, kInvalidDOMNodeId);
+  EXPECT_GT(selection.end_dom_node_id, kInvalidDOMNodeId);
+
+  const auto* start_node = FindNodeByDomNodeId(selection.start_dom_node_id);
+  ASSERT_TRUE(start_node);
+  ASSERT_TRUE(start_node->content_attributes->dom_node_id.has_value());
+
+  const auto* end_node = FindNodeByDomNodeId(selection.end_dom_node_id);
+  ASSERT_TRUE(end_node);
+  ASSERT_TRUE(end_node->content_attributes->dom_node_id.has_value());
+
+  // Nodes unrelated to the selection should continue to suppress ids.
+  ExpectSelectorNotInApcOutput("#p3");
+}
+
+TEST_F(AIPageContentAgentTest,
+       NodeIdAllowlist_DefaultModeMultipleAllowlistedTypes) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <h1 id='heading'>Visible heading text</h1>"
+      "  <p id='paragraph'>Visible paragraph text</p>"
+      "  <div id='container'>Visible container text</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent(CreateNodeIdPolicyOptionsForTest(
+      {mojom::blink::AIPageContentAttributeType::kParagraph,
+       mojom::blink::AIPageContentAttributeType::kHeading}));
+
+  const auto* heading_node = FindNodeBySelector("#heading");
+  ASSERT_TRUE(heading_node);
+  ASSERT_TRUE(heading_node->content_attributes->dom_node_id.has_value());
+  EXPECT_GT(*heading_node->content_attributes->dom_node_id, kInvalidDOMNodeId);
+
+  const auto* paragraph_node = FindNodeBySelector("#paragraph");
+  ASSERT_TRUE(paragraph_node);
+  ASSERT_TRUE(paragraph_node->content_attributes->dom_node_id.has_value());
+  EXPECT_GT(*paragraph_node->content_attributes->dom_node_id,
+            kInvalidDOMNodeId);
+
+  ExpectSelectorNotInApcOutput("#container");
+}
+
+TEST_F(AIPageContentAgentTest, Title) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<head>"
+      "  <title>test title</title>"
+      "</head>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  EXPECT_EQ(Content()->frame_data->title, "test title");
+}
+
+bool ContainsRole(const Vector<mojom::blink::AIPageContentAnnotatedRole>& roles,
+                  mojom::blink::AIPageContentAnnotatedRole role) {
+  for (const auto& r : roles) {
+    if (r == role) {
+      return true;
+    }
+  }
+  return false;
+}
+
+TEST_F(AIPageContentAgentTest, PaidContent) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"HTML(
+  <head>
+  <script></script>
+  <script type='unrelated'></script>
+  <script type="application/ld+json">{this: "will fail parsing",}</script>
+  <script type="application/ld+json">"not": "an object"</script>
+  <script type="application/ld+json">{
+    "@context": "http://schema.org",
+    "@type": "NewsArticle",
+    "mainEntityOfPage": "https://www.evergreengazette.com/world/world-news/",
+    "headline": "City Council Debates Future of Automated Transit System",
+    "alternativeHeadline": "City Council Debates Future of Automated Transit System",
+    "dateModified": "2025-03-25T19:17:05.541Z",
+    "datePublished": "2025-03-25T09:02:58.131Z",
+    "description": "The City Council has been asked to discuss the future of automated transit systems, including the feasibility of a bus-on-rails system, in a special meeting on Thursday, March 28.",
+    "author": [
+        {
+            "@type": "Person",
+            "name": "Finlay Joy",
+            "url": "https://www.evergreengazette.com/people/finlay-joy/"
+        },
+        {
+            "@type": "Person",
+            "name": "Calum Gerhard",
+            "url": "https://www.evergreengazette.com/people/calum-gerhard/"
+        }
+    ],
+    "isPartOf": {
+        "@type": [
+            "CreativeWork",
+            "Product"
+        ],
+        "name": "The Evergreen Gazette",
+        "productID": "evergreengazette.com:basic",
+        "description": "The Evergreen Gazette is your trusted source for comprehensive local news, insightful analysis, and community-focused reporting.",
+        "sku": "https://subscribe.evergreengazette.com",
+        "image": "https://www.evergreengazette.com/evergreen-gazette-logo.png",
+        "brand": {
+            "@type": "brand",
+            "name": "The Evergreen Gazette"
+        },
+        "offers": {
+            "@type": "offer",
+            "url": "https://subscribe.evergreengazette.com/acquisition?promo=h97"
+        }
+    },
+    "publisher": {
+        "@id": "evergreengazette.com",
+        "@type": "NewsMediaOrganization",
+        "name": "The Evergreen Gazette"
+    },
+    "isAccessibleForFree": false,
+    "hasPart": {
+        "@type": "WebPageElement",
+        "cssSelector": ".paidContent",
+        "isAccessibleForFree": false
+    }
+  }</script>
+  <body>
+    Content
+    <div class="paidContent">Paid Content</div>
+  </body>
+  )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  // The root node contains paid content.
+  EXPECT_TRUE(Content()->frame_data->contains_paid_content);
+
+  const auto& root = ContentRootNode();
+
+  // The text node should not have the paid content role.
+  const auto& text_node = *root.children_nodes[0];
+  EXPECT_FALSE(
+      ContainsRole(text_node.content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+
+  // The paid content node should have the paid content role.
+  const auto& paid_node = *root.children_nodes[1];
+  EXPECT_TRUE(
+      ContainsRole(paid_node.content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+}
+
+TEST_F(AIPageContentAgentTest, PaidContentContextMismatch) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"HTML(
+      <script type="application/ld+json">{
+        "@context": "http://acme.org",
+        "@type": "NewsArticle",
+        "isAccessibleForFree": false,
+        "hasPart": {
+            "@type": "WebPageElement",
+            "cssSelector": ".paidContent",
+            "isAccessibleForFree": false
+        }
+      }</script>
+      <body>
+        Content
+        <div class="paidContent">Paid Content</div>
+      </body>
+  )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  // The root node does not contain paid content.
+  EXPECT_FALSE(Content()->frame_data->contains_paid_content);
+
+  const auto& root = ContentRootNode();
+
+  // The text node should not have the paid content role.
+  const auto& text_node = *root.children_nodes[0];
+  EXPECT_FALSE(
+      ContainsRole(text_node.content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+
+  // The paid content node should have the paid content role.
+  const auto& paid_node = *root.children_nodes[1];
+  EXPECT_FALSE(
+      ContainsRole(paid_node.content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+}
+
+TEST_F(AIPageContentAgentTest, PaidContentRootOnly) {
+  // Note that isAccessibleForFree = "False" to match real world examples.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"HTML(
+      <script type="application/ld+json">{
+        "@context": "http://schema.org",
+        "@type": "NewsArticle",
+        "isAccessibleForFree": "False",
+        "hasPart": {
+          "@type": "unrelated"
+        }
+      }</script>
+      <body>
+        Content
+        <div class="paidContent">Paid Content</div>
+      </body>
+  )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  // The root node contains paid content.
+  EXPECT_TRUE(Content()->frame_data->contains_paid_content);
+
+  const auto& root = ContentRootNode();
+
+  // The text node should not have the paid content role.
+  const auto& text_node = *root.children_nodes[0];
+  EXPECT_FALSE(
+      ContainsRole(text_node.content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+
+  // The paid content node should have the paid content role.
+  const auto& paid_node = *root.children_nodes[1];
+  EXPECT_FALSE(
+      ContainsRole(paid_node.content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+}
+
+TEST_F(AIPageContentAgentTest, PaidContentMicrodata) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"HTML(
+      <script type="application/ld+json">{
+        "@context": "http://schema.org",
+        "@type": "NewsArticle",
+        "isAccessibleForFree": false
+      }</script>
+      <body>
+        Content
+        <div class="paidContent">
+          <meta itemprop="isAccessibleForFree" content="false">
+          Paid Content
+        </div>
+        <div class="paidContent">
+          <meta itemprop="unrelated">
+          Content
+        </div>
+      </body>
+  )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  // The root node contains paid content.
+  EXPECT_TRUE(Content()->frame_data->contains_paid_content);
+
+  const auto& root = ContentRootNode();
+
+  // The text node should not have the paid content role.
+  const auto& text_node = *root.children_nodes[0];
+  EXPECT_FALSE(
+      ContainsRole(text_node.content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+
+  // The paid content node should have the paid content role.
+  const auto& paid_node = *root.children_nodes[1];
+  EXPECT_TRUE(
+      ContainsRole(paid_node.content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+}
+
+TEST_F(AIPageContentAgentTest, PaidContentSomeYesSomeNo) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"HTML(
+      <script type="application/ld+json">{
+        "@context": "http://schema.org",
+        "@type": "NewsArticle",
+        "isAccessibleForFree": false,
+        "hasPart": {
+            "@type": "WebPageElement",
+            "cssSelector": ".paidContent",
+            "isAccessibleForFree": false
+        }
+      }</script>
+      <body>
+        Content
+        <div class="paidContent">Paid Content</div>
+        <div>Free Content</div>
+        <div class="paidContent">Paid Content</div>
+        <div>Free Content</div>
+      </body>
+  )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  // The root node contains paid content.
+  EXPECT_TRUE(Content()->frame_data->contains_paid_content);
+
+  const auto& root = ContentRootNode();
+
+  auto& nodes = root.children_nodes;
+
+  // Every other node should have the paid content role.
+  EXPECT_FALSE(
+      ContainsRole(nodes[0]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+  EXPECT_TRUE(
+      ContainsRole(nodes[1]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+  EXPECT_FALSE(
+      ContainsRole(nodes[2]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+  EXPECT_TRUE(
+      ContainsRole(nodes[3]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+  EXPECT_FALSE(
+      ContainsRole(nodes[4]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+}
+
+TEST_F(AIPageContentAgentTest, PaidContentMultipleHasParts) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"HTML(
+      <script type="application/ld+json">{
+        "@context": "https://schema.org",
+        "@type": "NewsArticle",
+        "mainEntityOfPage": {
+          "@type": "WebPage",
+          "@id": "https://example.org/article"
+          },
+        "isAccessibleForFree": false,
+        "hasPart": [
+          {
+            "@type": "WebPageElement",
+            "isAccessibleForFree": false,
+            "cssSelector": ".section1"
+          }, {
+            "@type": "WebPageElement",
+            "isAccessibleForFree": false,
+            "cssSelector": ".section2"
+          }
+        ]
+      }</script>
+      <body>
+        Content
+        <div class="section1">Paid Content</div>
+        <div class="section2">Paid Content</div>
+      </body>
+  )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  // The root node contains paid content.
+  EXPECT_TRUE(Content()->frame_data->contains_paid_content);
+
+  const auto& root = ContentRootNode();
+
+  auto& nodes = root.children_nodes;
+  EXPECT_FALSE(
+      ContainsRole(nodes[0]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+  EXPECT_TRUE(
+      ContainsRole(nodes[1]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+  EXPECT_TRUE(
+      ContainsRole(nodes[2]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+}
+
+TEST_F(AIPageContentAgentTest, PaidContentSubframe) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"HTML(
+      <body>
+      Parent doc is free!
+      <iframe srcdoc='
+        <script type="application/ld+json">{
+          "@context": "http://schema.org",
+          "@type": "NewsArticle",
+          "isAccessibleForFree": false,
+          "hasPart": {
+              "@type": "WebPageElement",
+              "cssSelector": ".paidContent",
+              "isAccessibleForFree": false
+          }
+        }</script>
+        <body>
+          Content
+          <div class="paidContent">Paid Content</div>
+        </body>
+      '></iframe>
+      </body>
+  )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  // The root node does not contain paid content.
+  EXPECT_FALSE(Content()->frame_data->contains_paid_content);
+
+  const auto& root = ContentRootNode();
+  auto& nodes = root.children_nodes;
+
+  EXPECT_FALSE(
+      ContainsRole(nodes[0]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+
+  const auto& iframe = nodes[1];
+  EXPECT_EQ(iframe->content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kIframe);
+  EXPECT_TRUE(iframe->content_attributes->iframe_data->content);
+  EXPECT_TRUE(
+      iframe->content_attributes->iframe_data->content->get_local_frame_data()
+          ->contains_paid_content);
+
+  auto& children = iframe->children_nodes[0]->children_nodes;
+  EXPECT_FALSE(
+      ContainsRole(children[0]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+  EXPECT_TRUE(
+      ContainsRole(children[1]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+}
+
+TEST_F(AIPageContentAgentTest, PaidContentSubframeMicrodata) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"HTML(
+      <script type="application/ld+json">{
+        "@context": "https://schema.org",
+        "@type": "NewsArticle",
+        "isAccessibleForFree": true
+      }</script>
+      <body>
+        Free Content
+        <div class="paidContent">
+          <meta itemprop="isAccessibleForFree" content="false">
+          Microdata not checked
+        </div>
+        <iframe srcdoc='
+          <script type="application/ld+json">{
+            "@context": "http://schema.org",
+            "@type": "NewsArticle",
+            "isAccessibleForFree": false
+          }</script>
+          <body>
+            Content
+            <div class="paidContent">
+              <meta itemprop="isAccessibleForFree" content="false">
+              Paid Content
+            </div>
+          </body>
+        '></iframe>
+        <iframe srcdoc='
+          <body>
+            Content
+            <div class="paidContent">
+              <meta itemprop="isAccessibleForFree" content="false">
+              Microdata not checked
+            </div>
+          </body>
+        '></iframe>
+        <iframe srcdoc='
+          <script type="application/ld+json">{
+            "@context": "http://schema.org",
+            "@type": "NewsArticle",
+            "isAccessibleForFree": false
+          }</script>
+          <body>
+            Content
+            <div class="paidContent">
+              <meta itemprop="isAccessibleForFree" content="false">
+              Paid Content
+            </div>
+          </body>
+        '></iframe>
+      </body>
+  )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  // The root node does not contain paid content.
+  EXPECT_FALSE(Content()->frame_data->contains_paid_content);
+
+  const auto& root = ContentRootNode();
+  auto& nodes = root.children_nodes;
+
+  EXPECT_FALSE(
+      ContainsRole(nodes[0]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+  EXPECT_FALSE(
+      ContainsRole(nodes[1]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+
+  const auto& iframe1 = nodes[2];
+  EXPECT_EQ(iframe1->content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kIframe);
+  EXPECT_TRUE(iframe1->content_attributes->iframe_data->content);
+  EXPECT_TRUE(
+      iframe1->content_attributes->iframe_data->content->get_local_frame_data()
+          ->contains_paid_content);
+
+  const auto& children1 = iframe1->children_nodes[0]->children_nodes;
+  EXPECT_FALSE(
+      ContainsRole(children1[0]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+  EXPECT_TRUE(
+      ContainsRole(children1[1]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+
+  const auto& iframe2 = nodes[3];
+  EXPECT_EQ(iframe2->content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kIframe);
+  EXPECT_TRUE(iframe2->content_attributes->iframe_data->content);
+  EXPECT_FALSE(
+      iframe2->content_attributes->iframe_data->content->get_local_frame_data()
+          ->contains_paid_content);
+
+  const auto& children2 = iframe2->children_nodes[0]->children_nodes;
+  EXPECT_FALSE(
+      ContainsRole(children2[0]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+  EXPECT_FALSE(
+      ContainsRole(children2[1]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+
+  const auto& iframe3 = nodes[4];
+  EXPECT_EQ(iframe3->content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kIframe);
+  EXPECT_TRUE(iframe3->content_attributes->iframe_data->content);
+  EXPECT_TRUE(
+      iframe3->content_attributes->iframe_data->content->get_local_frame_data()
+          ->contains_paid_content);
+
+  const auto& children3 = iframe3->children_nodes[0]->children_nodes;
+  EXPECT_FALSE(
+      ContainsRole(children3[0]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+  EXPECT_TRUE(
+      ContainsRole(children3[1]->content_attributes->annotated_roles,
+                   mojom::blink::AIPageContentAnnotatedRole::kPaidContent));
+}
+
+TEST_F(AIPageContentAgentTest, AnchorInInlineWithFloatingSibling) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<!DOCTYPE html>"
+      "<body style='margin:0; font: 1px/1px Ahem'>"
+      "  <span>"
+      "  <a href='https://www.google.com'>"
+      "    <div style='position: relative; float: left;'>text in div</div>"
+      "    <span>text</span>"
+      "  </a>"
+      "  </span>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  LoadAhem();
+  GetAIPageContentWithActionableElements();
+
+  const mojom::blink::AIPageContentNode* anchor = FindNodeBySelector("a");
+  ASSERT_TRUE(anchor->content_attributes->geometry);
+  CheckAnchorNode(*anchor, blink::KURL("https://www.google.com/"), {});
+  ASSERT_TRUE(anchor->content_attributes->node_interaction_info);
+  EXPECT_TRUE(anchor->content_attributes->node_interaction_info
+                  ->document_scoped_z_order);
+  CheckGeometry(*anchor, gfx::Rect(11, 0, 4, 1), gfx::Rect(11, 0, 4, 1));
+}
+
+TEST_F(AIPageContentAgentTest, OverflowHiddenGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div style='width: 100px; height: 100px; overflow-y: hidden;'>"
+      "     <article style='width: 50px; height: 300px;'></article>"
+      "   </div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& outer = ContentRootNode().children_nodes[0];
+  const auto& article = outer->children_nodes[0];
+  CheckAnnotatedRole(*article,
+                     mojom::blink::AIPageContentAnnotatedRole::kArticle);
+
+  EXPECT_GT(*article->content_attributes->node_interaction_info
+                 ->document_scoped_z_order,
+            *outer->content_attributes->node_interaction_info
+                 ->document_scoped_z_order);
+
+  CheckGeometry(*outer, gfx::Rect(8, 8, 100, 100), gfx::Rect(8, 8, 100, 100));
+  CheckGeometry(*article, gfx::Rect(8, 8, 50, 300), gfx::Rect(8, 8, 50, 100));
+}
+
+TEST_F(AIPageContentAgentTest, OverflowVisibleGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <section style='width: 100px; height: 100px; overflow-y: visible;'>"
+      "    <article style='width: 50px; height: 300px;'></article>"
+      "  </section>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& outer = ContentRootNode().children_nodes[0];
+  const auto& article = outer->children_nodes[0];
+  CheckAnnotatedRole(*article,
+                     mojom::blink::AIPageContentAnnotatedRole::kArticle);
+
+  EXPECT_GT(*article->content_attributes->node_interaction_info
+                 ->document_scoped_z_order,
+            *outer->content_attributes->node_interaction_info
+                 ->document_scoped_z_order);
+
+  CheckGeometry(*outer, gfx::Rect(8, 8, 100, 100), gfx::Rect(8, 8, 100, 100));
+  CheckGeometry(*article, gfx::Rect(8, 8, 50, 300), gfx::Rect(8, 8, 50, 300));
+}
+
+TEST_F(AIPageContentAgentTest, BlurGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <section style='width: 100px; height: 100px; filter: "
+      "blur(10px);'></section>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& section = ContentRootNode().children_nodes[0];
+  CheckAnnotatedRole(*section,
+                     mojom::blink::AIPageContentAnnotatedRole::kSection);
+
+  // Although blurring causes the rectangle to show outside of the 100x100 rect,
+  // the extra area is not hit testable, and is therefore not included in the
+  // visible bounding box.
+  CheckGeometry(*section, gfx::Rect(8, 8, 100, 100), gfx::Rect(8, 8, 100, 100));
+}
+
+TEST_F(AIPageContentAgentTest, GeomtryAbsPos) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <section style='width: 100px; height: 100px; position: absolute; top: "
+      "200px; left: 200px;'>"
+      "</section>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& section = ContentRootNode().children_nodes[0];
+  CheckAnnotatedRole(*section,
+                     mojom::blink::AIPageContentAnnotatedRole::kSection);
+
+  CheckGeometry(*section, gfx::Rect(200, 200, 100, 100),
+                gfx::Rect(200, 200, 100, 100));
+}
+
+TEST_F(AIPageContentAgentTest, GeometryTransform) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <section style='width: 100px; height: 100px; transform: "
+      "translate(200px, 200px)'>"
+      "</section>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& section = ContentRootNode().children_nodes[0];
+  CheckAnnotatedRole(*section,
+                     mojom::blink::AIPageContentAnnotatedRole::kSection);
+
+  CheckGeometry(*section, gfx::Rect(208, 208, 100, 100),
+                gfx::Rect(208, 208, 100, 100));
+}
+
+TEST_F(AIPageContentAgentTest, CursorForClickability) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div style='cursor: pointer'>"
+      "    <p>no-click</p>"
+      "    <p style='cursor: pointer'>click</p>"
+      "  </div>"
+      "  <article>article</article>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  EXPECT_EQ(ContentRootNode().children_nodes.size(), 2u);
+
+  const auto& cursor = *ContentRootNode().children_nodes[0];
+  EXPECT_TRUE(cursor.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(cursor, {ClickabilityReason::kCursorPointer});
+
+  const auto& no_click = *cursor.children_nodes[0];
+  EXPECT_TRUE(no_click.content_attributes->node_interaction_info);
+  CheckHitTestableButNotInteractive(no_click);
+
+  const auto& click = *cursor.children_nodes[1];
+  EXPECT_TRUE(click.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(click, {ClickabilityReason::kCursorPointer});
+
+  const auto& article = *ContentRootNode().children_nodes[1];
+  EXPECT_TRUE(article.content_attributes->node_interaction_info);
+  CheckHitTestableButNotInteractive(article);
+}
+
+TEST_F(AIPageContentAgentTest, LinkForClickability) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <a href='test.com'>valid</a>"
+      "  <a>invalid</a>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  EXPECT_EQ(ContentRootNode().children_nodes.size(), 2u);
+
+  const auto& valid = *ContentRootNode().children_nodes[0];
+  EXPECT_TRUE(valid.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(valid, {ClickabilityReason::kCursorPointer});
+
+  const auto& invalid = *ContentRootNode().children_nodes[1];
+  EXPECT_TRUE(invalid.content_attributes->node_interaction_info);
+  CheckHitTestableButNotInteractive(invalid);
+}
+
+TEST_F(AIPageContentAgentTest, LabelWithForSibling) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      " <input type='checkbox' id='myCheckbox' />"
+      " <label for='myCheckbox'>Check me!</label>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& input = *root.children_nodes[0];
+  CheckFormControlNode(input, mojom::blink::FormControlType::kInputCheckbox);
+  ASSERT_TRUE(input.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(input,
+                                 {ClickabilityReason::kClickableControl});
+  EXPECT_EQ(input.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kNoRedactionNecessary);
+
+  const auto& label = *root.children_nodes[1];
+  CheckContainerNode(label);
+  ASSERT_TRUE(label.content_attributes->node_interaction_info);
+  EXPECT_TRUE(label.content_attributes->node_interaction_info
+                  ->clickability_reasons.empty());
+  EXPECT_EQ(label.content_attributes->label_for_dom_node_id,
+            input.content_attributes->dom_node_id);
+}
+
+TEST_F(AIPageContentAgentTest, LabelGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<style>body * { margin:0; padding:0; font:1px/1px 'Ahem'; }</style>"
+      "<body style='margin: 3px;'>"
+      " <label for='myCheckbox'>1234567890</label>"
+      " <input type='checkbox' id='myCheckbox' "
+      "        style='width:1px;height:1px;appearance:none;'/>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  LoadAhem();
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& label = *root.children_nodes[0];
+  CheckContainerNode(label);
+  ASSERT_TRUE(label.content_attributes->node_interaction_info);
+  EXPECT_TRUE(label.content_attributes->node_interaction_info
+                  ->clickability_reasons.empty());
+
+  const auto& input = *root.children_nodes[1];
+  CheckFormControlNode(input, mojom::blink::FormControlType::kInputCheckbox);
+  ASSERT_TRUE(input.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(input,
+                                 {ClickabilityReason::kClickableControl});
+  EXPECT_EQ(input.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kNoRedactionNecessary);
+
+  EXPECT_EQ(label.content_attributes->label_for_dom_node_id,
+            input.content_attributes->dom_node_id);
+
+  ASSERT_TRUE(label.content_attributes->geometry);
+  const auto& label_geometry = *label.content_attributes->geometry;
+  // With the 1px Ahem font loaded above, each glyph occupies a 1x1 cell so the
+  // 10-character label spans exactly 10x1 CSS pixels.
+  EXPECT_EQ(label_geometry.outer_bounding_box, gfx::Rect(3, 3, 10, 1));
+  EXPECT_EQ(label_geometry.visible_bounding_box,
+            label_geometry.outer_bounding_box);
+}
+
+TEST_F(AIPageContentAgentTest, LabelWithForDescendant) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      " <label>"
+      "   <input type='checkbox' id='myCheckbox' />"
+      "Check me!"
+      "</label>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& label = *root.children_nodes[0];
+  EXPECT_EQ(label.children_nodes.size(), 2u);
+  CheckContainerNode(label);
+  ASSERT_TRUE(label.content_attributes->node_interaction_info);
+  CheckHitTestableButNotInteractive(label);
+
+  const auto& input = *label.children_nodes[0];
+  CheckFormControlNode(input, mojom::blink::FormControlType::kInputCheckbox);
+  ASSERT_TRUE(input.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(input,
+                                 {ClickabilityReason::kClickableControl});
+  EXPECT_EQ(label.content_attributes->label_for_dom_node_id,
+            input.content_attributes->dom_node_id);
+
+  CheckTextNode(*label.children_nodes[1], "Check me!");
+}
+
+TEST_F(AIPageContentAgentTest, SVGWithText) {
+  ScopedAIPageContentIncludeSVGSubtreeForTest scoped_feature(
+      /*enabled=*/true);
+
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <svg width='400' height='200'>"
+      "    <text x='50%' y='50/%' font-size='24'>"
+      "      Hello SVG Text!"
+      "    </text>"
+      "  </svg>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& svg = *ContentRootNode().children_nodes[0];
+  EXPECT_EQ(svg.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kSvgRoot);
+  ASSERT_TRUE(svg.content_attributes->svg_root_data);
+  EXPECT_EQ(svg.content_attributes->svg_root_data->inner_text,
+            "Hello SVG Text!");
+
+  const auto& text_child = *svg.children_nodes[0];
+  EXPECT_EQ(text_child.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kText);
+  // Note that whitespace is kept.
+  CheckTextNode(text_child, "      Hello SVG Text!    ");
+}
+
+TEST_F(AIPageContentAgentTest, SVGWithNoText) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <svg width='400' height='200' style='content-visibility: hidden'>"
+      "    <text x='50%' y='50/%' font-size='24'>"
+      "      Hello SVG Text!"
+      "    </text>"
+      "  </svg>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& svg = *ContentRootNode().children_nodes[0];
+  EXPECT_EQ(svg.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kSvgRoot);
+  ASSERT_TRUE(svg.content_attributes->svg_root_data);
+  EXPECT_FALSE(svg.content_attributes->svg_root_data->inner_text);
+
+  // Only visible text nodes are extracted.
+  EXPECT_EQ(svg.children_nodes.size(), 0u);
+}
+
+TEST_F(AIPageContentAgentTest, SVGSubtreeContainersAreKept) {
+  ScopedAIPageContentIncludeSVGSubtreeForTest scoped_feature(
+      /*enabled=*/true);
+
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <svg width='400' height='200'>"
+      "    <a href='example.html'>"
+      "      <image/>"
+      "      <rect width='10%' height='10%' fill='red'/>"
+      "      <text x='50%' y='50/%' font-size='24'>"
+      "        Hello SVG Text!"
+      "      </text>"
+      "    </a>"
+      "  </svg>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+  auto& document = *helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  document.getElementsByTagName(AtomicString("image"))
+      ->item(0)
+      ->setAttribute(html_names::kSrcAttr, AtomicString(kSmallImage));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& svg = *ContentRootNode().children_nodes[0];
+  EXPECT_EQ(svg.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kSvgRoot);
+  ASSERT_TRUE(svg.content_attributes->svg_root_data);
+  EXPECT_EQ(svg.content_attributes->svg_root_data->inner_text,
+            "Hello SVG Text!");
+
+  ASSERT_EQ(svg.children_nodes.size(), 1u);
+  const auto& a_child = *svg.children_nodes[0];
+  EXPECT_EQ(a_child.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kContainer);
+  ASSERT_TRUE(a_child.content_attributes->node_interaction_info);
+  EXPECT_FALSE(a_child.content_attributes->node_interaction_info
+                   ->clickability_reasons.empty());
+
+  ASSERT_EQ(a_child.children_nodes.size(), 3u);
+
+  const auto& image_child = *a_child.children_nodes[0];
+  EXPECT_EQ(image_child.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kImage);
+
+  // Non-text, non-image elements are processed as generic containers.
+  const auto& rect_child = *a_child.children_nodes[1];
+  EXPECT_EQ(rect_child.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kContainer);
+
+  const auto& text_child = *a_child.children_nodes[2];
+  EXPECT_EQ(text_child.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kText);
+  // Note that whitespace is kept.
+  CheckTextNode(text_child, "        Hello SVG Text!      ");
+  ASSERT_TRUE(text_child.content_attributes->node_interaction_info);
+  EXPECT_TRUE(text_child.content_attributes->node_interaction_info
+                  ->clickability_reasons.empty());
+}
+
+TEST_F(AIPageContentAgentTest, Canvas) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    canvas {"
+      "      width: 200px;"
+      "      height: 300px;"
+      "    }"
+      "  </style>"
+      "  <canvas id='myCanvas' width='100' height='200'></canvas>"
+      "  <script>"
+      "    const canvas = document.getElementById('myCanvas');"
+      "    const ctx = canvas.getContext('2d');"
+      "    ctx.fillStyle = 'pink';"
+      "    ctx.fillRect(0, 0, 100, 200);"
+      "  </script>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& canvas = *ContentRootNode().children_nodes[0];
+  EXPECT_EQ(canvas.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kCanvas);
+  ASSERT_TRUE(canvas.content_attributes->canvas_data);
+  EXPECT_EQ(canvas.content_attributes->canvas_data->layout_size,
+            gfx::Size(200, 300));
+}
+
+TEST_F(AIPageContentAgentTest, AriaLabelledBy) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      " <div id='hiddenLabel1' style='display: none;'>and first</div>"
+      " <div id='hiddenLabel2' style='display: none;'>and second</div>"
+      " <input type='text' aria-labelledby='hiddenLabel1 hiddenLabel2' "
+      "aria-label='on element'/>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& input = *root.children_nodes[0];
+  CheckFormControlNode(input, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(input.content_attributes->label, "on element and first and second");
+}
+
+TEST_F(AIPageContentAgentTest, DisabledButton) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+        <body>
+         <button disabled>Text</button>
+        </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& button = *root.children_nodes.at(0);
+  CheckHitTestableButNotInteractive(button);
+  EXPECT_TRUE(button.content_attributes->node_interaction_info->is_disabled);
+  EXPECT_THAT(
+      button.content_attributes->node_interaction_info
+          ->interaction_disabled_reasons,
+      testing::UnorderedElementsAre(InteractionDisabledReason::kDisabled));
+}
+
+TEST_F(AIPageContentAgentTest, InertButton) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+        <body>
+         <button inert>Text</button>
+        </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& button = *root.children_nodes.at(0);
+  EXPECT_FALSE(button.content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTest, ActionablePseudoElements) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style> a::before { content: 'hello'; cursor: pointer;} </style>"
+      "  <a href='#'></a>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  EXPECT_EQ(ContentRootNode().children_nodes.size(), 1u);
+  const auto& a = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(a.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(a, {ClickabilityReason::kCursorPointer});
+
+  EXPECT_EQ(a.children_nodes.size(), 1u);
+  const auto& before = *a.children_nodes[0];
+  ASSERT_TRUE(before.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(before, {ClickabilityReason::kCursorPointer});
+}
+
+TEST_F(AIPageContentAgentTest, PseudoElementNotActionable) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style> a::before { content: 'hello';} </style>"
+      "  <a href='#'></a>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  EXPECT_EQ(ContentRootNode().children_nodes.size(), 1u);
+
+  const auto& a = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(a.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(a, {ClickabilityReason::kCursorPointer});
+
+  EXPECT_EQ(a.children_nodes.size(), 1u);
+  const auto& before = *a.children_nodes[0];
+  ASSERT_TRUE(before.content_attributes->node_interaction_info);
+  CheckHitTestableButNotInteractive(before);
+}
+
+TEST_F(AIPageContentAgentTest, PseudoElementNoPointerEvents) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style> a::before { content: 'hello'; pointer-events: none;} </style>"
+      "  <a href='#'></a>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  EXPECT_EQ(Content()->root_node->children_nodes.size(), 1u);
+
+  const auto& a = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(a.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(a, {ClickabilityReason::kCursorPointer});
+
+  EXPECT_EQ(a.children_nodes.size(), 1u);
+  const auto& text = *a.children_nodes[0];
+  CheckTextNode(text, "hello");
+  EXPECT_FALSE(text.content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTest, AriaDisabled) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body>
+        <section style='cursor: pointer' aria-disabled=true>
+          <input type=text aria-disabled=false></input>
+        </section>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  // aria-disabled is advisory, so the section keeps its normal clickability
+  // signal while also reporting why an actor may want to avoid it.
+  const auto& section = *root.children_nodes.at(0);
+  CheckContainerNode(section);
+  CheckHitTestableAndInteractive(section, {ClickabilityReason::kCursorPointer});
+  EXPECT_FALSE(section.content_attributes->node_interaction_info->is_disabled);
+  EXPECT_THAT(
+      section.content_attributes->node_interaction_info
+          ->interaction_disabled_reasons,
+      testing::UnorderedElementsAre(InteractionDisabledReason::kAriaDisabled));
+
+  // The inherited reason is also advisory for descendants. A child-level
+  // aria-disabled=false does not override the ancestor's true value.
+  ASSERT_EQ(section.children_nodes.size(), 1u);
+  const auto& input = *section.children_nodes.at(0);
+  CheckHitTestableAndInteractive(input,
+                                 {ClickabilityReason::kClickableControl});
+  EXPECT_FALSE(input.content_attributes->node_interaction_info->is_disabled);
+  EXPECT_THAT(
+      input.content_attributes->node_interaction_info
+          ->interaction_disabled_reasons,
+      testing::UnorderedElementsAre(InteractionDisabledReason::kAriaDisabled));
+}
+
+TEST_F(AIPageContentAgentTest, AriaHiddenInteractionReason) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body>
+        <section aria-hidden=true>
+          <button>Text</button>
+        </section>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& section = *root.children_nodes.at(0);
+  CheckContainerNode(section);
+  ASSERT_EQ(section.children_nodes.size(), 1u);
+
+  // aria-hidden is inherited, so the button carries the reason even though the
+  // attribute is on its section ancestor.
+  const auto& button = *section.children_nodes.at(0);
+  CheckHitTestableAndInteractive(button,
+                                 {ClickabilityReason::kClickableControl,
+                                  ClickabilityReason::kHoverPseudoClass});
+  EXPECT_FALSE(button.content_attributes->node_interaction_info->is_disabled);
+  EXPECT_THAT(
+      button.content_attributes->node_interaction_info
+          ->interaction_disabled_reasons,
+      testing::UnorderedElementsAre(InteractionDisabledReason::kAriaHidden));
+}
+
+TEST_F(AIPageContentAgentTest, AriaPresentationalRoleInteractionReason) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body>
+        <button role=presentation>Presentation</button>
+        <button role=none>None</button>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 2u);
+
+  for (const auto& button : root.children_nodes) {
+    // role=presentation and role=none are synonymous ARIA roles.
+    CheckHitTestableAndInteractive(*button,
+                                   {ClickabilityReason::kClickableControl,
+                                    ClickabilityReason::kHoverPseudoClass});
+    EXPECT_FALSE(
+        button->content_attributes->node_interaction_info->is_disabled);
+    EXPECT_THAT(button->content_attributes->node_interaction_info
+                    ->interaction_disabled_reasons,
+                testing::UnorderedElementsAre(
+                    InteractionDisabledReason::kAriaRolePresentational));
+  }
+}
+
+TEST_F(AIPageContentAgentTest, DisabledInheritance) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body>
+        <form>
+          <fieldset disabled>
+            <button type="submit"></button>
+          </fieldset>
+        </form>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& form = *root.children_nodes.at(0);
+  CheckHitTestableButNotInteractive(form);
+  ASSERT_EQ(form.children_nodes.size(), 1u);
+
+  const auto& fieldset = *form.children_nodes.at(0);
+  CheckHitTestableButNotInteractive(fieldset);
+  ASSERT_EQ(fieldset.children_nodes.size(), 1u);
+  EXPECT_TRUE(fieldset.content_attributes->node_interaction_info->is_disabled);
+  EXPECT_THAT(
+      fieldset.content_attributes->node_interaction_info
+          ->interaction_disabled_reasons,
+      testing::UnorderedElementsAre(InteractionDisabledReason::kDisabled));
+
+  const auto& button = *fieldset.children_nodes.at(0);
+  CheckHitTestableButNotInteractive(button);
+  EXPECT_TRUE(button.content_attributes->node_interaction_info->is_disabled);
+  EXPECT_THAT(
+      button.content_attributes->node_interaction_info
+          ->interaction_disabled_reasons,
+      testing::UnorderedElementsAre(InteractionDisabledReason::kDisabled));
+}
+
+TEST_F(AIPageContentAgentTest, Fieldset) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body>
+        <form>
+          <fieldset>
+            <button type="submit"></button>
+          </fieldset>
+        </form>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& form = *root.children_nodes.at(0);
+  CheckHitTestableButNotInteractive(form);
+  ASSERT_EQ(form.children_nodes.size(), 1u);
+
+  const auto& fieldset = *form.children_nodes.at(0);
+  CheckHitTestableButNotInteractive(fieldset);
+}
+
+TEST_F(AIPageContentAgentTest, ShadowDOMInInput) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body>
+        <input type=range></input>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& input = *root.children_nodes.at(0);
+  ASSERT_TRUE(input.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(input,
+                                 {ClickabilityReason::kClickableControl});
+
+  EXPECT_NE(input.children_nodes.size(), 0u);
+  const auto& shadow_div = *input.children_nodes.at(0);
+  CheckHitTestableButNotInteractive(shadow_div);
+}
+
+TEST_F(AIPageContentAgentTest, DisabledOption) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body>
+        <select>
+          <option value="banana">Banana</option>
+          <option value="cherry" disabled>Cherry</option>
+        </select>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& select = *root.children_nodes.at(0);
+  CheckFormControlNode(select, mojom::blink::FormControlType::kSelectOne);
+
+  const auto& options =
+      select.content_attributes->form_control_data->select_options;
+  ASSERT_EQ(options.size(), 2u);
+
+  const auto& banana = *options.at(0);
+  EXPECT_EQ(banana.value, "banana");
+  EXPECT_FALSE(banana.disabled);
+
+  const auto& cherry = *options.at(1);
+  EXPECT_EQ(cherry.value, "cherry");
+  EXPECT_TRUE(cherry.disabled);
+}
+
+TEST_F(AIPageContentAgentTest, AriaRole) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body>
+        <div role="button">hello</div>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& button = *root.children_nodes.at(0);
+  ASSERT_TRUE(button.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(button, {ClickabilityReason::kAriaRole});
+  EXPECT_EQ(button.content_attributes->aria_role,
+            ax::mojom::blink::Role::kButton);
+}
+
+TEST_F(AIPageContentAgentTest,
+       ActionableModeKeepsInteractiveContainersButDropsEmptySpan) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body>
+        <div id="outer" onclick="void(0)">
+          <div id="option" role="option">
+            <span id="empty"></span>
+          </div>
+        </div>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  // The outer wrapper has a click handler, so actionable mode should keep it
+  // as a generic container with click-event metadata.
+  const mojom::blink::AIPageContentNode* outer = FindNodeBySelector("#outer");
+  ASSERT_TRUE(outer);
+  CheckContainerNode(*outer);
+  ASSERT_TRUE(outer->content_attributes->node_interaction_info);
+  EXPECT_THAT(
+      outer->content_attributes->node_interaction_info->clickability_reasons,
+      testing::Contains(ClickabilityReason::kClickEvents));
+
+  // The inner wrapper has role=option. APC still uses a generic container
+  // here, but actionable mode should preserve the node because the ARIA role
+  // makes it interactive.
+  const mojom::blink::AIPageContentNode* option = FindNodeBySelector("#option");
+  ASSERT_TRUE(option);
+  CheckContainerNode(*option);
+  EXPECT_EQ(option->content_attributes->aria_role,
+            ax::mojom::blink::Role::kListBoxOption);
+  ASSERT_TRUE(option->content_attributes->node_interaction_info);
+  EXPECT_THAT(
+      option->content_attributes->node_interaction_info->clickability_reasons,
+      testing::Contains(ClickabilityReason::kAriaRole));
+
+  // The span has no text and no interactive signal, so APC should flatten it
+  // away instead of emitting an empty wrapper node.
+  ExpectSelectorNotInApcOutput("#empty");
+}
+
+TEST_F(AIPageContentAgentTest, LabelNotActionable) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+        <body>
+          <input type='checkbox' id='myCheckbox' />
+          <label for='myCheckbox' style='pointer-events: none;'>Check me!</label>
+        </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& button = *root.children_nodes.at(0);
+  ASSERT_TRUE(button.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(button,
+                                 {ClickabilityReason::kClickableControl});
+
+  const auto& label = *root.children_nodes.at(1);
+  EXPECT_FALSE(label.content_attributes->node_interaction_info);
+  EXPECT_EQ(*label.content_attributes->label_for_dom_node_id,
+            button.content_attributes->dom_node_id);
+}
+
+TEST_F(AIPageContentAgentTest, SelectLabelNotActionable) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+        <body>
+          <label for="fruit-select">Choose a fruit:</label>
+          <select id="fruit-select" name="fruits">
+            <option value="">--Please choose an option--</option>
+            <option value="apple">Apple</option>
+            <option value="banana">Banana</option>
+          </select>
+        </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& label = *root.children_nodes.at(0);
+  ASSERT_TRUE(label.content_attributes->node_interaction_info);
+  CheckHitTestableButNotInteractive(label);
+
+  const auto& select = *root.children_nodes.at(1);
+  ASSERT_TRUE(select.content_attributes->node_interaction_info);
+  CheckHitTestableAndInteractive(select,
+                                 {ClickabilityReason::kClickableControl,
+                                  ClickabilityReason::kHoverPseudoClass});
+}
+
+TEST_F(AIPageContentAgentTest, ClickabilityReasonClickableControl) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body><button id='testButton'>Click Me</button></body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& button_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(button_node.content_attributes->node_interaction_info);
+  EXPECT_THAT(
+      button_node.content_attributes->node_interaction_info
+          ->clickability_reasons,
+      testing::Contains(
+          mojom::blink::AIPageContentClickabilityReason::kClickableControl));
+}
+
+TEST_F(AIPageContentAgentTest, ClickabilityReasonClickEvents) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body><div id='testDiv'>Clickable</div>"
+      "<script>document.getElementById('testDiv').onclick = "
+      "function(){};</script>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(div_node.content_attributes->node_interaction_info);
+  EXPECT_THAT(
+      div_node.content_attributes->node_interaction_info->clickability_reasons,
+      testing::Contains(
+          mojom::blink::AIPageContentClickabilityReason::kClickEvents));
+}
+
+TEST_F(AIPageContentAgentTest, ClickabilityReasonMouseHover) {
+  // An element with various mouse event listeners.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body><div id='testDiv'>Mouse Events</div>"
+      "<script>"
+      "  const div = document.getElementById('testDiv');"
+      "  div.onmouseover = function(){};"
+      "</script>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(div_node.content_attributes->node_interaction_info);
+  EXPECT_THAT(
+      div_node.content_attributes->node_interaction_info->clickability_reasons,
+      testing::Contains(
+          mojom::blink::AIPageContentClickabilityReason::kMouseHover));
+}
+
+TEST_F(AIPageContentAgentTest, ClickabilityReasonMouseClick) {
+  // An element with various mouse event listeners.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body><div id='testDiv'>Mouse Events</div>"
+      "<script>"
+      "  const div = document.getElementById('testDiv');"
+      "  div.onmousedown = function(){};"
+      "</script>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(div_node.content_attributes->node_interaction_info);
+  EXPECT_THAT(
+      div_node.content_attributes->node_interaction_info->clickability_reasons,
+      testing::Contains(
+          mojom::blink::AIPageContentClickabilityReason::kMouseClick));
+}
+
+TEST_F(AIPageContentAgentTest, ClickabilityReasonKeyEvents) {
+  // An element with keyboard event listeners.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body><input type='text' id='testInput'>"
+      "<script>"
+      "  const input = document.getElementById('testInput');"
+      "  input.onkeydown = function(){};"
+      "</script>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& input_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(input_node.content_attributes->node_interaction_info);
+  EXPECT_THAT(input_node.content_attributes->node_interaction_info
+                  ->clickability_reasons,
+              testing::Contains(
+                  mojom::blink::AIPageContentClickabilityReason::kKeyEvents));
+}
+
+TEST_F(AIPageContentAgentTest, ClickabilityReasonEditable) {
+  // A div with contenteditable attribute.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body><div contenteditable='true'>Editable Content</div></body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(div_node.content_attributes->node_interaction_info);
+  EXPECT_THAT(
+      div_node.content_attributes->node_interaction_info->clickability_reasons,
+      testing::Contains(
+          mojom::blink::AIPageContentClickabilityReason::kEditable));
+}
+
+TEST_F(AIPageContentAgentTest, ClickabilityReasonCursorPointer) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body><div style='cursor: pointer;'>Pointer Cursor</div></body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(div_node.content_attributes->node_interaction_info);
+  EXPECT_THAT(
+      div_node.content_attributes->node_interaction_info->clickability_reasons,
+      testing::Contains(
+          mojom::blink::AIPageContentClickabilityReason::kCursorPointer));
+}
+
+TEST_F(AIPageContentAgentTest, ClickabilityReasonAriaRole) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), "<body><div role='link'>ARIA Link</div></body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(div_node.content_attributes->node_interaction_info);
+  EXPECT_EQ(div_node.content_attributes->aria_role,
+            ax::mojom::blink::Role::kLink);
+  EXPECT_THAT(
+      div_node.content_attributes->node_interaction_info->clickability_reasons,
+      testing::Contains(
+          mojom::blink::AIPageContentClickabilityReason::kAriaRole));
+}
+
+TEST_F(AIPageContentAgentTest, ClickabilityReasonMultipleReasons) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "<button id='multiReasonBtn' contenteditable='true' style='cursor: "
+      "pointer;' role='menuitem'>"
+      "Multi-Reason Button"
+      "</button>"
+      "<script>"
+      "  const btn = document.getElementById('multiReasonBtn');"
+      "  btn.onclick = function(){};"
+      "  btn.onmouseover = function(){};"
+      "  btn.onmouseup = function(){};"
+      "  btn.onkeydown = function(){};"
+      "</script>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& button_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(button_node.content_attributes->node_interaction_info);
+  EXPECT_THAT(
+      button_node.content_attributes->node_interaction_info
+          ->clickability_reasons,
+      testing::UnorderedElementsAre(
+          mojom::blink::AIPageContentClickabilityReason::kClickableControl,
+          mojom::blink::AIPageContentClickabilityReason::kClickEvents,
+          mojom::blink::AIPageContentClickabilityReason::kMouseHover,
+          mojom::blink::AIPageContentClickabilityReason::kMouseClick,
+          mojom::blink::AIPageContentClickabilityReason::kKeyEvents,
+          mojom::blink::AIPageContentClickabilityReason::kEditable,
+          mojom::blink::AIPageContentClickabilityReason::kCursorPointer,
+          mojom::blink::AIPageContentClickabilityReason::kHoverPseudoClass,
+          mojom::blink::AIPageContentClickabilityReason::kAriaRole));
+}
+
+TEST_F(AIPageContentAgentTest, ClickabilityReasonNoReasons) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), "<body><div>Plain Div</div></body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(div_node.content_attributes->node_interaction_info);
+  EXPECT_TRUE(div_node.content_attributes->node_interaction_info
+                  ->clickability_reasons.empty());
+}
+
+TEST_F(AIPageContentAgentTest, AriaHasPopup) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body><div aria-haspopup=true>Plain Div</div></body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(div_node.content_attributes->node_interaction_info);
+
+  const auto& interaction_info =
+      *div_node.content_attributes->node_interaction_info;
+  EXPECT_THAT(
+      interaction_info.clickability_reasons,
+      testing::Contains(
+          mojom::blink::AIPageContentClickabilityReason::kAriaHasPopup));
+}
+
+TEST_F(AIPageContentAgentTest, AriaExpandedTrue) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body><div aria-expanded=true>Plain Div</div></body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(div_node.content_attributes->node_interaction_info);
+
+  const auto& interaction_info =
+      *div_node.content_attributes->node_interaction_info;
+  EXPECT_THAT(
+      interaction_info.clickability_reasons,
+      testing::Contains(
+          mojom::blink::AIPageContentClickabilityReason::kAriaExpandedTrue));
+}
+
+TEST_F(AIPageContentAgentTest, AriaExpandedFalse) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body><div aria-expanded=false>Plain Div</div></body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(div_node.content_attributes->node_interaction_info);
+
+  const auto& interaction_info =
+      *div_node.content_attributes->node_interaction_info;
+  EXPECT_THAT(
+      interaction_info.clickability_reasons,
+      testing::Contains(
+          mojom::blink::AIPageContentClickabilityReason::kAriaExpandedFalse));
+}
+
+TEST_F(AIPageContentAgentTest, ClickabilityReasonAriaToggleAndSelectable) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"(
+      <body>
+        <button aria-pressed="false">Toggle Button</button>
+        <div role="checkbox" aria-checked="mixed">Toggle Checkbox</div>
+        <div role="option" aria-selected="false">Selectable Option</div>
+      </body>)",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& pressed_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(pressed_node.content_attributes->node_interaction_info);
+  EXPECT_THAT(pressed_node.content_attributes->node_interaction_info
+                  ->clickability_reasons,
+              testing::Contains(
+                  mojom::blink::AIPageContentClickabilityReason::kAriaToggle));
+
+  const auto& checked_node = *ContentRootNode().children_nodes[1];
+  ASSERT_TRUE(checked_node.content_attributes->node_interaction_info);
+  EXPECT_THAT(checked_node.content_attributes->node_interaction_info
+                  ->clickability_reasons,
+              testing::Contains(
+                  mojom::blink::AIPageContentClickabilityReason::kAriaToggle));
+
+  const auto& selected_node = *ContentRootNode().children_nodes[2];
+  ASSERT_TRUE(selected_node.content_attributes->node_interaction_info);
+  EXPECT_THAT(
+      selected_node.content_attributes->node_interaction_info
+          ->clickability_reasons,
+      testing::Contains(
+          mojom::blink::AIPageContentClickabilityReason::kAriaSelectable));
+}
+
+TEST_F(AIPageContentAgentTest, Autocomplete) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"(<body>
+      <input>
+      <input autocomplete=off>
+      <input autocomplete=on>
+      <input aria-autocomplete>
+      <input aria-autocomplete=none>
+      <input aria-autocomplete=list>
+      </body>)",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  const bool kExpected[] = {
+      false,  // no attribute
+      false,  // disabled
+      true,
+      false,  // empty
+      false,  // disabled
+      true,
+  };
+
+  GetAIPageContentWithActionableElements();
+
+  for (int i = 0; bool expected : kExpected) {
+    SCOPED_TRACE(i);
+
+    const auto& input_node = *ContentRootNode().children_nodes[i];
+    ASSERT_TRUE(input_node.content_attributes->node_interaction_info);
+    const auto& interaction_info =
+        *input_node.content_attributes->node_interaction_info;
+
+    EXPECT_THAT(
+        interaction_info.clickability_reasons,
+        testing::Contains(
+            mojom::blink::AIPageContentClickabilityReason::kAutocomplete)
+            .Times(expected));
+
+    ++i;
+  }
+}
+
+TEST_F(AIPageContentAgentTest, TabIndex) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), "<body><div tabindex=0>Plain Div</div></body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(div_node.content_attributes->node_interaction_info);
+
+  const auto& interaction_info =
+      *div_node.content_attributes->node_interaction_info;
+  EXPECT_THAT(interaction_info.clickability_reasons,
+              testing::Contains(
+                  mojom::blink::AIPageContentClickabilityReason::kTabIndex));
+}
+
+TEST_F(AIPageContentAgentTest, IsTabbable) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"(
+      <body>
+        <button tabindex="-1">Programmatic Focus</button>
+        <div tabindex="0">Tab Stop</div>
+      </body>)",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& focusable_only_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(focusable_only_node.content_attributes->node_interaction_info);
+  const auto& focusable_only_interaction_info =
+      *focusable_only_node.content_attributes->node_interaction_info;
+  EXPECT_TRUE(focusable_only_interaction_info.is_focusable);
+  EXPECT_FALSE(focusable_only_interaction_info.is_tabbable);
+
+  const auto& tabbable_node = *ContentRootNode().children_nodes[1];
+  ASSERT_TRUE(tabbable_node.content_attributes->node_interaction_info);
+  const auto& tabbable_interaction_info =
+      *tabbable_node.content_attributes->node_interaction_info;
+  EXPECT_TRUE(tabbable_interaction_info.is_focusable);
+  EXPECT_TRUE(tabbable_interaction_info.is_tabbable);
+}
+
+TEST_F(AIPageContentAgentTest, HasAriaActivedescendant) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"(
+      <body>
+        <div role="listbox" tabindex="0" aria-activedescendant="active-option">
+          <div id="active-option" role="option">Active Option</div>
+        </div>
+      </body>)",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& listbox_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(listbox_node.content_attributes->node_interaction_info);
+  EXPECT_TRUE(listbox_node.content_attributes->node_interaction_info
+                  ->has_aria_activedescendant);
+}
+
+TEST_F(AIPageContentAgentTest, AriaActionTargetNodeIds) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"(
+      <body>
+        <div role="tab" tabindex="0" aria-actions="close-action">
+          Closable Tab
+          <button id="close-action">Close</button>
+        </div>
+      </body>)",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& tab_node = *ContentRootNode().children_nodes[0];
+  ASSERT_TRUE(tab_node.content_attributes->node_interaction_info);
+  ASSERT_EQ(tab_node.content_attributes->node_interaction_info
+                ->aria_action_target_node_ids.size(),
+            1u);
+
+  const auto& close_button_node = *tab_node.children_nodes[1];
+  ASSERT_TRUE(close_button_node.content_attributes->dom_node_id.has_value());
+  EXPECT_EQ(tab_node.content_attributes->node_interaction_info
+                ->aria_action_target_node_ids[0],
+            *close_button_node.content_attributes->dom_node_id);
+}
+
+TEST_F(AIPageContentAgentTest, ClipPathCircle) {
+  // The <div> element is clipped to a small circle.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"(
+      <body>
+        <style>
+          div {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100px;
+            height: 100px;
+            background: red;
+            clip-path: circle(20%);
+          }
+        </style>
+        <div onclick=console.log(1)></div>
+      </body>)",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+
+  CheckGeometry(div_node, gfx::Rect(30, 30, 40, 40), gfx::Rect(30, 30, 40, 40));
+}
+
+TEST_F(AIPageContentAgentTest, ClipPathEllipse) {
+  // The <div> element is clipped to an ellipse.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"(
+      <body>
+        <style>
+          div {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100px;
+            height: 100px;
+            background: red;
+            clip-path: ellipse(20px 50px);
+          }
+        </style>
+        <div onclick=console.log(1)></div>
+      </body>)",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+
+  CheckGeometry(div_node, gfx::Rect(30, 0, 40, 100), gfx::Rect(30, 0, 40, 100));
+}
+
+TEST_F(AIPageContentAgentTest, ClipPathCircleHalf) {
+  // Only the bottom half of the circle is within the viewport.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"(
+      <body>
+        <style>
+          div {
+            position: absolute;
+            top: -50px;
+            left: 0;
+            width: 100px;
+            height: 100px;
+            background: red;
+            clip-path: circle(20%);
+          }
+        </style>
+        <div onclick=console.log(1)></div>
+      </body>)",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+
+  CheckGeometry(div_node, gfx::Rect(30, -20, 40, 40), gfx::Rect(30, 0, 40, 20));
+}
+
+TEST_F(AIPageContentAgentTest, ClipPathEmpty) {
+  // The entire <div> element is clipped.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"(
+      <body>
+        <style>
+          body { margin: 0; }
+          div {
+            position: absolute;
+            top: 200px;
+            left: 300px;
+            width: 100px;
+            height: 100px;
+            background: red;
+            clip-path: circle(0 at left top);
+          }
+        </style>
+        <div onclick=console.log(1)></div>
+      </body>)",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+
+  const auto& geometry = *div_node.content_attributes->geometry;
+  EXPECT_TRUE(geometry.outer_bounding_box.IsEmpty());
+  EXPECT_TRUE(geometry.visible_bounding_box.IsEmpty());
+}
+
+TEST_F(AIPageContentAgentTest, InlineWithFloatAndInlineContentGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"HTML(
+      <body>
+        <style>
+          body { margin: 0; font: 10px/10px Ahem; }
+          a { position: absolute; top: 0; left: 0; color: black; }
+          #floater { float: left; width: 30px; height: 10px; background: #ccc; }
+        </style>
+        <a id="target" href="#"><span id="floater"></span>XX</a>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  LoadAhem();
+
+  GetAIPageContentWithActionableElements();
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  Element* anchor_element = document->getElementById(AtomicString("target"));
+  ASSERT_TRUE(anchor_element);
+  LayoutObject* anchor_layout_object = anchor_element->GetLayoutObject();
+  ASSERT_TRUE(anchor_layout_object);
+  const auto* anchor_box =
+      DynamicTo<LayoutBoxModelObject>(anchor_layout_object);
+  ASSERT_TRUE(anchor_box);
+
+  const mojom::blink::AIPageContentNode* anchor_node =
+      FindNodeBySelector("#target");
+
+  ASSERT_TRUE(anchor_node);
+  ASSERT_TRUE(anchor_node->content_attributes->geometry);
+  const auto& anchor_geometry = *anchor_node->content_attributes->geometry;
+
+  EXPECT_EQ(gfx::Rect(0, 0, 50, 10), anchor_geometry.outer_bounding_box);
+  EXPECT_EQ(gfx::Rect(0, 0, 50, 10), anchor_geometry.visible_bounding_box);
+
+  const mojom::blink::AIPageContentNode* floater_node =
+      FindNodeBySelector("#floater");
+  ASSERT_TRUE(floater_node);
+  ASSERT_TRUE(floater_node->content_attributes->geometry);
+  const auto& floater_geometry = *floater_node->content_attributes->geometry;
+
+  EXPECT_EQ(gfx::Rect(0, 0, 30, 10), floater_geometry.outer_bounding_box);
+  EXPECT_EQ(gfx::Rect(0, 0, 30, 10), floater_geometry.visible_bounding_box);
+}
+
+TEST_F(AIPageContentAgentTest, ActionableModeKeepsContainerQuadGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"HTML(
+      <body style="margin: 0; font: 10px/10px Ahem;">
+        <details id="wrapper">
+          <summary>Expandable</summary>
+          Contents.
+        </details>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  LoadAhem();
+
+  GetAIPageContentWithActionableElements();
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  Element* wrapper_element = document->getElementById(AtomicString("wrapper"));
+  ASSERT_TRUE(wrapper_element);
+  DOMNodeId wrapper_dom_node_id = DOMNodeIds::IdForNode(wrapper_element);
+
+  const auto* wrapper_node = FindNodeByDomNodeId(wrapper_dom_node_id);
+  ASSERT_TRUE(wrapper_node);
+  CheckContainerNode(*wrapper_node);
+  ASSERT_TRUE(wrapper_node->content_attributes->geometry);
+  const auto& geometry = *wrapper_node->content_attributes->geometry;
+
+  LayoutObject* wrapper_layout_object = wrapper_element->GetLayoutObject();
+  ASSERT_TRUE(wrapper_layout_object);
+  const auto* wrapper_box =
+      DynamicTo<LayoutBoxModelObject>(wrapper_layout_object);
+  ASSERT_TRUE(wrapper_box);
+
+  EXPECT_EQ(gfx::Rect(0, 0, 1000, 10), geometry.outer_bounding_box);
+  EXPECT_EQ(gfx::Rect(0, 0, 1000, 10), geometry.visible_bounding_box);
+}
+
+TEST_F(AIPageContentAgentTest, InlineWithFloatInlineBoxUnionGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"HTML(
+      <body style="margin: 0; font: 10px/10px Ahem;">
+        <a id="inline-float-union">
+          <span id="inline-wrapper">
+            <span id="floated" class="inner-float">1</span>
+            <span id="inline-box" style="display:inline-block; width: 4px; height: 20px;">2</span>
+          </span>
+        </a>
+        <style>
+          .inner-float {
+            width: 20px;
+            height: 20px;
+            display: block;
+            float: left;
+          }
+        </style>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  LoadAhem();
+
+  GetAIPageContentWithActionableElements();
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+
+  // As there is no clipping for either node, the outer box == visible box.
+
+  {
+    const auto* anchor_node = FindNodeBySelector("#inline-float-union");
+    ASSERT_TRUE(anchor_node);
+    ASSERT_TRUE(anchor_node->content_attributes);
+    ASSERT_TRUE(anchor_node->content_attributes->geometry);
+
+    const auto& anchor_geometry = *anchor_node->content_attributes->geometry;
+    EXPECT_EQ(anchor_geometry.outer_bounding_box,
+              anchor_geometry.visible_bounding_box);
+  }
+
+  {
+    const auto* container_node = FindNodeBySelector("#inline-wrapper");
+    ASSERT_TRUE(container_node);
+    ASSERT_TRUE(container_node->content_attributes);
+    ASSERT_TRUE(container_node->content_attributes->geometry);
+    const auto& container_geometry =
+        *container_node->content_attributes->geometry;
+    EXPECT_EQ(container_geometry.outer_bounding_box,
+              container_geometry.visible_bounding_box);
+  }
+}
+
+TEST_F(AIPageContentAgentTest, InlineWithOnlyFloatGeometry) {
+  // An inline anchor with no inline text content but containing a floated
+  // descendant should not inherit geometry from the float.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"(
+      <body>
+        <style>
+          body { margin: 0; }
+          a { position: absolute; left: 0; top: 0; }
+          #floater { float: left; width: 20px; height: 10px; background: #000; }
+        </style>
+        <a href="#"><span><span id="floater"></span></span></a>
+      </body>)",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  // Use actionable mode so the anchor is included in the APC tree.
+  GetAIPageContentWithActionableElements();
+
+  // Find the first node that has anchor data (iterative DFS, no std::function).
+  const auto& root = ContentRootNode();
+  const mojom::blink::AIPageContentNode* anchor_node = nullptr;
+  Vector<const mojom::blink::AIPageContentNode*> stack;
+  stack.push_back(&root);
+  while (!stack.empty()) {
+    const auto* node = stack.back();
+    stack.pop_back();
+    if (node->content_attributes && node->content_attributes->anchor_data) {
+      anchor_node = node;
+      break;
+    }
+    // Push children in reverse so traversal order matches natural order.
+    for (wtf_size_t i = node->children_nodes.size(); i > 0; --i) {
+      stack.push_back(node->children_nodes[i - 1].get());
+    }
+  }
+  ASSERT_TRUE(anchor_node);
+
+  ASSERT_TRUE(anchor_node->content_attributes->geometry);
+  const auto& anchor_geom = *anchor_node->content_attributes->geometry;
+
+  // Inline elements that keep their own fragment should retain geometry even
+  // when their only ink comes from a floating descendant.
+  EXPECT_EQ(anchor_geom.outer_bounding_box, gfx::Rect(0, 0, 20, 10));
+  EXPECT_EQ(anchor_geom.visible_bounding_box, gfx::Rect(0, 0, 20, 10));
+}
+
+TEST_F(AIPageContentAgentTest, StructuralWrapperWithoutPaintGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0; font: 10px/10px Ahem;">
+        <a id="wrapper" href="#" style="position: relative; display: inline-block;">
+          <span id="child" style="position: absolute; left: 0; top: 0;
+                                   width: 10px; height: 10px;
+                                   background: black; color: white;">X</span>
+        </a>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  LoadAhem();
+
+  GetAIPageContentWithActionableElements();
+
+  auto* wrapper_node = FindNodeBySelector("#wrapper");
+  ASSERT_TRUE(wrapper_node);
+  EXPECT_TRUE(wrapper_node->content_attributes->anchor_data);
+  ASSERT_TRUE(wrapper_node->content_attributes->geometry);
+  const auto& wrapper_geometry = *wrapper_node->content_attributes->geometry;
+  ASSERT_EQ(wrapper_geometry.fragment_visible_bounding_boxes.size(), 1u);
+
+  auto* child_node = FindNodeBySelector("#child");
+  ASSERT_TRUE(child_node);
+  ASSERT_TRUE(child_node->content_attributes->geometry);
+  const auto& child_geometry = *child_node->content_attributes->geometry;
+  EXPECT_FALSE(child_geometry.visible_bounding_box.IsEmpty());
+  EXPECT_FALSE(child_geometry.outer_bounding_box.IsEmpty());
+  EXPECT_EQ(wrapper_geometry.outer_bounding_box,
+            child_geometry.outer_bounding_box);
+  EXPECT_EQ(wrapper_geometry.visible_bounding_box,
+            child_geometry.visible_bounding_box);
+  EXPECT_EQ(wrapper_geometry.fragment_visible_bounding_boxes[0],
+            child_geometry.visible_bounding_box);
+}
+
+TEST_F(AIPageContentAgentTest,
+       NonActionableZeroAreaContainerUsesChildGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0; font: 10px/10px Ahem;">
+        <article id="container" style="position: relative; width: 0;
+                                       height: 0;">
+          <button id="child" style="position: absolute; left: 10px; top: 20px;
+                                    width: 20px; height: 10px;">X</button>
+        </article>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  LoadAhem();
+  GetAIPageContentWithActionableElements();
+
+  const auto* container = FindNodeBySelector("#container");
+  const auto* child = FindNodeBySelector("#child");
+  ASSERT_TRUE(container);
+  ASSERT_TRUE(child);
+  ASSERT_TRUE(container->content_attributes->geometry);
+  ASSERT_TRUE(child->content_attributes->geometry);
+  // The article is included for its structure, not because it is actionable.
+  EXPECT_FALSE(container->content_attributes->node_interaction_info);
+
+  const auto& container_geometry = *container->content_attributes->geometry;
+  const auto& child_geometry = *child->content_attributes->geometry;
+  // Ensure equality cannot pass because both source and repaired boxes are
+  // empty.
+  EXPECT_FALSE(child_geometry.outer_bounding_box.IsEmpty());
+  EXPECT_FALSE(child_geometry.visible_bounding_box.IsEmpty());
+  EXPECT_EQ(container_geometry.outer_bounding_box,
+            child_geometry.outer_bounding_box);
+  EXPECT_EQ(container_geometry.visible_bounding_box,
+            child_geometry.visible_bounding_box);
+  EXPECT_THAT(container_geometry.fragment_visible_bounding_boxes,
+              testing::ElementsAre(child_geometry.visible_bounding_box));
+}
+
+TEST_F(AIPageContentAgentTest,
+       ZeroAreaAnchorsUseVisibleOutOfFlowChildrenAsFragments) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0; font: 10px/10px Ahem;">
+        <a id="float" href="#" class="zero">
+          <span id="float-child-1" class="float-child" onclick="void(0)">A</span>
+          <span id="float-child-2" class="float-child" onclick="void(0)">B</span>
+        </a>
+        <a id="absolute" href="#" class="zero">
+          <span id="absolute-child-1" class="absolute-child"
+                onclick="void(0)">C</span>
+          <span id="absolute-child-2" class="absolute-child second"
+                onclick="void(0)">D</span>
+        </a>
+        <a id="fixed" href="#" class="zero">
+          <span id="fixed-child-1" class="fixed-child"
+                onclick="void(0)">E</span>
+          <span id="fixed-child-2" class="fixed-child second"
+                onclick="void(0)">F</span>
+        </a>
+        <style>
+          .zero {
+            display: inline-block;
+            position: relative;
+            width: 0;
+            height: 0;
+          }
+          .float-child { float: left; width: 20px; height: 10px; }
+          .absolute-child {
+            position: absolute;
+            left: 0;
+            top: 20px;
+            width: 20px;
+            height: 10px;
+          }
+          .fixed-child {
+            position: fixed;
+            left: 0;
+            top: 40px;
+            width: 20px;
+            height: 10px;
+          }
+          .second { left: 30px; }
+        </style>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  LoadAhem();
+  GetAIPageContentWithActionableElements();
+
+  auto expect_anchor_geometry_from_children =
+      [this](const char* anchor_selector, const char* first_child_selector,
+             const char* second_child_selector) {
+        const auto* anchor_node = FindNodeBySelector(anchor_selector);
+        ASSERT_TRUE(anchor_node);
+        ASSERT_TRUE(anchor_node->content_attributes->geometry);
+        const auto& anchor_geometry =
+            *anchor_node->content_attributes->geometry;
+
+        const auto* first_child = FindNodeBySelector(first_child_selector);
+        ASSERT_TRUE(first_child);
+        ASSERT_TRUE(first_child->content_attributes->geometry);
+        const gfx::Rect first_child_box =
+            first_child->content_attributes->geometry->visible_bounding_box;
+        EXPECT_FALSE(first_child_box.IsEmpty());
+
+        const auto* second_child = FindNodeBySelector(second_child_selector);
+        ASSERT_TRUE(second_child);
+        ASSERT_TRUE(second_child->content_attributes->geometry);
+        const gfx::Rect second_child_box =
+            second_child->content_attributes->geometry->visible_bounding_box;
+        EXPECT_FALSE(second_child_box.IsEmpty());
+
+        EXPECT_THAT(
+            anchor_geometry.fragment_visible_bounding_boxes,
+            testing::UnorderedElementsAre(first_child_box, second_child_box));
+
+        gfx::Rect expected_outer_box =
+            first_child->content_attributes->geometry->outer_bounding_box;
+        expected_outer_box.Union(
+            second_child->content_attributes->geometry->outer_bounding_box);
+        EXPECT_EQ(anchor_geometry.outer_bounding_box, expected_outer_box);
+
+        gfx::Rect expected_visible_box = first_child_box;
+        expected_visible_box.Union(second_child_box);
+        EXPECT_EQ(anchor_geometry.visible_bounding_box, expected_visible_box);
+      };
+
+  expect_anchor_geometry_from_children("#float", "#float-child-1",
+                                       "#float-child-2");
+  expect_anchor_geometry_from_children("#absolute", "#absolute-child-1",
+                                       "#absolute-child-2");
+  expect_anchor_geometry_from_children("#fixed", "#fixed-child-1",
+                                       "#fixed-child-2");
+}
+
+TEST_F(AIPageContentAgentTest,
+       ZeroAreaAncestorUsesFirstNonemptyGeometryFromEachBranch) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0; font: 10px/10px Ahem;">
+        <a id="anchor" href="#" class="zero">
+          <span id="deep-zero-1" class="zero" onclick="void(0)">
+            <span id="deep-zero-2" class="zero" onclick="void(0)">
+              <span id="deep-leaf" class="deep-leaf"
+                    onclick="void(0)">A</span>
+            </span>
+          </span>
+          <span id="nonempty-branch" class="nonempty-branch"
+                onclick="void(0)">
+            <span id="far-leaf" class="far-leaf"
+                  onclick="void(0)">B</span>
+          </span>
+        </a>
+        <style>
+          .zero {
+            display: inline-block;
+            position: relative;
+            width: 0;
+            height: 0;
+          }
+          .deep-leaf, .far-leaf {
+            position: absolute;
+            display: block;
+            width: 10px;
+            height: 10px;
+          }
+          .deep-leaf { left: 20px; top: 10px; }
+          .nonempty-branch {
+            display: inline-block;
+            position: relative;
+            width: 5px;
+            height: 5px;
+          }
+          .far-leaf { left: 100px; top: 100px; }
+        </style>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  LoadAhem();
+  GetAIPageContentWithActionableElements();
+
+  const auto* anchor = FindNodeBySelector("#anchor");
+  const auto* deep_zero_1 = FindNodeBySelector("#deep-zero-1");
+  const auto* deep_zero_2 = FindNodeBySelector("#deep-zero-2");
+  const auto* deep_leaf = FindNodeBySelector("#deep-leaf");
+  const auto* nonempty_branch = FindNodeBySelector("#nonempty-branch");
+  const auto* far_leaf = FindNodeBySelector("#far-leaf");
+  ASSERT_TRUE(anchor);
+  ASSERT_TRUE(deep_zero_1);
+  ASSERT_TRUE(deep_zero_2);
+  ASSERT_TRUE(deep_leaf);
+  ASSERT_TRUE(nonempty_branch);
+  ASSERT_TRUE(far_leaf);
+  ASSERT_TRUE(anchor->content_attributes->geometry);
+  ASSERT_TRUE(deep_zero_1->content_attributes->geometry);
+  ASSERT_TRUE(deep_zero_2->content_attributes->geometry);
+  ASSERT_TRUE(deep_leaf->content_attributes->geometry);
+  ASSERT_TRUE(nonempty_branch->content_attributes->geometry);
+  ASSERT_TRUE(far_leaf->content_attributes->geometry);
+
+  const auto& anchor_geometry = *anchor->content_attributes->geometry;
+  const auto& deep_leaf_geometry = *deep_leaf->content_attributes->geometry;
+  const auto& nonempty_branch_geometry =
+      *nonempty_branch->content_attributes->geometry;
+  const auto& far_leaf_geometry = *far_leaf->content_attributes->geometry;
+
+  // Each zero-area level on the deep branch receives the same first nonempty
+  // geometry from below it.
+  EXPECT_EQ(deep_zero_2->content_attributes->geometry->visible_bounding_box,
+            deep_leaf_geometry.visible_bounding_box);
+  EXPECT_EQ(deep_zero_1->content_attributes->geometry->visible_bounding_box,
+            deep_leaf_geometry.visible_bounding_box);
+
+  // The anchor receives one contribution from each branch. The far leaf does
+  // not contribute because its branch already has nonempty container geometry.
+  EXPECT_THAT(anchor_geometry.fragment_visible_bounding_boxes,
+              testing::UnorderedElementsAre(
+                  deep_leaf_geometry.visible_bounding_box,
+                  nonempty_branch_geometry.visible_bounding_box));
+  EXPECT_THAT(
+      anchor_geometry.fragment_visible_bounding_boxes,
+      testing::Not(testing::Contains(far_leaf_geometry.visible_bounding_box)));
+}
+
+TEST_F(AIPageContentAgentTest,
+       ZeroAreaAnchorsUseGeometryThroughNonpaintingWrappers) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0; font: 10px/10px Ahem;">
+        <a id="collapse-anchor" href="#" class="zero">
+          <span style="visibility: collapse;">
+            <span id="collapse-child" class="collapse-child"
+                  onclick="void(0)">A</span>
+          </span>
+        </a>
+        <a id="contents-anchor" href="#" class="zero">
+          <span style="display: contents;">
+            <span id="contents-child" class="contents-child"
+                  onclick="void(0)">B</span>
+          </span>
+        </a>
+        <style>
+          .zero {
+            display: inline-block;
+            position: relative;
+            width: 0;
+            height: 0;
+          }
+          .collapse-child, .contents-child {
+            position: absolute;
+            display: block;
+            width: 20px;
+            height: 10px;
+            visibility: visible;
+          }
+          .collapse-child { left: 10px; top: 20px; }
+          .contents-child { left: 40px; top: 20px; }
+        </style>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  LoadAhem();
+  GetAIPageContentWithActionableElements();
+
+  auto expect_anchor_matches_child = [this](const char* anchor_selector,
+                                            const char* child_selector) {
+    const auto* anchor = FindNodeBySelector(anchor_selector);
+    const auto* child = FindNodeBySelector(child_selector);
+    ASSERT_TRUE(anchor);
+    ASSERT_TRUE(child);
+    ASSERT_TRUE(anchor->content_attributes->geometry);
+    ASSERT_TRUE(child->content_attributes->geometry);
+
+    const auto& anchor_geometry = *anchor->content_attributes->geometry;
+    const auto& child_geometry = *child->content_attributes->geometry;
+    EXPECT_EQ(anchor_geometry.outer_bounding_box,
+              child_geometry.outer_bounding_box);
+    EXPECT_EQ(anchor_geometry.visible_bounding_box,
+              child_geometry.visible_bounding_box);
+    EXPECT_THAT(anchor_geometry.fragment_visible_bounding_boxes,
+                testing::ElementsAre(child_geometry.visible_bounding_box));
+  };
+
+  expect_anchor_matches_child("#collapse-anchor", "#collapse-child");
+  expect_anchor_matches_child("#contents-anchor", "#contents-child");
+}
+
+TEST_F(AIPageContentAgentTest,
+       ZeroAreaAnchorCombinesFragmentsFromMultipleSources) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0; font: 10px/10px Ahem;">
+        <a id="anchor" href="#">AB CD<span id="sibling"
+            onclick="void(0)">E</span></a>
+        <style>
+          #anchor {
+            display: block;
+            position: relative;
+            width: 20px;
+            height: 0;
+          }
+          #sibling {
+            position: absolute;
+            left: 50px;
+            top: 30px;
+            width: 10px;
+            height: 10px;
+          }
+        </style>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  LoadAhem();
+  GetAIPageContentWithActionableElements();
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  Element* anchor = document->getElementById(AtomicString("anchor"));
+  ASSERT_TRUE(anchor);
+  Node* wrapping_text = anchor->firstChild();
+  ASSERT_TRUE(wrapping_text);
+  ASSERT_TRUE(wrapping_text->IsTextNode());
+
+  const auto* anchor_node = FindNodeBySelector("#anchor");
+  const auto* text_node =
+      FindNodeByDomNodeId(DOMNodeIds::IdForNode(wrapping_text));
+  const auto* sibling_node = FindNodeBySelector("#sibling");
+  ASSERT_TRUE(anchor_node);
+  ASSERT_TRUE(text_node);
+  ASSERT_TRUE(sibling_node);
+  ASSERT_TRUE(anchor_node->content_attributes->geometry);
+  ASSERT_TRUE(text_node->content_attributes->geometry);
+  ASSERT_TRUE(sibling_node->content_attributes->geometry);
+
+  const auto& anchor_geometry = *anchor_node->content_attributes->geometry;
+  const auto& text_geometry = *text_node->content_attributes->geometry;
+  const auto& sibling_geometry = *sibling_node->content_attributes->geometry;
+  ASSERT_EQ(text_geometry.fragment_visible_bounding_boxes.size(), 2u);
+  ASSERT_TRUE(sibling_geometry.fragment_visible_bounding_boxes.empty());
+
+  // `#sibling` is inside the anchor and is the wrapping text node's sibling.
+  // The empty anchor therefore combines the first nonempty geometry from both
+  // child branches.
+  Vector<gfx::Rect> expected_fragments =
+      text_geometry.fragment_visible_bounding_boxes;
+  expected_fragments.push_back(sibling_geometry.visible_bounding_box);
+  EXPECT_THAT(anchor_geometry.fragment_visible_bounding_boxes,
+              testing::UnorderedElementsAreArray(expected_fragments));
+
+  gfx::Rect expected_outer_box = text_geometry.outer_bounding_box;
+  expected_outer_box.Union(sibling_geometry.outer_bounding_box);
+  EXPECT_EQ(anchor_geometry.outer_bounding_box, expected_outer_box);
+
+  gfx::Rect expected_visible_box = text_geometry.visible_bounding_box;
+  expected_visible_box.Union(sibling_geometry.visible_bounding_box);
+  EXPECT_EQ(anchor_geometry.visible_bounding_box, expected_visible_box);
+}
+
+TEST_F(AIPageContentAgentTest, InlinePreWrapGeometry) {
+  // Inline wrappers that rely on white-space:pre-wrap frequently delegate all
+  // actual painting to anonymous block fragments generated for line wrapping.
+  // The legacy outer-bounding-box path used AbsoluteBoundingBoxRect() on the
+  // LayoutInline host, so it produced an empty rect even though the wrapped
+  // text occupied multiple lines. Mapping via GeometryMapper keeps outer and
+  // visible boxes consistent in these inlines-with-block-descendants cases.
+  ScopedAIPageContentOuterBoxMapToAncestorSpaceForTest enable_outer_box_mapping(
+      true);
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <style>
+        body { margin: 0; font: 16px/16px Ahem; }
+        #prewrap-inline { white-space: pre-wrap; }
+      </style>
+      <body>
+        <span id="prewrap-inline">
+          <span>Label:</span> Wrapped inline text.
+        </span>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  LoadAhem();
+  GetAIPageContentWithActionableElements();
+
+  const auto* entry_node = FindNodeBySelector("#prewrap-inline");
+  ASSERT_TRUE(entry_node);
+  ASSERT_TRUE(entry_node->content_attributes);
+  ASSERT_TRUE(entry_node->content_attributes->geometry);
+
+  const auto& geometry = *entry_node->content_attributes->geometry;
+  EXPECT_FALSE(geometry.outer_bounding_box.IsEmpty());
+  EXPECT_FALSE(geometry.visible_bounding_box.IsEmpty());
+  EXPECT_EQ(geometry.outer_bounding_box, geometry.visible_bounding_box);
+}
+
+TEST_F(AIPageContentAgentTest, IframeOuterBoxNotViewportClipped) {
+  // Force outer-box mapping on so GeometryMapper is used for both the visible
+  // and unclipped bounds.
+  ScopedAIPageContentOuterBoxMapToAncestorSpaceForTest enable_outer_box_mapping(
+      true);
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <style>
+        body { margin: 0; }
+        iframe {
+          border: none;
+          width: 200px;
+          height: 150px;
+        }
+      </style>
+      <body>
+        <iframe id="offscreen-frame" srcdoc="
+          <style>
+            body { margin: 0; height: 800px; position: relative; font: 10px/10px Ahem; }
+            #deep {
+              position: absolute;
+              left: 20px;
+              top: -10px;
+              width: 50px;
+              height: 40px;
+              background: lightgreen;
+            }
+          </style>
+          <body>
+            <a id='deep' href='#'>Deep target</a>
+          </body>">
+        </iframe>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  LocalFrameView* view = document->View();
+  ASSERT_TRUE(view);
+  test::RunPendingTasks();
+  view->UpdateAllLifecyclePhasesForTest();
+  auto* iframe_element = DynamicTo<HTMLIFrameElement>(
+      document->getElementById(AtomicString("offscreen-frame")));
+  ASSERT_TRUE(iframe_element);
+  LocalFrame* child_frame =
+      DynamicTo<LocalFrame>(iframe_element->ContentFrame());
+  ASSERT_TRUE(child_frame);
+  PageTestBase::LoadAhem(*child_frame);
+  if (LocalFrameView* child_view = child_frame->View()) {
+    test::RunPendingTasks();
+    child_view->UpdateAllLifecyclePhasesForTest();
+  }
+  Document* child_document = child_frame->GetDocument();
+  ASSERT_TRUE(child_document);
+
+  Element* deep = child_document->getElementById(AtomicString("deep"));
+  ASSERT_TRUE(deep);
+
+  GetAIPageContentWithActionableElements();
+
+  DOMNodeId deep_dom_node_id = DOMNodeIds::IdForNode(deep);
+  ASSERT_GE(deep_dom_node_id, 1);
+  const auto* deep_node = FindNodeByDomNodeId(deep_dom_node_id);
+  ASSERT_TRUE(deep_node);
+  ASSERT_TRUE(deep_node->content_attributes);
+  ASSERT_TRUE(deep_node->content_attributes->geometry);
+
+  // The element straddles the iframe's viewport top edge. When
+  // kSkipAncestorAndViewportClips is honored, MapToVisualRectInAncestorSpace
+  // skips that viewport clip so the outer box reports the true location in the
+  // embedder viewport, while the visible box remains clipped to the portion
+  // that is painted.
+  const auto& geometry = *deep_node->content_attributes->geometry;
+  EXPECT_EQ(geometry.outer_bounding_box, gfx::Rect(20, -10, 50, 40));
+  EXPECT_EQ(geometry.visible_bounding_box, gfx::Rect(20, 0, 50, 30));
+}
+
+TEST_F(AIPageContentAgentTest, InlineBlockFixedDescendantKeepsGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <style>
+        body { margin: 0; font: 10px/10px Ahem; }
+        .content { padding: 60px 0 0 40px; }
+        a.inline-block-anchor {
+          display: inline-block;
+          width: 100px;
+          height: 100px;
+          border: 1px solid black;
+        }
+        .fixed-box {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 200px;
+          height: 25px;
+        }
+      </style>
+      <body>
+        <div class="content">
+          <a id="anchor" class="inline-block-anchor" href="#test">
+            <div class="fixed-box">a</div>
+          </a>
+        </div>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* anchor_node = FindNodeBySelector("#anchor");
+  ASSERT_TRUE(anchor_node);
+  const auto& attributes = *anchor_node->content_attributes;
+  EXPECT_EQ(attributes.attribute_type,
+            mojom::blink::AIPageContentAttributeType::kAnchor);
+  ASSERT_TRUE(attributes.geometry);
+
+  const auto& geometry = *attributes.geometry;
+  EXPECT_EQ(gfx::Rect(40, 60, 102, 102), geometry.outer_bounding_box);
+  EXPECT_EQ(geometry.outer_bounding_box, geometry.visible_bounding_box);
+}
+
+TEST_F(AIPageContentAgentTest, GeometryIncludesCssPosition) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <style>
+        body { margin: 0; font: 10px/10px Ahem; }
+        #fixed {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 50px;
+          height: 10px;
+        }
+      </style>
+      <body>
+        <button id="fixed">Action</button>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* fixed_node = FindNodeBySelector("#fixed");
+  ASSERT_TRUE(fixed_node);
+  ASSERT_TRUE(fixed_node->content_attributes);
+  ASSERT_TRUE(fixed_node->content_attributes->geometry);
+  // A fixed control should carry its computed CSS position alongside geometry.
+  EXPECT_EQ(fixed_node->content_attributes->geometry->css_position,
+            mojom::blink::AIPageContentCssPosition::kFixed);
+}
+
+TEST_F(AIPageContentAgentTest, TableTextClippedByScrollerBeforeScroll) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <style>
+        body { margin: 0; font: 10px/10px Ahem; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        main {
+          width: 70px;
+          height: 30px;
+          overflow: auto;
+        }
+        table {
+          width: 120%;
+          height: 30px;
+          table-layout: fixed;
+          border-collapse: collapse;
+        }
+        td.small10x10 {
+          width: 100px;
+          height: 3ch;
+          vertical-align: top;
+          font: 10px/10px Ahem;
+        }
+      </style>
+      <body>
+        <main id="scroller">
+          <table>
+            <tr>
+              <td id="cell" class="small10x10">ABC DEF GHI JKL MNO PQR STU VWX YZ 0123456789</td>
+              <td></td>
+            </tr>
+            <tr>
+              <td></td>
+              <td style="height: 100vh; width: 100vh;"></td>
+            </tr>
+          </table>
+        </main>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  LoadAhem();
+
+  GetAIPageContentWithActionableElements();
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+
+  Element* cell = document->getElementById(AtomicString("cell"));
+  ASSERT_TRUE(cell);
+  Node* text = cell->firstChild();
+  ASSERT_TRUE(text);
+  ASSERT_TRUE(text->IsTextNode());
+
+  const auto* text_node = FindNodeByDomNodeId(DOMNodeIds::IdForNode(text));
+  ASSERT_TRUE(text_node);
+  ASSERT_TRUE(text_node->content_attributes->geometry);
+
+  Element* scroller_element =
+      document->getElementById(AtomicString("scroller"));
+  ASSERT_TRUE(scroller_element);
+
+  const auto& geometry = *text_node->content_attributes->geometry;
+  const auto& fragments = geometry.fragment_visible_bounding_boxes;
+  const ComputedStyle& before_style = text->GetLayoutObject()->StyleRef();
+  LocalFrame* local_frame = document->GetFrame();
+  ASSERT_TRUE(local_frame);
+  EXPECT_NEAR(before_style.ComputedFontSize(), 10.0f, 0.01f);
+  EXPECT_NEAR(before_style.GetFont()->GetFontDescription().ComputedSize(),
+              10.0f, 0.01f);
+
+  EXPECT_EQ(gfx::Rect(0, 0, 100, 50), geometry.outer_bounding_box);
+  EXPECT_EQ(gfx::Rect(0, 0, 70, 30), geometry.visible_bounding_box);
+  ASSERT_EQ(fragments.size(), 3u);
+  EXPECT_EQ(fragments[0], gfx::Rect(0, 0, 70, 10));
+  EXPECT_EQ(fragments[1], gfx::Rect(0, 10, 70, 10));
+  EXPECT_EQ(fragments[2], gfx::Rect(0, 20, 70, 10));
+}
+
+TEST_F(AIPageContentAgentTest, TableTextClippedByScrollerAfterScroll) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <style>
+        body { margin: 0; font: 10px/10px Ahem; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        main {
+          width: 70px;
+          height: 30px;
+          overflow: auto;
+        }
+        table {
+          width: 120%;
+          height: 30px;
+          table-layout: fixed;
+          border-collapse: collapse;
+        }
+        td.small10x10 {
+          width: 100px;
+          height: 3ch;
+          vertical-align: top;
+          font: 10px/10px Ahem;
+        }
+      </style>
+      <body>
+        <main id="scroller">
+          <table>
+            <tr>
+              <td id="cell" class="small10x10">ABC DEF GHI JKL MNO PQR STU VWX YZ 0123456789</td>
+              <td></td>
+            </tr>
+            <tr>
+              <td></td>
+              <td style="height: 100vh; width: 100vh;"></td>
+            </tr>
+          </table>
+        </main>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  LoadAhem();
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+
+  Element* scroller = document->getElementById(AtomicString("scroller"));
+  ASSERT_TRUE(scroller);
+  scroller->setScrollLeft(15);
+  scroller->setScrollTop(15);
+
+  LocalFrameView* view = document->View();
+  ASSERT_TRUE(view);
+  test::RunPendingTasks();
+  view->UpdateAllLifecyclePhasesForTest();
+
+  GetAIPageContentWithActionableElements();
+
+  Element* cell = document->getElementById(AtomicString("cell"));
+  ASSERT_TRUE(cell);
+  Node* text = cell->firstChild();
+  ASSERT_TRUE(text);
+  ASSERT_TRUE(text->IsTextNode());
+
+  const auto* text_node = FindNodeByDomNodeId(DOMNodeIds::IdForNode(text));
+  ASSERT_TRUE(text_node);
+  ASSERT_TRUE(text_node->content_attributes->geometry);
+
+  const auto& geometry = *text_node->content_attributes->geometry;
+  const auto& fragments = geometry.fragment_visible_bounding_boxes;
+  const ComputedStyle& after_style = text->GetLayoutObject()->StyleRef();
+  std::string fragments_trace;
+  for (wtf_size_t i = 0; i < fragments.size(); ++i) {
+    if (!fragments_trace.empty()) {
+      fragments_trace.append("; ");
+    }
+    std::string fragment_rect = fragments[i].ToString();
+    fragments_trace.append(
+        base::StringPrintf("%zu:%s", i, fragment_rect.c_str()));
+  }
+  LocalFrame* local_frame = document->GetFrame();
+  ASSERT_TRUE(local_frame);
+  EXPECT_NEAR(after_style.ComputedFontSize(), 10.0f, 0.01f);
+  EXPECT_NEAR(after_style.GetFont()->GetFontDescription().ComputedSize(), 10.0f,
+              0.01f);
+
+  EXPECT_EQ(gfx::Rect(-15, -15, 100, 50), geometry.outer_bounding_box);
+  EXPECT_EQ(gfx::Rect(0, 0, 70, 30), geometry.visible_bounding_box);
+  ASSERT_EQ(fragments.size(), 4u);
+  EXPECT_EQ(fragments[0], gfx::Rect(0, 0, 55, 5));
+  EXPECT_EQ(fragments[1], gfx::Rect(0, 5, 55, 10));
+  EXPECT_EQ(fragments[2], gfx::Rect(0, 15, 70, 10));
+  EXPECT_EQ(fragments[3], gfx::Rect(0, 25, 70, 5));
+}
+
+TEST_F(AIPageContentAgentTest, IframeInlineTextClippedWhenViewportScrolled) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <style>
+        body { margin: 0; height: 2000px; font: 10px/10px Ahem; }
+        iframe {
+          border: none;
+          width: 100px;
+          height: 200px;
+        }
+      </style>
+      <body>
+        <iframe id="target" srcdoc="
+          <style>
+            body { margin: 0; font: 10px/10px Ahem; }
+            p { margin: 0; background: red; }
+          </style>
+          <body>
+            <p id='inner'>ABC DEF GHI JKL MNO PQR STU</p>
+          </body>">
+        </iframe>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://example.com"));
+
+  LoadAhem();
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  Element* scrolling_element = document->scrollingElement();
+  ASSERT_TRUE(scrolling_element);
+  scrolling_element->setScrollLeft(15);
+  scrolling_element->setScrollTop(15);
+
+  LocalFrameView* view = document->View();
+  ASSERT_TRUE(view);
+  test::RunPendingTasks();
+  view->UpdateAllLifecyclePhasesForTest();
+
+  HTMLIFrameElement* iframe_element = DynamicTo<HTMLIFrameElement>(
+      document->getElementById(AtomicString("target")));
+  ASSERT_TRUE(iframe_element);
+  LocalFrame* child_frame =
+      DynamicTo<LocalFrame>(iframe_element->ContentFrame());
+  ASSERT_TRUE(child_frame);
+  // Load Ahem inside the iframe before we snapshot geometry to avoid races on
+  // platforms where font activation is asynchronous.
+  PageTestBase::LoadAhem(*child_frame);
+  test::RunPendingTasks();
+  if (LocalFrameView* child_view = child_frame->View()) {
+    child_view->UpdateAllLifecyclePhasesForTest();
+  }
+  Document* child_document = child_frame->GetDocument();
+  ASSERT_TRUE(child_document);
+
+  Element* inner_p = child_document->getElementById(AtomicString("inner"));
+  ASSERT_TRUE(inner_p);
+  Node* inner_text = inner_p->firstChild();
+  ASSERT_TRUE(inner_text);
+  ASSERT_TRUE(inner_text->IsTextNode());
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* text_node =
+      FindNodeByDomNodeId(DOMNodeIds::IdForNode(inner_text));
+  ASSERT_TRUE(text_node);
+  ASSERT_TRUE(text_node->content_attributes->geometry);
+
+  const auto& geometry = *text_node->content_attributes->geometry;
+  const auto& fragments = geometry.fragment_visible_bounding_boxes;
+  const ComputedStyle& iframe_style = inner_text->GetLayoutObject()->StyleRef();
+  std::string fragments_trace;
+  for (wtf_size_t i = 0; i < fragments.size(); ++i) {
+    if (!fragments_trace.empty()) {
+      fragments_trace.append("; ");
+    }
+    std::string fragment_rect = fragments[i].ToString();
+    fragments_trace.append(
+        base::StringPrintf("%zu:%s", i, fragment_rect.c_str()));
+  }
+  EXPECT_NEAR(iframe_style.ComputedFontSize(), 10.0f, 0.01f);
+  EXPECT_NEAR(iframe_style.GetFont()->GetFontDescription().ComputedSize(),
+              10.0f, 0.01f);
+  EXPECT_EQ(AtomicString("Ahem"),
+            iframe_style.GetFont()->GetFontDescription().Family().FamilyName());
+
+  EXPECT_EQ(gfx::Rect(0, -15, 70, 40), geometry.outer_bounding_box);
+  EXPECT_EQ(gfx::Rect(0, 0, 70, 25), geometry.visible_bounding_box);
+  ASSERT_EQ(fragments.size(), 3u);
+  EXPECT_EQ(fragments[0], gfx::Rect(0, 0, 70, 5));
+  EXPECT_EQ(fragments[1], gfx::Rect(0, 5, 70, 10));
+  EXPECT_EQ(fragments[2], gfx::Rect(0, 15, 30, 10));
+}
+
+TEST_F(AIPageContentAgentTest, CSSHoverPseudoClass) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"(
+      <body>
+        <style>
+          div:hover {
+            background-color: red;
+          }
+        </style>
+        <div onclick=console.log(1)></div>
+        <p>sibling</p>
+      </body>)",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+  EXPECT_TRUE(
+      div_node.content_attributes->node_interaction_info->clickability_reasons
+          .Contains(ClickabilityReason::kHoverPseudoClass));
+
+  const auto& p_node = *ContentRootNode().children_nodes[1];
+  EXPECT_FALSE(
+      p_node.content_attributes->node_interaction_info->clickability_reasons
+          .Contains(ClickabilityReason::kHoverPseudoClass));
+}
+
+TEST_F(AIPageContentAgentTest, CSSHoverPseudoClassNotInherited) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(), R"(
+      <body>
+        <style>
+          div:hover {
+            background-color: red;
+          }
+        </style>
+        <div onclick=console.log(1)>
+          <p>child</p>
+        </div>
+        <p>sibling</p>
+      </body>)",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& div_node = *ContentRootNode().children_nodes[0];
+  EXPECT_TRUE(
+      div_node.content_attributes->node_interaction_info->clickability_reasons
+          .Contains(ClickabilityReason::kHoverPseudoClass));
+
+  const auto& child_p_node = *div_node.children_nodes[0];
+  EXPECT_FALSE(child_p_node.content_attributes->node_interaction_info
+                   ->clickability_reasons.Contains(
+                       ClickabilityReason::kHoverPseudoClass));
+
+  const auto& sibling_p_node = *ContentRootNode().children_nodes[1];
+  EXPECT_FALSE(sibling_p_node.content_attributes->node_interaction_info
+                   ->clickability_reasons.Contains(
+                       ClickabilityReason::kHoverPseudoClass));
+}
+
+// Tests hit-testing and z-order computations for AIPageContentAgent.
+class AIPageContentAgentTestZOrder : public AIPageContentAgentTest {};
+
+TEST_F(AIPageContentAgentTestZOrder, HitTestElementsBasic) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <p style='background:red'>Text 1</p>"
+      "  <p>Text 2</p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = *Content()->root_node;
+
+  ASSERT_TRUE(root.content_attributes->node_interaction_info);
+  EXPECT_EQ(
+      root.content_attributes->node_interaction_info->document_scoped_z_order,
+      1);
+
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& html = *root.children_nodes.at(0);
+  EXPECT_EQ(
+      html.content_attributes->node_interaction_info->document_scoped_z_order,
+      2);
+
+  ASSERT_EQ(html.children_nodes.size(), 1u);
+  const auto& body = *html.children_nodes.at(0);
+  EXPECT_EQ(
+      body.content_attributes->node_interaction_info->document_scoped_z_order,
+      3);
+
+  // The tree should look as follows, with the given z order.
+  // root - 1
+  // |_html - 2
+  //    |_body - 3
+  //      |_p - 4
+  //      | |_Text1 - 5
+  //      |_p - 6
+  //        |_Text2 - 7
+  ASSERT_EQ(body.children_nodes.size(), 2u);
+  const auto& p1 = *body.children_nodes.at(0);
+  EXPECT_EQ(
+      p1.content_attributes->node_interaction_info->document_scoped_z_order, 4);
+
+  const auto& p2 = *body.children_nodes.at(1);
+  EXPECT_EQ(
+      p2.content_attributes->node_interaction_info->document_scoped_z_order, 6);
+
+  ASSERT_EQ(p1.children_nodes.size(), 1u);
+  const auto& text1 = *p1.children_nodes.at(0);
+  CheckTextNode(text1, "Text 1");
+  EXPECT_EQ(
+      text1.content_attributes->node_interaction_info->document_scoped_z_order,
+      5);
+
+  ASSERT_EQ(p2.children_nodes.size(), 1u);
+  const auto& text2 = *p2.children_nodes.at(0);
+  CheckTextNode(text2, "Text 2");
+  EXPECT_EQ(
+      text2.content_attributes->node_interaction_info->document_scoped_z_order,
+      7);
+}
+
+TEST_F(AIPageContentAgentTestZOrder, HitTestElementsFixedPos) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <p style='position: fixed; top: 10px;'>Text 1</p>"
+      "  <p>Text 2</p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 2u);
+
+  // The first node is now on top.
+  const auto& p1 = *root.children_nodes.at(0);
+  ASSERT_TRUE(p1.content_attributes->node_interaction_info);
+  ASSERT_TRUE(
+      p1.content_attributes->node_interaction_info->document_scoped_z_order);
+  EXPECT_EQ(
+      p1.content_attributes->node_interaction_info->document_scoped_z_order, 6);
+
+  const auto& p2 = *root.children_nodes.at(1);
+  ASSERT_TRUE(p2.content_attributes->node_interaction_info);
+  ASSERT_TRUE(
+      p2.content_attributes->node_interaction_info->document_scoped_z_order);
+  EXPECT_EQ(
+      p2.content_attributes->node_interaction_info->document_scoped_z_order, 4);
+}
+
+TEST_F(AIPageContentAgentTestZOrder, HitTestElementsPointerNone) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <p style='pointer-events:none'>Text 1</p>"
+      "  <p>Text 2</p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 2u);
+
+  // The first node is not actionable anymore.
+  const auto& p1 = *root.children_nodes.at(0);
+  EXPECT_FALSE(p1.content_attributes->node_interaction_info);
+
+  const auto& p2 = *root.children_nodes.at(1);
+  ASSERT_TRUE(p2.content_attributes->node_interaction_info);
+  ASSERT_TRUE(
+      p2.content_attributes->node_interaction_info->document_scoped_z_order);
+}
+
+TEST_F(AIPageContentAgentTestZOrder, HitTestElementsOffscreen) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <p style='cursor:pointer; position:fixed; top:110vh;'>Text 1</p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  // A viewport-anchored node parked offscreen cannot be reached by scrolling,
+  // so APC should not serialize it as actionable.
+  const auto& p1 = *root.children_nodes.at(0);
+  EXPECT_FALSE(p1.content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder, HitTestElementsOffscreenFeatureDisabled) {
+  ScopedAIPageContentAnchoredFixedOffscreenNonActionabilityForTest
+      scoped_feature(false);
+
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <p style='cursor:pointer; position:fixed; top:110vh;'>Text 1</p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  // With the new gate disabled, APC keeps the previous behavior and still
+  // serializes actionability for the offscreen fixed node.
+  const auto& p1 = *root.children_nodes.at(0);
+  ASSERT_TRUE(p1.content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsNestedScrollerOffscreenFeaturesDisabled) {
+  ScopedAIPageContentAnchoredFixedOffscreenNonActionabilityForTest
+      scoped_fixed_feature(false);
+  ScopedAIPageContentAnchoredNonFixedOffscreenNonActionabilityForTest
+      scoped_non_fixed_feature(false);
+
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0;">
+        <div id="scroller" style="overflow: auto; width: 200px; height: 200px; position: relative;">
+          <p id="target" style="cursor: pointer; position: absolute; left: -9999px; top: 100px;">Text 1</p>
+          <div style="height: 1000px;"></div>
+        </div>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  // Overflow-container state is tracked during traversal even when the
+  // actionability gates are off. With both gates disabled, APC should keep the
+  // older behavior and leave this offscreen nested-scroller target actionable.
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  ASSERT_TRUE(target->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsFixedScrollableAncestorKeepsOffscreenChildActionable) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body style='margin: 0;'>"
+      "  <div id='dialog' style='position: fixed; inset: 0;'>"
+      "    <div id='scroller' style='height: 100px; overflow-y: auto;'>"
+      "      <div style='height: 1200px;'></div>"
+      "      <button id='target'>Bottom action</button>"
+      "    </div>"
+      "  </div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  // The button is below the current scrollport inside the fixed dialog, but it
+  // is still reachable by scrolling #scroller. APC should keep it actionable so
+  // downstream clients can scroll the ancestor before clicking the button.
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  ASSERT_TRUE(target->content_attributes->node_interaction_info);
+
+  const auto& interaction_info =
+      *target->content_attributes->node_interaction_info;
+  EXPECT_FALSE(interaction_info.clickability_reasons.empty());
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsFixedScrollerEscapesUnreachableAncestorScroller) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body style='margin: 0;'>"
+      "  <div id='outer-scroller' style='overflow: auto; width: 200px;"
+      "      height: 200px; position: absolute; left: -9999px; top: 0;'>"
+      "    <div id='fixed-scroller' style='position: fixed; overflow: auto;"
+      "        width: 100px; height: 100px; left: 10px; top: 10px;'>"
+      "      <p id='target' style='cursor: pointer;'>Text 1</p>"
+      "      <div style='height: 200px;'></div>"
+      "    </div>"
+      "  </div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  // The fixed scroller escapes the offscreen ancestor scroller and is visible
+  // in the viewport. Its target should not inherit the ancestor's unreachable
+  // overflow state.
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  ASSERT_TRUE(target->content_attributes->node_interaction_info);
+
+  const auto& interaction_info =
+      *target->content_attributes->node_interaction_info;
+  EXPECT_FALSE(interaction_info.clickability_reasons.empty());
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsOffscreenFixedInsideTransform) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body style='margin: 0; height: 2500px;'>"
+      "  <div style='height: 1200px;'></div>"
+      "  <div style='transform: translateZ(0); position: relative;'>"
+      "    <p id='target' style='cursor:pointer; position:fixed; top:0;'>"
+      "      Text 1"
+      "    </p>"
+      "  </div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  ASSERT_TRUE(target->content_attributes->node_interaction_info);
+
+  const auto& interaction_info =
+      *target->content_attributes->node_interaction_info;
+  EXPECT_FALSE(interaction_info.clickability_reasons.empty());
+}
+
+TEST_F(AIPageContentAgentTestZOrder, HitTestElementsAbsoluteNegativeTrap) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <p id='target' style='cursor:pointer; position:absolute;"
+      "      left:-9999px; top:0;'>"
+      "    Text 1"
+      "  </p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  EXPECT_FALSE(target->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder, HitTestElementsAbsoluteReachableByScroll) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body style='margin: 0; height: 7000px;'>"
+      "  <p id='target' style='cursor:pointer; position:absolute;"
+      "      left:0; top:5000px;'>"
+      "    Text 1"
+      "  </p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  ASSERT_TRUE(target->content_attributes->node_interaction_info);
+
+  const auto& interaction_info =
+      *target->content_attributes->node_interaction_info;
+  EXPECT_FALSE(interaction_info.clickability_reasons.empty());
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsAbsoluteReachableWhenScrolledPast) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body style='margin: 0; height: 7000px;'>"
+      "  <p id='target' style='cursor:pointer; position:absolute;"
+      "      left:0; top:200px;'>"
+      "    Text 1"
+      "  </p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // Scroll the page so the target moves above the current viewport. The node
+  // should still stay actionable because the user can scroll back to it.
+  helper_.LocalMainFrame()->ExecuteScript(
+      WebScriptSource("window.scrollTo(0, 2000);"));
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  ASSERT_TRUE(document->View());
+  document->View()->UpdateAllLifecyclePhasesForTest();
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  ASSERT_TRUE(target->content_attributes->node_interaction_info);
+
+  const auto& interaction_info =
+      *target->content_attributes->node_interaction_info;
+  EXPECT_FALSE(interaction_info.clickability_reasons.empty());
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsAbsoluteReachableWhenScrolledPastOnHighDPI) {
+  // This regression combines the two coordinate transforms the offscreen check
+  // now relies on: a visual-viewport shift from browser controls and a scaled
+  // page surface. The node is above the current viewport, but it should remain
+  // actionable because the user can scroll back to it.
+  frame_test_helpers::WebViewHelper high_dpi_helper(base::BindRepeating(
+      [](base::PassKey<WebLocalFrame> pass_key,
+         CrossVariantMojoAssociatedRemote<
+             mojom::blink::FrameWidgetHostInterfaceBase> frame_widget_host,
+         CrossVariantMojoAssociatedReceiver<
+             mojom::blink::FrameWidgetInterfaceBase> frame_widget,
+         CrossVariantMojoAssociatedRemote<mojom::blink::WidgetHostInterfaceBase>
+             widget_host,
+         CrossVariantMojoAssociatedReceiver<mojom::blink::WidgetInterfaceBase>
+             widget,
+         scoped_refptr<base::SingleThreadTaskRunner> task_runner,
+         const viz::FrameSinkId& frame_sink_id, bool hidden,
+         bool never_composited, bool is_for_child_local_root,
+         bool is_for_nested_main_frame,
+         bool is_for_scalable_page) -> frame_test_helpers::TestWebFrameWidget* {
+        auto* test_web_frame_widget =
+            MakeGarbageCollected<frame_test_helpers::TestWebFrameWidget>(
+                std::move(pass_key), std::move(frame_widget_host),
+                std::move(frame_widget), std::move(widget_host),
+                std::move(widget), std::move(task_runner), frame_sink_id,
+                hidden, never_composited, is_for_child_local_root,
+                is_for_nested_main_frame, is_for_scalable_page);
+        display::ScreenInfo screen_info;
+        screen_info.device_scale_factor = 2.f;
+        test_web_frame_widget->SetInitialScreenInfo(screen_info);
+        return test_web_frame_widget;
+      }));
+  high_dpi_helper.InitializeWithSettings(
+      [](WebSettings* settings) { settings->SetTextAreasAreResizable(true); });
+  high_dpi_helper.LoadAhem();
+  ASSERT_TRUE(high_dpi_helper.LocalMainFrame());
+
+  constexpr gfx::Size kDipViewportSize{464, 828};
+  constexpr int kDeviceScaleFactor = 2;
+  high_dpi_helper.Resize(
+      gfx::Size(kDipViewportSize.width() * kDeviceScaleFactor,
+                kDipViewportSize.height() * kDeviceScaleFactor));
+
+  frame_test_helpers::LoadHTMLString(
+      high_dpi_helper.LocalMainFrame(),
+      "<body style='margin: 0; height: 7000px;'>"
+      "  <p id='target' style='cursor:pointer; position:absolute;"
+      "      left:0; top:200px;'>"
+      "    Text 1"
+      "  </p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  Document* document =
+      high_dpi_helper.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  LocalFrameView* view = document->View();
+  ASSERT_TRUE(view);
+
+  // Establish layout before applying viewport transforms.
+  view->UpdateAllLifecyclePhasesForTest();
+
+  constexpr int kVisualViewportOffsetDip = 20;
+  document->GetPage()->GetChromeClient().SetBrowserControlsState(
+      kVisualViewportOffsetDip, 0, /*shrinks_layout=*/true);
+
+  ScriptState* script_state =
+      ToScriptStateForMainWorld(high_dpi_helper.LocalMainFrame()->GetFrame());
+  ScriptState::Scope scope(script_state);
+  ViewTransitionSupplement::startViewTransition(script_state, *document,
+                                                IGNORE_EXCEPTION_FOR_TESTING);
+  test::RunPendingTasks();
+
+  high_dpi_helper.LocalMainFrame()->ExecuteScript(
+      WebScriptSource("window.scrollTo(0, 2000);"));
+  view->UpdateAllLifecyclePhasesForTest();
+
+  Element* target_element = document->getElementById(AtomicString("target"));
+  ASSERT_TRUE(target_element);
+  const DOMNodeId target_dom_node_id = DOMNodeIds::IdForNode(target_element);
+  ASSERT_GT(target_dom_node_id, kInvalidDOMNodeId);
+
+  auto options = GetAIPageContentOptionsForTest();
+  options->mode = mojom::blink::AIPageContentMode::kActionableElements;
+  auto* agent = AIPageContentAgent::GetOrCreateForTesting(*document);
+  ASSERT_TRUE(agent);
+  auto content = agent->GetAIPageContentInternal(*options);
+  ASSERT_TRUE(content);
+  ASSERT_TRUE(content->root_node);
+
+  const auto* target_node =
+      FindNodeByDomNodeId(*content->root_node, target_dom_node_id);
+  ASSERT_TRUE(target_node);
+  ASSERT_TRUE(target_node->content_attributes->node_interaction_info);
+
+  const auto& interaction_info =
+      *target_node->content_attributes->node_interaction_info;
+  EXPECT_FALSE(interaction_info.clickability_reasons.empty());
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsNestedScrollerAbsoluteReachable) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0;">
+        <div id="scroller" style="overflow: auto; width: 200px; height: 200px; position: relative;">
+          <div style="height: 2000px;">
+            <p id="target" style="cursor: pointer; position: absolute; left: 0; top: 1500px;">Text 1</p>
+          </div>
+        </div>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  Element* scroller = document->getElementById(AtomicString("scroller"));
+  ASSERT_TRUE(scroller);
+  scroller->setScrollTop(1000);
+
+  LocalFrameView* view = document->View();
+  ASSERT_TRUE(view);
+  test::RunPendingTasks();
+  view->UpdateAllLifecyclePhasesForTest();
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  ASSERT_TRUE(target->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsNestedScrollerAbsoluteReachableWhenScrolledPast) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0;">
+        <div id="scroller" style="overflow: auto; width: 200px; height: 200px; position: relative;">
+          <div style="height: 2000px;">
+            <p id="target" style="cursor: pointer; position: absolute; left: 0; top: 200px;">Text 1</p>
+          </div>
+        </div>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  Element* scroller = document->getElementById(AtomicString("scroller"));
+  ASSERT_TRUE(scroller);
+  // The target is above the scroller's current viewport, but the user can
+  // scroll the container back to it.
+  scroller->setScrollTop(1000);
+
+  LocalFrameView* view = document->View();
+  ASSERT_TRUE(view);
+  test::RunPendingTasks();
+  view->UpdateAllLifecyclePhasesForTest();
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  ASSERT_TRUE(target->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsFixedNestedScrollerAbsoluteReachable) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0;">
+        <div id="scroller" style="overflow: auto; width: 200px; height: 200px; position: fixed; left: 0; top: 0;">
+          <div style="height: 2000px; position: relative;">
+            <p id="target" style="cursor: pointer; position: absolute; left: 0; top: 1500px;">Text 1</p>
+          </div>
+        </div>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  // The fixed container is visible, so the user can scroll it to the target.
+  ASSERT_TRUE(target->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsFixedChildOfScrollerNegativeTrap) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0;">
+        <div id="scroller" style="overflow: auto; width: 200px; height: 200px; position: relative;">
+          <div style="height: 2000px;">
+            <p id="target" style="cursor: pointer; position: fixed; left: 0; top: 1500px;">Text 1</p>
+          </div>
+        </div>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  // The target is fixed to the viewport, so scrolling its DOM scroller cannot
+  // bring it into view.
+  EXPECT_FALSE(target->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsNestedScrollerAbsoluteNegativeTrap) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0;">
+        <div id="scroller" style="overflow: auto; width: 200px; height: 200px; position: relative;">
+          <div style="height: 2000px;">
+            <p id="target" style="cursor: pointer; position: absolute; left: -9999px; top: 100px;">Text 1</p>
+          </div>
+        </div>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  EXPECT_FALSE(target->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsOverflowHiddenAbsoluteNegativeTrap) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0;">
+        <div id="clipper" style="overflow: hidden; width: 200px; height: 200px; position: relative;">
+          <div style="height: 2000px;">
+            <p id="target" style="cursor: pointer; position: absolute; left: 0; top: 1500px;">Text 1</p>
+          </div>
+        </div>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  // `overflow: hidden` clips the target, but the user cannot scroll the
+  // clipper.
+  EXPECT_FALSE(target->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsOffscreenScrollerSelfNegativeTrap) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0;">
+        <div id="scroller" style="cursor: pointer; overflow: auto; width: 200px; height: 200px; position: absolute; left: -9999px; top: 0;">
+          <div style="height: 2000px;">Text 1</div>
+        </div>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* scroller = FindNodeBySelector("#scroller");
+  ASSERT_TRUE(scroller);
+  // A scroller must be reachable through its parent before it can be
+  // actionable.
+  EXPECT_FALSE(scroller->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsOffscreenNestedScrollerAbsoluteNegativeTrap) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0;">
+        <div id="scroller" style="overflow: auto; width: 200px; height: 200px; position: absolute; left: -9999px; top: 0;">
+          <div style="height: 2000px; position: relative;">
+            <p id="target" style="cursor: pointer; position: absolute; left: 0; top: 100px;">Text 1</p>
+          </div>
+        </div>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  // A child cannot be reached when its nearest scroller is itself offscreen.
+  EXPECT_FALSE(target->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsOffscreenScrollerIframeChildNegativeTrap) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0;">
+        <div id="scroller" style="overflow: auto; width: 200px; height: 200px; position: absolute; left: -9999px; top: 0;">
+          <iframe id="target-frame"
+                  src="about:blank"
+                  style="border: 0; width: 200px; height: 200px;"></iframe>
+        </div>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  auto* iframe_element = DynamicTo<HTMLIFrameElement>(
+      document->getElementById(AtomicString("target-frame")));
+  ASSERT_TRUE(iframe_element);
+  auto* child_frame = DynamicTo<LocalFrame>(iframe_element->ContentFrame());
+  ASSERT_TRUE(child_frame);
+  Document* child_document = child_frame->GetDocument();
+  ASSERT_TRUE(child_document);
+  ASSERT_TRUE(child_document->body());
+
+  child_document->body()->SetInnerHTMLWithoutTrustedTypes(
+      "<body style='margin: 0;'>"
+      "  <button id='target'>Text 1</button>"
+      "</body>");
+
+  LocalFrameView* child_view = child_document->View();
+  ASSERT_TRUE(child_view);
+  test::RunPendingTasks();
+  child_view->UpdateAllLifecyclePhasesForTest();
+
+  Element* target_element =
+      child_document->getElementById(AtomicString("target"));
+  ASSERT_TRUE(target_element);
+  const DOMNodeId target_dom_node_id = DOMNodeIds::IdForNode(target_element);
+  ASSERT_GT(target_dom_node_id, kInvalidDOMNodeId);
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target_node = FindNodeByDomNodeId(target_dom_node_id);
+  ASSERT_TRUE(target_node);
+  // The iframe is inside an unreachable scroller, so its child cannot be
+  // directly actionable in this APC snapshot.
+  EXPECT_FALSE(target_node->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder, HitTestElementsStaticNegativeTrap) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <p id='target' style='cursor:pointer; transform: translate(-9999px, "
+      "-9999px);'>"
+      "    Text 1"
+      "  </p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  EXPECT_FALSE(target->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsNestedScrollerStaticNegativeTrap) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0;">
+        <div id="scroller" style="overflow: auto; width: 200px; height: 200px;">
+          <div style="height: 2000px;">
+            <p id="target" style="cursor: pointer; transform: translate(-9999px, -9999px);">Text 1</p>
+          </div>
+        </div>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  EXPECT_FALSE(target->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder, HitTestElementsRelativeNegativeTrap) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <p id='target' style='cursor:pointer; position:relative; "
+      "left:-9999px; top:0;'>"
+      "    Text 1"
+      "  </p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target = FindNodeBySelector("#target");
+  ASSERT_TRUE(target);
+  EXPECT_FALSE(target->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder,
+       HitTestElementsIFrameAbsoluteReachableWhenScrolledPast) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0;">
+        <iframe id="target-frame"
+                src="about:blank"
+                style="border: 0; width: 200px; height: 200px;"></iframe>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  auto* iframe_element = DynamicTo<HTMLIFrameElement>(
+      document->getElementById(AtomicString("target-frame")));
+  ASSERT_TRUE(iframe_element);
+  auto* child_frame = DynamicTo<LocalFrame>(iframe_element->ContentFrame());
+  ASSERT_TRUE(child_frame);
+  Document* child_document = child_frame->GetDocument();
+  ASSERT_TRUE(child_document);
+  ASSERT_TRUE(child_document->body());
+
+  child_document->body()->SetInnerHTMLWithoutTrustedTypes(
+      "<style>"
+      "  body { margin: 0; height: 7000px; }"
+      "  #target { cursor: pointer; position: absolute; left: 0; top: 200px; }"
+      "</style>"
+      "<p id='target'>Text 1</p>");
+
+  // Scroll the iframe document so the target moves above the iframe viewport.
+  // The node should stay actionable because the iframe can scroll back to it.
+  Element* child_scrolling_element = child_document->scrollingElement();
+  ASSERT_TRUE(child_scrolling_element);
+  child_scrolling_element->setScrollTop(2000);
+
+  LocalFrameView* child_view = child_document->View();
+  ASSERT_TRUE(child_view);
+  test::RunPendingTasks();
+  child_view->UpdateAllLifecyclePhasesForTest();
+
+  Element* target_element =
+      child_document->getElementById(AtomicString("target"));
+  ASSERT_TRUE(target_element);
+  const DOMNodeId target_dom_node_id = DOMNodeIds::IdForNode(target_element);
+  ASSERT_GT(target_dom_node_id, kInvalidDOMNodeId);
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* target_node = FindNodeByDomNodeId(target_dom_node_id);
+  ASSERT_TRUE(target_node);
+  ASSERT_TRUE(target_node->content_attributes->node_interaction_info);
+
+  const auto& interaction_info =
+      *target_node->content_attributes->node_interaction_info;
+  EXPECT_FALSE(interaction_info.clickability_reasons.empty());
+}
+
+TEST_F(AIPageContentAgentTestZOrder, HitTestElementsIFrameFixedOffscreen) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body style="margin: 0;">
+        <iframe id="target-frame"
+                src="about:blank"
+                style="border: 0; width: 200px; height: 200px;"></iframe>
+      </body>)HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  ASSERT_TRUE(document);
+  auto* iframe_element = DynamicTo<HTMLIFrameElement>(
+      document->getElementById(AtomicString("target-frame")));
+  ASSERT_TRUE(iframe_element);
+  auto* child_frame = DynamicTo<LocalFrame>(iframe_element->ContentFrame());
+  ASSERT_TRUE(child_frame);
+  Document* child_document = child_frame->GetDocument();
+  ASSERT_TRUE(child_document);
+  ASSERT_TRUE(child_document->body());
+
+  child_document->body()->SetInnerHTMLWithoutTrustedTypes(
+      "<style>"
+      "  body { margin: 0; min-height: 400px; }"
+      "  #sheet {"
+      "    position: fixed;"
+      "    left: 0;"
+      "    right: 0;"
+      "    bottom: 0;"
+      "    transform: translateY(100%);"
+      "  }"
+      "</style>"
+      "<button id='trigger'>Open sizes</button>"
+      "<div id='sheet'><button id='item'>Size 6.5</button></div>");
+
+  LocalFrameView* child_view = child_document->View();
+  ASSERT_TRUE(child_view);
+  test::RunPendingTasks();
+  child_view->UpdateAllLifecyclePhasesForTest();
+
+  Element* trigger_element =
+      child_document->getElementById(AtomicString("trigger"));
+  ASSERT_TRUE(trigger_element);
+  const DOMNodeId trigger_dom_node_id = DOMNodeIds::IdForNode(trigger_element);
+  ASSERT_GT(trigger_dom_node_id, kInvalidDOMNodeId);
+
+  Element* item_element = child_document->getElementById(AtomicString("item"));
+  ASSERT_TRUE(item_element);
+  const DOMNodeId item_dom_node_id = DOMNodeIds::IdForNode(item_element);
+  ASSERT_GT(item_dom_node_id, kInvalidDOMNodeId);
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* trigger_node = FindNodeByDomNodeId(trigger_dom_node_id);
+  ASSERT_TRUE(trigger_node);
+  ASSERT_TRUE(trigger_node->content_attributes->node_interaction_info);
+
+  const auto* item_node = FindNodeByDomNodeId(item_dom_node_id);
+  ASSERT_TRUE(item_node);
+  EXPECT_FALSE(item_node->content_attributes->node_interaction_info);
+}
+
+TEST_F(AIPageContentAgentTestZOrder, HitTestElementsIframe) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body>
+        <iframe srcdoc='<p>Text 1</p>'></iframe>
+        <p>Text 2</p>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  // The iframe and outer p have z order relative to each other.
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 2u);
+
+  const auto& iframe = *root.children_nodes.at(0);
+  ASSERT_TRUE(iframe.content_attributes->node_interaction_info);
+  ASSERT_TRUE(iframe.content_attributes->node_interaction_info
+                  ->document_scoped_z_order);
+
+  const auto& p = *root.children_nodes.at(1);
+  ASSERT_TRUE(p.content_attributes->node_interaction_info);
+  ASSERT_TRUE(
+      p.content_attributes->node_interaction_info->document_scoped_z_order);
+
+  // If we're respecting tree-order traversal when computing z-order, the
+  // iframe will have a lower z-order because it is the first child.
+  EXPECT_LT(
+      *iframe.content_attributes->node_interaction_info
+           ->document_scoped_z_order,
+      *p.content_attributes->node_interaction_info->document_scoped_z_order);
+
+  ASSERT_EQ(iframe.children_nodes.size(), 1u);
+  const auto& doc_inside_iframe = *iframe.children_nodes.at(0);
+  ASSERT_TRUE(doc_inside_iframe.content_attributes->node_interaction_info);
+  ASSERT_TRUE(doc_inside_iframe.content_attributes->node_interaction_info
+                  ->document_scoped_z_order);
+  EXPECT_EQ(*doc_inside_iframe.content_attributes->node_interaction_info
+                 ->document_scoped_z_order,
+            1);
+}
+
+TEST_F(AIPageContentAgentTestZOrder, OverflowHiddenGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div style='width: 100px; height: 100px; overflow-y: hidden;'>"
+      "     <article style='width: 50px; height: 300px;'></article>"
+      "   </div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& outer = ContentRootNode().children_nodes[0];
+  const auto& article = outer->children_nodes[0];
+  CheckAnnotatedRole(*article,
+                     mojom::blink::AIPageContentAnnotatedRole::kArticle);
+
+  EXPECT_GT(*article->content_attributes->node_interaction_info
+                 ->document_scoped_z_order,
+            *outer->content_attributes->node_interaction_info
+                 ->document_scoped_z_order);
+
+  CheckGeometry(*outer, gfx::Rect(8, 8, 100, 100), gfx::Rect(8, 8, 100, 100));
+  CheckGeometry(*article, gfx::Rect(8, 8, 50, 300), gfx::Rect(8, 8, 50, 100));
+}
+
+TEST_F(AIPageContentAgentTestZOrder, OverflowVisibleGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <section style='width: 100px; height: 100px; overflow-y: visible;'>"
+      "    <article style='width: 50px; height: 300px;'></article>"
+      "  </section>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& outer = ContentRootNode().children_nodes[0];
+  const auto& article = outer->children_nodes[0];
+  CheckAnnotatedRole(*article,
+                     mojom::blink::AIPageContentAnnotatedRole::kArticle);
+
+  EXPECT_GT(*article->content_attributes->node_interaction_info
+                 ->document_scoped_z_order,
+            *outer->content_attributes->node_interaction_info
+                 ->document_scoped_z_order);
+
+  CheckGeometry(*outer, gfx::Rect(8, 8, 100, 100), gfx::Rect(8, 8, 100, 100));
+  CheckGeometry(*article, gfx::Rect(8, 8, 50, 300), gfx::Rect(8, 8, 50, 300));
+}
+
+TEST_F(AIPageContentAgentTestZOrder, HitTestElementsRelativePos) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <section style='width: 100px; height: 100px; position: relative; "
+      "overflow: clip;'>"
+      "    <article style='width: 50px; height: 50px; position: absolute; "
+      "left: "
+      "150px; top:0px;'></article>"
+      "  </section>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& outer = ContentRootNode().children_nodes[0];
+  const auto& article = outer->children_nodes[0];
+  CheckAnnotatedRole(*article,
+                     mojom::blink::AIPageContentAnnotatedRole::kArticle);
+
+  EXPECT_GT(*article->content_attributes->node_interaction_info
+                 ->document_scoped_z_order,
+            *outer->content_attributes->node_interaction_info
+                 ->document_scoped_z_order);
+
+  CheckGeometry(*outer, gfx::Rect(8, 8, 100, 100), gfx::Rect(8, 8, 100, 100));
+  CheckGeometry(*article, gfx::Rect(158, 8, 50, 50), gfx::Rect());
+}
+
+TEST_F(AIPageContentAgentTestZOrder, LabelWithText) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body style='margin:0; font:1px/1px Ahem'>"
+      "  <label>xyz</label>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  LoadAhem();
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& body = ContentRootNode();
+  ASSERT_EQ(body.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kContainer);
+  const auto& label = *body.children_nodes.at(0);
+  ASSERT_EQ(label.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kContainer);
+  const auto& text = *label.children_nodes.at(0);
+  ASSERT_EQ(text.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kText);
+
+  SCOPED_TRACE("Label");
+  CheckGeometry(label, gfx::Rect(0, 0, 3, 1), gfx::Rect(0, 0, 3, 1));
+  SCOPED_TRACE("Text");
+  CheckGeometry(text, gfx::Rect(0, 0, 3, 1), gfx::Rect(0, 0, 3, 1));
+}
+
+TEST_F(AIPageContentAgentTestZOrder, HitTestElementsAnchorWithSpanParent) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+      <body>
+        <span id="target-span">
+          <a id="link" href="https://example.com">
+            <span id="inner-span">
+              This is the inner span.
+             </span>
+            <div id="inner-div">
+              This is the inner div.
+            </div>
+          </a>
+        </span>
+      </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = *Content()->root_node;
+  EXPECT_EQ(
+      root.content_attributes->node_interaction_info->document_scoped_z_order,
+      1);
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  const auto& html = *root.children_nodes.at(0);
+  EXPECT_EQ(
+      html.content_attributes->node_interaction_info->document_scoped_z_order,
+      2);
+  ASSERT_EQ(html.children_nodes.size(), 1u);
+
+  const auto& body = *html.children_nodes.at(0);
+  EXPECT_EQ(
+      body.content_attributes->node_interaction_info->document_scoped_z_order,
+      3);
+  ASSERT_EQ(body.children_nodes.size(), 1u);
+
+  // The resulting tree with corresponding z-order is:
+  // root - 1
+  // |_html - 2
+  //    |_body - 3
+  //      |_span - 4
+  //        |_a - 5
+  //          |_span - 6
+  //          | |_text - 7
+  //          |_div - 8
+  //            |_text - 9
+
+  const auto& target_span = *body.children_nodes.at(0);
+  EXPECT_EQ(target_span.content_attributes->node_interaction_info
+                ->document_scoped_z_order,
+            4);
+  ASSERT_EQ(target_span.children_nodes.size(), 1u);
+
+  const auto& anchor = *target_span.children_nodes.at(0);
+  EXPECT_EQ(
+      anchor.content_attributes->node_interaction_info->document_scoped_z_order,
+      5);
+  ASSERT_EQ(anchor.children_nodes.size(), 2u);
+
+  const auto& inner_span = *anchor.children_nodes.at(0);
+  EXPECT_EQ(inner_span.content_attributes->node_interaction_info
+                ->document_scoped_z_order,
+            6);
+  ASSERT_EQ(inner_span.children_nodes.size(), 1u);
+
+  const auto& span_text = *inner_span.children_nodes.at(0);
+  EXPECT_EQ(span_text.content_attributes->node_interaction_info
+                ->document_scoped_z_order,
+            7);
+
+  const auto& inner_div = *anchor.children_nodes.at(1);
+  EXPECT_EQ(inner_div.content_attributes->node_interaction_info
+                ->document_scoped_z_order,
+            8);
+  ASSERT_EQ(inner_div.children_nodes.size(), 1u);
+
+  const auto& div_text = *inner_div.children_nodes.at(0);
+  EXPECT_EQ(div_text.content_attributes->node_interaction_info
+                ->document_scoped_z_order,
+            9);
+}
+
+TEST_F(AIPageContentAgentTest, LinkWithOverflowGeometry) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <style>"
+      "    a {"
+      "      display: inline-block;"
+      "      width: 20px;"
+      "      height: 20px;"
+      "      overflow: visible;"
+      "    }"
+      "  </style>"
+      "  <a href='#' style='font-size: 50px'>Text that will overflow</a>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 1u);
+
+  auto& anchor_node = *root.children_nodes[0];
+  CheckAnchorNode(anchor_node, url_test_helpers::ToKURL("http://foobar.com/#"),
+                  {});
+
+  const auto& geometry = *anchor_node.content_attributes->geometry;
+  // Visible overflow is not currently included in the outer_bounding_box or
+  // visible_bounding_box. This may not be the correct choice given that visible
+  // overflow is hit testable. However, this is not a major concern because
+  // events bubble up. If we see a problem case caused by the lack of overflow
+  // inclusion we can attempt to incorporate hit test rects (which was attempted
+  // previously but was non-trivial).
+  EXPECT_EQ(geometry.outer_bounding_box.width(), 20);
+  EXPECT_EQ(geometry.outer_bounding_box.width(), 20);
+  EXPECT_EQ(geometry.visible_bounding_box.width(), 20);
+  EXPECT_EQ(geometry.visible_bounding_box.height(), 20);
+}
+
+TEST_F(AIPageContentAgentTest, CursorNotAllowedButton) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+        <body>
+         <button style="cursor: not-allowed;">Text</button>
+        </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& button = *root.children_nodes.at(0);
+  CheckHitTestableAndInteractive(button,
+                                 {ClickabilityReason::kClickableControl,
+                                  ClickabilityReason::kHoverPseudoClass});
+  EXPECT_FALSE(button.content_attributes->node_interaction_info->is_disabled);
+  EXPECT_THAT(button.content_attributes->node_interaction_info
+                  ->interaction_disabled_reasons,
+              testing::UnorderedElementsAre(
+                  InteractionDisabledReason::kCursorNotAllowed));
+}
+
+TEST_F(AIPageContentAgentTest, MultipleInteractionDisabledReasons) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      R"HTML(
+        <body>
+         <button disabled aria-disabled=true style="cursor: not-allowed;">
+           Text
+         </button>
+        </body>
+      )HTML",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& button = *root.children_nodes.at(0);
+  CheckHitTestableButNotInteractive(button);
+  EXPECT_TRUE(button.content_attributes->node_interaction_info->is_disabled);
+  EXPECT_THAT(button.content_attributes->node_interaction_info
+                  ->interaction_disabled_reasons,
+              testing::UnorderedElementsAre(
+                  InteractionDisabledReason::kDisabled,
+                  InteractionDisabledReason::kAriaDisabled,
+                  InteractionDisabledReason::kCursorNotAllowed));
+}
+
+TEST_F(AIPageContentAgentTest, ZeroSizeActionableElement) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div id='zero' style='width: 0; height: 0;' onclick='void(0)'></div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* zero_node = FindNodeBySelector("#zero");
+  // An actionable element with 0 size should still be included in the APC tree
+  // if it is visible, e.g. it doesn't have visibility: hidden.
+  ASSERT_TRUE(zero_node);
+  ASSERT_TRUE(zero_node->content_attributes->geometry);
+  EXPECT_TRUE(
+      zero_node->content_attributes->geometry->outer_bounding_box.IsEmpty());
+  EXPECT_TRUE(
+      zero_node->content_attributes->geometry->visible_bounding_box.IsEmpty());
+}
+
+TEST_F(AIPageContentAgentTest, ZeroSizeNonActionableElement) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div id='zero' style='width: 0; height: 0;'></div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* zero_node = FindNodeBySelector("#zero");
+  // A non-actionable element with 0 size should be excluded from the APC tree.
+  EXPECT_FALSE(zero_node);
+}
+
+TEST_F(AIPageContentAgentTest, ZeroSizeContainerWithVisibleChild) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div id='zero' style='width: 0; height: 0; position: fixed;'>"
+      "    <div id='visible' style='width: 10px; height: 10px;'>text</div>"
+      "  </div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* zero_node = FindNodeBySelector("#zero");
+  // A container with 0 size but visible children should be included.
+  ASSERT_TRUE(zero_node);
+  const auto* visible_node = FindNodeBySelector("#visible");
+  ASSERT_TRUE(visible_node);
+
+  // Verify that 'visible' is a child of 'zero' in the APC tree.
+  bool found = false;
+  for (const auto& child : zero_node->children_nodes) {
+    if (child->content_attributes->dom_node_id ==
+        visible_node->content_attributes->dom_node_id) {
+      found = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found);
+}
+
+TEST_F(AIPageContentAgentTest, GetImageBytes) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <img alt=testimg></img>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+  auto& document = *helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  document.getElementsByTagName(AtomicString("img"))
+      ->item(0)
+      ->setAttribute(html_names::kSrcAttr, AtomicString(kSmallImage));
+
+  test::RunPendingTasks();
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+
+  auto& image_node = *root.children_nodes[0];
+  CheckImageNode(image_node, "testimg", KURL());
+  ASSERT_TRUE(image_node.content_attributes->dom_node_id.has_value());
+  int32_t dom_node_id = image_node.content_attributes->dom_node_id.value();
+
+  auto* agent = AIPageContentAgent::From(document);
+  ASSERT_TRUE(agent);
+
+  base::HistogramTester histogram_tester;
+
+  base::RunLoop run_loop;
+  agent->GetImageBytes(
+      dom_node_id,
+      base::BindLambdaForTesting(
+          [&](mojom::blink::AIPageContentImageBytesResultPtr result) {
+            ASSERT_TRUE(result);
+            EXPECT_GT(result->image_bytes.size(), 0u);
+            EXPECT_EQ(result->image_info->mime_type, "image/jpeg");
+            ASSERT_TRUE(result->image_info);
+            EXPECT_EQ(result->image_info->image_caption, "testimg");
+            run_loop.Quit();
+          }));
+  run_loop.Run();
+
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.AIPageContent.GetImageBytes.Status", 0 /* kSuccess */,
+      1);
+}
+
+TEST_F(AIPageContentAgentTest, GetImageBytesFailures) {
+  base::HistogramTester histogram_tester;
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <img id='img' alt='testimg'></img>"
+      "  <div id='not-image'>hello</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+  auto& document = *helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  document.getElementById(AtomicString("img"))
+      ->setAttribute(html_names::kSrcAttr, AtomicString(kSmallImage));
+
+  test::RunPendingTasks();
+
+  auto* agent = AIPageContentAgent::GetOrCreateForTesting(document);
+  ASSERT_TRUE(agent);
+
+  int32_t image_node_id =
+      DOMNodeIds::IdForNode(document.getElementById(AtomicString("img")));
+  int32_t div_node_id =
+      DOMNodeIds::IdForNode(document.getElementById(AtomicString("not-image")));
+
+  // 1. Invalid Node ID
+  {
+    base::RunLoop run_loop;
+    agent->GetImageBytes(
+        image_node_id + 9999,
+        base::BindLambdaForTesting(
+            [&](mojom::blink::AIPageContentImageBytesResultPtr result) {
+              EXPECT_FALSE(result);
+              run_loop.Quit();
+            }));
+    run_loop.Run();
+    histogram_tester.ExpectBucketCount(
+        "OptimizationGuide.AIPageContent.GetImageBytes.Status",
+        1 /* kNodeNotFound */, 1);
+  }
+
+  // 2. Cross-Tree Query (different LocalFrameRoot / different WebView)
+  {
+    frame_test_helpers::WebViewHelper helper2;
+    helper2.Initialize();
+    frame_test_helpers::LoadHTMLString(
+        helper2.LocalMainFrame(),
+        "<body>"
+        "  <img id='img2' alt='testimg2'></img>"
+        "</body>",
+        url_test_helpers::ToKURL("http://foobar2.com"));
+    auto& document2 = *helper2.LocalMainFrame()->GetFrame()->GetDocument();
+    document2.getElementById(AtomicString("img2"))
+        ->setAttribute(html_names::kSrcAttr, AtomicString(kSmallImage));
+
+    test::RunPendingTasks();
+
+    int32_t helper2_image_node_id =
+        DOMNodeIds::IdForNode(document2.getElementById(AtomicString("img2")));
+
+    base::RunLoop run_loop;
+    agent->GetImageBytes(
+        helper2_image_node_id,
+        base::BindLambdaForTesting(
+            [&](mojom::blink::AIPageContentImageBytesResultPtr result) {
+              EXPECT_FALSE(result);
+              run_loop.Quit();
+            }));
+    run_loop.Run();
+    histogram_tester.ExpectBucketCount(
+        "OptimizationGuide.AIPageContent.GetImageBytes.Status",
+        4 /* kCrossTreeQuery */, 1);
+  }
+
+  // 3. Non-Image Node
+  {
+    base::RunLoop run_loop;
+    agent->GetImageBytes(
+        div_node_id,
+        base::BindLambdaForTesting(
+            [&](mojom::blink::AIPageContentImageBytesResultPtr result) {
+              EXPECT_FALSE(result);
+              run_loop.Quit();
+            }));
+    run_loop.Run();
+    histogram_tester.ExpectBucketCount(
+        "OptimizationGuide.AIPageContent.GetImageBytes.Status",
+        5 /* kNotAnImage */, 1);
+  }
+
+  // 4. Image resource error (broken image)
+  {
+    document.getElementById(AtomicString("img"))
+        ->setAttribute(html_names::kSrcAttr,
+                       AtomicString("data:image/jpeg;base64,invalid"));
+    document.UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+    test::RunPendingTasks();
+
+    base::RunLoop run_loop;
+    agent->GetImageBytes(
+        image_node_id,
+        base::BindLambdaForTesting(
+            [&](mojom::blink::AIPageContentImageBytesResultPtr result) {
+              EXPECT_FALSE(result);
+              run_loop.Quit();
+            }));
+    run_loop.Run();
+    histogram_tester.ExpectBucketCount(
+        "OptimizationGuide.AIPageContent.GetImageBytes.Status",
+        6 /* kImageError */, 1);
+  }
+}
+
+class AIPageContentAgentTestTextEncoding : public AIPageContentAgentTest {
+ private:
+  // All of these tests assume the UTF-8 conversion feature is enabled.
+  ScopedAIPageContentConvertNodeTextToUtf8ForTest enable_utf8_conversion_{true};
+};
+
+TEST_F(AIPageContentAgentTestTextEncoding, TextContentCorrected) {
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <p id='wrong'>Hello</p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto& document = *helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* p = document.getElementById(AtomicString("wrong"));
+  // Confirm that on the Blink side, we have a valid UTF-16 string.
+  EXPECT_EQ(p->innerText(), String(u"Hello"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(document.getElementById('wrong').innerText = 'Hello\uD83D')"));
+
+  GetAIPageContentWithActionableElements();
+
+  auto* p_node = FindNodeBySelector("#wrong");
+  CheckTextNode(*p_node->children_nodes[0], String(u"Hello\uFFFD"));
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding, ImageCaptionCorrected) {
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <img id='wrong' alt='Hello'>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto& document = *helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* img = document.getElementById(AtomicString("wrong"));
+  // Put an actual image in the node.
+  img->setAttribute(html_names::kSrcAttr, AtomicString(kSmallImage));
+
+  // Confirm that on the Blink side, we have a valid UTF-16 string.
+  ASSERT_TRUE(IsA<HTMLImageElement>(*img));
+  EXPECT_EQ(To<HTMLImageElement>(*img).AltText(), String(u"Hello"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(document.getElementById('wrong').alt = 'Hello\uD83D')"));
+
+  GetAIPageContentWithActionableElements();
+
+  auto* image_node = FindNodeBySelector("#wrong");
+  CheckImageNode(*image_node, String(u"Hello\uFFFD"), KURL());
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding, SVGRootCorrected) {
+  ScopedAIPageContentIncludeSVGSubtreeForTest scoped_feature(
+      /*enabled=*/true);
+
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <svg id='wrongsvg' width='400' height='200'>"
+      "    <text id='wrongtext' x='50%' y='50%' font-size='24'>"
+      "      Hello SVG Text!"
+      "    </text>"
+      "  </svg>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(
+        document
+          .getElementById('wrongsvg')
+          .getElementById('wrongtext')
+          .textContent = '      Hello\uD83D    '
+      )"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& svg = *ContentRootNode().children_nodes[0];
+  EXPECT_EQ(svg.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kSvgRoot);
+  ASSERT_TRUE(svg.content_attributes->svg_root_data);
+  EXPECT_EQ(svg.content_attributes->svg_root_data->inner_text, u"Hello\uFFFD");
+
+  const auto& text_child = *svg.children_nodes[0];
+  EXPECT_EQ(text_child.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kText);
+  // Note that whitespace is kept.
+  CheckTextNode(text_child, u"      Hello\uFFFD    ");
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding, TableNameCorrected) {
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <table>"
+      "     <caption id='wrong'>Hello</caption>"
+      "  </table>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(document.getElementById('wrong').innerText = 'Hello\uD83D')"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& table = *ContentRootNode().children_nodes[0];
+  CheckTableNode(table, u"Hello\uFFFD");
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding, FormNameCorrected) {
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form id='wrong' name='Hello'>"
+      "    <p>Greetings</p>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(document.getElementById('wrong').name = 'Hello\uD83D')"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto& form = *ContentRootNode().children_nodes[0];
+  EXPECT_EQ(form.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kForm);
+  EXPECT_EQ(form.content_attributes->form_data->form_name, u"Hello\uFFFD");
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding,
+       AriaFormControlPlaceholderCorrected) {
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='wrong' type='text' aria-required='true' "
+      "aria-placeholder='Hello'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(document.getElementById('wrong').ariaPlaceholder = 'Hello\uD83D')"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* input = FindNodeBySelector("#wrong");
+  CheckFormControlNode(*input, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(input->content_attributes->form_control_data->placeholder,
+            u"Hello\uFFFD");
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding, TextFormControlValueCorrected) {
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='wrong' type='text' name='Username' value='Hello'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(
+          let input = document.getElementById('wrong');
+          input.name = 'Username\uD83D';
+          input.value = 'Hello\uD83D';
+      )"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* input = FindNodeBySelector("#wrong");
+  CheckFormControlNode(*input, mojom::blink::FormControlType::kInputText);
+  const mojom::blink::AIPageContentFormControlDataPtr& form_control_data =
+      input->content_attributes->form_control_data;
+  EXPECT_EQ(form_control_data->field_name, u"Username\uFFFD");
+  EXPECT_EQ(form_control_data->field_value, u"Hello\uFFFD");
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding,
+       TextFormControlPlaceholderCorrected) {
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='wrong' type='text' name='Username' placeholder='Hello'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(
+          let input = document.getElementById('wrong');
+          input.name = 'Username\uD83D';
+          input.placeholder = 'Hello\uD83D';
+      )"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* input = FindNodeBySelector("#wrong");
+  CheckFormControlNode(*input, mojom::blink::FormControlType::kInputText);
+  const mojom::blink::AIPageContentFormControlDataPtr& form_control_data =
+      input->content_attributes->form_control_data;
+  EXPECT_EQ(form_control_data->field_name, u"Username\uFFFD");
+  EXPECT_EQ(form_control_data->placeholder, u"Hello\uFFFD");
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding, SelectFormControlOptionsCorrected) {
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <select id='container'>"
+      "    <option id='wrong' value='First'>Hello</option>"
+      "  </select>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(
+          let option = document.getElementById('wrong');
+          option.value = 'First\uD83D';
+          option.text = 'Hello\uD83D';
+      )"));
+
+  GetAIPageContentWithActionableElements();
+
+  const auto* select = FindNodeBySelector("#container");
+  CheckFormControlNode(*select, mojom::blink::FormControlType::kSelectOne);
+  const mojom::blink::AIPageContentFormControlDataPtr& form_control_data =
+      select->content_attributes->form_control_data;
+  EXPECT_EQ(form_control_data->select_options[0]->value, u"First\uFFFD");
+  EXPECT_EQ(form_control_data->select_options[0]->text, u"Hello\uFFFD");
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding, MetadataCorrected) {
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<head>"
+      "  <meta id='wrong' name='Hello' content='World'>"
+      "</head>"
+      "<body>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(
+          let meta = document.getElementById('wrong');
+          meta.name = 'Hello\uD83D';
+          meta.content = 'World\uD83D';
+      )"));
+
+  auto options = GetAIPageContentOptionsForTest();
+  options->mode = mojom::blink::AIPageContentMode::kActionableElements;
+  options->max_meta_elements = 1;
+  GetAIPageContent(std::move(options));
+
+  const mojom::blink::AIPageContentMetaPtr& meta =
+      Content()->frame_data->meta_data[0];
+  EXPECT_EQ(meta->name, u"Hello\uFFFD");
+  EXPECT_EQ(meta->content, u"World\uFFFD");
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding, AriaLabelCorrected) {
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <button id='wrong' aria-label='Hello'></button>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(
+          let button = document.getElementById('wrong');
+          button.ariaLabel = 'Hello\uD83D';
+      )"));
+
+  GetAIPageContentWithActionableElements();
+
+  auto* button = FindNodeBySelector("#wrong");
+  EXPECT_EQ(button->content_attributes->label, u"Hello\uFFFD");
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding, AriaLabeledByCorrected) {
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div id='wrong' style='display: none;'>Hello</div>"
+      "  <input id='on' type='text' aria-labelledby='wrong'>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(
+          let div = document.getElementById('wrong');
+          div.textContent = 'Hello\uD83D';
+      )"));
+
+  GetAIPageContentWithActionableElements();
+
+  auto* input = FindNodeBySelector("#on");
+  EXPECT_EQ(input->content_attributes->label, u"Hello\uFFFD");
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding, FrameTitleCorrected) {
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<head>"
+      "  <title id='wrong'>Hello</title>"
+      "</head>"
+      "<body>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(
+          let title = document.getElementById('wrong');
+          title.textContent = 'Hello\uD83D';
+      )"));
+
+  GetAIPageContentWithActionableElements();
+
+  EXPECT_EQ(Content()->frame_data->title, u"Hello\uFFFD");
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding,
+       FrameInteractionInfoSelectedTextCorrected) {
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <p id='p1'>Paragraph 1</p>"
+      "  <p id='p2'>Paragraph 2</p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(
+        const p1 = document.getElementById('p1');
+        p1.innerText = 'Hello\uD83D'
+        const p2 = document.getElementById('p2');
+
+        const range = new Range();
+        range.setStart(p1.childNodes[0], 0);
+        range.setEnd(p2.childNodes[0], 4);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      )"));
+
+  GetAIPageContentWithActionableElements();
+
+  EXPECT_EQ(
+      Content()->frame_data->frame_interaction_info->selection->selected_text,
+      u"Hello\uFFFD\n\nPara");
+}
+
+TEST_F(AIPageContentAgentTestTextEncoding, FlagDisabled) {
+  ScopedAIPageContentConvertNodeTextToUtf8ForTest enable_utf8_conversion{false};
+  // Start with a basic valid UTF-16 string.
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <p id='wrong'>Hello</p>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  auto& document = *helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* p = document.getElementById(AtomicString("wrong"));
+  // Confirm that on the Blink side, we have a valid UTF-16 string.
+  EXPECT_EQ(p->innerText(), String(u"Hello"));
+
+  // The only way to get an invalid UTF-16 string into the element is via
+  // Javascript, which isn't required to match surrogates. In this case, the
+  // unmatched surrogate is \uD83D. We also need to use a raw string so that the
+  // unicode character is interpreted by Javascript, not CPP.
+  helper_.LocalMainFrame()->ExecuteScript(WebScriptSource(
+      R"(document.getElementById('wrong').innerText = 'Hello\uD83D')"));
+
+  GetAIPageContentWithActionableElements();
+
+  auto* p_node = FindNodeBySelector("#wrong");
+  const auto& text_attributes = *p_node->children_nodes[0]->content_attributes;
+  EXPECT_EQ(text_attributes.attribute_type,
+            mojom::blink::AIPageContentAttributeType::kText);
+  ASSERT_TRUE(text_attributes.text_info);
+
+  // The last character should be 0xD83D.
+  EXPECT_EQ(text_attributes.text_info->text_content.Span16().back(), 0xD83D);
+}
+
+TEST_F(AIPageContentAgentTest, DivWithWebkitTextSecurityRedactsAndPersists) {
+  ScopedAIPageContentElementCSSRedactionForTest scoped_feature(
+      /*enabled=*/true);
+
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div id='masked' style='-webkit-text-security: disc;'>secret</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  EXPECT_EQ(root.children_nodes.size(), 0u);
+
+  // Now remove the masking style (simulating a "show password" eye icon).
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* div_element =
+      To<HTMLDivElement>(document->getElementById(AtomicString("masked")));
+  ASSERT_TRUE(div_element);
+  div_element->setAttribute(html_names::kStyleAttr,
+                            AtomicString("-webkit-text-security: none;"));
+
+  // Ensure the DOM is updated.
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  // Extract again: the field should remain redacted since it was previously
+  // classified as password-like.
+  GetAIPageContent();
+
+  const auto& root2 = ContentRootNode();
+  EXPECT_EQ(root2.children_nodes.size(), 0u);
+}
+
+TEST_F(AIPageContentAgentTest,
+       FormWithWebkitTextSecuritySelectRedactsAndPersists) {
+  ScopedAIPageContentElementCSSRedactionForTest scoped_feature(
+      /*enabled=*/true);
+
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <select id='masked' style='-webkit-text-security: disc;'>"
+      "      <option value='Lorem'>Lorem Text</option>"
+      "      <option value='Ipsum'>Ipsum Text</option>"
+      "    </select>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& form = *root.children_nodes[0];
+  ASSERT_EQ(form.children_nodes.size(), 1u);
+
+  const auto& select = *form.children_nodes[0];
+  CheckFormControlNode(select, mojom::blink::FormControlType::kSelectOne);
+  EXPECT_EQ(
+      select.content_attributes->redaction_decision,
+      mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_CSS);
+  EXPECT_TRUE(
+      select.content_attributes->form_control_data->select_options.empty());
+
+  // Now remove the masking style.
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* select_element =
+      To<HTMLSelectElement>(document->getElementById(AtomicString("masked")));
+  ASSERT_TRUE(select_element);
+  select_element->setAttribute(html_names::kStyleAttr,
+                               AtomicString("-webkit-text-security: none;"));
+
+  // Ensure the DOM is updated.
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  // Extract again: the field should remain redacted.
+  GetAIPageContent();
+
+  const auto& root2 = ContentRootNode();
+  const auto& form2 = *root2.children_nodes[0];
+  const auto& select2 = *form2.children_nodes[0];
+  CheckFormControlNode(select2, mojom::blink::FormControlType::kSelectOne);
+  EXPECT_EQ(
+      select2.content_attributes->redaction_decision,
+      mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_CSS);
+  EXPECT_TRUE(
+      select2.content_attributes->form_control_data->select_options.empty());
+}
+
+class AIPageContentAgentTestElementCSSRedactionDisabled
+    : public AIPageContentAgentTest {
+ private:
+  ScopedAIPageContentElementCSSRedactionForTest scoped_feature{false};
+};
+
+TEST_F(AIPageContentAgentTestElementCSSRedactionDisabled,
+       DivWithWebkitTextSecurityNotRedacted) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <div id='masked' style='-webkit-text-security: disc;'>secret</div>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  // Since the feature is disabled, the div is flattened (it's generic)
+  // and the text node is extracted without redaction.
+  // Note: the text is still masked by the layout engine (bullets),
+  // but it's not explicitly redacted by our logic.
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& text_node = *root.children_nodes[0];
+  EXPECT_EQ(text_node.content_attributes->attribute_type,
+            mojom::blink::AIPageContentAttributeType::kText);
+  ASSERT_TRUE(text_node.content_attributes->text_info);
+  // The text should be masked (bullets), but NOT redacted.
+  // We check that it's not the original text and has the same length.
+  EXPECT_NE(text_node.content_attributes->text_info->text_content, "secret");
+  EXPECT_EQ(text_node.content_attributes->text_info->text_content.length(), 6u);
+  EXPECT_EQ(text_node.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kNoRedactionNecessary);
+}
+
+TEST_F(AIPageContentAgentTestElementCSSRedactionDisabled,
+       FormWithWebkitTextSecuritySelectNotRedacted) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <select id='masked' style='-webkit-text-security: disc;'>"
+      "    <option value='Lorem'>Lorem Text</option>"
+      "  </select>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  // root -> <select>
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& select = *root.children_nodes[0];
+  CheckFormControlNode(select, mojom::blink::FormControlType::kSelectOne);
+  EXPECT_EQ(select.content_attributes->redaction_decision,
+            mojom::AIPageContentRedactionDecision::kNoRedactionNecessary);
+  // Options should be present.
+  EXPECT_FALSE(
+      select.content_attributes->form_control_data->select_options.empty());
+  EXPECT_EQ(select.content_attributes->form_control_data->select_options.size(),
+            1u);
+  EXPECT_EQ(
+      select.content_attributes->form_control_data->select_options[0]->text,
+      "Lorem Text");
+}
+
+TEST_F(AIPageContentAgentTestElementCSSRedactionDisabled,
+       FormWithWebkitTextSecurityInputStillRedacted) {
+  frame_test_helpers::LoadHTMLString(
+      helper_.LocalMainFrame(),
+      "<body>"
+      "  <form>"
+      "    <input id='masked' type='text' name='Enter secret' "
+      "style='-webkit-text-security: disc;' value='supersecret'>"
+      "  </form>"
+      "</body>",
+      url_test_helpers::ToKURL("http://foobar.com"));
+
+  GetAIPageContent();
+
+  const auto& root = ContentRootNode();
+  ASSERT_EQ(root.children_nodes.size(), 1u);
+  const auto& form = *root.children_nodes[0];
+  ASSERT_EQ(form.children_nodes.size(), 1u);
+
+  const auto& field = *form.children_nodes[0];
+  CheckFormControlNode(field, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field.content_attributes->form_control_data->field_name,
+            "Enter secret");
+  EXPECT_EQ(field.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(
+      field.content_attributes->redaction_decision,
+      mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_CSS);
+
+  // Now remove the masking style (simulating a "show password" eye icon).
+  Document* document = helper_.LocalMainFrame()->GetFrame()->GetDocument();
+  auto* input_element =
+      To<HTMLInputElement>(document->getElementById(AtomicString("masked")));
+  ASSERT_TRUE(input_element);
+  input_element->setAttribute(html_names::kStyleAttr,
+                              AtomicString("-webkit-text-security: none;"));
+
+  // Ensure the DOM is updated.
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  // Extract again: the field should remain redacted since it was previously
+  // classified as password-like.
+  GetAIPageContent();
+
+  const auto& root2 = ContentRootNode();
+  ASSERT_EQ(root2.children_nodes.size(), 1u);
+  const auto& form2 = *root2.children_nodes[0];
+  ASSERT_EQ(form2.children_nodes.size(), 1u);
+  const auto& field2 = *form2.children_nodes[0];
+  CheckFormControlNode(field2, mojom::blink::FormControlType::kInputText);
+  EXPECT_EQ(field2.content_attributes->form_control_data->field_value, nullptr);
+  EXPECT_EQ(
+      field2.content_attributes->redaction_decision,
+      mojom::AIPageContentRedactionDecision::kRedacted_CustomPassword_CSS);
+}
+
+}  // namespace
+}  // namespace blink

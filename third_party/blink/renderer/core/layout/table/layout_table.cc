@@ -1,0 +1,388 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/core/layout/table/layout_table.h"
+
+#include "third_party/blink/renderer/core/css/resolver/style_resolver.h"
+#include "third_party/blink/renderer/core/layout/block_node.h"
+#include "third_party/blink/renderer/core/layout/constraint_space.h"
+#include "third_party/blink/renderer/core/layout/layout_object_inlines.h"
+#include "third_party/blink/renderer/core/layout/layout_result.h"
+#include "third_party/blink/renderer/core/layout/layout_view.h"
+#include "third_party/blink/renderer/core/layout/physical_box_fragment.h"
+#include "third_party/blink/renderer/core/layout/table/layout_table_caption.h"
+#include "third_party/blink/renderer/core/layout/table/layout_table_cell.h"
+#include "third_party/blink/renderer/core/layout/table/layout_table_column.h"
+#include "third_party/blink/renderer/core/layout/table/layout_table_row.h"
+#include "third_party/blink/renderer/core/layout/table/layout_table_section.h"
+#include "third_party/blink/renderer/core/layout/table/table_borders.h"
+#include "third_party/blink/renderer/core/layout/table/table_layout_utils.h"
+#include "third_party/blink/renderer/core/paint/box_fragment_painter.h"
+#include "third_party/blink/renderer/core/paint/table_painters.h"
+#include "third_party/blink/renderer/platform/geometry/infinite_int_rect.h"
+
+namespace blink {
+
+LayoutTable::LayoutTable(Element* element) : LayoutBlock(element) {}
+
+LayoutTable::~LayoutTable() = default;
+
+void LayoutTable::Trace(Visitor* visitor) const {
+  visitor->Trace(cached_table_borders_);
+  LayoutBlock::Trace(visitor);
+}
+
+LayoutTable* LayoutTable::CreateAnonymousWithParent(
+    const LayoutObject& parent) {
+  // https://drafts.csswg.org/css-tables-3/#fixup-algorithm
+  // 3.2. If the box’s parent is an inline, run-in, or ruby box (or any box that
+  // would perform inlinification of its children), then an inline-table box
+  // must be generated; otherwise it must be a table box.
+  const EDisplay display =
+      parent.IsLayoutInline() ? EDisplay::kInlineTable : EDisplay::kTable;
+  const ComputedStyle* new_style =
+      parent.GetDocument().GetStyleResolver().CreateAnonymousStyleWithDisplay(
+          parent.StyleRef(), display);
+  auto* new_table = MakeGarbageCollected<LayoutTable>(nullptr);
+  new_table->SetDocumentForAnonymous(parent.GetDocument());
+  new_table->SetStyle(new_style);
+  return new_table;
+}
+
+bool LayoutTable::IsFirstCell(const LayoutTableCell& cell) const {
+  NOT_DESTROYED();
+  const LayoutTableRow* row = cell.Row();
+  if (row->FirstCell() != &cell) {
+    return false;
+  }
+  const LayoutTableSection* section = row->Section();
+  if (section->FirstRow() != row) {
+    return false;
+  }
+  TableGroupedChildren grouped_children(
+      BlockNode(const_cast<LayoutTable*>(this)));
+  auto first_section = grouped_children.begin();
+  return first_section != grouped_children.end() &&
+         (*first_section).GetLayoutBox() == section;
+}
+
+LayoutTableSection* LayoutTable::FirstSection() const {
+  NOT_DESTROYED();
+  TableGroupedChildren grouped_children(
+      BlockNode(const_cast<LayoutTable*>(this)));
+  auto first_section = grouped_children.begin();
+  if (first_section != grouped_children.end()) {
+    auto* section_object =
+        To<LayoutTableSection>((*first_section).GetLayoutBox());
+    if ((*first_section).IsEmptyTableSection()) {
+      return NextSection(section_object);
+    }
+    return section_object;
+  }
+  return nullptr;
+}
+
+LayoutTableSection* LayoutTable::LastSection() const {
+  NOT_DESTROYED();
+  TableGroupedChildren grouped_children(
+      BlockNode(const_cast<LayoutTable*>(this)));
+  auto last_section = --grouped_children.end();
+  if (last_section != grouped_children.end()) {
+    auto* section_object =
+        To<LayoutTableSection>((*last_section).GetLayoutBox());
+    if ((*last_section).IsEmptyTableSection()) {
+      return PreviousSection(section_object);
+    }
+    return section_object;
+  }
+  return nullptr;
+}
+
+LayoutTableSection* LayoutTable::NextSection(
+    const LayoutTableSection* current) const {
+  NOT_DESTROYED();
+  TableGroupedChildren grouped_children(
+      BlockNode(const_cast<LayoutTable*>(this)));
+  bool found = false;
+  for (BlockNode section : grouped_children) {
+    if (found && !section.IsEmptyTableSection()) {
+      return To<LayoutTableSection>(section.GetLayoutBox());
+    }
+    if (current == To<LayoutTableSection>(section.GetLayoutBox())) {
+      found = true;
+    }
+  }
+  return nullptr;
+}
+
+LayoutTableSection* LayoutTable::PreviousSection(
+    const LayoutTableSection* current) const {
+  NOT_DESTROYED();
+  TableGroupedChildren grouped_children(
+      BlockNode(const_cast<LayoutTable*>(this)));
+  auto stop = --grouped_children.begin();
+  bool found = false;
+  for (auto it = --grouped_children.end(); it != stop; --it) {
+    BlockNode section = *it;
+    if (found && !section.IsEmptyTableSection()) {
+      return To<LayoutTableSection>(section.GetLayoutBox());
+    }
+    if (current == To<LayoutTableSection>(section.GetLayoutBox())) {
+      found = true;
+    }
+  }
+  return nullptr;
+}
+
+wtf_size_t LayoutTable::ColumnCount() const {
+  NOT_DESTROYED();
+  const LayoutResult* cached_layout_result = GetCachedLayoutResult(nullptr);
+  if (!cached_layout_result)
+    return 0;
+  return cached_layout_result->TableColumnCount();
+}
+
+void LayoutTable::SetCachedTableBorders(const TableBorders* table_borders) {
+  NOT_DESTROYED();
+  cached_table_borders_ = table_borders;
+}
+
+void LayoutTable::InvalidateCachedTableBorders() {
+  NOT_DESTROYED();
+  // TODO(layout-dev) When cached borders are invalidated, we could do a
+  // special kind of relayout where fragments can replace only TableBorders,
+  // keep the geometry, and repaint.
+  cached_table_borders_ = nullptr;
+}
+
+const TableTypes::Columns* LayoutTable::GetCachedTableColumnConstraints() {
+  NOT_DESTROYED();
+  if (IsTableColumnConstraintsDirty()) {
+    cached_table_columns_.reset();
+  }
+  return cached_table_columns_.get();
+}
+
+void LayoutTable::SetCachedTableColumnConstraints(
+    scoped_refptr<const TableTypes::Columns> columns) {
+  NOT_DESTROYED();
+  cached_table_columns_ = std::move(columns);
+  SetTableColumnConstraintsDirty(false);
+}
+
+void LayoutTable::GridBordersChanged() {
+  NOT_DESTROYED();
+  InvalidateCachedTableBorders();
+  if (StyleRef().BorderCollapse() == EBorderCollapse::kCollapse) {
+    SetShouldDoFullPaintInvalidationWithoutLayoutChange(
+        PaintInvalidationReason::kStyle);
+    // If borders change, table fragment must be regenerated.
+    SetNeedsLayoutAndIntrinsicWidthsRecalc(
+        layout_invalidation_reason::kTableChanged);
+  }
+}
+
+void LayoutTable::TableGridStructureChanged() {
+  NOT_DESTROYED();
+  // Callers must ensure table layout gets invalidated.
+  InvalidateCachedTableBorders();
+  if (StyleRef().BorderCollapse() == EBorderCollapse::kCollapse)
+    SetShouldDoFullPaintInvalidation();
+}
+
+bool LayoutTable::HasBackgroundForPaint() const {
+  NOT_DESTROYED();
+  if (StyleRef().HasBackground())
+    return true;
+  DCHECK_GT(PhysicalFragmentCount(), 0u);
+  const GCedTableColumnGeometries* column_geometries =
+      GetPhysicalFragment(0)->TableColumnGeometries();
+  if (column_geometries) {
+    for (const auto& column_geometry : *column_geometries) {
+      if (column_geometry.node.Style().HasBackground())
+        return true;
+    }
+  }
+  return false;
+}
+
+void LayoutTable::AddChildBeforeDescendant(LayoutObject* new_child,
+                                           LayoutObject* before_descendant,
+                                           bool can_be_direct_child) {
+  NOT_DESTROYED();
+  DCHECK_NE(before_descendant->Parent(), this);
+
+  if (can_be_direct_child) {
+    LayoutObject* before_child =
+        SplitAnonymousBoxesAroundChild(before_descendant);
+    DCHECK_EQ(before_child->Parent(), this);
+    AddChild(new_child, before_child);
+    return;
+  }
+
+  LayoutObject* before_descendant_container = before_descendant->Parent();
+  while (before_descendant_container->Parent() != this) {
+    before_descendant_container = before_descendant_container->Parent();
+  }
+  CHECK(before_descendant_container->IsAnonymous());
+  CHECK(before_descendant_container->IsTableSection());
+
+  // Insert the child into the anonymous table-section instead of here.
+  before_descendant_container->AddChild(new_child, before_descendant);
+}
+
+void LayoutTable::AddChild(LayoutObject* new_child,
+                           LayoutObject* before_child) {
+  NOT_DESTROYED();
+  TableGridStructureChanged();
+
+  const bool can_be_direct_child = new_child->IsTableCaption() ||
+                                   new_child->IsLayoutTableCol() ||
+                                   new_child->IsTableSection();
+
+  if (before_child && before_child->Parent() != this) {
+    AddChildBeforeDescendant(new_child, before_child, can_be_direct_child);
+    return;
+  }
+
+  if (!can_be_direct_child) {
+    LayoutObject* after_child =
+        before_child ? before_child->PreviousSibling() : LastChild();
+
+    if (after_child && after_child->IsAnonymous()) {
+      after_child->AddChild(new_child);
+      return;
+    }
+
+    // No suitable existing anonymous table-section - create a new one.
+    LayoutTableSection* section =
+        LayoutTableSection::CreateAnonymousWithParent(*this);
+    LayoutBox::AddChild(section, before_child);
+    section->AddChild(new_child);
+    return;
+  }
+
+  LayoutBox::AddChild(new_child, before_child);
+}
+
+void LayoutTable::RemoveChild(LayoutObject* child) {
+  NOT_DESTROYED();
+  TableGridStructureChanged();
+  LayoutBlock::RemoveChild(child);
+}
+
+void LayoutTable::StyleDidChange(
+    StyleDifference diff,
+    const ComputedStyle* old_style,
+    const ComputedStyle& new_style,
+    const StyleChangeContext& style_change_context) {
+  NOT_DESTROYED();
+  // StyleDifference handles changes in table-layout, border-spacing.
+  if (old_style) {
+    bool borders_changed =
+        !old_style->BorderVisuallyEqual(new_style) ||
+        old_style->GetWritingDirection() != new_style.GetWritingDirection() ||
+        old_style->IsFixedTableLayout() != new_style.IsFixedTableLayout() ||
+        old_style->EmptyCells() != new_style.EmptyCells();
+    bool collapse_changed =
+        new_style.BorderCollapse() != old_style->BorderCollapse();
+    if (borders_changed || collapse_changed)
+      GridBordersChanged();
+  }
+  LayoutBlock::StyleDidChange(diff, old_style, new_style, style_change_context);
+}
+
+LayoutBox* LayoutTable::CreateAnonymousBoxWithSameTypeAs(
+    const LayoutObject* parent) const {
+  NOT_DESTROYED();
+  return CreateAnonymousWithParent(*parent);
+}
+
+PhysicalRect LayoutTable::OverflowClipRect(
+    OverlayScrollbarClipBehavior overlay_scrollbar_clip_behavior) const {
+  NOT_DESTROYED();
+  PhysicalRect clip_rect;
+  if (StyleRef().BorderCollapse() == EBorderCollapse::kCollapse) {
+    clip_rect = PhysicalRect(PhysicalOffset(), StitchedSize());
+    const auto overflow_clip = GetOverflowClipAxes();
+    gfx::Rect infinite_rect = InfiniteIntRect();
+    if ((overflow_clip & kOverflowClipX) == kNoOverflowClip) {
+      clip_rect.offset.left = LayoutUnit(infinite_rect.x());
+      clip_rect.size.width = LayoutUnit(infinite_rect.width());
+    }
+    if ((overflow_clip & kOverflowClipY) == kNoOverflowClip) {
+      clip_rect.offset.top = LayoutUnit(infinite_rect.y());
+      clip_rect.size.height = LayoutUnit(infinite_rect.height());
+    }
+  } else {
+    clip_rect = LayoutBlock::OverflowClipRect(overlay_scrollbar_clip_behavior);
+  }
+  // TODO(1142929)
+  // We cannot handle table hidden overflow with captions correctly.
+  // Correct handling would clip table grid content to grid content rect,
+  // but not clip the captions.
+  // Since we are not generating table's grid fragment, this is not
+  // possible.
+  // The current solution is to not clip if we have captions.
+  // Maybe a fix is to do an additional clip in table painter?
+  const LayoutObject* child = FirstChild();
+  while (child) {
+    if (child->IsTableCaption()) {
+      // If there are captions, we cannot clip to content box.
+      clip_rect.Unite(PhysicalRect(PhysicalOffset(), StitchedSize()));
+      break;
+    }
+    child = child->NextSibling();
+  }
+  return clip_rect;
+}
+
+PhysicalBoxStrut LayoutTable::BorderOutsets() const {
+  NOT_DESTROYED();
+  // DCHECK(cached_table_borders_.get())
+  // ScrollAnchoring fails this DCHECK.
+  if (HasCollapsedBorders() && cached_table_borders_) {
+    return cached_table_borders_->TableBorder().ConvertToPhysical(
+        StyleRef().GetWritingDirection());
+  }
+  return LayoutBlock::BorderOutsets();
+}
+
+PhysicalBoxStrut LayoutTable::PaddingOutsets() const {
+  NOT_DESTROYED();
+  return HasCollapsedBorders() ? PhysicalBoxStrut()
+                               : LayoutBlock::PaddingOutsets();
+}
+
+// Effective column index is index of columns with mergeable
+// columns skipped. Used in a11y.
+unsigned LayoutTable::AbsoluteColumnToEffectiveColumn(
+    unsigned absolute_column_index) const {
+  NOT_DESTROYED();
+  if (!cached_table_columns_) {
+    NOTREACHED();
+  }
+  unsigned effective_column_index = 0;
+  unsigned column_count = cached_table_columns_.get()->data.size();
+  for (unsigned current_column_index = 0; current_column_index < column_count;
+       ++current_column_index) {
+    if (current_column_index != 0 &&
+        !cached_table_columns_.get()->data[current_column_index].is_mergeable)
+      ++effective_column_index;
+    if (current_column_index == absolute_column_index)
+      return effective_column_index;
+  }
+  return effective_column_index;
+}
+
+unsigned LayoutTable::EffectiveColumnCount() const {
+  NOT_DESTROYED();
+  const wtf_size_t column_count = ColumnCount();
+  if (column_count == 0) {
+    return 0;
+  }
+  return AbsoluteColumnToEffectiveColumn(column_count - 1) + 1;
+}
+
+}  // namespace blink

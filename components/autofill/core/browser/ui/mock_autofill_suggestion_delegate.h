@@ -1,0 +1,67 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_AUTOFILL_CORE_BROWSER_UI_MOCK_AUTOFILL_SUGGESTION_DELEGATE_H_
+#define COMPONENTS_AUTOFILL_CORE_BROWSER_UI_MOCK_AUTOFILL_SUGGESTION_DELEGATE_H_
+
+#include <variant>
+
+#include "base/memory/weak_ptr.h"
+#include "components/autofill/core/browser/suggestions/suggestion_hiding_reason.h"
+#include "components/autofill/core/browser/ui/autofill_suggestion_delegate.h"
+#include "components/autofill/core/browser/ui/tabbed_pane_enums.h"
+#include "testing/gmock/include/gmock/gmock.h"
+
+namespace autofill {
+
+// Mock version of AutofillSuggestionDelegate.
+class MockAutofillSuggestionDelegate : public AutofillSuggestionDelegate {
+ public:
+  MockAutofillSuggestionDelegate();
+  ~MockAutofillSuggestionDelegate() override;
+
+  MOCK_METHOD(
+      (std::variant<AutofillDriver*, password_manager::PasswordManagerDriver*>),
+      GetDriver_DoNotUse,
+      (),
+      (override));
+  MOCK_METHOD(void,
+              OnSuggestionsShown,
+              (base::span<const Suggestion>,
+               base::optional_ref<const SuggestionMetadata>),
+              (override));
+  MOCK_METHOD(void, OnSuggestionsHidden, (SuggestionHidingReason), (override));
+  MOCK_METHOD(bool,
+              OnFilterChanged,
+              (const std::u16string& filter),
+              (override));
+  MOCK_METHOD(bool,
+              OnSearchSubmitted,
+              (const std::u16string& filter),
+              (override));
+  MOCK_METHOD(bool, IsSearching, (), (const, override));
+  MOCK_METHOD(void,
+              DidSelectSuggestion,
+              (const Suggestion& suggestion),
+              (override));
+  MOCK_METHOD(void,
+              DidAcceptSuggestion,
+              (const Suggestion& suggestion,
+               const AutofillSuggestionDelegate::SuggestionMetadata& metadata),
+              (override));
+  MOCK_METHOD(bool, RemoveSuggestion, (const Suggestion&), (override));
+  MOCK_METHOD(void, ClearPreviewedForm, (), (override));
+  MOCK_METHOD(FillingProduct, GetMainFillingProduct, (), (const override));
+  MOCK_METHOD(void, OnTabSelected, (TabbedPaneTabType tab_type), (override));
+  MOCK_METHOD(FieldGlobalId, GetQueriedFieldId, (), (const override));
+
+  base::WeakPtr<MockAutofillSuggestionDelegate> GetWeakPtr();
+
+ private:
+  base::WeakPtrFactory<MockAutofillSuggestionDelegate> weak_ptr_factory_{this};
+};
+
+}  // namespace autofill
+
+#endif  // COMPONENTS_AUTOFILL_CORE_BROWSER_UI_MOCK_AUTOFILL_SUGGESTION_DELEGATE_H_

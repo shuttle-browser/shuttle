@@ -1,0 +1,96 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_ACCOUNT_MANAGER_CORE_ACCOUNT_MANAGER_FACADE_H_
+#define COMPONENTS_ACCOUNT_MANAGER_CORE_ACCOUNT_MANAGER_FACADE_H_
+
+#include <memory>
+#include <string>
+
+#include "base/component_export.h"
+#include "base/functional/callback.h"
+#include "base/observer_list_types.h"
+#include "components/account_manager_core/account.h"
+#include "google_apis/gaia/google_service_auth_error.h"
+
+class OAuth2AccessTokenFetcher;
+class OAuth2AccessTokenConsumer;
+
+namespace account_manager {
+
+// An interface to talk to |AccountManager|.
+// Implementations of this interface hide the in-process / out-of-process nature
+// of this communication.
+// Instances of this class are singletons, and are independent of a |Profile|.
+// Use |ash::AccountManagerFactory::Get()->GetAccountManagerFacade()| to get an
+// instance of this class.
+class COMPONENT_EXPORT(ACCOUNT_MANAGER_CORE) AccountManagerFacade {
+ public:
+  // Observer interface to get notifications about changes in the account list.
+  class Observer : public base::CheckedObserver {
+   public:
+    Observer();
+    Observer(const Observer&) = delete;
+    Observer& operator=(const Observer&) = delete;
+    ~Observer() override;
+
+    // Invoked when an account is added or updated.
+    virtual void OnAccountUpserted(const Account& account) = 0;
+    // Invoked when an account is removed.
+    virtual void OnAccountRemoved(const Account& account) = 0;
+    // Invoked when the error state associated with an account changes.
+    virtual void OnAuthErrorChanged(const AccountKey& account,
+                                    const GoogleServiceAuthError& error) = 0;
+  };
+
+  AccountManagerFacade();
+  AccountManagerFacade(const AccountManagerFacade&) = delete;
+  AccountManagerFacade& operator=(const AccountManagerFacade&) = delete;
+  virtual ~AccountManagerFacade() = 0;
+
+  // Registers an observer. Ensures the observer wasn't already registered.
+  virtual void AddObserver(Observer* observer) = 0;
+  // Unregisters an observer that was registered using AddObserver.
+  virtual void RemoveObserver(Observer* observer) = 0;
+
+  // Gets the list of accounts in Account Manager. If the remote side doesn't
+  // support this call, an empty list of accounts will be returned.
+  virtual void GetAccounts(
+      base::OnceCallback<void(const std::vector<Account>&)> callback) = 0;
+
+  // If `account` is in an error state (for example, if the refresh token is
+  // known to be invalid), `callback` will get the corresponding
+  // GoogleServiceAuthError.  If there's no known persistent error for
+  // `account`, `callback` will receive `GoogleServiceAuthError` with `NONE`
+  // state (Note: fetching an access token might still fail in this case).
+  virtual void GetPersistentErrorForAccount(
+      const AccountKey& account,
+      base::OnceCallback<void(const GoogleServiceAuthError&)> callback) = 0;
+
+  // Creates an access token fetcher for `account`.
+  // Currently, `account` must be a Gaia account.
+  // The returned object should not outlive `AccountManagerFacade` itself.
+  virtual std::unique_ptr<OAuth2AccessTokenFetcher> CreateAccessTokenFetcher(
+      const AccountKey& account,
+      OAuth2AccessTokenConsumer* consumer) = 0;
+
+  // Reports an `error` for `account`.
+  // `account` must be a valid Gaia account known to Account Manager.
+  // Setting the error `state` as `kNone` resets the error state for `account`.
+  virtual void ReportAuthError(const AccountKey& account,
+                               const GoogleServiceAuthError& error) = 0;
+
+  // Adds or updates an account programmatically without user interaction.
+  // Should only be used in tests.
+  virtual void UpsertAccountForTesting(const Account& account,
+                                       const std::string& token_value) = 0;
+
+  // Removes an account programmatically without user interaction. Should only
+  // be used in tests.
+  virtual void RemoveAccountForTesting(const AccountKey& account) = 0;
+};
+
+}  // namespace account_manager
+
+#endif  // COMPONENTS_ACCOUNT_MANAGER_CORE_ACCOUNT_MANAGER_FACADE_H_

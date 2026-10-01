@@ -1,0 +1,385 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/web_applications/web_app_browsertest_base.h"
+
+#include <string>
+#include <vector>
+
+#include "base/files/file_path.h"
+#include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
+#include "base/strings/to_string.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/test/bind.h"
+#include "base/test/test_future.h"
+#include "base/time/time.h"
+#include "chrome/browser/banners/test_app_banner_manager_desktop.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/create_browser_window.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/web_applications/test/web_app_browsertest_util.h"
+#include "chrome/browser/web_applications/mojom/user_display_mode.mojom.h"
+#include "chrome/browser/web_applications/os_integration/os_integration_manager.h"
+#include "chrome/browser/web_applications/os_integration/os_integration_test_override.h"
+#include "chrome/browser/web_applications/proto/web_app_install_state.pb.h"
+#include "chrome/browser/web_applications/test/debug_info_printer.h"
+#include "chrome/browser/web_applications/test/os_integration_test_override_impl.h"
+#include "chrome/browser/web_applications/test/web_app_install_test_utils.h"
+#include "chrome/browser/web_applications/test/web_app_test_observers.h"
+#include "chrome/browser/web_applications/web_app_command_scheduler.h"
+#include "chrome/browser/web_applications/web_app_install_info.h"
+#include "chrome/browser/web_applications/web_app_provider.h"
+#include "chrome/browser/web_applications/web_app_ui_manager.h"
+#include "chrome/browser/web_applications/web_app_utils.h"
+#include "chrome/common/chrome_switches.h"
+#include "chrome/test/base/ui_test_utils.h"
+#include "components/keyed_service/content/browser_context_dependency_manager.h"
+#include "components/services/app_service/public/cpp/app_launch_params.h"
+#include "components/services/app_service/public/cpp/app_launch_util.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/common/page_type.h"
+#include "content/public/test/browser_test_utils.h"
+#include "net/base/url_util.h"
+#include "net/dns/mock_host_resolver.h"
+#include "net/test/embedded_test_server/embedded_test_server.h"
+#include "net/test/embedded_test_server/http_request.h"
+#include "net/test/embedded_test_server/http_response.h"
+#include "net/test/embedded_test_server/request_handler_util.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace web_app {
+
+WebAppBrowserTestBase::WebAppBrowserTestBase()
+    : WebAppBrowserTestBase({}, {}) {}
+
+WebAppBrowserTestBase::WebAppBrowserTestBase(
+    const std::vector<base::test::FeatureRef>& enabled_features,
+    const std::vector<base::test::FeatureRef>& disabled_features) {
+  scoped_feature_list_.InitWithFeatures(enabled_features, disabled_features);
+}
+
+WebAppBrowserTestBase::~WebAppBrowserTestBase() = default;
+
+WebAppProvider& WebAppBrowserTestBase::provider() {
+  auto* provider = WebAppProvider::GetForTest(profile());
+  DCHECK(provider);
+  return *provider;
+}
+
+Profile* WebAppBrowserTestBase::profile() {
+  CHECK(browser_profile_);
+  return browser_profile_.get();
+}
+
+webapps::AppId WebAppBrowserTestBase::InstallPWA(const GURL& start_url) {
+  auto web_app_info =
+      WebAppInstallInfo::CreateWithStartUrlForTesting(start_url);
+  web_app_info->scope = start_url.GetWithoutFilename();
+  web_app_info->user_display_mode = mojom::UserDisplayMode::kStandalone;
+  web_app_info->title = u"A Web App";
+  return web_app::test::InstallWebApp(profile(), std::move(web_app_info));
+}
+
+webapps::AppId WebAppBrowserTestBase::InstallWebApp(
+    std::unique_ptr<WebAppInstallInfo> web_app_info) {
+  return web_app::test::InstallWebApp(profile(), std::move(web_app_info));
+}
+
+void WebAppBrowserTestBase::UninstallWebApp(const webapps::AppId& app_id) {
+  web_app::test::UninstallWebApp(profile(), app_id);
+}
+
+BrowserWindowInterface* WebAppBrowserTestBase::LaunchWebAppBrowser(
+    const webapps::AppId& app_id) {
+  return web_app::LaunchWebAppBrowser(profile(), app_id);
+}
+
+BrowserWindowInterface* WebAppBrowserTestBase::LaunchWebAppBrowserAndWait(
+    const webapps::AppId& app_id) {
+  return web_app::LaunchWebAppBrowserAndWait(profile(), app_id);
+}
+
+BrowserWindowInterface*
+WebAppBrowserTestBase::LaunchWebAppBrowserAndAwaitInstallabilityCheck(
+    const webapps::AppId& app_id) {
+  BrowserWindowInterface* browser =
+      web_app::LaunchWebAppBrowserAndWait(profile(), app_id);
+  webapps::TestAppBannerManagerDesktop::FromWebContents(
+      browser->GetTabStripModel()->GetActiveWebContents())
+      ->WaitForInstallableCheck();
+  return browser;
+}
+
+BrowserWindowInterface* WebAppBrowserTestBase::LaunchBrowserForWebAppInTab(
+    const webapps::AppId& app_id) {
+  return web_app::LaunchBrowserForWebAppInTab(profile(), app_id);
+}
+
+bool WebAppBrowserTestBase::NavigateInRenderer(content::WebContents* contents,
+                                               const GURL& url) {
+  EXPECT_TRUE(
+      content::ExecJs(contents, "window.location = '" + url.spec() + "';"));
+  bool success = content::WaitForLoadStop(contents);
+  EXPECT_EQ(url, contents->GetController().GetLastCommittedEntry()->GetURL());
+  return success;
+}
+
+// static
+bool WebAppBrowserTestBase::NavigateAndAwaitInstallabilityCheck(
+    BrowserWindowInterface* browser,
+    const GURL& url) {
+  auto* manager = webapps::TestAppBannerManagerDesktop::FromWebContents(
+      browser->GetTabStripModel()->GetActiveWebContents());
+  EXPECT_TRUE(ui_test_utils::NavigateToURL(browser, url));
+  return manager->WaitForInstallableCheck();
+}
+
+BrowserWindowInterface*
+WebAppBrowserTestBase::NavigateInNewWindowAndAwaitInstallabilityCheck(
+    const GURL& url) {
+  BrowserWindowInterface* new_browser = CreateBrowser(profile());
+  AddBlankTabAndShow(new_browser);
+  NavigateAndAwaitInstallabilityCheck(new_browser, url);
+  return new_browser;
+}
+
+std::optional<webapps::AppId> WebAppBrowserTestBase::FindAppWithUrlInScope(
+    const GURL& url) {
+  return provider().registrar_unsafe().FindBestAppWithUrlInScope(
+      url, web_app::WebAppFilter::InstalledInChrome());
+}
+
+BrowserWindowInterface* WebAppBrowserTestBase::OpenPopupAndWait(
+    BrowserWindowInterface* browser,
+    const GURL& url,
+    const gfx::Size& popup_size) {
+  content::WebContents* const web_contents =
+      browser->GetTabStripModel()->GetActiveWebContents();
+
+  ui_test_utils::BrowserCreatedObserver browser_created_observer;
+  std::string open_window_script = base::StringPrintf(
+      "window.open('%s', '_blank', 'toolbar=none,width=%i,height=%i')",
+      url.spec().c_str(), popup_size.width(), popup_size.height());
+
+  EXPECT_TRUE(content::ExecJs(web_contents, open_window_script));
+
+  // The navigation should happen in a new window.
+  BrowserWindowInterface* popup_browser = browser_created_observer.Wait();
+  EXPECT_NE(browser, popup_browser);
+
+  content::WebContents* popup_contents =
+      popup_browser->GetTabStripModel()->GetActiveWebContents();
+  EXPECT_TRUE(content::WaitForLoadStop(popup_contents));
+  EXPECT_EQ(popup_contents->GetLastCommittedURL(), url);
+
+  return popup_browser;
+}
+
+OsIntegrationTestOverrideImpl&
+WebAppBrowserTestBase::os_integration_override() {
+  return faked_os_integration_.test_override();
+}
+
+void WebAppBrowserTestBase::RegisterPortReplacementHandler() {
+  embedded_https_test_server().RegisterRequestHandler(base::BindRepeating(
+      &WebAppBrowserTestBase::HandlePortReplacement, base::Unretained(this)));
+}
+
+std::unique_ptr<net::test_server::HttpResponse>
+WebAppBrowserTestBase::HandlePortReplacement(
+    const net::test_server::HttpRequest& request) {
+  if (!request.GetURL().path().contains("manifest.replaceport.json")) {
+    return nullptr;
+  }
+
+  std::unique_ptr<net::test_server::HttpResponse> default_response =
+      net::test_server::HandleFileRequest(
+          net::test_server::EmbeddedTestServer::GetFullPathFromSourceDirectory(
+              GetChromeTestDataDir()),
+          request);
+
+  if (!default_response) {
+    return nullptr;
+  }
+
+  // TODO:Split out a version of HandleFileRequest that returns a
+  // BasicHttpResponse. Then we can avoid static_cast here.
+  auto& basic_response =
+      static_cast<net::test_server::BasicHttpResponse&>(*default_response);
+
+  std::string content(basic_response.content());
+  base::ReplaceSubstringsAfterOffset(
+      &content, 0, "$PORT",
+      base::ToString(embedded_https_test_server().port()));
+  basic_response.set_content(content);
+
+  return default_response;
+}
+
+void WebAppBrowserTestBase::RegisterAssociatedOriginWellKnownHandler(
+    const std::string& source_host,
+    const std::string& target_manifest_id_template,
+    const std::string& allowed_scope) {
+  embedded_https_test_server().RegisterRequestHandler(base::BindRepeating(
+      [](const std::string& expected_host,
+         const std::string& manifest_id_template,
+         const std::string& allowed_scope,
+         const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        if (request.GetURL().path() !=
+            "/.well-known/web-app-origin-association") {
+          return nullptr;
+        }
+
+        // Determine the actual host of the request. Since the embedded
+        // test server resolves to 127.0.0.1 locally, we must read the 'Host'
+        // header to check which domain the test is attempting to reach.
+        std::string actual_host(request.GetURL().host());
+        if (auto it = request.headers.find("Host");
+            it != request.headers.end()) {
+          actual_host = std::string(GURL("http://" + it->second).host());
+        }
+
+        if (expected_host != actual_host) {
+          return nullptr;
+        }
+
+        auto response =
+            std::make_unique<net::test_server::BasicHttpResponse>();
+        response->set_code(net::HTTP_OK);
+        response->set_content_type("application/json");
+
+        std::string manifest_id = manifest_id_template;
+        base::ReplaceSubstringsAfterOffset(
+            &manifest_id, 0, "$PORT",
+            base::ToString(request.GetURL().IntPort()));
+
+        // Construct the JSON. The parser requires the root keys to be
+        // valid manifest ID URLs, and 'allow_migration' must evaluate to
+        // true.
+        std::string json = base::ReplaceStringPlaceholders(
+            R"({
+              "$1": {
+                "scope": "$2",
+                "allow_migration": true
+              }
+            })",
+            {manifest_id, allowed_scope}, nullptr);
+        response->set_content(json);
+
+        return response;
+      },
+      source_host, target_manifest_id_template, allowed_scope));
+}
+
+content::WebContents* WebAppBrowserTestBase::OpenApplication(
+    const webapps::AppId& app_id) {
+  ui_test_utils::UrlLoadObserver url_observer(
+      provider().registrar_unsafe().GetAppStartUrl(app_id));
+
+  web_app::WebAppProvider* provider =
+      web_app::WebAppProvider::GetForLocalAppsUnchecked(profile());
+  base::test::TestFuture<base::WeakPtr<BrowserWindowInterface>,
+                         base::WeakPtr<content::WebContents>,
+                         apps::LaunchContainer>
+      future;
+  provider->scheduler().LaunchAppWithCustomParams(
+      apps::AppLaunchParams(
+          app_id, apps::LaunchContainer::kLaunchContainerWindow,
+          WindowOpenDisposition::NEW_WINDOW, apps::LaunchSource::kFromTest),
+      future.GetCallback());
+  url_observer.Wait();
+  return future.template Get<1>().get();
+}
+
+GURL WebAppBrowserTestBase::GetInstallableAppURL() {
+  return embedded_https_test_server().GetURL(
+      "/banners/manifest_test_page.html");
+}
+
+GURL WebAppBrowserTestBase::GetAppURLWithManifest(
+    const std::string& manifest_url) {
+  GURL url = GetInstallableAppURL();
+  return net::AppendQueryParameter(
+      url, "manifest",
+      embedded_https_test_server().GetURL(manifest_url).spec());
+}
+
+// static
+const char* WebAppBrowserTestBase::GetInstallableAppName() {
+  return "Manifest test app";
+}
+
+void WebAppBrowserTestBase::SetUp() {
+  if (!embedded_https_test_server().Started()) {
+    embedded_https_test_server().AddDefaultHandlers(GetChromeTestDataDir());
+  }
+  webapps::TestAppBannerManagerDesktop::SetUp();
+  WebAppBrowserTestBaseParent::SetUp();
+}
+
+void WebAppBrowserTestBase::TearDown() {
+  WebAppBrowserTestBaseParent::TearDown();
+}
+
+void WebAppBrowserTestBase::SetUpInProcessBrowserTestFixture() {
+  WebAppBrowserTestBaseParent::SetUpInProcessBrowserTestFixture();
+  cert_verifier_.SetUpInProcessBrowserTestFixture();
+  create_services_subscription_ =
+      BrowserContextDependencyManager::GetInstance()
+          ->RegisterCreateServicesCallbackForTesting(base::BindRepeating(
+              &WebAppBrowserTestBase::OnWillCreateBrowserContextServices,
+              base::Unretained(this)));
+}
+
+void WebAppBrowserTestBase::TearDownInProcessBrowserTestFixture() {
+  WebAppBrowserTestBaseParent::TearDownInProcessBrowserTestFixture();
+  cert_verifier_.TearDownInProcessBrowserTestFixture();
+}
+
+void WebAppBrowserTestBase::TearDownOnMainThread() {
+  if (testing::Test::HasFailure()) {
+    ProfileManager* profile_manager = g_browser_process->profile_manager();
+    base::TimeDelta log_time = base::TimeTicks::Now() - start_time_;
+    test::LogDebugInfoToConsole(profile_manager->GetLoadedProfiles(), log_time);
+  }
+
+  WebAppBrowserTestBaseParent::TearDownOnMainThread();
+}
+
+void WebAppBrowserTestBase::SetUpCommandLine(base::CommandLine* command_line) {
+  WebAppBrowserTestBaseParent::SetUpCommandLine(command_line);
+
+  // Browser will both run and display insecure content.
+  command_line->AppendSwitch(switches::kAllowRunningInsecureContent);
+  cert_verifier_.SetUpCommandLine(command_line);
+}
+
+void WebAppBrowserTestBase::PreRunTestOnMainThread() {
+  WebAppBrowserTestBaseParent::PreRunTestOnMainThread();
+  browser_profile_ = browser()->GetProfile()->GetWeakPtr();
+}
+
+void WebAppBrowserTestBase::SetUpOnMainThread() {
+  WebAppBrowserTestBaseParent::SetUpOnMainThread();
+
+  host_resolver()->AddRule("*", "127.0.0.1");
+  if (!embedded_https_test_server().Started()) {
+    ASSERT_TRUE(embedded_https_test_server().Start());
+  }
+
+  // By default, all SSL cert checks are valid. Can be overridden in tests.
+  cert_verifier_.mock_cert_verifier()->set_default_result(net::OK);
+
+  web_app::test::WaitUntilReady(
+      web_app::WebAppProvider::GetForTest(browser()->GetProfile()));
+}
+
+}  // namespace web_app

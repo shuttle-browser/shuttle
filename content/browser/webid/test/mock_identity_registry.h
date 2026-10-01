@@ -1,0 +1,47 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CONTENT_BROWSER_WEBID_TEST_MOCK_IDENTITY_REGISTRY_H_
+#define CONTENT_BROWSER_WEBID_TEST_MOCK_IDENTITY_REGISTRY_H_
+
+#include "base/memory/weak_ptr.h"
+#include "content/browser/webid/identity_registry.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "third_party/blink/public/mojom/webid/federated_request.mojom.h"
+
+class GURL;
+
+namespace content::webid {
+
+class MockIdentityRegistry : public IdentityRegistry {
+ public:
+  explicit MockIdentityRegistry(
+      WebContents* web_contents,
+      base::WeakPtr<IdentityRegistryDelegate> delegate,
+      const GURL& idp_config_url);
+
+  ~MockIdentityRegistry() override;
+
+  MockIdentityRegistry(const MockIdentityRegistry&) = delete;
+  MockIdentityRegistry& operator=(const MockIdentityRegistry&) = delete;
+
+  MOCK_METHOD(void, NotifyClose, (const url::Origin&), (override));
+  MOCK_METHOD(bool,
+              NotifyResolve,
+              (const url::Origin&,
+               const std::optional<std::string>&,
+               blink::mojom::ResolveTokenParamsPtr),
+              (override));
+
+  base::WeakPtr<MockIdentityRegistry> GetWeakPtr() {
+    return weak_ptr_factory_.GetWeakPtr();
+  }
+
+ private:
+  base::WeakPtrFactory<MockIdentityRegistry> weak_ptr_factory_{this};
+};
+
+}  // namespace content::webid
+
+#endif  // CONTENT_BROWSER_WEBID_TEST_MOCK_IDENTITY_REGISTRY_H_

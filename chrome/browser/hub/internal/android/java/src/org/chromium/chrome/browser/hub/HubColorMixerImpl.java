@@ -1,0 +1,251 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.hub;
+
+import static org.chromium.chrome.browser.hub.HubAnimationConstants.PANE_COLOR_BLEND_ANIMATION_DURATION_MS;
+import static org.chromium.chrome.browser.hub.HubColorMixer.StateChange.HUB_CLOSED;
+import static org.chromium.chrome.browser.hub.HubColorMixer.StateChange.HUB_SHOWN;
+import static org.chromium.chrome.browser.hub.HubColorMixer.StateChange.TRANSLATE_DOWN_TABLET_ANIMATION_START;
+import static org.chromium.chrome.browser.hub.HubColorMixer.StateChange.TRANSLATE_UP_TABLET_ANIMATION_END;
+
+import android.animation.AnimatorSet;
+import android.content.Context;
+import android.graphics.Color;
+
+import androidx.annotation.ColorInt;
+import androidx.annotation.FloatRange;
+import androidx.annotation.VisibleForTesting;
+
+import org.chromium.base.Callback;
+import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.base.supplier.NonNullObservableSupplier;
+import org.chromium.base.supplier.NullableObservableSupplier;
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.supplier.SettableNonNullObservableSupplier;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.ui.animation.AnimationHandler;
+import org.chromium.ui.base.DeviceFormFactor;
+import org.chromium.ui.util.ColorUtils;
+
+@NullMarked
+public class HubColorMixerImpl implements HubColorMixer {
+    /** Maps the Hub Color Scheme to the color for the hub overview color. */
+    @FunctionalInterface
+    @VisibleForTesting
+    interface HubOverviewColorProvider extends HubViewColorBlend.ColorGetter {}
+
+    private static final float SWIPE_COMPLETION_THRESHOLD = 0.5f;
+
+    private final SettableNonNullObservableSupplier<Integer> mOverviewColorSupplier =
+            ObservableSuppliers.createNonNull(Color.TRANSPARENT);
+    private final Callback<Boolean> mOnHubVisibilityObserver = this::onHubVisibilityChange;
+    private final Callback<Pane> mOnFocusedPaneObserver =
+            (Callback<Pane>) this::onFocusedPaneChange;
+    private final OverviewModeAlphaObserver mOverviewModeAlphaObserver =
+            this::onOverviewModeAlphaChanged;
+    private final Callback<@Nullable ColorBlendProgress> mOnSwipeAnimationProgressObserver =
+            this::onSwipeAnimationProgressChanged;
+    private final NonNullObservableSupplier<Boolean> mHubVisibilitySupplier;
+    private final MonotonicObservableSupplier<Pane> mFocusedPaneSupplier;
+    private final NullableObservableSupplier<ColorBlendProgress> mSwipeAnimationProgressSupplier;
+    private final HubColorBlendAnimatorSetHelper mAnimatorSetBuilder;
+    private final AnimationHandler mColorBlendAnimatorHandler;
+    private final boolean mIsTablet;
+    private @Nullable HubColorSchemeUpdate mColorSchemeUpdate;
+    private float mOverviewColorAlpha;
+    private boolean mOverviewMode;
+    private boolean mIsSwipeAnimationRunning;
+    private @HubColorScheme int mLastSwipeEndScheme;
+
+    /**
+     * @param context The context for the Hub.
+     * @param hubVisibilitySupplier Provides the Hub visibility.
+     * @param focusedPaneSupplier Provides the currently focused {@link Pane}.
+     * @param swipeAnimationProgressSupplier Provides the current color scheme blend progress.
+     */
+    public HubColorMixerImpl(
+            Context context,
+            NonNullObservableSupplier<Boolean> hubVisibilitySupplier,
+            MonotonicObservableSupplier<Pane> focusedPaneSupplier,
+            NullableObservableSupplier<ColorBlendProgress> swipeAnimationProgressSupplier) {
+        this(
+                hubVisibilitySupplier,
+                focusedPaneSupplier,
+                swipeAnimationProgressSupplier,
+                new HubColorBlendAnimatorSetHelper(),
+                new AnimationHandler(),
+                colorScheme -> HubColors.getBackgroundColor(context, colorScheme),
+                DeviceFormFactor.isNonMultiDisplayContextOnTablet(context));
+    }
+
+    @VisibleForTesting
+    HubColorMixerImpl(
+            NonNullObservableSupplier<Boolean> hubVisibilitySupplier,
+            MonotonicObservableSupplier<Pane> focusedPaneSupplier,
+            NullableObservableSupplier<ColorBlendProgress> swipeAnimationProgressSupplier,
+            HubColorBlendAnimatorSetHelper animatorSetHelper,
+            AnimationHandler animationHandler,
+            HubOverviewColorProvider hubOverviewColorProvider,
+            boolean isTablet) {
+        mHubVisibilitySupplier = hubVisibilitySupplier;
+        mFocusedPaneSupplier = focusedPaneSupplier;
+        mSwipeAnimationProgressSupplier = swipeAnimationProgressSupplier;
+        mColorBlendAnimatorHandler = animationHandler;
+        mAnimatorSetBuilder = animatorSetHelper;
+        mIsTablet = isTablet;
+
+        mHubVisibilitySupplier.addSyncObserverAndPostIfNonNull(mOnHubVisibilityObserver);
+        mFocusedPaneSupplier.addSyncObserverAndPostIfNonNull(mOnFocusedPaneObserver);
+        mSwipeAnimationProgressSupplier.addSyncObserverAndPostIfNonNull(
+                mOnSwipeAnimationProgressObserver);
+
+        mOverviewColorAlpha = 1f;
+        disableOverviewMode();
+        registerBlend(
+                new SingleHubViewColorBlend(
+                        PANE_COLOR_BLEND_ANIMATION_DURATION_MS,
+                        hubOverviewColorProvider,
+                        color -> processOverviewColor(color, mOverviewColorAlpha)));
+    }
+
+    @Override
+    public void destroy() {
+        mHubVisibilitySupplier.removeObserver(mOnHubVisibilityObserver);
+        mFocusedPaneSupplier.removeObserver(mOnFocusedPaneObserver);
+        mSwipeAnimationProgressSupplier.removeObserver(mOnSwipeAnimationProgressObserver);
+    }
+
+    @Override
+    public NonNullObservableSupplier<Integer> getOverviewColorSupplier() {
+        return mOverviewColorSupplier;
+    }
+
+    @Override
+    public void processStateChange(@StateChange int colorChangeReason) {
+        switch (colorChangeReason) {
+            case HUB_SHOWN -> {
+                if (mIsTablet) {
+                    onFocusedPaneChange(mFocusedPaneSupplier.get());
+                } else {
+                    enableOverviewMode();
+                }
+            }
+            case TRANSLATE_UP_TABLET_ANIMATION_END -> enableOverviewMode();
+            case HUB_CLOSED -> {
+                if (!mIsTablet) {
+                    disableOverviewMode();
+                }
+            }
+            case TRANSLATE_DOWN_TABLET_ANIMATION_START -> disableOverviewMode();
+            default -> throw new IllegalStateException("Unexpected value: " + colorChangeReason);
+        }
+    }
+
+    @Override
+    public void registerBlend(HubViewColorBlend colorBlend) {
+        mAnimatorSetBuilder.registerBlend(colorBlend);
+        if (mColorSchemeUpdate != null) {
+            colorBlend
+                    .createAnimationForTransition(
+                            mColorSchemeUpdate.newColorScheme,
+                            mColorSchemeUpdate.previousColorScheme)
+                    .start();
+        }
+    }
+
+    @Override
+    public void unregisterBlend(HubViewColorBlend colorBlend) {
+        mAnimatorSetBuilder.unregisterBlend(colorBlend);
+    }
+
+    @Override
+    public OverviewModeAlphaObserver getOverviewModeAlphaObserver() {
+        return mOverviewModeAlphaObserver;
+    }
+
+    private void onOverviewModeAlphaChanged(double alpha) {
+        mOverviewColorAlpha = (float) alpha;
+        @ColorInt int color = mOverviewColorSupplier.get();
+        processOverviewColor(color, mOverviewColorAlpha);
+    }
+
+    private void onSwipeAnimationProgressChanged(@Nullable ColorBlendProgress progress) {
+        boolean isRunning = progress != null;
+        if (isRunning != mIsSwipeAnimationRunning) {
+            mIsSwipeAnimationRunning = isRunning;
+            int scheme = progress != null ? progress.startScheme : mLastSwipeEndScheme;
+            mColorSchemeUpdate = new HubColorSchemeUpdate(scheme, scheme);
+        }
+
+        if (progress != null) {
+            mAnimatorSetBuilder.updateColorBlendProgress(
+                    progress.startScheme, progress.endScheme, progress.fraction);
+            mLastSwipeEndScheme =
+                    progress.fraction > SWIPE_COMPLETION_THRESHOLD
+                            ? progress.endScheme
+                            : progress.startScheme;
+        }
+    }
+
+    @VisibleForTesting
+    boolean getOverviewMode() {
+        return mOverviewMode;
+    }
+
+    private void disableOverviewMode() {
+        mOverviewMode = false;
+        mOverviewColorSupplier.set(Color.TRANSPARENT);
+        mColorSchemeUpdate = null;
+    }
+
+    private void enableOverviewMode() {
+        mOverviewMode = true;
+        onFocusedPaneChange(mFocusedPaneSupplier.get());
+    }
+
+    private void onFocusedPaneChange(@Nullable Pane focusedPane) {
+        @HubColorScheme int newColorScheme = HubColors.getColorSchemeSafe(focusedPane);
+        updateColorScheme(newColorScheme);
+    }
+
+    private void onHubVisibilityChange(boolean isVisible) {
+        processStateChange(isVisible ? HUB_SHOWN : HUB_CLOSED);
+    }
+
+    private void updateColorScheme(@HubColorScheme int newColorScheme) {
+        @HubColorScheme
+        int prevColorScheme =
+                mColorSchemeUpdate == null ? newColorScheme : mColorSchemeUpdate.newColorScheme;
+
+        if (prevColorScheme == newColorScheme) {
+            mAnimatorSetBuilder.updateColorBlendProgress(newColorScheme, newColorScheme, 1.0f);
+            mColorSchemeUpdate = new HubColorSchemeUpdate(newColorScheme, prevColorScheme);
+            return;
+        }
+
+        AnimatorSet animatorSet =
+                mAnimatorSetBuilder
+                        .setNewColorScheme(newColorScheme)
+                        .setPreviousColorScheme(prevColorScheme)
+                        .build();
+        mColorSchemeUpdate = new HubColorSchemeUpdate(newColorScheme, prevColorScheme);
+        mColorBlendAnimatorHandler.startAnimation(animatorSet);
+    }
+
+    private void processOverviewColor(
+            @ColorInt int color, @FloatRange(from = 0f, to = 1f) float alpha) {
+        if (mOverviewMode) {
+            color = ColorUtils.setAlphaComponentWithFloat(color, alpha);
+            mOverviewColorSupplier.set(color);
+        } else {
+            mOverviewColorSupplier.set(Color.TRANSPARENT);
+        }
+    }
+
+    @Nullable HubColorSchemeUpdate getColorSchemeUpdateForTesting() {
+        return mColorSchemeUpdate;
+    }
+}

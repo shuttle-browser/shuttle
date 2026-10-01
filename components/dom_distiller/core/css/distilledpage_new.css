@@ -1,0 +1,178 @@
+/* Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+html {
+    width: 100%;
+    margin: auto;
+}
+
+/* Default styles for your container on small screens */
+html {
+  width: 100%; /* Use full width by default */
+  margin-left: auto;
+  margin-right: auto;
+  /*
+    16px for all sides expect the bottom which is enough for the bottom
+    sheet peek not to overlap the content.
+  */
+  padding: 16px 16px 80px;
+  box-sizing: border-box; /* Ensures padding is included in the width */
+}
+
+/* For device screens at least 800px wide */
+@media (min-width: 800px) {
+  html {
+    max-width: 600px;
+  }
+}
+
+/* For device screens at least 1000px wide */
+@media (min-width: 1000px) {
+  html {
+    max-width: 800px;
+  }
+}
+
+/* Margins and paddings. */
+
+/* Reset default margins to prevent conflicts and ensure consistency. */
+article, h1, h2, h3, p, figure, div, ul, ol, li {
+  margin: 0;
+}
+
+/*
+  GENERAL RULE: Apply vertical spacing between sibling elements within an
+  article. This rule targets direct children of the <article> itself, as well
+  as children inside any <div> no matter how deeply they are nested.
+*/
+article > * + *,
+article :is(section, div) > * + * {
+  margin-top: 1.5rem; /* 24px */
+}
+
+/*
+  EXCEPTION: Use tighter spacing for the following:
+  - A paragraph that immediately follows a heading.
+  - Contents of lists, and figures.
+*/
+article h1 + p,
+article h2 + p,
+article h3 + p,
+article h4 + p,
+article h5 + p,
+article h6 + p,
+article :is(ul, ol, figure) * {
+  margin-top: 0.75rem !important; /* 12px */
+}
+
+/* Text rules. */
+
+/* General rules applying to all elements. */
+html {
+    font-size: 16px;
+}
+
+/* Applies to the majority of text on the page. */
+body {
+    font-weight: normal;
+    line-height: 1.5rem; /* 24px */
+}
+
+/* Title-specific rules applying to h1 tags and the title holder. */
+#title-holder, h1 {
+    font-size: 1.75rem; /* 28px */
+    line-height: 2.1875rem; /* 35px */
+    font-weight: bold;
+}
+
+/* Subtitle-specific rules which also apply to headings smaller than h1. */
+h2, h3, h4, h5, h6 {
+    font-size: 1.25rem; /* 20px */
+    line-height: 1.5rem; /* 24px */
+    font-weight: normal;
+}
+
+/* Image caption text styling rules. */
+img, figcaption, picture:first-child + p:last-child {
+  font-size: 0.75rem; /* 12px */
+  line-height: 0.9375rem; /* 15px */
+  font-style: italic;
+}
+
+/* Styles for images and captions. */
+
+/* Default image styles (base) */
+img {
+  height: auto;
+  max-width: 100%;
+}
+
+/* Styles for inline images */
+img.distilled-inline-img {
+  display: inline;
+  vertical-align: middle;
+  width: auto;
+}
+
+/* Styles for full-width images */
+img.distilled-full-width-img {
+  display: block;
+  width: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  img.distilled-inline-img {
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
+
+/* Styles for SVGs that use a local resource pointer. */
+.distilled-svg-with-local-ref {
+  display: none;
+}
+
+/*
+  If there are inlined divs in a span (to host an image for example), they will
+  be replaced by a paragraph element which is display: block by default. This
+  style will cause the image to be inline instead.
+*/
+span p {
+  display: inline;
+}
+
+/* list specific styling */
+
+ul, ol {
+    list-style-type: none;
+    padding-inline-start: 0;
+    padding-inline-end: 0;
+    padding: 0;
+    margin: 0;
+}
+
+ul.distilled-content-list {
+  list-style-type: disc;
+  padding-inline-start: 2.5em;
+}
+
+ol.distilled-content-list {
+  list-style-type: decimal;
+  padding-inline-start: 2.5em;
+}
+
+body.links-hidden a {
+  color: inherit !important;
+  pointer-events: none;
+  text-decoration: none !important;
+}
+
+/* Table styling. */
+
+/* Styles for scrollable containers, e.g., for wide tables. */
+.distilled-scrollable-container {
+  overflow-x: auto;
+<if expr="is_ios">
+  -webkit-overflow-scrolling: touch;
+</if>
+}

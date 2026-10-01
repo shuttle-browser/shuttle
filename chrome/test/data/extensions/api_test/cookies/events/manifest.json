@@ -1,0 +1,15 @@
+{
+  "name": "events",
+  "version": "1.0",
+  "manifest_version": 3,
+  "description": "Tests cookie events.",
+  "permissions": [
+    "cookies"
+  ],
+  "host_permissions": [
+    "http://a.com/"
+  ],
+  "background": {
+    "service_worker": "test.js"
+  }
+}

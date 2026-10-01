@@ -1,0 +1,509 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "remoting/host/daemon_process.h"
+
+#include <stdint.h>
+
+#include <algorithm>
+#include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
+
+#include "base/base_switches.h"
+#include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/location.h"
+#include "base/logging.h"
+#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/process/process.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/task/task_traits.h"
+#include "base/task/thread_pool.h"
+#include "base/threading/sequence_bound.h"
+#include "base/time/time.h"
+#include "base/values.h"
+#include "base/win/registry.h"
+#include "base/win/scoped_handle.h"
+#include "base/win/win_util.h"
+#include "mojo/core/embedder/scoped_ipc_support.h"
+#include "mojo/public/cpp/bindings/associated_remote.h"
+#include "mojo/public/cpp/system/message_pipe.h"
+#include "remoting/base/auto_thread.h"
+#include "remoting/base/auto_thread_task_runner.h"
+#include "remoting/base/branding.h"
+#include "remoting/base/crash/crash_reporting_breakpad.h"
+#include "remoting/base/logging.h"
+#include "remoting/base/scoped_sc_handle_win.h"
+#include "remoting/host/base/host_exit_codes.h"
+#include "remoting/host/base/screen_resolution.h"
+#include "remoting/host/base/switches.h"
+#include "remoting/host/chromoting_host_services_server.h"
+#include "remoting/host/crash/minidump_handler.h"
+#include "remoting/host/desktop_session_win.h"
+#include "remoting/host/host_config.h"
+#include "remoting/host/host_main.h"
+#include "remoting/host/ipc_constants.h"
+#include "remoting/host/mojom/chromoting_host_services.mojom.h"
+#include "remoting/host/mojom/remoting_host.mojom.h"
+#include "remoting/host/pairing_registry_delegate_win.h"
+#include "remoting/host/usage_stats_consent.h"
+#include "remoting/host/win/etw_trace_consumer.h"
+#include "remoting/host/win/host_event_file_logger.h"
+#include "remoting/host/win/host_event_windows_event_logger.h"
+#include "remoting/host/win/launch_process_with_token.h"
+#include "remoting/host/win/security_descriptor.h"
+#include "remoting/host/win/unprivileged_process_delegate.h"
+#include "remoting/host/worker_process_launcher.h"
+
+using base::win::ScopedHandle;
+
+namespace {
+
+constexpr char kEtwTracingThreadName[] = "ETW Trace Consumer";
+
+// Duplicates |key| and returns a value that can be sent over IPC.
+base::win::ScopedHandle DuplicateRegistryKeyHandle(
+    const base::win::RegKey& key) {
+  HANDLE duplicate_handle = INVALID_HANDLE_VALUE;
+  BOOL result = ::DuplicateHandle(::GetCurrentProcess(),
+                                  reinterpret_cast<HANDLE>(key.Handle()),
+                                  ::GetCurrentProcess(), &duplicate_handle, 0,
+                                  FALSE, DUPLICATE_SAME_ACCESS);
+  if (!result || duplicate_handle == INVALID_HANDLE_VALUE) {
+    return base::win::ScopedHandle();
+  }
+  return base::win::ScopedHandle(duplicate_handle);
+}
+
+#if defined(OFFICIAL_BUILD)
+constexpr wchar_t kLoggingRegistryKeyName[] =
+    L"SOFTWARE\\Google\\Chrome Remote Desktop\\logging";
+#else
+constexpr wchar_t kLoggingRegistryKeyName[] = L"SOFTWARE\\Chromoting\\logging";
+#endif
+
+constexpr wchar_t kLogToFileRegistryValue[] = L"LogToFile";
+constexpr wchar_t kLogToEventLogRegistryValue[] = L"LogToEventLog";
+
+#if defined(OFFICIAL_BUILD)
+constexpr wchar_t kPeerConnectionRegistryKeyName[] =
+    L"SOFTWARE\\Google\\Chrome Remote Desktop\\peer-connection";
+#else
+constexpr wchar_t kPeerConnectionRegistryKeyName[] =
+    L"SOFTWARE\\Chromoting\\peer-connection";
+#endif
+
+constexpr wchar_t kUsePeerConnectionProcessRegistryValue[] =
+    L"UsePeerConnectionProcess";
+
+}  // namespace
+
+namespace remoting {
+
+class WtsTerminalMonitor;
+
+class DaemonProcessWin : public DaemonProcess {
+ public:
+  DaemonProcessWin(scoped_refptr<AutoThreadTaskRunner> caller_task_runner,
+                   scoped_refptr<AutoThreadTaskRunner> io_task_runner,
+                   StoppedCallback stopped_callback);
+
+  DaemonProcessWin(const DaemonProcessWin&) = delete;
+  DaemonProcessWin& operator=(const DaemonProcessWin&) = delete;
+
+  ~DaemonProcessWin() override;
+
+  // mojom::ChromotingHostServices implementation.
+  void BindSessionServices(
+      mojo::PendingReceiver<mojom::ChromotingSessionServices> receiver)
+      override;
+
+  // If event logging has been configured, creates an ETW trace consumer which
+  // listens for logged events from our host processes.  Tracing stops when
+  // `etw_trace_consumer_` is destroyed.  Logging destinations are configured
+  // via the registry.
+  void ConfigureHostLogging();
+
+  // If the user has consented to crash reporting, this method will start a
+  // BreakpadServer instance to handle crashes from the network process.
+  void ConfigureCrashReporting();
+
+  // If configured in the registry, enables the PeerConnection process.
+  void ConfigurePeerConnectionProcess();
+
+ protected:
+  // DaemonProcess implementation.
+  std::unique_ptr<DesktopSession> DoCreateDesktopSession(
+      int terminal_id,
+      const mojom::DesktopSessionOptions& options) override;
+  void LaunchNetworkProcess() override;
+  std::unique_ptr<WorkerProcessLauncher::Delegate>
+  CreatePeerConnectionProcessLauncherDelegate() override;
+
+  bool OnInitAfterChannelConnected(int32_t peer_pid) override;
+
+  // Initializes the pairing registry on the host side.
+  bool InitializePairingRegistry();
+
+  // Opens the pairing registry keys.
+  bool OpenPairingRegistry();
+
+ private:
+  // Handle of the network process.
+  ScopedHandle network_process_;
+
+  base::win::RegKey pairing_registry_privileged_key_;
+  base::win::RegKey pairing_registry_unprivileged_key_;
+
+  std::unique_ptr<EtwTraceConsumer> etw_trace_consumer_;
+
+  base::SequenceBound<MinidumpHandler> minidump_handler_;
+
+  std::optional<bool> use_peer_connection_process_;
+};
+
+DaemonProcessWin::DaemonProcessWin(
+    scoped_refptr<AutoThreadTaskRunner> caller_task_runner,
+    scoped_refptr<AutoThreadTaskRunner> io_task_runner,
+    StoppedCallback stopped_callback)
+    : DaemonProcess(caller_task_runner,
+                    io_task_runner,
+                    std::move(stopped_callback)) {}
+
+DaemonProcessWin::~DaemonProcessWin() = default;
+
+bool DaemonProcessWin::OnInitAfterChannelConnected(int32_t peer_pid) {
+  // Obtain the handle of the network process.
+  network_process_.Set(OpenProcess(PROCESS_DUP_HANDLE, false, peer_pid));
+  if (!network_process_.is_valid()) {
+    CrashNetworkProcess(FROM_HERE);
+    return false;
+  }
+
+  if (!InitializePairingRegistry()) {
+    CrashNetworkProcess(FROM_HERE);
+    return false;
+  }
+
+  return true;
+}
+
+std::unique_ptr<DesktopSession> DaemonProcessWin::DoCreateDesktopSession(
+    int terminal_id,
+    const mojom::DesktopSessionOptions& options) {
+  DCHECK(caller_task_runner()->BelongsToCurrentThread());
+
+  if (options.is_curtained) {
+    return DesktopSessionWin::CreateForVirtualTerminal(
+        caller_task_runner(), io_task_runner(), this, terminal_id, options);
+  } else {
+    return DesktopSessionWin::CreateForConsole(
+        caller_task_runner(), io_task_runner(), this, terminal_id, options);
+  }
+}
+
+void DaemonProcessWin::LaunchNetworkProcess() {
+  DCHECK(caller_task_runner()->BelongsToCurrentThread());
+
+  // Construct the host binary name.
+  base::FilePath host_binary;
+  if (!GetInstalledBinaryPath(kHostBinaryName, &host_binary)) {
+    Stop(kInitializationFailed);
+    return;
+  }
+
+  std::unique_ptr<base::CommandLine> target(new base::CommandLine(host_binary));
+  target->AppendSwitchASCII(kProcessTypeSwitchName, kProcessTypeNetwork);
+  target->CopySwitchesFrom(*base::CommandLine::ForCurrentProcess(),
+                           kCopiedSwitchNames);
+  if (use_peer_connection_process_.has_value()) {
+    target->AppendSwitchASCII(kUsePeerConnectionProcessSwitch,
+                              *use_peer_connection_process_ ? "true" : "false");
+  }
+
+  auto delegate = std::make_unique<UnprivilegedProcessDelegate>(
+      io_task_runner(), std::move(target),
+      UnprivilegedProcessDelegate::IntegrityLevel::kLow);
+  // TODO(joedow): Address software-backed cert issues and then configure
+  // this process to run in an app container again.
+  SetNetworkLauncherDelegate(std::move(delegate));
+}
+
+std::unique_ptr<WorkerProcessLauncher::Delegate>
+DaemonProcessWin::CreatePeerConnectionProcessLauncherDelegate() {
+  DCHECK(caller_task_runner()->BelongsToCurrentThread());
+
+  base::FilePath host_binary;
+  if (!GetInstalledBinaryPath(kHostBinaryName, &host_binary)) {
+    LOG(ERROR) << "Failed to get installed binary path for PC process.";
+    return nullptr;
+  }
+
+  std::unique_ptr<base::CommandLine> target(new base::CommandLine(host_binary));
+  target->AppendSwitchASCII(kProcessTypeSwitchName, kProcessTypePeerConnection);
+  target->CopySwitchesFrom(*base::CommandLine::ForCurrentProcess(),
+                           kCopiedSwitchNames);
+
+  auto delegate = std::make_unique<UnprivilegedProcessDelegate>(
+      io_task_runner(), std::move(target),
+      UnprivilegedProcessDelegate::IntegrityLevel::kUntrusted);
+  delegate->UseAppContainer(L"chromoting.peer_connection");
+  return delegate;
+}
+
+std::unique_ptr<DaemonProcess> DaemonProcess::Create(
+    scoped_refptr<AutoThreadTaskRunner> caller_task_runner,
+    scoped_refptr<AutoThreadTaskRunner> io_task_runner,
+    StoppedCallback stopped_callback) {
+  auto daemon_process = std::make_unique<DaemonProcessWin>(
+      caller_task_runner, io_task_runner, std::move(stopped_callback));
+
+  // Configure host logging first so we can capture subsequent events.
+  daemon_process->ConfigureHostLogging();
+
+  // Initialize crash reporting before the network process is launched.
+  daemon_process->ConfigureCrashReporting();
+
+  // Check registry to see if the PeerConnection process should be enabled.
+  daemon_process->ConfigurePeerConnectionProcess();
+
+  // Finishes configuring the Daemon process and launches the network process.
+  daemon_process->Initialize();
+
+  return std::move(daemon_process);
+}
+
+bool DaemonProcessWin::InitializePairingRegistry() {
+  if (!pairing_registry_privileged_key_.Valid()) {
+    if (!OpenPairingRegistry()) {
+      return false;
+    }
+  }
+
+  // Initialize the pairing registry in the network process. This has to be done
+  // before the host configuration is sent, otherwise the host will not use
+  // the passed handles.
+
+  // Duplicate handles for the network process.
+  base::win::ScopedHandle privileged_key =
+      DuplicateRegistryKeyHandle(pairing_registry_privileged_key_);
+  base::win::ScopedHandle unprivileged_key =
+      DuplicateRegistryKeyHandle(pairing_registry_unprivileged_key_);
+  if (!(privileged_key.is_valid() && unprivileged_key.is_valid())) {
+    return false;
+  }
+
+  if (!IsNetworkProcessReady()) {
+    return false;
+  }
+
+  remoting_host_control()->InitializePairingRegistry(
+      mojo::PlatformHandle(std::move(privileged_key)),
+      mojo::PlatformHandle(std::move(unprivileged_key)));
+
+  return true;
+}
+
+// A chromoting top crasher revealed that the pairing registry keys sometimes
+// cannot be opened. The speculation is that those keys are absent for some
+// reason. To reduce the host crashes we create those keys here if they are
+// absent. See crbug.com/379360 for details.
+bool DaemonProcessWin::OpenPairingRegistry() {
+  DCHECK(!pairing_registry_privileged_key_.Valid());
+  DCHECK(!pairing_registry_unprivileged_key_.Valid());
+
+  // Open the root of the pairing registry. Create if absent.
+  base::win::RegKey root;
+  DWORD disposition;
+  LONG result =
+      root.CreateWithDisposition(HKEY_LOCAL_MACHINE, kPairingRegistryKeyName,
+                                 &disposition, KEY_READ | KEY_CREATE_SUB_KEY);
+
+  if (result != ERROR_SUCCESS) {
+    ::SetLastError(result);
+    PLOG(ERROR) << "Failed to open or create HKLM\\" << kPairingRegistryKeyName;
+    return false;
+  }
+
+  if (disposition == REG_CREATED_NEW_KEY) {
+    LOG(WARNING) << "Created pairing registry root key which was absent.";
+  }
+
+  // Open the pairing registry clients key. Create if absent.
+  base::win::RegKey unprivileged;
+  result = unprivileged.CreateWithDisposition(
+      root.Handle(), kPairingRegistryClientsKeyName, &disposition,
+      KEY_READ | KEY_WRITE);
+
+  if (result != ERROR_SUCCESS) {
+    ::SetLastError(result);
+    PLOG(ERROR) << "Failed to open or create HKLM\\" << kPairingRegistryKeyName
+                << "\\" << kPairingRegistryClientsKeyName;
+    return false;
+  }
+
+  if (disposition == REG_CREATED_NEW_KEY) {
+    LOG(WARNING) << "Created pairing registry client key which was absent.";
+  }
+
+  // Open the pairing registry secret key.
+  base::win::RegKey privileged;
+  result = privileged.Open(root.Handle(), kPairingRegistrySecretsKeyName,
+                           KEY_READ | KEY_WRITE);
+
+  if (result == ERROR_FILE_NOT_FOUND) {
+    LOG(WARNING) << "Pairing registry privileged key absent, creating.";
+
+    // Create a security descriptor that gives full access to local system and
+    // administrators and denies access by anyone else.
+    std::string security_descriptor = "O:BAG:BAD:(A;;GA;;;BA)(A;;GA;;;SY)";
+
+    ScopedSd sd = ConvertSddlToSd(security_descriptor);
+    if (!sd) {
+      PLOG(ERROR) << "Failed to create a security descriptor for the pairing"
+                  << "registry privileged key.";
+      return false;
+    }
+
+    SECURITY_ATTRIBUTES security_attributes = {0};
+    security_attributes.nLength = sizeof(security_attributes);
+    security_attributes.lpSecurityDescriptor = sd.get();
+    security_attributes.bInheritHandle = FALSE;
+
+    HKEY key = nullptr;
+    result = ::RegCreateKeyEx(root.Handle(), kPairingRegistrySecretsKeyName, 0,
+                              nullptr, 0, KEY_READ | KEY_WRITE,
+                              &security_attributes, &key, &disposition);
+    privileged.Set(key);
+  }
+
+  if (result != ERROR_SUCCESS) {
+    ::SetLastError(result);
+    PLOG(ERROR) << "Failed to open or create HKLM\\" << kPairingRegistryKeyName
+                << "\\" << kPairingRegistrySecretsKeyName;
+    return false;
+  }
+
+  pairing_registry_privileged_key_.Set(privileged.Take());
+  pairing_registry_unprivileged_key_.Set(unprivileged.Take());
+  return true;
+}
+
+void DaemonProcessWin::BindSessionServices(
+    mojo::PendingReceiver<mojom::ChromotingSessionServices> receiver) {
+  DCHECK(caller_task_runner()->BelongsToCurrentThread());
+  if (!IsNetworkProcessReady()) {
+    LOG(ERROR) << "Binding rejected. Network process is not ready.";
+    return;
+  }
+
+  uint32_t peer_session_id =
+      host_services_receivers().current_context()->session_id;
+  const auto& sessions = desktop_sessions();
+  auto it = std::ranges::find_if(sessions, [peer_session_id](const auto& pair) {
+    return static_cast<DesktopSessionWin*>(pair.second.get())
+               ->windows_session_id() == peer_session_id;
+  });
+
+  if (it != sessions.end() && it->second->events_remote()) {
+    it->second->events_remote()->OnSessionServicesClientConnected(
+        std::move(receiver));
+  } else {
+    LOG(WARNING) << "No desktop session found for Windows session ID "
+                 << peer_session_id;
+  }
+}
+
+void DaemonProcessWin::ConfigureCrashReporting() {
+  if (IsUsageStatsAllowed()) {
+    InitializeOopCrashServer();
+
+    minidump_handler_.emplace(base::ThreadPool::CreateSingleThreadTaskRunner(
+        {base::MayBlock(), base::TaskPriority::BEST_EFFORT}));
+  }
+}
+
+void DaemonProcessWin::ConfigureHostLogging() {
+  DCHECK(!etw_trace_consumer_);
+
+  base::win::RegKey logging_reg_key;
+  LONG result = logging_reg_key.Open(HKEY_LOCAL_MACHINE,
+                                     kLoggingRegistryKeyName, KEY_READ);
+  if (result != ERROR_SUCCESS) {
+    ::SetLastError(result);
+    PLOG(ERROR) << "Failed to open HKLM\\" << kLoggingRegistryKeyName;
+    return;
+  }
+
+  std::vector<std::unique_ptr<HostEventLogger>> loggers;
+
+  // Check to see if file logging has been enabled.
+  if (logging_reg_key.HasValue(kLogToFileRegistryValue)) {
+    DWORD enabled = 0;
+    result = logging_reg_key.ReadValueDW(kLogToFileRegistryValue, &enabled);
+    if (result != ERROR_SUCCESS) {
+      ::SetLastError(result);
+      PLOG(ERROR) << "Failed to read HKLM\\" << kLoggingRegistryKeyName << "\\"
+                  << kLogToFileRegistryValue;
+    } else if (enabled) {
+      auto file_logger = HostEventFileLogger::Create();
+      if (file_logger) {
+        loggers.push_back(std::move(file_logger));
+      }
+    }
+  }
+
+  // Check to see if Windows event logging has been enabled.
+  if (logging_reg_key.HasValue(kLogToEventLogRegistryValue)) {
+    DWORD enabled = 0;
+    result = logging_reg_key.ReadValueDW(kLogToEventLogRegistryValue, &enabled);
+    if (result != ERROR_SUCCESS) {
+      ::SetLastError(result);
+      PLOG(ERROR) << "Failed to read HKLM\\" << kLoggingRegistryKeyName << "\\"
+                  << kLogToEventLogRegistryValue;
+    } else if (enabled) {
+      auto event_logger = HostEventWindowsEventLogger::Create();
+      if (event_logger) {
+        loggers.push_back(std::move(event_logger));
+      }
+    }
+  }
+
+  if (loggers.empty()) {
+    VLOG(1) << "No host event loggers have been configured.";
+    return;
+  }
+
+  etw_trace_consumer_ = EtwTraceConsumer::Create(
+      AutoThread::CreateWithType(kEtwTracingThreadName, caller_task_runner(),
+                                 base::MessagePumpType::IO),
+      std::move(loggers));
+}
+
+void DaemonProcessWin::ConfigurePeerConnectionProcess() {
+  base::win::RegKey pc_reg_key;
+  LONG result = pc_reg_key.Open(HKEY_LOCAL_MACHINE,
+                                kPeerConnectionRegistryKeyName, KEY_READ);
+  if (result != ERROR_SUCCESS) {
+    return;
+  }
+
+  DWORD enabled = 0;
+  result =
+      pc_reg_key.ReadValueDW(kUsePeerConnectionProcessRegistryValue, &enabled);
+  if (result != ERROR_SUCCESS) {
+    return;
+  }
+
+  use_peer_connection_process_ = (enabled != 0);
+  HOST_LOG << (*use_peer_connection_process_ ? "Enabling" : "Disabling")
+           << " PeerConnection process via registry configuration.";
+}
+
+}  // namespace remoting

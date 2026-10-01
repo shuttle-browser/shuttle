@@ -1,0 +1,333 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/app/main_dll_loader_win.h"
+
+#include <windows.h>
+
+#include <stddef.h>
+#include <stdint.h>
+#include <userenv.h>
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+
+#include "base/base_paths.h"
+#include "base/base_switches.h"
+#include "base/command_line.h"
+#include "base/compiler_specific.h"
+#include "base/files/file.h"
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/hash/hash.h"
+#include "base/lazy_instance.h"
+#include "base/logging.h"
+#include "base/memory/self_deleting.h"
+#include "base/path_service.h"
+#include "base/strings/cstring_view.h"
+#include "base/strings/string_util.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/threading/platform_thread.h"
+#include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
+#include "base/win/registry.h"
+#include "base/win/scoped_handle.h"
+#include "base/win/shlwapi.h"
+#include "base/win/windows_version.h"
+#include "build/branding_buildflags.h"
+#include "chrome/app/llvm_profile_util.h"
+#include "chrome/browser/active_use_util.h"
+#include "chrome/chrome_elf/chrome_elf_main.h"
+#include "chrome/common/buildflags.h"
+#include "chrome/common/chrome_constants.h"
+#include "chrome/common/chrome_paths.h"
+#include "chrome/common/chrome_result_codes.h"
+#include "chrome/common/chrome_switches.h"
+#include "chrome/install_static/install_util.h"
+#include "chrome/installer/util/update_did_run_state.h"
+#include "chrome/installer/util/util_constants.h"
+#include "components/activity_reporter/buildflags.h"
+#include "components/version_info/channel.h"
+#include "content/public/app/sandbox_helper_win.h"
+#include "content/public/common/content_switches.h"
+#include "sandbox/policy/mojom/sandbox.mojom.h"
+#include "sandbox/policy/sandbox_type.h"
+#include "sandbox/win/src/sandbox.h"
+
+namespace {
+
+class DllPreReader : public base::PlatformThread::Delegate,
+                     public base::SelfDeleting {
+ public:
+  explicit DllPreReader(const base::FilePath& module,
+                        base::SelfDeletingPassKey key)
+      : SelfDeleting(key), module_(module) {}
+
+  DllPreReader(const DllPreReader&) = delete;
+  DllPreReader& operator=(const DllPreReader&) = delete;
+
+  void ThreadMain() override {
+    base::PreReadFile(module_, /*is_executable=*/true, /*sequential=*/false);
+    // As a non-joinable thread delegate, this class must clean itself up when
+    // finished.
+    delete this;
+  }
+
+ private:
+  ~DllPreReader() override = default;
+
+  base::FilePath module_;
+};
+
+// The entry point signature of all main modules.
+typedef int (*DLL_MAIN)(HINSTANCE,
+                        sandbox::SandboxInterfaceInfo*,
+                        int64_t exe_main_entry_point_ticks,
+                        int64_t preread_begin_ticks,
+                        int64_t preread_end_ticks);
+
+// Properties for the main module to be loaded.
+struct ModuleProperties {
+  // The basename of the module (e.g., "chrome.dll").
+  base::FilePath::StringViewType module_name;
+
+  // The name of the main entrypoint of the module (e.g., "ChromeMain").
+  base::cstring_view entrypoint_name;
+
+  // The profile type to configure for PGO, if any.
+  std::optional<ProfileProcessType> profile_type;
+};
+
+// Returns the properties for the module to be loaded in `process_type`.
+const ModuleProperties& ModulePropertiesFromProcessType(
+    std::string_view process_type) {
+  // Most process types load chrome.dll and run `ChromeMain`.
+  static constexpr ModuleProperties kOtherProperties = {
+      installer::kChromeDll, "ChromeMain", std::nullopt};
+#if BUILDFLAG(ENABLE_SEPARATE_RENDERER_BINARY)
+  // Renderers load chrome_renderer.dll and run `ChromeRendererMain`.
+  static constexpr ModuleProperties kRendererProperties = {
+      chrome::kRendererDll, "ChromeRendererMain",
+      ProfileProcessType::kRenderer};
+  return process_type == "renderer" ? kRendererProperties : kOtherProperties;
+#else
+  return kOtherProperties;
+#endif
+}
+
+std::wstring GetMachineGuid() {
+  base::win::RegKey key;
+  std::wstring value;
+  if (key.Open(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Cryptography",
+               KEY_QUERY_VALUE | KEY_WOW64_64KEY) != ERROR_SUCCESS ||
+      key.ReadValue(L"MachineGuid", &value) != ERROR_SUCCESS || value.empty()) {
+    return std::wstring();
+  }
+  return value;
+}
+
+// Uses the machine GUID to determine whether preload should be run
+// asynchronously as part of the ParallelPreReadFileMainDllWin synthetic trial.
+// The GUID is used to be stable across sessions. This is important when
+// affecting pre-reading because there is a learning effect for preloading
+// interventions at the OS level.
+bool ShouldPreReadFileAsynchronously() {
+  // The trial only runs on lower channels for now.
+  const version_info::Channel channel = install_static::GetChromeChannel();
+  if (channel != version_info::Channel::CANARY &&
+      channel != version_info::Channel::DEV &&
+      channel != version_info::Channel::BETA) {
+    return false;
+  }
+
+  // Get the machine GUID, in case that fails return false to default to
+  // pre-reading.
+  const std::wstring machine_guid = GetMachineGuid();
+  if (machine_guid.empty()) {
+    return false;
+  }
+
+  // Returns true for 50% of clients.
+  return base::PersistentHash(base::as_byte_span(machine_guid)) % 2 == 0;
+}
+
+void RecordDidRun(const base::FilePath& dll_path) {
+#if BUILDFLAG(USE_LEGACY_ACTIVE_DEFINITION)
+  installer::UpdateDidRunState();
+#endif
+}
+
+// Indicates whether a file can be opened using the same flags that
+// ::LoadLibrary() uses to open modules.
+bool ModuleCanBeRead(const base::FilePath& file_path) {
+  return base::File(file_path, base::File::FLAG_OPEN | base::File::FLAG_READ)
+      .IsValid();
+}
+
+// Returns the full path to |module_name|. Both dev builds (where |module_name|
+// is in the current executable's directory) and proper installs (where
+// |module_name| is in a versioned sub-directory of the current executable's
+// directory) are supported. The identified file is not guaranteed to exist.
+base::FilePath GetModulePath(std::wstring_view module_name) {
+  base::FilePath exe_dir;
+  const bool has_path = base::PathService::Get(base::DIR_EXE, &exe_dir);
+  DCHECK(has_path);
+
+  // Look for the module in a versioned sub-directory of the current
+  // executable's directory and return the path if it can be read. This is the
+  // expected location of modules for proper installs.
+  const base::FilePath module_path =
+      exe_dir.AppendASCII(chrome::kChromeVersion).Append(module_name);
+  if (ModuleCanBeRead(module_path))
+    return module_path;
+
+  // Otherwise, return the path to the module in the current executable's
+  // directory. This is the expected location of modules for dev builds.
+  return exe_dir.Append(module_name);
+}
+
+// Prefetches and loads |module| after setting the CWD to |module|'s
+// directory. Returns a handle to the loaded module on success, or nullptr on
+// failure.
+HMODULE LoadModuleWithDirectory(const base::FilePath& module,
+                                const base::CommandLine& cmd_line,
+                                bool is_browser,
+                                base::TimeTicks& preread_begin_ticks,
+                                base::TimeTicks& preread_end_ticks) {
+  ::SetCurrentDirectoryW(module.DirName().value().c_str());
+  const bool preread_asynchronously = ShouldPreReadFileAsynchronously();
+  const bool synchronous_preread =
+      is_browser ? !preread_asynchronously
+                 : !cmd_line.HasSwitch(switches::kNoPreReadMainDll);
+  const bool asynchronous_preread = is_browser && preread_asynchronously;
+  CHECK(!(synchronous_preread && asynchronous_preread));
+
+  if (synchronous_preread) {
+    preread_begin_ticks = base::TimeTicks::Now();
+    base::PreReadFile(module, /*is_executable=*/true, /*sequential=*/false);
+    preread_end_ticks = base::TimeTicks::Now();
+  } else if (asynchronous_preread) {
+    base::PlatformThread::CreateNonJoinableWithType(
+        0, base::MakeSelfDeleting<DllPreReader>(module),
+        base::ThreadType::kDefault);
+  }
+
+  HMODULE handle = ::LoadLibraryExW(module.value().c_str(), nullptr,
+                                    LOAD_WITH_ALTERED_SEARCH_PATH);
+  return handle;
+}
+
+// Prefetches and loads `module_name`. Populates `module` with the path of the
+// loaded DLL. Returns a handle to the loaded DLL, or nullptr on failure.
+HMODULE Load(base::FilePath* module,
+             const base::FilePath::StringViewType module_name,
+             const base::CommandLine& cmd_line,
+             bool is_browser,
+             base::TimeTicks& preread_begin_ticks,
+             base::TimeTicks& preread_end_ticks) {
+  *module = GetModulePath(module_name);
+  if (module->empty()) {
+    PLOG(ERROR) << "Cannot find module " << module_name;
+    return nullptr;
+  }
+  HMODULE dll = LoadModuleWithDirectory(*module, cmd_line, is_browser,
+                                        preread_begin_ticks, preread_end_ticks);
+  if (!dll) {
+    PLOG(ERROR) << "Failed to load Chrome DLL from " << module->value();
+  }
+  return dll;
+}
+
+}  // namespace
+
+//=============================================================================
+
+MainDllLoader::MainDllLoader() : dll_(nullptr) {}
+
+MainDllLoader::~MainDllLoader() = default;
+
+// Launching is a matter of loading the right dll and calling the entry point.
+// Derived classes can add custom code in the OnBeforeLaunch callback.
+int MainDllLoader::Launch(HINSTANCE instance,
+                          base::TimeTicks exe_entry_point_ticks) {
+  const base::CommandLine& cmd_line = *base::CommandLine::ForCurrentProcess();
+  process_type_ = cmd_line.GetSwitchValueASCII(switches::kProcessType);
+
+  // Initialize the sandbox services.
+  sandbox::SandboxInterfaceInfo sandbox_info = {nullptr};
+  const bool is_browser = process_type_.empty();
+  // IsUnsandboxedSandboxType() can't be used here because its result can be
+  // gated behind a feature flag, which are not yet initialized.
+  const bool is_sandboxed =
+      sandbox::policy::SandboxTypeFromCommandLine(cmd_line) !=
+      sandbox::mojom::Sandbox::kNoSandbox;
+
+  if (is_browser || is_sandboxed) {
+    // For child processes that are running as --no-sandbox, don't initialize
+    // the sandbox info, otherwise they'll be treated as brokers (as if they
+    // were the browser).
+    content::InitializeSandboxInfo(
+        &sandbox_info, IsExtensionPointDisableSet()
+                           ? sandbox::MITIGATION_EXTENSION_POINT_DISABLE
+                           : 0);
+  }
+
+  base::TimeTicks preread_begin_ticks;
+  base::TimeTicks preread_end_ticks;
+
+  // Determine the names of the module to load and its main entrypoint.
+  const auto& module_properties =
+      ModulePropertiesFromProcessType(process_type_);
+
+  if (module_properties.profile_type.has_value()) {
+    SetLLVMProfileProcessType(*module_properties.profile_type);
+  }
+
+  base::FilePath file;
+  dll_ = Load(&file, module_properties.module_name, cmd_line, is_browser,
+              preread_begin_ticks, preread_end_ticks);
+  if (!dll_)
+    return CHROME_RESULT_CODE_MISSING_DATA;
+
+  OnBeforeLaunch(process_type_, file);
+  DLL_MAIN chrome_main = reinterpret_cast<DLL_MAIN>(
+      ::GetProcAddress(dll_, module_properties.entrypoint_name.c_str()));
+  int rc = chrome_main(instance, &sandbox_info,
+                       exe_entry_point_ticks.ToInternalValue(),
+                       preread_begin_ticks.ToInternalValue(),
+                       preread_end_ticks.ToInternalValue());
+  return rc;
+}
+
+
+//=============================================================================
+
+class ChromeDllLoader : public MainDllLoader {
+ protected:
+  // MainDllLoader implementation.
+  void OnBeforeLaunch(const std::string& process_type,
+                      const base::FilePath& dll_path) override;
+};
+
+void ChromeDllLoader::OnBeforeLaunch(const std::string& process_type,
+                                     const base::FilePath& dll_path) {
+  if (process_type.empty()) {
+    if constexpr (kShouldRecordActiveUse) {
+      RecordDidRun(dll_path);
+    }
+  }
+}
+
+//=============================================================================
+
+MainDllLoader* MakeMainDllLoader() {
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  return new ChromeDllLoader();
+#else
+  return new MainDllLoader();
+#endif
+}

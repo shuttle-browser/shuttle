@@ -1,0 +1,128 @@
+# Copyright 2021 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//chrome/common/features.gni")
+import("//ui/webui/resources/tools/generate_grd.gni")
+
+generate_grd("build_grdp") {
+  grd_prefix = "searchbox_icons"
+  resource_path_prefix = "cr_components/searchbox/icons"
+  out_grd = "$target_gen_dir/resources.grdp"
+  input_files = [
+    "account_circle.svg",
+    "account_circle_old.svg",
+    "arrow_forward.svg",
+    "arrow_forward_old.svg",
+    "bookmark_cr23.svg",
+    "bookmark_cr23_old.svg",
+    "calculator_cr23.svg",
+    "calculator_cr23_old.svg",
+    "calendar.svg",
+    "chrome_product_cr23.svg",
+    "chrome_product_cr23_old.svg",
+    "clock_cr23.svg",
+    "currency_cr23.svg",
+    "currency_cr23_old.svg",
+    "default.svg",
+    "default_old.svg",
+    "definition_cr23.svg",
+    "definition_cr23_old.svg",
+    "dino_cr23.svg",
+    "dino_cr23_old.svg",
+    "drive_docs.svg",
+    "drive_docs_old.svg",
+    "drive_folder.svg",
+    "drive_folder_old.svg",
+    "drive_form.svg",
+    "drive_form_old.svg",
+    "drive_image.svg",
+    "drive_image_old.svg",
+    "drive_logo.svg",
+    "drive_pdf.svg",
+    "drive_pdf_old.svg",
+    "drive_sheets.svg",
+    "drive_sheets_old.svg",
+    "drive_slides.svg",
+    "drive_slides_old.svg",
+    "drive_video.svg",
+    "drive_video_old.svg",
+    "enterprise.svg",
+    "extension_app.svg",
+    "extension_app_old.svg",
+    "finance_cr23.svg",
+    "finance_cr23_old.svg",
+    "history_cr23.svg",
+    "history_cr23_old.svg",
+    "incognito_cr23.svg",
+    "incognito_cr23_old.svg",
+    "journeys_cr23.svg",
+    "journeys_cr23_old.svg",
+    "mac_share_cr23.svg",
+    "mac_share_cr23_old.svg",
+    "mic_old.svg",
+    "note.svg",
+    "note_old.svg",
+    "notes_spark.svg",
+    "notes_spark_old.svg",
+    "page_cr23.svg",
+    "page_cr23_old.svg",
+    "page_spark.svg",
+    "reply_rotated180.svg",
+    "screenshot_entire_screen.svg",
+    "screenshot_region.svg",
+    "screenshot_window.svg",
+    "search_cr23.svg",
+    "search_cr23_old.svg",
+    "search_spark.svg",
+    "search_spark_old.svg",
+    "share_cr23.svg",
+    "share_cr23_old.svg",
+    "sites.svg",
+    "spark.svg",
+    "spark_old.svg",
+    "star_active.svg",
+    "star_active_old.svg",
+    "subdirectory_arrow_right.svg",
+    "subdirectory_arrow_right_old.svg",
+    "sunrise_cr23.svg",
+    "sunrise_cr23_old.svg",
+    "tab_cr23.svg",
+    "tab_cr23_old.svg",
+    "translation_cr23.svg",
+    "translation_cr23_old.svg",
+    "trending_up_cr23.svg",
+    "trending_up_cr23_old.svg",
+    "win_share_cr23.svg",
+    "win_share_cr23_old.svg",
+  ]
+  if (!is_chrome_branded) {
+    input_files += [
+      "camera.svg",
+      "mic.svg",
+    ]
+  }
+  input_files_base_dir = rebase_path(".", "//")
+}
+
+if (is_chrome_branded) {
+  generate_grd("chrome_branded_build_grdp") {
+    grd_prefix = "searchbox_icons"
+    resource_path_prefix = "cr_components/searchbox/icons"
+    out_grd = "$target_gen_dir/chrome_branded_resources.grdp"
+    input_files = [
+      "camera.svg",
+      "google_agentspace_logo_25.svg",
+      "google_agentspace_logo.svg",
+      "google_agentspace_monochrome_logo_25.svg",
+      "google_agentspace_monochrome_logo.svg",
+      "google_g.svg",
+      "google_g_gradient.svg",
+      "google_g_cr23.svg",
+      "google_logo.svg",
+      "mic.svg",
+    ]
+    input_files_base_dir =
+        rebase_path("//chrome/app/theme/google_chrome/realbox", "//")
+  }
+}

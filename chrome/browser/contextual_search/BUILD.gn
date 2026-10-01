@@ -1,0 +1,41 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("contextual_search") {
+  sources = [
+    "chrome_contextual_search_session_tab_validator.cc",
+    "chrome_contextual_search_session_tab_validator.h",
+    "contextual_search_service_factory.cc",
+    "contextual_search_service_factory.h",
+    "contextual_search_web_contents_helper.cc",
+    "contextual_search_web_contents_helper.h",
+  ]
+
+  deps = [
+    "//chrome/browser:browser_process",
+    "//chrome/browser/lens:lens_identity_delegation_helper",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/search_engines",
+    "//chrome/browser/signin",
+    "//chrome/common:channel_info",
+    "//components/contextual_search:public",
+    "//components/contextual_tasks/public",
+    "//components/tabs:public",
+    "//components/url_deduplication",
+    "//components/version_info",
+    "//content/public/browser",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "chrome_contextual_search_session_tab_validator_unittest.cc" ]
+  deps = [
+    ":contextual_search",
+    "//chrome/test:test_support",
+    "//components/tabs:test_support",
+    "//content/test:test_support",
+    "//testing/gtest",
+  ]
+}

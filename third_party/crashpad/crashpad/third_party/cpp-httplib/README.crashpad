@@ -1,0 +1,21 @@
+Name: cpp-httplib
+Short Name: cpp-httplib
+URL: https://github.com/yhirose/cpp-httplib
+Version: 0.51.0
+Revision: d66d9a95997d51a8ba9822a611d1267757741535
+Update Mechanism: Manual
+License: MIT
+License File: cpp-httplib/LICENSE
+Security Critical: no
+Shipped: no
+CPEPrefix: cpe:/a:cpp-httplib_project:cpp-httplib
+
+Description:
+A C++11 single-file header-only cross-platform HTTP/HTTPS library.
+
+Local Modifications:
+ - Exclude all subdirectories and build-related files.
+ - Patch httplib.h to use #include "third_party/zlib/zlib_crashpad.h" instead of
+   <zlib.h>.
+ - #define CPPHTTPLIB_NO_EXCEPTIONS 1.
+ - Remove #pragma comment(lib, …) as this construct is forbidden by Chromium.

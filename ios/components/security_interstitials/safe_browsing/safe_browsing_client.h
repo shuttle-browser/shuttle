@@ -1,0 +1,82 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_COMPONENTS_SECURITY_INTERSTITIALS_SAFE_BROWSING_SAFE_BROWSING_CLIENT_H_
+#define IOS_COMPONENTS_SECURITY_INTERSTITIALS_SAFE_BROWSING_SAFE_BROWSING_CLIENT_H_
+
+#include <memory>
+
+#include "base/memory/weak_ptr.h"
+#include "components/keyed_service/core/keyed_service.h"
+
+class PrefService;
+
+namespace safe_browsing {
+class ClientSideDetectionHostBase;
+class HashRealTimeService;
+class RealTimeUrlLookupServiceBase;
+class V5GetHashProtocolManager;
+}  // namespace safe_browsing
+
+namespace security_interstitials {
+struct UnsafeResource;
+}  // namespace security_interstitials
+
+namespace variations {
+class VariationsService;
+}  // namespace variations
+
+namespace web {
+class WebState;
+}  // namespace web
+
+class GURL;
+class SafeBrowsingService;
+
+// Abstract interface to be implemented by clients of ios safe browsing.
+class SafeBrowsingClient : public KeyedService {
+ public:
+  // Returns this as a weak pointer.
+  virtual base::WeakPtr<SafeBrowsingClient> AsWeakPtr() = 0;
+  // Returns the PrefService.
+  virtual PrefService* GetPrefs() = 0;
+  // Gets the safe browsing service for this client. Must not be nullptr.
+  virtual SafeBrowsingService* GetSafeBrowsingService() = 0;
+  // Gets the real time url look up service. Clients may return nullptr.
+  virtual safe_browsing::RealTimeUrlLookupServiceBase*
+  GetRealTimeUrlLookupService() = 0;
+  // Gets the hash-real-time service factory. Client may return nullptr.
+  virtual safe_browsing::HashRealTimeService* GetHashRealTimeService() = 0;
+  // Gets the V5 get hash protocol manager. Clients may return nullptr.
+  virtual safe_browsing::V5GetHashProtocolManager*
+  GetV5GetHashProtocolManager() = 0;
+  // Gets the variations service. Clients may return nullptr.
+  virtual variations::VariationsService* GetVariationsService() = 0;
+  // Returns whether or not `resource` should be blocked from loading.
+  virtual bool ShouldBlockUnsafeResource(
+      const security_interstitials::UnsafeResource& resource) const = 0;
+  // Called when safe browsing decided to cancel loading in the main frame.
+  // Returns a boolean to indicate if the `web_state` cancelled should display
+  // an error page. If the `web_state` is prerendered, logic shouldn't display
+  // an error page since displaying an error page for a prerendered web state
+  // may cause a crash.
+  // `web_state` The associated web state.
+  // `url` The url which was cancelled.
+  virtual bool OnMainFrameUrlQueryCancellationDecided(web::WebState* web_state,
+                                                      const GURL& url) = 0;
+  // Returns whether or not real time url checks allow navigation to continue
+  // while awaiting for the results.
+  virtual bool ShouldForceSyncRealTimeUrlChecks() const = 0;
+  // Reports a security interstitial shown event to the enterprise reporting
+  // service.
+  virtual void OnSecurityInterstitialShown(
+      web::WebState* web_state,
+      const security_interstitials::UnsafeResource& resource) = 0;
+  // Creates and returns a Client-Side Detection host for `web_state`.
+  // Clients may return nullptr if CSD is not supported or disabled.
+  virtual std::unique_ptr<safe_browsing::ClientSideDetectionHostBase>
+  CreateClientSideDetectionHost(web::WebState* web_state) = 0;
+};
+
+#endif  // IOS_COMPONENTS_SECURITY_INTERSTITIALS_SAFE_BROWSING_SAFE_BROWSING_CLIENT_H_

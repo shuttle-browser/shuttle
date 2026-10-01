@@ -1,0 +1,8 @@
+{
+  "name": "action + user gesture",
+  "description": "Demonstrates usage and features of user gesture",
+  "version": "1.0",
+  "manifest_version": 3,
+  "background": {"service_worker": "background.js"},
+  "action": {}
+}

@@ -1,0 +1,429 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+//
+// The Safe Browsing service is responsible for downloading anti-phishing and
+// anti-malware tables and checking urls against them.
+
+#ifndef COMPONENTS_SAFE_BROWSING_CORE_BROWSER_DB_DATABASE_MANAGER_H_
+#define COMPONENTS_SAFE_BROWSING_CORE_BROWSER_DB_DATABASE_MANAGER_H_
+
+#include <memory>
+#include <set>
+#include <string>
+#include <vector>
+
+#include "base/callback_list.h"
+#include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/ref_counted.h"
+#include "base/memory/ref_counted_delete_on_sequence.h"
+#include "base/memory/weak_ptr.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/types/pass_key.h"
+#include "components/safe_browsing/core/browser/db/util.h"
+#include "components/safe_browsing/core/browser/db/v4_protocol_manager_util.h"
+#include "components/safe_browsing/core/common/threat_enums.h"
+#include "url/gurl.h"
+
+class AbusiveNotificationPermissionsManager;
+class AutoPictureInPictureSafeBrowsingCheckerClient;
+class CrowdDenySafeBrowsingRequest;
+class SafeBrowsingRequest;
+
+namespace autofill {
+class OtpFillingSafeBrowsingCheckerClient;
+}
+
+namespace extensions {
+class Blocklist;
+}  // namespace extensions
+
+namespace network {
+class SharedURLLoaderFactory;
+}  // namespace network
+
+namespace subresource_filter {
+class SubresourceFilterSafeBrowsingClientRequest;
+}  // namespace subresource_filter
+
+namespace safe_browsing {
+
+// Value returned by some functions that check an allowlist and may or may not
+// have an immediate answer.
+enum class AsyncMatch : int {
+  // If a hash prefix on the allowlist matches any of the computed hashes for
+  // the URL. In this case, the callback method on the client is called back
+  // later with the result.
+  ASYNC,
+
+  // If a full hash on the allowlist matches any of the computed hashes for the
+  // URL. The callback function isn't called.
+  MATCH,
+
+  // If Safe Browsing isn't enabled, or the allowlist hasn't been sync'd yet, or
+  // when no hash prefix or full hash in the allowlist matches the computed
+  // hashes of the URL. The callback function isn't called.
+  NO_MATCH,
+
+  kMaxValue = NO_MATCH,
+};
+
+struct V4ProtocolConfig;
+class V4GetHashProtocolManager;
+class V5GetHashProtocolManager;
+
+// Base class to either the locally-managed or a remotely-managed database.
+class SafeBrowsingDatabaseManager
+    : public base::RefCountedDeleteOnSequence<SafeBrowsingDatabaseManager> {
+ public:
+  // Callers requesting a result should derive from this class.
+  // The destructor should call db_manager->CancelCheck(client) if a
+  // request is still pending.
+  class Client {
+   public:
+    // Use a `pass_key` to require owners review for new integrations
+    // with the Safe Browsing database. For tests, this can be provided
+    // by `GetPassKeyForTesting()`. For non-test code, please add a
+    // friend declaration and use `GetPassKey()`.
+    explicit Client(base::PassKey<Client> pass_key);
+
+    Client() = delete;
+    virtual ~Client();
+
+    // Called when the result of checking the notification abuse URL is known.
+    virtual void OnCheckNotificationAbuseUrlResult(bool is_abusive) {}
+
+    // Called when the result of checking a browse URL is known.
+    virtual void OnCheckBrowseUrlResult(const GURL& url,
+                                        SBThreatType threat_type) {}
+
+    // Called when the result of checking the URL for subresource filter is
+    // known.
+    virtual void OnCheckSubresourceFilterUrlResult(
+        const GURL& url,
+        SBThreatType threat_type,
+        const SubresourceFilterMatch& subresource_filter_match) {}
+
+    // Called when the result of checking a download URL is known.
+    virtual void OnCheckDownloadUrlResult(const std::vector<GURL>& url_chain,
+                                          SBThreatType threat_type) {}
+
+    // Called when the result of checking a set of extensions is known.
+    virtual void OnCheckExtensionsResult(const std::set<std::string>& threats) {
+    }
+
+    // Called when the result of checking a allowlist is known.
+    // Currently only used for CSD allowlist.
+    virtual void OnCheckAllowlistUrlResult(bool did_match_allowlist) {}
+
+    // Returns a WeakPtr to the V5GetHashProtocolManager for this client. This
+    // is passed in by the client because V5GetHashProtocolManager is a
+    // profile-keyed service, whereas SafeBrowsingDatabaseManager is
+    // browser-wide.
+    //
+    // Providing a valid protocol manager is required for all clients. The only
+    // (temporary) exceptions are callers of `CheckCsdAllowlistUrl` or
+    // `CheckExtensionIDs`.
+    // TODO(crbug.com/372395685): Remove "exceptions" note once two callers are
+    // refactored to stop using `Client`.
+    virtual base::WeakPtr<V5GetHashProtocolManager>
+    GetV5GetHashProtocolManager() = 0;
+
+    // Returns a WeakPtr to this.
+    base::WeakPtr<Client> GetWeakPtr();
+
+    static base::PassKey<Client> GetPassKeyForTesting();
+
+   private:
+    // safe_browsing clients:
+    friend class AllowlistCheckerClient;
+    friend class DatabaseManagerMechanism;
+    friend class DownloadUrlSBClient;
+
+    // External clients:
+    friend class ::AbusiveNotificationPermissionsManager;
+    friend class autofill::OtpFillingSafeBrowsingCheckerClient;
+    friend class ::AutoPictureInPictureSafeBrowsingCheckerClient;
+    friend class ::CrowdDenySafeBrowsingRequest;
+    friend class extensions::Blocklist;
+    friend class ::SafeBrowsingRequest;
+    friend class subresource_filter::SubresourceFilterSafeBrowsingClientRequest;
+
+    static base::PassKey<Client> GetPassKey();
+
+    base::WeakPtrFactory<Client> weak_factory_{this};
+  };
+
+  //
+  // Methods called by the client to cancel pending checks.
+  //
+
+  // Cancels a pending notification abuse check if the result is no longer
+  // needed. Returns true if the client was found and the check successfully
+  // cancelled. This should be called on the UI thread.
+  virtual bool CancelNotificationAbuseCheck(Client* client);
+
+  // Cancels a pending check if the result is no longer needed.  Also called
+  // after the result has been handled. Notification abuse checks are handled
+  // separately. To cancel a notification abuse check, use
+  // CancelNotificationAbuseCheck. If |client| doesn't exist anymore,
+  // ignore this call. This should be called on the UI thread.
+  virtual void CancelCheck(Client* client) = 0;
+
+  //
+  // Methods to check whether the database manager supports a certain feature.
+  //
+
+  // Returns true if the url's scheme can be checked.
+  virtual bool CanCheckUrl(const GURL& url) const = 0;
+
+  //
+  // Methods to check (possibly asynchronously) whether a given resource is
+  // safe. If the database manager can't determine it synchronously, the
+  // appropriate method on the |client| is called back when the reputation of
+  // the resource is known.
+  //
+
+  // Checks if the given url has notification abuse. |client| is called
+  // asynchronously with the result when it is ready. Callers should wait for
+  // results before calling this method a second time with the same client. This
+  // method has the same implementation for both the local and remote database
+  // managers since it pings Safe Browsing servers directly without accessing
+  // the database at all.  Returns true if we can synchronously determine that
+  // the url is safe. Otherwise it returns false, and |client| is called
+  // asynchronously with the result when it is ready. This should be called on
+  // the UI thread.
+  virtual bool CheckNotificationAbuseUrl(const GURL& url, Client* client);
+
+  // Check if the |url| matches any of the full-length hashes from the client-
+  // side phishing detection allowlist. The 3-state return value indicates
+  // the result or that |client| will get a callback later with the result.
+  virtual AsyncMatch CheckCsdAllowlistUrl(const GURL& url, Client* client) = 0;
+
+  // Checks if the given url is safe or not.  If we can synchronously determine
+  // that the url is safe, CheckUrl returns true. Otherwise it returns false,
+  // and |client| is called asynchronously with the result when it is ready. The
+  // URL will only be checked for the threat types in |threat_types|.
+  // |check_type| specifies the type of check the url will be checked against.
+  // See comments above CheckBrowseUrlType's definition for more details. This
+  // should be called on the UI thread.
+  virtual bool CheckBrowseUrl(
+      const GURL& url,
+      const SBThreatTypeSet& threat_types,
+      Client* client,
+      CheckBrowseUrlType check_type) = 0;
+
+  // Check if the prefix for |url| is in safebrowsing download add lists.
+  // Result will be passed to callback in |client|.
+  virtual bool CheckDownloadUrl(const std::vector<GURL>& url_chain,
+                                Client* client) = 0;
+
+  // Check which prefixes in `extension_ids` are in the safebrowsing blocklist.
+  // `extension_ids` is the set of extension IDs to check. Each entry must be
+  // a valid 32-character string formatted with characters 'a'-'p'.
+  // `client` is the client callback listener.
+  // Returns true if none of the extension IDs are blocklisted (determined
+  // synchronously), or false if an asynchronous check is required and pending.
+  virtual bool CheckExtensionIDs(const std::set<std::string>& extension_ids,
+                                 Client* client) = 0;
+
+  // Checks if the given url belongs to a list the subresource cares about. If
+  // the url doesn't belong to any such list and the check can happen
+  // synchronously, returns true. Otherwise it returns false, and |client| is
+  // called asynchronously with the result when it is ready. Returns true if the
+  // list is not yet available. This should be called on the UI thread.
+  virtual bool CheckUrlForSubresourceFilter(const GURL& url,
+                                            Client* client) = 0;
+
+  // Passed to CheckUrlForHighConfidenceAllowlist() callback. Should be used for
+  // logging purposes only.
+  struct HighConfidenceAllowlistCheckLoggingDetails {
+    // Whether the database stores were available when the check ran.
+    bool were_all_stores_available = false;
+    // Whether the allowlist store was too small when the check ran.
+    bool was_allowlist_size_too_small = false;
+  };
+
+  using CheckUrlForHighConfidenceAllowlistCallback = base::OnceCallback<void(
+      bool url_on_high_confidence_allowlist,
+      std::optional<HighConfidenceAllowlistCheckLoggingDetails>)>;
+
+  // Checks whether |url| is safe by checking if it appears on a high-confidence
+  // allowlist. `callback` is run asynchronously with true if it matches the
+  // allowlist, and is false if it does not. The high confidence allowlist is a
+  // list of full hashes of URLs that are expected to be safe so in the case of
+  // a match on this list, the realtime full URL Safe Browsing lookup isn't
+  // performed. The returned value includes some details about the store state
+  // when the call was made. If used, it should be used for logging purposes
+  // only. This should be called on the UI thread.
+  virtual void CheckUrlForHighConfidenceAllowlist(
+      const GURL& url,
+      CheckUrlForHighConfidenceAllowlistCallback callback) = 0;
+
+  //
+  // Match*(): Methods to synchronously check if various types are safe.
+  //
+
+  // Check if the |url| matches any of the full-length hashes from the download
+  // allowlist. Runs `callback` asynchronously with true if there was a match
+  // and false otherwise. To make sure we are conservative we will return true
+  // if an error occurs. This should be called on the UI thread.
+  virtual void MatchDownloadAllowlistUrl(
+      const GURL& url,
+      base::OnceCallback<void(bool)> callback) = 0;
+
+  //
+  // Methods to check the config of the DatabaseManager.
+  //
+
+  // Returns the lists that this DatabaseManager should get full hashes for.
+  virtual StoresToCheck GetStoresForFullHashRequests();
+
+  // Returns the client_state of each of the lists that this DatabaseManager
+  // syncs.
+  virtual std::unique_ptr<StoreStateMap> GetStoreStateMap();
+
+  // Returns the ThreatSource of browse URL check (i.e. URLs checked by the
+  // |CheckBrowseUrl| function) for this implementation.
+  virtual ThreatSource GetBrowseUrlThreatSource(
+      CheckBrowseUrlType check_type) const = 0;
+
+  // Returns the ThreatSource of non-browse URL check (i.e. URLs or other
+  // entities that are not checked by the |CheckBrowseUrl| function) for this
+  // implementation.
+  virtual ThreatSource GetNonBrowseUrlThreatSource() const = 0;
+
+  //
+  // Methods to indicate when to start or suspend the SafeBrowsing operations.
+  // These functions should be called on the UI thread.
+  //
+
+  // Called to initialize objects that are used on the thread, such as the v4
+  // protocol manager.  This may be called multiple times during the life of the
+  // DatabaseManager. All subclasses should override this method and call the
+  // base class method at the top of it. This should be called on the UI thread.
+  virtual void StartOnUIThread(
+      scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
+      const V4ProtocolConfig& config);
+
+  //
+  // Method to manage getting database updates of the DatabaseManager.
+  //
+
+  // Subscribe to receive callbacks when the database is updated, both initially
+  // when it's loaded from disk at startup, and then periodically. These
+  // callbacks will be on the UI thread.
+  using OnDatabaseUpdated = base::RepeatingClosure;
+  base::CallbackListSubscription RegisterDatabaseUpdatedCallback(
+      const OnDatabaseUpdated& cb);
+
+  // Called to stop or shutdown operations. All subclasses should override this
+  // method and call the base class method at the bottom of it. This should be
+  // called on the UI thread.
+  virtual void StopOnUIThread(bool shutdown);
+
+  // Called to check if database is ready or not.
+  virtual bool IsDatabaseReady() const = 0;
+
+ protected:
+  // Bundled client info for a notification abuse hash prefix check.
+  class NotificationAbuseCheck {
+   public:
+    NotificationAbuseCheck(const GURL& url, Client* client);
+
+    NotificationAbuseCheck(const NotificationAbuseCheck&) = delete;
+    NotificationAbuseCheck& operator=(const NotificationAbuseCheck&) = delete;
+
+    ~NotificationAbuseCheck() = default;
+
+    const GURL& url() const { return url_; }
+    Client* client() const { return client_; }
+
+   private:
+    GURL url_;
+
+    // Not owned.
+    raw_ptr<Client> client_;
+  };
+
+  explicit SafeBrowsingDatabaseManager(
+      scoped_refptr<base::SequencedTaskRunner> ui_task_runner);
+
+  virtual ~SafeBrowsingDatabaseManager();
+
+  friend class base::RefCountedDeleteOnSequence<SafeBrowsingDatabaseManager>;
+  friend class base::DeleteHelper<SafeBrowsingDatabaseManager>;
+  friend class SBLocalDatabaseManager;
+
+  FRIEND_TEST_ALL_PREFIXES(SafeBrowsingDatabaseManagerTest,
+                           CheckNotificationAbuseUrlPrefixes);
+  FRIEND_TEST_ALL_PREFIXES(SafeBrowsingDatabaseManagerTest,
+                           CancelNotificationAbuseCheck);
+  FRIEND_TEST_ALL_PREFIXES(SafeBrowsingDatabaseManagerTest, ResultsAreCached);
+  FRIEND_TEST_ALL_PREFIXES(SafeBrowsingDatabaseManagerTest,
+                           ResultsAreNotCachedOnNull);
+  FRIEND_TEST_ALL_PREFIXES(SafeBrowsingDatabaseManagerTest, GetCachedResults);
+  FRIEND_TEST_ALL_PREFIXES(SafeBrowsingDatabaseManagerTest,
+                           CachedResultsMerged);
+  FRIEND_TEST_ALL_PREFIXES(SafeBrowsingDatabaseManagerTest,
+                           CachedResultsAreEvicted);
+
+  // Called when the SafeBrowsingProtocolManager has received the full hash and
+  // notification abuse results for prefixes of the |url| argument in
+  // CheckNotificationAbuseUrl. This should be called on the UI thread.
+  // TODO(crbug.com/372395685): collapse into
+  // OnNotificationAbuseFullHashesResponse
+  void OnThreatMetadataResponse(std::unique_ptr<NotificationAbuseCheck> check,
+                                bool is_abusive);
+
+  // Called when the V5GetHashProtocolManager has received the full hash and
+  // notification abuse results for prefixes of the URL in
+  // CheckNotificationAbuseUrl. This should be called on the UI thread.
+  //   - `check`: The notification abuse check being processed.
+  //   - `threat_type`: The most severe threat type identified.
+  //   - `metadata`: Threat metadata associated with the identified threat.
+  void OnNotificationAbuseFullHashesResponse(
+      std::unique_ptr<NotificationAbuseCheck> check,
+      SBThreatType threat_type,
+      const ThreatMetadata& metadata);
+
+  // SafeBrowsingDatabaseManager passes its |ui_task_runner| construction
+  // parameter to its RefCountedDeleteOnSequence base class, which exposes its
+  // passed-in task runner as owning_task_runner(). Expose that |ui_task_runner|
+  // parameter internally as ui_task_runner() for clarity.
+  scoped_refptr<base::SequencedTaskRunner> ui_task_runner() {
+    return owning_task_runner();
+  }
+
+  typedef std::set<raw_ptr<NotificationAbuseCheck, SetExperimental>>
+      NotificationAbuseCheckSet;
+
+  // In-progress checks. This set owns the NotificationAbuseCheck pointers and
+  // is responsible for deleting them when removing from the set.
+  NotificationAbuseCheckSet notification_abuse_checks_;
+
+  // Make callbacks about the completion of database update process. This is
+  // currently used by the extension blocklist checker to disable any installed
+  // extensions that have been blocklisted since.
+  void NotifyDatabaseUpdateFinished();
+
+  // Created and destroyed via StartOnUIThread/StopOnUIThread.
+  std::unique_ptr<V4GetHashProtocolManager> v4_get_hash_protocol_manager_;
+
+  // A list of parties to be notified about database updates.
+  base::RepeatingClosureList update_complete_callback_list_;
+
+ private:
+  // Returns an iterator to the pending notification abuse check with the given
+  // |client|.
+  NotificationAbuseCheckSet::iterator FindClientNotificationAbuseCheck(
+      Client* client);
+
+  // Weak pointer factory for UI thread tasks and callbacks.
+  base::WeakPtrFactory<SafeBrowsingDatabaseManager> weak_factory_{this};
+};  // class SafeBrowsingDatabaseManager
+
+}  // namespace safe_browsing
+
+#endif  // COMPONENTS_SAFE_BROWSING_CORE_BROWSER_DB_DATABASE_MANAGER_H_

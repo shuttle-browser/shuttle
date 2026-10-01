@@ -1,0 +1,113 @@
+/* Copyright 2026 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=//resources/cr_elements/cr_shared_vars.css.js
+ * #import=//resources/cr_elements/cr_spinner_style_lit.css.js
+ * #import=/signin_shared.css.js
+ * #import=/signin_vars.css.js
+ * #scheme=relative
+ * #include=signin-shared cr-spinner-style-lit
+ * #css_wrapper_metadata_end */
+
+:host {
+  --color-button-background-prominent: var(--color-sys-primary);
+  --color-button-foreground-prominent: var(--color-sys-on-primary);
+  --color-button-foreground: var(--color-sys-primary);
+  --color-button-border: var(--color-sys-tonal-outline);
+  color: var(--color-sys-on-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+  height: 100vh;
+  justify-content: center;
+  min-width: 600px;
+  width: 100vw;
+}
+
+/* Keep consistent with managed_user_profile_notice_disclosure_refresh.css */
+@media screen and ((max-width: 1024px) or (max-height: 750px)) {
+  :host {
+    gap: 24px;
+  }
+}
+
+:host(:not([revamp-enabled])),
+:host([revamp-enabled][app-mode='profile-picker']) {
+  background-image: url('images/shared_gradient_light_background.svg');
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host(:not([revamp-enabled])),
+  :host([revamp-enabled][app-mode='profile-picker']) {
+    background-image: url('images/shared_gradient_dark_background.svg');
+  }
+}
+
+.main-container {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding-inline: 16px;
+  width: 100%;
+}
+
+.action-container {
+  align-items: center;
+  flex-shrink: 0;
+  justify-content: center;
+  padding: 24px;
+}
+
+.action-button {
+  width: 88px;
+}
+
+.tangible-button {
+  min-width: 88px;
+}
+
+.success-icon,
+.timeout-icon,
+.error-icon {
+  height: 130px;
+  width: 180px;
+}
+
+.success-icon {
+  content: url(images/enrollment_success.svg);
+}
+
+.timeout-icon {
+  content: url(images/enrollment_timeout.svg);
+}
+
+.error-icon {
+  content: url(images/enrollment_failure.svg);
+}
+
+@media (prefers-color-scheme: dark) {
+  .success-icon {
+    content: url(images/enrollment_success_dark.svg);
+  }
+
+  .timeout-icon {
+    content: url(images/enrollment_timeout_dark.svg);
+  }
+
+  .error-icon {
+    content: url(images/enrollment_failure_dark.svg);
+  }
+}
+
+.spinner {
+  --cr-spinner-size: 60px;
+  display: inline-block;
+}

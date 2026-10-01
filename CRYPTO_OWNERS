@@ -1,0 +1,10 @@
+# People listed in this file are responsible for making decisions about
+# cryptography use in Chromium. If you are adding new cryptographic code, or
+# adding complex uses of existing cryptographic code, please consult one of
+# these people.
+
+agl@chromium.org
+davidben@chromium.org
+ellyjones@chromium.org
+mattm@chromium.org
+tsepez@chromium.org

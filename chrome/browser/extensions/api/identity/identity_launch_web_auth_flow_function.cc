@@ -1,0 +1,319 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/extensions/api/identity/identity_launch_web_auth_flow_function.h"
+
+#include <algorithm>
+#include <memory>
+#include <utility>
+
+#include "base/check_is_test.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
+#include "base/time/time.h"
+#include "chrome/browser/extensions/api/identity/identity_api.h"
+#include "chrome/browser/extensions/api/identity/identity_constants.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/common/extensions/api/identity.h"
+#include "components/prefs/pref_service.h"
+#include "extensions/browser/pref_names.h"
+#include "extensions/buildflags/buildflags.h"
+#include "net/cookies/cookie_util.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chrome/browser/extensions/api/identity/launch_web_auth_flow_delegate_ash.h"
+#endif
+
+static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
+
+namespace extensions {
+
+namespace {
+
+static const char kChromiumDomainRedirectUrlPattern[] =
+    "https://%s.chromiumapp.org/";
+
+IdentityLaunchWebAuthFlowFunction::Error WebAuthFlowFailureToError(
+    WebAuthFlow::Failure failure) {
+  switch (failure) {
+    case WebAuthFlow::WINDOW_CLOSED:
+      return IdentityLaunchWebAuthFlowFunction::Error::kUserRejected;
+    case WebAuthFlow::INTERACTION_REQUIRED:
+      return IdentityLaunchWebAuthFlowFunction::Error::kInteractionRequired;
+    case WebAuthFlow::LOAD_FAILED:
+      return IdentityLaunchWebAuthFlowFunction::Error::kPageLoadFailure;
+    case WebAuthFlow::TIMED_OUT:
+      return IdentityLaunchWebAuthFlowFunction::Error::kPageLoadTimedOut;
+    case WebAuthFlow::CANNOT_CREATE_WINDOW:
+      return IdentityLaunchWebAuthFlowFunction::Error::kCannotCreateWindow;
+
+    default:
+      NOTREACHED() << "Unexpected error from web auth flow: " << failure;
+  }
+}
+
+std::string ErrorToString(IdentityLaunchWebAuthFlowFunction::Error error) {
+  switch (error) {
+    case IdentityLaunchWebAuthFlowFunction::Error::kNone:
+      NOTREACHED()
+          << "This function is not expected to be called with no error";
+    case IdentityLaunchWebAuthFlowFunction::Error::kOffTheRecord:
+      return identity_constants::kOffTheRecord;
+    case IdentityLaunchWebAuthFlowFunction::Error::kUserRejected:
+      return identity_constants::kUserRejected;
+    case IdentityLaunchWebAuthFlowFunction::Error::kInteractionRequired:
+      return identity_constants::kInteractionRequired;
+    case IdentityLaunchWebAuthFlowFunction::Error::kPageLoadFailure:
+      return identity_constants::kPageLoadFailure;
+    case IdentityLaunchWebAuthFlowFunction::Error::kUnexpectedError:
+      return identity_constants::kInvalidRedirect;
+    case IdentityLaunchWebAuthFlowFunction::Error::kPageLoadTimedOut:
+      return identity_constants::kPageLoadTimedOut;
+    case IdentityLaunchWebAuthFlowFunction::Error::kCannotCreateWindow:
+      return identity_constants::kCannotCreateWindow;
+    case IdentityLaunchWebAuthFlowFunction::Error::kInvalidURLScheme:
+      return identity_constants::kInvalidURLScheme;
+    case IdentityLaunchWebAuthFlowFunction::Error::kBrowserContextShutDown:
+      return identity_constants::kBrowserContextShutDown;
+    case IdentityLaunchWebAuthFlowFunction::Error::kWebAuthFlowInProgress:
+      return identity_constants::kWebAuthFlowInProgress;
+  }
+}
+
+void RecordHistogramFunctionResult(
+    IdentityLaunchWebAuthFlowFunction::Error error) {
+  base::UmaHistogramEnumeration("Signin.Extensions.LaunchWebAuthFlowResult",
+                                error);
+}
+
+}  // namespace
+
+IdentityLaunchWebAuthFlowFunction::IdentityLaunchWebAuthFlowFunction() {
+#if BUILDFLAG(IS_CHROMEOS)
+  delegate_ = std::make_unique<LaunchWebAuthFlowDelegateAsh>();
+#endif
+}
+
+IdentityLaunchWebAuthFlowFunction::~IdentityLaunchWebAuthFlowFunction() {
+  if (auth_flow_) {
+    auth_flow_.release()->DetachDelegateAndDelete();
+  }
+}
+
+ExtensionFunction::ResponseAction IdentityLaunchWebAuthFlowFunction::Run() {
+  Profile* profile = Profile::FromBrowserContext(browser_context());
+  if (!profile || profile->ShutdownStarted()) {
+    Error error = Error::kBrowserContextShutDown;
+
+    RecordHistogramFunctionResult(error);
+    return RespondNow(ExtensionFunction::Error(ErrorToString(error)));
+  }
+
+  if (profile->IsOffTheRecord()) {
+    Error error = Error::kOffTheRecord;
+
+    RecordHistogramFunctionResult(error);
+    return RespondNow(ExtensionFunction::Error(ErrorToString(error)));
+  }
+
+  std::optional<api::identity::LaunchWebAuthFlow::Params> params =
+      api::identity::LaunchWebAuthFlow::Params::Create(args());
+  EXTENSION_FUNCTION_VALIDATE(params);
+
+  GURL auth_url(params->details.url);
+  if (!auth_url.SchemeIsHTTPOrHTTPS()) {
+    Error error = Error::kInvalidURLScheme;
+
+    RecordHistogramFunctionResult(error);
+    return RespondNow(ExtensionFunction::Error(ErrorToString(error)));
+  }
+
+  WebAuthFlow::Mode mode =
+      params->details.interactive && *params->details.interactive
+          ? WebAuthFlow::INTERACTIVE
+          : WebAuthFlow::SILENT;
+
+  std::optional<base::TimeDelta> timeout_for_non_interactive;
+  auto abort_on_load_for_non_interactive =
+      params->details.abort_on_load_for_non_interactive.value_or(true)
+          ? WebAuthFlow::AbortOnLoad::kYes
+          : WebAuthFlow::AbortOnLoad::kNo;
+  if (params->details.timeout_ms_for_non_interactive) {
+    timeout_for_non_interactive = std::clamp(
+        base::Milliseconds(*params->details.timeout_ms_for_non_interactive),
+        base::TimeDelta(), WebAuthFlow::kNonInteractiveMaxTimeout);
+  }
+
+  // Set up acceptable target URLs. (Does not include chrome-extension
+  // scheme for this version of the API.)
+  InitFinalRedirectUrls(
+      extension()->id(),
+      Profile::FromBrowserContext(browser_context())
+          ->GetPrefs()
+          ->GetDict(extensions::pref_names::kOAuthRedirectUrls)
+          .FindList(extension()->id()));
+
+  auto* id_api = IdentityAPI::GetFactoryInstance()->Get(browser_context());
+  if (mode == WebAuthFlow::INTERACTIVE) {
+    auth_flow_tracker_ = id_api->StartTrackingWebAuthFlow(extension()->id());
+    if (!auth_flow_tracker_) {
+      RecordHistogramFunctionResult(Error::kWebAuthFlowInProgress);
+      return RespondNow(ExtensionFunction::Error(
+          ErrorToString(Error::kWebAuthFlowInProgress)));
+    }
+  }
+
+  AddRef();  // Balanced in OnAuthFlowSuccess/Failure.
+
+  if (delegate_) {
+    delegate_->GetOptionalWindowBounds(
+        profile, extension_id(),
+        base::BindOnce(&IdentityLaunchWebAuthFlowFunction::StartAuthFlow, this,
+                       profile, auth_url, mode,
+                       abort_on_load_for_non_interactive,
+                       timeout_for_non_interactive));
+    return RespondLater();
+  }
+
+  StartAuthFlow(profile, auth_url, mode, abort_on_load_for_non_interactive,
+                timeout_for_non_interactive, std::nullopt);
+  return RespondLater();
+}
+
+void IdentityLaunchWebAuthFlowFunction::StartAuthFlow(
+    Profile* profile,
+    GURL auth_url,
+    WebAuthFlow::Mode mode,
+    WebAuthFlow::AbortOnLoad abort_on_load_for_non_interactive,
+    std::optional<base::TimeDelta> timeout_for_non_interactive,
+    std::optional<gfx::Rect> popup_bounds) {
+  if (did_respond()) {
+    return;
+  }
+
+  if (!profile || profile->ShutdownStarted()) {
+    OnBrowserContextShutdown();
+    return;
+  }
+
+  auth_flow_ = std::make_unique<WebAuthFlow>(
+      this, profile, auth_url, mode, user_gesture(),
+      abort_on_load_for_non_interactive, timeout_for_non_interactive,
+      popup_bounds);
+
+  // An extension might call `launchWebAuthFlow()` with any URL. Add an infobar
+  // to attribute displayed URL to the extension.
+  auth_flow_->SetShouldShowInfoBar(extension()->name());
+
+  auth_flow_->Start();
+}
+
+bool IdentityLaunchWebAuthFlowFunction::ShouldKeepWorkerAliveIndefinitely() {
+  // `identity.launchWebAuthFlow()` can trigger an interactive signin flow for
+  // the user, and should thus keep the extension alive indefinitely.
+  return true;
+}
+
+void IdentityLaunchWebAuthFlowFunction::OnBrowserContextShutdown() {
+  // auth_flow_ internally observes profile destruction. It may have already
+  // notified us if the navigation got cancelled prematurely because of profile
+  // destruction. Do not attempt to respond again in this case.
+  //
+  // This should only happen in tests because they keep an external reference to
+  // this ExtensionFunction instance. This prevents the refcount from going to
+  // zero and the function from being destroyed after the response is sent.
+  //
+  // In production code, the ExtensionFunction is destroyed after the response
+  // is sent.
+  if (did_respond()) {
+    CHECK_IS_TEST();
+    return;
+  }
+
+  RecordHistogramFunctionResult(Error::kBrowserContextShutDown);
+  CompleteAsyncRun(
+      ExtensionFunction::Error(ErrorToString(Error::kBrowserContextShutDown)));
+}
+
+void IdentityLaunchWebAuthFlowFunction::InitFinalRedirectUrlsForTest(
+    const std::string& extension_id) {
+  CHECK_IS_TEST();
+  InitFinalRedirectUrls(extension_id, nullptr);
+}
+
+void IdentityLaunchWebAuthFlowFunction::InitFinalRedirectUrls(
+    const std::string& extension_id,
+    const base::ListValue* redirect_urls) {
+  if (default_origin_.is_valid()) {
+    return;
+  }
+  default_origin_ = GURL(base::StringPrintf(kChromiumDomainRedirectUrlPattern,
+                                            extension_id.c_str()));
+  if (redirect_urls) {
+    for (const auto& value : *redirect_urls) {
+      GURL url(value.GetString());
+      if (url.is_valid()) {
+        final_redirect_urls_.push_back(url);
+      }
+    }
+  }
+}
+
+void IdentityLaunchWebAuthFlowFunction::OnAuthFlowFailure(
+    WebAuthFlow::Failure failure) {
+  Error error = WebAuthFlowFailureToError(failure);
+
+  RecordHistogramFunctionResult(error);
+  CompleteAsyncRun(ExtensionFunction::Error(ErrorToString(error)));
+}
+
+// static
+bool IdentityLaunchWebAuthFlowFunction::ShouldInterceptRedirect(
+    const GURL& redirect_url,
+    const GURL& default_origin,
+    const std::vector<GURL>& final_redirect_urls) {
+  if (redirect_url.Resolve("/") == default_origin) {
+    return true;
+  }
+
+  return std::ranges::any_of(final_redirect_urls, [&](const GURL& url) {
+    if (redirect_url.Resolve("/") != url.Resolve("/")) {
+      // Origins do not match.
+      return false;
+    }
+    // Match paths according to rfc6265, section 5.1.4.
+    return net::cookie_util::IsOnPath(url.path(), redirect_url.path());
+  });
+}
+
+void IdentityLaunchWebAuthFlowFunction::OnAuthFlowURLChange(
+    const GURL& redirect_url) {
+  if (ShouldInterceptRedirect(redirect_url, default_origin_,
+                              final_redirect_urls_)) {
+    RecordHistogramFunctionResult(
+        IdentityLaunchWebAuthFlowFunction::Error::kNone);
+    CompleteAsyncRun(WithArguments(redirect_url.spec()));
+  }
+}
+
+void IdentityLaunchWebAuthFlowFunction::CompleteAsyncRun(
+    ResponseValue response) {
+  Respond(std::move(response));
+  if (auth_flow_) {
+    auth_flow_.release()->DetachDelegateAndDelete();
+  }
+  Release();  // Balanced in Run.
+}
+
+WebAuthFlow* IdentityLaunchWebAuthFlowFunction::GetWebAuthFlowForTesting() {
+  return auth_flow_.get();
+}
+
+void IdentityLaunchWebAuthFlowFunction::SetLaunchWebAuthFlowDelegateForTesting(
+    std::unique_ptr<LaunchWebAuthFlowDelegate> delegate) {
+  delegate_ = std::move(delegate);
+}
+
+}  // namespace extensions

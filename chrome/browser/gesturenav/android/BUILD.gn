@@ -1,0 +1,96 @@
+# Copyright 2023 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/rules.gni")
+import("//third_party/jni_zero/jni_zero.gni")
+
+android_library("java") {
+  srcjar_deps = [ ":jni_headers" ]
+  sources = [
+    "java/src/org/chromium/chrome/browser/gesturenav/HardwareDraw.java",
+    "java/src/org/chromium/chrome/browser/gesturenav/NativePageBitmapCapturer.java",
+    "java/src/org/chromium/chrome/browser/gesturenav/TabOnBackGestureHandler.java",
+  ]
+  deps = [
+    "//base:base_java",
+    "//chrome/browser/back_press/android:java",
+    "//chrome/browser/flags:java",
+    "//chrome/browser/tab:java",
+    "//chrome/browser/ui/android/native_page:java",
+    "//components/embedder_support/android:web_contents_delegate_java",
+    "//content/public/android:content_full_java",
+    "//third_party/androidx:androidx_annotation_annotation_java",
+    "//third_party/jni_zero:jni_zero_java",
+    "//ui/android:ui_no_recycler_view_java",
+    "//url:url_java",
+  ]
+
+  resources_package = "org.chromium.chrome.browser.gesturenav"
+}
+
+android_library("javatests") {
+  testonly = true
+  resources_package = "org.chromium.chrome.browser.gesturenav"
+  sources = [ "java/src/org/chromium/chrome/browser/gesturenav/NativePageBitmapCapturerTest.java" ]
+  deps = [
+    ":java",
+    "//base:base_java",
+    "//base:base_java_test_support",
+    "//chrome/android:chrome_java",
+    "//chrome/browser/flags:java",
+    "//chrome/browser/tab:java",
+    "//chrome/test/android:chrome_java_integration_test_support",
+    "//chrome/test/android:chrome_java_transit",
+    "//components/embedder_support/android:util_java",
+    "//components/embedder_support/android:web_contents_delegate_java",
+    "//content/public/test/android:content_java_test_support",
+    "//third_party/androidx:androidx_test_runner_java",
+    "//third_party/junit",
+    "//ui/android:ui_no_recycler_view_java",
+  ]
+}
+
+generate_jni("jni_headers") {
+  sources = [ "java/src/org/chromium/chrome/browser/gesturenav/TabOnBackGestureHandler.java" ]
+}
+
+source_set("gesturenav") {
+  sources = [ "tab_on_back_gesture_handler.h" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/android:tabs_public",
+    "//ui/events",
+  ]
+}
+
+source_set("impl") {
+  sources = [
+    "gesture_navigation_utils.cc",
+    "tab_on_back_gesture_handler.cc",
+  ]
+  deps = [
+    ":gesturenav",
+    ":jni_headers",
+    "//chrome/android:jni_headers",
+    "//content/public/browser",
+    "//content/public/common",
+    "//third_party/blink/public/common",
+    "//ui/android",
+    "//ui/gfx/geometry",
+  ]
+}
+
+source_set("test_support") {
+  testonly = true
+  sources = [ "screenshot_capture_test_helper.cc" ]
+  deps = [
+    "//chrome/android:test_support_jni_headers",
+    "//content/test:test_support",
+    "//ui/gfx",
+  ]
+
+  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
+  # enable the diagnostic by removing this line.
+  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+}

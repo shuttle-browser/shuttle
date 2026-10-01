@@ -1,0 +1,40 @@
+# Copyright 2012 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+"""Top-level presubmit script for checkperms.
+
+See http://dev.chromium.org/developers/how-tos/depottools/presubmit-scripts
+for more details on the presubmit API built into depot_tools.
+"""
+
+
+def CommonChecks(input_api, output_api):
+  output = []
+  disabled_warnings = [
+    'bad-indentation',
+    'consider-using-with',
+    'deprecated-module',
+    'logging-not-lazy',
+    'unspecified-encoding',
+  ]
+  output.extend(
+    input_api.canned_checks.RunPylint(
+      input_api, output_api, disabled_warnings=disabled_warnings, version='3.2'
+    )
+  )
+  # Run it like if it were a unit test.
+  output.extend(
+    input_api.canned_checks.RunUnitTests(
+      input_api, output_api, ['./checkperms.py']
+    )
+  )
+  return output
+
+
+def CheckChangeOnUpload(input_api, output_api):
+  return CommonChecks(input_api, output_api)
+
+
+def CheckChangeOnCommit(input_api, output_api):
+  return CommonChecks(input_api, output_api)

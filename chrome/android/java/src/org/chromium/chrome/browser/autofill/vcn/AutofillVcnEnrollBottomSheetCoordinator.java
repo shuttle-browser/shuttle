@@ -1,0 +1,133 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.autofill.vcn;
+
+import android.content.Context;
+import android.view.View;
+
+import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.chrome.browser.autofill.AutofillImageFetcherFactory;
+import org.chromium.chrome.browser.autofill.AutofillSheetUiController;
+import org.chromium.chrome.browser.autofill.AutofillSheetUiControllerFactory;
+import org.chromium.chrome.browser.autofill.AutofillUiUtils;
+import org.chromium.chrome.browser.autofill.anchored_dialog.AnchoredDialogCoordinator;
+import org.chromium.chrome.browser.autofill.vcn.AutofillVcnEnrollBottomSheetProperties.IssuerIcon;
+import org.chromium.chrome.browser.layouts.LayoutStateProvider;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.tabmodel.TabModelSelector;
+import org.chromium.components.autofill.ImageSize;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
+import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.ui.modelutil.PropertyModelChangeProcessor;
+
+/** Coordinator controller for the virtual card number (VCN) enrollment bottom sheet. */
+@NullMarked
+/*package*/ class AutofillVcnEnrollBottomSheetCoordinator {
+    /** Callbacks from the VCN enrollment bottom sheet. */
+    interface Delegate {
+        /** Called when the user accepts the VCN enrollment bottom sheet. */
+        void onAccept();
+
+        /** Called when the user cancels the VCN enrollment bottom sheet. */
+        void onCancel();
+
+        /** Called when the user dismisses the VCN enrollment bottom sheet. */
+        void onDismiss();
+    }
+
+    private final AutofillVcnEnrollBottomSheetView mView;
+    private final AutofillVcnEnrollBottomSheetMediator mMediator;
+    private final PropertyModel mModel;
+
+    /**
+     * Constructs a coordinator controller for the virtual card enrollment bottom sheet.
+     *
+     * @param context The activity context.
+     * @param bottomSheetController The bottom sheet controller where this bottom sheet will be
+     *     shown
+     * @param anchoredDialogCoordinator The anchored dialog coordinator where this bottom sheet will
+     *     be shown.
+     * @param modelBuilder The bottom sheet contents.
+     * @param layoutStateProvider Exposes a way to listen to layout state changes.
+     * @param tabModelSelectorSupplier Supplies the tab model selector when it's ready.
+     * @param delegate The callbacks for user actions.
+     */
+    AutofillVcnEnrollBottomSheetCoordinator(
+            Context context,
+            BottomSheetController bottomSheetController,
+            AnchoredDialogCoordinator anchoredDialogCoordinator,
+            Profile profile,
+            PropertyModel.Builder modelBuilder,
+            LayoutStateProvider layoutStateProvider,
+            MonotonicObservableSupplier<TabModelSelector> tabModelSelectorSupplier,
+            Delegate delegate) {
+        mModel =
+                modelBuilder
+                        .with(
+                                AutofillVcnEnrollBottomSheetProperties.ISSUER_ICON_FETCH_CALLBACK,
+                                (IssuerIcon issuerIcon) ->
+                                        issuerIcon == null
+                                                ? null
+                                                : AutofillUiUtils.getCardIcon(
+                                                        context,
+                                                        AutofillImageFetcherFactory.getForProfile(
+                                                                profile),
+                                                        issuerIcon.mIconUrl,
+                                                        issuerIcon.mIconResource,
+                                                        /* cardIconSize= */ ImageSize.LARGE,
+                                                        /* showCustomIcon= */ true))
+                        .build();
+        mView = new AutofillVcnEnrollBottomSheetView(context);
+        PropertyModelChangeProcessor.create(
+                mModel, mView, AutofillVcnEnrollBottomSheetViewBinder::bind);
+
+        AutofillSheetUiController uiController =
+                AutofillSheetUiControllerFactory.createUiController(
+                        context, bottomSheetController, anchoredDialogCoordinator);
+
+        mMediator =
+                new AutofillVcnEnrollBottomSheetMediator(
+                        new AutofillVcnEnrollBottomSheetContent(
+                                mView.mContentView, mView.mScrollView, delegate::onDismiss),
+                        new AutofillVcnEnrollBottomSheetLifecycle(
+                                layoutStateProvider, tabModelSelectorSupplier),
+                        uiController,
+                        mModel);
+
+        mView.mAcceptButton.setOnClickListener(
+                (View button) -> {
+                    delegate.onAccept();
+                    mMediator.onAccept();
+                });
+        mView.mCancelButton.setOnClickListener(
+                (View button) -> {
+                    delegate.onCancel();
+                    mMediator.onCancel();
+                });
+    }
+
+    /**
+     * Requests to show the bottom sheet.
+     *
+     * @return True if shown.
+     */
+    boolean requestShowContent() {
+        return mMediator.requestShowContent();
+    }
+
+    /** Hides the virtual card enrollment bottom sheet, if present. */
+    void hide() {
+        mMediator.hide();
+    }
+
+    AutofillVcnEnrollBottomSheetView getAutofillVcnEnrollBottomSheetViewForTesting() {
+        return mView;
+    }
+
+    PropertyModel getPropertyModelForTesting() {
+        return mModel;
+    }
+}

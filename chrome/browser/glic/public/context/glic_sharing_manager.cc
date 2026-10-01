@@ -1,0 +1,60 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/glic/public/context/glic_sharing_manager.h"
+
+namespace glic {
+
+GlicPinEvent::GlicPinEvent(GlicPinTrigger trigger, base::TimeTicks timestamp)
+    : trigger(trigger), timestamp(timestamp) {}
+
+GlicPinEvent::~GlicPinEvent() = default;
+
+GlicPinnedTabUsage::GlicPinnedTabUsage(GlicPinEvent pin_event)
+    : pin_event(pin_event) {}
+GlicPinnedTabUsage::GlicPinnedTabUsage(GlicPinTrigger trigger,
+                                       base::TimeTicks timestamp)
+    : pin_event(trigger, timestamp) {}
+GlicPinnedTabUsage::GlicPinnedTabUsage(GlicPinnedTabUsage&& other) = default;
+GlicPinnedTabUsage::GlicPinnedTabUsage(const GlicPinnedTabUsage&) = default;
+GlicPinnedTabUsage& GlicPinnedTabUsage::operator=(GlicPinnedTabUsage&& other) =
+    default;
+GlicPinnedTabUsage& GlicPinnedTabUsage::operator=(const GlicPinnedTabUsage&) =
+    default;
+
+GlicPinnedTabUsage::~GlicPinnedTabUsage() = default;
+
+GlicUnpinEvent::GlicUnpinEvent(GlicUnpinTrigger trigger,
+                               GlicPinnedTabUsage usage,
+                               base::TimeTicks timestamp)
+    : trigger(trigger), usage(usage), timestamp(timestamp) {}
+
+GlicUnpinEvent::~GlicUnpinEvent() = default;
+
+bool GlicPinnedTabUsage::IsExplicitlyPinnedByUser() const {
+  switch (pin_event.trigger) {
+    case GlicPinTrigger::kUnknown:
+    case GlicPinTrigger::kInstanceCreation:
+    case GlicPinTrigger::kDaisyChain:
+    case GlicPinTrigger::kNewTabDaisyChain:
+    case GlicPinTrigger::kConversationChange:
+    case GlicPinTrigger::kRestore:
+    case GlicPinTrigger::kContextualCue:
+      return false;
+    case GlicPinTrigger::kContextMenu:
+    case GlicPinTrigger::kCandidatesToggle:
+    case GlicPinTrigger::kAtMention:
+    case GlicPinTrigger::kActuation:
+    case GlicPinTrigger::kWebClientUnknown:
+    case GlicPinTrigger::kTabGroupIntegration:
+    case GlicPinTrigger::kTabPicker:
+      return true;
+  }
+}
+
+bool GlicPinnedTabUsage::Unused() const {
+  return times_conversation_turn_submitted_while_pinned == 0;
+}
+
+}  // namespace glic

@@ -1,0 +1,64 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//chrome/test/data/webui/build_webui_tests.gni")
+import("//ui/webui/webui_features.gni")
+
+assert((!is_android && !is_ios) || enable_webui_contextual_tasks_composebox)
+
+build_webui_tests("build") {
+  cc_test_files = [
+    "../cr_components_browsertest.cc",
+    "../cr_components_interactive_uitest.cc",
+  ]
+
+  files = [
+    "composebox_audio_animation_test.ts",
+    "composebox_audio_levels_test.ts",
+    "composebox_drag_drop_test.ts",
+    "composebox_favicon_group_test.ts",
+    "composebox_file_inputs_test.ts",
+    "composebox_input_placeholder_test.ts",
+    "composebox_input_test.ts",
+    "composebox_lens_search_test.ts",
+    "composebox_match_test.ts",
+    "composebox_mixin_test.ts",
+    "composebox_test_utils.ts",
+    "composebox_voice_search_test.ts",
+    "composebox_voice_search_metrics_test.ts",
+    "composebox_voice_search_recognition_test.ts",
+    "composebox_voice_search_flags_test.ts",
+    "contextual_action_menu_test.ts",
+    "contextual_entrypoint_and_menu_test.ts",
+    "contextual_entrypoint_button_test.ts",
+    "error_scrim_test.ts",
+    "file_carousel_test.ts",
+    "file_thumbnail_test.ts",
+    "current_tab_chip_test.ts",
+    "recording_wave_test.ts",
+    "test_composebox_mixin.ts",
+  ]
+
+  ts_deps = [
+    "//chrome/test/data/webui:build_ts",
+    "//third_party/lit/v3_0:build_ts",
+    "//ui/webui/resources/cr_components/composebox:build_ts",
+    "//ui/webui/resources/cr_components/search:build_ts",
+    "//ui/webui/resources/cr_components/searchbox:build_ts",
+    "//ui/webui/resources/cr_elements:build_ts",
+    "//ui/webui/resources/js:build_ts",
+    "//ui/webui/resources/mojo:build_ts",
+  ]
+
+  ts_tsconfig_base = "tsconfig_base.json"
+
+  ts_path_mappings = [
+    "chrome://contextual-tasks/strings.m.js|" +
+        rebase_path("//tools/typescript/definitions/strings.d.ts",
+                    target_gen_dir),
+    "chrome://new-tab-page/strings.m.js|" +
+        rebase_path("//tools/typescript/definitions/strings.d.ts",
+                    target_gen_dir),
+  ]
+}

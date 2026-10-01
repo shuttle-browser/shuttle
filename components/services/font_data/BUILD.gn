@@ -1,0 +1,49 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//testing/test.gni")
+
+source_set("lib") {
+  sources = [
+    "font_data_service_impl.cc",
+    "font_data_service_impl.h",
+    "local_font_matcher.cc",
+    "local_font_matcher.h",
+  ]
+
+  if (is_win) {
+    sources += [
+      "dwrite_local_font_matcher.cc",
+      "dwrite_local_font_matcher.h",
+    ]
+  }
+
+  deps = [
+    "//base",
+    "//components/services/font_data/public/mojom",
+    "//mojo/public/cpp/bindings",
+    "//mojo/public/cpp/system",
+    "//ui/gfx",
+  ]
+
+  public_deps = [ "//skia" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "font_data_service_impl_unittest.cc" ]
+  deps = [
+    ":lib",
+    "//base",
+    "//base/test:test_support",
+    "//components/services/font_data/public/mojom",
+    "//mojo/public/cpp/bindings",
+    "//mojo/public/cpp/system",
+    "//skia",
+    "//testing/gtest",
+    "//ui/gfx",
+  ]
+
+  data_deps = [ "//third_party/test_fonts" ]
+}

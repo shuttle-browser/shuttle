@@ -1,0 +1,35 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+edition = "2024";
+
+package personal_context.proto;
+
+import "components/personal_context/proto/features/common_data.proto";
+
+option optimize_for = LITE_RUNTIME;
+
+message ContextMemoryAmbientAutofillRequest {
+  // Deprecated: Domain-specific filtering should be performed on the client
+  // side. This field is no longer used by the server.
+  string top_level_domain = 1 [deprecated = true];
+
+  repeated EntityType requested_types = 2;
+
+  // Whether to return sensitive PII data presence.
+  //
+  // If false or not specified, the masked data of available spii data
+  // will be provided in the response. If set to true, only the presence of spii
+  // will be returned.
+  bool return_spii_presence = 3;
+
+  // The ID of the client.
+  //
+  // This is the cache guid that is stored in Chrome Sync for the device.
+  string client_id = 4;
+}
+
+message ContextMemoryAmbientAutofillResponse {
+  repeated Entity entities = 1;
+}

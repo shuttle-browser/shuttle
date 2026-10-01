@@ -1,0 +1,20 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// This file was exported from google3, do not edit manually.
+// See README.chromium for details.
+
+edition = "2023";
+
+option optimize_for = LITE_RUNTIME;
+option java_package = "org.chromium.components.metrics";
+
+package private_metrics;
+
+// A single metric, which is defined by a name hash and a value.
+// Next tag: 3
+message Metric {
+  fixed64 name_hash = 1;
+  int64 value = 2;
+}

@@ -1,0 +1,536 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.ui.messages.snackbar;
+
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
+import android.app.Activity;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.text.TextUtils;
+import android.util.Pair;
+import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.SurfaceView;
+import android.view.View;
+import android.view.View.OnLayoutChangeListener;
+import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout.LayoutParams;
+import android.widget.TextView;
+
+import androidx.annotation.ColorInt;
+import androidx.annotation.Px;
+import androidx.core.text.BidiFormatter;
+import androidx.core.view.ViewCompat;
+
+import org.chromium.base.Callback;
+import org.chromium.base.supplier.NonNullObservableSupplier;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarSwipeHandler.Delegate;
+import org.chromium.chrome.ui.messages.R;
+import org.chromium.components.browser_ui.styles.SemanticColorUtils;
+import org.chromium.components.browser_ui.widget.gesture.SwipeGestureListener;
+import org.chromium.components.browser_ui.widget.text.TemplatePreservingTextView;
+import org.chromium.ui.KeyboardVisibilityDelegate;
+import org.chromium.ui.base.WindowAndroid;
+import org.chromium.ui.insets.InsetObserver;
+import org.chromium.ui.interpolators.Interpolators;
+import org.chromium.ui.util.MotionEventUtils;
+
+/**
+ * Visual representation of a snackbar. It has a fixed maximum width and is anchored at the
+ * bottom-center of the screen, floating above the content.
+ */
+// TODO (jianli): Change this class and its methods back to package protected after the offline
+// indicator experiment is done.
+@NullMarked
+public class SnackbarView implements InsetObserver.WindowInsetObserver {
+    private static final int MAX_LINES = 5;
+    private static final int DEFAULT_LINES = 2;
+
+    private final @Nullable WindowAndroid mWindowAndroid;
+    protected final ViewGroup mContainerView;
+    protected final ViewGroup mSnackbarView;
+    protected final TemplatePreservingTextView mMessageView;
+    private final TextView mActionButtonView;
+    private final ImageView mProfileImageView;
+    private final int mAnimationDuration;
+    private final ViewGroup mOriginalParent;
+    private final int mMaxWidth;
+    private final int mSnackbarMargin;
+    private final int mDefaultBottomMargin;
+    private final Callback<Integer> mAdditionalBottomMarginPxObserver = this::updateBottomMargin;
+    protected ViewGroup mParent;
+    private NonNullObservableSupplier<Integer> mAdditionalBottomMarginPxSupplier;
+    protected Snackbar mSnackbar;
+    private final View mRootContentView;
+    private final NonNullObservableSupplier<Boolean> mIsFullscreenSupplier;
+    private final Callback<Boolean> mIsFullscreenObserver = (ignored) -> adjustViewPosition();
+    private final KeyboardVisibilityDelegate.KeyboardVisibilityListener
+            mKeyboardVisibilityListener = (isShowing) -> adjustViewPosition();
+    private @ColorInt int mBackgroundColor;
+    private boolean mIsBeingDragged;
+    private boolean mIsAnimating;
+
+    // Variables used to adjust view position and size when visible frame is changed.
+
+    private final SnackbarSwipeHandler mSnackbarSwipeHandler;
+
+    private final OnLayoutChangeListener mLayoutListener =
+            new OnLayoutChangeListener() {
+                @Override
+                public void onLayoutChange(
+                        View v,
+                        int left,
+                        int top,
+                        int right,
+                        int bottom,
+                        int oldLeft,
+                        int oldTop,
+                        int oldRight,
+                        int oldBottom) {
+                    adjustViewPosition();
+                }
+            };
+
+    /**
+     * Creates an instance of the {@link SnackbarView}.
+     *
+     * @param activity The activity that displays the snackbar.
+     * @param manager The {@link SnackbarManager} that manages this view.
+     * @param snackbar The snackbar to be displayed.
+     * @param parentView The ViewGroup used to display this snackbar.
+     * @param windowAndroid The WindowAndroid used for starting animation. If it is null,
+     *     Animator#start is called instead.
+     * @param additionalBottomMarginPxSupplier The bottom margin to be added to the snackbar view
+     *     when shown.
+     * @param isFullscreenSupplier The supplier that monitors whether the app is in fullscreen mode.
+     */
+    public SnackbarView(
+            Activity activity,
+            SnackbarManager manager,
+            Snackbar snackbar,
+            ViewGroup parentView,
+            @Nullable WindowAndroid windowAndroid,
+            NonNullObservableSupplier<Integer> additionalBottomMarginPxSupplier,
+            NonNullObservableSupplier<Boolean> isFullscreenSupplier) {
+        mOriginalParent = parentView;
+        mWindowAndroid = windowAndroid;
+        mAdditionalBottomMarginPxSupplier = additionalBottomMarginPxSupplier;
+        additionalBottomMarginPxSupplier.addSyncObserver(mAdditionalBottomMarginPxObserver);
+
+        mRootContentView = activity.findViewById(android.R.id.content);
+        mParent = mOriginalParent;
+
+        mContainerView =
+                (ViewGroup)
+                        LayoutInflater.from(activity)
+                                .inflate(R.layout.floating_snackbar, mParent, false);
+
+        mIsFullscreenSupplier = isFullscreenSupplier;
+
+        mSnackbarSwipeHandler =
+                new SnackbarSwipeHandler(
+                        activity,
+                        new Delegate() {
+                            @Override
+                            public void dismiss() {
+                                mIsBeingDragged = false;
+                                manager.dismissCurrentSnackbarDueToSwipe();
+                            }
+
+                            @Override
+                            public void resetPosition() {
+                                mIsBeingDragged = false;
+                                animateToOriginalPosition();
+                            }
+
+                            @Override
+                            public void updatePosition(float dx, float dy) {
+                                mIsBeingDragged = true;
+                                adjustViewPosition();
+                            }
+                        });
+        SwipeGestureListener swipeGestureListener =
+                new SwipeGestureListener(activity, mSnackbarSwipeHandler);
+
+        // Make sure clicks are not consumed by content beneath the container view.
+        mContainerView.setClickable(true);
+        mContainerView.setOnClickListener((event) -> manager.resetSnackbarTimeout());
+        mContainerView.setOnTouchListener(
+                (view, event) -> {
+                    if (swipeGestureListener.onTouchEvent(event)) return true;
+                    // Disable touch inputs during animation.
+                    if (mIsAnimating) return true;
+                    mContainerView.performClick();
+                    return true;
+                });
+        mContainerView.setOnGenericMotionListener(
+                (view, event) -> MotionEventUtils.isPointerEvent(event));
+
+        mSnackbarView = mContainerView.findViewById(R.id.snackbar);
+        mAnimationDuration =
+                mContainerView.getResources().getInteger(android.R.integer.config_mediumAnimTime);
+        mMessageView =
+                (TemplatePreservingTextView) mContainerView.findViewById(R.id.snackbar_message);
+        mActionButtonView = (TextView) mContainerView.findViewById(R.id.snackbar_button);
+        mActionButtonView.setOnClickListener(manager);
+        mProfileImageView = (ImageView) mContainerView.findViewById(R.id.snackbar_profile_image);
+        // Add bottom margin to extend the snackbar view into the bottom window inset. This
+        // margin has to be applied to the snackbar view itself to avoid weird visual clipping
+        // in its dismissal animation.
+        FrameLayout.LayoutParams lp = getLayoutParams();
+        mDefaultBottomMargin = lp.bottomMargin;
+        lp.bottomMargin = lp.bottomMargin + mAdditionalBottomMarginPxSupplier.get();
+        mContainerView.setLayoutParams(lp);
+        // Set a max width of 480dp for both mobile and tablet.
+        mMaxWidth = mParent.getResources().getDimensionPixelSize(R.dimen.snackbar_width_max);
+        mSnackbarMargin =
+                mParent.getResources().getDimensionPixelSize(R.dimen.snackbar_floating_margin);
+        updateInternal(snackbar, false);
+    }
+
+    public void show() {
+        addToParent();
+        mIsFullscreenSupplier.addSyncObserver(mIsFullscreenObserver);
+        KeyboardVisibilityDelegate.getInstance()
+                .addKeyboardVisibilityListener(mKeyboardVisibilityListener);
+        mContainerView.addOnLayoutChangeListener(
+                new OnLayoutChangeListener() {
+                    @Override
+                    public void onLayoutChange(
+                            View v,
+                            int left,
+                            int top,
+                            int right,
+                            int bottom,
+                            int oldLeft,
+                            int oldTop,
+                            int oldRight,
+                            int oldBottom) {
+                        mContainerView.removeOnLayoutChangeListener(this);
+                        mContainerView.setTranslationY(getYPositionForMoveAnimation());
+                        Animator animator =
+                                ObjectAnimator.ofFloat(mContainerView, View.TRANSLATION_Y, 0);
+                        animator.setInterpolator(Interpolators.STANDARD_INTERPOLATOR);
+                        animator.setDuration(mAnimationDuration);
+                        startAnimatorOnSurfaceView(animator);
+                    }
+                });
+    }
+
+    public void dismiss() {
+        // Prevent clicks during dismissal animations. Intentionally not using setEnabled(false) to
+        // avoid unnecessary text color changes in this transitory state.
+        mActionButtonView.setOnClickListener(null);
+        mIsFullscreenSupplier.removeObserver(mIsFullscreenObserver);
+        KeyboardVisibilityDelegate.getInstance()
+                .removeKeyboardVisibilityListener(mKeyboardVisibilityListener);
+        mAdditionalBottomMarginPxSupplier.removeObserver(mAdditionalBottomMarginPxObserver);
+        Pair<Float, Float> translateData = mSnackbarSwipeHandler.getTranslateData();
+        AnimatorSet moveAnimator = new AnimatorSet();
+        if (translateData.first != 0) {
+            Animator translate =
+                    ObjectAnimator.ofFloat(
+                            mContainerView,
+                            View.TRANSLATION_X,
+                            (translateData.first > 0 ? 1 : -1) * getMaximumTranslateX());
+            moveAnimator = new AnimatorSet();
+            moveAnimator.playTogether(
+                    translate, ObjectAnimator.ofFloat(mContainerView, View.ALPHA, 0));
+        } else {
+            moveAnimator.play(
+                    ObjectAnimator.ofFloat(
+                            mContainerView, View.TRANSLATION_Y, getYPositionForMoveAnimation()));
+        }
+
+        mIsAnimating = true;
+        moveAnimator.setInterpolator(Interpolators.DECELERATE_INTERPOLATOR);
+        moveAnimator.setDuration(mAnimationDuration);
+        moveAnimator.addListener(
+                new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        mParent.removeOnLayoutChangeListener(mLayoutListener);
+                        mParent.removeView(mContainerView);
+                        mIsAnimating = false;
+                    }
+                });
+        startAnimatorOnSurfaceView(moveAnimator);
+    }
+
+    /**
+     * Adjusts the position when visible area is updated, such as resizing the window, in order to
+     * ensure its maximum width.
+     */
+    void adjustViewPosition() {
+        FrameLayout.LayoutParams lp = getLayoutParams();
+        int targetWidth = Math.min(mMaxWidth, mParent.getWidth() - 2 * mSnackbarMargin);
+        boolean isFullscreen = mIsFullscreenSupplier.get();
+        int keyboardHeight =
+                isFullscreen
+                        ? KeyboardVisibilityDelegate.getInstance()
+                                .calculateTotalKeyboardHeight(mRootContentView)
+                        : 0;
+        int targetBottomMargin =
+                mDefaultBottomMargin + mAdditionalBottomMarginPxSupplier.get() + keyboardHeight;
+        int targetGravity = Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM;
+
+        if (lp.width != targetWidth
+                || lp.bottomMargin != targetBottomMargin
+                || lp.gravity != targetGravity) {
+            lp.width = targetWidth;
+            lp.gravity = targetGravity;
+            lp.bottomMargin = targetBottomMargin;
+            mContainerView.setLayoutParams(lp);
+        }
+        if (mIsBeingDragged) {
+            Pair<Float, Float> translate = mSnackbarSwipeHandler.getTranslateData();
+            mContainerView.setTranslationX(translate.first);
+        }
+    }
+
+    protected int getYPositionForMoveAnimation() {
+        return mContainerView.getHeight() + getLayoutParams().bottomMargin;
+    }
+
+    /**
+     * @see SnackbarManager#overrideParent(ViewGroup, NonNullObservableSupplier)
+     */
+    void overrideParent(
+            ViewGroup overridingParent,
+            NonNullObservableSupplier<Integer> additionalBottomMarginPxSupplier) {
+        if (mParent == overridingParent
+                && mAdditionalBottomMarginPxSupplier == additionalBottomMarginPxSupplier) {
+            return;
+        }
+
+        mParent.removeOnLayoutChangeListener(mLayoutListener);
+        mParent = overridingParent;
+        if (mContainerView.getParent() != null) {
+            ((ViewGroup) mContainerView.getParent()).removeView(mContainerView);
+        }
+        addToParent();
+
+        mAdditionalBottomMarginPxSupplier.removeObserver(mAdditionalBottomMarginPxObserver);
+        mAdditionalBottomMarginPxSupplier = additionalBottomMarginPxSupplier;
+        mAdditionalBottomMarginPxSupplier.addSyncObserverAndCallIfNonNull(
+                mAdditionalBottomMarginPxObserver);
+    }
+
+    public boolean isShowing() {
+        return mContainerView.isShown();
+    }
+
+    public boolean isBeingDragged() {
+        return mIsBeingDragged;
+    }
+
+    void bringToFront() {
+        mContainerView.bringToFront();
+    }
+
+    /**
+     * Updates the accessibility pane title for mMessageView which will be read aloud if a screen
+     * reader is enabled.
+     */
+    public void updateAccessibilityPaneTitle() {
+        BidiFormatter bidiFormatter = BidiFormatter.getInstance();
+        StringBuilder accessibilityText =
+                new StringBuilder(bidiFormatter.unicodeWrap(mMessageView.getContentDescription()));
+        if (mActionButtonView.getContentDescription() != null) {
+            accessibilityText
+                    .append(". ")
+                    .append(bidiFormatter.unicodeWrap(mActionButtonView.getContentDescription()))
+                    .append(". ")
+                    .append(
+                            mContainerView
+                                    .getResources()
+                                    .getString(R.string.bottom_bar_screen_position));
+        }
+
+        // This post call is required to ensure the pane title change results in a
+        // reliable announcement to the user. See https://crbug.com/395925721
+        mMessageView.post(
+                () -> ViewCompat.setAccessibilityPaneTitle(mMessageView, accessibilityText));
+    }
+
+    /**
+     * Updates the view to display data from the given snackbar. No-op if the view is already
+     * showing the given snackbar.
+     *
+     * @param snackbar The snackbar to display
+     * @return Whether update has actually been executed.
+     */
+    boolean update(Snackbar snackbar) {
+        return updateInternal(snackbar, true);
+    }
+
+    private void animateToOriginalPosition() {
+        Animator moveAnimator = ObjectAnimator.ofFloat(mContainerView, View.TRANSLATION_X, 0);
+        moveAnimator.setInterpolator(Interpolators.DECELERATE_INTERPOLATOR);
+        moveAnimator.setDuration(mAnimationDuration);
+        mIsAnimating = true;
+        moveAnimator.addListener(
+                new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        mIsAnimating = false;
+                    }
+                });
+        startAnimatorOnSurfaceView(moveAnimator);
+    }
+
+    private void addToParent() {
+        mParent.addView(mContainerView);
+        mParent.addOnLayoutChangeListener(mLayoutListener);
+    }
+
+    // TODO(fgorski): Start using color ID, to remove the view from arguments.
+    private static int calculateBackgroundColor(View view, Snackbar snackbar) {
+        // Themes are used first.
+        if (snackbar.getTheme() == Snackbar.Theme.GOOGLE) {
+            // TODO(crbug.com/40798080): Revisit once we know whether to make this dynamic.
+            return view.getContext().getColor(R.color.default_control_color_active_baseline);
+        }
+
+        assert snackbar.getTheme() == Snackbar.Theme.BASIC;
+        if (snackbar.getBackgroundColor() != 0) {
+            return snackbar.getBackgroundColor();
+        }
+
+        return SemanticColorUtils.getFloatingSnackbarBackgroundColor(view.getContext());
+    }
+
+    public @ColorInt int getBackgroundColor() {
+        return mBackgroundColor;
+    }
+
+    private static int getTextAppearance(Snackbar snackbar) {
+        if (snackbar.getTheme() == Snackbar.Theme.GOOGLE) {
+            return R.style.TextAppearance_TextMedium_OnAccent1;
+        }
+
+        assert snackbar.getTheme() == Snackbar.Theme.BASIC;
+        if (snackbar.getTextAppearance() != 0) {
+            return snackbar.getTextAppearance();
+        }
+
+        return R.style.TextAppearance_TextMedium_Primary;
+    }
+
+    private static int getButtonTextAppearance(Snackbar snackbar) {
+        if (snackbar.getTheme() == Snackbar.Theme.GOOGLE) {
+            return R.style.TextAppearance_Button_Text_Filled;
+        }
+
+        assert snackbar.getTheme() == Snackbar.Theme.BASIC;
+        return R.style.TextButton;
+    }
+
+    private boolean updateInternal(Snackbar snackbar, boolean animate) {
+        boolean isNewSnackbar = (mSnackbar != snackbar);
+        mSnackbar = snackbar;
+        mMessageView.setMaxLines(snackbar.getDefaultLines() ? DEFAULT_LINES : MAX_LINES);
+        mMessageView.setTemplate(snackbar.getTemplateText());
+        setViewText(mMessageView, snackbar.getText(), animate);
+
+        mMessageView.setTextAppearance(getTextAppearance(snackbar));
+        mActionButtonView.setTextAppearance(getButtonTextAppearance(snackbar));
+
+        mBackgroundColor = calculateBackgroundColor(mContainerView, snackbar);
+
+        // Round the corners for snackbars in both tablets and non-tablets.
+        mSnackbarView.setBackgroundResource(R.drawable.snackbar_background);
+        GradientDrawable backgroundDrawable =
+                (GradientDrawable) mSnackbarView.getBackground().mutate();
+        backgroundDrawable.setColor(mBackgroundColor);
+
+        if (snackbar.getActionText() != null) {
+            mActionButtonView.setVisibility(View.VISIBLE);
+            mActionButtonView.setContentDescription(snackbar.getActionText());
+            setViewText(mActionButtonView, snackbar.getActionText(), animate);
+            // Set the end margin on the message view to 0 when there is action text.
+            if (mMessageView.getLayoutParams() instanceof LayoutParams) {
+                LayoutParams lp = (LayoutParams) mMessageView.getLayoutParams();
+                lp.setMarginEnd(0);
+                mMessageView.setLayoutParams(lp);
+            }
+        } else {
+            mActionButtonView.setVisibility(View.GONE);
+            // Set a non-zero end margin on the message view when there is no action text.
+            if (mMessageView.getLayoutParams() instanceof LayoutParams) {
+                LayoutParams lp = (LayoutParams) mMessageView.getLayoutParams();
+                lp.setMarginEnd(
+                        mParent.getResources()
+                                .getDimensionPixelSize(R.dimen.snackbar_text_view_margin));
+                mMessageView.setLayoutParams(lp);
+            }
+        }
+        Drawable profileImage = snackbar.getProfileImage();
+        if (profileImage != null) {
+            mProfileImageView.setVisibility(View.VISIBLE);
+            mProfileImageView.setImageDrawable(profileImage);
+        } else {
+            mProfileImageView.setVisibility(View.GONE);
+        }
+        return isNewSnackbar;
+    }
+
+    /**
+     * Starts the {@link Animator} with {@link SurfaceView} optimization disabled. If a
+     * {@link SurfaceView} is not present (mWindowAndroid is null), start the {@link Animator}
+     * in the normal way.
+     */
+    private void startAnimatorOnSurfaceView(Animator animator) {
+        if (mWindowAndroid != null) {
+            mWindowAndroid.startAnimationOverContent(animator);
+        } else {
+            animator.start();
+        }
+    }
+
+    private FrameLayout.LayoutParams getLayoutParams() {
+        return (FrameLayout.LayoutParams) mContainerView.getLayoutParams();
+    }
+
+    private void setViewText(TextView view, @Nullable CharSequence text, boolean animate) {
+        if (TextUtils.equals(view.getText(), text)) return;
+        view.animate().cancel();
+        if (animate && view.getAlpha() < 1.0f) {
+            view.setAlpha(0.0f);
+            view.setText(text);
+            view.animate().alpha(1.f).setDuration(mAnimationDuration).setListener(null);
+        } else {
+            view.setText(text);
+        }
+    }
+
+    private @Px int getMaximumTranslateX() {
+        return mContainerView.getResources().getDisplayMetrics().widthPixels;
+    }
+
+    private void updateBottomMargin(int additionalBottomMarginPx) {
+        FrameLayout.LayoutParams lp = getLayoutParams();
+        int newBottomMargin = mDefaultBottomMargin + additionalBottomMarginPx;
+        if (lp.bottomMargin == newBottomMargin) return;
+
+        lp.bottomMargin = newBottomMargin;
+        mContainerView.setLayoutParams(lp);
+    }
+
+    public ViewGroup getViewForTesting() {
+        return mSnackbarView;
+    }
+
+    public ViewGroup getContainerViewForTesting() {
+        return mContainerView;
+    }
+}

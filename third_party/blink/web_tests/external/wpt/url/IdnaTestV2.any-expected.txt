@@ -1,0 +1,88 @@
+This is a testharness.js-based test.
+Found 42 FAIL, 0 TIMEOUT, 0 NOTRUN.
+[FAIL] ToASCII("≠ᢙ≯.솣-ᡴⴀ")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("≠ᢙ≯.솣-ᡴႠ")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("≯1.。ß") A4_2 (ignored)
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("≯1.。SS") A4_2 (ignored)
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("≯1.。ss") A4_2 (ignored)
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("≯1.。Ss") A4_2 (ignored)
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("ᡙ.≯𐋲≠")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("。。Ⴃ≯") A4_2 (ignored)
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("。。ⴃ≯") A4_2 (ignored)
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("⾆．ꡈ５≯ß")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("舌.ꡈ5≯ß")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("舌.ꡈ5≯SS")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("舌.ꡈ5≯ss")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("舌.ꡈ5≯Ss")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("⾆．ꡈ５≯SS")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("⾆．ꡈ５≯ss")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("⾆．ꡈ５≯Ss")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("ⴁ畝.≮")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("Ⴁ畝.≮")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("Ⴕ。۰≮ß݅")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("ⴕ。۰≮ß݅")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("Ⴕ。۰≮SS݅")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("ⴕ。۰≮ss݅")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("Ⴕ。۰≮Ss݅")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("ⴕ.۰≮ss݅")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("Ⴕ.۰≮SS݅")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("Ⴕ.۰≮Ss݅")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("ⴕ.۰≮ß݅")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("8≮.") A4_2 (ignored)
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("羚｡≯")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("羚。≯")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("羚.≯")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("🂴Ⴋ.≮")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("🂴ⴋ.≮")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("≮𝟕．謖ß≯")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("≮7.謖ß≯")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("≮7.謖SS≯")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("≮7.謖ss≯")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("≮7.謖Ss≯")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("≮𝟕．謖SS≯")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("≮𝟕．謖ss≯")
+  Failed to construct 'URL': Invalid URL
+[FAIL] ToASCII("≮𝟕．謖Ss≯")
+  Failed to construct 'URL': Invalid URL
+Harness: the test ran to completion.
+

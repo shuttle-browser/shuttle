@@ -1,0 +1,32 @@
+# Copyright 2018 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//testing/test.gni")
+
+# Aggregates all Cronet Python unit tests into a single isolate for CI bots.
+# Executes files ending in `_test.py` or `_unittest.py`, excluding those
+# explicitly skipped.
+#
+# Note: Test discovery relies on the standard `unittest` loader. Subdirectories
+# are recursively explored only if they contain an `__init__.py` file or are
+# explicitly listed in the `top_level_dirs` of `run_all_python_unittests.py`.
+script_test("cronet_python_unittests") {
+  testonly = true
+  script = "//testing/scripts/run_isolated_script_test.py"
+  args = [ "@WrappedPath(" + rebase_path(
+               "//components/cronet/testing/run_all_python_unittests.py",
+               root_build_dir) + ")" ]
+  data = [
+    "run_all_python_unittests.py",
+    "//third_party/catapult/third_party/typ/",
+
+    # A change to any file under cronet will invoke the unittests.
+    "//components/cronet/",
+    "//third_party/jdk",
+  ]
+  data_deps = [
+    "//testing:test_scripts_shared",
+    "//third_party/catapult:telemetry_chrome_test_support",
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "chrome.runtime.openOptionsPage (success)",
+  "version": "0.1",
+  "manifest_version": 3,
+  "description": "Browser test for chrome.runtime.openOptionsPage, success case.",
+  "background": {
+    "service_worker": "test.js"
+  },
+  "options_ui": {
+    "page": "options.html"
+  },
+  "permissions": ["tabs"]
+}

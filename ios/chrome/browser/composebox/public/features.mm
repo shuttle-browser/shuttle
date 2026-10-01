@@ -1,0 +1,162 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/composebox/public/features.h"
+
+#import "base/metrics/field_trial_params.h"
+#import "base/time/time.h"
+#import "components/omnibox/common/omnibox_features.h"
+#import "ui/base/device_form_factor.h"
+
+BASE_FEATURE(kComposeboxDevTools, base::FEATURE_DISABLED_BY_DEFAULT);
+
+const char kImageLoadDelayMsParam[] = "image_load_delay_ms";
+const char kUploadDelayMsParam[] = "upload_delay_ms";
+const char kForceUploadFailureParam[] = "force_upload_failure";
+
+base::TimeDelta GetImageLoadDelay() {
+  if (!base::FeatureList::IsEnabled(kComposeboxDevTools)) {
+    return base::TimeDelta();
+  }
+  static const base::FeatureParam<int> kImageLoadDelayMs{
+      &kComposeboxDevTools, kImageLoadDelayMsParam, 0};
+  return base::Milliseconds(kImageLoadDelayMs.Get());
+}
+
+base::TimeDelta GetUploadDelay() {
+  if (!base::FeatureList::IsEnabled(kComposeboxDevTools)) {
+    return base::TimeDelta();
+  }
+  static const base::FeatureParam<int> kUploadDelayMs{&kComposeboxDevTools,
+                                                      kUploadDelayMsParam, 0};
+  return base::Milliseconds(kUploadDelayMs.Get());
+}
+
+bool ShouldForceUploadFailure() {
+  if (!base::FeatureList::IsEnabled(kComposeboxDevTools)) {
+    return false;
+  }
+  static const base::FeatureParam<bool> kForceUploadFailure{
+      &kComposeboxDevTools, kForceUploadFailureParam, false};
+  return kForceUploadFailure.Get();
+}
+
+BASE_FEATURE(kComposeboxCloseButtonTopAlign, base::FEATURE_DISABLED_BY_DEFAULT);
+
+bool AlignComposeboxCloseButtonToInputPlateTop() {
+  return base::FeatureList::IsEnabled(kComposeboxCloseButtonTopAlign);
+}
+
+BASE_FEATURE(kComposeboxAdditionalAdvancedTools,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+bool ShowComposeboxAdditionalAdvancedTools() {
+  if (!EnableComposeboxServerSideState()) {
+    return false;
+  }
+  // Launched by default on phones.
+  if (ui::GetDeviceFormFactor() != ui::DEVICE_FORM_FACTOR_TABLET) {
+    return true;
+  }
+  return base::FeatureList::IsEnabled(kComposeboxAdditionalAdvancedTools);
+}
+
+BASE_FEATURE(kComposeboxCompactMode, base::FEATURE_ENABLED_BY_DEFAULT);
+
+bool ShowDeepSearchTool() {
+  // Launched by default on phones.
+  if (ui::GetDeviceFormFactor() != ui::DEVICE_FORM_FACTOR_TABLET) {
+    return true;
+  }
+  return base::FeatureList::IsEnabled(kComposeboxDeepSearch);
+}
+
+BASE_FEATURE(kComposeboxDeepSearch, base::FEATURE_DISABLED_BY_DEFAULT);
+
+bool EnableComposeboxServerSideState() {
+  // Launched by default on phones.
+  if (ui::GetDeviceFormFactor() != ui::DEVICE_FORM_FACTOR_TABLET) {
+    return true;
+  }
+  return base::FeatureList::IsEnabled(kComposeboxServerSideState);
+}
+
+BASE_FEATURE(kComposeboxServerSideState, base::FEATURE_DISABLED_BY_DEFAULT);
+
+bool IsComposeboxVerbatimSuggestionInAIMEnabled() {
+  return base::FeatureList::IsEnabled(kComposeboxVerbatimSuggestionInAIM);
+}
+
+BASE_FEATURE(kComposeboxVerbatimSuggestionInAIM,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+bool IsComposeboxCompactModeEnabled() {
+  return base::FeatureList::IsEnabled(kComposeboxCompactMode);
+}
+
+BASE_FEATURE(kComposeboxForceTop, base::FEATURE_ENABLED_BY_DEFAULT);
+
+bool IsComposeboxForceTopEnabled() {
+  return base::FeatureList::IsEnabled(kComposeboxForceTop);
+}
+
+BASE_FEATURE(kComposeboxAIMNudge, base::FEATURE_DISABLED_BY_DEFAULT);
+
+bool IsComposeboxAIMNudgeEnabled() {
+  // Reminder to also check AIM availability.
+  return base::FeatureList::IsEnabled(kComposeboxAIMNudge);
+}
+
+BASE_FEATURE(kComposeboxFetchContextualSuggestionsForMultipleAttachments,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+bool IsComposeboxFetchContextualSuggestionsForMultiAttachmentsEnabled() {
+  return base::FeatureList::IsEnabled(
+      kComposeboxFetchContextualSuggestionsForMultipleAttachments);
+}
+
+BASE_FEATURE(kComposeboxConditionalPlusButton,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+const char kComposeboxConditionalPlusButtonParam[] =
+    "ComposeboxConditionalPlusButtonParam";
+
+ComposeboxConditionalPlusButtonVariant
+GetComposeboxConditionalPlusButtonVariant() {
+  return static_cast<ComposeboxConditionalPlusButtonVariant>(
+      base::GetFieldTrialParamByFeatureAsInt(
+          kComposeboxConditionalPlusButton,
+          kComposeboxConditionalPlusButtonParam,
+          static_cast<int>(ComposeboxConditionalPlusButtonVariant::kDefault)));
+}
+
+bool IsComposeboxConditionalPlusButtonEnabled() {
+  return base::FeatureList::IsEnabled(kComposeboxConditionalPlusButton);
+}
+
+bool IsComposeboxDriveOptionEnabled() {
+  return base::FeatureList::IsEnabled(
+      omnibox::kComposeboxDriveContextMenuOption);
+}
+
+BASE_FEATURE(kComposeboxPhysicalKeyboardReturnKeys,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+bool IsComposeboxPhysicalKeyboardReturnKeysEnabled() {
+  return base::FeatureList::IsEnabled(kComposeboxPhysicalKeyboardReturnKeys);
+}
+
+BASE_FEATURE(kComposeboxAimRichAPCExtraction,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+bool IsComposeboxAimRichAPCExtractionEnabled() {
+  return base::FeatureList::IsEnabled(kComposeboxAimRichAPCExtraction);
+}
+
+BASE_FEATURE(kComposeboxConnectedAppsSetting,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+bool IsComposeboxConnectedAppsSettingEnabled() {
+  return base::FeatureList::IsEnabled(kComposeboxConnectedAppsSetting);
+}

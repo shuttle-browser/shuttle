@@ -1,0 +1,96 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_FEED_FEED_FEATURE_LIST_H_
+#define COMPONENTS_FEED_FEED_FEATURE_LIST_H_
+
+#include "base/component_export.h"
+#include "base/feature_list.h"
+#include "base/time/time.h"
+#include "build/build_config.h"
+#include "components/signin/public/base/consent_level.h"
+
+namespace feed {
+
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kInterestFeedV2);
+
+// Use the new DiscoFeed endpoint.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kDiscoFeedEndpoint);
+
+// Feature that enables xsurface to provide the metrics reporting state to an
+// xsurface feed.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kXsurfaceMetricsReporting);
+
+// Feature that shows placeholder cards instead of a loading spinner at first
+// load.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kFeedLoadingPlaceholder);
+
+// Feature that allows tuning the size of the image memory cache. Value is a
+// percentage of the maximum size calculated for the device.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kFeedImageMemoryCacheSizePercentage);
+
+// Personalize feed for unsigned users.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kPersonalizeFeedUnsignedUsers);
+
+// Returns the consent level needed to request a personalized feed.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+signin::ConsentLevel GetConsentLevelNeededForPersonalizedFeed();
+
+// When enabled, no view cache is used.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kFeedNoViewCache);
+
+// When enabled, depending on params selected, enable different
+// performance-oriented features in Feed.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kFeedPerformanceStudy);
+
+// When enabled, allows the server to unilaterally alter capabilities sent
+// by the client, primarily to retroactively work around bugs.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kSyntheticCapabilities);
+
+// Feature that enables signed-out view demotion.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kFeedSignedOutViewDemotion);
+
+// Feature that enables refreshing feed when Chrome restarts.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kRefreshFeedOnRestart);
+
+// Feature that enables feed containment.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kFeedContainment);
+
+// Feature that unmount RecyclerBinder on view detach to fix a memory leak.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kFeedRecyclerBinderUnmountOnDetach);
+
+// Feature that enables feed streaming.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kFeedStreaming);
+
+// Feature that enables feed audio overviews.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kFeedAudioOverviews);
+
+// Feature that enables opening Incognito windows.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kAndroidOpenIncognitoAsWindow);
+
+// Feature that enables wide screen feed for foldables.
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE(kWideScreenFeedForFoldables);
+
+COMPONENT_EXPORT(COMPONENTS_FEED_FEATURE_LIST)
+BASE_DECLARE_FEATURE_PARAM(base::TimeDelta, kFeedCloseRefreshDelay);
+}  // namespace feed
+
+#endif  // COMPONENTS_FEED_FEED_FEATURE_LIST_H_

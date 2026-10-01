@@ -1,0 +1,41 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/btm/btm_browsertest_utils.h"
+
+#include "net/cookies/cookie_setting_override.h"
+
+namespace content {
+
+bool ContentBrowserTestTpcBlockingBrowserClient::IsFullCookieAccessAllowed(
+    BrowserContext* browser_context,
+    WebContents* web_contents,
+    const GURL& url,
+    const blink::StorageKey& storage_key,
+    net::CookieSettingOverrides overrides) {
+  return impl_.IsFullCookieAccessAllowed(browser_context, web_contents, url,
+                                         storage_key, overrides);
+}
+
+bool ContentBrowserTestTpcBlockingBrowserClient::
+    AreThirdPartyCookiesGenerallyAllowed(BrowserContext* browser_context,
+                                         WebContents* web_contents) {
+  return impl_.AreThirdPartyCookiesGenerallyAllowed(browser_context,
+                                                    web_contents);
+}
+
+bool ContentBrowserTestTpcBlockingBrowserClient::
+    ShouldBtmDeleteInteractionRecords(uint64_t remove_mask) {
+  return impl_.ShouldBtmDeleteInteractionRecords(remove_mask);
+}
+
+bool ContentBrowserTestTpcBlockingBrowserClient::
+    IsPrivacySandboxReportingDestinationAttested(
+        BrowserContext* browser_context,
+        const url::Origin& destination_origin,
+        PrivacySandboxInvokingAPI invoking_api) {
+  return true;
+}
+
+}  // namespace content

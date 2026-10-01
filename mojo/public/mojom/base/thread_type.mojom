@@ -1,0 +1,26 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module mojo_base.mojom;
+
+// Corresponds to |base::ThreadType|
+enum ThreadType {
+  // Suitable for threads that have the least urgency and lowest priority, and
+  // can be interrupted or delayed by other types.
+  kBackground,
+  // Suitable for threads that are less important than normal type, and can be
+  // interrupted or delayed by threads with kDefault type.
+  kUtility,
+  // Default type. The thread priority or quality of service will be set to
+  // platform default.
+  kDefault,
+  // Suitable for user visible  threads, ie. compositing and presenting
+  // the foreground content.
+  kPresentation,
+  // Suitable for threads that handle audio processing, not including direct
+  // audio rendering which should use kRealtimeAudio.
+  kAudioProcessing,
+  // Suitable for low-latency, glitch-resistant audio.
+  kRealtimeAudio,
+};

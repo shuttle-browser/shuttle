@@ -1,0 +1,18 @@
+=== Accessibility tree before go() pass 1 ===
+Document
+++CheckBox Name='My Checkbox' Toggle.ToggleState='Off'
+++Tree Selection.CanSelectMultiple=false Selection.IsSelectionRequired=false
+++++TreeItem Name='Treeitem' ExpandCollapse.ExpandCollapseState='LeafNode' Toggle.ToggleState='Off'
+++++++Text Name='Treeitem' IsControlElement=false
+=== End accessibility tree ===
+AriaProperties changed on role=checkbox, name=My Checkbox
+AriaProperties changed on role=treeitem, name=Treeitem
+ToggleToggleState changed on role=checkbox, name=My Checkbox
+ToggleToggleState changed on role=treeitem, name=Treeitem
+=== Accessibility tree after go() pass 1 ===
+Document
+++CheckBox Name='My Checkbox' Toggle.ToggleState='On' <<<<<< CHANGED
+++Tree Selection.CanSelectMultiple=false Selection.IsSelectionRequired=false
+++++TreeItem Name='Treeitem' ExpandCollapse.ExpandCollapseState='LeafNode' Toggle.ToggleState='On' <<<<<< CHANGED
+++++++Text Name='Treeitem' IsControlElement=false
+=== End accessibility tree ===

@@ -1,0 +1,47 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/rules.gni")
+
+android_library("java") {
+  sources = [
+    "java/src/org/chromium/chrome/browser/tabstrip/TabStripSceneLayerHolder.java",
+    "java/src/org/chromium/chrome/browser/tabstrip/TabStripTopControlLayer.java",
+  ]
+  deps = [
+    "//base:callback_java",
+    "//base:log_java",
+    "//base:metrics_java",
+    "//base:supplier_java",
+    "//chrome/browser/browser_controls/android:java",
+    "//chrome/browser/flags:java",
+    "//chrome/browser/ui/android/toolbar:java",
+    "//components/cached_flags:java",
+    "//ui/android:ui_no_recycler_view_java",
+  ]
+  public_deps = [ ":enums_java" ]
+}
+
+android_library("enums_java") {
+  sources = [
+    "java/src/org/chromium/chrome/browser/tabstrip/StripVisibilityState.java",
+  ]
+  deps = [ "//third_party/androidx:androidx_annotation_annotation_java" ]
+}
+
+robolectric_library("junit") {
+  sources = [ "java/src/org/chromium/chrome/browser/tabstrip/TabStripTopControlLayerUnitTest.java" ]
+  deps = [
+    ":java",
+    "//base:base_java_test_support",
+    "//base:base_junit_test_support",
+    "//chrome/browser/browser_controls/android:java",
+    "//chrome/browser/flags:java",
+    "//chrome/browser/ui/android/toolbar:java",
+    "//chrome/test/android:chrome_java_unit_test_support",
+    "//third_party/junit",
+    "//third_party/mockito:mockito_java",
+    "//ui/android:ui_no_recycler_view_java",
+  ]
+}

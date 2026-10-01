@@ -1,0 +1,27 @@
+[
+  {
+    "namespace": "redundantDefaultAttribute",
+    "description": "Invalid schema, due to specifying a redundant attribute value.",
+    "functions": [
+      {
+        "name": "optionalFalse",
+        "type": "function",
+        "description": "Specifies a returns_async as optional false.",
+        "parameters": [
+          {
+            "type": "any",
+            "name": "anyName",
+            "optional": true
+          }
+        ],
+        "returns_async": {
+          "name": "callback",
+          "description": "Note: we mark this as not supporting promises because 'optional' is otherwise ignored and would not cause an error",
+          "does_not_support_promises": true,
+          "optional": false,
+          "parameters": []
+        }
+      }
+    ]
+  }
+]

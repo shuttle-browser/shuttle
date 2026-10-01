@@ -1,0 +1,75 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_TEST_BASE_CHROME_TEST_UTILS_H_
+#define CHROME_TEST_BASE_CHROME_TEST_UTILS_H_
+
+#include "build/build_config.h"
+#include "chrome/test/base/platform_browser_test.h"
+#include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/web_contents.h"
+
+class Profile;
+
+namespace content {
+class WebContents;
+}
+
+// This namespace contains test utilities that function for both Android and
+// desktop browser tests.
+namespace chrome_test_utils {
+
+// Returns the active WebContents. On desktop this is in the first browser
+// window created by tests, more specific behaviour requires other means.
+// Takes a const PlatformBrowserTest so it can be called from other const
+// methods:
+// void MyConstMemberFunction() const {
+//   auto* web_contents = chrome_test_utils::GetActiveWebContents(this);
+//   ...
+content::WebContents* GetActiveWebContents(
+    const PlatformBrowserTest* browser_test);
+
+// Returns the active Tab. On desktop this is in the first browser
+// window created by tests, more specific behaviour requires other means.
+// Takes a const PlatformBrowserTest so it can be called from other const
+// methods:
+// void MyConstMemberFunction() const {
+//   auto* tab = chrome_test_utils::GetActiveTab(this);
+//   ...
+tabs::TabInterface* GetActiveTab(const PlatformBrowserTest* browser_test);
+
+// Returns the WebContents at the specific index. On Android, this is the
+// specific content from active model.
+content::WebContents* GetWebContentsAt(const PlatformBrowserTest* browser_test,
+                                       int index);
+
+// Returns the active Profile. On desktop this is in the first browser
+// window created by tests, more specific behaviour requires other means.
+Profile* GetProfile(const PlatformBrowserTest* browser_test);
+
+// Navigates `web_contents` to a `url` in and waits until the load stops.
+// If the URL redirects it waits until the last destination is reached.
+// It returns true if the last navigation was successful and false otherwise.
+//
+// Unlike content::NavigateToURL, the caller of this function doesn't have
+// to specify the expected commit URL for URLs causing redirects.
+[[nodiscard]] bool NavigateToURL(content::WebContents* web_contents,
+                                 const GURL& url);
+
+// This class is inherited by unit test fixtures that leverage death tests with
+// a dependency on TestingBrowserProcess. It is necessary as currently death
+// tests will incompletely initialize the test environment, see bug below.
+// TODO(crbug.com/487292986): This should be eliminated once we update chromium
+// unit tests to avoid using listeners for test setup, or all existing death
+// test clients are updated to allow for the existence of the g_browser_process,
+// at which point this can be merged up into `ChromeUnitTestSuiteInitializer`.
+class TestingBrowserProcessDeathTestMixin {
+ public:
+  TestingBrowserProcessDeathTestMixin();
+  ~TestingBrowserProcessDeathTestMixin() = default;
+};
+
+}  // namespace chrome_test_utils
+
+#endif  // CHROME_TEST_BASE_CHROME_TEST_UTILS_H_

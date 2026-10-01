@@ -1,0 +1,51 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module patch.mojom;
+
+import "mojo/public/mojom/base/file.mojom";
+import "sandbox/policy/mojom/sandbox.mojom";
+
+// Keep in sync with //components/zucchini/zucchini.h.
+enum ZucchiniStatus {
+  kStatusSuccess,
+  kStatusInvalidParam,
+  kStatusFileReadError,
+  kStatusFileWriteError,
+  kStatusPatchReadError,
+  kStatusPatchWriteError,
+  kStatusInvalidOldImage,
+  kStatusInvalidNewImage,
+  kStatusDiskFull,
+  kStatusIoError,
+  kStatusFatal,
+};
+
+// Interface to the out-of-process file patcher. The file patcher runs
+// utilities to apply a differential patch to a file, often for the purposes of
+// software updates.
+//
+// FilePatcher is not suitable for processing untrusted patch data, even when
+// running under a sandbox. Patch files should be secured by CUP during normal
+// operation. Consequently, this sandbox is not a security boundary, but it
+// remains useful for browser stability (e.g. isolating OOM crashes).
+//
+// See crbug.com/532928300 for further explanation of why this operation
+// couldn't be made secure against untrusted inputs.
+[ServiceSandbox=sandbox.mojom.Sandbox.kService]
+interface FilePatcher {
+  // Patches `input_file` with `patch_file` using the PuffPatch algorithm and
+  // writes the output to `output_file`. Returns `result` puffin::Status::P_OK
+  // (0) on success.
+  PatchFilePuffPatch(mojo_base.mojom.ReadOnlyFile input_file,
+                     mojo_base.mojom.ReadOnlyFile patch_file,
+                     mojo_base.mojom.File output_file) => (int32 result);
+
+  // Patches `input_file` with `patch_file` using the Zucchini algorithm and
+  // writes the output to `output_file`. Returns 0 on success.
+  PatchFileZucchini(mojo_base.mojom.ReadOnlyFile input_file,
+                    mojo_base.mojom.ReadOnlyFile patch_file,
+                    mojo_base.mojom.File output_file)
+      => (ZucchiniStatus result);
+};

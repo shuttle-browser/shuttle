@@ -1,0 +1,365 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/startup/infobar_utils.h"
+
+#include <memory>
+#include <utility>
+
+#include "base/command_line.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/memory/weak_ptr.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/rand_util.h"
+#include "build/branding_buildflags.h"
+#include "build/buildflag.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/infobars/browser_infobar_manager.h"
+#include "chrome/browser/infobars/infobar_features.h"
+#include "chrome/browser/obsolete_system/obsolete_system.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/session_crashed_bubble.h"
+#include "chrome/browser/ui/startup/automation_infobar_delegate.h"
+#include "chrome/browser/ui/startup/bad_flags_prompt.h"
+#include "chrome/browser/ui/startup/google_api_keys_infobar_delegate.h"
+#include "chrome/browser/ui/startup/obsolete_system_infobar_delegate.h"
+#include "chrome/browser/ui/startup/oscryptasync_availability_infobar_delegate.h"
+#include "chrome/browser/ui/startup/startup_browser_creator.h"
+#include "chrome/browser/ui/startup/startup_types.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/common/chrome_switches.h"
+#include "chrome/common/pref_names.h"
+#include "components/infobars/content/content_infobar_manager.h"
+#include "components/os_crypt/async/browser/os_crypt_async.h"
+#include "components/os_crypt/async/common/encryptor.h"
+#include "components/prefs/pref_service.h"
+#include "components/tabs/public/tab_interface.h"
+#include "content/public/common/content_switches.h"
+#include "google_apis/google_api_keys.h"
+
+#if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt.h"
+#endif
+
+#if BUILDFLAG(CHROME_FOR_TESTING)
+#include "chrome/browser/ui/startup/chrome_for_testing_infobar_delegate.h"
+#endif
+
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+#include "chrome/browser/ui/pdf/infobar/pdf_infobar_controller.h"
+#include "chrome/browser/ui/startup/default_browser_prompt/pin_infobar/pin_infobar_controller.h"
+#endif
+
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
+#include "chrome/browser/ui/views/session_restore_infobar/session_restore_infobar_controller.h"
+#include "chrome/browser/ui/views/session_restore_infobar/session_restore_infobar_model.h"
+#endif
+
+#if BUILDFLAG(IS_WIN) && BUILDFLAG(GOOGLE_CHROME_BRANDING)
+#include "chrome/browser/global_features.h"
+#include "chrome/browser/win/installer_downloader/installer_downloader_controller.h"
+#endif
+
+#if BUILDFLAG(IS_WIN)
+#include "chrome/browser/startup/startup_launch_manager.h"  // nogncheck
+#include "chrome/browser/ui/startup/startup_launch_infobar_manager_impl.h"  // nogncheck
+#endif
+
+namespace {
+bool ShouldShowBadFlagsSecurityWarnings() {
+#if !BUILDFLAG(IS_CHROMEOS)
+  PrefService* local_state = g_browser_process->local_state();
+  if (!local_state) {
+    return true;
+  }
+
+  const auto* pref = local_state->FindPreference(
+      prefs::kCommandLineFlagSecurityWarningsEnabled);
+  DCHECK(pref);
+
+  // The warnings can only be disabled by policy. Default to show warnings.
+  if (pref->IsManaged()) {
+    return pref->GetValue()->GetBool();
+  }
+#endif
+  return true;
+}
+
+// This is a separate function to avoid accidentally reading the switch from
+// `startup_command_line`.
+bool IsAutomationEnabled() {
+  return base::CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kEnableAutomation);
+}
+
+// This is a separate function to avoid accidentally reading the switch from
+// `startup_command_line`.
+bool IsKioskModeEnabled() {
+  return base::CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kKioskMode);
+}
+
+#if BUILDFLAG(CHROME_FOR_TESTING)
+bool IsGpuTest() {
+  return base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+             switches::kTestType) == "gpu";
+}
+#endif
+
+// Shows the "relaunch to restore encryption" infobar on the browser's
+// active tab if OSCryptAsync reports encryption unavailable. The encryptor
+// arrives asynchronously, so the browser may be gone by then.
+void MaybeShowOSCryptAsyncAvailabilityInfoBar(BrowserWindowInterface* browser) {
+  if (!base::FeatureList::IsEnabled(
+          features::kOSCryptAsyncAvailabilityInfoBar)) {
+    return;
+  }
+  g_browser_process->os_crypt_async()->GetInstance(base::BindOnce(
+      [](base::WeakPtr<BrowserWindowInterface> browser,
+         scoped_refptr<os_crypt_async::Encryptor> encryptor) {
+        if (encryptor->IsEncryptionAvailable() || !browser ||
+            browser->GetTabStripModel()->empty()) {
+          return;
+        }
+        content::WebContents* web_contents =
+            browser->GetTabStripModel()->GetActiveWebContents();
+        if (!web_contents) {
+          return;
+        }
+        if (infobars::IsInfoBarMigrated(
+                infobars::InfoBarDelegate::
+                    OSCRYPTASYNC_AVAILABILITY_INFOBAR_DELEGATE)) {
+          auto* browser_infobar_manager =
+              infobars::BrowserInfoBarManager::From(g_browser_process);
+          tabs::TabInterface* tab =
+              tabs::TabInterface::GetFromContents(web_contents);
+          if (browser_infobar_manager && tab) {
+            browser_infobar_manager->Show(
+                tab, infobars::InfoBarDelegate::
+                         OSCRYPTASYNC_AVAILABILITY_INFOBAR_DELEGATE);
+          }
+          return;
+        }
+        auto* infobar_manager =
+            infobars::ContentInfoBarManager::FromWebContents(web_contents);
+        if (infobar_manager) {
+          OSCryptAsyncAvailabilityInfoBarDelegate::Create(infobar_manager);
+        }
+      },
+      browser->GetWeakPtr()));
+}
+}  // namespace
+
+void AddInfoBarsIfNecessary(BrowserWindowInterface* browser,
+                            Profile* profile,
+                            const base::CommandLine& startup_command_line,
+                            chrome::startup::IsFirstRun is_first_run,
+                            bool is_web_app,
+                            bool is_post_crash_launch,
+                            bool was_restarted) {
+  if (!browser || !profile) {
+    return;
+  }
+  tabs::TabInterface* active_tab = browser->GetActiveTabInterface();
+  if (!active_tab) {
+    return;
+  }
+  auto* web_contents = active_tab->GetContents();
+  if (!web_contents) {
+    return;
+  }
+
+  // Show the Automation info bar unless it has been disabled by policy.
+  bool show_bad_flags_security_warnings = ShouldShowBadFlagsSecurityWarnings();
+
+  if (show_bad_flags_security_warnings) {
+#if BUILDFLAG(CHROME_FOR_TESTING)
+    if (!IsGpuTest()) {
+      if (infobars::IsInfoBarMigrated(
+              infobars::InfoBarDelegate::CHROME_FOR_TESTING_INFOBAR_DELEGATE)) {
+        auto* browser_infobar_manager =
+            infobars::BrowserInfoBarManager::From(g_browser_process);
+        if (browser_infobar_manager) {
+          browser_infobar_manager->ShowGlobally(
+              infobars::InfoBarDelegate::CHROME_FOR_TESTING_INFOBAR_DELEGATE);
+        }
+      } else {
+        ChromeForTestingInfoBarDelegate::Create();
+      }
+    }
+#endif
+
+    if (IsAutomationEnabled()) {
+      if (infobars::IsInfoBarMigrated(
+              infobars::InfoBarDelegate::AUTOMATION_INFOBAR_DELEGATE)) {
+        infobars::BrowserInfoBarManager::From(g_browser_process)
+            ->ShowGlobally(
+                infobars::InfoBarDelegate::AUTOMATION_INFOBAR_DELEGATE);
+      } else {
+        AutomationInfoBarDelegate::Create();
+      }
+    }
+  }
+
+  // Do not show any other info bars in Kiosk mode, because it's unlikely that
+  // the viewer can act upon or dismiss them.
+  if (IsKioskModeEnabled()) {
+    return;
+  }
+
+  // Web apps should not display the session restore bubble (crbug.com/40800614)
+  const bool should_display_bubble =
+      !is_web_app && HasPendingUncleanExit(browser->GetProfile());
+  base::UmaHistogramBoolean("Startup.CrashBubbleShown", should_display_bubble);
+  if (should_display_bubble) {
+    SessionCrashedBubble::ShowIfNotOffTheRecordProfile(
+        browser,
+        /*skip_tab_checking=*/false);
+  }
+
+  // These info bars are not shown when the browser is being controlled by
+  // automated tests, so that they don't interfere with tests that assume no
+  // info bars.
+  if (startup_command_line.HasSwitch(switches::kTestType) ||
+      IsAutomationEnabled()) {
+    return;
+  }
+
+  // The below info bars are only added to the first profile which is
+  // launched. Other profiles might be restoring the browsing sessions
+  // asynchronously, so we cannot add the info bars to the focused tabs here.
+  //
+  // We cannot use `chrome::startup::IsProcessStartup` to determine whether
+  // this is the first profile that launched: The browser may be started
+  // without a startup window (`kNoStartupWindow`), or open the profile
+  // picker, which means that `chrome::startup::IsProcessStartup` will already
+  // be `kNo` when the first browser window is opened.
+  static bool infobars_shown = false;
+  if (infobars_shown) {
+    return;
+  }
+  infobars_shown = true;
+
+  if (show_bad_flags_security_warnings) {
+    ShowBadFlagsPrompt(web_contents);
+  }
+
+  infobars::ContentInfoBarManager* infobar_manager =
+      infobars::ContentInfoBarManager::FromWebContents(web_contents);
+
+  if (!google_apis::HasAPIKeyConfigured()) {
+    if (infobars::IsInfoBarMigrated(
+            infobars::InfoBarDelegate::GOOGLE_API_KEYS_INFOBAR_DELEGATE)) {
+      if (auto* manager =
+              infobars::BrowserInfoBarManager::From(g_browser_process)) {
+        manager->Show(
+            tabs::TabInterface::GetFromContents(web_contents),
+            infobars::InfoBarDelegate::GOOGLE_API_KEYS_INFOBAR_DELEGATE);
+      }
+    } else {
+      GoogleApiKeysInfoBarDelegate::Create(infobar_manager);
+    }
+  }
+
+  if (ObsoleteSystem::IsObsoleteNowOrSoon()) {
+    PrefService* local_state = g_browser_process->local_state();
+    if (!local_state ||
+        !local_state->GetBoolean(prefs::kSuppressUnsupportedOSWarning)) {
+      if (infobars::IsInfoBarMigrated(
+              infobars::InfoBarDelegate::OBSOLETE_SYSTEM_INFOBAR_DELEGATE)) {
+        if (auto* manager =
+                infobars::BrowserInfoBarManager::From(g_browser_process)) {
+          manager->Show(
+              tabs::TabInterface::GetFromContents(web_contents),
+              infobars::InfoBarDelegate::OBSOLETE_SYSTEM_INFOBAR_DELEGATE);
+        }
+      } else {
+        ObsoleteSystemInfoBarDelegate::Create(infobar_manager);
+      }
+    }
+  }
+
+  MaybeShowOSCryptAsyncAvailabilityInfoBar(browser);
+
+#if BUILDFLAG(IS_WIN)
+  if (auto* startup_launch_manager =
+          StartupLaunchManager::From(g_browser_process)) {
+    startup_launch_manager->SetInfoBarManager(
+        std::make_unique<StartupLaunchInfoBarManagerImpl>());
+    startup_launch_manager->MaybeShowInfoBars();
+  }
+#endif
+
+#if BUILDFLAG(IS_WIN) && BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  if (auto* controller =
+          g_browser_process->GetFeatures()->installer_downloader_controller()) {
+    controller->MaybeShowInfoBar();
+  }
+#endif
+
+#if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
+  if (is_web_app ||
+      startup_command_line.HasSwitch(switches::kNoDefaultBrowserCheck) ||
+      startup_command_line.HasSwitch(switches::kNoFirstRun)) {
+    return;
+  }
+
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
+  if (base::FeatureList::IsEnabled(features::kSessionRestoreInfobar)) {
+    auto* session_restore_infobar_controller =
+        session_restore_infobar::SessionRestoreInfobarController::From(browser);
+    session_restore_infobar_controller->MaybeShowInfoBar(*profile,
+                                                         is_post_crash_launch);
+  }
+#endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
+
+  // The default browser prompt should only be shown after the first run.
+  if (is_first_run == chrome::startup::IsFirstRun::kNo) {
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+    if (base::FeatureList::IsEnabled(features::kSeparateDefaultAndPinPrompt)) {
+      const int seed = features::kSeparateDefaultAndPinPromptRandSeed.Get();
+      const int choice = (seed > 0) ? (seed % 2) : base::RandIntInclusive(0, 1);
+
+      base::OnceCallback<void(bool)> pdf_callback = base::DoNothing();
+      if (base::FeatureList::IsEnabled(features::kPdfInfoBar)) {
+        pdf_callback = base::BindOnce(
+            &pdf::infobar::PdfInfoBarController::MaybeShowInfoBarAtStartup,
+            browser->GetWeakPtr());
+      }
+
+      if (choice == 0) {
+        // Experiment Arm 1: Show default browser prompt first, then PDF.
+        ShowDefaultBrowserPrompt(profile, std::move(pdf_callback));
+      } else {
+        // Experiment Arm 2: Show Pin to Taskbar prompt first, then PDF.
+        default_browser::PinInfoBarController::MaybeShowInfoBarForBrowser(
+            browser->GetWeakPtr(), std::move(pdf_callback),
+            /*another_infobar_shown=*/false);
+      }
+    } else {
+      // Default browser prompt with either pinning if enabled or fallback to
+      // pdf if enabled.
+      base::OnceCallback<void(bool)> callback = base::DoNothing();
+      if (base::FeatureList::IsEnabled(features::kPdfInfoBar)) {
+        callback = base::BindOnce(
+            &pdf::infobar::PdfInfoBarController::MaybeShowInfoBarAtStartup,
+            browser->GetWeakPtr());
+      }
+      callback = base::BindOnce(
+          &default_browser::PinInfoBarController::MaybeShowInfoBarForBrowser,
+          browser->GetWeakPtr(), std::move(callback));
+      ShowDefaultBrowserPrompt(profile, std::move(callback));
+    }
+#else
+    // Purely default browser path since it's non mac/windows.
+    ShowDefaultBrowserPrompt(profile, base::DoNothing());
+#endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+  }
+#endif  // !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
+}

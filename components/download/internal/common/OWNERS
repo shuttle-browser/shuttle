@@ -1,0 +1,2 @@
+# For adding new file types
+per-file download_stats.cc=file://components/safe_browsing/OWNERS

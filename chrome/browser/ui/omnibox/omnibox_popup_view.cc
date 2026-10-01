@@ -1,0 +1,42 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/omnibox/omnibox_popup_view.h"
+
+#include <string_view>
+
+#include "chrome/browser/ui/omnibox/omnibox_controller.h"
+
+OmniboxPopupView::OmniboxPopupView(OmniboxController* controller)
+    : controller_(controller), construction_time_(base::TimeTicks::Now()) {}
+
+OmniboxPopupView::~OmniboxPopupView() = default;
+
+OmniboxPopupPresenterBase* OmniboxPopupView::presenter() {
+  return nullptr;
+}
+
+OmniboxController* OmniboxPopupView::controller() {
+  return const_cast<OmniboxController*>(
+      const_cast<const OmniboxPopupView*>(this)->controller());
+}
+
+const OmniboxController* OmniboxPopupView::controller() const {
+  return controller_;
+}
+
+std::u16string_view OmniboxPopupView::GetAccessibleButtonTextForResult(
+    size_t line) const {
+  return {};
+}
+
+OmniboxPopupViewBrowserView* OmniboxPopupView::AsOmniboxPopupViewBrowserView() {
+  return nullptr;
+}
+
+bool OmniboxPopupView::IsReverting() const {
+  return false;
+}
+
+void OmniboxPopupView::SetIsReverting(bool reverting) {}

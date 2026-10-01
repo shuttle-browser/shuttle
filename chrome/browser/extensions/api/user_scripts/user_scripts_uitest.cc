@@ -1,0 +1,177 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "base/strings/strcat.h"
+#include "chrome/browser/extensions/api/user_scripts/user_scripts_apitest.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chrome/test/interaction/interactive_browser_test.h"
+#include "content/public/test/browser_test.h"
+#include "extensions/browser/background_script_executor.h"
+#include "extensions/browser/script_result_queue.h"
+#include "extensions/common/extension_id.h"
+#include "extensions/test/extension_test_message_listener.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/interaction/element_identifier.h"
+
+namespace extensions {
+
+class UserScriptsUITest
+    : public InteractiveBrowserTestMixin<UserScriptsAPITest> {
+ public:
+  // Checks that toggle is `!enabled` and then toggles it to `enabled` state.
+  auto CheckCurrentToggleStateAndThenToggleItInUI(
+      ui::ElementIdentifier page_id,
+      const DeepQuery toggle_dom_path,
+      bool enabled) {
+    return Steps(
+        // ClickElement() won't click something off screen so scroll the toggle
+        // into view in case it is not.
+        ScrollIntoView(page_id, toggle_dom_path),
+        // Check the toggle is `!enabled`.
+        EnsurePresent(page_id, toggle_dom_path),
+        CheckJsResultAt(page_id, toggle_dom_path, "(el) => el.checked",
+                        !enabled),
+        // Click the toggle and check it is `enabled`.
+        ClickElement(page_id, toggle_dom_path),
+        CheckJsResultAt(page_id, toggle_dom_path, "(el) => el.checked",
+                        enabled));
+  }
+
+  // Toggles the extensions_features::kUserScriptUserExtensionToggle toggle to
+  // `enabled` state.
+  auto TogglePerExtensionToggleInUI(ui::ElementIdentifier page_id,
+                                    const ExtensionId& extension_id,
+                                    bool enabled) {
+    const DeepQuery kPathToUserScriptsToggle{
+        "extensions-manager",
+        "extensions-detail-view",
+        "extensions-toggle-row#allow-user-scripts",
+        "cr-toggle#crToggle",
+    };
+
+    // Enable the per-extension toggle in the UI.
+    return Steps(
+        // Navigate to the extensions detail page for the extension (where the
+        // toggle lives).
+        NavigateWebContents(page_id,
+                            GURL(base::StrCat({chrome::kChromeUIExtensionsURL,
+                                               "?id=", extension_id.c_str()}))),
+        CheckCurrentToggleStateAndThenToggleItInUI(
+            page_id, kPathToUserScriptsToggle, enabled));
+  }
+
+
+
+  // Checks that the chrome.userScripts API is not available in the background
+  // script.
+  auto VerifyUserScriptsIsNotAvailable(const ExtensionId& extension_id) {
+    // Register the user script in the extension background script and confirm
+    // it registered successfully.
+    return CheckResult(
+        [this, &extension_id]() -> bool {
+          return CheckUserScriptsAPIAvailability(extension_id) == "unavailable";
+        },
+        true, "Checking that the userScripts API is not available");
+  }
+
+  std::string CheckUserScriptsAPIAvailability(const ExtensionId& extension_id) {
+    return BackgroundScriptExecutor::ExecuteScript(
+               profile(), extension_id, "checkApiAvailability();",
+               BackgroundScriptExecutor::ResultCapture::kSendScriptResult)
+        .GetString();
+  }
+
+  // Registers a dynamic user script with the chrome.userScripts API.
+  auto RegisterUserScript(const ExtensionId& extension_id) {
+    // Register the user script in the extension background script and confirm
+    // it registered successfully.
+    return Do([this, extension_id]() {
+      ScriptResultQueue queue;
+      BackgroundScriptExecutor::ExecuteScriptAsync(profile(), extension_id,
+                                                   "registerUserScripts();");
+      SCOPED_TRACE("Waiting for user script registration result");
+      while (true) {
+        // We use a manual ScriptResultQueue loop to filter out potential
+        // "available" messages from the API availability poller that is running
+        // concurrently when this step executes.
+        std::string result = queue.GetNextResult().GetString();
+        if (result == "success") {
+          return;
+        }
+        if (result == "available" || result == "unavailable") {
+          continue;
+        }
+        ADD_FAILURE() << "Unexpected API registration result: " << result;
+        return;
+      }
+    });
+  }
+};
+
+// Tests whether toggling the UI toggle controls whether the user has allowed
+// userScripts API usage.
+IN_PROC_BROWSER_TEST_F(UserScriptsUITest, ToggleControls_UserScriptsAPIUsage) {
+  // Load extension that has API permission to use the userScripts API, but not
+  // the per-extension toggle for userScripts enabled.
+  ExtensionTestMessageListener extension_background_started_listener =
+      ExtensionTestMessageListener("started");
+  const Extension* extension =
+      LoadExtension(test_data_dir_.AppendASCII("user_scripts/allowed_tests"));
+  ASSERT_TRUE(extension);
+  ASSERT_TRUE(extension_background_started_listener.WaitUntilSatisfied());
+
+  const DeepQuery kPathToUserScriptInjectedDiv{
+      "#user-script-code",
+  };
+
+  // This test verifies that:
+  //   1) The userScripts API is initially unavailable.
+  //   2) Enabling the toggle allows for a dynamic user script can be registered
+  //      and injected.
+  //   3) Disabling the toggle causes user scripts to no longer inject
+  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kTab);
+  DEFINE_LOCAL_STATE_IDENTIFIER_VALUE(
+      ui::test::PollingStateObserver<std::string>, kApiAvailability);
+  RunTestSequence(
+      InstrumentTab(kTab),
+
+      // When the UI toggle changes to enable the userScript API the message
+      // path is: webUI (renderer) -> browser -> extension (renderer). Because
+      // of the  multiple hops, the simplest method of checking is just polling
+      // for when the API changes to the desired state.
+      PollState(kApiAvailability,
+                [this, &extension]() {
+                  return CheckUserScriptsAPIAvailability(extension->id());
+                }),
+
+      VerifyUserScriptsIsNotAvailable(extension->id()),
+
+      // Enable the toggle and wait for the userScripts API to become available
+      // to use.
+      TogglePerExtensionToggleInUI(kTab, extension->id(), /*enabled=*/true),
+      WaitForState(kApiAvailability, "available"),
+
+      RegisterUserScript(extension->id()),
+
+      // Navigate tab to a webpage where the user script should inject a <div>.
+      NavigateWebContents(
+          kTab, embedded_test_server()->GetURL("example.com", "/simple.html")),
+      // Ensure the user script injected its <div>.
+      EnsurePresent(kTab, kPathToUserScriptInjectedDiv),
+
+      // Disable the toggle and wait for the userScripts API to become
+      // unavailable to use.
+      TogglePerExtensionToggleInUI(kTab, extension->id(), /*enabled=*/false),
+      WaitForState(kApiAvailability, "unavailable"),
+
+      // Navigate tab to a webpage where the user script should no longer inject
+      // a <div>.
+      NavigateWebContents(
+          kTab, embedded_test_server()->GetURL("example.com", "/simple.html")),
+      // Ensure the user script no longer injects its <div>.
+      EnsureNotPresent(kTab, kPathToUserScriptInjectedDiv));
+}
+
+}  // namespace extensions

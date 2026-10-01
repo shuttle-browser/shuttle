@@ -1,0 +1,8 @@
+This is a testharness.js-based test.
+Found 2 FAIL, 0 TIMEOUT, 0 NOTRUN.
+[FAIL] Setting 'grid-auto-columns' to a flexible length: -3.14fr throws TypeError
+  assert_throws_js: function "() => styleMap.set(propertyName, example.input)" did not throw
+[FAIL] Setting 'grid-auto-rows' to a flexible length: -3.14fr throws TypeError
+  assert_throws_js: function "() => styleMap.set(propertyName, example.input)" did not throw
+Harness: the test ran to completion.
+

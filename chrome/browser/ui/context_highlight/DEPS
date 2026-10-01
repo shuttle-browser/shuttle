@@ -1,0 +1,10 @@
+include_rules = [
+  "+components/page_content_annotations/core/tracked_element_feature.h",
+  "+components/viz/common/surfaces/tracked_element_rects.h",
+]
+
+specific_include_rules = {
+  "context_highlight_tab_feature_unittest.cc": [
+    "+content/browser/renderer_host/mock_render_widget_host.h",
+  ],
+}

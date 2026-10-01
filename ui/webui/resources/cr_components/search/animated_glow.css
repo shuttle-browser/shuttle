@@ -1,0 +1,832 @@
+/* Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #scheme=relative
+ * #css_wrapper_metadata_end */
+
+@property --gradient-angle {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+
+@property --mask-angle {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 0deg;
+}
+
+/* Do not adjust height of ':host'. All children of ':host'
+ * inherit from the searchbox/composebox parent's height and width.
+ */
+:host {
+  --color-dragging-opaque-frost-backup_: rgba(240, 242, 245, 1);
+  --color-drag-placeholder-font: rgba(86, 89, 94, 1);
+  /* Backup color: */
+  --color-search-animated-glow-background: rgba(255, 255, 255, 1);
+  --drag-placeholder-font-family: inherit;
+  --drag-placeholder-line-height: 24px;
+  --drag-placeholder-font-size: 16px;
+
+  --end-angle-expand_: 250deg;
+  --end-angle-listen_: 210deg;
+  --end-angle-submit_: 330deg;
+
+  --expand-timing_: var(--glif-rotation-duration_)
+      var(--standard-curve, var(--search-animated-glow-standard-curve));
+
+  /* All gradient rotation and background blur/border shrinking needs to be at
+   * interval, otherwise border-radius due to border width
+   * may not be at right size at right time. */
+  --glif-rotation-duration_: var(--search-animated-glif-rotation-duration,
+      2s);
+
+  /* Define animated glow stroke width outside of this class to customize
+   * per surface.
+   */
+  --glow-stroke-width_: var(--animated-glow-stroke-width, 2px);
+
+  /* Gradient burst duration */
+  --gradient-burst-duration: 650ms;
+
+  /* Gradient burst rotation angles. */
+  --gradient-angle-start: 170deg;
+  --gradient-angle-end: 225deg;
+  --mask-angle-start: -90deg;
+  --mask-angle-end: 200deg;
+
+  --search-animated-glow-background-z-index: 103;
+  --search-animated-glow-drag-drop-placeholder-z-index: 104;
+  --search-animated-glow-gradient-after-z-index: 101;
+  --search-animated-glow-gradient-z-index: 102;
+  --search-animated-glow-brand-gradient: conic-gradient(
+    rgba(52, 168, 82, 0) 0deg,
+    rgba(52, 168, 82, 1) 38.9738deg,
+    rgba(255, 211, 20, 1) 62.3678deg,
+    rgba(255, 70, 65, 1) 87.0062deg,
+    rgba(49, 134, 255, 1) 107.428deg,
+    rgba(49, 134, 255, 0.5) 204.48deg,
+    rgba(49, 134, 255, 0) 308.88deg,
+    rgba(52, 168, 82, 0) 360deg
+  );
+
+  --search-animated-glow-gradient-curve: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Expand duration and standard curve vars
+   * are taken from parent, if any; otherwise use default here. */
+  --search-animated-glow-expand-duration: 600ms;
+  --search-animated-glow-standard-curve: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --start-angle-expand_: 90deg;
+  --start-angle-submit_: 200deg;
+  --start-angle-listen_: 35deg;
+
+  border-radius: inherit;
+
+  display: contents;
+
+  --glow-animation-delay: 0ms;
+}
+
+:host([animation-state='expanding'][energy-effect-animation-enabled]) {
+  --glow-animation-delay: 150ms;
+}
+
+/*
+ * Style the host as a solid white base layer for the static energy effect
+ * to prevent dark flashing gaps when the inner glow animation runs.
+ */
+:host-context([energy-effect-enabled_]):host([entrypoint-name='Realbox']:not([energy-effect-animation-enabled]):not([is-listening])) {
+  background-color: var(--cr-composebox-background-color, var(--color-search-animated-glow-background));
+  border-radius: inherit;
+  display: block;
+  inset: 0;
+  position: absolute;
+}
+
+/*
+ * Hide the legacy outer glow when energy effect is active but animations
+ * are disabled, keeping only the inner border-width animation.
+ */
+:host-context([energy-effect-enabled_]):host([entrypoint-name='Realbox']:not([energy-effect-animation-enabled]):not([is-listening])) .gradient-outer-glow {
+  display: none;
+}
+
+.audio-animation {
+  opacity: 1;
+  transition: opacity 300ms ease-in-out;
+}
+
+#dragDropPlaceholder {
+  color: var(--color-drag-placeholder-font);
+  display: none;
+  font-family: var(--drag-placeholder-font-family);
+  font-size: var(--drag-placeholder-font-size);
+  left: 20px;
+  line-height: var(--drag-placeholder-line-height);
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  /* Top var defined by whoever uses this parent; default: 21px. */
+  top: var(--search-animated-glow-drag-drop-placeholder-top, 21px);
+  transition: opacity 300ms;
+}
+
+:host([animation-state='dragging']) #dragDropPlaceholder {
+  display: block;
+  opacity: 1;
+  z-index: var(--search-animated-glow-drag-drop-placeholder-z-index, 4);
+}
+
+:host([energy-effect-animation-enabled]) .gradient-blur-wrapper {
+  display: contents;
+  border-radius: inherit;
+}
+
+.gradient,
+.double-gradient,
+.double-gradient-mask {
+  border-radius: inherit;
+  contain: paint;
+  inset: 0;
+  position: absolute;
+}
+
+:host([animation-state='expanding']) .gradient.gradient-outer-glow {
+  /* Standard-curve can be defined by parent; otherwise use default. */
+  animation: blur-expand var(--expand-timing_);
+}
+
+@keyframes blur-expand {
+  17% {
+    filter: blur(30px);
+    opacity: 17.5%;
+  }
+}
+
+.gradient::before,
+.double-gradient::before {
+  /*
+  * The actual gradient border and inner glow. In
+  * its raw form without .background's effects, it's a
+  * colored pinwheel circle. 2 gradients so the effect is brighter,
+  * but only for dragging animation (not needed for others).
+  */
+  aspect-ratio: 1 / 1; /* Square shape. */
+  background: var(--search-animated-glow-brand-gradient);
+  /* 50% == circle, so it looks like it isn't moving when rotating. */
+  border-radius: 50%;
+  contain: paint;
+  content: '';
+  filter: blur(20px);
+  height: auto; /* Controlled by aspect-ratio. */
+  left: 50%;
+  opacity: 0;
+  position: absolute;
+  rotate: 0deg;
+  /*
+  * Scale squashes the gradient vertically so its middle is not shown,
+  * making it a glow, not a pinwheel. Too much, and it will be too
+  * tall of a glow.
+  */
+  scale: 1 0.4;
+  top: 50%;
+  translate: -50% -50%;
+  /*
+   * Hypotenuse rule - for rotating circle to be as wide as composebox
+   * (which is a rectangle) is at all points, its width and height must
+   *  be >= diagonal of composebox. Thus, use width of 145%
+   * (height set by aspect ratio) since sqrt(2) = ~141%.
+   * Take triangle half of rectangle composebox to find diagonal:
+   * a^2 + b^2 = c^2 -> c = sqrt(a^2 + b^2). Let x be max(a,b) via cqmax.
+   * sqrt(2x^2) -> 141% of max of container (x). Chose 145% for slight buffer.
+   * Take max of either height or width of parent (outer box). In this case,
+   * it must be width given all searchboxes are wider than tall. Therefore, let
+   * x = parent width in this case. Could try to use cqMax, but will fail debug
+   * check due to asking for element attributes that do not exist yet.
+   * ***IMPORTANT***: Swap height and width definitions in this class
+   * if your height is bigger than width in the searchbox.
+  */
+  width: 145%;
+}
+
+:host([entrypoint-name='Omnibox'][animation-state='expanding'])
+    .double-gradient::before,
+:host(:not([entrypoint-name='Omnibox'])[animation-state='expanding'])
+    .gradient::before {
+  animation: gradient-spin-expand var(--glif-rotation-duration_)
+    var(--search-animated-glow-gradient-curve) forwards;
+}
+
+:host([entrypoint-name='Omnibox'][animation-state='expanding'])
+    .gradient::before {
+   --gradient-spin-expand-peak-opacity_: 0.4;
+  animation: gradient-spin-expand var(--glif-rotation-duration_)
+    var(--search-animated-glow-gradient-curve) forwards;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host([entrypoint-name='Omnibox'][animation-state='expanding'])
+      .gradient::before {
+    --gradient-spin-expand-peak-opacity_: 0.3;
+  }
+  :host([entrypoint-name='ContextualTasks']) {
+    --color-composebox-scrim-background: rgba(16, 18, 24, 1);
+    --color-drag-placeholder-font:  rgba(230, 232, 240, 1);
+    --color-dragging-opaque-frost-backup_: rgba(44, 45, 53, 1);
+    --color-search-animated-glow-background:  rgba(31, 31, 31, 1);
+  }
+}
+
+:host([entrypoint-name='Omnibox'][animation-state='expanding']) .background,
+:host([entrypoint-name='Omnibox'][animation-state='expanding']) .gradient {
+  border: var(--glow-stroke-width_) solid transparent;
+}
+
+:host([animation-state='dragging']) .gradient,
+:host(:not([entrypoint-name='Omnibox'])) .double-gradient {
+  pointer-events: none;
+  z-index: var(--search-animated-glow-gradient-z-index, 2);
+}
+
+:host([animation-state='dragging'][energy-effect-animation-enabled]),
+:host([animation-state='expanding'][energy-effect-animation-enabled][is-zero-state]),
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='Realbox']),
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='OmniboxEverywhere']),
+:host([animation-state='submitting'][energy-effect-animation-enabled]) {
+  --dragging-glow-gradient: conic-gradient(
+    #3186ff 34%,
+    #9378ff 37%,
+    #f96bd6 39%,
+    #fc413d 41%,
+    #fc413d 48%,
+    #ff6b2b 50%,
+    #fec700 52%,
+    #ffdb0f 56%,
+    #88de42 58%,
+    #0ebc5f 61%,
+    #0ebc5f 65%,
+    #2eaab2 70%,
+    #00a9bb 72%,
+    #3186ff 73%,
+    #3186ff 83%,
+    #3186ff 100%
+  );
+}
+
+:host([animation-state='dragging']) .gradient::before,
+:host([animation-state='dragging']) .double-gradient::before {
+  animation: ambient-spin 6s linear infinite;
+  filter: blur(20px);
+  opacity: 1;
+  z-index: var(--search-animated-glow-gradient-z-index, 2);
+}
+
+/* TODO(b/543432985): Generalize energy-effect animation rules so new
+ * embedders don't require adding explicit entrypoint-name selectors. */
+:host([animation-state='dragging'][energy-effect-animation-enabled]) .gradient-blur-wrapper .gradient::before,
+:host([animation-state='dragging'][energy-effect-animation-enabled]) .gradient-sharp-wrapper .double-gradient::before,
+:host([animation-state='expanding'][energy-effect-animation-enabled][is-zero-state]) .gradient-blur-wrapper .gradient::before,
+:host([animation-state='expanding'][energy-effect-animation-enabled][is-zero-state]) .gradient-sharp-wrapper .double-gradient::before,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='Realbox']) .gradient-blur-wrapper .gradient::before,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='Realbox']) .gradient-sharp-wrapper .double-gradient::before,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='OmniboxEverywhere']) .gradient-blur-wrapper .gradient::before,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='OmniboxEverywhere']) .gradient-sharp-wrapper .double-gradient::before,
+:host([animation-state='submitting'][energy-effect-animation-enabled]) .gradient-blur-wrapper .gradient::before,
+:host([animation-state='submitting'][energy-effect-animation-enabled]) .gradient-sharp-wrapper .double-gradient::before {
+  animation: none;
+  background: var(--dragging-glow-gradient);
+  opacity: 1;
+  rotate: var(--gradient-angle, 0deg);
+  scale: 1 0.8;
+  z-index: var(--search-animated-glow-gradient-z-index, 2);
+}
+
+:host([animation-state='submitting']) .gradient::before,
+:host([animation-state='submitting']) .gradient.gradient-outer-glow::before {
+  animation: gradient-spin-expand var(--glif-rotation-duration_)
+    var(--search-animated-glow-gradient-curve) forwards;
+}
+
+:host([animation-state='submitting']) .gradient.gradient-outer-glow {
+  animation: blur-expand var(--expand-timing_);
+}
+
+.gradient::after {
+  /*
+  * Deepest backdrop, behind .gradient, to block input text
+  * in dragging mode.
+  */
+  background-color: var(--cr-composebox-background-color,
+      var(--color-search-animated-glow-background));
+  border-radius: inherit;
+  content: '';
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  transition: opacity 500ms;
+  z-index: var(--search-animated-glow-gradient-after-z-index, 1);
+}
+
+:host([animation-state='dragging']) .gradient::after {
+  opacity: 1;
+}
+
+@keyframes ambient-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes blur-close {
+  17% {
+    filter: blur(30px);
+    opacity: 17.5%;
+  }
+}
+
+@keyframes gradient-spin-expand {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--start-angle-expand_));
+  }
+  12% {
+    opacity: var(--gradient-spin-expand-peak-opacity_, 1);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--end-angle-expand_));
+  }
+}
+
+/* So can go from "expanding" to "submit" and still trigger gradient-spin
+ * (same animation not run twice unless it's a new animation or class). */
+@keyframes gradient-spin-submit {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--start-angle-submit_));
+  }
+  17% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--end-angle-submit_));
+  }
+}
+
+/* So can go from "expanding" to "listen" and still trigger gradient-spin. */
+@keyframes gradient-spin-listen {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--start-angle-listen_));
+  }
+  8% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--end-angle-listen_));
+  }
+}
+
+.background {
+  /* The peephole whose border shrinks the background::before
+   * element so the gradient shows up behind it as a border.
+   * Activates once upon init; again whenever gradient-border-width-close
+   * triggered */
+  animation: gradient-border-width var(--expand-timing_);
+  border: 0 solid transparent;
+  border-radius: inherit;
+  contain: paint;
+  inset: 0;
+  transition: border-width 100ms;
+  position: absolute;
+}
+
+@keyframes gradient-border-width {
+  0% {
+    border-width: 0;
+  }
+  17% {
+    border-width: var(--glow-stroke-width_);
+  }
+  100% {
+    border-width: 0;
+  }
+}
+
+.double-gradient-mask::before,
+.background::before {
+  /* In expand/submit mode: is the deepest background covering
+   * .gradient. The input is layered on top of this.
+   * In dragging mode: the frosted glass middle background on top
+   * of the gradient. .gradient::after is the deepest background
+   * in dragging mode. Because .background and the gradient
+   * are blurred, it makes the gradient glow instead
+   * of being fully solid. */
+  background-color: var(--cr-composebox-background-color,
+      var(--color-search-animated-glow-background));
+  border-radius: inherit;
+  content: '';
+  contain: paint;
+  filter: blur(0);
+  position: absolute;
+}
+
+.background::before {
+  /*
+  * In expand/submit mode: is the deepest background covering
+  * .gradient. The input is layered on top of this.
+  * In dragging mode: the frosted glass middle background on top of the
+  * gradient. .gradient::after is the deepest background in dragging mode.
+  * Because .background and the gradient are blurred,
+  * it makes the gradient glow instead of being fully solid.
+  */
+  inset: 0;
+  transition:
+    opacity 300ms,
+    z-index 1ms 300ms;
+}
+
+.double-gradient-mask::before {
+  inset: var(--glow-stroke-width_);
+}
+
+:host([animation-state='expanding']) .background::before {
+  animation: plate-background-blur-on-expand var(--expand-timing_);
+}
+
+:host([animation-state='expanding'][is-collapsible]) .background::before {
+  animation: color-pulse-on-expand var(--expand-duration,
+      var(--search-animated-glow-expand-duration))
+      var(--standard-curve, var(--search-animated-glow-standard-curve));
+}
+
+@keyframes plate-background-blur-on-expand {
+  0% {
+    filter: blur(0);
+  }
+  11% {
+    filter: blur(7px);
+  }
+  100% {
+    filter: blur(0);
+  }
+}
+
+@keyframes plate-background-blur-on-listen {
+  0% {
+    filter: blur(0);
+  }
+  12% {
+    filter: blur(7px);
+  }
+  30% {
+    filter: blur(0.5px);
+  }
+  100% {
+    filter: blur(0);
+  }
+}
+
+@keyframes color-pulse-on-expand {
+  40% {
+    background: var(--color-composebox-scrim-background);
+  }
+  58% {
+    background: var(--color-composebox-scrim-background);
+  }
+}
+
+:host([entrypoint-name='Omnibox'][animation-state='expanding'])
+    .background::before {
+  animation: none;
+  filter: blur(8px);
+}
+
+:host([animation-state='dragging'][energy-effect-animation-enabled]) .gradient-blur-wrapper,
+:host([animation-state='expanding'][energy-effect-animation-enabled][is-zero-state]) .gradient-blur-wrapper,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='Realbox']) .gradient-blur-wrapper,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='OmniboxEverywhere']) .gradient-blur-wrapper,
+:host([animation-state='submitting'][energy-effect-animation-enabled]) .gradient-blur-wrapper {
+  border-radius: inherit;
+  display: block;
+  filter: blur(8px);
+  inset: -2px;
+  overflow: hidden;
+  position: absolute;
+}
+
+:host([animation-state='expanding'][energy-effect-animation-enabled][is-zero-state]) .gradient-blur-wrapper,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='Realbox']) .gradient-blur-wrapper,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='OmniboxEverywhere']) .gradient-blur-wrapper,
+:host([animation-state='submitting'][energy-effect-animation-enabled]) .gradient-blur-wrapper {
+  animation:
+    animateOpacity var(--gradient-burst-duration) var(--glow-animation-delay) both,
+    animateAngles var(--gradient-burst-duration)
+      var(--standard-decelerate-curve) var(--glow-animation-delay) both,
+    animateBlur var(--gradient-burst-duration) linear var(--glow-animation-delay) both;
+}
+
+@keyframes animateOpacity {
+  0% {
+    animation-timing-function: var(--standard-decelerate-curve);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  50% {
+    animation-timing-function: var(--emphasized-accelerate-curve);
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes animateAngles {
+  0% {
+    --gradient-angle: var(--gradient-angle-start);
+    --mask-angle: var(--mask-angle-start);
+  }
+  100% {
+    --gradient-angle: var(--gradient-angle-end);
+    --mask-angle: var(--mask-angle-end);
+  }
+}
+
+@keyframes animateBlur {
+  0% {
+    filter: blur(1px);
+  }
+  15% {
+    filter: blur(20px);
+  }
+  25% {
+    filter: blur(5px);
+  }
+  45% {
+    filter: blur(7px);
+  }
+  100% {
+    filter: blur(1px);
+  }
+}
+
+:host([animation-state='dragging'][energy-effect-animation-enabled]) .gradient-sharp-wrapper,
+:host([animation-state='expanding'][energy-effect-animation-enabled][is-zero-state]) .gradient-sharp-wrapper,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='Realbox']) .gradient-sharp-wrapper,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='OmniboxEverywhere']) .gradient-sharp-wrapper,
+:host([animation-state='submitting'][energy-effect-animation-enabled]) .gradient-sharp-wrapper {
+  border-radius: inherit;
+  display: block;
+  filter: blur(2px);
+  inset: 0;
+  overflow: hidden;
+  position: absolute;
+}
+
+:host([animation-state='expanding'][energy-effect-animation-enabled][is-zero-state]) .gradient-sharp-wrapper,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='Realbox']) .gradient-sharp-wrapper,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='OmniboxEverywhere']) .gradient-sharp-wrapper,
+:host([animation-state='submitting'][energy-effect-animation-enabled]) .gradient-sharp-wrapper {
+  animation:
+    animateOpacity var(--gradient-burst-duration) var(--glow-animation-delay) both,
+    animateAngles var(--gradient-burst-duration)
+      var(--standard-decelerate-curve) var(--glow-animation-delay) both;
+}
+
+:host([animation-state='dragging'][energy-effect-animation-enabled]) .gradient-blur-wrapper .gradient,
+:host([animation-state='expanding'][energy-effect-animation-enabled][is-zero-state]) .gradient-blur-wrapper .gradient,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='Realbox']) .gradient-blur-wrapper .gradient,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='OmniboxEverywhere']) .gradient-blur-wrapper .gradient,
+:host([animation-state='submitting'][energy-effect-animation-enabled]) .gradient-blur-wrapper .gradient {
+  scale: 7 1.5;
+  -webkit-mask-image: conic-gradient(
+    from var(--mask-angle, 0deg),
+    transparent 0%,
+    transparent 50%,
+    black 68%,
+    black 75%,
+    transparent 89%,
+    transparent 100%
+  );
+  mask-image: conic-gradient(
+    from var(--mask-angle, 0deg),
+    transparent 0%,
+    transparent 50%,
+    black 68%,
+    black 75%,
+    transparent 89%,
+    transparent 100%
+  );
+}
+
+:host([animation-state='dragging'][energy-effect-animation-enabled]) .double-gradient,
+:host([animation-state='expanding'][energy-effect-animation-enabled][is-zero-state]) .double-gradient,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='Realbox']) .double-gradient,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='OmniboxEverywhere']) .double-gradient,
+:host([animation-state='submitting'][energy-effect-animation-enabled]) .double-gradient {
+  scale: 7 1.5;
+  -webkit-mask-image: conic-gradient(
+    from var(--mask-angle, 0deg),
+    transparent 0%,
+    transparent 65%,
+    black 70%,
+    transparent 89%,
+    transparent 100%
+  );
+  mask-image: conic-gradient(
+    from var(--mask-angle, 0deg),
+    transparent 0%,
+    transparent 65%,
+    black 70%,
+    transparent 89%,
+    transparent 100%
+  );
+  position: absolute;
+  inset: 0;
+}
+
+:host([animation-state='dragging'][energy-effect-animation-enabled]) .gradient-sharp-wrapper .double-gradient::before,
+:host([animation-state='expanding'][energy-effect-animation-enabled][is-zero-state]) .gradient-sharp-wrapper .double-gradient::before,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='Realbox']) .gradient-sharp-wrapper .double-gradient::before,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='OmniboxEverywhere']) .gradient-sharp-wrapper .double-gradient::before,
+:host([animation-state='submitting'][energy-effect-animation-enabled]) .gradient-sharp-wrapper .double-gradient::before {
+  animation: none;
+  background: var(--dragging-glow-gradient);
+  filter: none;
+  opacity: 1;
+  rotate: var(--gradient-angle, 0deg);
+  scale: 1.2;
+}
+
+:host([animation-state='dragging'][energy-effect-animation-enabled]) .gradient-sharp-wrapper .double-gradient::before {
+  z-index: var(--search-animated-glow-gradient-z-index, 2);
+}
+
+:host([animation-state='dragging']) .background {
+  animation: none;
+  border-width: 2px;
+  pointer-events: none;
+  z-index: var(--search-animated-glow-background-z-index, 3);
+}
+
+:host([animation-state='dragging'][energy-effect-animation-enabled]) .background,
+:host([animation-state='expanding'][energy-effect-animation-enabled][is-zero-state]) .background,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='Realbox']) .background,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='OmniboxEverywhere']) .background,
+:host([animation-state='submitting'][energy-effect-animation-enabled]) .background {
+  /*
+  * Remove transparent border and inset by 2px so background covers
+  * the center up to the composebox border, letting the gradient
+  * (which is at inset: 0 relative to host, so -1px relative to composebox)
+  * show as an outer glow.
+  * Set background-color to be opaque to cover the gradient inside the box.
+  */
+  animation: none;
+  background-color: var(--cr-composebox-background-color, var(--color-search-animated-glow-background));
+  border-width: 0;
+  inset: 1px;
+  pointer-events: none;
+}
+
+/*
+ * The same style as the entry above, except for the inset value to avoid the
+ * double border issue at the corners.
+ */
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='Realbox']) .background,
+:host([animation-state='expanding'][energy-effect-animation-enabled][entrypoint-name='OmniboxEverywhere']) .background {
+  animation: none;
+  background-color: var(--cr-composebox-background-color, var(--color-search-animated-glow-background));
+  border-width: 0;
+  inset: 0;
+  pointer-events: none;
+}
+
+:host([animation-state='dragging'][energy-effect-animation-enabled]) .background {
+  z-index: var(--search-animated-glow-background-z-index, 3);
+}
+
+:host([animation-state='expanding']) .background {
+  animation: gradient-border-width-close-expand var(--expand-timing_);
+}
+
+:host([animation-state='submitting']) .background {
+  animation: gradient-border-width-close-submit var(--expand-timing_);
+}
+
+:host([animation-state='listening']) .background,
+:host([animation-state='voice-exited']) .background {
+  animation: none;
+}
+
+:host([animation-state='dragging']) .background::before {
+  animation: none;
+  /* Frosted glass color; overlays the actual composebox background: */
+  background-color: var(--color-search-animated-glow-dragging-opaque-frost,
+      var(--color-dragging-opaque-frost-backup_));
+  filter: blur(25px);
+  z-index: var(--search-animated-glow-background-z-index, 3);
+}
+
+@keyframes gradient-border-width-close-expand {
+  0% {
+    border-width: 0;
+  }
+  17% {
+    border-width: var(--glow-stroke-width_);
+  }
+  100% {
+    border-width: 0;
+  }
+}
+
+@keyframes gradient-border-width-close-listen {
+  0% {
+    border-width: 0;
+  }
+  11% {
+    border-width: var(--glow-stroke-width_);
+  }
+  100% {
+    border-width: 0;
+  }
+}
+
+@keyframes gradient-border-width-close-submit {
+  0% {
+    border-width: 0;
+  }
+  17% {
+    border-width: var(--glow-stroke-width_);
+  }
+  100% {
+    border-width: 0;
+  }
+}
+
+/* Use opacity and pointer-events to utilize fade transition. */
+:host(:not([is-listening])) .audio-animation {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Hide audio animation via fade if permission prompt is showing. */
+:host(.permission-prompt-showing) .audio-animation {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#recordingWave {
+  block-size: 48px;
+  order: 1;  /* Always middle item. */
+}
+
+/* Overlay that goes over any of the above effects
+ * (background, etc.). Hide during non listening mode. Flex-display otherwise.
+ */
+#fullContainerOverlay {
+  align-items: flex-start;
+  display: none;
+  flex-direction: column;
+  justify-content: flex-start;
+  /* Since ':host' has no size or position, this is sized and
+   * positioned relative to their nearest positioned ancestor, which
+   * is from the parent 'composebox' or 'searchbox'.
+   */
+  inset: 0;
+  padding-top: 6px;
+  padding-bottom: var(--animated-search-padding-bottom, 10px);
+  pointer-events: auto;
+  /* Ensure it does not take up space in composebox/searchbox layout,
+   * but takes height and width from closest relative parent, which is
+   * from composebox component.
+   */
+}
+
+:host([is-listening]) #fullContainerOverlay {
+  display: flex;
+  min-block-size: 112px;
+  position: relative;
+  width: 100%;
+}
+
+/* Only when the file carousel is above the recording wave,
+ * and only the file carousel is showing, is the recording wave
+ * overlapping with the submit/stop button. To avoid that, add
+ * padding bottom only in this mode.
+ */
+:host([showing-only-carousel-on-top-of-input]) #fullContainerOverlay {
+  padding-bottom: calc(var(--voice-bottom-actions-height, 40px) +
+      var(--voice-bottom-actions-bottom, 12px));
+}

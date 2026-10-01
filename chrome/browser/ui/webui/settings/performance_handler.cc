@@ -1,0 +1,173 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webui/settings/performance_handler.h"
+
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/values.h"
+#include "chrome/browser/feedback/show_feedback_page.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "components/performance_manager/public/features.h"
+#include "components/url_matcher/url_util.h"
+#include "content/public/browser/cpu_performance.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_ui.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
+#include "url/gurl.h"
+
+using content::WebContents;
+
+namespace settings {
+
+PerformanceHandler::PerformanceHandler() = default;
+PerformanceHandler::~PerformanceHandler() = default;
+
+void PerformanceHandler::RegisterMessages() {
+  web_ui()->RegisterMessageCallback(
+      "getDeviceHasBattery",
+      base::BindRepeating(&PerformanceHandler::HandleGetDeviceHasBattery,
+                          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "openPerformanceFeedbackDialog",
+      base::BindRepeating(&PerformanceHandler::HandleOpenFeedbackDialog,
+                          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "validateTabDiscardExceptionRule",
+      base::BindRepeating(
+          &PerformanceHandler::HandleValidateTabDiscardExceptionRule,
+          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "getCurrentOpenSites",
+      base::BindRepeating(&PerformanceHandler::HandleGetCurrentOpenSites,
+                          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "getCpuPerformanceInfo",
+      base::BindRepeating(&PerformanceHandler::HandleGetCpuPerformanceInfo,
+                          base::Unretained(this)));
+}
+
+void PerformanceHandler::OnJavascriptAllowed() {
+  performance_handler_observer_.Observe(
+      performance_manager::user_tuning::BatterySaverModeManager::GetInstance());
+}
+
+void PerformanceHandler::OnJavascriptDisallowed() {
+  performance_handler_observer_.Reset();
+}
+
+void PerformanceHandler::OnDeviceHasBatteryChanged(bool device_has_battery) {
+  DCHECK(IsJavascriptAllowed());
+  FireWebUIListener("device-has-battery-changed", device_has_battery);
+}
+
+base::Value PerformanceHandler::GetCurrentOpenSites() {
+  base::ListValue hosts;
+  std::set<std::pair<base::TimeTicks, std::string>, std::greater<>>
+      last_active_time_host_pairs;
+  const Profile* const profile = Profile::FromWebUI(web_ui());
+
+  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+      [profile, &last_active_time_host_pairs](BrowserWindowInterface* browser) {
+        if (browser->GetProfile() != profile) {
+          return true;
+        }
+
+        TabStripModel* const tab_strip_model = browser->GetTabStripModel();
+        for (int i = 0; i < tab_strip_model->count(); ++i) {
+          WebContents* const web_contents =
+              tab_strip_model->GetWebContentsAt(i);
+          const GURL url = web_contents->GetLastCommittedURL();
+          if (url.is_valid() && url.SchemeIsHTTPOrHTTPS()) {
+            last_active_time_host_pairs.insert(std::make_pair(
+                web_contents->GetLastActiveTimeTicks(), url.GetHost()));
+          }
+        }
+        return true;
+      });
+
+  absl::flat_hash_set<std::string> added_hosts;
+  for (auto& [last_active_time, host] : last_active_time_host_pairs) {
+    if (bool newly_inserted = added_hosts.insert(host).second; newly_inserted) {
+      hosts.Append(host);
+    }
+  }
+
+  return base::Value(std::move(hosts));
+}
+
+void PerformanceHandler::HandleGetCurrentOpenSites(
+    const base::ListValue& args) {
+  CHECK_EQ(1U, args.size());
+  const base::Value& callback_id = args[0];
+
+  AllowJavascript();
+  ResolveJavascriptCallback(callback_id, GetCurrentOpenSites());
+}
+
+void PerformanceHandler::HandleGetDeviceHasBattery(
+    const base::ListValue& args) {
+  CHECK_EQ(1U, args.size());
+  const base::Value& callback_id = args[0];
+  AllowJavascript();
+  ResolveJavascriptCallback(
+      callback_id, base::Value(performance_manager::user_tuning::
+                                   BatterySaverModeManager::GetInstance()
+                                       ->DeviceHasBattery()));
+}
+
+void PerformanceHandler::HandleOpenFeedbackDialog(const base::ListValue& args) {
+  CHECK_EQ(1U, args.size());
+  const std::string category_tag = args[0].GetString();
+
+  BrowserWindowInterface* browser =
+      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
+          web_ui()->GetWebContents());
+  DCHECK(browser);
+  std::string unused;
+  chrome::ShowFeedbackPage(browser,
+                           feedback::kFeedbackSourceSettingsPerformancePage,
+                           unused, unused, category_tag, unused);
+}
+
+void PerformanceHandler::HandleValidateTabDiscardExceptionRule(
+    const base::ListValue& args) {
+  CHECK_EQ(2U, args.size());
+  const base::Value& callback_id = args[0];
+  const std::string rule = args[1].GetString();
+
+  AllowJavascript();
+
+  url_matcher::util::FilterComponents components;
+
+  bool is_valid = url_matcher::util::FilterToComponents(
+      rule, &components.scheme, &components.host, &components.match_subdomains,
+      &components.port, &components.path, &components.query);
+
+  ResolveJavascriptCallback(callback_id, base::Value(is_valid));
+}
+
+void PerformanceHandler::HandleGetCpuPerformanceInfo(
+    const base::ListValue& args) {
+  CHECK_EQ(1U, args.size());
+  const base::Value& callback_id = args[0];
+
+  AllowJavascript();
+
+  // The dictionary keys here must match the properties in
+  // chrome/browser/resources/settings/performance_page/performance_page.ts.
+  base::DictValue info;
+  info.Set("hardwareTier",
+           base::Value(static_cast<int>(content::cpu_performance::GetTier())));
+  info.Set("model", base::Value(content::cpu_performance::GetModel()));
+  info.Set("cores", base::Value(content::cpu_performance::GetCores()));
+
+  ResolveJavascriptCallback(callback_id, std::move(info));
+}
+
+}  // namespace settings

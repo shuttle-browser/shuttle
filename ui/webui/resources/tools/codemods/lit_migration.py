@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import argparse
+import os
+import sys
+
+_HERE_PATH = os.path.dirname(__file__)
+_SRC_PATH = os.path.normpath(
+  os.path.join(_HERE_PATH, '..', '..', '..', '..', '..')
+)
+
+sys.path.append(os.path.join(_SRC_PATH, 'third_party', 'node'))
+import node
+
+"""
+ Instructions to run this script locally.
+ 1) From the root of the repository run the following command
+
+    npm install --prefix ui/webui/resources/tools/codemods/ --no-bin-links \
+        --no-fund --ignore-scripts --omit=dev --omit=optional
+
+ 2) Invoke the script from the root directory of the repository. For example
+
+    python3 ui/webui/resources/tools/codemods/lit_migration.py \
+        --file ui/webui/resources/cr_components/most_visited/most_visited.ts
+
+    To keep the HTML content in the .html file (but with styles removed and
+    some automated modifications made), instead of putting it into a .html.ts
+    wrapper file, pass the --output-html flag:
+
+    python3 ui/webui/resources/tools/codemods/lit_migration.py \
+        --file ui/webui/resources/cr_components/most_visited/most_visited.ts \
+        --output-html
+"""
+
+
+def main(argv):
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--file', required=True)
+  parser.add_argument('--output-html', dest='output_html', action='store_true')
+  args = parser.parse_args(argv)
+
+  print(f'Migrating {args.file}...')
+
+  # Update TS file.
+  out = node.RunNode(
+    [
+      os.path.join(_HERE_PATH, 'node_modules/jscodeshift/bin/jscodeshift.js'),
+      '--transform=' + os.path.join(_HERE_PATH, 'lit_migration.js'),
+      '--extensions=ts',
+      '--parser=ts',
+      '--no-babel',
+      '--fail-on-error',
+      args.file,
+    ]
+  )
+
+  # Update HTML/CSS file.
+  if args.output_html:
+    out = node.RunNode(
+      [
+        os.path.join(_HERE_PATH, 'lit_migration_templates.mjs'),
+        '--outputHtml',
+        '--file=' + args.file,
+      ]
+    )
+  else:
+    out = node.RunNode(
+      [
+        os.path.join(_HERE_PATH, 'lit_migration_templates.mjs'),
+        '--file=' + args.file,
+      ]
+    )
+
+  print('DONE')
+
+
+if __name__ == '__main__':
+  main(sys.argv[1:])

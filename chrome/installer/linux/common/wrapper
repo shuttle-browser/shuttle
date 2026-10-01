@@ -1,0 +1,30 @@
+#!/bin/bash
+#
+# Copyright 2011 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Let the wrapped binary know that it has been run through the wrapper.
+export CHROME_WRAPPER="`readlink -f "$0"`"
+
+HERE="`dirname "$CHROME_WRAPPER"`"
+
+# Use system xdg utilities. But first create mimeapps.list if it doesn't
+# exist; some systems have bugs in xdg-mime that make it fail without it.
+xdg_app_dir="${XDG_DATA_HOME:-$HOME/.local/share/applications}"
+mkdir -p "$xdg_app_dir"
+[ -f "$xdg_app_dir/mimeapps.list" ] || touch "$xdg_app_dir/mimeapps.list"
+
+export CHROME_VERSION_EXTRA="@@channel"
+
+# We don't want bug-buddy intercepting our crashes. http://crbug.com/41012584
+export GNOME_DISABLE_CRASH_DIALOG=SET_BY_GOOGLE_CHROME
+
+# Sanitize std{in,out,err} because they'll be shared with untrusted child
+# processes (http://crbug.com/40079595).
+exec < /dev/null
+exec > >(exec cat)
+exec 2> >(exec cat >&2)
+
+# Note: exec -a below is a bashism.
+exec -a "$0" "$HERE/@@PROGNAME" "$@"

@@ -1,0 +1,223 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_SKILLS_PUBLIC_SKILLS_METRICS_H_
+#define COMPONENTS_SKILLS_PUBLIC_SKILLS_METRICS_H_
+
+#include <cstddef>
+
+#include "base/time/time.h"
+#include "components/skills/public/skill.h"
+#include "url/gurl.h"
+namespace skills {
+
+namespace mojom {
+enum class SkillsManagementPage;
+enum class SkillsManagementAction;
+enum class SkillsPromptRefinementOutcome;
+}  // namespace mojom
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+
+// LINT.IfChange(SkillsDialogAction)
+enum class SkillsDialogAction {
+  kOpened = 0,
+  kSaved = 1,
+  kCancelled = 2,
+  kRefined = 3,
+  kDeleted = 4,
+  kMaxValue = kDeleted,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/skills/enums.xml:SkillsDialogAction)
+
+// LINT.IfChange(SkillsFetchResult)
+enum class SkillsFetchResult {
+  kSuccess = 0,
+  kEmptyResponseBody = 1,
+  kEmptyResponseHeader = 2,
+  kProtoParseFailure = 3,
+  kNetworkError = 4,
+  kMaxValue = kNetworkError,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/skills/enums.xml:SkillsFetchResult)
+
+// LINT.IfChange(SkillsInvokeAction)
+enum class SkillsInvokeAction {
+  kFirstParty = 0,
+  kUserCreated = 1,
+  kDerivedFromFirstParty = 2,
+  kUnknown = 3,
+  kEnterprise = 4,
+  kDerivedFromEnterprise = 5,
+  kMaxValue = kDerivedFromEnterprise,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/skills/enums.xml:SkillsInvokeAction)
+
+// LINT.IfChange(SkillsInvokeResult)
+enum class SkillsInvokeResult {
+  kSuccess = 0,
+  // Tried to execute a nonexistent or deleted skill ID
+  kSkillNotFound = 1,
+  // The Glic panel took too long to open
+  kTimeout = 2,
+  kMaxValue = kTimeout,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/skills/enums.xml:SkillsInvokeResult)
+
+// LINT.IfChange(SkillsSaveResult)
+enum class SkillsSaveResult {
+  kSuccess = 0,
+  // The UI was closed before the operation finished
+  kUiContextLost = 1,
+  // Tried to update a nonexistent or deleted skill ID
+  kSkillNotFound = 2,
+  // The underlying database or Sync layer failed to write the new data
+  kWriteFailed = 3,
+  // SkillsService was not found
+  kServiceNotFound = 4,
+  // Sync hasn't finished initializing on startup
+  kServiceNotReady = 5,
+  // The UI sent an empty name or prompt
+  kInvalidRequest = 6,
+  kMaxValue = kInvalidRequest,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/skills/enums.xml:SkillsSaveResult)
+
+// LINT.IfChange(SkillsRefineResult)
+enum class SkillsRefineResult {
+  kSuccess = 0,
+  // Model failed to return a response
+  kModelExecutionFailed = 1,
+  // Failed to parse the protobuf
+  kParseError = 2,
+  // Model returned a response, but the list was empty
+  kNoSuggestions = 3,
+  // OptimizationGuideKeyedService was null
+  kServiceUnavailable = 4,
+  // UI sent an empty prompt
+  kInvalidRequest = 5,
+  kMaxValue = kInvalidRequest,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/skills/enums.xml:SkillsRefineResult)
+// LINT.IfChange(SkillsDownloadRequestStatus)
+enum class SkillsDownloadRequestStatus {
+  kSent = 0,
+  kResponseReceived = 1,
+  kAlreadyRunning = 2,
+  kTimedOut = 3,
+  kMaxValue = kTimedOut,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/skills/enums.xml:SkillsDownloadRequestStatus)
+
+// LINT.IfChange(SkillsManagementError)
+enum class SkillsManagementError {
+  kTabControllerDNE = 0,
+  kSkillsServiceNotReady = 1,
+  k1pSkillDNE = 2,
+  kMaxValue = k1pSkillDNE,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/skills/enums.xml:SkillsManagementError)
+
+// LINT.IfChange(EnterprisePublishedSkillsError)
+enum class EnterprisePublishedSkillsError {
+  kUnknown = 0,
+  // The policy defined more skills than the maximum allowed limit
+  kExceedsLimit = 1,
+  // An entry in the list was not a JSON dictionary
+  kInvalidType = 2,
+  // The skill was missing a required 'url' or 'hash' field
+  kMissingUrlOrHash = 3,
+  // The URL was malformed or not using an HTTP/HTTPS scheme
+  kInvalidUrl = 4,
+  // The URL was already declared by a previous entry in the list
+  kDuplicateUrl = 5,
+  kMaxValue = kDuplicateUrl,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/enterprise/enums.xml:EnterprisePublishedSkillsError)
+
+// LINT.IfChange(SkillsDialogEntryPoint)
+enum class SkillsDialogEntryPoint {
+  kUnknown = 0,
+  kWebClientBlank = 1,           // + button in skill preview menu
+  kWebClientPrefilled = 2,       // Save as a skill
+  kWebClientRemix = 3,           // Edit a 1P skill
+  kManagementPageBlank = 4,      // Add new skill
+  kManagementPagePrefilled = 5,  // Edit existing skill
+  kManagementPageRemix = 6,      // Edit 1P skill
+  kMaxValue = kManagementPageRemix,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/skills/histograms.xml:SkillsDialogEntryPointAndState)
+
+// Determines if the dialog should open in edit mode vs. creation mode
+// based on whether the skill is new, a 1P template, or an existing user skill.
+bool IsEditMode(const skills::Skill* skill);
+
+SkillsDialogEntryPoint ResolveEntryPointForWebClient(
+    const skills::Skill* skill);
+
+SkillsDialogEntryPoint ResolveEntryPointForManagementPage(
+    const skills::Skill* skill);
+
+// TODO(crbug.com/477385216): Update to use an enum for creation mode.
+// Records user interactions within the Skills Creation or Edit dialogs.
+void RecordSkillsDialogAction(SkillsDialogAction action,
+                              SkillsDialogEntryPoint entrypoint,
+                              bool is_edit_mode);
+
+// Records the execution of a skill and its type.
+void RecordSkillsInvokeAction(SkillsInvokeAction action);
+
+// Records the terminal outcome (success or specific error) of attempting to
+// invoke a skill. This is logged after the client attempts to open the
+// panel and trigger the skill execution.
+void RecordSkillsInvokeResult(SkillsInvokeResult result);
+
+void RecordSkillsPromptRefinementOutcome(
+    skills::mojom::SkillsPromptRefinementOutcome outcome);
+
+// Records the terminal outcome of an attempt to save a new skill or update
+// an existing one. This captures backend availability, database write
+// status, and UI context state.
+void RecordSkillsSaveResult(SkillsSaveResult result);
+
+// Records the terminal outcome of a skill prompt refinement request. This
+// captures the success or failure of the Optimization Guide ML model
+// execution and response parsing.
+void RecordSkillsRefineResult(SkillsRefineResult result);
+
+// Records the end-to-end latency of a skill prompt refinement request.
+void RecordSkillsRefineLatency(base::TimeDelta latency);
+
+// Records the current total number of skills the user possesses.
+// This is called periodically by the SkillsMetricsProvider to capture
+// the user's status throughout the session.
+void RecordUserSkillCount(size_t skill_count);
+
+// Records user actions on the Skills management pages.
+void RecordSkillsManagementAction(skills::mojom::SkillsManagementPage page,
+                                  skills::mojom::SkillsManagementAction action);
+
+// Records the result of a first-party skill list download attempt from
+// static content server link.
+void RecordSkillsFetchResult(SkillsFetchResult result);
+
+// Records the HTTP response code received when downloading skills.
+void RecordSkillsHttpCode(int http_code);
+
+// Records the status of a skills download request.
+void RecordSkillsDownloadRequestStatus(SkillsDownloadRequestStatus status);
+
+// Records errors encountered during skills management operations.
+void RecordSkillsManagementError(SkillsManagementError error);
+
+// Appends openStartTime query parameter to the GURL with current time.
+GURL AppendOpenStartTime(const GURL& url);
+
+// Records validation errors when parsing the EnterprisePublishedSkills policy.
+void RecordEnterprisePublishedSkillsError(EnterprisePublishedSkillsError error);
+
+}  // namespace skills
+
+#endif  // COMPONENTS_SKILLS_PUBLIC_SKILLS_METRICS_H_

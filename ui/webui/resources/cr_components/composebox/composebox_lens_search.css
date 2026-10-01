@@ -1,0 +1,29 @@
+/* Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #scheme=relative
+ * #css_wrapper_metadata_end */
+
+/* Styling for the icon-only button version */
+#lensIcon {
+  --cr-icon-button-fill-color: var(--color-composebox-font-light);
+  --cr-icon-button-hover-background-color: var(--color-composebox-voice-button-hover-background);
+  --cr-icon-button-icon-size: 20px;
+  --cr-icon-button-size: 36px;
+}
+
+#lensSearchPill {
+  align-items: center;
+  background-color: var(--color-composebox-context-entrypoint-hover-background);
+  border: none;
+  color: var(--color-searchbox-results-foreground);
+  display: flex;
+  font-size: 13px;
+  height: var(--cr-icon-button-height, 32px);
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 100px;
+}

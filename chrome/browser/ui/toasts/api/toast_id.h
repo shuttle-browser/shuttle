@@ -1,0 +1,89 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_TOASTS_API_TOAST_ID_H_
+#define CHROME_BROWSER_UI_TOASTS_API_TOAST_ID_H_
+
+#include <string>
+#include <string_view>
+
+// Each toast is supposed to have its own unique toast id and corresponding
+// string name. New additions to ToastId enum should also be added to
+// tools/metrics/histograms/metadata/toasts/enums.xml and toasts that
+// adds an action/close button should add an entry to
+// tools/metrics/actions/actions.xml.
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+
+// LINT.IfChange(ToastId)
+enum class ToastId {
+  kLinkCopied = 0,
+  kMinValue = kLinkCopied,
+  kImageCopied = 1,
+  kLinkToHighlightCopied = 2,
+  kAddedToReadingList = 3,
+  // kLensOverlay = 4,
+  kNonMilestoneUpdate = 5,
+  // kAddedToComparisonTable = 6,
+  kClearBrowsingData = 7,
+  // kPlusAddressOverride = 8,
+  kSyncEsbOn = 9,
+  kSyncEsbOnWithoutActionButton = 10,
+  kSyncEsbOff = 11,
+  kTabGroupSyncTabRemoved = 12,
+  kTabGroupSyncUserJoined = 13,
+  kTabGroupSyncRemovedFromGroup = 14,
+  kVideoFrameCopied = 15,
+  kClosePinnedTab = 16,
+  kGeminiWorkingOnTask = 17,
+  kDiceUserMigrated = 18,
+  kTabGroupSharingVersionUpToDate = 19,
+  kEmailVerified = 20,
+  kGlicShareImageFailed = 21,
+  kCopiedToClipboard = 22,
+  kEnhancedBundledSecuritySettings = 23,
+  kSkillSaved = 24,
+  kSkillDeleted = 25,
+  kAutofillAiFetchEntityErrorMessage = 26,
+  kTranslate = 27,
+  kAutofillAiSaveToWalletErrorMessage = 28,
+  kRecordReplay = 29,
+  kAutoSignIn = 30,
+  kMultistepFilterSuggestion = 31,        // Deprecated: Feature removed.
+  kMultistepFilterSuggestionRecent = 32,  // Deprecated: Feature removed.
+  kSkillSavedWithoutInvokeButton = 33,
+  kSendTabToSelfTabOpened = 34,
+  kSendTabToSelfTabsOpenedInBackground = 35,
+  kSendTabToSelfSuccess = 36,
+  kReportUnsafeSiteConfirmation = 37,
+  kSendTabToSelfFailure = 38,
+  kSendTabToSelfSuccessThrottled = 39,
+  kDefaultBrowserUpdateSuccess = 40,
+  kSendTabToSelfNoInternetConnection = 41,
+  kIndigoInvokeError = 42,
+  kTabStripSwitchDelayedHorizontal = 43,
+  kTabStripSwitchDelayedVertical = 44,
+  kAutofillAiPreFetchErrorMessage = 45,
+  kEnterpriseCopyAudit = 46,
+  kEnterpriseCopyKeptInManagedChrome = 47,
+  kDictationError = 48,
+  kDictationStopped = 49,
+  kGlicSelectionHiddenForSite = 50,
+  kEnterpriseCopyWarning = 51,
+  kEnterpriseCopyBlocked = 52,
+  kIndigoDeleteError = 53,
+  kIndigoDeleteSuccess = 54,
+  kAtMemorySpiiFetchErrorMessage = 55,
+  kDictationNoMicrophoneError = 56,
+  kMaxValue = kDictationNoMicrophoneError,
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/toasts/enums.xml:ToastId)
+
+// Returns the string equivalent name persisted to logs for `toast_id`.
+// New additions should also be added to
+// tools/metrics/histograms/metadata/toasts/histograms.xml
+std::string_view GetToastName(ToastId toast_id);
+
+#endif  // CHROME_BROWSER_UI_TOASTS_API_TOAST_ID_H_

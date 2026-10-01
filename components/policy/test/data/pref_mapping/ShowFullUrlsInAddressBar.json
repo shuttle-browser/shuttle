@@ -1,0 +1,22 @@
+[
+  {
+    "os": [
+      "win",
+      "linux",
+      "mac",
+      "chromeos",
+      "fuchsia",
+      "android"
+    ],
+    "can_be_recommended": true,
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "omnibox.prevent_url_elisions",
+      "default_value": false,
+      "default_for_enterprise_users": false,
+      "values_to_test": [
+        true,
+        false
+      ]
+    }
+  }
+]

@@ -1,0 +1,38 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "media/mojo/mojom/audio_processing_mojom_traits.h"
+
+namespace mojo {
+
+// static
+bool StructTraits<media::mojom::AudioProcessingStatsDataView,
+                  media::AudioProcessingStats>::
+    Read(media::mojom::AudioProcessingStatsDataView input,
+         media::AudioProcessingStats* out_stats) {
+  out_stats->echo_return_loss = input.echo_return_loss();
+  out_stats->echo_return_loss_enhancement =
+      input.echo_return_loss_enhancement();
+  return true;
+}
+
+// static
+bool StructTraits<media::mojom::AudioProcessingSettingsDataView,
+                  media::AudioProcessingSettings>::
+    Read(media::mojom::AudioProcessingSettingsDataView input,
+         media::AudioProcessingSettings* out_settings) {
+  *out_settings = media::AudioProcessingSettings();
+  out_settings->echo_cancellation = input.echo_cancellation();
+  out_settings->noise_suppression = input.noise_suppression();
+  out_settings->automatic_gain_control = input.automatic_gain_control();
+  out_settings->multi_channel_capture_processing =
+      input.multi_channel_capture_processing();
+  out_settings->use_loopback_aec_reference = input.use_loopback_aec_reference();
+#if BUILDFLAG(CHROME_WIDE_ECHO_CANCELLATION)
+  out_settings->voice_isolation = input.voice_isolation();
+#endif
+  return true;
+}
+
+}  // namespace mojo

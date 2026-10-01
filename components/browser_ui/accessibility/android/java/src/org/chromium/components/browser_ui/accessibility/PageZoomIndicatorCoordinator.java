@@ -1,0 +1,264 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.components.browser_ui.accessibility;
+
+import static org.chromium.build.NullUtil.assumeNonNull;
+
+import android.view.LayoutInflater;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.accessibility.AccessibilityEvent;
+import android.widget.PopupWindow;
+
+import org.chromium.base.Callback;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.content_public.browser.HostZoomMap;
+import org.chromium.content_public.browser.NavigationHandle;
+import org.chromium.content_public.browser.WebContents;
+import org.chromium.content_public.browser.WebContentsObserver;
+import org.chromium.ui.accessibility.AccessibilityState;
+import org.chromium.ui.base.DeviceFormFactor;
+
+import java.util.function.Supplier;
+
+/**
+ * Coordinator for the page zoom indicator. This class is responsible for creating and managing the
+ * page zoom indicator view.
+ */
+@NullMarked
+public class PageZoomIndicatorCoordinator {
+    private static final long AUTO_DISMISS_TIMEOUT_MS = 2000;
+
+    private final PageZoomManager mManager;
+    private final PageZoomIndicatorMediator mMediator;
+    private final Supplier<@Nullable View> mZoomIndicatorViewSupplier;
+    private final Runnable mDismissalRunnable = this::hide;
+    private @Nullable ZoomEventsObserver mZoomEventsObserver;
+    private @Nullable Runnable mOnDismissCallback;
+    private @Nullable Callback<Double> mOnZoomLevelChangedCallback;
+    private @Nullable PopupWindow mPopupWindow;
+    private @Nullable View mView;
+    private boolean mShouldHaveDismissalTimer;
+
+    /**
+     * @param zoomIndicatorViewSupplier Supplier of the view to anchor the indicator to.
+     * @param manager The manager used to interact with the zoom functionality.
+     */
+    public PageZoomIndicatorCoordinator(
+            Supplier<@Nullable View> zoomIndicatorViewSupplier, PageZoomManager manager) {
+        mZoomIndicatorViewSupplier = zoomIndicatorViewSupplier;
+        mManager = manager;
+        mMediator = new PageZoomIndicatorMediator(mManager);
+
+        mZoomEventsObserver =
+                new ZoomEventsObserver() {
+                    @Override
+                    public void onZoomLevelChanged(String host, double newZoomLevel) {
+                        setTooltip();
+                        if (!mManager.canShowPopupWindow(host)) return;
+                        WebContents webContents = mManager.getWebContents();
+                        if (webContents != null && !isPopupWindowShowing()) {
+                            showInternal(/* shouldHaveDismissalTimer= */ true);
+                        } else if (isPopupWindowShowing()) {
+                            mMediator.updateZoomPercentage();
+                            if (mShouldHaveDismissalTimer) {
+                                resetDismissalTimer();
+                            }
+                        }
+                    }
+                };
+    }
+
+    /**
+     * Called when the native library is initialized. Since the zoom events observer needs to be
+     * scoped by profile, we need to wait until the native library is initialized to add the
+     * observer.
+     */
+    public void onNativeInitialized() {
+        assert mZoomEventsObserver != null;
+        mManager.addZoomEventsObserver(mZoomEventsObserver);
+        setTooltip();
+    }
+
+    /**
+     * @param onDismissCallback The callback to be invoked.
+     */
+    public void setOnDismissCallbacks(@Nullable Runnable onDismissCallback) {
+        mOnDismissCallback = onDismissCallback;
+    }
+
+    /**
+     * @param onZoomLevelChangedCallback The callback to be invoked when the zoom level changes. The
+     *     double parameter is the new zoom level.
+     */
+    public void setOnZoomLevelChangedCallback(
+            @Nullable Callback<Double> onZoomLevelChangedCallback) {
+        mOnZoomLevelChangedCallback = onZoomLevelChangedCallback;
+    }
+
+    /** Show the zoom feature UI to the user. */
+    public void show() {
+        showInternal(/* shouldHaveDismissalTimer= */ false);
+    }
+
+    private void showInternal(boolean shouldHaveDismissalTimer) {
+        if (!mManager.isPageZoomSupported()) return;
+        View anchorView = mZoomIndicatorViewSupplier.get();
+        if (anchorView == null
+                || !DeviceFormFactor.isNonMultiDisplayContextOnTablet(anchorView.getContext())) {
+            return;
+        }
+        mShouldHaveDismissalTimer = shouldHaveDismissalTimer;
+        if (mPopupWindow == null) {
+            mView =
+                    LayoutInflater.from(anchorView.getContext())
+                            .inflate(R.layout.page_zoom_indicator_view, null);
+
+            mView.setOnHoverListener(this::onHover);
+            mPopupWindow = mMediator.buildPopupWindow(mView, this::hide);
+        }
+        if (mPopupWindow.isShowing()) {
+            if (shouldHaveDismissalTimer) {
+                resetDismissalTimer();
+            }
+            return;
+        }
+
+        mMediator.pushProperties();
+        assumeNonNull(mView);
+
+        // Post the accessibility event to ensure the view is fully ready to receive focus before
+        // the announcement is made. This prevents a race condition where TalkBack might focus on an
+        // intermediate, unlabeled view.
+        mView.post(() -> sendPaneChangeAccessibilityEvent(/* isShowing= */ true));
+        mMediator.showPopupWindow(anchorView, mPopupWindow);
+        if (shouldHaveDismissalTimer) {
+            resetDismissalTimer();
+        }
+
+        PageZoomUma.logZoomIndicatorClicked();
+    }
+
+    /** Hide the zoom feature UI from the user. */
+    public void hide() {
+        mShouldHaveDismissalTimer = false;
+        if (mView != null) {
+            mView.removeCallbacks(mDismissalRunnable);
+        }
+        if (mPopupWindow != null) {
+            mPopupWindow.dismiss();
+            sendPaneChangeAccessibilityEvent(/* isShowing= */ false);
+        }
+        if (mOnDismissCallback != null) mOnDismissCallback.run();
+    }
+
+    /** Clean-up views and children during destruction. */
+    public void destroy() {
+        hide();
+        if (mView != null) {
+            mView.removeCallbacks(mDismissalRunnable);
+            mView.setOnHoverListener(null);
+        }
+        if (mPopupWindow != null) {
+            mPopupWindow.setOnDismissListener(null);
+            mPopupWindow = null;
+        }
+        mView = null;
+        mOnZoomLevelChangedCallback = null;
+        mOnDismissCallback = null;
+
+        if (mZoomEventsObserver != null) {
+            mManager.removeZoomEventsObserver(mZoomEventsObserver);
+            mZoomEventsObserver = null;
+        }
+    }
+
+    /** Returns true if the given zoom level is the default zoom level for the current Profile. */
+    public boolean isZoomLevelDefault() {
+        return mManager.isZoomLevelDefault();
+    }
+
+    /** Returns true if the popup window is showing. */
+    public boolean isPopupWindowShowing() {
+        return mPopupWindow != null && mPopupWindow.isShowing();
+    }
+
+    /** Sets the tooltip to the current zoom level. */
+    public void setTooltip() {
+        if (!mManager.isPageZoomSupported()) return;
+        if (mOnZoomLevelChangedCallback != null) {
+            WebContents webContents = mManager.getWebContents();
+            // Depending on when getZoomLevel is called, the web contents may be transitioning
+            // between pages, and the final url may not have been posted. In such cases, return
+            // zoom level would be 0.0 or default. Instead we wait until this transition is
+            // complete, and then return the correct zoom level.
+            if (webContents != null
+                    && webContents.getNavigationController().isInitialNavigation()) {
+                new WebContentsObserver(webContents) {
+                    @Override
+                    public void didFinishNavigationInPrimaryMainFrame(
+                            NavigationHandle navigationHandle) {
+                        WebContents webContents = getWebContents();
+                        if (webContents != null && mOnZoomLevelChangedCallback != null) {
+                            if (!webContents.isDestroyed()) {
+                                mOnZoomLevelChangedCallback.onResult(
+                                        HostZoomMap.getZoomLevel(webContents));
+                            }
+                        }
+                        observe(null);
+                    }
+                };
+            } else {
+                mOnZoomLevelChangedCallback.onResult(mManager.getZoomLevel());
+            }
+        }
+    }
+
+    private void resetDismissalTimer() {
+        if (mView != null) {
+            mView.removeCallbacks(mDismissalRunnable);
+            mView.postDelayed(mDismissalRunnable, AUTO_DISMISS_TIMEOUT_MS);
+        }
+    }
+
+    private boolean onHover(View v, MotionEvent event) {
+        if (!mShouldHaveDismissalTimer) return false;
+        int action = event.getAction();
+        if (action == MotionEvent.ACTION_HOVER_ENTER || action == MotionEvent.ACTION_HOVER_MOVE) {
+            if (mView != null) mView.removeCallbacks(mDismissalRunnable);
+        } else if (action == MotionEvent.ACTION_HOVER_EXIT) {
+            resetDismissalTimer();
+        }
+        return false;
+    }
+
+    /**
+     * Sends accessibility events for pane appearance/disappearance when the message is shown/hidden
+     * respectively. This should ideally move accessibility focus automatically to/out of the
+     * message view as applicable.
+     *
+     * @param isShowing Whether the message is visible. {@code true} if shown, {@code false} if
+     *     hidden.
+     */
+    private void sendPaneChangeAccessibilityEvent(boolean isShowing) {
+        AccessibilityEvent event =
+                AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED);
+        if (isShowing) {
+            event.setContentChangeTypes(AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_APPEARED);
+        } else {
+            event.setContentChangeTypes(AccessibilityEvent.CONTENT_CHANGE_TYPE_PANE_DISAPPEARED);
+        }
+        AccessibilityState.sendAccessibilityEvent(event);
+    }
+
+    boolean onHoverForTesting(int action) {
+        if (mView == null) return false;
+        MotionEvent event = MotionEvent.obtain(0, 0, action, 0, 0, 0);
+        boolean result = onHover(mView, event);
+        event.recycle();
+        return result;
+    }
+}

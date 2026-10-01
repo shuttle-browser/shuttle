@@ -1,0 +1,35 @@
+include_rules = [
+  "-chrome",
+
+  "+chrome/browser/ash/preferences",
+
+  "+chrome/browser/ash/accessibility",
+  "+chrome/browser/ash/base",
+  "+chrome/browser/ash/child_accounts/parent_access_code",
+  "+chrome/browser/ash/drive",
+  "+chrome/browser/ash/input_method",
+  "+chrome/browser/ash/login",
+  "+chrome/browser/ash/profiles",
+  "+chrome/browser/ash/system",
+  "+chrome/browser/download",
+  "+chrome/browser/prefs",
+  "+chrome/browser/ash/policy/skyvault",
+  # We don't want more dependencies on c/b/ui/ash.
+  "+chrome/browser/ui/ash/login",
+  "+chrome/browser/ui/ash/system",
+  "+chrome/common/chrome_constants.h",
+  "+chrome/common/chrome_features.h",
+  "+chrome/common/pref_names.h",
+  "+chrome/test/base",
+]
+
+specific_include_rules = {
+  "preferences_browsertest\\.cc": [
+    "+chrome/browser/browser_process.h",
+  ],
+  "preferences_unittest\\.cc": [
+    "+chrome/browser/ash/settings/scoped_cros_settings_test_helper.h",
+    "+chrome/browser/ash/settings/scoped_testing_cros_settings.h",
+    "+chrome/browser/global_features.h"
+  ]
+}

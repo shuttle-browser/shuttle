@@ -1,0 +1,246 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/level_up/ui/level_up_progress_view.h"
+
+#import "base/strings/string_number_conversions.h"
+#import "base/strings/sys_string_conversions.h"
+#import "ios/chrome/browser/level_up/ui/level_up_progress_bar.h"
+#import "ios/chrome/browser/shared/ui/elements/gradient/multi_color_gradient_view.h"
+#import "ios/chrome/browser/shared/ui/symbols/symbols.h"
+#import "ios/chrome/common/ui/colors/semantic_color_names.h"
+#import "ios/chrome/common/ui/util/constraints_ui_util.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "ui/base/l10n/l10n_util.h"
+
+namespace {
+
+// The card corner radius.
+const CGFloat kCardCornerRadius = 24.0;
+// The opacity of the card shadow.
+const CGFloat kCardShadowOpacity = 1.0;
+// The blur radius of the card shadow.
+const CGFloat kCardShadowRadius = 2.0;
+// The vertical offset of the card shadow.
+const CGFloat kCardShadowOffset = 1.0;
+// The color alpha of the card shadow.
+const CGFloat kCardShadowAlpha = 0.05;
+// Unified spacing constant for padding and vertical stacks.
+const CGFloat kLayoutSpacing = 16.0;
+// The spacing inside the text vertical stack view.
+const CGFloat kTextStackSpacing = 12.0;
+// The thickness height of a progress task.
+// The font size of the card header.
+const CGFloat kHeaderFontSize = 15.0;
+// The size of the task completion badge icon.
+const CGFloat kCompletionBadgeSize = 40.0;
+// The size of the checkered flag icon inside the badge.
+const CGFloat kCheckeredFlagIconSize = 16.0;
+// The spacing inside the completion row.
+const CGFloat kCompletionRowSpacing = 16.0;
+
+}  // namespace
+
+@implementation LevelUpProgressView {
+  // Label displaying the user's active level title.
+  UILabel* _levelLabel;
+  // View containing the progress tasks.
+  LevelUpProgressBar* _progressBar;
+  // Gradient container view displaying the completed task badge.
+  MultiColorGradientView* _completionBadgeContainer;
+  // Label displaying remaining tasks progress instructions.
+  UILabel* _subtitleLabel;
+  // Switch toggling task notifications.
+  UISwitch* _notificationToggleSwitch;
+}
+
+- (instancetype)initWithFrame:(CGRect)frame {
+  self = [super initWithFrame:frame];
+  if (self) {
+    self.contentView.backgroundColor =
+        [UIColor colorNamed:kPrimaryBackgroundColor];
+    self.contentView.layer.cornerRadius = kCardCornerRadius;
+    self.contentView.layer.masksToBounds = YES;
+
+    self.layer.shadowColor =
+        [UIColor colorWithRed:0 green:0 blue:0 alpha:kCardShadowAlpha].CGColor;
+    self.layer.shadowOpacity = kCardShadowOpacity;
+    self.layer.shadowRadius = kCardShadowRadius;
+    self.layer.shadowOffset = CGSizeMake(0, kCardShadowOffset);
+    self.layer.masksToBounds = NO;
+
+    UIStackView* headerView = [self createHeaderView];
+    _progressBar = [[LevelUpProgressBar alloc] init];
+    _completionBadgeContainer = [self createCompletionBadgeContainer];
+    _subtitleLabel = [self createSubtitleLabel];
+    _notificationToggleSwitch = [self createNotificationToggleSwitch];
+    UIStackView* subtitleContainer = [self createSubtitleContainer];
+    UIStackView* mainStackView =
+        [[UIStackView alloc] initWithArrangedSubviews:@[
+          headerView, _progressBar, subtitleContainer
+        ]];
+    mainStackView.translatesAutoresizingMaskIntoConstraints = NO;
+    mainStackView.axis = UILayoutConstraintAxisVertical;
+    mainStackView.spacing = kLayoutSpacing;
+
+    [self.contentView addSubview:mainStackView];
+
+    AddSameConstraintsWithInset(mainStackView, self.contentView,
+                                kLayoutSpacing);
+  }
+  return self;
+}
+
+- (void)layoutSubviews {
+  [super layoutSubviews];
+  self.layer.shadowPath =
+      [UIBezierPath bezierPathWithRoundedRect:self.bounds
+                                 cornerRadius:kCardCornerRadius]
+          .CGPath;
+}
+
+- (void)prepareForReuse {
+  [super prepareForReuse];
+  _levelLabel.text = nil;
+  _subtitleLabel.text = nil;
+  _completionBadgeContainer.hidden = YES;
+  _notificationToggleSwitch.hidden = YES;
+  _progressBar.hidden = NO;
+}
+
+#pragma mark - LevelUpConsumer
+
+- (void)setLevel:(NSInteger)level tasksForLevel:(NSArray<LevelUpTask*>*)tasks {
+  _levelLabel.text = l10n_util::GetNSStringF(IDS_IOS_LEVEL_UP_LEVEL_TITLE,
+                                             base::NumberToString16(level));
+
+  NSInteger completedTasksForLevel = 0;
+  for (LevelUpTask* task in tasks) {
+    if (task.completed) {
+      completedTasksForLevel++;
+    }
+  }
+  NSInteger totalTasksForLevel = tasks.count;
+  NSInteger tasksRemaining = totalTasksForLevel - completedTasksForLevel;
+  NSString* progressMessage = nil;
+  if (tasksRemaining > 0) {
+    _completionBadgeContainer.hidden = YES;
+    _notificationToggleSwitch.hidden = YES;
+    _progressBar.hidden = NO;
+    _subtitleLabel.textAlignment = NSTextAlignmentCenter;
+    progressMessage = l10n_util::GetPluralNSStringF(
+        IDS_IOS_LEVEL_UP_TASKS_REMAINING, tasksRemaining);
+  } else {
+    _completionBadgeContainer.hidden = NO;
+    _notificationToggleSwitch.hidden = NO;
+    _progressBar.hidden = YES;
+    _subtitleLabel.textAlignment = NSTextAlignmentLeft;
+    progressMessage = l10n_util::GetNSString(IDS_IOS_LEVEL_UP_MAXIMUM_LEVEL);
+  }
+  _subtitleLabel.text = progressMessage;
+
+  [_progressBar setCompleted:completedTasksForLevel total:totalTasksForLevel];
+}
+
+#pragma mark - Private
+
+// Creates the header view.
+- (UIStackView*)createHeaderView {
+  UILabel* headerLabel = [[UILabel alloc] init];
+  headerLabel.translatesAutoresizingMaskIntoConstraints = NO;
+  headerLabel.textColor = [UIColor colorNamed:kTextSecondaryColor];
+  headerLabel.font = [UIFont systemFontOfSize:kHeaderFontSize
+                                       weight:UIFontWeightRegular];
+  headerLabel.text = l10n_util::GetNSString(IDS_IOS_LEVEL_UP_HEADER_TITLE);
+
+  _levelLabel = [[UILabel alloc] init];
+  _levelLabel.translatesAutoresizingMaskIntoConstraints = NO;
+  _levelLabel.textColor = [UIColor colorNamed:kTextPrimaryColor];
+  UIFontDescriptor* baseDescriptor = [UIFontDescriptor
+      preferredFontDescriptorWithTextStyle:UIFontTextStyleTitle3];
+  UIFontDescriptor* boldDescriptor = [baseDescriptor
+      fontDescriptorWithSymbolicTraits:UIFontDescriptorTraitBold];
+  _levelLabel.font = [UIFont fontWithDescriptor:boldDescriptor
+                                           size:[boldDescriptor pointSize]];
+
+  UIStackView* headerView = [[UIStackView alloc]
+      initWithArrangedSubviews:@[ headerLabel, _levelLabel ]];
+  headerView.axis = UILayoutConstraintAxisVertical;
+  headerView.spacing = kTextStackSpacing;
+  return headerView;
+}
+
+// Creates the completion badge view.
+- (MultiColorGradientView*)createCompletionBadgeContainer {
+  MultiColorGradientView* badgeContainer =
+      [[MultiColorGradientView alloc] initWithColors:@[
+        [UIColor colorNamed:kBlueColor], [UIColor colorNamed:kBlue400Color]
+      ]
+                                           locations:nil
+                                          startPoint:CGPointMake(0.0, 0.5)
+                                            endPoint:CGPointMake(1.0, 0.5)];
+  badgeContainer.translatesAutoresizingMaskIntoConstraints = NO;
+
+  UIImageView* completionBadgeView = [[UIImageView alloc]
+      initWithImage:SymbolWithPointSize(SymbolSealFill, kCompletionBadgeSize)];
+  completionBadgeView.contentMode = UIViewContentModeScaleAspectFit;
+  completionBadgeView.frame =
+      CGRectMake(0, 0, kCompletionBadgeSize, kCompletionBadgeSize);
+  badgeContainer.maskView = completionBadgeView;
+
+  [NSLayoutConstraint activateConstraints:@[
+    [badgeContainer.widthAnchor constraintEqualToConstant:kCompletionBadgeSize],
+    [badgeContainer.heightAnchor
+        constraintEqualToConstant:kCompletionBadgeSize],
+  ]];
+
+  UIImageView* completionBadgeIconView = [[UIImageView alloc] init];
+  completionBadgeIconView.translatesAutoresizingMaskIntoConstraints = NO;
+  completionBadgeIconView.contentMode = UIViewContentModeScaleAspectFit;
+  completionBadgeIconView.tintColor =
+      [UIColor colorNamed:kPrimaryBackgroundColor];
+  completionBadgeIconView.image =
+      SymbolWithPointSize(SymbolFlagCheckered, kCheckeredFlagIconSize);
+  [badgeContainer addSubview:completionBadgeIconView];
+
+  AddSameCenterConstraints(completionBadgeIconView, badgeContainer);
+
+  return badgeContainer;
+}
+
+// Creates the subtitle label.
+- (UILabel*)createSubtitleLabel {
+  UILabel* subtitleLabel = [[UILabel alloc] init];
+  subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+  subtitleLabel.textColor = [UIColor colorNamed:kTextSecondaryColor];
+  subtitleLabel.font =
+      [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
+  subtitleLabel.numberOfLines = 0;
+  return subtitleLabel;
+}
+
+// Creates the notification toggle switch.
+- (UISwitch*)createNotificationToggleSwitch {
+  UISwitch* toggleSwitch = [[UISwitch alloc] init];
+  toggleSwitch.translatesAutoresizingMaskIntoConstraints = NO;
+  toggleSwitch.onTintColor = [UIColor colorNamed:kBlueColor];
+  [toggleSwitch
+      setContentCompressionResistancePriority:UILayoutPriorityRequired
+                                      forAxis:UILayoutConstraintAxisHorizontal];
+
+  return toggleSwitch;
+}
+
+// Creates the subtitle container.
+- (UIStackView*)createSubtitleContainer {
+  UIStackView* subtitleContainer =
+      [[UIStackView alloc] initWithArrangedSubviews:@[
+        _completionBadgeContainer, _subtitleLabel, _notificationToggleSwitch
+      ]];
+  subtitleContainer.spacing = kCompletionRowSpacing;
+  subtitleContainer.alignment = UIStackViewAlignmentCenter;
+  return subtitleContainer;
+}
+
+@end

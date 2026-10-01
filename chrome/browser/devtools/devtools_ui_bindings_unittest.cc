@@ -1,0 +1,1247 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/devtools/devtools_ui_bindings.h"
+
+#include "base/base64.h"
+#include "base/command_line.h"
+#include "base/feature_list.h"
+#include "base/memory/ptr_util.h"
+#include "base/memory/raw_ptr.h"
+#include "base/test/bind.h"
+#include "base/test/scoped_command_line.h"
+#include "base/test/test_future.h"
+#include "chrome/browser/devtools/devtools_dispatch_http_request_params.h"
+#include "chrome/browser/devtools/devtools_http_service_handler.h"
+#include "chrome/browser/devtools/devtools_http_service_registry.h"
+#include "chrome/browser/devtools/features.h"
+#include "chrome/browser/signin/identity_test_environment_profile_adaptor.h"
+#include "chrome/browser/sync/sync_service_factory.h"
+#include "chrome/common/chrome_switches.h"
+#include "chrome/test/base/testing_browser_process.h"
+#include "chrome/test/base/testing_profile.h"
+#include "components/signin/public/base/signin_switches.h"
+#include "components/signin/public/identity_manager/identity_test_environment.h"
+#include "components/sync/test/test_sync_service.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_task_environment.h"
+#include "content/public/test/mock_navigation_handle.h"
+#include "content/public/test/navigation_simulator.h"
+#include "content/public/test/test_web_contents_factory.h"
+#include "content/public/test/url_loader_interceptor.h"
+#include "content/public/test/web_contents_tester.h"
+#include "google_apis/gaia/google_service_auth_error.h"
+#include "net/base/net_errors.h"
+#include "net/cookies/site_for_cookies.h"
+#include "net/http/http_status_code.h"
+#include "net/traffic_annotation/network_traffic_annotation_test_helper.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "url/origin.h"
+
+using testing::_;
+
+class DevToolsUIBindingsTest : public testing::Test {};
+
+class DevToolsUIBindingsLoadNetworkResourceTest : public testing::Test {
+ public:
+  bool GetDevicesUpdatesEnabled() {
+    return bindings_->devices_updates_enabled_;
+  }
+  void SetUp() override {
+    profile_ = std::make_unique<TestingProfile>();
+    web_contents_ = web_contents_factory_.CreateWebContents(profile_.get());
+    bindings_ = std::make_unique<DevToolsUIBindings>(web_contents_);
+  }
+
+  content::WebContents* web_contents() { return web_contents_; }
+  DevToolsUIBindings* bindings() { return bindings_.get(); }
+
+  void CallLoadNetworkResource(const std::string& url,
+                               const std::string& headers,
+                               int stream_id,
+                               DevToolsUIBindings::DispatchCallback callback) {
+    bindings_->LoadNetworkResource(std::move(callback), url, headers,
+                                   stream_id);
+  }
+
+ protected:
+  content::BrowserTaskEnvironment task_environment_;
+  std::unique_ptr<TestingProfile> profile_;
+  content::TestWebContentsFactory web_contents_factory_;
+  raw_ptr<content::WebContents> web_contents_;
+  std::unique_ptr<DevToolsUIBindings> bindings_;
+};
+
+class MockDevToolsUIBindingsDelegate : public DevToolsUIBindings::Delegate {
+ public:
+  explicit MockDevToolsUIBindingsDelegate(
+      content::WebContents* inspected_web_contents)
+      : inspected_web_contents_(inspected_web_contents) {}
+
+  content::WebContents* GetInspectedWebContents() override {
+    return inspected_web_contents_;
+  }
+  void ActivateWindow() override {}
+  void CloseWindow() override {}
+  void Inspect(scoped_refptr<content::DevToolsAgentHost> host) override {}
+  void SetInspectedPageBounds(const gfx::Rect& rect) override {}
+  void InspectElementCompleted() override {}
+  void SetIsDocked(bool is_docked) override {}
+  void OpenInNewTab(const std::string& url) override {}
+  void OpenSearchResultsInNewTab(const std::string& query) override {}
+  void SetWhitelistedShortcuts(const std::string& message) override {}
+  void SetEyeDropperActive(bool active) override {}
+  void OpenNodeFrontend() override {}
+  void InspectedContentsClosing() override {}
+  void OnLoadCompleted() override {}
+  void ReadyForTest() override {}
+  void ConnectionReady() override {}
+  void SetOpenNewWindowForPopups(bool value) override {}
+  infobars::ContentInfoBarManager* GetInfoBarManager() override {
+    return nullptr;
+  }
+  void RenderProcessGone(bool crashed) override {}
+  void ShowCertificateViewer(const std::string& cert_chain) override {}
+  int GetDockStateForLogging() override { return 0; }
+  int GetOpenedByForLogging() override { return 0; }
+  int GetClosedByForLogging() override { return 0; }
+
+ private:
+  raw_ptr<content::WebContents> inspected_web_contents_;
+};
+
+TEST_F(DevToolsUIBindingsLoadNetworkResourceTest,
+       RestrictsPrivilegedMethodsFromRemoteFrontend) {
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(),
+      GURL("devtools://devtools/remote/serve_file/inspector.html"));
+
+  // Should return early without enabling device updates.
+  static_cast<DevToolsEmbedderMessageDispatcher::Delegate*>(bindings())
+      ->SetDevicesUpdatesEnabled(true);
+
+  EXPECT_FALSE(GetDevicesUpdatesEnabled());
+}
+
+TEST_F(DevToolsUIBindingsLoadNetworkResourceTest,
+       AllowsFileSchemeFromRemoteFrontendWithFlag) {
+  base::test::ScopedCommandLine scoped_command_line;
+  scoped_command_line.GetProcessCommandLine()->AppendSwitch(
+      switches::kAllowUnsafeDevToolsRemoteFileLoading);
+
+  GURL remote_url("devtools://devtools/remote/serve_rev/@12345/inspector.html");
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                             remote_url);
+
+  base::RunLoop run_loop;
+  base::DictValue result;
+
+  CallLoadNetworkResource(
+      "file:///etc/passwd", "", 0,
+      base::BindLambdaForTesting([&](const base::Value* value) {
+        result = value->GetDict().Clone();
+        run_loop.Quit();
+      }));
+  run_loop.Run();
+
+  auto* msg = result.FindString("messageOverride");
+  EXPECT_EQ(msg, nullptr);
+  EXPECT_NE(result.FindInt("statusCode"), 403);
+}
+
+TEST_F(DevToolsUIBindingsLoadNetworkResourceTest,
+       AllowsFileSchemeFromLocalFrontends) {
+  std::vector<GURL> local_urls = {
+      GURL("devtools://devtools/bundled/devtools_app.html"),
+      GURL("devtools://devtools/custom/inspector.html"),
+      GURL("devtools://devtools/blank")};
+
+  for (const GURL& local_url : local_urls) {
+    content::NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                               local_url);
+
+    base::RunLoop run_loop;
+    base::DictValue result;
+
+    CallLoadNetworkResource(
+        "file:///etc/passwd", "", 0,
+        base::BindLambdaForTesting([&](const base::Value* value) {
+          result = value->GetDict().Clone();
+          run_loop.Quit();
+        }));
+    run_loop.Run();
+
+    auto* msg = result.FindString("messageOverride");
+    EXPECT_EQ(msg, nullptr);
+    EXPECT_NE(result.FindInt("statusCode"), 403);
+  }
+}
+
+TEST_F(DevToolsUIBindingsLoadNetworkResourceTest,
+       ClearExtensionsAPIOnNavigatingAway) {
+  bindings()->RegisterExtensionsAPIForTesting("http://example.test", "script");
+  EXPECT_EQ(bindings()->GetExtensionsAPIForTesting().size(), 1u);
+
+  // Navigate to a valid DevTools URL first.
+  GURL devtools_url("devtools://devtools/bundled/devtools_app.html");
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                             devtools_url);
+  EXPECT_EQ(bindings()->GetExtensionsAPIForTesting().size(), 1u);
+
+  // Navigate away to a non-DevTools URL.
+  GURL print_url("https://example.test");
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                             print_url);
+  EXPECT_TRUE(bindings()->GetExtensionsAPIForTesting().empty());
+}
+
+TEST_F(DevToolsUIBindingsLoadNetworkResourceTest,
+       BlocksFileSchemeFromUntrustedFrontends) {
+  std::vector<GURL> untrusted_urls = {
+      GURL("devtools://devtools/remote/serve_rev/@12345/inspector.html"),
+      GURL("https://chrome-devtools-frontend.appspot.com/serve_rev/@12345/"
+           "inspector.html"),
+      GURL("https://example.com/index.html")};
+
+  // Set up inspected WebContents to be a local file.
+  content::WebContents* inspected_web_contents =
+      web_contents_factory_.CreateWebContents(profile_.get());
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      inspected_web_contents, GURL("file:///tmp/index.html"));
+
+  auto delegate =
+      std::make_unique<MockDevToolsUIBindingsDelegate>(inspected_web_contents);
+  bindings()->SetDelegate(delegate.release());
+
+  for (const GURL& untrusted_url : untrusted_urls) {
+    content::NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                               untrusted_url);
+
+    base::RunLoop run_loop;
+    base::DictValue result;
+
+    CallLoadNetworkResource(
+        "file:///etc/passwd", "", 0,
+        base::BindLambdaForTesting([&](const base::Value* value) {
+          result = value->GetDict().Clone();
+          run_loop.Quit();
+        }));
+    run_loop.Run();
+
+    EXPECT_EQ(result.FindInt("statusCode"), 403);
+    ASSERT_NE(result.FindString("messageOverride"), nullptr);
+    EXPECT_EQ(*result.FindString("messageOverride"),
+              "Local file loading is restricted for remote DevTools. Use "
+              "--allow-unsafe-devtools-remote-file-loading to enable it.");
+  }
+}
+
+TEST_F(DevToolsUIBindingsLoadNetworkResourceTest,
+       UsesInspectedPageAsRequestInitiator) {
+  const GURL inspected_url("http://a.test/page.html");
+  const GURL resource_url("http://b.test/source.map");
+
+  content::WebContents* inspected_web_contents =
+      web_contents_factory_.CreateWebContents(profile_.get());
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      inspected_web_contents, inspected_url);
+  auto delegate =
+      std::make_unique<MockDevToolsUIBindingsDelegate>(inspected_web_contents);
+  bindings()->SetDelegate(delegate.release());
+
+  std::optional<network::ResourceRequest> captured_request;
+  content::URLLoaderInterceptor interceptor(base::BindLambdaForTesting(
+      [&](content::URLLoaderInterceptor::RequestParams* params) {
+        captured_request = params->url_request;
+        content::URLLoaderInterceptor::WriteResponse(
+            "HTTP/1.1 200 OK\n\n", "{}", params->client.get());
+        return true;
+      }));
+
+  base::RunLoop run_loop;
+  CallLoadNetworkResource(
+      resource_url.spec(), "", 0,
+      base::BindLambdaForTesting(
+          [&](const base::Value*) { run_loop.Quit(); }));
+  run_loop.Run();
+
+  ASSERT_TRUE(captured_request.has_value());
+  EXPECT_EQ(captured_request->url, resource_url);
+  const url::Origin inspected_origin = url::Origin::Create(inspected_url);
+  EXPECT_EQ(captured_request->request_initiator, inspected_origin);
+  EXPECT_TRUE(captured_request->site_for_cookies.IsEquivalent(
+      net::SiteForCookies::FromOrigin(inspected_origin)));
+  EXPECT_FALSE(captured_request->site_for_cookies.IsFirstParty(resource_url));
+}
+
+TEST_F(DevToolsUIBindingsTest, SanitizeFrontendURL) {
+  std::vector<std::pair<std::string, std::string>> tests = {
+      {"random-string", "devtools://devtools/"},
+      {"http://valid.url/but/wrong", "devtools://devtools/but/wrong"},
+      {"devtools://wrong-domain/", "devtools://devtools/"},
+      {"devtools://devtools/bundled/devtools.html",
+       "devtools://devtools/bundled/devtools.html"},
+      {"devtools://devtools:1234/bundled/devtools.html#hash",
+       "devtools://devtools/bundled/devtools.html#hash"},
+      {"devtools://devtools/some/random/path",
+       "devtools://devtools/some/random/path"},
+      {"devtools://devtools/bundled/devtools.html?debugFrontend=true",
+       "devtools://devtools/bundled/devtools.html?debugFrontend=true"},
+      {"devtools://devtools/bundled/devtools.html"
+       "?some-flag=flag&v8only=true&debugFrontend=a"
+       "&another-flag=another-flag&can_dock=false&isSharedWorker=notreally"
+       "&remoteFrontend=sure",
+       "devtools://devtools/bundled/devtools.html"
+       "?v8only=true&debugFrontend=true"
+       "&can_dock=true&isSharedWorker=true&remoteFrontend=true"},
+      {"devtools://devtools/?ws=any-value-is-fine",
+       "devtools://devtools/?ws=any-value-is-fine"},
+      {"devtools://devtools/"
+       "?service-backend=ws://localhost:9222/services",
+       "devtools://devtools/"
+       "?service-backend=ws://localhost:9222/services"},
+      {"devtools://devtools/?remoteBase="
+       "http://example.com:1234/remote-base#hash",
+       "devtools://devtools/?remoteBase="
+       "https://chrome-devtools-frontend.appspot.com/"
+       "serve_file//#hash"},
+      {"devtools://devtools/?ws=1%26evil%3dtrue",
+       "devtools://devtools/?ws=1%26evil%3dtrue"},
+      {"devtools://devtools/?ws=encoded-ok'",
+       "devtools://devtools/?ws=encoded-ok%27"},
+      {"devtools://devtools/?remoteBase="
+       "https://chrome-devtools-frontend.appspot.com/some/path/"
+       "@123719741873/more/path.html",
+       "devtools://devtools/?remoteBase="
+       "https://chrome-devtools-frontend.appspot.com/serve_file/path/"},
+      {"devtools://devtools/?remoteBase="
+       "https://chrome-devtools-frontend.appspot.com/serve_file/"
+       "@123719741873/inspector.html%3FdebugFrontend%3Dfalse",
+       "devtools://devtools/?remoteBase="
+       "https://chrome-devtools-frontend.appspot.com/serve_file/"
+       "@123719741873/"},
+      {"devtools://devtools/bundled/inspector.html?"
+       "&remoteBase=https://chrome-devtools-frontend.appspot.com/serve_file/"
+       "@b4907cc5d602ff470740b2eb6344b517edecb7b9/&can_dock=true",
+       "devtools://devtools/bundled/inspector.html?"
+       "remoteBase=https://chrome-devtools-frontend.appspot.com/serve_file/"
+       "@b4907cc5d602ff470740b2eb6344b517edecb7b9/&can_dock=true"},
+      {"devtools://devtools/?remoteFrontendUrl="
+       "https://chrome-devtools-frontend.appspot.com/serve_rev/"
+       "@12345/inspector.html%3FdebugFrontend%3Dfalse",
+       "devtools://devtools/?remoteFrontendUrl="
+       "https%3A%2F%2Fchrome-devtools-frontend.appspot.com%2Fserve_rev"
+       "%2F%4012345%2Finspector.html%3FdebugFrontend%3Dtrue"},
+      {"devtools://devtools/?remoteFrontendUrl="
+       "https://chrome-devtools-frontend.appspot.com/serve_rev/"
+       "@12345/inspector.html%22></iframe>something",
+       "devtools://devtools/?remoteFrontendUrl="
+       "https%3A%2F%2Fchrome-devtools-frontend.appspot.com%2Fserve_rev"
+       "%2F%4012345%2Finspector.html"},
+      {"devtools://devtools/?remoteFrontendUrl="
+       "http://domain:1234/path/rev/a/filename.html%3Fparam%3Dvalue#hash",
+       "devtools://devtools/?remoteFrontendUrl="
+       "https%3A%2F%2Fchrome-devtools-frontend.appspot.com%2Fserve_rev"
+       "%2Frev%2Finspector.html#hash"},
+      {"devtools://devtools/?remoteFrontendUrl="
+       "https://chrome-devtools-frontend.appspot.com/serve_rev/"
+       "@12345/devtools.html%3Fws%3Danyvalue"
+       "&unencoded=value&debugFrontend=true",
+       "devtools://devtools/?remoteFrontendUrl="
+       "https%3A%2F%2Fchrome-devtools-frontend.appspot.com%2Fserve_rev"
+       "%2F%4012345%2Fdevtools.html%3Fws%3Danyvalue"
+       "&debugFrontend=true"},
+      {"devtools://devtools/?remoteFrontendUrl="
+       "https://chrome-devtools-frontend.appspot.com/serve_rev/"
+       "@12345/inspector.html%23%27",
+       "devtools://devtools/?remoteFrontendUrl="
+       "https%3A%2F%2Fchrome-devtools-frontend.appspot.com%2Fserve_rev"
+       "%2F%4012345%2Finspector.html"},
+      {"devtools://devtools/"
+       "?enabledExperiments=explosionsWhileTyping;newA11yTool",
+       "devtools://devtools/"
+       "?enabledExperiments=explosionsWhileTyping;newA11yTool"},
+      {"devtools://devtools/?enabledExperiments=invalidExperiment$",
+       "devtools://devtools/"},
+      {"devtools://devtools/?panel=elements",
+       "devtools://devtools/?panel=elements"},
+      {"devtools://devtools/?panel=network",
+       "devtools://devtools/?panel=network"},
+      {"devtools://devtools/?panel=console",
+       "devtools://devtools/?panel=console"},
+      {"devtools://devtools/?panel=sources",
+       "devtools://devtools/?panel=sources"},
+      {"devtools://devtools/?panel=resources",
+       "devtools://devtools/?panel=resources"},
+      {"devtools://devtools/?panel=timeline",
+       "devtools://devtools/?panel=timeline"},
+      {"devtools://devtools/?panel=heap-profiler",
+       "devtools://devtools/?panel=heap-profiler"},
+      {"devtools://devtools/?panel=lighthouse",
+       "devtools://devtools/?panel=lighthouse"},
+      {"devtools://devtools/?panel=security",
+       "devtools://devtools/?panel=security"},
+      {"devtools://devtools/?panel=chrome-recorder",
+       "devtools://devtools/?panel=chrome-recorder"},
+      {"devtools://devtools/?panel=unsupported", "devtools://devtools/"},
+  };
+
+  for (const auto& pair : tests) {
+    GURL url = GURL(pair.first);
+    url = DevToolsUIBindings::SanitizeFrontendURL(url);
+    EXPECT_EQ(pair.second, url.spec());
+  }
+}
+
+class DevToolsUIBindingsNavigationTest : public testing::Test {
+ public:
+  content::WebContents* CreateWebContents() {
+    return web_contents_factory_.CreateWebContents(&profile_);
+  }
+
+ protected:
+  content::BrowserTaskEnvironment task_environment_;
+  TestingProfile profile_;
+  content::TestWebContentsFactory web_contents_factory_;
+};
+
+TEST_F(DevToolsUIBindingsNavigationTest,
+       BrowserInitiatedNavigationCreatesFrontendHost) {
+  content::WebContents* web_contents = CreateWebContents();
+  auto bindings = std::make_unique<DevToolsUIBindings>(web_contents);
+  EXPECT_FALSE(bindings->has_frontend_host_for_testing());
+
+  content::MockNavigationHandle handle(
+      GURL("devtools://devtools/bundled/devtools_app.html"),
+      web_contents->GetPrimaryMainFrame());
+  handle.set_is_in_primary_main_frame(true);
+  handle.set_is_renderer_initiated(false);
+
+  bindings->ReadyToCommitNavigationForTesting(&handle);
+
+  EXPECT_TRUE(bindings->has_frontend_host_for_testing());
+}
+
+TEST_F(DevToolsUIBindingsNavigationTest,
+       OpenerWithoutDevToolsBindingsRejected) {
+  content::WebContents* opener_contents = CreateWebContents();
+  content::WebContents* web_contents = CreateWebContents();
+  content::WebContentsTester::For(web_contents)->SetOpener(opener_contents);
+  content::WebContentsTester::For(web_contents)
+      ->SetOriginalOpener(opener_contents);
+
+  auto bindings = std::make_unique<DevToolsUIBindings>(web_contents);
+
+  content::MockNavigationHandle handle(
+      GURL("devtools://devtools/bundled/devtools_app.html"),
+      web_contents->GetPrimaryMainFrame());
+  handle.set_is_in_primary_main_frame(true);
+  handle.set_is_renderer_initiated(false);
+
+  bindings->ReadyToCommitNavigationForTesting(&handle);
+
+  EXPECT_FALSE(bindings->has_frontend_host_for_testing());
+}
+
+TEST_F(DevToolsUIBindingsNavigationTest,
+       OriginalOpenerWithoutDevToolsBindingsRejectedEvenIfOpenerSevered) {
+  content::WebContents* original_opener_contents = CreateWebContents();
+  content::WebContents* web_contents = CreateWebContents();
+  content::WebContentsTester::For(web_contents)
+      ->SetOriginalOpener(original_opener_contents);
+  // Ensure the live opener is null (simulating `window.opener = null`).
+  EXPECT_EQ(nullptr, web_contents->GetOpener());
+  EXPECT_TRUE(web_contents->HasLiveOriginalOpenerChain());
+
+  auto bindings = std::make_unique<DevToolsUIBindings>(web_contents);
+
+  content::MockNavigationHandle handle(
+      GURL("devtools://devtools/bundled/devtools_app.html"),
+      web_contents->GetPrimaryMainFrame());
+  handle.set_is_in_primary_main_frame(true);
+  handle.set_is_renderer_initiated(false);
+
+  bindings->ReadyToCommitNavigationForTesting(&handle);
+
+  EXPECT_FALSE(bindings->has_frontend_host_for_testing());
+}
+
+TEST_F(DevToolsUIBindingsNavigationTest,
+       OpenerWithValidDevToolsBindingsAccepted) {
+  content::WebContents* opener_contents = CreateWebContents();
+  auto opener_bindings = std::make_unique<DevToolsUIBindings>(opener_contents);
+  content::MockNavigationHandle opener_handle(
+      GURL("devtools://devtools/bundled/devtools_app.html"),
+      opener_contents->GetPrimaryMainFrame());
+  opener_handle.set_is_in_primary_main_frame(true);
+  opener_handle.set_is_renderer_initiated(false);
+  opener_bindings->ReadyToCommitNavigationForTesting(&opener_handle);
+  ASSERT_TRUE(opener_bindings->has_frontend_host_for_testing());
+
+  content::WebContents* web_contents = CreateWebContents();
+  content::WebContentsTester::For(web_contents)->SetOpener(opener_contents);
+  content::WebContentsTester::For(web_contents)
+      ->SetOriginalOpener(opener_contents);
+
+  auto bindings = std::make_unique<DevToolsUIBindings>(web_contents);
+
+  content::MockNavigationHandle handle(
+      GURL("devtools://devtools/bundled/devtools_app.html"),
+      web_contents->GetPrimaryMainFrame());
+  handle.set_is_in_primary_main_frame(true);
+  handle.set_is_renderer_initiated(false);
+
+  bindings->ReadyToCommitNavigationForTesting(&handle);
+
+  EXPECT_TRUE(bindings->has_frontend_host_for_testing());
+}
+
+class DevToolsUIBindingsSyncInfoTest : public testing::Test {
+ public:
+  void SetUp() override {
+    SyncServiceFactory::GetInstance()->SetTestingFactory(
+        &profile_, base::BindRepeating([](content::BrowserContext*) {
+          return static_cast<std::unique_ptr<KeyedService>>(
+              std::make_unique<syncer::TestSyncService>());
+        }));
+    sync_service_ = static_cast<syncer::TestSyncService*>(
+        SyncServiceFactory::GetForProfile(&profile_));
+  }
+
+ protected:
+  content::BrowserTaskEnvironment browser_task_environment_;
+  signin::IdentityTestEnvironment identity_test_env_;
+
+  TestingProfile profile_;
+  raw_ptr<syncer::TestSyncService> sync_service_;
+};
+
+TEST_F(DevToolsUIBindingsSyncInfoTest, SyncDisabled) {
+  sync_service_->SetSignedOut();
+
+  base::DictValue info =
+      DevToolsUIBindings::GetSyncInformationForProfile(&profile_);
+
+  EXPECT_EQ(
+      base::FeatureList::IsEnabled(switches::kEnablePreferencesAccountStorage),
+      info.FindBool("isSyncActive").value());
+}
+
+TEST_F(DevToolsUIBindingsSyncInfoTest, PreferencesNotSynced) {
+  sync_service_->GetUserSettings()->SetSelectedTypes(
+      /*sync_everything=*/false,
+      /*types=*/{syncer::UserSelectableType::kBookmarks});
+
+  base::DictValue info =
+      DevToolsUIBindings::GetSyncInformationForProfile(&profile_);
+
+  EXPECT_THAT(info.FindBool("isSyncActive"), testing::Optional(true));
+  EXPECT_THAT(info.FindBool("arePreferencesSynced"), testing::Optional(false));
+}
+
+TEST_F(DevToolsUIBindingsSyncInfoTest, ImageAlwaysProvided) {
+  AccountInfo account_info = identity_test_env_.MakePrimaryAccountAvailable(
+      "sync@devtools.dev", signin::ConsentLevel::kSignin);
+  sync_service_->SetSignedIn(signin::ConsentLevel::kSignin, account_info);
+
+  EXPECT_FALSE(account_info.GetAvatarImage().has_value());
+
+  base::DictValue info =
+      DevToolsUIBindings::GetSyncInformationForProfile(&profile_);
+
+  EXPECT_EQ(*info.FindString("accountEmail"), "sync@devtools.dev");
+  EXPECT_NE(info.FindString("accountImage"), nullptr);
+}
+
+class MockServiceHandler : public DevToolsHttpServiceHandler {
+ public:
+  MockServiceHandler() = default;
+  ~MockServiceHandler() override = default;
+
+  GURL BaseURL() const override { return GURL("http://localhost:8000"); }
+  signin::OAuthConsumerId OAuthConsumerId() const override {
+    return signin::OAuthConsumerId::kDevtoolsAiCode;
+  }
+  net::NetworkTrafficAnnotationTag NetworkTrafficAnnotationTag()
+      const override {
+    return TRAFFIC_ANNOTATION_FOR_TESTS;
+  }
+
+  MOCK_METHOD(void,
+              CanMakeRequest,
+              (Profile * profile, base::OnceCallback<void(bool)> callback),
+              (override));
+};
+
+class DevToolsUIBindingsDispatchHttpRequestTest : public testing::Test {
+ public:
+  DevToolsUIBindingsDispatchHttpRequestTest()
+      : task_environment_(content::BrowserTaskEnvironment::IO_MAINLOOP) {}
+
+  void SetUp() override {
+    profile_ = IdentityTestEnvironmentProfileAdaptor::
+        CreateProfileForIdentityTestEnvironment();
+    identity_test_env_adaptor_ =
+        std::make_unique<IdentityTestEnvironmentProfileAdaptor>(profile_.get());
+
+    // Initialize the interceptor with a callback to our custom handler.
+    interceptor_ =
+        std::make_unique<content::URLLoaderInterceptor>(base::BindRepeating(
+            &DevToolsUIBindingsDispatchHttpRequestTest::InterceptRequest,
+            base::Unretained(this)));
+
+    web_contents_ = web_contents_factory_.CreateWebContents(profile_.get());
+    content::NavigationSimulator::NavigateAndCommitFromBrowser(
+        web_contents_, GURL("devtools://devtools/bundled/devtools_app.html"));
+    bindings_ = std::make_unique<DevToolsUIBindings>(web_contents_);
+
+    auto registry = std::make_unique<DevToolsHttpServiceRegistry>();
+    auto mock_handler = base::WrapUnique(new MockServiceHandler());
+    mock_handler_ptr_ = mock_handler.get();
+    registry->AddForTesting(DevToolsHttpServiceRegistry::Service(
+        "mockService", {{"/getFoo", "GET"}, {"/postBar", "POST"}},
+        std::move(mock_handler)));
+    bindings_->SetHttpServiceRegistryForTesting(std::move(registry));
+  }
+
+ protected:
+  // A struct to hold response data for our interception map.
+  struct TestResponse {
+    std::string headers;
+    std::string body;
+    net::Error net_error;
+  };
+
+  void DispatchHttpRequest(DevToolsUIBindings::DispatchCallback callback,
+                           const DevToolsDispatchHttpRequestParams& params) {
+    bindings_->DispatchHttpRequest(std::move(callback), params);
+  }
+
+  void ExpectCanMakeRequest(bool can_make_request) {
+    EXPECT_CALL(*mock_handler_ptr_, CanMakeRequest(_, _))
+        .WillOnce([=](Profile*, base::OnceCallback<void(bool)> callback) {
+          std::move(callback).Run(can_make_request);
+        });
+  }
+
+  // Helper to configure a response for a specific URL.
+  void SetResponse(const GURL& url,
+                   const std::string& headers,
+                   const std::string& body,
+                   net::Error net_error = net::OK) {
+    response_map_[url] = {headers, body, net_error};
+  }
+
+  IdentityTestEnvironmentProfileAdaptor* identity_test_env_adaptor() {
+    return identity_test_env_adaptor_.get();
+  }
+
+  content::URLLoaderInterceptor* interceptor() { return interceptor_.get(); }
+
+  const std::optional<network::ResourceRequest>& last_request() const {
+    return last_request_;
+  }
+
+ protected:
+  bool InterceptRequest(content::URLLoaderInterceptor::RequestParams* params) {
+    last_request_ = params->url_request;
+    const GURL& url = params->url_request.url;
+    auto it = response_map_.find(url);
+
+    // If a specific response is not configured, use the default response.
+    if (it == response_map_.end()) {
+      content::URLLoaderInterceptor::WriteResponse("HTTP/1.1 200 OK\n", "body",
+                                                   params->client.get());
+      return true;
+    }
+
+    const TestResponse& response = it->second;
+    if (response.net_error != net::OK) {
+      // Handle network errors.
+      params->client->OnComplete(
+          network::URLLoaderCompletionStatus(response.net_error));
+      return true;
+    }
+
+    // Handle HTTP success or error responses.
+    content::URLLoaderInterceptor::WriteResponse(
+        response.headers, response.body, params->client.get());
+    return true;
+  }
+
+  content::BrowserTaskEnvironment task_environment_;
+  std::unique_ptr<IdentityTestEnvironmentProfileAdaptor>
+      identity_test_env_adaptor_;
+  std::unique_ptr<content::URLLoaderInterceptor> interceptor_;
+  std::optional<network::ResourceRequest> last_request_;
+
+  std::unique_ptr<TestingProfile> profile_;
+  content::TestWebContentsFactory web_contents_factory_;
+
+  raw_ptr<content::WebContents> web_contents_;
+  std::unique_ptr<DevToolsUIBindings> bindings_;
+  raw_ptr<MockServiceHandler> mock_handler_ptr_;
+
+  std::map<GURL, TestResponse> response_map_;
+};
+
+TEST_F(DevToolsUIBindingsDispatchHttpRequestTest,
+       DispatchHttpRequestUnknownService) {
+  base::DictValue result;
+  DevToolsDispatchHttpRequestParams params;
+  params.service = "unknownService";
+  params.path = "/path";
+  params.method = "GET";
+  DispatchHttpRequest(base::BindLambdaForTesting([&](const base::Value* value) {
+                        result = value->GetDict().Clone();
+                      }),
+                      params);
+
+  EXPECT_EQ(*result.FindString("error"), "Service not found");
+}
+
+TEST_F(DevToolsUIBindingsDispatchHttpRequestTest,
+       DispatchHttpRequestDisallowedPath) {
+  base::DictValue result;
+  base::RunLoop run_loop;
+  DevToolsDispatchHttpRequestParams params;
+  params.service = "mockService";
+  params.path = "/disallowedPath";
+  params.method = "GET";
+  DispatchHttpRequest(base::BindLambdaForTesting([&](const base::Value* value) {
+                        result = value->GetDict().Clone();
+                        run_loop.Quit();
+                      }),
+                      params);
+  run_loop.Run();
+  EXPECT_EQ(*result.FindString("error"), "Disallowed path or method");
+}
+
+TEST_F(DevToolsUIBindingsDispatchHttpRequestTest,
+       DispatchHttpRequestValidationFailure) {
+  ExpectCanMakeRequest(false);
+
+  base::RunLoop run_loop;
+  base::DictValue result;
+  DevToolsDispatchHttpRequestParams params;
+  params.service = "mockService";
+  params.path = "/getFoo";
+  params.method = "GET";
+  DispatchHttpRequest(base::BindLambdaForTesting([&](const base::Value* value) {
+                        result = value->GetDict().Clone();
+                        run_loop.Quit();
+                      }),
+                      params);
+  run_loop.Run();
+
+  EXPECT_EQ(*result.FindString("error"), "Request validation failed");
+}
+
+TEST_F(DevToolsUIBindingsDispatchHttpRequestTest,
+       DispatchHttpRequestTokenFetchFailure) {
+  ExpectCanMakeRequest(true);
+  identity_test_env_adaptor()->identity_test_env()->MakePrimaryAccountAvailable(
+      "test@google.com", signin::ConsentLevel::kSignin);
+  base::RunLoop run_loop;
+  base::DictValue result;
+  DevToolsDispatchHttpRequestParams params;
+  params.service = "mockService";
+  params.path = "/getFoo";
+  params.method = "GET";
+  DispatchHttpRequest(base::BindLambdaForTesting([&](const base::Value* value) {
+                        result = value->GetDict().Clone();
+                        run_loop.Quit();
+                      }),
+                      params);
+
+  identity_test_env_adaptor()
+      ->identity_test_env()
+      ->WaitForAccessTokenRequestIfNecessaryAndRespondWithError(
+          GoogleServiceAuthError::FromServiceUnavailable("test_error"));
+  run_loop.Run();
+
+  EXPECT_EQ(*result.FindString("error"), "Token fetch error");
+  EXPECT_EQ(*result.FindString("detail"),
+            "Service unavailable; try again later (test_error).");
+}
+
+TEST_F(DevToolsUIBindingsDispatchHttpRequestTest,
+       DispatchHttpRequestSuccessful) {
+  ExpectCanMakeRequest(true);
+  identity_test_env_adaptor()->identity_test_env()->MakePrimaryAccountAvailable(
+      "test@google.com", signin::ConsentLevel::kSignin);
+
+  base::RunLoop run_loop;
+  base::DictValue result;
+  DevToolsDispatchHttpRequestParams params;
+  params.service = "mockService";
+  params.path = "/getFoo";
+  params.method = "GET";
+  DispatchHttpRequest(base::BindLambdaForTesting([&](const base::Value* value) {
+                        result = value->GetDict().Clone();
+                        run_loop.Quit();
+                      }),
+                      params);
+
+  identity_test_env_adaptor()
+      ->identity_test_env()
+      ->WaitForAccessTokenRequestIfNecessaryAndRespondWithToken(
+          "test_token", base::Time::Max());
+  run_loop.Run();
+
+  net::HttpRequestHeaders headers = last_request()->headers;
+  EXPECT_EQ(last_request()->url, GURL("http://localhost:8000/getFoo"));
+  EXPECT_EQ(headers.GetHeader("Authorization"), "Bearer test_token");
+  EXPECT_EQ(*result.FindString("response"), "body");
+  EXPECT_EQ(*result.FindInt("statusCode"), net::HTTP_OK);
+}
+
+TEST_F(DevToolsUIBindingsDispatchHttpRequestTest,
+       DispatchHttpRequestNetworkError) {
+  SetResponse(GURL("http://localhost:8000/postBar"), "", "", net::ERR_FAILED);
+  ExpectCanMakeRequest(true);
+  identity_test_env_adaptor()->identity_test_env()->MakePrimaryAccountAvailable(
+      "test@google.com", signin::ConsentLevel::kSignin);
+
+  base::RunLoop run_loop;
+  base::DictValue result;
+  DevToolsDispatchHttpRequestParams params;
+  params.service = "mockService";
+  params.path = "/postBar";
+  params.method = "POST";
+  params.body = "{\"foo\": \"bar\"}";
+  DispatchHttpRequest(base::BindLambdaForTesting([&](const base::Value* value) {
+                        result = value->GetDict().Clone();
+                        run_loop.Quit();
+                      }),
+                      params);
+
+  identity_test_env_adaptor()
+      ->identity_test_env()
+      ->WaitForAccessTokenRequestIfNecessaryAndRespondWithToken(
+          "test_token", base::Time::Max());
+  run_loop.Run();
+
+  EXPECT_EQ(*result.FindString("error"), "Request failed");
+  EXPECT_EQ(*result.FindInt("netError"), net::ERR_FAILED);
+  EXPECT_EQ(*result.FindInt("statusCode"), -1);
+}
+
+TEST_F(DevToolsUIBindingsDispatchHttpRequestTest,
+       DispatchHttpRequestHttpError) {
+  SetResponse(GURL("http://localhost:8000/postBar"),
+              "HTTP/1.1 400 Internal Server Error\n\n", "Bad request detail");
+
+  ExpectCanMakeRequest(true);
+  identity_test_env_adaptor()->identity_test_env()->MakePrimaryAccountAvailable(
+      "test@google.com", signin::ConsentLevel::kSignin);
+
+  base::RunLoop run_loop;
+  base::DictValue result;
+  DevToolsDispatchHttpRequestParams params;
+  params.service = "mockService";
+  params.path = "/postBar";
+  params.method = "POST";
+  params.body = "{\"foo\": \"bar\"}";
+  DispatchHttpRequest(base::BindLambdaForTesting([&](const base::Value* value) {
+                        result = value->GetDict().Clone();
+                        run_loop.Quit();
+                      }),
+                      params);
+
+  identity_test_env_adaptor()
+      ->identity_test_env()
+      ->WaitForAccessTokenRequestIfNecessaryAndRespondWithToken(
+          "test_token", base::Time::Max());
+  run_loop.Run();
+
+  EXPECT_EQ(*result.FindString("error"), "Request failed");
+  EXPECT_EQ(*result.FindString("detail"), "Bad request detail");
+  EXPECT_EQ(*result.FindInt("statusCode"), net::HTTP_BAD_REQUEST);
+  EXPECT_EQ(*result.FindInt("netError"), net::OK);
+}
+
+TEST_F(DevToolsUIBindingsDispatchHttpRequestTest, DispatchHttpRequestWithBody) {
+  ExpectCanMakeRequest(true);
+  identity_test_env_adaptor()->identity_test_env()->MakePrimaryAccountAvailable(
+      "test@google.com", signin::ConsentLevel::kSignin);
+
+  base::RunLoop run_loop;
+  base::DictValue result;
+  DevToolsDispatchHttpRequestParams params;
+  params.service = "mockService";
+  params.path = "/postBar";
+  params.method = "POST";
+  params.body = "{\"foo\": \"bar\"}";
+  DispatchHttpRequest(base::BindLambdaForTesting([&](const base::Value* value) {
+                        result = value->GetDict().Clone();
+                        run_loop.Quit();
+                      }),
+                      params);
+
+  identity_test_env_adaptor()
+      ->identity_test_env()
+      ->WaitForAccessTokenRequestIfNecessaryAndRespondWithToken(
+          "test_token", base::Time::Max());
+  run_loop.Run();
+
+  ASSERT_TRUE(last_request().has_value());
+  ASSERT_TRUE(last_request()->request_body);
+  ASSERT_EQ(last_request()->request_body->elements()->size(), 1u);
+  const network::DataElement& element =
+      last_request()->request_body->elements()->at(0);
+  ASSERT_EQ(element.type(), network::DataElement::Tag::kBytes);
+  EXPECT_EQ(element.As<network::DataElementBytes>().AsStringPiece(),
+            "{\"foo\": \"bar\"}");
+}
+
+TEST_F(DevToolsUIBindingsDispatchHttpRequestTest,
+       DispatchHttpRequestWithoutBody) {
+  ExpectCanMakeRequest(true);
+  identity_test_env_adaptor()->identity_test_env()->MakePrimaryAccountAvailable(
+      "test@google.com", signin::ConsentLevel::kSignin);
+
+  base::RunLoop run_loop;
+  base::DictValue result;
+  DevToolsDispatchHttpRequestParams params;
+  params.service = "mockService";
+  params.path = "/getFoo";
+  params.method = "GET";
+  DispatchHttpRequest(base::BindLambdaForTesting([&](const base::Value* value) {
+                        result = value->GetDict().Clone();
+                        run_loop.Quit();
+                      }),
+                      params);
+
+  identity_test_env_adaptor()
+      ->identity_test_env()
+      ->WaitForAccessTokenRequestIfNecessaryAndRespondWithToken(
+          "test_token", base::Time::Max());
+  run_loop.Run();
+
+  ASSERT_TRUE(last_request().has_value());
+  EXPECT_FALSE(last_request()->request_body);
+}
+
+TEST_F(DevToolsUIBindingsDispatchHttpRequestTest,
+       DispatchHttpRequestWithQueryParamsSuccessful) {
+  ExpectCanMakeRequest(true);
+  identity_test_env_adaptor()->identity_test_env()->MakePrimaryAccountAvailable(
+      "test@google.com", signin::ConsentLevel::kSignin);
+
+  base::RunLoop run_loop;
+  base::DictValue result;
+  DevToolsDispatchHttpRequestParams params;
+  params.service = "mockService";
+  params.path = "/getFoo";
+  params.method = "GET";
+  params.query_params["q"].push_back("test/toescape");
+  params.query_params["q"].push_back("test2");
+
+  DispatchHttpRequest(base::BindLambdaForTesting([&](const base::Value* value) {
+                        result = value->GetDict().Clone();
+                        run_loop.Quit();
+                      }),
+                      params);
+
+  identity_test_env_adaptor()
+      ->identity_test_env()
+      ->WaitForAccessTokenRequestIfNecessaryAndRespondWithToken(
+          "test_token", base::Time::Max());
+  run_loop.Run();
+
+  EXPECT_EQ(last_request()->url,
+            GURL("http://localhost:8000/getFoo?q=test%2Ftoescape&q=test2"));
+  EXPECT_EQ(*result.FindString("response"), "body");
+  EXPECT_EQ(*result.FindInt("statusCode"), net::HTTP_OK);
+}
+
+class TestDevToolsUIBindings : public DevToolsUIBindings {
+ public:
+  explicit TestDevToolsUIBindings(content::WebContents* web_contents)
+      : DevToolsUIBindings(web_contents) {}
+
+  MOCK_METHOD(void,
+              CallClientMethodImpl,
+              (const std::string& object_name,
+               const std::string& method_name,
+               base::Value arg1,
+               base::Value arg2,
+               base::Value arg3,
+               base::OnceCallback<void(base::Value)> completion_callback),
+              (override));
+};
+
+// Override the bindings creation to use TestDevToolsUIBindings.
+class DevToolsUIBindingsDispatchHttpRequestStreamingTest
+    : public DevToolsUIBindingsDispatchHttpRequestTest {
+ public:
+  void SetUp() override {
+    profile_ = IdentityTestEnvironmentProfileAdaptor::
+        CreateProfileForIdentityTestEnvironment();
+    identity_test_env_adaptor_ =
+        std::make_unique<IdentityTestEnvironmentProfileAdaptor>(profile_.get());
+    interceptor_ = std::make_unique<
+        content::URLLoaderInterceptor>(base::BindRepeating(
+        &DevToolsUIBindingsDispatchHttpRequestStreamingTest::InterceptRequest,
+        base::Unretained(this)));
+
+    web_contents_ = web_contents_factory_.CreateWebContents(profile_.get());
+    content::NavigationSimulator::NavigateAndCommitFromBrowser(
+        web_contents_, GURL("devtools://devtools/bundled/devtools_app.html"));
+    test_bindings_ = std::make_unique<TestDevToolsUIBindings>(web_contents_);
+
+    auto registry = std::make_unique<DevToolsHttpServiceRegistry>();
+    auto mock_handler = base::WrapUnique(new MockServiceHandler());
+    mock_handler_ptr_ = mock_handler.get();
+    registry->AddForTesting(DevToolsHttpServiceRegistry::Service(
+        "mockService", {{"/getFoo", "GET"}}, std::move(mock_handler)));
+    test_bindings_->SetHttpServiceRegistryForTesting(std::move(registry));
+  }
+
+  void DispatchHttpRequest(DevToolsUIBindings::DispatchCallback callback,
+                           const DevToolsDispatchHttpRequestParams& params) {
+    test_bindings_->DispatchHttpRequest(std::move(callback), params);
+  }
+
+  void TearDown() override {
+    // Clear dangling pointer before test_bindings_ destroys the handler.
+    mock_handler_ptr_ = nullptr;
+    test_bindings_.reset();
+    DevToolsUIBindingsDispatchHttpRequestTest::TearDown();
+  }
+
+  TestDevToolsUIBindings* bindings() { return test_bindings_.get(); }
+
+ protected:
+  std::unique_ptr<TestDevToolsUIBindings> test_bindings_;
+};
+
+TEST_F(DevToolsUIBindingsDispatchHttpRequestStreamingTest,
+       DispatchHttpRequestStreaming) {
+  ExpectCanMakeRequest(true);
+  identity_test_env_adaptor()->identity_test_env()->MakePrimaryAccountAvailable(
+      "test@google.com", signin::ConsentLevel::kSignin);
+
+  const std::string kChunk = "test_chunk";
+  SetResponse(GURL("http://localhost:8000/getFoo"), "", kChunk, net::OK);
+
+  base::RunLoop run_loop;
+  DevToolsDispatchHttpRequestParams params;
+  params.service = "mockService";
+  params.path = "/getFoo";
+  params.method = "GET";
+  params.stream_id = 99;
+
+  EXPECT_CALL(*bindings(),
+              CallClientMethodImpl("DevToolsAPI", "streamWrite", testing::_,
+                                   testing::_, testing::_, testing::_))
+      .WillOnce([&](const std::string& object_name,
+                    const std::string& method_name, base::Value arg1,
+                    base::Value arg2, base::Value arg3,
+                    base::OnceCallback<void(base::Value)> completion_callback) {
+        EXPECT_EQ(arg1.GetInt(), 99);
+        EXPECT_EQ(arg2.GetString(), kChunk);
+        EXPECT_EQ(arg3.GetBool(), false);  // encoded = false
+      });
+
+  DispatchHttpRequest(base::BindLambdaForTesting(
+                          [&](const base::Value* value) { run_loop.Quit(); }),
+                      params);
+
+  identity_test_env_adaptor()
+      ->identity_test_env()
+      ->WaitForAccessTokenRequestIfNecessaryAndRespondWithToken(
+          "test_token", base::Time::Max());
+
+  run_loop.Run();
+}
+
+TEST_F(DevToolsUIBindingsDispatchHttpRequestStreamingTest,
+       DispatchHttpRequestStreamingBinary) {
+  ExpectCanMakeRequest(true);
+  identity_test_env_adaptor()->identity_test_env()->MakePrimaryAccountAvailable(
+      "test@google.com", signin::ConsentLevel::kSignin);
+
+  // A chunk that is not valid UTF-8 (e.g., 0xFF 0xFE).
+  const std::string kBinaryChunk = "\xFF\xFE\x00\x00";
+  SetResponse(GURL("http://localhost:8000/getFoo"), "", kBinaryChunk, net::OK);
+
+  base::RunLoop run_loop;
+  DevToolsDispatchHttpRequestParams params;
+  params.service = "mockService";
+  params.path = "/getFoo";
+  params.method = "GET";
+  params.stream_id = 99;
+
+  // The chunk should be base64 encoded and the 'encoded' flag set to true.
+  EXPECT_CALL(*bindings(),
+              CallClientMethodImpl("DevToolsAPI", "streamWrite", testing::_,
+                                   testing::_, testing::_, testing::_))
+      .WillOnce([&](const std::string& object_name,
+                    const std::string& method_name, base::Value arg1,
+                    base::Value arg2, base::Value arg3,
+                    base::OnceCallback<void(base::Value)> completion_callback) {
+        EXPECT_EQ(arg1.GetInt(), 99);
+        EXPECT_EQ(arg2.GetString(), base::Base64Encode(kBinaryChunk));
+        EXPECT_EQ(arg3.GetBool(), true);  // encoded = true
+      });
+
+  DispatchHttpRequest(base::BindLambdaForTesting(
+                          [&](const base::Value* value) { run_loop.Quit(); }),
+                      params);
+
+  identity_test_env_adaptor()
+      ->identity_test_env()
+      ->WaitForAccessTokenRequestIfNecessaryAndRespondWithToken(
+          "test_token", base::Time::Max());
+
+  run_loop.Run();
+}
+
+class DevToolsUIBindingsHostConfigTest : public testing::Test {
+ public:
+  void SetUp() override { profile_ = std::make_unique<TestingProfile>(); }
+
+  void TearDown() override { profile_.reset(); }
+
+ protected:
+  content::BrowserTaskEnvironment task_environment_;
+  std::unique_ptr<TestingProfile> profile_;
+};
+
+TEST_F(DevToolsUIBindingsHostConfigTest, GetHostConfigBasic) {
+  base::DictValue result =
+      DevToolsUIBindings::GetHostConfigDictionary(profile_.get());
+
+  // Check some basic keys that should always be present.
+  EXPECT_TRUE(result.FindDict("aidaAvailability"));
+  EXPECT_TRUE(result.FindDict("devToolsConsoleInsights"));
+}
+
+TEST_F(DevToolsUIBindingsHostConfigTest, GetHostConfigWithFeatures) {
+  // Verify initial state of features.
+  base::DictValue initial_config =
+      DevToolsUIBindings::GetHostConfigDictionary(profile_.get());
+
+  const base::DictValue* initial_protocol_monitor =
+      initial_config.FindDict("devToolsProtocolMonitor");
+  ASSERT_TRUE(initial_protocol_monitor);
+  EXPECT_FALSE(initial_protocol_monitor->FindBool("enabled").value_or(true));
+
+  const base::DictValue* initial_freestyler =
+      initial_config.FindDict("devToolsFreestyler");
+  ASSERT_TRUE(initial_freestyler);
+  EXPECT_TRUE(initial_freestyler->FindBool("enabled").value_or(false));
+
+  const base::DictValue* initial_aiv2_arch =
+      initial_config.FindDict("devToolsAiV2Architecture");
+  ASSERT_TRUE(initial_aiv2_arch);
+  EXPECT_FALSE(initial_aiv2_arch->FindBool("enabled").value_or(true));
+
+  const base::DictValue* initial_instrumentation_breakpoints =
+      initial_config.FindDict("devToolsInstrumentationBreakpoints");
+  ASSERT_TRUE(initial_instrumentation_breakpoints);
+  EXPECT_FALSE(
+      initial_instrumentation_breakpoints->FindBool("enabled").value_or(true));
+
+  const base::DictValue* initial_source_map_scopes =
+      initial_config.FindDict("devToolsSourceMapScopesInSourcesPanel");
+  ASSERT_TRUE(initial_source_map_scopes);
+  EXPECT_FALSE(
+      initial_source_map_scopes->FindBool("enabled").value_or(true));
+
+  // Enable features.
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      {::features::kDevToolsProtocolMonitor, ::features::kDevToolsFreestyler,
+       ::features::kDevToolsAiV2Architecture,
+       ::features::kDevToolsInstrumentationBreakpoints,
+       ::features::kDevToolsSourceMapScopesInSourcesPanel},
+      {});
+
+  // Verify state of features after enabling them.
+  base::DictValue result =
+      DevToolsUIBindings::GetHostConfigDictionary(profile_.get());
+
+  const base::DictValue* protocol_monitor =
+      result.FindDict("devToolsProtocolMonitor");
+  ASSERT_TRUE(protocol_monitor);
+  EXPECT_TRUE(protocol_monitor->FindBool("enabled").value_or(false));
+
+  const base::DictValue* freestyler = result.FindDict("devToolsFreestyler");
+  ASSERT_TRUE(freestyler);
+  EXPECT_TRUE(freestyler->FindBool("enabled").value_or(false));
+
+  const base::DictValue* aiv2_arch =
+      result.FindDict("devToolsAiV2Architecture");
+  ASSERT_TRUE(aiv2_arch);
+  EXPECT_TRUE(aiv2_arch->FindBool("enabled").value_or(false));
+
+  const base::DictValue* instrumentation_breakpoints =
+      result.FindDict("devToolsInstrumentationBreakpoints");
+  ASSERT_TRUE(instrumentation_breakpoints);
+  EXPECT_TRUE(
+      instrumentation_breakpoints->FindBool("enabled").value_or(false));
+
+  const base::DictValue* source_map_scopes =
+      result.FindDict("devToolsSourceMapScopesInSourcesPanel");
+  ASSERT_TRUE(source_map_scopes);
+  EXPECT_TRUE(source_map_scopes->FindBool("enabled").value_or(false));
+}
+
+TEST_F(DevToolsUIBindingsHostConfigTest, GetHostConfigGdpProfiles) {
+  base::DictValue config =
+      DevToolsUIBindings::GetHostConfigDictionary(profile_.get());
+
+  const base::DictValue* gdp_profiles = config.FindDict("devToolsGdpProfiles");
+  ASSERT_TRUE(gdp_profiles);
+  std::optional<bool> gdp_enabled = gdp_profiles->FindBool("enabled");
+  ASSERT_TRUE(gdp_enabled.has_value());
+#if BUILDFLAG(IS_ANDROID)
+  EXPECT_FALSE(*gdp_enabled);
+#else
+  EXPECT_TRUE(*gdp_enabled);
+#endif
+
+  const base::DictValue* gdp_profiles_availability =
+      config.FindDict("devToolsGdpProfilesAvailability");
+  ASSERT_TRUE(gdp_profiles_availability);
+  std::optional<bool> availability_enabled =
+      gdp_profiles_availability->FindBool("enabled");
+  ASSERT_TRUE(availability_enabled.has_value());
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING) && !BUILDFLAG(IS_ANDROID)
+  EXPECT_TRUE(*availability_enabled);
+#else
+  EXPECT_FALSE(*availability_enabled);
+#endif
+}
+
+TEST_F(DevToolsUIBindingsHostConfigTest, SetChromeFlag) {
+  base::DictValue initial_config =
+      DevToolsUIBindings::GetHostConfigDictionary(profile_.get());
+  const base::DictValue* protocol_monitor =
+      initial_config.FindDict("devToolsProtocolMonitor");
+  ASSERT_TRUE(protocol_monitor);
+  EXPECT_FALSE(protocol_monitor->FindBool("enabled").value_or(true));
+
+  DevToolsUIBindings::SetChromeFlagInternal(profile_.get(),
+                                            "devtools-protocol-monitor", true);
+  base::DictValue new_config =
+      DevToolsUIBindings::GetHostConfigDictionary(profile_.get());
+  const base::DictValue* new_protocol_monitor =
+      new_config.FindDict("devToolsProtocolMonitor");
+  ASSERT_TRUE(new_protocol_monitor);
+  EXPECT_TRUE(new_protocol_monitor->FindBool("enabled").value_or(false));
+
+  DevToolsUIBindings::SetChromeFlagInternal(profile_.get(),
+                                            "devtools-protocol-monitor", false);
+  base::DictValue final_config =
+      DevToolsUIBindings::GetHostConfigDictionary(profile_.get());
+  const base::DictValue* final_protocol_monitor =
+      final_config.FindDict("devToolsProtocolMonitor");
+  ASSERT_TRUE(final_protocol_monitor);
+  EXPECT_FALSE(final_protocol_monitor->FindBool("enabled").value_or(true));
+}

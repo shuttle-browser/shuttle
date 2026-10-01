@@ -1,0 +1,168 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/modules/virtualkeyboard/virtual_keyboard.h"
+
+#include "base/trace_event/trace_event.h"
+#include "third_party/blink/public/mojom/frame/frame.mojom-blink.h"
+#include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/editing/ime/input_method_controller.h"
+#include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
+#include "third_party/blink/renderer/core/frame/navigator.h"
+#include "third_party/blink/renderer/core/frame/viewport_data.h"
+#include "third_party/blink/renderer/core/geometry/dom_rect.h"
+#include "third_party/blink/renderer/core/inspector/console_message.h"
+#include "third_party/blink/renderer/modules/event_target_modules.h"
+#include "third_party/blink/renderer/modules/virtualkeyboard/virtual_keyboard_geometry_change_event.h"
+#include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/rect_f.h"
+
+namespace blink {
+
+namespace {
+
+// Kill switch for allowing `virtualKeyboard.show()` if this page was navigated
+// from a same-site page that had user gesture.
+BASE_FEATURE(kShowKeyboardIfLastPageHadGesture,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+}  // namespace
+
+// static
+const char VirtualKeyboard::kSupplementName[] = "VirtualKeyboard";
+
+// static
+VirtualKeyboard* VirtualKeyboard::virtualKeyboard(Navigator& navigator) {
+  auto* keyboard = Supplement<Navigator>::From<VirtualKeyboard>(navigator);
+  if (!keyboard) {
+    keyboard = MakeGarbageCollected<VirtualKeyboard>(navigator);
+    ProvideTo(navigator, keyboard);
+  }
+  return keyboard;
+}
+
+VirtualKeyboard::VirtualKeyboard(Navigator& navigator)
+    : Supplement<Navigator>(navigator),
+      VirtualKeyboardOverlayChangedObserver(
+          navigator.DomWindow() ? navigator.DomWindow()->GetFrame() : nullptr) {
+  bounding_rect_ = DOMRect::Create();
+  if (LocalDOMWindow* window = navigator.DomWindow()) {
+    if (LocalFrame* frame = window->GetFrame()) {
+      bounding_rect_ =
+          DOMRect::FromRect(frame->VirtualKeyboardOverlayRect());
+    }
+  }
+}
+
+ExecutionContext* VirtualKeyboard::GetExecutionContext() const {
+  return GetSupplementable()->DomWindow();
+}
+
+const AtomicString& VirtualKeyboard::InterfaceName() const {
+  return event_target_names::kVirtualKeyboard;
+}
+
+VirtualKeyboard::~VirtualKeyboard() = default;
+
+bool VirtualKeyboard::overlaysContent() const {
+  LocalDOMWindow* window = GetSupplementable()->DomWindow();
+  if (!window)
+    return false;
+
+  DCHECK(window->GetFrame());
+
+  if (!window->GetFrame()->IsOutermostMainFrame())
+    return false;
+
+  return window->GetFrame()
+      ->GetDocument()
+      ->GetViewportData()
+      .GetVirtualKeyboardOverlaysContent();
+}
+
+DOMRect* VirtualKeyboard::boundingRect() const {
+  return bounding_rect_.Get();
+}
+
+void VirtualKeyboard::setOverlaysContent(bool overlays_content) {
+  LocalDOMWindow* window = GetSupplementable()->DomWindow();
+  if (!window)
+    return;
+
+  DCHECK(window->GetFrame());
+
+  if (window->GetFrame()->IsOutermostMainFrame()) {
+    window->GetFrame()
+        ->GetDocument()
+        ->GetViewportData()
+        .SetVirtualKeyboardOverlaysContent(overlays_content);
+  } else {
+    GetExecutionContext()->AddConsoleMessage(
+        MakeGarbageCollected<ConsoleMessage>(
+            mojom::blink::ConsoleMessageSource::kJavaScript,
+            mojom::blink::ConsoleMessageLevel::kWarning,
+            "Setting overlaysContent is only supported from "
+            "the top level browsing context"));
+  }
+  if (GetExecutionContext()) {
+    UseCounter::Count(GetExecutionContext(),
+                      WebFeature::kVirtualKeyboardOverlayPolicy);
+  }
+}
+
+void VirtualKeyboard::VirtualKeyboardOverlayChanged(
+    const gfx::Rect& keyboard_rect) {
+  TRACE_EVENT0("vk", "VirtualKeyboard::VirtualKeyboardOverlayChanged");
+  LocalDOMWindow* window = GetSupplementable()->DomWindow();
+  if (!window)
+    return;
+
+  bounding_rect_ = DOMRect::FromRect(keyboard_rect);
+  DispatchEvent(*(MakeGarbageCollected<VirtualKeyboardGeometryChangeEvent>(
+      event_type_names::kGeometrychange)));
+}
+
+void VirtualKeyboard::show() {
+  TRACE_EVENT0("vk", "VirtualKeyboard::show");
+  LocalDOMWindow* window = GetSupplementable()->DomWindow();
+  if (!window)
+    return;
+
+  // To show the keyboard, the page needs to have transient user activation.
+  // We also allow showing the keyboard if the page had sticky user activation
+  // that was consumed by a recent cross-origin navigation (which clears the
+  // user activation state).
+  if (window->GetFrame()->HasStickyUserActivation() ||
+      (base::FeatureList::IsEnabled(kShowKeyboardIfLastPageHadGesture) &&
+       window->GetFrame()->HadStickyUserActivationBeforeNavigation())) {
+    window->GetInputMethodController().SetVirtualKeyboardVisibilityRequest(
+        ui::mojom::VirtualKeyboardVisibilityRequest::SHOW);
+  } else {
+    GetExecutionContext()->AddConsoleMessage(
+        MakeGarbageCollected<ConsoleMessage>(
+            mojom::blink::ConsoleMessageSource::kJavaScript,
+            mojom::blink::ConsoleMessageLevel::kWarning,
+            "Calling show is only supported if user has "
+            "interacted with the page"));
+  }
+}
+
+void VirtualKeyboard::hide() {
+  TRACE_EVENT0("vk", "VirtualKeyboard::hide");
+  LocalDOMWindow* window = GetSupplementable()->DomWindow();
+  if (!window)
+    return;
+
+  window->GetInputMethodController().SetVirtualKeyboardVisibilityRequest(
+      ui::mojom::VirtualKeyboardVisibilityRequest::HIDE);
+}
+
+void VirtualKeyboard::Trace(Visitor* visitor) const {
+  visitor->Trace(bounding_rect_);
+  EventTarget::Trace(visitor);
+  Supplement<Navigator>::Trace(visitor);
+}
+
+}  // namespace blink

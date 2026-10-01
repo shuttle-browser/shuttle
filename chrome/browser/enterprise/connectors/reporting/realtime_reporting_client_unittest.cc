@@ -1,0 +1,868 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+#include "chrome/browser/enterprise/connectors/reporting/realtime_reporting_client.h"
+
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+
+#include "base/test/bind.h"
+#include "base/test/gmock_move_support.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
+#include "build/branding_buildflags.h"
+#include "build/build_config.h"
+#include "chrome/browser/enterprise/connectors/connectors_service.h"
+#include "chrome/browser/enterprise/connectors/reporting/realtime_reporting_client.h"
+#include "chrome/browser/enterprise/connectors/reporting/realtime_reporting_client_factory.h"
+#include "chrome/browser/enterprise/connectors/test/deep_scanning_test_utils.h"
+#include "chrome/browser/policy/dm_token_utils.h"
+#include "chrome/test/base/testing_browser_process.h"
+#include "chrome/test/base/testing_profile.h"
+#include "chrome/test/base/testing_profile_manager.h"
+#include "components/enterprise/common/proto/connectors.pb.h"
+#include "components/enterprise/common/proto/synced_from_google3/chrome_reporting_entity.pb.h"
+#include "components/enterprise/connectors/core/common.h"
+#include "components/enterprise/connectors/core/reporting_service_settings.h"
+#include "components/policy/core/common/cloud/mock_cloud_policy_client.h"
+#include "components/safe_browsing/content/browser/web_ui/web_ui_content_info_singleton.h"
+#include "components/safe_browsing/core/common/features.h"
+#include "content/public/test/browser_task_environment.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+#if !BUILDFLAG(GOOGLE_CHROME_BRANDING) && !BUILDFLAG(IS_CHROMEOS)
+#include "components/enterprise/browser/enterprise_switches.h"
+#endif
+
+#if !BUILDFLAG(IS_CHROMEOS)
+#include "components/enterprise/browser/controller/fake_browser_dm_token_storage.h"
+#endif
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+#include "base/notreached.h"
+#include "chrome/browser/enterprise/profile_management/profile_management_features.h"
+#include "chrome/browser/enterprise/signin/enterprise_signin_prefs.h"
+#include "components/device_signals/core/browser/signals_types.h"
+#endif
+
+#if BUILDFLAG(IS_WIN)
+// Windows headers (e.g. winbase.h) define ReportEvent as a macro to
+// ReportEventW, which conflicts with the method name.
+#undef ReportEvent
+#endif
+
+using testing::_;
+
+namespace enterprise_connectors {
+
+namespace {
+
+using Event = ::chrome::cros::reporting::proto::Event;
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+
+using SecurityAgent = ::chrome::cros::reporting::proto::SecurityAgent;
+
+Event GetTestEvent(Event::EventCase event_case) {
+  Event event;
+  switch (event_case) {
+    case Event::kPasswordReuseEvent:
+      event.mutable_password_reuse_event();
+      break;
+    case Event::kPasswordChangedEvent:
+      event.mutable_password_changed_event();
+      break;
+    case Event::kDangerousDownloadEvent:
+      event.mutable_dangerous_download_event();
+      break;
+    case Event::kInterstitialEvent:
+      event.mutable_interstitial_event();
+      break;
+    case Event::kSensitiveDataEvent:
+      event.mutable_sensitive_data_event();
+      break;
+    case Event::kUnscannedFileEvent:
+      event.mutable_unscanned_file_event();
+      break;
+    case Event::kLoginEvent:
+      event.mutable_login_event();
+      break;
+    case Event::kPasswordBreachEvent:
+      event.mutable_password_breach_event();
+      break;
+    case Event::kBrowserExtensionInstallEvent:
+      event.mutable_browser_extension_install_event();
+      break;
+    case Event::kBrowserCrashEvent:
+      event.mutable_browser_crash_event();
+      break;
+    case Event::kUrlFilteringInterstitialEvent:
+      event.mutable_url_filtering_interstitial_event();
+      break;
+    case Event::kExtensionTelemetryEvent:
+      event.mutable_extension_telemetry_event();
+      break;
+    default:
+      NOTREACHED();
+  }
+  return event;
+}
+
+google::protobuf::RepeatedPtrField<SecurityAgent> GetSecurityAgents(
+    Event event) {
+  switch (event.event_case()) {
+    case Event::kPasswordReuseEvent:
+      return event.password_reuse_event().security_agents();
+    case Event::kPasswordChangedEvent:
+      return event.password_changed_event().security_agents();
+    case Event::kDangerousDownloadEvent:
+      return event.dangerous_download_event().security_agents();
+    case Event::kInterstitialEvent:
+      return event.interstitial_event().security_agents();
+    case Event::kSensitiveDataEvent:
+      return event.sensitive_data_event().security_agents();
+    case Event::kUnscannedFileEvent:
+      return event.unscanned_file_event().security_agents();
+    case Event::kLoginEvent:
+      return event.login_event().security_agents();
+    case Event::kPasswordBreachEvent:
+      return event.password_breach_event().security_agents();
+    case Event::kBrowserExtensionInstallEvent:
+      return event.browser_extension_install_event().security_agents();
+    case Event::kBrowserCrashEvent:
+      return event.browser_crash_event().security_agents();
+    case Event::kUrlFilteringInterstitialEvent:
+      return event.url_filtering_interstitial_event().security_agents();
+    case Event::kExtensionTelemetryEvent:
+      return event.extension_telemetry_event().security_agents();
+    default:
+      NOTREACHED();
+  }
+}
+
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+class RealtimeReportingClientTestBase : public testing::Test {
+ public:
+  RealtimeReportingClientTestBase()
+      : profile_manager_(TestingBrowserProcess::GetGlobal()) {
+    EXPECT_TRUE(profile_manager_.SetUp());
+  }
+
+  RealtimeReportingClientTestBase(const RealtimeReportingClientTestBase&) =
+      delete;
+  RealtimeReportingClientTestBase& operator=(
+      const RealtimeReportingClientTestBase&) = delete;
+
+  ~RealtimeReportingClientTestBase() override = default;
+
+  void SetUp() override {
+    profile_ = profile_manager_.CreateTestingProfile("test-user");
+    policy::SetDMTokenForTesting(
+        policy::DMToken::CreateValidToken("fake-token"));
+
+    if (!client_) {
+      // Set a mock cloud policy client in the router.
+      client_ = std::make_unique<policy::MockCloudPolicyClient>();
+      client_->SetDMToken("fake-token");
+    }
+
+    RealtimeReportingClientFactory::GetInstance()->SetTestingFactory(
+        profile_,
+        base::BindRepeating(
+            &enterprise_connectors::test::BuildRealtimeReportingClient));
+
+    reporting_client_ =
+        enterprise_connectors::RealtimeReportingClientFactory::GetForProfile(
+            profile_);
+  }
+
+  void SetUpReportingClient(bool per_profile) {
+    per_profile ? reporting_client_->SetProfileCloudPolicyClientForTesting(
+                      client_.get())
+                : reporting_client_->SetBrowserCloudPolicyClientForTesting(
+                      client_.get());
+  }
+
+ protected:
+  content::BrowserTaskEnvironment task_environment_;
+  std::unique_ptr<policy::MockCloudPolicyClient> client_;
+  TestingProfileManager profile_manager_;
+  raw_ptr<TestingProfile> profile_ = nullptr;
+  raw_ptr<RealtimeReportingClient> reporting_client_ = nullptr;
+  base::HistogramTester histogram_;
+};
+}  // namespace
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+class RealtimeReportingClientOidcTest : public RealtimeReportingClientTestBase {
+ public:
+  RealtimeReportingClientOidcTest() {
+    scoped_feature_list_.InitAndEnableFeature(
+        profile_management::features::kOidcAuthProfileManagement);
+  }
+
+  void SetUp() override {
+    RealtimeReportingClientTestBase::SetUp();
+    profile_->GetPrefs()->SetString(enterprise_signin::prefs::kProfileUserEmail,
+                                    "oidc@user.email");
+  }
+
+ protected:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+
+class RealtimeReportingClientUmaTest
+    : public RealtimeReportingClientTestBase,
+      public testing::WithParamInterface<bool> {
+ public:
+  bool is_profile_reporting() { return GetParam(); }
+
+ protected:
+  policy::CloudPolicyClient::ResultCallback upload_callback_;
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+TEST_P(RealtimeReportingClientUmaTest, TestUmaEventUploadSucceeds) {
+// Profile reporting is not supported on Ash.
+#if BUILDFLAG(IS_CHROMEOS)
+  if (is_profile_reporting()) {
+    return;
+  }
+#endif
+
+  SetUpReportingClient(is_profile_reporting());
+
+  ReportingSettings settings;
+  settings.per_profile = is_profile_reporting();
+  ::chrome::cros::reporting::proto::Event extension_install_event;
+  extension_install_event.mutable_browser_extension_install_event()->set_id(
+      "extension_id");
+
+  EXPECT_EQ(EnterpriseReportingEventType::kExtensionInstallEvent,
+            enterprise_connectors::GetUmaEnumFromEventCase(
+                extension_install_event.event_case()));
+  EXPECT_EQ(::chrome::cros::reporting::proto::Event::EventCase::
+                kBrowserExtensionInstallEvent,
+            extension_install_event.event_case());
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(*client_.get(), UploadSecurityEvent(_, _, _))
+      .WillOnce(
+          [&](bool include_device_info,
+              ::chrome::cros::reporting::proto::UploadEventsRequest&& request,
+              policy::CloudPolicyClient::ResultCallback callback) {
+            upload_callback_ = std::move(callback);
+            run_loop.Quit();
+          });
+  reporting_client_->ReportEvent(std::move(extension_install_event),
+                                 std::move(settings));
+  run_loop.Run();
+
+  ASSERT_TRUE(upload_callback_);
+  std::move(upload_callback_)
+      .Run(policy::CloudPolicyClient::Result(policy::DM_STATUS_SUCCESS));
+
+  histogram_.ExpectUniqueSample(
+      "Enterprise.ReportingEventUploadSuccess",
+      EnterpriseReportingEventType::kExtensionInstallEvent, 1);
+  histogram_.ExpectTotalCount("Enterprise.ReportingEventUploadFailure", 0);
+}
+
+TEST_P(RealtimeReportingClientUmaTest,
+       TestUploadCallbackWithDestroyedClientDoesNotCrash) {
+// Profile reporting is not supported on Ash.
+#if BUILDFLAG(IS_CHROMEOS)
+  if (is_profile_reporting()) {
+    return;
+  }
+#endif
+
+  SetUpReportingClient(is_profile_reporting());
+
+  ReportingSettings settings;
+  settings.per_profile = is_profile_reporting();
+  ::chrome::cros::reporting::proto::Event extension_install_event;
+  extension_install_event.mutable_browser_extension_install_event()->set_id(
+      "extension_id");
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(*client_.get(), UploadSecurityEvent(_, _, _))
+      .WillOnce(
+          [&](bool include_device_info,
+              ::chrome::cros::reporting::proto::UploadEventsRequest&& request,
+              policy::CloudPolicyClient::ResultCallback callback) {
+            upload_callback_ = std::move(callback);
+            run_loop.Quit();
+          });
+  reporting_client_->ReportEvent(std::move(extension_install_event),
+                                 std::move(settings));
+  run_loop.Run();
+
+  ASSERT_TRUE(upload_callback_);
+
+  if (is_profile_reporting()) {
+    reporting_client_->SetProfileCloudPolicyClientForTesting(nullptr);
+  } else {
+    reporting_client_->SetBrowserCloudPolicyClientForTesting(nullptr);
+  }
+  client_.reset();
+
+  std::move(upload_callback_)
+      .Run(policy::CloudPolicyClient::Result(policy::DM_STATUS_SUCCESS));
+
+  histogram_.ExpectUniqueSample(
+      "Enterprise.ReportingEventUploadSuccess",
+      EnterpriseReportingEventType::kExtensionInstallEvent, 1);
+  histogram_.ExpectTotalCount("Enterprise.ReportingEventUploadFailure", 0);
+}
+
+TEST_P(RealtimeReportingClientUmaTest,
+       TestUploadCallbackReceivesEnrichedRequest) {
+// Profile reporting is not supported on Ash.
+#if BUILDFLAG(IS_CHROMEOS)
+  if (is_profile_reporting()) {
+    return;
+  }
+#endif
+
+  SetUpReportingClient(is_profile_reporting());
+
+  ReportingSettings settings;
+  settings.per_profile = is_profile_reporting();
+  ::chrome::cros::reporting::proto::Event extension_install_event;
+  extension_install_event.mutable_browser_extension_install_event()->set_id(
+      "extension_id");
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(*client_.get(), UploadSecurityEvent(_, _, _))
+      .WillOnce(
+          [&](bool include_device_info,
+              ::chrome::cros::reporting::proto::UploadEventsRequest&& request,
+              policy::CloudPolicyClient::ResultCallback callback) {
+            upload_callback_ = std::move(callback);
+            run_loop.Quit();
+          });
+  reporting_client_->ReportEvent(std::move(extension_install_event),
+                                 std::move(settings));
+  run_loop.Run();
+
+  ASSERT_TRUE(upload_callback_);
+
+  safe_browsing::WebUIContentInfoSingleton::GetInstance()
+      ->ClearReportingEvents();
+  safe_browsing::WebUIContentInfoSingleton::GetInstance()
+      ->AddListenerForTesting();
+
+  ::chrome::cros::reporting::proto::UploadEventsRequest enriched_request;
+  enriched_request.mutable_device()->set_client_id("test_enriched_client_id");
+  enriched_request.mutable_browser()->set_chrome_version("100.0.0.0");
+
+  std::move(upload_callback_)
+      .Run(policy::CloudPolicyClient::Result::CreateForRealtimeUpload(
+          policy::DM_STATUS_SUCCESS, /*response_code=*/200, enriched_request));
+
+  const auto& requests = safe_browsing::WebUIContentInfoSingleton::GetInstance()
+                             ->upload_event_requests();
+  ASSERT_EQ(1u, requests.size());
+  EXPECT_EQ("test_enriched_client_id", requests[0].first.device().client_id());
+  EXPECT_EQ("100.0.0.0", requests[0].first.browser().chrome_version());
+  safe_browsing::WebUIContentInfoSingleton::GetInstance()
+      ->ClearListenerForTesting();
+}
+
+TEST_P(RealtimeReportingClientUmaTest, TestUmaEventUploadFails) {
+// Profile reporting is not supported on Ash.
+#if BUILDFLAG(IS_CHROMEOS)
+  if (is_profile_reporting()) {
+    return;
+  }
+#endif
+
+  SetUpReportingClient(is_profile_reporting());
+
+  ReportingSettings settings;
+  settings.per_profile = is_profile_reporting();
+  ::chrome::cros::reporting::proto::Event extension_install_event;
+  extension_install_event.mutable_browser_extension_install_event()->set_id(
+      "extension_id");
+
+  EXPECT_EQ(EnterpriseReportingEventType::kExtensionInstallEvent,
+            enterprise_connectors::GetUmaEnumFromEventCase(
+                extension_install_event.event_case()));
+  EXPECT_EQ(::chrome::cros::reporting::proto::Event::EventCase::
+                kBrowserExtensionInstallEvent,
+            extension_install_event.event_case());
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(*client_.get(), UploadSecurityEvent(_, _, _))
+      .WillOnce(
+          [&](bool include_device_info,
+              ::chrome::cros::reporting::proto::UploadEventsRequest&& request,
+              policy::CloudPolicyClient::ResultCallback callback) {
+            upload_callback_ = std::move(callback);
+            run_loop.Quit();
+          });
+  reporting_client_->ReportEvent(std::move(extension_install_event),
+                                 std::move(settings));
+  run_loop.Run();
+
+  ASSERT_TRUE(upload_callback_);
+  std::move(upload_callback_)
+      .Run(policy::CloudPolicyClient::Result(policy::DM_STATUS_REQUEST_FAILED));
+
+  histogram_.ExpectUniqueSample(
+      "Enterprise.ReportingEventUploadFailure",
+      EnterpriseReportingEventType::kExtensionInstallEvent, 1);
+  histogram_.ExpectTotalCount("Enterprise.ReportingEventUploadSuccess", 0);
+}
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         RealtimeReportingClientUmaTest,
+                         /* is_profile_reporting */ testing::Bool());
+
+TEST_F(RealtimeReportingClientTestBase,
+       TestEventNameToUmaEnumMapIncludesAllEvents) {
+  std::set<std::string> all_reporting_events;
+  all_reporting_events.insert(kAllReportingEnabledEvents.begin(),
+                              kAllReportingEnabledEvents.end());
+  all_reporting_events.insert(kAllReportingOptInEvents.begin(),
+                              kAllReportingOptInEvents.end());
+  // Saas usage event and browser launch event are independent from reporting
+  // connector, so it is neither enabled nor opt-in event.
+  all_reporting_events.insert(kKeySaasUsageEvent);
+  all_reporting_events.insert(kKeyBrowserLaunchEvent);
+
+  EXPECT_EQ(all_reporting_events.size(), kEventNameToUmaEnumMap.size());
+  for (std::string eventName : all_reporting_events) {
+    EXPECT_TRUE(kEventNameToUmaEnumMap.contains(eventName));
+  }
+}
+
+TEST_F(RealtimeReportingClientTestBase,
+       TestUnknownEventNameMapsTokUnknownEvent) {
+  EXPECT_EQ(GetUmaEnumFromEventName("non-existent-event-name"),
+            EnterpriseReportingEventType::kUnknownEvent);
+}
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+
+
+TEST_F(RealtimeReportingClientOidcTest, Username) {
+  RealtimeReportingClient client(profile_);
+  ASSERT_EQ(client.GetProfileUserName(), "oidc@user.email");
+}
+
+// TODO(b/342232001): Add more tests for the `RealtimeReportingClientOidcTest`
+// fixture to cover key use cases.
+
+class CrowdStrikeSignalTest
+    : public RealtimeReportingClientTestBase,
+      public testing::WithParamInterface<Event::EventCase> {
+ public:
+  CrowdStrikeSignalTest() = default;
+};
+
+TEST_P(CrowdStrikeSignalTest, TestCrowdstrikeSignalsPopulated) {
+  device_signals::CrowdStrikeSignals signals;
+  signals.agent_id = "agent-123";
+  signals.customer_id = "customer-123";
+  device_signals::AgentSignalsResponse agent_signals;
+  agent_signals.crowdstrike_signals = signals;
+  device_signals::SignalsAggregationResponse response;
+  response.agent_signals_response = agent_signals;
+
+  auto event = GetTestEvent(GetParam());
+  AddCrowdstrikeSignalsToEvent(event, response);
+  auto security_agents = GetSecurityAgents(event);
+
+  ASSERT_EQ(security_agents.size(), 1);
+  auto security_agent = security_agents[0];
+  ASSERT_TRUE(security_agent.has_crowdstrike());
+  EXPECT_EQ(security_agent.crowdstrike().agent_id(), "agent-123");
+  EXPECT_EQ(security_agent.crowdstrike().customer_id(), "customer-123");
+}
+
+TEST_P(CrowdStrikeSignalTest,
+       TestCrowdstrikeSignalsNotPopulatedForEmptyResponse) {
+  device_signals::SignalsAggregationResponse response;
+  auto event = GetTestEvent(GetParam());
+  AddCrowdstrikeSignalsToEvent(event, response);
+  auto security_agents = GetSecurityAgents(event);
+
+  ASSERT_EQ(security_agents.size(), 0);
+}
+
+INSTANTIATE_TEST_SUITE_P(,
+                         CrowdStrikeSignalTest,
+                         testing::Values(Event::kPasswordReuseEvent,
+                                         Event::kPasswordChangedEvent,
+                                         Event::kDangerousDownloadEvent,
+                                         Event::kInterstitialEvent,
+                                         Event::kSensitiveDataEvent,
+                                         Event::kUnscannedFileEvent,
+                                         Event::kLoginEvent,
+                                         Event::kPasswordBreachEvent,
+                                         Event::kBrowserExtensionInstallEvent,
+                                         Event::kBrowserCrashEvent,
+                                         Event::kUrlFilteringInterstitialEvent,
+                                         Event::kExtensionTelemetryEvent));
+
+#endif
+
+class RealtimeReportingClientUrlTruncationTest
+    : public RealtimeReportingClientTestBase,
+      public testing::WithParamInterface<Event::EventCase> {};
+
+TEST_P(RealtimeReportingClientUrlTruncationTest, TestUrlTruncation) {
+  SetUpReportingClient(/*per_profile=*/false);
+
+  ReportingSettings settings;
+  settings.per_profile = false;
+
+  Event event_variant;
+  Event::EventCase event_case = GetParam();
+
+  std::string long_url(4242, 'a');
+  std::string truncated_url(2048, 'a');
+
+  switch (event_case) {
+    case Event::kDangerousDownloadEvent: {
+      auto* event = event_variant.mutable_dangerous_download_event();
+      event->set_url(long_url);
+      event->set_tab_url(long_url);
+      event->mutable_url_info()->set_url(long_url);
+      event->mutable_tab_url_info()->set_url(long_url);
+      event->add_referral_urls(long_url);
+      event->add_referrers()->set_url(long_url);
+      event->add_iframe_urls(long_url);
+      break;
+    }
+    case Event::kUrlFilteringInterstitialEvent: {
+      auto* event = event_variant.mutable_url_filtering_interstitial_event();
+      event->set_url(long_url);
+      event->mutable_url_info()->set_url(long_url);
+      event->add_referrer_urls(long_url);
+      event->add_referrers()->set_url(long_url);
+      break;
+    }
+    case Event::kPasswordBreachEvent: {
+      auto* event = event_variant.mutable_password_breach_event();
+      event->add_identities()->set_url(long_url);
+      break;
+    }
+    case Event::kLoginEvent: {
+      auto* event = event_variant.mutable_login_event();
+      event->set_url(long_url);
+      event->set_federated_origin(long_url);
+      break;
+    }
+    case Event::kUnscannedFileEvent: {
+      auto* event = event_variant.mutable_unscanned_file_event();
+      event->set_url(long_url);
+      event->set_tab_url(long_url);
+      event->add_referral_urls(long_url);
+      break;
+    }
+    case Event::kSensitiveDataEvent: {
+      auto* event = event_variant.mutable_sensitive_data_event();
+      event->set_url(long_url);
+      event->set_tab_url(long_url);
+      event->mutable_url_info()->set_url(long_url);
+      event->add_referral_urls(long_url);
+      event->add_referrers()->set_url(long_url);
+      event->add_iframe_urls(long_url);
+      break;
+    }
+    case Event::kInterstitialEvent: {
+      auto* event = event_variant.mutable_interstitial_event();
+      event->set_url(long_url);
+      event->add_referral_urls(long_url);
+      event->mutable_url_info()->set_url(long_url);
+      event->add_referrers()->set_url(long_url);
+      break;
+    }
+    case Event::kPasswordReuseEvent: {
+      auto* event = event_variant.mutable_password_reuse_event();
+      event->set_url(long_url);
+      event->add_referral_urls(long_url);
+      break;
+    }
+    default:
+      GTEST_SKIP() << "Event type not yet supported for this test.";
+  }
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(*client_.get(), UploadSecurityEvent(_, _, _))
+      .WillOnce(
+          [event_case, truncated_url, &run_loop](
+              bool include_device_info,
+              ::chrome::cros::reporting::proto::UploadEventsRequest&& request,
+              policy::CloudPolicyClient::ResultCallback callback) {
+            ASSERT_EQ(request.events_size(), 1);
+            const auto& reported_event = request.events(0);
+            ASSERT_EQ(reported_event.event_case(), event_case);
+
+            switch (event_case) {
+              case Event::kDangerousDownloadEvent: {
+                const auto& event = reported_event.dangerous_download_event();
+                EXPECT_EQ(event.url(), truncated_url);
+                EXPECT_EQ(event.tab_url(), truncated_url);
+                EXPECT_EQ(event.url_info().url(), truncated_url);
+                EXPECT_EQ(event.tab_url_info().url(), truncated_url);
+                ASSERT_EQ(event.referral_urls_size(), 1);
+                EXPECT_EQ(event.referral_urls(0), truncated_url);
+                ASSERT_EQ(event.referrers_size(), 1);
+                EXPECT_EQ(event.referrers(0).url(), truncated_url);
+                ASSERT_EQ(event.iframe_urls_size(), 1);
+                EXPECT_EQ(event.iframe_urls(0), truncated_url);
+                break;
+              }
+              case Event::kUrlFilteringInterstitialEvent: {
+                const auto& event =
+                    reported_event.url_filtering_interstitial_event();
+                EXPECT_EQ(event.url(), truncated_url);
+                EXPECT_EQ(event.url_info().url(), truncated_url);
+                ASSERT_EQ(event.referrer_urls_size(), 1);
+                EXPECT_EQ(event.referrer_urls(0), truncated_url);
+                ASSERT_EQ(event.referrers_size(), 1);
+                EXPECT_EQ(event.referrers(0).url(), truncated_url);
+                break;
+              }
+              case Event::kPasswordBreachEvent: {
+                const auto& event = reported_event.password_breach_event();
+                ASSERT_EQ(event.identities_size(), 1);
+                EXPECT_EQ(event.identities(0).url(), truncated_url);
+                break;
+              }
+              case Event::kLoginEvent: {
+                const auto& event = reported_event.login_event();
+                EXPECT_EQ(event.url(), truncated_url);
+                EXPECT_EQ(event.federated_origin(), truncated_url);
+                break;
+              }
+              case Event::kUnscannedFileEvent: {
+                const auto& event = reported_event.unscanned_file_event();
+                EXPECT_EQ(event.url(), truncated_url);
+                EXPECT_EQ(event.tab_url(), truncated_url);
+                ASSERT_EQ(event.referral_urls_size(), 1);
+                EXPECT_EQ(event.referral_urls(0), truncated_url);
+                break;
+              }
+              case Event::kSensitiveDataEvent: {
+                const auto& event = reported_event.sensitive_data_event();
+                EXPECT_EQ(event.url(), truncated_url);
+                EXPECT_EQ(event.tab_url(), truncated_url);
+                EXPECT_EQ(event.url_info().url(), truncated_url);
+                ASSERT_EQ(event.referral_urls_size(), 1);
+                EXPECT_EQ(event.referral_urls(0), truncated_url);
+                ASSERT_EQ(event.referrers_size(), 1);
+                EXPECT_EQ(event.referrers(0).url(), truncated_url);
+                ASSERT_EQ(event.iframe_urls_size(), 1);
+                EXPECT_EQ(event.iframe_urls(0), truncated_url);
+                break;
+              }
+              case Event::kInterstitialEvent: {
+                const auto& event = reported_event.interstitial_event();
+                EXPECT_EQ(event.url(), truncated_url);
+                ASSERT_EQ(event.referral_urls_size(), 1);
+                EXPECT_EQ(event.referral_urls(0), truncated_url);
+                EXPECT_EQ(event.url_info().url(), truncated_url);
+                ASSERT_EQ(event.referrers_size(), 1);
+                EXPECT_EQ(event.referrers(0).url(), truncated_url);
+                break;
+              }
+              case Event::kPasswordReuseEvent: {
+                const auto& event = reported_event.password_reuse_event();
+                EXPECT_EQ(event.url(), truncated_url);
+                ASSERT_EQ(event.referral_urls_size(), 1);
+                EXPECT_EQ(event.referral_urls(0), truncated_url);
+                break;
+              }
+              default:
+                break;
+            }
+            std::move(callback).Run(
+                policy::CloudPolicyClient::Result(policy::DM_STATUS_SUCCESS));
+            run_loop.Quit();
+          });
+  reporting_client_->ReportEvent(std::move(event_variant), std::move(settings));
+  run_loop.Run();
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AllEventTypes,
+    RealtimeReportingClientUrlTruncationTest,
+    testing::Values(Event::kDangerousDownloadEvent,
+                    Event::kUrlFilteringInterstitialEvent,
+                    Event::kPasswordBreachEvent,
+                    Event::kLoginEvent,
+                    Event::kUnscannedFileEvent,
+                    Event::kSensitiveDataEvent,
+                    Event::kInterstitialEvent,
+                    Event::kPasswordReuseEvent),
+    [](const testing::TestParamInfo<Event::EventCase>& info) {
+      switch (info.param) {
+        case Event::kDangerousDownloadEvent:
+          return "DangerousDownloadEvent";
+        case Event::kUrlFilteringInterstitialEvent:
+          return "UrlFilteringInterstitialEvent";
+        case Event::kPasswordBreachEvent:
+          return "PasswordBreachEvent";
+        case Event::kLoginEvent:
+          return "LoginEvent";
+        case Event::kUnscannedFileEvent:
+          return "UnscannedFileEvent";
+        case Event::kSensitiveDataEvent:
+          return "SensitiveDataEvent";
+        case Event::kInterstitialEvent:
+          return "InterstitialEvent";
+        case Event::kPasswordReuseEvent:
+          return "PasswordReuseEvent";
+        default:
+          return "UnknownEvent";
+      }
+    });
+
+class RealtimeReportingClientStandaloneTest
+    : public RealtimeReportingClientTestBase,
+      public testing::WithParamInterface<
+          std::tuple<bool, policy::DeviceManagementStatus>> {
+ public:
+  bool is_profile_reporting() const { return std::get<0>(GetParam()); }
+
+  policy::DeviceManagementStatus dm_status() const {
+    return std::get<1>(GetParam());
+  }
+
+  bool should_succeed() const {
+    return dm_status() == policy::DM_STATUS_SUCCESS;
+  }
+
+ protected:
+  void SetUpStandaloneReportingClient() {
+    SetUpReportingClient(is_profile_reporting());
+  }
+
+  void VerifyStandaloneMetrics(EnterpriseReportingEventType event_type,
+                               const std::string& success_metric,
+                               const std::string& failure_metric) {
+    if (should_succeed()) {
+      histogram_.ExpectUniqueSample("Enterprise.ReportingEventUploadSuccess",
+                                    event_type, 1);
+      histogram_.ExpectTotalCount("Enterprise.ReportingEventUploadFailure", 0);
+      histogram_.ExpectTotalCount(success_metric, 1);
+    } else {
+      histogram_.ExpectUniqueSample("Enterprise.ReportingEventUploadFailure",
+                                    event_type, 1);
+      histogram_.ExpectTotalCount("Enterprise.ReportingEventUploadSuccess", 0);
+      histogram_.ExpectTotalCount(failure_metric, 1);
+    }
+  }
+};
+
+using RealtimeReportingClientSaasTest = RealtimeReportingClientStandaloneTest;
+
+TEST_P(RealtimeReportingClientSaasTest, ReportSaasUsageEvent) {
+#if BUILDFLAG(IS_CHROMEOS)
+  if (is_profile_reporting()) {
+    return;
+  }
+#endif
+
+  SetUpStandaloneReportingClient();
+
+  ::chrome::cros::reporting::proto::Event event;
+  event.mutable_saas_usage_report_event();
+
+  base::RunLoop run_loop;
+  policy::CloudPolicyClient::Result captured_result(policy::DM_STATUS_SUCCESS);
+
+  EXPECT_CALL(*client_.get(), UploadSecurityEvent(_, _, _))
+      .WillOnce(
+          [&](bool include_device_info,
+              ::chrome::cros::reporting::proto::UploadEventsRequest&& request,
+              policy::CloudPolicyClient::ResultCallback callback) {
+            EXPECT_EQ(request.events_size(), 1);
+            EXPECT_TRUE(request.events(0).has_saas_usage_report_event());
+            std::move(callback).Run(
+                policy::CloudPolicyClient::Result(dm_status()));
+          });
+
+  reporting_client_->ReportSaasUsageEvent(
+      event, is_profile_reporting(), "fake-token",
+      base::BindLambdaForTesting([&](policy::CloudPolicyClient::Result result) {
+        captured_result = std::move(result);
+        run_loop.Quit();
+      }));
+
+  run_loop.Run();
+  EXPECT_EQ(captured_result.IsSuccess(), should_succeed());
+  EXPECT_EQ(captured_result.GetDMServerError(), dm_status());
+  VerifyStandaloneMetrics(
+      EnterpriseReportingEventType::kSaasUsageReportEvent,
+      "Enterprise.ReportingEvent.SaasUsage.UploadSuccess.Duration",
+      "Enterprise.ReportingEvent.SaasUsage.UploadFailure.Duration");
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    RealtimeReportingClientSaasTest,
+    testing::Combine(testing::Bool(),  // is_profile_reporting
+                     testing::Values(policy::DM_STATUS_SUCCESS,
+                                     policy::DM_STATUS_REQUEST_FAILED)));
+
+#if !BUILDFLAG(IS_CHROMEOS)
+using RealtimeReportingClientBrowserLaunchTest =
+    RealtimeReportingClientStandaloneTest;
+
+TEST_P(RealtimeReportingClientBrowserLaunchTest, ReportBrowserLaunchEvent) {
+  // Browser Launch reporting is a Desktop-only feature (Win/Mac/Linux).
+
+  SetUpStandaloneReportingClient();
+
+  ::chrome::cros::reporting::proto::Event event;
+  event.mutable_browser_launch_event();
+
+  base::RunLoop run_loop;
+  policy::CloudPolicyClient::Result captured_result(policy::DM_STATUS_SUCCESS);
+
+  EXPECT_CALL(*client_.get(), UploadSecurityEvent(_, _, _))
+      .WillOnce(
+          [&](bool include_device_info,
+              ::chrome::cros::reporting::proto::UploadEventsRequest&& request,
+              policy::CloudPolicyClient::ResultCallback callback) {
+            EXPECT_EQ(request.events_size(), 1);
+            EXPECT_TRUE(request.events(0).has_browser_launch_event());
+            std::move(callback).Run(
+                policy::CloudPolicyClient::Result(dm_status()));
+          });
+
+  reporting_client_->ReportBrowserLaunchEvent(
+      event, is_profile_reporting(), "fake-token",
+      base::BindLambdaForTesting([&](policy::CloudPolicyClient::Result result) {
+        captured_result = std::move(result);
+        run_loop.Quit();
+      }));
+
+  run_loop.Run();
+  EXPECT_EQ(captured_result.IsSuccess(), should_succeed());
+  EXPECT_EQ(captured_result.GetDMServerError(), dm_status());
+  VerifyStandaloneMetrics(
+      EnterpriseReportingEventType::kBrowserLaunchEvent,
+      "Enterprise.ReportingEvent.BrowserLaunch.UploadSuccess.Duration",
+      "Enterprise.ReportingEvent.BrowserLaunch.UploadFailure.Duration");
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    RealtimeReportingClientBrowserLaunchTest,
+    testing::Combine(testing::Bool(),  // is_profile_reporting
+                     testing::Values(policy::DM_STATUS_SUCCESS,
+                                     policy::DM_STATUS_REQUEST_FAILED)));
+#endif  // !BUILDFLAG(IS_CHROMEOS)
+
+}  // namespace enterprise_connectors

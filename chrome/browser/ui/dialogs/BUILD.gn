@@ -1,0 +1,86 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/ui.gni")
+import("//components/compose/features.gni")
+import("//extensions/buildflags/buildflags.gni")
+
+source_set("dialogs") {
+  public = [ "outdated_upgrade_bubble.h" ]
+  public_deps = [ ":browser_dialogs" ]
+  sources = [ "outdated_upgrade_bubble.cc" ]
+  deps = [
+    "//base",
+    "//chrome/app:branded_strings",
+    "//chrome/app:generated_resources",
+    "//chrome/browser:browser_process",
+    "//chrome/browser/ui:browser_element_identifiers",
+    "//chrome/browser/upgrade_detector",
+    "//chrome/common",
+    "//chrome/common:channel_info",
+    "//chrome/common:constants",
+    "//content/public/browser",
+    "//ui/base",
+    "//url",
+  ]
+
+  if (!is_android) {
+    deps += [ "//chrome/browser/ui/interaction" ]
+  }
+
+  if (is_win) {
+    deps += [ "//chrome/installer/util:with_no_strings" ]
+  }
+}
+
+source_set("browser_dialogs") {
+  sources = [
+    "browser_dialogs.cc",
+    "browser_dialogs.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//ui/base",
+    "//ui/gfx",
+  ]
+
+  deps = [
+    "//chrome/browser/task_manager",
+    "//components/autofill/core/common",
+    "//components/compose:buildflags",
+    "//components/compose/core/browser",
+    "//content/public/browser",
+    "//extensions/buildflags",
+    "//skia",
+    "//ui/base/interaction",
+    "//ui/gfx/geometry",
+    "//ui/shell_dialogs",
+  ]
+
+  if (is_win || is_linux || is_mac || is_chromeos) {
+    deps += [ "//chrome/browser/ui/bookmarks" ]
+  }
+
+  if (toolkit_views) {
+    deps += [ "//components/constrained_window" ]
+  }
+
+  if (is_android) {
+    deps += [ "//ui/android" ]
+  }
+}
+
+if (is_linux || is_chromeos) {
+  source_set("process_singleton_dialog_linux") {
+    public = [ "process_singleton_dialog_linux.h" ]
+    sources = [ "process_singleton_dialog_linux.cc" ]
+    deps = [
+      "//base",
+      "//chrome/app:branded_strings",
+      "//chrome/app:generated_resources",
+      "//ui/base",
+    ]
+  }
+}

@@ -1,0 +1,508 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/default_browser/model/utils.h"
+
+#import "base/ios/ios_util.h"
+#import "base/test/metrics/histogram_tester.h"
+#import "base/test/scoped_feature_list.h"
+#import "base/time/time.h"
+#import "components/feature_engagement/public/feature_constants.h"
+#import "components/feature_engagement/test/mock_tracker.h"
+#import "components/prefs/testing_pref_service.h"
+#import "components/sync_preferences/testing_pref_service_syncable.h"
+#import "ios/chrome/browser/default_browser/model/features.h"
+#import "ios/chrome/browser/default_browser/model/utils_test_support.h"
+#import "ios/chrome/browser/shared/model/prefs/browser_prefs.h"
+#import "ios/chrome/browser/shared/model/prefs/pref_names.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/test/testing_application_context.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "testing/gtest/include/gtest/gtest.h"
+#import "testing/gtest_mac.h"
+#import "testing/platform_test.h"
+#import "ui/base/l10n/l10n_util_mac.h"
+
+namespace {
+
+// About 5 months.
+constexpr base::TimeDelta k5Months = base::Days(5 * 365 / 12);
+
+// About 1 year.
+constexpr base::TimeDelta kMoreThan1Year = base::Days(365) + base::Days(1);
+
+// TODO(crbug.com/41496010): We should reuse the ones from utils directly to
+// avoid manual errors. Test key for recording the last time a http link
+// was opened via Chrome, which indicates that it's set as default browser.
+NSString* const kLastHTTPURLOpenTime = @"lastHTTPURLOpenTime";
+
+class DefaultBrowserUtilsTest : public PlatformTest {
+ protected:
+  void SetUp() override {
+    PlatformTest::SetUp();
+    ClearDefaultBrowserPromoData();
+
+    local_state_ = std::make_unique<TestingPrefServiceSimple>();
+    RegisterLocalStatePrefs(local_state_->registry());
+    TestingApplicationContext::GetGlobal()->SetLocalState(local_state_.get());
+  }
+  void TearDown() override {
+    ClearDefaultBrowserPromoData();
+
+    TestingApplicationContext::GetGlobal()->SetLocalState(nullptr);
+    local_state_.reset();
+    PlatformTest::TearDown();
+  }
+
+  web::WebTaskEnvironment task_environment_;
+  base::test::ScopedFeatureList feature_list_;
+  std::unique_ptr<TestingPrefServiceSimple> local_state_;
+};
+
+// Tests logging user interactions with a non-modal promo multiple times with
+// the same current interactions count doesn't over-increment the value.
+TEST_F(DefaultBrowserUtilsTest,
+       LogNonModalUserInteractionMultipleTimesSameArguments) {
+  LogUserInteractionWithNonModalPromo(2);
+  EXPECT_EQ(UserInteractionWithNonModalPromoCount(), 3);
+
+  LogUserInteractionWithNonModalPromo(2);
+  EXPECT_EQ(UserInteractionWithNonModalPromoCount(), 3);
+
+  LogUserInteractionWithNonModalPromo(2);
+  EXPECT_EQ(UserInteractionWithNonModalPromoCount(), 3);
+}
+
+// Test IsChromeLikelyDefaultBrowser in multiple senarios.
+TEST_F(DefaultBrowserUtilsTest, IsChromeLikelyDefaultBrowser) {
+  // Initial test with no value kLastHTTPURLOpenTime value recorded.
+  EXPECT_FALSE(IsChromeLikelyDefaultBrowser());  // 21 days.
+  EXPECT_FALSE(IsChromeLikelyDefaultBrowser7Days());
+  EXPECT_FALSE(IsChromeLikelyDefaultBrowserXDays(60));
+  EXPECT_FALSE(IsChromeLikelyDefaultBrowserXDays(120));
+
+  NSDate* just_less_than_sixty_days_ago =
+      (base::Time::Now() - base::Days(60) + base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime,
+                             just_less_than_sixty_days_ago);
+  EXPECT_FALSE(IsChromeLikelyDefaultBrowser());  // 21 days.
+  EXPECT_FALSE(IsChromeLikelyDefaultBrowser7Days());
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowserXDays(60));
+  EXPECT_FALSE(IsChromeLikelyDefaultBrowserXDays(59));
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowserXDays(80));
+
+  NSDate* just_less_than_twenty_one_days_ago =
+      (base::Time::Now() - base::Days(21) + base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime,
+                             just_less_than_twenty_one_days_ago);
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowser());  // 21 days.
+  EXPECT_FALSE(IsChromeLikelyDefaultBrowser7Days());
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowserXDays(21));
+  EXPECT_FALSE(IsChromeLikelyDefaultBrowserXDays(20));
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowserXDays(40));
+
+  NSDate* just_less_than_seven_days_ago =
+      (base::Time::Now() - base::Days(7) + base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime,
+                             just_less_than_seven_days_ago);
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowser());  // 21 days.
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowser7Days());
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowserXDays(7));
+  EXPECT_FALSE(IsChromeLikelyDefaultBrowserXDays(6));
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowserXDays(15));
+
+  NSDate* just_less_than_two_days_ago =
+      (base::Time::Now() - base::Days(2) + base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, just_less_than_two_days_ago);
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowser());  // 21 days.
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowser7Days());
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowserXDays(2));
+  EXPECT_FALSE(IsChromeLikelyDefaultBrowserXDays(1));
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowserXDays(8));
+}
+
+// Test IsChromePotentiallyNoLongerDefaultBrowser* in multiple senarios.
+TEST_F(DefaultBrowserUtilsTest, IsChromePotentiallyNoLongerDefaultBrowser) {
+  // Initial test with no kLastHTTPURLOpenTime value recorded.
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* under_four_days_ago =
+      (base::Time::Now() - base::Days(4) + base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, under_four_days_ago);
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* over_four_days_ago =
+      (base::Time::Now() - base::Days(4) - base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, over_four_days_ago);
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* under_seven_days_ago =
+      (base::Time::Now() - base::Days(7) + base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, under_seven_days_ago);
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* over_seven_days_ago =
+      (base::Time::Now() - base::Days(7) - base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, over_seven_days_ago);
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* under_ten_days_ago =
+      (base::Time::Now() - base::Days(10) + base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, under_ten_days_ago);
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* over_ten_days_ago =
+      (base::Time::Now() - base::Days(10) - base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, over_ten_days_ago);
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* under_fourteen_days_ago =
+      (base::Time::Now() - base::Days(14) + base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, under_fourteen_days_ago);
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* over_fourteen_days_ago =
+      (base::Time::Now() - base::Days(14) - base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, over_fourteen_days_ago);
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* under_twenty_one_days_ago =
+      (base::Time::Now() - base::Days(21) + base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, under_twenty_one_days_ago);
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* over_twenty_one_days_ago =
+      (base::Time::Now() - base::Days(21) - base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, over_twenty_one_days_ago);
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* under_twenty_eight_days_ago =
+      (base::Time::Now() - base::Days(28) + base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, under_twenty_eight_days_ago);
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* over_twenty_eight_days_ago =
+      (base::Time::Now() - base::Days(28) - base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, over_twenty_eight_days_ago);
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* under_thirty_five_days_ago =
+      (base::Time::Now() - base::Days(35) + base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, under_thirty_five_days_ago);
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* over_thirty_five_days_ago =
+      (base::Time::Now() - base::Days(35) - base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, over_thirty_five_days_ago);
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* under_fourty_two_days_ago =
+      (base::Time::Now() - base::Days(42) + base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, under_fourty_two_days_ago);
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_TRUE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+
+  NSDate* over_fourty_two_days_ago =
+      (base::Time::Now() - base::Days(42) - base::Minutes(10)).ToNSDate();
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime, over_fourty_two_days_ago);
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(10, 4));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(21, 7));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(28, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(35, 14));
+  EXPECT_FALSE(IsChromePotentiallyNoLongerDefaultBrowser(42, 21));
+}
+
+// Test that Blue dot display timestamp is recorded first time and is not
+// updated afterwards.
+TEST_F(DefaultBrowserUtilsTest, TestDefaultBrowserBlueDotFirstDisplay) {
+  EXPECT_FALSE(HasDefaultBrowserBlueDotDisplayTimestamp());
+
+  RecordDefaultBrowserBlueDotFirstDisplay();
+  EXPECT_TRUE(HasDefaultBrowserBlueDotDisplayTimestamp());
+
+  // Save current pref value and try calling
+  // `RecordDefaultBrowserBlueDotFirstDisplay` again.
+  base::Time timestamp =
+      local_state_->GetTime(prefs::kIosDefaultBrowserBlueDotPromoFirstDisplay);
+  RecordDefaultBrowserBlueDotFirstDisplay();
+
+  // Get pref value again and check that it's same.
+  EXPECT_EQ(timestamp, local_state_->GetTime(
+                           prefs::kIosDefaultBrowserBlueDotPromoFirstDisplay));
+}
+
+// Test that timestamp will be reset when needed.
+TEST_F(DefaultBrowserUtilsTest,
+       TestResetDefaultBrowserBlueDotDisplayTimestampIfNeeded) {
+  // It will not recent if the timestamp is less than 1 year old.
+  base::Time timestamp = base::Time::Now() - k5Months;
+  local_state_->SetTime(prefs::kIosDefaultBrowserBlueDotPromoFirstDisplay,
+                        timestamp);
+  ResetDefaultBrowserBlueDotDisplayTimestampIfNeeded();
+
+  // Check that didn't reset.
+  EXPECT_EQ(timestamp, local_state_->GetTime(
+                           prefs::kIosDefaultBrowserBlueDotPromoFirstDisplay));
+  EXPECT_TRUE(HasDefaultBrowserBlueDotDisplayTimestamp());
+
+  // Set the timestamp to over 1 year ago.
+  local_state_->SetTime(prefs::kIosDefaultBrowserBlueDotPromoFirstDisplay,
+                        base::Time::Now() - kMoreThan1Year);
+  ResetDefaultBrowserBlueDotDisplayTimestampIfNeeded();
+
+  // Check that it got reset.
+  EXPECT_FALSE(HasDefaultBrowserBlueDotDisplayTimestamp());
+}
+
+// Test LogOpenHTTPURLFromExternalURL conversion metric logging.
+TEST_F(DefaultBrowserUtilsTest,
+       TestLogOpenHTTPURLFromExternalURLConversionMetrics) {
+  // When user opens a link for the first time ever, all conversion
+  // histograms should record true.
+  {
+    base::HistogramTester histogram_tester;
+    LogOpenHTTPURLFromExternalURL();
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion7", true,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion14", true,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion28", true,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion90", true,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion180", true,
+                                       1);
+  }
+
+  // Opening again immediately should record false for all histograms.
+  {
+    base::HistogramTester histogram_tester;
+    LogOpenHTTPURLFromExternalURL();
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion7", false,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion14", false,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion28", false,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion90", false,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion180",
+                                       false, 1);
+  }
+
+  // Simulate opening a link after 30 days.
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime,
+                             (base::Time::Now() - base::Days(30)).ToNSDate());
+  {
+    base::HistogramTester histogram_tester;
+    LogOpenHTTPURLFromExternalURL();
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion7", true,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion14", true,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion28", true,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion90", false,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion180",
+                                       false, 1);
+  }
+
+  // Simulate opening a link after 100 days.
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime,
+                             (base::Time::Now() - base::Days(100)).ToNSDate());
+  {
+    base::HistogramTester histogram_tester;
+    LogOpenHTTPURLFromExternalURL();
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion7", true,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion14", true,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion28", true,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion90", true,
+                                       1);
+    histogram_tester.ExpectBucketCount("IOS.DefaultBrowser.Conversion180",
+                                       false, 1);
+  }
+}
+
+// Tests ShouldShowDefaultBrowserPromoOverflowMenu under various
+// conditions including multi-window and dismissal behavior.
+TEST_F(DefaultBrowserUtilsTest, TestShouldShowDefaultBrowserPromoOverflowMenu) {
+  testing::NiceMock<feature_engagement::test::MockTracker> mock_tracker;
+
+  EXPECT_FALSE(ShouldShowDefaultBrowserPromoOverflowMenu(
+      DefaultBrowserPromoOverflowMenuType::kShortcuts, nullptr));
+
+  EXPECT_FALSE(ShouldShowDefaultBrowserPromoOverflowMenu(
+      DefaultBrowserPromoOverflowMenuType::kShortcuts, &mock_tracker));
+
+  // Enable feature flag with Shortcuts variation.
+  feature_list_.InitAndEnableFeatureWithParameters(
+      kDefaultBrowserPromoOverflowMenu,
+      {{kDefaultBrowserPromoOverflowMenuTypeParam, "1"}});
+
+  SetObjectIntoStorageForKey(kLastHTTPURLOpenTime,
+                             (base::Time::Now() - base::Days(2)).ToNSDate());
+  EXPECT_TRUE(IsChromeLikelyDefaultBrowser());
+  EXPECT_FALSE(ShouldShowDefaultBrowserPromoOverflowMenu(
+      DefaultBrowserPromoOverflowMenuType::kShortcuts, &mock_tracker));
+
+  // Clear HTTP URL open time so Chrome is not default.
+  ClearDefaultBrowserPromoData();
+  EXPECT_FALSE(IsChromeLikelyDefaultBrowser());
+
+  EXPECT_CALL(mock_tracker,
+              ShouldTriggerHelpUI(testing::Ref(
+                  feature_engagement::
+                      kIPHiOSPromoOverflowMenuShortcutsDefaultBrowserFeature)))
+      .WillOnce(testing::Return(false));
+  EXPECT_FALSE(ShouldShowDefaultBrowserPromoOverflowMenu(
+      DefaultBrowserPromoOverflowMenuType::kShortcuts, &mock_tracker));
+
+  EXPECT_CALL(mock_tracker,
+              ShouldTriggerHelpUI(testing::Ref(
+                  feature_engagement::
+                      kIPHiOSPromoOverflowMenuShortcutsDefaultBrowserFeature)))
+      .WillOnce(testing::Return(true));
+  EXPECT_TRUE(ShouldShowDefaultBrowserPromoOverflowMenu(
+      DefaultBrowserPromoOverflowMenuType::kShortcuts, &mock_tracker));
+
+  // In multi-window setup, ShouldTriggerHelpUI is NOT queried again and returns
+  // true.
+  EXPECT_TRUE(ShouldShowDefaultBrowserPromoOverflowMenu(
+      DefaultBrowserPromoOverflowMenuType::kShortcuts, &mock_tracker));
+
+  // Dismissing first window should not dismiss FET yet.
+  EXPECT_CALL(mock_tracker,
+              Dismissed(testing::Ref(
+                  feature_engagement::
+                      kIPHiOSPromoOverflowMenuShortcutsDefaultBrowserFeature)))
+      .Times(0);
+  DismissDefaultBrowserPromoOverflowMenu(&mock_tracker);
+
+  // Dismissing second window should dismiss FET.
+  EXPECT_CALL(mock_tracker,
+              Dismissed(testing::Ref(
+                  feature_engagement::
+                      kIPHiOSPromoOverflowMenuShortcutsDefaultBrowserFeature)))
+      .Times(1);
+  DismissDefaultBrowserPromoOverflowMenu(&mock_tracker);
+}
+
+// Tests ShouldShowDefaultBrowserPromoOverflowMenu with Destination type.
+TEST_F(DefaultBrowserUtilsTest,
+       TestShouldShowDefaultBrowserPromoOverflowMenuDestination) {
+  testing::NiceMock<feature_engagement::test::MockTracker> mock_tracker;
+
+  // Enable feature flag with Destination variation.
+  feature_list_.InitAndEnableFeatureWithParameters(
+      kDefaultBrowserPromoOverflowMenu,
+      {{kDefaultBrowserPromoOverflowMenuTypeParam, "0"}});
+
+  EXPECT_FALSE(IsChromeLikelyDefaultBrowser());
+
+  // Mismatch in type param: querying kShortcuts should return false when
+  // kDestination is active.
+  EXPECT_FALSE(ShouldShowDefaultBrowserPromoOverflowMenu(
+      DefaultBrowserPromoOverflowMenuType::kShortcuts, &mock_tracker));
+
+  EXPECT_CALL(
+      mock_tracker,
+      ShouldTriggerHelpUI(testing::Ref(
+          feature_engagement::
+              kIPHiOSPromoOverflowMenuDestinationDefaultBrowserFeature)))
+      .WillOnce(testing::Return(true));
+  EXPECT_TRUE(ShouldShowDefaultBrowserPromoOverflowMenu(
+      DefaultBrowserPromoOverflowMenuType::kDestination, &mock_tracker));
+
+  // In multi-window setup, ShouldTriggerHelpUI is NOT queried again and returns
+  // true.
+  EXPECT_TRUE(ShouldShowDefaultBrowserPromoOverflowMenu(
+      DefaultBrowserPromoOverflowMenuType::kDestination, &mock_tracker));
+
+  // Dismissing first window should not dismiss FET yet.
+  EXPECT_CALL(
+      mock_tracker,
+      Dismissed(testing::Ref(
+          feature_engagement::
+              kIPHiOSPromoOverflowMenuDestinationDefaultBrowserFeature)))
+      .Times(0);
+  DismissDefaultBrowserPromoOverflowMenu(&mock_tracker);
+
+  // Dismissing second window should dismiss FET.
+  EXPECT_CALL(
+      mock_tracker,
+      Dismissed(testing::Ref(
+          feature_engagement::
+              kIPHiOSPromoOverflowMenuDestinationDefaultBrowserFeature)))
+      .Times(1);
+  DismissDefaultBrowserPromoOverflowMenu(&mock_tracker);
+}
+}  // namespace

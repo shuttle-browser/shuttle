@@ -1,0 +1,58 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_COMMON_REQUEST_HEADER_INTEGRITY_REQUEST_HEADER_INTEGRITY_URL_LOADER_THROTTLE_H_
+#define CHROME_COMMON_REQUEST_HEADER_INTEGRITY_REQUEST_HEADER_INTEGRITY_URL_LOADER_THROTTLE_H_
+
+#include "third_party/blink/public/common/loader/url_loader_throttle.h"
+
+namespace net {
+class HttpRequestHeaders;
+}
+
+namespace network::mojom {
+class NetworkContextParams;
+}
+
+namespace request_header_integrity {
+
+class RequestHeaderIntegrityURLLoaderThrottle
+    : public blink::URLLoaderThrottle {
+ public:
+  RequestHeaderIntegrityURLLoaderThrottle();
+  RequestHeaderIntegrityURLLoaderThrottle(
+      const RequestHeaderIntegrityURLLoaderThrottle&) = delete;
+  RequestHeaderIntegrityURLLoaderThrottle& operator=(
+      const RequestHeaderIntegrityURLLoaderThrottle&) = delete;
+
+  ~RequestHeaderIntegrityURLLoaderThrottle() override;
+
+  // blink::URLLoaderThrottle:
+  void DetachFromCurrentSequence() override;
+  void WillStartRequest(network::ResourceRequest* request,
+                        bool* defer) override;
+  void WillRedirectRequest(
+      net::RedirectInfo* redirect_info,
+      const network::mojom::URLResponseHead& response_head,
+      bool* defer,
+      network::HttpRequestHeadersUpdateParams* headers_update_params) override;
+  static bool IsFeatureEnabled();
+  static void UpdateCorsExemptHeaders(
+      network::mojom::NetworkContextParams* params);
+
+  // Called both for initial requests and upon redirects during prefetching.
+  // - Adds the integrity header names to `removed_headers` in the case where
+  //   the request is redirection from a target domain to a non-target domain
+  //   and already has the integrity headers.
+  // - Adds the integrity headers to `modified_cors_exempt_headers` if the
+  //   request is for a target domain.
+  static void ModifyRequestIntegrityHeadersForPrefetch(
+      const GURL& url,
+      std::vector<std::string>& removed_headers,
+      net::HttpRequestHeaders& modified_cors_exempt_headers);
+};
+
+}  // namespace request_header_integrity
+
+#endif  // CHROME_COMMON_REQUEST_HEADER_INTEGRITY_REQUEST_HEADER_INTEGRITY_URL_LOADER_THROTTLE_H_

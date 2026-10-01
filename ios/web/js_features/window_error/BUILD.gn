@@ -1,0 +1,105 @@
+# Copyright 2021 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//ios/build/config.gni")
+import("//ios/web/public/js_messaging/optimize_ts.gni")
+
+source_set("window_error") {
+  deps = [
+    ":error_js",
+    ":error_reporting",
+    ":script_error_details",
+    "//base",
+    "//ios/web/common:features",
+    "//ios/web/public",
+    "//ios/web/public/js_messaging",
+    "//net",
+    "//url",
+  ]
+
+  sources = [
+    "error_event_listener_java_script_feature.h",
+    "error_event_listener_java_script_feature.mm",
+    "script_error_message_handler_java_script_feature.h",
+    "script_error_message_handler_java_script_feature.mm",
+  ]
+}
+
+source_set("script_error_details") {
+  deps = [ "//url" ]
+
+  sources = [
+    "script_error_details.h",
+    "script_error_details.mm",
+  ]
+}
+
+source_set("script_error_stack_util") {
+  deps = [ "//base" ]
+
+  sources = [
+    "script_error_stack_util.h",
+    "script_error_stack_util.mm",
+  ]
+}
+
+source_set("features") {
+  sources = [
+    "features.h",
+    "features.mm",
+  ]
+  deps = [ "//base" ]
+}
+
+source_set("error_reporting") {
+  sources = [
+    "ios_javascript_error_report.h",
+    "ios_javascript_error_report.mm",
+    "web_js_error_report_processor.h",
+    "web_js_error_report_processor.mm",
+  ]
+  deps = [
+    ":features",
+    ":script_error_details",
+    "//base",
+    "//build:branding_buildflags",
+    "//components/variations",
+    "//ios/web/public",
+    "//net",
+    "//services/network/public/cpp",
+  ]
+}
+
+optimize_ts("error_js") {
+  visibility = [ ":window_error" ]
+
+  sources = [ "resources/error.ts" ]
+  deps = [
+    "//ios/web/public/js_messaging:gcrweb_error",
+    "//ios/web/public/js_messaging:util_scripts",
+  ]
+}
+
+source_set("unittests") {
+  testonly = true
+
+  deps = [
+    ":features",
+    ":script_error_details",
+    ":script_error_stack_util",
+    ":window_error",
+    "//base/test:test_support",
+    "//ios/web/js_messaging:java_script_feature",
+    "//ios/web/public/js_messaging",
+    "//ios/web/public/test",
+    "//ios/web/public/test:test_fixture",
+    "//testing/gtest",
+  ]
+
+  sources = [
+    "features_unittest.mm",
+    "script_error_message_handler_java_script_feature_unittest.mm",
+    "script_error_stack_util_unittest.mm",
+  ]
+}

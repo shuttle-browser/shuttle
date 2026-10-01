@@ -1,0 +1,133 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/web_package/subresource_signed_exchange_url_loader_factory.h"
+
+#include <stdint.h>
+
+#include <memory>
+#include <utility>
+
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "content/browser/web_package/signed_exchange_inner_response_url_loader.h"
+#include "mojo/public/cpp/bindings/message.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "mojo/public/cpp/bindings/self_owned_receiver.h"
+#include "net/base/net_errors.h"
+#include "net/http/http_response_headers.h"
+#include "services/network/public/cpp/initiator_lock_compatibility.h"
+#include "services/network/public/cpp/resource_request.h"
+#include "services/network/public/mojom/url_loader.mojom.h"
+#include "storage/browser/blob/blob_data_handle.h"
+
+namespace content {
+
+namespace {
+
+bool IsValidRequestInitiator(const network::ResourceRequest& request,
+                             const url::Origin& request_initiator_origin_lock) {
+  // TODO(lukasza): Deduplicate the check below by reusing parts of
+  // CorsURLLoaderFactory::IsValidRequest (potentially also reusing the parts
+  // that validate non-initiator-related parts of a ResourceRequest).
+  network::InitiatorLockCompatibility initiator_lock_compatibility =
+      network::VerifyRequestInitiatorLock(request_initiator_origin_lock,
+                                          request.request_initiator);
+  switch (initiator_lock_compatibility) {
+    case network::InitiatorLockCompatibility::kCompatibleLock:
+      return true;
+
+    case network::InitiatorLockCompatibility::kBrowserProcess:
+    case network::InitiatorLockCompatibility::kNoLock:
+    case network::InitiatorLockCompatibility::kNoInitiator:
+    case network::InitiatorLockCompatibility::kIncorrectLock:
+      return false;
+  }
+
+  return false;
+}
+
+}  // namespace
+
+SubresourceSignedExchangeURLLoaderFactory::
+    SubresourceSignedExchangeURLLoaderFactory(
+        mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver,
+        std::unique_ptr<const PrefetchedSignedExchangeCacheEntry> entry,
+        const url::Origin& request_initiator_origin_lock)
+    : entry_(std::move(entry)),
+      request_initiator_origin_lock_(request_initiator_origin_lock) {
+  receivers_.Add(this, std::move(receiver));
+  receivers_.set_disconnect_handler(base::BindRepeating(
+      &SubresourceSignedExchangeURLLoaderFactory::OnMojoDisconnect,
+      base::Unretained(this)));
+}
+
+SubresourceSignedExchangeURLLoaderFactory::
+    ~SubresourceSignedExchangeURLLoaderFactory() = default;
+
+void SubresourceSignedExchangeURLLoaderFactory::CreateLoaderAndStart(
+    mojo::PendingReceiver<network::mojom::URLLoader> loader,
+    int32_t request_id,
+    uint32_t options,
+    const network::ResourceRequest& request,
+    mojo::PendingRemote<network::mojom::URLLoaderClient> client,
+    const net::MutableNetworkTrafficAnnotationTag& traffic_annotation) {
+  if (request.mode == network::mojom::RequestMode::kNavigate) {
+    network::debug::ScopedResourceRequestCrashKeys request_crash_keys(request);
+    mojo::ReportBadMessage(
+        "SubresourceSignedExchangeURLLoaderFactory: "
+        "kNavigate mode is forbidden for subresources");
+    mojo::Remote<network::mojom::URLLoaderClient>(std::move(client))
+        ->OnComplete(
+            network::URLLoaderCompletionStatus(net::ERR_INVALID_ARGUMENT));
+    return;
+  }
+
+  if (!IsValidRequestInitiator(request, request_initiator_origin_lock_)) {
+    network::debug::ScopedResourceRequestCrashKeys request_crash_keys(request);
+    network::debug::ScopedRequestInitiatorOriginLockCrashKey lock_crash_keys(
+        request_initiator_origin_lock_);
+    mojo::ReportBadMessage(
+        "SubresourceSignedExchangeURLLoaderFactory: "
+        "lock VS initiator mismatch");
+    mojo::Remote<network::mojom::URLLoaderClient>(std::move(client))
+        ->OnComplete(
+            network::URLLoaderCompletionStatus(net::ERR_INVALID_ARGUMENT));
+    return;
+  }
+
+  if (request.url != entry_->inner_url()) {
+    network::debug::ScopedResourceRequestCrashKeys request_crash_keys(request);
+    mojo::ReportBadMessage(
+        "SubresourceSignedExchangeURLLoaderFactory: "
+        "request.url does not match inner_url");
+    mojo::Remote<network::mojom::URLLoaderClient>(std::move(client))
+        ->OnComplete(
+            network::URLLoaderCompletionStatus(net::ERR_INVALID_ARGUMENT));
+    return;
+  }
+
+  mojo::MakeSelfOwnedReceiver(
+      std::make_unique<SignedExchangeInnerResponseURLLoader>(
+          request, entry_->inner_response().Clone(),
+          std::make_unique<const storage::BlobDataHandle>(
+              *entry_->blob_data_handle()),
+          *entry_->completion_status(), std::move(client),
+          false /* is_navigation_request */, orb_state_),
+      std::move(loader));
+}
+
+void SubresourceSignedExchangeURLLoaderFactory::Clone(
+    mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver) {
+  receivers_.Add(this, std::move(receiver));
+}
+
+void SubresourceSignedExchangeURLLoaderFactory::OnMojoDisconnect() {
+  if (!receivers_.empty()) {
+    return;
+  }
+  delete this;
+}
+
+}  // namespace content

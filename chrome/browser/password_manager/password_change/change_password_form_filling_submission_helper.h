@@ -1,0 +1,155 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_PASSWORD_MANAGER_PASSWORD_CHANGE_CHANGE_PASSWORD_FORM_FILLING_SUBMISSION_HELPER_H_
+#define CHROME_BROWSER_PASSWORD_MANAGER_PASSWORD_CHANGE_CHANGE_PASSWORD_FORM_FILLING_SUBMISSION_HELPER_H_
+
+#include <string>
+
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
+#include "base/timer/timer.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
+#include "chrome/browser/password_manager/password_change/button_click_helper.h"
+#include "chrome/browser/password_manager/password_change/password_change_submission_verifier.h"
+#include "chrome/common/chrome_render_frame.mojom.h"
+#include "components/actor/public/mojom/actor_types.mojom-forward.h"
+#include "components/autofill/core/common/form_data.h"
+#include "components/autofill/core/common/unique_ids.h"
+#include "components/optimization_guide/content/browser/page_content_proto_provider.h"
+#include "components/password_manager/core/browser/password_form.h"
+
+namespace content {
+class WebContents;
+}
+namespace password_manager {
+class PasswordFormManager;
+class PasswordManagerClient;
+}  // namespace password_manager
+
+class ModelQualityLogsUploader;
+class AnnotatedPageContentCapturer;
+class ChangePasswordFormFiller;
+
+// Helper class which fills a form, submits it and verifies submission result.
+// Upon completion invokes `result_callback` to notify the result of submission.
+class ChangePasswordFormFillingSubmissionHelper {
+ public:
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  //
+  // LINT.IfChange(SubmissionError)
+  enum class SubmissionError {
+    kFailedToFillForm = 0,
+    kTimeout = 1,
+    kFailedToCaptureContent = 2,
+    kFailedToParseResponse = 3,
+    kSubmitButtonNotFound = 4,
+    kInterventionDetected = 5,
+    kFailedToClickSubmit = 6,
+    kMaxValue = kFailedToClickSubmit,
+  };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/password/enums.xml:ChangePasswordFormSubmissionError)
+
+  using SubmissionResult =
+      base::expected<std::unique_ptr<password_manager::PasswordFormManager>,
+                     SubmissionError>;
+
+  static constexpr base::TimeDelta kSubmissionWaitingTimeout =
+      base::Seconds(30);
+
+  ChangePasswordFormFillingSubmissionHelper(
+      content::WebContents* web_contents,
+      password_manager::PasswordManagerClient* client,
+      base::OnceCallback<void(SubmissionResult)> result_callback);
+
+  ChangePasswordFormFillingSubmissionHelper(
+      content::WebContents* web_contents,
+      password_manager::PasswordManagerClient* client,
+      ModelQualityLogsUploader* logs_uploader,
+      base::OnceCallback<void(SubmissionResult)> result_callback);
+
+  ~ChangePasswordFormFillingSubmissionHelper();
+
+  // Starts chain of actions:
+  // * fills and submits a change password form observed by `form_manager`,
+  // * pre-saves the new_password as a backup,
+  // * provisionally saves submitted password.
+  void FillChangePasswordForm(
+      password_manager::PasswordFormManager* form_manager,
+      const std::u16string& username,
+      const std::u16string& login_password,
+      const std::u16string& generated_password);
+
+  // Saves a password with a given `username`. Must be called only after
+  // `callback_` was invoked.
+  void SavePassword(const std::u16string& username);
+
+  // Returns current URL from the `form_manager_`.
+  GURL GetURL() const;
+
+#if defined(UNIT_TEST)
+  ChangePasswordFormFiller* form_filler() { return filler_.get(); }
+
+  ButtonClickHelper* click_helper() { return click_helper_.get(); }
+
+  password_manager::PasswordFormManager* form_manager() {
+    return form_manager_.get();
+  }
+
+  AnnotatedPageContentCapturer* capturer() { return capturer_.get(); }
+#endif
+  // Whether helper has submitted change password form or not.
+  bool IsPasswordFormSubmitted() const { return click_helper_ != nullptr; }
+
+ private:
+  void OnFormFilled(
+      base::expected<std::unique_ptr<password_manager::PasswordFormManager>,
+                     SubmissionError> result);
+
+  void OnPageContentReceived(
+      optimization_guide::AIPageContentResultOrError content);
+
+  OptimizationGuideKeyedService* GetOptimizationService();
+
+  void OnExecutionResponseCallback(
+      optimization_guide::OptimizationGuideModelExecutionResult
+          execution_result,
+      std::unique_ptr<
+          optimization_guide::proto::PasswordChangeSubmissionLoggingData>
+          logging_data);
+
+  void OnButtonClicked(actor::mojom::ActionResultCode result);
+
+  void OnTimeout();
+
+  base::Time creation_time_;
+
+  const raw_ptr<content::WebContents> web_contents_ = nullptr;
+  const raw_ptr<password_manager::PasswordManagerClient> client_ = nullptr;
+
+  raw_ptr<ModelQualityLogsUploader> logs_uploader_ = nullptr;
+
+  base::OnceCallback<void(SubmissionResult)> callback_;
+
+  // PasswordFormManager associated with current change password form.
+  std::unique_ptr<password_manager::PasswordFormManager> form_manager_;
+
+  // Helper to fill the form.
+  std::unique_ptr<ChangePasswordFormFiller> filler_;
+
+  // Helper to capture annotated page content.
+  std::unique_ptr<AnnotatedPageContentCapturer> capturer_;
+
+  // Timeout for verifying submission detection.
+  base::OneShotTimer timeout_timer_;
+
+  std::unique_ptr<ButtonClickHelper> click_helper_;
+
+  base::WeakPtrFactory<ChangePasswordFormFillingSubmissionHelper>
+      weak_ptr_factory_{this};
+};
+
+#endif  // CHROME_BROWSER_PASSWORD_MANAGER_PASSWORD_CHANGE_CHANGE_PASSWORD_FORM_FILLING_SUBMISSION_HELPER_H_

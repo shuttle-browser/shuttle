@@ -1,0 +1,762 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "gpu/command_buffer/service/graphite_shared_context.h"
+
+#include "base/logging.h"
+#include "base/memory/ptr_util.h"
+#include "base/metrics/histogram_macros.h"
+#include "base/rand_util.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
+#include "components/crash/core/common/crash_key.h"
+#include "gpu/command_buffer/common/shm_count.h"
+#include "third_party/skia/include/core/SkColorSpace.h"
+#include "third_party/skia/include/gpu/graphite/Context.h"
+#include "third_party/skia/include/gpu/graphite/PrecompileContext.h"
+
+namespace gpu {
+
+namespace {
+// This is emitted to UMA - values should not be reordered, only appended!
+// LINT.IfChange(InsertRecordingStatusUma)
+enum class InsertRecordingStatusUma {
+  kSuccess,
+  kInvalidRecording,
+  kPromiseImageInstantiationFailed,
+  kAddCommandsFailed,
+  kAsyncShaderCompilesFailed,
+  kOutOfOrderRecording,
+  kMaxValue = kOutOfOrderRecording
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/gpu/enums.xml:GraphiteInsertRecordingStatus)
+
+InsertRecordingStatusUma InsertRecordingStatusUma(
+    skgpu::graphite::InsertStatus insert_status) {
+  // InsertStatus almost behaves like an enum class, but not quite since it can
+  // convert to both bool and integer types and can't be used in a switch.
+  if (insert_status == skgpu::graphite::InsertStatus::kSuccess) {
+    return InsertRecordingStatusUma::kSuccess;
+  } else if (insert_status ==
+             skgpu::graphite::InsertStatus::kInvalidRecording) {
+    return InsertRecordingStatusUma::kInvalidRecording;
+  } else if (insert_status ==
+             skgpu::graphite::InsertStatus::kPromiseImageInstantiationFailed) {
+    return InsertRecordingStatusUma::kPromiseImageInstantiationFailed;
+  } else if (insert_status ==
+             skgpu::graphite::InsertStatus::kAddCommandsFailed) {
+    return InsertRecordingStatusUma::kAddCommandsFailed;
+  } else if (insert_status ==
+             skgpu::graphite::InsertStatus::kAsyncShaderCompilesFailed) {
+    return InsertRecordingStatusUma::kAsyncShaderCompilesFailed;
+  } else if (insert_status ==
+             skgpu::graphite::InsertStatus::kOutOfOrderRecording) {
+    return InsertRecordingStatusUma::kOutOfOrderRecording;
+  }
+  NOTREACHED();
+}
+
+struct FinishedContext {
+  skgpu::graphite::GpuFinishedProc old_finished_proc;
+  skgpu::graphite::GpuFinishedContext old_context;
+  scoped_refptr<base::SingleThreadTaskRunner> task_runner;
+};
+
+std::pair<skgpu::graphite::GpuFinishedProc, skgpu::graphite::GpuFinishedContext>
+CreateFinishedProcThreadSafe(
+    skgpu::graphite::GpuFinishedProc finished_proc,
+    skgpu::graphite::GpuFinishedContext finished_context,
+    scoped_refptr<base::SingleThreadTaskRunner> task_runner) {
+  DCHECK(finished_proc);
+  DCHECK(task_runner);
+
+  // Ensure finishedProc is called on the original thread.
+  auto* context = new FinishedContext{finished_proc, finished_context,
+                                      std::move(task_runner)};
+
+  auto thread_safe_finished_proc = [](void* ctx, skgpu::CallbackResult result) {
+    auto context = base::WrapUnique(static_cast<FinishedContext*>(ctx));
+    DCHECK(context->old_finished_proc);
+    base::SingleThreadTaskRunner* task_runner = context->task_runner.get();
+    if (task_runner && !task_runner->BelongsToCurrentThread()) {
+      task_runner->PostTask(FROM_HERE,
+                            base::BindOnce(context->old_finished_proc,
+                                           context->old_context, result));
+      return;
+    }
+    context->old_finished_proc(context->old_context, result);
+  };
+
+  return {thread_safe_finished_proc, context};
+}
+
+struct AsyncReadContext {
+  GraphiteSharedContext::SkImageReadPixelsCallback old_callback;
+  SkImage::ReadPixelsContext old_context;
+  raw_ptr<GraphiteSharedContext::Delegate> delegate;
+  scoped_refptr<base::SingleThreadTaskRunner> task_runner;
+};
+
+void* CreateAsyncReadContextThreadSafe(
+    GraphiteSharedContext::SkImageReadPixelsCallback old_callback,
+    SkImage::ReadPixelsContext old_callbackContext,
+    GraphiteSharedContext::Delegate* delegate,
+    bool is_thread_safe) {
+  scoped_refptr<base::SingleThreadTaskRunner> task_runner =
+      is_thread_safe && base::SingleThreadTaskRunner::HasCurrentDefault()
+          ? base::SingleThreadTaskRunner::GetCurrentDefault()
+          : nullptr;
+
+  // Wrapped the old callback with a new thread safe callback.
+  return new AsyncReadContext(std::move(old_callback), old_callbackContext,
+                              delegate, std::move(task_runner));
+}
+
+static void ReadPixelsCallbackThreadSafe(
+    void* ctx,
+    std::unique_ptr<const SkSurface::AsyncReadResult> async_result) {
+  auto context = base::WrapUnique(static_cast<AsyncReadContext*>(ctx));
+  if (!context->old_callback) {
+    return;
+  }
+
+  if (context->delegate && context->delegate->IsContextLost()) {
+    return;
+  }
+
+  // Ensure callbacks are called on the original thread if only one
+  // graphite::Context is created and is shared by multiple threads.
+  base::SingleThreadTaskRunner* task_runner = context->task_runner.get();
+  if (task_runner && !task_runner->BelongsToCurrentThread()) {
+    task_runner->PostTask(
+        FROM_HERE,
+        base::BindOnce(&ReadPixelsCallbackThreadSafe, context.release(),
+                       std::move(async_result)));
+    return;
+  }
+
+  std::move(context->old_callback)
+      .Run(context->old_context, std::move(async_result));
+}
+
+class AutoReset {
+  STACK_ALLOCATED();
+
+ public:
+  explicit AutoReset(std::atomic<bool>& var) : var_(var) {
+    var_.store(true, std::memory_order_relaxed);
+  }
+  ~AutoReset() { var_.store(false, std::memory_order_relaxed); }
+
+  AutoReset(const AutoReset&) = delete;
+  AutoReset& operator=(const AutoReset&) = delete;
+
+ private:
+  std::atomic<bool>& var_;
+};
+
+}  // namespace
+
+// Helper class used by subclasses to acquire |lock_| if it exists.
+// Recursive lock is permitted for locking will be skipped upon reentance.
+class SCOPED_LOCKABLE GraphiteSharedContext::AutoLock {
+  STACK_ALLOCATED();
+ public:
+  explicit AutoLock(const GraphiteSharedContext* context)
+      EXCLUSIVE_LOCK_FUNCTION(context->lock_);
+
+  AutoLock(AutoLock&) = delete;
+  AutoLock& operator=(AutoLock&) = delete;
+
+  ~AutoLock() UNLOCK_FUNCTION();
+
+ private:
+  std::optional<base::AutoLockMaybe> auto_lock_;
+  const GraphiteSharedContext* context_;
+};
+
+// |context->locked_thread_id_| reflects the thread where |lock_| is acquired.
+// It should only be changed from Invalid to Current, or Current to Invalid.
+// It is accessed with `memory_order_relaxed` as writing to |locked_thread_id_|
+// is guarded by |context->lock_|.
+//
+// The logic of detecting recursive lock with
+// "current_thread_id == locked_thread_id_":
+// - There is no concurrent write hazard for |locked_thread_id|.
+// - If Thread1 holds |lock_| and it tries to re-acquire |lock_| after
+//   re-entering GraphiteSharedContext, |locked_thread_id_| can be read back
+//   safely now as no one can write to |locked_thread_id_| when |lock_| is held
+//   by Thread1. It is determined a recursive lock if the current thread id is
+//   |locked_thread_id_|. Locking should be skipped here to avoid a deadlock.
+// - If Thread1 has held |lock_| and is writing to |locked_thread_id_| while
+//   Thread2 is trying to read it, it means Thread1 changes the id between
+//   kInvalidThreadId and Thread1::Id() so neither of them matches the current
+//   Thread2 id. Thread2 can proceed to acquire the lock.
+//
+
+GraphiteSharedContext::AutoLock::AutoLock(const GraphiteSharedContext* context)
+    : context_(context) {
+  base::PlatformThreadId current_thread_id = base::PlatformThread::CurrentId();
+
+  bool was_in_submit =
+      context->locked_thread_in_submit_.load(std::memory_order_relaxed);
+  bool was_in_insert = context->locked_thread_in_insert_recording_.load(
+      std::memory_order_relaxed);
+
+  if (!context->lock_ || current_thread_id == context->locked_thread_id_.load(
+                                                  std::memory_order_relaxed)) {
+    // Skip if is_thread_safe is disabled or it's a recursive lock.
+  } else {
+    base::TimeTicks start_time = base::TimeTicks::Now();
+    auto_lock_.emplace(&context->lock_.value());
+    base::TimeDelta wait_time = base::TimeTicks::Now() - start_time;
+
+    if (base::ShouldRecordSubsampledMetric(0.01)) {
+      UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
+          "Gpu.GraphiteSharedContext.LockAcquireTimeUs", wait_time,
+          base::Microseconds(1), base::Seconds(1), 50);
+      if (was_in_submit) {
+        UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
+            "Gpu.GraphiteSharedContext.LockAcquireTimeUs.LockedThreadInSubmit",
+            wait_time, base::Microseconds(1), base::Seconds(1), 50);
+      }
+      if (was_in_insert) {
+        UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
+            "Gpu.GraphiteSharedContext.LockAcquireTimeUs."
+            "LockedThreadInInsertRecording",
+            wait_time, base::Microseconds(1), base::Seconds(1), 50);
+      }
+    }
+
+    // |locked_thread_id_| must be kInvalid after the lock is acquired.
+    CHECK_EQ(context_->locked_thread_id_.load(std::memory_order_relaxed),
+             base::kInvalidThreadId);
+    context_->locked_thread_id_.store(current_thread_id,
+                                      std::memory_order_relaxed);
+  }
+}
+
+GraphiteSharedContext::AutoLock::~AutoLock() {
+  if (auto_lock_.has_value()) {
+    CHECK_EQ(context_->locked_thread_id_.load(std::memory_order_relaxed),
+             base::PlatformThread::CurrentId());
+    context_->locked_thread_id_.store(base::kInvalidThreadId,
+                                      std::memory_order_relaxed);
+  }
+}
+
+GraphiteSharedContext::GraphiteSharedContext(
+    std::unique_ptr<skgpu::graphite::Context> graphite_context,
+    GpuProcessShmCount* use_shader_cache_shm_count,
+    bool is_thread_safe,
+    size_t max_pending_recordings,
+    Delegate* delegate)
+    : graphite_context_(std::move(graphite_context)),
+      use_shader_cache_shm_count_(use_shader_cache_shm_count),
+      max_pending_recordings_(max_pending_recordings),
+      delegate_(delegate) {
+  DCHECK(graphite_context_);
+  if (is_thread_safe) {
+    lock_.emplace();
+  }
+}
+
+GraphiteSharedContext::~GraphiteSharedContext() = default;
+
+bool GraphiteSharedContext::IsContextLost() const {
+  if (delegate_) {
+    return delegate_->IsContextLost();
+  }
+  return false;
+}
+
+skgpu::BackendApi GraphiteSharedContext::backend() const {
+  AutoLock auto_lock(this);
+  return graphite_context_->backend();
+}
+
+std::unique_ptr<skgpu::graphite::Recorder> GraphiteSharedContext::makeRecorder(
+    const skgpu::graphite::RecorderOptions& options) {
+  AutoLock auto_lock(this);
+  return graphite_context_->makeRecorder(options);
+}
+
+std::unique_ptr<skgpu::graphite::PrecompileContext>
+GraphiteSharedContext::makePrecompileContext() {
+  AutoLock auto_lock(this);
+  return graphite_context_->makePrecompileContext();
+}
+
+void GraphiteSharedContext::set_simulated_insert_status(
+    skgpu::graphite::InsertStatus status) {
+  AutoLock auto_lock(this);
+  simulated_insert_status_ = status;
+}
+
+bool GraphiteSharedContext::insertRecording(
+    const skgpu::graphite::InsertRecordingInfo& info) {
+  AutoLock auto_lock(this);
+  AutoReset auto_reset(locked_thread_in_insert_recording_);
+  if (!InsertRecordingImpl(info)) {
+    return false;
+  }
+
+  num_pending_recordings_++;
+
+  // Force submitting if there are too many pending recordings.
+  if (num_pending_recordings_ >= max_pending_recordings_) {
+    SubmitAndFlushBackendImpl(skgpu::graphite::SyncToCpu::kNo);
+  }
+
+  return true;
+}
+
+bool GraphiteSharedContext::InsertRecordingImpl(
+    const skgpu::graphite::InsertRecordingInfo& info) {
+  scoped_refptr<base::SingleThreadTaskRunner> task_runner =
+      IsThreadSafe() && base::SingleThreadTaskRunner::HasCurrentDefault()
+          ? base::SingleThreadTaskRunner::GetCurrentDefault()
+          : nullptr;
+
+  const skgpu::graphite::InsertRecordingInfo* info_ptr = &info;
+
+  // Ensure fFinishedProc is called on the original thread if there is only one
+  // graphite::Context.
+  std::optional<skgpu::graphite::InsertRecordingInfo> info_copy;
+  if (info.fFinishedProc && task_runner) {
+    info_copy = *info_ptr;
+    std::tie(info_copy->fFinishedProc, info_copy->fFinishedContext) =
+        CreateFinishedProcThreadSafe(info.fFinishedProc, info.fFinishedContext,
+                                     std::move(task_runner));
+    info_ptr = &info_copy.value();
+  }
+  if (simulated_insert_status_ != skgpu::graphite::InsertStatus::kSuccess) {
+    info_copy = *info_ptr;
+    info_copy->fSimulatedStatus = simulated_insert_status_;
+    info_ptr = &info_copy.value();
+  }
+
+  auto insert_status = graphite_context_->insertRecording(*info_ptr);
+
+  const bool simulating_insert_failure =
+      info_ptr->fSimulatedStatus != skgpu::graphite::InsertStatus::kSuccess;
+
+  // Crash, log, or emit UMA only if we're not simulating a failure for testing.
+  if (!simulating_insert_failure) {
+    if (base::ShouldRecordSubsampledMetric(0.01)) {
+      UMA_HISTOGRAM_ENUMERATION("GPU.Graphite.InsertRecordingStatus",
+                                InsertRecordingStatusUma(insert_status));
+    }
+    if (insert_status != skgpu::graphite::InsertStatus::kSuccess) {
+      // skgpu::graphite::InsertStatus almost behaves like an enum class, but
+      // not quite - it can't be static_cast to an int.
+      LOG(ERROR) << "Graphite insertRecording failed with status "
+                 << static_cast<int>(InsertRecordingStatusUma(insert_status));
+    }
+  }
+
+  // kAsyncShaderCompilesFailed and kOutOfOrderRecording are unrecoverable
+  // failures because they cause future recordings to be rendered incorrectly.
+  // TODO(433845560): Check the kAddCommandsFailed failures.
+  if (insert_status ==
+      skgpu::graphite::InsertStatus::kAsyncShaderCompilesFailed) {
+    // For kAsyncShaderCompilesFailed, we should also clear the disk shader
+    // cache in case the error was due to a corrupted cached shader blob.
+    GpuProcessShmCount::ScopedIncrement use_shader_cache(
+        use_shader_cache_shm_count_);
+    static crash_reporter::CrashKeyString<4096> insert_error_key(
+        "graphite-insert-error");
+    insert_error_key.Set(insert_status.message());
+    CHECK(simulating_insert_failure);
+  } else if (insert_status ==
+             skgpu::graphite::InsertStatus::kOutOfOrderRecording) {
+    if (delegate_) {
+      // TODO(crbug.com/478211694): assume the reason of out of order is OOM for
+      // now.
+      delegate_->MarkContextLost(error::kOutOfMemory);
+    }
+  }
+
+  // All other failure modes are recoverable in the sense that future recordings
+  // will be rendered correctly, so merely return a boolean here so that callers
+  // can log the error.
+  return insert_status == skgpu::graphite::InsertStatus::kSuccess;
+}
+
+void GraphiteSharedContext::submit(skgpu::graphite::SubmitInfo submit_info) {
+  AutoLock auto_lock(this);
+  AutoReset auto_reset(locked_thread_in_submit_);
+  CHECK(SubmitImpl(submit_info));
+}
+
+bool GraphiteSharedContext::SubmitImpl(
+    const skgpu::graphite::SubmitInfo& submit_info) {
+  num_pending_recordings_ = 0;
+
+  if (submit_info.fSync == skgpu::graphite::SyncToCpu::kNo &&
+      !submit_info.fFinishedProc && !graphite_context_->hasPendingGPUWork()) {
+    // Skip submitting if there is no pending GPU work and no finish proc. If a
+    // finish proc is provided, we must call submit() even without new work so
+    // that it can be triggered when all previously submitted work completes.
+    return true;
+  }
+
+  scoped_refptr<base::SingleThreadTaskRunner> task_runner =
+      IsThreadSafe() && base::SingleThreadTaskRunner::HasCurrentDefault()
+          ? base::SingleThreadTaskRunner::GetCurrentDefault()
+          : nullptr;
+  bool success = false;
+
+  const bool shoud_record_metric = base::ShouldRecordSubsampledMetric(0.01);
+  base::TimeTicks start_time;
+  if (shoud_record_metric) {
+    start_time = base::TimeTicks::Now();
+  }
+
+  // Ensure fFinishedProc is called on the original thread if there is only one
+  // graphite::Context.
+  if (submit_info.fFinishedProc && task_runner) {
+    auto wrapped_submit_info = submit_info;
+    std::tie(wrapped_submit_info.fFinishedProc,
+             wrapped_submit_info.fFinishedContext) =
+        CreateFinishedProcThreadSafe(submit_info.fFinishedProc,
+                                     submit_info.fFinishedContext,
+                                     std::move(task_runner));
+    success = graphite_context_->submit(wrapped_submit_info);
+  } else {
+    success = graphite_context_->submit(submit_info);
+  }
+
+  if (shoud_record_metric) {
+    UMA_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(
+        "GPU.Graphite.SubmitDurationUs", base::TimeTicks::Now() - start_time,
+        base::Microseconds(1), base::Seconds(1), 50);
+  }
+
+  return success;
+}
+
+void GraphiteSharedContext::submitAndFlushBackend(
+    skgpu::graphite::SubmitInfo submit_info) {
+  AutoLock auto_lock(this);
+  AutoReset auto_reset(locked_thread_in_submit_);
+  SubmitAndFlushBackendImpl(submit_info);
+}
+
+void GraphiteSharedContext::SubmitAndFlushBackendImpl(
+    const skgpu::graphite::SubmitInfo& submit_info) {
+  // Capture this before SubmitImpl() runs, since submitting clears the
+  // context's pending GPU work.
+  bool had_pending_gpu_work = graphite_context_->hasPendingGPUWork();
+
+  CHECK(SubmitImpl(submit_info));
+
+  if (delegate_ && had_pending_gpu_work) {
+    delegate_->FlushBackend();
+  }
+}
+
+bool GraphiteSharedContext::hasUnfinishedGpuWork() const {
+  AutoLock auto_lock(this);
+  return graphite_context_->hasUnfinishedGpuWork();
+}
+
+void GraphiteSharedContext::asyncRescaleAndReadPixels(
+    const SkImage* src,
+    const SkImageInfo& dstImageInfo,
+    const SkIRect& srcRect,
+    SkImage::RescaleGamma rescaleGamma,
+    SkImage::RescaleMode rescaleMode,
+    SkImageReadPixelsCallback callback,
+    SkImage::ReadPixelsContext callbackContext) {
+  AutoLock auto_lock(this);
+  auto* new_callbackContext = CreateAsyncReadContextThreadSafe(
+      std::move(callback), callbackContext, delegate_, IsThreadSafe());
+
+  return graphite_context_->asyncRescaleAndReadPixels(
+      src, dstImageInfo, srcRect, rescaleGamma, rescaleMode,
+      &ReadPixelsCallbackThreadSafe, new_callbackContext);
+}
+
+void GraphiteSharedContext::asyncRescaleAndReadPixels(
+    const SkSurface* src,
+    const SkImageInfo& dstImageInfo,
+    const SkIRect& srcRect,
+    SkImage::RescaleGamma rescaleGamma,
+    SkImage::RescaleMode rescaleMode,
+    SkImageReadPixelsCallback callback,
+    SkImage::ReadPixelsContext callbackContext) {
+  AutoLock auto_lock(this);
+  auto* new_callbackContext = CreateAsyncReadContextThreadSafe(
+      std::move(callback), callbackContext, delegate_, IsThreadSafe());
+
+  return graphite_context_->asyncRescaleAndReadPixels(
+      src, dstImageInfo, srcRect, rescaleGamma, rescaleMode,
+      &ReadPixelsCallbackThreadSafe, new_callbackContext);
+}
+
+bool GraphiteSharedContext::asyncRescaleAndReadPixelsAndSubmit(
+    const SkImage* src,
+    const SkImageInfo& dstImageInfo,
+    const SkIRect& srcRect,
+    SkImage::RescaleGamma rescaleGamma,
+    SkImage::RescaleMode rescaleMode,
+    SkImageReadPixelsCallback callback,
+    SkImage::ReadPixelsContext callbackContext) {
+  AutoLock auto_lock(this);
+  auto* new_callbackContext = CreateAsyncReadContextThreadSafe(
+      std::move(callback), callbackContext, delegate_, IsThreadSafe());
+
+  graphite_context_->asyncRescaleAndReadPixels(
+      src, dstImageInfo, srcRect, rescaleGamma, rescaleMode,
+      &ReadPixelsCallbackThreadSafe, new_callbackContext);
+
+  return SubmitImpl(skgpu::graphite::SyncToCpu::kYes);
+}
+
+bool GraphiteSharedContext::asyncRescaleAndReadPixelsAndSubmit(
+    const SkSurface* src,
+    const SkImageInfo& dstImageInfo,
+    const SkIRect& srcRect,
+    SkImage::RescaleGamma rescaleGamma,
+    SkImage::RescaleMode rescaleMode,
+    SkImageReadPixelsCallback callback,
+    SkImage::ReadPixelsContext callbackContext) {
+  AutoLock auto_lock(this);
+  auto* new_callbackContext = CreateAsyncReadContextThreadSafe(
+      std::move(callback), callbackContext, delegate_, IsThreadSafe());
+
+  graphite_context_->asyncRescaleAndReadPixels(
+      src, dstImageInfo, srcRect, rescaleGamma, rescaleMode,
+      &ReadPixelsCallbackThreadSafe, new_callbackContext);
+
+  return SubmitImpl(skgpu::graphite::SyncToCpu::kYes);
+}
+
+void GraphiteSharedContext::asyncRescaleAndReadPixelsYUV420(
+    const SkImage* src,
+    SkYUVColorSpace yuvColorSpace,
+    sk_sp<SkColorSpace> dstColorSpace,
+    const SkIRect& srcRect,
+    const SkISize& dstSize,
+    SkImage::RescaleGamma rescaleGamma,
+    SkImage::RescaleMode rescaleMode,
+    SkImageReadPixelsCallback callback,
+    SkImage::ReadPixelsContext callbackContext) {
+  AutoLock auto_lock(this);
+  auto* new_callbackContext = CreateAsyncReadContextThreadSafe(
+      std::move(callback), callbackContext, delegate_, IsThreadSafe());
+
+  return graphite_context_->asyncRescaleAndReadPixelsYUV420(
+      src, yuvColorSpace, dstColorSpace, srcRect, dstSize, rescaleGamma,
+      rescaleMode, &ReadPixelsCallbackThreadSafe, new_callbackContext);
+}
+
+void GraphiteSharedContext::asyncRescaleAndReadPixelsYUV420(
+    const SkSurface* src,
+    SkYUVColorSpace yuvColorSpace,
+    sk_sp<SkColorSpace> dstColorSpace,
+    const SkIRect& srcRect,
+    const SkISize& dstSize,
+    SkImage::RescaleGamma rescaleGamma,
+    SkImage::RescaleMode rescaleMode,
+    SkImageReadPixelsCallback callback,
+    SkImage::ReadPixelsContext callbackContext) {
+  AutoLock auto_lock(this);
+  auto* new_callbackContext = CreateAsyncReadContextThreadSafe(
+      std::move(callback), callbackContext, delegate_, IsThreadSafe());
+
+  return graphite_context_->asyncRescaleAndReadPixelsYUV420(
+      src, yuvColorSpace, dstColorSpace, srcRect, dstSize, rescaleGamma,
+      rescaleMode, &ReadPixelsCallbackThreadSafe, new_callbackContext);
+}
+
+bool GraphiteSharedContext::asyncRescaleAndReadPixelsYUV420AndSubmit(
+    const SkImage* src,
+    SkYUVColorSpace yuvColorSpace,
+    sk_sp<SkColorSpace> dstColorSpace,
+    const SkIRect& srcRect,
+    const SkISize& dstSize,
+    SkImage::RescaleGamma rescaleGamma,
+    SkImage::RescaleMode rescaleMode,
+    SkImageReadPixelsCallback callback,
+    SkImage::ReadPixelsContext callbackContext) {
+  AutoLock auto_lock(this);
+  auto* new_callbackContext = CreateAsyncReadContextThreadSafe(
+      std::move(callback), callbackContext, delegate_, IsThreadSafe());
+
+  graphite_context_->asyncRescaleAndReadPixelsYUV420(
+      src, yuvColorSpace, dstColorSpace, srcRect, dstSize, rescaleGamma,
+      rescaleMode, &ReadPixelsCallbackThreadSafe, new_callbackContext);
+
+  return SubmitImpl(skgpu::graphite::SyncToCpu::kYes);
+}
+
+bool GraphiteSharedContext::asyncRescaleAndReadPixelsYUV420AndSubmit(
+    const SkSurface* src,
+    SkYUVColorSpace yuvColorSpace,
+    sk_sp<SkColorSpace> dstColorSpace,
+    const SkIRect& srcRect,
+    const SkISize& dstSize,
+    SkImage::RescaleGamma rescaleGamma,
+    SkImage::RescaleMode rescaleMode,
+    SkImageReadPixelsCallback callback,
+    SkImage::ReadPixelsContext callbackContext) {
+  AutoLock auto_lock(this);
+  auto* new_callbackContext = CreateAsyncReadContextThreadSafe(
+      std::move(callback), callbackContext, delegate_, IsThreadSafe());
+
+  graphite_context_->asyncRescaleAndReadPixelsYUV420(
+      src, yuvColorSpace, dstColorSpace, srcRect, dstSize, rescaleGamma,
+      rescaleMode, &ReadPixelsCallbackThreadSafe, new_callbackContext);
+
+  return SubmitImpl(skgpu::graphite::SyncToCpu::kYes);
+}
+
+void GraphiteSharedContext::asyncRescaleAndReadPixelsYUVA420(
+    const SkImage* src,
+    SkYUVColorSpace yuvColorSpace,
+    sk_sp<SkColorSpace> dstColorSpace,
+    const SkIRect& srcRect,
+    const SkISize& dstSize,
+    SkImage::RescaleGamma rescaleGamma,
+    SkImage::RescaleMode rescaleMode,
+    SkImageReadPixelsCallback callback,
+    SkImage::ReadPixelsContext callbackContext) {
+  AutoLock auto_lock(this);
+  auto* new_callbackContext = CreateAsyncReadContextThreadSafe(
+      std::move(callback), callbackContext, delegate_, IsThreadSafe());
+
+  return graphite_context_->asyncRescaleAndReadPixelsYUVA420(
+      src, yuvColorSpace, dstColorSpace, srcRect, dstSize, rescaleGamma,
+      rescaleMode, &ReadPixelsCallbackThreadSafe, new_callbackContext);
+}
+
+void GraphiteSharedContext::asyncRescaleAndReadPixelsYUVA420(
+    const SkSurface* src,
+    SkYUVColorSpace yuvColorSpace,
+    sk_sp<SkColorSpace> dstColorSpace,
+    const SkIRect& srcRect,
+    const SkISize& dstSize,
+    SkImage::RescaleGamma rescaleGamma,
+    SkImage::RescaleMode rescaleMode,
+    SkImageReadPixelsCallback callback,
+    SkImage::ReadPixelsContext callbackContext) {
+  AutoLock auto_lock(this);
+  auto* new_callbackContext = CreateAsyncReadContextThreadSafe(
+      std::move(callback), callbackContext, delegate_, IsThreadSafe());
+
+  return graphite_context_->asyncRescaleAndReadPixelsYUVA420(
+      src, yuvColorSpace, dstColorSpace, srcRect, dstSize, rescaleGamma,
+      rescaleMode, &ReadPixelsCallbackThreadSafe, new_callbackContext);
+}
+
+bool GraphiteSharedContext::asyncRescaleAndReadPixelsYUVA420AndSubmit(
+    const SkImage* src,
+    SkYUVColorSpace yuvColorSpace,
+    sk_sp<SkColorSpace> dstColorSpace,
+    const SkIRect& srcRect,
+    const SkISize& dstSize,
+    SkImage::RescaleGamma rescaleGamma,
+    SkImage::RescaleMode rescaleMode,
+    SkImageReadPixelsCallback callback,
+    SkImage::ReadPixelsContext callbackContext) {
+  AutoLock auto_lock(this);
+  auto* new_callbackContext = CreateAsyncReadContextThreadSafe(
+      std::move(callback), callbackContext, delegate_, IsThreadSafe());
+
+  graphite_context_->asyncRescaleAndReadPixelsYUVA420(
+      src, yuvColorSpace, dstColorSpace, srcRect, dstSize, rescaleGamma,
+      rescaleMode, &ReadPixelsCallbackThreadSafe, new_callbackContext);
+
+  return SubmitImpl(skgpu::graphite::SyncToCpu::kYes);
+}
+
+bool GraphiteSharedContext::asyncRescaleAndReadPixelsYUVA420AndSubmit(
+    const SkSurface* src,
+    SkYUVColorSpace yuvColorSpace,
+    sk_sp<SkColorSpace> dstColorSpace,
+    const SkIRect& srcRect,
+    const SkISize& dstSize,
+    SkImage::RescaleGamma rescaleGamma,
+    SkImage::RescaleMode rescaleMode,
+    SkImageReadPixelsCallback callback,
+    SkImage::ReadPixelsContext callbackContext) {
+  AutoLock auto_lock(this);
+  auto* new_callbackContext = CreateAsyncReadContextThreadSafe(
+      std::move(callback), callbackContext, delegate_, IsThreadSafe());
+
+  graphite_context_->asyncRescaleAndReadPixelsYUVA420(
+      src, yuvColorSpace, dstColorSpace, srcRect, dstSize, rescaleGamma,
+      rescaleMode, &ReadPixelsCallbackThreadSafe, new_callbackContext);
+
+  return SubmitImpl(skgpu::graphite::SyncToCpu::kYes);
+}
+
+void GraphiteSharedContext::checkAsyncWorkCompletion() {
+  AutoLock auto_lock(this);
+  return graphite_context_->checkAsyncWorkCompletion();
+}
+
+void GraphiteSharedContext::deleteBackendTexture(
+    const skgpu::graphite::BackendTexture& texture) {
+  AutoLock auto_lock(this);
+  return graphite_context_->deleteBackendTexture(texture);
+}
+
+void GraphiteSharedContext::freeGpuResources() {
+  AutoLock auto_lock(this);
+  return graphite_context_->freeGpuResources();
+}
+
+void GraphiteSharedContext::performDeferredCleanup(
+    std::chrono::milliseconds msNotUsed) {
+  AutoLock auto_lock(this);
+  return graphite_context_->performDeferredCleanup(msNotUsed);
+}
+
+size_t GraphiteSharedContext::currentBudgetedBytes() const {
+  AutoLock auto_lock(this);
+  return graphite_context_->currentBudgetedBytes();
+}
+
+size_t GraphiteSharedContext::currentPurgeableBytes() const {
+  AutoLock auto_lock(this);
+  return graphite_context_->currentPurgeableBytes();
+}
+
+size_t GraphiteSharedContext::maxBudgetedBytes() const {
+  AutoLock auto_lock(this);
+  return graphite_context_->maxBudgetedBytes();
+}
+
+void GraphiteSharedContext::setMaxBudgetedBytes(size_t bytes) {
+  AutoLock auto_lock(this);
+  return graphite_context_->setMaxBudgetedBytes(bytes);
+}
+
+void GraphiteSharedContext::dumpMemoryStatistics(
+    SkTraceMemoryDump* traceMemoryDump) const {
+  AutoLock auto_lock(this);
+  return graphite_context_->dumpMemoryStatistics(traceMemoryDump);
+}
+
+bool GraphiteSharedContext::isDeviceLost() const {
+  AutoLock auto_lock(this);
+  return graphite_context_->isDeviceLost();
+}
+
+int GraphiteSharedContext::maxTextureSize() const {
+  return graphite_context_->maxTextureSize();
+}
+
+bool GraphiteSharedContext::supportsProtectedContent() const {
+  return graphite_context_->supportsProtectedContent();
+}
+
+skgpu::GpuStatsFlags GraphiteSharedContext::supportedGpuStats() const {
+  return graphite_context_->supportedGpuStats();
+}
+
+}  // namespace gpu

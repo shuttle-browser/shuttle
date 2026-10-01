@@ -1,0 +1,262 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.selection;
+
+import android.content.Context;
+import android.content.Intent;
+import android.content.res.Resources;
+import android.graphics.Color;
+import android.graphics.Rect;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
+import android.view.View;
+import android.view.ViewGroup;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.R;
+import org.chromium.components.browser_ui.widget.BrowserUiListMenuUtils;
+import org.chromium.content_public.browser.selection.SelectionDropdownMenuDelegate;
+import org.chromium.ui.hierarchicalmenu.FlyoutController;
+import org.chromium.ui.hierarchicalmenu.FlyoutController.FlyoutHandler;
+import org.chromium.ui.hierarchicalmenu.HierarchicalMenuController;
+import org.chromium.ui.listmenu.BasicListMenu;
+import org.chromium.ui.listmenu.ListItemType;
+import org.chromium.ui.listmenu.ListMenuItemProperties;
+import org.chromium.ui.listmenu.ListMenuUtils;
+import org.chromium.ui.modelutil.MVCListAdapter;
+import org.chromium.ui.modelutil.MVCListAdapter.ListItem;
+import org.chromium.ui.modelutil.MVCListAdapter.ModelList;
+import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.ui.widget.AnchoredPopupWindow;
+import org.chromium.ui.widget.FlyoutPopupSpecCalculator;
+import org.chromium.ui.widget.RectProvider;
+
+import java.util.List;
+
+/**
+ * Chrome implementation of dropdown context menu which leverages {@link BasicListMenu} and {@link
+ * AnchoredPopupWindow}.
+ */
+@NullMarked
+public class ChromeSelectionDropdownMenuDelegate
+        implements SelectionDropdownMenuDelegate, FlyoutHandler<AnchoredPopupWindow> {
+    private @Nullable ItemClickListener mClickListener;
+    private @Nullable View mRootView;
+    private @Nullable HierarchicalMenuController<AnchoredPopupWindow> mHierarchicalMenuController;
+
+    @Override
+    public void show(
+            Context context,
+            View rootView,
+            MVCListAdapter.ModelList items,
+            ItemClickListener clickListener,
+            Runnable dismissMenuCallback,
+            int x,
+            int y) {
+        mRootView = rootView;
+        mClickListener = clickListener;
+        mHierarchicalMenuController = ListMenuUtils.createHierarchicalMenuController(context);
+        mHierarchicalMenuController.setupCallbacks(
+                /* headerModelList= */ null, items, dismissMenuCallback);
+
+        int[] location = new int[2];
+        rootView.getLocationInWindow(location);
+        int windowX = location[0] + x;
+        int windowY = location[1] + y;
+        Rect dropdownRect = new Rect(windowX, windowY, windowX + 1, windowY + 1);
+        BasicListMenu menu =
+                BrowserUiListMenuUtils.getBasicListMenu(
+                        context, items, (model, view) -> clickListener.onItemClick(model));
+
+        final View contentView = menu.getContentView();
+        int maxWidthPx = calculateMaxWidthPx(rootView);
+        int desiredContentWidth = calculateDesiredContentWidth(contentView, menu, maxWidthPx);
+
+        AnchoredPopupWindow popupWindow =
+                new AnchoredPopupWindow(
+                        context,
+                        rootView,
+                        new ColorDrawable(Color.TRANSPARENT),
+                        menu.getContentView(),
+                        new RectProvider(dropdownRect));
+        AnchoredPopupWindow.LayoutObserver layoutObserver =
+                (positionBelow, x2, y2, width, height, anchorRect) ->
+                        popupWindow.setAnimationStyle(
+                                positionBelow
+                                        ? R.style.StartIconMenuAnim
+                                        : R.style.StartIconMenuAnimBottom);
+        popupWindow.setLayoutObserver(layoutObserver);
+        popupWindow.setVerticalOverlapAnchor(true);
+        popupWindow.setHorizontalOverlapAnchor(true);
+        popupWindow.setMaxWidth(maxWidthPx);
+        popupWindow.setDesiredContentWidth(desiredContentWidth);
+        popupWindow.setFocusable(true);
+        popupWindow.setOutsideTouchable(true);
+        popupWindow.addOnDismissListener(
+                () -> {
+                    dismiss();
+                });
+
+        popupWindow.show();
+
+        mHierarchicalMenuController.setupFlyoutController(
+                /* flyoutHandler= */ this,
+                popupWindow,
+                menu::addOnScrollListener,
+                /* drillDownOverrideValue= */ null);
+        mHierarchicalMenuController.setupBackPressBehaviorForPopupWindow(
+                popupWindow.getContentView(), this::dismiss);
+    }
+
+    @Override
+    public void dismiss() {
+        if (mHierarchicalMenuController == null) {
+            return;
+        }
+
+        if (mHierarchicalMenuController.getFlyoutController() != null) {
+            mHierarchicalMenuController.destroyFlyoutController();
+        }
+    }
+
+    @Override
+    public Rect getPopupRect(AnchoredPopupWindow popupWindow) {
+        View contentView = popupWindow.getContentView();
+
+        if (contentView == null) {
+            return new Rect();
+        }
+
+        return ListMenuUtils.getViewRectRelativeToItsRootView(contentView);
+    }
+
+    @Override
+    public void dismissPopup(AnchoredPopupWindow popupWindow) {
+        popupWindow.dismiss();
+    }
+
+    @Override
+    public void setWindowFocus(AnchoredPopupWindow popupWindow, boolean hasFocus) {
+        popupWindow.setFocusable(hasFocus);
+        ViewGroup contentView = (ViewGroup) popupWindow.getContentView();
+        if (contentView == null) return;
+
+        HierarchicalMenuController.setWindowFocusForFlyoutMenus(contentView, hasFocus);
+    }
+
+    @Override
+    public AnchoredPopupWindow createAndShowFlyoutPopup(
+            List<ListItem> items,
+            View view,
+            Runnable dismissRunnable,
+            View.OnScrollChangeListener scrollListener) {
+        Context context = view.getContext();
+        ModelList modelList = new ModelList();
+        modelList.addAll(items);
+
+        BasicListMenu menu =
+                BrowserUiListMenuUtils.getBasicListMenu(
+                        context,
+                        modelList,
+                        (model, _) -> {
+                            assert mClickListener != null;
+                            mClickListener.onItemClick(model);
+                        });
+
+        final View contentView = menu.getContentView();
+
+        final int lateralPadding = contentView.getPaddingLeft() + contentView.getPaddingRight();
+
+        assert mRootView != null;
+        assert mHierarchicalMenuController != null;
+        AnchoredPopupWindow popupMenu =
+                new AnchoredPopupWindow.Builder(
+                                context,
+                                mRootView,
+                                new ColorDrawable(Color.TRANSPARENT),
+                                () -> contentView,
+                                new RectProvider(
+                                        FlyoutController.calculateFlyoutAnchorRect(
+                                                view, mRootView)))
+                        .setVerticalOverlapAnchor(true)
+                        .setHorizontalOverlapAnchor(false)
+                        .setMaxWidth(
+                                context.getResources()
+                                        .getDimensionPixelSize(R.dimen.home_button_list_menu_width))
+                        .setFocusable(true)
+                        .setTouchModal(false)
+                        .setAnimateFromAnchor(false)
+                        .setAnimationStyle(R.style.PopupWindowAnimFade)
+                        .setSpecCalculator(new FlyoutPopupSpecCalculator())
+                        .setDesiredContentWidth(menu.getMaxItemWidth() + lateralPadding)
+                        .addOnDismissListener(
+                                () -> {
+                                    dismissRunnable.run();
+                                })
+                        .build();
+
+        menu.addOnScrollListener(scrollListener);
+        popupMenu.show();
+        return popupMenu;
+    }
+
+    @Override
+    public ListItem getDivider() {
+        // TODO(crbug.com/416222384): Update context menus to use incognito theming.
+        return BasicListMenu.buildMenuDivider(/* isIncognito= */ false);
+    }
+
+    @Override
+    public ListItem getMenuItem(
+            @Nullable String title,
+            @Nullable String contentDescription,
+            int groupId,
+            int id,
+            @Nullable Drawable startIcon,
+            boolean isIconTintable,
+            boolean groupContainsIcon,
+            boolean enabled,
+            @Nullable Intent intent,
+            int order) {
+        PropertyModel.Builder modelBuilder =
+                new PropertyModel.Builder(ListMenuItemProperties.ALL_KEYS)
+                        .with(ListMenuItemProperties.TITLE, title)
+                        .with(ListMenuItemProperties.CONTENT_DESCRIPTION, contentDescription)
+                        .with(ListMenuItemProperties.GROUP_ID, groupId)
+                        .with(ListMenuItemProperties.MENU_ITEM_ID, id)
+                        .with(ListMenuItemProperties.START_ICON_DRAWABLE, null)
+                        .with(ListMenuItemProperties.ENABLED, enabled)
+                        .with(ListMenuItemProperties.INTENT, intent)
+                        .with(ListMenuItemProperties.KEEP_START_ICON_SPACING_WHEN_HIDDEN, false)
+                        .with(
+                                ListMenuItemProperties.TEXT_APPEARANCE_ID,
+                                BrowserUiListMenuUtils.getDefaultTextAppearanceStyle())
+                        .with(ListMenuItemProperties.IS_TEXT_ELLIPSIZED_AT_END, true)
+                        .with(ListMenuItemProperties.ORDER, order);
+        if (isIconTintable) {
+            modelBuilder.with(
+                    ListMenuItemProperties.ICON_TINT_COLOR_STATE_LIST_ID,
+                    BrowserUiListMenuUtils.getDefaultIconTintColorStateListId());
+        }
+        return new ListItem(ListItemType.MENU_ITEM, modelBuilder.build());
+    }
+
+    private static int calculateMaxWidthPx(View rootView) {
+        Resources res = rootView.getContext().getResources();
+        int viewportWidthPx = rootView.getWidth();
+        int maxWidthPx = res.getDimensionPixelSize(R.dimen.text_selection_context_menu_max_width);
+        int gutterPx =
+                res.getDimensionPixelSize(R.dimen.text_selection_context_menu_viewport_gutter);
+        return Math.min(viewportWidthPx - 2 * gutterPx, maxWidthPx);
+    }
+
+    private static int calculateDesiredContentWidth(
+            View contentView, BasicListMenu menu, int maxWidthPx) {
+        int lateralPadding = contentView.getPaddingLeft() + contentView.getPaddingRight();
+        int desiredContentWidth = menu.getMaxItemWidth() + lateralPadding;
+        return Math.min(desiredContentWidth, maxWidthPx);
+    }
+}

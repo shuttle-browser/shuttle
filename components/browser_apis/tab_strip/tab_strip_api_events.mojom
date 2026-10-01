@@ -1,0 +1,61 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module tabs_api.mojom;
+
+import "components/browser_apis/tab_strip/tab_strip_api_data_model.mojom";
+import "components/browser_apis/tab_strip/tab_strip_api_types.mojom";
+
+struct OnTabsCreatedEvent {
+  // Tab ids of the newly created tabs.
+  array<TabCreatedContainer> tabs;
+};
+
+struct OnNodesClosedEvent {
+  // Node ids of the closed nodes.
+  array<NodeId> node_ids;
+};
+
+// Fired when the data properties of an existing node have changed, but the
+// node itself has not moved.
+union OnDataChangedEvent {
+  TabChange tab;
+  TabGroupChange tab_group;
+  SplitTabChange split_tab;
+};
+
+struct TabChange {
+  // Updated tab data.
+  Tab data;
+  // Field mask indicating which fields in 'data' have changed.
+  TabFieldMask mask;
+};
+
+struct TabGroupChange {
+  // Updated tab group data
+  TabGroup data;
+};
+
+struct SplitTabChange {
+  // Updated split tab data
+  SplitTab data;
+};
+
+struct OnCollectionCreatedEvent {
+  // Position of the node in the tab strip.
+  Position position;
+  Container collection;
+};
+
+// Fired when any node in the tab strip tree is moved.
+// "Node" is the generic term for any item which can be a single Tab
+// or a collection (ie: TabGroup or SplitTab).
+struct OnNodeMovedEvent {
+  // The id of the node that moved.
+  NodeId id;
+  // The original position.
+  Position from;
+  // The new position.
+  Position to;
+};

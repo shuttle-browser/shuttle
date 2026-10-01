@@ -1,0 +1,323 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+const tabCapture = chrome.tabCapture;
+
+const helloWorldPageUri = `data:text/html;charset=UTF-8,${
+    encodeURIComponent('<html><body>Hello world!</body></html>')}`;
+
+function assertIsSameSetOfTabs(list_a, list_b, id_field_name) {
+  chrome.test.assertEq(list_a.length, list_b.length);
+  function tabIdSortFunction(a, b) {
+    return (a[id_field_name] || 0) - (b[id_field_name] || 0);
+  }
+  list_a.sort(tabIdSortFunction);
+  list_b.sort(tabIdSortFunction);
+  for (let i = 0, end = list_a.length; i < end; ++i) {
+    chrome.test.assertEq(list_a[i][id_field_name], list_b[i][id_field_name]);
+  }
+}
+
+// Since all of these tests run in the same tab with limited teardown between
+// tests, we have to be extra-careful to not pollute state between tests. Tests
+// should be completely sure that capture state is as expected before exiting,
+// otherwise the next test in the suite will fail. For context, see
+// https://crbug.com/41344172 for some of the motivation here.
+const CaptureState = {
+  kPending: 'pending',
+  kActive: 'active',
+  kStopped: 'stopped',
+};
+let gState = CaptureState.kStopped;
+let gShouldCallSucceed = false;
+
+tabCapture.onStatusChanged.addListener(function(info) {
+  gState = info.status;
+  if (gShouldCallSucceed) {
+    chrome.test.succeed();
+    gShouldCallSucceed = false;
+  }
+});
+
+// Since if capture is already stopped this method immediately calls succeed,
+// tests should use it directly in place of a chrome.test.succeed call.
+function succeedOnCaptureStopped() {
+  if (gState === CaptureState.kStopped) {
+    chrome.test.succeed();
+  } else {
+    gShouldCallSucceed = true;
+  }
+}
+
+function assertIsValidStreamId(streamId) {
+  chrome.test.assertTrue(typeof streamId === 'string');
+  navigator.webkitGetUserMedia(
+      {
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource: 'tab',
+            chromeMediaSourceId: streamId,
+          },
+        },
+      },
+      function(stream) {
+        chrome.test.assertTrue(!!stream);
+        stream.getVideoTracks()[0].stop();
+        succeedOnCaptureStopped();
+      },
+      function(error) {
+        // Successful stream creation is not guaranteed and may time out because
+        // of resource constraints.  Do not treat this as a failure.
+        // See: crbug.com/393188938
+        if (error.name === 'AbortError' &&
+            error.message.indexOf('Timeout') > -1) {
+          chrome.test.succeed();
+        } else {
+          chrome.test.fail(error);
+        }
+      });
+}
+
+function assertGetUserMediaError(streamId) {
+  chrome.test.assertTrue(typeof streamId === 'string');
+  navigator.webkitGetUserMedia(
+      {
+        audio: false,
+        video: {
+          mandatory: {chromeMediaSource: 'tab', chromeMediaSourceId: streamId},
+        },
+      },
+      function(stream) {
+        chrome.test.assertTrue(!!stream);
+        stream.getVideoTracks()[0].stop();
+        chrome.test.fail('Should not get stream.');
+      },
+      function(error) {
+        succeedOnCaptureStopped();
+      });
+}
+
+const testsToRun = [
+  function captureTabAndVerifyStateTransitions() {
+    // Tab capture events in the order they happen.
+    const tabCaptureEvents = [];
+
+    const tabCaptureListener = function(info) {
+      if (info.status === 'stopped') {
+        chrome.test.assertEq('active', tabCaptureEvents.pop());
+        chrome.test.assertEq('pending', tabCaptureEvents.pop());
+        tabCapture.onStatusChanged.removeListener(tabCaptureListener);
+        chrome.test.succeed();
+        return;
+      }
+      tabCaptureEvents.push(info.status);
+    };
+    tabCapture.onStatusChanged.addListener(tabCaptureListener);
+
+    tabCapture.capture({audio: true, video: true}, function(stream) {
+      chrome.test.assertTrue(!!stream);
+      stream.getVideoTracks()[0].stop();
+      stream.getAudioTracks()[0].stop();
+    });
+  },
+
+  function getCapturedTabs() {
+    chrome.tabs.create({active: true}, function(secondTab) {
+      // chrome.tabCapture.capture() will only capture the active tab.
+      chrome.test.assertTrue(secondTab.active);
+
+      function checkInfoForSecondTabHasStatus(infos, status) {
+        for (let i = 0; i < infos.length; ++i) {
+          if (infos[i].tabId === secondTab) {
+            chrome.test.assertNe(null, status);
+            chrome.test.assertEq(status, infos[i].status);
+            chrome.test.assertEq(false, infos[i].fullscreen);
+            return;
+          }
+        }
+      }
+
+      // Step 4: After the second tab is closed, check that getCapturedTabs()
+      // returns no info at all about the second tab.
+      chrome.tabs.onRemoved.addListener(function() {
+        tabCapture.getCapturedTabs(function checkNoInfos(infos) {
+          checkInfoForSecondTabHasStatus(infos, null);
+          chrome.test.succeed();
+        });
+      });
+
+      let activeStream = null;
+
+      // Step 3: After the stream is stopped, check that getCapturedTabs()
+      // returns 'stopped' capturing status for the second tab.
+      const capturedTabsAfterStopCapture = function(infos) {
+        checkInfoForSecondTabHasStatus(infos, 'stopped');
+        chrome.tabs.remove(secondTab.id);
+      };
+
+      // Step 2: After the stream is started, check that getCapturedTabs()
+      // returns 'active' capturing status for the second tab.
+      const capturedTabsAfterStartCapture = function(infos) {
+        checkInfoForSecondTabHasStatus(infos, 'active');
+        activeStream.getVideoTracks()[0].stop();
+        activeStream.getAudioTracks()[0].stop();
+        tabCapture.getCapturedTabs(capturedTabsAfterStopCapture);
+      };
+
+      // Step 1: Start capturing the second tab (the currently active tab).
+      tabCapture.capture({audio: true, video: true}, function(stream) {
+        chrome.test.assertTrue(!!stream);
+        activeStream = stream;
+        tabCapture.getCapturedTabs(capturedTabsAfterStartCapture);
+      });
+    });
+  },
+
+  function captureSameTab() {
+    let stream1 = null;
+
+    const tabMediaRequestCallback2 = function(stream) {
+      chrome.test.assertLastError(
+          'Cannot capture a tab with an active stream.');
+      chrome.test.assertTrue(!stream);
+      stream1.getVideoTracks()[0].stop();
+      stream1.getAudioTracks()[0].stop();
+      succeedOnCaptureStopped();
+    };
+
+    tabCapture.capture({audio: true, video: true}, function(stream) {
+      chrome.test.assertTrue(!!stream);
+      stream1 = stream;
+      tabCapture.capture({audio: true, video: true}, tabMediaRequestCallback2);
+    });
+  },
+
+  function onlyVideo() {
+    tabCapture.capture({video: true}, function(stream) {
+      chrome.test.assertTrue(!!stream);
+      stream.getVideoTracks()[0].stop();
+      succeedOnCaptureStopped();
+    });
+  },
+
+  function onlyAudio() {
+    tabCapture.capture({audio: true}, function(stream) {
+      chrome.test.assertTrue(!!stream);
+      stream.getAudioTracks()[0].stop();
+      succeedOnCaptureStopped();
+    });
+  },
+
+  function noAudioOrVideoRequested() {
+    // If not specified, video is not requested.
+    tabCapture.capture({audio: false}, function(stream) {
+      chrome.test.assertLastError(
+          'Capture failed. No audio or video requested.');
+      chrome.test.assertTrue(!stream);
+      succeedOnCaptureStopped();
+    });
+  },
+
+  function getMediaStreamIdWithCallerTab() {
+    chrome.tabs.getCurrent(function(tab) {
+      tabCapture.getMediaStreamId({consumerTabId: tab.id}, function(streamId) {
+        assertIsValidStreamId(streamId);
+      });
+    });
+  },
+
+  function getMediaStreamIdWithTargetTab() {
+    chrome.tabs.getCurrent(function(tab) {
+      tabCapture.getMediaStreamId({targetTabId: tab.id}, function(streamId) {
+        assertIsValidStreamId(streamId);
+      });
+    });
+  },
+
+  function getMediaStreamIdWithoutTabIds() {
+    tabCapture.getMediaStreamId(function(streamId) {
+      assertIsValidStreamId(streamId);
+    });
+  },
+
+  // Test that if calling getMediaStreamId() with consumer tab specified and
+  // then calling getUserMedia() on another tab will fail to get the stream.
+  function getMediaStreamIdAndGetUserMediaOnDifferentTabs() {
+    let currentTabId;
+    let secondTabId;
+    let isComplete = false;
+
+    function onTabComplete(tabId) {
+      if (isComplete) return;
+      isComplete = true;
+      tabCapture.getMediaStreamId(
+          {consumerTabId: tabId}, function(streamId) {
+            assertGetUserMediaError(streamId);
+            chrome.tabs.remove(tabId);
+          });
+    }
+
+    const listener = function(tabId, changeInfo, tab) {
+      if (changeInfo.status === 'complete') {
+        if (secondTabId === tabId) {
+          chrome.tabs.onUpdated.removeListener(listener);
+          onTabComplete(tabId);
+        }
+      }
+    };
+
+    chrome.tabs.onUpdated.addListener(listener);
+    chrome.tabs.getCurrent(function(tab) {
+      currentTabId = tab.id;
+      chrome.tabs.create({}, function(tab) {
+        secondTabId = tab.id;
+        if (tab.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(listener);
+          onTabComplete(tab.id);
+        }
+      });
+    });
+  },
+
+  function getMediaStreamIdWithCallerTabWithoutSecuredUrl() {
+    let createdTabId;
+    let isComplete = false;
+
+    function onTabComplete(tabId) {
+      if (isComplete) return;
+      isComplete = true;
+      tabCapture.getMediaStreamId({consumerTabId: tabId}, function(streamId) {
+        chrome.test.assertTrue(typeof streamId === 'undefined');
+        chrome.test.assertLastError(
+            'URL scheme for the specified tab is not secure.');
+        chrome.tabs.remove(tabId);
+        chrome.test.succeed();
+      });
+    }
+
+    const listener = function(tabId, changeInfo, tab) {
+      if (changeInfo.status === 'complete') {
+        if (createdTabId === tabId) {
+          chrome.tabs.onUpdated.removeListener(listener);
+          onTabComplete(tabId);
+        } else if (createdTabId === undefined && tab.url === 'http://example.com/fun.html') {
+          chrome.tabs.onUpdated.removeListener(listener);
+          onTabComplete(tabId);
+        }
+      }
+    };
+
+    chrome.tabs.onUpdated.addListener(listener);
+    chrome.tabs.create({url: 'http://example.com/fun.html'}, function(tab) {
+      createdTabId = tab.id;
+      if (tab.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(listener);
+        onTabComplete(tab.id);
+      }
+    });
+  },
+];
+
+chrome.test.runTests(testsToRun);

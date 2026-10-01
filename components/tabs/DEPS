@@ -1,0 +1,14 @@
+include_rules = [
+  "+components/split_tabs",
+  "+components/tab_groups",
+  "+content/public/browser",
+  "+ui/gfx",
+  "+ui/views",
+]
+
+specific_include_rules = {
+  # The mock owns a host so tests get a default GetUnownedUserDataHost().
+  "mock_tab_interface\.h": [
+    "+ui/base/unowned_user_data",
+  ],
+}

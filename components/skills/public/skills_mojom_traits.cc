@@ -1,0 +1,70 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/skills/public/skills_mojom_traits.h"
+
+#include "base/uuid.h"
+#include "mojo/public/cpp/base/time_mojom_traits.h"
+#include "url/mojom/url_gurl_mojom_traits.h"
+
+namespace mojo {
+
+// static
+bool StructTraits<skills::mojom::SkillDataView, skills::Skill>::Read(
+    skills::mojom::SkillDataView data,
+    skills::Skill* out) {
+  std::optional<std::string> source_skill_id;
+  std::optional<std::string> curated_by;
+  std::optional<GURL> image_url;
+  std::optional<std::string> category;
+  if (!data.ReadId(&out->id) || !data.ReadName(&out->name) ||
+      !data.ReadIcon(&out->icon) || !data.ReadSourceSkillId(&source_skill_id) ||
+      !data.ReadPrompt(&out->prompt) || !data.ReadSource(&out->source) ||
+      !data.ReadDescription(&out->description) ||
+      !data.ReadCuratedBy(&curated_by) || !data.ReadImageUrl(&image_url) ||
+      !data.ReadCreationTime(&out->creation_time) ||
+      !data.ReadLastUpdateTime(&out->last_update_time) ||
+      !data.ReadCategory(&category)) {
+    return false;
+  }
+  out->curated_by = curated_by.value_or("");
+  out->image_url = image_url.value_or(GURL());
+  out->category = category.value_or("");
+
+  const bool is_derived_from_first_party =
+      out->source ==
+      sync_pb::SkillSource::SKILL_SOURCE_DERIVED_FROM_FIRST_PARTY;
+  // Check if the source_skill_id is populated that the source must be
+  // kDerivedFromFirstParty and that the id is a valid UUID.
+  if (source_skill_id && !source_skill_id->empty()) {
+    const bool is_valid_uuid =
+        base::Uuid::ParseCaseInsensitive(*source_skill_id).is_valid();
+    if (!is_valid_uuid || !is_derived_from_first_party) {
+      return false;
+    }
+  } else if (is_derived_from_first_party) {
+    // If the source_skill_id is not populated or empty and the source is set as
+    // kDerivedFromFirstParty then it is also invalid.
+    return false;
+  }
+
+  out->source_skill_id = source_skill_id.value_or("");
+  return true;
+}
+
+// static
+bool StructTraits<skills::mojom::TopicInfoDataView, skills::proto::TopicInfo>::
+    Read(skills::mojom::TopicInfoDataView data, skills::proto::TopicInfo* out) {
+  std::string category_name;
+  std::string display_name;
+  if (!data.ReadCategoryName(&category_name) ||
+      !data.ReadDisplayName(&display_name)) {
+    return false;
+  }
+  out->set_category_name(category_name);
+  out->set_display_name(display_name);
+  return true;
+}
+
+}  // namespace mojo

@@ -1,0 +1,2527 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "services/network/public/cpp/document_isolation_policy.h"
+
+#include "base/command_line.h"
+#include "base/strings/escape.h"
+#include "base/strings/stringprintf.h"
+#include "base/test/bind.h"
+#include "base/test/gtest_util.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/with_feature_override.h"
+#include "build/build_config.h"
+#include "content/browser/process_lock.h"
+#include "content/browser/renderer_host/navigation_request.h"
+#include "content/browser/renderer_host/render_frame_host_impl.h"
+#include "content/browser/renderer_host/render_process_host_impl.h"
+#include "content/browser/web_contents/web_contents_impl.h"
+#include "content/common/content_navigation_policy.h"
+#include "content/public/browser/site_isolation_mode.h"
+#include "content/public/browser/site_isolation_policy.h"
+#include "content/public/common/content_features.h"
+#include "content/public/common/content_switches.h"
+#include "content/public/common/url_constants.h"
+#include "content/public/test/back_forward_cache_util.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/browser_test_utils.h"
+#include "content/public/test/content_browser_test.h"
+#include "content/public/test/content_browser_test_content_browser_client.h"
+#include "content/public/test/content_browser_test_utils.h"
+#include "content/public/test/content_mock_cert_verifier.h"
+#include "content/public/test/prerender_test_util.h"
+#include "content/public/test/test_navigation_observer.h"
+#include "content/public/test/url_loader_interceptor.h"
+#include "content/shell/browser/shell.h"
+#include "content/test/content_browser_test_utils_internal.h"
+#include "content/test/render_document_feature.h"
+#include "net/dns/mock_host_resolver.h"
+#include "net/test/embedded_test_server/default_handlers.h"
+#include "net/test/embedded_test_server/http_request.h"
+#include "net/test/embedded_test_server/http_response.h"
+#include "net/test/embedded_test_server/request_handler_util.h"
+#include "services/network/public/cpp/cross_origin_embedder_policy.h"
+#include "services/network/public/cpp/features.h"
+#include "testing/gmock/include/gmock/gmock.h"
+
+using ::testing::HasSubstr;
+
+namespace content {
+
+namespace {
+
+network::DocumentIsolationPolicy DipIsolateAndRequireCorp() {
+  network::DocumentIsolationPolicy dip;
+  dip.value =
+      network::mojom::DocumentIsolationPolicyValue::kIsolateAndRequireCorp;
+  return dip;
+}
+
+network::DocumentIsolationPolicy DipIsolateAndCredentialless() {
+  network::DocumentIsolationPolicy dip;
+  dip.value =
+      network::mojom::DocumentIsolationPolicyValue::kIsolateAndCredentialless;
+  return dip;
+}
+
+network::DocumentIsolationPolicy DipNone() {
+  return network::DocumentIsolationPolicy();
+}
+
+std::unique_ptr<net::test_server::HttpResponse> ServeDipOnSecondNavigation(
+    unsigned int& navigation_counter,
+    const net::test_server::HttpRequest& request) {
+  ++navigation_counter;
+  auto http_response = std::make_unique<net::test_server::BasicHttpResponse>();
+  http_response->set_code(net::HttpStatusCode::HTTP_OK);
+  http_response->AddCustomHeader("Cache-Control", "no-store, must-revalidate");
+  if (navigation_counter > 1) {
+    http_response->AddCustomHeader("Document-Isolation-Policy",
+                                   "isolate-and-require-corp");
+  }
+  return http_response;
+}
+
+enum class SiteIsolationStatus {
+  kSiteIsolation,
+  kPartialSiteIsolation,
+  kNoSiteIsolation,
+  kNoSiteIsolationNoSIG,
+};
+
+class DocumentIsolationPolicyBrowserTest
+    : public ContentBrowserTest,
+      public ::testing::WithParamInterface<
+          std::tuple<std::string, bool, bool, SiteIsolationStatus>> {
+ public:
+  DocumentIsolationPolicyBrowserTest()
+      : prerender_helper_(base::BindRepeating(
+            &DocumentIsolationPolicyBrowserTest::prerender_web_contents,
+            base::Unretained(this))),
+        https_server_(net::EmbeddedTestServer::TYPE_HTTPS),
+        site_isolation_status_(std::get<3>(GetParam())) {
+    // Enable DIP and disable speculative RFH creation deferral. Currently,
+    // speculative RFH creation deferral makes it impossible to check that a
+    // speculative RFH is not created at the start of the navigation. This is
+    // needed to check that we do not create an extra process when navigating
+    // between two same-origin documents with DIP. Once RenderDocument ships, a
+    // speculative RFH will always be created, we'll then check that it is in
+    // the same SiteInstance as the current one. Then, we'll be able to
+    // re-enable the deferred speculative RFH creation, and just wait for the
+    // deferred creation of the speculative RenderDocument.
+    feature_list_.InitWithFeatures(
+        {network::features::kDocumentIsolationPolicy,
+         features::kDocumentIsolationPolicyWithoutSiteIsolation},
+        {features::kDeferSpeculativeRFHCreation, features::kSharedArrayBuffer});
+
+    // If we do not have full SiteIsolation, disable origin-keyed processes by
+    // default.
+    if (site_isolation_status_ != SiteIsolationStatus::kSiteIsolation) {
+      feature_list_disable_origin_keyed_processes_.InitWithFeatures(
+          {}, {features::kOriginKeyedProcessesByDefault});
+    }
+
+    // Enable RenderDocument:
+    InitAndEnableRenderDocumentFeature(&feature_list_for_render_document_,
+                                       std::get<0>(GetParam()));
+    // Enable BackForwardCache:
+    if (IsBackForwardCacheEnabled() &&
+        site_isolation_status_ != SiteIsolationStatus::kNoSiteIsolationNoSIG) {
+      feature_list_for_back_forward_cache_.InitWithFeaturesAndParameters(
+          GetDefaultEnabledBackForwardCacheFeaturesForTesting(
+              /*ignore_outstanding_network_request=*/false),
+          GetDefaultDisabledBackForwardCacheFeaturesForTesting());
+    } else {
+      feature_list_for_back_forward_cache_.InitWithFeatures(
+          {}, {features::kBackForwardCache});
+    }
+
+    // Enable DefaultSiteInstanceGroup:
+    feature_list_for_default_site_instance_group_.InitWithFeatureState(
+        features::kDefaultSiteInstanceGroups,
+        site_isolation_status_ != SiteIsolationStatus::kNoSiteIsolationNoSIG);
+  }
+
+  // Provides meaningful param names instead of /0, /1, ...
+  static std::string DescribeParams(
+      const testing::TestParamInfo<ParamType>& info) {
+    auto [render_document_level, enable_back_forward_cache, require_corp,
+          site_isolation_status] = info.param;
+    std::string site_isolation_string;
+    switch (site_isolation_status) {
+      case SiteIsolationStatus::kSiteIsolation:
+        site_isolation_string = "SiteIsolation";
+        break;
+      case SiteIsolationStatus::kPartialSiteIsolation:
+        site_isolation_string = "PartialSiteIsolation";
+        break;
+      case SiteIsolationStatus::kNoSiteIsolation:
+        site_isolation_string = "NoSiteIsolation";
+        break;
+      case SiteIsolationStatus::kNoSiteIsolationNoSIG:
+        site_isolation_string = "NoSiteIsolationNoSIG";
+        break;
+    }
+    return base::StringPrintf(
+        "%s_%s_%s_%s",
+        GetRenderDocumentLevelNameForTestParams(render_document_level).c_str(),
+        enable_back_forward_cache ? "BFCacheEnabled" : "BFCacheDisabled",
+        require_corp ? "RequireCorp" : "Credentialless", site_isolation_string);
+  }
+
+  bool IsBackForwardCacheEnabled() {
+    return std::get<1>(GetParam()) &&
+           site_isolation_status_ != SiteIsolationStatus::kNoSiteIsolationNoSIG;
+  }
+
+  net::EmbeddedTestServer* https_server() { return &https_server_; }
+
+  test::PrerenderTestHelper& prerender_helper() { return prerender_helper_; }
+
+ protected:
+  WebContentsImpl* web_contents() const {
+    return static_cast<WebContentsImpl*>(shell()->web_contents());
+  }
+
+  RenderFrameHostImpl* current_frame_host() {
+    return web_contents()->GetPrimaryMainFrame();
+  }
+
+  void SetUpOnMainThread() override {
+    ContentBrowserTest::SetUpOnMainThread();
+    mock_cert_verifier_.mock_cert_verifier()->set_default_result(net::OK);
+
+    test_client_ =
+        std::make_unique<MockContentBrowserClientWithSiteIsolationStatus>(
+            site_isolation_status_);
+
+    host_resolver()->AddRule("*", "127.0.0.1");
+    ASSERT_TRUE(embedded_test_server()->Start());
+
+    https_server()->ServeFilesFromSourceDirectory(GetTestDataFilePath());
+    SetupCrossSiteRedirector(https_server());
+    net::test_server::RegisterDefaultHandlers(&https_server_);
+    AddRedirectOnSecondNavigationHandler(&https_server_);
+    unsigned int navigation_counter = 0;
+    https_server_.RegisterDefaultHandler(base::BindRepeating(
+        &net::test_server::HandlePrefixedRequest,
+        "/serve-dip-on-second-navigation",
+        base::BindRepeating(&ServeDipOnSecondNavigation,
+                            base::OwnedRef(navigation_counter))));
+
+    prerender_helper().RegisterServerRequestMonitor(&https_server_);
+
+    ASSERT_TRUE(https_server()->Start());
+  }
+
+  GURL GetDocumentIsolationPolicyURL(
+      const std::string& host,
+      const std::optional<std::string>& additional_header = std::nullopt) {
+    std::string headers = "/set-header?";
+
+    if (std::get<2>(GetParam())) {
+      // Isolate-and-require-corp version of the test.
+      headers += "document-isolation-policy: isolate-and-require-corp";
+    } else {
+      // Isolate-and-credentialless version of the test.
+      headers += "document-isolation-policy: isolate-and-credentialless";
+    }
+
+    if (additional_header.has_value()) {
+      headers += "&" + additional_header.value();
+    }
+    return https_server()->GetURL(host, headers);
+  }
+
+  network::DocumentIsolationPolicy GetDocumentIsolationPolicy() {
+    // Isolate-and-require-corp version of the test.
+    if (std::get<2>(GetParam())) {
+      return DipIsolateAndRequireCorp();
+    }
+
+    // Isolate-and-credentialless version of the test.
+    return DipIsolateAndCredentialless();
+  }
+
+  // Used in CheckSiteInstancesAreIsolated to track whether we expect a
+  // BrowsingInstance swap to occur.
+  enum class ExpectBISwap { kTrue, kBFCacheOnly, kFalse };
+
+  // Used in CheckSiteInstancesAreIsolated to track whether we expect a
+  // SiteInstance swap to occur. SiteInstanceSwaps are supposed to always occur
+  // on all platforms but Android WebView. On Android WebView, they only happen
+  // when an error page is involved.
+  enum class ExpectSISwap { kRegular, kTopLevelError };
+
+  // Check that two SiteInstances that should be isolated due to
+  // DocumentIsolationPolicy are receiving the expected isolation based on the
+  // isolation capabilities of the platform.
+  void CheckSiteInstancesAreIsolated(
+      SiteInstanceImpl* site_instance_1,
+      SiteInstanceImpl* site_instance_2,
+      ExpectBISwap bi_swap = ExpectBISwap::kFalse,
+      ExpectSISwap si_swap = ExpectSISwap::kRegular) {
+    // With no SiteIsolation and no SiteInstanceGroup, the SiteInstances cannot
+    // change.
+    if (!SiteIsolationPolicy::UseDedicatedProcessesForAllSites() &&
+        !SiteIsolationPolicy::AreDynamicIsolatedOriginsEnabled() &&
+        !ShouldUseDefaultSiteInstanceGroup()) {
+      EXPECT_EQ(site_instance_1, site_instance_2);
+      return;
+    }
+
+    // Otherwise, we expect SiteInstances to be different.
+    EXPECT_NE(site_instance_1, site_instance_2);
+
+    // Next, check if process isolation of the SiteInstances is expected.
+
+    // First, check if we expect a BrowsingInstance swap to occur.
+    bool has_bi_swap = bi_swap == ExpectBISwap::kTrue;
+
+    // BFCache may also force BrowsingInstance swaps when it is enabled.
+    has_bi_swap |=
+        bi_swap == ExpectBISwap::kBFCacheOnly && IsBackForwardCacheEnabled();
+
+    // When process isolation for DocumentIsolationPolicy is enabled, a
+    // BrowsingInstance swap happens, or a top level error page is involved, the
+    // two SiteInstances should be in different processes.
+    if (AreAllSitesIsolatedForTesting() ||
+        SiteIsolationPolicy::AreDynamicIsolatedOriginsEnabled() ||
+        has_bi_swap || si_swap == ExpectSISwap::kTopLevelError) {
+      EXPECT_NE(site_instance_1->GetOrCreateProcessForTesting(),
+                site_instance_2->GetOrCreateProcessForTesting());
+
+      // If the navigation triggered a speculative BrowsingInstance swap, the
+      // SiteInstances should be unrelated. Otherwise they should be related.
+      EXPECT_EQ(!has_bi_swap,
+                site_instance_1->IsRelatedSiteInstance(site_instance_2));
+      return;
+    }
+
+    // When no SiteIsolation is available and default SiteInstanceGroup is
+    // available, the SiteInstances are different, however they are both placed
+    // into the default SiteInstanceGroup and share the same process.
+    EXPECT_TRUE(site_instance_1->IsRelatedSiteInstance(site_instance_2));
+    SiteInstanceGroup* default_site_instance_group =
+        site_instance_1->DefaultSiteInstanceGroupForBrowsingInstance();
+    EXPECT_EQ(default_site_instance_group, site_instance_1->group());
+    EXPECT_EQ(default_site_instance_group, site_instance_2->group());
+    EXPECT_EQ(site_instance_1->GetProcess(), site_instance_2->GetProcess());
+  }
+
+  // A helper function to check if a RenderFrameHost is tracked as cross-origin
+  // isolated. Generally, this checks if the RFH's SiteInstance is cross-origin
+  // isolated, but if there is no SiteIsolation and no SiteInstanceGroups, it
+  // will check whether the RFH's PolicyContainer has an override
+  // CrossOriginIsolationKey instead.
+  bool IsCrossOriginIsolated(RenderFrameHostImpl* rfh) {
+    if (site_isolation_status_ == SiteIsolationStatus::kNoSiteIsolationNoSIG) {
+      const auto& override_key = rfh->policy_container_host()
+                                     ->policies()
+                                     .cross_origin_isolation_key_override;
+      return override_key &&
+             override_key->cross_origin_isolation_mode ==
+                 blink::mojom::CrossOriginIsolationMode::kConcrete;
+    }
+    return rfh->GetSiteInstance()->IsCrossOriginIsolated();
+  }
+
+ private:
+  class MockContentBrowserClientWithSiteIsolationStatus
+      : public ContentBrowserTestContentBrowserClient {
+   public:
+    explicit MockContentBrowserClientWithSiteIsolationStatus(
+        SiteIsolationStatus status)
+        : status_(status) {}
+    bool ShouldDisableSiteIsolation(
+        SiteIsolationMode site_isolation_mode) override {
+      if (site_isolation_mode == SiteIsolationMode::kStrictSiteIsolation) {
+        return status_ != SiteIsolationStatus::kSiteIsolation;
+      }
+      return status_ == SiteIsolationStatus::kNoSiteIsolation ||
+             status_ == SiteIsolationStatus::kNoSiteIsolationNoSIG;
+    }
+    bool ShouldEnableStrictSiteIsolation() override {
+      return status_ == SiteIsolationStatus::kSiteIsolation;
+    }
+    bool ShouldIsolateErrorPage(bool in_main_frame) override {
+      if (status_ == SiteIsolationStatus::kNoSiteIsolationNoSIG) {
+        return false;
+      }
+      return in_main_frame;
+    }
+
+   private:
+    SiteIsolationStatus status_;
+  };
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    mock_cert_verifier_.SetUpCommandLine(command_line);
+
+    // Set up the right SiteIsolation status for the test.
+    if (site_isolation_status_ == SiteIsolationStatus::kSiteIsolation) {
+      IsolateAllSitesForTesting(command_line);
+    } else if (site_isolation_status_ ==
+               SiteIsolationStatus::kNoSiteIsolation) {
+      command_line->RemoveSwitch(switches::kSitePerProcess);
+      command_line->AppendSwitch(switches::kDisableSiteIsolation);
+    }
+  }
+
+  void SetUpInProcessBrowserTestFixture() override {
+    ContentBrowserTest::SetUpInProcessBrowserTestFixture();
+    mock_cert_verifier_.SetUpInProcessBrowserTestFixture();
+  }
+
+  void TearDownInProcessBrowserTestFixture() override {
+    ContentBrowserTest::TearDownInProcessBrowserTestFixture();
+    mock_cert_verifier_.TearDownInProcessBrowserTestFixture();
+  }
+
+  // Variation of web_contents(), that returns a WebContents* instead of a
+  // WebContentsImpl*, required to bind the prerender_helper_ in the
+  // constructor.
+  WebContents* prerender_web_contents() { return shell()->web_contents(); }
+
+  content::ContentMockCertVerifier mock_cert_verifier_;
+
+  // This needs to be before ScopedFeatureLists, because it contains one
+  // internally and the destruction order matters.
+  test::PrerenderTestHelper prerender_helper_;
+
+  base::test::ScopedFeatureList feature_list_;
+  base::test::ScopedFeatureList feature_list_disable_origin_keyed_processes_;
+  base::test::ScopedFeatureList feature_list_for_render_document_;
+  base::test::ScopedFeatureList feature_list_for_back_forward_cache_;
+  base::test::ScopedFeatureList feature_list_for_default_site_instance_group_;
+  net::EmbeddedTestServer https_server_;
+
+  SiteIsolationStatus site_isolation_status_;
+  std::unique_ptr<MockContentBrowserClientWithSiteIsolationStatus> test_client_;
+};
+
+class DocumentIsolationPolicyWithoutFeatureBrowserTest
+    : public ContentBrowserTest,
+      public ::testing::WithParamInterface<
+          std::tuple<std::string, bool, bool>> {
+ public:
+  DocumentIsolationPolicyWithoutFeatureBrowserTest()
+      : https_server_(net::EmbeddedTestServer::TYPE_HTTPS) {
+    // Disable the DocumentIsolationPolicy feature.
+    feature_list_.InitWithFeatures(
+        {}, {network::features::kDocumentIsolationPolicy});
+
+    // Enable RenderDocument:
+    InitAndEnableRenderDocumentFeature(&feature_list_for_render_document_,
+                                       std::get<0>(GetParam()));
+    // Enable BackForwardCache:
+    if (IsBackForwardCacheEnabled()) {
+      feature_list_for_back_forward_cache_.InitWithFeaturesAndParameters(
+          GetDefaultEnabledBackForwardCacheFeaturesForTesting(
+              /*ignore_outstanding_network_request=*/false),
+          GetDefaultDisabledBackForwardCacheFeaturesForTesting());
+    } else {
+      feature_list_for_back_forward_cache_.InitWithFeatures(
+          {}, {features::kBackForwardCache});
+    }
+  }
+
+  // Provides meaningful param names instead of /0, /1, ...
+  static std::string DescribeParams(
+      const testing::TestParamInfo<ParamType>& info) {
+    auto [render_document_level, enable_back_forward_cache, require_corp] =
+        info.param;
+    return base::StringPrintf(
+        "%s_%s_%s",
+        GetRenderDocumentLevelNameForTestParams(render_document_level).c_str(),
+        enable_back_forward_cache ? "BFCacheEnabled" : "BFCacheDisabled",
+        require_corp ? "RequireCorp" : "Credentialless");
+  }
+
+  net::EmbeddedTestServer* https_server() { return &https_server_; }
+
+ protected:
+  RenderFrameHostImpl* current_frame_host() {
+    return static_cast<WebContentsImpl*>(shell()->web_contents())
+        ->GetPrimaryMainFrame();
+  }
+
+  GURL GetDocumentIsolationPolicyURL(const std::string& host) {
+    // Isolate-and-require-corp version of the test.
+    if (std::get<2>(GetParam())) {
+      return https_server()->GetURL(
+          host,
+          "/set-header?document-isolation-policy: isolate-and-require-corp");
+    }
+
+    // Isolate-and-credentialless version of the test.
+    return https_server()->GetURL(
+        host,
+        "/set-header?document-isolation-policy: isolate-and-credentialless");
+  }
+
+  void SetUpOnMainThread() override {
+    ContentBrowserTest::SetUpOnMainThread();
+    mock_cert_verifier_.mock_cert_verifier()->set_default_result(net::OK);
+
+    host_resolver()->AddRule("*", "127.0.0.1");
+    ASSERT_TRUE(embedded_test_server()->Start());
+
+    https_server()->ServeFilesFromSourceDirectory(GetTestDataFilePath());
+    SetupCrossSiteRedirector(https_server());
+    net::test_server::RegisterDefaultHandlers(&https_server_);
+
+    ASSERT_TRUE(https_server()->Start());
+  }
+
+ private:
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    ContentBrowserTest::SetUpCommandLine(command_line);
+    mock_cert_verifier_.SetUpCommandLine(command_line);
+  }
+
+  void SetUpInProcessBrowserTestFixture() override {
+    ContentBrowserTest::SetUpInProcessBrowserTestFixture();
+    mock_cert_verifier_.SetUpInProcessBrowserTestFixture();
+  }
+
+  void TearDownInProcessBrowserTestFixture() override {
+    ContentBrowserTest::TearDownInProcessBrowserTestFixture();
+    mock_cert_verifier_.TearDownInProcessBrowserTestFixture();
+  }
+
+  content::ContentMockCertVerifier mock_cert_verifier_;
+
+  base::test::ScopedFeatureList feature_list_;
+  base::test::ScopedFeatureList feature_list_for_render_document_;
+  base::test::ScopedFeatureList feature_list_for_back_forward_cache_;
+  net::EmbeddedTestServer https_server_;
+};
+
+class DocumentIsolationPolicyWithoutSiteIsolationBrowserTest
+    : public DocumentIsolationPolicyBrowserTest {
+ public:
+  DocumentIsolationPolicyWithoutSiteIsolationBrowserTest() {
+    feature_list_.InitWithFeatures(
+        {}, {features::kDocumentIsolationPolicyWithoutSiteIsolation});
+  }
+
+ private:
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    ContentBrowserTest::SetUpCommandLine(command_line);
+    mock_cert_verifier_.SetUpCommandLine(command_line);
+
+    // Disable SiteIsolation.
+    command_line->AppendSwitch(switches::kDisableSiteIsolation);
+  }
+
+  base::test::ScopedFeatureList feature_list_;
+  content::ContentMockCertVerifier mock_cert_verifier_;
+};
+
+std::string kConcreteCOIOrigin = "concretecoi.test";
+std::string kLogicalCOIOrigin = "logicalcoi.test";
+
+class DocumentIsolationPolicyWithLogicalCOIBrowserTest
+    : public ContentBrowserTest,
+      public ::testing::WithParamInterface<
+          std::tuple<std::string, bool, bool, bool>> {
+ public:
+  DocumentIsolationPolicyWithLogicalCOIBrowserTest()
+      : https_server_(net::EmbeddedTestServer::TYPE_HTTPS) {
+    feature_list_.InitWithFeatures(
+        {network::features::kDocumentIsolationPolicy,
+         features::kDocumentIsolationPolicyWithoutSiteIsolation},
+        {features::kSharedArrayBuffer});
+
+    // Enable RenderDocument:
+    InitAndEnableRenderDocumentFeature(&feature_list_for_render_document_,
+                                       std::get<0>(GetParam()));
+    // Enable BackForwardCache:
+    if (IsBackForwardCacheEnabled()) {
+      feature_list_for_back_forward_cache_.InitWithFeaturesAndParameters(
+          GetDefaultEnabledBackForwardCacheFeaturesForTesting(
+              /*ignore_outstanding_network_request=*/false),
+          GetDefaultDisabledBackForwardCacheFeaturesForTesting());
+    } else {
+      feature_list_for_back_forward_cache_.InitWithFeatures(
+          {}, {features::kBackForwardCache});
+    }
+
+    // Enabled DefaultSiteInstanceGroup:
+    feature_list_for_default_site_instance_group_.InitWithFeatureState(
+        features::kDefaultSiteInstanceGroups, std::get<3>(GetParam()));
+  }
+
+  // Provides meaningful param names instead of /0, /1, ...
+  static std::string DescribeParams(
+      const testing::TestParamInfo<ParamType>& info) {
+    auto [render_document_level, enable_back_forward_cache, require_corp,
+          enable_default_site_instance_group] = info.param;
+    return base::StringPrintf(
+        "%s_%s_%s_%s",
+        GetRenderDocumentLevelNameForTestParams(render_document_level).c_str(),
+        enable_back_forward_cache ? "BFCacheEnabled" : "BFCacheDisabled",
+        require_corp ? "RequireCorp" : "Credentialless",
+        enable_default_site_instance_group ? "DefaultSiteInstanceGroup"
+                                           : "DefaultSiteInstance");
+  }
+
+  net::EmbeddedTestServer* https_server() { return &https_server_; }
+
+ protected:
+  WebContentsImpl* web_contents() const {
+    return static_cast<WebContentsImpl*>(shell()->web_contents());
+  }
+
+  RenderFrameHostImpl* current_frame_host() {
+    return static_cast<WebContentsImpl*>(shell()->web_contents())
+        ->GetPrimaryMainFrame();
+  }
+
+  GURL GetDocumentIsolationPolicyURL(const std::string& host) {
+    // Isolate-and-require-corp version of the test.
+    if (std::get<2>(GetParam())) {
+      return https_server()->GetURL(
+          host,
+          "/set-header?document-isolation-policy: isolate-and-require-corp");
+    }
+
+    // Isolate-and-credentialless version of the test.
+    return https_server()->GetURL(
+        host,
+        "/set-header?document-isolation-policy: isolate-and-credentialless");
+  }
+
+  void SetUpOnMainThread() override {
+    ContentBrowserTest::SetUpOnMainThread();
+    mock_cert_verifier_.mock_cert_verifier()->set_default_result(net::OK);
+
+    host_resolver()->AddRule("*", "127.0.0.1");
+    ASSERT_TRUE(embedded_test_server()->Start());
+
+    https_server()->ServeFilesFromSourceDirectory(GetTestDataFilePath());
+    SetupCrossSiteRedirector(https_server());
+    net::test_server::RegisterDefaultHandlers(&https_server_);
+
+    ASSERT_TRUE(https_server()->Start());
+
+    test_client_ = std::make_unique<MockContentBrowserClientWithLogicalCOI>(
+        url::Origin::Create(
+            https_server()->GetURL(kConcreteCOIOrigin, "/empty.html")));
+  }
+
+ private:
+  class MockContentBrowserClientWithLogicalCOI
+      : public ContentBrowserTestContentBrowserClient {
+   public:
+    explicit MockContentBrowserClientWithLogicalCOI(
+        const url::Origin& concrete_coi_origin)
+        : concrete_coi_origin_(concrete_coi_origin) {}
+    bool OriginSupportsConcreteCrossOriginIsolation(
+        content::BrowserContext* browser_context,
+        const url::Origin& origin) override {
+      return origin.IsSameOriginWith(concrete_coi_origin_);
+    }
+
+   private:
+    const url::Origin concrete_coi_origin_;
+  };
+
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    ContentBrowserTest::SetUpCommandLine(command_line);
+    mock_cert_verifier_.SetUpCommandLine(command_line);
+
+    // Disable SiteIsolation as logical COI is only used on Android WebView
+    // which does not have SiteIsolation.
+    command_line->RemoveSwitch(switches::kSitePerProcess);
+    command_line->AppendSwitch(switches::kDisableSiteIsolation);
+  }
+
+  void SetUpInProcessBrowserTestFixture() override {
+    ContentBrowserTest::SetUpInProcessBrowserTestFixture();
+    mock_cert_verifier_.SetUpInProcessBrowserTestFixture();
+  }
+
+  void TearDownInProcessBrowserTestFixture() override {
+    ContentBrowserTest::TearDownInProcessBrowserTestFixture();
+    mock_cert_verifier_.TearDownInProcessBrowserTestFixture();
+  }
+
+  content::ContentMockCertVerifier mock_cert_verifier_;
+
+  base::test::ScopedFeatureList feature_list_;
+  base::test::ScopedFeatureList feature_list_for_render_document_;
+  base::test::ScopedFeatureList feature_list_for_back_forward_cache_;
+  base::test::ScopedFeatureList feature_list_for_default_site_instance_group_;
+  net::EmbeddedTestServer https_server_;
+
+  std::unique_ptr<MockContentBrowserClientWithLogicalCOI> test_client_;
+};
+
+}  // namespace
+
+// Checks that a Document-Isolation-Policy header is ignored if the
+// DocumentIsolationPolicy feature flag is not enabled.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyWithoutFeatureBrowserTest,
+                       DIP_Disabled) {
+  GURL starting_page = GetDocumentIsolationPolicyURL("a.test");
+  EXPECT_TRUE(NavigateToURL(shell(), starting_page));
+  EXPECT_EQ(current_frame_host()
+                ->policy_container_host()
+                ->policies()
+                .document_isolation_policy,
+            DipNone());
+}
+
+// Checks that a Document-Isolation-Policy header is ignored if SiteIsolation is
+// not enabled.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyWithoutSiteIsolationBrowserTest,
+                       DIP_Disabled) {
+  GURL starting_page = GetDocumentIsolationPolicyURL("a.test");
+  EXPECT_TRUE(NavigateToURL(shell(), starting_page));
+  EXPECT_EQ(current_frame_host()
+                ->policy_container_host()
+                ->policies()
+                .document_isolation_policy,
+            DipNone());
+}
+
+// Checks that DocumentIsolationPolicy is properly inherited from its creator by
+// the about:blank document in a new popup.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       NewPopup_InheritsDIP) {
+  GURL starting_page = GetDocumentIsolationPolicyURL("a.test");
+  GURL no_dip(https_server()->GetURL("a.test", "/empty.html"));
+  EXPECT_TRUE(NavigateToURL(shell(), starting_page));
+
+  RenderFrameHostImpl* main_rfh = current_frame_host();
+
+  // Open a popup.
+  ShellAddedObserver shell_observer;
+  EXPECT_TRUE(ExecJs(main_rfh, "window.open('about:blank')"));
+
+  auto* popup_webcontents =
+      static_cast<WebContentsImpl*>(shell_observer.GetShell()->web_contents());
+  RenderFrameHostImpl* popup_rfh = popup_webcontents->GetPrimaryMainFrame();
+
+  EXPECT_EQ(
+      main_rfh->policy_container_host()->policies().document_isolation_policy,
+      GetDocumentIsolationPolicy());
+  EXPECT_EQ(
+      popup_rfh->policy_container_host()->policies().document_isolation_policy,
+      GetDocumentIsolationPolicy());
+
+  // Navigate the popup to a page without DIP. It should not longer have a
+  // DocumentIsolationPolicy.
+  ASSERT_TRUE(NavigateToURL(popup_webcontents, no_dip));
+  popup_rfh = popup_webcontents->GetPrimaryMainFrame();
+  EXPECT_EQ(
+      popup_rfh->policy_container_host()->policies().document_isolation_policy,
+      DipNone());
+
+  // Now add an iframe without DIP which will open a popup.
+  ASSERT_TRUE(ExecJs(main_rfh, R"(
+    const frame = document.createElement('iframe');
+    frame.src = '/empty.html';
+    document.body.appendChild(frame);
+  )"));
+  EXPECT_TRUE(WaitForLoadStop(web_contents()));
+
+  ShellAddedObserver shell_observer_2;
+  RenderFrameHostImpl* iframe_rfh = main_rfh->child_at(0)->current_frame_host();
+  EXPECT_TRUE(ExecJs(iframe_rfh, "window.open('about:blank')"));
+
+  RenderFrameHostImpl* popup_rfh_2 =
+      static_cast<WebContentsImpl*>(shell_observer_2.GetShell()->web_contents())
+          ->GetPrimaryMainFrame();
+
+  EXPECT_EQ(
+      iframe_rfh->policy_container_host()->policies().document_isolation_policy,
+      DipNone());
+  EXPECT_EQ(popup_rfh_2->policy_container_host()
+                ->policies()
+                .document_isolation_policy,
+            DipNone());
+}
+
+// Checks that a navigation to a Blob URL inherits the DocumentIsolationPolicy
+// of its creator.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest, BlobInheritsDIP) {
+  GURL starting_page = GetDocumentIsolationPolicyURL("a.test");
+  EXPECT_TRUE(NavigateToURL(shell(), starting_page));
+
+  // Create and open blob.
+  ShellAddedObserver shell_observer;
+  ASSERT_TRUE(ExecJs(current_frame_host(), R"(
+    const blob = new Blob(['foo'], {type : 'text/html'});
+    const url = URL.createObjectURL(blob);
+    window.open(url);
+  )"));
+  EXPECT_TRUE(WaitForLoadStop(shell_observer.GetShell()->web_contents()));
+  RenderFrameHostImpl* popup_rfh =
+      static_cast<WebContentsImpl*>(shell_observer.GetShell()->web_contents())
+          ->GetPrimaryMainFrame();
+
+  // DIP inherited from Blob creator
+  EXPECT_EQ(
+      popup_rfh->policy_container_host()->policies().document_isolation_policy,
+      GetDocumentIsolationPolicy());
+}
+
+// Checks that an about:blank iframe inherits its DocumentIsolationPolicy from
+// its creator.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       AboutBlankInheritsDip) {
+  GURL starting_page = GetDocumentIsolationPolicyURL("a.test");
+  EXPECT_TRUE(NavigateToURL(shell(), starting_page));
+
+  EXPECT_EQ(current_frame_host()
+                ->policy_container_host()
+                ->policies()
+                .document_isolation_policy,
+            GetDocumentIsolationPolicy());
+
+  // Add an about:blank iframe.
+  EXPECT_TRUE(ExecJs(current_frame_host(),
+                     "g_iframe = document.createElement('iframe');"
+                     "g_iframe.src = 'about:blank';"
+                     "document.body.appendChild(g_iframe);"));
+  WaitForLoadStop(web_contents());
+
+  RenderFrameHostImpl* iframe_rfh =
+      current_frame_host()->child_at(0)->current_frame_host();
+
+  // Document-Isolation-Policy should have been inherited.
+  EXPECT_EQ(
+      iframe_rfh->policy_container_host()->policies().document_isolation_policy,
+      GetDocumentIsolationPolicy());
+}
+
+// Checks that an iframe can enable DocumentIsolationPolicy even if its parent
+// does not, and that it will be placed in an appropriate SiteInstance.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest, IframeCanSetDip) {
+  GURL starting_page(
+      https_server()->GetURL("a.com", "/cross_site_iframe_factory.html?a(b)"));
+  GURL iframe_navigation_url = GetDocumentIsolationPolicyURL("b.com");
+  EXPECT_TRUE(NavigateToURL(shell(), starting_page));
+
+  RenderFrameHostImpl* main_rfh = current_frame_host();
+  FrameTreeNode* iframe_ftn = main_rfh->child_at(0);
+  RenderFrameHostImpl* iframe_rfh = iframe_ftn->current_frame_host();
+  scoped_refptr<SiteInstanceImpl> non_dip_iframe_site_instance =
+      iframe_rfh->GetSiteInstance();
+
+  // The iframe should not have a DocumentIsolationPolicy.
+  EXPECT_EQ(
+      iframe_rfh->policy_container_host()->policies().document_isolation_policy,
+      DipNone());
+
+  // Navigate the iframe same-origin to a document with DIP header. The
+  // header should be taken into account.
+  EXPECT_TRUE(NavigateToURLFromRenderer(iframe_ftn, iframe_navigation_url));
+  iframe_rfh = iframe_ftn->current_frame_host();
+
+  // The navigation should have used a different SiteInstance from the one
+  // previously used as the DocumentIsolationPolicy do not match, even if the
+  // navigation is same-origin.
+  EXPECT_EQ(iframe_rfh->GetLastCommittedURL(), iframe_navigation_url);
+  CheckSiteInstancesAreIsolated(iframe_rfh->GetSiteInstance(),
+                                non_dip_iframe_site_instance.get());
+
+  EXPECT_EQ(
+      iframe_rfh->policy_container_host()->policies().document_isolation_policy,
+      GetDocumentIsolationPolicy());
+}
+
+// Checks that navigations are placed in the appropriate renderer process
+// depending on their DocumentIsolationPolicy, even if the current renderer
+// process is crashed or crashes during the navigation. In particular, this
+// tests the navigation from a page without DIP to a page with DIP.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       NonDipPageCrashIntoDip) {
+  GURL non_dip_page(https_server()->GetURL("a.test", "/title1.html"));
+  GURL dip_page = GetDocumentIsolationPolicyURL("a.test");
+
+  // Test a crash before the navigation.
+  {
+    // Navigate to a non dip page.
+    EXPECT_TRUE(NavigateToURL(shell(), non_dip_page));
+    scoped_refptr<SiteInstance> initial_site_instance(
+        current_frame_host()->GetSiteInstance());
+
+    // Simulate the renderer process crashing.
+    RenderProcessHost* process = initial_site_instance->GetProcess();
+    ASSERT_TRUE(process);
+    std::unique_ptr<RenderProcessHostWatcher> crash_observer(
+        new RenderProcessHostWatcher(
+            process, RenderProcessHostWatcher::WATCH_FOR_PROCESS_EXIT));
+    process->Shutdown(0);
+    crash_observer->Wait();
+    crash_observer.reset();
+
+    // Navigate to a DIP page.
+    EXPECT_TRUE(NavigateToURL(shell(), dip_page));
+    EXPECT_EQ(current_frame_host()
+                  ->policy_container_host()
+                  ->policies()
+                  .document_isolation_policy,
+              GetDocumentIsolationPolicy());
+  }
+
+  // Test a crash during the navigation.
+  {
+    // Navigate to a non dip page.
+    EXPECT_TRUE(NavigateToURL(shell(), non_dip_page));
+    scoped_refptr<SiteInstance> initial_site_instance(
+        current_frame_host()->GetSiteInstance());
+
+    // Start navigating to a DIP page.
+    TestNavigationManager dip_navigation(web_contents(), dip_page);
+    shell()->LoadURL(dip_page);
+    EXPECT_TRUE(dip_navigation.WaitForRequestStart());
+
+    // Simulate the renderer process crashing.
+    RenderProcessHost* process = initial_site_instance->GetProcess();
+    ASSERT_TRUE(process);
+    std::unique_ptr<RenderProcessHostWatcher> crash_observer(
+        new RenderProcessHostWatcher(
+            process, RenderProcessHostWatcher::WATCH_FOR_PROCESS_EXIT));
+    process->Shutdown(0);
+    crash_observer->Wait();
+    crash_observer.reset();
+
+    // Finish the navigation to the DIP page.
+    ASSERT_TRUE(dip_navigation.WaitForNavigationFinished());
+
+    // The navigation will fail if we create speculative RFH when the navigation
+    // started (instead of only when the response started), because the renderer
+    // process will crash and trigger deletion of the speculative RFH and the
+    // navigation using that speculative RFH. BFCache forces a BrowsingInstance
+    // swap (even in this same-site case), hence it also necessitates a
+    // speculative RFH.
+    // TODO(crbug.com/40261276): If the final RenderFrameHost picked for
+    // the navigation doesn't use the same process as the crashed process, we
+    // can crash the process after the final RenderFrameHost has been picked
+    // instead, and the navigation will commit normally.
+    if (!base::FeatureList::IsEnabled(
+            features::kResumeNavigationWithSpeculativeRFHProcessGone) &&
+        (ShouldCreateNewHostForAllFrames() || IsBackForwardCacheEnabled())) {
+      EXPECT_FALSE(dip_navigation.was_committed());
+      return;
+    }
+
+    EXPECT_TRUE(dip_navigation.was_successful());
+    EXPECT_EQ(current_frame_host()
+                  ->policy_container_host()
+                  ->policies()
+                  .document_isolation_policy,
+              GetDocumentIsolationPolicy());
+  }
+}
+
+// Checks that navigations are placed in the appropriate renderer process
+// depending on their DocumentIsolationPolicy, even if the current renderer
+// process is crashed or crashes during the navigation. In particular, this
+// tests the navigation from a page with DIP to a page without DIP.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       DipPageCrashIntoNonDip) {
+  GURL dip_page = GetDocumentIsolationPolicyURL("a.test");
+  GURL non_dip_page(https_server()->GetURL("a.test", "/empty.html"));
+  // Test a crash before the navigation.
+  {
+    // Navigate to a DIP page.
+    EXPECT_TRUE(NavigateToURL(shell(), dip_page));
+    scoped_refptr<SiteInstance> initial_site_instance(
+        current_frame_host()->GetSiteInstance());
+
+    // Simulate the renderer process crashing.
+    RenderProcessHost* process = initial_site_instance->GetProcess();
+    ASSERT_TRUE(process);
+    std::unique_ptr<RenderProcessHostWatcher> crash_observer(
+        new RenderProcessHostWatcher(
+            process, RenderProcessHostWatcher::WATCH_FOR_PROCESS_EXIT));
+    process->Shutdown(0);
+    crash_observer->Wait();
+    crash_observer.reset();
+
+    // Navigate to a non DIP page.
+    EXPECT_TRUE(NavigateToURL(shell(), non_dip_page));
+    EXPECT_EQ(current_frame_host()
+                  ->policy_container_host()
+                  ->policies()
+                  .document_isolation_policy,
+              DipNone());
+  }
+
+  // Test a crash during the navigation.
+  {
+    // Navigate to a DIP page.
+    EXPECT_TRUE(NavigateToURL(shell(), dip_page));
+    scoped_refptr<SiteInstance> initial_site_instance(
+        current_frame_host()->GetSiteInstance());
+
+    // Start navigating to a non DIP page.
+    TestNavigationManager non_dip_navigation(web_contents(), non_dip_page);
+    shell()->LoadURL(non_dip_page);
+    EXPECT_TRUE(non_dip_navigation.WaitForRequestStart());
+
+    // Simulate the renderer process crashing.
+    RenderProcessHost* process = initial_site_instance->GetProcess();
+    ASSERT_TRUE(process);
+    std::unique_ptr<RenderProcessHostWatcher> crash_observer(
+        new RenderProcessHostWatcher(
+            process, RenderProcessHostWatcher::WATCH_FOR_PROCESS_EXIT));
+    process->Shutdown(0);
+    crash_observer->Wait();
+    crash_observer.reset();
+
+    // Finish the navigation to the non DIP page.
+    ASSERT_TRUE(non_dip_navigation.WaitForNavigationFinished());
+
+    // The navigation will fail if we create speculative RFH when the navigation
+    // started (instead of only when the response started), because the renderer
+    // process will crash and trigger deletion of the speculative RFH and the
+    // navigation using that speculative RFH. BFCache forces a BrowsingInstance
+    // swap (even in this same-site case), hence it also necessitates a
+    // speculative RFH.
+    // TODO(crbug.com/40261276): If the final RenderFrameHost picked for
+    // the navigation doesn't use the same process as the crashed process, we
+    // can crash the process after the final RenderFrameHost has been picked
+    // instead, and the navigation will commit normally.
+    if (!base::FeatureList::IsEnabled(
+            features::kResumeNavigationWithSpeculativeRFHProcessGone) &&
+        (ShouldCreateNewHostForAllFrames() || IsBackForwardCacheEnabled())) {
+      EXPECT_FALSE(non_dip_navigation.was_committed());
+      EXPECT_EQ(current_frame_host()
+                    ->policy_container_host()
+                    ->policies()
+                    .document_isolation_policy,
+                GetDocumentIsolationPolicy());
+      return;
+    }
+
+    EXPECT_TRUE(non_dip_navigation.was_successful());
+    EXPECT_EQ(current_frame_host()
+                  ->policy_container_host()
+                  ->policies()
+                  .document_isolation_policy,
+              DipNone());
+  }
+
+  // Test a crash during the navigation commit.
+  {
+    // Navigate to a DIP page.
+    EXPECT_TRUE(NavigateToURL(shell(), dip_page));
+    scoped_refptr<SiteInstance> initial_site_instance(
+        current_frame_host()->GetSiteInstance());
+
+    // Start navigating to a non DIP page.
+    TestNavigationManager non_dip_navigation(web_contents(), non_dip_page);
+    shell()->LoadURL(non_dip_page);
+    EXPECT_TRUE(non_dip_navigation.WaitForResponse());
+
+    // Simulate the renderer process crashing.
+    RenderProcessHost* process = initial_site_instance->GetProcess();
+    ASSERT_TRUE(process);
+    std::unique_ptr<RenderProcessHostWatcher> crash_observer(
+        new RenderProcessHostWatcher(
+            process, RenderProcessHostWatcher::WATCH_FOR_PROCESS_EXIT));
+    process->Shutdown(0);
+    crash_observer->Wait();
+    crash_observer.reset();
+
+    // Finish the navigation to the non DIP page.
+    ASSERT_TRUE(non_dip_navigation.WaitForNavigationFinished());
+
+    if (!SiteIsolationPolicy::UseDedicatedProcessesForAllSites() &&
+        !SiteIsolationPolicy::AreDynamicIsolatedOriginsEnabled() &&
+        !ShouldUseDefaultSiteInstanceGroup()) {
+      // When no SiteInstance switching is available, the navigation does not
+      // commit successfully.
+      // TODO(crbug.com/349104385): This seems unrelated to
+      // DocumentIsolationPolicy. Investigate why this happens.
+      EXPECT_FALSE(non_dip_navigation.was_successful());
+    } else {
+      // The navigation will not fail after killing the process of the dip page.
+      // A new render process has been created during the navigation to the
+      // non-dip page.
+      EXPECT_TRUE(non_dip_navigation.was_successful());
+      EXPECT_EQ(current_frame_host()
+                    ->policy_container_host()
+                    ->policies()
+                    .document_isolation_policy,
+                DipNone());
+    }
+  }
+}
+
+// Checks that navigations are placed in the appropriate renderer process
+// depending on their DocumentIsolationPolicy, even if the current renderer
+// process is crashed or crashes during the navigation. In particular, this
+// tests the navigation between two pages with DIP, including a reload of a
+// crashed page.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       DipPageCrashIntoDip) {
+  GURL dip_page = GetDocumentIsolationPolicyURL("a.test");
+
+  // Test a crash before the navigation.
+  {
+    // Navigate to a DIP page.
+    EXPECT_TRUE(NavigateToURL(shell(), dip_page));
+    scoped_refptr<SiteInstance> initial_site_instance(
+        current_frame_host()->GetSiteInstance());
+    EXPECT_EQ(current_frame_host()
+                  ->policy_container_host()
+                  ->policies()
+                  .document_isolation_policy,
+              GetDocumentIsolationPolicy());
+
+    // Simulate the renderer process crashing.
+    RenderProcessHost* process = initial_site_instance->GetProcess();
+    ASSERT_TRUE(process);
+    std::unique_ptr<RenderProcessHostWatcher> crash_observer(
+        new RenderProcessHostWatcher(
+            process, RenderProcessHostWatcher::WATCH_FOR_PROCESS_EXIT));
+    process->Shutdown(0);
+    crash_observer->Wait();
+    crash_observer.reset();
+
+    // Reload the DIP page.
+    ReloadBlockUntilNavigationsComplete(shell(), 1);
+    EXPECT_TRUE(current_frame_host()->GetSiteInstance()->IsRelatedSiteInstance(
+        initial_site_instance.get()));
+    EXPECT_EQ(current_frame_host()
+                  ->policy_container_host()
+                  ->policies()
+                  .document_isolation_policy,
+              GetDocumentIsolationPolicy());
+  }
+
+  // Test a crash during the navigation.
+  {
+    // Navigate to a DIP page.
+    EXPECT_TRUE(NavigateToURL(shell(), dip_page));
+    scoped_refptr<SiteInstance> initial_site_instance(
+        current_frame_host()->GetSiteInstance());
+
+    // Start navigating to a DIP page.
+    TestNavigationManager dip_navigation(web_contents(), dip_page);
+    shell()->LoadURL(dip_page);
+    EXPECT_TRUE(dip_navigation.WaitForRequestStart());
+
+    // Simulate the renderer process crashing.
+    RenderProcessHost* process = initial_site_instance->GetProcess();
+    ASSERT_TRUE(process);
+    std::unique_ptr<RenderProcessHostWatcher> crash_observer(
+        new RenderProcessHostWatcher(
+            process, RenderProcessHostWatcher::WATCH_FOR_PROCESS_EXIT));
+    process->Shutdown(0);
+    crash_observer->Wait();
+    crash_observer.reset();
+
+    // Finish the navigation to the DIP page.
+    ASSERT_TRUE(dip_navigation.WaitForNavigationFinished());
+
+    EXPECT_EQ(current_frame_host()
+                  ->policy_container_host()
+                  ->policies()
+                  .document_isolation_policy,
+              GetDocumentIsolationPolicy());
+  }
+}
+
+// Checks that a navigation to a document with DocumentIsolationPolicy will be
+// placed in a separate process even if the process limit has been reached.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       IsolateInNewProcessDespiteLimitReached) {
+  // Set a process limit of 1 for testing.
+  RenderProcessHostImpl::SetMaxRendererProcessCount(1);
+
+  // Navigate to a starting page.
+  GURL starting_page(https_server()->GetURL("a.test", "/title1.html"));
+  EXPECT_TRUE(NavigateToURL(shell(), starting_page));
+  scoped_refptr<SiteInstanceImpl> initial_site_instance(
+      static_cast<SiteInstanceImpl*>(current_frame_host()->GetSiteInstance()));
+
+  // Open a popup with DocumentIsolationPolicy set.
+  GURL url_openee = GetDocumentIsolationPolicyURL("a.test");
+  auto* popup_webcontents =
+      OpenPopup(current_frame_host(), url_openee, "popup")->web_contents();
+  EXPECT_TRUE(WaitForLoadStop(popup_webcontents));
+
+  scoped_refptr<SiteInstanceImpl> popup_site_instance(
+      static_cast<SiteInstanceImpl*>(
+          popup_webcontents->GetPrimaryMainFrame()->GetSiteInstance()));
+
+  // The page and its popup should be in different processes even though the
+  // process limit was reached.
+  CheckSiteInstancesAreIsolated(initial_site_instance.get(),
+                                popup_site_instance.get());
+}
+
+// Checks that a process hosting a document with DocumentIsolationPolicy is not
+// reused for documents without DocumentIsolationPolicy, even if the process
+// limit has been reached.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       NoProcessReuseForDIPProcesses) {
+  // This test only makes sense if it's possible to switch SiteInstances.
+  if (!AreAllSitesIsolatedForTesting() &&
+      !SiteIsolationPolicy::AreDynamicIsolatedOriginsEnabled() &&
+      !ShouldUseDefaultSiteInstanceGroup()) {
+    GTEST_SKIP();
+  }
+
+  // Set a process limit of 1 for testing.
+  RenderProcessHostImpl::SetMaxRendererProcessCount(1);
+
+  // Navigate to a starting page with DocumentIsolationPolicy set.
+  GURL starting_page = GetDocumentIsolationPolicyURL("a.test");
+  EXPECT_TRUE(NavigateToURL(shell(), starting_page));
+  scoped_refptr<SiteInstanceImpl> initial_site_instance(
+      static_cast<SiteInstanceImpl*>(current_frame_host()->GetSiteInstance()));
+
+  // Create a new shell.
+  Shell* new_shell = CreateBrowser();
+
+  // Navigate it to a same-origin page without DIP.
+  GURL non_dip_url = https_server()->GetURL("a.test", "/title1.html");
+  EXPECT_TRUE(NavigateToURL(new_shell, non_dip_url));
+
+  // The original page and the page in the new shell should be in different
+  // processes even though the process limit was reached.
+  scoped_refptr<SiteInstanceImpl> new_shell_instance(
+      static_cast<SiteInstanceImpl*>(
+          new_shell->web_contents()->GetPrimaryMainFrame()->GetSiteInstance()));
+  EXPECT_NE(initial_site_instance, new_shell_instance);
+  if (AreAllSitesIsolatedForTesting() ||
+      SiteIsolationPolicy::AreDynamicIsolatedOriginsEnabled()) {
+    // The page and its popup should be in different processes even though the
+    // process limit was reached.
+    EXPECT_NE(initial_site_instance->GetProcess(),
+              new_shell_instance->GetProcess());
+  } else {
+    // When no SiteIsolation is available, the SiteInstances are different,
+    // however they are both placed into the default SiteInstanceGroup for their
+    // respective BrowsingInstances. These default SiteInstanceGroups end up
+    // reusing the same process.
+    SiteInstanceGroup* default_site_instance_group =
+        initial_site_instance->DefaultSiteInstanceGroupForBrowsingInstance();
+    EXPECT_EQ(default_site_instance_group, initial_site_instance->group());
+    SiteInstanceGroup* new_shell_default_site_instance_group =
+        new_shell_instance->DefaultSiteInstanceGroupForBrowsingInstance();
+    EXPECT_EQ(new_shell_default_site_instance_group,
+              new_shell_instance->group());
+    EXPECT_EQ(initial_site_instance->GetProcess(),
+              new_shell_instance->GetProcess());
+  }
+}
+
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       SpeculativeRfhsAndDip) {
+  GURL non_dip_page(https_server()->GetURL("a.test", "/title1.html"));
+  GURL dip_page = GetDocumentIsolationPolicyURL("a.test");
+
+  // Non-DIP into DIP.
+  {
+    SCOPED_TRACE("Non-DIP to DIP");
+
+    // Start on a non DIP page.
+    EXPECT_TRUE(NavigateToURL(shell(), non_dip_page));
+    scoped_refptr<SiteInstanceImpl> initial_site_instance(
+        current_frame_host()->GetSiteInstance());
+
+    // Navigate to a DIP page.
+    TestNavigationManager dip_navigation(web_contents(), dip_page);
+    shell()->LoadURL(dip_page);
+    EXPECT_TRUE(dip_navigation.WaitForRequestStart());
+
+    auto* speculative_rfh = web_contents()
+                                ->GetPrimaryFrameTree()
+                                .root()
+                                ->render_manager()
+                                ->speculative_frame_host();
+    if (CanSameSiteMainFrameNavigationsChangeRenderFrameHosts()) {
+      // When ProactivelySwapBrowsingInstance or RenderDocument is enabled on
+      // same-site main-frame navigations, the navigation will result in a new
+      // RFH, so it will create a pending RFH.
+      EXPECT_TRUE(speculative_rfh);
+    } else {
+      EXPECT_FALSE(speculative_rfh);
+    }
+
+    ASSERT_TRUE(dip_navigation.WaitForNavigationFinished());
+
+    // Even if the origin of the documents is the same, because their
+    // DocumentIsolationPolicies do not match, the navigation is classified as a
+    // cross-site browser-initiated request and the browser triggers a
+    // speculative BrowsingInstance swap.
+    CheckSiteInstancesAreIsolated(current_frame_host()->GetSiteInstance(),
+                                  initial_site_instance.get(),
+                                  ExpectBISwap::kTrue);
+    EXPECT_EQ(current_frame_host()
+                  ->policy_container_host()
+                  ->policies()
+                  .document_isolation_policy,
+              GetDocumentIsolationPolicy());
+  }
+
+  // DIP into non-DIP.
+  {
+    SCOPED_TRACE("DIP to non-DIP");
+
+    // Start on a DIP page.
+    EXPECT_TRUE(NavigateToURL(shell(), dip_page));
+    scoped_refptr<SiteInstanceImpl> initial_site_instance(
+        current_frame_host()->GetSiteInstance());
+
+    // Navigate to a non DIP page.
+    TestNavigationManager non_dip_navigation(web_contents(), non_dip_page);
+    shell()->LoadURL(non_dip_page);
+    EXPECT_TRUE(non_dip_navigation.WaitForRequestStart());
+
+    auto* speculative_rfh = web_contents()
+                                ->GetPrimaryFrameTree()
+                                .root()
+                                ->render_manager()
+                                ->speculative_frame_host();
+    if (CanSameSiteMainFrameNavigationsChangeRenderFrameHosts()) {
+      // When ProactivelySwapBrowsingInstance or RenderDocument is enabled on
+      // same-site main-frame navigations, the navigation will result in a new
+      // RFH, so it will create a pending RFH.
+      EXPECT_TRUE(speculative_rfh);
+    } else {
+      EXPECT_FALSE(speculative_rfh);
+    }
+
+    ASSERT_TRUE(non_dip_navigation.WaitForNavigationFinished());
+
+    // Even if the origin of the documents is the same, because their
+    // DocumentIsolationPolicies do not match, the navigation is classified as a
+    // cross-site browser-initiated request and the browser triggers a
+    // speculative BrowsingInstance swap.
+    CheckSiteInstancesAreIsolated(current_frame_host()->GetSiteInstance(),
+                                  initial_site_instance.get(),
+                                  ExpectBISwap::kTrue);
+    EXPECT_EQ(current_frame_host()
+                  ->policy_container_host()
+                  ->policies()
+                  .document_isolation_policy,
+              DipNone());
+  }
+
+  // DIP into DIP.
+  {
+    SCOPED_TRACE("DIP to DIP");
+
+    // Start on a DIP page.
+    EXPECT_TRUE(NavigateToURL(shell(), dip_page));
+    scoped_refptr<SiteInstanceImpl> initial_site_instance(
+        current_frame_host()->GetSiteInstance());
+
+    // Navigate to a DIP page.
+    TestNavigationManager dip_navigation(web_contents(), dip_page);
+    shell()->LoadURL(dip_page);
+    EXPECT_TRUE(dip_navigation.WaitForRequestStart());
+
+    auto* speculative_rfh = web_contents()
+                                ->GetPrimaryFrameTree()
+                                .root()
+                                ->render_manager()
+                                ->speculative_frame_host();
+    if (WillSameSiteNavigationChangeRenderFrameHosts(true, true)) {
+      // When RenderDocument is enabled, a speculative RFH will always be
+      // created. ProactivelySwapBrowsingInstance will not create one in this
+      // case because we are navigating to the same URL as the existing
+      // document.
+      EXPECT_TRUE(speculative_rfh);
+    } else {
+      EXPECT_FALSE(speculative_rfh);
+    }
+
+    ASSERT_TRUE(dip_navigation.WaitForNavigationFinished());
+
+    EXPECT_TRUE(current_frame_host()->GetSiteInstance()->IsRelatedSiteInstance(
+        initial_site_instance.get()));
+    EXPECT_EQ(current_frame_host()
+                  ->policy_container_host()
+                  ->policies()
+                  .document_isolation_policy,
+              GetDocumentIsolationPolicy());
+  }
+}
+
+// A test to make sure that loading a page with DIP creates an origin-keyed
+// AgentClusterKey in SiteInstance's SiteInfo.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest, DipOriginKeyed) {
+  // This test only makes sense if it's possible to switch SiteInstances.
+  if (!AreAllSitesIsolatedForTesting() &&
+      !SiteIsolationPolicy::AreDynamicIsolatedOriginsEnabled() &&
+      !ShouldUseDefaultSiteInstanceGroup()) {
+    GTEST_SKIP();
+  }
+  GURL isolated_page = GetDocumentIsolationPolicyURL("a.test");
+
+  EXPECT_TRUE(NavigateToURL(shell(), isolated_page));
+  SiteInstanceImpl* current_si = current_frame_host()->GetSiteInstance();
+  EXPECT_TRUE(current_si->IsCrossOriginIsolated());
+
+  EXPECT_TRUE(current_si->GetSiteInfo().agent_cluster_key().IsOriginKeyed());
+
+  // While the AgentClusterKey is origin-keyed, this should not impact the OAC
+  // status of the SiteInfo.
+  if (SiteIsolationPolicy::AreOriginKeyedProcessesEnabledByDefault(
+          shell()->web_contents()->GetBrowserContext())) {
+    EXPECT_EQ(AgentClusterKey::OACStatus::kOriginKeyedByDefault,
+              current_si->GetSiteInfo().oac_status());
+  } else {
+    EXPECT_EQ(AgentClusterKey::OACStatus::kSiteKeyedByDefault,
+              current_si->GetSiteInfo().oac_status());
+  }
+}
+
+// A test to make sure that loading a page with DIP creates a SiteInfo with an
+// AgentClusterKey that has the origin of the DIP document, not its SiteURL.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       DipAgentClusterKeyUsesOrigin) {
+  // This test only makes sense if it's possible to switch SiteInstances.
+  if (!AreAllSitesIsolatedForTesting() &&
+      !SiteIsolationPolicy::AreDynamicIsolatedOriginsEnabled() &&
+      !ShouldUseDefaultSiteInstanceGroup()) {
+    GTEST_SKIP();
+  }
+  GURL isolated_page = GetDocumentIsolationPolicyURL("a.b.test");
+  url::Origin origin = url::Origin::Create(isolated_page);
+
+  EXPECT_TRUE(NavigateToURL(shell(), isolated_page));
+  SiteInstanceImpl* current_si = current_frame_host()->GetSiteInstance();
+  EXPECT_TRUE(current_si->IsCrossOriginIsolated());
+  EXPECT_TRUE(current_si->GetSiteInfo().agent_cluster_key().IsOriginKeyed());
+  EXPECT_EQ(origin, current_si->GetSiteInfo().agent_cluster_key().GetOrigin());
+}
+
+// Tests that main frame navigations are correctly assigned cross-origin
+// isolated SiteInstances based on their DocumentIsolationPolicy.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       CrossOriginIsolatedSiteInstance_MainFrame) {
+  GURL isolated_page = GetDocumentIsolationPolicyURL("a.test");
+  GURL isolated_page_b = GetDocumentIsolationPolicyURL("cdn.a.test");
+  GURL non_isolated_page(https_server()->GetURL("a.test", "/title1.html"));
+
+  // Navigation from/to cross-origin isolated pages.
+
+  // Initial non cross-origin isolated page.
+  {
+    EXPECT_TRUE(NavigateToURL(shell(), non_isolated_page));
+    EXPECT_FALSE(IsCrossOriginIsolated(current_frame_host()));
+  }
+
+  // Navigation to a cross-origin isolated page.
+  {
+    scoped_refptr<SiteInstanceImpl> previous_si =
+        current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(NavigateToURL(shell(), isolated_page));
+    SiteInstanceImpl* current_si = current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(IsCrossOriginIsolated(current_frame_host()));
+
+    // The navigation triggers a speculative BrowsingInstance swap because it is
+    // browser-initiated and end up being cross-site due to the DIP mismatch.
+    CheckSiteInstancesAreIsolated(current_si, previous_si.get(),
+                                  ExpectBISwap::kTrue);
+  }
+
+  // Navigation to a non cross-origin isolated page.
+  {
+    scoped_refptr<SiteInstanceImpl> previous_si =
+        current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(NavigateToURL(shell(), non_isolated_page));
+    SiteInstanceImpl* current_si = current_frame_host()->GetSiteInstance();
+    EXPECT_FALSE(IsCrossOriginIsolated(current_frame_host()));
+
+    // The navigation triggers a speculative BrowsingInstance swap because it is
+    // browser-initiated and end up being cross-site due to the DIP mismatch.
+    CheckSiteInstancesAreIsolated(current_si, previous_si.get(),
+                                  ExpectBISwap::kTrue);
+  }
+
+  // Back navigation from a a non cross-origin isolated page to a cross-origin
+  // isolated page.
+  {
+    scoped_refptr<SiteInstanceImpl> previous_si =
+        current_frame_host()->GetSiteInstance();
+    web_contents()->GetController().GoBack();
+    EXPECT_TRUE(WaitForLoadStop(web_contents()));
+    SiteInstanceImpl* current_si = current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(IsCrossOriginIsolated(current_frame_host()));
+
+    // The navigation triggers a speculative BrowsingInstance swap because it is
+    // browser-initiated and end up being cross-site due to the DIP mismatch.
+    CheckSiteInstancesAreIsolated(current_si, previous_si.get(),
+                                  ExpectBISwap::kTrue);
+  }
+
+  // Back navigation to the non cross-origin isolated initial page.
+  {
+    scoped_refptr<SiteInstanceImpl> previous_si =
+        current_frame_host()->GetSiteInstance();
+    web_contents()->GetController().GoBack();
+    EXPECT_TRUE(WaitForLoadStop(web_contents()));
+    SiteInstanceImpl* current_si = current_frame_host()->GetSiteInstance();
+    EXPECT_FALSE(IsCrossOriginIsolated(current_frame_host()));
+
+    // The navigation triggers a speculative BrowsingInstance swap because it is
+    // browser-initiated and end up being cross-site due to the DIP mismatch.
+    CheckSiteInstancesAreIsolated(current_si, previous_si.get(),
+                                  ExpectBISwap::kTrue);
+  }
+
+  // Cross origin navigation in between two cross-origin isolated pages.
+  {
+    EXPECT_TRUE(NavigateToURL(shell(), isolated_page));
+    scoped_refptr<SiteInstanceImpl> site_instance_1 =
+        current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(IsCrossOriginIsolated(current_frame_host()));
+    EXPECT_TRUE(NavigateToURL(shell(), isolated_page_b));
+    SiteInstanceImpl* site_instance_2 = current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(IsCrossOriginIsolated(current_frame_host()));
+
+    // The navigation triggers a speculative BrowsingInstance swap because it is
+    // browser-initiated and end up being cross-site due to the DIP mismatch.
+    CheckSiteInstancesAreIsolated(site_instance_1.get(), site_instance_2,
+                                  ExpectBISwap::kTrue);
+  }
+}
+
+// Tests that renderer-initiated main frames navigations are assigned a
+// cross-origin isolated SiteInstance based on their DocumentIsolationPolicy.
+IN_PROC_BROWSER_TEST_P(
+    DocumentIsolationPolicyBrowserTest,
+    CrossOriginIsolatedSiteInstance_MainFrameRendererInitiated) {
+  GURL isolated_page = GetDocumentIsolationPolicyURL("a.test");
+  GURL isolated_page_b = GetDocumentIsolationPolicyURL("cdn.a.test");
+  GURL non_isolated_page(https_server()->GetURL("a.test", "/title1.html"));
+
+  // Navigation from/to cross-origin isolated pages.
+
+  // Initial non cross-origin isolated page.
+  {
+    EXPECT_TRUE(NavigateToURL(shell(), non_isolated_page));
+    EXPECT_FALSE(IsCrossOriginIsolated(current_frame_host()));
+  }
+
+  // Navigation to a cross-origin isolated page.
+  {
+    scoped_refptr<SiteInstanceImpl> previous_si =
+        current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(NavigateToURLFromRenderer(shell(), isolated_page));
+    SiteInstanceImpl* current_si = current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(IsCrossOriginIsolated(current_frame_host()));
+
+    CheckSiteInstancesAreIsolated(current_si, previous_si.get(),
+                                  ExpectBISwap::kBFCacheOnly);
+  }
+
+  // Navigation to the same cross-origin isolated page.
+  {
+    scoped_refptr<SiteInstanceImpl> previous_si =
+        current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(NavigateToURLFromRenderer(shell(), isolated_page));
+    SiteInstanceImpl* current_si = current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(IsCrossOriginIsolated(current_frame_host()));
+    EXPECT_EQ(current_si, previous_si);
+  }
+
+  // Navigation to a non cross-origin isolated page.
+  {
+    scoped_refptr<SiteInstanceImpl> previous_si =
+        current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(NavigateToURLFromRenderer(shell(), non_isolated_page));
+    SiteInstanceImpl* current_si = current_frame_host()->GetSiteInstance();
+    EXPECT_FALSE(IsCrossOriginIsolated(current_frame_host()));
+
+    // When BfCache is enabled, a pro-active BrowsingInstance swap happens.
+    CheckSiteInstancesAreIsolated(current_si, previous_si.get(),
+                                  ExpectBISwap::kBFCacheOnly);
+  }
+
+  // Navigate back to a cross-origin isolated page.
+  {
+    scoped_refptr<SiteInstanceImpl> previous_si =
+        current_frame_host()->GetSiteInstance();
+    web_contents()->GetController().GoBack();
+    ASSERT_TRUE(WaitForLoadStop(web_contents()));
+    SiteInstanceImpl* current_si = current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(IsCrossOriginIsolated(current_frame_host()));
+
+    // When BfCache is enabled, a pro-active BrowsingInstance swap happens.
+    CheckSiteInstancesAreIsolated(current_si, previous_si.get(),
+                                  ExpectBISwap::kBFCacheOnly);
+  }
+
+  // Cross origin navigation in between two cross-origin isolated pages.
+  {
+    EXPECT_TRUE(NavigateToURLFromRenderer(shell(), isolated_page));
+    scoped_refptr<SiteInstanceImpl> site_instance_1 =
+        current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(IsCrossOriginIsolated(current_frame_host()));
+    EXPECT_TRUE(NavigateToURLFromRenderer(shell(), isolated_page_b));
+    SiteInstanceImpl* site_instance_2 = current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(IsCrossOriginIsolated(current_frame_host()));
+
+    // When BfCache is enabled, a pro-active BrowsingInstance swap happens.
+    CheckSiteInstancesAreIsolated(site_instance_1.get(), site_instance_2,
+                                  ExpectBISwap::kBFCacheOnly);
+  }
+}
+
+// Tests that iframe navigations are assigned a cross-origin isolated
+// SiteInstance based on their DocumentIsolationPolicy.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       CrossOriginIsolatedSiteInstance_IFrame) {
+  GURL isolated_page = GetDocumentIsolationPolicyURL("a.test");
+  GURL isolated_page_b = GetDocumentIsolationPolicyURL("cdn.a.test");
+  GURL non_isolated_page(https_server()->GetURL("a.test", "/title1.html"));
+
+  // Initial cross-origin isolated page.
+  EXPECT_TRUE(NavigateToURL(shell(), isolated_page));
+  SiteInstanceImpl* main_si = current_frame_host()->GetSiteInstance();
+  EXPECT_TRUE(IsCrossOriginIsolated(current_frame_host()));
+
+  // Same origin cross-origin isolated iframe.
+  TestNavigationManager coi_iframe_navigation(web_contents(), isolated_page);
+
+  EXPECT_TRUE(
+      ExecJs(web_contents(),
+             JsReplace("const iframe = document.createElement('iframe'); "
+                       "iframe.src = $1; "
+                       "document.body.appendChild(iframe);",
+                       isolated_page)));
+
+  ASSERT_TRUE(coi_iframe_navigation.WaitForNavigationFinished());
+  EXPECT_TRUE(coi_iframe_navigation.was_successful());
+  RenderFrameHostImpl* coi_iframe_rfh =
+      current_frame_host()->child_at(0)->current_frame_host();
+  SiteInstanceImpl* coi_iframe_si = coi_iframe_rfh->GetSiteInstance();
+  EXPECT_EQ(coi_iframe_si, main_si);
+
+  // Same origin non cross-origin isolated iframe.
+  TestNavigationManager non_coi_iframe_navigation(web_contents(),
+                                                  non_isolated_page);
+
+  EXPECT_TRUE(
+      ExecJs(web_contents(),
+             JsReplace("const iframe = document.createElement('iframe'); "
+                       "iframe.src = $1; "
+                       "document.body.appendChild(iframe);",
+                       non_isolated_page)));
+
+  ASSERT_TRUE(non_coi_iframe_navigation.WaitForNavigationFinished());
+  EXPECT_TRUE(non_coi_iframe_navigation.was_successful());
+  RenderFrameHostImpl* non_coi_iframe_rfh =
+      current_frame_host()->child_at(1)->current_frame_host();
+  SiteInstanceImpl* non_coi_iframe_si = non_coi_iframe_rfh->GetSiteInstance();
+  EXPECT_FALSE(IsCrossOriginIsolated(non_coi_iframe_rfh));
+
+  CheckSiteInstancesAreIsolated(non_coi_iframe_si, main_si);
+  CheckSiteInstancesAreIsolated(non_coi_iframe_si, coi_iframe_si);
+
+  // Cross origin iframe.
+  TestNavigationManager cross_origin_iframe_navigation(web_contents(),
+                                                       isolated_page_b);
+
+  EXPECT_TRUE(
+      ExecJs(web_contents(),
+             JsReplace("const iframe = document.createElement('iframe'); "
+                       "iframe.src = $1; "
+                       "document.body.appendChild(iframe);",
+                       isolated_page_b)));
+
+  ASSERT_TRUE(cross_origin_iframe_navigation.WaitForNavigationFinished());
+  EXPECT_TRUE(cross_origin_iframe_navigation.was_successful());
+  RenderFrameHostImpl* iframe_rfh =
+      current_frame_host()->child_at(2)->current_frame_host();
+  SiteInstanceImpl* cross_origin_iframe_si = iframe_rfh->GetSiteInstance();
+  EXPECT_TRUE(IsCrossOriginIsolated(iframe_rfh));
+
+  CheckSiteInstancesAreIsolated(cross_origin_iframe_si, main_si);
+  CheckSiteInstancesAreIsolated(cross_origin_iframe_si, coi_iframe_si);
+  CheckSiteInstancesAreIsolated(cross_origin_iframe_si, non_coi_iframe_si);
+
+  // Navigate to a non cross-origin isolated page with a cross-origin isolated
+  // iframe.
+  {
+    scoped_refptr<SiteInstanceImpl> previous_si =
+        current_frame_host()->GetSiteInstance();
+    EXPECT_TRUE(NavigateToURLFromRenderer(shell(), non_isolated_page));
+    main_si = current_frame_host()->GetSiteInstance();
+    EXPECT_FALSE(IsCrossOriginIsolated(current_frame_host()));
+
+    CheckSiteInstancesAreIsolated(main_si, previous_si.get(),
+                                  ExpectBISwap::kBFCacheOnly);
+
+    TestNavigationManager same_origin_iframe_navigation(web_contents(),
+                                                        isolated_page);
+
+    EXPECT_TRUE(
+        ExecJs(web_contents(),
+               JsReplace("const iframe = document.createElement('iframe'); "
+                         "iframe.src = $1; "
+                         "document.body.appendChild(iframe);",
+                         isolated_page)));
+
+    ASSERT_TRUE(same_origin_iframe_navigation.WaitForNavigationFinished());
+    EXPECT_TRUE(same_origin_iframe_navigation.was_successful());
+    iframe_rfh = current_frame_host()->child_at(0)->current_frame_host();
+    SiteInstanceImpl* iframe_si = iframe_rfh->GetSiteInstance();
+    EXPECT_TRUE(IsCrossOriginIsolated(iframe_rfh));
+    CheckSiteInstancesAreIsolated(iframe_si, main_si);
+  }
+}
+
+// Tests that navigations in popups are correctly assigned a cross-origin
+// isolated SiteInstance based on their DocumentIsolationPolicy.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       CrossOriginIsolatedSiteInstance_Popup) {
+  GURL isolated_page = GetDocumentIsolationPolicyURL("a.test");
+  GURL isolated_page_b = GetDocumentIsolationPolicyURL("cdn.a.test");
+  GURL non_isolated_page(
+      embedded_test_server()->GetURL("a.test", "/title1.html"));
+
+  // Initial cross-origin isolated page.
+  EXPECT_TRUE(NavigateToURL(shell(), isolated_page));
+  EXPECT_TRUE(IsCrossOriginIsolated(current_frame_host()));
+
+  // Open a non isolated popup.
+  {
+    RenderFrameHostImpl* popup_rfh =
+        static_cast<WebContentsImpl*>(
+            OpenPopup(current_frame_host(), non_isolated_page, "")
+                ->web_contents())
+            ->GetPrimaryMainFrame();
+
+    EXPECT_FALSE(IsCrossOriginIsolated(popup_rfh));
+    EXPECT_TRUE(popup_rfh->GetSiteInstance()->IsRelatedSiteInstance(
+        current_frame_host()->GetSiteInstance()));
+  }
+
+  // Open an isolated popup.
+  {
+    RenderFrameHostImpl* popup_rfh =
+        static_cast<WebContentsImpl*>(
+            OpenPopup(current_frame_host(), isolated_page, "")->web_contents())
+            ->GetPrimaryMainFrame();
+
+    EXPECT_TRUE(IsCrossOriginIsolated(popup_rfh));
+    EXPECT_EQ(popup_rfh->GetSiteInstance(),
+              current_frame_host()->GetSiteInstance());
+  }
+
+  // Open an isolated popup, but cross-origin.
+  {
+    RenderFrameHostImpl* popup_rfh =
+        static_cast<WebContentsImpl*>(
+            OpenPopup(current_frame_host(), isolated_page_b, "")
+                ->web_contents())
+            ->GetPrimaryMainFrame();
+
+    EXPECT_TRUE(IsCrossOriginIsolated(popup_rfh));
+    EXPECT_TRUE(popup_rfh->GetSiteInstance()->IsRelatedSiteInstance(
+        current_frame_host()->GetSiteInstance()));
+    CheckSiteInstancesAreIsolated(popup_rfh->GetSiteInstance(),
+                                  current_frame_host()->GetSiteInstance());
+  }
+}
+
+// Tests that navigations involving error pages are correctly assigned a
+// cross-origin isolated SiteInstance based on their DocumentIsolationPolicy
+// status.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       CrossOriginIsolatedSiteInstance_ErrorPage) {
+  GURL isolated_page = GetDocumentIsolationPolicyURL(
+      "a.test", "Cross-Origin-Embedder-Policy: require-corp");
+  GURL non_coep_page(https_server()->GetURL("b.test",
+                                            "/set-header?"
+                                            "Access-Control-Allow-Origin: *"));
+
+  GURL invalid_url(
+      https_server()->GetURL("a.test", "/this_page_does_not_exist.html"));
+
+  GURL error_url(https_server()->GetURL("a.test", "/page404.html"));
+  GURL non_isolated_page(
+      https_server()->GetURL("a.test",
+                             "/set-header?"
+                             "Cross-Origin-Embedder-Policy: require-corp"));
+
+  // Initial cross-origin isolated page.
+  EXPECT_TRUE(NavigateToURL(shell(), isolated_page));
+  SiteInstanceImpl* main_si = current_frame_host()->GetSiteInstance();
+  EXPECT_TRUE(IsCrossOriginIsolated(current_frame_host()));
+
+  // Iframe.
+  {
+    TestNavigationManager iframe_navigation(web_contents(), invalid_url);
+
+    EXPECT_TRUE(
+        ExecJs(web_contents(),
+               JsReplace("const iframe = document.createElement('iframe'); "
+                         "iframe.src = $1; "
+                         "document.body.appendChild(iframe);",
+                         invalid_url)));
+
+    ASSERT_TRUE(iframe_navigation.WaitForNavigationFinished());
+    EXPECT_FALSE(iframe_navigation.was_successful());
+    RenderFrameHostImpl* iframe_rfh =
+        current_frame_host()->child_at(0)->current_frame_host();
+    SiteInstanceImpl* iframe_si = iframe_rfh->GetSiteInstance();
+    // The load of the document with 404 status code is blocked by COEP.
+    // An error page is expected in lieu of that document.
+    EXPECT_EQ(GURL(kUnreachableWebDataURL),
+              EvalJs(iframe_rfh, "document.location.href;"));
+    EXPECT_TRUE(IsExpectedSubframeErrorTransition(main_si, iframe_si));
+    EXPECT_FALSE(IsCrossOriginIsolated(iframe_rfh));
+    CheckSiteInstancesAreIsolated(iframe_si, main_si);
+  }
+
+  // Iframe with a body added to the HTTP 404.
+  {
+    TestNavigationManager iframe_navigation(web_contents(), error_url);
+
+    EXPECT_TRUE(
+        ExecJs(web_contents(),
+               JsReplace("const iframe = document.createElement('iframe'); "
+                         "iframe.src = $1; "
+                         "document.body.appendChild(iframe);",
+                         error_url)));
+
+    ASSERT_TRUE(iframe_navigation.WaitForNavigationFinished());
+    EXPECT_FALSE(iframe_navigation.was_successful());
+    RenderFrameHostImpl* iframe_rfh =
+        current_frame_host()->child_at(0)->current_frame_host();
+    SiteInstanceImpl* iframe_si = iframe_rfh->GetSiteInstance();
+    EXPECT_TRUE(IsExpectedSubframeErrorTransition(main_si, iframe_si));
+
+    // The load of the document with 404 status code and custom body is blocked
+    // by COEP. An error page is expected in lieu of that document.
+    EXPECT_EQ(GURL(kUnreachableWebDataURL),
+              EvalJs(iframe_rfh, "document.location.href;"));
+    EXPECT_FALSE(IsCrossOriginIsolated(iframe_rfh));
+    CheckSiteInstancesAreIsolated(iframe_si, main_si);
+  }
+
+  // Iframe blocked by coep.
+  {
+    TestNavigationManager iframe_navigation(web_contents(), non_coep_page);
+
+    EXPECT_TRUE(
+        ExecJs(web_contents(),
+               JsReplace("const iframe = document.createElement('iframe'); "
+                         "iframe.src = $1; "
+                         "document.body.appendChild(iframe);",
+                         non_coep_page)));
+
+    ASSERT_TRUE(iframe_navigation.WaitForNavigationFinished());
+    EXPECT_FALSE(iframe_navigation.was_successful());
+    RenderFrameHostImpl* iframe_rfh =
+        current_frame_host()->child_at(0)->current_frame_host();
+    SiteInstanceImpl* iframe_si = iframe_rfh->GetSiteInstance();
+    EXPECT_TRUE(IsExpectedSubframeErrorTransition(main_si, iframe_si));
+    EXPECT_FALSE(IsCrossOriginIsolated(iframe_rfh));
+  }
+
+  // Top frame.
+  {
+    scoped_refptr<SiteInstanceImpl> previous_si =
+        current_frame_host()->GetSiteInstance();
+    EXPECT_FALSE(NavigateToURL(shell(), invalid_url));
+    SiteInstanceImpl* current_si = current_frame_host()->GetSiteInstance();
+    EXPECT_FALSE(IsCrossOriginIsolated(current_frame_host()));
+    CheckSiteInstancesAreIsolated(current_si, previous_si.get(),
+                                  ExpectBISwap::kBFCacheOnly,
+                                  ExpectSISwap::kTopLevelError);
+  }
+
+  // DIP iframe inside non-DIP page.
+  {
+    EXPECT_TRUE(NavigateToURL(shell(), non_isolated_page));
+    SiteInstanceImpl* current_si = current_frame_host()->GetSiteInstance();
+    EXPECT_FALSE(IsCrossOriginIsolated(current_frame_host()));
+
+    // First, add an iframe with DocumentIsolationPolicy.
+    TestNavigationManager iframe_navigation(web_contents(), isolated_page);
+    EXPECT_TRUE(
+        ExecJs(web_contents(),
+               JsReplace("const iframe = document.createElement('iframe'); "
+                         "iframe.id = 'iframe';"
+                         "iframe.src = $1; "
+                         "document.body.appendChild(iframe);",
+                         isolated_page)));
+    ASSERT_TRUE(iframe_navigation.WaitForNavigationFinished());
+    EXPECT_TRUE(iframe_navigation.was_successful());
+    RenderFrameHostImpl* iframe_rfh =
+        current_frame_host()->child_at(0)->current_frame_host();
+    scoped_refptr<SiteInstanceImpl> iframe_si = iframe_rfh->GetSiteInstance();
+    EXPECT_TRUE(IsCrossOriginIsolated(iframe_rfh));
+
+    CheckSiteInstancesAreIsolated(current_si, iframe_si.get());
+
+    // Now navigate the iframe to an error page.
+    TestNavigationManager error_navigation(web_contents(), invalid_url);
+    EXPECT_TRUE(ExecJs(
+        web_contents(),
+        JsReplace("document.getElementById('iframe').src = $1;", invalid_url)));
+    ASSERT_TRUE(error_navigation.WaitForNavigationFinished());
+    EXPECT_FALSE(error_navigation.was_successful());
+    iframe_rfh = current_frame_host()->child_at(0)->current_frame_host();
+    scoped_refptr<SiteInstanceImpl> error_si = iframe_rfh->GetSiteInstance();
+    EXPECT_FALSE(IsCrossOriginIsolated(iframe_rfh));
+    CheckSiteInstancesAreIsolated(error_si.get(), iframe_si.get());
+  }
+}
+
+// Tests that a reload navigation that redirects to a page with a
+// Document-Isolation-Policy header is placed in a cross-origin isolated
+// SiteInstance, even if the original page did not have DocumentIsolationPolicy.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       ReloadRedirectsToDipPage) {
+  GURL dip_page = GetDocumentIsolationPolicyURL("a.test");
+  GURL redirect_page(https_server()->GetURL(
+      "a.test", "/redirect-on-second-navigation?" + dip_page.spec()));
+
+  // Navigate to the redirect page. On the first navigation, this is a simple
+  // empty page with no headers.
+  EXPECT_TRUE(NavigateToURL(shell(), redirect_page));
+  scoped_refptr<SiteInstanceImpl> main_si =
+      current_frame_host()->GetSiteInstance();
+  EXPECT_EQ(current_frame_host()->GetLastCommittedURL(), redirect_page);
+
+  // Reload. This time we should be redirected to a DIP:
+  // isolate-and-require-corp page.
+  ReloadBlockUntilNavigationsComplete(shell(), 1);
+  EXPECT_EQ(current_frame_host()->GetLastCommittedURL(), dip_page);
+
+  // We should have swapped SiteInstance.
+  scoped_refptr<SiteInstanceImpl> current_si =
+      current_frame_host()->GetSiteInstance();
+  EXPECT_TRUE(
+      main_si->IsRelatedSiteInstance(current_frame_host()->GetSiteInstance()));
+  CheckSiteInstancesAreIsolated(main_si.get(), current_si.get());
+}
+
+// Tests that a reload navigation where the page starts sending
+// DocumentIsolationPolicy header on the reload (while the initial load did not
+// have them). Tha navigation should end up in a cross-origin isolated
+// SiteInstance.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       ReloadPageWithUpdatedDipHeader) {
+  GURL changing_dip_page(
+      https_server()->GetURL("a.test", "/serve-dip-on-second-navigation"));
+
+  // Navigate to the page. On the first navigation, this is a simple empty page
+  // with no headers.
+  EXPECT_TRUE(NavigateToURL(shell(), changing_dip_page));
+  scoped_refptr<SiteInstanceImpl> main_si =
+      current_frame_host()->GetSiteInstance();
+
+  // Reload. This time the page should be served with DIP:
+  // isolate-and-require-corp.
+  ReloadBlockUntilNavigationsComplete(shell(), 1);
+
+  // We should have swapped SiteInstance.
+  scoped_refptr<SiteInstanceImpl> current_si =
+      current_frame_host()->GetSiteInstance();
+  EXPECT_TRUE(
+      main_si->IsRelatedSiteInstance(current_frame_host()->GetSiteInstance()));
+  CheckSiteInstancesAreIsolated(main_si.get(), current_si.get());
+}
+
+// Checks that a cross-origin but same site iframe is placed in a different
+// SiteInstance from its parent when both have DocumentIsolationPolicy.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       CrossOriginSameSiteIframe) {
+  GURL isolated_page = GetDocumentIsolationPolicyURL("a.test");
+  GURL isolated_page_b = GetDocumentIsolationPolicyURL("cdn.a.test");
+
+  // Initial cross-origin isolated page.
+  EXPECT_TRUE(NavigateToURL(shell(), isolated_page));
+  SiteInstanceImpl* main_si = current_frame_host()->GetSiteInstance();
+  EXPECT_TRUE(IsCrossOriginIsolated(current_frame_host()));
+
+  TestNavigationManager cross_origin_iframe_navigation(web_contents(),
+                                                       isolated_page_b);
+
+  // Add a cross-origin but same-site iframe.
+  EXPECT_TRUE(
+      ExecJs(web_contents(),
+             JsReplace("const iframe = document.createElement('iframe'); "
+                       "iframe.src = $1; "
+                       "document.body.appendChild(iframe);",
+                       isolated_page_b)));
+
+  ASSERT_TRUE(cross_origin_iframe_navigation.WaitForNavigationFinished());
+  EXPECT_TRUE(cross_origin_iframe_navigation.was_successful());
+  RenderFrameHostImpl* iframe_rfh =
+      current_frame_host()->child_at(0)->current_frame_host();
+  SiteInstanceImpl* iframe_si = iframe_rfh->GetSiteInstance();
+  EXPECT_TRUE(IsCrossOriginIsolated(iframe_rfh));
+  CheckSiteInstancesAreIsolated(main_si, iframe_si);
+
+  // Open an isolated popup from the cross-origin but same-site iframe. It
+  // should end up in the same SiteInstance as the main frame, since they are
+  // same-origin with the same Document-Isolation-Policy.
+  {
+    RenderFrameHostImpl* popup_rfh =
+        static_cast<WebContentsImpl*>(
+            OpenPopup(iframe_rfh, isolated_page, "", "", true)->web_contents())
+            ->GetPrimaryMainFrame();
+
+    EXPECT_EQ(main_si, popup_rfh->GetSiteInstance());
+  }
+}
+
+// Checks that the WebExposedIsolationLevel of a RenderFrameHost is properly
+// computed when cross-origin isolation is enabled through
+// DocumentIsolationPolicy.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       WebExposedIsolationLevel) {
+  GURL isolated_page = GetDocumentIsolationPolicyURL("a.test");
+  GURL isolated_page_b = GetDocumentIsolationPolicyURL("b.test");
+
+  // Not isolated:
+  EXPECT_TRUE(NavigateToURL(shell(), https_server()->GetURL("/empty.html")));
+  EXPECT_EQ(WebExposedIsolationLevel::kNotIsolated,
+            current_frame_host()->GetWebExposedIsolationLevel());
+
+  // Cross-Origin Isolated:
+  EXPECT_TRUE(NavigateToURL(shell(), isolated_page));
+  EXPECT_EQ(WebExposedIsolationLevel::kIsolated,
+            current_frame_host()->GetWebExposedIsolationLevel());
+
+  // Cross-origin isolated iframe without permission delegation. The iframe
+  // should be cross-origin isolated, as the permission only applies to
+  // cross-origin isolation inherited from the parent (and enabled by COOP &
+  // COEP).
+  std::string create_iframe = R"(
+    new Promise(resolve => {
+      const iframe = document.createElement('iframe');
+      iframe.src = $1;
+      iframe.allow = "cross-origin-isolated 'none'";
+      iframe.addEventListener('load', () => resolve(true));
+      document.body.appendChild(iframe);
+    });
+  )";
+  EXPECT_TRUE(ExecJs(shell(), JsReplace(create_iframe, isolated_page_b)));
+  RenderFrameHostImpl* iframe_rfh =
+      current_frame_host()->child_at(0)->current_frame_host();
+  EXPECT_EQ(WebExposedIsolationLevel::kIsolated,
+            iframe_rfh->GetWebExposedIsolationLevel());
+}
+
+// Checks that a document with document isolation policy has its
+// crossOriginIsolated property set to true and can instantiate
+// SharedArrayBuffers.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest, SAB) {
+  GURL url = GetDocumentIsolationPolicyURL("a.test");
+  EXPECT_TRUE(NavigateToURL(shell(), url));
+  EXPECT_EQ(true, EvalJs(current_frame_host(), "self.crossOriginIsolated"));
+  EXPECT_EQ(true,
+            EvalJs(current_frame_host(), "'SharedArrayBuffer' in globalThis"));
+}
+
+// Checks that a document with document isolation policy can transfer a
+// SharedArrayBuffer to a crossOriginIsolated same-origin iframe.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       SAB_TransferToIframe) {
+  CHECK(!base::FeatureList::IsEnabled(features::kSharedArrayBuffer));
+  GURL url = GetDocumentIsolationPolicyURL("a.test");
+  EXPECT_TRUE(NavigateToURL(shell(), url));
+  EXPECT_TRUE(ExecJs(current_frame_host(),
+                     "g_iframe = document.createElement('iframe');"
+                     "g_iframe.src = location.href;"
+                     "document.body.appendChild(g_iframe);"));
+  WaitForLoadStop(web_contents());
+
+  RenderFrameHostImpl* main_document = current_frame_host();
+  RenderFrameHostImpl* sub_document =
+      current_frame_host()->child_at(0)->current_frame_host();
+
+  EXPECT_EQ(true, EvalJs(main_document, "self.crossOriginIsolated"));
+  EXPECT_EQ(true, EvalJs(sub_document, "self.crossOriginIsolated"));
+
+  EXPECT_TRUE(ExecJs(sub_document, R"(
+    g_sab_size = new Promise(resolve => {
+      addEventListener("message", event => resolve(event.data.byteLength));
+    });
+  )",
+                     EXECUTE_SCRIPT_NO_RESOLVE_PROMISES));
+
+  EXPECT_TRUE(ExecJs(main_document, R"(
+    const sab = new SharedArrayBuffer(1234);
+    g_iframe.contentWindow.postMessage(sab, "*");
+  )"));
+
+  EXPECT_EQ(1234, EvalJs(sub_document, "g_sab_size"));
+}
+
+// Checks that a document with document isolation policy can transfer a
+// SharedArrayBuffer to a crossOriginIsolated same-origin about:blank iframe.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       SAB_TransferToAboutBlankIframe) {
+  CHECK(!base::FeatureList::IsEnabled(features::kSharedArrayBuffer));
+  GURL url = GetDocumentIsolationPolicyURL("a.test");
+  EXPECT_TRUE(NavigateToURL(shell(), url));
+  EXPECT_TRUE(ExecJs(current_frame_host(),
+                     "g_iframe = document.createElement('iframe');"
+                     "g_iframe.src = 'about:blank';"
+                     "document.body.appendChild(g_iframe);"));
+  WaitForLoadStop(web_contents());
+
+  RenderFrameHostImpl* main_document = current_frame_host();
+  RenderFrameHostImpl* sub_document =
+      current_frame_host()->child_at(0)->current_frame_host();
+
+  EXPECT_EQ(true, EvalJs(main_document, "self.crossOriginIsolated"));
+  EXPECT_EQ(true, EvalJs(sub_document, "self.crossOriginIsolated"));
+  EXPECT_EQ(true, EvalJs(sub_document, "'SharedArrayBuffer' in globalThis"));
+}
+
+// Checks that an about:blank iframe created by a cross-origin isolated document
+// (through Document-Isolation-Policy) is set as crossOriginIsolated
+// synchronously.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       AboutBlankIsSetCOISynchronously) {
+  CHECK(!base::FeatureList::IsEnabled(features::kSharedArrayBuffer));
+  GURL url = GetDocumentIsolationPolicyURL("a.test");
+  EXPECT_TRUE(NavigateToURL(shell(), url));
+  EXPECT_EQ(true, EvalJs(current_frame_host(),
+                         "const iframe = document.createElement('iframe');"
+                         "document.body.appendChild(iframe);"
+                         "iframe.contentWindow.crossOriginIsolated;"));
+}
+
+// Transfer a SharedArrayBuffer in between two documents with a parent/child
+// relationship. The child has not set Document-Isolation-Policy, and is not
+// cross-origin isolated. It cannot receive the object.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       SAB_TransferToNoCrossOriginIsolatedIframe) {
+  CHECK(!base::FeatureList::IsEnabled(features::kSharedArrayBuffer));
+  GURL main_url = GetDocumentIsolationPolicyURL("a.test");
+  GURL iframe_url = https_server()->GetURL("a.test", "/title1.html");
+  EXPECT_TRUE(NavigateToURL(shell(), main_url));
+  EXPECT_TRUE(ExecJs(current_frame_host(),
+                     JsReplace("g_iframe = document.createElement('iframe');"
+                               "g_iframe.src = $1;"
+                               "document.body.appendChild(g_iframe);",
+                               iframe_url)));
+  WaitForLoadStop(web_contents());
+
+  RenderFrameHostImpl* main_document = current_frame_host();
+  RenderFrameHostImpl* sub_document =
+      current_frame_host()->child_at(0)->current_frame_host();
+
+  EXPECT_EQ(true, EvalJs(main_document, "self.crossOriginIsolated"));
+  EXPECT_EQ(false, EvalJs(sub_document, "self.crossOriginIsolated"));
+
+  SiteInstanceImpl* main_si = main_document->GetSiteInstance();
+  SiteInstanceImpl* iframe_si = sub_document->GetSiteInstance();
+  if (AreAllSitesIsolatedForTesting() ||
+      SiteIsolationPolicy::AreDynamicIsolatedOriginsEnabled()) {
+    // The parent and its child frame are in different processes, so it's not
+    // possible to transfer a SharedArrayBuffer between the two of them.
+    EXPECT_NE(iframe_si->GetProcess(), main_si->GetProcess());
+  } else {
+    if (ShouldUseDefaultSiteInstanceGroup()) {
+      // When no SiteIsolation is available, the SiteInstances are different,
+      // however they are both placed into the default SiteInstanceGroup and
+      // share process.
+      SiteInstanceGroup* default_site_instance_group =
+          main_si->DefaultSiteInstanceGroupForBrowsingInstance();
+      EXPECT_NE(main_si, iframe_si);
+      EXPECT_EQ(default_site_instance_group, main_si->group());
+      EXPECT_EQ(default_site_instance_group, iframe_si->group());
+      EXPECT_EQ(main_si->GetProcess(), iframe_si->GetProcess());
+    } else {
+      // Without SiteInstanceGroups, the SiteInstances cannot change.
+      EXPECT_EQ(main_si, iframe_si);
+    }
+    // The top-level document can create a SharedArrayBuffer, however it cannot
+    // transfer it to its non-cross-origin-isolated iframe.
+    EXPECT_TRUE(ExecJs(sub_document, R"(
+    g_sab_size = new Promise(resolve => {
+      addEventListener("message", event => resolve(event.data.byteLength));
+    });
+  )",
+                       EXECUTE_SCRIPT_NO_RESOLVE_PROMISES));
+
+    // Send a first message.
+    EXPECT_TRUE(ExecJs(main_document, R"(
+    const wasm_shared_memory = new WebAssembly.Memory({
+      shared:true, initial:0, maximum:0 });
+    g_iframe.contentWindow.postMessage(wasm_shared_memory.buffer, "*");
+  )"));
+
+    // Send a second message to ensure the promise resolves even if the first
+    // message was suppressed.
+    EXPECT_TRUE(ExecJs(main_document, R"(
+    g_iframe.contentWindow.postMessage("test", "*");
+  )"));
+
+    // Confirm that the SAB was not received.
+    EXPECT_TRUE(ExecJs(sub_document, "g_sab_size === null"));
+  }
+}
+
+// Transfer a SharedArrayBuffer in between two documents with a
+// parent/child relationship. The child does not have Document-Isolation-Policy.
+// This non-cross-origin-isolated document cannot transfer a SharedArrayBuffer
+// toward the cross-origin-isolated one.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       SAB_TransferFromNoCrossOriginIsolatedIframe) {
+  CHECK(!base::FeatureList::IsEnabled(features::kSharedArrayBuffer));
+  GURL main_url = GetDocumentIsolationPolicyURL("a.test");
+  GURL iframe_url = https_server()->GetURL("a.test", "/title1.html");
+  EXPECT_TRUE(NavigateToURL(shell(), main_url));
+  EXPECT_TRUE(ExecJs(current_frame_host(),
+                     JsReplace("g_iframe = document.createElement('iframe');"
+                               "g_iframe.src = $1;"
+                               "document.body.appendChild(g_iframe);",
+                               iframe_url)));
+  WaitForLoadStop(web_contents());
+
+  RenderFrameHostImpl* main_document = current_frame_host();
+  RenderFrameHostImpl* sub_document =
+      current_frame_host()->child_at(0)->current_frame_host();
+
+  EXPECT_EQ(true, EvalJs(main_document, "self.crossOriginIsolated"));
+  EXPECT_EQ(false, EvalJs(sub_document, "self.crossOriginIsolated"));
+
+  EXPECT_TRUE(ExecJs(main_document, R"(
+    g_sab_size = new Promise(resolve => {
+      addEventListener("message", event => resolve(event.data.byteLength));
+    });
+  )",
+                     EXECUTE_SCRIPT_NO_RESOLVE_PROMISES));
+
+  EXPECT_EQ(false, EvalJs(sub_document, "'SharedArrayBuffer' in globalThis"));
+
+  // Unlike crossOriginIsolation enabled by COOP and COEP, the SAB cannot be
+  // created in the non-crossOriginIsolated iframe.
+  // See https://crbug.com/1144838 for discussions about this behavior in COOP
+  // and COEP.
+  EXPECT_FALSE(ExecJs(sub_document, R"(
+    // Create a WebAssembly Memory to try to bypass the SAB constructor
+    // restriction.
+    const sab = new (new WebAssembly.Memory(
+        { shared:true, initial:1, maximum:1 }).buffer.constructor)(1234);
+    parent.postMessage(sab, "*");
+  )"));
+}
+
+// Check that a same-origin iframe can become cross-origin isolated using
+// DocumentIsolationPolicy regardless of its parent's crossOriginIsolated
+// status.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       CrossOriginIsolatedIframe_SameOrigin) {
+  CHECK(!base::FeatureList::IsEnabled(features::kSharedArrayBuffer));
+  GURL main_url = https_server()->GetURL("a.test", "/title1.html");
+  GURL iframe_url = GetDocumentIsolationPolicyURL("a.test");
+  EXPECT_TRUE(NavigateToURL(shell(), main_url));
+  EXPECT_TRUE(ExecJs(current_frame_host(),
+                     JsReplace("g_iframe = document.createElement('iframe');"
+                               "g_iframe.src = $1;"
+                               "document.body.appendChild(g_iframe);",
+                               iframe_url)));
+  WaitForLoadStop(web_contents());
+
+  RenderFrameHostImpl* main_document = current_frame_host();
+  RenderFrameHostImpl* sub_document =
+      current_frame_host()->child_at(0)->current_frame_host();
+
+  EXPECT_EQ(false, EvalJs(main_document, "self.crossOriginIsolated"));
+  EXPECT_EQ(true, EvalJs(sub_document, "self.crossOriginIsolated"));
+
+  CheckSiteInstancesAreIsolated(main_document->GetSiteInstance(),
+                                sub_document->GetSiteInstance());
+}
+
+// Check that a cross-origin iframe can become cross-origin isolated using
+// DocumentIsolationPolicy regardless of its parent's crossOriginIsolated
+// status.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       CrossOriginIsolatedIframe_CrossOrigin) {
+  CHECK(!base::FeatureList::IsEnabled(features::kSharedArrayBuffer));
+  GURL main_url = https_server()->GetURL("a.test", "/title1.html");
+  GURL iframe_url = GetDocumentIsolationPolicyURL("b.test");
+  EXPECT_TRUE(NavigateToURL(shell(), main_url));
+  EXPECT_TRUE(ExecJs(current_frame_host(),
+                     JsReplace("g_iframe = document.createElement('iframe');"
+                               "g_iframe.src = $1;"
+                               "document.body.appendChild(g_iframe);",
+                               iframe_url)));
+  WaitForLoadStop(web_contents());
+
+  RenderFrameHostImpl* main_document = current_frame_host();
+  RenderFrameHostImpl* sub_document =
+      current_frame_host()->child_at(0)->current_frame_host();
+
+  EXPECT_EQ(false, EvalJs(main_document, "self.crossOriginIsolated"));
+  EXPECT_EQ(true, EvalJs(sub_document, "self.crossOriginIsolated"));
+
+  CheckSiteInstancesAreIsolated(main_document->GetSiteInstance(),
+                                sub_document->GetSiteInstance());
+}
+
+// Regression test for crbug.com/394350439.
+// Doing a cross-document navigation to a local scheme that inherits DIP should
+// not cause a crash.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       DIPNavigationToLocalScheme) {
+  // Navigate to a page with DocumentIsolationPolicy.
+  GURL main_url = GetDocumentIsolationPolicyURL("a.test");
+  EXPECT_TRUE(NavigateToURL(shell(), main_url));
+
+  // Now navigate the top-level frame to about:blank. It should be cross-origin
+  // isolated because it inherits the DocumentIsolationPolicy of its navigation
+  // initiator (the current document).
+  EXPECT_TRUE(ExecJs(current_frame_host(), "location = 'about:blank';"));
+  EXPECT_TRUE(WaitForLoadStop(web_contents()));
+  EXPECT_EQ(url::kAboutBlankURL, current_frame_host()->GetLastCommittedURL());
+  EXPECT_EQ(current_frame_host()
+                ->policy_container_host()
+                ->policies()
+                .document_isolation_policy,
+            GetDocumentIsolationPolicy());
+}
+
+// TODO(crbug.com/349104385): Add a test checking that the
+// Document-Isolation-Policy header is ignored on redirect responses.
+
+// Regression test for crbug.com/393480086.
+// Blocking a navigation at BeginNavigation stage in a child frame of a document
+// with DocumentIsolationPolicy should not cause a crash.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyBrowserTest,
+                       IframeLoadCancelledInBeginNavigation) {
+  GURL main_url = GetDocumentIsolationPolicyURL(
+      "a.test", "Content-Security-Policy: frame-src 'none';");
+  GURL iframe_url = https_server()->GetURL("a.test", "/title1.html");
+  EXPECT_TRUE(NavigateToURL(shell(), main_url));
+  EXPECT_TRUE(ExecJs(current_frame_host(),
+                     JsReplace("g_iframe = document.createElement('iframe');"
+                               "g_iframe.src = $1;"
+                               "document.body.appendChild(g_iframe);",
+                               iframe_url)));
+  WaitForLoadStop(web_contents());
+
+  // TODO(crbug.com/395036622): The subframe error page should commit in the
+  // isolated error page process.
+  RenderFrameHostImpl* main_document = current_frame_host();
+  RenderFrameHostImpl* sub_document =
+      current_frame_host()->child_at(0)->current_frame_host();
+  EXPECT_EQ(main_document->GetSiteInstance()->GetProcess(),
+            sub_document->GetSiteInstance()->GetProcess());
+  EXPECT_FALSE(sub_document->GetSiteInstance()->GetSiteInfo().is_error_page());
+}
+
+// Check that logical cross-origin isolation set by the content embedder works
+// as expected.
+IN_PROC_BROWSER_TEST_P(DocumentIsolationPolicyWithLogicalCOIBrowserTest,
+                       LogicalCrossOriginIsolation) {
+  GURL concrete_coi = GetDocumentIsolationPolicyURL(kConcreteCOIOrigin);
+  GURL logical_coi = GetDocumentIsolationPolicyURL(kLogicalCOIOrigin);
+  GURL no_dip(https_server()->GetURL("a.test", "/empty.html"));
+
+  // Navigate to an origin which has been allowlisted for concrete COI. It
+  // should be marked as cross-origin isolated and have access to SABs.
+  EXPECT_TRUE(NavigateToURL(shell(), concrete_coi));
+  if (ShouldUseDefaultSiteInstanceGroup()) {
+    EXPECT_TRUE(current_frame_host()
+                    ->GetSiteInstance()
+                    ->GetSiteInfo()
+                    .agent_cluster_key()
+                    .IsCrossOriginIsolated());
+    EXPECT_EQ(blink::mojom::CrossOriginIsolationMode::kConcrete,
+              current_frame_host()
+                  ->GetSiteInstance()
+                  ->GetSiteInfo()
+                  .agent_cluster_key()
+                  .GetCrossOriginIsolationKey()
+                  ->cross_origin_isolation_mode);
+    EXPECT_EQ(std::nullopt, current_frame_host()
+                                ->policy_container_host()
+                                ->policies()
+                                .cross_origin_isolation_key_override);
+  } else {
+    EXPECT_FALSE(current_frame_host()
+                     ->GetSiteInstance()
+                     ->GetSiteInfo()
+                     .agent_cluster_key()
+                     .IsCrossOriginIsolated());
+    EXPECT_EQ(
+        blink::mojom::CrossOriginIsolationMode::kConcrete,
+        current_frame_host()
+            ->policy_container_host()
+            ->policies()
+            .cross_origin_isolation_key_override->cross_origin_isolation_mode);
+  }
+  EXPECT_EQ(true, EvalJs(current_frame_host(), "self.crossOriginIsolated"));
+  EXPECT_EQ(true,
+            EvalJs(current_frame_host(), "'SharedArrayBuffer' in globalThis"));
+
+  // Navigate to an origin which has not been allowlisted for concrete COI. It
+  // should have logical COI instead. It should not be marked as cross-origin
+  // isolated and not have access to SABs.
+  EXPECT_TRUE(NavigateToURL(shell(), logical_coi));
+  EXPECT_FALSE(current_frame_host()
+                   ->GetSiteInstance()
+                   ->GetSiteInfo()
+                   .agent_cluster_key()
+                   .IsCrossOriginIsolated());
+  if (ShouldUseDefaultSiteInstanceGroup()) {
+    EXPECT_EQ(blink::mojom::CrossOriginIsolationMode::kLogical,
+              current_frame_host()
+                  ->GetSiteInstance()
+                  ->GetSiteInfo()
+                  .agent_cluster_key()
+                  .GetCrossOriginIsolationKey()
+                  ->cross_origin_isolation_mode);
+    EXPECT_EQ(std::nullopt, current_frame_host()
+                                ->policy_container_host()
+                                ->policies()
+                                .cross_origin_isolation_key_override);
+  } else {
+    EXPECT_EQ(
+        blink::mojom::CrossOriginIsolationMode::kLogical,
+        current_frame_host()
+            ->policy_container_host()
+            ->policies()
+            .cross_origin_isolation_key_override->cross_origin_isolation_mode);
+  }
+  EXPECT_EQ(false, EvalJs(current_frame_host(), "self.crossOriginIsolated"));
+  EXPECT_EQ(false,
+            EvalJs(current_frame_host(), "'SharedArrayBuffer' in globalThis"));
+
+  // Navigate to a page without DIP.
+  EXPECT_TRUE(NavigateToURL(shell(), no_dip));
+
+  // Create an iframe with an origin allowlisted for concrete COI. It should be
+  // marked as cross-origin isolated and have access to SABs.
+  TestNavigationManager concrete_coi_iframe_navigation(web_contents(),
+                                                       concrete_coi);
+  EXPECT_TRUE(
+      ExecJs(web_contents(),
+             JsReplace("const iframe = document.createElement('iframe'); "
+                       "iframe.src = $1; "
+                       "document.body.appendChild(iframe);",
+                       concrete_coi)));
+
+  ASSERT_TRUE(concrete_coi_iframe_navigation.WaitForNavigationFinished());
+  EXPECT_TRUE(concrete_coi_iframe_navigation.was_successful());
+  RenderFrameHostImpl* concrete_coi_iframe_rfh =
+      current_frame_host()->child_at(0)->current_frame_host();
+  if (ShouldUseDefaultSiteInstanceGroup()) {
+    EXPECT_TRUE(concrete_coi_iframe_rfh->GetSiteInstance()
+                    ->GetSiteInfo()
+                    .agent_cluster_key()
+                    .IsCrossOriginIsolated());
+    EXPECT_EQ(blink::mojom::CrossOriginIsolationMode::kConcrete,
+              concrete_coi_iframe_rfh->GetSiteInstance()
+                  ->GetSiteInfo()
+                  .agent_cluster_key()
+                  .GetCrossOriginIsolationKey()
+                  ->cross_origin_isolation_mode);
+    EXPECT_EQ(std::nullopt, concrete_coi_iframe_rfh->policy_container_host()
+                                ->policies()
+                                .cross_origin_isolation_key_override);
+  } else {
+    EXPECT_FALSE(concrete_coi_iframe_rfh->GetSiteInstance()
+                     ->GetSiteInfo()
+                     .agent_cluster_key()
+                     .IsCrossOriginIsolated());
+    EXPECT_EQ(
+        blink::mojom::CrossOriginIsolationMode::kConcrete,
+        concrete_coi_iframe_rfh->policy_container_host()
+            ->policies()
+            .cross_origin_isolation_key_override->cross_origin_isolation_mode);
+  }
+  EXPECT_EQ(true, EvalJs(concrete_coi_iframe_rfh, "self.crossOriginIsolated"));
+  EXPECT_EQ(true, EvalJs(concrete_coi_iframe_rfh,
+                         "'SharedArrayBuffer' in globalThis"));
+
+  // Create an iframe with an origin not allolisted for concrete COI. It should
+  // have logical COI. It should be marked as cross-origin isolated and have
+  // access to SABs.
+  TestNavigationManager logical_coi_iframe_navigation(web_contents(),
+                                                      logical_coi);
+  EXPECT_TRUE(
+      ExecJs(web_contents(),
+             JsReplace("const iframe = document.createElement('iframe'); "
+                       "iframe.src = $1; "
+                       "document.body.appendChild(iframe);",
+                       logical_coi)));
+
+  ASSERT_TRUE(logical_coi_iframe_navigation.WaitForNavigationFinished());
+  EXPECT_TRUE(logical_coi_iframe_navigation.was_successful());
+  RenderFrameHostImpl* logical_coi_iframe_rfh =
+      current_frame_host()->child_at(1)->current_frame_host();
+  EXPECT_FALSE(logical_coi_iframe_rfh->GetSiteInstance()
+                   ->GetSiteInfo()
+                   .agent_cluster_key()
+                   .IsCrossOriginIsolated());
+  if (ShouldUseDefaultSiteInstanceGroup()) {
+    EXPECT_EQ(blink::mojom::CrossOriginIsolationMode::kLogical,
+              logical_coi_iframe_rfh->GetSiteInstance()
+                  ->GetSiteInfo()
+                  .agent_cluster_key()
+                  .GetCrossOriginIsolationKey()
+                  ->cross_origin_isolation_mode);
+    EXPECT_EQ(std::nullopt, logical_coi_iframe_rfh->policy_container_host()
+                                ->policies()
+                                .cross_origin_isolation_key_override);
+  } else {
+    EXPECT_EQ(
+        blink::mojom::CrossOriginIsolationMode::kLogical,
+        logical_coi_iframe_rfh->policy_container_host()
+            ->policies()
+            .cross_origin_isolation_key_override->cross_origin_isolation_mode);
+  }
+  EXPECT_EQ(false, EvalJs(logical_coi_iframe_rfh, "self.crossOriginIsolated"));
+  EXPECT_EQ(false, EvalJs(logical_coi_iframe_rfh,
+                          "'SharedArrayBuffer' in globalThis"));
+}
+
+static auto kTestParams =
+    testing::Combine(testing::ValuesIn(RenderDocumentFeatureLevelValues()),
+                     testing::Bool(),
+                     testing::Bool());
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    DocumentIsolationPolicyWithoutFeatureBrowserTest,
+    kTestParams,
+    DocumentIsolationPolicyWithoutFeatureBrowserTest::DescribeParams);
+static auto kTestParamsWithDefaultSiteInstanceGroup =
+    testing::Combine(testing::ValuesIn(RenderDocumentFeatureLevelValues()),
+                     testing::Bool(),
+                     testing::Bool(),
+                     testing::Bool());
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    DocumentIsolationPolicyWithLogicalCOIBrowserTest,
+    kTestParamsWithDefaultSiteInstanceGroup,
+    DocumentIsolationPolicyWithLogicalCOIBrowserTest::DescribeParams);
+static auto kTestParamsWithSiteIsolation = testing::Combine(
+    testing::ValuesIn(RenderDocumentFeatureLevelValues()),
+    testing::Bool(),
+    testing::Bool(),
+    testing::Values(SiteIsolationStatus::kSiteIsolation,
+                    SiteIsolationStatus::kPartialSiteIsolation,
+                    SiteIsolationStatus::kNoSiteIsolation,
+                    SiteIsolationStatus::kNoSiteIsolationNoSIG));
+INSTANTIATE_TEST_SUITE_P(All,
+                         DocumentIsolationPolicyBrowserTest,
+                         kTestParamsWithSiteIsolation,
+                         DocumentIsolationPolicyBrowserTest::DescribeParams);
+INSTANTIATE_TEST_SUITE_P(All,
+                         DocumentIsolationPolicyWithoutSiteIsolationBrowserTest,
+                         kTestParamsWithSiteIsolation,
+                         DocumentIsolationPolicyBrowserTest::DescribeParams);
+
+}  // namespace content

@@ -1,0 +1,342 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.xr.scenecore;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.verify;
+
+import androidx.activity.ComponentActivity;
+import androidx.xr.runtime.Session;
+import androidx.xr.runtime.SessionCreateResult;
+import androidx.xr.runtime.SessionCreateSuccess;
+import androidx.xr.runtime.math.FloatSize3d;
+import androidx.xr.scenecore.SurfaceEntity;
+import androidx.xr.scenecore.SurfaceEntity.Shape;
+import androidx.xr.scenecore.SurfaceEntity.StereoMode;
+
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.robolectric.Robolectric;
+
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.ui.xr.scenecore.XrMeshData;
+import org.chromium.ui.xr.scenecore.XrSurfaceEntityHolder.Callback;
+import org.chromium.ui.xr.scenecore.XrSurfaceEntityShape;
+import org.chromium.ui.xr.scenecore.XrSurfaceEntityStereoMode;
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+
+/** Tests for {@link XrSurfaceEntityHolderImpl}. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class XrSurfaceEntityHolderImplTest {
+    private static final float DELTA = 0.01f;
+
+    @Mock private Callback mCallback;
+
+    private Session mSession;
+    private XrSurfaceEntityHolderImpl mHolder;
+    private ComponentActivity mActivity;
+    private SurfaceEntity mSurfaceEntity;
+
+    @Before
+    public void setUp() {
+        MockitoAnnotations.openMocks(this);
+
+        mActivity = Robolectric.buildActivity(ComponentActivity.class).create().start().get();
+
+        SessionCreateResult result = Session.create(mActivity);
+        assertTrue(result instanceof SessionCreateSuccess);
+        mSession = ((SessionCreateSuccess) result).getSession();
+
+        mSurfaceEntity = SurfaceEntity.create(mSession);
+        mHolder = XrSurfaceEntityHolderImpl.create(mSession, mSurfaceEntity);
+    }
+
+    @Test
+    public void testCreate() {
+        assertNotNull(mHolder);
+    }
+
+    @Test
+    public void testDispose() {
+        mHolder.dispose();
+        assertTrue(mSurfaceEntity.isDisposed());
+    }
+
+    @Test
+    public void testAddCallback() {
+        mHolder.addCallback(mCallback);
+        assertTrue(mHolder.hasCallbackForTesting(mCallback));
+    }
+
+    @Test
+    public void testRemoveCallback() {
+        mHolder.addCallback(mCallback);
+        assertTrue(mHolder.hasCallbackForTesting(mCallback));
+        mHolder.removeCallback(mCallback);
+        assertFalse(mHolder.hasCallbackForTesting(mCallback));
+    }
+
+    @Test
+    public void testSetSurfacePixelDimensions() {
+        mHolder.addCallback(mCallback);
+        mHolder.setSurfacePixelDimensions(100, 200);
+        verify(mCallback).surfaceChanged(any(), eq(100), eq(200));
+    }
+
+    @Test
+    public void testGetSurfaceStereoMode() {
+        mHolder.setSurfaceStereoMode(XrSurfaceEntityStereoMode.MONO);
+        assertEquals(XrSurfaceEntityStereoMode.MONO, mHolder.getSurfaceStereoMode());
+    }
+
+    @Test
+    public void testSetSurfaceStereoMode() {
+        mHolder.setSurfaceStereoMode(XrSurfaceEntityStereoMode.SIDE_BY_SIDE);
+        assertEquals(StereoMode.SIDE_BY_SIDE, mSurfaceEntity.getStereoMode());
+        mHolder.setSurfaceStereoMode(XrSurfaceEntityStereoMode.TOP_BOTTOM);
+        assertEquals(StereoMode.TOP_BOTTOM, mSurfaceEntity.getStereoMode());
+        mHolder.setSurfaceStereoMode(XrSurfaceEntityStereoMode.MONO);
+        assertEquals(StereoMode.MONO, mSurfaceEntity.getStereoMode());
+    }
+
+    @Test
+    public void testGetSurfaceShape() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.QUAD);
+        assertEquals(XrSurfaceEntityShape.QUAD, mHolder.getSurfaceShape());
+    }
+
+    @Test
+    public void testSetSurfaceShape() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.SPHERE);
+        assertEquals(XrSurfaceEntityShape.SPHERE, mHolder.getSurfaceShape());
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.HEMISPHERE);
+        assertEquals(XrSurfaceEntityShape.HEMISPHERE, mHolder.getSurfaceShape());
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.QUAD);
+        assertEquals(XrSurfaceEntityShape.QUAD, mHolder.getSurfaceShape());
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.ROUNDED_QUAD);
+        assertEquals(XrSurfaceEntityShape.ROUNDED_QUAD, mHolder.getSurfaceShape());
+    }
+
+    @Test
+    public void testSetSurfaceShape_NotifiesCallback() {
+        mHolder.addCallback(mCallback);
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.SPHERE);
+        verify(mCallback, org.mockito.Mockito.times(2)).surfaceChanged(any(), eq(1), eq(1));
+    }
+
+    @Test
+    public void testSetEntitySize_Quad() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.QUAD);
+        mHolder.setEntitySize(10f, 20f);
+
+        Shape shape = mSurfaceEntity.getShape();
+        assertTrue(shape instanceof Shape.Quad);
+        assertEquals(10f, ((Shape.Quad) shape).getExtents().getWidth(), DELTA);
+        assertEquals(20f, ((Shape.Quad) shape).getExtents().getHeight(), DELTA);
+    }
+
+    @Test
+    public void testSetEntitySize_RoundedQuad() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.ROUNDED_QUAD);
+        mHolder.setEntitySize(10f, 20f);
+
+        assertEquals(10f, mHolder.getEntitySize().getWidth(), DELTA);
+        assertEquals(20f, mHolder.getEntitySize().getHeight(), DELTA);
+        assertTrue(mSurfaceEntity.getShape() instanceof Shape.CustomMesh);
+    }
+
+    @Test
+    public void testSetSurfaceShape_WithCornerRadius() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.ROUNDED_QUAD);
+        mHolder.setCornerRadius(0.08f);
+        assertEquals(XrSurfaceEntityShape.ROUNDED_QUAD, mHolder.getSurfaceShape());
+        assertEquals(0.08f, mHolder.getCornerRadius(), DELTA);
+    }
+
+    @Test
+    public void testCornerRadius_Quad() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.QUAD);
+        mHolder.setCornerRadius(0.05f);
+
+        assertEquals(0.05f, mHolder.getCornerRadius(), DELTA);
+        Shape shape = mSurfaceEntity.getShape();
+        assertTrue(shape instanceof Shape.Quad);
+        assertEquals(0.05f, ((Shape.Quad) shape).getCornerRadius(), DELTA);
+
+        // Verify corner radius is preserved when resizing
+        mHolder.setEntitySize(15f, 25f);
+        assertEquals(0.05f, mHolder.getCornerRadius(), DELTA);
+    }
+
+    @Test
+    public void testEdgeFeathering() {
+        mHolder.setRectangleEdgeFeathering(0.05f, 0.02f);
+        SurfaceEntity.EdgeFeatheringParams params = mSurfaceEntity.getEdgeFeatheringParams();
+        assertTrue(params instanceof SurfaceEntity.EdgeFeatheringParams.RectangleFeather);
+        SurfaceEntity.EdgeFeatheringParams.RectangleFeather rectFeather =
+                (SurfaceEntity.EdgeFeatheringParams.RectangleFeather) params;
+        assertEquals(0.05f, rectFeather.getLeftRight(), DELTA);
+        assertEquals(0.02f, rectFeather.getTopBottom(), DELTA);
+
+        mHolder.removeEdgeFeathering();
+        assertTrue(
+                mSurfaceEntity.getEdgeFeatheringParams()
+                        instanceof SurfaceEntity.EdgeFeatheringParams.NoFeathering);
+    }
+
+    @Test
+    public void testSetEntitySize_UpdatesMovableComponent() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.QUAD);
+        mHolder.setEntitySize(10f, 20f);
+
+        XrMovableComponentImpl movableComponent =
+                (XrMovableComponentImpl) mHolder.getMovableComponent();
+        FloatSize3d size = movableComponent.getLastSetSizeForTesting();
+        assertNotNull(size);
+        assertEquals(10f, size.getWidth(), DELTA);
+        assertEquals(20f, size.getHeight(), DELTA);
+        assertEquals(0f, size.getDepth(), DELTA);
+    }
+
+    @Test
+    public void testSetEntityRadius_Sphere() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.SPHERE);
+        mHolder.setEntityRadius(5f);
+
+        Shape shape = mSurfaceEntity.getShape();
+        assertTrue(shape instanceof Shape.Sphere);
+        assertEquals(5f, ((Shape.Sphere) shape).getRadius(), DELTA);
+    }
+
+    @Test
+    public void testSetSurfaceShape_MeshData() {
+        float[] vertexData = {
+            1.0f, 2.0f, 3.0f, 0.1f, 0.2f,
+            4.0f, 5.0f, 6.0f, 0.4f, 0.5f
+        };
+        ByteBuffer vertices =
+                ByteBuffer.allocateDirect(vertexData.length * 4).order(ByteOrder.nativeOrder());
+        vertices.asFloatBuffer().put(vertexData);
+
+        int[] indexData = {0, 1};
+        ByteBuffer indices =
+                ByteBuffer.allocateDirect(indexData.length * 4)
+                        .order(java.nio.ByteOrder.nativeOrder());
+        indices.asIntBuffer().put(indexData);
+
+        XrMeshData data = new XrMeshData(10, 0, vertices, indices);
+        XrMeshData[] meshDatas = new XrMeshData[] {data};
+
+        mHolder.setSurfaceShape(meshDatas);
+
+        Shape shape = mSurfaceEntity.getShape();
+        assertTrue(shape instanceof Shape.CustomMesh);
+        assertEquals(XrSurfaceEntityShape.CUSTOM, mHolder.getSurfaceShape());
+
+        Shape.CustomMesh customMesh = (Shape.CustomMesh) shape;
+        assertNotNull(customMesh.getLeftEye());
+        assertEquals(data.getPositionsAsFloatBuffer(), customMesh.getLeftEye().getPositions());
+    }
+
+    @Test
+    public void testSetSurfaceShape_SeamlessSphere() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.SEAMLESS_SPHERE);
+        assertEquals(XrSurfaceEntityShape.SEAMLESS_SPHERE, mHolder.getSurfaceShape());
+
+        Shape shape = mSurfaceEntity.getShape();
+        assertTrue(shape instanceof Shape.CustomMesh);
+
+        Shape.CustomMesh customMesh = (Shape.CustomMesh) shape;
+        assertNotNull(customMesh.getLeftEye());
+    }
+
+    @Test
+    public void testSetEntityRadius_SeamlessSphere() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.SEAMLESS_SPHERE);
+        mHolder.setEntityRadius(4.0f);
+
+        assertEquals(XrSurfaceEntityShape.SEAMLESS_SPHERE, mHolder.getSurfaceShape());
+        Shape shape = mSurfaceEntity.getShape();
+        assertTrue(shape instanceof Shape.CustomMesh);
+    }
+
+    @Test
+    public void testSetSurfaceStereoMode_SeamlessSphere() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.SEAMLESS_SPHERE);
+
+        mHolder.setSurfaceStereoMode(XrSurfaceEntityStereoMode.SIDE_BY_SIDE);
+        Shape.CustomMesh sbsMesh = (Shape.CustomMesh) mSurfaceEntity.getShape();
+        assertNotNull(sbsMesh.getLeftEye());
+        assertNotNull(sbsMesh.getRightEye());
+
+        mHolder.setSurfaceStereoMode(XrSurfaceEntityStereoMode.TOP_BOTTOM);
+        Shape.CustomMesh tbMesh = (Shape.CustomMesh) mSurfaceEntity.getShape();
+        assertNotNull(tbMesh.getLeftEye());
+        assertNotNull(tbMesh.getRightEye());
+
+        mHolder.setSurfaceStereoMode(XrSurfaceEntityStereoMode.MONO);
+        Shape.CustomMesh monoMesh = (Shape.CustomMesh) mSurfaceEntity.getShape();
+        assertNotNull(monoMesh.getLeftEye());
+        assertNull(monoMesh.getRightEye());
+    }
+
+    @Test
+    public void testSetSurfacePixelDimensions_SeamlessSphere() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.SEAMLESS_SPHERE);
+        mHolder.setSurfacePixelDimensions(1920, 1080);
+
+        assertEquals(XrSurfaceEntityShape.SEAMLESS_SPHERE, mHolder.getSurfaceShape());
+        Shape shape = mSurfaceEntity.getShape();
+        assertTrue(shape instanceof Shape.CustomMesh);
+    }
+
+    @Test
+    public void testTransitionBetweenShapes() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.QUAD);
+        assertEquals(XrSurfaceEntityShape.QUAD, mHolder.getSurfaceShape());
+
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.SEAMLESS_SPHERE);
+        assertEquals(XrSurfaceEntityShape.SEAMLESS_SPHERE, mHolder.getSurfaceShape());
+        assertTrue(mSurfaceEntity.getShape() instanceof Shape.CustomMesh);
+
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.HEMISPHERE);
+        assertEquals(XrSurfaceEntityShape.HEMISPHERE, mHolder.getSurfaceShape());
+        assertTrue(mSurfaceEntity.getShape() instanceof Shape.Hemisphere);
+
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.SEAMLESS_SPHERE);
+        assertEquals(XrSurfaceEntityShape.SEAMLESS_SPHERE, mHolder.getSurfaceShape());
+        assertTrue(mSurfaceEntity.getShape() instanceof Shape.CustomMesh);
+
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.SPHERE);
+        assertEquals(XrSurfaceEntityShape.SPHERE, mHolder.getSurfaceShape());
+        assertTrue(mSurfaceEntity.getShape() instanceof Shape.Sphere);
+
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.QUAD);
+        assertEquals(XrSurfaceEntityShape.QUAD, mHolder.getSurfaceShape());
+        assertTrue(mSurfaceEntity.getShape() instanceof Shape.Quad);
+
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.ROUNDED_QUAD);
+        assertEquals(XrSurfaceEntityShape.ROUNDED_QUAD, mHolder.getSurfaceShape());
+        assertTrue(mSurfaceEntity.getShape() instanceof Shape.CustomMesh);
+    }
+
+    @Test
+    public void testDispose_SeamlessSphere() {
+        mHolder.setSurfaceShape(XrSurfaceEntityShape.SEAMLESS_SPHERE);
+        mHolder.dispose();
+        assertTrue(mSurfaceEntity.isDisposed());
+    }
+}

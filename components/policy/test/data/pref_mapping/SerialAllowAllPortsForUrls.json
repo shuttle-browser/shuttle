@@ -1,0 +1,22 @@
+[
+  {
+    "os": [
+      "win",
+      "linux",
+      "mac",
+      "chromeos",
+      "android",
+      "fuchsia"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "managed.serial_allow_all_ports_for_urls",
+      "pref_location": "local_state",
+      "default_value": [],
+      "values_to_test": [
+        [
+          "https://www.google.com"
+        ]
+      ]
+    }
+  }
+]

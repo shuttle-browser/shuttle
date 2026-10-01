@@ -1,0 +1,101 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/ui.gni")
+
+# This target contains all the tab strip model specific implementation.
+source_set("tab_strip_model_impl") {
+  sources = [
+    "browser_adapter_impl.cc",
+    "browser_adapter_impl.h",
+    "browser_event_bridge.cc",
+    "browser_event_bridge.h",
+    "browser_tab_strip_service_tracker.cc",
+    "browser_tab_strip_service_tracker.h",
+    "tab_context_menu_adapter_impl.cc",
+    "tab_context_menu_adapter_impl.h",
+    "tab_strip_model_adapter_impl.cc",
+    "tab_strip_model_adapter_impl.h",
+    "tab_strip_model_event_bridge.cc",
+    "tab_strip_model_event_bridge.h",
+    "tab_strip_model_injector.cc",
+    "tab_strip_model_injector.h",
+  ]
+
+  # Remove this once tab_ui_helper.cc is modularized.
+  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+
+  deps = [
+    "converters",
+    "tree_builder",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/tabs:tab_group",
+    "//chrome/browser/ui/tabs:tab_menu",
+    "//chrome/browser/ui/tabs:tab_strip",
+    "//chrome/browser/ui/tabs:tab_strip_model_observer",
+    "//chrome/browser/ui/tabs/tab_strip_api",
+    "//components/browser_apis/tab_strip:service",
+    "//components/browser_apis/tab_strip/adapters",
+    "//components/browser_apis/tab_strip/aggregation",
+    "//components/browser_apis/tab_strip/observation",
+    "//components/browser_apis/tab_strip/types",
+  ]
+
+  # tab_context_menu_adapter_impl.{h,cc} include tab_context_menu_controller.h
+  # and construct a real TabContextMenuController unconditionally (no
+  # BUILDFLAG guard), so this target can only ever build where toolkit_views
+  # is available -- guard the dependency accordingly rather than assuming
+  # this target is never evaluated on Android.
+  if (toolkit_views) {
+    deps += [
+      "//chrome/browser/ui/views/tabs/tab",
+      "//chrome/browser/ui/views/tabs/tab:impl",
+    ]
+  }
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  sources = [ "tab_strip_model_adapter_impl_unittest.cc" ]
+
+  deps = [
+    ":tab_strip_model_impl",
+    "converters",
+    "//chrome/browser/ui/tabs:tab_group",
+    "//chrome/browser/ui/tabs:tab_model",
+    "//chrome/browser/ui/tabs:tab_strip",
+    "//chrome/browser/ui/tabs:test_support",
+    "//chrome/test:test_support",
+    "//content/test:test_support",
+    "//testing/gtest",
+  ]
+}
+
+source_set("browser_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+  sources = [ "tab_strip_service_impl_browsertest.cc" ]
+
+  deps = [
+    ":tab_strip_model_impl",
+    "converters:browser_tests",
+    "tree_builder:browser_tests",
+    "//base",
+    "//base/test:test_support",
+    "//chrome/browser/ui:ui_features",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/tabs:tab_strip",
+    "//chrome/browser/ui/tabs/tab_strip_api",
+    "//chrome/browser/ui/tabs/tab_strip_api/controllers",
+    "//chrome/test:test_support",
+    "//components/browser_apis/tab_strip:mojom_experiment",
+    "//components/browser_apis/tab_strip:mojom_ui_controller",
+    "//components/browser_apis/tab_strip:service",
+    "//components/browser_apis/tab_strip/adapters",
+    "//components/browser_apis/tab_strip/observation",
+    "//content/test:test_support",
+    "//testing/gtest",
+  ]
+}

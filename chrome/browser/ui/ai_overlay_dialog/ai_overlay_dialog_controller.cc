@@ -1,0 +1,132 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/ai_overlay_dialog/ai_overlay_dialog_controller.h"
+
+#include "base/functional/callback_forward.h"
+#include "base/notimplemented.h"
+#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+#include "chrome/browser/media/webrtc/media_capture_devices_dispatcher.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/common/webui_url_constants.h"
+#include "components/content_settings/core/browser/host_content_settings_map.h"
+#include "components/content_settings/core/common/content_settings.h"
+#include "ui/actions/actions.h"
+#include "ui/base/class_property.h"
+#include "ui/base/models/image_model.h"
+#include "ui/base/ui_base_features.h"
+#include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
+#include "ui/menus/simple_menu_model.h"
+#include "url/gurl.h"
+
+namespace ttc {
+
+DEFINE_UI_CLASS_PROPERTY_KEY(bool, kActionAiOverlayActiveKey, false)
+
+DEFINE_USER_DATA(AiOverlayDialogController);
+
+// static
+AiOverlayDialogController* AiOverlayDialogController::From(
+    BrowserWindowInterface* browser) {
+  return Get(browser->GetUnownedUserDataHost());
+}
+
+AiOverlayDialogController::AiOverlayDialogController(
+    BrowserWindowInterface* browser)
+    : browser_(browser),
+      scoped_unowned_user_data_(browser->GetUnownedUserDataHost(), *this),
+      host_content_settings_map_(
+          HostContentSettingsMapFactory::GetForProfile(browser->GetProfile())) {
+  // TODO(crbug.com/502801064): If this is to ever be productionized this isn't
+  // the right way to get microphone permission.
+  auto url = GURL(chrome::kChromeUIAiOverlayDialogUntrustedURL);
+  host_content_settings_map_->SetContentSettingDefaultScope(
+      url, url, ContentSettingsType::MEDIASTREAM_MIC, CONTENT_SETTING_ALLOW);
+}
+
+AiOverlayDialogController::~AiOverlayDialogController() = default;
+
+void AiOverlayDialogController::ToggleOverlay() {
+  if (IsOverlayShowing()) {
+    HideOverlay();
+  } else {
+    ShowOverlay();
+  }
+}
+
+// TODO(crbug.com/535704548): Consider renaming SetInputCaptionsVisible /
+// SetCaptionsVisible to SetInputCaptionsEnabled / SetCaptionsEnabled to
+// differentiate from ephemeral visibility.
+void AiOverlayDialogController::SetInputCaptionsVisible(bool visible) {
+  VLOG(1) << "SetInputCaptionsVisible: " << visible;
+  if (input_captions_visible_ == visible) {
+    return;
+  }
+  input_captions_visible_ = visible;
+  for (auto& observer : observers_) {
+    observer.OnInputCaptionsVisibleChanged(visible);
+  }
+}
+
+void AiOverlayDialogController::SetOutputCaptionsVisible(bool visible) {
+  VLOG(1) << "SetOutputCaptionsVisible: " << visible;
+  if (output_captions_visible_ == visible) {
+    return;
+  }
+  output_captions_visible_ = visible;
+  for (auto& observer : observers_) {
+    observer.OnOutputCaptionsVisibleChanged(visible);
+  }
+}
+
+void AiOverlayDialogController::SetCaptionsVisible(bool visible) {
+  SetInputCaptionsVisible(visible);
+  SetOutputCaptionsVisible(visible);
+}
+
+void AiOverlayDialogController::SetUsePersona(bool use_persona) {
+  VLOG(1) << "SetUsePersona: " << use_persona;
+  if (use_persona_ == use_persona) {
+    return;
+  }
+  use_persona_ = use_persona;
+  for (auto& observer : observers_) {
+    observer.OnUsePersonaChanged(use_persona);
+  }
+}
+
+void AiOverlayDialogController::SetRememberedNote(const std::string& key,
+                                                  const std::string& value) {
+  if (value.empty()) {
+    remembered_notes_.erase(key);
+  } else {
+    remembered_notes_[key] = value;
+  }
+}
+
+void AiOverlayDialogController::AddObserver(Observer* observer) {
+  observers_.AddObserver(observer);
+}
+
+void AiOverlayDialogController::RemoveObserver(Observer* observer) {
+  observers_.RemoveObserver(observer);
+}
+
+void AiOverlayDialogController::RequestMediaAccessPermission(
+    content::WebContents* web_contents,
+    const content::MediaStreamRequest& request,
+    content::MediaResponseCallback callback) {
+  MediaCaptureDevicesDispatcher::GetInstance()->ProcessMediaAccessRequest(
+      web_contents, request, std::move(callback), /*extension=*/nullptr);
+}
+
+bool AiOverlayDialogController::CheckMediaAccessPermission(
+    content::RenderFrameHost* render_frame_host,
+    const url::Origin& security_origin,
+    blink::mojom::MediaStreamType type) {
+  return true;
+}
+
+}  // namespace ttc

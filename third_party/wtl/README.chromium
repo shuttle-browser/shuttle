@@ -1,0 +1,18 @@
+Name: Windows Template Library (WTL)
+Short Name: wtl
+URL: https://www.nuget.org/packages/wtl/
+Version: 10.1.0
+License: MS-PL
+License File: Ms-PL.txt
+Security Critical: yes
+Shipped: yes
+Update Mechanism: Autoroll
+CPEPrefix: cpe:/a:microsoft:windows_template_library
+Description:
+WTL is a C++ library for developing Windows applications and UI components.
+It extends ATL (Active Template Library) and provides a set of classes for
+controls, dialogues, frame windows, and GDI objects.
+
+Local Modifications:
+- Substitutions in install.sh to fix calls to `ATLVERIFY` to avoid unused
+  variable warnings in release builds.

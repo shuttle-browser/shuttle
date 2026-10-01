@@ -1,0 +1,52 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_chromeos)
+
+static_library("about") {
+  sources = [
+    "about_section.cc",
+    "about_section.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//build:branding_buildflags",
+    "//chrome/browser:browser_public_dependencies",
+    "//chrome/browser/ui/webui/ash/settings/pages/crostini",
+    "//chrome/browser/ui/webui/settings",
+    "//components/prefs",
+    "//components/user_manager",
+  ]
+
+  deps = [
+    "//ash/constants",
+    "//ash/strings",
+    "//base:i18n",
+    "//chrome/app:branded_strings",
+    "//chrome/app:generated_resources",
+    "//chrome/browser:browser_process",
+    "//chrome/browser:browser_process_platform_part",
+    "//chrome/browser/ash/arc",
+    "//chrome/browser/ash/arc:arc_util",
+    "//chrome/browser/ash/policy/core",
+    "//chrome/browser/obsolete_system",
+    "//chrome/browser/ui/webui/ash/settings/search",
+    "//chrome/browser/ui/webui/management",
+    "//chrome/browser/ui/webui/version",
+    "//chrome/common",
+    "//chrome/common:constants",
+    "//chromeos/ash/components/signin:identity_manager_provider",
+    "//chromeos/dbus/constants",
+    "//components/policy/core/common",
+    "//components/signin/public/identity_manager",
+    "//components/strings:components_branded_strings",
+    "//components/strings:components_strings",
+    "//components/webui/version",
+    "//content/public/browser",
+    "//ui/base",
+    "//ui/chromeos",
+    "//ui/webui",
+  ]
+}

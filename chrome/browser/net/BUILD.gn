@@ -1,0 +1,601 @@
+# Copyright 2014 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/features.gni")
+import("//chrome/common/features.gni")
+import("//components/enterprise/buildflags/buildflags.gni")
+import("//components/offline_pages/buildflags/features.gni")
+import("//crypto/features.gni")
+import("//extensions/buildflags/buildflags.gni")
+import("//net/features.gni")
+import("//third_party/protobuf/proto_library.gni")
+
+if (is_android) {
+  import("//build/config/android/rules.gni")
+}
+
+proto_library("probe_message_proto") {
+  sources = [ "probe_message.proto" ]
+}
+
+proto_library("key_pinning_proto") {
+  sources = [
+    "key_pinning.proto",
+    "kp_timestamp.proto",
+  ]
+}
+
+source_set("net") {
+  public = [
+    "cert_verifier_service_time_updater.h",
+    "chrome_mojo_proxy_resolver_factory.h",
+    "chrome_network_delegate.h",
+    "chrome_report_sender.h",
+    "convert_explicitly_allowed_network_ports_pref.h",
+    "default_dns_over_https_config_source.h",
+    "dns_over_https_config_source.h",
+    "dns_probe_runner.h",
+    "dns_probe_service.h",
+    "dns_probe_service_factory.h",
+    "explicitly_allowed_network_ports_policy_handler.h",
+    "http_auth_cache_status.h",
+    "net_error_diagnostics_dialog.h",
+    "net_error_tab_helper.h",
+    "net_export_helper.h",
+    "probe_message.h",
+    "profile_network_context_service.h",
+    "profile_network_context_service_factory.h",
+    "proxy_config_monitor.h",
+    "proxy_service_factory.h",
+    "qwac_web_contents_observer.h",
+    "referrer.h",
+    "secure_dns_config.h",
+    "secure_dns_policy_handler.h",
+    "secure_dns_util.h",
+    "stub_resolver_config_reader.h",
+    "system_network_context_manager.h",
+  ]
+
+  if (enable_device_bound_sessions) {
+    public += [ "device_bound_session_prewarmer.h" ]
+  }
+
+  public_deps = [
+    ":probe_message_proto",
+    "//base",
+    "//build:chromeos_buildflags",
+    "//chrome/browser/enterprise",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ssl",
+    "//chrome/common:buildflags",
+    "//chrome/common:constants",
+    "//chrome/common:mojo_bindings",
+    "//components/content_settings/core/browser",
+    "//components/content_settings/core/browser:cookie_settings",
+    "//components/enterprise/buildflags",
+    "//components/error_page/common",
+    "//components/keyed_service/core",
+    "//components/network_time",
+    "//components/network_time/time_tracker",
+    "//components/offline_pages/buildflags",
+    "//components/policy/core/browser",
+    "//components/prefs",
+    "//components/tabs:impl",
+    "//content/public/browser",
+    "//extensions/buildflags",
+    "//mojo/public/cpp/bindings",
+    "//net",
+    "//services/cert_verifier/public/mojom",
+    "//services/network/public/cpp",
+    "//services/network/public/mojom",
+    "//services/proxy_resolver/public/mojom",
+    "//url",
+  ]
+
+  if (!is_android && !is_chromeos) {
+    public += [ "disk_cache_dir_policy_handler.h" ]
+  }
+
+  if (is_chromeos) {
+    public += [ "network_annotation_monitor.h" ]
+  }
+
+  if (is_win) {
+    public += [
+      "chrome_mojo_proxy_resolver_win.h",
+      "service_providers_win.h",
+    ]
+  }
+
+  if (is_mac) {
+    public += [ "chrome_mojo_proxy_resolver_mac.h" ]
+  }
+
+  if (use_nss_certs) {
+    public += [
+      "nss_service.h",
+      "nss_service_factory.h",
+    ]
+    if (is_chromeos) {
+      public += [ "nss_temp_certs_cache_chromeos.h" ]
+    }
+  }
+
+  if (chrome_root_store_cert_management_ui) {
+    public += [ "server_certificate_database_service_factory.h" ]
+    public_deps += [ "//components/server_certificate_database" ]
+  }
+}
+
+source_set("impl") {
+  sources = [
+    "cert_verifier_service_time_updater.cc",
+    "chrome_mojo_proxy_resolver_factory.cc",
+    "chrome_network_delegate.cc",
+    "chrome_report_sender.cc",
+    "convert_explicitly_allowed_network_ports_pref.cc",
+    "default_dns_over_https_config_source.cc",
+    "dns_probe_runner.cc",
+    "dns_probe_service_factory.cc",
+    "explicitly_allowed_network_ports_policy_handler.cc",
+    "http_auth_cache_status.cc",
+    "net_error_tab_helper.cc",
+    "net_export_helper.cc",
+    "probe_message.cc",
+    "profile_network_context_service.cc",
+    "profile_network_context_service_factory.cc",
+    "proxy_config_monitor.cc",
+    "proxy_service_factory.cc",
+    "qwac_web_contents_observer.cc",
+    "referrer.cc",
+    "secure_dns_config.cc",
+    "secure_dns_policy_handler.cc",
+    "secure_dns_util.cc",
+    "stub_resolver_config_reader.cc",
+    "system_network_context_manager.cc",
+  ]
+
+  if (enable_device_bound_sessions) {
+    sources += [ "device_bound_session_prewarmer.cc" ]
+  }
+
+  public_deps = [
+    ":net",
+    "//chrome/browser:browser_public_dependencies",
+  ]
+
+  deps = [
+    ":key_pinning_proto",
+    "//base:build_time",
+    "//chrome/browser:browser_features",
+    "//chrome/browser:browser_process",
+    "//chrome/browser:browser_process_platform_part",
+    "//chrome/browser:primitives",
+    "//chrome/browser/browsing_data:constants",
+    "//chrome/browser/component_updater",
+    "//chrome/browser/content_settings:content_settings_factory",
+    "//chrome/browser/domain_reliability",
+    "//chrome/browser/first_party_sets",
+    "//chrome/browser/policy:path_parser",
+    "//chrome/browser/prefs:util",
+    "//chrome/browser/preloading/prefetch/no_state_prefetch",
+    "//chrome/browser/privacy_sandbox:headers",
+    "//chrome/browser/safe_browsing",
+    "//chrome/browser/ssl",
+    "//chrome/browser/task_manager",
+    "//chrome/browser/webid",
+    "//chrome/common:version_header",
+    "//components/certificate_transparency",
+    "//components/content_settings/core/common",
+    "//components/contextual_tasks/public:feature_list",
+    "//components/country_codes",
+    "//components/domain_reliability",
+    "//components/domain_reliability:prefs",
+    "//components/embedder_support",
+    "//components/embedder_support:user_agent",
+    "//components/enterprise",
+    "//components/enterprise/connectors/core",
+    "//components/enterprise/encryption/cache",
+    "//components/language/core/browser",
+    "//components/link_header_util",
+    "//components/metrics",
+    "//components/net_log",
+    "//components/no_state_prefetch/browser",
+    "//components/offline_pages/core",
+    "//components/page_load_metrics/browser",
+    "//components/permissions",
+    "//components/pref_registry",
+    "//components/privacy_sandbox",
+    "//components/proxy_config",
+    "//components/safe_browsing/core/common",
+    "//components/safe_browsing/core/common:safe_browsing_prefs",
+    "//components/signin/public/base:signin_buildflags",
+    "//components/strings:components_strings",
+    "//components/variations",
+    "//components/variations/net",
+    "//components/webui/flags",
+    "//crypto",
+    "//sandbox/policy",
+    "//services/network:network_service",
+    "//services/strings",
+  ]
+
+  if (enable_extensions_core) {
+    deps += [ "//chrome/browser/ui/webui/extensions:headers" ]
+  }
+
+  if (is_chromeos) {
+    sources += [ "net_error_diagnostics_dialog_chromeos.cc" ]
+    deps += [ "//chrome/browser/ui:chrome_pages" ]
+  } else if (is_win) {
+    sources += [ "net_error_diagnostics_dialog_win.cc" ]
+  } else {
+    sources += [ "net_error_diagnostics_dialog_stub.cc" ]
+  }
+
+  if (!is_android && !is_chromeos) {
+    sources += [ "disk_cache_dir_policy_handler.cc" ]
+  }
+
+  if (is_chromeos) {
+    sources += [ "network_annotation_monitor.cc" ]
+    deps += [
+      "//ash/constants",
+      "//ash/webui/connectivity_diagnostics",
+      "//chrome/browser/ash/certificate_provider",
+      "//chrome/browser/ash/kcer",
+      "//chrome/browser/ash/login",
+      "//chrome/browser/ash/net",
+      "//chrome/browser/ash/policy/core",
+      "//chrome/browser/ash/profiles",
+      "//chrome/browser/policy:onc",
+      "//chrome/browser/profiles",
+      "//chrome/browser/profiles:profile_manager",
+      "//chrome/browser/ui/ash/network",
+      "//chrome/browser/ui/ash/system_web_apps",
+      "//chromeos/ash/components/browser_context_helper",
+      "//chromeos/ash/components/network",
+      "//chromeos/ash/components/settings",
+      "//chromeos/components/kiosk",
+      "//chromeos/constants",
+      "//chromeos/dbus/regmon",
+    ]
+  }
+
+  if (is_win) {
+    sources += [
+      "chrome_mojo_proxy_resolver_win.cc",
+      "service_providers_win.cc",
+    ]
+    deps += [
+      "//chrome/browser/win",
+      "//ui/gfx",
+      "//ui/shell_dialogs",
+      "//ui/views",
+    ]
+  }
+
+  if (is_mac) {
+    sources += [ "chrome_mojo_proxy_resolver_mac.cc" ]
+  }
+
+  if (chrome_root_store_cert_management_ui) {
+    sources += [ "server_certificate_database_service_factory.cc" ]
+  }
+
+  if (enable_extensions_core) {
+    deps += [ "//extensions/browser/api/proxy:proxy_api" ]
+  }
+
+  if (enable_offline_pages) {
+    deps += [ "//chrome/browser/offline_pages" ]
+  }
+
+  if (enterprise_client_certificates) {
+    deps += [ "//components/enterprise/client_certificates/core" ]
+  }
+
+  if (use_nss_certs) {
+    sources += [
+      "nss_service.cc",
+      "nss_service_factory.cc",
+    ]
+    deps += [ "//chrome/browser/ui:crypto_module_password_dialog" ]
+    if (is_chromeos) {
+      sources += [
+        "nss_service_chromeos.cc",
+        "nss_temp_certs_cache_chromeos.cc",
+      ]
+      deps += [
+        "//chromeos/ash/components/dbus",
+        "//chromeos/ash/components/dbus/userdataauth",
+        "//chromeos/ash/components/tpm",
+        "//chromeos/components/certificate_provider",
+      ]
+    }
+    if (is_linux) {
+      sources += [ "nss_service_linux.cc" ]
+    }
+    configs += [ "//build/config/linux/nss" ]
+  }
+}
+
+if (is_android) {
+  java_cpp_enum("secure_dns_management_mode_generated_enum") {
+    sources = [ "secure_dns_config.h" ]
+  }
+} else {
+  source_set("storage_test_utils") {
+    testonly = true
+    public = [ "storage_test_utils.h" ]
+    sources = [ "storage_test_utils.cc" ]
+
+    public_deps = [ "//base" ]
+    deps = [ "//content/test:test_support" ]
+
+    # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
+    # enable the diagnostic by removing this line.
+    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+  }
+}
+
+source_set("test_support") {
+  testonly = true
+  public = [
+    "dns_probe_test_util.h",
+    "profile_network_context_service_test_utils.h",
+  ]
+  sources = [
+    "dns_probe_test_util.cc",
+    "dns_probe_test_util.h",
+    "profile_network_context_service_test_utils.cc",
+    "profile_network_context_service_test_utils.h",
+  ]
+  deps = [
+    ":net",
+    "//base",
+    "//chrome/browser:browser_process",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui",
+    "//content/public/browser",
+    "//net",
+    "//services/network:test_support",
+    "//testing/gtest",
+  ]
+  if (use_nss_certs) {
+    public += [ "fake_nss_service.h" ]
+    sources += [
+      "fake_nss_service.cc",
+      "fake_nss_service.h",
+    ]
+    deps += [
+      "//crypto",
+      "//crypto:test_support",
+    ]
+  }
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "cert_verifier_policy_unittest.cc",
+    "chrome_network_delegate_unittest.cc",
+    "chrome_report_sender_unittest.cc",
+    "convert_explicitly_allowed_network_ports_pref_unittest.cc",
+    "dns_probe_runner_unittest.cc",
+    "dns_probe_service_factory_unittest.cc",
+    "explicitly_allowed_network_ports_policy_handler_unittest.cc",
+    "net_error_tab_helper_unittest.cc",
+    "probe_message_unittest.cc",
+    "secure_dns_config_unittest.cc",
+    "secure_dns_policy_handler_unittest.cc",
+    "secure_dns_util_unittest.cc",
+    "stub_resolver_config_reader_unittest.cc",
+  ]
+
+  if (enable_device_bound_sessions) {
+    sources += [ "device_bound_session_prewarmer_unittest.cc" ]
+  }
+
+  deps = [
+    ":impl",
+    ":net",
+    ":test_support",
+    "//base",
+    "//base/test:test_support",
+    "//chrome/browser/prefs:util",
+    "//chrome/common:constants",
+    "//chrome/test:test_support",
+    "//components/prefs:test_support",
+    "//content/test:test_support",
+    "//net:test_support",
+    "//services/network:test_support",
+    "//testing/gmock",
+    "//testing/gtest",
+  ]
+  if (!is_android) {
+    sources += [ "http_auth_cache_status_unittest.cc" ]
+    if (!is_chromeos) {
+      sources += [ "disk_cache_dir_policy_handler_unittest.cc" ]
+    }
+  }
+  if (is_chromeos) {
+    sources += [
+      "network_annotation_monitor_unittest.cc",
+      "nss_temp_certs_cache_chromeos_unittest.cc",
+    ]
+    deps += [
+      "//chrome/browser/prefs",
+      "//chromeos/dbus/regmon",
+      "//components/account_id:test_support",
+      "//components/session_manager/test:test_support",
+    ]
+  }
+
+  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
+  # enable the diagnostic by removing this line.
+  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+}
+
+if (!is_android) {
+  source_set("browser_tests") {
+    testonly = true
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+    sources = [
+      "cert_verifier_policy_browsertest.cc",
+      "chrome_accept_encoding_header_browsertest.cc",
+      "chrome_accept_header_browsertest.cc",
+      "chrome_mojo_proxy_resolver_factory_browsertest.cc",
+      "chrome_network_delegate_browsertest.cc",
+      "chrome_network_service_browsertest.cc",
+      "chrome_network_service_restart_browsertest.cc",
+      "chrome_shared_dictionary_browsertest.cc",
+      "cookie_policy_browsertest.cc",
+      "cookie_store_samesite_browsertest.cc",
+      "cookie_use_counter_browsertest.cc",
+      "dns_over_https_browsertest.cc",
+      "dns_probe_browsertest.cc",
+      "errorpage_browsertest.cc",
+      "explicitly_allowed_network_ports_browsertest.cc",
+      "explicitly_allowed_ports_switch_browsertest.cc",
+      "external_protocol_browsertest.cc",
+      "load_timing_browsertest.cc",
+      "log_net_log_browsertest.cc",
+      "net_error_tab_helper_browsertest.cc",
+      "netinfo_network_quality_estimator_holdback_browsertest.cc",
+      "network_connection_tracker_browsertest.cc",
+      "network_context_configuration_browsertest.cc",
+      "network_quality_estimator_browsertest.cc",
+      "network_quality_estimator_prefs_browsertest.cc",
+      "network_quality_netinfo_browsertest.cc",
+      "network_quality_tracker_browsertest.cc",
+      "network_request_metrics_browsertest.cc",
+      "profile_network_context_service_browsertest.cc",
+      "proxy_browsertest.cc",
+      "stub_resolver_config_reader_browsertest.cc",
+      "system_network_context_manager_browsertest.cc",
+      "trust_token_usecounter_browsertest.cc",
+      "websocket_browsertest.cc",
+    ]
+    deps = [
+      ":impl",
+      ":net",
+      ":storage_test_utils",
+      ":test_support",
+      "//base",
+      "//chrome/browser",
+      "//chrome/browser:browser_process_impl",
+      "//chrome/browser:browser_process_platform_part",
+      "//chrome/browser:chrome_content_browser_client",
+      "//chrome/browser/policy:test_support",
+      "//chrome/browser/search_engines",
+      "//chrome/browser/ui:ui_features",
+      "//chrome/browser/ui/browser_window",
+      "//chrome/browser/ui/login",
+      "//chrome/browser/web_applications:web_applications_test_support",
+      "//chrome/test:test_support",
+      "//components/component_updater/installer_policies",
+      "//components/cookie_config",
+      "//components/embedder_support",
+      "//components/embedder_support:user_agent",
+      "//components/enterprise/encryption/core:features",
+      "//components/error_page/content/browser",
+      "//components/proxy_config",
+      "//content/test:browsertest_support",
+      "//content/test:test_support",
+      "//crypto:test_support",
+      "//net:extras",
+      "//net:test_support",
+      "//services/network:test_support",
+      "//services/network/public/cpp:ip_address_space_overrides_test_utils",
+    ]
+    if (is_chromeos) {
+      sources += [
+        "network_annotation_monitor_browsertest.cc",
+        "nss_context_chromeos_browsertest.cc",
+      ]
+      deps += [
+        "//chrome/browser/ash/login:test_support",
+        "//chrome/browser/ash/net",
+        "//chromeos/ash/components/browser_context_helper",
+        "//chromeos/dbus/regmon",
+      ]
+    }
+    if (is_win) {
+      sources += [ "chrome_mojo_proxy_resolver_win_browsertest.cc" ]
+    }
+    if (is_mac) {
+      sources += [ "chrome_mojo_proxy_resolver_mac_browsertest.cc" ]
+    }
+    if (enable_device_bound_sessions) {
+      sources += [ "device_bound_sessions_browsertest.cc" ]
+    }
+    if (enable_reporting) {
+      sources += [ "reporting_browsertest.cc" ]
+      deps += [ "//chrome/browser/ssl:cert_verifier_test_support" ]
+    }
+
+    # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
+    # enable the diagnostic by removing this line.
+    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+  }
+
+  source_set("interactive_ui_tests") {
+    testonly = true
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+    sources = [ "cookie_encryption_provider_interactive_uitest.cc" ]
+    deps = [
+      ":impl",
+      ":net",
+      "//base",
+      "//build/config/linux/dbus:buildflags",
+      "//chrome/browser",
+      "//chrome/browser:chrome_browser_main",
+      "//chrome/test:test_support",
+      "//content/test:test_support",
+    ]
+    if (is_win) {
+      sources += [ "sandboxed_network_change_notifier_win_browsertest.cc" ]
+      deps += [
+        "//chrome/browser/os_crypt:test_support",
+        "//chrome/elevation_service:public_headers",
+        "//chrome/windows_services/service_program/test_support",
+      ]
+    }
+    if (is_linux && use_dbus) {
+      deps += [
+        "//components/os_crypt/browser:secret_portal_key_provider",
+        "//components/os_crypt/browser:test_secret_portal",
+      ]
+    }
+
+    # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
+    # enable the diagnostic by removing this line.
+    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+  }
+}
+
+source_set("platform_browser_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+  sources = [
+    "cert_verifier_service_browsertest.cc",
+    "cert_verify_proc_browsertest.cc",
+    "qwac_web_contents_observer_browsertest.cc",
+  ]
+  deps = [
+    ":impl",
+    ":net",
+    "//base",
+    "//chrome/browser",
+    "//chrome/browser/policy:test_support",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/test:test_support",
+    "//content/test:test_support",
+  ]
+
+  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
+  # enable the diagnostic by removing this line.
+  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+}

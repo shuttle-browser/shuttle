@@ -1,0 +1,184 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/web_applications/commands/launch_web_app_command.h"
+
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/functional/concurrent_closures.h"
+#include "base/memory/weak_ptr.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/web_applications/commands/web_app_command.h"
+#include "chrome/browser/web_applications/locks/app_lock.h"
+#include "chrome/browser/web_applications/mojom/user_display_mode.mojom-shared.h"
+#include "chrome/browser/web_applications/os_integration/os_integration_test_override.h"
+#include "chrome/browser/web_applications/proto/web_app_install_state.pb.h"
+#include "chrome/browser/web_applications/scheduler/update_validated_origin_associations_result.h"
+#include "chrome/browser/web_applications/web_app_command_scheduler.h"
+#include "chrome/browser/web_applications/web_app_filter.h"
+#include "chrome/browser/web_applications/web_app_provider.h"
+#include "chrome/browser/web_applications/web_app_registrar.h"
+#include "chrome/browser/web_applications/web_app_registry_update.h"
+#include "chrome/browser/web_applications/web_app_sync_bridge.h"
+#include "chrome/browser/web_applications/web_app_ui_manager.h"
+#include "components/services/app_service/public/cpp/app_launch_params.h"
+#include "components/services/app_service/public/cpp/app_launch_util.h"
+#include "components/webapps/common/web_app_id.h"
+#include "third_party/blink/public/common/features.h"
+
+namespace web_app {
+
+LaunchWebAppCommand::LaunchWebAppCommand(
+    Profile* profile,
+    WebAppProvider* provider,
+    apps::AppLaunchParams params,
+    LaunchWebAppWindowSetting launch_setting,
+    LaunchWebAppCallback callback)
+    : WebAppCommand<AppLock,
+                    base::WeakPtr<BrowserWindowInterface>,
+                    base::WeakPtr<content::WebContents>,
+                    apps::LaunchContainer>(
+          "LaunchWebAppCommand",
+          AppLockDescription(params.app_id),
+          std::move(callback),
+          /*args_for_shutdown=*/
+          std::make_tuple(/*browser=*/nullptr,
+                          /*web_contents=*/nullptr,
+                          apps::LaunchContainer::kLaunchContainerNone)),
+      params_(std::move(params)),
+      app_id_(params_.app_id),
+      launch_setting_(launch_setting),
+      profile_(*profile),
+      provider_(*provider) {
+  CHECK(provider);
+}
+
+LaunchWebAppCommand::~LaunchWebAppCommand() = default;
+
+void LaunchWebAppCommand::StartWithLock(std::unique_ptr<AppLock> lock) {
+  lock_ = std::move(lock);
+  if (!lock_->registrar().AppMatches(app_id_,
+                                     WebAppFilter::IsAppSurfaceableToUser())) {
+    GetMutableDebugValue().Set("error",
+                               "suggested_from_migration_or_not_installed");
+    CompleteAndSelfDestruct(CommandResult::kFailure, /*browser=*/nullptr,
+                            /*web_contents=*/nullptr,
+                            apps::LaunchContainer::kLaunchContainerNone);
+    return;
+  }
+
+  const WebApp* current_app = lock_->registrar().GetAppById(app_id_);
+  CHECK(current_app);
+
+  bool is_standalone_launch =
+      params_.container == apps::LaunchContainer::kLaunchContainerWindow ||
+      (launch_setting_ ==
+           LaunchWebAppWindowSetting::kOverrideWithWebAppConfig &&
+       current_app->user_display_mode() != mojom::UserDisplayMode::kBrowser);
+
+  GetMutableDebugValue().Set("is_standalone_launch", is_standalone_launch);
+  if (is_standalone_launch) {
+    // Launching an app in a standalone windows requires OS integration, and the
+    // only way this is supported in tests is to use the
+    // OsIntegrationTestOverride functionality.
+    CHECK_OS_INTEGRATION_ALLOWED();
+  }
+
+  bool needs_os_integration_sync = false;
+
+  // Upgrade to fully installed if needed.
+  if (is_standalone_launch && lock_->registrar().GetInstallState(app_id_) !=
+                                  proto::INSTALLED_WITH_OS_INTEGRATION) {
+    ScopedRegistryUpdate update = lock_->sync_bridge().BeginUpdate();
+    update->UpdateApp(app_id_)->SetInstallState(
+        proto::INSTALLED_WITH_OS_INTEGRATION);
+    needs_os_integration_sync = true;
+  }
+
+  std::optional<proto::os_state::WebAppOsIntegration> os_integration =
+      lock_->registrar().GetAppCurrentOsIntegrationState(app_id_);
+  CHECK(os_integration);
+  GetMutableDebugValue().Set("needs_os_integration_sync",
+                             needs_os_integration_sync);
+
+  base::ConcurrentClosures completion;
+
+  if (needs_os_integration_sync) {
+    // TODO(crbug.com/339451551): Remove adding to desktop on linux after the
+    // OsIntegrationTestOverride can use the xdg install command to detect
+    // install.
+    SynchronizeOsOptions options;
+#if BUILDFLAG(IS_LINUX)
+    options.add_shortcut_to_desktop = true;
+#endif
+    lock_->os_integration_manager().Synchronize(
+        app_id_,
+        base::BindOnce(&LaunchWebAppCommand::OnOsIntegrationSynchronized,
+                       weak_factory_.GetWeakPtr())
+            .Then(completion.CreateClosure()),
+        options);
+  }
+
+  std::move(completion)
+      .Done(base::BindOnce(&LaunchWebAppCommand::DoLaunch,
+                           weak_factory_.GetWeakPtr()));
+}
+
+void LaunchWebAppCommand::OnOsIntegrationSynchronized() {
+  GetMutableDebugValue().Set("os_integration_synchronized", true);
+}
+
+void LaunchWebAppCommand::DoLaunch() {
+  provider_->ui_manager().LaunchWebApp(
+      std::move(params_), launch_setting_, *profile_,
+      base::BindOnce(&LaunchWebAppCommand::OnAppLaunched,
+                     weak_factory_.GetWeakPtr()),
+      *lock_);
+}
+
+// Note: `params_` is no longer valid in this method, as it was std::move'd in
+// `DoLaunch()`.
+void LaunchWebAppCommand::OnAppLaunched(
+    base::WeakPtr<BrowserWindowInterface> browser,
+    base::WeakPtr<content::WebContents> web_contents,
+    apps::LaunchContainer container,
+    base::Value debug_value) {
+  const WebApp* app = lock_->registrar().GetAppById(app_id_);
+  bool is_iwa = lock_->registrar().AppMatches(
+      app_id_,
+      WebAppFilter::IsIsolatedApp() | WebAppFilter::IsIsolatedSubApp());
+  bool has_scope_extensions = app && !app->scope_extensions().empty();
+  bool has_migration_sources_for_revalidation =
+      base::FeatureList::IsEnabled(blink::features::kWebAppMigrationApi) &&
+      app && !app->unvalidated_migration_sources().empty();
+
+  bool should_validate = false;
+  if (is_iwa) {
+    // Retrigger validation for IWAs if scope extensions are enabled for IWAs,
+    // and it is set to open in a new container window.
+    should_validate =
+        base::FeatureList::IsEnabled(
+            blink::features::kWebAppEnableScopeExtensionsForIsolatedWebApps) &&
+        container == apps::LaunchContainer::kLaunchContainerWindow;
+  } else {
+    // PWAs should retrigger validation regardless of launch container, if they
+    // have scope extensions and/or migration sources.
+    should_validate =
+        (has_scope_extensions || has_migration_sources_for_revalidation);
+  }
+
+  if (should_validate) {
+    provider_->scheduler().UpdateValidatedOriginAssociations(app_id_,
+                                                             base::DoNothing());
+  }
+
+  GetMutableDebugValue().Set("launch_web_app_debug_value",
+                             std::move(debug_value));
+  CompleteAndSelfDestruct(CommandResult::kSuccess, std::move(browser),
+                          std::move(web_contents), container);
+}
+
+}  // namespace web_app

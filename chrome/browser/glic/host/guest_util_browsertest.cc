@@ -1,0 +1,187 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/glic/host/guest_util.h"
+
+#include "base/check_deref.h"
+#include "base/test/scoped_feature_list.h"
+#include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
+#include "chrome/browser/extensions/tab_helper.h"
+#include "chrome/browser/glic/glic_pref_names.h"
+#include "chrome/browser/glic/test_support/glic_browser_test.h"
+#include "chrome/browser/glic/test_support/glic_test_environment.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/create_browser_window.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/common/chrome_switches.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "chrome/test/base/ui_test_utils.h"
+#include "components/guest_view/browser/guest_view_base.h"
+#include "components/guest_view/browser/guest_view_manager_delegate.h"
+#include "components/guest_view/browser/test_guest_view_manager.h"
+#include "components/keyed_service/content/browser_context_dependency_manager.h"
+#include "components/omnibox/browser/mock_aim_eligibility_service.h"
+#include "components/signin/public/identity_manager/identity_test_utils.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_ui.h"
+#include "content/public/browser/web_ui_controller.h"
+#include "content/public/browser/web_ui_data_source.h"
+#include "content/public/browser/webui_config.h"
+#include "content/public/common/bindings_policy.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/browser_test_utils.h"
+#include "content/public/test/scoped_web_ui_controller_factory_registration.h"
+#include "extensions/browser/api/extensions_api_client.h"
+#include "extensions/browser/app_window/app_window.h"
+#include "extensions/browser/app_window/app_window_registry.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/base_window.h"
+#include "ui/base/window_open_disposition.h"
+
+namespace glic {
+namespace {
+
+// Use `kChromeUIContextualTasksURL` because it is allow-listed for web view
+// use in `chrome/common/extensions/api/_api_features.json`.
+const char* kTestWebViewURL = chrome::kChromeUIContextualTasksURL;
+const char* kTestWebViewHost = chrome::kChromeUIContextualTasksHost;
+
+// A simple WebUI controller that serves a blank page with a <webview> tag.
+class TestWebUIController : public content::WebUIController {
+ public:
+  explicit TestWebUIController(content::WebUI* web_ui)
+      : content::WebUIController(web_ui) {
+    web_ui->SetBindings(
+        content::BindingsPolicySet({content::BindingsPolicyValue::kWebUi}));
+    content::WebContents* web_contents = web_ui->GetWebContents();
+    // Necessary for web view to be allowed.
+    extensions::TabHelper::CreateForWebContents(web_contents);
+    content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
+        web_contents->GetBrowserContext(), kTestWebViewHost);
+    source->SetRequestFilter(
+        base::BindRepeating(
+            [](const std::string& path) { return path.empty(); }),
+        base::BindRepeating(
+            [](const std::string& path,
+               content::WebUIDataSource::GotDataCallback callback) {
+              std::move(callback).Run(
+                  base::MakeRefCounted<base::RefCountedString>(R"(
+                  <!DOCTYPE html>
+                  <html>
+                    <body><webview src="about:blank"></webview></body>
+                  </html>)"));
+            }));
+  }
+
+ private:
+  WEB_UI_CONTROLLER_TYPE_DECL();
+};
+
+WEB_UI_CONTROLLER_TYPE_IMPL(TestWebUIController)
+
+class TestWebUIConfig
+    : public content::DefaultWebUIConfig<TestWebUIController> {
+ public:
+  TestWebUIConfig()
+      : DefaultWebUIConfig(content::kChromeUIScheme, kTestWebViewHost) {}
+};
+
+Profile& GetProfile() {
+  return CHECK_DEREF(ProfileManager::GetLastUsedProfile());
+}
+
+void OpenWebUiWithGuestView(const GURL& host_url) {
+  BrowserWindowCreateParams params(BrowserWindowInterface::Type::TYPE_NORMAL,
+                                   /*profile=*/&GetProfile(),
+                                   /*from_user_gesture=*/true);
+
+  BrowserWindowInterface& new_browser =
+      CHECK_DEREF(CreateBrowserWindow(std::move(params)));
+  new_browser.GetWindow()->Show();
+
+  ui_test_utils::NavigateToURLWithDisposition(
+      &new_browser, host_url, WindowOpenDisposition::NEW_FOREGROUND_TAB,
+      ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
+}
+
+guest_view::TestGuestViewManager& GetGuestViewManager(
+    guest_view::TestGuestViewManagerFactory& factory) {
+  return CHECK_DEREF(factory.GetOrCreateTestGuestViewManager(
+      &GetProfile(), extensions::ExtensionsAPIClient::Get()
+                         ->CreateGuestViewManagerDelegate()));
+}
+
+class GuestUtilBrowserTest : public GlicBrowserTest {
+ public:
+  void SetUpInProcessBrowserTestFixture() override {
+    create_services_subscription_ =
+        BrowserContextDependencyManager::GetInstance()
+            ->RegisterCreateServicesCallbackForTesting(base::BindRepeating(
+                &GuestUtilBrowserTest::OnWillCreateBrowserContextServices,
+                base::Unretained(this)));
+  }
+
+  virtual void OnWillCreateBrowserContextServices(
+      content::BrowserContext* context) {
+    AimEligibilityServiceFactory::GetInstance()->SetTestingFactory(
+        context, base::BindRepeating([](content::BrowserContext* context)
+                                         -> std::unique_ptr<KeyedService> {
+          auto service =
+              std::make_unique<testing::NiceMock<MockAimEligibilityService>>(
+                  *Profile::FromBrowserContext(context)->GetPrefs(), nullptr,
+                  nullptr, nullptr);
+          ON_CALL(*service, IsAimEligible())
+              .WillByDefault(testing::Return(true));
+          return service;
+        }));
+  }
+
+ protected:
+  guest_view::TestGuestViewManagerFactory& factory() { return factory_; }
+
+ private:
+  base::CallbackListSubscription create_services_subscription_;
+  guest_view::TestGuestViewManagerFactory factory_;
+};
+
+IN_PROC_BROWSER_TEST_F(GuestUtilBrowserTest, OnGuestAdded_NonGlic) {
+  EXPECT_EQ(0ULL, GetGuestViewManager(factory()).GetCurrentGuestCount());
+
+  std::unique_ptr<content::ScopedWebUIConfigRegistration>
+      web_ui_config_registration =
+          std::make_unique<content::ScopedWebUIConfigRegistration>(
+              std::make_unique<TestWebUIConfig>());
+  OpenWebUiWithGuestView(GURL{kTestWebViewURL});
+
+  auto* guest_view =
+      GetGuestViewManager(factory()).WaitForSingleGuestViewCreated();
+  ASSERT_NE(guest_view, nullptr);
+  ASSERT_NE(guest_view->web_contents(), nullptr);
+
+  // OnGuestAdded() should not affect this non-glic WebContents.
+  EXPECT_FALSE(glic::OnGuestAdded(guest_view->web_contents()));
+}
+
+IN_PROC_BROWSER_TEST_F(GuestUtilBrowserTest, OnGuestAdded_Glic) {
+  EXPECT_EQ(0ULL, GetGuestViewManager(factory()).GetCurrentGuestCount());
+
+  ASSERT_OK(OpenGlicForActiveTab());
+
+  auto* guest_view =
+      GetGuestViewManager(factory()).WaitForSingleGuestViewCreated();
+  ASSERT_NE(guest_view, nullptr);
+  ASSERT_NE(guest_view->web_contents(), nullptr);
+
+  // OnGuestAdded() should recognize the WebContents and set its base background
+  // color. Can't directly test this because there is no public getter for
+  // page_base_background_color_.
+  EXPECT_TRUE(glic::OnGuestAdded(guest_view->web_contents()));
+}
+
+}  // namespace
+}  // namespace glic

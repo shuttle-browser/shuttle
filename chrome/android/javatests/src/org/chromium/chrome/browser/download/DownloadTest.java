@@ -1,0 +1,321 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.download;
+
+import static org.chromium.chrome.test.util.ChromeTabUtils.getTabCountOnUiThread;
+
+import android.app.Notification;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.view.View;
+
+import androidx.test.filters.LargeTest;
+import androidx.test.platform.app.InstrumentationRegistry;
+
+import org.hamcrest.Matchers;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.RuleChain;
+import org.junit.runner.RunWith;
+
+import org.chromium.base.Callback;
+import org.chromium.base.ThreadUtils;
+import org.chromium.base.test.util.Batch;
+import org.chromium.base.test.util.CommandLineFlags;
+import org.chromium.base.test.util.Criteria;
+import org.chromium.base.test.util.CriteriaHelper;
+import org.chromium.base.test.util.Feature;
+import org.chromium.base.test.util.Restriction;
+import org.chromium.chrome.browser.flags.ChromeSwitches;
+import org.chromium.chrome.browser.profiles.OtrProfileId;
+import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
+import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
+import org.chromium.chrome.test.transit.ChromeTransitTestRules;
+import org.chromium.components.download.DownloadState;
+import org.chromium.components.offline_items_collection.ContentId;
+import org.chromium.components.offline_items_collection.FailState;
+import org.chromium.components.offline_items_collection.OfflineItem;
+import org.chromium.components.offline_items_collection.OfflineItem.Progress;
+import org.chromium.components.offline_items_collection.PendingState;
+import org.chromium.components.offline_items_collection.UpdateDelta;
+import org.chromium.components.policy.test.annotations.Policies;
+import org.chromium.content_public.browser.test.util.TouchCommon;
+import org.chromium.net.test.EmbeddedTestServer;
+import org.chromium.ui.base.PageTransition;
+import org.chromium.ui.test.util.DeviceRestriction;
+import org.chromium.url.GURL;
+
+import java.util.List;
+
+/** Tests Chrome download feature by attempting to download some files. */
+@RunWith(ChromeJUnit4ClassRunner.class)
+@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
+@Batch(Batch.PER_CLASS)
+public class DownloadTest {
+    public AutoResetCtaTransitTestRule mActivityTestRule =
+            ChromeTransitTestRules.fastAutoResetCtaActivityRule();
+    public final DownloadTestRule mDownloadTestRule = new DownloadTestRule();
+
+    @Rule
+    public final RuleChain mRuleChain =
+            RuleChain.outerRule(mActivityTestRule).around(mDownloadTestRule);
+
+    private EmbeddedTestServer mTestServer;
+
+    private static final String SUPERBO_CONTENTS = "plain text response from a POST";
+
+    private static final String TEST_DOWNLOAD_DIRECTORY = "/chrome/test/data/android/download/";
+
+    private static final String FILENAME_WALLPAPER = "[large]wallpaper.dm";
+    private static final String FILENAME_TEXT = "superbo.txt";
+    private static final String FILENAME_TEXT_1 = "superbo (1).txt";
+    private static final String FILENAME_TEXT_2 = "superbo (2).txt";
+    private static final String FILENAME_SWF = "test.swf";
+    private static final String FILENAME_GZIP = "test.gzip";
+
+    private static final String[] TEST_FILES =
+            new String[] {
+                FILENAME_WALLPAPER,
+                FILENAME_TEXT,
+                FILENAME_TEXT_1,
+                FILENAME_TEXT_2,
+                FILENAME_SWF,
+                FILENAME_GZIP
+            };
+
+    static class DownloadManagerRequestInterceptorForTest
+            implements DownloadManagerService.DownloadManagerRequestInterceptor {
+        public DownloadItem mDownloadItem;
+
+        @Override
+        public void interceptDownloadRequest(DownloadItem item, boolean notifyComplete) {
+            mDownloadItem = item;
+            Assert.assertTrue(notifyComplete);
+        }
+    }
+
+    static class TestDownloadMessageUiController implements DownloadMessageUiController {
+        public TestDownloadMessageUiController() {}
+
+        @Override
+        public void onDownloadStarted() {}
+
+        @Override
+        public void showIncognitoDownloadMessage(Callback<Boolean> callback) {}
+
+        @Override
+        public void onNotificationShown(ContentId id, int notificationId) {}
+
+        @Override
+        public void addDownloadInterstitialSource(GURL originalUrl) {}
+
+        @Override
+        public boolean isDownloadInterstitialItem(GURL originalUrl, String guid) {
+            return false;
+        }
+
+        @Override
+        public void onItemsAdded(List<OfflineItem> items) {}
+
+        @Override
+        public void onItemRemoved(ContentId id) {}
+
+        @Override
+        public void onItemUpdated(OfflineItem item, UpdateDelta updateDelta) {}
+
+        @Override
+        public boolean isShowing() {
+            return false;
+        }
+    }
+
+    private static class MockNotificationService extends DownloadNotificationService {
+        @Override
+        void updateNotification(int id, Notification notification) {}
+
+        @Override
+        public void cancelNotification(int notificationId, ContentId id) {}
+
+        @Override
+        public int notifyDownloadSuccessful(
+                final ContentId id,
+                final String filePath,
+                final String fileName,
+                final long systemDownloadId,
+                final OtrProfileId otrProfileId,
+                final boolean isSupportedMimeType,
+                final boolean isOpenable,
+                final Bitmap icon,
+                final GURL originalUrl,
+                final boolean shouldPromoteOrigin,
+                final GURL referrer,
+                final long totalBytes) {
+            return 0;
+        }
+
+        @Override
+        public void notifyDownloadProgress(
+                final ContentId id,
+                final String fileName,
+                final Progress progress,
+                final long bytesReceived,
+                final long timeRemainingInMillis,
+                final long startTime,
+                final OtrProfileId otrProfileId,
+                final boolean canDownloadWhileMetered,
+                final boolean isTransient,
+                final Bitmap icon,
+                final GURL originalUrl,
+                final boolean shouldPromoteOrigin) {}
+
+        @Override
+        void notifyDownloadPaused(
+                ContentId id,
+                String fileName,
+                boolean isResumable,
+                boolean isAutoResumable,
+                OtrProfileId otrProfileId,
+                boolean isTransient,
+                Bitmap icon,
+                final GURL originalUrl,
+                final boolean shouldPromoteOrigin,
+                boolean hasUserGesture,
+                boolean forceRebuild,
+                @PendingState int pendingState) {}
+
+        @Override
+        public void notifyDownloadFailed(
+                final ContentId id,
+                final String fileName,
+                final Bitmap icon,
+                final GURL originalUrl,
+                final boolean shouldPromoteOrigin,
+                OtrProfileId otrProfileId,
+                @FailState int failState) {}
+
+        @Override
+        public void notifyDownloadCanceled(final ContentId id, boolean hasUserGesture) {}
+
+        @Override
+        void resumeDownload(Intent intent) {}
+    }
+
+    @Before
+    public void setUp() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () ->
+                        DownloadNotificationService.setInstanceForTests(
+                                new MockNotificationService()));
+
+        mActivityTestRule.startOnBlankPage();
+        mDownloadTestRule.attach(mActivityTestRule.getActivity());
+        mTestServer = mActivityTestRule.getTestServer();
+        mDownloadTestRule.resetCallbackHelper();
+    }
+
+    @After
+    public void tearDown() {
+        mDownloadTestRule.deleteFilesInDownloadDirectory(TEST_FILES);
+    }
+
+    void waitForLastDownloadToFinish() {
+        CriteriaHelper.pollUiThread(
+                () -> {
+                    List<DownloadItem> downloads = mDownloadTestRule.getAllDownloads();
+                    Criteria.checkThat(downloads.size(), Matchers.greaterThanOrEqualTo(1));
+                    Criteria.checkThat(
+                            downloads.get(downloads.size() - 1).getDownloadInfo().state(),
+                            Matchers.is(DownloadState.COMPLETE));
+                });
+    }
+
+    void waitForAnyDownloadToCancel() {
+        CriteriaHelper.pollUiThread(
+                () -> {
+                    List<DownloadItem> downloads = mDownloadTestRule.getAllDownloads();
+                    Criteria.checkThat(downloads.size(), Matchers.greaterThanOrEqualTo(1));
+                    boolean hasCanceled = false;
+                    for (DownloadItem download : downloads) {
+                        if (download.getDownloadInfo().state() == DownloadState.CANCELLED) {
+                            hasCanceled = true;
+                            break;
+                        }
+                    }
+                    Criteria.checkThat(hasCanceled, Matchers.is(true));
+                });
+    }
+
+    @Test
+    @LargeTest
+    @Feature({"Downloads"})
+    @Restriction(DeviceRestriction.RESTRICTION_TYPE_NON_AUTO)
+    public void testHttpGetDownload() throws Exception {
+        loadUrl(mTestServer.getURL(TEST_DOWNLOAD_DIRECTORY + "get.html"));
+        waitForFocus();
+        View currentView = mActivityTestRule.getActivityTab().getView();
+
+        int callCount = mDownloadTestRule.getChromeDownloadCallCount();
+        TouchCommon.singleClickView(currentView);
+        Assert.assertTrue(mDownloadTestRule.waitForChromeDownloadToFinish(callCount));
+        Assert.assertTrue(mDownloadTestRule.hasDownloaded(FILENAME_GZIP, null));
+    }
+
+    @Test
+    @LargeTest
+    @Feature({"Downloads"})
+    public void testHttpPostDownload() throws Exception {
+        loadUrl(mTestServer.getURL(TEST_DOWNLOAD_DIRECTORY + "post.html"));
+        waitForFocus();
+        View currentView = mActivityTestRule.getActivityTab().getView();
+
+        int callCount = mDownloadTestRule.getChromeDownloadCallCount();
+        TouchCommon.singleClickView(currentView);
+        Assert.assertTrue(mDownloadTestRule.waitForChromeDownloadToFinish(callCount));
+        Assert.assertTrue(mDownloadTestRule.hasDownloaded(FILENAME_TEXT, SUPERBO_CONTENTS));
+    }
+
+    @Test
+    @LargeTest
+    @Feature({"Downloads"})
+    @Restriction(DeviceRestriction.RESTRICTION_TYPE_NON_AUTO)
+    @Policies.Add({@Policies.Item(key = "PromptForDownloadLocation", string = "false")})
+    public void testCloseEmptyDownloadTab() throws Exception {
+        loadUrl(mTestServer.getURL(TEST_DOWNLOAD_DIRECTORY + "get.html"));
+        waitForFocus();
+        final int initialTabCount =
+                getTabCountOnUiThread(mActivityTestRule.getActivity().getCurrentTabModel());
+        int currentCallCount = mDownloadTestRule.getChromeDownloadCallCount();
+        View currentView = mActivityTestRule.getActivityTab().getView();
+        TouchCommon.singleClickView(currentView);
+        Assert.assertTrue(mDownloadTestRule.waitForChromeDownloadToFinish(currentCallCount));
+
+        CriteriaHelper.pollUiThread(
+                () -> {
+                    Criteria.checkThat(
+                            mActivityTestRule.getActivity().getCurrentTabModel().getCount(),
+                            Matchers.is(initialTabCount));
+                });
+    }
+
+    private void loadUrl(String url) {
+        mActivityTestRule.loadUrlInTab(
+                url,
+                PageTransition.TYPED | PageTransition.FROM_ADDRESS_BAR,
+                mActivityTestRule.getActivityTab(),
+                20L // 20 seconds timeout
+                );
+    }
+
+    private void waitForFocus() {
+        View currentView = mActivityTestRule.getActivityTab().getView();
+        if (!currentView.hasFocus()) {
+            TouchCommon.singleClickView(currentView);
+        }
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+    }
+}

@@ -1,0 +1,42 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("ui") {
+  sources = [
+    "shop_card_commands.h",
+    "shop_card_config.h",
+    "shop_card_config.mm",
+    "shop_card_view.h",
+    "shop_card_view.mm",
+  ]
+  public_deps =
+      [ "//ios/chrome/browser/content_suggestions/magic_stack/ui:public" ]
+  deps = [
+    ":card_data",
+    "//base",
+    "//base:i18n",
+    "//components/url_formatter",
+    "//ios/chrome/browser/content_suggestions/public:constants",
+    "//ios/chrome/browser/ntp/ui_bundled:feature_flags",
+    "//ios/chrome/browser/ntp/ui_bundled:theme",
+    "//ios/chrome/browser/price_notifications/ui_bundled/cells",
+    "//ios/chrome/browser/shared/ui/elements/gradient",
+    "//ios/chrome/browser/shared/ui/symbols",
+    "//ios/chrome/browser/shared/ui/util",
+    "//ios/chrome/common/ui/colors",
+    "//ios/chrome/common/ui/util",
+    "//url",
+  ]
+  frameworks = [ "UIKit.framework" ]
+}
+
+source_set("card_data") {
+  sources = [
+    "shop_card_data.h",
+    "shop_card_data.mm",
+  ]
+  public_deps = [ "//components/commerce/core:commerce_types" ]
+  deps = [ "//url" ]
+  frameworks = [ "UIKit.framework" ]
+}

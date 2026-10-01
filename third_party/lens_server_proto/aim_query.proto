@@ -1,0 +1,149 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+edition = "2024";
+
+option optimize_for = LITE_RUNTIME;
+
+package lens;
+
+import "added_inputs.proto";
+import "lens_overlay_contextual_inputs.proto";
+import "lens_overlay_request_id.proto";
+import "lens_overlay_visual_input_type.proto";
+import "lens_overlay_visual_search_interaction_data.proto";
+
+// TODO(crbug.com/479869659): Deprecated, use LensFile instead.
+message ContextMetadata {
+  string pdf_title = 1;
+}
+
+// The collection of parameters required to execute a Lens query as part of AI
+// Mode.
+message LensImageQueryData {
+  // ID for subsequent search requests.
+  string search_session_id = 1;
+
+  // A preformatted request ID to send for the current Lens query.
+  LensOverlayRequestId request_id = 2;
+
+  // The type of visual input provided for the query.
+  LensOverlayVisualInputType visual_input_type = 4 [deprecated = true];
+
+  // The visual input interaction data for the query.
+  LensOverlayVisualSearchInteractionData visual_search_interaction_data = 7;
+
+  // Metadata for the context.
+  ContextMetadata context_metadata = 8;
+
+  // The upload type of the contextual input.
+  LensOverlayContextualInputUploadType contextual_input_upload_type = 9;
+
+  // Optional Google Drive document/file ID of the contextual input snippet
+  // representing the upload.
+  string drive_id = 10;
+
+  // Deprecated fields to match the Silk LensImageQueryData.
+  reserved 3, 5;
+}
+// Metadata for context for the turn.
+message ContextTurnMetadata {
+  int64 context_id = 1;
+
+  message TabMetadata {
+    // Whether the tab as represented by the context_id is actively shown
+    // to the user at the time the turn was made.
+    bool is_active_tab = 1;
+  }
+
+  oneof metadata {
+    TabMetadata tab_metadata = 2;
+  }
+}
+// The AIM model mode that is applied to a query.
+// Next ID: 4
+enum ModelMode {
+  // Unspecified model mode.
+  MODEL_MODE_UNSPECIFIED = 0;
+  // Gemini regular model mode.
+  MODEL_MODE_GEMINI_REGULAR = 1;
+  // Gemini pro model mode.
+  MODEL_MODE_GEMINI_PRO = 2;
+  // Autoroute mode.
+  MODEL_MODE_GEMINI_PRO_AUTOROUTE = 3;
+}
+
+// AIM ToolMode to apply to a query.
+// In the AIM Composebox, tools can be added to a query to enter a
+// specific mode. For example, some modes include "deep search", "create
+// images", and "canvas".
+// Next ID: 12
+enum ToolMode {
+  TOOL_MODE_UNSPECIFIED = 0;
+  TOOL_MODE_DEEP_SEARCH = 1;
+  TOOL_MODE_CANVAS = 2;
+  TOOL_MODE_GEMINI_PRO = 3;
+  TOOL_MODE_IMAGE_GEN = 4;
+  TOOL_MODE_DEEP_BROWSE = 5;
+  TOOL_MODE_IMAGE_GEN_SELFIE = 6;
+  TOOL_MODE_IMAGE_GEN_UPLOAD = 7;
+  TOOL_MODE_DISABLE_SUGGEST = 8;
+  TOOL_MODE_AIM = 9;
+  TOOL_MODE_AIM_GEN_PROMPT = 10;
+  TOOL_MODE_AGENT_TASK = 11;
+}
+
+// The set of data that's required to generate a response from the LLM.
+message QueryPayload {
+  // The input source of the query text.
+  enum QueryTextSource {
+    QUERY_TEXT_SOURCE_UNSPECIFIED = 0;
+    QUERY_TEXT_SOURCE_KEYBOARD_INPUT = 1;
+    QUERY_TEXT_SOURCE_VOICE_INPUT = 2;
+  }
+
+  // The user query.
+  string query_text = 1;
+
+  // The input source of the query text.
+  QueryTextSource query_text_source = 3;
+
+  // Query data returned if Lens was invoked.
+  repeated LensImageQueryData lens_image_query_data = 2;
+
+  // Whether to use research agent for this query.
+  bool use_research_agent = 4;
+
+  // Whether to use canvas for this query.
+  bool use_canvas = 11;
+
+  // Whether to use Image Generation for this query.
+  bool use_image_generation = 12;
+
+  // Additional non-text inputs to be attached to the query.
+  AddedInputs added_inputs = 8;
+
+  // CGI params.
+  map<string, string> cgi_params = 9;
+
+  // Information about the context that is turn-specific.
+  // If a piece of context is not included here, then there is nothing
+  // remarkable about the context that is turn-specific. Should just use context
+  // as is.
+  repeated ContextTurnMetadata context_turn_metadata = 14;
+
+  // The model mode to use for this query.
+  ModelMode model_mode = 13;
+
+  // The tool mode to use for this query.
+  ToolMode tool_mode = 15;
+
+  // The list of expired/deleted Lens context IDs sent by the client. These are
+  // Base64Url-encoded serialized `lens.request_context.RequestId` proto
+  // messages.
+  repeated string expired_lens_ids = 17;
+
+  // Deprecated fields to match the Silk QueryPayload.
+  reserved 5, 7;
+}

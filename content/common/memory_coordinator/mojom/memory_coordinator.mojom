@@ -1,0 +1,76 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module content.mojom;
+
+import "mojo/public/mojom/base/memory_limit.mojom";
+
+[EnableIf=ENABLE_MEMORY_COORDINATOR_INTERNALS]
+import "content/common/memory_coordinator/mojom/memory_coordinator_diagnostics.mojom";
+
+// Represents a memory update for a consumer.
+struct MemoryConsumerUpdate {
+  uint32 consumer_id;
+  mojo_base.mojom.MemoryLimit? memory_limit;
+  bool release_memory;
+};
+
+// The interface for communicating with the MemoryCoordinator in a child
+// process. This handles Browser -> Child communication.
+interface ChildMemoryCoordinator {
+  // Notifies of multiple changes at once.
+  UpdateConsumers(array<MemoryConsumerUpdate> updates);
+
+  // Sets an override that bypasses local policies in the child process.
+  SetOverrideLimit(uint32 consumer_id, int32 percentage);
+
+  // Clears an override in the child process.
+  ClearOverrideLimit(uint32 consumer_id, int32 policy_limit);
+
+  // Enables diagnostics for this process. The child process should use the host
+  // to report state changes.
+  [EnableIf=ENABLE_MEMORY_COORDINATOR_INTERNALS]
+  EnableDiagnosticsReporting(
+      pending_remote<MemoryCoordinatorDiagnosticsHost> host);
+};
+
+// This struct directly corresponds to base::MemoryConsumerTraits, from which it
+// is converted back and forth. See base/memory_coordinator/traits.h for a
+// description of each trait.
+struct MemoryConsumerTraits {
+  uint8 consumer_type;
+  uint8 estimated_memory_usage;
+  uint8 release_memory_cost;
+  uint8 information_retention;
+  uint8 execution_type;
+  uint8 supports_memory_limit;
+  uint8 in_process;
+  uint8 recreate_memory_cost;
+  uint8 release_gc_references;
+  uint8 garbage_collects_v8_heap;
+  uint8 is_stateful;
+};
+
+// The registration of a single MemoryConsumer. Used by RegisterMany().
+struct MemoryConsumerRegistration {
+  uint32 consumer_id;
+  string consumer_name;
+  MemoryConsumerTraits traits;
+};
+
+// The interface for communicating with the MemoryConsumerRegistry that lives in
+// the browser process. This handles Child -> Browser communication.
+interface ChildMemoryConsumerRegistryHost {
+  // Binds the ChildMemoryCoordinator interface for the process associated with
+  // this host.
+  BindCoordinator(pending_remote<ChildMemoryCoordinator> coordinator);
+
+  // Registers multiple MemoryConsumers with the browser-side registry in a
+  // single IPC. The child uses this to register consumers in a batched manner
+  // to avoid sending one IPC per consumer.
+  Register(array<MemoryConsumerRegistration> registrations);
+
+  // Unregisters a MemoryConsumer with the browser-side registry.
+  Unregister(uint32 consumer_id);
+};

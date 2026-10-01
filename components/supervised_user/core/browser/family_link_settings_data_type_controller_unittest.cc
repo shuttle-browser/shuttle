@@ -1,0 +1,87 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/supervised_user/core/browser/family_link_settings_data_type_controller.h"
+
+#include "base/functional/callback_helpers.h"
+#include "base/test/mock_callback.h"
+#include "components/prefs/pref_registry_simple.h"
+#include "components/prefs/testing_pref_service.h"
+#include "components/supervised_user/core/common/pref_names.h"
+#include "components/supervised_user/core/common/supervised_user_constants.h"
+#include "components/sync/base/sync_mode.h"
+#include "components/sync/service/data_type_controller.h"
+#include "components/sync/test/mock_sync_service.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+using syncer::DataTypeController;
+using ::testing::Return;
+
+class FamilyLinkSettingsDataTypeControllerTest : public testing::Test {
+ public:
+  void SetUp() override {
+    pref_service_.registry()->RegisterStringPref(prefs::kSupervisedUserId,
+                                                 std::string());
+  }
+
+ protected:
+  TestingPrefServiceSimple pref_service_;
+};
+
+TEST_F(FamilyLinkSettingsDataTypeControllerTest,
+       SupervisedUserMeetsPreconditions) {
+  pref_service_.SetString(prefs::kSupervisedUserId,
+                          supervised_user::kChildAccountSUID);
+  FamilyLinkSettingsDataTypeController controller(
+      /*dump_stack=*/base::DoNothing(),
+      /*store_factory=*/base::DoNothing(),
+      /*syncable_service=*/nullptr, &pref_service_,
+      /*sync_service=*/nullptr);
+  EXPECT_EQ(
+      DataTypeController::PreconditionState::kPreconditionsMet,
+      controller.GetPreconditionState(
+          syncer::DataTypeController::PreconditionContext(
+              signin::AccountManagedStatusFinderOutcome::kConsumerGmail)));
+}
+
+TEST_F(FamilyLinkSettingsDataTypeControllerTest,
+       NonSupervisedUserDoesNotMeetPreconditions) {
+  FamilyLinkSettingsDataTypeController controller(
+      /*dump_stack=*/base::DoNothing(),
+      /*store_factory=*/base::DoNothing(),
+      /*syncable_service=*/nullptr, &pref_service_,
+      /*sync_service=*/nullptr);
+  EXPECT_EQ(
+      DataTypeController::PreconditionState::kMustStopAndClearData,
+      controller.GetPreconditionState(
+          syncer::DataTypeController::PreconditionContext(
+              signin::AccountManagedStatusFinderOutcome::kConsumerGmail)));
+}
+
+TEST_F(FamilyLinkSettingsDataTypeControllerTest, HasTransportModeDelegate) {
+  FamilyLinkSettingsDataTypeController controller(
+      /*dump_stack=*/base::DoNothing(),
+      /*store_factory=*/base::DoNothing(),
+      /*syncable_service=*/nullptr, &pref_service_,
+      /*sync_service=*/nullptr);
+  EXPECT_TRUE(
+      controller.GetDelegateForTesting(syncer::SyncMode::kTransportOnly));
+}
+
+TEST_F(FamilyLinkSettingsDataTypeControllerTest,
+       TriggersDataTypePreconditionChangedOnPrefChange) {
+  syncer::MockSyncService mock_sync_service;
+  FamilyLinkSettingsDataTypeController controller(
+      /*dump_stack=*/base::DoNothing(),
+      /*store_factory=*/base::DoNothing(),
+      /*syncable_service=*/nullptr, &pref_service_, &mock_sync_service);
+
+  EXPECT_CALL(mock_sync_service,
+              DataTypePreconditionChanged(syncer::SUPERVISED_USER_SETTINGS))
+      .Times(1);
+
+  pref_service_.SetString(prefs::kSupervisedUserId,
+                          supervised_user::kChildAccountSUID);
+}

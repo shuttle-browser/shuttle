@@ -1,0 +1,355 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.media.immersive_playback.components;
+
+import static org.chromium.build.NullUtil.assumeNonNull;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.os.Bundle;
+import android.view.View;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityNodeInfo;
+
+import androidx.annotation.VisibleForTesting;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.components.thinwebview.CompositorView;
+import org.chromium.components.thinwebview.CompositorViewFactory;
+import org.chromium.components.thinwebview.ThinWebViewConstraints;
+import org.chromium.ui.base.WindowAndroid;
+import org.chromium.ui.modelutil.PropertyKey;
+import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.ui.modelutil.PropertyModelChangeProcessor;
+import org.chromium.ui.xr.scenecore.XrCurvedSurfaceEntityHolder;
+import org.chromium.ui.xr.scenecore.XrFloatSize3d;
+import org.chromium.ui.xr.scenecore.XrInteractableComponent;
+import org.chromium.ui.xr.scenecore.XrMovableComponent;
+import org.chromium.ui.xr.scenecore.XrPixelDensity;
+import org.chromium.ui.xr.scenecore.XrPose;
+import org.chromium.ui.xr.scenecore.XrResizableComponent;
+import org.chromium.ui.xr.scenecore.XrSceneCoreSessionManager;
+import org.chromium.ui.xr.scenecore.XrSurfaceEntityHolder;
+import org.chromium.ui.xr.scenecore.XrSurfaceEntityShape;
+import org.chromium.ui.xr.scenecore.XrSurfaceEntityStereoMode;
+import org.chromium.ui.xr.scenecore.XrSurfaceEntityView;
+import org.chromium.ui.xr.scenecore.XrVector3;
+
+/** Coordinator for the video player panel. */
+@NullMarked
+public class ImmersiveVideoPlayerCoordinator {
+    /** Delegate for player panel interactions and pose changes. */
+    public interface Delegate {
+        void onPlayerPanelClicked();
+
+        void onPlayerPanelPoseChangeStart(XrPose pose);
+
+        void onPlayerPanelPoseChangeUpdate(XrPose pose);
+
+        void onPlayerPanelPoseChangeEnd(XrPose pose);
+
+        void onPlayerPanelResized(XrFloatSize3d size);
+
+        void onPlayerPanelDragStart(XrVector3 origin, XrVector3 direction);
+
+        void onPlayerPanelDragUpdate(XrVector3 origin, XrVector3 direction);
+
+        void onPlayerPanelDragEnd(XrVector3 origin, XrVector3 direction);
+    }
+
+    private final PropertyModel mModel;
+    private final XrPixelDensity mPixelDensity;
+    private final Activity mActivity;
+    private final WindowAndroid mWindowAndroid;
+    private final XrSceneCoreSessionManager mSessionManager;
+    private final Delegate mDelegate;
+    private final XrMovableComponent.OnMoveListener mOnMoveListener =
+            new XrMovableComponent.OnMoveListener() {
+                @Override
+                public void onMoveStart(XrPose pose, float scale) {
+                    mDelegate.onPlayerPanelPoseChangeStart(pose);
+                }
+
+                @Override
+                public void onMoveUpdate(XrPose pose, float scale) {
+                    mDelegate.onPlayerPanelPoseChangeUpdate(pose);
+                }
+
+                @Override
+                public void onMoveEnd(XrPose pose, float scale) {
+                    mDelegate.onPlayerPanelPoseChangeEnd(pose);
+                }
+            };
+
+    private final XrResizableComponent.OnResizeListener mOnResizeListener =
+            new XrResizableComponent.OnResizeListener() {
+                @Override
+                public void onResizeUpdate(XrFloatSize3d size) {
+                    mDelegate.onPlayerPanelResized(size);
+                }
+
+                @Override
+                public void onResizeEnd(XrFloatSize3d size) {
+                    mDelegate.onPlayerPanelResized(size);
+                }
+            };
+
+    private final XrInteractableComponent.OnDragListener mOnDragListener =
+            new XrInteractableComponent.OnDragListener() {
+                @Override
+                public void onDragStart(XrVector3 origin, XrVector3 direction) {
+                    mDelegate.onPlayerPanelDragStart(origin, direction);
+                }
+
+                @Override
+                public void onDragUpdate(XrVector3 origin, XrVector3 direction) {
+                    mDelegate.onPlayerPanelDragUpdate(origin, direction);
+                }
+
+                @Override
+                public void onDragEnd(XrVector3 origin, XrVector3 direction) {
+                    mDelegate.onPlayerPanelDragEnd(origin, direction);
+                }
+            };
+
+    private final View.AccessibilityDelegate mAccessibilityDelegate =
+            new View.AccessibilityDelegate() {
+                @Override
+                public void onInitializeAccessibilityNodeInfo(
+                        View host, AccessibilityNodeInfo info) {
+                    super.onInitializeAccessibilityNodeInfo(host, info);
+                    info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK);
+                    info.setClickable(true);
+                }
+
+                @Override
+                public boolean performAccessibilityAction(
+                        View host, int action, @Nullable Bundle args) {
+                    if (action == AccessibilityNodeInfo.ACTION_CLICK) {
+                        mDelegate.onPlayerPanelClicked();
+                        return true;
+                    }
+                    return super.performAccessibilityAction(host, action, args);
+                }
+            };
+
+    private final ImmersiveVideoPlayerMediator mMediator;
+    private @Nullable CompositorView mCompositorView;
+    private @Nullable XrSurfaceEntityHolder mHolder;
+    private @Nullable
+            PropertyModelChangeProcessor<PropertyModel, XrSurfaceEntityHolder, PropertyKey>
+            mModelChangeProcessor;
+    private boolean mIsDisposed;
+
+    /**
+     * Creates a new {@link ImmersiveVideoPlayerCoordinator}.
+     *
+     * @param activity The {@link Activity} context.
+     * @param windowAndroid The {@link WindowAndroid}.
+     * @param sessionManager The {@link XrSceneCoreSessionManager}.
+     * @param delegate The {@link Delegate}.
+     */
+    public ImmersiveVideoPlayerCoordinator(
+            Activity activity,
+            WindowAndroid windowAndroid,
+            XrSceneCoreSessionManager sessionManager,
+            Delegate delegate) {
+        mActivity = activity;
+        mWindowAndroid = windowAndroid;
+        mSessionManager = sessionManager;
+        mDelegate = delegate;
+        mPixelDensity = sessionManager.getPixelDensity();
+
+        mModel =
+                new PropertyModel.Builder(ImmersiveVideoPlayerProperties.ALL_KEYS)
+                        .with(ImmersiveVideoPlayerProperties.DEFAULT_PIXEL_DENSITY, mPixelDensity)
+                        .with(ImmersiveVideoPlayerProperties.DEFAULT_WIDTH_DP, 1000)
+                        .with(ImmersiveVideoPlayerProperties.DEFAULT_MIN_WIDTH_DP, 1000)
+                        .with(ImmersiveVideoPlayerProperties.DEFAULT_MAX_WIDTH_DP, 3000)
+                        .with(ImmersiveVideoPlayerProperties.DEFAULT_CURVE_RADIUS_DP, 5000)
+                        .with(ImmersiveVideoPlayerProperties.DEFAULT_ASPECT_RATIO, 16f / 9f)
+                        .with(ImmersiveVideoPlayerProperties.DEFAULT_FEATHER_RADIUS_DP, 100)
+                        .with(ImmersiveVideoPlayerProperties.DEFAULT_CORNER_RADIUS_DP, 24)
+                        .with(
+                                ImmersiveVideoPlayerProperties.STEREO_MODE,
+                                XrSurfaceEntityStereoMode.MONO)
+                        .with(
+                                ImmersiveVideoPlayerProperties.SHAPE,
+                                // TODO(crbug.com/550356627): Switch back to the QUAD shape once
+                                // updated to the latest SceneCore version.
+                                XrSurfaceEntityShape.ROUNDED_QUAD)
+                        .build();
+
+        mMediator = new ImmersiveVideoPlayerMediator(mModel);
+    }
+
+    private void ensureInitialized() {
+        if (mCompositorView != null) return;
+
+        mCompositorView = createCompositorView(mActivity, mWindowAndroid, mSessionManager);
+        View playerView = mCompositorView.getView();
+        if (playerView != null) {
+            playerView.setFocusable(true);
+            playerView.setFocusableInTouchMode(true);
+            playerView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+            playerView.setContentDescription(
+                    mActivity.getString(org.chromium.chrome.R.string.accessibility_video_player));
+            playerView.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+            playerView.setAccessibilityDelegate(mAccessibilityDelegate);
+        }
+        mHolder =
+                (playerView instanceof XrSurfaceEntityView)
+                        ? ((XrSurfaceEntityView) playerView).getHolder()
+                        : null;
+
+        if (mHolder != null) {
+            mHolder.getInteractableComponent().addOnClickListener(mDelegate::onPlayerPanelClicked);
+            mHolder.getInteractableComponent().addOnDragListener(mOnDragListener);
+            mHolder.getMovableComponent().addMoveListener(mOnMoveListener);
+            mHolder.getResizableComponent().addResizeListener(mOnResizeListener);
+            mModelChangeProcessor =
+                    PropertyModelChangeProcessor.create(
+                            mModel, mHolder, ImmersiveVideoPlayerViewBinder::bind);
+        }
+    }
+
+    /** Shows the player panel. */
+    public void show() {
+        if (mIsDisposed) return;
+
+        ensureInitialized();
+        if (mHolder != null) {
+            mSessionManager.getMainPanelEntity().setEntityEnabled(false);
+            mHolder.setEntityEnabled(true);
+        }
+        View playerView = mCompositorView != null ? mCompositorView.getView() : null;
+        if (playerView != null) {
+            playerView.requestFocus();
+        }
+    }
+
+    /** Disposes the player panel. */
+    public void dispose() {
+        if (mIsDisposed) return;
+
+        mIsDisposed = true;
+        mMediator.destroy();
+        if (mModelChangeProcessor != null) {
+            mModelChangeProcessor.destroy();
+            mModelChangeProcessor = null;
+        }
+        if (mHolder != null) {
+            mHolder.dispose();
+            mHolder = null;
+        }
+    }
+
+    /** Returns the {@link CompositorView}. */
+    public CompositorView getCompositorView() {
+        return assumeNonNull(mCompositorView);
+    }
+
+    /** Returns the {@link XrSurfaceEntityHolder}. */
+    public @Nullable XrSurfaceEntityHolder getHolder() {
+        return mHolder;
+    }
+
+    /**
+     * Updates the video layout.
+     *
+     * @param stereoMode The stereo mode.
+     * @param shape The shape.
+     */
+    public void updateVideoLayout(
+            @XrSurfaceEntityStereoMode int stereoMode, @XrSurfaceEntityShape int shape) {
+        if (mIsDisposed) return;
+        mMediator.updateVideoLayout(stereoMode, shape);
+    }
+
+    /** Updates the pose. */
+    public void updatePose(XrPose pose) {
+        if (mIsDisposed) return;
+        mMediator.updatePose(pose);
+    }
+
+    /**
+     * Updates the player size.
+     *
+     * @param width The width in pixels.
+     * @param height The height in pixels.
+     */
+    public void updatePlayerSize(int width, int height) {
+        if (mIsDisposed) return;
+        mMediator.updatePlayerSize(width, height);
+    }
+
+    /** Sets whether the video player panel is interactable. */
+    public void setInteractable(boolean interactable) {
+        if (mHolder != null) {
+            mHolder.getInteractableComponent().setInteractable(interactable);
+        }
+    }
+
+    /** Requests accessibility focus on the player view. */
+    @SuppressLint("AccessibilityFocus")
+    public void requestFocusForAccessibility() {
+        View playerView = mCompositorView != null ? mCompositorView.getView() : null;
+        if (playerView != null) {
+            playerView.post(
+                    () -> {
+                        playerView.requestFocus();
+                        playerView.performAccessibilityAction(
+                                android.view.accessibility.AccessibilityNodeInfo
+                                        .ACTION_ACCESSIBILITY_FOCUS,
+                                null);
+                        playerView.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_FOCUSED);
+                    });
+        }
+    }
+
+    /** Returns the layout height of the video surface. */
+    public float getLayoutHeight() {
+        if (mHolder != null && XrSurfaceEntityShape.Utils.isPlanar(mHolder.getSurfaceShape())) {
+            return mHolder.getEntitySize().getHeight();
+        }
+        return getDefaultLayoutHeight();
+    }
+
+    /** Returns the curve radius. */
+    public float getCurveRadius() {
+        if (mHolder != null && mHolder instanceof XrCurvedSurfaceEntityHolder) {
+            return ((XrCurvedSurfaceEntityHolder) mHolder).getEntityRadius();
+        }
+        int defaultRadiusDp = mModel.get(ImmersiveVideoPlayerProperties.DEFAULT_CURVE_RADIUS_DP);
+        if (defaultRadiusDp > 0) {
+            return mPixelDensity.convertDpToMeters(defaultRadiusDp);
+        }
+        return 0f;
+    }
+
+    private float getDefaultLayoutHeight() {
+        int defaultWidthDp = mModel.get(ImmersiveVideoPlayerProperties.DEFAULT_WIDTH_DP);
+        Float defaultAspectRatio = mModel.get(ImmersiveVideoPlayerProperties.DEFAULT_ASPECT_RATIO);
+        if (defaultWidthDp > 0 && defaultAspectRatio != null && defaultAspectRatio > 0) {
+            float defaultWidthMeters = mPixelDensity.convertDpToMeters(defaultWidthDp);
+            return defaultWidthMeters / defaultAspectRatio;
+        }
+        return 0f;
+    }
+
+    @VisibleForTesting
+    protected CompositorView createCompositorView(
+            Activity activity,
+            WindowAndroid windowAndroid,
+            XrSceneCoreSessionManager sessionManager) {
+        return CompositorViewFactory.create(
+                activity,
+                windowAndroid,
+                new ThinWebViewConstraints(),
+                sessionManager,
+                XrSurfaceEntityShape.ROUNDED_QUAD);
+    }
+}

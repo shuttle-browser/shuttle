@@ -1,0 +1,165 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.tab;
+
+import android.graphics.Rect;
+
+import org.chromium.base.lifetime.Destroyable;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.util.PictureInPictureWindowOptions;
+import org.chromium.chrome.browser.util.WindowFeatures;
+import org.chromium.components.embedder_support.delegate.WebContentsDelegateAndroid;
+import org.chromium.content_public.browser.WebContents;
+import org.chromium.url.GURL;
+
+import java.util.List;
+
+/** A basic {@link WebContentsDelegateAndroid} that proxies methods into Tab. */
+@NullMarked
+public abstract class TabWebContentsDelegateAndroid extends WebContentsDelegateAndroid
+        implements Destroyable {
+    /**
+     * Returns whether the page should resume accepting requests for the new window. This is used
+     * when window creation is asynchronous and the navigations need to be delayed.
+     */
+    protected abstract boolean shouldResumeRequestsForCreatedWindow();
+
+    /**
+     * Creates a new tab with the already-created WebContents. The tab for the added contents should
+     * be reparented correctly when this method returns.
+     *
+     * @param sourceWebContents Source WebContents from which the new one is created.
+     * @param webContents Newly created WebContents object.
+     * @param targetUrl URL that was used to create the new WebContents object.
+     * @param disposition WindowOpenDisposition indicating how the tab should be created.
+     * @param windowFeatures Initial window features to be used for the new tab.
+     * @param userGesture {@code true} if opened by user gesture.
+     * @param pictureInPictureWindowOptions Picture-in-Picture window options.
+     * @return {@code true} if new tab was created successfully with a given WebContents.
+     */
+    protected abstract boolean addNewContents(
+            @Nullable WebContents sourceWebContents,
+            WebContents webContents,
+            GURL targetUrl,
+            int disposition,
+            WindowFeatures windowFeatures,
+            boolean userGesture,
+            @Nullable PictureInPictureWindowOptions pictureInPictureWindowOptions);
+
+    /**
+     * Sets the overlay mode.
+     * Overlay mode means that we are currently using AndroidOverlays to display video, and
+     * that the compositor's surface should support alpha and not be marked as opaque.
+     */
+    protected abstract void setOverlayMode(boolean useOverlayMode);
+
+    /**
+     * Provides info on web preferences for viewing downloaded media.
+     * @return enabled Whether embedded media experience should be enabled.
+     */
+    protected boolean shouldEnableEmbeddedMediaExperience() {
+        return false;
+    }
+
+    /**
+     * @return true if the OS currently prevents the creation of a Document Picture-in-Picture
+     *     window.
+     */
+    protected boolean isDocumentPictureInPictureBlockedBySystem() {
+        return false;
+    }
+
+    /**
+     * @return web preferences for enabling Picture-in-Picture.
+     */
+    protected boolean isPictureInPictureEnabled() {
+        return false;
+    }
+
+    /**
+     * @return whether immersive Picture-in-Picture playback is enabled.
+     */
+    protected boolean isImmersivePlaybackEnabled() {
+        return false;
+    }
+
+    /**
+     * Return true if app banners are to be permitted in this tab. May need to be overridden.
+     *
+     * @return true if app banners are permitted, and false otherwise.
+     */
+    protected boolean canShowAppBanners() {
+        return true;
+    }
+
+    /**
+     * @return the WebAPK manifest scope. This gives frames within the scope increased privileges
+     * such as autoplaying media unmuted.
+     */
+    protected @Nullable String getManifestScope() {
+        return null;
+    }
+
+    /**
+     * Checks if the associated tab is currently presented in the context of custom tabs.
+     *
+     * @return true if this is currently a custom tab.
+     */
+    protected boolean isCustomTab() {
+        return false;
+    }
+
+    /**
+     * Checks if the associated tab is currently presented as a contextual popup.
+     *
+     * @return true if this is currently a contextual popup.
+     */
+    protected boolean isPopup() {
+        return false;
+    }
+
+    /**
+     * Checks if the associated tab is running an activity for installed webapp (TWA only for now),
+     * and whether the geolocation request should be delegated to the client app.
+     * @return true if this is TWA and should delegate geolocation request.
+     */
+    protected boolean isInstalledWebappDelegateGeolocation() {
+        return false;
+    }
+
+    /**
+     * Checks if the associated tab uses modal context menu.
+     * @return true if the current tab uses modal context menu.
+     */
+    protected boolean isModalContextMenu() {
+        return true;
+    }
+
+    /**
+     * @return true if the WebContents is a TWA.
+     */
+    public boolean isTrustedWebActivity(WebContents webContents) {
+        return false;
+    }
+
+    /** Return if dynamically change safe area insets as browser controls scroll. */
+    protected boolean isDynamicSafeAreaInsetsEnabled() {
+        return false;
+    }
+
+    /** Called when WebContents reports a change to the non-draggable regions in header content. */
+    protected void nonDraggableRegionsChanged(List<Rect> regions) {}
+
+    /**
+     * Called when WebContents is about to handle a keyboard event.
+     *
+     * @param nativeKeyEvent The native key event.
+     * @return true if the event was handled.
+     */
+    protected boolean preHandleKeyboardEvent(long nativeKeyEvent) {
+        return false;
+    }
+}

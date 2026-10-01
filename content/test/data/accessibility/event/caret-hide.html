@@ -1,0 +1,31 @@
+<!--
+@WIN-DENY:IA2_EVENT_TEXT_INSERTED*
+@WIN-DENY:IA2_EVENT_TEXT_REMOVED*
+-->
+<!DOCTYPE html>
+<html>
+<body>
+<input id="in1" type="text" value="abcde">
+<input id="btn" type="submit">
+<script>
+  const go_passes = [
+    () => {
+      const inp = document.getElementById('in1');
+      inp.focus();
+      inp.setSelectionRange(0, 0);
+    },
+    () => {
+      document.getElementById('btn').focus();
+      const inp = document.getElementById('in1');
+      inp.value = 'end';
+    }
+  ];
+
+  let current_pass = 0;
+  function go() {
+    go_passes[current_pass++].call();
+    return current_pass < go_passes.length;
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// clang-format off
+import 'chrome://settings/settings.js';
+
+import {webUIListenerCallback} from 'chrome://resources/js/cr.js';
+import type {CategorizedTemplateUrls, FeatureShortcutsPageElement} from 'chrome://settings/settings.js';
+import {SearchEnginesBrowserProxyImpl, SearchEnginesInteractions} from 'chrome://settings/settings.js';
+import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import {loadTimeData} from 'chrome://settings/settings.js';
+import {isVisible, microtasksFinished} from 'chrome://webui-test/test_util.js';
+
+import {createSampleSearchEngine, TestSearchEnginesBrowserProxy} from './test_search_engines_browser_proxy.js';
+
+// clang-format on
+
+/**
+ * Generates sample CategorizedTemplateUrls for testing the UI.
+ */
+function generateCategorizedTemplateUrls(): CategorizedTemplateUrls {
+  return {
+    activeSiteShortcuts: [],
+    inactiveSiteShortcuts: [],
+    activeFeatureShortcuts: [
+      createSampleSearchEngine({
+        name: 'Feature 1',
+        id: 30,
+        url: 'chrome://feature1',
+        keyword: 'f1',
+      }),
+    ],
+    inactiveFeatureShortcuts: [
+      createSampleSearchEngine({
+        name: 'Inactive Feature 1',
+        id: 40,
+        url: 'chrome://infeature1',
+        keyword: 'if1',
+      }),
+    ],
+  };
+}
+
+suite('FeatureShortcutsPageTest', function() {
+  let page: FeatureShortcutsPageElement;
+  let browserProxy: TestSearchEnginesBrowserProxy;
+
+  setup(async function() {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    browserProxy = new TestSearchEnginesBrowserProxy();
+    const categorizedData = generateCategorizedTemplateUrls();
+    browserProxy.setCategorizedTemplateUrls(categorizedData);
+    SearchEnginesBrowserProxyImpl.setInstance(browserProxy);
+
+    loadTimeData.overrideValues({
+      searchSettingsUpdate: true,
+    });
+
+    page = document.createElement('settings-feature-shortcuts-page');
+    document.body.appendChild(page);
+    await browserProxy.whenCalled('getCategorizedTemplateUrls');
+    await microtasksFinished();
+  });
+
+  test('SectionsVisibleAndInitialState', async function() {
+    assertFalse(page.$.activeShortcutsRow.expanded);
+    assertFalse(page.$.inactiveShortcutsRow.expanded);
+    assertFalse(isVisible(page.$.activeShortcutsList));
+    assertFalse(isVisible(page.$.activeShortcutsList));
+
+    // Expand the sections, which should show the lists.
+    page.$.activeShortcutsRow.click();
+    page.$.inactiveShortcutsRow.click();
+    await microtasksFinished();
+
+    assertTrue(page.$.activeShortcutsRow.expanded);
+    assertTrue(page.$.inactiveShortcutsRow.expanded);
+    assertTrue(isVisible(page.$.activeShortcutsList));
+    assertTrue(isVisible(page.$.activeShortcutsList));
+  });
+
+  test('ReactToChangesFromBrowserProxy', async function() {
+    // Initial state
+    assertEquals(1, page.$.activeShortcutsList.engines.length);
+    assertEquals(1, page.$.inactiveShortcutsList.engines.length);
+
+    // Move the inactive feature shortcut to the active ones.
+    const categorizedData = generateCategorizedTemplateUrls();
+    categorizedData.activeFeatureShortcuts.push(
+        ...categorizedData.inactiveFeatureShortcuts);
+    categorizedData.inactiveFeatureShortcuts = [];
+    browserProxy.setCategorizedTemplateUrls(categorizedData);
+    webUIListenerCallback('search-engines-changed', categorizedData);
+    await microtasksFinished();
+
+    // Updated state
+    assertEquals(2, page.$.activeShortcutsList.engines.length);
+    assertEquals(0, page.$.inactiveShortcutsList.engines.length);
+  });
+
+  // Tests that there is a message shown if there are no shortcuts present for
+  // the section.
+  test('NoResultsState', async function() {
+    const emptyCategorizedData = {
+      activeSiteShortcuts: [],
+      inactiveSiteShortcuts: [],
+      activeFeatureShortcuts: [],
+      inactiveFeatureShortcuts: [],
+    };
+    browserProxy.setCategorizedTemplateUrls(emptyCategorizedData);
+    webUIListenerCallback('search-engines-changed', emptyCategorizedData);
+    await microtasksFinished();
+
+    assertFalse(isVisible(page.$.noActiveShortcutsFound));
+    assertFalse(isVisible(page.$.noInactiveShortcutsFound));
+
+    // Expand the sections, which should show the active/inactive feature and
+    // extension shortcuts messages.
+    page.$.activeShortcutsRow.click();
+    page.$.inactiveShortcutsRow.click();
+    await microtasksFinished();
+
+    assertTrue(isVisible(page.$.noActiveShortcutsFound));
+    assertTrue(isVisible(page.$.noInactiveShortcutsFound));
+  });
+
+  test('RecordInteractionWhenSectionsAreExpandedOrCollapsed', async function() {
+    // Expand the active shortcuts section.
+    browserProxy.resetResolver('recordSearchEnginesPageHistogram');
+    page.$.activeShortcutsRow.click();
+    let interaction =
+        await browserProxy.whenCalled('recordSearchEnginesPageHistogram');
+    assertEquals(
+        SearchEnginesInteractions.FEATURE_SHORTCUTS_SECTION_EXPANDED,
+        interaction);
+
+    // Collapse the active shortcuts section.
+    browserProxy.resetResolver('recordSearchEnginesPageHistogram');
+    page.$.activeShortcutsRow.click();
+    interaction =
+        await browserProxy.whenCalled('recordSearchEnginesPageHistogram');
+    assertEquals(
+        SearchEnginesInteractions.FEATURE_SHORTCUTS_SECTION_COLLAPSED,
+        interaction);
+
+    // Expand the inactive shortcuts section.
+    browserProxy.resetResolver('recordSearchEnginesPageHistogram');
+    page.$.inactiveShortcutsRow.click();
+    interaction =
+        await browserProxy.whenCalled('recordSearchEnginesPageHistogram');
+    assertEquals(
+        SearchEnginesInteractions.FEATURE_SHORTCUTS_SECTION_EXPANDED,
+        interaction);
+
+    // Collapse the inactive shortcuts section.
+    browserProxy.resetResolver('recordSearchEnginesPageHistogram');
+    page.$.inactiveShortcutsRow.click();
+    interaction =
+        await browserProxy.whenCalled('recordSearchEnginesPageHistogram');
+    assertEquals(
+        SearchEnginesInteractions.FEATURE_SHORTCUTS_SECTION_COLLAPSED,
+        interaction);
+  });
+});

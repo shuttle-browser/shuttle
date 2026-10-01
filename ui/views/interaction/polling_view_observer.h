@@ -1,0 +1,161 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef UI_VIEWS_INTERACTION_POLLING_VIEW_OBSERVER_H_
+#define UI_VIEWS_INTERACTION_POLLING_VIEW_OBSERVER_H_
+
+#include <optional>
+#include <type_traits>
+#include <utility>
+
+#include "base/time/time.h"
+#include "ui/base/identifier/typed_identifier.h"
+#include "ui/base/interaction/element_identifier.h"
+#include "ui/base/interaction/interactive_test_definitions.h"
+#include "ui/base/interaction/polling_state_observer.h"
+#include "ui/base/interaction/state_observer.h"
+#include "ui/views/interaction/element_tracker_views.h"
+#include "ui/views/interaction/interactive_views_test_internal.h"
+#include "ui/views/view.h"
+#include "ui/views/view_utils.h"
+
+namespace views::test {
+
+// Polling static observer that repeatedly calls `poll_view_callback` on a View
+// of type `V` with `view_id` in `context` (or any context if not specified) to
+// determine the value of the state, which is of `type std::optional<T>`.
+// The state value `std::nullopt` corresponds to no matching view present.
+//
+// Designed for use with the `InteractiveViewsTestApi::PollView()` testing verb.
+//
+// See `PollingElementStateObserver<T>` for more information on usage.
+template <typename T, typename V>
+  requires(std::is_base_of_v<View, V>)
+class PollingViewObserver
+    : public ui::test::PollingStateObserver<
+          std::optional<T>,
+          std::optional<ui::test::internal::MatcherTypeFor<T>>> {
+ public:
+  using Superclass = ui::test::PollingStateObserver<
+      std::optional<T>,
+      std::optional<ui::test::internal::MatcherTypeFor<T>>>;
+  using PollViewCallback = base::RepeatingCallback<T(const V*)>;
+
+  template <typename C>
+  PollingViewObserver(
+      ui::ElementIdentifier view_id,
+      std::optional<ui::ElementContext> context,
+      C&& poll_view_callback,
+      base::TimeDelta polling_interval = Superclass::kDefaultPollingInterval)
+      : Superclass(
+            base::BindRepeating(
+                [](ui::ElementIdentifier id,
+                   std::optional<ui::ElementContext> ctx,
+                   PollViewCallback callback) -> std::optional<T> {
+                  if (ctx.has_value()) {
+                    for (auto* v :
+                         ElementTrackerViews::GetInstance()
+                             ->GetAllMatchingViews(id, *ctx,
+                                                   /*require_visible=*/true)) {
+                      if (auto* view = views::AsViewClass<V>(v)) {
+                        return callback.Run(view);
+                      }
+                    }
+                  } else {
+                    for (auto* v : ElementTrackerViews::GetInstance()
+                                       ->GetAllMatchingViewsInAnyContext(
+                                           id, /*require_visible=*/true)) {
+                      if (auto* view = views::AsViewClass<V>(v)) {
+                        return callback.Run(view);
+                      }
+                    }
+                  }
+                  return std::nullopt;
+                },
+                view_id,
+                context,
+                ui::test::internal::MaybeBindRepeating(
+                    std::forward<C>(poll_view_callback))),
+            polling_interval) {}
+
+  ~PollingViewObserver() override = default;
+};
+
+// Polling static observer that repeatedly calls `property` on a View of type
+// of type `V` with `view_id` in `context` (or any context if not specified) to
+// determine the value of the state, which is of `type std::optional<T>`.
+// The state value `std::nullopt` corresponds to no matching view present.
+//
+// Designed for use with the `InteractiveViewsTestApi::PollViewProperty()`
+// testing verb.
+//
+// See `PollingElementStateObserver<T>` for more information on usage.
+template <typename T, typename V>
+  requires(std::is_base_of_v<View, V>)
+class PollingViewPropertyObserver : public PollingViewObserver<T, V> {
+ public:
+  template <typename R>
+  PollingViewPropertyObserver(
+      ui::ElementIdentifier view_id,
+      std::optional<ui::ElementContext> context,
+      R (V::*property)() const,
+      base::TimeDelta polling_interval = ui::test::PollingStateObserver<
+          std::optional<T>>::kDefaultPollingInterval)
+      : PollingViewObserver<T, V>(
+            view_id,
+            context,
+            base::BindRepeating(
+                [](R (V::*property)() const, const V* view) {
+                  return T((view->*property)());
+                },
+                property),
+            polling_interval) {}
+
+  ~PollingViewPropertyObserver() override = default;
+};
+
+namespace internal {
+
+template <typename T, typename V, typename R>
+  requires(std::is_base_of_v<View, V>)
+struct PollingViewPropertyStateIdentifier {
+  const ui::TypedIdentifier<ui::test::UntypedStateIdentifier, T> identifier;
+  R (V::*property)() const;
+};
+
+template <typename T, typename V, typename R>
+constexpr PollingViewPropertyStateIdentifier<T, V, R>
+MakePollingViewPropertyStateIdentifier(
+    ui::TypedIdentifier<ui::test::UntypedStateIdentifier, T> identifier,
+    R (V::*property)() const) {
+  return PollingViewPropertyStateIdentifier<T, V, R>{.identifier = identifier,
+                                                     .property = property};
+}
+
+}  // namespace internal
+
+}  // namespace views::test
+
+// Convenience method for declaring an observed state for a view property.
+// This allows you to specify the view class, property, and observer name all in
+// one line of code. The resulting name can be used in `PollViewProperty()`,
+// `WaitForState()`, and `StopObservingState()` verbs.
+//
+// Note: would like `Name` to be `constexpr` rather than `const`, but certain
+// builds choke on the member pointer.
+#define DEFINE_LOCAL_POLLING_VIEW_PROPERTY_STATE_IDENTIFIER(View, Property, \
+                                                            Name)           \
+  using Name##PollingViewObserverType =                                     \
+      ::views::test::PollingViewPropertyObserver<                           \
+          ::ui::test::internal::MatcherTypeFor<                             \
+              decltype(reinterpret_cast<View*>(0)->Property())>,            \
+          View>;                                                            \
+  DEFINE_MACRO_STATE_IDENTIFIER_VALUE(__FILE__, __LINE__,                   \
+                                      Name##PollingViewObserverType,        \
+                                      Name##TypedIdentifier);               \
+  static const auto Name =                                                  \
+      ::views::test::internal::MakePollingViewPropertyStateIdentifier(      \
+          Name##TypedIdentifier, &View::Property)
+
+#endif  // UI_VIEWS_INTERACTION_POLLING_VIEW_OBSERVER_H_

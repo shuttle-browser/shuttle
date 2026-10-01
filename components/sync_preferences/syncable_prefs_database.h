@@ -1,0 +1,155 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_SYNC_PREFERENCES_SYNCABLE_PREFS_DATABASE_H_
+#define COMPONENTS_SYNC_PREFERENCES_SYNCABLE_PREFS_DATABASE_H_
+
+#include <optional>
+#include <ostream>
+#include <string_view>
+
+#include "base/check.h"
+#include "build/build_config.h"
+#include "components/sync/base/data_type.h"
+#include "components/sync/base/user_selectable_type.h"
+
+namespace sync_preferences {
+
+// TODO(crbug.com/412602018): Rename enum and enum values to better reflect
+// their purpose.
+enum class PrefSensitivity {
+  // The pref is not sensitive and requires only the preference sync toggle to
+  // be enabled for syncing.
+  kNone,
+  // The pref contains sensitive information and requires history opt-in to
+  // allow syncing.
+  kSensitiveRequiresHistory,
+  // The pref is exempt from user control and hence, decoupled from any user
+  // toggle. Note that this is only supported for priority prefs.
+  kExemptFromUserControlWhileSignedIn,
+};
+
+enum class MergeBehavior {
+  // The account value wins. This is the default behavior. Any pref update is
+  // applied to both - the local value as well as the account value.
+  kNone,
+  // For dictionary values, all entries in `account_value` and `local_value` are
+  // merged recursively. In case of a conflict, the entry from `account_value`
+  // wins. With a DualLayerUserPrefStore, pref updates are split between the
+  // account value and the local value and only the relevant updates are applied
+  // to each.
+  kMergeableDict,
+  // For list values, all entries of `account_value` come first, followed by all
+  // entries in the `local_value`. Any repeating entry in `local_value` is
+  // omitted. Any pref update overwrites both - the local value as well as the
+  // account value.
+  kMergeableListWithRewriteOnUpdate,
+  // A custom merge logic has been implemented for this pref.
+  kCustom
+};
+
+// When preferences sync is enabled, this enum is used to determine whether a
+// pref update should be applied to the account value, or both the account value
+// and the local value.
+// NOTE: The default behavior is to write to both. Unless the pref values really
+// need to be account-scoped, prefer to use `kWriteToBoth`.
+enum class WriteBehavior {
+  // The pref is written to both - the local value as well as the account value.
+  kWriteToBoth,
+  // The pref is only written to the account value.
+  // NOTE: The pref is written the account store only, iff the user is
+  // signed-in. Else, the pref is not written at all.
+  kWriteToAccountOnly,
+};
+
+// This class represents the metadata corresponding to a syncable preference.
+class SyncablePrefMetadata {
+ public:
+  constexpr SyncablePrefMetadata(
+      int syncable_pref_id,
+      syncer::DataType data_type,
+      PrefSensitivity pref_sensitivity,
+      MergeBehavior merge_behavior,
+      // TODO(crbug.com/441437179): Make this a required field.
+      WriteBehavior write_behavior = WriteBehavior::kWriteToBoth)
+      : syncable_pref_id_(syncable_pref_id),
+        data_type_(data_type),
+        pref_sensitivity_(pref_sensitivity),
+        merge_behaviour_(merge_behavior),
+        write_behavior_(write_behavior) {
+    CHECK(data_type_ == syncer::PREFERENCES ||
+          data_type_ == syncer::PRIORITY_PREFERENCES
+#if BUILDFLAG(IS_CHROMEOS)
+          || data_type_ == syncer::OS_PREFERENCES ||
+          data_type_ == syncer::OS_PRIORITY_PREFERENCES
+#endif  // BUILDFLAG(IS_CHROMEOS)
+          )
+        << "Invalid type " << data_type_
+        << " for syncable pref with id=" << syncable_pref_id_;
+    CHECK(pref_sensitivity_ !=
+              PrefSensitivity::kExemptFromUserControlWhileSignedIn ||
+          data_type_ == syncer::PRIORITY_PREFERENCES)
+        << "Always syncing prefs must be priority prefs.";
+  }
+
+  // Returns the unique ID corresponding to the syncable preference.
+  int syncable_pref_id() const { return syncable_pref_id_; }
+  // Returns the data type of the pref, i.e. PREFERENCES, PRIORITY_PREFERENCES,
+  // OS_PREFERENCES or OS_PRIORITY_PREFERENCES.
+  syncer::DataType data_type() const { return data_type_; }
+
+  // Returns the sensitivity of the pref. It is used to determine whether the
+  // pref requires history opt-in.
+  PrefSensitivity pref_sensitivity() const { return pref_sensitivity_; }
+
+  // Returns whether the pref requires history opt-in to be synced.
+  bool is_history_opt_in_required() const {
+    return pref_sensitivity() == PrefSensitivity::kSensitiveRequiresHistory;
+  }
+
+  MergeBehavior merge_behavior() const { return merge_behaviour_; }
+
+  WriteBehavior write_behavior() const;
+
+ private:
+  int syncable_pref_id_;
+  syncer::DataType data_type_;
+  PrefSensitivity pref_sensitivity_;
+  MergeBehavior merge_behaviour_;
+  WriteBehavior write_behavior_;
+};
+
+// This class provides an interface to define the list of syncable
+// preferences (and in the future, some additional metadata).
+// PrefModelAssociatorClient uses the interface to verify if a preference is
+// syncable. Platform-specific preferences should be part of individual
+// implementations of this interface.
+class SyncablePrefsDatabase {
+ public:
+  SyncablePrefsDatabase() = default;
+  virtual ~SyncablePrefsDatabase() = default;
+  SyncablePrefsDatabase(const SyncablePrefsDatabase&) = delete;
+  SyncablePrefsDatabase& operator=(const SyncablePrefsDatabase&) = delete;
+
+  // Returns the metadata associated to the pref and null if `pref_name` is not
+  // syncable.
+  virtual const SyncablePrefMetadata* GetSyncablePrefMetadata(
+      std::string_view pref_name) const = 0;
+
+  // Returns true if `pref_name` is part of the allowlist of syncable
+  // preferences.
+  bool IsPreferenceSyncable(std::string_view pref_name) const;
+
+  // Return true if `pref_name` is a mergeable syncable preference.
+  // Note: `pref_name` must be syncable.
+  bool IsPreferenceMergeable(std::string_view pref_name) const;
+
+  // Returns whether `pref_name` is part of the allowlist of preferences that
+  // are always synced, irrespective of the preference sync user toggle.
+  bool IsPreferenceAlwaysSyncing(std::string_view pref_name) const;
+};
+
+}  // namespace sync_preferences
+
+#endif  // COMPONENTS_SYNC_PREFERENCES_SYNCABLE_PREFS_DATABASE_H_

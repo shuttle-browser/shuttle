@@ -1,0 +1,591 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/glic/public/glic_enabling.h"
+
+#include "base/command_line.h"
+#include "base/metrics/metrics_hashes.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_amount_of_physical_memory_override.h"
+#include "base/test/scoped_command_line.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/time/time.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/chrome_browser_main.h"
+#include "chrome/browser/chrome_browser_main_extra_parts.h"
+#include "chrome/browser/glic/glic_metrics_provider.h"
+#include "chrome/browser/glic/glic_pref_names.h"
+#include "chrome/browser/glic/public/features.h"
+#include "chrome/browser/glic/test_support/glic_test_environment.h"
+#include "chrome/browser/glic/test_support/glic_test_util.h"
+#include "chrome/browser/global_features.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_attributes_entry.h"
+#include "chrome/browser/profiles/profile_attributes_storage.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/profiles/profile_test_util.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/tabs/tab_strip.h"
+#include "chrome/common/chrome_features.h"
+#include "chrome/common/chrome_switches.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "components/metrics/metrics_service.h"
+#include "components/signin/public/base/signin_switches.h"
+#include "components/signin/public/identity_manager/account_capabilities_test_mutator.h"
+#include "components/signin/public/identity_manager/identity_test_utils.h"
+#include "components/subscription_eligibility/subscription_eligibility_prefs.h"
+#include "components/variations/service/variations_service.h"
+#include "components/variations/synthetic_trial_registry.h"
+#include "content/public/test/browser_test.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/metrics_proto/chrome_user_metrics_extension.pb.h"
+#include "third_party/metrics_proto/system_profile.pb.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chromeos/constants/chromeos_features.h"
+#include "components/sync/base/features.h"
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+using base::test::FeatureRef;
+
+namespace glic {
+namespace {
+
+class GlicEnablingTest : public InProcessBrowserTest {
+ public:
+  void SetUp() override {
+    InitializeFeatureList();
+    InProcessBrowserTest::SetUp();
+  }
+
+ protected:
+  virtual void InitializeFeatureList() {
+    scoped_feature_list_.InitWithFeatures(
+        {
+#if BUILDFLAG(IS_CHROMEOS)
+            syncer::kReplaceSyncPromosWithSignInPromos,
+            chromeos::features::kFeatureManagementGlic,
+#endif  // BUILDFLAG(IS_CHROMEOS)
+        },
+        {});
+  }
+
+  Profile* profile() { return browser()->GetProfile(); }
+  ProfileManager* profile_manager() {
+    return g_browser_process->profile_manager();
+  }
+  ProfileAttributesStorage& attributes_storage() {
+    return profile_manager()->GetProfileAttributesStorage();
+  }
+
+  GlicTestEnvironment glic_test_env_;
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(GlicEnablingTest, EnabledForProfileTest) {
+  ASSERT_FALSE(GlicEnabling::IsEnabledForProfile(nullptr));
+
+  ASSERT_TRUE(GlicEnabling::IsEnabledForProfile(profile()));
+}
+
+IN_PROC_BROWSER_TEST_F(GlicEnablingTest, AttributeEntryUpdatesOnChange) {
+  SetGlicCapability(profile(), false);
+  glic_test_env_.GetService(profile())->SetFRECompletion(
+      prefs::FreStatus::kIncomplete);
+  ASSERT_FALSE(GlicEnabling::IsEnabledForProfile(profile()));
+
+  ProfileAttributesEntry* entry =
+      attributes_storage().GetProfileAttributesWithPath(profile()->GetPath());
+  ASSERT_TRUE(entry);
+  EXPECT_FALSE(entry->IsGlicEligible());
+
+  // Setting the model execution capability updates the glic AttributeEntry.
+  SetGlicCapability(profile(), true);
+
+  ASSERT_TRUE(GlicEnabling::IsEnabledForProfile(profile()));
+  ASSERT_FALSE(GlicEnabling::IsEnabledAndConsentForProfile(profile()));
+  EXPECT_TRUE(entry->IsGlicEligible());
+}
+
+class GlicEnablingWithSeparateAccountCapabilityTest : public GlicEnablingTest {
+ public:
+  void InitializeFeatureList() override {
+    // InitWithFeaturesAndParameters is used instead of InitWithFeatures
+    // because it has the side-effect of creating a FieldTrial, which is
+    // required for the synthetic field trial to be populated.
+    // allow empty feature parameters.
+    scoped_feature_list_.InitWithFeaturesAndParameters(
+        {
+            {features::kGlic, {}},
+            {features::kGlicRollout, {}},
+            {switches::kGlicEligibilitySeparateAccountCapability, {}},
+#if BUILDFLAG(IS_CHROMEOS)
+            {chromeos::features::kFeatureManagementGlic, {}},
+            {syncer::kReplaceSyncPromosWithSignInPromos, {}},
+#endif  // BUILDFLAG(IS_CHROMEOS)
+        },
+        {});
+  }
+  ~GlicEnablingWithSeparateAccountCapabilityTest() override = default;
+
+  void SetLegacyAccountCapability(bool capability_value) {
+    auto* const identity_manager =
+        IdentityManagerFactory::GetForProfile(profile());
+    AccountInfo primary_account =
+        identity_manager->FindExtendedAccountInfoByAccountId(
+            identity_manager->GetPrimaryAccountId(
+                signin::ConsentLevel::kSignin));
+    AccountCapabilitiesTestMutator mutator(&primary_account);
+    mutator.set_can_use_model_execution_features(capability_value);
+    signin::UpdateAccountInfoForAccount(identity_manager, primary_account);
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(GlicEnablingWithSeparateAccountCapabilityTest,
+                       EnabledForProfileTest) {
+  ASSERT_FALSE(GlicEnabling::IsEnabledForProfile(nullptr));
+
+  ASSERT_TRUE(GlicEnabling::IsEnabledForProfile(profile()));
+}
+
+IN_PROC_BROWSER_TEST_F(GlicEnablingWithSeparateAccountCapabilityTest,
+                       UnaffectedUserNotAddedToSyntheticFieldTrial) {
+  ASSERT_NE(base::FeatureList::GetFieldTrial(
+                switches::kGlicEligibilitySeparateAccountCapability),
+            nullptr);
+  auto initial_num_trials = g_browser_process->metrics_service()
+                                ->GetSyntheticTrialRegistry()
+                                ->GetCurrentSyntheticFieldTrialsForTest()
+                                .size();
+
+  // Set the legacy account capability to true, so that their eligibility is not
+  // affected by the experiment.
+  SetLegacyAccountCapability(true);
+
+  // Check user eligibility.
+  ASSERT_TRUE(GlicEnabling::IsEnabledForProfile(profile()));
+
+  // Check that no new synthetic field trials were added.
+  auto synthetic_trials = g_browser_process->metrics_service()
+                              ->GetSyntheticTrialRegistry()
+                              ->GetCurrentSyntheticFieldTrialsForTest();
+  ASSERT_EQ(synthetic_trials.size(), initial_num_trials);
+}
+
+IN_PROC_BROWSER_TEST_F(GlicEnablingWithSeparateAccountCapabilityTest,
+                       AffectedUserAddedToSyntheticFieldTrial) {
+  ASSERT_NE(base::FeatureList::GetFieldTrial(
+                switches::kGlicEligibilitySeparateAccountCapability),
+            nullptr);
+  auto initial_num_trials = g_browser_process->metrics_service()
+                                ->GetSyntheticTrialRegistry()
+                                ->GetCurrentSyntheticFieldTrialsForTest()
+                                .size();
+
+  // Set the legacy account capability to false, so that their eligibility is
+  // affected by the experiment.
+  SetLegacyAccountCapability(false);
+
+  // Check user eligibility. This method will have the side-effect of adding
+  // them to the synthetic field trial.
+  ASSERT_TRUE(GlicEnabling::IsEnabledForProfile(profile()));
+
+  // Check the user is in the synthetic field trial.
+  auto synthetic_trials = g_browser_process->metrics_service()
+                              ->GetSyntheticTrialRegistry()
+                              ->GetCurrentSyntheticFieldTrialsForTest();
+  ASSERT_EQ(synthetic_trials.size(), initial_num_trials + 1);
+  EXPECT_EQ(synthetic_trials[synthetic_trials.size() - 1].name,
+            base::HashFieldTrialName(
+                kGlicEligibilitySeparateAccountCapabilitySyntheticTrialName));
+}
+
+IN_PROC_BROWSER_TEST_F(GlicEnablingWithSeparateAccountCapabilityTest,
+                       SeparateAccountCapabilityUnknownTest) {
+  // Sign in with a different account (this resets all account capabilities to
+  // unknown).
+  auto* const identity_manager =
+      IdentityManagerFactory::GetForProfile(profile());
+  auto account_info = signin::MakePrimaryAccountAvailable(
+      identity_manager, "glic-test-2@example.com",
+      signin::ConsentLevel::kSignin);
+  account_info = AccountInfo::Builder(account_info)
+                     .SetFullName("Glic 2 Testing")
+                     .SetGivenName("Glic 2")
+                     .Build();
+  signin::UpdateAccountInfoForAccount(identity_manager, account_info);
+  ASSERT_FALSE(GlicEnabling::IsEnabledForProfile(profile()));
+
+  // If the "can_use_gemini_in_chrome" capability is unknown, we should fall
+  // back to the legacy "can_use_model_execution_features" capability.
+  //
+  // This is important during rollout, where existing users may not yet hav
+  // fetched the new capability and it would be undesirable to disable GLIC for
+  // them.
+  SetLegacyAccountCapability(true);
+  EXPECT_TRUE(GlicEnabling::IsEnabledForProfile(profile()));
+}
+
+IN_PROC_BROWSER_TEST_F(
+    GlicEnablingWithSeparateAccountCapabilityTest,
+    AffectedUserAddedToSyntheticFieldTrial_EligibilityChanges) {
+  ASSERT_NE(base::FeatureList::GetFieldTrial(
+                switches::kGlicEligibilitySeparateAccountCapability),
+            nullptr);
+  auto initial_num_trials = g_browser_process->metrics_service()
+                                ->GetSyntheticTrialRegistry()
+                                ->GetCurrentSyntheticFieldTrialsForTest()
+                                .size();
+
+  // Set the legacy account capability to false, so that their eligibility is
+  // affected by the experiment. This adds the user to a synthetic field trial.
+  SetLegacyAccountCapability(false);
+  ASSERT_TRUE(GlicEnabling::IsEnabledForProfile(profile()));
+
+  // Check the user is in the synthetic field trial.
+  auto synthetic_trials = g_browser_process->metrics_service()
+                              ->GetSyntheticTrialRegistry()
+                              ->GetCurrentSyntheticFieldTrialsForTest();
+  ASSERT_EQ(synthetic_trials.size(), initial_num_trials + 1);
+  const auto& trial = synthetic_trials[synthetic_trials.size() - 1];
+  EXPECT_EQ(trial.name,
+            base::HashFieldTrialName(
+                kGlicEligibilitySeparateAccountCapabilitySyntheticTrialName));
+  auto synthetic_trial_group = trial.group;
+
+  // Set the legacy account capability to true, making the user's eligibility no
+  // longer affected by the experiment.
+  SetLegacyAccountCapability(true);
+  ASSERT_TRUE(GlicEnabling::IsEnabledForProfile(profile()));
+
+  // Check that the user's synthetic field trial group is unchanged - the
+  // previous trial membership is preserved until the next session, and this is
+  // not treated as a "MultiProfileDetected" conflict.
+  synthetic_trials = g_browser_process->metrics_service()
+                         ->GetSyntheticTrialRegistry()
+                         ->GetCurrentSyntheticFieldTrialsForTest();
+  ASSERT_EQ(synthetic_trials.size(), initial_num_trials + 1);
+  const auto& updated_trial = synthetic_trials[synthetic_trials.size() - 1];
+  EXPECT_EQ(updated_trial.name,
+            base::HashFieldTrialName(
+                kGlicEligibilitySeparateAccountCapabilitySyntheticTrialName));
+  EXPECT_EQ(updated_trial.group, synthetic_trial_group);
+}
+
+class GlicEnablingTieredRolloutTest : public GlicEnablingTest {
+ public:
+  void InitializeFeatureList() override {
+    scoped_feature_list_.InitWithFeatures(
+        {
+            features::kGlic,
+            features::kGlicTieredRollout,
+#if BUILDFLAG(IS_CHROMEOS)
+            chromeos::features::kFeatureManagementGlic,
+#endif  // BUILDFLAG(IS_CHROMEOS)
+        },
+        {features::kGlicRollout});
+  }
+  ~GlicEnablingTieredRolloutTest() override = default;
+
+  void SetTieredRolloutEligibilityForProfile(bool is_eligible) {
+    profile()->GetPrefs()->SetBoolean(prefs::kGlicRolloutEligibility,
+                                      is_eligible);
+  }
+
+  // Explicitly calls ProvideCurrentSessionData() for all metrics providers.
+  void ProvideCurrentSessionData() {
+    // The purpose of the below call is to avoid a DCHECK failure in an
+    // unrelated metrics provider, in
+    // |FieldTrialsProvider::ProvideCurrentSessionData()|.
+    metrics::SystemProfileProto system_profile_proto;
+    g_browser_process->metrics_service()
+        ->GetDelegatingProviderForTesting()
+        ->ProvideSystemProfileMetricsWithLogCreationTime(base::TimeTicks::Now(),
+                                                         &system_profile_proto);
+    metrics::ChromeUserMetricsExtension uma_proto;
+    g_browser_process->metrics_service()
+        ->GetDelegatingProviderForTesting()
+        ->ProvideCurrentSessionData(&uma_proto);
+  }
+
+ protected:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(GlicEnablingTieredRolloutTest, EnabledForProfileTest) {
+  // Should not be enabled as profile not eligible for tiered rollout.
+  EXPECT_FALSE(GlicEnabling::IsEnabledForProfile(profile()));
+
+  // Should be enabled as now eligible for tiered rollout.
+  SetTieredRolloutEligibilityForProfile(/*is_eligible=*/true);
+  EXPECT_TRUE(GlicEnabling::IsEnabledForProfile(profile()));
+
+  // Simulate user no longer eligible.
+  SetTieredRolloutEligibilityForProfile(/*is_eligible=*/false);
+  EXPECT_FALSE(GlicEnabling::IsEnabledForProfile(profile()));
+}
+
+IN_PROC_BROWSER_TEST_F(GlicEnablingTieredRolloutTest,
+                       InTieredRolloutGroupOtherCriteriaNotPassing) {
+  glic_test_env_.GetService(profile())->SetModelExecutionCapability(false);
+  // Should be enabled as profile.
+  SetTieredRolloutEligibilityForProfile(/*is_eligible=*/true);
+  EXPECT_FALSE(GlicEnabling::IsEnabledForProfile(profile()));
+
+  // No profiles eligible so this trial should not be emitted.
+  base::HistogramTester histogram_tester;
+  ProvideCurrentSessionData();
+
+  histogram_tester.ExpectTotalCount("Glic.TieredRolloutEnablementStatus", 0);
+}
+
+class GlicEnablingSimultaneousRolloutTest
+    : public GlicEnablingTieredRolloutTest {
+ public:
+  void InitializeFeatureList() override {
+    scoped_feature_list_.InitWithFeatures(
+        {
+            features::kGlic,
+            features::kGlicTieredRollout,
+            features::kGlicRollout,
+#if BUILDFLAG(IS_CHROMEOS)
+            chromeos::features::kFeatureManagementGlic,
+#endif  // BUILDFLAG(IS_CHROMEOS)
+        },
+        {});
+  }
+  ~GlicEnablingSimultaneousRolloutTest() override = default;
+};
+
+IN_PROC_BROWSER_TEST_F(GlicEnablingSimultaneousRolloutTest,
+                       EnabledForProfileTest) {
+  // Eligible for tiered rollout. Profile enabled for GLIC.
+  SetTieredRolloutEligibilityForProfile(/*is_eligible=*/true);
+  ASSERT_TRUE(GlicEnabling::IsEnabledForProfile(profile()));
+
+  {
+    base::HistogramTester histogram_tester;
+    ProvideCurrentSessionData();
+    histogram_tester.ExpectUniqueSample("Glic.TieredRolloutEnablementStatus",
+                                        GlicProfilesAllSomeNone::kAll, 1);
+  }
+
+  // ChromeOS does not support multiple profiles.
+#if !BUILDFLAG(IS_CHROMEOS)
+  // Add another profile and have it signed in. The default value for
+  // tiered rollout is false but this profile is enabled via the general
+  // GlicRollout flag and canUseModelExecutionFeatures check.
+  ProfileManager* profile_manager = g_browser_process->profile_manager();
+  base::FilePath new_path = profile_manager->GenerateNextProfileDirectoryPath();
+  Profile* second_profile =
+      &profiles::testing::CreateProfileSync(profile_manager, new_path);
+  ASSERT_TRUE(GlicEnabling::IsEnabledForProfile(second_profile));
+
+  {
+    base::HistogramTester histogram_tester;
+    ProvideCurrentSessionData();
+    histogram_tester.ExpectUniqueSample("Glic.TieredRolloutEnablementStatus",
+                                        GlicProfilesAllSomeNone::kSome, 1);
+  }
+#endif  // !BUILDFLAG(IS_CHROMEOS)
+
+  // Primary profile no longer eligible for tiered rollout. Should not have
+  // effect on overall enablement, but will have an effect on the histogram
+  // emitted.
+  SetTieredRolloutEligibilityForProfile(/*is_eligible=*/false);
+  ASSERT_TRUE(GlicEnabling::IsEnabledForProfile(profile()));
+
+  {
+    base::HistogramTester histogram_tester;
+    ProvideCurrentSessionData();
+    histogram_tester.ExpectUniqueSample("Glic.TieredRolloutEnablementStatus",
+                                        GlicProfilesAllSomeNone::kNone, 1);
+  }
+}
+
+class GlicEnablingTieredRolloutV2Test : public GlicEnablingTest {
+ public:
+  void InitializeFeatureList() override {
+    scoped_feature_list_.InitWithFeaturesAndParameters(
+        {
+            {features::kGlic, {}},
+            {features::kGlicTieredRolloutV2,
+             {{"glic-tiered-rollout-v2-eligible-tiers", "1,2"}}},
+#if BUILDFLAG(IS_CHROMEOS)
+            {chromeos::features::kFeatureManagementGlic, {}},
+#endif  // BUILDFLAG(IS_CHROMEOS)
+        },
+        {features::kGlicRollout});
+  }
+  ~GlicEnablingTieredRolloutV2Test() override = default;
+
+  void SetUserTier(int32_t tier) {
+    browser()->GetProfile()->GetPrefs()->SetInteger(
+        subscription_eligibility::prefs::kAiSubscriptionTier, tier);
+  }
+
+ protected:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(GlicEnablingTieredRolloutV2Test, EnabledForProfileTest) {
+  // Should not be enabled as profile not eligible for tiered rollout.
+  EXPECT_FALSE(GlicEnabling::IsEnabledForProfile(profile()));
+
+  // Should be enabled as now eligible for tiered rollout.
+  SetUserTier(1);
+  EXPECT_TRUE(GlicEnabling::IsEnabledForProfile(profile()));
+
+  // Simulate user no longer eligible.
+  SetUserTier(0);
+  EXPECT_FALSE(GlicEnabling::IsEnabledForProfile(profile()));
+}
+
+struct GeminiEntTestParams {
+  std::string email;
+  std::optional<std::string> hosted_domain;
+  bool expect_settings;
+};
+
+class GlicEnablingGeminiEntBrowserTest
+    : public GlicEnablingTest,
+      public ::testing::WithParamInterface<GeminiEntTestParams> {
+ protected:
+  GlicEnablingGeminiEntBrowserTest() {
+    glic_test_env_.SetForceSigninAndModelExecutionCapability(false);
+  }
+  void InitializeFeatureList() override {
+    scoped_feature_list_.InitWithFeatures(
+        {
+            features::kGlicGeminiEnterpriseSettingsEnabled,
+#if BUILDFLAG(IS_CHROMEOS)
+            chromeos::features::kFeatureManagementGlic,
+#endif
+        },
+        {});
+  }
+};
+
+IN_PROC_BROWSER_TEST_P(GlicEnablingGeminiEntBrowserTest, VerifySettings) {
+  const GeminiEntTestParams& params = GetParam();
+
+  // 1. Set the pref directly using base::DictValue.
+  base::DictValue pref_value;
+  pref_value.Set("project_id", "test-project");
+  pref_value.Set("app_id", "test-engine");
+  pref_value.Set("location", "us");
+  profile()->GetPrefs()->SetDict(glic::prefs::kGlicGeminiEnterpriseSettings,
+                                 std::move(pref_value));
+
+  // 2. Sign in with the parameterized account.
+  glic::ForceSigninAndGlicCapability(profile(),
+                                     params.hosted_domain.value_or(""));
+
+  // 3. Verify results.
+  std::optional<glic::mojom::GeminiEnterpriseSettings> settings =
+      GlicEnabling::GetGeminiEnterpriseSettings(profile());
+
+  if (params.expect_settings) {
+    ASSERT_TRUE(settings.has_value());
+    EXPECT_EQ(settings->project_id, "test-project");
+    EXPECT_EQ(settings->app_id, "test-engine");
+    EXPECT_EQ(settings->location, "us");
+  } else {
+    EXPECT_EQ(settings, std::nullopt);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    GlicEnablingGeminiEntBrowserTest,
+    ::testing::Values(GeminiEntTestParams{.email = "user@consumer.com",
+                                          .hosted_domain = std::nullopt,
+                                          .expect_settings = false},
+                      GeminiEntTestParams{.email = "user@enterprise.com",
+                                          .hosted_domain = "enterprise.com",
+                                          .expect_settings = true}));
+
+struct SystemRequirementsTestParams {
+  base::ByteSize memory_size;
+  bool is_dogfood;
+  bool expected_result;
+};
+
+class GlicDogfoodMockExtraParts : public ChromeBrowserMainExtraParts {
+ public:
+  explicit GlicDogfoodMockExtraParts(bool is_dogfood)
+      : is_dogfood_(is_dogfood) {}
+  ~GlicDogfoodMockExtraParts() override = default;
+
+  void PreProfileInit() override {
+    g_browser_process->variations_service()->SetIsLikelyDogfoodClientForTesting(
+        is_dogfood_);
+  }
+
+ private:
+  const bool is_dogfood_;
+};
+
+class GlicEnablingSystemRequirementsTest
+    : public InProcessBrowserTest,
+      public testing::WithParamInterface<SystemRequirementsTestParams> {
+ public:
+  GlicEnablingSystemRequirementsTest() {
+#if BUILDFLAG(IS_CHROMEOS)
+    scoped_feature_list_.InitAndDisableFeature(
+        chromeos::features::kFeatureManagementGlic);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+  }
+  void SetUp() override {
+    memory_override_.emplace(GetParam().memory_size);
+    InProcessBrowserTest::SetUp();
+  }
+  void CreatedBrowserMainParts(content::BrowserMainParts* parts) override {
+    InProcessBrowserTest::CreatedBrowserMainParts(parts);
+    static_cast<ChromeBrowserMainParts*>(parts)->AddParts(
+        std::make_unique<GlicDogfoodMockExtraParts>(GetParam().is_dogfood));
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+  std::optional<base::test::ScopedAmountOfPhysicalMemoryOverride>
+      memory_override_;
+};
+
+IN_PROC_BROWSER_TEST_P(GlicEnablingSystemRequirementsTest,
+                       IsSystemRequirementMet) {
+  EXPECT_EQ(GetParam().expected_result,
+            GlicGlobalEnabling().IsSystemRequirementMet());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    GlicEnablingSystemRequirementsTest,
+#if BUILDFLAG(IS_CHROMEOS)
+    testing::Values(SystemRequirementsTestParams{.memory_size = base::GiB(6),
+                                                 .is_dogfood = true,
+                                                 .expected_result = false},
+                    SystemRequirementsTestParams{.memory_size = base::GiB(7),
+                                                 .is_dogfood = true,
+                                                 .expected_result = true},
+                    SystemRequirementsTestParams{.memory_size = base::GiB(8),
+                                                 .is_dogfood = true,
+                                                 .expected_result = true},
+                    // On ChromeOS, we expect that a non-dogfood client with
+                    // >= 8GB RAM doesn't met system requirements since we
+                    // explicitly gate Gemini-in-Chrome to Chromebook Plus
+                    // devices via FeatureManagementGlic.
+                    SystemRequirementsTestParams{.memory_size = base::GiB(8),
+                                                 .is_dogfood = false,
+                                                 .expected_result = false})
+#else
+    testing::Values(SystemRequirementsTestParams{.memory_size = base::MiB(256),
+                                                 .is_dogfood = false,
+                                                 .expected_result = true})
+#endif
+);
+
+}  // namespace
+}  // namespace glic

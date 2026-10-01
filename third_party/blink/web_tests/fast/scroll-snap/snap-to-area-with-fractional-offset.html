@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<script src="../../resources/gesture-util.js"></script>
+<script src="../../resources/testharness.js"></script>
+<script src="../../resources/testharnessreport.js"></script>
+<style>
+body {
+  margin: 0;
+  padding: 0;
+}
+
+#scroller {
+  overflow: scroll;
+  height: 300px;
+  width: 300px;
+  margin: 0;
+  padding: 0;
+  scroll-snap-type: y mandatory;
+}
+
+#container {
+  margin: 0;
+  padding: 0;
+  width: 600px;
+  height: 1833px; /* use a percentage of this to make snap offsets float numbers */
+}
+
+#initial-area {
+  position: relative;
+  top: 10%; /* ~183.3 */
+  width: 200px;
+  height: 200px;
+  background-color: blue;
+  scroll-snap-align: start;
+}
+
+#target-area {
+  position: relative;
+  top: 30%; /* ~549.9 */
+  width: 200px;
+  height: 200px;
+  background-color: blue;
+  scroll-snap-align: start;
+}
+</style>
+
+<div id="scroller">
+  <div id="container">
+    <div id="initial-area"></div>
+    <div id="target-area"></div>
+  </div>
+</div>
+
+<script>
+const scroller = document.getElementById('scroller');
+const initial_area = document.getElementById('initial-area');
+const target_area = document.getElementById('target-area');
+
+async function waitForScroll(trigger) {
+  const scrollend = waitForScrollendEvent(scroller);
+  trigger();
+  return scrollend;
+}
+
+function scrollTop() {
+  return scroller.scrollTop;
+}
+
+window.onload = async () => {
+  await waitForCompositorCommit();
+  await mouseClickOn(10, 10);
+
+  promise_test (async t => {
+    await waitForScrollReset(scroller, /*x=*/0, /*y=*/183)
+    assert_approx_equals(scrollTop(), initial_area.offsetTop, 1);
+
+    await keyboardScroll('ArrowDown', scroller);
+    assert_approx_equals(scrollTop(), target_area.offsetTop, 1);
+
+    await keyboardScroll('ArrowUp', scroller);
+    assert_approx_equals(scrollTop(), initial_area.offsetTop, 1);
+  }, "Keyboard scrolling should ignore the current snapped element even when " +
+  +  "its offset is a fractional number.");
+
+  promise_test (async t => {
+    await waitForScrollReset(scroller, /*x=*/0, /*y=*/183)
+    assert_approx_equals(scrollTop(), initial_area.offsetTop, 1);
+    await waitForScroll(() => {
+      scroller.scrollBy(0, 10);
+    });
+    assert_approx_equals(scrollTop(), target_area.offsetTop, 1);
+
+    await waitForScroll(() => {
+      scroller.scrollBy(0, -10);
+    });
+    assert_approx_equals(scrollTop(), initial_area.offsetTop, 1);
+  }, "Programmatic directional scrolling should ignore the current snapped " +
+     "element even when its offset is a fractional number.");
+}
+</script>

@@ -1,0 +1,406 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/digital_credentials/digital_identity_multi_step_dialog.h"
+
+#include "base/scoped_observation.h"
+#include "base/test/scoped_feature_list.h"
+#include "chrome/browser/digital_credentials/digital_identity_provider_desktop.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/common/content_features.h"
+#include "content/public/test/browser_test.h"
+#include "device/fido/cable/v2_constants.h"
+#include "ui/base/mojom/dialog_button.mojom.h"
+#include "ui/views/bubble/bubble_dialog_delegate_view.h"
+#include "ui/views/controls/label.h"
+#include "ui/views/controls/scroll_view.h"
+#include "ui/views/test/widget_test.h"
+#include "ui/views/view.h"
+#include "ui/views/view_observer.h"
+#include "ui/views/widget/widget.h"
+#include "ui/views/widget/widget_observer.h"
+
+namespace {
+
+using ButtonParams = ui::DialogModel::Button::Params;
+
+// Returns whether `parent` or one of its children is a views::Label with text
+// `find_text`.
+bool HasChildLabelViewWithText(const views::View* parent,
+                               const std::u16string& find_text) {
+  for (views::View* child : parent->children()) {
+    if (child->GetObjectName() == "Label") {
+      const views::Label* child_label = static_cast<const views::Label*>(child);
+      if (child_label->GetText() == find_text) {
+        return true;
+      }
+    }
+
+    if (HasChildLabelViewWithText(child, find_text)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Observes visibility changes on the `widget` passed to the constructor.
+class WidgetVisibilityObserver : public views::WidgetObserver {
+ public:
+  explicit WidgetVisibilityObserver(views::Widget* widget) {
+    observer_.Observe(widget);
+  }
+
+  void OnWidgetVisibilityChanged(views::Widget* widget, bool visible) override {
+    did_widget_visibility_change_ = true;
+  }
+
+  bool did_widget_visiblity_change() const {
+    return did_widget_visibility_change_;
+  }
+
+ private:
+  bool did_widget_visibility_change_ = false;
+
+  base::ScopedObservation<views::Widget, WidgetVisibilityObserver> observer_{
+      this};
+};
+
+}  // anonymous namespace
+
+class DigitalIdentityMultiStepDialogBrowserTest : public InProcessBrowserTest {
+ public:
+  DigitalIdentityMultiStepDialogBrowserTest() = default;
+  ~DigitalIdentityMultiStepDialogBrowserTest() override = default;
+
+  content::WebContents* GetActiveWebContents() {
+    return browser()->GetTabStripModel()->GetActiveWebContents();
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_{
+      features::kWebIdentityDigitalCredentials};
+};
+
+// Check that DigitalIdentityMultiStepDialog::TryShow() updates the dialog's
+// contents if the dialog is already showing.
+IN_PROC_BROWSER_TEST_F(DigitalIdentityMultiStepDialogBrowserTest,
+                       UpdateDialog) {
+  constexpr char16_t kStep1Title[] = u"Title Step 1";
+  constexpr char16_t kStep1Body[] = u"Body Step 1";
+  constexpr char16_t kStep1AcceptButton[] = u"Accept Step 1";
+  constexpr char16_t kStep1CancelButton[] = u"Cancel Step 1";
+
+  constexpr char16_t kStep2Title[] = u"Title Step 1";
+  constexpr char16_t kStep2Body[] = u"Body Step 1";
+  constexpr char16_t kStep2AcceptButton[] = u"Accept Step 1";
+  constexpr char16_t kStep2CancelButton[] = u"Cancel Step 1";
+
+  auto dialog = std::make_unique<DigitalIdentityMultiStepDialog>(
+      GetActiveWebContents()->GetWeakPtr());
+  DigitalIdentityMultiStepDialog::TestApi dialog_test_api(dialog.get());
+
+  {
+    std::optional<ButtonParams> accept_button_params =
+        std::make_optional<ButtonParams>();
+    accept_button_params->SetLabel(kStep1AcceptButton);
+
+    ButtonParams cancel_button_params;
+    cancel_button_params.SetLabel(kStep1CancelButton);
+
+    dialog->TryShow(accept_button_params, base::DoNothing(),
+                    cancel_button_params, base::DoNothing(), kStep1Title,
+                    kStep1Body, /*custom_body_field=*/nullptr,
+                    /*show_progress_bar=*/false);
+  }
+
+  views::Widget* widget = dialog_test_api.GetWidget();
+  views::BubbleDialogDelegate* widget_delegate =
+      dialog_test_api.GetWidgetDelegate();
+
+  // Observe `widget` to ensure that it does not get hidden as a result of the
+  // second DigitalIdentityMultiStepDialog::TryShow() call.
+  auto visibility_observer = std::make_unique<WidgetVisibilityObserver>(widget);
+
+  EXPECT_TRUE(widget->IsVisible());
+  EXPECT_EQ(kStep1Title, widget_delegate->GetWindowTitle());
+  EXPECT_TRUE(HasChildLabelViewWithText(widget->GetRootView(), kStep1Body));
+  EXPECT_EQ(static_cast<int>(ui::mojom::DialogButton::kOk) |
+                static_cast<int>(ui::mojom::DialogButton::kCancel),
+            widget_delegate->buttons());
+  EXPECT_EQ(kStep1AcceptButton, widget_delegate->GetDialogButtonLabel(
+                                    ui::mojom::DialogButton::kOk));
+  EXPECT_EQ(kStep1CancelButton, widget_delegate->GetDialogButtonLabel(
+                                    ui::mojom::DialogButton::kCancel));
+
+  {
+    std::optional<ButtonParams> accept_button_params =
+        std::make_optional<ButtonParams>();
+    accept_button_params->SetLabel(kStep2AcceptButton);
+
+    ButtonParams cancel_button_params;
+    cancel_button_params.SetLabel(kStep2CancelButton);
+
+    dialog->TryShow(accept_button_params, base::DoNothing(),
+                    cancel_button_params, base::DoNothing(), kStep2Title,
+                    kStep2Body, /*custom_body_field=*/nullptr,
+                    /*show_progress_bar=*/false);
+  }
+
+  // The same widget should be showing.
+  EXPECT_EQ(widget, dialog_test_api.GetWidget());
+  EXPECT_FALSE(visibility_observer->did_widget_visiblity_change());
+
+  EXPECT_EQ(kStep2Title, widget_delegate->GetWindowTitle());
+  EXPECT_TRUE(HasChildLabelViewWithText(widget->GetRootView(), kStep2Body));
+  EXPECT_EQ(static_cast<int>(ui::mojom::DialogButton::kOk) |
+                static_cast<int>(ui::mojom::DialogButton::kCancel),
+            widget_delegate->buttons());
+  EXPECT_EQ(kStep2AcceptButton, widget_delegate->GetDialogButtonLabel(
+                                    ui::mojom::DialogButton::kOk));
+  EXPECT_EQ(kStep2CancelButton, widget_delegate->GetDialogButtonLabel(
+                                    ui::mojom::DialogButton::kCancel));
+}
+
+// Check that pressing the "OK" button in the dialog does not run the
+// "cancel/close" callback.
+IN_PROC_BROWSER_TEST_F(DigitalIdentityMultiStepDialogBrowserTest,
+                       NotCanceledAfterOk) {
+  bool was_ok_callback_called = false;
+  bool was_cancel_callback_called = false;
+
+  auto ok_callback = [](bool* was_ok_callback_called) {
+    *was_ok_callback_called = true;
+  };
+
+  auto cancel_callback = [](bool* was_cancel_callback_called) {
+    *was_cancel_callback_called = true;
+  };
+
+  auto dialog = std::make_unique<DigitalIdentityMultiStepDialog>(
+      GetActiveWebContents()->GetWeakPtr());
+  auto dialog_test_api =
+      std::make_unique<DigitalIdentityMultiStepDialog::TestApi>(dialog.get());
+  dialog->TryShow(
+      std::make_optional<ButtonParams>(),
+      base::BindRepeating(ok_callback, &was_ok_callback_called), ButtonParams(),
+      base::BindOnce(cancel_callback, &was_cancel_callback_called), u"Title",
+      u"Body", /*custom_body_field=*/nullptr, /*show_progress_bar=*/false);
+  EXPECT_TRUE(dialog_test_api->GetWidget()->IsVisible());
+
+  // Accept dialog and run any pending tasks.
+  dialog_test_api->GetWidgetDelegate()->AcceptDialog();
+  base::RunLoop().RunUntilIdle();
+  EXPECT_TRUE(was_ok_callback_called);
+
+  views::test::WidgetDestroyedWaiter destroyed_waiter(
+      dialog_test_api->GetWidget());
+  dialog_test_api.reset();
+  dialog.reset();
+  destroyed_waiter.Wait();
+
+  EXPECT_FALSE(was_cancel_callback_called);
+}
+
+// Check that toggling button enabled state via DialogModel::Button::Params
+// works.
+IN_PROC_BROWSER_TEST_F(DigitalIdentityMultiStepDialogBrowserTest,
+                       DisableButton) {
+  auto dialog = std::make_unique<DigitalIdentityMultiStepDialog>(
+      GetActiveWebContents()->GetWeakPtr());
+  DigitalIdentityMultiStepDialog::TestApi dialog_test_api(dialog.get());
+
+  {
+    std::optional<ButtonParams> accept_button_params =
+        std::make_optional<ButtonParams>();
+    accept_button_params->SetEnabled(false);
+    dialog->TryShow(accept_button_params, base::DoNothing(), ButtonParams(),
+                    base::DoNothing(), u"Title", u"Body",
+                    /*custom_body_field=*/nullptr, /*show_progress_bar=*/false);
+    EXPECT_FALSE(dialog_test_api.GetWidgetDelegate()->IsDialogButtonEnabled(
+        ui::mojom::DialogButton::kOk));
+  }
+
+  {
+    std::optional<ButtonParams> accept_button_params =
+        std::make_optional<ButtonParams>();
+    accept_button_params->SetEnabled(true);
+    dialog->TryShow(accept_button_params, base::DoNothing(), ButtonParams(),
+                    base::DoNothing(), u"Title", u"Body",
+                    /*custom_body_field=*/nullptr, /*show_progress_bar=*/false);
+    EXPECT_TRUE(dialog_test_api.GetWidgetDelegate()->IsDialogButtonEnabled(
+        ui::mojom::DialogButton::kOk));
+  }
+}
+
+namespace {
+
+// Subclass to expose protected methods for testing.
+class TestDigitalIdentityProviderDesktop
+    : public DigitalIdentityProviderDesktop {
+ public:
+  using DigitalIdentityProviderDesktop::EndRequestWithError;
+  using DigitalIdentityProviderDesktop::EnsureDialogCreated;
+  using DigitalIdentityProviderDesktop::set_callback_for_testing;
+  using DigitalIdentityProviderDesktop::set_rp_origin_for_testing;
+  using DigitalIdentityProviderDesktop::set_web_contents_for_testing;
+
+  // Calls the protected ShowQrCodeDialog.
+  void SetUpAndShowQrDialog(content::WebContents* web_contents,
+                            base::OnceClosure callback) {
+    set_web_contents_for_testing(web_contents->GetWeakPtr());
+    set_rp_origin_for_testing(url::Origin::Create(GURL("https://rp.example")));
+    set_callback_for_testing(base::BindOnce(
+        [](base::OnceClosure callback,
+           base::expected<
+               TestDigitalIdentityProviderDesktop::DigitalCredential,
+               content::DigitalIdentityProvider::RequestStatusForMetrics>
+               result) { std::move(callback).Run(); },
+        std::move(callback)));
+    ShowQrCodeDialog("FIDO:/0123456789", RequestInfo::RequestType::kGet);
+  }
+
+  DigitalIdentityMultiStepDialog* GetDialog() { return EnsureDialogCreated(); }
+};
+
+class ProviderDestroyerOnWidgetClosingObserver : public views::WidgetObserver {
+ public:
+  explicit ProviderDestroyerOnWidgetClosingObserver(
+      base::OnceClosure destruction_callback)
+      : destruction_callback_(std::move(destruction_callback)) {}
+
+  void OnWidgetClosing(views::Widget* widget) override {
+    widget->RemoveObserver(this);
+    if (destruction_callback_) {
+      std::move(destruction_callback_).Run();
+    }
+  }
+
+ private:
+  base::OnceClosure destruction_callback_;
+};
+
+class ProviderDestroyerOnChildViewAddedObserver : public views::ViewObserver {
+ public:
+  explicit ProviderDestroyerOnChildViewAddedObserver(
+      base::OnceClosure destruction_callback)
+      : destruction_callback_(std::move(destruction_callback)) {}
+
+  void OnChildViewAdded(views::View* observed_view,
+                        views::View* child) override {
+    observed_view->RemoveObserver(this);
+    if (destruction_callback_) {
+      std::move(destruction_callback_).Run();
+    }
+  }
+
+ private:
+  base::OnceClosure destruction_callback_;
+};
+
+}  // namespace
+
+// Regression test for UAF in
+// DigitalIdentityProviderDesktop::EndRequestWithError when the owner is
+// synchronously destroyed during dialog close.
+IN_PROC_BROWSER_TEST_F(DigitalIdentityMultiStepDialogBrowserTest,
+                       EndRequestWithErrorOwnerDestroyedDuringDialogClose) {
+  auto provider = std::make_unique<TestDigitalIdentityProviderDesktop>();
+
+  base::RunLoop run_loop;
+  // Show the dialog via the real ShowQrCodeDialog flow.
+  provider->SetUpAndShowQrDialog(GetActiveWebContents(),
+                                 run_loop.QuitClosure());
+
+  // Retrieve the widget robustly using TestApi and EnsureDialogCreated.
+  // Wrap `TestApi` in a nested scope so it is destroyed before the message
+  // loop runs. Otherwise, when the loop runs and triggers the UAF teardown,
+  // the dialog is deleted, leaving `TestApi` holding a dangling raw_ptr.
+  views::Widget* widget = nullptr;
+  {
+    DigitalIdentityMultiStepDialog* dialog = provider->GetDialog();
+    DigitalIdentityMultiStepDialog::TestApi dialog_test_api(dialog);
+    widget = dialog_test_api.GetWidget();
+  }
+  ASSERT_TRUE(widget);
+  base::WeakPtr<views::Widget> weak_widget = widget->GetWeakPtr();
+
+  // Set up the observer to synchronously destroy the provider when the widget
+  // closes.
+  ProviderDestroyerOnWidgetClosingObserver observer(base::BindOnce(
+      [](std::unique_ptr<TestDigitalIdentityProviderDesktop>* provider) {
+        provider->reset();
+      },
+      base::Unretained(&provider)));
+  widget->AddObserver(&observer);
+
+  // Trigger cancellation. OnDialogCanceled() will PostTask a call to
+  // OnCanceled() -> EndRequestWithError().
+  static_cast<views::DialogDelegate*>(widget->widget_delegate())
+      ->CancelDialog();
+  ASSERT_FALSE(widget->IsClosed());
+
+  // Run the message loop to execute the posted tasks.
+  // This will run EndRequestWithError(), triggering the UAF if the bug exists.
+  run_loop.Run();
+
+  // Verify that the provider was safely destroyed (pointer is null).
+  EXPECT_FALSE(provider);
+
+  // Clean up if the widget is still alive.
+  if (weak_widget) {
+    weak_widget->RemoveObserver(&observer);
+    views::test::WidgetDestroyedWaiter(weak_widget.get()).Wait();
+  }
+}
+
+// Regression test for UAF in
+// DigitalIdentityProviderDesktop::OnCableEvent when the provider is
+// synchronously destroyed during ShowConnectingToPhoneDialog.
+IN_PROC_BROWSER_TEST_F(DigitalIdentityMultiStepDialogBrowserTest,
+                       OnCableEventOwnerDestroyedDuringDialogUpdate) {
+  auto provider = std::make_unique<TestDigitalIdentityProviderDesktop>();
+
+  base::RunLoop run_loop;
+  // Show the dialog via the real ShowQrCodeDialog flow.
+  provider->SetUpAndShowQrDialog(GetActiveWebContents(),
+                                 run_loop.QuitClosure());
+
+  views::Widget* widget = nullptr;
+  {
+    DigitalIdentityMultiStepDialog* dialog = provider->GetDialog();
+    DigitalIdentityMultiStepDialog::TestApi dialog_test_api(dialog);
+    widget = dialog_test_api.GetWidget();
+  }
+  ASSERT_TRUE(widget);
+  base::WeakPtr<views::Widget> weak_widget = widget->GetWeakPtr();
+
+  views::View* contents_view = static_cast<views::ScrollView*>(
+                                   widget->widget_delegate()->GetContentsView())
+                                   ->contents();
+  ASSERT_TRUE(contents_view);
+
+  // Set up the observer to synchronously destroy the provider when
+  // ShowConnectingToPhoneDialog updates the contents view.
+  ProviderDestroyerOnChildViewAddedObserver observer(base::BindOnce(
+      [](std::unique_ptr<TestDigitalIdentityProviderDesktop>* provider) {
+        provider->reset();
+      },
+      base::Unretained(&provider)));
+  contents_view->AddObserver(&observer);
+
+  // Trigger OnCableEvent. Without the fix, this causes a UAF as
+  // ShowConnectingToPhoneDialog destroys `provider`, and subsequent member
+  // access in OnCableEvent reads freed memory.
+  provider->OnCableEvent(device::cablev2::Event::kPhoneConnected);
+
+  EXPECT_FALSE(provider);
+
+  // Clean up if the widget is still alive.
+  if (weak_widget) {
+    views::test::WidgetDestroyedWaiter(weak_widget.get()).Wait();
+  }
+}

@@ -1,0 +1,120 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "os_exchange_data_provider_non_backed.h"
+
+#include <memory>
+#include <string>
+
+#include "base/containers/span.h"
+#include "base/files/file_path.h"
+#include "base/logging.h"
+#include "base/strings/utf_string_conversions.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "ui/base/data_transfer_policy/data_transfer_endpoint.h"
+#include "ui/gfx/geometry/vector2d.h"
+#include "ui/gfx/image/image_skia.h"
+#include "url/gurl.h"
+
+namespace ui {
+
+namespace {
+const char16_t kTestString[] = u"Hello World!";
+const char kUrl[] = "https://example.com";
+const char16_t kUrlTitle[] = u"example";
+const char kFileName[] = "file.pdf";
+const base::FilePath::CharType kFileContentsFileName[] =
+    FILE_PATH_LITERAL("file.jpg");
+const base::span<const uint8_t> kFileContents =
+    base::byte_span_from_cstring("test data");
+const char16_t kHtml[] = u"<h1>Random Title</h1>";
+const char kBaseUrl[] = "www.example2.com";
+}  // namespace
+
+// Tests that cloning OsExchangeDataProviderNonBacked object will clone all of
+// its data members.
+TEST(OSExchangeDataProviderNonBackedTest, CloneTest) {
+  OSExchangeDataProviderNonBacked original;
+
+  original.SetString(kTestString);
+  ClipboardUrlInfo url_info(GURL(kUrl), kUrlTitle);
+  original.SetURLs(base::span_from_ref(url_info));
+
+  base::Pickle original_pickle;
+  original_pickle.WriteString16(kTestString);
+  original.SetPickledData(ClipboardFormatType::PlainTextType(),
+                          original_pickle);
+  original.SetFileContents(base::FilePath(kFileContentsFileName),
+                           kFileContents);
+  original.SetHtml(kHtml, GURL(kBaseUrl));
+  original.MarkRendererTaintedFromOrigin(url::Origin());
+  GURL url("https://www.example.com");
+  original.SetSource(std::make_unique<DataTransferEndpoint>(url));
+
+  std::unique_ptr<OSExchangeDataProvider> copy = original.Clone();
+  std::optional<std::u16string> copy_string = copy->GetString();
+  EXPECT_EQ(kTestString, copy_string);
+
+  const std::vector<ClipboardUrlInfo> url_infos =
+      copy->GetURLs(FilenameToURLPolicy::DO_NOT_CONVERT_FILENAMES);
+  EXPECT_FALSE(url_infos.empty());
+  EXPECT_EQ(GURL(kUrl), url_infos.front().url);
+  EXPECT_EQ(kUrlTitle, url_infos.front().title);
+
+  std::optional<base::Pickle> copy_pickle =
+      copy->GetPickledData(ClipboardFormatType::PlainTextType());
+  base::PickleIterator pickle_itr(copy_pickle.value());
+  std::u16string copy_pickle_string;
+  EXPECT_TRUE(pickle_itr.ReadString16(&copy_pickle_string));
+  EXPECT_EQ(kTestString, copy_pickle_string);
+
+  std::optional<OSExchangeDataProvider::FileContentsInfo> copy_file_contents =
+      copy->GetFileContents();
+  ASSERT_TRUE(copy_file_contents.has_value());
+  EXPECT_EQ(base::FilePath(kFileContentsFileName),
+            copy_file_contents->filename);
+  EXPECT_EQ(kFileContents, copy_file_contents->file_contents);
+
+  std::optional<OSExchangeDataProvider::HtmlInfo> html_content =
+      copy->GetHtml();
+  ASSERT_TRUE(html_content.has_value());
+  EXPECT_EQ(kHtml, html_content->html);
+  EXPECT_EQ(GURL(kBaseUrl), html_content->base_url);
+
+  EXPECT_TRUE(copy->IsRendererTainted());
+
+  DataTransferEndpoint* data_endpoint = copy->GetSource();
+  EXPECT_TRUE(data_endpoint);
+  EXPECT_TRUE(data_endpoint->IsUrlType());
+  EXPECT_EQ(url, *data_endpoint->GetURL());
+}
+
+TEST(OSExchangeDataProviderNonBackedTest, DragImageCloneTest) {
+  OSExchangeDataProviderNonBacked original;
+  SkBitmap bitmap;
+  bitmap.allocN32Pixels(10, 10);
+  bitmap.eraseColor(SK_ColorRED);
+  gfx::ImageSkia image = gfx::ImageSkia::CreateFrom1xBitmap(bitmap);
+  gfx::Vector2d offset(5, 5);
+  original.SetDragImage(image, offset);
+
+  std::unique_ptr<OSExchangeDataProvider> copy = original.Clone();
+  EXPECT_FALSE(copy->GetDragImage().isNull());
+  EXPECT_EQ(copy->GetDragImage().width(), 10);
+  EXPECT_EQ(copy->GetDragImage().height(), 10);
+  EXPECT_EQ(copy->GetDragImageOffset(), offset);
+}
+
+TEST(OSExchangeDataProviderNonBackedTest, FileNameCloneTest) {
+  OSExchangeDataProviderNonBacked original;
+  original.SetFilename(base::FilePath(kFileName));
+
+  std::unique_ptr<OSExchangeDataProvider> copy = original.Clone();
+  std::optional<std::vector<FileInfo>> filenames = copy->GetFilenames();
+  ASSERT_TRUE(filenames.has_value());
+  EXPECT_EQ(base::FilePath(kFileName), filenames.value()[0].path);
+}
+
+}  // namespace ui

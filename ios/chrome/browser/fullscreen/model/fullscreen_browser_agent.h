@@ -1,0 +1,210 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_FULLSCREEN_MODEL_FULLSCREEN_BROWSER_AGENT_H_
+#define IOS_CHROME_BROWSER_FULLSCREEN_MODEL_FULLSCREEN_BROWSER_AGENT_H_
+
+#import <UIKit/UIKit.h>
+
+#import "base/containers/enum_set.h"
+#import "base/memory/weak_ptr.h"
+#import "base/observer_list.h"
+#import "base/time/time.h"
+#import "base/types/pass_key.h"
+#import "ios/chrome/browser/fullscreen/model/fullscreen_browser_agent_observer.h"
+#import "ios/chrome/browser/shared/model/browser/browser_user_data.h"
+#import "ios/chrome/browser/shared/public/commands/fullscreen_commands.h"
+
+class FullscreenBrowserAgentTest;
+class FullscreenMediatorPassKeyFactory;
+enum class FullscreenModeTransitionTrigger;
+
+// Enum representing the current state of the fullscreen UI.
+enum class FullscreenState {
+  // The toolbars are fully expanded and visible.
+  kUIExpanded,
+  // The toolbars are in the process of expanding or collapsing.
+  kInProgress,
+  // The toolbars are fully collapsed and hidden (fullscreen).
+  kUICollapsed,
+};
+
+// A class that holds the fullscreen state for a browser.
+class FullscreenBrowserAgent : public BrowserUserData<FullscreenBrowserAgent> {
+ public:
+  // PassKey allows access to methods that mutate the state / progress.
+  using PassKey = base::PassKey<FullscreenBrowserAgentTest,
+                                FullscreenMediatorPassKeyFactory>;
+
+  ~FullscreenBrowserAgent() override;
+
+  FullscreenBrowserAgent(const FullscreenBrowserAgent&) = delete;
+  FullscreenBrowserAgent& operator=(const FullscreenBrowserAgent&) = delete;
+
+  // Adds `observer` to the list of observers.
+  void AddObserver(FullscreenBrowserAgentObserver* observer);
+
+  // Removes `observer` from the list of observers.
+  void RemoveObserver(FullscreenBrowserAgentObserver* observer);
+
+  // Adds an obscured inset range for the given edge. Observers should call this
+  // during WillUpdateObscuredInsetRange().
+  void AddObscuredInsetRange(UIRectEdge edge, CGFloat min, CGFloat max);
+
+  // Adds an obscured inset for the given edge. Observers should call this
+  // during WillUpdateState().
+  void AddObscuredInset(UIRectEdge edge, CGFloat amount);
+
+  // Sets the obscured inset for the keyboard when it is visible.
+  void SetKeyboardObscuredInset(CGFloat inset);
+
+  // Accessors for the insets.
+  UIEdgeInsets insets() const { return insets_; }
+  UIEdgeInsets min_insets() const { return min_insets_; }
+  UIEdgeInsets max_insets() const { return max_insets_; }
+  CGFloat keyboard_obscured_inset() const { return keyboard_obscured_inset_; }
+
+  // Accessors for the progress in entering or exiting fullscreen.
+  // 1.0 indicates browser UI is fully visible, 0.0 indicates browser UI is
+  // fully hidden (in fullscreen mode).
+  CGFloat top_progress() const { return top_progress_; }
+  CGFloat bottom_progress() const { return bottom_progress_; }
+
+  // Returns whether an animated transition is currently in progress.
+  bool is_animating() const { return is_animating_; }
+
+  // Returns the last settled fullscreen state (kUIExpanded or kUICollapsed).
+  FullscreenState settled_state() const { return settled_state_; }
+
+  // Returns the duration of the current animation, if this is called inside of
+  // an animation block while animating in or out of Fullscreen. Otherwise
+  // returns zero.
+  base::TimeDelta animation_duration() const { return animation_duration_; }
+
+  // Returns the normalized initial velocity of the current animation, if called
+  // inside an animation block. Otherwise returns zero.
+  CGFloat animation_initial_velocity() const {
+    return animation_initial_velocity_;
+  }
+
+  // Incrementally changes the fullscreen progress based on a drag or scroll.
+  // `velocity` is the current velocity of the scroll gesture (in pt/s).
+  void IncrementalScroll(CGFloat amount, CGFloat velocity, PassKey);
+
+  // Enters or exits fullscreen mode.
+  void EnterFullscreen(PassKey,
+                       FullscreenModeTransitionTrigger trigger,
+                       bool animated);
+  void ExitFullscreen(PassKey,
+                      FullscreenModeTransitionTrigger trigger,
+                      bool animated);
+
+  // Increments the disabled counter. If the counter becomes 1, it exits
+  // fullscreen mode.
+  void IncrementDisabledCounter(PassKey, bool animated);
+
+  // Decrements the disabled counter.
+  void DecrementDisabledCounter(PassKey);
+
+  // Returns the disabled counter.
+  size_t disabled_count() const { return disabled_count_; }
+
+  // Returns whether fullscreen is enabled.
+  bool IsEnabled() const;
+
+  // Enables or disables forced fullscreen mode for `feature`.
+  void ForceFullscreen(PassKey, bool enable, ForceFullscreenFeature feature);
+
+  // Exits forced fullscreen mode for all features immediately.
+  void ExitForceFullscreen(PassKey);
+
+  // Returns whether any feature is forcing fullscreen mode.
+  bool IsForceFullscreen() const;
+
+  // Returns the current fullscreen state.
+  FullscreenState State() const;
+
+  // Invalidates the current inset ranges and recalculates them by notifying
+  // observers.
+  void InvalidateInsetRange();
+
+  // True while InvalidateInsetRange() is running.
+  bool invalidating_inset_range() const { return invalidating_inset_range_; }
+
+ private:
+  friend class BrowserUserData<FullscreenBrowserAgent>;
+
+  explicit FullscreenBrowserAgent(Browser* browser);
+
+  // Updates the progress and broadcasts the change to observers.
+  void UpdateProgressAndBroadcast(FullscreenTransition transition,
+                                  FullscreenModeTransitionTrigger trigger,
+                                  bool animated);
+
+  // Notifies all observers of an updated state.
+  void NotifyObserversOfUpdatedState(
+      base::TimeDelta duration = base::TimeDelta());
+
+  // Handles animation completion.
+  void AnimationDidComplete(FullscreenTransition transition, bool finished);
+
+  // Notifies observers of transition completion.
+  void NotifyFullscreenDidTransition(FullscreenTransition transition);
+
+  base::ObserverList<FullscreenBrowserAgentObserver, true> observers_;
+
+  // The number of features currently disabling fullscreen.
+  size_t disabled_count_ = 0;
+
+  using ForceFullscreenFeatureSet =
+      base::EnumSet<ForceFullscreenFeature,
+                    ForceFullscreenFeature::kMinValue,
+                    ForceFullscreenFeature::kMaxValue>;
+  // The set of features currently forcing fullscreen mode.
+  ForceFullscreenFeatureSet forced_features_;
+
+  // The insets.
+  UIEdgeInsets insets_ = UIEdgeInsetsZero;
+  UIEdgeInsets min_insets_ = UIEdgeInsetsZero;
+  UIEdgeInsets max_insets_ = UIEdgeInsetsZero;
+
+  // True while InvalidateInsetRange() is running.
+  bool invalidating_inset_range_ = false;
+
+  // The progress in entering or exiting fullscreen. 1.0 indicates browser UI is
+  // fully visible, 0.0 indicates browser UI is fully hidden (in fullscreen
+  // mode).
+  CGFloat top_progress_ = 1.0;
+  CGFloat bottom_progress_ = 1.0;
+
+  // True if the agent is currently broadcasting WillUpdateObscuredInsetRange.
+  // Used to ensure AddObscuredInsetRange() is only called at the correct time.
+  bool updating_obscured_insets_ = false;
+
+  // True if the agent is currently broadcasting WillUpdateState. Used to
+  // ensure AddObscuredInset() is only called a the correct time.
+  bool updating_insets_ = false;
+
+  // True if an animated fullscreen transition is currently in progress.
+  bool is_animating_ = false;
+
+  // The last settled fullscreen state (kUIExpanded or kUICollapsed).
+  FullscreenState settled_state_ = FullscreenState::kUIExpanded;
+
+  // The animation duration for the current transition.
+  base::TimeDelta animation_duration_ = base::TimeDelta();
+
+  // The current velocity of the scroll gesture.
+  CGFloat scroll_velocity_ = 0.0;
+
+  // The normalized initial velocity for the current transition.
+  CGFloat animation_initial_velocity_ = 0.0;
+
+  // The obscured inset for the keyboard when visible.
+  CGFloat keyboard_obscured_inset_ = 0.0;
+
+  base::WeakPtrFactory<FullscreenBrowserAgent> weak_ptr_factory_{this};
+};
+
+#endif  // IOS_CHROME_BROWSER_FULLSCREEN_MODEL_FULLSCREEN_BROWSER_AGENT_H_

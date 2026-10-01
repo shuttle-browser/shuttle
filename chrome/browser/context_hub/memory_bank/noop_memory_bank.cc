@@ -1,0 +1,62 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/context_hub/memory_bank/noop_memory_bank.h"
+
+#include <utility>
+
+#include "chrome/browser/context_hub/memory_bank/memory_bank_entry.h"
+
+namespace context_hub {
+
+NoOpMemoryBank::NoOpMemoryBank() = default;
+NoOpMemoryBank::~NoOpMemoryBank() = default;
+
+void NoOpMemoryBank::SaveMemoryBankEntry(MemoryBankEntry entry,
+                                         OperationCompleteCallback callback) {
+  if (callback) {
+    std::move(callback).Run(/*success=*/false);
+  }
+}
+
+void NoOpMemoryBank::UpdateEntryAnnotations(
+    int64_t id,
+    std::vector<std::string> tags,
+    std::optional<std::string> note,
+    std::optional<std::string> collection,
+    OperationCompleteCallback callback) {
+  if (callback) {
+    std::move(callback).Run(/*success=*/false);
+  }
+}
+
+void NoOpMemoryBank::GetAllEntries(GetEntriesCallback callback) const {
+  std::move(callback).Run({});
+}
+
+void NoOpMemoryBank::GetEntriesByIds(base::span<const int64_t> ids,
+                                     GetEntriesCallback callback) const {
+  std::move(callback).Run({});
+}
+
+void NoOpMemoryBank::DeleteEntries(base::span<const int64_t> ids,
+                                   OperationCompleteCallback callback) {
+  if (callback) {
+    std::move(callback).Run(/*success=*/false);
+  }
+}
+
+void NoOpMemoryBank::GetAllTags(GetStringsCallback callback) const {
+  if (callback) {
+    std::move(callback).Run({});
+  }
+}
+
+void NoOpMemoryBank::GetAllCollections(GetStringsCallback callback) const {
+  if (callback) {
+    std::move(callback).Run({});
+  }
+}
+
+}  // namespace context_hub

@@ -1,0 +1,550 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.components.browser_ui.modaldialog;
+
+import static org.junit.Assert.assertEquals;
+import static org.robolectric.Robolectric.buildActivity;
+
+import android.app.Activity;
+import android.graphics.Rect;
+import android.util.DisplayMetrics;
+import android.view.ContextThemeWrapper;
+import android.view.LayoutInflater;
+import android.view.View.MeasureSpec;
+import android.widget.FrameLayout;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.robolectric.annotation.Config;
+import org.robolectric.shadows.ShadowSystemClock;
+
+import org.chromium.base.DeviceInfo;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.ui.base.TestActivity;
+import org.chromium.ui.modaldialog.ModalDialogProperties;
+import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.ui.modelutil.PropertyModelChangeProcessor;
+
+import java.time.Duration;
+
+/** Unit tests for {@link ModalDialogView}. */
+@RunWith(BaseRobolectricTestRunner.class)
+@Config(manifest = Config.NONE)
+@EnableFeatures(ModalDialogFeatureList.MODAL_DIALOG_LAYOUT_WITH_SYSTEM_INSETS)
+public class ModalDialogViewUnitTest {
+    private static final int MIN_DIALOG_WIDTH = 280;
+    private static final int MIN_DIALOG_HEIGHT = 500;
+    private static final int MAX_DIALOG_WIDTH_TABLET = 560;
+    private static final int MAX_DIALOG_WIDTH_LFF = 480;
+    private static final float MAX_DIALOG_WIDTH_PERCENT_PHONE = 0.65f;
+
+    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    private Activity mActivity;
+    private ModalDialogView mDialogView;
+    private PropertyModel.Builder mModelBuilder;
+    private DisplayMetrics mDisplayMetrics;
+
+    @Before
+    public void setup() {
+        mActivity = buildActivity(TestActivity.class).setup().get();
+        mDialogView =
+                (ModalDialogView)
+                        LayoutInflater.from(
+                                        new ContextThemeWrapper(
+                                                mActivity,
+                                                R.style
+                                                        .ThemeOverlay_BrowserUI_ModalDialog_TextPrimaryButton))
+                                .inflate(R.layout.modal_dialog_view, null);
+        mModelBuilder = new PropertyModel.Builder(ModalDialogProperties.ALL_KEYS);
+        mDisplayMetrics = mActivity.getResources().getDisplayMetrics();
+        mDisplayMetrics.density = 1;
+    }
+
+    /** Tests that dialog uses specified size if it does not draw into regions beyond margins. */
+    @Test
+    public void measure_SmallDimensions_LessThanMaxWidth() {
+        // Set window size.
+        var windowWidth = 800;
+        var windowHeight = 800;
+        mDisplayMetrics.widthPixels = windowWidth;
+        mDisplayMetrics.heightPixels = windowHeight;
+
+        // Create model with margins set.
+        createModel(
+                mModelBuilder
+                        .with(ModalDialogProperties.HORIZONTAL_MARGIN, 10)
+                        .with(ModalDialogProperties.VERTICAL_MARGIN, 40),
+                MIN_DIALOG_WIDTH,
+                MIN_DIALOG_HEIGHT);
+
+        // Measure view.
+        var widthMeasureSpec = MeasureSpec.makeMeasureSpec(MIN_DIALOG_WIDTH, MeasureSpec.AT_MOST);
+        var heightMeasureSpec = MeasureSpec.makeMeasureSpec(MIN_DIALOG_HEIGHT, MeasureSpec.AT_MOST);
+        mDialogView.measure(widthMeasureSpec, heightMeasureSpec);
+
+        assertEquals("Width is incorrect.", MIN_DIALOG_WIDTH, mDialogView.getMeasuredWidth());
+        assertEquals("Height is incorrect.", MIN_DIALOG_HEIGHT, mDialogView.getMeasuredHeight());
+    }
+
+    /**
+     * Tests that dialog uses a max width of 600dp even if it does not draw into regions beyond
+     * margins with the specified width (tablet-only).
+     */
+    @Test
+    @Config(qualifiers = "sw600dp")
+    public void measure_SmallDimensions_GreaterThanMaxWidth_Tablet() {
+        // Set window size.
+        var windowWidth = 800;
+        var windowHeight = 800;
+        mDisplayMetrics.widthPixels = windowWidth;
+        mDisplayMetrics.heightPixels = windowHeight;
+
+        // Create model with margins set.
+        createModel(
+                mModelBuilder
+                        .with(ModalDialogProperties.HORIZONTAL_MARGIN, 10)
+                        .with(ModalDialogProperties.VERTICAL_MARGIN, 40),
+                MAX_DIALOG_WIDTH_TABLET + 100,
+                MIN_DIALOG_HEIGHT);
+
+        // Measure view.
+        var widthMeasureSpec =
+                MeasureSpec.makeMeasureSpec(MAX_DIALOG_WIDTH_TABLET + 100, MeasureSpec.AT_MOST);
+        var heightMeasureSpec = MeasureSpec.makeMeasureSpec(MIN_DIALOG_HEIGHT, MeasureSpec.AT_MOST);
+        mDialogView.measure(widthMeasureSpec, heightMeasureSpec);
+
+        assertEquals(
+                "Width is incorrect.", MAX_DIALOG_WIDTH_TABLET, mDialogView.getMeasuredWidth());
+        assertEquals("Height is incorrect.", MIN_DIALOG_HEIGHT, mDialogView.getMeasuredHeight());
+    }
+
+    /** Tests that dialog uses a max width of (65% * window width) in landscape on phones. */
+    @Test
+    @Config(qualifiers = "sw320dp-land")
+    public void measure_SmallDimensions_GreaterThanMaxWidth_Phone() {
+        // Set window size.
+        var windowWidth = 100;
+        var windowHeight = 100;
+        mDisplayMetrics.widthPixels = windowWidth;
+        mDisplayMetrics.heightPixels = windowHeight;
+
+        int maxDialogWidthPhone = (int) (MAX_DIALOG_WIDTH_PERCENT_PHONE * windowWidth);
+
+        // Create model.
+        createModel(mModelBuilder, maxDialogWidthPhone + 20, MIN_DIALOG_HEIGHT);
+
+        // Measure view.
+        var widthMeasureSpec =
+                MeasureSpec.makeMeasureSpec(maxDialogWidthPhone + 20, MeasureSpec.AT_MOST);
+        var heightMeasureSpec = MeasureSpec.makeMeasureSpec(MIN_DIALOG_HEIGHT, MeasureSpec.AT_MOST);
+        mDialogView.measure(widthMeasureSpec, heightMeasureSpec);
+
+        assertEquals("Width is incorrect.", maxDialogWidthPhone, mDialogView.getMeasuredWidth());
+        assertEquals("Height is incorrect.", MIN_DIALOG_HEIGHT, mDialogView.getMeasuredHeight());
+    }
+
+    /** Tests that dialog uses a min width of 280dp on tablets. */
+    @Test
+    @Config(qualifiers = "sw600dp")
+    public void measure_SmallDimensions_LessThanMinWidth() {
+        // Set window size.
+        var windowWidth = 800;
+        var windowHeight = 800;
+        mDisplayMetrics.widthPixels = windowWidth;
+        mDisplayMetrics.heightPixels = windowHeight;
+
+        // Create model with margins set.
+        createModel(
+                mModelBuilder
+                        .with(ModalDialogProperties.HORIZONTAL_MARGIN, 10)
+                        .with(ModalDialogProperties.VERTICAL_MARGIN, 40),
+                MIN_DIALOG_WIDTH - 10,
+                MIN_DIALOG_HEIGHT);
+
+        // Measure view.
+        var widthMeasureSpec = MeasureSpec.makeMeasureSpec(MIN_DIALOG_WIDTH, MeasureSpec.AT_MOST);
+        var heightMeasureSpec = MeasureSpec.makeMeasureSpec(MIN_DIALOG_HEIGHT, MeasureSpec.AT_MOST);
+        mDialogView.measure(widthMeasureSpec, heightMeasureSpec);
+
+        assertEquals("Width is incorrect.", MIN_DIALOG_WIDTH, mDialogView.getMeasuredWidth());
+        assertEquals("Height is incorrect.", MIN_DIALOG_HEIGHT, mDialogView.getMeasuredHeight());
+    }
+
+    /**
+     * Tests that dialog uses max size permitted for it to not draw into regions beyond margins on
+     * tablets.
+     */
+    @Test
+    @Config(qualifiers = "sw600dp")
+    public void measure_LargeDimensions_MarginsSet_Tablet() {
+        // Set window size.
+        var windowWidth = 600;
+        var windowHeight = 600;
+        mDisplayMetrics.widthPixels = windowWidth;
+        mDisplayMetrics.heightPixels = windowHeight;
+
+        // Create model with margins set.
+        createModel(
+                mModelBuilder
+                        .with(ModalDialogProperties.HORIZONTAL_MARGIN, 16)
+                        .with(ModalDialogProperties.VERTICAL_MARGIN, 40),
+                windowWidth,
+                windowHeight);
+
+        // Measure view.
+        var widthMeasureSpec = MeasureSpec.makeMeasureSpec(windowWidth, MeasureSpec.AT_MOST);
+        var heightMeasureSpec = MeasureSpec.makeMeasureSpec(windowHeight, MeasureSpec.AT_MOST);
+        mDialogView.measure(widthMeasureSpec, heightMeasureSpec);
+
+        // windowWidth - 2 * horizontalMargin = 600 - 2 * 16 = 568. Capped at max tablet width
+        // (560).
+        int expectedWidth = MAX_DIALOG_WIDTH_TABLET;
+        // windowHeight - 2 * verticalMargin = 600 - 2 * 40.
+        int expectedHeight = 520;
+        assertEquals("Width is incorrect.", expectedWidth, mDialogView.getMeasuredWidth());
+        assertEquals("Height is incorrect.", expectedHeight, mDialogView.getMeasuredHeight());
+    }
+
+    /** Tests that dialog maintains horizontal margin from the edges on phones. */
+    @Test
+    @Config(qualifiers = "sw320dp")
+    public void measure_LargeDimensions_MarginsSet_Phone() {
+        // Set window size.
+        var windowWidth = 80;
+        var windowHeight = 80;
+        mDisplayMetrics.widthPixels = windowWidth;
+        mDisplayMetrics.heightPixels = windowHeight;
+
+        // Create model with margins set.
+        createModel(
+                mModelBuilder.with(ModalDialogProperties.HORIZONTAL_MARGIN, 16),
+                windowWidth,
+                windowHeight);
+
+        // Measure view.
+        var widthMeasureSpec = MeasureSpec.makeMeasureSpec(windowWidth, MeasureSpec.AT_MOST);
+        var heightMeasureSpec = MeasureSpec.makeMeasureSpec(windowHeight, MeasureSpec.AT_MOST);
+        mDialogView.measure(widthMeasureSpec, heightMeasureSpec);
+
+        // windowWidth - 2 * horizontalMargin = 80 - 2 * 16.
+        int expectedWidth = 48;
+        // windowHeight - 2 * verticalMargin = 80 - 2 * 0.
+        int expectedHeight = 80;
+        assertEquals("Width is incorrect.", expectedWidth, mDialogView.getMeasuredWidth());
+        assertEquals("Height is incorrect.", expectedHeight, mDialogView.getMeasuredHeight());
+    }
+
+    /** Tests that dialog uses specified size when margins are not set on phones. */
+    @Test
+    @Config(qualifiers = "sw320dp")
+    public void measure_MarginsNotSet_Phone() {
+        // Set window size.
+        var windowWidth = 800;
+        var windowHeight = 800;
+        mDisplayMetrics.widthPixels = windowWidth;
+        mDisplayMetrics.heightPixels = windowHeight;
+
+        // Create model without margins set.
+        createModel(mModelBuilder, 500, 500);
+
+        // Measure view.
+        var widthMeasureSpec = MeasureSpec.makeMeasureSpec(windowWidth, MeasureSpec.AT_MOST);
+        var heightMeasureSpec = MeasureSpec.makeMeasureSpec(windowHeight, MeasureSpec.AT_MOST);
+        mDialogView.measure(widthMeasureSpec, heightMeasureSpec);
+
+        assertEquals("Width is incorrect.", 500, mDialogView.getMeasuredWidth());
+        assertEquals("Height is incorrect.", 500, mDialogView.getMeasuredHeight());
+    }
+
+    /** Tests that dialog uses specified size if margins are not set on tablets. */
+    @Test
+    @Config(qualifiers = "sw600dp")
+    public void measure_MarginsNotSet_Tablet() {
+        // Set window size.
+        var windowWidth = 800;
+        var windowHeight = 800;
+        mDisplayMetrics.widthPixels = windowWidth;
+        mDisplayMetrics.heightPixels = windowHeight;
+
+        // Create model without margins set.
+        createModel(mModelBuilder, MIN_DIALOG_WIDTH, MIN_DIALOG_HEIGHT);
+
+        // Measure view.
+        var widthMeasureSpec =
+                MeasureSpec.makeMeasureSpec(MIN_DIALOG_WIDTH + 200, MeasureSpec.AT_MOST);
+        var heightMeasureSpec = MeasureSpec.makeMeasureSpec(MIN_DIALOG_HEIGHT, MeasureSpec.AT_MOST);
+        mDialogView.measure(widthMeasureSpec, heightMeasureSpec);
+
+        assertEquals("Width is incorrect.", MIN_DIALOG_WIDTH + 200, mDialogView.getMeasuredWidth());
+        assertEquals("Height is incorrect.", MIN_DIALOG_HEIGHT, mDialogView.getMeasuredHeight());
+    }
+
+    private void createModel(
+            PropertyModel.Builder modelBuilder, int customViewWidth, int customViewHeight) {
+        var view = new FrameLayout(mActivity);
+        view.setMinimumWidth(customViewWidth);
+        view.setMinimumHeight(customViewHeight);
+        var model = modelBuilder.with(ModalDialogProperties.CUSTOM_VIEW, view).build();
+        PropertyModelChangeProcessor.create(model, mDialogView, new ModalDialogViewBinder());
+    }
+
+    @Test
+    public void testBottomSpacerVisibility_WithLargePadding() {
+        // Create model with no buttons but large bottom padding.
+        mModelBuilder.with(ModalDialogProperties.PADDING, new Rect(0, 0, 0, 20));
+        createModel(mModelBuilder, MIN_DIALOG_WIDTH, MIN_DIALOG_HEIGHT);
+
+        android.view.View spacer = mDialogView.findViewById(R.id.dialog_bottom_spacer);
+        assertEquals(
+                "Spacer should be gone when large padding is present.",
+                android.view.View.GONE,
+                spacer.getVisibility());
+    }
+
+    @Test
+    public void testBottomSpacerVisibility_ButtonsPresent() {
+        var model =
+                mModelBuilder
+                        .with(ModalDialogProperties.TITLE, "Title")
+                        .with(ModalDialogProperties.POSITIVE_BUTTON_TEXT, "OK")
+                        .build();
+        PropertyModelChangeProcessor.create(model, mDialogView, new ModalDialogViewBinder());
+
+        android.view.View spacer = mDialogView.findViewById(R.id.dialog_bottom_spacer);
+        assertEquals(
+                "Spacer should be GONE when buttons are present.",
+                android.view.View.GONE,
+                spacer.getVisibility());
+    }
+
+    @Test
+    public void testBottomSpacerVisibility_CustomButtonBarPresent() {
+        var customButtonBar = new FrameLayout(mActivity);
+        var model =
+                mModelBuilder
+                        .with(ModalDialogProperties.TITLE, "Title")
+                        .with(ModalDialogProperties.CUSTOM_BUTTON_BAR_VIEW, customButtonBar)
+                        .build();
+        PropertyModelChangeProcessor.create(model, mDialogView, new ModalDialogViewBinder());
+
+        android.view.View spacer = mDialogView.findViewById(R.id.dialog_bottom_spacer);
+        assertEquals(
+                "Spacer should be GONE when custom button bar is present.",
+                android.view.View.GONE,
+                spacer.getVisibility());
+    }
+
+    @Test
+    public void testBottomSpacerVisibility_CustomViewAtBottom() {
+        var customView = new FrameLayout(mActivity);
+        var model =
+                mModelBuilder
+                        .with(ModalDialogProperties.TITLE, "Title")
+                        .with(ModalDialogProperties.CUSTOM_VIEW, customView)
+                        .build();
+        PropertyModelChangeProcessor.create(model, mDialogView, new ModalDialogViewBinder());
+
+        android.view.View spacer = mDialogView.findViewById(R.id.dialog_bottom_spacer);
+        assertEquals(
+                "Spacer should be GONE when custom view is at the bottom.",
+                android.view.View.GONE,
+                spacer.getVisibility());
+    }
+
+    @Test
+    public void testBottomSpacerVisibility_FooterVisible() {
+        var model =
+                mModelBuilder
+                        .with(ModalDialogProperties.TITLE, "Title")
+                        .with(ModalDialogProperties.FOOTER_MESSAGE, "Footer")
+                        .build();
+        PropertyModelChangeProcessor.create(model, mDialogView, new ModalDialogViewBinder());
+
+        android.view.View spacer = mDialogView.findViewById(R.id.dialog_bottom_spacer);
+        assertEquals(
+                "Spacer should be GONE when footer is visible.",
+                android.view.View.GONE,
+                spacer.getVisibility());
+    }
+
+    @Test
+    public void testBottomSpacerVisibility_CheckboxBelowCustomView() {
+        var customView = new FrameLayout(mActivity);
+        var model =
+                mModelBuilder
+                        .with(ModalDialogProperties.TITLE, "Title")
+                        .with(ModalDialogProperties.CUSTOM_VIEW, customView)
+                        .with(ModalDialogProperties.CHECKBOX_TEXT, "Checkbox")
+                        .build();
+        PropertyModelChangeProcessor.create(model, mDialogView, new ModalDialogViewBinder());
+
+        android.view.View spacer = mDialogView.findViewById(R.id.dialog_bottom_spacer);
+        assertEquals(
+                "Spacer should be VISIBLE when checkbox is below a custom view.",
+                android.view.View.VISIBLE,
+                spacer.getVisibility());
+    }
+
+    @Test
+    public void testButtonTapProtection_AttachedWithoutAnimation() {
+        class TestController implements ModalDialogProperties.Controller {
+            int mClickedButton = -1;
+
+            @Override
+            public void onClick(PropertyModel model, int buttonType) {
+                mClickedButton = buttonType;
+            }
+
+            @Override
+            public void onDismiss(PropertyModel model, int dismissalCause) {}
+        }
+        var controller = new TestController();
+
+        var model =
+                mModelBuilder
+                        .with(ModalDialogProperties.CONTROLLER, controller)
+                        .with(ModalDialogProperties.POSITIVE_BUTTON_TEXT, "OK")
+                        .with(ModalDialogProperties.BUTTON_TAP_PROTECTION_PERIOD_MS, 1000L)
+                        .build();
+        PropertyModelChangeProcessor.create(model, mDialogView, new ModalDialogViewBinder());
+
+        // Attach to window.
+        mActivity.setContentView(mDialogView);
+
+        var positiveButton = mDialogView.findViewById(R.id.positive_button);
+
+        // Click immediately - should be blocked.
+        positiveButton.performClick();
+        assertEquals(-1, controller.mClickedButton);
+
+        // Advance time by 500ms (less than 1000ms).
+        ShadowSystemClock.advanceBy(Duration.ofMillis(500));
+        positiveButton.performClick();
+        assertEquals(-1, controller.mClickedButton);
+
+        // Advance time by 1100ms (more than 1000ms since last click).
+        ShadowSystemClock.advanceBy(Duration.ofMillis(1100));
+        positiveButton.performClick();
+        assertEquals(ModalDialogProperties.ButtonType.POSITIVE, controller.mClickedButton);
+    }
+
+    @Test
+    @Config(qualifiers = "sw600dp")
+    @EnableFeatures(ModalDialogFeatureList.DIALOGS_ON_LARGE_FORM_FACTORS)
+    public void measure_LargeFormFactorUi_Tablet_WidthCappedAt480dp() {
+        // Wide tablet window (800x800).
+        mDisplayMetrics.widthPixels = 800;
+        mDisplayMetrics.heightPixels = 800;
+
+        createModel(mModelBuilder, 600, MIN_DIALOG_HEIGHT);
+
+        var widthMeasureSpec = MeasureSpec.makeMeasureSpec(600, MeasureSpec.AT_MOST);
+        var heightMeasureSpec = MeasureSpec.makeMeasureSpec(MIN_DIALOG_HEIGHT, MeasureSpec.AT_MOST);
+        mDialogView.measure(widthMeasureSpec, heightMeasureSpec);
+
+        assertEquals(
+                "Width should be capped at 480dp on large form factor.",
+                MAX_DIALOG_WIDTH_LFF,
+                mDialogView.getMeasuredWidth());
+    }
+
+    @Test
+    @Config(qualifiers = "sw600dp")
+    @EnableFeatures(ModalDialogFeatureList.DIALOGS_ON_LARGE_FORM_FACTORS)
+    public void measure_LargeFormFactorUi_NarrowWindow_Maintains16dpHorizontalMargin() {
+        // Narrow container (400dp wide < 480dp).
+        var containerWidth = 400;
+
+        createModel(mModelBuilder, 600, MIN_DIALOG_HEIGHT);
+
+        var widthMeasureSpec = MeasureSpec.makeMeasureSpec(containerWidth, MeasureSpec.AT_MOST);
+        var heightMeasureSpec = MeasureSpec.makeMeasureSpec(MIN_DIALOG_HEIGHT, MeasureSpec.AT_MOST);
+        mDialogView.measure(widthMeasureSpec, heightMeasureSpec);
+
+        // Expected width = containerWidth - 2 * 16dp = 400 - 32 = 368dp.
+        int expectedWidth = containerWidth - 2 * 16;
+        assertEquals(
+                "Width should maintain at least 16dp horizontal margin.",
+                expectedWidth,
+                mDialogView.getMeasuredWidth());
+    }
+
+    @Test
+    @Config(qualifiers = "sw600dp")
+    @EnableFeatures(ModalDialogFeatureList.DIALOGS_ON_LARGE_FORM_FACTORS)
+    public void
+            measure_LargeFormFactorUi_SideUiConstrainedContainer_Maintains16dpHorizontalMargin() {
+        // Wide window (1000dp), but side UI insets constrain the container to 360dp.
+        mDisplayMetrics.widthPixels = 1000;
+        mDisplayMetrics.heightPixels = 800;
+
+        int constrainedContainerWidth = 360;
+        createModel(mModelBuilder, 600, MIN_DIALOG_HEIGHT);
+
+        var widthMeasureSpec =
+                MeasureSpec.makeMeasureSpec(constrainedContainerWidth, MeasureSpec.AT_MOST);
+        var heightMeasureSpec = MeasureSpec.makeMeasureSpec(MIN_DIALOG_HEIGHT, MeasureSpec.AT_MOST);
+        mDialogView.measure(widthMeasureSpec, heightMeasureSpec);
+
+        // Expected width = constrainedContainerWidth - 2 * 16dp = 360 - 32 = 328dp.
+        int expectedWidth = constrainedContainerWidth - 2 * 16;
+        assertEquals(
+                "Width should maintain 16dp horizontal margin when container is constrained by side"
+                        + " UI.",
+                expectedWidth,
+                mDialogView.getMeasuredWidth());
+    }
+
+    @Test
+    @Config(qualifiers = "sw600dp")
+    @EnableFeatures(ModalDialogFeatureList.DIALOGS_ON_LARGE_FORM_FACTORS)
+    public void measure_LargeFormFactorUi_ShortWindow_Maintains24dpVerticalMargin() {
+        // Short container (500dp tall).
+        var containerHeight = 500;
+        mDisplayMetrics.heightPixels = containerHeight;
+
+        // Content requests 600dp height.
+        createModel(mModelBuilder, MAX_DIALOG_WIDTH_LFF, 600);
+
+        var widthMeasureSpec =
+                MeasureSpec.makeMeasureSpec(MAX_DIALOG_WIDTH_LFF, MeasureSpec.AT_MOST);
+        var heightMeasureSpec = MeasureSpec.makeMeasureSpec(containerHeight, MeasureSpec.AT_MOST);
+        mDialogView.measure(widthMeasureSpec, heightMeasureSpec);
+
+        // Expected height = containerHeight - 2 * 24dp = 500 - 48 = 452dp.
+        int expectedHeight = containerHeight - 2 * 24;
+        assertEquals(
+                "Height should maintain at least 24dp vertical margin.",
+                expectedHeight,
+                mDialogView.getMeasuredHeight());
+    }
+
+    @Test
+    @Config(qualifiers = "sw600dp")
+    @EnableFeatures(ModalDialogFeatureList.DIALOGS_ON_LARGE_FORM_FACTORS)
+    public void measure_LargeFormFactorUi_Desktop_WidthCappedAt480dp() {
+        DeviceInfo.setIsDesktopForTesting(true);
+
+        mDisplayMetrics.widthPixels = 1200;
+        mDisplayMetrics.heightPixels = 800;
+
+        createModel(mModelBuilder, 600, MIN_DIALOG_HEIGHT);
+
+        var widthMeasureSpec = MeasureSpec.makeMeasureSpec(600, MeasureSpec.AT_MOST);
+        var heightMeasureSpec = MeasureSpec.makeMeasureSpec(MIN_DIALOG_HEIGHT, MeasureSpec.AT_MOST);
+        mDialogView.measure(widthMeasureSpec, heightMeasureSpec);
+
+        assertEquals(
+                "Width should be capped at 480dp on desktop.",
+                MAX_DIALOG_WIDTH_LFF,
+                mDialogView.getMeasuredWidth());
+    }
+}

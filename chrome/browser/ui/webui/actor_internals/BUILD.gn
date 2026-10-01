@@ -1,0 +1,32 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("actor_internals") {
+  sources = [
+    "actor_internals_ui.cc",
+    "actor_internals_ui.h",
+    "actor_internals_ui_handler.cc",
+    "actor_internals_ui_handler.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//components/actor/public/mojom:mojo_bindings",
+    "//content/public/browser",
+    "//ui/webui",
+  ]
+
+  deps = [
+    "//chrome/browser:browser_process",
+    "//chrome/browser:global_features",
+    "//chrome/browser/actor",
+    "//chrome/browser/profiles",
+    "//chrome/common",
+    "//components/actor/core:journal",
+    "//components/actor/core/internals/browser",
+    "//components/actor/core/internals/resources",
+    "//content/public/browser",
+    "//ui/shell_dialogs",
+  ]
+}

@@ -1,0 +1,42 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module blink.mojom;
+
+import "url/mojom/url.mojom";
+
+// The result of an installation request.
+// See this explainer section for usage details:
+// https://github.com/MicrosoftEdge/MSEdgeExplainers/blob/main/WebInstall/explainer.md#installing-the-web-app
+enum WebInstallServiceResult {
+  kSuccess,
+  kAbortError,
+  kDataError,
+};
+
+// Mirrors install_params.idl.
+struct ManifestInstallOptions {
+  url.mojom.Url manifest_url;
+  url.mojom.Url? manifest_id;
+};
+
+// Allows installation of web apps from web content via JS API or <install>
+// element. Only bound on main frames that support web app installation.
+interface WebInstallService {
+  // Checks whether a site is already installed as a web app.
+  IsInstalled(ManifestInstallOptions? options) => (bool is_installed);
+
+  // Installs the current document when `options` is null. Otherwise, installs
+  // a web app directly from its manifest URL. The browser initiates fetching
+  // and parsing the JSON from `manifest_url` and presents the install for user
+  // review.
+  InstallFromManifest(ManifestInstallOptions? options)
+      => (WebInstallServiceResult result);
+
+  // Installs the current document when `options` is null. Otherwise, installs
+  // a web app directly from its manifest URL when triggered from an <install>
+  // element.
+  ElementInstallFromManifest(ManifestInstallOptions? options)
+      => (WebInstallServiceResult result);
+};

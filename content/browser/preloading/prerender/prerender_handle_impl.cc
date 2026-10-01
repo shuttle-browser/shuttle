@@ -1,0 +1,281 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/preloading/prerender/prerender_handle_impl.h"
+
+#include <limits>
+
+#include "base/debug/dump_without_crashing.h"
+#include "content/browser/preloading/prerender/prerender_final_status.h"
+#include "content/browser/preloading/prerender/prerender_host.h"
+#include "content/browser/preloading/prerender/prerender_host_registry.h"
+#include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/preloading_data.h"
+#include "content/public/browser/preloading_trigger_type.h"
+#include "url/gurl.h"
+
+namespace content {
+
+namespace {
+
+// Returns true when the error callback should be fired. The callback does not
+// need to be fired when prerendering succeed but is never activated, or it is
+// intentinally cancelled by an embedder (e.g., calling the cancellation API).
+// Otherwise, the callback should be fired.
+bool ShouldFireErrorCallback(PrerenderFinalStatus status) {
+  switch (status) {
+    case PrerenderFinalStatus::kActivated:
+      NOTREACHED();
+
+    // Prerendering is not activated.
+    case PrerenderFinalStatus::kDestroyed:
+      return false;
+
+    case PrerenderFinalStatus::kLowEndDevice:
+    case PrerenderFinalStatus::kInvalidSchemeRedirect:
+    case PrerenderFinalStatus::kInvalidSchemeNavigation:
+    case PrerenderFinalStatus::kNavigationRequestBlockedByCsp:
+    case PrerenderFinalStatus::kMojoBinderPolicy:
+    case PrerenderFinalStatus::kRendererProcessCrashed:
+    case PrerenderFinalStatus::kRendererProcessKilled:
+    case PrerenderFinalStatus::kDownload:
+      return true;
+
+    // Prerendering is intentionally cancelled by the app or not activated.
+    case PrerenderFinalStatus::kTriggerDestroyed:
+      return false;
+
+    case PrerenderFinalStatus::kNavigationNotCommitted:
+    case PrerenderFinalStatus::kNavigationBadHttpStatus:
+    case PrerenderFinalStatus::kClientCertRequested:
+    case PrerenderFinalStatus::kNavigationRequestNetworkError:
+    case PrerenderFinalStatus::kCancelAllHostsForTesting:
+    case PrerenderFinalStatus::kDidFailLoad:
+    case PrerenderFinalStatus::kStop:
+    case PrerenderFinalStatus::kSslCertificateError:
+    case PrerenderFinalStatus::kLoginAuthRequested:
+    case PrerenderFinalStatus::kUaChangeRequiresReload:
+    case PrerenderFinalStatus::kBlockedByClient:
+    case PrerenderFinalStatus::kMixedContent:
+    case PrerenderFinalStatus::kTriggerBackgrounded:
+    case PrerenderFinalStatus::kMemoryLimitExceeded:
+    case PrerenderFinalStatus::kDataSaverEnabled:
+    case PrerenderFinalStatus::kTriggerUrlHasEffectiveUrl:
+    case PrerenderFinalStatus::kActivatedBeforeStarted:
+    case PrerenderFinalStatus::kInactivePageRestriction:
+    case PrerenderFinalStatus::kStartFailed:
+    case PrerenderFinalStatus::kTimeoutBackgrounded:
+    case PrerenderFinalStatus::kCrossSiteRedirectInInitialNavigation:
+    case PrerenderFinalStatus::kCrossSiteNavigationInInitialNavigation:
+    case PrerenderFinalStatus::
+        kSameSiteCrossOriginRedirectNotOptInInInitialNavigation:
+    case PrerenderFinalStatus::
+        kSameSiteCrossOriginNavigationNotOptInInInitialNavigation:
+    case PrerenderFinalStatus::kActivationNavigationParameterMismatch:
+    case PrerenderFinalStatus::kActivatedInBackground:
+    case PrerenderFinalStatus::kActivationNavigationDestroyedBeforeSuccess:
+      return true;
+
+    // The associated tab is closed.
+    case PrerenderFinalStatus::kTabClosedByUserGesture:
+    case PrerenderFinalStatus::kTabClosedWithoutUserGesture:
+      return false;
+
+    case PrerenderFinalStatus::kPrimaryMainFrameRendererProcessCrashed:
+    case PrerenderFinalStatus::kPrimaryMainFrameRendererProcessKilled:
+    case PrerenderFinalStatus::kActivationFramePolicyNotCompatible:
+    case PrerenderFinalStatus::kPreloadingDisabled:
+    case PrerenderFinalStatus::kBatterySaverEnabled:
+    case PrerenderFinalStatus::kActivatedDuringMainFrameNavigation:
+    case PrerenderFinalStatus::kPreloadingUnsupportedByWebContents:
+    case PrerenderFinalStatus::kCrossSiteRedirectInMainFrameNavigation:
+    case PrerenderFinalStatus::kCrossSiteNavigationInMainFrameNavigation:
+    case PrerenderFinalStatus::
+        kSameSiteCrossOriginRedirectNotOptInInMainFrameNavigation:
+    case PrerenderFinalStatus::
+        kSameSiteCrossOriginNavigationNotOptInInMainFrameNavigation:
+    case PrerenderFinalStatus::kMemoryPressureOnTrigger:
+    case PrerenderFinalStatus::kMemoryPressureAfterTriggered:
+    case PrerenderFinalStatus::kPrerenderingDisabledByDevTools:
+      return true;
+
+    // This is used for speculation rules, not for embedder triggers.
+    case PrerenderFinalStatus::kSpeculationRuleRemoved:
+      NOTREACHED();
+
+    case PrerenderFinalStatus::kActivatedWithAuxiliaryBrowsingContexts:
+      return true;
+
+    // These are used for speculation rules, not for embedder triggers.
+    case PrerenderFinalStatus::kMaxNumOfRunningImmediatePrerendersExceeded:
+    case PrerenderFinalStatus::kMaxNumOfRunningNonImmediatePrerendersExceeded:
+      NOTREACHED();
+
+    case PrerenderFinalStatus::kMaxNumOfRunningEmbedderPrerendersExceeded:
+    case PrerenderFinalStatus::kPrerenderingUrlHasEffectiveUrl:
+    case PrerenderFinalStatus::kRedirectedPrerenderingUrlHasEffectiveUrl:
+    case PrerenderFinalStatus::kActivationUrlHasEffectiveUrl:
+    case PrerenderFinalStatus::kJavaScriptInterfaceAdded:
+    case PrerenderFinalStatus::kJavaScriptInterfaceRemoved:
+    case PrerenderFinalStatus::kAllPrerenderingCanceled:
+      return true;
+
+    // window.close() is called in a prerendered page.
+    case PrerenderFinalStatus::kWindowClosed:
+    case PrerenderFinalStatus::kOtherPrerenderedPageActivated:
+      return false;
+
+    case PrerenderFinalStatus::kPrerenderFailedDuringPrefetch:
+      return true;
+
+    // Prerendering is intentionally canceled by the Delete Browsing Data
+    // option or with Clear-Site-Data response headers.
+    case PrerenderFinalStatus::kBrowsingDataRemoved:
+      return false;
+    // The PrerenderHost is reused by another prerender request.
+    case PrerenderFinalStatus::kPrerenderHostReused:
+      return false;
+    case PrerenderFinalStatus::kFormSubmitWhenPrerendering:
+    case PrerenderFinalStatus::kCrossDocumentRestart:
+      return false;
+  }
+}
+
+PrerenderLifecycleStatus ToPrerenderLifecycleStatus(
+    PrerenderFinalStatus status) {
+  if (!ShouldFireErrorCallback(status)) {
+    return PrerenderLifecycleStatus::kCancelled;
+  }
+
+  switch (status) {
+    case PrerenderFinalStatus::kNavigationBadHttpStatus:
+      return PrerenderLifecycleStatus::kHttpBadResponse;
+    case PrerenderFinalStatus::kStop:
+      return PrerenderLifecycleStatus::kStop;
+    default:
+      return PrerenderLifecycleStatus::kOtherFailure;
+  }
+}
+
+}  // namespace
+
+PrerenderHandleImpl::PrerenderHandleImpl(
+    base::WeakPtr<PrerenderHostRegistry> prerender_host_registry,
+    PrerenderHostId prerender_host_id,
+    const GURL& prerendering_url,
+    std::optional<net::HttpNoVarySearchData> no_vary_search_hint)
+    : prerender_host_id_(prerender_host_id),
+      prerender_host_registry_(std::move(prerender_host_registry)),
+      prerendering_url_(prerendering_url),
+      no_vary_search_hint_(std::move(no_vary_search_hint)) {
+  CHECK(!prerendering_url_.is_empty());
+  // PrerenderHandleImpl is now designed only for embedder triggers. If you use
+  // this handle for other triggers, please make sure to update the logging etc.
+  auto* prerender_host =
+      prerender_host_registry_->FindNonReservedHostById(prerender_host_id_);
+  CHECK(prerender_host);
+  CHECK_EQ(prerender_host->trigger_type(), PreloadingTriggerType::kEmbedder);
+  obs_.Observe(prerender_host);
+}
+
+PrerenderHandleImpl::~PrerenderHandleImpl() {
+  if (prerender_host_registry_) {
+    prerender_host_registry_->CancelHost(
+        prerender_host_id_, PrerenderFinalStatus::kTriggerDestroyed);
+  }
+}
+
+PrerenderHostId PrerenderHandleImpl::GetPrerenderHostId() const {
+  return prerender_host_id_;
+}
+
+const GURL& PrerenderHandleImpl::GetInitialPrerenderingUrl() const {
+  return prerendering_url_;
+}
+
+const std::optional<net::HttpNoVarySearchData>&
+PrerenderHandleImpl::GetNoVarySearchHint() const {
+  return no_vary_search_hint_;
+}
+
+base::WeakPtr<PrerenderHandle> PrerenderHandleImpl::GetWeakPtr() {
+  return weak_factory_.GetWeakPtr();
+}
+
+void PrerenderHandleImpl::SetPreloadingAttemptFailureReason(
+    PreloadingFailureReason reason) {
+  auto* prerender_host = obs_.GetSource();
+  if (!prerender_host || !prerender_host->preloading_attempt()) {
+    return;
+  }
+  prerender_host->preloading_attempt()->SetFailureReason(reason);
+}
+
+void PrerenderHandleImpl::AddObserver(PrerenderHandle::Observer* observer) {
+  observers_.AddObserver(observer);
+}
+
+void PrerenderHandleImpl::RemoveObserver(PrerenderHandle::Observer* observer) {
+  observers_.RemoveObserver(observer);
+}
+
+bool PrerenderHandleImpl::IsValid() const {
+  switch (state_) {
+    case State::kLoading:
+    case State::kReady:
+      return true;
+    case State::kActivated:
+    case State::kCanceled:
+      return false;
+  }
+}
+
+bool PrerenderHandleImpl::IsWaitingForResponseHeaders() const {
+  CHECK(IsValid());
+  return state_ == State::kLoading;
+}
+
+void PrerenderHandleImpl::OnActivated() {
+  CHECK_EQ(State::kReady, state_);
+  state_ = State::kActivated;
+
+  for (auto& observer : observers_) {
+    observer.OnLifecycleStateChanged(PrerenderLifecycleStatus::kActivated);
+  }
+}
+
+void PrerenderHandleImpl::OnFailed(PrerenderFinalStatus status) {
+  CHECK(IsValid());
+  state_ = State::kCanceled;
+
+  PrerenderLifecycleStatus result = ToPrerenderLifecycleStatus(status);
+
+  // Notify observers to unthrottle other requests anyway.
+  for (auto& observer : observers_) {
+    observer.OnLifecycleStateChanged(result);
+  }
+}
+
+void PrerenderHandleImpl::OnHostDestroyed(PrerenderFinalStatus status) {
+  obs_.Reset();
+}
+
+void PrerenderHandleImpl::OnHeadersReceived(
+    NavigationHandle& navigation_handle) {
+  // There is a small chance that the headers received callback
+  // will be called for a cancelled prerender host because the
+  // deferred destruction of the PrerenderHost.
+  if (state_ == State::kCanceled) {
+    return;
+  }
+  CHECK_EQ(state_, State::kLoading);
+  state_ = State::kReady;
+
+  for (auto& observer : observers_) {
+    observer.OnLifecycleStateChanged(
+        PrerenderLifecycleStatus::kHTTPSuccessResponse);
+  }
+}
+
+}  // namespace content

@@ -1,0 +1,629 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/sharing/ui_bundled/sharing_coordinator.h"
+
+#import <UIKit/UIKit.h>
+
+#import "base/files/scoped_temp_dir.h"
+#import "base/ios/block_types.h"
+#import "base/strings/sys_string_conversions.h"
+#import "base/task/thread_pool/thread_pool_instance.h"
+#import "base/test/ios/wait_util.h"
+#import "base/test/run_until.h"
+#import "base/test/scoped_feature_list.h"
+#import "base/values.h"
+#import "components/bookmarks/browser/bookmark_node.h"
+#import "components/bookmarks/test/bookmark_test_helpers.h"
+#import "ios/chrome/browser/bookmarks/model/bookmark_ios_unit_test_support.h"
+#import "ios/chrome/browser/download/model/download_manager_tab_helper.h"
+#import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
+#import "ios/chrome/browser/shared/model/profile/profile_ios.h"
+#import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
+#import "ios/chrome/browser/shared/model/web_state_list/web_state_opener.h"
+#import "ios/chrome/browser/shared/public/commands/bookmarks_commands.h"
+#import "ios/chrome/browser/shared/public/commands/browser_coordinator_commands.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/find_in_page_commands.h"
+#import "ios/chrome/browser/shared/public/commands/generate_qr_code_command.h"
+#import "ios/chrome/browser/shared/public/commands/help_commands.h"
+#import "ios/chrome/browser/shared/public/commands/qr_generation_commands.h"
+#import "ios/chrome/browser/shared/public/commands/send_tab_to_self_commands.h"
+#import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
+#import "ios/chrome/browser/shared/ui/table_view/table_view_navigation_controller.h"
+#import "ios/chrome/browser/sharing/model/share_file_download_tab_helper.h"
+#import "ios/chrome/browser/sharing/ui_bundled/activity_services/activity_service_presentation.h"
+#import "ios/chrome/browser/sharing/ui_bundled/activity_services/canonical_url_retriever.h"
+#import "ios/chrome/browser/sharing/ui_bundled/sharing_params.h"
+#import "ios/chrome/browser/snapshots/model/snapshot_source_tab_helper.h"
+#import "ios/chrome/browser/snapshots/model/snapshot_tab_helper.h"
+#import "ios/chrome/test/scoped_key_window.h"
+#import "ios/components/enterprise/analysis/features.h"
+#import "ios/web/public/download/crw_web_view_download.h"
+#import "ios/web/public/test/fakes/fake_navigation_manager.h"
+#import "ios/web/public/test/fakes/fake_web_frame.h"
+#import "ios/web/public/test/fakes/fake_web_frames_manager.h"
+#import "ios/web/public/test/fakes/fake_web_state.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "ios/web/public/web_state.h"
+#import "testing/gmock/include/gmock/gmock.h"
+#import "testing/gtest/include/gtest/gtest.h"
+#import "testing/gtest_mac.h"
+#import "testing/platform_test.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+#import "third_party/ocmock/gtest_support.h"
+#import "url/gurl.h"
+
+using base::test::ios::kWaitForActionTimeout;
+using base::test::ios::WaitUntilConditionOrTimeout;
+using bookmarks::BookmarkNode;
+
+@interface SharingCoordinator (Testing)
+- (void)startDownloadFromWebState:(web::WebState*)webState;
+@end
+
+// Test fixture for testing SharingCoordinator.
+class SharingCoordinatorTest : public BookmarkIOSUnitTestSupport {
+ protected:
+  SharingCoordinatorTest()
+      : base_view_controller_([[UIViewController alloc] init]),
+        fake_origin_view_([[UIView alloc] init]),
+        test_scenario_(SharingScenario::TabShareButton) {
+    [scoped_key_window_.Get() setRootViewController:base_view_controller_];
+  }
+
+  void SetUp() override {
+    BookmarkIOSUnitTestSupport::SetUp();
+    snackbar_handler_ = OCMStrictProtocolMock(@protocol(SnackbarCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:snackbar_handler_
+                     forProtocol:@protocol(SnackbarCommands)];
+
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:OCMStrictProtocolMock(
+                                     @protocol(BrowserCoordinatorCommands))
+                     forProtocol:@protocol(BrowserCoordinatorCommands)];
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:OCMStrictProtocolMock(
+                                     @protocol(FindInPageCommands))
+                     forProtocol:@protocol(FindInPageCommands)];
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:OCMStrictProtocolMock(
+                                     @protocol(SendTabToSelfCommands))
+                     forProtocol:@protocol(SendTabToSelfCommands)];
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:OCMStrictProtocolMock(
+                                     @protocol(BookmarksCommands))
+                     forProtocol:@protocol(BookmarksCommands)];
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:OCMStrictProtocolMock(@protocol(HelpCommands))
+                     forProtocol:@protocol(HelpCommands)];
+  }
+
+  void AppendNewWebState(std::unique_ptr<web::FakeWebState> web_state) {
+    browser_->GetWebStateList()->InsertWebState(
+        std::move(web_state),
+        WebStateList::InsertionParams::Automatic().Activate());
+  }
+
+  void SetupForFileDownload() {
+    GURL test_url = GURL(url_value_.GetString());
+    auto test_web_state = std::make_unique<web::FakeWebState>();
+    test_web_state->SetCurrentURL(test_url);
+    test_web_state->SetContentsMimeType("application/pdf");
+    test_web_state->SetBrowserState(browser_->GetProfile());
+    test_web_state->SetView(fake_origin_view_);
+    test_web_state->SetNavigationManager(
+        std::make_unique<web::FakeNavigationManager>());
+    ShareFileDownloadTabHelper::CreateForWebState(test_web_state.get());
+    SnapshotTabHelper::CreateForWebState(test_web_state.get());
+    SnapshotSourceTabHelper::CreateForWebState(test_web_state.get());
+
+    auto frames_manager = std::make_unique<web::FakeWebFramesManager>();
+    web::FakeWebFramesManager* frames_manager_ptr = frames_manager.get();
+    test_web_state->SetWebFramesManager(std::move(frames_manager));
+
+    auto main_frame = web::FakeWebFrame::CreateMainWebFrame(test_url);
+    web::FakeWebFrame* main_frame_ptr = main_frame.get();
+    frames_manager_ptr->AddWebFrame(std::move(main_frame));
+
+    main_frame_ptr->AddResultForExecutedJs(
+        &url_value_, activity_services::kCanonicalURLScript);
+
+    AppendNewWebState(std::move(test_web_state));
+  }
+
+  base::test::ScopedFeatureList scoped_feature_list_;
+  ScopedKeyWindow scoped_key_window_;
+  UIViewController* base_view_controller_;
+  UIView* fake_origin_view_;
+  id snackbar_handler_;
+  SharingScenario test_scenario_;
+  base::Value url_value_;
+};
+
+// Tests that the start method shares the current page and ends up presenting
+// a UIActivityViewController.
+TEST_F(SharingCoordinatorTest, Start_ShareCurrentPage) {
+  // Create a test web state.
+  GURL test_url = GURL("https://example.com");
+  url_value_ = base::Value(test_url.spec());
+  auto test_web_state = std::make_unique<web::FakeWebState>();
+  test_web_state->SetNavigationManager(
+      std::make_unique<web::FakeNavigationManager>());
+  test_web_state->SetCurrentURL(test_url);
+  test_web_state->SetBrowserState(browser_->GetProfile());
+  DownloadManagerTabHelper::CreateForWebState(test_web_state.get());
+  SnapshotTabHelper::CreateForWebState(test_web_state.get());
+  SnapshotSourceTabHelper::CreateForWebState(test_web_state.get());
+
+  auto frames_manager = std::make_unique<web::FakeWebFramesManager>();
+  web::FakeWebFramesManager* frames_manager_ptr = frames_manager.get();
+  test_web_state->SetWebFramesManager(std::move(frames_manager));
+
+  auto main_frame = web::FakeWebFrame::CreateMainWebFrame(test_url);
+  web::FakeWebFrame* main_frame_ptr = main_frame.get();
+  frames_manager_ptr->AddWebFrame(std::move(main_frame));
+
+  main_frame_ptr->AddResultForExecutedJs(
+      &url_value_, activity_services::kCanonicalURLScript);
+
+  AppendNewWebState(std::move(test_web_state));
+
+  SharingParams* params =
+      [[SharingParams alloc] initWithScenario:test_scenario_];
+
+  SharingCoordinator* coordinator = [[SharingCoordinator alloc]
+      initWithBaseViewController:base_view_controller_
+                         browser:browser_.get()
+                          params:params
+                      sourceItem:fake_origin_view_];
+
+  auto completion_handler_called = std::make_shared<bool>(false);
+  id vc_partial_mock = OCMPartialMock(base_view_controller_);
+  [[vc_partial_mock expect]
+      presentViewController:[OCMArg checkWithBlock:^BOOL(
+                                        UIViewController* viewController) {
+        if ([viewController isKindOfClass:[UIActivityViewController class]]) {
+          *completion_handler_called = true;
+          return YES;
+        }
+        return NO;
+      }]
+                   animated:YES
+                 completion:nil];
+
+  [coordinator start];
+
+  ASSERT_TRUE(
+      base::test::RunUntil([&]() { return *completion_handler_called; }));
+
+  // Verify that the positioning is correct.
+  auto activityHandler =
+      static_cast<id<ActivityServicePresentation>>(coordinator);
+
+  [activityHandler activityServiceDidEndPresenting];
+
+  EXPECT_OCMOCK_VERIFY(vc_partial_mock);
+  [coordinator stop];
+}
+
+// Tests that the coordinator handles the QRGenerationCommands protocol.
+TEST_F(SharingCoordinatorTest, GenerateQRCode) {
+  SharingParams* params =
+      [[SharingParams alloc] initWithScenario:test_scenario_];
+  SharingCoordinator* coordinator = [[SharingCoordinator alloc]
+      initWithBaseViewController:base_view_controller_
+                         browser:browser_.get()
+                          params:params
+                      sourceItem:fake_origin_view_];
+
+  __block UIViewController* presented_view_controller;
+
+  id vc_partial_mock = OCMPartialMock(base_view_controller_);
+  [[vc_partial_mock expect]
+      presentViewController:[OCMArg checkWithBlock:^BOOL(id arg) {
+        if (![arg isKindOfClass:UIViewController.class]) {
+          return false;
+        }
+        presented_view_controller = arg;
+        return true;
+      }]
+                   animated:YES
+                 completion:nil];
+
+  auto handler = static_cast<id<QRGenerationCommands>>(coordinator);
+  [handler showQRCode:[[GenerateQRCodeCommand alloc]
+                          initWithURL:GURL("https://example.com")
+                                title:@"Some Title"]];
+
+  EXPECT_OCMOCK_VERIFY(vc_partial_mock);
+
+  id presented_partial_mock = OCMPartialMock(presented_view_controller);
+  OCMStub([presented_partial_mock presentingViewController])
+      .andReturn(base_view_controller_);
+
+  [[vc_partial_mock expect] dismissViewControllerAnimated:YES completion:nil];
+
+  [handler hideQRCode];
+
+  EXPECT_OCMOCK_VERIFY(vc_partial_mock);
+  [coordinator stop];
+}
+
+// Tests that the start method shares the given URL and ends up presenting
+// a UIActivityViewController.
+TEST_F(SharingCoordinatorTest, Start_ShareURL) {
+  GURL testURL = GURL("https://example.com");
+  NSString* testTitle = @"Some title";
+
+  auto test_web_state = std::make_unique<web::FakeWebState>();
+  test_web_state->SetNavigationManager(
+      std::make_unique<web::FakeNavigationManager>());
+  test_web_state->SetCurrentURL(testURL);
+  test_web_state->SetBrowserState(browser_->GetProfile());
+  AppendNewWebState(std::move(test_web_state));
+
+  SharingParams* params = [[SharingParams alloc] initWithURL:testURL
+                                                       title:testTitle
+                                                    scenario:test_scenario_];
+  SharingCoordinator* coordinator = [[SharingCoordinator alloc]
+      initWithBaseViewController:base_view_controller_
+                         browser:browser_.get()
+                          params:params
+                      sourceItem:fake_origin_view_];
+
+  auto completion_handler_called = std::make_shared<bool>(false);
+  id vc_partial_mock = OCMPartialMock(base_view_controller_);
+  [[vc_partial_mock expect]
+      presentViewController:[OCMArg checkWithBlock:^BOOL(
+                                        UIViewController* viewController) {
+        if ([viewController isKindOfClass:[UIActivityViewController class]]) {
+          *completion_handler_called = true;
+          return YES;
+        }
+        return NO;
+      }]
+                   animated:YES
+                 completion:nil];
+
+  [coordinator start];
+
+  EXPECT_OCMOCK_VERIFY(vc_partial_mock);
+
+  // Make sure share sheet finishes it's init (which means calling
+  // canPerformWithActivityItems and reading prefs) before the
+  // WebTaskEnvironment is shut down.
+  ASSERT_TRUE(
+      base::test::RunUntil([&]() { return *completion_handler_called; }));
+  [coordinator stop];
+}
+
+// Test that a file can be downloaded and shared. This verifies that when the
+// Enterprise Download Protection feature is disabled, the scan result is always
+// SUCCESS and it proceeds normally.
+TEST_F(SharingCoordinatorTest, Start_FileDownloadShouldProceed) {
+  url_value_ = base::Value("https://example.com/test.pdf");
+  SetupForFileDownload();
+
+  SharingParams* params =
+      [[SharingParams alloc] initWithScenario:test_scenario_];
+
+  SharingCoordinator* coordinator = [[SharingCoordinator alloc]
+      initWithBaseViewController:base_view_controller_
+                         browser:browser_.get()
+                          params:params
+                      sourceItem:fake_origin_view_];
+
+  auto completion_handler_called = std::make_shared<BOOL>(false);
+  id vc_partial_mock = OCMPartialMock(base_view_controller_);
+  [[vc_partial_mock expect]
+      presentViewController:[OCMArg checkWithBlock:^BOOL(
+                                        UIViewController* viewController) {
+        if ([viewController isKindOfClass:[UIActivityViewController class]]) {
+          *completion_handler_called = true;
+          return YES;
+        }
+        return NO;
+      }]
+                   animated:YES
+                 completion:nil];
+
+  // Start the coordinator and finish the download.
+  [coordinator start];
+  [(id<CRWWebViewDownloadDelegate>)coordinator downloadDidFinish];
+
+  ASSERT_TRUE(base::test::RunUntil(
+      [&completion_handler_called]() { return *completion_handler_called; }));
+
+  // Verify that the positioning is correct.
+  auto activityHandler =
+      static_cast<id<ActivityServicePresentation>>(coordinator);
+
+  [activityHandler activityServiceDidEndPresenting];
+
+  EXPECT_OCMOCK_VERIFY(vc_partial_mock);
+  [coordinator stop];
+}
+
+// Test that a file can be downloaded and shared normally when the Enterprise
+// Download Protection Feature is enabled but no policy is set.
+TEST_F(SharingCoordinatorTest,
+       Start_DLPEnabledNoPolicy_FileDownloadShouldProceed) {
+  scoped_feature_list_.InitAndEnableFeature(
+      enterprise_connectors::kEnableFileDownloadConnectorIOS);
+  url_value_ = base::Value("https://example.com/test.pdf");
+  SetupForFileDownload();
+
+  SharingParams* params =
+      [[SharingParams alloc] initWithScenario:test_scenario_];
+
+  SharingCoordinator* coordinator = [[SharingCoordinator alloc]
+      initWithBaseViewController:base_view_controller_
+                         browser:browser_.get()
+                          params:params
+                      sourceItem:fake_origin_view_];
+
+  auto completion_handler_called = std::make_shared<BOOL>(false);
+  id vc_partial_mock = OCMPartialMock(base_view_controller_);
+  [[vc_partial_mock expect]
+      presentViewController:[OCMArg checkWithBlock:^BOOL(
+                                        UIViewController* viewController) {
+        if ([viewController isKindOfClass:[UIActivityViewController class]]) {
+          *completion_handler_called = true;
+          return YES;
+        }
+        return NO;
+      }]
+                   animated:YES
+                 completion:nil];
+
+  // Start the coordinator and finish the download.
+  [coordinator start];
+  [(id<CRWWebViewDownloadDelegate>)coordinator downloadDidFinish];
+
+  // Test that downloading the file can be proceed and sharesheet is shown.
+  ASSERT_TRUE(base::test::RunUntil(
+      [&completion_handler_called]() { return *completion_handler_called; }));
+
+  // Verify that the positioning is correct.
+  auto activityHandler =
+      static_cast<id<ActivityServicePresentation>>(coordinator);
+
+  [activityHandler activityServiceDidEndPresenting];
+
+  EXPECT_OCMOCK_VERIFY(vc_partial_mock);
+  [coordinator stop];
+}
+
+// Tests that switching tabs while a download is in progress cancels the share
+// sheet presentation.
+TEST_F(SharingCoordinatorTest, Start_TabSwitchDuringDownloadCancelsShare) {
+  url_value_ = base::Value("https://example.com/test.pdf");
+  SetupForFileDownload();
+
+  SharingParams* params =
+      [[SharingParams alloc] initWithScenario:test_scenario_];
+
+  SharingCoordinator* coordinator = [[SharingCoordinator alloc]
+      initWithBaseViewController:base_view_controller_
+                         browser:browser_.get()
+                          params:params
+                      sourceItem:fake_origin_view_];
+
+  id vc_partial_mock = OCMPartialMock(base_view_controller_);
+  [[vc_partial_mock reject] presentViewController:[OCMArg any]
+                                         animated:YES
+                                       completion:nil];
+
+  // Start the coordinator. This starts the download flow.
+  [coordinator start];
+
+  // Simulate tab switch by activating a new web state.
+  auto other_web_state = std::make_unique<web::FakeWebState>();
+  AppendNewWebState(std::move(other_web_state));
+
+  // Finish the download.
+  [(id<CRWWebViewDownloadDelegate>)coordinator downloadDidFinish];
+
+  EXPECT_OCMOCK_VERIFY(vc_partial_mock);
+  [coordinator stop];
+}
+
+// Tests that switching tabs after download but before scan completes cancels
+// the share sheet presentation.
+TEST_F(SharingCoordinatorTest, Start_TabSwitchDuringScanningCancelsShare) {
+  url_value_ = base::Value("https://example.com/test.pdf");
+  SetupForFileDownload();
+
+  SharingParams* params =
+      [[SharingParams alloc] initWithScenario:test_scenario_];
+
+  SharingCoordinator* coordinator = [[SharingCoordinator alloc]
+      initWithBaseViewController:base_view_controller_
+                         browser:browser_.get()
+                          params:params
+                      sourceItem:fake_origin_view_];
+
+  id vc_partial_mock = OCMPartialMock(base_view_controller_);
+  [[vc_partial_mock reject] presentViewController:[OCMArg any]
+                                         animated:YES
+                                       completion:nil];
+
+  // Start the coordinator. This starts the download flow.
+  [coordinator start];
+
+  // Finish the download. This starts the scanning flow.
+  [(id<CRWWebViewDownloadDelegate>)coordinator downloadDidFinish];
+
+  // Simulate tab switch by activating a new web state during scanning.
+  auto other_web_state = std::make_unique<web::FakeWebState>();
+  AppendNewWebState(std::move(other_web_state));
+
+  EXPECT_OCMOCK_VERIFY(vc_partial_mock);
+  [coordinator stop];
+}
+
+// Tests that switching tabs away while a download is in progress cancels the
+// share sheet presentation.
+TEST_F(SharingCoordinatorTest, Start_TabStayOnDifferentTabCancelsShare) {
+  url_value_ = base::Value("https://example.com/test.pdf");
+  SetupForFileDownload();
+
+  SharingParams* params =
+      [[SharingParams alloc] initWithScenario:test_scenario_];
+
+  SharingCoordinator* coordinator = [[SharingCoordinator alloc]
+      initWithBaseViewController:base_view_controller_
+                         browser:browser_.get()
+                          params:params
+                      sourceItem:fake_origin_view_];
+
+  id vc_partial_mock = OCMPartialMock(base_view_controller_);
+  [[vc_partial_mock reject] presentViewController:[OCMArg any]
+                                         animated:YES
+                                       completion:nil];
+
+  // Start the coordinator. This starts the download flow.
+  [coordinator start];
+
+  // Simulate tab switch by activating a new web state.
+  auto other_web_state = std::make_unique<web::FakeWebState>();
+  AppendNewWebState(std::move(other_web_state));
+
+  // Stay on the new tab (index 1).
+
+  // Finish the download.
+  [(id<CRWWebViewDownloadDelegate>)coordinator downloadDidFinish];
+
+  EXPECT_OCMOCK_VERIFY(vc_partial_mock);
+  [coordinator stop];
+}
+
+// Test that starting a download creates a unique destination directory on disk,
+// and stopping/tearing down the coordinator destroys it.
+TEST_F(SharingCoordinatorTest, Start_CreatesAndDestroysDirectory) {
+  url_value_ = base::Value("https://example.com/test.pdf");
+  SetupForFileDownload();
+
+  SharingParams* params =
+      [[SharingParams alloc] initWithScenario:test_scenario_];
+
+  SharingCoordinator* coordinator = [[SharingCoordinator alloc]
+      initWithBaseViewController:base_view_controller_
+                         browser:browser_.get()
+                          params:params
+                      sourceItem:fake_origin_view_];
+
+  NSString* temp_dir =
+      [NSTemporaryDirectory() stringByAppendingPathComponent:@"OpenIn"];
+  NSFileManager* file_manager = [NSFileManager defaultManager];
+
+  NSArray<NSString*>* files_before = nil;
+  if ([file_manager fileExistsAtPath:temp_dir]) {
+    files_before = [file_manager contentsOfDirectoryAtPath:temp_dir error:nil];
+  }
+  size_t count_before = files_before.count;
+
+  [coordinator start];
+  base::ThreadPoolInstance::Get()->FlushForTesting();
+  ASSERT_TRUE(base::test::RunUntil(^bool {
+    NSArray<NSString*>* files = [file_manager contentsOfDirectoryAtPath:temp_dir
+                                                                  error:nil];
+    return files.count == count_before + 1;
+  }));
+
+  [coordinator stop];
+  base::ThreadPoolInstance::Get()->FlushForTesting();
+  ASSERT_TRUE(base::test::RunUntil(^bool {
+    NSArray<NSString*>* files = nil;
+    if ([file_manager fileExistsAtPath:temp_dir]) {
+      files = [file_manager contentsOfDirectoryAtPath:temp_dir error:nil];
+    }
+    return files.count == count_before;
+  }));
+}
+
+// Test that stopping the coordinator before the directory is created on the
+// background thread cleans up the directory and does not start the download.
+TEST_F(SharingCoordinatorTest, StopBeforeDirectoryCreated_NoLeakAndNoDownload) {
+  url_value_ = base::Value("https://example.com/test.pdf");
+  SetupForFileDownload();
+
+  SharingParams* params =
+      [[SharingParams alloc] initWithScenario:test_scenario_];
+
+  SharingCoordinator* coordinator = [[SharingCoordinator alloc]
+      initWithBaseViewController:base_view_controller_
+                         browser:browser_.get()
+                          params:params
+                      sourceItem:fake_origin_view_];
+
+  id coordinator_mock = OCMPartialMock(coordinator);
+  [[coordinator_mock reject]
+      startDownloadFromWebState:static_cast<web::WebState*>(
+                                    [OCMArg anyPointer])];
+
+  NSString* temp_dir =
+      [NSTemporaryDirectory() stringByAppendingPathComponent:@"OpenIn"];
+  NSFileManager* file_manager = [NSFileManager defaultManager];
+
+  NSArray<NSString*>* files_before = nil;
+  if ([file_manager fileExistsAtPath:temp_dir]) {
+    files_before = [file_manager contentsOfDirectoryAtPath:temp_dir error:nil];
+  }
+  size_t count_before = files_before.count;
+
+  [coordinator start];
+  [coordinator stop];
+
+  base::ThreadPoolInstance::Get()->FlushForTesting();
+
+  // The directory has been created by the background thread (so count is +1)
+  // but the reply hasn't processed on the main thread yet. Checking this
+  // immediately after `FlushForTesting` is safe and not flaky because the main
+  // thread has not run its message loop yet, meaning the reply task (which
+  // deletes the directory since the coordinator was stopped) has not had a
+  // chance to execute.
+  NSArray<NSString*>* files_after_start =
+      [file_manager contentsOfDirectoryAtPath:temp_dir error:nil];
+  EXPECT_EQ(files_after_start.count, count_before + 1);
+
+  // Now run the loop until the reply is executed on the main thread, which will
+  // schedule the deletion task on the background thread, and the background
+  // task completes the deletion.
+  ASSERT_TRUE(base::test::RunUntil(^bool {
+    NSArray<NSString*>* files = nil;
+    if ([file_manager fileExistsAtPath:temp_dir]) {
+      files = [file_manager contentsOfDirectoryAtPath:temp_dir error:nil];
+    }
+    return files.count == count_before;
+  }));
+
+  EXPECT_OCMOCK_VERIFY(coordinator_mock);
+}
+
+// Test that destroying the WebStateList while the SharingCoordinator is active
+// does not cause a crash.
+TEST_F(SharingCoordinatorTest, WebStateListDestroyed) {
+  url_value_ = base::Value("https://example.com/test.pdf");
+  SetupForFileDownload();
+
+  SharingParams* params =
+      [[SharingParams alloc] initWithScenario:test_scenario_];
+
+  SharingCoordinator* coordinator = [[SharingCoordinator alloc]
+      initWithBaseViewController:base_view_controller_
+                         browser:browser_.get()
+                          params:params
+                      sourceItem:fake_origin_view_];
+
+  [coordinator start];
+
+  // Destroy the WebStateList by deleting the browser.
+  browser_.reset();
+
+  // Stopping or deallocating the coordinator should not crash.
+  [coordinator stop];
+}

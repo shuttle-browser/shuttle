@@ -1,0 +1,19 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+syntax = "proto2";
+
+package feedwire;
+
+option optimize_for = LITE_RUNTIME;
+
+enum FeedEntryPointSource {
+  reserved 20, 24, 25, 26, 27, 28;
+  reserved "CHROME_FOLLOWING_FEED", "CHROME_SINGLE_WEB_FEED_MENU",
+      "CHROME_SINGLE_WEB_FEED_ATTRIBUTION",
+      "CHROME_SINGLE_WEB_FEED_RECOMMENDATION", "CHROME_SINGLE_WEB_FEED_OTHER",
+      "CHROME_SINGLE_WEB_FEED_GROUP_HEADER";
+
+  CHROME_DISCOVER_FEED = 19;
+}

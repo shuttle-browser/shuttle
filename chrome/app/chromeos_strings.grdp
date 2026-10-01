@@ -1,0 +1,1812 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ChromeOS-specific strings (included from generated_resources.grd).
+     Everything in this file is wrapped in <if expr="is_chromeos">. -->
+<grit-part>
+  <message name="IDS_EMPTY_STRING" desc="Empty string, exist only to make code generic. No translation required.">
+  </message>
+
+  <!-- Application name notification upon idle -->
+  <message name="IDS_IDLE_APP_NAME_UNKNOWN_APPLICATION_NOTIFICATION" desc="A notification which shows that the name of the running Kiosk application cannot be determined and is probably invalid.">
+    The application appears to be invalid.
+  </message>
+
+  <!-- Website Permission -->
+  <message name="IDS_WEBSITE_APPROVED_NOTIFICATION_TITLE" desc="Title of system notification for remote website approvals. This is shown to a child user when a parent has remotely approved their request to access a certain website.">
+    Website request approved
+  </message>
+  <message name="IDS_WEBSITE_APPROVED_NOTIFICATION_MESSAGE" desc="Message in system notification for remote website approvals. This is shown to a child user when a parent has remotely approved their request to access a certain website.">
+    Click here to visit <ph name="APPROVED_URL">$1<ex>www.google.com</ex></ph>
+  </message>
+  <message name="IDS_WEBSITE_APPROVED_NOTIFICATION_DISPLAY_SOURCE" desc="The string shown as the display source of website approval notifications. Family Link is the name of a Google app.">
+    Family Link
+  </message>
+
+  <message name="IDS_WALLPAPER_MANAGER_INVALID_WALLPAPER" desc="The string displayed to user when user selected wallpaper can not be set as a wallpaper.">
+    Chrome cannot set wallpaper.
+  </message>
+
+  <!-- MultiDevice setup dialog. -->
+  <message name="IDS_MULTIDEVICE_SETUP_ACCEPT_LABEL" desc="Label for button to connect an Android phone to the Chromebook to enable cross-device features.">
+    Connect
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_TRY_AGAIN_LABEL" desc="Label for button to retry setup upon failure.">
+    Try again
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_PASSWORD_PAGE_HEADER" desc="Header for the first page in the multi-device setup flow; the page displays a field in which the user must enter their password to continue.">
+    Enter your password
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_PASSWORD_PAGE_ENTER_PASSWORD_LABEL" desc="Default text in the field for user to enter their password.">
+    Password
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_PASSWORD_PAGE_WRONG_PASSWORD_LABEL" desc="Message displayed in the multi-device setup flow when the user has entered an incorrect password.">
+    Wrong password
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_PASSWORD_PAGE_HEADER_FOR_PIN" desc="Header for the first page in the multi-device setup flow for PIN only users; the page displays a field in which the user must enter their PIN to continue.">
+    Enter your PIN
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_PASSWORD_PAGE_ENTER_PIN_LABEL" desc="Default text in the field for user to enter their PIN.">
+    PIN
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_PASSWORD_PAGE_WRONG_PIN_LABEL" desc="Message displayed in the multi-device setup flow for PIN only users; when the user has entered an incorrect PIN.">
+    Wrong PIN
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_BACK_LABEL" desc="Label for button to navigate back in MultiDevice setup workflow.">
+    Back
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_SETUP_SUCCEEDED_PAGE_HEADER" desc="Header for successful setup page.">
+    All set!
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_SETUP_SUCCEEDED_PAGE_MESSAGE" desc="Message for successful setup page.">
+    Go to <ph name="LINK_BEGIN">&lt;a id="settings-link"&gt;</ph>Settings<ph name="LINK_END">&lt;/a&gt;</ph> to see your options for Better Together.
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_DIALOG_ACCESSIBILITY_TITLE" desc="Accessibility title for the multidevice setup dialog with a '- Dialog' appended to inform screen reader users they are in a dialog. This is a work around to deal with the fact that we cannot annotate the window's role as a dialog another way.">
+    Connect to your phone - Dialog
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_HEADER" desc="Header for multidevice setup page.">
+    Connect your Android phone for a seamless experience
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_AFTER_QUICK_START_HEADER" desc="Header for multidevice setup page for users who have already connected their phone earlier with Quick Start.">
+    Stay connected with your phone
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_MESSAGE" desc="Summary to tell user that they can share their Android's capabilities with their ChromeOS device; includes details on specific features that can be used and a link to an information page">
+    You can text from your computer, share your internet connection, reply to conversation notifications and unlock your <ph name="DEVICE_TYPE">$1<ex>Chromebook</ex></ph> with your phone.<ph name="FOOTNOTE_POINTER">$2<ex>*</ex></ph> <ph name="LINK_BEGIN">&lt;a href="$3<ex>https://support.google.com/chromebook/?p=multidevice</ex>" target="_blank"&gt;</ph>Learn more<ph name="LINK_END">&lt;/a&gt;</ph>
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_FOOTNOTE" desc="Footnote for multi-device feature setup page, which indicates that new features may be added, and the exact set of features available to users differs according to the device model used.">
+    New features will be included as they become available, and features may vary by device.
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_SINGLE_DEVICE_HEADER" desc="Label appearing over the name of an Android phone which this Chromebook can connect to.">
+    Device detected
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_MULTIPLE_DEVICE_HEADER" desc="Label appearing over a list of Android phones which this Chromebook can connect to.">
+    Select a device
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_OFFLINE_DEVICE_OPTION" desc="Device name appearing in the list of Android phones indicating
+  the device is offline.">
+    <ph name="DEVICE_NAME">$1<ex>Pixel 2</ex></ph> (offline)
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_FEATURE_LIST_HEADER" desc="Header to introduce a list of the features that the user is agreeing to in the multi-device setup.">
+    By connecting your phone, you can:
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_AWM_DESCRIPTION" desc="Description of a feature that shows text messages received by the user's phone as notification on their Chromebook and a link to an information page.">
+    Send you notifications and default to remembering this computer for Messages. <ph name="LINK_BEGIN">&lt;a href="$1<ex>https://support.google.com/chromebook/?p=messages</ex>"&gt;</ph>Learn more<ph name="LINK_END">&lt;/a&gt;</ph>
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_MIRROR_PHONE_NOTIFICATIONS" desc="Tell the user that Better Together can automatically mirror notifications from their phone to their Chromebook.">
+    Mirror notifications from your phone
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_CAMERA_ROLL" desc="Description of a feature that allows user to download most recent items in camera roll on the connected Android phone">
+    Access your phone's camera roll
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_INSTALL_APPS_DESCRIPTION" desc="Tell the user that Better Together can automatically install apps on their Chromebook">
+    Automatically install apps
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_ADD_FEATURES" desc="Tell the user that Better Together can offer to add new features to that use their phone's connection to their Chromebook">
+    Offer new features as they become available
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_PHONE_HUB_TITLE" desc="Name of a feature. Phone Hub allows a user to view their phone's photos, notifications, and apps. It also allows them to reply to messages recieved on the phone.">
+    Phone Hub
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_PHONE_HUB_DESCRIPTION" desc="Description of a feature that allows a user to view their phone's photos, notifications, and apps. It also allows them to reply to messages recieved on the phone.">
+    View your phone's photos and apps. Quickly reply to messaging notifications.
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_SMART_LOCK_TITLE" desc="Name of a feature. This feature allows users to unlock their Chromebook from their phone if they're logged in.">
+    Smart Lock
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_SMART_LOCK_DESCRIPTION" desc="Description of a feature that allows a user to unlock their Chromebook using a connected Android phone.">
+    Use your phone to unlock your <ph name="DEVICE_TYPE">$1<ex>Chromebook</ex></ph>.
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_WIFI_SYNC_TITLE" desc="Name of a feature. Wi-Fi Sync allows user to sync network configurations between ChromeOS devices and a connected Android phone.">
+    Wi-Fi Sync
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_WIFI_SYNC_DESCRIPTION" desc="Description of a feature that syncs Wi-Fi network configurations between ChromeOS devices and a connected Android phone.">
+    Share Wi-Fi settings between your devices.
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_INSTANT_TETHERING_TITLE" desc="Name of a feature. This feature automatically offers the user to tether to their phone if their Chromebook is offline and their phone supports tethering.">
+    Instant Tethering
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_INSTANT_TETHERING_DESCRIPTION" desc="Description of a feature that allows a user to connect to their phone's hotspot from their Chromebook.">
+    Automatically connect to your phone's hotspot.
+  </message>
+
+  <message name="IDS_GETTING_DEVICE_READY" desc="Message that the system is getting the device ready">
+    Getting the device ready...
+  </message>
+
+  <!-- Cellular Setup UI Strings -->
+  <message name="IDS_CELLULAR_SETUP_BACK_LABEL" desc="Label for button to go to previous screen during cellular setup">
+    Back
+  </message>
+  <message name="IDS_CELLULAR_SETUP_DONE_LABEL" desc="Label for button to finish and exit cellular setup">
+    Done
+  </message>
+  <message name="IDS_CELLULAR_SETUP_TRY_AGAIN_LABEL" desc="Label for button to retry a step during cellular setup">
+    Try again
+  </message>
+  <message name="IDS_CELLULAR_SETUP_NEXT_LABEL" desc="Label for button that advances to next step during cellular setup">
+    Next
+  </message>
+  <message name="IDS_CELLULAR_SETUP_SKIP_DISCOVERY_LABEL" desc="Label for button that skips the multiple profile selection step and sets up a new profile during eSIM cellular setup">
+    Skip &amp; set up new profile
+  </message>
+  <message name="IDS_CELLULAR_SETUP_CONFIRM_LABEL" desc="Label for button that verifies the confirmation code entered during cellular setup">
+    Confirm
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_ACTIVATION_CODE" desc="Label for activation code input box">
+    Activation code
+  </message>
+  <message name="IDS_CELLULAR_SETUP_SIM_DETECT_PAGE_TITLE" desc="Title for first screen of cellular setup during which ChromeOS is preparing the cellular device for setup.">
+    Preparing to setup your cellular device...
+  </message>
+  <message name="IDS_CELLULAR_SETUP_SIM_DETECT_PAGE_ERROR_TITLE" desc="Title for cellular setup when ChromeOS encounters an error preparing the cellular device for setup.">
+    No network found
+  </message>
+  <message name="IDS_CELLULAR_SETUP_SIM_DETECT_PAGE_ERROR_MESSAGE" desc="Message displayed under title in cellular setup when ChromeOS encounters an error preparing the cellular device for setup and has retry attempts left. Prompts user to insert SIM and try again.">
+    No network found. Please insert your SIM and try again.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_SIM_DETECT_PAGE_FINAL_ERROR_MESSAGE" desc="Message displayed under title in cellular setup when ChromeOS encounters an error preparing the cellular device for setup and has no retry attempts left. Prompts user to insert SIM, reboot and try again.">
+    No network found. Please insert your SIM and reboot your device before trying again.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_PROVISIONING_PAGE_LOADING_TITLE" desc="Title for cellular setup step which indicates that a connection is in progress to the user's mobile data provider (e.g., Verizon).">
+    Connecting to <ph name="CARRIER_NAME">$1<ex>Google Fi</ex></ph>
+  </message>
+  <message name="IDS_CELLULAR_SETUP_PROVISIONING_PAGE_ERROR_TITLE" desc="Title for cellular setup step which indicates that the Chromebook was unable to establish a connection to the user's mobile data provider (e.g., Verizon).">
+    Couldn't connect to <ph name="CARRIER_NAME">$1<ex>Google Fi</ex></ph>
+  </message>
+  <message name="IDS_CELLULAR_SETUP_PROVISIONING_PAGE_ERROR_MESSAGE" desc="Message for the cellular setup step which indicates that the Chromebook was unable to establish a connection to the user's mobile data provider (e.g., Verizon).">
+    Please try again. For technical support, contact <ph name="CARRIER_NAME">$1<ex>Google Fi</ex></ph>.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_PROVISIONING_PAGE_ACTIVE_TITLE" desc="Title for cellular setup step which indicates that the Chromebook is in the process of connecting to a mobile network.">
+    Connect to mobile network
+  </message>
+  <message name="IDS_CELLULAR_SETUP_FINAL_PAGE_TITLE" desc="Title for the final success screen of cellular setup that tells the user that setup is completed but service is being activated">
+    Mobile data being activated
+  </message>
+  <message name="IDS_CELLULAR_SETUP_PSIM_FINAL_PAGE_MESSAGE" desc="Message displayed under title in final success screen of physical SIM cellular setup that tells user that service may take a while to activate.">
+    Network has been added successfully. It may take several minutes for your cellular network to become active.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_FINAL_PAGE_ERROR_TITLE" desc="Title for the final screen of cellular setup when ChromeOS encountered an error completing activation">
+    Could not activate cellular device
+  </message>
+  <message name="IDS_CELLULAR_SETUP_FINAL_PAGE_ERROR_MESSAGE" desc="Message displayed under title in final screen of cellular setup when ChromeOS encountered an error completing activation.">
+    An error occured during activation.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_FINAL_PAGE_SUCCESS_HEADER" desc="Header displayed at the top of the success screen of the eSIM installation flow that tells user that a new eSIM profile has been added.">
+    Network added
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_FINAL_PAGE_MESSAGE" desc="Message displayed under title in final success screen of eSIM cellular setup that tells user that their profile has been activated.">
+    This mobile network will be available to all users on this device
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_FINAL_PAGE_ERROR_MESSAGE" desc="Message displayed under title in final screen of eSIM cellular setup when ChromeOS encountered an error installing eSIM profiles.">
+    Couldn't install eSIM profile. For help, please contact your carrier.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PROFILE_LOADING_TITLE" desc="Title message displayed during loading page in eSIM setup flow when looking for eSIM profiles.">
+    Looking for available eSIM profiles
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PROFILE_LOADING_MESSAGE" desc="Message displayed during loading page in eSIM setup flow when looking for eSIM profiles.">
+   This may cause your mobile network to disconnect for a few minutes
+  </message>
+  <message name="IDS_CELLULAR_SETUP_PROFILE_DISCOVERY_PAGE_TITLE" desc="Title message informing user that they can choose a profile from the list below to download.">
+    Choose an eSIM profile to download
+  </message>
+  <message name="IDS_CELLULAR_SETUP_CONFIRMATION_CODE_PAGE_TITLE" desc="Title message informing user that they can enter confirmation code in the text box below.">
+    Enter confirmation code
+  </message>
+  <message name="IDS_CELLULAR_SETUP_PROFILE_LIST_PAGE_MESSAGE" desc="Label informing the user that they are able to select multiple eSIM profiles for downloading.">
+    We've found multiple profiles available to download. Select the ones you would like to download before proceeding.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_PROFILE_LIST_PAGE_MESSAGE_WITH_LINK" desc="Label informing the user that they can choose to setup an eSIM profile manually.">
+    You can also set up an eSIM profile <ph name="BEGIN_LINK">&lt;a href="#" &gt;</ph>manually<ph name="END_LINK">&lt;/a&gt;</ph>
+  </message>
+ <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_SCAN_QR_CODE" desc="Label for informing the user on ways to retrieve an eSim profile">
+    Scan a QR Code using your device camera or enter the activation code provided by your carrier.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_SCAN_QR_CODE_NO_PROFILES_FOUND" desc="Label for informing the user on ways to retrieve an eSim profile when no profiles could be automatically discovered.">
+    No profiles were found. Try scanning the QR Code using your device camera or enter the activation code provided by your carrier.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_ENTER_ACTIVATION_CODE" desc="Label for informing the user to enter activation code when no media devices have been found">
+    Please enter the activation code provided by your carrier.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_ENTER_ACTIVATION_CODE_NO_PROFILES_FOUND" desc="Label for informing the user to enter activation code when no media devices have been found and no available profiles could be automatically discovered">
+    No profiles were found. Please enter the activation code provided by your carrier.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_USE_CAMERA" desc="Label for button that uses the camera to scan for QR Codes when clicked.">
+    Use camera to scan QR Code
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_SWITCH_CAMERA" desc="Label for button that toggles the camera between user-facing and environment-facing.">
+    Flip camera
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_A11Y_QR_CODE_CAMERA_ON" desc="Accessibility announcement provided during the eSIM setup flow which alerts the user about how to set up an eSIM profile to use for a cellular connection. The flow involves clicking a button to cause the device's webcam to turn on, then the user showing a QR Code to the camera to continue.">
+    Device camera has turned on. Please place your eSIM QR Code in front of the camera.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_A11Y_QR_CODE_CAMERA_SCAN_SUCCESS" desc="Accessibility announcement provided during the eSIM setup flow which alerts the user that a qr code has been succesfully scanned by the device camera.">
+    QR Code has been scanned.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_SCAN_QR_CODE_SUCCESS" desc="Label informing the user that an an activation code was scanned successfully.">
+    Activation code detected
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_SCAN_QR_CODE_USE_CAMERA_AGAIN" desc="Label for button informing the user to click to use the camera to rescan for QR Codes.">
+    Use camera again
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_SCAN_QR_CODE_ERROR" desc="Label informing the user that there was an error detecting activation code.">
+    Error detecting code
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_SCAN_QR_CODE_RETRY" desc="Label for button informing user to retry rescan of QR Codes.">
+    Try again
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PROFILE_INSTALLING_MESSAGE" desc="Label informing the user that an eSIM profile is being added, and that it may take a couple of minutes before it is complete.">
+    Adding eSIM profile. This may take a few minutes.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_SCAN_QR_CODE_INVALID" desc="Label informing the user that the code used to install an eSIM profile is invalid.">
+    Invalid code. Please try again.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_SCAN_QR_CODE_INPUT_SUBTITLE" desc="Subtitle for input informing the user that the code used to install an eSIM profile must follow a specific format.">
+      Your entry should have the format <ph name="LPA_0">LPA:1</ph>&#36;<ph name="LPA_1">&lt;</ph>SM-DP+ address<ph name="LPA_2">&gt;</ph>&#36;<ph name="LPA_3">&lt;</ph>optional matching id<ph name="LPA_4">&gt;</ph>
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_SCAN_QR_CODE_INPUT_ERROR" desc="Error label for input informing the user that the code used to install an eSIM profile is invalid and must follow a specific format.">
+      Invalid code. Your entry should have the format <ph name="LPA_0">LPA:1</ph>&#36;<ph name="LPA_1">&lt;</ph>SM-DP+ address<ph name="LPA_2">&gt;</ph>&#36;<ph name="LPA_3">&lt;</ph>optional matching id<ph name="LPA_4">&gt;</ph>
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESTABLISH_NETWORK_CONNECTION" desc="Message, informing user that a network connection is being established during cellular setup">
+    Establishing network connection ...
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_CONFIRMATION_CODE_MESSAGE" desc="Message, prompting the user to enter the confirmation code to activate an eSIM profile.">
+    Please enter your confirmation code.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_CONFIRMATION_CODE_INPUT" desc="Label for the input used to enter the confirmation code to activate an eSIM profile.">
+    Confirmation code
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_CONFIRMATION_CODE_ERROR_LEGACY" desc="Message, informing the user the confirmation code entered to activate an eSIM profile is invalid and to contact their carrier.">
+    Unable to connect to this profile. For technical support, please contact your carrier.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_CONFIRMATION_CODE_ERROR" desc="Message, informing the user the confirmation code entered to activate an eSIM profile is invalid and to contact their carrier.">
+    Unable to install this profile. For technical support, please contact your carrier.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_CONFIRMATION_CODE_LOADING" desc="Message, informing the user the confirmation code entered to activate an eSIM profile is currently being verified.">
+    Verifying confirmation code...
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_PROFILE_DISCOVERY_CONSENT_TITLE" desc="Title asking for consent to scan automatically for available eSIM profiles.">
+    Automatically scan for available eSIM profiles?
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_PROFILE_DISCOVERY_CONSENT_MESSAGE_WITH_LINK" desc="Message, informing the user that device information will be shared with third parties.">
+    By continuing, you allow third parties to verify information that identifies this device on the network. If you do not wish to allow third parties access to device information, you can set up an eSIM profile <ph name="BEGIN_LINK">&lt;a href="#" &gt;</ph>manually<ph name="END_LINK">&lt;/a&gt;</ph>.
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_PROFILE_DISCOVERY_CONSENT_SCAN" desc="Label for button to trigger automatic scanning.">
+    Scan
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_PROFILE_DISCOVERY_CONSENT_CANCEL" desc="Label for button to cancel and return to previous page.">
+    Cancel
+  </message>
+  <message name="IDS_CELLULAR_SETUP_ESIM_PAGE_CARRIER_LOCKED_DEVICE" desc="Label for informing the user this device is carrier locked.When carrier locked, device will only allow to connect to specific mobile provider">
+    Downloaded profile may not be usable if mobile network provider is locked. Contact your provider for support.
+  </message>
+
+  <!-- ChromeOS Strings -->
+  <message name="IDS_ECHO_CONSENT_DIALOG_TEXT" desc="Dialog text shown when user is asked to give consent to proceed with redeeming an ECHO offer.">
+    <ph name="SERVICE_NAME">$1<ex>Google Drive</ex></ph> wants to check if you are using an eligible ChromeOS device.
+  </message>
+  <message name="IDS_ECHO_DISABLED_CONSENT_DIALOG_TEXT" desc="Dialog text shown when user is informed that redeeming offers is disabled for the device.">
+    Your IT administrator has disabled Chrome Goodies for your device.
+  </message>
+  <message name="IDS_ECHO_CONSENT_DISMISS_BUTTON" desc="Dismiss dialog button label for disabled echo dialog.">
+    Got it
+  </message>
+  <message name="IDS_OFFERS_CONSENT_INFOBAR_ENABLE_BUTTON" desc="Enable button label.">
+    Allow
+  </message>
+  <message name="IDS_OFFERS_CONSENT_INFOBAR_DISABLE_BUTTON" desc="Disable button label.">
+    Deny
+  </message>
+  <message name="IDS_NETWORK_ENROLLMENT_HANDLER_TITLE" desc="Title of the window for generating a new network certificate.">
+    Obtain network certificate
+  </message>
+  <message name="IDS_NETWORK_ENROLLMENT_HANDLER_INSTRUCTIONS" desc="Text in the window used for generating a new network certificate.">
+    The certificate required by network "<ph name="network_name">$1<ex>My Wireless</ex></ph>" is either not installed or is no longer valid.  Please get a new certificate and try connecting again.
+  </message>
+  <message name="IDS_NETWORK_ENROLLMENT_HANDLER_BUTTON" desc="Text of the accept button for generating a new network certificate.">
+    Get new certificate
+  </message>
+  <message name="IDS_DOWNLOADING" desc="The format for ETA during the update downloading stage">
+    Downloading: <ph name="STATUS">$1<ex>Less than 1 minute left</ex></ph>
+  </message>
+  <message name="IDS_NETWORK_ADD_WI_FI_LIST_ITEM_NAME" desc="OOBE network screen list entry that opens 'Add New WiFi Network' dialog">
+    Add other WiFi network
+  </message>
+  <message name="IDS_LOGIN_GAIA_LOADING_MESSAGE" desc="Message on the OOBE gaia loading screen">
+    Please wait...
+  </message>
+  <message name="IDS_OOBE_PLAY_ANIMATION_MESSAGE" desc="Accessibility label for the button to play/continue animation">
+    Play animation
+  </message>
+  <message name="IDS_OOBE_PAUSE_ANIMATION_MESSAGE" desc="Accessibility label for the button to pause animation">
+    Pause animation
+  </message>
+
+  <!-- Strings for the Bluetooth pairing dialog -->
+  <message name="IDS_BLUETOOTH_PAIRING_PAIR" desc="Label for the settings button to pair a previously paired Bluetooth device.">
+    Pair
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRING_ENTER_KEY" desc="Bluetooth pairing dialog: Text for enter key when pairing keyboard devices." >
+    enter
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRING_PAIR_NEW_DEVICES" desc="Message displayed describing how to pair a new Bluetooth device.">
+    Pair new device
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRING_PAIRING_AVAILABLE_DEVICES" desc="Bluetooth pairing dialog: Title for the list of Bluetooth devices that are available for pairing.">
+    Available devices
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRING_PAIRING_NO_AVAILABLE_DEVICES" desc="Bluetooth pairing dialog: Title for the list of Bluetooth devices when no devices are available for pairing.">
+    Looking for nearby discoverable devices...
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRING_PAIRING_BLUETOOTH_DISABLED" desc="Bluetooth pairing dialog: Title for the list of Bluetooth devices when Bluetooth is disabled so no devices are found for pairing.">
+    Bluetooth is turned off. To see available devices, turn Bluetooth on.
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRING_LEARN_MORE" desc="Bluetooth pairing dialog: Message informing the user on what actions to take in order to see a device in the list of available devices.">
+    Make sure your Bluetooth device is in pairing mode and nearby. Only pair with devices you trust. Paired devices are visible to all accounts on this Chromebook. <ph name="BEGIN_LINK_LEARN_MORE">&lt;a target="_blank" href="$1"&gt;</ph>Learn more<ph name="END_LINK_LEARN_MORE">&lt;/a&gt;</ph>
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRING_DESCRIPTION" desc="Bluetooth pairing dialog: Message informing the user on what actions to take in order to see a device in the list of available devices.">
+    Make sure your Bluetooth device is in pairing mode and nearby. Only pair with devices you trust. Paired devices are visible to all accounts on this Chromebook.
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRING_ENTER_PIN" desc="Bluetooth pairing dialog: Message displayed informing the user to enter a PIN in other to complete device pairing.">
+    Enter PIN to pair with <ph name="DEVICE_NAME">$1<ex>Nexus S</ex></ph>
+  </message>
+  <message name="IDS_BLUETOOTH_DEVICE_ITEM_BATTERY_PERCENTAGE" desc="Label for a Bluetooth device in a list that indicates the battery level of the device.">
+    <ph name="BATTERY_PERCENTAGE">$1<ex>32</ex></ph>%
+  </message>
+  <message name="IDS_BLUETOOTH_DEVICE_ITEM_LEFT_BUD_TRUE_WIRELESS_BATTERY_PERCENTAGE" desc="Label for a Bluetooth device's left true wireless bud that indicates the battery level of the device.">
+    <ph name="BATTERY_PERCENTAGE">$1<ex>32</ex></ph>% (Left)
+  </message>
+  <message name="IDS_BLUETOOTH_DEVICE_ITEM_CASE_TRUE_WIRELESS_BATTERY_PERCENTAGE" desc="Label for a Bluetooth device's case true wireless component that indicates the battery level of the device.">
+    <ph name="BATTERY_PERCENTAGE">$1<ex>32</ex></ph>% (Case)
+  </message>
+  <message name="IDS_BLUETOOTH_DEVICE_ITEM_RIGHT_BUD_TRUE_WIRELESS_BATTERY_PERCENTAGE" desc="Label for a Bluetooth device's right true wireless bud that indicates the battery level of the device.">
+    <ph name="BATTERY_PERCENTAGE">$1<ex>32</ex></ph>% (Right)
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRING_PAIRING" desc="Bluetooth pairing dialog: Message informing the user that the device is being paired to.">
+    Pairing...
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRING_PAIRING_FAILED" desc="Bluetooth pairing dialog: Message informing the user that the device pairing failed.">
+    Couldn't pair. Select device to try again.
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRING_CONFIRM_CODE_MESSAGE" desc="Bluetooth pairing dialog: Message informing the user to confirm the code displayed is the same as the code displayed on the device being paired to.">
+    Before pairing, make sure this code is the same on both devices
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRING_ENTER_KEYS" desc="Bluetooth pairing dialog: Message displayed informing the user to enter the keys below on the device being paired.">
+    Enter these keys on <ph name="DEVICE_NAME">$1<ex>Nexus S</ex></ph>
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRINGS_DEVICE_ITEM_SECONDARY_ERROR_A11Y_LABEL" desc="Bluetooth pairing dialog: Accessibility label for unpaired Bluetooth device list item, when pairing to a device fails.">
+    Couldn't pair to device <ph name="DEVICE_NAME">$1<ex>Beats</ex></ph>; select device to try again
+  </message>
+  <message name="IDS_BLUETOOTH_PAIRINGS_DEVICE_ITEM_SECONDARY_PAIRING_A11Y_LABEL" desc="Bluetooth pairing dialog: Accessibility label for unpaired Bluetooth device list item, when pairing to the a device is in progress.">
+    Pairing to <ph name="DEVICE_NAME">$1<ex>Beats</ex></ph>
+  </message>
+
+  <!-- Other Network UI strings -->
+  <message name="IDS_NETWORK_CONNECTION_ERROR_TITLE" desc="Title for network connection error notification">
+    Network connection error
+  </message>
+  <message name="IDS_NETWORK_CONNECTION_ERROR_MESSAGE" desc="Message for network connection error notification">
+    Failed to connect to network '<ph name="name">$1<ex>GoogleGuest</ex></ph>': <ph name="details">$2<ex>Unrecognized error</ex></ph>
+  </message>
+  <message name="IDS_NETWORK_CONNECTION_ERROR_MESSAGE_WITH_SERVER_MESSAGE" desc="Message for network connection error notification with details and a server message">
+    Failed to connect to '<ph name="name">$1<ex>GoogleGuest</ex></ph>': <ph name="details">$2<ex>Unrecognized error</ex></ph>
+    Server message: <ph name="server_msg">$3<ex>Incorrect password</ex></ph>
+  </message>
+  <message name="IDS_NETWORK_CONNECTION_ERROR_MESSAGE_NO_NAME" desc="Message for network connection error where the network name is unavailable">
+    Failed to connect to network: <ph name="details">$1<ex>Unrecognized error</ex></ph>
+  </message>
+  <message name="IDS_NETWORK_VPN_CONNECTION_LOST_TITLE" desc="Title for network notification when VPN connection is lost">
+    VPN disconnected
+  </message>
+  <message name="IDS_NETWORK_VPN_CONNECTION_LOST_BODY" desc="Message for network notification when VPN connection is lost">
+    Connection to <ph name="name">$1<ex>Google VPN</ex></ph> has been lost
+  </message>
+  <message name="IDS_NETWORK_OUT_OF_CREDITS_TITLE" desc="Title for network out of data error notification">
+    Couldn't connect
+  </message>
+  <message name="IDS_NETWORK_OUT_OF_CREDITS_BODY" desc="Message body for network out of data error notification">
+    You may have used up your mobile data allowance. Visit the <ph name="name">$1<ex>GoogleGuest</ex></ph> activation portal to buy more data
+  </message>
+  <message name="IDS_NETWORK_CELLULAR_ACTIVATED_TITLE" desc="Title for cellular activated notification">
+    Mobile data activated
+  </message>
+  <message name="IDS_NETWORK_CELLULAR_ACTIVATED" desc="Text of the cellular activated notification">
+    Your '<ph name="name">$1<ex>Generic Wireless</ex></ph>' data service is ready to use
+  </message>
+  <message name="IDS_NETWORK_ACTIVATION_ERROR_TITLE" desc="Title for network activation error notification">
+    Couldn't connect
+  </message>
+  <message name="IDS_NETWORK_ACTIVATION_NEEDS_CONNECTION" desc="Message when attempting to activate a mobile network that requires a connection">
+    To activate '<ph name="name">$1<ex>Generic Wireless</ex></ph>' data, first connect to a Wi-Fi network
+  </message>
+  <message name="IDS_NETWORK_CARRIER_UNLOCK_TITLE" desc="Title for notification shown when device is carrier unlocked">
+    Your <ph name="DEVICE_TYPE">$1<ex>Chromebook</ex></ph> is now unlocked
+  </message>
+ <message name="IDS_NETWORK_CARRIER_UNLOCK_BODY" desc="Message in notification shown when device is carrier unlocked informing the user any eligible mobile network is available for connection">
+    You can connect to any eligible mobile network in Settings
+  </message>
+  <!-- ONC (Open Network Configuration) strings have moved to //chromeos/chromeos_strings.grd -->
+
+  <!-- Misc settings related strings -->
+  <message name="IDS_OPTIONS_SETTINGS_TIMEZONE_DISPLAY_TEMPLATE" desc="In the settings tab, the display template of a timezone in the pull-down list of timezones">
+    (<ph name="UTCOffset">$1<ex>UTC-8:00</ex></ph>) <ph name="LongTZName">$2<ex>Pacific Standard Time</ex></ph> (<ph name="ExemplarCity">$3<ex>Los Angeles</ex></ph>)
+  </message>
+  <message name="IDS_OPTIONS_SETTINGS_TIMEZONE_DISPLAY_NAME_UTC" desc="This is the display name of UTC/GMT timezone for timezone option in user settings.">
+    Coordinated Universal Time (UTC/GMT)
+  </message>
+  <message name="IDS_TEXT_TO_SPEECH_SETTINGS_NO_LANGUAGE" desc="A label for text-to-speech voices which do not have a language specified. For example, some voices may speak in US English, or Spain-Spanish. This labels voices with no language.">
+    No language
+  </message>
+
+  <!-- Slow UI -->
+  <message name="IDS_SLOW_DISABLE" desc="The text of the button that disables performance collection for feedback reports">
+    Disable performance data collection
+  </message>
+  <message name="IDS_SLOW_ENABLE" desc="The text of the button that enables performance collection for feedback reports">
+    Enable performance data collection
+  </message>
+  <message name="IDS_SLOW_DESCRIPTION" desc="The description of the performance tracing feature for feedback reports.">
+    Enabling collection of performance data will help Google improve the system over time. No data is sent until you file a feedback report (Alt-Shift-I) and include performance data. You can return to this screen to disable collection at any time.
+  </message>
+  <message name="IDS_SLOW_WARNING" desc="The warning that informs users that enabling this can have a negative effect on their performance">
+    <ph name="BEGIN_BOLD">&lt;strong&gt;</ph>Note:<ph name="END_BOLD">&lt;/strong&gt;</ph> Only enable if you know what you are doing or if you have been asked to do so, as collection of data may reduce performance.
+  </message>
+
+  <message name="IDS_CONTROLLED_SETTING_WITH_OWNER" desc="Text displayed in the controlled settings bubble when a setting's value can be edited only by the owner.">
+    This setting is managed by the device owner, <ph name="OWNER_EMAIL">$1<ex>john@google.com</ex></ph>.
+  </message>
+  <message name="IDS_CONTROLLED_SETTING_NO_OWNER" desc="Text displayed in the controlled settings bubble when a setting's value can be edited only by the owner.">
+    This setting is managed by the device owner.
+  </message>
+  <message name="IDS_CONTROLLED_SETTING_SHARED" desc="Text displayed in the controlled settings bubble when a setting's value belongs to the primary user but can be edited.">
+    This setting belongs to <ph name="OWNER_EMAIL">$1<ex>john@google.com</ex></ph>.
+  </message>
+  <message name="IDS_CONTROLLED_SETTING_DEMO_SESSION" desc="Text displayed in the controlled settings bubble when a setting's value is enforced by demo session.">
+    This setting can't be changed in a demo session.
+  </message>
+
+  <message name="IDS_LOCK_SCREEN_VERIFY_ACCOUNT" desc="Title of online account verification on the lock screen">
+    Verify account
+  </message>
+  <message name="IDS_LOCK_SCREEN_VERIFY_BUTTON" desc="Next button for online account verification on the lock screen">
+    Verify
+  </message>
+  <message name="IDS_LOCK_SCREEN_VERIFY_AGAIN_BUTTON" desc="Next button for 2nd online account verification on the lock screen">
+    Verify again
+  </message>
+  <message name="IDS_LOCK_SCREEN_CANCEL_BUTTON" desc="Cancel button for online account verification on the lock screen">
+    Cancel
+  </message>
+  <message name="IDS_LOCK_SCREEN_CLOSE_BUTTON" desc="Close button for online account verification on the lock screen">
+    Close
+  </message>
+  <message name="IDS_LOCK_SCREEN_VERIFICATION_FAILED" desc="Title of incorrect user online reauthentication on the lock screen">
+    Verification was not successful
+  </message>
+  <message name="IDS_LOCK_SCREEN_WRONG_USER_SUBTITLE1" desc="User that was not logged in tries to unlock the device">
+    The account you verified is not authorized to access this device.
+  </message>
+  <message name="IDS_LOCK_SCREEN_WRONG_USER_SUBTITLE2" desc="User that was not logged in tries to unlock the device">
+    Please make sure you are verifying <ph name="ACCOUNT">$1<ex>test@example.com</ex></ph> to unlock the session.
+  </message>
+  <message name="IDS_LOCK_MANUAL_PASSWORD_SUBTITLE" desc="Subtitle for the manual password setting dialog.">
+    Enter your password again to verify your account.
+  </message>
+  <message name="IDS_LOCK_SAML_NOTICE" desc="Text message displayed above SAML portal to early indicate that the user is being redirected to another sign-in provider. This is the version of the string used in the GAIA flow.">
+    This sign-in service is hosted by <ph name="SAML_DOMAIN">$1<ex>saml.com</ex></ph>
+  </message>
+  <message name="IDS_LOCK_PASSWORD_CHANGED_TITLE" desc="Subtitle for the password changed dialog.">
+    Restore local data
+  </message>
+  <message name="IDS_LOCK_PASSWORD_CHANGED_SUBTITLE" desc="Subtitle for the password changed dialog.">
+    Your verification was successful. To unlock and restore your local data, please enter your old <ph name="DEVICE_TYPE">$1<ex>Chromebook</ex></ph> password.
+  </message>
+  <message name="IDS_LOCK_PASSWORD_CHANGED_OLD_PASSWORD_HINT" desc="Old password field hint on the password changed dialog.">
+    Enter old password
+  </message>
+  <message name="IDS_LOCK_SCREEN_NETWORK_TITLE" desc="Title for the network dialog shown on the lock screen">
+    Network not available
+  </message>
+  <message name="IDS_LOCK_SCREEN_NETWORK_SUBTITLE" desc="Subtitle for lock screen network dialog">
+    Please connect to the internet to sign in to your <ph name="DEVICE_TYPE">$1<ex>Chromebook</ex></ph>.
+  </message>
+
+  <!-- Idle warning dialog -->
+  <message name="IDS_IDLE_WARNING_TITLE" desc="Title of the warning dialog shown when the user becomes idle and is about to get logged out.">
+    You'll be signed out in <ph name="LOGOUT_TIME_LEFT">$1<ex>5 seconds</ex></ph>
+  </message>
+  <message name="IDS_IDLE_WARNING_LOGOUT_WARNING" desc="Content of the warning dialog shown when the user becomes idle and is about to get logged out.">
+    For security, sign out when your computer isn't being used.
+  </message>
+
+  <!-- About Chrome page -->
+  <message name="IDS_UPGRADE_OFFLINE" desc="Status label: Currently offline">
+    You are currently offline.
+  </message>
+  <message name="IDS_UPGRADE_DISALLOWED" desc="Status label: Shown when an upgrade is disallowed for the current network to alert the user to what the current network type is.">
+    You're connected to a <ph name="NETWORK_TYPE">$1<ex>mobile</ex></ph> network.
+  </message>
+  <message name="IDS_UPGRADE_NETWORK_LIST_CELLULAR_ALLOWED" desc="Status label: for updates you need to connect to an Ethernet, Wi-Fi or mobile data">
+    To check for updates, please use Ethernet, Wi-Fi or mobile data.
+  </message>
+  <message name="IDS_UPGRADE_NETWORK_LIST_CELLULAR_DISALLOWED" desc="Status label: for updates you need to connect to an Ethernet or Wi-Fi">
+    To check for updates, please use Ethernet or Wi-Fi.
+  </message>
+  <message name="IDS_UPGRADE_NETWORK_LIST_CELLULAR_ALLOWED_NOT_AUTOMATIC" desc="Status label: Shown when the user is connected to a network type that does not support automatic updates (e.g., could be a mobile network with limited data per month). In this case, users can still attempt an update manually.">
+    Automatic updates don't download on this network type, but you can check for updates manually.
+  </message>
+
+  <!-- About flags page -->
+  <message name="IDS_FLAGS_IGNORED_DUE_TO_CRASHY_CHROME" desc="Text on an info bar added when user flags are dropped when chrome crashed too many times in short time." translateable="false">
+    Flags are ignored because of too many consecutive startup crashes.
+  </message>
+  <message name="IDS_FLAGS_IGNORED_SECONDARY_USERS" desc="Text on an info bar added on flags UI of secondary users." translateable="false">
+    Flags will not be applied for secondary users.
+  </message>
+
+  <!-- EOL Notification Strings -->
+  <message name="IDS_EOL_NOTIFICATION_TITLE" desc="Notification title shown to inform the user that this device is no longer supported.">
+    Final software update
+  </message>
+  <message name="IDS_EOL_NOTIFICATION_EOL" desc="Notification message shown to inform the user that this device will no longer receive latest software updates.">
+    This is the last automatic software and security update for this <ph name="DEVICE_TYPE">$1<ex>Chromebook</ex></ph>. To get future updates, upgrade to a newer model.
+  </message>
+  <message name="IDS_EOL_DISMISS_BUTTON" desc="A button label shown in the notification for eol status change to dismiss the notification.">
+    Don't remind me again
+  </message>
+  <message name="IDS_PENDING_EOL_NOTIFICATION_TITLE" desc="Notification title shown to inform the user that this device will no longer be supported after a certain period of time.">
+    Updates end <ph name="MONTH_AND_YEAR">$1<ex>June 2020</ex></ph>
+  </message>
+  <message name="IDS_PENDING_EOL_NOTIFICATION_MESSAGE" desc="Notification message shown to inform the user that this device will no longer receive latest software updates after a certain period of time.">
+    You'll still be able to use this <ph name="DEVICE_TYPE">$1<ex>Chromebook</ex></ph> after that time, but it will no longer get automatic software and security updates
+  </message>
+
+  <!-- TPM Firmware Update Notification Strings -->
+  <message name="IDS_TPM_FIRMWARE_UPDATE_NOTIFICATION_TITLE" desc="Notification title shown to inform the user that there is a pending TPM firmware update for the device.">
+    Security upgrade available
+  </message>
+  <message name="IDS_TPM_FIRMWARE_UPDATE_NOTIFICATION_MESSAGE" desc="Notification shown to inform the user that there is a pending TPM firmware update for the device.">
+    Reset your <ph name="DEVICE_TYPE">$1<ex>Chromebook</ex></ph> to upgrade your security.
+  </message>
+  <!-- Genius App -->
+  <message name="IDS_GENIUS_APP_NAME" desc="Name of the genius app in the app shelf">
+    Get Help
+  </message>
+  <message name="IDS_FILEMANAGER_APP_NAME" desc="Name for the File Manager app.">
+    Files
+  </message>
+
+  <!-- Network portal notification -->
+  <message name="IDS_NEW_PORTAL_DETECTION_NOTIFICATION_TITLE_WIRED" desc="Title for the new system notification that current wired network is behind captive portal">
+    Network Found
+  </message>
+  <message name="IDS_NEW_PORTAL_DETECTION_NOTIFICATION_TITLE_WIFI" desc="Title for the new system notification that current Wi-Fi network is behind captive portal">
+    WiFi Network Found
+  </message>
+  <message name="IDS_NEW_PORTAL_DETECTION_NOTIFICATION_MESSAGE" desc="Body of the new system notification that current wired network is behind captive portal">
+    Sign in to "<ph name="NETWORK_ID">$1<ex>Public Network</ex></ph>"
+  </message>
+  <message name="IDS_NEW_PORTAL_DETECTION_NOTIFICATION_BUTTON" desc="The text to display on the button when the user needs to sign in to the captive portal">
+    Sign in
+  </message>
+
+  <!-- 3G data Notifications -->
+  <message name="IDS_MOBILE_DATA_NOTIFICATION_TITLE" desc="Title of notification telling that mobile data is enabled.">
+    Mobile data
+  </message>
+  <message name="IDS_3G_NOTIFICATION_MESSAGE" desc="Text of the 3G data notification telling that 3G data is enabled.">
+    Google Chrome will use mobile data if you're not connected to another network.
+  </message>
+
+  <!-- chrome://mobilesetup strings -->
+  <message name="IDS_MOBILE_SETUP_TITLE" desc="ChromeOS mobile device activation page title">
+    Mobile data service management
+  </message>
+  <message name="IDS_MOBILE_VIEW_ACCOUNT_ERROR_TITLE" desc="Error title shown when user failed to view mobile account">
+    Can't access your mobile account
+  </message>
+  <message name="IDS_MOBILE_VIEW_ACCOUNT_ERROR_MESSAGE" desc="Error message shown when user failed to view mobile account">
+     Please contact your mobile provider
+  </message>
+
+  <!-- About network UI (chrome://network) display strings (for developer
+       debugging) -->
+  <message name="IDS_NETWORK_UI_TITLE" desc="Title of the page">
+    Network
+  </message>
+  <message name="IDS_NETWORK_UI_TAB_GENERAL" desc="General tab name">
+    General
+  </message>
+  <message name="IDS_NETWORK_UI_TAB_NETWORK_HEALTH" desc="Network health tab name">
+    Network Health
+  </message>
+  <message name="IDS_NETWORK_UI_TAB_NETWORK_LOGS" desc="Network logs tab name">
+    Network Logs
+  </message>
+  <message name="IDS_NETWORK_UI_TAB_NETWORK_STATE" desc="Network state tab name">
+    Network State
+  </message>
+  <message name="IDS_NETWORK_UI_TAB_NETWORK_SELECT" desc="Network Select tab name">
+    Network Select
+  </message>
+  <message name="IDS_NETWORK_UI_TAB_NETWORK_METRICS" desc="Network metrics tab name">
+    Network Metrics
+  </message>
+  <message name="IDS_NETWORK_UI_TAB_NETWORK_HOTSPOT" desc="Hotspot tab name">
+    Hotspot
+  </message>
+  <message name="IDS_NETWORK_UI_TAB_NETWORK_WIFI_DIRECT" desc="Wifi Direct tab name">
+    WiFi Direct
+  </message>
+  <message name="IDS_NETWORK_UI_AUTO_REFRESH" desc="Instructions for how to auto-refresh the page">
+    Add a query param in URL to auto-refresh the page: chrome://network/?refresh=&lt;sec&gt;
+  </message>
+  <message name="IDS_NETWORK_UI_REFRESH" desc="Button label for refreshing networks">
+    Refresh Networks
+  </message>
+  <message name="IDS_NETWORK_UI_EXPAND" desc="Button label for expanding network properties">
+    Click '+' to get network properties
+  </message>
+  <message name="IDS_NETWORK_UI_PROPERTY_FORMAT" desc="Drowpdown label for network property format">
+    Property format:
+  </message>
+  <message name="IDS_NETWORK_UI_FORMAT_NORMAL" desc="Label in network property format dropdown for unmanaged ONC properties">
+    ONC
+  </message>
+  <message name="IDS_NETWORK_UI_FORMAT_MANAGED" desc="Label in network property format dropdown for managed ONC properties">
+    Managed ONC
+  </message>
+  <message name="IDS_NETWORK_UI_FORMAT_STATE" desc="Label in network property format dropdown for ONC State properties">
+    ONC State
+  </message>
+  <message name="IDS_NETWORK_UI_FORMAT_SHILL" desc="Label in network property format dropdown for Shill properties">
+    Shill
+  </message>
+  <message name="IDS_NETWORK_UI_DHCP_HOSTNAME" desc="Label for the DHCP Hostname field in the chrome://network debugging UI.">
+    DHCP Hostname
+  </message>
+  <message name="IDS_NETWORK_UI_GLOBAL_POLICY" desc="Label for global policy properties">
+    Global Policy:
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_HEALTH" desc="Label for network health snapshot. 'Network Health' is a condensend summary of all networking devices on the system and their active networks">
+    Network Health Snapshot
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_DIAGNOSTICS" desc="Label for network diagnostics routines">
+    Network Diagnostic Routines
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LISTS" desc="Label for network lists section">
+    Network (Service) and Device properties
+  </message>
+  <message name="IDS_NETWORK_UI_VISIBLE_NETWORKS" desc="Label for list of visible networks">
+    Visible Networks:
+  </message>
+  <message name="IDS_NETWORK_UI_FAVORITE_NETWORKS" desc="Label for list of favorite networks">
+    Favorite Networks:
+  </message>
+  <message name="IDS_NETWORK_UI_ETHERNET_EAP" desc="Label for section with the EthernetEAP network">
+    Ethernet EAP:
+  </message>
+  <message name="IDS_NETWORK_UI_DEVICES" desc="Label for list of network devices, e.g. wifi or cellular">
+    Devices:
+  </message>
+  <message name="IDS_NETWORK_UI_NO_CELLULAR_ACTIVATION_LABEL" desc="Label for section dealing with activating a cellular network SIM card.">
+    Cellular Activation
+  </message>
+  <message name="IDS_NETWORK_UI_OPEN_CELLULAR_ACTIVATION_BUTTON_TEXT" desc="Text for button which, when pressed, opens the cellular activation UI.">
+    Open Cellular Activation UI
+  </message>
+  <message name="IDS_NETWORK_UI_NO_CELLULAR_ERROR_TEXT" desc="Text displayed when the cellular activation UI cannot be opened because no cellular network exists.">
+    No cellular network exists
+  </message>
+  <message name="IDS_NETWORK_UI_RESET_ESIM_PROFILES_BUTTON_TEXT" desc="Text for button in the debug networking page which allows developers and QA testers to reset the cache of eSIM profile metadata stored in ChromeOS. After this button is clicked, Chrome needs to request that the hardware re-scan for installed profiles.">
+    Reset eSIM profile cache
+  </message>
+  <message name="IDS_NETWORK_UI_DISABLE_ESIM_PROFILES_LABEL" desc="Label for section of the debug networking page which allows developers and QA testers to disable eSIM profiles.">
+    Disable eSIM profiles
+  </message>
+  <message name="IDS_NETWORK_UI_DISABLE_ACTIVE_ESIM_PROFILE_BUTTON_TEXT" desc="Text for button which, when pressed, disables the active eSIM profile.">
+    Disable active eSIM profile
+  </message>
+  <message name="IDS_NETWORK_UI_RESET_EUICC_LABEL" desc="Label and button text for section of the debug networking page which allows developers and QA testers to reset Euicc.">
+    Reset eSIM
+  </message>
+  <message name="IDS_NETWORK_UI_RESET_APN_MIGRATOR_LABEL" desc="Label and button text for section of the debug networking page which allows developers and QA testers to reset ApnMigrator.">
+    Reset ApnMigrator
+  </message>
+  <message name="IDS_NETWORK_UI_ADD_NEW_WIFI_LABEL" desc="Label for section dealing with showing the 'Add new Wi-Fi network' dialog.">
+    New Wi-Fi Network Dialog
+  </message>
+  <message name="IDS_NETWORK_UI_ADD_NEW_WIFI_BUTTON_TEXT" desc="Text for button which, when pressed, opens the 'Add new Wi-Fi network' dialog.">
+    Show 'Add new Wi-Fi' dialog
+  </message>
+  <message name="IDS_NETWORK_UI_IMPORT_ONC_BUTTON_TEXT" desc="Text for button which, when pressed, selects and imports an ONC file for network configuration.">
+    Import ONC File
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LOGS_DESCRIPTION" desc="Text describing the section for storing network logs in the chrome://network debugging UI.">
+    Store system logs to the Downloads directory.
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LOGS_SYSTEM_LOGS" desc="Text describing the checkbox option for storing the system logs file sent in feedback reports.">
+    Include the system_logs.txt file sent in feedback reports.
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LOGS_FILTER_PII" desc="Text describing the checkbox option for striping personally identifiable information from the system logs.">
+    Strip Personally Identifiable Information from system_logs.txt.
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LOGS_POLICIES" desc="Text describing the checkbox option for storing the policies.json file.">
+    Include a policies.json file with policy configurations.
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LOGS_DEBUG_LOGS" desc="Text describing the checkbox option for storing the debugd logs files.">
+    Include all log files collected by debugd as a separate archive.
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LOGS_CHROME_LOGS" desc="Text describing the checkbox option for including the chrome logs in the stored logs file.">
+    Include Chrome log files in the archive.
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LOGS_STORE_BUTTON" desc="Text displayed on the button for storing system logs.">
+    Store system logs
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LOGS_STATUS" desc="Message displayed while storing logs.">
+    Generating log files...
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LOGS_SUCCESS" desc="Message displayed when system logs are successfully written.">
+    Logs successfully written to Downloads directory.
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LOGS_DEBUGGING_TITLE" desc="Title for the section for setting connection manager debugging.">
+    Network Debugging
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LOGS_DEBUGGING_DESCRIPTION" desc="Description for the section for setting network debugging.">
+    Sets the debugging level of the network connection manager and other services using ff_debug.
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LOGS_DEBUGGING_NONE" desc="Text displayed when the Shill debugging mode is set to 'none'.">
+    None
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_LOGS_DEBUGGING_UNKNOWN" desc="Text displayed when the Shill debugging mode is unknown.">
+    Unknown
+  </message>
+  <message name="IDS_NETWORK_UI_RENDER_NETWORK_SELECT_BUTTON_TEXT" desc="Text displayed on the button for rendering network select.">
+    Render Network Select
+  </message>
+  <message name="IDS_NETWORK_UI_RENDER_NETWORK_SELECT_BUTTON_DESCRIPTION" desc="Text displayed above the render button to inform users the impact of rendering network select.">
+    Render network select list will trigger WiFi to scan frequently; this may affect your WiFi network performance.
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_METRICS_LABEL" desc="Title for the section for displaying WiFi performance metrics.">
+    WiFi Performance Metrics
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_METRICS_RENDER_BUTTON" desc="Text displayed on the button for rendering graph.">
+    Render
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_METRICS_START_BUTTON" desc="Text displayed on the button for starting plots.">
+    Start
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_METRICS_STOP_BUTTON" desc="Text displayed on the button for stopping plots.">
+    Stop
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_METRICS_INCREASE_RATE_BUTTON" desc="Text displayed on the button for increasing the sample rate of plots.">
+    Increase rate
+  </message>
+  <message name="IDS_NETWORK_UI_NETWORK_METRICS_DECREASE_RATE_BUTTON" desc="Text displayed on the button for decreasing the sample rate of plots.">
+    Decrease rate
+  </message>
+  <message name="IDS_NETWORK_UI_TETHERING_CAPABILITIES_LABEL" desc="Title for the section for displaying and refreshing tethering capabilities.">
+    Tethering Capabilities:
+  </message>
+  <message name="IDS_NETWORK_UI_REFRESH_TETHERING_CAPABILITIES_BUTTON_TEXT" desc="Text for button which, when pressed, refreshing the tethering capabilities.">
+    Refresh Tethering Capabilities
+  </message>
+  <message name="IDS_NETWORK_UI_TETHERING_STATUS_LABEL" desc="Title for the section for displaying and refreshing tethering status.">
+    Tethering Status:
+  </message>
+  <message name="IDS_NETWORK_UI_REFRESH_TETHERING_STATUS_BUTTON_TEXT" desc="Text for button which, when pressed, refresh the tethering status.">
+    Refresh Tethering Status
+  </message>
+  <message name="IDS_NETWORK_UI_TETHERING_CONFIG_LABEL" desc="Title for the section for displaying and refreshing tethering configuration.">
+    Tethering Configuration:
+  </message>
+  <message name="IDS_NETWORK_UI_REFRESH_TETHERING_CONFIG_BUTTON_TEXT" desc="Text for button which, when pressed, refresh the tethering configuration.">
+    Refresh Tethering Configuration
+  </message>
+  <message name="IDS_NETWORK_UI_SET_TETHERING_CONFIG_BUTTON_TEXT" desc="Text for button which, when pressed, set the tethering configuration.">
+    Set Tethering Configuration
+  </message>
+  <message name="IDS_NETWORK_UI_TETHERING_READINESS_LABEL" desc="Title for the section for displaying and checking tethering readiness.">
+    Tethering Readiness:
+  </message>
+  <message name="IDS_NETWORK_UI_CHECK_TETHERING_READINESS_BUTTON_TEXT" desc="Text for button which, when pressed, check the tethering readiness.">
+    Check Tethering Readiness
+  </message>
+  <message name="IDS_NETWORK_UI_SET_TETHERING_ENABLED_LABEL" desc="Title for the section for enabling or disabling tethering.">
+    Enable/Disable Tethering
+  </message>
+  <message name="IDS_NETWORK_UI_WIFI_DIRECT_CAPABILITIES_LABEL" desc="Title for the section for displaying and refreshing WiFi Direct capabilities.">
+    WiFi Direct Capabilities:
+  </message>
+  <message name="IDS_NETWORK_UI_REFRESH_WIFI_DIRECT_CAPABILITIES_BUTTON_TEXT" desc="Text for button which, when pressed, refreshing WiFi Direct capabilities.">
+    Refresh WiFi Direct Capabilities
+  </message>
+  <message name="IDS_NETWORK_UI_WIFI_DIRECT_OWNER_INFO_LABEL" desc="Title for the section for displaying and refreshing WiFi Direct owners info.">
+    WiFi Direct Owners Info:
+  </message>
+  <message name="IDS_NETWORK_UI_REFRESH_WIFI_DIRECT_OWNER_INFO_BUTTON_TEXT" desc="Text for button which, when pressed, refreshing WiFi Direct owners info.">
+    Refresh WiFi Direct Owners Info
+  </message>
+  <message name="IDS_NETWORK_UI_WIFI_DIRECT_CLIENT_INFO_LABEL" desc="Title for the section for displaying and refreshing WiFi Direct clients info.">
+    WiFi Direct Clients Info:
+  </message>
+  <message name="IDS_NETWORK_UI_REFRESH_WIFI_DIRECT_CLIENT_INFO_BUTTON_TEXT" desc="Text for button which, when pressed, refreshing WiFi Direct clients info.">
+    Refresh WiFi Direct Clients Info
+  </message>
+
+  <!-- Webstore widget -->
+  <message name="IDS_WEBSTORE_WIDGET_LOADING_SPINNER_ALT" desc="Alt text for spinner shown in Chrome Web Store Gallery widget while the widget contents is loading. This is the text that will be read by screen reader when the spinner is focused. The string should be translated as a verb.">
+    Loading
+  </message>
+  <message name="IDS_WEBSTORE_WIDGET_INSTALLING_SPINNER_ALT" desc="Alt text for spinner shown in Chrome Web Store Gallery widget while an app is being installed from the widget. This is the text that will be read by screen reader when the spinner has focus. The string should be translated as a verb.">
+    Installing
+  </message>
+
+  <message name="IDS_LOW_DISK_NOTIFICATION_TITLE" desc="Title of the notification warning users that they are low on disk space.">
+    Device is low on disk space
+  </message>
+  <message name="IDS_LOW_DISK_NOTIFICATION_MESSAGE" desc="Notification text warning users that they are low on disk space.">
+    Free up disk space or select data may be automatically deleted
+  </message>
+  <message name="IDS_CRITICALLY_LOW_DISK_NOTIFICATION_TITLE" desc="Title of the notification warning users that they are critically low on disk space.">
+    Device disk space critically low
+  </message>
+  <message name="IDS_CRITICALLY_LOW_DISK_NOTIFICATION_MESSAGE" desc="Notification text warning users that they are critically low on disk space.">
+    Free up disk space or device will become unresponsive.
+  </message>
+  <message name="IDS_LOW_DISK_NOTIFICATION_BUTTON" desc="Button on the low disk notification to open storage management.">
+    Manage storage
+  </message>
+
+  <!-- USB Printer Installation Notification -->
+  <message name="IDS_USB_PRINTER_NOTIFICATION_CONNECTED_TITLE" desc="Title of the USB printer connected successfully notification.">
+    USB printer connected
+  </message>
+  <message name="IDS_USB_PRINTER_NOTIFICATION_CONNECTED_MESSAGE" desc="Message displayed when the USB printer is connected successfully.">
+    <ph name="PRINTER_NAME">$1<ex> Google InkJet 1234</ex></ph> is connected and ready
+  </message>
+  <message name="IDS_USB_PRINTER_NOTIFICATION_CONFIGURATION_REQUIRED_TITLE" desc="Title of the USB printer needs configuration notification.">
+    USB printer needs configuration
+  </message>
+  <message name="IDS_USB_PRINTER_NOTIFICATION_CONFIGURATION_REQUIRED_MESSAGE" desc="Message displayed when the USB printer is connected but needs configuration.">
+    <ph name="PRINTER_NAME">$1<ex> Google InkJet 1234</ex></ph> is connected but needs configuration
+  </message>
+
+  <message name="IDS_USB_PRINTER_UNKNOWN_DISPLAY_NAME" desc="Display string used for USB printers where we have identified neither the correct manufactuer nor model strings. USB stands for Universal Serial Bus, it indicates how the printer is attached to the computer.">
+    Unknown Printer (USB)
+  </message>
+
+  <message name="IDS_USB_PRINTER_DISPLAY_NAME" desc="The display name assigned to USB printers which were automatically configured for the user. USB stands for Universal Serial Bus, it indicates how the printer is attached to the computer.">
+    <ph name="PRINTER_MANUFACTURER">$1<ex>Hewlett Packard</ex></ph> <ph name="PRINTER_MODEL">$2<ex>OfficeJet 8710</ex></ph> (USB)
+  </message>
+
+  <message name="IDS_USB_PRINTER_DISPLAY_NAME_MAKE_OR_MODEL" desc="The display name assigned to USB printers which were automatically configured for the user. This string is used when only one of manufacturer or model strings are present. USB stands for Universal Serial Bus, it indicates how the printer is attached to the computer.">
+    <ph name="PRINTER_MAKE_OR_MODEL">$1<ex>OfficeJet 8710</ex></ph> (USB)
+  </message>
+
+  <message name="IDS_MOBILE_NETWORK_SCANNING_MESSAGE" desc="Label for spinner whose purpose is to indicate to the user that the device is currently scanning for mobile data networks.">
+    Scanning for mobile data networks...
+  </message>
+
+  <message name="IDS_NETWORK_SCANNING_MESSAGE" desc="Label for spinner whose purpose is to indicate to the user that the device is currently scanning for nearby networks (e.g. Wi-Fi).">
+    Searching for networks...
+  </message>
+
+  <!-- HaTS Strings -->
+  <message name="IDS_HATS_NOTIFICATION_TITLE" desc="The title of the notification for Happiness Tracking Survey.">
+    Help us improve Chromebooks
+  </message>
+  <message name="IDS_HATS_NOTIFICATION_BODY" desc="The body of the notification for Happiness Tracking Survey.">
+    Let us know how we’re doing.
+  </message>
+
+  <!-- Launcher Searchable ChromeOS internal apps -->
+  <message name="IDS_INTERNAL_APP_SETTINGS" desc="The name of Settings.">
+    Settings
+  </message>
+
+  <!-- Time limit notification -->
+  <message name="IDS_SCREEN_TIME_NOTIFICATION_TITLE" desc="The title of the notification when screen usage limit reaches before locking the device.">
+    Almost time for a break
+  </message>
+  <message name="IDS_BED_TIME_NOTIFICATION_TITLE" desc="The title of the notification when bedtime reaches before locking the device.">
+    Lights out soon
+  </message>
+  <message name="IDS_TIME_LIMIT_UPDATED_NOTIFICATION_TITLE" desc="The title of the notification displayed when parent updates bedtime or usage limit for kids device.">
+    Update from your parent
+  </message>
+  <message name="IDS_BEDTIME_UPDATED_NOTIFICATION_MESSAGE" desc="The message of the notification when parent updates bedtime limit for kids device.">
+    New bedtime set
+  </message>
+  <message name="IDS_SCREEN_TIME_UPDATED_NOTIFICATION_MESSAGE" desc="The message of the notification when parent updates usage limit for kids device.">
+    New screen time limit
+  </message>
+  <message name="IDS_OVERRIDE_WITH_DURATION_UPDATED_NOTIFICATION_TITLE" desc="The title of the notification when parent granted the child more time on this device.">
+    Bonus! You got more screen time
+  </message>
+  <message name="IDS_OVERRIDE_WITH_DURATION_UPDATED_NOTIFICATION_MESSAGE" desc="The message of the notification when parent granted the child more time on this device. Informs the child of the device's new lock time.">
+    Your device now locks at <ph name="UNLOCK_TIME">$1<ex>9:30 PM</ex></ph>.
+  </message>
+  <message name="IDS_TIME_LIMIT_NOTIFICATION_DISPLAY_SOURCE" desc="The string shown as the display source of the bedtime or screen time notifications.">
+    Family Link
+  </message>
+
+  <!-- Mojo service names (displayed in task manager) -->
+  <message name="IDS_UTILITY_PROCESS_PDF_SERVICE_NAME" desc="The name of the utility process used for PDF conversions.">
+    PDF Service
+  </message>
+
+  <message name="IDS_POWER_SOURCE_PORT_LEFT" desc="The text identifying an external device, when that device is connected to the USB Type-C port on the left side of this device.">
+    USB-C device (left port)
+  </message>
+  <message name="IDS_POWER_SOURCE_PORT_RIGHT" desc="The text identifying an external device, when that device is connected to the USB Type-C port on the right side of this device.">
+    USB-C device (right port)
+  </message>
+  <message name="IDS_POWER_SOURCE_PORT_BACK" desc="The text identifying an external device, when that device is connected to the USB Type-C port on the back of this device.">
+    USB-C device (rear port)
+  </message>
+  <message name="IDS_POWER_SOURCE_PORT_FRONT" desc="The text identifying an external device, when that device is connected to the USB Type-C port on the front of this device.">
+    USB-C device (front port)
+  </message>
+  <message name="IDS_POWER_SOURCE_PORT_LEFT_FRONT" desc="The text identifying an external device, when that device is connected to a USB Type-C port on the left side of this device. In this case there are two ports on that side, so this text should refer to the front one on that side.">
+    USB-C device (left side front port)
+  </message>
+  <message name="IDS_POWER_SOURCE_PORT_LEFT_BACK" desc="The text identifying an external device, when that device is connected to a USB Type-C port on the left side of this device. In this case there are two ports on that side, so this text should refer to the back one on that side.">
+    USB-C device (left side back port)
+  </message>
+  <message name="IDS_POWER_SOURCE_PORT_RIGHT_FRONT" desc="The text identifying an external device, when that device is connected to a USB Type-C port on the right side of this device. In this case there are two ports on that side, so this text should refer to the front one on that side.">
+    USB-C device (right side front port)
+  </message>
+  <message name="IDS_POWER_SOURCE_PORT_RIGHT_BACK" desc="The text identifying an external device, when that device is connected to a USB Type-C port on the right side of this device. In this case there are two ports on that side, so this text should refer to the back one on that side.">
+    USB-C device (right side back port)
+  </message>
+  <message name="IDS_POWER_SOURCE_PORT_BACK_LEFT" desc="The text identifying an external device, when that device is connected to a USB Type-C port on the back of this device. In this case there are two ports on the back, so this text should refer to the one on the left.">
+    USB-C device (left port in the back)
+  </message>
+  <message name="IDS_POWER_SOURCE_PORT_BACK_RIGHT" desc="The text identifying an external device, when that device is connected to a USB Type-C port on the back of this device. In this case there are two ports on the back, so this text should refer to the one on the right.">
+    USB-C device (right port in the back)
+  </message>
+  <message name="IDS_POWER_SOURCE_PORT_UNKNOWN" desc="The text referring to the device to charge from, when its port location cannot be determined.">
+    USB-C device
+  </message>
+
+  <message name="IDS_SMB_SHARES_ADD_SERVICE_MENU_OPTION" desc="The text displayed in the files app Add New Services menu for the option that allows users to mount a new SMB file share.">
+    SMB file share
+  </message>
+  <message name="IDS_SMB_SHARES_CREDENTIALS_DIALOG_TITLE" desc="The text displayed as the title of the dialog that prompts users to update their username and password for a mounted SMB file share. Without full stop at the end, because this is a title.">
+    Update credentials for <ph name="SHARE_PATH">$1<ex>\\server\share</ex></ph>
+  </message>
+  <message name="IDS_SMB_SHARES_CREDENTIALS_USERNAME" desc="Title for the input that lets users specify their username for an SMB share. This field is required.">
+    Username
+  </message>
+  <message name="IDS_SMB_SHARES_CREDENTIALS_PASSWORD" desc="Title for the input that lets users specify their password for an SMB Share. This field is optional.">
+    Password (optional)
+  </message>
+
+  <!-- SMB File Shares -->
+  <message name="IDS_SETTINGS_DOWNLOADS_ADD_SHARE_URL" desc="Title for the input that lets users specify the name of an SMB URL.">
+    File share URL
+  </message>
+  <message name="IDS_SETTINGS_DOWNLOADS_ADD_SHARE_NAME" desc="Title for the input that lets users specify the display name of an SMB mount.">
+    Display name (optional)
+  </message>
+  <message name="IDS_SETTINGS_DOWNLOADS_ADD_SHARE_USERNAME" desc="Title for the input that lets users specify their username for an SMB share.">
+    Username (optional)
+  </message>
+  <message name="IDS_SETTINGS_DOWNLOADS_ADD_SHARE_PASSWORD" desc="Title for the input that lets users specify their password for an SMB Share.">
+    Password (optional)
+  </message>
+  <message name="IDS_SETTINGS_DOWNLOADS_ADD_SHARE_SAVE_CREDENTIALS" desc="Label for the checkbox input that lets users have the username/password for an SMB share saved for the next login.">
+    Remember sign-in info
+  </message>
+  <message name="IDS_SETTINGS_DOWNLOADS_ADD_SHARE_AUTHENTICATION_METHOD" desc="Title for the input that lets users specify their authentication method for an SMB Share.">
+    Authentication method
+  </message>
+  <message name="IDS_SETTINGS_DOWNLOADS_ADD_SHARE_STANDARD_AUTHENTICATION" desc="Authentication method option indicating that fields for username and password should be shown to the user.">
+    Standard
+  </message>
+  <message name="IDS_SETTINGS_DOWNLOADS_ADD_SHARE_KERBEROS_AUTHENTICATION" desc="Authentication method option to use a users Kerberos ticket to authenticate. Only availible for Active Directory users.">
+    SSO
+  </message>
+  <message name="IDS_SETTINGS_DOWNLOADS_ADD_SHARE_DISCOVERY_MESSAGE" desc="The message shown next to the loading spinner shown when searching for SMB shares.">
+    Looking for file shares
+  </message>
+
+  <!-- Strings for camera/mic permission -->
+  <if expr="reven">
+    <message name="IDS_CHROME_OS_NOTIFICATION_SOURCE" desc="The name of the source of a ChromeOS Flex notification">
+      ChromeOS Flex
+    </message>
+  </if>
+  <if expr="not reven">
+    <message name="IDS_CHROME_OS_NOTIFICATION_SOURCE" desc="The name of the source of a ChromeOS notification">
+      ChromeOS
+    </message>
+  </if>
+  <message name="IDS_APP_USING_CAMERA_NOTIFICATION_MESSAGE" desc="Message shown in notification when an app is using the camera">
+    <ph name="APP_NAME">$1<ex>Parallels Desktop</ex></ph> is using your camera
+  </message>
+  <message name="IDS_APP_USING_MIC_NOTIFICATION_MESSAGE" desc="Message shown in notification when an app is using the microphone">
+    <ph name="APP_NAME">$1<ex>Parallels Desktop</ex></ph> is using your microphone
+  </message>
+  <message name="IDS_APP_USING_CAMERA_MIC_NOTIFICATION_MESSAGE" desc="Message shown in notification when an app is using both the camera and microphone">
+    <ph name="APP_NAME">$1<ex>Parallels Desktop</ex></ph> is using your camera and microphone
+  </message>
+
+  <!-- Strings for camera privacy switch toast and notification -->
+  <message name="IDS_CAMERA_PRIVACY_SWITCH_ON_TOAST" desc="Toast message shown to the user when the camera privacy switch, which disables camera feed, gets turned on.">
+    <ph name="DEVICE_NAME">$1<ex>Camera</ex></ph> is turned off
+  </message>
+  <message name="IDS_CAMERA_PRIVACY_SWITCH_OFF_TOAST" desc="Toast message shown to the user when the camera privacy switch gets turned off. The privacy switch disables the camera feed while it's on.">
+    <ph name="DEVICE_NAME">$1<ex>Camera</ex></ph> is turned on
+  </message>
+  <message name="IDS_CAMERA_PRIVACY_SWITCH_ON_NOTIFICATION_TITLE" desc="Title for a notification shown to the users when an app tries to use a camera while the camera privacy switch, which disables camera feed, is turned on">
+    <ph name="DEVICE_NAME">$1<ex>Camera</ex></ph> is off
+  </message>
+  <message name="IDS_CAMERA_PRIVACY_SWITCH_ON_NOTIFICATION_MESSAGE" desc="Message for a notification shown to the users when an app tries to use a camera while the camera privacy switch, which disables camera feed, is turned on">
+    An app is trying to access <ph name="DEVICE_NAME">$1<ex>Camera</ex></ph>. Turn off <ph name="DEVICE_NAME">$1<ex>Camera</ex></ph> privacy switch to allow access.
+  </message>
+
+  <!-- Strings for Account Manager error screen -->
+  <message name="IDS_ACCOUNT_MANAGER_SECONDARY_ACCOUNTS_DISABLED_TITLE" desc="Title for the ChromeOS Account Manager error screen when addition of secondary Google Accounts is disabled.">
+    Addition of more Google Accounts is disabled
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_SECONDARY_ACCOUNTS_DISABLED_TEXT" desc="Text body for the ChromeOS Account Manager error screen when addition of secondary Google Accounts is disabled.">
+    Your administrator has disabled the addition of more Google Accounts
+  </message>
+
+  <!-- Strings for Account Manager screens -->
+  <message name="IDS_ACCOUNT_MANAGER_DIALOG_TITLE" desc="Title for the ChromeOS 'Add account' dialog.">
+    Sign in to add a Google account
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_DIALOG_WELCOME_TITLE" desc="Title for the Welcome screen in ChromeOS 'Add account' dialog.">
+    Add another Google Account for <ph name="USER_NAME">$1<ex>John</ex></ph>
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_DIALOG_WELCOME_BODY" desc="Text body for the Welcome screen in ChromeOS 'Add account' dialog.">
+    You can manage signed-in Google Accounts from <ph name="LINK_BEGIN">&lt;a id="osSettingsLink" href="$1<ex>https://google.com/</ex>"&gt;</ph>Settings<ph name="LINK_END">&lt;/a&gt;</ph>. Permissions you have granted to websites and apps may apply to all accounts. If you don't want sites or apps to access your account info, you can sign into your <ph name="DEVICE_TYPE">$2<ex>Chromebook</ex></ph> as a guest or browse the web in an <ph name="LINK_2_BEGIN">&lt;a id="incognitoLink" href="#"&gt;</ph>Incognito window<ph name="LINK_2_END">&lt;/a&gt;</ph>.
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_DIALOG_WELCOME_BODY_WITHOUT_INCOGNITO" desc="Text body for the Welcome screen in ChromeOS 'Add account' dialog without Incognito link.">
+    You can manage signed-in Google Accounts from <ph name="LINK_BEGIN">&lt;a id="osSettingsLink" href="$1<ex>https://google.com/</ex>"&gt;</ph>Settings<ph name="LINK_END">&lt;/a&gt;</ph>. Permissions you have granted to websites and apps may apply to all accounts. If you don't want sites or apps to access your account info, you can sign into your <ph name="DEVICE_TYPE">$2<ex>Chromebook</ex></ph> as a guest.
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_DIALOG_ADD_ACCOUNT_LABEL" desc="Label of the Add account button on Account picker screen.">
+    Add Google Account
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_DIALOG_ADD_SCHOOL_ACCOUNT_LABEL" desc="Label of the button to add a school/EDU account on Account picker screen.">
+    Add school account
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_DIALOG_WELCOME_CHECKBOX" desc="Checkbox text for the Welcome screen in ChromeOS 'Add account' dialog. If user checks this checkbox, this screen will not be shown the next time they open the dialog.">
+    Don't remind me next time
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_ERROR_NO_INTERNET_TITLE" desc="Title for the network error screen.">
+    No Internet
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_ERROR_NO_INTERNET_BODY" desc="Text body for the network error screen with list of suggestions for the user.">
+    Try:
+    <ph name="BEGIN_LIST">&lt;ul&gt;</ph>
+      <ph name="LIST_ITEM">&lt;li&gt;</ph>Checking the network cables, modem, and router
+      <ph name="LIST_ITEM">&lt;li&gt;</ph>Reconnecting to Wi-Fi
+      <ph name="LIST_ITEM">&lt;li&gt;</ph>Running Chrome Connectivity Diagnostics
+    <ph name="END_LIST">&lt;/ul&gt;</ph>
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_ERROR_CANNOT_ADD_ACCOUNT_TITLE" desc="Title for the error screen which tells user that account addition resulted in an error.">
+    There was an error adding an account
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_ERROR_CANNOT_ADD_ACCOUNT_BODY" desc="Text body for the error screen which tells user to try again later.">
+    Please try again later.
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_DIALOG_SIGNIN_BLOCKED_BY_POLICY_TITLE" desc="Title for the sign-in blocked by policy screen in ChromeOS 'Add account' dialog.">
+    Can't sign in with this account
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_DIALOG_SIGNIN_BLOCKED_BY_POLICY_BODY" desc="Text body for the sign-in blocked by policy screen in ChromeOS 'Add account' dialog.">
+    <ph name="BEGIN_PARAGRAPH1">&lt;p&gt;</ph><ph name="USER_EMAIL">$1<ex>john.doe@example.com</ex></ph> is managed by <ph name="MANAGER">$2<ex>example.com</ex></ph>. You can't add this email as an additional account.<ph name="END_PARAGRAPH1">&lt;/p&gt;</ph>
+    <ph name="BEGIN_PARAGRAPH2">&lt;p&gt;</ph>To use <ph name="USER_EMAIL">$1<ex>john.doe@example.com</ex></ph>, first sign out of your <ph name="DEVICE_TYPE">$3<ex>Chromebook</ex></ph>. Then at the bottom of the login screen, select Add Person.<ph name="END_PARAGRAPH2">&lt;/p&gt;</ph>
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_DIALOG_SIGNIN_BLOCKED_BY_POLICY_IMAGE_ALT" desc="Alternate text for image on the sign-in blocked by policy screen in ChromeOS 'Add account' dialog.">
+   Restriction image
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_DIALOG_SIGNIN_ERROR_TITLE" desc="Title for the sign-in error screen in ChromeOS 'Add account' dialog.">
+    Something went wrong
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_DIALOG_SIGNIN_ERROR_BODY" desc="Text body for the sign-in error screen in ChromeOS 'Add account' dialog.">
+    Your email address or password couldn't be verified. Try signing in again.
+  </message>
+  <message name="IDS_ACCOUNT_MANAGER_DIALOG_SIGNIN_SPINNER_TEXT" desc="Text for the spinner during sign-in flow on ChromeOS 'Add account' dialog.">
+    Verifying account...
+  </message>
+
+  <!-- Strings for per-account Migration welcome screen -->
+  <message name="IDS_ACCOUNT_MIGRATION_WELCOME_PAGE_TITLE" desc="Title for the Account Migration Welcome page.">
+    Sign in again
+  </message>
+  <message name="IDS_ACCOUNT_MIGRATION_WELCOME_TITLE" desc="Title for the Account Migration Welcome screen.">
+    Sign in again to update <ph name="USER_EMAIL">$1<ex>john.doe@example.com</ex></ph>
+  </message>
+  <message name="IDS_ACCOUNT_MIGRATION_WELCOME_TEXT" desc="Text body for the Account Migration Welcome screen.">
+    Please sign in again to confirm that your account <ph name="USER_EMAIL">$1<ex>john.doe@example.com</ex></ph> can be used with websites, apps, and extensions in Chrome and Google Play. You may also remove this account. <ph name="LINK_BEGIN">&lt;a target="_blank" href="$2<ex>https://google.com/</ex>"&gt;</ph>Learn more<ph name="LINK_END">&lt;/a&gt;</ph>
+  </message>
+  <message name="IDS_ACCOUNT_MIGRATION_UPDATE_BUTTON" desc="Label for the button in Account Migration dialog to migrate the account.">
+    Update account
+  </message>
+
+  <!-- Strings for EDU login flow -->
+  <message name="IDS_EDU_LOGIN_BACK" desc="The name of the button that goes to the previous step in EDU login flow.">
+    Back
+  </message>
+  <message name="IDS_EDU_LOGIN_NEXT" desc="The name of the button that goes to the next step in EDU login flow.">
+    Next
+  </message>
+  <message name="IDS_EDU_LOGIN_WELCOME_TITLE_2" desc="Title for the welcome screen in EDU account addition flow.">
+    Ask a parent for permission
+  </message>
+  <message name="IDS_EDU_LOGIN_WELCOME_BODY_2" desc="Text on the welcome screen in EDU account addition flow informing user to ask their parent for permission to add the account.">
+    Select the parent who is granting permission to add a school account.
+  </message>
+  <message name="IDS_EDU_LOGIN_WELCOME_REAUTH_BODY" desc="Text on the reauthentication screen in EDU account addition flow informing user to ask their parent for permission to reauthenticate the account.">
+    To sign in again for access to educational resources, ask a parent to give you permission
+  </message>
+  <message name="IDS_EDU_LOGIN_PARENT_SIGNIN_TITLE" desc="Title for the parent sign-in screen asking parent to sign-in to approve EDU account addition.">
+    Hi <ph name="PARENT_NAME">$1<ex>Francis</ex></ph>
+  </message>
+  <message name="IDS_EDU_LOGIN_PARENT_SIGNIN_BODY" desc="Text on the parent sign-in screen asking parent to sign-in to approve EDU account addition.">
+    Sign in to help <ph name="USER_NAME">$1<ex>Julie</ex></ph> add a school account
+  </message>
+  <message name="IDS_EDU_LOGIN_PARENT_SIGNIN_PASSWORD_LABEL" desc="Label for the password field on parent sign-in page in EDU account addition flow.">
+    Parent password
+  </message>
+  <message name="IDS_EDU_LOGIN_PARENT_SIGNIN_PASSWORD_ERROR_MESSAGE" desc="Error message that is shown when password is wrong in EDU login flow.">
+    Wrong password. Try again or click Forgot password to reset it.
+  </message>
+  <message name="IDS_EDU_LOGIN_PARENT_SIGNIN_ACCOUNT_RECOVERY_LINK_TEXT" desc="Text for the link that points to password recovery page.">
+    Forgot password?
+  </message>
+  <message name="IDS_EDU_LOGIN_PARENT_SIGNIN_PASSWORD_SHOW" desc="A tool tip on a button that reveals the saved password.">
+    Show password
+  </message>
+  <message name="IDS_EDU_LOGIN_PARENT_SIGNIN_PASSWORD_HIDE" desc="A tool tip on a button that hides the saved password that is being shown.">
+    Hide password
+  </message>
+  <!--
+    IDS_EDU_LOGIN_INFO_* strings END
+    ==================================================================================
+  -->
+
+  <!-- TPM firmware auto-update notifications -->
+  <message name="IDS_TPM_AUTO_UPDATE_PLANNED_NOTIFICATION_TITLE" desc="Title for the notification informing the user that local data will be deleted.">
+    Your local data will soon be deleted
+  </message>
+  <message name="IDS_TPM_AUTO_UPDATE_PLANNED_NOTIFICATION_MESSAGE" desc="Text for the notification informing the user that a TPM update is planned by the administrator which will result in local data being deleted.">
+    After 24 hours, your administrator will perform a one-time update that will delete your local data when you restart your device. Save any local data you need to cloud storage within 24 hours.
+  </message>
+  <message name="IDS_TPM_AUTO_UPDATE_REBOOT_NOTIFICATION_TITLE" desc="Title for the notification informing the user that local data will be deleted after reboot.">
+    Local data will be deleted when you restart
+  </message>
+  <message name="IDS_TPM_AUTO_UPDATE_REBOOT_NOTIFICATION_MESSAGE" desc="Text for the notification informing the user that a TPM update will be performed after reboot which will result in local data being deleted.">
+    The next time you restart your device, your administrator will perform a one-time update that will delete your local data.
+  </message>
+
+  <!-- Strings for Release Notes notification -->
+  <message name="IDS_RELEASE_NOTES_DEVICE_SPECIFIC_NOTIFICATION_TITLE" desc="Text for the notification title informing the user that the device has been updated and patch notes are available. Will specify the user's ChromeOS device. [CHAR_LIMIT=40]">
+    Explore what's new on your <ph name="DEVICE_TYPE">$1<ex>Chromebook</ex></ph>
+  </message>
+  <message name="IDS_RELEASE_NOTES_NOTIFICATION_MESSAGE" desc="Text for the notification message informing the user that the device has been updated and patch notes are available.">
+    Get highlights from the latest update
+  </message>
+
+  <!-- Strings for EDU Coexistence flow -->
+
+  <!-- Strings for Add Supervision screen -->
+  <message name="IDS_ADD_SUPERVISION_PAGE_TITLE" desc="Title for the ChromeOS Add Supervision screen. Since the title bar is not visible, this string is only used by screen readers.">
+    Set Up Parental Controls
+  </message>
+  <message name="IDS_ADD_SUPERVISION_WEBVIEW_LOADING_MESSAGE" desc="Message shown while the Add Supervision screen is loading.">
+    Please wait...
+  </message>
+  <message name="IDS_ADD_SUPERVISION_EXIT_DIALOG_TITLE" desc="Title for the dialog shown when attempting to exit the Add Supervision screen.">
+    Are you sure you want to exit?
+  </message>
+  <message name="IDS_ADD_SUPERVISION_EXIT_DIALOG_BODY" desc="Body for the dialog shown when attempting to exit the Add Supervision screen.">
+Supervision is set up for this Google Account. To set up more parental controls, select Continue.
+
+Otherwise, sign out now so that the changes to this account will be reflected on this device.
+
+You can manage this account’s settings by installing the Family Link app on your device.  We sent you instructions in an email.
+  </message>
+  <message name="IDS_ADD_SUPERVISION_EXIT_DIALOG_CANCEL_BUTTON_LABEL" desc="Label for the cancel button on the dialog shown when attempting to exit the Add Supervision screen. 'Continue' means to continue setting up supervision, rather than exiting the dialog">
+    Continue
+  </message>
+  <message name="IDS_ADD_SUPERVISION_EXIT_DIALOG_SIGNOUT_BUTTON_LABEL" desc="Label for the signout button on the dialog shown when attempting to exit the Add Supervision screen.">
+    Sign out
+  </message>
+
+  <!-- Strings for Parent Access screen -->
+  <message name="IDS_PARENT_ACCESS_PAGE_TITLE" desc="Title for the ChromeOS Parent Access screen.">
+    Parent Access
+  </message>
+  <message name="IDS_PARENT_ACCESS_CLOSE_BUTTON_TITLE" desc="Title for the ChromeOS Parent Access Widget close button.">
+    Close
+  </message>
+  <message name="IDS_PARENT_ACCESS_LOCAL_WEB_APPROVALS_AFTER_TITLE" desc="Title for the local web approvals dialog.">
+    Approve web request?
+  </message>
+  <message name="IDS_PARENT_ACCESS_LOCAL_WEB_APPROVALS_AFTER_SUBTITLE" desc="Subtitle for the local web approvals dialog describing that a supervised user is requesting access to a site.">
+    <ph name="SUPERVISED_USER_NAME">$1<ex>Child 1</ex></ph> wants to access the following content:
+  </message>
+  <message name="IDS_PARENT_ACCESS_LOCAL_WEB_APPROVALS_AFTER_DETAILS" desc="Details about the local web approvals request, including the domain that access is requested for.">
+    All pages of <ph name="DOMAIN_NAME">$1<ex>google.com</ex></ph>
+  </message>
+  <message name="IDS_PARENT_ACCESS_AFTER_APPROVE_BUTTON" desc="Approve button on the local web approvals dialog.">
+    Approve
+  </message>
+  <message name="IDS_PARENT_ACCESS_AFTER_DENY_BUTTON" desc="Deny button on the local web approvals dialog.">
+    Deny
+  </message>
+  <message name="IDS_PARENT_ACCESS_WEBVIEW_LOADING_MESSAGE" desc="Message shown while the parent access screen is loading.">
+    Please wait...
+  </message>
+  <message name="IDS_PARENT_ACCESS_ASK_IN_PERSON_BUTTON" desc="Button shown on the parent access dialog to ask a parent for approval in person.">
+    Ask in person
+  </message>
+  <message name="IDS_PARENT_ACCESS_OK_BUTTON" desc="OK button text on the parent access dialog.">
+    OK
+  </message>
+  <message name="IDS_PARENT_ACCESS_EXTENSION_APPROVALS_DISABLED_TITLE" desc="Title for the extension approvals disabled page indicating that extensions can't be used.">
+    Can’t use extension
+  </message>
+  <message name="IDS_PARENT_ACCESS_EXTENSION_APPROVALS_DISABLED_SUBTITLE" desc="Text telling the user that an extension cannot be installed because a parent has disallowed it.">
+    You can’t use this extension. Your parent or guardian has turned off “Permissions for sites, apps and extensions” for Chrome.
+  </message>
+  <message name="IDS_PARENT_ACCESS_EXTENSION_APPROVALS_BEFORE_TITLE" desc="Title for the dialog asking a supervised user if they would like to ask for approval to install an extension.">
+    Ask your parent to allow an extension
+  </message>
+  <message name="IDS_PARENT_ACCESS_EXTENSION_APPROVALS_BEFORE_SUBTITLE" desc="Text indicating that a parent must approve the extension for the supervised user to gain access.">
+    Your parent or guardian has to say it’s OK for you to use this extension
+  </message>
+  <message name="IDS_PARENT_ACCESS_EXTENSION_APPROVALS_AFTER_TITLE" desc="Title for the dialog asking a parent if they would like to allow an extension for a supervised user.">
+    <ph name="SUPERVISED_USER_NAME">$1<ex>Child 1</ex></ph> wants to use this extension:
+  </message>
+  <message name="IDS_PARENT_ACCESS_EXTENSION_PERMISSIONS_HEADER" desc="Header that comes before a list of extension permissions.">
+    It can:
+  </message>
+  <message name="IDS_PARENT_ACCESS_EXTENSION_PERMISSION_SHOW_DETAILS" desc="Text for a button that shows details for an extension permission.">
+    Show details
+  </message>
+  <message name="IDS_PARENT_ACCESS_EXTENSION_PERMISSION_HIDE_DETAILS" desc="Text for a button that hides details for an extension permission.">
+    Hide details
+  </message>
+
+  <!-- Strings shared among supervised user experiences -->
+  <message name="IDS_SUPERVISED_USER_ERROR_TITLE" desc="Title for the UI shown to supervised users when an error has occurred.">
+    An error occurred
+  </message>
+  <message name="IDS_SUPERVISED_USER_ERROR_DESCRIPTION" desc="Message shown if UI shown to supervised users has failed to load for any reason.">
+    Please try again later
+  </message>
+  <message name="IDS_SUPERVISED_USER_OFFLINE_TITLE" desc="Heading string shown in the UI shown to supervised users when the network is not available.">
+    Can’t connect to the internet
+  </message>
+  <message name="IDS_SUPERVISED_USER_OFFLINE_DESCRIPTION" desc="Description shown in the UI shown to supervised users when the network is not available.">
+    Check your internet connection
+  </message>
+  <!-- Strings for gnubby U2FD authentication UI -->
+  <message name="IDS_GNUBBY_NOTIFICATION_TITLE" desc="Title for notification informing user to press power button for gnubby U2FD.">
+    A security key is being requested
+  </message>
+  <message name="IDS_GNUBBY_NOTIFICATION_MESSAGE" desc="Text for notifications informing user that Chrome is requestor for U2FD.">
+    Please tap your power button
+  </message>
+
+  <!-- Shared (OOBE, settings) auth setup webuis -->
+  <message name="IDS_AUTH_SETUP_SET_LOCAL_PASSWORD_PLACEHOLDER" desc="Placeholder text for the input that lets the user enter a new local password.">
+    Password
+  </message>
+  <message name="IDS_AUTH_SETUP_SET_LOCAL_PASSWORD_CONFIRM_PLACEHOLDER" desc="Placeholder text for the input where the user should enter a new local password for a second time for confirmation.">
+    Confirm password
+  </message>
+  <message name="IDS_AUTH_SETUP_SHOW_PASSWORD" desc="A tooltip on a button that reveals the password.">
+    Show password
+  </message>
+  <message name="IDS_AUTH_SETUP_HIDE_PASSWORD" desc="A tooltip on a button that hides the password that is being shown.">
+    Hide password
+  </message>
+  <message name="IDS_AUTH_SETUP_SHOW_PIN" desc="A tooltip on a button that reveals the PIN.">
+    Show PIN
+  </message>
+  <message name="IDS_AUTH_SETUP_HIDE_PIN" desc="A tooltip on a button that hides the PIN that is being shown.">
+    Hide PIN
+  </message>
+  <message name="IDS_AUTH_SETUP_SET_LOCAL_PASSWORD_MIN_CHARS_HINT" desc="The hint about the minimal length of a password when the user sets a new password.">
+    Password must be at least 8 characters
+  </message>
+  <message name="IDS_AUTH_SETUP_SET_LOCAL_PASSWORD_ERROR_TOO_SHORT" desc="Error message shown when the password is too short.">
+    Must be at least <ph name="MIN_LENGTH">$1<ex>8</ex></ph> characters
+  </message>
+  <message name="IDS_AUTH_SETUP_SET_LOCAL_PASSWORD_REQ_LETTER_OR_SYMBOL" desc="Requirement for low complexity password.">
+    Must have at least one letter or symbol
+  </message>
+  <message name="IDS_AUTH_SETUP_SET_LOCAL_PASSWORD_REQ_TWO_CLASSES" desc="Requirement for medium complexity password.">
+   Must have two of the following: uppercase letters, lowercase letters, numbers, or symbols
+  </message>
+  <message name="IDS_AUTH_SETUP_SET_LOCAL_PASSWORD_REQ_FOUR_CLASSES" desc="Requirement for high complexity password.">
+    Must have uppercase letters, lowercase letters, numbers, and symbols
+  </message>
+  <message name="IDS_AUTH_SETUP_SET_LOCAL_PASSWORD_ERROR_CONTAINS_TRIVIAL_SEQUENCE" desc="Error message shown when the password contains trivial sequences.">
+    Must not have repeated characters or sequences of 4 or more
+  </message>
+  <message name="IDS_AUTH_SETUP_SET_LOCAL_PASSWORD_COMPLEXITY_ERROR_NONE" desc="The hint about password requirements when the LocalPinAndPassword policy is set to None.">
+    Must be at least 1 character
+  </message>
+  <message name="IDS_AUTH_SETUP_SET_LOCAL_PASSWORD_COMPLEXITY_ERROR_LOW" desc="The hint about password requirements when the LocalPinAndPassword policy is set to Low.">
+    Must be at least 6 characters and have at least one letter or symbol
+  </message>
+  <message name="IDS_AUTH_SETUP_SET_LOCAL_PASSWORD_COMPLEXITY_ERROR_MEDIUM" desc="The hint about password requirements when the LocalPinAndPassword policy is set to Medium.">
+    Must be at least 8 characters and have at least two of the following: uppercase letters, lowercase letters, numbers, or symbols. Must not have repeated characters or sequences of 4 or more.
+  </message>
+  <message name="IDS_AUTH_SETUP_SET_LOCAL_PASSWORD_COMPLEXITY_ERROR_HIGH" desc="The hint about password requirements when the LocalPinAndPassword policy is set to High.">
+    Must be at least 12 characters and have uppercase letters, lowercase letters, numbers, and symbols. Must not have repeated characters or sequences of 4 or more.
+  </message>
+  <message name="IDS_AUTH_SETUP_SET_LOCAL_PASSWORD_NO_MATCH_ERROR" desc="Error message shown when the user sets a password but the first entry does not match the second entry.">
+    Passwords do not match
+  </message>
+
+  <!-- Strings for emoji picker-->
+  <message name="IDS_ACCNAME_EMOJI_PICKER" desc="The accessible name for the emoji picker.">
+    Emoji Picker
+  </message>
+  <message name="IDS_ASH_EMOJI_PICKER_COPY_GIF_TO_CLIPBOARD" translateable="false" desc="Message shown to users when they click a gif in emoji picker.">
+    GIF not supported. Copied to clipboard.
+  </message>
+
+  <!-- Strings for orca-->
+  <message name="IDS_ACCNAME_ORCA" desc="The name for the orca feature in the task manager">
+    Tool: Help me write
+  </message>
+
+  <!-- Strings for Projector-->
+  <message name="IDS_PROJECTOR_APP_NAME" desc="Name for the Projector app in the launcher">
+    Screencast
+  </message>
+
+   <!-- Strings for OsFlags -->
+  <message name="IDS_OS_FLAGS_APP_NAME" translateable="false" desc="Name for the system flags app.">
+    Flags
+  </message>
+
+  <!-- Strings for the office fallback dialog -->
+  <message name="IDS_OFFICE_FALLBACK_CANCEL" desc="Label for the button that cancels office fallback.">
+    Cancel
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_TRY_AGAIN" desc="Label for the button that retries opening the office file with the original application.">
+    Try again
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_OK" desc="Label for the office fallback dialog's OK button.">
+    OK
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_OPEN_IN_BASIC_EDITOR" desc="Label for the button that uses the basic fallback editor to open the office file.">
+    Open in basic editor
+  </message>
+
+  <message name="IDS_OFFICE_FALLBACK_TITLE_OFFLINE" desc="Title for a dialog that appears when an office file is unable to be opened due to the system being offline.">
+    Can't open <ph name="FILE_NAMES">$1<ex>file.docx</ex></ph> when offline
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_REASON_OFFLINE" desc="Explanation for a dialog that appears when an office file is unable to be opened due to the system being offline.">
+    The application <ph name="APPLICATION_NAME">$1<ex>Google Docs</ex></ph> isn’t available offline.
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_INSTRUCTIONS_OFFLINE" desc="Office Fallback dialog instructions for the choices (and buttons) the user has available to open the office file when the system is offline.">
+    Check your internet connection and choose "Try again", or choose "Open in basic editor" to use limited view and editing options.
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_TITLE_METERED" desc="Title for a dialog that appears when an office file is unable to be uploaded to Google Drive due to the system being on a metered network (network where bandwidth usage incurs cost to the user).">
+    Can't open <ph name="FILE_NAMES">$1<ex>file.docx</ex></ph> while on a metered connection
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_REASON_METERED" desc="Explanation for a dialog that appears when an office file is unable to be uploaded to Google Drive due to the system being on a metered network (network where bandwidth usage incurs cost to the user).">
+    Can't upload files while on a metered connection.
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_INSTRUCTIONS_METERED" desc="Office Fallback dialog instructions for the choices (and buttons) the user has available to open the office file when the system is on a metered network (network where bandwidth usage incurs cost to the user).">
+    Change your internet connection and choose "Try again", or choose "Open in basic editor" to use limited view and editing options.
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_TITLE_DRIVE_UNAVAILABLE" desc="Title for a dialog that appears when an office file is unable to be opened due to Google Drive not being available.">
+    Can't open <ph name="FILE_NAMES">$1<ex>file.docx</ex></ph> when Google Drive is not available
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_REASON_DRIVE_UNAVAILABLE" desc="Explanation for a dialog that appears when an office file is unable to be opened due to Google Drive not being available.">
+    The application <ph name="APPLICATION_NAME">$1<ex>Google Docs</ex></ph> requires Google Drive to be available.
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_INSTRUCTIONS_DISABLE_DRIVE_PREFERENCE" desc="Office Fallback dialog instructions for the choices (buttons) the user has available when Google Drive is disabled in settings.">
+    Try enabling Google Drive in Settings and choose "Try again", or choose "Open in basic editor" to use limited view and editing options.
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_REASON_DRIVE_DISABLED_FOR_ACCOUNT" desc="Explanation for a dialog that appears when Google Drive is not available for the account type.">
+    Google Drive is disabled for this account type.
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_INSTRUCTIONS_DRIVE_DISABLED_FOR_ACCOUNT" desc="Office Fallback dialog instructions for the choices (buttons) the user has available when Google Drive is not available for the account type.">
+    Choose "Open in basic editor" to use limited view and editing options.
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_INSTRUCTIONS" desc="Office Fallback dialog instructions for the choices (buttons) the user has available to open the office file.">
+    Choose "Try again", or choose "Open in basic editor" to use limited view and editing options.
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_TITLE_WAITING_FOR_UPLOAD" desc="Title for a dialog that appears when a user attempts to open a file in Web Drive before it is fully synced.">
+    Can't open <ph name="FILE_NAMES">$1<ex>file.docx</ex></ph>
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_REASON_WAITING_FOR_UPLOAD" desc="Explanation for a dialog that appears when a user attempts to open a file in Web Drive before it is fully synced.">
+    The file is still being synced to Drive.
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_INSTRUCTIONS_WAITING_FOR_UPLOAD" desc="Office Fallback dialog instructions when a user attempts to open a file in Web Drive before it is fully synced.">
+    Try again after the file has finished syncing.
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_TITLE_ANDROID_ONE_DRIVE_LOCATION_NOT_SUPPORTED" desc="Title for a dialog that appears when a user attempts to open a file from an unsupported location in the Android OneDrive app.">
+    Microsoft 365 can't open <ph name="FILE_NAMES">$1<ex>file.docx</ex></ph> from this folder
+  </message>
+  <message name="IDS_OFFICE_FALLBACK_INSTRUCTIONS_ANDROID_ONE_DRIVE_LOCATION_NOT_SUPPORTED" desc="Office Fallback dialog instructions when a user attempts to open a file from an unsupported location in the Android OneDrive app.">
+    Try opening the file from another folder, or choose "Open in basic editor" to use limited view and editing options.
+  </message>
+
+  <!-- Office file handler selection dialog -->
+  <message name="IDS_OFFICE_FILE_HANDLER_TITLE" desc="Title for office file handler selection dialog, which allows the user to choose an app to open office files.">
+    Choose an app to open <ph name="FILE_TYPE">$1<ex>Word</ex></ph> files
+  </message>
+  <message name="IDS_OFFICE_FILE_HANDLER_FILE_TYPE_WORD" desc="File type for Word.">
+    Word
+  </message>
+  <message name="IDS_OFFICE_FILE_HANDLER_FILE_TYPE_EXCEL" desc="File type for Excel.">
+    Excel
+  </message>
+  <message name="IDS_OFFICE_FILE_HANDLER_FILE_TYPE_POWERPOINT" desc="File type for PowerPoint.">
+    PowerPoint
+  </message>
+  <message name="IDS_OFFICE_FILE_HANDLER_APP_GOOGLE_DOCS" desc="App name for Google Docs.">
+    Google Docs
+  </message>
+  <message name="IDS_OFFICE_FILE_HANDLER_APP_GOOGLE_SHEETS" desc="App name for Google Sheets.">
+    Google Sheets
+  </message>
+  <message name="IDS_OFFICE_FILE_HANDLER_APP_GOOGLE_SLIDES" desc="App name for Google Slides.">
+    Google Slides
+  </message>
+  <message name="IDS_OFFICE_FILE_HANDLER_APP_OTHERS" desc="App name for others.">
+    Other apps
+  </message>
+  <message name="IDS_OFFICE_FILE_HANDLER_STORAGE_GOOGLE" desc="Description for using Google Drive as storage.">
+    Uses Google Drive storage
+  </message>
+  <message name="IDS_OFFICE_FILE_HANDLER_STORAGE_MICROSOFT" desc="Description for using Microsoft OneDrive as storage.">
+    Uses Microsoft OneDrive storage
+  </message>
+  <message name="IDS_OFFICE_FILE_HANDLER_OPEN_BUTTON" desc="Text for a button located in the dialog footer which opens the app.">
+    Open
+  </message>
+
+  <!-- Office setup welcome dialog -->
+  <message name="IDS_OFFICE_WELCOME_TITLE" desc="Title for the welcome dialog when the user sets up Microsoft Office for the first time.">
+    Set up Microsoft 365 to open files
+  </message>
+  <message name="IDS_OFFICE_WELCOME_BODY_TEXT" desc="Body text for the welcome dialog when the user sets up Microsoft Office for the first time.">
+    <ph name="LINK_BEGIN">&lt;a href="https://support.google.com/chromebook?p=edit_office_files" target="_blank"&gt;</ph>Learn more<ph name="LINK_END">&lt;/a&gt;</ph> about Microsoft 365 on your Chromebook.
+  </message>
+  <message name="IDS_OFFICE_WELCOME_INSTALL_MICROSOFT365" desc="A bullet point in the welcome dialog when the user sets up Microsoft Office for the first time, telling the user that Microsoft 365 web app will be installed.">
+    Install Microsoft 365
+  </message>
+  <message name="IDS_OFFICE_WELCOME_CONNECT_ONEDRIVE" desc="A bullet point in the welcome dialog when the user sets up Microsoft Office for the first time, telling the user that Microsoft OneDrive account will be installed.">
+    Connect to Microsoft OneDrive
+  </message>
+  <message name="IDS_OFFICE_WELCOME_FILES_WILL_MOVE" desc="A bullet point in the welcome dialog when the user sets up Microsoft Office for the first time, telling the user that selected files will be moved to the user's Microsoft OneDrive account when opened with Microsoft 365 web app.">
+    Files will move to OneDrive when opening in Microsoft 365
+  </message>
+  <message name="IDS_OFFICE_WELCOME_GET_STARTED" desc="Caption for a button that starts the setup flow in the welcome dialog when the user sets up Microsoft Office for the first time.">
+    Get started
+  </message>
+  <message name="IDS_OFFICE_WELCOME_SET_UP" desc="Caption for a button that starts the setup flow in the welcome dialog when the user sets up Microsoft Office, but both Microsoft 365 web app and Microsoft OneDrive were previously set up.">
+    Set up
+  </message>
+
+  <!-- Office setup Connect OneDrive dialog -->
+  <message name="IDS_CONNECT_TO_ONEDRIVE_TITLE" desc="Title for a dialog which allows the user to connect Files app and Microsoft OneDrive storage.">
+    Connect to Microsoft OneDrive
+  </message>
+  <message name="IDS_CONNECT_TO_ONEDRIVE_BODY_TEXT" desc="Explanation text for a dialog which allows the user to connect Files app and Microsoft OneDrive storage.">
+    Connect OneDrive to the Files app to manage your stored documents from your Chromebook. You'll need to sign in with your Microsoft account.
+  </message>
+  <message name="IDS_CONNECT_TO_ONEDRIVE_SIGNIN_FLOW_BODY_TEXT" desc="Explanation text for a dialog which allows the user to connect Files app and Microsoft OneDrive storage via sign in flow.">
+    Microsoft 365 uses OneDrive to open and edit Word, Excel, and PowerPoint files. These files will be found in the Files app side navigation labeled “Microsoft OneDrive.” You'll need to sign in with your Microsoft account. <ph name="LINK_BEGIN">&lt;a href="https://support.google.com/chromebook?p=edit_office_files" target="_blank"&gt;</ph>Learn more<ph name="LINK_END">&lt;/a&gt;</ph>
+  </message>
+  <message name="IDS_CANT_CONNECT_ONEDRIVE" desc="Error message text displayed when the user has tried to connect to OneDrive storage, but failed for any reason.">
+    Can't connect to OneDrive. Try again.
+  </message>
+  <message name="IDS_CONNECT_ONEDRIVE" desc="Text for a button which triggers a UI flow to connect the user to OneDrive storage.">
+    Connect to OneDrive
+  </message>
+  <message name="IDS_ONEDRIVE_CONNECTED_TITLE" desc="Text for a button which triggers a UI flow to connect the user to OneDrive storage.">
+    Microsoft OneDrive connected
+  </message>
+  <message name="IDS_ONEDRIVE_CONNECTED_BODY_TEXT" desc="Text for a button which triggers a UI flow to connect the user to OneDrive storage.">
+    OneDrive will now appear in the Files app
+  </message>
+
+  <!-- Office install PWA dialog -->
+  <message name="IDS_OFFICE_INSTALL_PWA_TITLE" desc="Title for a dialog which allows the user to install Microsoft 365 PWA.">
+    Install Microsoft 365
+  </message>
+  <message name="IDS_OFFICE_INSTALL_PWA_BODY_TEXT" desc="Explanation text for a dialog which allows the user to install Microsoft 365 PWA.">
+    Open, edit, and save Word, Excel, and PowerPoint files. A subscription may be required for some features.
+  </message>
+  <message name="IDS_OFFICE_INSTALL_PWA_INSTALLING_BUTTON" desc="Text for a button that indicates the PWA is now installing.">
+    Installing
+  </message>
+  <message name="IDS_OFFICE_INSTALL_PWA_INSTALLED_BUTTON" desc="Text for a button that indicates the PWA is successfully installed.">
+    Installed
+  </message>
+
+  <!-- Office cancel setup dialog -->
+  <message name="IDS_OFFICE_CANCEL_SETUP_TITLE" desc="Title for a dialog which allows the user to cancel the Microsoft 365 setup.">
+    Cancel Microsoft 365 setup?
+  </message>
+  <message name="IDS_OFFICE_CANCEL_SETUP_BODY_TEXT" desc="Explanation text for a dialog which allows the user to cancel the Microsoft 365 setup.">
+    You won’t be able to open files in Microsoft 365 until setup is complete.
+  </message>
+  <message name="IDS_OFFICE_CANCEL_SETUP_CANCEL_BUTTON" desc="Text for a button which cancels the Microsoft 365 setup flow.">
+    Cancel setup
+  </message>
+  <message name="IDS_OFFICE_CANCEL_SETUP_CONTINUE_BUTTON" desc="Text for a button which continues the Microsoft 365 setup flow.">
+    Continue setup
+  </message>
+
+  <!-- Office Microsoft 365 setup complete dialog -->
+  <message name="IDS_OFFICE_ONEDRIVE_SETUP_COMPLETE_TITLE" desc="Title for a dialog which indicates the Microsoft 365 setup has been completed.">
+    Microsoft 365 setup complete
+  </message>
+  <message name="IDS_OFFICE_ONEDRIVE_SETUP_COMPLETE_BODY_TEXT" desc="Explanation text for a dialog which indicates the Microsoft 365 setup has been completed.">
+    When opening Word, Excel, and Powerpoint files, the files will move to Microsoft OneDrive before opening in Microsoft 365
+  </message>
+
+  <!-- Office move confirmation dialog -->
+  <message name="IDS_OFFICE_MOVE_CONFIRMATION_MOVE_TITLE" desc="Title for a dialog asking the user to confirm moving one file to OneDrive/Google Drive before opening it.">
+    Move 1 file to <ph name="CLOUD_PROVIDER">$1<ex>Microsoft OneDrive</ex></ph> to open?
+  </message>
+  <message name="IDS_OFFICE_MOVE_CONFIRMATION_MOVE_TITLE_PLURAL" desc="Title for a dialog asking the user to confirm moving more than one files to OneDrive/Google Drive before opening it.">
+    Move <ph name="NUM_OF_FILES">$2<ex>5</ex></ph> files to <ph name="CLOUD_PROVIDER">$1<ex>Microsoft OneDrive</ex></ph> to open?
+  </message>
+  <message name="IDS_OFFICE_MOVE_CONFIRMATION_COPY_TITLE" desc="Title for a dialog asking the user to confirm copying one file to OneDrive/Google Drive before opening it.">
+    Copy 1 file to <ph name="CLOUD_PROVIDER">$1<ex>Microsoft OneDrive</ex></ph> to open?
+  </message>
+  <message name="IDS_OFFICE_MOVE_CONFIRMATION_COPY_TITLE_PLURAL" desc="Title for a dialog asking the user to confirm copying more than one files to OneDrive/Google Drive before opening it.">
+    Copy <ph name="NUM_OF_FILES">$2<ex>5</ex></ph> files to <ph name="CLOUD_PROVIDER">$1<ex>Microsoft OneDrive</ex></ph> to open?
+  </message>
+  <message name="IDS_OFFICE_MOVE_CONFIRMATION_ONEDRIVE_BODY_TEXT" desc="Explanation text for a dialog asking the user to confirm moving files to OneDrive before opening it.">
+    Microsoft 365 requires files to be stored in OneDrive. Local files will move and files from other locations will copy. Your files can be found in the Microsoft OneDrive folder in the Files app.
+  </message>
+  <message name="IDS_OFFICE_MOVE_CONFIRMATION_GOOGLE_DRIVE_BODY_TEXT" desc="Explanation text for a dialog asking the user to confirm moving files to Google Drive before opening it.">
+    Google Docs, Sheets, and Slides require files to be stored in Google Drive. Local files will move and files from other locations will copy. Your files can be found in the Google Drive folder in the Files app.
+  </message>
+  <message name="IDS_OFFICE_MOVE_CONFIRMATION_ALWAYS_MOVE_CHECKBOX" desc="Checkbox label which allows the user to always move/copy files to OneDrive/Google Drive without asking each time.">
+    Don’t ask again
+  </message>
+  <message name="IDS_OFFICE_MOVE_CONFIRMATION_MOVE_BUTTON" desc="Text for a button which triggers the move and open action for the file.">
+    Move and open
+  </message>
+  <message name="IDS_OFFICE_MOVE_CONFIRMATION_COPY_BUTTON" desc="Text for a button which triggers the copy and open action for the file.">
+    Copy and open
+  </message>
+  <message name="IDS_OFFICE_CLOUD_PROVIDER_ONEDRIVE" desc="Cloud provider name for OneDrive.">
+    Microsoft OneDrive
+  </message>
+  <message name="IDS_OFFICE_CLOUD_PROVIDER_ONEDRIVE_SHORT" desc="Short name for OneDrive.">
+    OneDrive
+  </message>
+  <message name="IDS_OFFICE_CLOUD_PROVIDER_GOOGLE_DRIVE" desc="Cloud provider name for Google Drive.">
+    Google Drive
+  </message>
+  <message name="IDS_OFFICE_CLOUD_PROVIDER_GOOGLE_DRIVE_SHORT" desc="Short name for Google Drive.">
+    Drive
+  </message>
+
+  <!-- Office notification -->
+  <message name="IDS_OFFICE_NOTIFICATION_MOVING_FILES" desc="Title for a notification indicating that files are in the process of moving to OneDrive/Google Drive.">
+    {NUM_OF_FILES, plural,
+      =1 {Moving 1 file to <ph name="CLOUD_PROVIDER">{1}<ex>Microsoft OneDrive</ex></ph>}
+      other {Moving {NUM_OF_FILES} files to <ph name="CLOUD_PROVIDER">{1}<ex>Google Drive</ex></ph>}}
+  </message>
+  <message name="IDS_OFFICE_NOTIFICATION_FILES_MOVED" desc="Title for a notification indicating that files are already moved to OneDrive/Google Drive.">
+    {NUM_OF_FILES, plural,
+      =1 {Moved 1 file}
+      other {Moved {NUM_OF_FILES} files}}
+  </message>
+  <message name="IDS_OFFICE_NOTIFICATION_COPYING_FILES" desc="Title for a notification indicating that files are in the process of copying to OneDrive/Google Drive.">
+    {NUM_OF_FILES, plural,
+      =1 {Copying 1 file to <ph name="CLOUD_PROVIDER">{1}<ex>Microsoft OneDrive</ex></ph>}
+      other {Copying {NUM_OF_FILES} files to <ph name="CLOUD_PROVIDER">{1}<ex>Microsoft OneDrive</ex></ph>}}
+  </message>
+  <message name="IDS_OFFICE_NOTIFICATION_FILES_COPIED" desc="Title for a notification indicating that files are already copied to OneDrive/Google Drive.">
+    {NUM_OF_FILES, plural,
+      =1 {Copied 1 file}
+      other {Copied {NUM_OF_FILES} files}}
+  </message>
+  <!-- TODO(b/272601262) Display or delete this message. -->
+  <message name="IDS_OFFICE_NOTIFICATION_FILES_WILL_OPEN" desc="Subtitle for a notification indicating that files will open in Microsoft 365 or Google Docs/Sheets/Slides." translateable="false">
+    {NUM_OF_FILES, plural,
+      =1 {File will open in <ph name="TARGET_APP">{1}<ex>Microsoft 365</ex></ph>}
+      other {Files will open in <ph name="TARGET_APP">{1}<ex>Google Docs</ex></ph>}}
+  </message>
+  <message name="IDS_OFFICE_NOTIFICATION_FILES_OPENING" desc="Subtitle for a notification indicating that files is opening in Microsoft 365 or Google Docs/Sheets/Slides.">
+    Opening in <ph name="TARGET_APP">$1<ex>Microsoft 365</ex></ph>
+  </message>
+  <message name="IDS_OFFICE_NOTIFICATION_SHOW_IN_FOLDER_BUTTON" desc="Text for a button in the office notification which allows the user to see the file in the Files folder after clicking.">
+    Show in folder
+  </message>
+  <message name="IDS_OFFICE_NOTIFICATION_SIGN_IN_BUTTON" desc="Text for a button in the office notification which allows the user to sign in when reauthentication is needed.">
+    Sign in
+  </message>
+  <message name="IDS_ONEDRIVE_AUTOMATED_MOUNT_ERROR_TITLE" desc="Text for the OneDrive automated mount notification">
+    OneDrive setup failed
+  </message>
+  <message name="IDS_ONEDRIVE_AUTOMATED_MOUNT_ERROR_MESSAGE" desc="Text for the OneDrive automated mount notification">
+    Your administrator configured your account to be connected to Microsoft OneDrive automatically, but something went wrong.
+  </message>
+  <message name="IDS_ONEDRIVE_AUTOMATED_MOUNT_BUTTON_TITLE" desc="Text for the OneDrive automated mount notification resolve button">
+    Manually connect to OneDrive
+  </message>
+
+  <!-- Office upload errors -->
+  <message name="IDS_OFFICE_UPLOAD_ERROR_CANT_MOVE_FILES" desc="Error message for uploading office files indicating that the files cannot be moved to OneDrive/Google Drive.">
+    {NUM_OF_FILES, plural,
+      =1 {Can't move file to <ph name="CLOUD_PROVIDER">{1}<ex>Microsoft OneDrive</ex></ph>}
+      other {Can't move files to <ph name="CLOUD_PROVIDER">{1}<ex>Google Drive</ex></ph>}}
+  </message>
+  <message name="IDS_OFFICE_UPLOAD_ERROR_CANT_COPY_FILES" desc="Error message for uploading office files indicating that files cannot be copied to OneDrive/Google Drive.">
+    {NUM_OF_FILES, plural,
+      =1 {Can't copy file to <ph name="CLOUD_PROVIDER">{1}<ex>Microsoft OneDrive</ex></ph>}
+      other {Can't copy files to <ph name="CLOUD_PROVIDER">{1}<ex>Google Drive</ex></ph>}}
+  </message>
+  <message name="IDS_OFFICE_UPLOAD_ERROR_FREE_UP_SPACE_TO_MOVE" desc="Error message for uploading office files indicating that the user needs to free up space before moving files to OneDrive/Google Drive.">
+    {NUM_OF_FILES, plural,
+      =1 {Free up space in <ph name="CLOUD_PROVIDER">{1}<ex>Microsoft OneDrive</ex></ph> to move this file}
+      other {Free up space in <ph name="CLOUD_PROVIDER">{1}<ex>Google Drive</ex></ph> to move these files}}
+  </message>
+  <message name="IDS_OFFICE_UPLOAD_ERROR_FREE_UP_SPACE_TO_COPY" desc="Error message for uploading office files indicating that the user needs to free up space before copying files to OneDrive/Google Drive.">
+    {NUM_OF_FILES, plural,
+      =1 {Free up space in <ph name="CLOUD_PROVIDER">{1}<ex>Microsoft OneDrive</ex></ph> to copy this file}
+      other {Free up space in <ph name="CLOUD_PROVIDER">{1}<ex>Google Drive</ex></ph> to copy these files}}
+  </message>
+  <message name="IDS_OFFICE_UPLOAD_ERROR_FILE_NOT_EXIST_TO_MOVE" desc="Error message for uploading office files indicating that the file does not exist so it cannot be moved.">
+    The file can't be moved because it no longer exists
+  </message>
+  <message name="IDS_OFFICE_UPLOAD_ERROR_FILE_NOT_EXIST_TO_COPY" desc="Error message for uploading office files indicating that the file does not exist so it cannot be copied.">
+    The file can't be copied because it no longer exists
+  </message>
+  <message name="IDS_OFFICE_UPLOAD_ERROR_REJECTED" desc="Error message for uploading office files indicating that the upload is rejected by the remote service.">
+    Microsoft OneDrive rejected the request. Please try again later.
+  </message>
+  <message name="IDS_OFFICE_UPLOAD_ERROR_GENERIC" desc="Generic error message for uploading office files.">
+    Something went wrong. Try again.
+  </message>
+  <message name="IDS_OFFICE_UPLOAD_ERROR_REAUTHENTICATION_REQUIRED" desc="Error message for uploading office files indicating that the needs to sign in to Microsoft first before uploading the files.">
+    Sign in to your Microsoft account and then try again
+  </message>
+  <message name="IDS_OFFICE_UPLOAD_ERROR_NOT_A_VALID_DOCUMENT" desc="Error message for opening office files indicating that the file is not an valid document.">
+    File is not a valid document
+  </message>
+  <message name="IDS_OFFICE_UPLOAD_ERROR_CANT_OPEN_FILE" desc="Error message for uploading office files indicating that file cannot be open.">
+    {NUM_OF_FILES, plural,
+      =1 {Can't open file}
+      other {Can't open files}}
+  </message>
+  <message name="IDS_OFFICE_FILE_ALREADY_BEING_OPENED_MESSAGE" desc="Message for opening office files explaining what to do when the same file is already being opened.">
+    Wait for the file to open before trying again
+  </message>
+  <message name="IDS_OFFICE_FILE_ALREADY_BEING_OPENED_TITLE" desc="Title of notification for opening office files indicating same file is already being opened.">
+    File is already being opened
+  </message>
+
+  <!-- App install dialog -->
+  <message name="IDS_APP_INSTALL_DIALOG_OPEN_APP_BUTTON_LABEL" desc="Button label in the app install dialog that opens the app that was just installed.">
+    Open app
+  </message>
+  <message name="IDS_APP_INSTALL_DIALOG_APP_DETAILS_TEXT" desc="Label in the app install dialog that is displayed in front of the app URL to give the user information about the app.">
+    App details:
+  </message>
+  <message name="IDS_APP_INSTALL_DIALOG_INSTALL_TITLE" desc="Title shown in the app install dialog asking the user if they want to install the app on their device.">
+    Install app on your <ph name="DEVICE_TYPE">$1<ex>Chromebook</ex></ph>
+  </message>
+  <message name="IDS_APP_INSTALL_DIALOG_INSTALLING_APP_TITLE" desc="Title shown in the app install dialog after the user has confirmed they want to install the app. It is only displayed for a couple of seconds while the app installs.">
+    Installing app...
+  </message>
+  <message name="IDS_APP_INSTALL_DIALOG_APP_INSTALLED_TITLE" desc="Title shown in the app install dialog after the app has finished installing.">
+    App installed
+  </message>
+  <message name="IDS_APP_INSTALL_DIALOG_APP_ALREADY_INSTALLED_TITLE" desc="Title shown in the app install dialog after the app has finished installing.">
+    App is already installed
+  </message>
+  <message name="IDS_APP_INSTALL_DIALOG_NO_APP_ERROR_TITLE" desc="Title shown in the app install dialog when there is no app data.">
+    App not available
+  </message>
+  <message name="IDS_APP_INSTALL_DIALOG_NO_APP_ERROR_DESCRIPTION" desc="Description shown in the app install dialog when there is no app data.">
+    Can't find app data
+  </message>
+  <message name="IDS_APP_INSTALL_DIALOG_CONNECTION_ERROR_TITLE" desc="Title shown in the app install dialog when there was a connection error downloading app data.">
+    Can't install app
+  </message>
+  <message name="IDS_APP_INSTALL_DIALOG_CONNECTION_ERROR_DESCRIPTION" desc="Description shown in the app install dialog when there was a connection error downloading app data.">
+    Check your internet connection and try again
+  </message>
+  <message name="IDS_APP_INSTALL_DIALOG_TRY_AGAIN_BUTTON_LABEL" desc="Button label in the app install dialog that opens the app that was just installed.">
+    Try again
+  </message>
+  <message name="IDS_APP_INSTALL_DIALOG_FAILED_INSTALL_TITLE" desc="Title shown in the app install dialog if the app failed to install.">
+    Can't install app. Something went wrong.
+  </message>
+  <message name="IDS_APP_INSTALL_DIALOG_APP_ICON_ALT" desc="Alt text for the app icon displayed in the app install dialog. This is the text that will be read by screen reader when the app icon is focused.">
+    <ph name="APP">$1<ex>Google Docs</ex></ph> logo
+  </message>
+
+  <!-- Extended Updates Dialog -->
+  <message name="IDS_EXTENDED_UPDATES_DIALOG_DIALOG_HEADING" desc="Dialog heading of the Extended Updates Dialog">
+    Turn on extended security updates
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_DIALOG_DIALOG_DESCRIPTION_P1" desc="Dialog description paragraph 1 of the Extended Updates Dialog">
+    This device is no longer receiving automatic software and security updates, but you can turn on extended security updates.
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_DIALOG_DIALOG_DESCRIPTION_P2" desc="Dialog description paragraph 2 of the Extended Updates Dialog">
+    This change is permanent and can't be reversed. Extended updates apply to all users of this device. <ph name="LINK_START">&lt;a href="$1" target="_blank"&gt;</ph>Learn more<ph name="LINK_END">&lt;/a&gt;</ph>
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_DIALOG_CANCEL_BUTTON" desc="Cancel button label of the Extended Updates Dialog">
+    Cancel
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_DIALOG_ENABLE_BUTTON" desc="Enable button label of the Extended Updates Dialog">
+    Turn on
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_DIALOG_ANDROID_DESCRIPTION" desc="Description of the loss of Android Apps">
+    You won’t be able to use Android apps or the Google Play Store
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_DIALOG_ANDROID_APPS_LIST_DESCRIPTION_SINGULAR" desc="Description of the list of Android Apps for one app">
+    1 installed app will be removed
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_DIALOG_ANDROID_APPS_LIST_DESCRIPTION_PLURAL" desc="Description of the list of Android Apps for multiple apps">
+    <ph name="NUM_OF_APPS">$1<ex>5</ex></ph> installed apps will be removed
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_DIALOG_ANDROID_APPS_LIST_NOTE" desc="Note of the loss of Android Apps">
+    Tip: Many Android apps are available on the web. Check the app or developer website for availability.
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_DIALOG_SECURITY_DESCRIPTION" desc="Description of the extended security updates">
+    Your device gets the latest security, stability, and performance updates
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_DIALOG_POPUP_TITLE" desc="Title of the confirmation popup in the Extended Updates Dialog">
+    Confirm extended security updates?
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_DIALOG_POPUP_DESCRIPTION" desc="Description of the confirmation popup in the Extended Updates Dialog">
+    This change will take effect when you receive the next update and restart your <ph name="DEVICE_TYPE">$1<ex>Chromebook</ex></ph>. This change can’t be reversed and applies to all users of this device.
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_DIALOG_POPUP_CONFIRM_BUTTON" desc="Confirm button label of the confirmation popup in the Extended Updates Dialog">
+    Confirm &amp; turn on
+  </message>
+
+  <!-- Extended Updates Notification -->
+  <message name="IDS_EXTENDED_UPDATES_NOTIFICATION_TITLE" desc="Notification title that informs users about availability of extended updates.">
+    Extended security updates available
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_NOTIFICATION_MESSAGE" desc="Notification message that informs users about availability of extended updates.">
+    This device is no longer receiving automatic software updates, but you can get continued security, stability, and performance. Some functionality will be limited.
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_NOTIFICATION_SETUP_BUTTON" desc="Setup button in the notification message that informs users about availability of extended updates.">
+    Set up
+  </message>
+  <message name="IDS_EXTENDED_UPDATES_NOTIFICATION_LEARN_MORE_BUTTON" desc="Learn more button in the notification message that informs users about availability of extended updates.">
+    Learn more
+  </message>
+
+  <!-- Mall app -->
+  <message name="IDS_MALL_APP_NAME" desc="Name of a system app which can be used to find and install apps and games">
+    Apps &amp; games
+  </message>
+</grit-part>

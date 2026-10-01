@@ -1,0 +1,550 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <utility>
+
+#include "base/memory/platform_shared_memory_handle.h"
+#include "base/memory/unsafe_shared_memory_region.h"
+#include "base/test/task_environment.h"
+#include "build/build_config.h"
+#include "mojo/public/cpp/bindings/receiver_set.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "mojo/public/cpp/test_support/test_utils.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/skia/include/core/SkColorSpace.h"
+#include "ui/gfx/color_space.h"
+#include "ui/gfx/geometry/rrect_f.h"
+#include "ui/gfx/geometry/transform.h"
+#include "ui/gfx/hdr_metadata.h"
+#include "ui/gfx/mojom/accelerated_widget_mojom_traits.h"
+#include "ui/gfx/mojom/buffer_types_mojom_traits.h"
+#include "ui/gfx/mojom/color_space.mojom.h"
+#include "ui/gfx/mojom/color_space_mojom_traits.h"
+#include "ui/gfx/mojom/hdr_metadata.mojom.h"
+#include "ui/gfx/mojom/hdr_metadata_mojom_traits.h"
+#include "ui/gfx/mojom/native_handle_types_mojom_traits.h"
+#include "ui/gfx/mojom/presentation_feedback.mojom.h"
+#include "ui/gfx/mojom/presentation_feedback_mojom_traits.h"
+#include "ui/gfx/mojom/traits_test_service.mojom.h"
+#include "ui/gfx/mojom/transform_mojom_traits.h"
+#include "ui/gfx/native_pixmap_handle.h"
+#include "ui/gfx/native_ui_types.h"
+#include "ui/gfx/selection_bound.h"
+
+#if BUILDFLAG(IS_FUCHSIA)
+#include "base/fuchsia/koid.h"
+#endif
+
+namespace gfx {
+
+namespace {
+
+gfx::AcceleratedWidget CastToAcceleratedWidget(int i) {
+#if BUILDFLAG(IS_OZONE) || BUILDFLAG(IS_APPLE)
+  return static_cast<gfx::AcceleratedWidget>(i);
+#else
+  return reinterpret_cast<gfx::AcceleratedWidget>(i);
+#endif
+}
+
+// Used by the GpuMemoryBufferHandle test to produce a valid object handle to
+// embed in a NativePixmapPlane object, so that the test isn't sending an
+// invalid FD/vmo object where the mojom requires a valid one.
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+base::ScopedFD CreateValidLookingBufferHandle() {
+  return base::UnsafeSharedMemoryRegion::TakeHandleForSerialization(
+             base::UnsafeSharedMemoryRegion::Create(1024))
+      .PassPlatformHandle()
+      .fd;
+}
+#elif BUILDFLAG(IS_FUCHSIA)
+zx::vmo CreateValidLookingBufferHandle() {
+  return base::UnsafeSharedMemoryRegion::TakeHandleForSerialization(
+             base::UnsafeSharedMemoryRegion::Create(1024))
+      .PassPlatformHandle();
+}
+#endif
+
+class StructTraitsTest : public testing::Test, public mojom::TraitsTestService {
+ public:
+  StructTraitsTest() {}
+
+  StructTraitsTest(const StructTraitsTest&) = delete;
+  StructTraitsTest& operator=(const StructTraitsTest&) = delete;
+
+ protected:
+  mojo::Remote<mojom::TraitsTestService> GetTraitsTestRemote() {
+    mojo::Remote<mojom::TraitsTestService> remote;
+    traits_test_receivers_.Add(this, remote.BindNewPipeAndPassReceiver());
+    return remote;
+  }
+
+ private:
+  // TraitsTestService:
+  void EchoSelectionBound(const SelectionBound& s,
+                          EchoSelectionBoundCallback callback) override {
+    std::move(callback).Run(s);
+  }
+
+  void EchoTransform(const Transform& t,
+                     EchoTransformCallback callback) override {
+    std::move(callback).Run(t);
+  }
+
+  void EchoGpuMemoryBufferHandle(
+      GpuMemoryBufferHandle handle,
+      EchoGpuMemoryBufferHandleCallback callback) override {
+    std::move(callback).Run(std::move(handle));
+  }
+
+  void EchoRRectF(const RRectF& r, EchoRRectFCallback callback) override {
+    std::move(callback).Run(r);
+  }
+
+  base::test::TaskEnvironment task_environment_;
+  mojo::ReceiverSet<TraitsTestService> traits_test_receivers_;
+};
+
+skhdr::AdaptiveGlobalToneMap GetTestAgtm() {
+  skhdr::AdaptiveGlobalToneMap::HeadroomAdaptiveToneMap hatm;
+  hatm.fBaselineHdrHeadroom = 0.1f,
+  hatm.fGainApplicationSpacePrimaries = SkNamedPrimaries::kRec2020;
+  hatm.fAlternateImages = {
+      {
+          .fHdrHeadroom = 0.2,
+          .fColorGainFunction =
+              {
+                  .fComponentMixing =
+                      {
+                          .fRed = 0.01f,
+                          .fGreen = 0.02f,
+                          .fBlue = 0.03f,
+                          .fMax = 0.04f,
+                          .fMin = 0.05f,
+                          .fComponent = 0.85f,
+                      },
+                  .fGainCurve =
+                      {
+                          .fControlPoints =
+                              {
+                                  {.fX = 0.7f, .fY = 0.8f, .fM = 0.9f},
+                              },
+                      },
+              },
+      },
+  };
+  skhdr::AdaptiveGlobalToneMap agtm = {
+      .fHdrReferenceWhite = 100.0f,
+      .fHeadroomAdaptiveToneMap = {hatm},
+  };
+  return agtm;
+}
+
+}  // namespace
+
+TEST_F(StructTraitsTest, SelectionBound) {
+  const gfx::SelectionBound::Type type = gfx::SelectionBound::CENTER;
+  const gfx::PointF edge_start(1234.5f, 5678.6f);
+  const gfx::PointF edge_end(910112.5f, 13141516.6f);
+  const bool visible = true;
+  gfx::SelectionBound input;
+  input.set_type(type);
+  input.SetEdge(edge_start, edge_end);
+  input.set_visible(visible);
+  mojo::Remote<mojom::TraitsTestService> remote = GetTraitsTestRemote();
+  gfx::SelectionBound output;
+  remote->EchoSelectionBound(input, &output);
+  EXPECT_EQ(type, output.type());
+  EXPECT_EQ(edge_start, output.edge_start());
+  EXPECT_EQ(edge_end, output.edge_end());
+  EXPECT_EQ(input.edge_start_rounded(), output.edge_start_rounded());
+  EXPECT_EQ(input.edge_end_rounded(), output.edge_end_rounded());
+  EXPECT_EQ(visible, output.visible());
+}
+
+TEST_F(StructTraitsTest, Transform) {
+  const float r0c0 = 1.f;
+  const float r0c1 = 2.f;
+  const float r0c2 = 3.f;
+  const float r0c3 = 4.f;
+  const float r1c0 = 5.f;
+  const float r1c1 = 6.f;
+  const float r1c2 = 7.f;
+  const float r1c3 = 8.f;
+  const float r2c0 = 9.f;
+  const float r2c1 = 10.f;
+  const float r2c2 = 11.f;
+  const float r2c3 = 12.f;
+  const float r3c0 = 13.f;
+  const float r3c1 = 14.f;
+  const float r3c2 = 15.f;
+  const float r3c3 = 16.f;
+  auto input =
+      gfx::Transform::RowMajor(r0c0, r0c1, r0c2, r0c3, r1c0, r1c1, r1c2, r1c3,
+                               r2c0, r2c1, r2c2, r2c3, r3c0, r3c1, r3c2, r3c3);
+  EXPECT_TRUE(input.IsFullMatrixForTesting());
+  mojo::Remote<mojom::TraitsTestService> remote = GetTraitsTestRemote();
+  gfx::Transform output;
+  remote->EchoTransform(input, &output);
+  EXPECT_TRUE(output.IsFullMatrixForTesting());
+  EXPECT_EQ(r0c0, output.rc(0, 0));
+  EXPECT_EQ(r0c1, output.rc(0, 1));
+  EXPECT_EQ(r0c2, output.rc(0, 2));
+  EXPECT_EQ(r0c3, output.rc(0, 3));
+  EXPECT_EQ(r1c0, output.rc(1, 0));
+  EXPECT_EQ(r1c1, output.rc(1, 1));
+  EXPECT_EQ(r1c2, output.rc(1, 2));
+  EXPECT_EQ(r1c3, output.rc(1, 3));
+  EXPECT_EQ(r2c0, output.rc(2, 0));
+  EXPECT_EQ(r2c1, output.rc(2, 1));
+  EXPECT_EQ(r2c2, output.rc(2, 2));
+  EXPECT_EQ(r2c3, output.rc(2, 3));
+  EXPECT_EQ(r3c0, output.rc(3, 0));
+  EXPECT_EQ(r3c1, output.rc(3, 1));
+  EXPECT_EQ(r3c2, output.rc(3, 2));
+  EXPECT_EQ(r3c3, output.rc(3, 3));
+}
+
+TEST_F(StructTraitsTest, Transform_NonFull) {
+  const gfx::Vector2dF scale(2.f, 3.f);
+  const gfx::Vector2dF translate(10.f, 20.f);
+  gfx::AxisTransform2d axis =
+      gfx::AxisTransform2d::FromScaleAndTranslation(scale, translate);
+
+  gfx::Transform input = gfx::Transform(axis);
+  EXPECT_FALSE(input.IsFullMatrixForTesting());
+  mojo::Remote<mojom::TraitsTestService> remote = GetTraitsTestRemote();
+  gfx::Transform output;
+  remote->EchoTransform(input, &output);
+  EXPECT_FALSE(output.IsFullMatrixForTesting());
+  EXPECT_EQ(input, output);
+}
+
+TEST_F(StructTraitsTest, Transform_FullMatrixIdentity) {
+  const float r0c0 = 1.f;
+  const float r0c1 = 0.f;
+  const float r0c2 = 0.f;
+  const float r0c3 = 0.f;
+  const float r1c0 = 0.f;
+  const float r1c1 = 1.f;
+  const float r1c2 = 0.f;
+  const float r1c3 = 0.f;
+  const float r2c0 = 0.f;
+  const float r2c1 = 0.f;
+  const float r2c2 = 1.f;
+  const float r2c3 = 0.f;
+  const float r3c0 = 0.f;
+  const float r3c1 = 0.f;
+  const float r3c2 = 0.f;
+  const float r3c3 = 1.f;
+  auto input =
+      gfx::Transform::RowMajor(r0c0, r0c1, r0c2, r0c3, r1c0, r1c1, r1c2, r1c3,
+                               r2c0, r2c1, r2c2, r2c3, r3c0, r3c1, r3c2, r3c3);
+  EXPECT_TRUE(input.IsFullMatrixForTesting());
+  EXPECT_TRUE(input.IsIdentity());
+  mojo::Remote<mojom::TraitsTestService> remote = GetTraitsTestRemote();
+  gfx::Transform output;
+  remote->EchoTransform(input, &output);
+  // Mojo optimized transform representation.
+  EXPECT_FALSE(output.IsFullMatrixForTesting());
+  EXPECT_TRUE(output.IsIdentity());
+  EXPECT_EQ(input, output);
+}
+
+TEST_F(StructTraitsTest, Transform_Axis2dIdentity) {
+  gfx::Transform input;
+  // By default Transform is constructed as identity matrix with
+  // Axis2d representation.
+  EXPECT_FALSE(input.IsFullMatrixForTesting());
+  EXPECT_TRUE(input.IsIdentity());
+  mojo::Remote<mojom::TraitsTestService> remote = GetTraitsTestRemote();
+  gfx::Transform output;
+  remote->EchoTransform(input, &output);
+  // Mojo maintains optimized transform representation.
+  EXPECT_FALSE(output.IsFullMatrixForTesting());
+  EXPECT_TRUE(output.IsIdentity());
+  EXPECT_EQ(input, output);
+}
+
+TEST_F(StructTraitsTest, AcceleratedWidget) {
+  gfx::AcceleratedWidget input(CastToAcceleratedWidget(1001));
+  gfx::AcceleratedWidget output;
+  mojo::test::SerializeAndDeserialize<gfx::mojom::AcceleratedWidget>(input,
+                                                                     output);
+  EXPECT_EQ(input, output);
+}
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+TEST_F(StructTraitsTest, NativePixmapHandle) {
+  // Test with a large offset that would trigger sign-extension if treated as
+  // int.
+  gfx::NativePixmapHandle native_pixmap_handle;
+  const uint32_t kStride = 1024;
+  const uint64_t kOffset = 0x80000000;
+  const uint64_t kSize = 4096;
+  native_pixmap_handle.planes.emplace_back(kStride, kOffset, kSize,
+                                           CreateValidLookingBufferHandle());
+
+  gfx::NativePixmapHandle output;
+  ASSERT_TRUE(
+      mojo::test::SerializeAndDeserialize<gfx::mojom::NativePixmapHandle>(
+          native_pixmap_handle, output));
+  ASSERT_FALSE(output.planes.empty());
+  EXPECT_EQ(kStride, output.planes[0].stride);
+  EXPECT_EQ(kOffset, output.planes[0].offset);
+  EXPECT_EQ(kSize, output.planes[0].size);
+}
+#endif
+
+TEST_F(StructTraitsTest, GpuMemoryBufferHandle) {
+  const uint32_t kOffset = 126;
+  const uint32_t kStride = 256;
+  base::UnsafeSharedMemoryRegion shared_memory_region =
+      base::UnsafeSharedMemoryRegion::Create(1024);
+  ASSERT_TRUE(shared_memory_region.IsValid());
+  ASSERT_TRUE(shared_memory_region.Map().IsValid());
+
+  gfx::GpuMemoryBufferHandle handle(shared_memory_region.Duplicate());
+  handle.offset = kOffset;
+  handle.stride = kStride;
+
+  mojo::Remote<mojom::TraitsTestService> remote = GetTraitsTestRemote();
+  gfx::GpuMemoryBufferHandle output;
+  remote->EchoGpuMemoryBufferHandle(std::move(handle), &output);
+  EXPECT_EQ(gfx::SHARED_MEMORY_BUFFER, output.type);
+  EXPECT_EQ(kOffset, output.offset);
+  EXPECT_EQ(kStride, output.stride);
+
+  base::UnsafeSharedMemoryRegion output_memory = std::move(output).region();
+  EXPECT_TRUE(output_memory.Map().IsValid());
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_OZONE)
+  gfx::NativePixmapHandle native_pixmap_handle;
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  const uint64_t kModifier = 2;
+  base::ScopedFD buffer_handle = CreateValidLookingBufferHandle();
+  native_pixmap_handle.modifier = kModifier;
+#elif BUILDFLAG(IS_FUCHSIA)
+  zx::vmo buffer_handle = CreateValidLookingBufferHandle();
+  zx::eventpair client_handle, service_handle;
+  auto status = zx::eventpair::create(0, &client_handle, &service_handle);
+  DCHECK_EQ(status, ZX_OK);
+  zx_koid_t handle_koid = base::GetKoid(client_handle).value();
+  native_pixmap_handle.buffer_collection_handle = std::move(client_handle);
+  native_pixmap_handle.buffer_index = 4;
+  native_pixmap_handle.ram_coherency = true;
+#endif
+  const uint64_t kSize = kOffset + kStride;
+  native_pixmap_handle.planes.emplace_back(kOffset, kStride, kSize,
+                                           std::move(buffer_handle));
+  gfx::GpuMemoryBufferHandle handle2(std::move(native_pixmap_handle));
+  handle2.offset = kOffset;
+  handle2.stride = kStride;
+  remote->EchoGpuMemoryBufferHandle(std::move(handle2), &output);
+  EXPECT_EQ(gfx::NATIVE_PIXMAP, output.type);
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  EXPECT_EQ(kModifier, output.native_pixmap_handle().modifier);
+#elif BUILDFLAG(IS_FUCHSIA)
+  EXPECT_EQ(
+      handle_koid,
+      base::GetKoid(output.native_pixmap_handle().buffer_collection_handle)
+          .value());
+  EXPECT_EQ(4U, output.native_pixmap_handle().buffer_index);
+  EXPECT_EQ(true, output.native_pixmap_handle().ram_coherency);
+#endif
+  ASSERT_EQ(1u, output.native_pixmap_handle().planes.size());
+  EXPECT_EQ(kSize, output.native_pixmap_handle().planes.back().size);
+#endif
+}
+
+TEST_F(StructTraitsTest, NullGpuMemoryBufferHandle) {
+  mojo::Remote<mojom::TraitsTestService> remote = GetTraitsTestRemote();
+  GpuMemoryBufferHandle output;
+  remote->EchoGpuMemoryBufferHandle(GpuMemoryBufferHandle(), &output);
+  EXPECT_TRUE(output.is_null());
+}
+
+TEST_F(StructTraitsTest, BufferUsage) {
+  using BufferUsageTraits =
+      mojo::EnumTraits<gfx::mojom::BufferUsage, gfx::BufferUsage>;
+  BufferUsage output;
+  mojo::Remote<mojom::TraitsTestService> remote = GetTraitsTestRemote();
+  for (int i = 0; i <= static_cast<int>(BufferUsage::LAST); ++i) {
+    BufferUsage input = static_cast<BufferUsage>(i);
+    output = BufferUsageTraits::FromMojom(BufferUsageTraits::ToMojom(input));
+    EXPECT_EQ(output, input);
+  }
+}
+
+TEST_F(StructTraitsTest, PresentationFeedback) {
+  base::TimeTicks timestamp = base::TimeTicks() + base::Seconds(12);
+  base::TimeDelta interval = base::Milliseconds(23);
+  uint32_t flags =
+      PresentationFeedback::kVSync | PresentationFeedback::kZeroCopy;
+  PresentationFeedback input{timestamp, interval, flags};
+#if BUILDFLAG(IS_MAC)
+  input.ca_layer_error_code = kCALayerFailedPictureContent;
+#endif
+
+  input.available_timestamp = base::TimeTicks() + base::Milliseconds(20);
+  input.ready_timestamp = base::TimeTicks() + base::Milliseconds(21);
+  input.latch_timestamp = base::TimeTicks() + base::Milliseconds(22);
+  PresentationFeedback output;
+  mojo::test::SerializeAndDeserialize<gfx::mojom::PresentationFeedback>(input,
+                                                                        output);
+  EXPECT_EQ(timestamp, output.timestamp);
+  EXPECT_EQ(interval, output.interval);
+  EXPECT_EQ(flags, output.flags);
+  EXPECT_EQ(input.available_timestamp, output.available_timestamp);
+  EXPECT_EQ(input.ready_timestamp, output.ready_timestamp);
+  EXPECT_EQ(input.latch_timestamp, output.latch_timestamp);
+#if BUILDFLAG(IS_MAC)
+  EXPECT_EQ(input.ca_layer_error_code, output.ca_layer_error_code);
+#endif
+}
+
+TEST_F(StructTraitsTest, RRectF) {
+  gfx::RRectF input(40, 50, 60, 70, 1, 2);
+  input.SetCornerRadii(RRectF::Corner::kUpperRight, 3, 4);
+  input.SetCornerRadii(RRectF::Corner::kLowerRight, 5, 6);
+  input.SetCornerRadii(RRectF::Corner::kLowerLeft, 7, 8);
+  EXPECT_EQ(input.GetType(), RRectF::Type::kComplex);
+  mojo::Remote<mojom::TraitsTestService> remote = GetTraitsTestRemote();
+  gfx::RRectF output;
+  remote->EchoRRectF(input, &output);
+  EXPECT_EQ(input, output);
+  input = gfx::RRectF(40, 50, 0, 70, 0);
+  EXPECT_EQ(input.GetType(), RRectF::Type::kEmpty);
+  remote->EchoRRectF(input, &output);
+  EXPECT_EQ(input, output);
+  input = RRectF(40, 50, 60, 70, 0);
+  EXPECT_EQ(input.GetType(), RRectF::Type::kRect);
+  remote->EchoRRectF(input, &output);
+  EXPECT_EQ(input, output);
+  input = RRectF(40, 50, 60, 70, 5);
+  EXPECT_EQ(input.GetType(), RRectF::Type::kSingle);
+  remote->EchoRRectF(input, &output);
+  EXPECT_EQ(input, output);
+  input = RRectF(40, 50, 60, 70, 6, 3);
+  EXPECT_EQ(input.GetType(), RRectF::Type::kSimple);
+  remote->EchoRRectF(input, &output);
+  EXPECT_EQ(input, output);
+  input = RRectF(40, 50, 60, 70, 30, 35);
+  EXPECT_EQ(input.GetType(), RRectF::Type::kOval);
+  remote->EchoRRectF(input, &output);
+  EXPECT_EQ(input, output);
+  input.SetCornerRadii(RRectF::Corner::kUpperLeft, 50, 50);
+  input.SetCornerRadii(RRectF::Corner::kUpperRight, 20, 20);
+  input.SetCornerRadii(RRectF::Corner::kLowerRight, 0, 0);
+  input.SetCornerRadii(RRectF::Corner::kLowerLeft, 0, 0);
+  remote->EchoRRectF(input, &output);
+  EXPECT_EQ(input, output);
+}
+
+TEST_F(StructTraitsTest, HDRMetadata) {
+  // Test an empty input/output.
+  gfx::HDRMetadata input;
+  gfx::HDRMetadata output;
+  mojo::test::SerializeAndDeserialize<gfx::mojom::HDRMetadata>(input, output);
+  EXPECT_EQ(input, output);
+
+  // Include CTA 861.3.
+  input.SetCLLI(skhdr::ContentLightLevelInformation{123, 456});
+  EXPECT_NE(input, output);
+  mojo::test::SerializeAndDeserialize<gfx::mojom::HDRMetadata>(input, output);
+  EXPECT_EQ(input, output);
+
+  // Include SMPTE ST 2086.
+  input.SetMDCV(skhdr::MasteringDisplayColorVolume{
+      .fDisplayPrimaries = SkNamedPrimaries::kRec2020,
+      .fMaximumDisplayMasteringLuminance = 789,
+      .fMinimumDisplayMasteringLuminance = 123});
+  EXPECT_NE(input, output);
+  mojo::test::SerializeAndDeserialize<gfx::mojom::HDRMetadata>(input, output);
+  EXPECT_EQ(input, output);
+
+  // Include SDR white level.
+  input.SetNDWL(123.f);
+  EXPECT_NE(input, output);
+  mojo::test::SerializeAndDeserialize<gfx::mojom::HDRMetadata>(input, output);
+  EXPECT_EQ(input, output);
+
+  // Include extended range.
+  input.extended_range.emplace(10.f, 4.f);
+  EXPECT_NE(input, output);
+  mojo::test::SerializeAndDeserialize<gfx::mojom::HDRMetadata>(input, output);
+  EXPECT_EQ(input, output);
+
+  // Include agtm.
+  input.SetAgtm(GetTestAgtm());
+  EXPECT_NE(input, output);
+  mojo::test::SerializeAndDeserialize<gfx::mojom::HDRMetadata>(input, output);
+  EXPECT_EQ(input, output);
+}
+
+TEST_F(StructTraitsTest, Transform_InvalidFloats) {
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+
+  gfx::Transform output;
+
+  // We can construct a transform with NaN matrix.
+  std::array<double, 16> bad_matrix;
+  bad_matrix.fill(0.0);
+  bad_matrix[0] = nan;
+  gfx::Transform input_nan = gfx::Transform::ColMajor(bad_matrix);
+  EXPECT_FALSE(mojo::test::SerializeAndDeserialize<gfx::mojom::Transform>(
+      input_nan, output));
+
+  // Test infinity.
+  bad_matrix[0] = inf;
+  gfx::Transform input_inf = gfx::Transform::ColMajor(bad_matrix);
+  EXPECT_FALSE(mojo::test::SerializeAndDeserialize<gfx::mojom::Transform>(
+      input_inf, output));
+}
+
+TEST_F(StructTraitsTest, ColorSpace_InvalidFloats) {
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  const float inf = std::numeric_limits<float>::infinity();
+
+  gfx::ColorSpace output;
+
+  skcms_Matrix3x3 bad_primaries = {
+      {{1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}}};
+
+  // Test NaN custom primaries
+  bad_primaries.vals[0][0] = nan;
+  gfx::ColorSpace input_nan_prim = gfx::ColorSpace::CreateCustom(
+      bad_primaries, gfx::ColorSpace::TransferID::SRGB);
+  EXPECT_FALSE(mojo::test::SerializeAndDeserialize<gfx::mojom::ColorSpace>(
+      input_nan_prim, output));
+
+  // Test Inf custom primaries
+  bad_primaries.vals[0][0] = inf;
+  gfx::ColorSpace input_inf_prim = gfx::ColorSpace::CreateCustom(
+      bad_primaries, gfx::ColorSpace::TransferID::SRGB);
+  EXPECT_FALSE(mojo::test::SerializeAndDeserialize<gfx::mojom::ColorSpace>(
+      input_inf_prim, output));
+
+  // Test custom transfer function params
+  skcms_Matrix3x3 good_primaries = {
+      {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}};
+  skcms_TransferFunction bad_fn = {2.2f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+  // Test NaN transfer param
+  bad_fn.g = nan;
+  gfx::ColorSpace input_nan_fn =
+      gfx::ColorSpace::CreateCustom(good_primaries, bad_fn);
+  EXPECT_FALSE(mojo::test::SerializeAndDeserialize<gfx::mojom::ColorSpace>(
+      input_nan_fn, output));
+
+  // Test Inf transfer param
+  bad_fn.g = inf;
+  gfx::ColorSpace input_inf_fn =
+      gfx::ColorSpace::CreateCustom(good_primaries, bad_fn);
+  EXPECT_FALSE(mojo::test::SerializeAndDeserialize<gfx::mojom::ColorSpace>(
+      input_inf_fn, output));
+}
+
+}  // namespace gfx

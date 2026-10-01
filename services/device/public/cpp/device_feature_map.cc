@@ -1,0 +1,45 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <iterator>
+
+#include "base/android/feature_map.h"
+#include "base/feature_list.h"
+#include "base/no_destructor.h"
+#include "device/base/features.h"
+#include "services/device/public/cpp/device_features.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "services/device/public/java/device_feature_list_jni/DeviceFeatureMap_jni.h"
+
+namespace features {
+
+namespace {
+
+// Array of features exposed through the Java DeviceFeatureMap API. Entries in
+// this array may either refer to features defined in
+// services/device/public/cpp/device_features.h or in other locations in the
+// code base.
+const base::Feature* const kFeaturesExposedToJava[] = {
+    &kGenericSensorExtraClasses, &kSensorsAllowAskBlockPermissionModel,
+    &kBatteryStatusManagerBroadcastReceiverInBackground,
+    &device::features::kGmsCoreLocationRequestParamOverride,
+    &device::features::kGmsCoreFailClosedOnPreciseLeak};
+
+// static
+base::android::FeatureMap* GetFeatureMap() {
+  static base::NoDestructor<base::android::FeatureMap> kFeatureMap(
+      kFeaturesExposedToJava);
+  return kFeatureMap.get();
+}
+
+}  // namespace
+
+static int64_t JNI_DeviceFeatureMap_GetNativeMap(JNIEnv* env) {
+  return reinterpret_cast<int64_t>(GetFeatureMap());
+}
+
+}  // namespace features
+
+DEFINE_JNI(DeviceFeatureMap)

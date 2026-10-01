@@ -1,0 +1,198 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/core/mathml/mathml_element.h"
+
+#include "third_party/blink/renderer/bindings/core/v8/js_event_handler_for_content_attribute.h"
+#include "third_party/blink/renderer/core/css/css_property_name.h"
+#include "third_party/blink/renderer/core/css/css_to_length_conversion_data.h"
+#include "third_party/blink/renderer/core/css/parser/css_parser.h"
+#include "third_party/blink/renderer/core/css/parser/css_parser_local_context.h"
+#include "third_party/blink/renderer/core/css_value_keywords.h"
+#include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/core/html/html_element.h"
+#include "third_party/blink/renderer/platform/wtf/text/character_visitor.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_to_number.h"
+
+namespace blink {
+
+MathMLElement::MathMLElement(const QualifiedName& tagName,
+                             Document& document,
+                             ConstructionType constructionType)
+    : Element(tagName, &document, constructionType) {}
+
+MathMLElement::~MathMLElement() {}
+
+Node::InsertionNotificationRequest MathMLElement::InsertedInto(
+    ContainerNode& root_parent) {
+  Element::InsertedInto(root_parent);
+  HideNonce();
+  return kInsertionDone;
+}
+
+static inline bool IsValidDirAttribute(const AtomicString& value) {
+  return EqualIgnoringAsciiCase(value, "ltr") ||
+         EqualIgnoringAsciiCase(value, "rtl");
+}
+
+// Keywords from CSS font-size are skipped.
+static inline bool IsDisallowedMathSizeAttribute(const AtomicString& value) {
+  return EqualIgnoringAsciiCase(value, "medium") ||
+         value.EndsWithIgnoringAsciiCase("large") ||
+         value.EndsWithIgnoringAsciiCase("small") ||
+         EqualIgnoringAsciiCase(value, "smaller") ||
+         EqualIgnoringAsciiCase(value, "larger") ||
+         EqualIgnoringAsciiCase(value, "math");
+}
+
+bool MathMLElement::IsPresentationAttribute(const QualifiedName& name) const {
+  if (name == html_names::kDirAttr || name == mathml_names::kMathsizeAttr ||
+      name == mathml_names::kMathcolorAttr ||
+      name == mathml_names::kMathbackgroundAttr ||
+      name == mathml_names::kScriptlevelAttr ||
+      name == mathml_names::kDisplaystyleAttr) {
+    return true;
+  }
+  return Element::IsPresentationAttribute(name);
+}
+
+namespace {
+
+bool ParseScriptLevel(const AtomicString& attribute_value,
+                      unsigned& script_level,
+                      bool& add) {
+  StringView value = attribute_value;
+  if (value.starts_with('+') || value.starts_with('-')) {
+    add = true;
+    value = value.substr(value.length() - 1, 1);
+  }
+
+  return VisitCharacters(value, [&](auto chars) {
+    NumberParsingResult result;
+    constexpr auto kOptions =
+        NumberParsingOptions().SetAcceptMinusZeroForUnsigned();
+    script_level = CharactersToUInt(chars, kOptions, &result);
+    return result == NumberParsingResult::kSuccess;
+  });
+}
+
+}  // namespace
+
+void MathMLElement::CollectStyleForPresentationAttribute(
+    const QualifiedName& name,
+    const AtomicString& value,
+    HeapVector<CSSPropertyValue, 8>& style) {
+  if (name == html_names::kDirAttr) {
+    if (IsValidDirAttribute(value)) {
+      AddPropertyToPresentationAttributeStyle(style, CSSPropertyID::kDirection,
+                                              value);
+    }
+  } else if (name == mathml_names::kMathsizeAttr) {
+    if (!IsDisallowedMathSizeAttribute(value)) {
+      AddPropertyToPresentationAttributeStyle(style, CSSPropertyID::kFontSize,
+                                              value);
+    }
+  } else if (name == mathml_names::kMathbackgroundAttr) {
+    AddPropertyToPresentationAttributeStyle(
+        style, CSSPropertyID::kBackgroundColor, value);
+  } else if (name == mathml_names::kMathcolorAttr) {
+    AddPropertyToPresentationAttributeStyle(style, CSSPropertyID::kColor,
+                                            value);
+  } else if (name == mathml_names::kScriptlevelAttr) {
+    unsigned script_level = 0;
+    bool add = false;
+    if (ParseScriptLevel(value, script_level, add)) {
+      if (add) {
+        AddPropertyToPresentationAttributeStyle(
+            style, CSSPropertyID::kMathDepth, StrCat({"add(", value, ")"}));
+      } else {
+        AddPropertyToPresentationAttributeStyle(
+            style, CSSPropertyID::kMathDepth, script_level,
+            CSSPrimitiveValue::UnitType::kNumber);
+      }
+    }
+  } else if (name == mathml_names::kDisplaystyleAttr) {
+    if (EqualIgnoringAsciiCase(value, "false")) {
+      AddPropertyToPresentationAttributeStyle(style, CSSPropertyID::kMathStyle,
+                                              CSSValueID::kCompact);
+    } else if (EqualIgnoringAsciiCase(value, "true")) {
+      AddPropertyToPresentationAttributeStyle(style, CSSPropertyID::kMathStyle,
+                                              CSSValueID::kNormal);
+    }
+  } else {
+    Element::CollectStyleForPresentationAttribute(name, value, style);
+  }
+}
+
+void MathMLElement::ParseAttribute(const AttributeModificationParams& param) {
+  // MathMLElement, HTMLElement and SVGElement handle "nonce" the same way.
+  if (param.name == html_names::kNonceAttr) {
+    if (param.new_value != g_empty_atom) {
+      setNonce(param.new_value);
+    }
+  }
+
+  const AtomicString& event_name =
+      HTMLElement::EventNameForAttributeName(param.name);
+  if (!event_name.IsNull()) {
+    SetAttributeEventListener(
+        event_name, JSEventHandlerForContentAttribute::Create(
+                        GetExecutionContext(), param.name, param.new_value));
+    return;
+  }
+
+  Element::ParseAttribute(param);
+}
+
+std::optional<bool> MathMLElement::BooleanAttribute(
+    const QualifiedName& name) const {
+  const AtomicString& value = FastGetAttribute(name);
+  if (EqualIgnoringAsciiCase(value, "true")) {
+    return true;
+  }
+  if (EqualIgnoringAsciiCase(value, "false")) {
+    return false;
+  }
+  return std::nullopt;
+}
+
+const CSSPrimitiveValue* MathMLElement::ParseMathLength(
+    const QualifiedName& attr_name,
+    AllowPercentages allow_percentages,
+    CSSPrimitiveValue::ValueRange value_range) {
+  if (!FastHasAttribute(attr_name))
+    return nullptr;
+  auto value = FastGetAttribute(attr_name);
+  // TODO(crbug.com/476061189) We are using attribute name as property name for
+  // caching property-dependent random() values. This behaviour is not
+  // specified.
+  CSSParserLocalContext local_context(
+      CSSPropertyName(AtomicString(attr_name.ToString())),
+      CSSPropertyID::kInvalid);
+  const CSSPrimitiveValue* parsed_value = CSSParser::ParseLengthPercentage(
+      value,
+      StrictCSSParserContext(GetExecutionContext()->GetSecureContextMode()),
+      local_context, value_range);
+  if (!parsed_value || parsed_value->IsCalculated() ||
+      (parsed_value->IsPercentage() &&
+       allow_percentages == AllowPercentages::kNo)) {
+    return nullptr;
+  }
+  return parsed_value;
+}
+
+std::optional<Length> MathMLElement::AddMathLengthToComputedStyle(
+    const CSSToLengthConversionData& conversion_data,
+    const QualifiedName& attr_name,
+    AllowPercentages allow_percentages,
+    CSSPrimitiveValue::ValueRange value_range) {
+  if (const CSSPrimitiveValue* parsed_value =
+          ParseMathLength(attr_name, allow_percentages, value_range)) {
+    return parsed_value->ConvertToLength(conversion_data);
+  }
+  return std::nullopt;
+}
+
+}  // namespace blink

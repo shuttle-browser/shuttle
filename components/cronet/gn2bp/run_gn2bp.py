@@ -1,0 +1,749 @@
+#!/usr/bin/env python3
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+"""Driver script to run Cronet gn2bp on Chromium CI builder.
+
+Generate Android.bp files and boringssl dependencies, and then run Copybara
+CLI to import code from Chromium to AOSP by generating an AOSP Gerrit CL.
+
+Copybara triggers Android TreeHugger Presubmit on the pending Gerrit CL to
+verify Cronet targets can compile with Soong, to provide feedback on whether
+the latest Chromium code and unsubmitted generated files can build Cronet
+and pass Cronet tests in Android infra. The CL will not be submitted.
+"""
+
+import argparse
+from enum import Enum
+
+
+import contextlib
+import hashlib
+import json
+import os
+import shutil
+import pathlib
+import re
+import string
+import base64
+import sys
+import tempfile
+import textwrap
+import time
+import urllib.request
+from functools import cmp_to_key, cache
+from typing import List, Optional, Set, Tuple
+
+REPOSITORY_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir))
+
+sys.path.insert(0, REPOSITORY_ROOT)
+import build.android.gyp.util.build_utils as build_utils  # pylint: disable=wrong-import-position
+import components.cronet.tools.utils as cronet_utils  # pylint: disable=wrong-import-position
+import components.cronet.tools.breakages_constants as breakages_constants  # pylint: disable=wrong-import-position
+import components.cronet.gn2bp.common as gn2bp_common  # pylint: disable=wrong-import-position
+
+_BORINGSSL_PATH = os.path.join(REPOSITORY_ROOT, 'third_party', 'boringssl')
+_BORINGSSL_SCRIPT = os.path.join('src', 'util', 'generate_build_files.py')
+_COPYBARA_CONFIG_PATH = os.path.join(REPOSITORY_ROOT,
+                                     'components/cronet/gn2bp/copy.bara.sky')
+_COPYBARA_PATH = os.path.join(REPOSITORY_ROOT,
+                              'tools/copybara/copybara/copybara_deploy.jar')
+_GENERATE_BUILD_SCRIPT_PATH = os.path.join(
+    REPOSITORY_ROOT,
+    'components/cronet/gn2bp/generate_build_scripts_output.py')
+_GENERATE_LICENSE_SCRIPT_PATH = os.path.join(
+    REPOSITORY_ROOT,
+    'components/cronet/license/create_android_metadata_license.py')
+_GERRIT_CLIENT_PATH = os.path.join(REPOSITORY_ROOT, 'third_party',
+                                   'depot_tools', 'gerrit_client.py')
+_GN2BP_SCRIPT_PATH = os.path.join(REPOSITORY_ROOT,
+                                  'components/cronet/gn2bp/gen_android_bp.py')
+_JAVA_HOME = os.path.join(REPOSITORY_ROOT, 'third_party', 'jdk', 'current')
+_JAVA_PATH = os.path.join(_JAVA_HOME, 'bin', 'java')
+_GN2BP_OUT_DIR = os.path.join(gn2bp_common.OUT_DIR, 'gn2bp')
+_BREAKAGES_FILE_URL = "https://chromium.googlesource.com/chromium/src/+/refs/heads/main/components/cronet/android/breakages.json?format=TEXT"
+# The changeID of all commits submitted between NOW and last _MONTHS_OF_CHANGELIST
+# months will be collected and checked against the breakages.json
+_MONTHS_OF_CHANGELIST = 6
+
+
+class _OptionalExit(contextlib.AbstractContextManager):
+    """A context manager wrapper that optionally skips the exit phase of its
+  inner context manager."""
+    _inner_context_manager: contextlib.AbstractContextManager
+    _exit: bool
+
+    def __init__(self,
+                 inner_context_manager: contextlib.AbstractContextManager,
+                 do_exit: bool):
+        self._inner_context_manager = inner_context_manager
+        self._exit = do_exit
+
+    def __enter__(self):
+        return self._inner_context_manager.__enter__()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._exit:
+            return self._inner_context_manager.__exit__(
+                exc_type, exc_val, exc_tb)
+        return None
+
+
+class BranchStableState(Enum):
+    BRANCH_IS_OLD_STABLE = 1
+    BRANCH_IS_STABLE = 2
+    BRANCH_IS_NOT_YET_STABLE = 3
+
+
+@cache
+def _get_current_checkout_version_string() -> str:
+    version = ''
+    chrome_version_file_path = os.path.join(REPOSITORY_ROOT, 'chrome',
+                                            'VERSION')
+    for version_component in cronet_utils.read_file(
+            chrome_version_file_path).split('\n'):
+        if not version_component:
+            # Ignore empty lines
+            continue
+        if version:
+            # Only subsequent version components should be split by dots
+            version += '.'
+        version += version_component.split('=')[1]
+    return version
+
+
+def _run_license_generation(output_dir):
+    cronet_utils.run(
+        ["python3", _GENERATE_LICENSE_SCRIPT_PATH, "--dest", output_dir])
+
+
+def _is_trybot():
+    return os.environ.get('SWARMING_BOT_ID', '').startswith('luci-chrome-try-')
+
+
+def _run_gn2bp(desc_files: Set[tempfile.NamedTemporaryFile],
+               skip_build_scripts: bool, delete_temporary_files: bool,
+               channel: str, output_dir: str) -> int:
+    """Run gen_android_bp.py to generate Android.bp.gn2bp files."""
+    with tempfile.NamedTemporaryFile(
+            mode='w+', encoding='utf-8',
+            delete=delete_temporary_files) as build_script_output:
+
+        if skip_build_scripts:
+            pathlib.Path(build_script_output.name).write_text('{}')
+        else:
+            _run_generate_build_scripts(build_script_output.name, output_dir)
+
+        base_cmd = [
+            sys.executable, _GN2BP_SCRIPT_PATH, '--output_dir', output_dir,
+            '--build_script_output', build_script_output.name
+        ]
+        for desc_file in desc_files:
+            # desc_file.name represents the absolute path.
+            base_cmd += ['--desc', desc_file.name]
+
+        base_cmd += ["--license"]
+        base_cmd += ["--channel", channel]
+        cronet_utils.run(base_cmd)
+
+
+def _run_generate_build_scripts(output_path: str, output_dir: str):
+    """Run generate_build_scripts_output.py.
+
+  Args:
+    output_path: Path of the file that will contain the output.
+    output_dir: Directory to write generated rust files to.
+  """
+    cronet_utils.run([
+        sys.executable,
+        _GENERATE_BUILD_SCRIPT_PATH,
+        '--output',
+        output_path,
+        '--output-dir',
+        output_dir,
+    ])
+
+
+def _write_desc_json(gn_out_dir: str, temp_file: tempfile.NamedTemporaryFile):
+    """Generate desc json files needed by gen_android_bp.py."""
+    cronet_utils.run(
+        [cronet_utils.GN_PATH, 'desc', gn_out_dir, '--format=json', '//*'],
+        stdout=temp_file)
+
+
+def _gen_extras_bp(import_channel: str, output_dir: str):
+    """Generate Android.extras.bp."""
+    extras_androidbp_template_path = os.path.join(
+        REPOSITORY_ROOT, 'components', 'cronet', 'gn2bp', 'templates',
+        'Android.extras.bp.template')
+    extras_androidbp_template_contents = cronet_utils.read_file(
+        extras_androidbp_template_path)
+    extras_androidbp_path = os.path.join(output_dir, 'Android.extras.bp')
+    cronet_utils.write_file(
+        extras_androidbp_path,
+        string.Template(extras_androidbp_template_contents).substitute(
+            GN2BP_MODULE_PREFIX=f'{import_channel}_cronet_'))
+
+
+def _gen_androidtest_xml(import_channel: str, output_dir: str):
+    """Generate AndroidTest.xml, required to run test in Android."""
+    module_prefix = f'{import_channel}_cronet_'
+    androidtest_xml_template_path = os.path.join(REPOSITORY_ROOT, 'components',
+                                                 'cronet', 'gn2bp',
+                                                 'templates',
+                                                 'AndroidTest.xml.template')
+    androidtest_xml_template_contents = cronet_utils.read_file(
+        androidtest_xml_template_path)
+    androidtest_xml_path = os.path.join(output_dir, 'AndroidTest.xml')
+    cronet_utils.write_file(
+        androidtest_xml_path,
+        string.Template(androidtest_xml_template_contents).substitute(
+            GN2BP_MODULE_PREFIX=module_prefix))
+
+
+def _gen_boringssl(import_channel: str, output_dir: str):
+    """Generate boringssl Android build files."""
+    module_prefix = f'{import_channel}_cronet_'
+    boringssl_androidbp_template_path = os.path.join(
+        REPOSITORY_ROOT, 'components', 'cronet', 'gn2bp', 'templates',
+        'boringssl_Android.bp.template')
+    boringssl_androidbp_template_contents = cronet_utils.read_file(
+        boringssl_androidbp_template_path)
+    boringssl_androidbp_path = os.path.join(output_dir, 'third_party',
+                                            'boringssl', 'Android.bp')
+    cronet_utils.write_file(
+        boringssl_androidbp_path,
+        string.Template(boringssl_androidbp_template_contents).substitute(
+            GN2BP_IMPORT_CHANNEL=import_channel,
+            GN2BP_MODULE_PREFIX=module_prefix))
+    cronet_utils.run([
+        'python3', _BORINGSSL_SCRIPT, f'--target-prefix={module_prefix}',
+        'android'
+    ],
+                     cwd=_BORINGSSL_PATH)
+    # Move generated files to output_dir
+    for filename in ['sources.bp', 'sources.mk']:
+        src = os.path.join(_BORINGSSL_PATH, filename)
+        dst = os.path.join(output_dir, 'third_party', 'boringssl', filename)
+        if os.path.exists(src):
+            shutil.move(src, dst)
+
+
+def _wait_and_fail_if_not_presubmit_verified(change_id: str):
+    while True:
+        with tempfile.NamedTemporaryFile(
+                mode="w+", encoding='utf-8',
+                delete=True) as gerrit_change_labels_file:
+            cronet_utils.run([
+                _GERRIT_CLIENT_PATH, 'changes',
+                '--host=https://googleplex-android-review.googlesource.com',
+                '--project=platform/external/cronet', f'--query={change_id}',
+                '-o', 'LABELS', f'--json={gerrit_change_labels_file.name}'
+            ])
+            cronet_change_labels = json.loads(
+                cronet_utils.read_file(gerrit_change_labels_file.name))
+            presubmit_verified_entries = cronet_change_labels[0]['labels'][
+                'Presubmit-Verified']
+            for key in presubmit_verified_entries:
+                if key in ('rejected', 'disliked'):
+                    raise RuntimeError(
+                        'Presubmit failed, check the Android CL for more info')
+                if key in ('approved', 'recommended'):
+                    return
+            print(
+                f'Still waiting for Presubmit-Verified: {presubmit_verified_entries}'
+            )
+            time.sleep(60 * 5)  # 5 mins
+
+
+def _is_bot_environment():
+    return os.environ.get('SWARMING_BOT_ID', None) is not None
+
+
+def _is_ci_bot():
+    return os.environ.get('SWARMING_BOT_ID',
+                          '').startswith('luci-chrome-trusted-')
+
+
+def _run_copybara_to_aosp(config: str, copybara_binary: str,
+                          git_url_and_branch: Optional[Tuple[str, str]],
+                          regenerate_consistency_file: bool,
+                          import_channel: str,
+                          wait_for_presubmit_verified: bool):
+    """Run Copybara CLI to generate an AOSP Gerrit CL with the generated files.
+  Get the commit hash of AOSP `external/cronet` tip of tree to merge into.
+  It will print the generated Gerrit url to stdout.
+  """
+    stable_state = GetCurrentCheckoutBranchStableState()
+    msg = f'gn2bp{time.time_ns()}'
+    change_id = f'I{hashlib.sha1(msg.encode()).hexdigest()}'
+    print(f'Generated {change_id=}')
+
+    version = _get_current_checkout_version_string()
+    commit_hash = cronet_utils.run_and_get_stdout(['git', 'rev-parse', 'HEAD'])
+    commit_date = cronet_utils.run_and_get_stdout(
+        ['git', 'show', '--pretty=format:%ci', '--no-patch'])
+    swarming_task_id = os.environ.get('SWARMING_TASK_ID')
+    commit_message = textwrap.dedent(f"""\
+      Import Cronet {commit_hash[:8]} ({version}) into {import_channel}
+
+      Chromium commit hash: {commit_hash}
+      Chromium commit date: {commit_date}
+      Chromium version: {version}
+
+      """)
+    if not _is_ci_bot():
+        # This is not ideal, but we don't have a better signal to tell if gn2bp is
+        # running in CI or somewhere else.
+        #
+        # Chromium CQ checks for this string in code, so this must be split to land
+        # the change.
+        prefix = 'DO NOT ' + 'SUBMIT'
+        commit_message += textwrap.dedent(f"""\
+        {prefix}: This import was not generated by Chromium's CI, as such
+        it might contain unreviewed changes on top of the aforementioned commit.
+
+        """)
+    if import_channel == 'stable' and stable_state != BranchStableState.BRANCH_IS_STABLE:
+        prefix = 'DO NOT ' + 'SUBMIT'
+        commit_message += textwrap.dedent(f"""\
+        {prefix}: This import targets the stable channel but was generated from
+        a Chromium branch that is not stable.
+        """)
+    if swarming_task_id:
+        commit_message += textwrap.dedent(f"""\
+        This CL was autogenerated by the following Chromium bot run:
+        https://luci-milo.appspot.com/swarming/task/{swarming_task_id}?server=chrome-swarming.appspot.com
+
+        """)
+    commit_message += textwrap.dedent(f"""\
+      This CL can be reproduced by running the following command:
+      gclient config --spec 'solutions = [
+      {{
+          "name": "src",
+          "url": "https://chromium.googlesource.com/chromium/src.git",
+          "managed": False,
+          "custom_deps": {{}},
+          "custom_vars": {{
+            "checkout_copybara": True,
+          }},
+        }},
+      ]
+      target_os = ["android"]
+      ' && gclient sync --rev={commit_hash} && cd src
+      && vpython3 components/cronet/gn2bp/run_gn2bp.py --channel={import_channel}
+
+      The state of Chromium, for the commit being imported, can be browsed at:
+      https://chromium.googlesource.com/chromium/src/+/{commit_hash}
+
+      NO_IFTTT=Imported from Chromium.
+      """)
+    additional_parameters = [
+        '--ignore-noop',
+        '--force-message',
+        commit_message,
+    ]
+
+    target_workflow = None
+    after_upload_comment = None
+    if git_url_and_branch:
+        target_workflow = f'{import_channel}_import_cronet_to_git_branch'
+        additional_parameters.extend([
+            '--git-destination-url',
+            git_url_and_branch[0],
+            '--git-destination-push',
+            git_url_and_branch[1],
+        ])
+    else:
+        target_workflow = f'{import_channel}_import_cronet_to_aosp_gerrit'
+        if import_channel == 'stable' and stable_state != BranchStableState.BRANCH_IS_STABLE:
+            # If we're importing to stable and the current branch is not a stable
+            # branch, then don't auto-submit.
+            after_upload_comment = 'Importing to the stable channel from a non-stable Chromium branch. The workflow will be set to non-autosubmittable. This is an unresolved comment to prevent accidental auto-submit'
+            target_workflow += '_no_autosubmit'
+        else:
+            target_workflow += '_autosubmit'
+
+        additional_parameters.extend([
+            '--git-push-option',
+            'nokeycheck',
+            '--git-push-option',
+            'uploadvalidator~skip',
+            '--gerrit-change-id',
+            change_id,
+        ])
+    if regenerate_consistency_file:
+        # We can't use the copybara `regenerate` subcommand because it doesn't
+        # support folder origins. See https://crbug.com/391331930.
+        additional_parameters.extend([
+            '--disable-consistency-merge-import',
+            'true',
+            '--baseline-for-merge-import',
+            REPOSITORY_ROOT,
+        ])
+
+    cronet_utils.run([
+        _JAVA_PATH, '-jar', copybara_binary, config, target_workflow,
+        REPOSITORY_ROOT
+    ] + additional_parameters)
+
+    if after_upload_comment and not git_url_and_branch:
+        cronet_utils.run([
+            _GERRIT_CLIENT_PATH, 'addpatchsetcomment',
+            '--host=https://googleplex-android-review.googlesource.com',
+            f'--change={change_id}', f'--message={after_upload_comment}',
+            '--unresolved'
+        ])
+
+    if wait_for_presubmit_verified and not git_url_and_branch:
+        _wait_and_fail_if_not_presubmit_verified(change_id)
+
+
+def _fill_desc_file_for_arch(arch, desc_file, delete_temporary_files):
+    # gn desc behaves completely differently when the output
+    # directory is outside of chromium/src, some paths will
+    # stop having // in the beginning of their labels
+    # eg (//A/B will become A/B), this mostly apply to files
+    # that are generated through actions and not targets.
+    #
+    # This is why the temporary directory has to be generated
+    # beneath the repository root until gn2bp is tweaked to
+    # deal with this small differences.
+    with _OptionalExit(tempfile.TemporaryDirectory(dir=gn2bp_common.OUT_DIR),
+                       do_exit=delete_temporary_files) as gn_out_dir:
+        cronet_utils.gn(gn_out_dir,
+                        ' '.join(cronet_utils.get_gn_args_for_aosp(arch)))
+        _write_desc_json(gn_out_dir, desc_file)
+
+
+# TODO(crbug.com/481701970): Create an abstraction for versions and move this there.
+def compare_versions(version1: str, version2: str) -> int:
+    return int(version1.split('.')[2]) - int(version2.split('.')[2])
+
+
+# TODO(crbug.com/481701970): Create an abstraction for versions and move this there.
+def sort_versions(versions: List[str]) -> List[str]:
+    return sorted(versions, key=cmp_to_key(compare_versions))
+
+
+@cache
+def _get_latest_stable_version_string():
+    """Fetches the latest stable version string from chromiumdash by doing an
+    HTTP request."""
+    print('Fetching latest stable version from chromiumdash...')
+    with urllib.request.urlopen(
+            # Chromiumdash lists releases by date. Because of LTS backports, an older
+            # milestone is often released more recently than the newest major version.
+            # We fetch a large batch (e.g., 50) and select the highest branch number
+            # to ensure we identify the actual latest stable branch.
+            'https://chromiumdash.appspot.com/fetch_releases?num=50&platform=Android&channel=Stable'
+    ) as url:
+        data = json.loads(url.read().decode())
+        latest_stable = sort_versions(
+            [release_json['version'] for release_json in data])[-1]
+        print(f'Latest stable version is {latest_stable}')
+        return latest_stable
+
+
+def _get_build_number_from_version_string(version: str) -> int:
+    return int(version.split('.')[2])
+
+
+@cache
+def GetCurrentCheckoutBranchStableState() -> BranchStableState:
+    """Determines the stable state of the current checkout branch."""
+    # Version is major.minor.build.patch
+    current_version = _get_current_checkout_version_string()
+    current_build = _get_build_number_from_version_string(current_version)
+    latest_stable_version = _get_latest_stable_version_string()
+    latest_build = _get_build_number_from_version_string(latest_stable_version)
+
+    if current_build < latest_build:
+        state = BranchStableState.BRANCH_IS_OLD_STABLE
+    elif current_build == latest_build:
+        state = BranchStableState.BRANCH_IS_STABLE
+    else:
+        state = BranchStableState.BRANCH_IS_NOT_YET_STABLE
+
+    print(
+        f'Decided that {state} because the checked out Chromium version is {current_version} and the latest stable version is {latest_stable_version}'
+    )
+    return state
+
+
+
+def _get_chromium_last_change() -> str:
+    """Returns the LASTCHANGE string from build/util/LASTCHANGE.
+
+    The LASTCHANGE file is generated by `gclient sync`. It reflects the
+    `Cr-Commit-Position` of the last commit, which indicates the branch where
+    the commit was submitted. This mechanism is reliable for CI/Try builders, where
+    the last commit consistently includes this field. However, it may not work
+    correctly for local checkouts with cherry-picked commits.
+  """
+    lastchange_path = os.path.join(REPOSITORY_ROOT, 'build', 'util',
+                                   'LASTCHANGE')
+    if not os.path.exists(lastchange_path):
+        raise FileNotFoundError(f'Could not find {lastchange_path}')
+
+    for line in cronet_utils.read_file(lastchange_path).splitlines():
+        if line.startswith('LASTCHANGE='):
+            return line.split('=')[1]
+    raise ValueError(f'Could not find LASTCHANGE in {lastchange_path}')
+
+
+def _fetch_breakages() -> list[dict[str, str]]:
+    print(f"Fetching breakages.json from {_BREAKAGES_FILE_URL}")
+    with urllib.request.urlopen(_BREAKAGES_FILE_URL) as url:
+        return json.loads(base64.b64decode(url.read().decode()))["breakages"]
+    raise ValueError("Failed to fetch breakages")
+
+
+def _get_change_ids_from_head(months: int) -> dict[str, int]:
+    """Returns a dictionary of Change-ID to index for commits since the last {months}."""
+    # Run git log with the specific trailer format
+    cmd = [
+        'git', 'log', f'--since={months} months ago',
+        '--format=%(trailers:key=Change-Id,valueonly)'
+    ]
+    output = cronet_utils.run_and_get_stdout(cmd)
+    change_ids = [line.strip() for line in output.splitlines() if line.strip()]
+    change_ids_dictionary = {}
+    for i, change_id in enumerate(change_ids):
+        change_ids_dictionary[change_id] = i
+    return change_ids_dictionary
+
+
+def validate_release(breakages: list[dict[str, any]],
+                     changelist: dict[str, int]) -> None:
+    print("Validating the current release against breakages.json")
+    for breakage in breakages:
+        bad_change_id = breakage.get(breakages_constants.BAD_CHANGE_ID_TXT)
+
+        good_change_ids = breakage.get(breakages_constants.GOOD_CHANGE_IDS_TXT,
+                                       [])
+        if not isinstance(good_change_ids, list):
+            raise ValueError(
+                f'The type of `{breakages_constants.GOOD_CHANGE_IDS_TXT}` must be a list. {breakage=}'
+            )
+
+        if not good_change_ids:
+            raise RuntimeError(
+                f'Stopping the import: there is a breakage that has not been fixed yet. {breakage=}'
+            )
+
+        if bad_change_id not in changelist:
+            continue
+
+        good_change_ids_in_history = [
+            good_change_id for good_change_id in good_change_ids
+            if good_change_id in changelist
+        ]
+        if not good_change_ids_in_history:
+            raise RuntimeError(
+                f'Stopping the import: the current checkout includes a breaking change, but not its fix. {breakage=}'
+            )
+
+        if len(good_change_ids_in_history) >= 2:
+            raise RuntimeError(
+                'Stopping the import: there might be a problem with the local checkout, multiple '
+                'good change IDs, for the same breakage, have been found in the history. Multiple '
+                'good change IDs are only necessary when a fix has to be cherry-picked into a release '
+                'branch, where it might end up with a different change ID than the original fix. '
+                f'{breakage=}')
+        good_change_id_index = changelist[good_change_ids_in_history[0]]
+        if good_change_id_index >= changelist[bad_change_id]:
+            raise RuntimeError(
+                f'Stopping the import: there might be a problem with the local checkout, '
+                f'the local history shows a bad change ID that is more recent than its fix. '
+                f'{breakage=}')
+
+
+def _pick_target_channel_for_bot_environment():
+    """Picks the most appropriate channel depending on whether the current chromium
+  checkout is a release branch or not."""
+    if not _is_bot_environment():
+        raise RuntimeError(
+            'This is only supported when running within a builder '
+            'environment')
+
+    print('Running automatic channel selection logic.')
+    # We check the build/util/LASTCHANGE file to see if we are on a release branch or not.
+    last_change = _get_chromium_last_change()
+
+    # Content is of the format:
+    # COMMIT_HASH-refs/heads/main@{#COMMIT_NUMBER}
+    if 'refs/heads/main' in last_change:
+        return 'tot'
+
+    # COMMIT_HASH-refs/branch-heads/branch_number@{#COMMIT_NUMBER}
+    branch_number = _get_build_number_from_version_string(
+        _get_current_checkout_version_string())
+    if f'refs/branch-heads/{branch_number}' in last_change:
+        return 'stable'
+    raise ValueError(
+        f'Could not automatically determine the appropriate channel. LASTCHANGE value is {last_change}'
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--stamp', type=str, help='Path to touch on success')
+    parser.add_argument('--config',
+                        type=str,
+                        help='Copy.bara.sky file path to run Copybara on',
+                        default=_COPYBARA_CONFIG_PATH,
+                        required=False)
+    parser.add_argument('--copybara',
+                        type=str,
+                        help=('Path to copybara executable binary downloaded '
+                              'from CIPD'),
+                        default=_COPYBARA_PATH,
+                        required=False)
+    parser.add_argument('--skip_build_scripts',
+                        type=bool,
+                        help=('Skips building the build_scripts output, '
+                              'this should be only used for testing.'))
+    parser.add_argument(
+        '--skip-copybara',
+        action='store_true',
+        help=("Only generate the build files - do not run "
+              "copybara afterwards. This is useful if you only "
+              "want to take a look at the generated files "
+              "without doing an actual import."))
+    parser.add_argument(
+        '--git-url-and-branch',
+        type=str,
+        help=("Git URL and branch to push to. If not specified, "
+              "creates an AOSP Gerrit CL. This option is useful "
+              "to push to a local git repo for manual testing, "
+              "for example: "
+              "file:////home/foo/aosp/external/cronet mybranch"),
+        nargs=2)
+    parser.add_argument('--keep-temporary-files',
+                        action='store_true',
+                        help=("Don't clean up temporary files. Useful for "
+                              "troubleshooting."))
+    parser.add_argument(
+        '--regenerate-consistency-file',
+        action='store_true',
+        help=("Ask copybara to ignore the existing merge import "
+              "consistency file and generate a new one. Note for "
+              "this to work the script must be run from the same "
+              "origin as the one that was used for the last "
+              "import into the destination; in other words, you "
+              "must re-import the exact same Cronet version that "
+              "is currently in the destination."))
+    parser.add_argument(
+        '--channel',
+        help='The channel this execution of gn2bp is targeting. '
+        'This must not be used when running the script within a '
+        'CQ/CI bot. In that scenario the channel being targeted '
+        'is defined based on the environment we are running in '
+        '(see _pick_target_channel_for_bot_environment).',
+        type=str,
+        choices=['tot', 'stable'],
+        default=None)
+    parser.add_argument(
+        '--wait-for-presubmit-verified',
+        help=
+        'Whether the script should wait for presubmit verified after uploading a CL to Android',
+        action='store_true')
+    parser.add_argument(
+        '--skip-release-validation',
+        help=
+        'Validates the current Git history against the remote breakages.json file to ensure no known breakages are present.',
+        default=False,
+        action='store_true')
+    args = parser.parse_args()
+
+    if _is_bot_environment():
+        if GetCurrentCheckoutBranchStableState(
+        ) == BranchStableState.BRANCH_IS_OLD_STABLE:
+            # The current checkout version is older than the latest stable version.
+            # Exit gracefully as we don't want to import nor test older versions.
+            print(
+                'The current checkout version is older than the latest stable version. Exiting gracefully!'
+            )
+            return 0
+        if args.channel is not None:
+            raise RuntimeError(
+                'Automatic channel selection must be used in a bot '
+                f'environment. However, found {args.channel}')
+        args.channel = _pick_target_channel_for_bot_environment()
+        print(f'Automatic selection logic has chosen `{args.channel}` track')
+
+    # Don't validate releases for trybots. Otherwise, in certain scenarios, this could prevent
+    # landing fixes. For example, whenever a breakage entry does not have a good change ID.
+    # In this case, validate_release will always fail in CQ: breakages.json is always fetched
+    # from HEAD, making validate_release believe that no fix has landed yet (and also preventing
+    # said fix from landing).
+    if not _is_trybot() and not args.skip_release_validation:
+        validate_release(_fetch_breakages(),
+                         _get_change_ids_from_head(_MONTHS_OF_CHANGELIST))
+    else:
+        print("Skipping release validation")
+
+    if args.channel not in ['tot', 'stable']:
+        raise ValueError('Invalid {args.channel=}')
+
+    delete_temporary_files = not args.keep_temporary_files
+
+    if not args.skip_copybara and os.listdir(
+            os.path.join(REPOSITORY_ROOT, 'clank')):
+        raise RuntimeError(
+            'gn2bp should not be run with an internal code checkout, as copybara'
+            ' may end up leaking internal code to the destination')
+
+    try:
+        arch_to_desc_file = {
+            arch:
+            tempfile.NamedTemporaryFile(mode="w+",
+                                        encoding='utf-8',
+                                        delete=delete_temporary_files)
+            for arch in gn2bp_common.ARCHS
+        }
+        args_list = [(arch, desc_file, delete_temporary_files)
+                     for arch, desc_file in arch_to_desc_file.items()]
+        gn2bp_common.run_concurrently(_fill_desc_file_for_arch, args_list)
+
+        # Recreate output directory to ensure a clean state
+        if os.path.exists(_GN2BP_OUT_DIR):
+            shutil.rmtree(_GN2BP_OUT_DIR)
+        os.makedirs(_GN2BP_OUT_DIR)
+
+        _run_license_generation(_GN2BP_OUT_DIR)
+        _run_gn2bp(desc_files=arch_to_desc_file.values(),
+                   skip_build_scripts=args.skip_build_scripts,
+                   delete_temporary_files=delete_temporary_files,
+                   channel=args.channel,
+                   output_dir=_GN2BP_OUT_DIR)
+        _gen_boringssl(args.channel, _GN2BP_OUT_DIR)
+        _gen_extras_bp(args.channel, _GN2BP_OUT_DIR)
+        _gen_androidtest_xml(args.channel, _GN2BP_OUT_DIR)
+
+        print(f"Generated files have been written to {_GN2BP_OUT_DIR}")
+
+        if not args.skip_copybara:
+            _run_copybara_to_aosp(
+                config=args.config,
+                copybara_binary=args.copybara,
+                git_url_and_branch=args.git_url_and_branch,
+                regenerate_consistency_file=args.regenerate_consistency_file,
+                import_channel=args.channel,
+                wait_for_presubmit_verified=args.wait_for_presubmit_verified)
+
+    finally:
+        for file in arch_to_desc_file.values():
+            # Close the temporary files so they can be deleted.
+            file.close()
+
+    if args.stamp is not None:
+        build_utils.Touch(args.stamp)
+    print('Success!')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

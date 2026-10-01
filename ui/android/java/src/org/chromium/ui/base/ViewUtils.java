@@ -1,0 +1,411 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.ui.base;
+
+import static android.view.View.MeasureSpec.EXACTLY;
+import static android.view.View.MeasureSpec.makeMeasureSpec;
+
+import android.animation.Animator;
+import android.content.Context;
+import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Region;
+import android.transition.Transition;
+import android.util.DisplayMetrics;
+import android.util.TypedValue;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+
+import androidx.annotation.LayoutRes;
+import androidx.core.graphics.drawable.RoundedBitmapDrawable;
+import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory;
+
+import org.chromium.base.TraceEvent;
+import org.chromium.build.annotations.NullMarked;
+
+import java.util.Collection;
+import java.util.Set;
+
+/** A utility class that has helper methods for Android view. */
+@NullMarked
+public final class ViewUtils {
+    private static final int[] sLocationTmp = new int[2];
+    private static final View.OnClickListener DO_NOTHING_CLICK_LISTENER = _ -> {};
+    private static final View.OnLongClickListener DO_NOTHING_LONG_CLICK_LISTENER = _ -> false;
+
+    // Prevent instantiation.
+    private ViewUtils() {}
+
+    /**
+     * Returns a Singleton {@link View.OnClickListener} to be used where you need no action to be
+     * taken.
+     *
+     * <p><b>Note:</b> Setting this on a View marks the View as clickable (consuming touches and
+     * announcing clickability to accessibility services). Do not use this to disable clicks; use
+     * {@code setOnClickListener(null)} instead.
+     */
+    public static View.OnClickListener emptyClickListener() {
+        return DO_NOTHING_CLICK_LISTENER;
+    }
+
+    /**
+     * Returns a Singleton {@link View.OnLongClickListener} to be used where you need no action to
+     * be taken and returns {@code false} (indicating the event was not consumed, allowing context
+     * menus or parent handlers to process it).
+     */
+    public static View.OnLongClickListener emptyLongClickListener() {
+        return DO_NOTHING_LONG_CLICK_LISTENER;
+    }
+
+    /**
+     * @return {@code true} if the given view has a focus.
+     */
+    public static boolean hasFocus(View view) {
+        // If the container view is not focusable, we consider it always focused from
+        // Chromium's point of view.
+        return !isFocusable(view) ? true : view.hasFocus();
+    }
+
+    /**
+     * Requests focus on the given view.
+     *
+     * @param view A {@link View} to request focus on.
+     */
+    public static void requestFocus(View view) {
+        if (isFocusable(view) && !view.isFocused()) view.requestFocus();
+    }
+
+    private static boolean isFocusable(View view) {
+        return view.isInTouchMode() ? view.isFocusableInTouchMode() : view.isFocusable();
+    }
+
+    /** Invalidates a view and all of its descendants. */
+    private static void recursiveInvalidate(View view) {
+        view.invalidate();
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            int childCount = group.getChildCount();
+            for (int i = 0; i < childCount; i++) {
+                View child = group.getChildAt(i);
+                if (child.getVisibility() == View.VISIBLE) {
+                    recursiveInvalidate(child);
+                }
+            }
+        }
+    }
+
+    /** Sets the enabled property of a View and all of its descendants. */
+    public static void setEnabledRecursive(View view, boolean enabled) {
+        view.setEnabled(enabled);
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                setEnabledRecursive(group.getChildAt(i), enabled);
+            }
+        }
+    }
+
+    /** Captures a bitmap of a View and draws it to a Canvas. */
+    public static void captureBitmap(View view, Canvas canvas) {
+        // Invalidate all the descendants of view, before calling view.draw(). Otherwise, some of
+        // the descendant views may optimize away their drawing. http://crbug.com/415251
+        recursiveInvalidate(view);
+        view.draw(canvas);
+    }
+
+    /**
+     * Return the position of {@code childView} relative to {@code rootView}.  {@code childView}
+     * must be a child of {@code rootView}.  This returns the relative layout position, which does
+     * not include translations.
+     * @param rootView    The parent of {@code childView} to calculate the position relative to.
+     * @param childView   The {@link View} to calculate the position of.
+     * @param outPosition The resulting position with the format [x, y].
+     */
+    public static void getRelativeLayoutPosition(View rootView, View childView, int[] outPosition) {
+        assert outPosition.length == 2;
+        outPosition[0] = 0;
+        outPosition[1] = 0;
+        if (rootView == null || childView == rootView) return;
+        while (childView != null) {
+            outPosition[0] += childView.getLeft();
+            outPosition[1] += childView.getTop();
+            if (childView.getParent() == rootView) break;
+            childView = (View) childView.getParent();
+        }
+    }
+
+    /**
+     * Return the position of {@code childView} relative to {@code rootView}.  {@code childView}
+     * must be a child of {@code rootView}.  This returns the relative draw position, which includes
+     * translations.
+     * @param rootView    The parent of {@code childView} to calculate the position relative to.
+     * @param childView   The {@link View} to calculate the position of.
+     * @param outPosition The resulting position with the format [x, y].
+     */
+    public static void getRelativeDrawPosition(View rootView, View childView, int[] outPosition) {
+        assert outPosition.length == 2;
+        outPosition[0] = 0;
+        outPosition[1] = 0;
+        if (rootView == null || childView == rootView) return;
+        while (childView != null) {
+            outPosition[0] = (int) (outPosition[0] + childView.getX());
+            outPosition[1] = (int) (outPosition[1] + childView.getY());
+            if (childView.getParent() == rootView) break;
+            childView = (View) childView.getParent();
+        }
+    }
+
+    /**
+     * Helper for overriding {@link ViewGroup#gatherTransparentRegion} for views that are fully
+     * opaque and have children extending beyond their bounds. If the transparent region
+     * optimization is turned on (which is the case whenever the view hierarchy contains a
+     * SurfaceView somewhere), the children might otherwise confuse the SurfaceFlinger.
+     */
+    public static void gatherTransparentRegionsForOpaqueView(View view, Region region) {
+        view.getLocationInWindow(sLocationTmp);
+        region.op(
+                sLocationTmp[0],
+                sLocationTmp[1],
+                sLocationTmp[0] + view.getRight() - view.getLeft(),
+                sLocationTmp[1] + view.getBottom() - view.getTop(),
+                Region.Op.DIFFERENCE);
+    }
+
+    /**
+     * @see #dpToPx(DisplayMetrics, float)
+     */
+    public static int dpToPx(Context context, float dp) {
+        return dpToPx(context.getResources().getDisplayMetrics(), dp);
+    }
+
+    /**
+     * Converts density-independent pixels (dp) to pixels on the screen (px).
+     *
+     * @param metrics The {@link DisplayMetrics} for checking the current display pixel density.
+     * @param dp Density-independent pixels are based on the physical density of the screen.
+     * @return The physical pixels on the screen which correspond to this many density-independent
+     *     pixels for this screen.
+     */
+    public static int dpToPx(DisplayMetrics metrics, float dp) {
+        return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp, metrics));
+    }
+
+    /**
+     * @see #pxToDp(DisplayMetrics, int)
+     */
+    public static int pxToDp(Context context, int px) {
+        return pxToDp(context.getResources().getDisplayMetrics(), px);
+    }
+
+    /**
+     * Converts pixels on the screen (px) to density-independent pixels (dp).
+     *
+     * @param metrics The {@link DisplayMetrics} for checking the current display pixel density.
+     * @param px The physical pixels on the screen.
+     * @return The density-independent pixels that correspond to this many physical pixels.
+     */
+    public static int pxToDp(DisplayMetrics displayMetrics, int px) {
+        return Math.round(px / displayMetrics.density);
+    }
+
+    /**
+     * As {@link #setAncestorsShouldClipChildren(ViewGroup, boolean, int)}, defaulting to stopping
+     * at the view with id android.R.id.content.
+     */
+    public static void setAncestorsShouldClipChildren(ViewGroup view, boolean clip) {
+        setAncestorsShouldClipChildren(view, clip, android.R.id.content);
+    }
+
+    /**
+     * Sets clip children for the provided ViewGroup and all of its ancestors.
+     *
+     * @param view The ViewGroup whose children should (not) be clipped.
+     * @param clip Whether to clip children to the parent bounds.
+     * @param viewIdToStopAt The id of the last view in the ancestor list on which the operation
+     *     should performed; potentially NO_ID signifying the operation should traverse all the way
+     *     to the root.
+     */
+    public static void setAncestorsShouldClipChildren(
+            ViewGroup view, boolean clip, int viewIdToStopAt) {
+        ViewGroup parent = view;
+        while (parent != null) {
+            parent.setClipChildren(clip);
+            if (!(parent.getParent() instanceof ViewGroup)) break;
+            if (viewIdToStopAt != View.NO_ID && parent.getId() == viewIdToStopAt) break;
+            parent = (ViewGroup) parent.getParent();
+        }
+    }
+
+    /**
+     * Sets clipToPadding for the provided ViewGroup and all of its ancestors.
+     *
+     * @param view The ViewGroup who should (not) be clipped to padding.
+     * @param clip Whether to clip to padding.
+     * @param viewIdToStopAt The id of the last view in the ancestor list on which the operation
+     *     should performed; potentially NO_ID signifying the operation should traverse all the way
+     *     to the root.
+     */
+    public static void setAncestorsShouldClipToPadding(
+            ViewGroup view, boolean clip, int viewIdToStopAt) {
+        ViewGroup parent = view;
+        while (parent != null) {
+            parent.setClipToPadding(clip);
+            if (!(parent.getParent() instanceof ViewGroup)) break;
+            if (viewIdToStopAt != View.NO_ID && parent.getId() == viewIdToStopAt) break;
+            parent = (ViewGroup) parent.getParent();
+        }
+    }
+
+    /**
+     * Creates a {@link RoundedBitmapDrawable} using the provided {@link Bitmap} and cornerRadius.
+     *
+     * @param resources The {@link Resources}.
+     * @param icon The {@link Bitmap} to round.
+     * @param cornerRadius The corner radius.
+     * @return A {@link RoundedBitmapDrawable} for the provided {@link Bitmap}.
+     */
+    public static RoundedBitmapDrawable createRoundedBitmapDrawable(
+            Resources resources, Bitmap icon, int cornerRadius) {
+        RoundedBitmapDrawable roundedIcon = RoundedBitmapDrawableFactory.create(resources, icon);
+        roundedIcon.setCornerRadius(cornerRadius);
+        return roundedIcon;
+    }
+
+    /**
+     * Translates the canvas to ensure the specified view's coordinates are at 0, 0.
+     *
+     * @param from The view the canvas is currently translated to.
+     * @param to The view to translate to.
+     * @param canvas The canvas to be translated.
+     *
+     * @throws IllegalArgumentException if {@code from} is not an ancestor of {@code to}.
+     */
+    public static void translateCanvasToView(View from, View to, Canvas canvas)
+            throws IllegalArgumentException {
+        assert from != null;
+        assert to != null;
+        while (to != from) {
+            canvas.translate(to.getLeft(), to.getTop());
+            if (!(to.getParent() instanceof View)) {
+                throw new IllegalArgumentException("View 'to' was not a desendent of 'from'.");
+            }
+            to = (View) to.getParent();
+        }
+    }
+
+    /**
+     * A wrapper that calls android.view.requestLayout() immediately after emitting an instant trace
+     * event with information about the caller. This helps jank investigations, as there are traces
+     * with lots of re-layouts, but we don't know where these layouts are coming from.
+     *
+     * Do not include any identifying information in {@code caller}! Only constant string literals
+     * about code execution should be included.
+     *
+     * Examples of useful {@code caller} values:
+     * "MyClass.myMethod" when requestLayout is called in myMethod in MyClass.
+     * "MyClass.MyInnerClass.myMethod" when requestLayout is called in an inner class.
+     * "MyClass.myMethod.MyInnerClass.innerMethod" when requestLayout is called in an inner class
+     * defined in a method.
+     * "MyClass.myMethod other_helpful_information" when requestLayout is called more than once in
+     * the same method.
+     * "MyClass.myMethod Runnable" when requestLayout is posted somewhere to be executed later.
+     *
+     * @param view The view to call requestLayout on.
+     * @param caller Some queryable information about the caller.
+     */
+    // The trace event name is always a method/class name literal.
+    @SuppressWarnings("NoDynamicStringsInTraceEventCheck")
+    public static void requestLayout(View view, String caller) {
+        assert view != null;
+        TraceEvent.instant("requestLayout caller: " + caller);
+        view.requestLayout();
+    }
+
+    /**
+     * Triggers a synchronous measure and layout pass for a view. This can be crucial when immediate
+     * geometry information is required, such as during animations performed via {@link Transition}.
+     *
+     * @param view The view to measure and layout.
+     */
+    public static void triggerSynchronousMeasureAndLayout(View view) {
+        view.measure(
+                makeMeasureSpec(view.getMeasuredWidth(), EXACTLY),
+                makeMeasureSpec(view.getMeasuredHeight(), EXACTLY));
+        view.layout(view.getLeft(), view.getTop(), view.getRight(), view.getBottom());
+    }
+
+    /**
+     * Recursively collects all descendants of a View, excluding specific IDs and their entire
+     * subtrees.
+     *
+     * @param view The starting View.
+     * @param outCollection The collection to populate with descendants.
+     * @param excludedIds A Set of view IDs (R.id.name) to ignore.
+     */
+    public static void getAllDescendants(
+            View view, Collection<View> outCollection, Set<Integer> excludedIds) {
+        if (view instanceof ViewGroup viewGroup) {
+            for (int i = 0; i < viewGroup.getChildCount(); i++) {
+                View child = viewGroup.getChildAt(i);
+
+                // If the ID is in the exclusion set, skip this child AND its descendants
+                if (excludedIds.contains(child.getId())) continue;
+
+                outCollection.add(child);
+                getAllDescendants(child, outCollection, excludedIds);
+            }
+        }
+    }
+
+    /**
+     * ViewStub can be given a layout id and inflated at runtime, however this approach does not
+     * respect the padding and margins that the root parent view has specified in its layout file.
+     * This method aims to get around this shortcoming by replacing an existing child view with a
+     * new layout that's directly inflated into the parent to keep the paddings and margins. The old
+     * child can but does not have to be a ViewStub.
+     *
+     * @param oldChild The child view that currently has a parent and should be removed.
+     * @param layoutId The layout that should be inflated, should have a single parent view.
+     * @return The new view that has been created and inserted.
+     * @param <T> The type of the parent most view in the layout that is inflated.
+     */
+    @SuppressWarnings("unchecked")
+    public static <T extends View> T replace(View oldChild, @LayoutRes int layoutId) {
+        Context context = oldChild.getContext();
+        ViewGroup parent = (ViewGroup) oldChild.getParent();
+        int index = parent.indexOfChild(oldChild);
+        LayoutInflater inflater = LayoutInflater.from(context);
+        T newChild = (T) inflater.inflate(layoutId, parent, /* attachToRoot= */ false);
+        parent.removeViewInLayout(oldChild);
+        parent.addView(newChild, index);
+        return newChild;
+    }
+
+    /**
+     * Attaches a permanent OnAttachStateChangeListener to the given view that cancels the animator
+     * currently stored in the specified tag when the view is detached from the window.
+     *
+     * <p>Note: This observer remains attached permanently to support view recycling. Ensure this is
+     * called only once per view.
+     *
+     * @param view The view to attach the listener to.
+     * @param tagId The resource ID of the tag holding the animator.
+     */
+    public static void cancelAnimatorOnDetach(View view, int tagId) {
+        view.addOnAttachStateChangeListener(
+                new View.OnAttachStateChangeListener() {
+                    @Override
+                    public void onViewAttachedToWindow(View v) {}
+
+                    @Override
+                    public void onViewDetachedFromWindow(View v) {
+                        Animator a = (Animator) v.getTag(tagId);
+                        if (a != null) a.cancel();
+                    }
+                });
+    }
+}

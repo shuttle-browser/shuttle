@@ -1,0 +1,142 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/tabs/alert/tab_alert_icon.h"
+
+#include "chrome/app/vector_icons/vector_icons.h"
+#include "chrome/browser/actor/resources/grit/actor_browser_resources.h"
+#include "chrome/browser/glic/browser_ui/glic_vector_icon_manager.h"
+#include "chrome/browser/ui/color/chrome_color_id.h"
+#include "chrome/browser/ui/layout_constants.h"
+#include "components/tabs/public/tab_alert.h"
+#include "components/vector_icons/vector_icons.h"
+#include "ui/base/models/image_model.h"
+#include "ui/base/ui_base_features.h"
+
+namespace tabs {
+
+ui::ColorId GetAlertIndicatorColor(TabAlert state,
+                                   bool is_tab_active,
+                                   bool is_frame_active) {
+  int group = 0;
+  switch (state) {
+    case tabs::TabAlert::kMediaRecording:
+    case tabs::TabAlert::kAudioRecording:
+    case tabs::TabAlert::kVideoRecording:
+    case tabs::TabAlert::kDesktopCapturing:
+      group = 0;
+      break;
+    case tabs::TabAlert::kTabCapturing:
+    case tabs::TabAlert::kPipPlaying:
+    case tabs::TabAlert::kGlicAccessing:
+    case tabs::TabAlert::kGlicSharing:
+    case tabs::TabAlert::kActorWaitingOnUser:
+    case tabs::TabAlert::kActorAccessing:
+      group = 1;
+      break;
+    case tabs::TabAlert::kAudioPlaying:
+    case tabs::TabAlert::kAudioMuting:
+    case tabs::TabAlert::kBluetoothConnected:
+    case tabs::TabAlert::kBluetoothScanActive:
+    case tabs::TabAlert::kUsbConnected:
+    case tabs::TabAlert::kHidConnected:
+    case tabs::TabAlert::kSerialConnected:
+    case tabs::TabAlert::kVrPresentingInHeadset:
+      group = 2;
+      break;
+    default:
+      NOTREACHED() << "Unknown tab alert state";
+  }
+
+  static constexpr std::array<std::array<std::array<ui::ColorId, 2>, 2>, 3>
+      color_ids{{{{{kColorTabAlertMediaRecordingInactiveFrameInactive,
+                    kColorTabAlertMediaRecordingInactiveFrameActive},
+                   {kColorTabAlertMediaRecordingActiveFrameInactive,
+                    kColorTabAlertMediaRecordingActiveFrameActive}}},
+                 {{{kColorTabAlertPipPlayingInactiveFrameInactive,
+                    kColorTabAlertPipPlayingInactiveFrameActive},
+                   {kColorTabAlertPipPlayingActiveFrameInactive,
+                    kColorTabAlertPipPlayingActiveFrameActive}}},
+                 {{{kColorTabAlertAudioPlayingInactiveFrameInactive,
+                    kColorTabAlertAudioPlayingInactiveFrameActive},
+                   {kColorTabAlertAudioPlayingActiveFrameInactive,
+                    kColorTabAlertAudioPlayingActiveFrameActive}}}}};
+  return color_ids[group][is_tab_active][is_frame_active];
+}
+
+const gfx::VectorIcon& GetAlertIcon(TabAlert alert_state) {
+  switch (alert_state) {
+    case TabAlert::kAudioPlaying:
+      return features::IsRoundedIconsEnabled()
+                 ? vector_icons::kVolumeUpIcon
+                 : vector_icons::kVolumeUpChromeRefreshOldIcon;
+    case TabAlert::kAudioMuting:
+      return features::IsRoundedIconsEnabled()
+                 ? vector_icons::kVolumeOffIcon
+                 : vector_icons::kVolumeOffChromeRefreshOldIcon;
+    case TabAlert::kMediaRecording:
+    case TabAlert::kAudioRecording:
+    case TabAlert::kVideoRecording:
+    case TabAlert::kDesktopCapturing:
+      return features::IsRoundedIconsEnabled()
+                 ? vector_icons::kRadioButtonCheckedIcon
+                 : vector_icons::kRadioButtonCheckedOldIcon;
+    case TabAlert::kTabCapturing:
+      return features::IsRoundedIconsEnabled() ? vector_icons::kCaptureIcon
+                                               : vector_icons::kCaptureOldIcon;
+    case TabAlert::kBluetoothConnected:
+      return features::IsRoundedIconsEnabled()
+                 ? vector_icons::kBluetoothConnectedIcon
+                 : vector_icons::kBluetoothConnectedOldIcon;
+    case TabAlert::kBluetoothScanActive:
+      return features::IsRoundedIconsEnabled()
+                 ? vector_icons::kBluetoothSearchingIcon
+                 : vector_icons::kBluetoothScanningChromeRefreshOldIcon;
+    case TabAlert::kUsbConnected:
+      return features::IsRoundedIconsEnabled()
+                 ? vector_icons::kUsbIcon
+                 : vector_icons::kUsbChromeRefreshOldIcon;
+    case TabAlert::kHidConnected:
+      return features::IsRoundedIconsEnabled()
+                 ? vector_icons::kVideogameAssetIcon
+                 : vector_icons::kVideogameAssetChromeRefreshOldIcon;
+    case TabAlert::kSerialConnected:
+      return features::IsRoundedIconsEnabled()
+                 ? vector_icons::kDeveloperBoardIcon
+                 : vector_icons::kSerialPortChromeRefreshOldIcon;
+    case TabAlert::kPipPlaying:
+      return features::IsRoundedIconsEnabled()
+                 ? vector_icons::kPictureInPictureAltIcon
+                 : vector_icons::kPictureInPictureAltOldIcon;
+    case TabAlert::kVrPresentingInHeadset:
+      return features::IsRoundedIconsEnabled()
+                 ? vector_icons::kCardboardIcon
+                 : vector_icons::kCardboardOldIcon;
+    case TabAlert::kActorWaitingOnUser:
+    case TabAlert::kActorAccessing:
+      return glic::GlicVectorIconManager::GetVectorIcon(
+          IDR_ACTOR_AUTO_BROWSE_ICON);
+    case TabAlert::kGlicAccessing:
+    case TabAlert::kGlicSharing:
+      return glic::GlicVectorIconManager::GetVectorIcon(
+          IDR_GLIC_ACCESSING_ICON);
+    case TabAlert::kNone:
+      NOTREACHED();
+  }
+}
+
+ui::ImageModel GetAlertImageModel(TabAlert alert_state,
+                                  ui::ColorId icon_color) {
+  // Tab capturing icon uses a different width compared to
+  // the other tab alert indicator icons.
+  const int image_width =
+      GetLayoutConstant(alert_state == tabs::TabAlert::kTabCapturing
+                            ? LayoutConstant::kTabAlertIndicatorCaptureIconWidth
+                            : LayoutConstant::kTabAlertIndicatorIconWidth);
+
+  return ui::ImageModel::FromVectorIcon(GetAlertIcon(alert_state), icon_color,
+                                        image_width);
+}
+
+}  // namespace tabs

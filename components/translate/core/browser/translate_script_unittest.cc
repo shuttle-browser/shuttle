@@ -1,0 +1,360 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/translate/core/browser/translate_script.h"
+
+#include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/run_loop.h"
+#include "base/strings/stringprintf.h"
+#include "base/test/bind.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/task_environment.h"
+#include "build/build_config.h"
+#include "components/prefs/pref_registry_simple.h"
+#include "components/prefs/testing_pref_service.h"
+#include "components/translate/core/browser/translate_download_manager.h"
+#include "components/translate/core/browser/translate_pref_names.h"
+#include "components/translate/core/common/translate_features.h"
+#include "components/translate/core/common/translate_switches.h"
+#include "components/translate/core/common/translate_util.h"
+#include "components/variations/scoped_variations_ids_provider.h"
+#include "components/variations/variations_ids_provider.h"
+#include "net/base/load_flags.h"
+#include "net/base/url_util.h"
+#include "net/http/http_request_headers.h"
+#include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
+#include "services/network/test/test_url_loader_factory.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "url/gurl.h"
+
+namespace translate {
+
+class TranslateScriptTest : public testing::Test {
+ public:
+  TranslateScriptTest()
+      : test_shared_loader_factory_(
+            base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
+                &test_url_loader_factory_)) {}
+
+  TranslateScriptTest(const TranslateScriptTest&) = delete;
+  TranslateScriptTest& operator=(const TranslateScriptTest&) = delete;
+
+ protected:
+  void SetUp() override {
+    script_ = std::make_unique<TranslateScript>();
+    auto* translate_download_manager = TranslateDownloadManager::GetInstance();
+    translate_download_manager->set_application_locale("en");
+    translate_download_manager->set_url_loader_factory(
+        test_shared_loader_factory_);
+  }
+
+  void TearDown() override {
+    script_.reset();
+    TranslateDownloadManager::GetInstance()->ResetForTesting();
+  }
+
+  void Request() {
+    script_->Request(base::BindRepeating(&TranslateScriptTest::OnComplete,
+                                         base::Unretained(this)),
+                     /*is_incognito=*/false, nullptr);
+  }
+
+  void RequestAndWait() {
+    base::RunLoop run_loop;
+    script_->Request(base::BindLambdaForTesting([&](bool) { run_loop.Quit(); }),
+                     /*is_incognito=*/false, nullptr);
+    run_loop.Run();
+  }
+
+  void RequestWithPrefs(PrefService* prefs) {
+    script_->Request(base::BindRepeating(&TranslateScriptTest::OnComplete,
+                                         base::Unretained(this)),
+                     /*is_incognito=*/false, prefs);
+  }
+
+  void RequestWithPrefsAndWait(PrefService* prefs) {
+    base::RunLoop run_loop;
+    script_->Request(base::BindLambdaForTesting([&](bool) { run_loop.Quit(); }),
+                     /*is_incognito=*/false, prefs);
+    run_loop.Run();
+  }
+
+  const std::string& GetData() { return script_->data(); }
+
+  void ClearIfDataRegionChanged(PrefService* prefs) {
+    script_->ClearIfDataRegionChanged(prefs);
+  }
+
+  network::TestURLLoaderFactory* GetTestURLLoaderFactory() {
+    return &test_url_loader_factory_;
+  }
+
+  // The translate script.
+  std::unique_ptr<TranslateScript> script_;
+
+ private:
+  void OnComplete(bool success) {
+    // No op.
+  }
+
+  // Sets up the task scheduling/task-runner environment for each test.
+  base::test::TaskEnvironment task_environment_;
+
+  variations::test::ScopedVariationsIdsProvider scoped_variations_ids_provider_{
+      variations::VariationsIdsProvider::Mode::kUseSignedInState};
+
+  // Factory to create programmatic URL loaders.
+  network::TestURLLoaderFactory test_url_loader_factory_;
+  scoped_refptr<network::SharedURLLoaderFactory> test_shared_loader_factory_;
+};
+
+TEST_F(TranslateScriptTest, CheckScriptParameters) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      translate::kTranslateSimplifiedHindi);
+
+  network::ResourceRequest last_resource_request;
+  GetTestURLLoaderFactory()->SetInterceptor(
+      base::BindLambdaForTesting([&](const network::ResourceRequest& request) {
+        last_resource_request = request;
+      }));
+
+  Request();
+
+  GURL expected_url(TranslateScript::kScriptURL);
+  GURL url = last_resource_request.url;
+  EXPECT_TRUE(url.is_valid());
+  EXPECT_EQ(expected_url.DeprecatedGetOriginAsURL().spec(),
+            url.DeprecatedGetOriginAsURL().spec());
+  EXPECT_EQ(expected_url.GetPath(), url.GetPath());
+
+  EXPECT_EQ(network::mojom::CredentialsMode::kOmit,
+            last_resource_request.credentials_mode);
+
+  std::string expected_extra_headers =
+      base::StringPrintf("%s: %s\r\n\r\n", TranslateScript::kRequestHeaderName,
+                         TranslateScript::kRequestHeaderValue);
+  net::HttpRequestHeaders extra_headers = last_resource_request.headers;
+  EXPECT_EQ(expected_extra_headers, extra_headers.ToString());
+
+  std::string experiment_filter;
+  net::GetValueForKeyInQuery(url, TranslateScript::kExperimentFilterQueryName,
+                             &experiment_filter);
+  EXPECT_EQ(std::string(TranslateScript::kExperimentFilterQueryValue),
+            experiment_filter);
+
+  std::string callback;
+  net::GetValueForKeyInQuery(url, TranslateScript::kCallbackQueryName,
+                             &callback);
+  EXPECT_EQ(std::string(TranslateScript::kCallbackQueryValue), callback);
+
+#if !BUILDFLAG(IS_IOS)
+  // iOS does not have specific loaders for the isolated world.
+  std::string css_loader_callback;
+  net::GetValueForKeyInQuery(url, TranslateScript::kCssLoaderCallbackQueryName,
+                             &css_loader_callback);
+  EXPECT_EQ(std::string(TranslateScript::kCssLoaderCallbackQueryValue),
+            css_loader_callback);
+
+  std::string javascript_loader_callback;
+  net::GetValueForKeyInQuery(
+      url, TranslateScript::kJavascriptLoaderCallbackQueryName,
+      &javascript_loader_callback);
+  EXPECT_EQ(std::string(TranslateScript::kJavascriptLoaderCallbackQueryValue),
+            javascript_loader_callback);
+#endif  // !BUILDFLAG(IS_IOS)
+  script_.reset();
+}
+
+TEST_F(TranslateScriptTest, CheckScriptParameters_SimplifiedHindiDisabled) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      translate::kTranslateSimplifiedHindi);
+
+  network::ResourceRequest last_resource_request;
+  GetTestURLLoaderFactory()->SetInterceptor(
+      base::BindLambdaForTesting([&](const network::ResourceRequest& request) {
+        last_resource_request = request;
+      }));
+
+  Request();
+
+  GURL url = last_resource_request.url;
+  EXPECT_TRUE(url.is_valid());
+
+  std::string experiment_filter;
+  EXPECT_FALSE(net::GetValueForKeyInQuery(
+      url, TranslateScript::kExperimentFilterQueryName, &experiment_filter));
+  script_.reset();
+}
+
+TEST_F(TranslateScriptTest, CheckScriptParameters_ElementExperimentFeatures) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      translate::kTranslateElementExperimentFeatures, {{"ef", "ests"}});
+
+  network::ResourceRequest last_resource_request;
+  GetTestURLLoaderFactory()->SetInterceptor(
+      base::BindLambdaForTesting([&](const network::ResourceRequest& request) {
+        last_resource_request = request;
+      }));
+
+  Request();
+
+  GURL url = last_resource_request.url;
+  EXPECT_TRUE(url.is_valid());
+
+  std::string experiment_filter;
+  EXPECT_TRUE(net::GetValueForKeyInQuery(
+      url, TranslateScript::kExperimentFilterQueryName, &experiment_filter));
+  EXPECT_EQ("ests", experiment_filter);
+  script_.reset();
+}
+
+TEST_F(TranslateScriptTest,
+       CheckScriptParameters_ElementExperimentFeaturesCoexistence) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeaturesAndParameters(
+      {{translate::kTranslateSimplifiedHindi, {}},
+       {translate::kTranslateElementExperimentFeatures, {{"ef", "ests"}}}},
+      {});
+
+  network::ResourceRequest last_resource_request;
+  GetTestURLLoaderFactory()->SetInterceptor(
+      base::BindLambdaForTesting([&](const network::ResourceRequest& request) {
+        last_resource_request = request;
+      }));
+
+  Request();
+
+  GURL url = last_resource_request.url;
+  EXPECT_TRUE(url.is_valid());
+
+  std::string experiment_filter;
+  EXPECT_TRUE(net::GetValueForKeyInQuery(
+      url, TranslateScript::kExperimentFilterQueryName, &experiment_filter));
+
+  // They should coexist dynamically, comma-separated.
+  std::string expected_combined =
+      std::string(TranslateScript::kExperimentFilterQueryValue) + ",ests";
+  EXPECT_EQ(expected_combined, experiment_filter);
+  script_.reset();
+}
+
+TEST_F(TranslateScriptTest, CheckScriptURL) {
+  const std::string script_url("http://www.tamurayukari.com/mero-n.js");
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  command_line->AppendSwitchASCII(translate::switches::kTranslateScriptURL,
+                                  script_url);
+
+  network::ResourceRequest last_resource_request;
+  GetTestURLLoaderFactory()->SetInterceptor(
+      base::BindLambdaForTesting([&](const network::ResourceRequest& request) {
+        last_resource_request = request;
+      }));
+
+  Request();
+
+  GURL expected_url(script_url);
+  GURL url = last_resource_request.url;
+  EXPECT_TRUE(url.is_valid());
+  EXPECT_EQ(expected_url.DeprecatedGetOriginAsURL().spec(),
+            url.DeprecatedGetOriginAsURL().spec());
+  EXPECT_EQ(expected_url.GetPath(), url.GetPath());
+  script_.reset();
+}
+
+TEST_F(TranslateScriptTest, CheckScriptRegionalization) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(kTranslateElementRegionalization);
+
+  TestingPrefServiceSimple prefs;
+  prefs.registry()->RegisterIntegerPref(prefs::kTranslateDataRegionSetting, 0);
+
+  // Test US region.
+  prefs.SetInteger(prefs::kTranslateDataRegionSetting, 1);
+  network::ResourceRequest last_resource_request;
+  GetTestURLLoaderFactory()->SetInterceptor(
+      base::BindLambdaForTesting([&](const network::ResourceRequest& request) {
+        last_resource_request = request;
+      }));
+
+  RequestWithPrefs(&prefs);
+  std::string region_us;
+  net::GetValueForKeyInQuery(last_resource_request.url, "region", &region_us);
+  EXPECT_EQ("us", region_us);
+
+  // Test EU region.
+  script_ = std::make_unique<TranslateScript>();
+  prefs.SetInteger(prefs::kTranslateDataRegionSetting, 2);
+  RequestWithPrefs(&prefs);
+  std::string region_eu;
+  net::GetValueForKeyInQuery(last_resource_request.url, "region", &region_eu);
+  EXPECT_EQ("eu", region_eu);
+
+  // Test no preference region.
+  script_ = std::make_unique<TranslateScript>();
+  prefs.SetInteger(prefs::kTranslateDataRegionSetting, 0);
+  RequestWithPrefs(&prefs);
+  std::string region_none;
+  bool has_region = net::GetValueForKeyInQuery(last_resource_request.url,
+                                               "region", &region_none);
+  EXPECT_FALSE(has_region);
+  script_.reset();
+}
+
+TEST_F(TranslateScriptTest, CheckScriptRegionalizationCacheClear) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(kTranslateElementRegionalization);
+
+  TestingPrefServiceSimple prefs;
+  prefs.registry()->RegisterIntegerPref(prefs::kTranslateDataRegionSetting, 0);
+
+  GetTestURLLoaderFactory()->SetInterceptor(
+      base::BindLambdaForTesting([&](const network::ResourceRequest& request) {
+        GetTestURLLoaderFactory()->AddResponse(request.url.spec(),
+                                               "console.log('test');");
+      }));
+
+  // Start with US region.
+  prefs.SetInteger(prefs::kTranslateDataRegionSetting, 1);
+  RequestWithPrefsAndWait(&prefs);
+
+  EXPECT_FALSE(GetData().empty());
+
+  // Call ClearIfDataRegionChanged with the same prefs.
+  // It should not clear the data.
+  ClearIfDataRegionChanged(&prefs);
+  EXPECT_FALSE(GetData().empty());
+
+  // Change region to EU.
+  prefs.SetInteger(prefs::kTranslateDataRegionSetting, 2);
+  ClearIfDataRegionChanged(&prefs);
+  EXPECT_TRUE(GetData().empty());
+
+  // Request again with EU region to populate data.
+  RequestWithPrefsAndWait(&prefs);
+  EXPECT_FALSE(GetData().empty());
+
+  // Change region to NO_PREFERENCE.
+  prefs.SetInteger(prefs::kTranslateDataRegionSetting, 0);
+  ClearIfDataRegionChanged(&prefs);
+  EXPECT_TRUE(GetData().empty());
+  script_.reset();
+}
+
+TEST_F(TranslateScriptTest, CheckResponse) {
+  const std::string test_response =
+      "(function() { console.log(\"Hello, world!\"); }());";
+  GURL full_url = TranslateScript::GetTranslateScriptURL();
+  GetTestURLLoaderFactory()->AddResponse(full_url.spec(), test_response);
+
+  RequestAndWait();
+
+  EXPECT_NE(std::string::npos, GetData().find(test_response));
+  script_.reset();
+}
+
+}  // namespace translate

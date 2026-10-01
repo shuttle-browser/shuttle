@@ -1,0 +1,26 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("private_ai_internals") {
+  sources = [
+    "private_ai_internals_ui.cc",
+    "private_ai_internals_ui.h",
+  ]
+
+  deps = [
+    "//chrome:extra_resources",
+    "//chrome/browser/private_ai",
+    "//chrome/browser/profiles",
+    "//chrome/common",
+    "//components/private_ai",
+    "//components/private_ai/content",
+    "//components/private_ai/private_ai_internals/resources",
+    "//components/private_ai/private_ai_internals/webui:mojo_bindings",
+    "//components/private_ai/private_ai_internals/webui:page_handler",
+    "//components/private_ai/private_ai_internals/webui:url_constants",
+    "//components/version_info",
+    "//content/public/browser",
+    "//ui/webui",
+  ]
+}

@@ -1,0 +1,102 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_DOWNLOAD_PUBLIC_COMMON_DOWNLOAD_FEATURES_H_
+#define COMPONENTS_DOWNLOAD_PUBLIC_COMMON_DOWNLOAD_FEATURES_H_
+
+#include "base/feature_list.h"
+#include "build/build_config.h"
+#include "components/download/public/common/download_export.h"
+
+namespace download {
+namespace features {
+// Whether a download can be handled by parallel jobs.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kParallelDownloading);
+
+// Whether we allow the download job resume in a backoff.
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kBackoffInDownloading);
+#endif
+COMPONENTS_DOWNLOAD_EXPORT bool IsBackoffInDownloadingEnabled();
+
+#if BUILDFLAG(IS_ANDROID)
+// Whether to enable smart suggestion for large downloads
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
+    kSmartSuggestionForLargeDownloads);
+
+// Whether to show blocked sensitive downloads on download home.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kShowBlockedSensitiveDownload);
+
+// Whether to show the download scanning state on download home.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kShowDownloadScanningState);
+
+// Whether to offer a compact list view (small thumbnails + text metadata) for
+// images and videos on the Android Downloads page, in place of the default
+// large preview cards. See crbug.com/505631139.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kDownloadsCompactListView);
+
+// Whether to remap generic MIME types (like application/octet-stream) to more
+// specific MIME types deduced from the filename extension on Android.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kRemapGenericMimeType);
+#endif
+
+// Whether download notification service uses new unified API based on offline
+// item and native persistence of notification IDs.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
+    kDownloadNotificationServiceUnifiedAPI);
+
+// Whether in-progress download manager will be used to initialize download
+// service.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
+    kUseInProgressDownloadManagerForDownloadService);
+
+// Whether download resumption is allowed when there are no strong validators.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
+    kAllowDownloadResumptionWithoutStrongValidators);
+
+// Whether parallel download is used for HTTP2 connections.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kUseParallelRequestsForHTTP2);
+
+// Whether parallel download is used for QUIC connections.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kUseParallelRequestsForQUIC);
+
+// Whether to delete downloads that are overwritten by others.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kDeleteOverwrittenDownloads);
+
+// Whether to allow changing the size of file buffer.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kAllowFileBufferSizeControl);
+
+// Whether mixed-content PDF links can be downloaded if opening inline.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kAllowedMixedContentInlinePdf);
+
+// Whether to enable async notification manager for downloads.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
+    kEnableAsyncNotificationManagerForDownload);
+
+#if BUILDFLAG(IS_ANDROID)
+// Whether to enable save package for off the record mode.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
+    kEnableSavePackageForOffTheRecord);
+
+// Whether to open the downloaded file in Files app if cannot open in Chrome.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
+    kOpenDownloadInFilesAppIfNoHandlerFound);
+
+// Whether to open the downloaded file in a new tab instead of a Custom Tab on
+// Desktop Android.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kOpenDownloadInNewTab);
+
+// Whether to enable "Save As" context menu option.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
+    kEnableDownloadSaveAsContextMenu);
+#endif  // BUILDFLAG(IS_ANDROID)
+
+// Whether to defer download history loading until first use.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
+    kDeferredDownloadHistoryLoading);
+}  // namespace features
+
+}  // namespace download
+
+#endif  // COMPONENTS_DOWNLOAD_PUBLIC_COMMON_DOWNLOAD_FEATURES_H_

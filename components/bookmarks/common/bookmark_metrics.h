@@ -1,0 +1,222 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_BOOKMARKS_COMMON_BOOKMARK_METRICS_H_
+#define COMPONENTS_BOOKMARKS_COMMON_BOOKMARK_METRICS_H_
+
+#include "base/time/time.h"
+#include "components/bookmarks/common/storage_file_encryption_type.h"
+
+namespace bookmarks {
+
+struct UrlLoadStats;
+struct UserFolderLoadStats;
+
+namespace metrics {
+
+// LINT.IfChange(BookmarksExistInStorageType)
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// Used to know in which storages permanent nodes have bookmarks.
+enum class BookmarksExistInStorageType {
+  kLocalOnly = 0,
+  kAccountOnly = 1,
+  kLocalAndAccount = 2,
+
+  kMaxValue = kLocalAndAccount,
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/bookmarks/enums.xml:BookmarksExistInStorageType)
+
+// Enum for folder categories, reported through UMA. Present in enums.xml as
+// BookmarkFolderType. New values should be added at the end and things should
+// not be renumbered.
+enum class BookmarkFolderTypeForUMA {
+  kBookmarksBar = 0,
+  kOtherBookmarks = 1,
+  kMobileBookmarks = 2,
+  kUserGeneratedFolder = 3,
+  kMaxValue = kUserGeneratedFolder,
+};
+
+// Enum for possible sources for edits, reported through UMA. Present in
+// enums.xml as BookmarkEditSource. New values should be added at the end
+// and things should not be renumbered.
+enum class BookmarkEditSource {
+  kUser = 0,
+  kExtension = 1,
+  // No need to add a type for every possible scenario, we mainly care about if
+  // the user did the edit.
+  kOther = 2,
+  kMaxValue = kOther,
+};
+
+// An enum class to add storage state as a suffix to metrics.
+enum class StorageStateForUma {
+  // Account storage.
+  kAccount,
+  // Local storage that is not being synced at the time the metric is
+  // recorded.
+  kLocalOnly,
+  // Local storage that is being synced at the time the metric is recorded.
+  kSyncEnabled,
+};
+
+// LINT.IfChange(StorageFileForUma)
+
+// An enum class representing the two JSON files for storing bookmarks, used for
+// suffixing metrics.
+enum class StorageFileForUma {
+  // Represents `kLocalOrSyncableBookmarksFileName`.
+  kLocalOrSyncable,
+  // Represents `kAccountBookmarksFileName`.
+  kAccount,
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/bookmarks/enums.xml:StorageFileForUma)
+
+// Records when a bookmark is added by the user.
+// `ancestor_user_folder_depth` is the count of user-generated folders which
+// are ancestors of this bookmark.
+void RecordUrlBookmarkAdded(BookmarkFolderTypeForUMA parent,
+                            StorageStateForUma storage_state,
+                            int ancestor_user_folder_depth);
+
+// Records when a bookmark folder is added by the user.
+void RecordBookmarkFolderAdded(BookmarkFolderTypeForUMA parent,
+                               StorageStateForUma storage_state);
+
+// Records when a bookmark is removed.
+void RecordBookmarkRemoved(BookmarkEditSource source);
+
+// Records when a bookmark is opened by the user.
+// `ancestor_user_folder_depth` is the count of user-generated folders which
+// are ancestors of this bookmark.
+void RecordBookmarkOpened(base::Time now,
+                          base::Time date_last_used,
+                          base::Time date_added,
+                          StorageStateForUma storage_state,
+                          bool is_url_bookmark,
+                          int ancestor_user_folder_depth);
+
+// Records when a bookmark or bookmark folder is moved to a different parent
+// folder.
+void RecordBookmarkMovedTo(BookmarkFolderTypeForUMA new_parent);
+
+// Records the time since the last save with a 1 hour max. The first save will
+// record the time since startup.
+void RecordTimeSinceLastScheduledSave(base::TimeDelta delta);
+
+// Records the time it takes to load the bookmark model on startup with a 10
+// second max, the time starts when BookmarkModel.Load is called.
+void RecordTimeToLoadAtStartup(base::TimeDelta delta);
+
+// Records size of the bookmark file at startup.
+void RecordFileSizeAtStartup(StorageFileEncryptionType encryption_type,
+                             int64_t total_bytes);
+
+// Records a bookmark URL edit.
+void RecordURLEdit(BookmarkEditSource source);
+
+// Records a bookmark URL edit.
+void RecordTitleEdit(BookmarkEditSource source);
+
+// Records the metrics derived from `stats`. Recording happens on profile load.
+void RecordUrlLoadStatsOnProfileLoad(const UrlLoadStats& stats);
+
+// Records the user-generated folder metrics derived from `stats`. Recording
+// happens on profile load.
+void RecordUserFolderLoadStatsOnProfileLoad(const UserFolderLoadStats& stats);
+
+// Records when a bookmark node is cloned. `num_cloned` is the number of
+// bookmarks that were selected.
+void RecordCloneBookmarkNode(int num_cloned);
+
+// Records the approximate average node size at startup if
+// sum_file_size_in_bytes and total_url_bookmark_count are not zero.
+void RecordAverageNodeSizeAtStartupIfNonZero(
+    StorageFileEncryptionType encryption_type,
+    int total_url_bookmark_count,
+    size_t sum_file_size_in_bytes);
+
+// Records whether or not node IDs were reassigned as a result of loading the
+// JSON file representing local-or-syncable bookmarks.
+void RecordIdsReassignedOnProfileLoad(StorageFileForUma storage_file,
+                                      bool ids_reassigned);
+
+// Records the storage type of the permanent nodes. If `bookmark_bar_only` is
+// set, only records considering the bookmark bar, otherwise consider all
+// permanent nodes (without the Managed nodes).
+void RecordBookmarksExistInStorageType(
+    bool bookmark_bar_only,
+    BookmarksExistInStorageType storage_type);
+
+// LINT.IfChange(BookmarksFileLoadResult)
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// Indicates the result of the bookmarks file load.
+enum class BookmarksFileLoadResult {
+  kSuccess = 0,
+  kFileMissing = 1,
+  kContentLoadingFailed = 2,
+  kDecryptionFailed = 3,
+  kJSONParsingFailed = 4,
+  kBookmarkCodecDecodingFailed = 5,
+  kMaxValue = kBookmarkCodecDecodingFailed,
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/bookmarks/enums.xml:BookmarksFileLoadResult)
+
+void RecordBookmarksFileLoadResult(StorageFileForUma storage_file,
+                                   StorageFileEncryptionType encryption_type,
+                                   BookmarksFileLoadResult result);
+
+void RecordEncryptedBookmarksFileMatchesResult(StorageFileForUma storage_file,
+                                               bool file_matches);
+
+void RecordTimeToReadFile(StorageFileForUma storage_file,
+                          StorageFileEncryptionType encryption_type,
+                          base::TimeDelta delta);
+
+void RecordFallbackToClearTextFileOnLoadResult(StorageFileForUma storage_file,
+                                               BookmarksFileLoadResult result);
+
+void RecordClearTextFileDeletionResult(StorageFileForUma storage_file,
+                                       bool deletion_result);
+
+// Indicates what writer is used to save the bookmarks to disk.
+enum class ImportantFileWriterType {
+  kBookmarkStorage = 0,
+  kBookmarkStorageEncrypted = 1,
+  kBookmarkStorageImmediate = 2,
+  kBookmarkStorageEncryptedImmediate = 3,
+};
+
+// LINT.IfChange(BookmarksSerializationResult)
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// Indicates the outcome of the bookmarks serialization to disk.
+enum class BookmarksSerializationResult {
+  kSuccess = 0,
+  kJSONParsingFailed = 1,
+  kEncryptionFailed = 2,
+  kMaxValue = kEncryptionFailed,
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/bookmarks/enums.xml:BookmarksSerializationResult)
+
+void RecordBookmarksSerializationResult(
+    ImportantFileWriterType important_file_writer_type,
+    BookmarksSerializationResult result);
+
+// Records the time it takes to serialize the bookmark model to a string that
+// will be saved to disk. This time includes encoding the JSON object to a
+// string and encryption (if any).
+void RecordTimeToSerialize(ImportantFileWriterType important_file_writer_type,
+                           base::TimeDelta delta);
+
+}  // namespace metrics
+
+}  // namespace bookmarks
+
+#endif  // COMPONENTS_BOOKMARKS_COMMON_BOOKMARK_METRICS_H_

@@ -1,0 +1,16 @@
+[
+  {
+    "os": [
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "filebrowser.office.microsoft_office_cloud_upload",
+      "default_for_enterprise_users": "disallowed",
+      "values_to_test": [
+        "allowed",
+        "disallowed",
+        "automated"
+      ]
+    }
+  }
+]

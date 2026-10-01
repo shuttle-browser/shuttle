@@ -1,0 +1,190 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.omnibox.suggestions;
+
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.doReturn;
+
+import android.content.Context;
+import android.view.ContextThemeWrapper;
+import android.widget.FrameLayout;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+
+import org.chromium.base.ContextUtils;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.HistogramWatcher;
+import org.chromium.chrome.browser.omnibox.R;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
+import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
+import org.chromium.components.omnibox.suggestions.OmniboxSuggestionUiType;
+import org.chromium.ui.modelutil.MVCListAdapter.ModelList;
+import org.chromium.ui.modelutil.PropertyModel;
+
+import java.util.Set;
+
+/** Unit tests for the OmniboxSuggestionsDropdownAdapter component. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class OmniboxSuggestionsDropdownAdapterUnitTest {
+    public static final Set<Integer> OBSOLETE_UI_TYPES =
+            Set.of(
+                    OmniboxSuggestionUiType.OBSOLETE_QUERY_TILES,
+                    OmniboxSuggestionUiType.OBSOLETE_HEADER,
+                    OmniboxSuggestionUiType.OBSOLETE_GROUP_SEPARATOR);
+    @Rule public final MockitoRule mockitoRule = MockitoJUnit.rule();
+    @Mock private DropdownItemProcessor mProcessor;
+    private Context mContext;
+    private FrameLayout mContainer;
+    private ModelList mModel;
+    private OmniboxSuggestionsDropdownAdapter mAdapter;
+    private OmniboxResourceProvider mResourceProvider;
+
+    @Before
+    public void setUp() {
+        mContext =
+                new ContextThemeWrapper(
+                        ContextUtils.getApplicationContext(), R.style.Theme_BrowserUI_DayNight);
+        mContainer = new FrameLayout(mContext);
+        mModel = new ModelList();
+        mResourceProvider = new OmniboxResourceProvider(mContext, BrandedColorScheme.APP_DEFAULT);
+        mAdapter = new OmniboxSuggestionsDropdownAdapter(mModel, new OmniboxViewHolderFactory());
+    }
+
+    @Test
+    public void onViewRecycled_deselectAnyPreviouslySelectedViews() {
+        // This test confirms that the recycled views do not carry Selected attribute when reused.
+        var viewHolder = mAdapter.onCreateViewHolder(mContainer, OmniboxSuggestionUiType.DEFAULT);
+        var view = viewHolder.itemView;
+        view.setSelected(true);
+        assertTrue(view.isSelected());
+        mAdapter.onViewRecycled(viewHolder);
+        assertFalse(view.isSelected());
+    }
+
+    @Test
+    public void onBindViewHolder_allItemsMustSupportDropdownCommonProperties() {
+        // These properties must be respected by all Dropdown items.
+        var commonModel =
+                new PropertyModel.Builder(SuggestionCommonProperties.ALL_KEYS)
+                        .with(SuggestionCommonProperties.RESOURCE_PROVIDER, mResourceProvider)
+                        .with(SuggestionCommonProperties.SHOW_DIVIDER, true)
+                        .build();
+
+        for (@OmniboxSuggestionUiType int type = OmniboxSuggestionUiType.DEFAULT;
+                type < OmniboxSuggestionUiType.COUNT;
+                type++) {
+            if (OBSOLETE_UI_TYPES.contains(type)) continue;
+            doReturn(type).when(mProcessor).getViewTypeId();
+            doReturn(commonModel).when(mProcessor).createModel();
+
+            mModel.add(new DropdownItemViewInfo(mProcessor, commonModel, null));
+
+            var viewHolder = mAdapter.onCreateViewHolder(mContainer, type);
+            mAdapter.onBindViewHolder(viewHolder, 0);
+            assertNotNull(viewHolder.model);
+
+            // Confirm that view recycling decouples View from Model.
+            mAdapter.onViewRecycled(viewHolder);
+            assertNull(viewHolder.model);
+
+            mModel.clear();
+        }
+    }
+
+    @Test
+    public void recordSuggestionViewReuseStats_noViewsReused() {
+        // Create suggestion of every type, and bind it once.
+        // These suggestions are not reused, so the reuse stats should be 0.
+        for (@OmniboxSuggestionUiType int type = OmniboxSuggestionUiType.DEFAULT;
+                type < OmniboxSuggestionUiType.COUNT;
+                type++) {
+            if (OBSOLETE_UI_TYPES.contains(type)) continue;
+            doReturn(type).when(mProcessor).getViewTypeId();
+            mModel.add(new DropdownItemViewInfo(mProcessor, new PropertyModel(), null));
+
+            var viewHolder = mAdapter.onCreateViewHolder(mContainer, type);
+            mAdapter.onBindViewHolder(viewHolder, 0);
+            mAdapter.onViewRecycled(viewHolder);
+
+            mModel.clear();
+        }
+
+        // Confirm all views created, but none of them have been reused (reuse at 0%).
+        try (var watcher =
+                HistogramWatcher.newBuilder()
+                        .expectIntRecords(
+                                "Android.Omnibox.SuggestionView.SessionViewsCreated",
+                                OmniboxSuggestionUiType.COUNT - OBSOLETE_UI_TYPES.size())
+                        .expectIntRecords("Android.Omnibox.SuggestionView.SessionViewsReused", 0)
+                        .build()) {
+            mAdapter.recordSessionMetrics();
+        }
+    }
+
+    @Test
+    public void recordSuggestionViewReuseStats_allViewsReused() {
+        // Create suggestion of every type, and bind it twice.
+        // 100% reuse is a theoretical limit, indicating that all created views have been reused
+        // infinite amount of times.
+        for (@OmniboxSuggestionUiType int type = OmniboxSuggestionUiType.DEFAULT;
+                type < OmniboxSuggestionUiType.COUNT;
+                type++) {
+            if (OBSOLETE_UI_TYPES.contains(type)) continue;
+            doReturn(type).when(mProcessor).getViewTypeId();
+            mModel.add(new DropdownItemViewInfo(mProcessor, new PropertyModel(), null));
+
+            var viewHolder = mAdapter.onCreateViewHolder(mContainer, type);
+            mAdapter.onBindViewHolder(viewHolder, 0);
+            mAdapter.onViewRecycled(viewHolder);
+
+            // Reuse view.
+            mAdapter.onBindViewHolder(viewHolder, 0);
+            mAdapter.onViewRecycled(viewHolder);
+
+            mModel.clear();
+        }
+
+        try (var watcher =
+                HistogramWatcher.newBuilder()
+                        .expectIntRecords(
+                                "Android.Omnibox.SuggestionView.SessionViewsCreated",
+                                OmniboxSuggestionUiType.COUNT - OBSOLETE_UI_TYPES.size())
+                        .expectIntRecords("Android.Omnibox.SuggestionView.SessionViewsReused", 50)
+                        .build()) {
+            mAdapter.recordSessionMetrics();
+        }
+    }
+
+    @Test
+    public void recordSuggestionViewReuseStats_noViewsBound() {
+        // When views have been created but never bound - do not capture any metrics.
+        for (@OmniboxSuggestionUiType int type = OmniboxSuggestionUiType.DEFAULT;
+                type < OmniboxSuggestionUiType.COUNT;
+                type++) {
+            if (OBSOLETE_UI_TYPES.contains(type)) continue;
+            doReturn(type).when(mProcessor).getViewTypeId();
+            mModel.add(new DropdownItemViewInfo(mProcessor, new PropertyModel(), null));
+            mAdapter.onCreateViewHolder(mContainer, type);
+            mModel.clear();
+        }
+
+        try (var watcher =
+                HistogramWatcher.newBuilder()
+                        .expectNoRecords("Android.Omnibox.SuggestionView.SessionViewsCreated")
+                        .expectNoRecords("Android.Omnibox.SuggestionView.SessionViewsReused")
+                        .build()) {
+            mAdapter.recordSessionMetrics();
+        }
+    }
+}

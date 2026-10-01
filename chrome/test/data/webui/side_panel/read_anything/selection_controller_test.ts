@@ -1,0 +1,1241 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import type {NodeStore, SelectionController} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+import {assertEquals, assertFalse, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
+
+import {setupTestEnvironment} from './common.js';
+import type {TestContentBrowserProxy} from './test_content_browser_proxy.js';
+
+suite('SelectionController', () => {
+  let selectionController: SelectionController;
+  let nodeStore: NodeStore;
+  let contentBrowserProxy: TestContentBrowserProxy;
+
+  const parentIds = [100, 200, 300, 400];
+  const textNodeIds = [3, 5, 7, 9];
+  const texts = [
+    'From the day we arrive on the planet',
+    'And blinking, step into the sun',
+    'Theres more to see than can ever be seen more to do than can ever be done',
+    'In the circle of life',
+  ];
+  let textNodes: Text[];
+
+  interface TextNode {
+    node: Text;
+    id: number;
+    text: string;
+  }
+
+  function getNodeAt(nodeIndex: number): TextNode {
+    const node = textNodes[nodeIndex];
+    const id = textNodeIds[nodeIndex];
+    const text = texts[nodeIndex];
+    assertTrue(!!node);
+    assertTrue(!!id);
+    assertTrue(!!text);
+    return {node, id, text};
+  }
+
+  setup(() => {
+    const result = setupTestEnvironment();
+    contentBrowserProxy = result.contentBrowserProxy;
+    nodeStore = result.nodeStore;
+    selectionController = result.selectionController;
+  });
+
+  suite('onSelectionChange', () => {
+    let selection: Selection;
+    let actualAnchorId: number;
+    let actualFocusId: number;
+    let actualAnchorOffset: number;
+    let actualFocusOffset: number;
+
+    async function onSelectionChanged(): Promise<void> {
+      const [anchorId, anchorOffset, focusId, focusOffset] =
+          await contentBrowserProxy.whenCalled('onSelectionChange');
+      actualAnchorId = anchorId;
+      actualAnchorOffset = anchorOffset;
+      actualFocusId = focusId;
+      actualFocusOffset = focusOffset;
+    }
+
+    function highlightEverything() {
+      for (let i = 0; i < textNodes.length; i++) {
+        highlightAtOffset(i, 0);
+      }
+    }
+
+    function highlightAtOffset(nodeIndex: number, offset: number) {
+      const child = textNodes[nodeIndex];
+      const parentId = parentIds[nodeIndex];
+      assertTrue(!!child);
+      assertTrue(!!parentId);
+      const parent = document.createElement('span');
+      assertTrue(!!child.textContent);
+      const newChild = document.createTextNode(child.textContent);
+      parent.appendChild(newChild);
+      child.replaceWith(parent);
+      textNodes[nodeIndex] = newChild;
+      nodeStore.setDomNode(parent, parentId);
+      nodeStore.setAncestor(newChild, parent, offset);
+    }
+
+    function selectNodes(
+        anchor: TextNode, anchorOffset: number, focus: TextNode,
+        focusOffset: number): void {
+      selection.setBaseAndExtent(
+          anchor.node, anchorOffset, focus.node, focusOffset);
+      selectionController.onSelectionChange(selection);
+    }
+
+    setup(() => {
+      textNodes = texts.map(str => document.createTextNode(str));
+      assertEquals(textNodeIds.length, textNodes.length);
+      const parent = document.createElement('p');
+      textNodes.forEach(node => {
+        parent.appendChild(node);
+      });
+      document.body.appendChild(parent);
+
+      const docSelection = document.getSelection();
+      assertTrue(!!docSelection);
+      selection = docSelection;
+      actualAnchorId = -1;
+      actualFocusId = -1;
+      actualAnchorOffset = -1;
+      actualFocusOffset = -1;
+    });
+
+    test('updates hasSelection', () => {
+      const node = getNodeAt(1);
+      nodeStore.setDomNode(node.node, node.id);
+
+      selectionController.onSelectionChange(document.getSelection());
+      assertFalse(selectionController.hasSelection());
+
+      selectNodes(node, 2, node, 10);
+      assertTrue(selectionController.hasSelection());
+
+      selectionController.onSelectionChange(null);
+      assertFalse(selectionController.hasSelection());
+    });
+
+    test('current selection start with no selection returns null', () => {
+      assertFalse(!!selectionController.getCurrentSelectionStart());
+    });
+
+    test('current selection start with forward selection in one node', () => {
+      const expectedAnchorOffset = 2;
+      const expectedFocusOffset = 10;
+      const node = getNodeAt(1);
+      nodeStore.setDomNode(node.node, node.id);
+
+      selectNodes(node, expectedAnchorOffset, node, expectedFocusOffset);
+      const selectionStart = selectionController.getCurrentSelectionStart();
+
+      assertTrue(!!selectionStart);
+      assertEquals(node.node, selectionStart.node);
+      assertEquals(expectedAnchorOffset, selectionStart.offset);
+    });
+
+    test('current selection start with backward selection in one node', () => {
+      const expectedAnchorOffset = 10;
+      const expectedFocusOffset = 2;
+      const node = getNodeAt(1);
+      nodeStore.setDomNode(node.node, node.id);
+
+      selectNodes(node, expectedAnchorOffset, node, expectedFocusOffset);
+      const selectionStart = selectionController.getCurrentSelectionStart();
+
+      assertTrue(!!selectionStart);
+      assertEquals(node.node, selectionStart.node);
+      assertEquals(expectedFocusOffset, selectionStart.offset);
+    });
+
+    test('current selection start with forward selection across nodes', () => {
+      const expectedAnchorOffset = 10;
+      const expectedFocusOffset = 2;
+      const node1 = getNodeAt(0);
+      const node2 = getNodeAt(1);
+      nodeStore.setDomNode(node1.node, node1.id);
+      nodeStore.setDomNode(node2.node, node2.id);
+
+      selectNodes(node1, expectedAnchorOffset, node2, expectedFocusOffset);
+      const selectionStart = selectionController.getCurrentSelectionStart();
+
+      assertTrue(!!selectionStart);
+      assertEquals(node1.node, selectionStart.node);
+      assertEquals(expectedAnchorOffset, selectionStart.offset);
+    });
+
+    test('current selection start with backward selection across nodes', () => {
+      const expectedAnchorOffset = 10;
+      const expectedFocusOffset = 2;
+      const node1 = getNodeAt(0);
+      const node2 = getNodeAt(1);
+      nodeStore.setDomNode(node1.node, node1.id);
+      nodeStore.setDomNode(node2.node, node2.id);
+
+      selectNodes(node2, expectedFocusOffset, node1, expectedAnchorOffset);
+      const selectionStart = selectionController.getCurrentSelectionStart();
+
+      assertTrue(!!selectionStart);
+      assertEquals(node1.node, selectionStart.node);
+      assertEquals(expectedAnchorOffset, selectionStart.offset);
+    });
+
+    test('sends node when node exists as is', async () => {
+      const expectedAnchorOffset = 2;
+      const expectedFocusOffset = 10;
+      const node = getNodeAt(1);
+      nodeStore.setDomNode(node.node, node.id);
+
+      selectNodes(node, expectedAnchorOffset, node, expectedFocusOffset);
+
+      await onSelectionChanged();
+      assertEquals(node.id, actualAnchorId);
+      assertEquals(node.id, actualFocusId);
+      assertEquals(expectedAnchorOffset, actualAnchorOffset);
+      assertEquals(expectedFocusOffset, actualFocusOffset);
+    });
+
+    test(
+        'does not forward node when node does not exist and has no ancestor',
+        () => {
+          const anchorOffset = 2;
+          const focusOffset = 10;
+          const node = getNodeAt(1);
+
+          selectNodes(node, anchorOffset, node, focusOffset);
+
+          assertEquals(
+              0, contentBrowserProxy.getCallCount('onSelectionChange'));
+          assertEquals(-1, actualAnchorId);
+          assertEquals(-1, actualFocusId);
+          assertEquals(-1, actualAnchorOffset);
+          assertEquals(-1, actualFocusOffset);
+        });
+
+    test('one node selected with ancestor and no ancestor offset', async () => {
+      highlightEverything();
+      const expectedAnchorOffset = 2;
+      const expectedFocusOffset = 7;
+      const node = getNodeAt(0);
+
+      selectNodes(node, expectedAnchorOffset, node, expectedFocusOffset);
+
+      await onSelectionChanged();
+      assertEquals(parentIds[0], actualAnchorId);
+      assertEquals(parentIds[0], actualFocusId);
+      assertEquals(expectedAnchorOffset, actualAnchorOffset);
+      assertEquals(expectedFocusOffset, actualFocusOffset);
+    });
+
+    test(
+        'multiple nodes selected with ancestor and no ancestor offset',
+        async () => {
+          highlightEverything();
+          const expectedAnchorOffset = 1;
+          const expectedFocusOffset = 7;
+          const node1 = getNodeAt(0);
+          const node2 = getNodeAt(1);
+
+          selectNodes(node1, expectedAnchorOffset, node2, expectedFocusOffset);
+
+          await onSelectionChanged();
+          assertEquals(parentIds[0], actualAnchorId);
+          assertEquals(parentIds[1], actualFocusId);
+          assertEquals(expectedAnchorOffset, actualAnchorOffset);
+          assertEquals(expectedFocusOffset, actualFocusOffset);
+        });
+
+    test('one node selected with anchor offset in ancestor', async () => {
+      const highlightStart = 15;
+      highlightAtOffset(0, highlightStart);
+      const node = getNodeAt(0);
+      const anchorOffset = 5;
+      const focusOffset = node.text.length;
+
+      selectNodes(node, anchorOffset, node, focusOffset);
+
+      await onSelectionChanged();
+      assertEquals(parentIds[0], actualAnchorId);
+      assertEquals(parentIds[0], actualFocusId);
+      assertEquals(highlightStart + anchorOffset, actualAnchorOffset);
+      assertEquals(highlightStart + focusOffset, actualFocusOffset);
+    });
+
+    test('multiple nodes selected with anchor offset in ancestor', async () => {
+      const highlightStart = 15;
+      highlightAtOffset(0, highlightStart);
+      highlightAtOffset(1, 0);
+      const anchorNode = getNodeAt(0);
+      const focusNode = getNodeAt(1);
+      const anchorOffset = 5;
+      const focusOffset = 10;
+
+      selectNodes(anchorNode, anchorOffset, focusNode, focusOffset);
+
+      await onSelectionChanged();
+      assertEquals(parentIds[0], actualAnchorId);
+      assertEquals(parentIds[1], actualFocusId);
+      assertEquals(highlightStart + anchorOffset, actualAnchorOffset);
+      assertEquals(focusOffset, actualFocusOffset);
+    });
+
+    test('multiple nodes selected with focus offset in ancestor', async () => {
+      const highlightStart = 15;
+      highlightAtOffset(0, 0);
+      highlightAtOffset(1, highlightStart);
+      const anchorNode = getNodeAt(0);
+      const focusNode = getNodeAt(1);
+      const anchorOffset = 5;
+      const focusOffset = 10;
+
+      selectNodes(anchorNode, anchorOffset, focusNode, focusOffset);
+
+      await onSelectionChanged();
+      assertEquals(parentIds[0], actualAnchorId);
+      assertEquals(parentIds[1], actualFocusId);
+      assertEquals(anchorOffset, actualAnchorOffset);
+      assertEquals(highlightStart + focusOffset, actualFocusOffset);
+    });
+
+    test('multiple nodes selected with anchor ancestor only', async () => {
+      highlightAtOffset(0, 0);
+      const anchorNode = getNodeAt(0);
+      const focusNode = getNodeAt(1);
+      nodeStore.setDomNode(focusNode.node, focusNode.id);
+      const anchorOffset = 6;
+      const focusOffset = 11;
+
+      selectNodes(anchorNode, anchorOffset, focusNode, focusOffset);
+
+      await onSelectionChanged();
+      assertEquals(parentIds[0], actualAnchorId);
+      assertEquals(focusNode.id, actualFocusId);
+      assertEquals(anchorOffset, actualAnchorOffset);
+      assertEquals(focusOffset, actualFocusOffset);
+    });
+
+    test('multiple nodes selected with focus ancestor only', async () => {
+      highlightAtOffset(1, 0);
+      const anchorNode = getNodeAt(0);
+      const focusNode = getNodeAt(1);
+      nodeStore.setDomNode(anchorNode.node, anchorNode.id);
+      const anchorOffset = 6;
+      const focusOffset = 11;
+
+      selectNodes(anchorNode, anchorOffset, focusNode, focusOffset);
+
+      await onSelectionChanged();
+      assertEquals(anchorNode.id, actualAnchorId);
+      assertEquals(parentIds[1], actualFocusId);
+      assertEquals(anchorOffset, actualAnchorOffset);
+      assertEquals(focusOffset, actualFocusOffset);
+    });
+
+    test(
+        'selection with both anchor and focus offset in ancestors',
+        async () => {
+          const anchorHighlightStart = 10;
+          const focusHighlightStart = 20;
+          highlightAtOffset(0, anchorHighlightStart);
+          highlightAtOffset(1, focusHighlightStart);
+
+          const anchorNode = getNodeAt(0);
+          const focusNode = getNodeAt(1);
+          const anchorOffset = 5;
+          const focusOffset = 15;
+
+          selectNodes(anchorNode, anchorOffset, focusNode, focusOffset);
+
+          await onSelectionChanged();
+          assertEquals(parentIds[0], actualAnchorId);
+          assertEquals(parentIds[1], actualFocusId);
+          assertEquals(anchorHighlightStart + anchorOffset, actualAnchorOffset);
+          assertEquals(focusHighlightStart + focusOffset, actualFocusOffset);
+        });
+
+    test('selection starts at offset 0 with an ancestor offset', async () => {
+      const highlightStart = 15;
+      highlightAtOffset(0, highlightStart);
+      const node = getNodeAt(0);
+      const anchorOffset = 0;
+      const focusOffset = 10;
+
+      selectNodes(node, anchorOffset, node, focusOffset);
+
+      await onSelectionChanged();
+      assertEquals(parentIds[0], actualAnchorId);
+      assertEquals(parentIds[0], actualFocusId);
+      assertEquals(highlightStart + anchorOffset, actualAnchorOffset);
+      assertEquals(highlightStart + focusOffset, actualFocusOffset);
+    });
+
+    test('selection with element container maps to text nodes', async () => {
+      const node0 = getNodeAt(0);
+      const node1 = getNodeAt(1);
+      nodeStore.setDomNode(node0.node, node0.id);
+      nodeStore.setDomNode(node1.node, node1.id);
+      const parent = node0.node.parentElement!;
+      nodeStore.setDomNode(parent, parentIds[0]!);
+
+      // Anchor is parent at index 0 (before node0), focus is parent at index 1
+      // (after node0).
+      selection.setBaseAndExtent(parent, 0, parent, 1);
+      selectionController.onSelectionChange(selection);
+
+      // It should map to text node 0 fully!
+      await onSelectionChanged();
+      assertEquals(node0.id, actualAnchorId);
+      assertEquals(node0.id, actualFocusId);
+      assertEquals(0, actualAnchorOffset);
+      assertEquals(node0.text.length, actualFocusOffset);
+    });
+
+    test(
+        'triple click like selection with element container maps to text nodes',
+        async () => {
+          // Register all text nodes in nodeStore
+          for (let i = 0; i < textNodes.length; i++) {
+            const node = getNodeAt(i);
+            nodeStore.setDomNode(node.node, node.id);
+          }
+          const parent = textNodes[0]!.parentElement!;
+          nodeStore.setDomNode(parent, parentIds[0]!);
+
+          // Set selection visually on the parent element, around the entire
+          // paragraph (children index 0 to 4).
+          selection.setBaseAndExtent(parent, 0, parent, 4);
+          selectionController.onSelectionChange(selection);
+
+          // It should be normalized to the first text node at start and last
+          // text node at end!
+          const nodeStart = getNodeAt(0);
+          const nodeEnd = getNodeAt(3);
+          await onSelectionChanged();
+          assertEquals(nodeStart.id, actualAnchorId);
+          assertEquals(nodeEnd.id, actualFocusId);
+          assertEquals(0, actualAnchorOffset);
+          assertEquals(nodeEnd.text.length, actualFocusOffset);
+        });
+
+    test(
+        'collapsed selection is not shifted and collapses selection',
+        async () => {
+          const node = getNodeAt(1);
+          nodeStore.setDomNode(node.node, node.id);
+
+          // Set a collapsed selection at the end of node (offset 10)
+          selection.setBaseAndExtent(node.node, 10, node.node, 10);
+          selectionController.onSelectionChange(selection);
+
+          await contentBrowserProxy.whenCalled('onCollapseSelection');
+          assertEquals(
+              0, contentBrowserProxy.getCallCount('onSelectionChange'));
+        });
+
+    test(
+        'backward selection is correctly normalized without shifting past boundaries',
+        async () => {
+          // Register text nodes
+          for (let i = 0; i < textNodes.length; i++) {
+            const node = getNodeAt(i);
+            nodeStore.setDomNode(node.node, node.id);
+          }
+
+          // Drag backward from end of node 1 (offset length) to start of node 1
+          // (offset 0)
+          const node = getNodeAt(1);
+          selectNodes(node, node.text.length, node, 0);
+
+          // Anchor is end, Focus is start.
+          // With backward selection, the focus (start) should NOT shift
+          // backward to node 0 (title) and the anchor (end) should NOT shift
+          // forward to node 2.
+          await onSelectionChanged();
+          assertEquals(node.id, actualAnchorId);
+          assertEquals(node.id, actualFocusId);
+          assertEquals(node.text.length, actualAnchorOffset);
+          assertEquals(0, actualFocusOffset);
+        });
+
+    test('selection in node with axNodeOffset', async () => {
+      const node = getNodeAt(1);
+      const axNodeOffset = 10;
+      nodeStore.setDomNode(node.node, node.id);
+      nodeStore.setAxNodeOffset(node.node, axNodeOffset);
+
+      const anchorOffset = 2;
+      const focusOffset = 5;
+      selectNodes(node, anchorOffset, node, focusOffset);
+
+      await onSelectionChanged();
+      assertEquals(node.id, actualAnchorId);
+      assertEquals(node.id, actualFocusId);
+      assertEquals(anchorOffset + axNodeOffset, actualAnchorOffset);
+      assertEquals(focusOffset + axNodeOffset, actualFocusOffset);
+    });
+
+    test(
+        'selection in highlighted node with ancestor and axNodeOffset',
+        async () => {
+          const axNodeOffset = 20;
+          const highlightStart = 5;
+          highlightAtOffset(0, highlightStart);
+
+          const node = getNodeAt(0);  // This is the text node inside the span
+          const parentSpan = node.node.parentElement!;
+          nodeStore.setAxNodeOffset(parentSpan, axNodeOffset);
+
+          const anchorOffset = 2;
+          const focusOffset = 4;
+          selectNodes(node, anchorOffset, node, focusOffset);
+
+          await onSelectionChanged();
+          assertEquals(parentIds[0], actualAnchorId);
+          // Expected = user_offset(2) + offset_in_span(5) + span_ax_offset(20)
+          // = 27
+          assertEquals(
+              anchorOffset + highlightStart + axNodeOffset, actualAnchorOffset);
+        });
+
+    test(
+        'shifts focus backward skipping unmapped nodes in readability',
+        async () => {
+          // Recreate clean DOM for scenario where whitespace unmapped nodes
+          // exist.
+          document.body.innerHTML = window.trustedTypes!.emptyHTML;
+          const parent = document.createElement('p');
+          const node0 = document.createTextNode(texts[0]!);
+          const spacer1 = document.createTextNode(' \n  ');
+          const spacer2 = document.createTextNode('   ');
+          const node1 = document.createTextNode(texts[1]!);
+          parent.appendChild(node0);
+          parent.appendChild(spacer1);
+          parent.appendChild(spacer2);
+          parent.appendChild(node1);
+          document.body.appendChild(parent);
+
+          // Register parent, node0 and node1, but NOT the spacers.
+          nodeStore.setDomNode(parent, parentIds[0]!);
+          nodeStore.setDomNode(node0, textNodeIds[0]!);
+          nodeStore.setDomNode(node1, textNodeIds[1]!);
+
+          // Drag from end of node0 to start of node1 (offset 0), which is a
+          // forward drag (isBackward = false).
+          selection.setBaseAndExtent(node0, 5, node1, 0);
+          selectionController.onSelectionChange(selection);
+
+          // The focus node (node1 at offset 0) should be shifted backward
+          // skipping the unmapped spacer1 and spacer2 to the end of node0!
+          await onSelectionChanged();
+          assertEquals(textNodeIds[0], actualAnchorId);
+          assertEquals(textNodeIds[0], actualFocusId);
+          assertEquals(5, actualAnchorOffset);
+          assertEquals(node0.textContent.length, actualFocusOffset);
+        });
+
+    test(
+        'shifts anchor forward skipping unmapped nodes in readability',
+        async () => {
+          // Recreate clean DOM for scenario where whitespace unmapped nodes
+          // exist.
+          document.body.innerHTML = window.trustedTypes!.emptyHTML;
+          const parent = document.createElement('p');
+          const node0 = document.createTextNode(texts[0]!);
+          const spacer1 = document.createTextNode(' \n  ');
+          const spacer2 = document.createTextNode('   ');
+          const node1 = document.createTextNode(texts[1]!);
+          parent.appendChild(node0);
+          parent.appendChild(spacer1);
+          parent.appendChild(spacer2);
+          parent.appendChild(node1);
+          document.body.appendChild(parent);
+
+          nodeStore.setDomNode(parent, parentIds[0]!);
+          nodeStore.setDomNode(node0, textNodeIds[0]!);
+          nodeStore.setDomNode(node1, textNodeIds[1]!);
+
+          // Drag from end of node0 (offset length) to some point in node1.
+          // This is a forward drag (isBackward = false), so start boundary
+          // sits at the end of node0 and should shift forward.
+          selection.setBaseAndExtent(node0, node0.textContent.length, node1, 5);
+          selectionController.onSelectionChange(selection);
+
+          // The anchor node (node0 at offset length) should be shifted
+          // forward skipping the unmapped spacer1 and spacer2 to the start of
+          // node1!
+          await onSelectionChanged();
+          assertEquals(textNodeIds[1], actualAnchorId);
+          assertEquals(textNodeIds[1], actualFocusId);
+          assertEquals(0, actualAnchorOffset);
+          assertEquals(5, actualFocusOffset);
+        });
+  });
+
+  suite('updateSelection', () => {
+    let parent: HTMLElement;
+    const parentId = 111;
+    let selection: Selection;
+
+    function selectNodesInMainPanel(
+        anchorId: number, anchorOffset: number, focusId: number,
+        focusOffset: number) {
+      contentBrowserProxy.startNodeId = anchorId;
+      contentBrowserProxy.startOffset = anchorOffset;
+      contentBrowserProxy.endNodeId = focusId;
+      contentBrowserProxy.endOffset = focusOffset;
+    }
+
+    setup(() => {
+      textNodes = texts.map(str => document.createTextNode(str));
+      assertEquals(textNodeIds.length, textNodes.length);
+      parent = document.createElement('p');
+      textNodes.forEach(node => {
+        parent.appendChild(node);
+      });
+      nodeStore.setDomNode(parent, parentId);
+      document.body.appendChild(parent);
+      const docSelection = document.getSelection();
+      assertTrue(!!docSelection);
+      docSelection.removeAllRanges();
+      selection = docSelection;
+    });
+
+    suite('with readability enabled', () => {
+      setup(() => {
+        contentBrowserProxy.activeDistillationMethod =
+            contentBrowserProxy.distillationTypeReadability;
+      });
+
+      test('does nothing when node content is missing', () => {
+        const expectedAnchorOffset = 2;
+        const expectedFocusOffset = 10;
+        selectNodesInMainPanel(
+            100, expectedAnchorOffset, 101, expectedFocusOffset);
+        const prefix =
+            'Being home alone is like being home with no, with no people. ';
+        const content = 'I was alone cause there were no people at all.';
+        contentBrowserProxy.prefixText = prefix;
+        // Simulate one of the nodes not having content.
+        contentBrowserProxy.textContentMap = {100: content};
+        const p = document.createElement('p');
+        p.appendChild(document.createTextNode(prefix));
+        p.appendChild(document.createTextNode(content));
+        document.body.appendChild(p);
+
+        selectionController.updateSelection(selection, document.body);
+
+        assertFalse(!!selection.anchorNode);
+        assertFalse(!!selection.focusNode);
+      });
+
+      test('does nothing when ids are unknown', () => {
+        selectNodesInMainPanel(0, 2, 0, 10);
+        selectionController.updateSelection(selection, document.body);
+
+        assertFalse(!!selection.anchorNode);
+        assertFalse(!!selection.focusNode);
+      });
+
+      test('selects correct text in one node', () => {
+        const expectedAnchorOffset = 2;
+        const expectedFocusOffset = 10;
+        selectNodesInMainPanel(
+            100, expectedAnchorOffset, 100, expectedFocusOffset);
+        const prefix = 'My folks were small-time grifters. ';
+        const content = 'Yeah and counterfeiters too';
+        contentBrowserProxy.prefixText = prefix;
+        contentBrowserProxy.textContentMap = {100: content};
+        const p = document.createElement('p');
+        p.appendChild(document.createTextNode(prefix));
+        p.appendChild(document.createTextNode(content));
+        document.body.appendChild(p);
+
+        selectionController.updateSelection(selection, document.body);
+
+        assertEquals(content, selection.anchorNode!.textContent);
+        assertEquals(content, selection.focusNode!.textContent);
+        assertEquals(expectedAnchorOffset, selection.anchorOffset);
+        assertEquals(expectedFocusOffset, selection.focusOffset);
+      });
+
+      test('selects correct text in one node with duplicate text', () => {
+        // Select a hello later in the string
+        const content = 'hello hello hello hello hello hello';
+        const expectedAnchorOffset = 24;
+        const expectedFocusOffset = 29;
+        selectNodesInMainPanel(
+            100, expectedAnchorOffset, 100, expectedFocusOffset);
+        contentBrowserProxy.prefixText = '';
+        contentBrowserProxy.textContentMap = {100: content};
+        const p = document.createElement('p');
+        p.appendChild(document.createTextNode(content));
+        document.body.appendChild(p);
+
+        selectionController.updateSelection(selection, document.body);
+
+        // The offsets should still be the same as before.
+        assertEquals(content, selection.anchorNode!.textContent);
+        assertEquals(content, selection.focusNode!.textContent);
+        assertEquals(expectedAnchorOffset, selection.anchorOffset);
+        assertEquals(expectedFocusOffset, selection.focusOffset);
+      });
+
+      test('selects correct text in one node with different offsets', () => {
+        const expectedAnchorOffset = 2;
+        const expectedFocusOffset = 10;
+        selectNodesInMainPanel(
+            100, expectedAnchorOffset, 100, expectedFocusOffset);
+        const prefix = 'My folks were small-time grifters. ';
+        const content = 'Yeah and counterfeiters too';
+        const expectedSelection =
+            content.substring(expectedAnchorOffset, expectedFocusOffset);
+        contentBrowserProxy.prefixText = prefix;
+        contentBrowserProxy.textContentMap = {100: content};
+        const p = document.createElement('p');
+        p.appendChild(document.createTextNode(prefix));
+        p.appendChild(document.createTextNode('    ' + content));
+        document.body.appendChild(p);
+
+        selectionController.updateSelection(selection, document.body);
+
+        assertEquals(expectedSelection, selection.toString());
+      });
+
+      test(
+          'selects correct text in one node with duplicate text and duplicate prefix',
+          () => {
+            const prefix = 'hello';
+            // Select a hello later in the string.
+            const content = 'hello hello hello hello hello hello';
+            const expectedAnchorOffset = 24;
+            const expectedFocusOffset = 29;
+            selectNodesInMainPanel(
+                100, expectedAnchorOffset, 100, expectedFocusOffset);
+            contentBrowserProxy.prefixText = prefix;
+            contentBrowserProxy.textContentMap = {100: content};
+            const p = document.createElement('p');
+            p.appendChild(document.createTextNode(prefix));
+            p.appendChild(document.createTextNode(content));
+            document.body.appendChild(p);
+
+            selectionController.updateSelection(selection, document.body);
+
+            // The offsets should still be the same as before.
+            assertEquals(content, selection.anchorNode!.textContent, 'anchor');
+            assertEquals(content, selection.focusNode!.textContent, 'focus');
+            assertEquals(expectedAnchorOffset, selection.anchorOffset);
+            assertEquals(expectedFocusOffset, selection.focusOffset);
+          });
+
+      test('selects correct text in one node with superset prefix', () => {
+        const beforeContent = 'they never';
+        const content = ' did the kind';
+        const afterContent = ' of things';
+        const prefix = beforeContent + content + afterContent;
+        const expectedAnchorOffset = 2;
+        const expectedFocusOffset = 7;
+        selectNodesInMainPanel(
+            100, expectedAnchorOffset, 100, expectedFocusOffset);
+        contentBrowserProxy.prefixText = prefix;
+        contentBrowserProxy.textContentMap = {100: content};
+        const p = document.createElement('p');
+        p.appendChild(document.createTextNode(beforeContent));
+        p.appendChild(document.createTextNode(content));
+        p.appendChild(document.createTextNode(afterContent));
+        document.body.appendChild(p);
+
+        selectionController.updateSelection(selection, document.body);
+
+        assertEquals(content, selection.anchorNode!.textContent);
+        assertEquals(content, selection.focusNode!.textContent);
+        assertEquals(expectedAnchorOffset, selection.anchorOffset);
+        assertEquals(expectedFocusOffset, selection.focusOffset);
+      });
+
+      test('selects correct text in one node with no prefix', () => {
+        const content = 'That most kids parents do';
+        const expectedAnchorOffset = 2;
+        const expectedFocusOffset = 7;
+        selectNodesInMainPanel(
+            100, expectedAnchorOffset, 100, expectedFocusOffset);
+        contentBrowserProxy.prefixText = '';
+        contentBrowserProxy.textContentMap = {100: content};
+        const p = document.createElement('p');
+        p.appendChild(document.createTextNode(content));
+        document.body.appendChild(p);
+
+        selectionController.updateSelection(selection, document.body);
+
+        assertEquals(content, selection.anchorNode!.textContent);
+        assertEquals(content, selection.focusNode!.textContent);
+        assertEquals(expectedAnchorOffset, selection.anchorOffset);
+        assertEquals(expectedFocusOffset, selection.focusOffset);
+      });
+
+      test(
+          'selects correct text in two sequential nodes with same prefix',
+          () => {
+            const expectedAnchorOffset = 10;
+            const expectedFocusOffset = 3;
+            const startId = 100;
+            const endId = 101;
+            selectNodesInMainPanel(
+                startId, expectedAnchorOffset, endId, expectedFocusOffset);
+            const prefix = 'Most fathers make a living. ';
+            const startContent = 'Keepin books or pushing broom. ';
+            const endContent = 'But mom and dad made homemade dough.';
+            contentBrowserProxy.prefixText = prefix;
+            contentBrowserProxy.textContentMap =
+                {[startId]: startContent, [endId]: endContent};
+            const p = document.createElement('p');
+            p.appendChild(document.createTextNode(prefix));
+            p.appendChild(document.createTextNode(startContent));
+            p.appendChild(document.createTextNode(endContent));
+            document.body.appendChild(p);
+
+            selectionController.updateSelection(selection, document.body);
+
+            assertEquals(startContent, selection.anchorNode!.textContent);
+            assertEquals(endContent, selection.focusNode!.textContent);
+            assertEquals(expectedAnchorOffset, selection.anchorOffset);
+            assertEquals(expectedFocusOffset, selection.focusOffset);
+          });
+
+      test('selects correct text in two nodes with different offsets', () => {
+        const expectedAnchorOffset = 10;
+        const expectedFocusOffset = 3;
+        const startId = 100;
+        const endId = 101;
+        selectNodesInMainPanel(
+            startId, expectedAnchorOffset, endId, expectedFocusOffset);
+        const prefix = 'Most fathers make a living. ';
+        const startContent = 'Keepin books or pushing broom. ';
+        const endContent = 'But mom and dad made homemade dough.';
+        const expectedSelection = startContent.substring(expectedAnchorOffset) +
+            endContent.substring(0, expectedFocusOffset);
+        contentBrowserProxy.prefixText = prefix;
+        contentBrowserProxy
+            .textContentMap = {[startId]: startContent, [endId]: endContent};
+        const p = document.createElement('p');
+        p.appendChild(document.createTextNode(prefix));
+        p.appendChild(document.createTextNode('    ' + startContent));
+        p.appendChild(document.createTextNode(endContent));
+        document.body.appendChild(p);
+
+        selectionController.updateSelection(selection, document.body);
+
+        assertEquals(expectedSelection, selection.toString());
+      });
+
+      test(
+          'selects correct text in two sequential nodes with end context ' +
+              'equals start node',
+          () => {
+            const expectedAnchorOffset = 10;
+            const expectedFocusOffset = 3;
+            const startId = 100;
+            const endId = 101;
+            selectNodesInMainPanel(
+                startId, expectedAnchorOffset, endId, expectedFocusOffset);
+            const prefix = 'Most fathers make a living. ';
+            const startContent = 'Keepin books or pushing broom. ';
+            const endContent = 'But mom and dad made homemade dough.';
+            contentBrowserProxy.prefixText = prefix;
+            contentBrowserProxy.textContentMap =
+                {[startId]: startContent, [endId]: endContent};
+            const p = document.createElement('p');
+            p.appendChild(document.createTextNode(prefix));
+            p.appendChild(document.createTextNode(startContent));
+            p.appendChild(document.createTextNode(endContent));
+            document.body.appendChild(p);
+
+            selectionController.updateSelection(selection, document.body);
+
+            assertEquals(startContent, selection.anchorNode!.textContent);
+            assertEquals(endContent, selection.focusNode!.textContent);
+            assertEquals(expectedAnchorOffset, selection.anchorOffset);
+            assertEquals(expectedFocusOffset, selection.focusOffset);
+          });
+
+      test(
+          'selects correct text in two sequential nodes with end context ' +
+              'subset of start node',
+          () => {
+            const expectedAnchorOffset = 10;
+            const expectedFocusOffset = 3;
+            const startId = 100;
+            const endId = 101;
+            selectNodesInMainPanel(
+                startId, expectedAnchorOffset, endId, expectedFocusOffset);
+            const prefix = 'Most fathers make a living. ';
+            const startContent = 'Keepin books or pushing broom. ';
+            const endContent = 'But mom and dad made homemade dough.';
+            contentBrowserProxy.prefixText = prefix;
+            contentBrowserProxy.textContentMap =
+                {[startId]: startContent, [endId]: endContent};
+            const p = document.createElement('p');
+            p.appendChild(document.createTextNode(prefix));
+            p.appendChild(document.createTextNode(startContent));
+            p.appendChild(document.createTextNode(endContent));
+            document.body.appendChild(p);
+
+            selectionController.updateSelection(selection, document.body);
+
+            assertEquals(startContent, selection.anchorNode!.textContent);
+            assertEquals(endContent, selection.focusNode!.textContent);
+            assertEquals(expectedAnchorOffset, selection.anchorOffset);
+            assertEquals(expectedFocusOffset, selection.focusOffset);
+          });
+
+      test(
+          'selects correct text in two sequential nodes with end context ' +
+              'before start node',
+          () => {
+            const expectedAnchorOffset = 10;
+            const expectedFocusOffset = 3;
+            const startId = 100;
+            const endId = 101;
+            selectNodesInMainPanel(
+                startId, expectedAnchorOffset, endId, expectedFocusOffset);
+            const prefix1 = 'Right in our living room! ';
+            const prefix2 = 'But when the heat got too intense. ';
+            const startContent = 'They took it on the lam. ';
+            const endContent = 'My father left a note that said.';
+            contentBrowserProxy.prefixText = prefix1;
+            contentBrowserProxy.textContentMap =
+                {[startId]: startContent, [endId]: endContent};
+            const p = document.createElement('p');
+            p.appendChild(document.createTextNode(prefix1));
+            p.appendChild(document.createTextNode(prefix2));
+            p.appendChild(document.createTextNode(startContent));
+            p.appendChild(document.createTextNode(endContent));
+            document.body.appendChild(p);
+
+            selectionController.updateSelection(selection, document.body);
+
+            assertEquals(startContent, selection.anchorNode!.textContent);
+            assertEquals(endContent, selection.focusNode!.textContent);
+            assertEquals(expectedAnchorOffset, selection.anchorOffset);
+            assertEquals(expectedFocusOffset, selection.focusOffset);
+          });
+
+      test(
+          'selects correct text in two nodes with end context after start node',
+          () => {
+            const expectedAnchorOffset = 10;
+            const expectedFocusOffset = 3;
+            const startId = 100;
+            const endId = 101;
+            selectNodesInMainPanel(
+                startId, expectedAnchorOffset, endId, expectedFocusOffset);
+            const prefix1 = 'Be better than I am! ';
+            const prefix2 = 'Then Jerrys clan across the hall. ';
+            const startContent = 'Stepped in to save the day. ';
+            const endContent = 'They took me in and raised me right.';
+            contentBrowserProxy.prefixText = prefix1;
+            contentBrowserProxy.textContentMap =
+                {[startId]: startContent, [endId]: endContent};
+            const p = document.createElement('p');
+            p.appendChild(document.createTextNode(prefix1));
+            p.appendChild(document.createTextNode(startContent));
+            p.appendChild(document.createTextNode(prefix2));
+            p.appendChild(document.createTextNode(endContent));
+            document.body.appendChild(p);
+
+            selectionController.updateSelection(selection, document.body);
+
+            assertEquals(startContent, selection.anchorNode!.textContent);
+            assertEquals(endContent, selection.focusNode!.textContent);
+            assertEquals(expectedAnchorOffset, selection.anchorOffset);
+            assertEquals(expectedFocusOffset, selection.focusOffset);
+          });
+
+      test(
+          'selects correct text in two nodes with superset end context after' +
+              ' start node',
+          () => {
+            const expectedAnchorOffset = 10;
+            const expectedFocusOffset = 3;
+            const startId = 100;
+            const endId = 101;
+            selectNodesInMainPanel(
+                startId, expectedAnchorOffset, endId, expectedFocusOffset);
+            const prefix1 = 'And that is why I say ';
+            const startContent = 'That he\'s the needle, I\'m the thread';
+            const beforeEndContent = 'He\'s the butter, ';
+            const endContent = 'I\'m the bread. ';
+            contentBrowserProxy.prefixText = prefix1;
+            contentBrowserProxy.textContentMap =
+                {[startId]: startContent, [endId]: endContent};
+            const p = document.createElement('p');
+            p.appendChild(document.createTextNode(prefix1));
+            p.appendChild(document.createTextNode(startContent));
+            p.appendChild(document.createTextNode(beforeEndContent));
+            p.appendChild(document.createTextNode(endContent));
+            document.body.appendChild(p);
+
+            selectionController.updateSelection(selection, document.body);
+
+            assertEquals(startContent, selection.anchorNode!.textContent);
+            assertEquals(endContent, selection.focusNode!.textContent);
+            assertEquals(expectedAnchorOffset, selection.anchorOffset);
+            assertEquals(expectedFocusOffset, selection.focusOffset);
+          });
+    });
+
+    test('does nothing when ids are unknown', () => {
+      selectNodesInMainPanel(0, 2, 0, 10);
+      selectionController.updateSelection(selection, document.body);
+
+      assertFalse(!!selection.anchorNode);
+      assertFalse(!!selection.focusNode);
+    });
+
+    test('does nothing when selection is invalid', () => {
+      selectNodesInMainPanel(100, 2, 101, 10);
+      contentBrowserProxy.hasValidSelectionVal = false;
+      selectionController.updateSelection(selection, document.body);
+
+      assertFalse(!!selection.anchorNode);
+      assertFalse(!!selection.focusNode);
+    });
+
+    test('selects nodes directly if they are text nodes', () => {
+      const expectedAnchorOffset = 2;
+      const expectedFocusOffset = 10;
+      const node = getNodeAt(0);
+      nodeStore.setDomNode(node.node, node.id);
+
+      selectNodesInMainPanel(
+          node.id, expectedAnchorOffset, node.id, expectedFocusOffset);
+      selectionController.updateSelection(selection, document.body);
+
+      assertEquals(node.node, selection.anchorNode);
+      assertEquals(node.node, selection.focusNode);
+      assertEquals(expectedAnchorOffset, selection.anchorOffset);
+      assertEquals(expectedFocusOffset, selection.focusOffset);
+    });
+
+    test('does nothing when node is undefined', () => {
+      const node = getNodeAt(1);
+
+      selectNodesInMainPanel(node.id, 2, node.id, 10);
+      selectionController.updateSelection(selection, document.body);
+
+      assertFalse(!!selection.anchorNode);
+      assertFalse(!!selection.focusNode);
+    });
+
+    test('selection of first child via parent', () => {
+      const expectedAnchorOffset = 2;
+      const expectedFocusOffset = 7;
+      const node = getNodeAt(0);
+
+      selectNodesInMainPanel(
+          parentId, expectedAnchorOffset, parentId, expectedFocusOffset);
+      selectionController.updateSelection(selection, document.body);
+
+      assertEquals(node.text, selection.anchorNode?.textContent);
+      assertEquals(node.text, selection.focusNode?.textContent);
+      assertEquals(expectedAnchorOffset, selection.anchorOffset);
+      assertEquals(expectedFocusOffset, selection.focusOffset);
+    });
+
+    test('selection of first and second child via parent', () => {
+      const node1 = getNodeAt(0);
+      const node2 = getNodeAt(1);
+      const relativeAnchorOffset = 1;
+      const relativeFocusOffset = 7;
+      const selectedFocusOffset = node1.text.length + relativeFocusOffset;
+
+      // The main panel selection is relative to the paragraph.
+      selectNodesInMainPanel(
+          parentId, relativeAnchorOffset, parentId, selectedFocusOffset);
+      selectionController.updateSelection(selection, document.body);
+
+      assertEquals(node1.text, selection.anchorNode?.textContent);
+      assertEquals(node2.text, selection.focusNode?.textContent);
+      // The RM selection is relative to the node.
+      assertEquals(relativeAnchorOffset, selection.anchorOffset);
+      assertEquals(relativeFocusOffset, selection.focusOffset);
+    });
+
+    test('selection of second child via parent', () => {
+      const node1 = getNodeAt(0);
+      const node2 = getNodeAt(1);
+      const relativeAnchorOffset = 1;
+      const selectedAnchorOffset = node1.text.length + relativeAnchorOffset;
+      const relativeFocusOffset = 7;
+      const selectedFocusOffset = node1.text.length + relativeFocusOffset;
+
+      // The main panel selection is relative to the paragraph.
+      selectNodesInMainPanel(
+          parentId, selectedAnchorOffset, parentId, selectedFocusOffset);
+      selectionController.updateSelection(selection, document.body);
+
+      assertEquals(node2.text, selection.anchorNode?.textContent);
+      assertEquals(node2.text, selection.focusNode?.textContent);
+      // The RM selection is relative to the node.
+      assertEquals(relativeAnchorOffset, selection.anchorOffset);
+      assertEquals(relativeFocusOffset, selection.focusOffset);
+    });
+
+    test('selection of second and third child via parent', () => {
+      const node1 = getNodeAt(0);
+      const node2 = getNodeAt(1);
+      const node3 = getNodeAt(2);
+      const relativeAnchorOffset = 1;
+      const selectedAnchorOffset = node1.text.length + relativeAnchorOffset;
+      const relativeFocusOffset = 7;
+      const selectedFocusOffset =
+          node1.text.length + node2.text.length + relativeFocusOffset;
+
+      // The main panel selection is relative to the paragraph.
+      selectNodesInMainPanel(
+          parentId, selectedAnchorOffset, parentId, selectedFocusOffset);
+      selectionController.updateSelection(selection, document.body);
+
+      assertEquals(node2.text, selection.anchorNode?.textContent);
+      assertEquals(node3.text, selection.focusNode?.textContent);
+      // The RM selection is relative to the node.
+      assertEquals(relativeAnchorOffset, selection.anchorOffset);
+      assertEquals(relativeFocusOffset, selection.focusOffset);
+    });
+
+    test('selection of first child via parent and second child itself', () => {
+      const node1 = getNodeAt(0);
+      const node2 = getNodeAt(1);
+      nodeStore.setDomNode(node2.node, node2.id);
+      const relativeAnchorOffset = 1;
+      const relativeFocusOffset = 7;
+
+      selectNodesInMainPanel(
+          parentId, relativeAnchorOffset, node2.id, relativeFocusOffset);
+      selectionController.updateSelection(selection, document.body);
+
+      assertEquals(node1.text, selection.anchorNode?.textContent);
+      assertEquals(node2.text, selection.focusNode?.textContent);
+      assertEquals(relativeAnchorOffset, selection.anchorOffset);
+      assertEquals(relativeFocusOffset, selection.focusOffset);
+    });
+
+    test('selection of first child itself and second child via parent', () => {
+      const node1 = getNodeAt(0);
+      const node2 = getNodeAt(1);
+      nodeStore.setDomNode(node1.node, node1.id);
+      const relativeAnchorOffset = 1;
+      const relativeFocusOffset = 7;
+      const selectedFocusOffset = node1.text.length + relativeFocusOffset;
+
+      selectNodesInMainPanel(
+          node1.id, relativeAnchorOffset, parentId, selectedFocusOffset);
+      selectionController.updateSelection(selection, document.body);
+
+      assertEquals(node1.text, selection.anchorNode?.textContent);
+      assertEquals(node2.text, selection.focusNode?.textContent);
+      assertEquals(relativeAnchorOffset, selection.anchorOffset);
+      assertEquals(relativeFocusOffset, selection.focusOffset);
+    });
+
+    test('selection of second child via parent and third child itself', () => {
+      const node1 = getNodeAt(0);
+      const node2 = getNodeAt(1);
+      const node3 = getNodeAt(2);
+      nodeStore.setDomNode(node3.node, node3.id);
+      const relativeAnchorOffset = 1;
+      const selectedAnchorOffset = node1.text.length + relativeAnchorOffset;
+      const relativeFocusOffset = 7;
+
+      selectNodesInMainPanel(
+          parentId, selectedAnchorOffset, node3.id, relativeFocusOffset);
+      selectionController.updateSelection(selection, document.body);
+
+      assertEquals(node2.text, selection.anchorNode?.textContent);
+      assertEquals(node3.text, selection.focusNode?.textContent);
+      assertEquals(relativeAnchorOffset, selection.anchorOffset);
+      assertEquals(relativeFocusOffset, selection.focusOffset);
+    });
+
+    test('selection of second child itself and third child via parent', () => {
+      const node1 = getNodeAt(0);
+      const node2 = getNodeAt(1);
+      const node3 = getNodeAt(2);
+      nodeStore.setDomNode(node2.node, node2.id);
+      const relativeAnchorOffset = 1;
+      const relativeFocusOffset = 7;
+      const selectedFocusOffset =
+          node1.text.length + node2.text.length + relativeFocusOffset;
+
+      selectNodesInMainPanel(
+          node2.id, relativeAnchorOffset, parentId, selectedFocusOffset);
+      selectionController.updateSelection(selection, document.body);
+
+      assertEquals(node2.text, selection.anchorNode?.textContent);
+      assertEquals(node3.text, selection.focusNode?.textContent);
+      assertEquals(relativeAnchorOffset, selection.anchorOffset);
+      assertEquals(relativeFocusOffset, selection.focusOffset);
+    });
+
+    test('selects correct text when side panel node has axNodeOffset', () => {
+      const axNodeOffset = 17;
+      const node = getNodeAt(1);
+      nodeStore.setDomNode(node.node, node.id);
+      nodeStore.setAxNodeOffset(node.node, axNodeOffset);
+
+      // Main panel selection starts at index 17
+      const mainAnchorOffset = 17;
+      const mainFocusOffset = 21;
+      selectNodesInMainPanel(
+          node.id, mainAnchorOffset, node.id, mainFocusOffset);
+
+      selectionController.updateSelection(selection, document.body);
+
+      assertEquals(node.node, selection.anchorNode);
+      assertEquals(0, selection.anchorOffset);  // 17 - 17
+      assertEquals(4, selection.focusOffset);   // 21 - 17
+    });
+
+    test('ignores selection that starts before axNodeOffset', () => {
+      const axNodeOffset = 17;
+      const node = getNodeAt(1);
+      nodeStore.setDomNode(node.node, node.id);
+      nodeStore.setAxNodeOffset(node.node, axNodeOffset);
+
+      // User selects text in the main panel with an offset that occurs before
+      // the portion of the rendered text node starting offset.
+      const mainAnchorOffset = 0;
+      const mainFocusOffset = 9;
+      selectNodesInMainPanel(
+          node.id, mainAnchorOffset, node.id, mainFocusOffset);
+
+      selectionController.updateSelection(selection, document.body);
+
+      assertFalse(!!selection.anchorNode);
+    });
+
+    test('ignores selection that starts after axNodeOffset range', () => {
+      const axNodeOffset = 17;
+      const node = getNodeAt(1);
+      nodeStore.setDomNode(node.node, node.id);
+      nodeStore.setAxNodeOffset(node.node, axNodeOffset);
+
+      // User selects text in the main panel with an offset that occurs after
+      // the portion of the rendered text node in the side panel.
+      const mainAnchorOffset = axNodeOffset + node.text.length + 1;
+      const mainFocusOffset = mainAnchorOffset + 5;
+      selectNodesInMainPanel(
+          node.id, mainAnchorOffset, node.id, mainFocusOffset);
+
+      selectionController.updateSelection(selection, document.body);
+
+      assertFalse(!!selection.anchorNode);
+    });
+  });
+});

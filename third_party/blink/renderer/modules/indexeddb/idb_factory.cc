@@ -1,0 +1,653 @@
+/*
+ * Copyright (C) 2010 Google Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1.  Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ * 2.  Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ * 3.  Neither the name of Apple Computer, Inc. ("Apple") nor the names of
+ *     its contributors may be used to endorse or promote products derived
+ *     from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY APPLE AND ITS CONTRIBUTORS "AS IS" AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL APPLE OR ITS CONTRIBUTORS BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include "third_party/blink/renderer/modules/indexeddb/idb_factory.h"
+
+#include <limits>
+#include <memory>
+#include <utility>
+
+#include "base/task/bind_post_task.h"
+#include "mojo/public/cpp/bindings/pending_associated_receiver.h"
+#include "mojo/public/cpp/bindings/pending_associated_remote.h"
+#include "mojo/public/cpp/bindings/self_owned_associated_receiver.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/mojom/indexeddb/indexeddb.mojom-blink.h"
+#include "third_party/blink/public/platform/platform.h"
+#include "third_party/blink/public/platform/task_type.h"
+#include "third_party/blink/public/platform/web_content_settings_client.h"
+#include "third_party/blink/public/platform/web_security_origin.h"
+#include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_throw_dom_exception.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_binding_for_modules.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_idb_database_info.h"
+#include "third_party/blink/renderer/core/dom/dom_exception.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/probe/async_task_context.h"
+#include "third_party/blink/renderer/core/probe/core_probes.h"
+#include "third_party/blink/renderer/core/workers/worker_global_scope.h"
+#include "third_party/blink/renderer/modules/indexed_db_names.h"
+#include "third_party/blink/renderer/modules/indexeddb/idb_database.h"
+#include "third_party/blink/renderer/modules/indexeddb/idb_factory_client.h"
+#include "third_party/blink/renderer/modules/indexeddb/idb_key.h"
+#include "third_party/blink/renderer/modules/indexeddb/shared_idb_database_connection.h"
+#include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/heap/persistent.h"
+#include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
+#include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
+#include "third_party/blink/renderer/platform/weborigin/security_origin.h"
+#include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
+#include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
+
+namespace blink {
+
+static const char kPermissionDeniedErrorMessage[] =
+    "The user denied permission to access the database.";
+
+IDBFactory::IDBFactory(ExecutionContext* context)
+    : ExecutionContextLifecycleObserver(context), remote_(context) {}
+IDBFactory::~IDBFactory() = default;
+
+static bool IsContextValid(ExecutionContext* context) {
+  if (!context || context->IsContextDestroyed()) {
+    return false;
+  }
+  if (auto* window = DynamicTo<LocalDOMWindow>(context)) {
+    return window->GetFrame();
+  }
+  DCHECK(context->IsWorkerGlobalScope());
+  return true;
+}
+
+void IDBFactory::Trace(Visitor* visitor) const {
+  ScriptWrappable::Trace(visitor);
+  ExecutionContextLifecycleObserver::Trace(visitor);
+  visitor->Trace(shared_connections_);
+  visitor->Trace(primary_pending_requests_);
+  visitor->Trace(remote_);
+  visitor->Trace(weak_factory_);
+}
+
+void IDBFactory::SetRemoteConnector(
+    base::RepeatingCallback<
+        void(mojo::PendingReceiver<mojom::blink::IDBFactory>)> callback) {
+  CHECK(!remote_connector_);
+  remote_connector_ = std::move(callback);
+  GetRemote();
+}
+
+ExecutionContext* IDBFactory::GetValidContext(ScriptState* script_state) {
+  ExecutionContext* context = GetExecutionContext();
+  ExecutionContext* script_context = ExecutionContext::From(script_state);
+  CHECK(script_context);
+  if (context) {
+    CHECK_EQ(context, script_context);
+  } else if (!context) {
+    CHECK(script_context->IsContextDestroyed());
+  }
+  if (IsContextValid(context)) {
+    return context;
+  }
+  return nullptr;
+}
+
+HeapMojoRemote<mojom::blink::IDBFactory>& IDBFactory::GetRemote() {
+  // The remote will get disconnected when the associated bucket is deleted. In
+  // this case we need to re-bind.
+  if (remote_ && !remote_.is_connected()) {
+    remote_.reset();
+  }
+
+  if (!remote_) {
+    auto pending_receiver = remote_.BindNewPipeAndPassReceiver(GetTaskRunner());
+    if (remote_connector_) {
+      remote_connector_.Run(std::move(pending_receiver));
+    } else {
+      GetExecutionContext()->GetBrowserInterfaceBroker().GetInterface(
+          std::move(pending_receiver));
+    }
+  }
+  return remote_;
+}
+
+scoped_refptr<base::SingleThreadTaskRunner> IDBFactory::GetTaskRunner() {
+  CHECK(GetExecutionContext() && !GetExecutionContext()->IsContextDestroyed());
+  return GetExecutionContext()->GetTaskRunner(TaskType::kDatabaseAccess);
+}
+
+ScriptPromise<IDLSequence<IDBDatabaseInfo>> IDBFactory::GetDatabaseInfo(
+    ScriptState* script_state,
+    ExceptionState& exception_state) {
+  ExecutionContext* context = GetValidContext(script_state);
+  auto* resolver =
+      MakeGarbageCollected<ScriptPromiseResolver<IDLSequence<IDBDatabaseInfo>>>(
+          script_state, exception_state.GetContext());
+  if (!context) {
+    resolver->Reject();
+    return resolver->Promise();
+  }
+
+  // The BlinkIDL definition for GetDatabaseInfo() already has a [Measure]
+  // attribute, so the kIndexedDBRead use counter must be explicitly updated.
+  UseCounter::Count(context, WebFeature::kIndexedDBRead);
+  CHECK(context->IsContextThread());
+
+  if (!context->GetSecurityOrigin()->CanAccessDatabase()) {
+    exception_state.ThrowSecurityError(
+        "Access to the IndexedDB API is denied in this context.");
+    resolver->Reject();
+    return resolver->Promise();
+  }
+
+  AllowIndexedDB(BindOnce(&IDBFactory::GetDatabaseInfoImpl,
+                          WrapPersistent(weak_factory_.GetWeakCell()),
+                          WrapPersistent(resolver)));
+  return resolver->Promise();
+}
+
+void IDBFactory::GetDatabaseInfoImpl(
+    ScriptPromiseResolver<IDLSequence<IDBDatabaseInfo>>* resolver) {
+  if (!allowed_.value()) {
+    ScriptState* script_state = resolver->GetScriptState();
+    ScriptState::Scope scope(script_state);
+    resolver->Reject(V8ThrowDOMException::CreateOrDie(
+        script_state->GetIsolate(), DOMExceptionCode::kUnknownError,
+        kPermissionDeniedErrorMessage));
+    return;
+  }
+
+  GetRemote()->GetDatabaseInfo(BindOnce(
+      &IDBFactory::DidGetDatabaseInfo,
+      WrapPersistent(weak_factory_.GetWeakCell()), WrapPersistent(resolver)));
+}
+
+void IDBFactory::DidGetDatabaseInfo(
+    ScriptPromiseResolver<IDLSequence<IDBDatabaseInfo>>* resolver,
+    Vector<mojom::blink::IDBNameAndVersionPtr> names_and_versions,
+    mojom::blink::IDBErrorPtr error) {
+  ScriptState* script_state = resolver->GetScriptState();
+  if (!script_state->ContextIsValid()) {
+    return;
+  }
+
+  if (error->error_code != mojom::blink::IDBException::kNoError) {
+    resolver->Reject(MakeGarbageCollected<DOMException>(
+        static_cast<DOMExceptionCode>(error->error_code),
+        error->error_message));
+    return;
+  }
+
+  HeapVector<Member<IDBDatabaseInfo>> name_and_version_list;
+  name_and_version_list.ReserveInitialCapacity(name_and_version_list.size());
+  for (const mojom::blink::IDBNameAndVersionPtr& name_version :
+       names_and_versions) {
+    IDBDatabaseInfo* idb_info = IDBDatabaseInfo::Create();
+    idb_info->setName(name_version->name);
+    idb_info->setVersion(name_version->version);
+    name_and_version_list.push_back(idb_info);
+  }
+
+  resolver->Resolve(name_and_version_list);
+}
+
+void IDBFactory::GetDatabaseInfoForDevTools(
+    mojom::blink::IDBFactory::GetDatabaseInfoCallback callback) {
+  ExecutionContext* context = GetExecutionContext();
+
+  // TODO(jsbell): Used only by inspector; remove unneeded checks/exceptions?
+  if (!IsContextValid(context) ||
+      !context->GetSecurityOrigin()->CanAccessDatabase()) {
+    std::move(callback).Run(
+        {}, mojom::blink::IDBError::New(
+                mojom::blink::IDBException::kAbortError,
+                "Access to the IndexedDB API is denied in this context."));
+    return;
+  }
+
+  DCHECK(context->IsContextThread());
+
+  AllowIndexedDB(blink::BindOnce(&IDBFactory::GetDatabaseInfoForDevToolsHelper,
+                                 WrapPersistent(weak_factory_.GetWeakCell()),
+                                 std::move(callback)));
+}
+
+void IDBFactory::ContextDestroyed() {
+  weak_factory_.Invalidate();
+}
+
+void IDBFactory::GetDatabaseInfoForDevToolsHelper(
+    mojom::blink::IDBFactory::GetDatabaseInfoCallback callback) {
+  if (!allowed_.value()) {
+    std::move(callback).Run({}, mojom::blink::IDBError::New(
+                                    mojom::blink::IDBException::kUnknownError,
+                                    kPermissionDeniedErrorMessage));
+    return;
+  }
+
+  GetRemote()->GetDatabaseInfo(std::move(callback));
+}
+
+IDBOpenDBRequest* IDBFactory::open(ScriptState* script_state,
+                                   const String& name,
+                                   uint64_t version,
+                                   ExceptionState& exception_state) {
+  if (!version) {
+    exception_state.ThrowTypeError("The version provided must not be 0.");
+    return nullptr;
+  }
+  return OpenInternal(script_state, name, version, exception_state);
+}
+
+IDBOpenDBRequest* IDBFactory::OpenInternal(ScriptState* script_state,
+                                           const String& name,
+                                           int64_t version,
+                                           ExceptionState& exception_state) {
+  TRACE_EVENT1("IndexedDB", "IDBFactory::openRequestSetup", "name",
+               name.Utf8());
+  IDBRequest::AsyncTraceState metrics(IDBRequest::TypeForMetrics::kFactoryOpen);
+  DCHECK(version >= 1 || version == IDBDatabaseMetadata::kNoVersion);
+
+  ExecutionContext* context = GetValidContext(script_state);
+  if (!context) {
+    // TODO(crbug.com/1473972): throw exception?
+    return nullptr;
+  }
+  DCHECK(context->IsContextThread());
+  if (!context->GetSecurityOrigin()->CanAccessDatabase()) {
+    exception_state.ThrowSecurityError(
+        "access to the Indexed Database API is denied in this context.");
+    return nullptr;
+  }
+
+  if (context->GetSecurityOrigin()->IsLocal()) {
+    UseCounter::Count(context, WebFeature::kFileAccessedDatabase);
+  }
+
+  int64_t transaction_id = IDBDatabase::NextTransactionId();
+
+  IDBTransaction::TransactionMojoRemote transaction_remote(context);
+  mojo::PendingAssociatedReceiver<mojom::blink::IDBTransaction>
+      transaction_receiver =
+          transaction_remote.BindNewEndpointAndPassReceiver(GetTaskRunner());
+
+  mojo::PendingAssociatedRemote<mojom::blink::IDBDatabaseCallbacks>
+      callbacks_remote;
+
+  auto* request = MakeGarbageCollected<IDBOpenDBRequest>(
+      script_state, this, name,
+      callbacks_remote.InitWithNewEndpointAndPassReceiver(),
+      std::move(transaction_remote), transaction_id, version,
+      std::move(metrics));
+
+  auto do_open =
+      BindOnce(&IDBFactory::OpenInternalImpl,
+               WrapPersistent(weak_factory_.GetWeakCell()),
+               WrapPersistent(request), std::move(callbacks_remote),
+               std::move(transaction_receiver), name, version, transaction_id);
+  if (allowed_.has_value() && !*allowed_) {
+    // When the permission state is cached, `AllowIndexedDB` will invoke its
+    // callback synchronously, and thus we'd dispatch the error event
+    // synchronously. As per IDB spec, firing the event at the request has to be
+    // asynchronous.
+    do_open = base::BindPostTask(GetTaskRunner(), std::move(do_open));
+  }
+  AllowIndexedDB(std::move(do_open));
+  return request;
+}
+
+void IDBFactory::OpenInternalImpl(
+    IDBOpenDBRequest* request,
+    mojo::PendingAssociatedRemote<mojom::blink::IDBDatabaseCallbacks>
+        callbacks_remote,
+    mojo::PendingAssociatedReceiver<mojom::blink::IDBTransaction>
+        transaction_receiver,
+    const String& name,
+    int64_t version,
+    int64_t transaction_id) {
+  DCHECK(IsContextValid(GetExecutionContext()));
+
+  if (!allowed_.value()) {
+    request->OnDBFactoryError(MakeGarbageCollected<DOMException>(
+        DOMExceptionCode::kUnknownError, kPermissionDeniedErrorMessage));
+    return;
+  }
+
+  // Getting the scheduling priority as a one-off is somewhat awkward.
+  int scheduling_priority = -1;
+  std::unique_ptr<FrameOrWorkerScheduler::LifecycleObserverHandle> lifecycle =
+      GetExecutionContext()->GetScheduler()->AddLifecycleObserver(
+          FrameOrWorkerScheduler::ObserverType::kWorkerScheduler,
+          BindRepeating(
+              [](int* priority,
+                 scheduler::SchedulingLifecycleState lifecycle_state) {
+                *priority = IDBDatabase::GetSchedulingPriority(lifecycle_state);
+              },
+              Unretained(&scheduling_priority)));
+  DCHECK_GE(scheduling_priority, 0);
+  request->set_connection_priority(scheduling_priority);
+
+  if (base::FeatureList::IsEnabled(
+          features::kIndexedDBConnectionDeduplication)) {
+    SharedIDBDatabaseConnection* cached_connection =
+        GetSharedConnectionIfExists(name);
+    if (cached_connection && cached_connection->is_bound()) {
+      const IDBDatabaseMetadata& existing_metadata =
+          cached_connection->metadata();
+      // Sharing requires matching versions. A default open (kNoVersion)
+      // targets the existing version.
+      if (version == IDBDatabaseMetadata::kNoVersion ||
+          version == existing_metadata.version) {
+        // Bind the request to the cached connection to prevent it from closing
+        // while the request is in-flight.
+        request->BindToConnection(cached_connection);
+        GetRemote()->Open(CreatePendingRemote(request->CreateFactoryClient()),
+                          std::move(callbacks_remote), name, version,
+                          std::move(transaction_receiver), transaction_id,
+                          scheduling_priority,
+                          /*request_shared_connection=*/true);
+        return;
+      }
+      // Upgrade requests invalidate the current connection. We must remove it
+      // from the cache to prevent future requests from sharing the outdated
+      // connection. Connections created by older pending requests will safely
+      // resolve and subsequently receive the versionchange event due to Mojo
+      // ordering.
+      if (version > existing_metadata.version) {
+        RemoveSharedConnection(name);
+      }
+    }
+    // Piggyback on an in-flight primary request if one exists for the same
+    // version, avoiding a duplicate connection.
+    auto primary_it = primary_pending_requests_.find(name);
+    if (primary_it != primary_pending_requests_.end()) {
+      IDBOpenDBRequest* primary_request = primary_it->value;
+      if (version == IDBDatabaseMetadata::kNoVersion ||
+          primary_request->version() == version) {
+        // Register the shared request with the primary so the connection can be
+        // pushed to it when established.
+        primary_request->AddSharedRequest(request);
+
+        // Request connection sharing from the browser-side.
+        GetRemote()->Open(CreatePendingRemote(request->CreateFactoryClient()),
+                          std::move(callbacks_remote), name, version,
+                          std::move(transaction_receiver), transaction_id,
+                          scheduling_priority,
+                          /*request_shared_connection=*/true);
+        return;
+      }
+    }
+  }
+
+  primary_pending_requests_.Set(name, request);
+
+  // Fallback: request a new, non-shared connection from the browser.
+  GetRemote()->Open(CreatePendingRemote(request->CreateFactoryClient()),
+                    std::move(callbacks_remote), name, version,
+                    std::move(transaction_receiver), transaction_id,
+                    scheduling_priority,
+                    /*request_shared_connection=*/false);
+}
+
+IDBOpenDBRequest* IDBFactory::open(ScriptState* script_state,
+                                   const String& name,
+                                   ExceptionState& exception_state) {
+  return OpenInternal(script_state, name, IDBDatabaseMetadata::kNoVersion,
+                      exception_state);
+}
+
+IDBOpenDBRequest* IDBFactory::deleteDatabase(ScriptState* script_state,
+                                             const String& name,
+                                             ExceptionState& exception_state) {
+  return DeleteDatabaseInternal(script_state, name, exception_state,
+                                /*force_close=*/false);
+}
+
+IDBOpenDBRequest* IDBFactory::CloseConnectionsAndDeleteDatabase(
+    ScriptState* script_state,
+    const String& name,
+    ExceptionState& exception_state) {
+  // TODO(jsbell): Used only by inspector; remove unneeded checks/exceptions?
+  return DeleteDatabaseInternal(script_state, name, exception_state,
+                                /*force_close=*/true);
+}
+
+IDBOpenDBRequest* IDBFactory::DeleteDatabaseInternal(
+    ScriptState* script_state,
+    const String& name,
+    ExceptionState& exception_state,
+    bool force_close) {
+  TRACE_EVENT1("IndexedDB", "IDBFactory::deleteDatabaseRequestSetup", "name",
+               name.Utf8());
+  IDBRequest::AsyncTraceState metrics(
+      IDBRequest::TypeForMetrics::kFactoryDeleteDatabase);
+
+  ExecutionContext* context = GetValidContext(script_state);
+  if (!context) {
+    // TODO(crbug.com/1473972): throw exception?
+    return nullptr;
+  }
+  DCHECK(context->IsContextThread());
+  if (!context->GetSecurityOrigin()->CanAccessDatabase()) {
+    exception_state.ThrowSecurityError(
+        "access to the Indexed Database API is denied in this context.");
+    return nullptr;
+  }
+  if (context->GetSecurityOrigin()->IsLocal()) {
+    UseCounter::Count(context, WebFeature::kFileAccessedDatabase);
+  }
+
+  auto* request = MakeGarbageCollected<IDBOpenDBRequest>(
+      script_state, this, name,
+      /*callbacks_receiver=*/mojo::NullAssociatedReceiver(),
+      IDBTransaction::TransactionMojoRemote(context), 0,
+      IDBDatabaseMetadata::kDefaultVersion, std::move(metrics));
+
+  // Invalidate database cache.
+  RemoveSharedConnection(name);
+  primary_pending_requests_.erase(name);
+
+  auto do_delete = BindOnce(&IDBFactory::DeleteDatabaseInternalImpl,
+                            WrapPersistent(weak_factory_.GetWeakCell()),
+                            WrapPersistent(request), name, force_close);
+  if (allowed_.has_value() && !*allowed_) {
+    // When the permission state is cached, `AllowIndexedDB` will invoke its
+    // callback synchronously, and thus we'd dispatch the error event
+    // synchronously. As per IDB spec, firing the event at the request has to be
+    // asynchronous.
+    do_delete = base::BindPostTask(GetTaskRunner(), std::move(do_delete));
+  }
+  AllowIndexedDB(std::move(do_delete));
+  return request;
+}
+
+void IDBFactory::DeleteDatabaseInternalImpl(
+    IDBOpenDBRequest* request,
+    const String& name,
+    bool force_close) {
+  DCHECK(GetExecutionContext());
+
+  if (!allowed_.value()) {
+    request->OnDBFactoryError(MakeGarbageCollected<DOMException>(
+        DOMExceptionCode::kUnknownError, kPermissionDeniedErrorMessage));
+    return;
+  }
+
+  GetRemote()->DeleteDatabase(
+      CreatePendingRemote(request->CreateFactoryClient()), name, force_close);
+}
+
+int16_t IDBFactory::cmp(ScriptState* script_state,
+                        const ScriptValue& first_value,
+                        const ScriptValue& second_value,
+                        ExceptionState& exception_state) {
+  const std::unique_ptr<IDBKey> first = CreateIDBKeyFromValue(
+      script_state->GetIsolate(), first_value.V8Value(), exception_state);
+  if (exception_state.HadException())
+    return 0;
+  DCHECK(first);
+  if (!first->IsValid()) {
+    exception_state.ThrowDOMException(DOMExceptionCode::kDataError,
+                                      IDBDatabase::kNotValidKeyErrorMessage);
+    return 0;
+  }
+
+  const std::unique_ptr<IDBKey> second = CreateIDBKeyFromValue(
+      script_state->GetIsolate(), second_value.V8Value(), exception_state);
+  if (exception_state.HadException())
+    return 0;
+  DCHECK(second);
+  if (!second->IsValid()) {
+    exception_state.ThrowDOMException(DOMExceptionCode::kDataError,
+                                      IDBDatabase::kNotValidKeyErrorMessage);
+    return 0;
+  }
+
+  return static_cast<int16_t>(first->Compare(second.get()));
+}
+
+void IDBFactory::AllowIndexedDB(base::OnceCallback<void()> callback) {
+  ExecutionContext* context = GetExecutionContext();
+  DCHECK(context->IsContextThread());
+  SECURITY_DCHECK(context->IsWindow() || context->IsWorkerGlobalScope());
+
+  if (allowed_.has_value()) {
+    std::move(callback).Run();
+    return;
+  }
+  callbacks_waiting_on_permission_decision_.push_back(std::move(callback));
+  if (callbacks_waiting_on_permission_decision_.size() > 1) {
+    return;
+  }
+
+  if (auto* window = DynamicTo<LocalDOMWindow>(context)) {
+    LocalFrame* frame = window->GetFrame();
+    if (!frame) {
+      DidAllowIndexedDB(false);
+      return;
+    }
+    frame->AllowStorageAccessAndNotify(
+        WebContentSettingsClient::StorageType::kIndexedDB,
+        BindOnce(&IDBFactory::DidAllowIndexedDB,
+                 WrapPersistent(weak_factory_.GetWeakCell())));
+    return;
+  }
+
+  WebContentSettingsClient* settings_client =
+      To<WorkerGlobalScope>(context)->ContentSettingsClient();
+  if (!settings_client) {
+    DidAllowIndexedDB(true);
+    return;
+  }
+  settings_client->AllowStorageAccess(
+      WebContentSettingsClient::StorageType::kIndexedDB,
+      BindOnce(&IDBFactory::DidAllowIndexedDB,
+               WrapPersistent(weak_factory_.GetWeakCell())));
+}
+
+void IDBFactory::DidAllowIndexedDB(bool allow_access) {
+  DCHECK(!allowed_.has_value());
+  allowed_ = allow_access;
+
+  for (auto& callback : callbacks_waiting_on_permission_decision_) {
+    std::move(callback).Run();
+  }
+  callbacks_waiting_on_permission_decision_.clear();
+}
+
+mojo::PendingAssociatedRemote<mojom::blink::IDBFactoryClient>
+IDBFactory::CreatePendingRemote(
+    std::unique_ptr<IDBFactoryClient> factory_client) {
+  mojo::PendingAssociatedRemote<mojom::blink::IDBFactoryClient>
+      pending_factory_client;
+  mojo::MakeSelfOwnedAssociatedReceiver(
+      std::move(factory_client),
+      pending_factory_client.InitWithNewEndpointAndPassReceiver(),
+      GetTaskRunner());
+  return pending_factory_client;
+}
+
+SharedIDBDatabaseConnection* IDBFactory::GetSharedConnectionIfExists(
+    const String& name) {
+  auto it = shared_connections_.find(name);
+  if (it != shared_connections_.end()) {
+    return it->value;
+  }
+  return nullptr;
+}
+
+void IDBFactory::RegisterSharedConnection(
+    const String& name,
+    SharedIDBDatabaseConnection* connection) {
+  shared_connections_.Set(name, connection);
+  connection->SetDisconnectCallback(blink::BindOnce(
+      &IDBFactory::RemoveSharedConnection, WrapWeakPersistent(this), name));
+}
+
+void IDBFactory::RemoveSharedConnection(const String& name) {
+  shared_connections_.erase(name);
+}
+
+void IDBFactory::UnregisterPendingRequest(IDBOpenDBRequest* request) {
+  auto it = primary_pending_requests_.find(request->db_name());
+  if (it != primary_pending_requests_.end() && it->value == request) {
+    primary_pending_requests_.erase(it);
+  }
+}
+
+void IDBFactory::PromoteSharedRequest(
+    IDBOpenDBRequest* old_primary,
+    const HeapVector<Member<IDBOpenDBRequest>>& shared_requests) {
+  CHECK(old_primary);
+  CHECK(!shared_requests.empty());
+
+  IDBOpenDBRequest* new_primary = shared_requests[0];
+
+  // Transfer remaining requests to the new primary.
+  for (wtf_size_t i = 1; i < shared_requests.size(); ++i) {
+    new_primary->AddSharedRequest(shared_requests[i]);
+  }
+
+  const String& name = old_primary->db_name();
+
+  // Replace old_primary with new_primary in the pending map.
+  // Note: We always transfer the remaining requests above to ensure the ongoing
+  // Mojo flow remains correct (so that the promoted `new_primary` can still
+  // push the connection to its piggybacked requests when it succeeds). However,
+  // we only update the factory's pending map if `old_primary` was still the
+  // active primary. If it was already overwritten by a request with a different
+  // version, we must not overwrite it back.
+  auto it = primary_pending_requests_.find(name);
+  if (it != primary_pending_requests_.end() && it->value == old_primary) {
+    it->value = new_primary;
+  }
+}
+
+}  // namespace blink

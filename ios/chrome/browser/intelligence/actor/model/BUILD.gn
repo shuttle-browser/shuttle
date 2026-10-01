@@ -1,0 +1,127 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("model") {
+  sources = [
+    "actor_browser_agent.h",
+    "actor_browser_agent.mm",
+    "actor_engine.h",
+    "actor_engine.mm",
+    "actor_service.h",
+    "actor_service.mm",
+    "actor_service_factory.h",
+    "actor_service_factory.mm",
+    "actor_task.h",
+    "actor_task.mm",
+    "snackbar_actor_task_updates_observer.h",
+    "snackbar_actor_task_updates_observer.mm",
+  ]
+  public_deps = [ "//components/sessions:session_id" ]
+  deps = [
+    ":intervention_handler",
+    ":tab_helper",
+    "//base",
+    "//components/actor/core:journal",
+    "//components/keyed_service/core",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//ios/chrome/browser/intelligence/actor/public:actor_task_ui_protocols",
+    "//ios/chrome/browser/intelligence/actor/public:actor_types",
+    "//ios/chrome/browser/intelligence/actor/tools/model:actor_tool_factory",
+    "//ios/chrome/browser/intelligence/actor/tools/model:actor_tool_interface",
+    "//ios/chrome/browser/intelligence/actor/tools/model:tool_controller",
+    "//ios/chrome/browser/intelligence/actor/tools/public",
+    "//ios/chrome/browser/intelligence/actor/tools/utils:actor_browser_utils",
+    "//ios/chrome/browser/intelligence/actor/tools/utils:actor_tool_utils",
+    "//ios/chrome/browser/intelligence/actor/tools/utils:logging_util",
+    "//ios/chrome/browser/intelligence/features",
+    "//ios/chrome/browser/intelligence/proto_wrappers",
+    "//ios/chrome/browser/shared/model/browser",
+    "//ios/chrome/browser/shared/model/profile",
+    "//ios/chrome/browser/shared/model/profile:profile_keyed_service_factory",
+    "//ios/chrome/browser/shared/model/web_state_list",
+    "//ios/chrome/browser/shared/model/web_state_list:utils",
+    "//ios/chrome/browser/tab_insertion/model",
+    "//ios/web/public",
+
+    # TODO(crbug.com/512521102): Remove these deps once the snackbar prototype
+    # is removed.
+    "//ios/chrome/browser/intelligence/bwg/ui",
+    "//ios/chrome/browser/shared/model/browser:utils",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/shared/public/snackbar",
+  ]
+}
+
+source_set("tab_helper") {
+  sources = [
+    "actor_tab_helper.h",
+    "actor_tab_helper.mm",
+    "actor_tab_helper_observer.h",
+  ]
+  deps = [
+    "//base",
+    "//ios/web/public",
+  ]
+}
+
+source_set("intervention_handler") {
+  sources = [
+    "actor_task_intervention_handler.h",
+    "actor_task_intervention_handler.mm",
+  ]
+  deps = [
+    "//base",
+    "//ios/chrome/browser/intelligence/actor/public:actor_task_ui_protocols",
+    "//ios/chrome/browser/intelligence/actor/tools/model:actor_tool_interface",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "actor_browser_agent_unittest.mm",
+    "actor_engine_unittest.mm",
+    "actor_service_unittest.mm",
+    "actor_tab_helper_unittest.mm",
+    "actor_task_unittest.mm",
+    "snackbar_actor_task_updates_observer_unittest.mm",
+  ]
+  deps = [
+    ":model",
+    ":tab_helper",
+    "//base/test:test_support",
+    "//components/actor/core:journal",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//ios/chrome/browser/intelligence/actor/public:actor_task_ui_protocols",
+    "//ios/chrome/browser/intelligence/actor/public:actor_types",
+    "//ios/chrome/browser/intelligence/actor/tools/model:actor_tool_factory",
+    "//ios/chrome/browser/intelligence/actor/tools/model:actor_tool_interface",
+    "//ios/chrome/browser/intelligence/actor/tools/model:tool_controller",
+    "//ios/chrome/browser/intelligence/actor/tools/public",
+    "//ios/chrome/browser/intelligence/actor/util:test_support",
+    "//ios/chrome/browser/intelligence/features",
+    "//ios/chrome/browser/intelligence/proto_wrappers",
+    "//ios/chrome/browser/intelligence/proto_wrappers:page_context_extractor_feature",
+    "//ios/chrome/browser/shared/model/browser",
+    "//ios/chrome/browser/shared/model/browser/test:test_support",
+    "//ios/chrome/browser/shared/model/profile/test",
+    "//ios/chrome/browser/shared/model/web_state_list",
+    "//ios/chrome/browser/shared/model/web_state_list/test:test_support",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/shared/public/snackbar",
+    "//ios/chrome/browser/snapshots/model",
+    "//ios/chrome/browser/snapshots/model:snapshot_source",
+    "//ios/chrome/browser/snapshots/model:test_utils",
+    "//ios/chrome/browser/tab_insertion/model",
+    "//ios/chrome/test:test_support",
+    "//ios/web/find_in_page",
+    "//ios/web/public/test",
+    "//ios/web/public/test:util",
+    "//ios/web/public/test/fakes",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//third_party/ocmock",
+    "//url",
+  ]
+}

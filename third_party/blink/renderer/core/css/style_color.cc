@@ -1,0 +1,641 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/core/css/style_color.h"
+
+#include <memory>
+
+#include "third_party/blink/renderer/core/css/color_function.h"
+#include "third_party/blink/renderer/core/css/css_alpha_color_value.h"
+#include "third_party/blink/renderer/core/css/css_color.h"
+#include "third_party/blink/renderer/core/css/css_color_channel_keywords.h"
+#include "third_party/blink/renderer/core/css/css_color_mix_value.h"
+#include "third_party/blink/renderer/core/css/css_contrast_color_value.h"
+#include "third_party/blink/renderer/core/css/css_identifier_value.h"
+#include "third_party/blink/renderer/core/css/css_math_function_value.h"
+#include "third_party/blink/renderer/core/css/css_numeric_literal_value.h"
+#include "third_party/blink/renderer/core/css/css_relative_color_value.h"
+#include "third_party/blink/renderer/core/css/css_to_length_conversion_data.h"
+#include "third_party/blink/renderer/core/css/properties/css_color_function_parser.h"
+#include "third_party/blink/renderer/core/css_value_keywords.h"
+#include "third_party/blink/renderer/core/layout/layout_theme.h"
+#include "third_party/blink/renderer/platform/geometry/calculation_expression_node.h"
+#include "third_party/blink/renderer/platform/geometry/calculation_value.h"
+#include "ui/gfx/color_utils.h"
+
+namespace blink {
+
+namespace {
+
+using UnderlyingColorType = StyleColor::UnderlyingColorType;
+
+UnderlyingColorType ResolveColorOperandType(const StyleColor& c) {
+  if (c.IsUnresolvedColorFunction()) {
+    return UnderlyingColorType::kColorFunction;
+  }
+  if (c.IsCurrentColor()) {
+    return UnderlyingColorType::kCurrentColor;
+  }
+  return UnderlyingColorType::kColor;
+}
+
+Color ResolveColorOperand(
+    const StyleColor::ColorOrUnresolvedColorFunction& color,
+    UnderlyingColorType type,
+    const Color& current_color) {
+  switch (type) {
+    case UnderlyingColorType::kColorFunction:
+      return color.unresolved_color_function->Resolve(current_color);
+    case UnderlyingColorType::kCurrentColor:
+      return current_color;
+    case UnderlyingColorType::kColor:
+      return color.color;
+  }
+}
+
+const CalculationValue* ResolveColorChannel(
+    const CSSValue& value,
+    const CSSLengthResolver& length_resolver) {
+  if (const auto* numeric = DynamicTo<CSSNumericLiteralValue>(value)) {
+    PixelsAndPercent literal;
+    if (numeric->IsAngle()) {
+      literal = PixelsAndPercent(numeric->ComputeDegrees());
+    } else if (numeric->IsPercentage()) {
+      literal = PixelsAndPercent(0., numeric->DoubleValue(), false, true);
+    } else {
+      // It's not actually a "pixels" value, but treating it as one simplifies
+      // storage and resolution.
+      literal = PixelsAndPercent(numeric->DoubleValue());
+    }
+    return MakeGarbageCollected<CalculationValue>(literal,
+                                                  Length::ValueRange::kAll);
+  }
+  if (const auto* identifier = DynamicTo<CSSIdentifierValue>(value)) {
+    if (identifier->GetValueID() == CSSValueID::kNone) {
+      return nullptr;
+    }
+    const auto* expression =
+        MakeGarbageCollected<CalculationExpressionColorChannelKeywordNode>(
+            CSSValueIDToColorChannelKeyword(identifier->GetValueID()));
+    return CalculationValue::CreateSimplified(expression,
+                                              Length::ValueRange::kAll);
+  }
+  if (const auto* function = DynamicTo<CSSMathFunctionValue>(value)) {
+    // TODO(crbug.com/487357825): ToCalcValue() should know when to not
+    // apply zoom.
+    float saved_zoom = length_resolver.Zoom();
+    const_cast<CSSLengthResolver&>(length_resolver).SetZoom(1.0f);
+    auto* result = function->ToCalcValue(length_resolver);
+    const_cast<CSSLengthResolver&>(length_resolver).SetZoom(saved_zoom);
+    return result;
+  }
+  NOTREACHED();
+}
+
+CSSValue* ConvertColorOperandToCSSValue(
+    const StyleColor::ColorOrUnresolvedColorFunction& color_or_function,
+    UnderlyingColorType type) {
+  switch (type) {
+    case UnderlyingColorType::kColor:
+      return cssvalue::CSSColor::Create(color_or_function.color);
+    case UnderlyingColorType::kColorFunction:
+      CHECK(color_or_function.unresolved_color_function);
+      return color_or_function.unresolved_color_function->ToCSSValue();
+    case UnderlyingColorType::kCurrentColor:
+      return CSSIdentifierValue::Create(CSSValueID::kCurrentcolor);
+  }
+}
+
+const CSSValue* CalculationValueToCSSValue(
+    const Member<const CalculationValue>& channel) {
+  if (channel == nullptr) {
+    return CSSIdentifierValue::Create(CSSValueID::kNone);
+  }
+  if (!channel->IsExpression()) {
+    if (channel->HasExplicitPercent()) {
+      return CSSNumericLiteralValue::Create(
+          channel->Percent(), CSSPrimitiveValue::UnitType::kPercentage);
+    }
+    return CSSNumericLiteralValue::Create(channel->Pixels(),
+                                          CSSPrimitiveValue::UnitType::kNumber);
+  }
+  const CalculationExpressionNode* expression =
+      channel->GetOrCreateExpression();
+  if (expression->IsColorChannelKeyword()) {
+    return CSSIdentifierValue::Create(ColorChannelKeywordToCSSValueID(
+        To<CalculationExpressionColorChannelKeywordNode>(expression)->Value()));
+  }
+  return CSSMathFunctionValue::Create(CSSMathExpressionNode::Create(*channel));
+}
+
+}  // namespace
+
+CORE_EXPORT bool StyleColor::UnresolvedColorFunction::operator==(
+    const UnresolvedColorFunction& other) const {
+  if (type_ != other.GetType()) {
+    return false;
+  }
+
+  switch (type_) {
+    case StyleColor::UnresolvedColorFunction::Type::kColorMix:
+      return *To<UnresolvedColorMix>(this) == To<UnresolvedColorMix>(other);
+    case StyleColor::UnresolvedColorFunction::Type::kRelativeColor:
+      return *To<UnresolvedRelativeColor>(this) ==
+             To<UnresolvedRelativeColor>(other);
+    case StyleColor::UnresolvedColorFunction::Type::kContrastColor:
+      return *To<UnresolvedContrastColor>(this) ==
+             To<UnresolvedContrastColor>(other);
+    case StyleColor::UnresolvedColorFunction::Type::kAlphaColor:
+      return *To<UnresolvedAlphaColor>(this) == To<UnresolvedAlphaColor>(other);
+  }
+
+  NOTREACHED();
+}
+
+StyleColor::UnresolvedContrastColor::UnresolvedContrastColor(
+    const StyleColor& param_color)
+    : UnresolvedColorFunction(UnresolvedColorFunction::Type::kContrastColor),
+      param_color_(param_color.color_or_unresolved_color_function_),
+      param_color_type_(ResolveColorOperandType(param_color)) {}
+
+Color StyleColor::UnresolvedContrastColor::Resolve(
+    const Color& current_color) const {
+  const SkColor resolved_param =
+      ResolveColorOperand(param_color_, param_color_type_, current_color)
+          .toSkColor4f()
+          .toSkColor();
+  float white_contrast =
+      color_utils::GetContrastRatio(SK_ColorWHITE, resolved_param);
+  float black_contrast =
+      color_utils::GetContrastRatio(SK_ColorBLACK, resolved_param);
+  // https://www.w3.org/TR/css-color-5/#contrast-color :
+  //
+  // contrast-color() resolves to either white or black, whichever produces
+  // maximum color contrast for text when the input color is used as a solid
+  // background. If both white and black produce the same contrast, it resolves
+  // to white.
+  return black_contrast > white_contrast ? Color::kBlack : Color::kWhite;
+}
+
+CSSValue* StyleColor::UnresolvedContrastColor::ToCSSValue() const {
+  return MakeGarbageCollected<cssvalue::CSSContrastColorValue>(
+      ConvertColorOperandToCSSValue(param_color_, param_color_type_));
+}
+
+bool StyleColor::UnresolvedContrastColor::operator==(
+    const UnresolvedContrastColor& other) const {
+  return param_color_type_ == other.param_color_type_ &&
+         ColorOrUnresolvedColorFunction::Equals(
+             param_color_, other.param_color_, param_color_type_);
+}
+
+void StyleColor::UnresolvedContrastColor::Trace(Visitor* visitor) const {
+  UnresolvedColorFunction::Trace(visitor);
+  visitor->Trace(param_color_);
+}
+
+StyleColor::UnresolvedAlphaColor::UnresolvedAlphaColor(
+    const StyleColor& origin_color,
+    const CSSValue* alpha,
+    const CSSLengthResolver& length_resolver)
+    : UnresolvedColorFunction(UnresolvedColorFunction::Type::kAlphaColor),
+      origin_color_(origin_color.color_or_unresolved_color_function_),
+      origin_color_type_(ResolveColorOperandType(origin_color)) {
+  if (alpha != nullptr) {
+    alpha_was_specified_ = true;
+    alpha_ = ResolveColorChannel(*alpha, length_resolver);
+  } else {
+    // https://drafts.csswg.org/css-color-5/#relative-alpha
+    // If the alpha value is omitted, it defaults to that of the origin color.
+    alpha_was_specified_ = false;
+    const CalculationExpressionNode* expression =
+        MakeGarbageCollected<CalculationExpressionColorChannelKeywordNode>(
+            ColorChannelKeyword::kAlpha);
+    alpha_ = CalculationValue::CreateSimplified(std::move(expression),
+                                                Length::ValueRange::kAll);
+  }
+}
+
+Color StyleColor::UnresolvedAlphaColor::Resolve(
+    const Color& current_color) const {
+  Color resolved_origin =
+      ResolveColorOperand(origin_color_, origin_color_type_, current_color);
+
+  // The alpha() function preserves the origin color's color space.
+  // Set up evaluation context with the origin's alpha value.
+  std::vector<std::pair<ColorChannelKeyword, float>> keyword_values = {
+      {ColorChannelKeyword::kAlpha, resolved_origin.Alpha()}};
+
+  EvaluationInput evaluation_input;
+  evaluation_input.color_channel_keyword_values =
+      base::flat_map(std::move(keyword_values));
+
+  std::optional<double> new_alpha;
+  if (alpha_ != nullptr) {
+    new_alpha = alpha_->Evaluate(1.f, evaluation_input);
+    // Alpha is clamped to [0, 1].
+    new_alpha = ClampTo<double>(*new_alpha, 0.0, 1.0);
+  }
+  // else: new_alpha stays nullopt (none keyword)
+
+  Color result = Color::FromColorSpace(
+      resolved_origin.GetColorSpace(), resolved_origin.Param0(),
+      resolved_origin.Param1(), resolved_origin.Param2(), new_alpha);
+
+  // The alpha() function preserves the origin's color space, but a legacy color
+  // space (rgb()/hsl()/hwb()) cannot represent a missing ("none") alpha in its
+  // serialization (it would collapse to 0, e.g. "rgba(255, 0, 0, 0)"). When the
+  // resolved alpha is "none" and the origin is legacy, convert to the modern
+  // sRGB color space so the "none" survives serialization.
+  if (!new_alpha.has_value() &&
+      Color::IsLegacyColorSpace(result.GetColorSpace())) {
+    result.ConvertToColorSpace(Color::ColorSpace::kSRGB);
+  }
+  return result;
+}
+
+CSSValue* StyleColor::UnresolvedAlphaColor::ToCSSValue() const {
+  const CSSValue* alpha =
+      alpha_was_specified_ ? CalculationValueToCSSValue(alpha_) : nullptr;
+  return MakeGarbageCollected<cssvalue::CSSAlphaColorValue>(
+      ConvertColorOperandToCSSValue(origin_color_, origin_color_type_), alpha);
+}
+
+bool StyleColor::UnresolvedAlphaColor::operator==(
+    const UnresolvedAlphaColor& other) const {
+  return origin_color_type_ == other.origin_color_type_ &&
+         alpha_was_specified_ == other.alpha_was_specified_ &&
+         ColorOrUnresolvedColorFunction::Equals(
+             origin_color_, other.origin_color_, origin_color_type_) &&
+         base::ValuesEquivalent(alpha_, other.alpha_);
+}
+
+void StyleColor::UnresolvedAlphaColor::Trace(Visitor* visitor) const {
+  UnresolvedColorFunction::Trace(visitor);
+  visitor->Trace(origin_color_);
+  visitor->Trace(alpha_);
+}
+
+StyleColor::UnresolvedColorMix::UnresolvedColorMix(
+    Color::ColorSpace color_interpolation_space,
+    Color::HueInterpolationMethod hue_interpolation_method,
+    const StyleColor& c1,
+    const StyleColor& c2,
+    double percentage,
+    double alpha_multiplier)
+    : UnresolvedColorFunction(UnresolvedColorFunction::Type::kColorMix),
+      color_interpolation_space_(color_interpolation_space),
+      hue_interpolation_method_(hue_interpolation_method),
+      color1_(c1.color_or_unresolved_color_function_),
+      color2_(c2.color_or_unresolved_color_function_),
+      percentage_(percentage),
+      alpha_multiplier_(alpha_multiplier),
+      color1_type_(ResolveColorOperandType(c1)),
+      color2_type_(ResolveColorOperandType(c2)) {}
+
+Color StyleColor::UnresolvedColorMix::Resolve(
+    const Color& current_color) const {
+  const Color c1 = ResolveColorOperand(color1_, color1_type_, current_color);
+  const Color c2 = ResolveColorOperand(color2_, color2_type_, current_color);
+  return Color::FromColorMix(color_interpolation_space_,
+                             hue_interpolation_method_, c1, c2, percentage_,
+                             alpha_multiplier_);
+}
+
+CSSValue* StyleColor::UnresolvedColorMix::ToCSSValue() const {
+  const CSSPrimitiveValue* percent1 = CSSNumericLiteralValue::Create(
+      100 * (1.0 - percentage_) * alpha_multiplier_,
+      CSSPrimitiveValue::UnitType::kPercentage);
+  const CSSPrimitiveValue* percent2 =
+      CSSNumericLiteralValue::Create(100 * percentage_ * alpha_multiplier_,
+                                     CSSPrimitiveValue::UnitType::kPercentage);
+
+  return MakeGarbageCollected<cssvalue::CSSColorMixValue>(
+      ConvertColorOperandToCSSValue(color1_, color1_type_),
+      ConvertColorOperandToCSSValue(color2_, color2_type_), percent1, percent2,
+      color_interpolation_space_, hue_interpolation_method_);
+}
+
+StyleColor::UnresolvedRelativeColor::UnresolvedRelativeColor(
+    const StyleColor& origin_color,
+    Color::ColorSpace color_interpolation_space,
+    const CSSValue& channel0,
+    const CSSValue& channel1,
+    const CSSValue& channel2,
+    const CSSValue* alpha,
+    const CSSLengthResolver& length_resolver)
+    : UnresolvedColorFunction(UnresolvedColorFunction::Type::kRelativeColor),
+      origin_color_(origin_color.color_or_unresolved_color_function_),
+      origin_color_type_(ResolveColorOperandType(origin_color)),
+      color_interpolation_space_(color_interpolation_space) {
+  channel0_ = ResolveColorChannel(channel0, length_resolver);
+  channel1_ = ResolveColorChannel(channel1, length_resolver);
+  channel2_ = ResolveColorChannel(channel2, length_resolver);
+  if (alpha) {
+    alpha_was_specified_ = true;
+    alpha_ = ResolveColorChannel(*alpha, length_resolver);
+  } else {
+    // https://drafts.csswg.org/css-color-5/#rcs-intro
+    // If the alpha value of the relative color is omitted, it defaults to that
+    // of the origin color (rather than defaulting to 100%, as it does in the
+    // absolute syntax).
+    alpha_was_specified_ = false;
+    const CalculationExpressionNode* expression =
+        MakeGarbageCollected<CalculationExpressionColorChannelKeywordNode>(
+            ColorChannelKeyword::kAlpha);
+    alpha_ = CalculationValue::CreateSimplified(std::move(expression),
+                                                Length::ValueRange::kAll);
+  }
+}
+
+void StyleColor::UnresolvedRelativeColor::Trace(Visitor* visitor) const {
+  UnresolvedColorFunction::Trace(visitor);
+  visitor->Trace(origin_color_);
+  visitor->Trace(channel0_);
+  visitor->Trace(channel1_);
+  visitor->Trace(channel2_);
+  visitor->Trace(alpha_);
+}
+
+CSSValue* StyleColor::UnresolvedRelativeColor::ToCSSValue() const {
+  const CSSValue* channel0 = CalculationValueToCSSValue(channel0_);
+  const CSSValue* channel1 = CalculationValueToCSSValue(channel1_);
+  const CSSValue* channel2 = CalculationValueToCSSValue(channel2_);
+  const CSSValue* alpha =
+      alpha_was_specified_ ? CalculationValueToCSSValue(alpha_) : nullptr;
+
+  return MakeGarbageCollected<cssvalue::CSSRelativeColorValue>(
+      *ConvertColorOperandToCSSValue(origin_color_, origin_color_type_),
+      color_interpolation_space_, *channel0, *channel1, *channel2, alpha);
+}
+
+Color StyleColor::UnresolvedRelativeColor::Resolve(
+    const Color& current_color) const {
+  Color resolved_origin =
+      ResolveColorOperand(origin_color_, origin_color_type_, current_color);
+  resolved_origin.ConvertToColorSpace(color_interpolation_space_);
+
+  const ColorFunction::Metadata& function_metadata =
+      ColorFunction::MetadataForColorSpace(color_interpolation_space_);
+
+  std::vector<std::pair<ColorChannelKeyword, float>> keyword_values = {
+      {{CSSValueIDToColorChannelKeyword(function_metadata.channel_name[0]),
+        resolved_origin.Param0()},
+       {CSSValueIDToColorChannelKeyword(function_metadata.channel_name[1]),
+        resolved_origin.Param1()},
+       {CSSValueIDToColorChannelKeyword(function_metadata.channel_name[2]),
+        resolved_origin.Param2()},
+       {ColorChannelKeyword::kAlpha, resolved_origin.Alpha()}}};
+
+  // We need to make value adjustments for certain color spaces.
+  //
+  // https://www.w3.org/TR/css-color-4/#the-hsl-notation
+  // https://www.w3.org/TR/css-color-4/#the-hwb-notation
+  // hsl and hwb are specified with percent reference ranges of 0..100 in
+  // channels 1 and 2, but blink::Color represents these values over 0..1.
+  // We scale up the origin values so that they pass through computation
+  // correctly, then later
+  // (in ColorFunctionParser::MakePerColorSpaceAdjustments()), scale them down
+  // in the final result.
+  if (color_interpolation_space_ == Color::ColorSpace::kHSL ||
+      color_interpolation_space_ == Color::ColorSpace::kHWB) {
+    keyword_values[1].second *= 100.;
+    keyword_values[2].second *= 100.;
+  }
+
+  EvaluationInput evaluation_input;
+  evaluation_input.color_channel_keyword_values =
+      base::flat_map(std::move(keyword_values));
+
+  auto to_channel_value =
+      [&evaluation_input](const CalculationValue* calculation_value,
+                          double channel_percentage) -> std::optional<double> {
+    // The color function metadata table uses NaN to indicate that percentages
+    // are not applicable to a given channel. NaN is not suitable as a clamp
+    // limit for evaluating a CalculationValue, so translate it into float max.
+    const float max_value = (std::isnan(channel_percentage))
+                                ? std::numeric_limits<float>::max()
+                                : channel_percentage;
+    if (calculation_value != nullptr) {
+      return calculation_value->Evaluate(max_value, evaluation_input);
+    }
+    return std::nullopt;
+  };
+
+  std::array<std::optional<double>, 3> params = {
+      to_channel_value(channel0_.Get(),
+                       function_metadata.channel_percentage[0]),
+      to_channel_value(channel1_.Get(),
+                       function_metadata.channel_percentage[1]),
+      to_channel_value(channel2_.Get(),
+                       function_metadata.channel_percentage[2])};
+  std::optional<double> param_alpha = to_channel_value(alpha_.Get(), 1.f);
+  ColorFunctionParser::MakePerColorSpaceAdjustments(
+      /*is_relative_color=*/true,
+      /*is_legacy_syntax=*/false, color_interpolation_space_, params,
+      param_alpha);
+
+  return Color::FromColorSpace(color_interpolation_space_, params[0], params[1],
+                               params[2], param_alpha);
+}
+
+bool StyleColor::UnresolvedRelativeColor::operator==(
+    const UnresolvedRelativeColor& other) const {
+  if (origin_color_type_ != other.origin_color_type_ ||
+      color_interpolation_space_ != other.color_interpolation_space_ ||
+      alpha_was_specified_ != other.alpha_was_specified_ ||
+      !base::ValuesEquivalent(channel0_, other.channel0_) ||
+      !base::ValuesEquivalent(channel1_, other.channel1_) ||
+      !base::ValuesEquivalent(channel2_, other.channel2_) ||
+      !base::ValuesEquivalent(alpha_, other.alpha_)) {
+    return false;
+  }
+
+  return ColorOrUnresolvedColorFunction::Equals(
+      origin_color_, other.origin_color_, origin_color_type_);
+}
+
+void StyleColor::ColorOrUnresolvedColorFunction::Trace(Visitor* visitor) const {
+  visitor->Trace(unresolved_color_function);
+}
+
+Color StyleColor::Resolve(const Color& current_color,
+                          mojom::blink::ColorScheme color_scheme,
+                          bool* is_current_color) const {
+  if (is_current_color) {
+    *is_current_color = IsCurrentColor();
+  }
+
+  if (IsUnresolvedColorFunction()) {
+    Color result =
+        color_or_unresolved_color_function_.unresolved_color_function->Resolve(
+            current_color);
+    if (Color::IsLegacyColorSpace(result.GetColorSpace()) &&
+        color_or_unresolved_color_function_.unresolved_color_function
+                ->GetType() != UnresolvedColorFunction::Type::kContrastColor) {
+      result.ConvertToColorSpace(Color::ColorSpace::kSRGB);
+    }
+    return result;
+  }
+  if (IsCurrentColor()) {
+    return current_color;
+  }
+  if (EffectiveColorKeyword() != CSSValueID::kInvalid) {
+    // It is okay to pass nullptr for color_provider here because system colors
+    // are now resolved before used value time.
+    CHECK(!IsSystemColorIncludingDeprecated());
+    return ColorFromKeyword(color_keyword_, color_scheme,
+                            /*color_provider=*/nullptr,
+                            /*can_expose_accent_color=*/false);
+  }
+  return GetColor();
+}
+
+StyleColor StyleColor::ResolveSystemColor(
+    mojom::blink::ColorScheme color_scheme,
+    const ui::ColorProvider* color_provider,
+    bool can_expose_accent_color) const {
+  CHECK(IsSystemColor());
+  Color color = ColorFromKeyword(color_keyword_, color_scheme, color_provider,
+                                 can_expose_accent_color);
+  return StyleColor(color, color_keyword_);
+}
+
+const CSSValue* StyleColor::ToCSSValue() const {
+  if (IsUnresolvedColorFunction()) {
+    return GetUnresolvedColorFunction().ToCSSValue();
+  }
+  if (IsCurrentColor()) {
+    return CSSIdentifierValue::Create(CSSValueID::kCurrentcolor);
+  }
+  return cssvalue::CSSColor::Create(GetColor());
+}
+
+Color StyleColor::ColorFromKeyword(CSSValueID keyword,
+                                   mojom::blink::ColorScheme color_scheme,
+                                   const ui::ColorProvider* color_provider,
+                                   bool can_expose_accent_color) {
+  std::string_view value_name = GetCSSValueName(keyword);
+  if (const NamedColor* named_color = FindColor(value_name)) {
+    return Color::FromRGBA32(named_color->argb_value);
+  }
+
+  return LayoutTheme::GetTheme().SystemColor(
+      keyword, color_scheme, color_provider, can_expose_accent_color);
+}
+
+bool StyleColor::IsColorKeyword(CSSValueID id) {
+  // Named colors and color keywords:
+  //
+  // <named-color>
+  //   'aqua', 'black', 'blue', ..., 'yellow' (CSS3: "basic color keywords")
+  //   'aliceblue', ..., 'yellowgreen'        (CSS3: "extended color keywords")
+  //   'transparent'
+  //
+  // 'currentcolor'
+  //
+  // <deprecated-system-color>
+  //   'ActiveBorder', ..., 'WindowText'
+  //
+  // WebKit proprietary/internal:
+  //   '-webkit-link'
+  //   '-webkit-activelink'
+  //   '-internal-active-list-box-selection'
+  //   '-internal-active-list-box-selection-text'
+  //   '-internal-inactive-list-box-selection'
+  //   '-internal-inactive-list-box-selection-text'
+  //   '-webkit-focus-ring-color'
+  //   '-internal-quirk-inherit'
+  //
+  // css-text-decor
+  // <https://github.com/w3c/csswg-drafts/issues/7522>
+  //   '-internal-spelling-error-color'
+  //   '-internal-grammar-error-color'
+  //
+  // ::search-text
+  // <https://github.com/w3c/csswg-drafts/issues/10329>
+  //   ‘-internal-search-color’
+  //   ‘-internal-search-text-color’
+  //   ‘-internal-current-search-color’
+  //   ‘-internal-current-search-text-color’
+  //
+  return (id >= CSSValueID::kAqua &&
+          id <= CSSValueID::kInternalCurrentSearchTextColor) ||
+         (id >= CSSValueID::kAliceblue && id <= CSSValueID::kYellowgreen) ||
+         id == CSSValueID::kMenu;
+}
+
+Color StyleColor::GetColor() const {
+  // System colors will fail the IsNumeric check, as they store a keyword, but
+  // they also have a stored color that may need to be accessed directly. For
+  // example in FilterEffectBuilder::BuildFilterEffect for shadow colors.
+  // Unresolved color functions do not yet have a stored color.
+  DCHECK(!IsUnresolvedColorFunction());
+  DCHECK(IsNumeric() || IsSystemColorIncludingDeprecated());
+  return color_or_unresolved_color_function_.color;
+}
+
+bool StyleColor::IsSystemColorIncludingDeprecated(CSSValueID id) {
+  return (id >= CSSValueID::kActiveborder && id <= CSSValueID::kWindowtext) ||
+         id == CSSValueID::kMenu;
+}
+
+bool StyleColor::IsSystemColor(CSSValueID id) {
+  switch (id) {
+    case CSSValueID::kAccentcolor:
+    case CSSValueID::kAccentcolortext:
+    case CSSValueID::kActivetext:
+    case CSSValueID::kButtonborder:
+    case CSSValueID::kButtonface:
+    case CSSValueID::kButtontext:
+    case CSSValueID::kCanvas:
+    case CSSValueID::kCanvastext:
+    case CSSValueID::kField:
+    case CSSValueID::kFieldtext:
+    case CSSValueID::kGraytext:
+    case CSSValueID::kHighlight:
+    case CSSValueID::kHighlighttext:
+    case CSSValueID::kInternalGrammarErrorColor:
+    case CSSValueID::kInternalSpellingErrorColor:
+    case CSSValueID::kInternalSearchColor:
+    case CSSValueID::kInternalSearchTextColor:
+    case CSSValueID::kInternalCurrentSearchColor:
+    case CSSValueID::kInternalCurrentSearchTextColor:
+    case CSSValueID::kLinktext:
+    case CSSValueID::kMark:
+    case CSSValueID::kMarktext:
+    case CSSValueID::kSelecteditem:
+    case CSSValueID::kSelecteditemtext:
+    case CSSValueID::kVisitedtext:
+      return true;
+    default:
+      return false;
+  }
+}
+
+CSSValueID StyleColor::EffectiveColorKeyword() const {
+  return IsSystemColorIncludingDeprecated(color_keyword_) ? CSSValueID::kInvalid
+                                                          : color_keyword_;
+}
+
+CORE_EXPORT std::ostream& operator<<(std::ostream& stream,
+                                     const StyleColor& color) {
+  if (color.IsCurrentColor()) {
+    return stream << "currentcolor";
+  } else if (color.IsUnresolvedColorFunction()) {
+    return stream << color.GetUnresolvedColorFunction();
+  } else if (color.HasColorKeyword() && !color.IsNumeric()) {
+    return stream << GetCSSValueName(color.GetColorKeyword());
+  } else {
+    return stream << color.GetColor();
+  }
+}
+
+CORE_EXPORT std::ostream& operator<<(
+    std::ostream& stream,
+    const StyleColor::UnresolvedColorFunction& unresolved_color_function) {
+  return stream << unresolved_color_function.ToCSSValue()->CssText();
+}
+
+}  // namespace blink

@@ -1,0 +1,297 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/extensions/standard_management_policy_provider.h"
+
+#include <string>
+
+#include "base/logging.h"
+#include "base/strings/utf_string_conversions.h"
+#include "chrome/browser/extensions/extension_management.h"
+#include "chrome/grit/generated_resources.h"
+#include "extensions/browser/managed_installation_mode.h"
+#include "extensions/browser/manifest_v2_handler.h"
+#include "extensions/buildflags/buildflags.h"
+#include "extensions/common/constants.h"
+#include "extensions/common/extension.h"
+#include "extensions/common/manifest.h"
+#include "extensions/strings/grit/extensions_strings.h"
+#include "ui/base/l10n/l10n_util.h"
+
+static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
+
+namespace extensions {
+
+namespace {
+
+bool AdminPolicyIsModifiable(ExtensionManagement* settings,
+                             const Extension* source_extension,
+                             const Extension* extension,
+                             std::u16string* error) {
+  // Component and force installed extensions can enable/disable all other
+  // extensions including force installed ones (but component are off limits).
+  const bool component_or_force_installed =
+      source_extension &&
+      (Manifest::IsComponentLocation(source_extension->location()) ||
+       Manifest::IsPolicyLocation(source_extension->location()));
+
+  // We also specifically disallow the Webstore to modify force installed
+  // extensions even though it is a component extension, because it doesn't
+  // need this capability and it can open up interesting attacks if it's
+  // leveraged via bookmarklets or devtools.
+  // TODO(crbug.com/40239460): This protection should be expanded by also
+  // blocking bookmarklets on the Webstore Origin through checks on the Blink
+  // side.
+  const bool is_webstore_hosted_app =
+      source_extension && source_extension->id() == extensions::kWebStoreAppId;
+
+  bool is_modifiable = true;
+
+  // Component extensions are not modifiable.
+  if (Manifest::IsComponentLocation(extension->location()))
+    is_modifiable = false;
+
+  if (Manifest::IsPolicyLocation(extension->location())) {
+    // A policy-installed extension *generally* can't be modified.
+    is_modifiable = false;
+
+    // Exceptions:
+    // A policy-installed extension can be modified by other
+    // policy-installed or component extensions (other than the Webstore).
+    if (component_or_force_installed && !is_webstore_hosted_app) {
+      is_modifiable = true;
+    } else if (!source_extension &&
+               settings->IsGreylistedForceInstalledInLowTrustEnvironment(
+                   extension->id())) {
+      // A policy-installed extension that is greylisted in a low-trust
+      // environment is modifiable by the user.
+      is_modifiable = true;
+    }
+  }
+
+  if (is_modifiable) {
+    return true;
+  }
+
+  if (error) {
+    *error = l10n_util::GetStringFUTF16(
+        IDS_EXTENSION_CANT_MODIFY_POLICY_REQUIRED,
+        base::UTF8ToUTF16(extension->name()));
+  }
+
+  return false;
+}
+
+}  // namespace
+
+StandardManagementPolicyProvider::StandardManagementPolicyProvider(
+    ExtensionManagement* settings,
+    Profile* profile)
+    : profile_(profile), settings_(settings) {}
+
+StandardManagementPolicyProvider::~StandardManagementPolicyProvider() = default;
+
+std::string
+    StandardManagementPolicyProvider::GetDebugPolicyProviderName() const {
+#if DCHECK_IS_ON()
+  return "extension management policy controlled settings";
+#else
+  base::ImmediateCrash();
+#endif
+}
+
+bool StandardManagementPolicyProvider::UserMayLoad(
+    const Extension* extension,
+    std::u16string* error) const {
+  if (Manifest::IsComponentLocation(extension->location())) {
+    return true;
+  }
+
+  // Shared modules are always allowed too: they only contain resources that
+  // are used by other extensions. The extension that depends on the shared
+  // module may be filtered by policy.
+  if (extension->is_shared_module())
+    return true;
+
+  // Check whether the extension type is allowed.
+  //
+  // If you get a compile error here saying that the type you added is not
+  // handled by the switch statement below, please consider whether enterprise
+  // policy should be able to disallow extensions of the new type. If so, add
+  // a branch to the second block and add a line to the definition of
+  // kAllowedTypesMap in extension_management_constants.h.
+  switch (extension->GetType()) {
+    case Manifest::Type::kUnknown:
+      break;
+    case Manifest::Type::kExtension:
+    case Manifest::Type::kTheme:
+    case Manifest::Type::kUserScript:
+    case Manifest::Type::kHostedApp:
+    case Manifest::Type::kLegacyPackagedApp:
+    case Manifest::Type::kPlatformApp:
+    case Manifest::Type::kSharedModule:
+    case Manifest::Type::kLoginScreenExtension:
+    case Manifest::Type::kChromeOSSystemExtension: {
+      if (!settings_->IsAllowedManifestType(extension->GetType(),
+                                            extension->id())) {
+        if (error) {
+          *error = GetLoadErrorMessage(extension);
+        }
+        return false;
+      }
+      break;
+    }
+    case Manifest::Type::kNumLoadTypes:
+      NOTREACHED();
+  }
+
+  ManagedInstallationMode installation_mode =
+      settings_->GetInstallationMode(extension);
+  if (installation_mode == ManagedInstallationMode::kBlocked ||
+      installation_mode == ManagedInstallationMode::kRemoved) {
+    if (error) {
+      *error = GetLoadErrorMessage(extension);
+    }
+    return false;
+  }
+
+  return true;
+}
+
+void StandardManagementPolicyProvider::UserMayInstall(
+    scoped_refptr<const Extension> extension,
+    base::OnceCallback<void(ManagementPolicy::Decision)> callback) const {
+  std::u16string error;
+
+  ManagedInstallationMode installation_mode =
+      settings_->GetInstallationMode(extension.get());
+
+  // Force-installed extensions cannot be overwritten manually.
+  if (!Manifest::IsPolicyLocation(extension->location()) &&
+      installation_mode == ManagedInstallationMode::kForced) {
+    error = GetLoadErrorMessage(extension.get());
+    std::move(callback).Run({false, error});
+    return;
+  }
+
+  // Check if the extension would be force-disabled once it's installed. If it
+  // would, block the new installation.
+  auto* mv2_handler = ManifestV2Handler::Get(profile_);
+  if (mv2_handler && mv2_handler->ShouldBlockExtensionEnable(*extension)) {
+    error =
+        l10n_util::GetStringUTF16(IDS_EXTENSIONS_CANT_INSTALL_MV2_EXTENSION);
+    std::move(callback).Run({false, error});
+    return;
+  }
+
+  bool may_load = UserMayLoad(extension.get(), &error);
+  std::move(callback).Run({may_load, error});
+}
+
+bool StandardManagementPolicyProvider::UserMayModifySettings(
+    const Extension* extension,
+    std::u16string* error) const {
+  return AdminPolicyIsModifiable(settings_, nullptr, extension, error);
+}
+
+bool StandardManagementPolicyProvider::ExtensionMayModifySettings(
+    const Extension* source_extension,
+    const Extension* extension,
+    std::u16string* error) const {
+  return AdminPolicyIsModifiable(settings_, source_extension, extension, error);
+}
+
+bool StandardManagementPolicyProvider::MustRemainEnabled(
+    const Extension* extension,
+    std::u16string* error) const {
+  return !AdminPolicyIsModifiable(settings_, nullptr, extension, error);
+}
+
+bool StandardManagementPolicyProvider::MustRemainDisabled(
+    const Extension* extension,
+    disable_reason::DisableReason* reason) const {
+  std::string required_version;
+  if (!settings_->CheckMinimumVersion(extension, &required_version)) {
+    if (reason) {
+      *reason = disable_reason::DISABLE_UPDATE_REQUIRED_BY_POLICY;
+    }
+    return true;
+  }
+
+  if (!settings_->IsAllowedByUnpublishedAvailabilityPolicy(extension)) {
+    if (reason) {
+      *reason = disable_reason::DISABLE_PUBLISHED_IN_STORE_REQUIRED_BY_POLICY;
+    }
+    return true;
+  }
+
+  if (!settings_->IsAllowedByUnpackedDeveloperModePolicy(*extension)) {
+    if (reason) {
+      *reason = disable_reason::DISABLE_UNSUPPORTED_DEVELOPER_EXTENSION;
+    }
+    return true;
+  }
+
+  if (settings_->ShouldBlockForceInstalledOffstoreExtension(*extension)) {
+    if (reason) {
+      *reason = disable_reason::DISABLE_NOT_VERIFIED;
+    }
+    return true;
+  }
+
+  // Note: `mv2_handler` may be null for certain types of profiles
+  // (such as the sign-in profile). We can ignore this check in this case, since
+  // users can't install extensions in these profiles.
+  auto* mv2_handler = ManifestV2Handler::Get(profile_);
+  if (mv2_handler && mv2_handler->ShouldBlockExtensionEnable(*extension)) {
+    if (reason) {
+      *reason = disable_reason::DISABLE_UNSUPPORTED_MANIFEST_VERSION;
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+bool StandardManagementPolicyProvider::MustRemainInstalled(
+    const Extension* extension,
+    std::u16string* error) const {
+  ManagedInstallationMode mode = settings_->GetInstallationMode(extension);
+  // Disallow removing of recommended extension, to avoid re-install it
+  // again while policy is reload. But disabling of recommended extension is
+  // allowed.
+  if (mode == ManagedInstallationMode::kForced ||
+      mode == ManagedInstallationMode::kRecommended) {
+    if (error) {
+      *error = l10n_util::GetStringFUTF16(
+          IDS_EXTENSION_CANT_UNINSTALL_POLICY_REQUIRED,
+          base::UTF8ToUTF16(extension->name()));
+    }
+    return true;
+  }
+  return false;
+}
+
+bool StandardManagementPolicyProvider::ShouldForceUninstall(
+    const Extension* extension,
+    std::u16string* error) const {
+  if (UserMayLoad(extension, error))
+    return false;
+  if (settings_->GetInstallationMode(extension) ==
+      ManagedInstallationMode::kRemoved) {
+    return true;
+  }
+  return false;
+}
+
+std::u16string StandardManagementPolicyProvider::GetLoadErrorMessage(
+    const extensions::Extension* extension) const {
+  return l10n_util::GetStringFUTF16(
+      IDS_EXTENSION_CANT_INSTALL_POLICY_BLOCKED,
+      base::UTF8ToUTF16(extension->name()), base::UTF8ToUTF16(extension->id()),
+      base::UTF8ToUTF16(settings_->BlockedInstallMessage(extension->id())));
+}
+
+}  // namespace extensions

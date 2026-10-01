@@ -1,0 +1,106 @@
+# Copyright 2023 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/rules.gni")
+
+source_set("android") {
+  public = [
+    "accessory_controller.h",
+    "accessory_sheet_data.h",
+    "accessory_sheet_enums.h",
+    "address_accessory_controller.h",
+    "at_memory_accessory_controller.h",
+    "manual_filling_controller.h",
+    "password_accessory_controller.h",
+    "payment_method_accessory_controller.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//components/autofill/core/browser",
+    "//components/password_manager/core/browser",
+    "//components/resources:android_resources",
+    "//components/webauthn/android",
+    "//content/public/browser",
+    "//url",
+  ]
+}
+
+source_set("impl") {
+  sources = [
+    "accessory_sheet_data.cc",
+    "address_accessory_controller_impl.cc",
+    "address_accessory_controller_impl.h",
+    "at_memory_accessory_controller_impl.cc",
+    "at_memory_accessory_controller_impl.h",
+    "manual_filling_controller_impl.cc",
+    "manual_filling_controller_impl.h",
+    "manual_filling_utils.cc",
+    "manual_filling_utils.h",
+    "password_accessory_controller_impl.cc",
+    "password_accessory_controller_impl.h",
+    "payment_method_accessory_controller_impl.cc",
+    "payment_method_accessory_controller_impl.h",
+  ]
+  public_deps = [
+    ":android",
+    "//chrome/browser:browser_public_dependencies",
+  ]
+  deps = [
+    "//base",
+    "//chrome/browser/android:resource_mapper",
+    "//chrome/browser/autofill",
+    "//chrome/browser/password_manager",
+    "//chrome/browser/password_manager/android/grouped_affiliations:public",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ssl",
+    "//chrome/browser/ui/passwords",
+    "//chrome/browser/vr",
+    "//chrome/browser/webauthn:webauthn_request_delegate_android",
+    "//components/autofill/core/browser",
+    "//components/password_manager/core/browser",
+    "//components/resources:android_resources",
+    "//components/webauthn/android",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "address_accessory_controller_impl_unittest.cc",
+    "manual_filling_controller_impl_unittest.cc",
+    "password_accessory_controller_impl_unittest.cc",
+    "payment_method_accessory_controller_impl_unittest.cc",
+  ]
+  deps = [
+    ":impl",
+    "../test_utils/android",
+    "//base",
+    "//chrome/app:generated_resources_grit",
+    "//chrome/browser/autofill",
+    "//chrome/browser/password_manager",
+    "//chrome/browser/password_manager:test_support",
+    "//chrome/browser/password_manager/android:unit_tests",
+    "//chrome/browser/password_manager/android/grouped_affiliations:test_utils",
+    "//chrome/test:test_support",
+    "//components/autofill/content/browser:test_support",
+    "//components/autofill/core/browser",
+    "//components/autofill/core/common:credit_card_number_validation",
+    "//components/device_reauth",
+    "//components/password_manager/content/browser",
+    "//components/password_manager/core/browser",
+    "//components/password_manager/core/browser:test_support",
+    "//components/resources:android_resources",
+    "//components/strings",
+    "//components/webauthn/android",
+    "//components/webauthn/android:test_support",
+    "//content/test:test_support",
+    "//testing/gmock",
+    "//testing/gtest",
+  ]
+}
+
+java_cpp_enum("java_enums") {
+  sources = [ "accessory_sheet_enums.h" ]
+}

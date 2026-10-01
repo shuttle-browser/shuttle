@@ -1,0 +1,22 @@
+[
+  {
+    "os": [
+      "chromeos",
+      "linux",
+      "mac",
+      "desktop_android",
+      "win"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "mandatory_extensions_for_incognito_navigation",
+      "default_value": [],
+      "values_to_test": [
+        [
+          "id1",
+          "id2",
+          "id3"
+        ]
+      ]
+    }
+  }
+]

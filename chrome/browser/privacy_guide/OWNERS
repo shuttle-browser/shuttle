@@ -1,0 +1,6 @@
+harrisonsean@chromium.org
+msramek@chromium.org
+
+per-file ...CookiesFragment*=file://components/privacy_sandbox/OWNERS
+per-file ...privacy_guide_cookies*=file://components/privacy_sandbox/OWNERS
+per-file privacy_guide.h=rainhard@chromium.org

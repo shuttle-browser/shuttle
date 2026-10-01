@@ -1,0 +1,4 @@
+android.webkit.WebView focusable
+++android.view.View
+++++android.view.View role_description='menu pop up button' clickable collapsed focusable interesting name='Eggplant' hint='Animal collapsed' expanded_state=1
+++++android.view.View role_description='menu pop up button' clickable expanded focusable interesting name='Mango' hint='Fruit expanded' expanded_state=3

@@ -1,0 +1,7 @@
+This is a testharness.js-based test.
+[FAIL] #10 Test that WebAssembly compilation succeeds (table64.wast:9)
+  assert_equals: expected false but got true
+[FAIL] #33 Test that WebAssembly compilation succeeds (table64.wast:9)
+  assert_true: WebAssembly.compile failed unexpectedly with CompileError: WebAssembly.compile(): initial table size (18446744073709551615 elements) is larger than implementation limit (10000000 elements) @+17 at {loc} expected true got false
+Harness: the test ran to completion.
+

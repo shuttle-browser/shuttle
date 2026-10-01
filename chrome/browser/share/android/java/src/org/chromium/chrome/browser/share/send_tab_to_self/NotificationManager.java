@@ -1,0 +1,389 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.share.send_tab_to_self;
+
+import static org.chromium.build.NullUtil.assertNonNull;
+import static org.chromium.build.NullUtil.assumeNonNull;
+
+import android.app.AlarmManager;
+import android.app.Notification;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.content.res.Resources;
+import android.net.Uri;
+import android.provider.Browser;
+
+import androidx.annotation.VisibleForTesting;
+
+import java.util.Collections;
+
+import org.jni_zero.CalledByNative;
+import org.jni_zero.JniType;
+
+import org.chromium.base.ContextUtils;
+import org.chromium.base.IntentUtils;
+import org.chromium.base.PackageManagerUtils;
+import org.chromium.base.ResettersForTesting;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.R;
+import org.chromium.chrome.browser.IntentHandler;
+import org.chromium.chrome.browser.browserservices.intents.WebappConstants;
+import org.chromium.chrome.browser.document.ChromeLauncherActivity;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.notifications.NotificationConstants;
+import org.chromium.chrome.browser.notifications.NotificationUmaTracker;
+import org.chromium.chrome.browser.notifications.NotificationWrapperBuilderFactory;
+import org.chromium.chrome.browser.notifications.channels.ChromeChannelDefinitions;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.profiles.ProfileManager;
+import org.chromium.components.browser_ui.notifications.BaseNotificationManagerProxy;
+import org.chromium.components.browser_ui.notifications.BaseNotificationManagerProxyFactory;
+import org.chromium.components.browser_ui.notifications.NotificationMetadata;
+import org.chromium.components.browser_ui.notifications.NotificationWrapper;
+import org.chromium.components.browser_ui.notifications.NotificationWrapperBuilder;
+import org.chromium.components.browser_ui.notifications.PendingIntentProvider;
+import org.chromium.components.external_intents.ExternalNavigationHandler;
+
+/**
+ * Manages all SendTabToSelf related notifications for Android. This includes displaying, handling
+ * taps, and timeouts.
+ */
+@NullMarked
+public class NotificationManager {
+    @VisibleForTesting
+    public static final String NOTIFICATION_GUID_EXTRA = "send_tab_to_self.notification.guid";
+
+    // Action constants for the registered BroadcastReceiver.
+    @VisibleForTesting public static final String NOTIFICATION_ACTION_TAP = "send_tab_to_self.tap";
+
+    @VisibleForTesting
+    public static final String NOTIFICATION_ACTION_DISMISS = "send_tab_to_self.dismiss";
+
+    @VisibleForTesting
+    public static final String NOTIFICATION_ACTION_TIMEOUT = "send_tab_to_self.timeout";
+
+    private static @Nullable ResolveInfo sResolveInfoForTesting;
+
+    public static void setResolveInfoForTesting(@Nullable ResolveInfo resolveInfo) {
+        sResolveInfoForTesting = resolveInfo;
+        ResettersForTesting.register(() -> sResolveInfoForTesting = null);
+    }
+
+    /**
+     * Resolves and returns the {@link ResolveInfo} of the matching native app for the URI, or null
+     * if there is no specialized handler or the feature is disabled.
+     */
+    public static @Nullable ResolveInfo getMatchingNativeAppResolveInfo(@Nullable Uri uri) {
+        if (!ChromeFeatureList.sSendTabToSelfOpenNativeApp.isEnabled()) {
+            return null;
+        }
+
+        if (sResolveInfoForTesting != null) {
+            return sResolveInfoForTesting;
+        }
+
+        if (uri == null) return null;
+
+        // Create an implicit Intent, to be used for looking up whether a matching native app (a
+        // "specialized handler") exists.
+        Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+        ExternalNavigationHandler.sanitizeQueryIntentActivitiesIntent(intent);
+
+        ResolveInfo resolveInfo =
+                PackageManagerUtils.resolveActivity(
+                        intent,
+                        PackageManager.GET_RESOLVED_FILTER | PackageManager.MATCH_DEFAULT_ONLY);
+        if (resolveInfo == null || resolveInfo.activityInfo == null) return null;
+        String packageName = resolveInfo.activityInfo.packageName;
+        if (packageName == null) return null;
+
+        boolean isBrowser =
+                ExternalNavigationHandler.getInstalledBrowserPackages().contains(packageName);
+        if (isBrowser) return null;
+
+        // Ensure the resolved target has an explicit, non-wildcard host/path authority
+        // filter (such as App Links or a specific deep link) and is not a generic handler
+        // or system ResolverActivity.
+        if (!ExternalNavigationHandler.isPackageSpecializedHandler(
+                packageName, Collections.singletonList(resolveInfo))) {
+            return null;
+        }
+
+        return resolveInfo;
+    }
+
+    @VisibleForTesting
+    public static boolean canOpenInNativeApp(@Nullable Uri uri) {
+        return getMatchingNativeAppResolveInfo(uri) != null;
+    }
+
+    /**
+     * Opens the URI in the matching native app, if there is one.
+     *
+     * @param uri The URI to open.
+     * @return true if the native app was launched, false otherwise.
+     */
+    public static boolean openInNativeAppIfPossible(@Nullable Uri uri) {
+        if (!canOpenInNativeApp(uri)) {
+            return false;
+        }
+        Context context = ContextUtils.getApplicationContext();
+        Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+        ExternalNavigationHandler.sanitizeQueryIntentActivitiesIntent(intent);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return IntentUtils.safeStartActivity(context, intent);
+    }
+
+    /**
+     * Opens the URL for the Send Tab To Self notification.
+     *
+     * @param uri The URI to open.
+     * @param scrollToTextFragment The text fragment to scroll to, or null. This is a text fragment
+     *     selector (using the syntax defined in
+     *     https://wicg.github.io/scroll-to-text-fragment/#syntax) that should be scrolled into view
+     *     without applying standard highlight styling. This is used for cross-device scroll
+     *     restoration and is expected to be set only for trusted navigations.
+     * @param pageContext The serialized PageContext proto bytes for form field propagation, or
+     *     null.
+     */
+    private static void openUrl(
+            @Nullable Uri uri,
+            @Nullable String scrollToTextFragment,
+            byte @Nullable [] pageContext) {
+        if (openInNativeAppIfPossible(uri)) {
+            return;
+        }
+
+        Context context = ContextUtils.getApplicationContext();
+
+        Intent intent =
+                new Intent()
+                        .setAction(Intent.ACTION_VIEW)
+                        .setData(uri)
+                        .setClass(context, ChromeLauncherActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .putExtra(Browser.EXTRA_APPLICATION_ID, context.getPackageName())
+                        .putExtra(WebappConstants.REUSE_URL_MATCHING_TAB_ELSE_NEW_TAB, true)
+                        .putExtra(IntentHandler.EXTRA_FROM_SEND_TAB_TO_SELF, true);
+
+        if (scrollToTextFragment != null
+                && ChromeFeatureList.isEnabled(
+                        ChromeFeatureList.SEND_TAB_TO_SELF_PROPAGATE_SCROLL_POSITION)) {
+            intent.putExtra(IntentHandler.EXTRA_SCROLL_TO_TEXT_FRAGMENT, scrollToTextFragment);
+        }
+
+        if (pageContext != null
+                && ChromeFeatureList.isEnabled(
+                        ChromeFeatureList.SEND_TAB_TO_SELF_PROPAGATE_FORM_FIELDS)) {
+            intent.putExtra(IntentHandler.EXTRA_SEND_TAB_TO_SELF_PAGE_CONTEXT, pageContext);
+        }
+
+        IntentUtils.addTrustedIntentExtras(intent);
+        context.startActivity(intent);
+    }
+
+    /**
+     * Handles the notification action intents (such as tap, dismiss, or timeout) for Send Tab To
+     * Self notifications.
+     *
+     * @param intent The intent carrying the notification action and associated extras, including
+     *     optional scroll-to-text fragment and serialized page context for form field propagation.
+     */
+    public static void handleIntent(Intent intent) {
+        final String action = assertNonNull(intent.getAction());
+        final String guid = IntentUtils.safeGetStringExtra(intent, NOTIFICATION_GUID_EXTRA);
+        assertNonNull(guid);
+        // If this feature ever supports incognito mode, we need to modify
+        // this method to obtain the current profile, rather than the last-used
+        // regular profile.
+        final Profile profile = ProfileManager.getLastUsedRegularProfile();
+        switch (action) {
+            case NOTIFICATION_ACTION_TAP:
+                String scrollToTextFragment =
+                        IntentUtils.safeGetStringExtra(
+                                intent, IntentHandler.EXTRA_SCROLL_TO_TEXT_FRAGMENT);
+                byte[] pageContext =
+                        IntentUtils.safeGetByteArrayExtra(
+                                intent, IntentHandler.EXTRA_SEND_TAB_TO_SELF_PAGE_CONTEXT);
+                openUrl(intent.getData(), scrollToTextFragment, pageContext);
+                hideNotification(guid);
+                SendTabToSelfAndroidBridge.markEntryOpened(profile, guid);
+                SendTabToSelfAndroidBridge.markEntryActivated(
+                        profile, guid, ShareActivatedEntryPoint.MOBILE_NOTIFICATION);
+                SendTabToSelfMetricsRecorder.recordNotificationStatus(NotificationStatus.OPENED);
+                break;
+            case NOTIFICATION_ACTION_DISMISS:
+                hideNotification(guid);
+                SendTabToSelfAndroidBridge.dismissEntry(profile, guid);
+                SendTabToSelfMetricsRecorder.recordNotificationStatus(
+                        NotificationStatus.DISMISSED);
+                break;
+            case NOTIFICATION_ACTION_TIMEOUT:
+                SendTabToSelfAndroidBridge.dismissEntry(profile, guid);
+                SendTabToSelfMetricsRecorder.recordNotificationStatus(
+                        NotificationStatus.TIMED_OUT);
+                break;
+        }
+    }
+
+    /**
+     * Hides a notification.
+     *
+     * @param guid The GUID of the notification to hide.
+     * @return whether the notification was hidden. False if there is corresponding notification to
+     * hide.
+     */
+    @CalledByNative
+    private static boolean hideNotification(@JniType("std::string") @Nullable String guid) {
+        NotificationSharedPrefManager.ActiveNotification activeNotification =
+                assumeNonNull(NotificationSharedPrefManager.findActiveNotification(guid));
+        if (!NotificationSharedPrefManager.removeActiveNotification(guid)) {
+            return false;
+        }
+        BaseNotificationManagerProxy manager = BaseNotificationManagerProxyFactory.create();
+        manager.cancel(
+                NotificationConstants.GROUP_SEND_TAB_TO_SELF, activeNotification.notificationId);
+        return true;
+    }
+
+    /**
+     * Displays a notification.
+     *
+     * @param guid GUID of the SendTabToSelf entry.
+     * @param url URL to open when the user taps on the notification.
+     * @param title Title to display within the notification.
+     * @param deviceName Name of the sending device.
+     * @param timeoutAtMillis Specifies how long until the notification should be automatically
+     *     hidden.
+     * @param broadcastReceiver Class of the broadcast receiver to handle notification actions.
+     * @param scrollToTextFragment The text fragment to scroll to, or null.
+     * @param pageContext The serialized PageContext proto bytes for form field propagation, or
+     *     null.
+     * @return whether the notification was successfully displayed
+     */
+    @CalledByNative
+    @VisibleForTesting
+    static boolean showNotification(
+            @JniType("std::string") String guid,
+            @JniType("std::string") String url,
+            @JniType("std::string") String title,
+            @JniType("std::string") String deviceName,
+            long timeoutAtMillis,
+            Class<? extends BroadcastReceiver> broadcastReceiver,
+            @JniType("std::optional<std::string>") @Nullable String scrollToTextFragment,
+            @JniType("std::vector<uint8_t>") byte @Nullable [] pageContext) {
+        // A notification associated with this Share entry already exists. Don't display a new one.
+        if (NotificationSharedPrefManager.findActiveNotification(guid) != null) {
+            return false;
+        }
+
+        // Post notification.
+        Context context = ContextUtils.getApplicationContext();
+        BaseNotificationManagerProxy manager = BaseNotificationManagerProxyFactory.create();
+
+        int nextId = NotificationSharedPrefManager.getNextNotificationId();
+        Uri uri = Uri.parse(url);
+
+        Intent tapIntent =
+                new Intent(context, broadcastReceiver)
+                        .setData(uri)
+                        .setAction(NOTIFICATION_ACTION_TAP)
+                        .putExtra(NOTIFICATION_GUID_EXTRA, guid);
+        if (scrollToTextFragment != null
+                && ChromeFeatureList.isEnabled(
+                        ChromeFeatureList.SEND_TAB_TO_SELF_PROPAGATE_SCROLL_POSITION)) {
+            tapIntent.putExtra(IntentHandler.EXTRA_SCROLL_TO_TEXT_FRAGMENT, scrollToTextFragment);
+        }
+        if (pageContext != null
+                && ChromeFeatureList.isEnabled(
+                        ChromeFeatureList.SEND_TAB_TO_SELF_PROPAGATE_FORM_FIELDS)) {
+            tapIntent.putExtra(IntentHandler.EXTRA_SEND_TAB_TO_SELF_PAGE_CONTEXT, pageContext);
+        }
+
+        PendingIntentProvider contentIntent =
+                PendingIntentProvider.getBroadcast(context, nextId, tapIntent, 0);
+        PendingIntentProvider deleteIntent =
+                PendingIntentProvider.getBroadcast(
+                        context,
+                        nextId,
+                        new Intent(context, broadcastReceiver)
+                                .setData(uri)
+                                .setAction(NOTIFICATION_ACTION_DISMISS)
+                                .putExtra(NOTIFICATION_GUID_EXTRA, guid),
+                        0);
+
+        Resources res = context.getResources();
+        ResolveInfo resolveInfo = getMatchingNativeAppResolveInfo(uri);
+        String contextText;
+        if (resolveInfo != null) {
+            String appName = resolveInfo.loadLabel(context.getPackageManager()).toString();
+            contextText =
+                    res.getString(
+                            R.string.send_tab_to_self_notification_context_text_with_app,
+                            appName,
+                            deviceName);
+        } else {
+            contextText =
+                    res.getString(
+                            R.string.send_tab_to_self_notification_context_text,
+                            uri.getHost(),
+                            deviceName);
+        }
+        // Build the notification itself.
+        NotificationWrapperBuilder builder =
+                NotificationWrapperBuilderFactory.createNotificationWrapperBuilder(
+                                ChromeChannelDefinitions.ChannelId.SHARING,
+                                new NotificationMetadata(
+                                        NotificationUmaTracker.SystemNotificationType
+                                                .SEND_TAB_TO_SELF,
+                                        NotificationConstants.GROUP_SEND_TAB_TO_SELF,
+                                        nextId))
+                        .setContentIntent(contentIntent)
+                        .setDeleteIntent(deleteIntent)
+                        .setContentTitle(title)
+                        .setContentText(contextText)
+                        .setGroup(NotificationConstants.GROUP_SEND_TAB_TO_SELF)
+                        .setVibrate(new long[0])
+                        .setSmallIcon(R.drawable.ic_chrome)
+                        .setDefaults(Notification.DEFAULT_ALL);
+        NotificationWrapper notification = builder.buildNotificationWrapper();
+
+        manager.notify(notification);
+        NotificationUmaTracker.getInstance()
+                .onNotificationShown(
+                        NotificationUmaTracker.SystemNotificationType.SEND_TAB_TO_SELF,
+                        notification.getNotification());
+
+        NotificationSharedPrefManager.addActiveNotification(
+                new NotificationSharedPrefManager.ActiveNotification(nextId, guid));
+
+        // Set timeout.
+        if (timeoutAtMillis != Long.MAX_VALUE) {
+            AlarmManager alarmManager =
+                    (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            Intent timeoutIntent =
+                    new Intent(context, broadcastReceiver)
+                            .setData(uri)
+                            .setAction(NOTIFICATION_ACTION_TIMEOUT)
+                            .putExtra(NOTIFICATION_GUID_EXTRA, guid);
+            alarmManager.set(
+                    AlarmManager.RTC,
+                    timeoutAtMillis,
+                    PendingIntent.getBroadcast(
+                            context,
+                            nextId,
+                            timeoutIntent,
+                            PendingIntent.FLAG_UPDATE_CURRENT
+                                    | IntentUtils.getPendingIntentMutabilityFlag(false)));
+        }
+        SendTabToSelfMetricsRecorder.recordNotificationStatus(NotificationStatus.SHOWN);
+        return true;
+    }
+}

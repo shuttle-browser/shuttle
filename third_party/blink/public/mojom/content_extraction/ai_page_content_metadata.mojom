@@ -1,0 +1,32 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module blink.mojom;
+
+import "url/mojom/url.mojom";
+
+// @generate glic_api
+// Meta tag name and content taken from the <head> element of a frame.
+struct MetaTag {
+  string name;
+  string content;
+};
+
+// @generate glic_api
+// Metadata about a frame. Number of MetaTags is limited by the
+// maxMetaTags option.
+struct FrameMetadata {
+  url.mojom.Url url;
+  array<MetaTag> meta_tags;
+  // Whether chrome has audio/video transcripts for this frame.
+  // @glic_optional
+  bool has_media_transcripts;
+};
+
+// @generate glic_api
+// Metadata about the page. Includes URL and meta tags for each frame.
+struct PageMetadata {
+  // The local frame where the traversal starts is the first entry in the array.
+  array<FrameMetadata> frame_metadata;
+};

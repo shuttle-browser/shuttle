@@ -1,0 +1,143 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/autofill/core/browser/payments/payments_requests/get_details_for_enrollment_request.h"
+
+#include <string>
+#include <utility>
+
+#include "base/functional/callback.h"
+#include "base/json/json_writer.h"
+#include "base/logging.h"
+#include "base/notreached.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/values.h"
+#include "components/autofill/core/browser/payments/legal_message_line.h"
+#include "components/autofill/core/browser/payments/payments_autofill_client.h"
+#include "components/autofill/core/browser/payments/payments_request_details.h"
+#include "components/autofill/core/browser/payments/payments_requests/payments_request.h"
+#include "components/autofill/core/browser/payments/virtual_card_enrollment_flow.h"
+
+namespace autofill::payments {
+
+namespace {
+
+// The path that the request will be sent to.
+const char kGetDetailsForEnrollmentRequestPath[] =
+    "payments/apis/virtualcardservice/getdetailsforenroll";
+
+// The billable service number for the request if the enrollment happens after
+// a local card upload.
+const int kUpstreamEnrollBillableServiceNumber =
+    kUploadPaymentMethodBillableServiceNumber;
+
+// The billable service number for the request if the enrollment happens after a
+// server card retrieval or in the settings page.
+const int kDownstreamEnrollBillableServiceNumber =
+    kUnmaskPaymentMethodBillableServiceNumber;
+
+}  // namespace
+
+GetDetailsForEnrollmentRequest::GetDetailsForEnrollmentRequest(
+    const GetDetailsForEnrollmentRequestDetails& request_details,
+    base::OnceCallback<void(PaymentsAutofillClient::PaymentsRpcResult,
+                            const GetDetailsForEnrollmentResponseDetails&)>
+        callback)
+    : request_details_(request_details), callback_(std::move(callback)) {}
+
+GetDetailsForEnrollmentRequest::~GetDetailsForEnrollmentRequest() = default;
+
+std::string GetDetailsForEnrollmentRequest::GetRequestUrlPath() {
+  return kGetDetailsForEnrollmentRequestPath;
+}
+
+std::string GetDetailsForEnrollmentRequest::GetRequestContentType() {
+  return "application/json";
+}
+
+std::string GetDetailsForEnrollmentRequest::GetRequestContent() {
+  base::DictValue request_dict;
+
+  base::DictValue context;
+  context.Set("language_code", request_details_.app_locale);
+  int billable_service_number = 0;
+  switch (request_details_.source) {
+    case VirtualCardEnrollmentSource::kUpstream:
+      billable_service_number = kUpstreamEnrollBillableServiceNumber;
+      break;
+    case VirtualCardEnrollmentSource::kDownstream:
+    case VirtualCardEnrollmentSource::kSettingsPage:
+      billable_service_number = kDownstreamEnrollBillableServiceNumber;
+      break;
+    case VirtualCardEnrollmentSource::kNone:
+      NOTREACHED();
+  }
+  context.Set("billable_service", billable_service_number);
+  if (request_details_.billing_customer_number != 0) {
+    context.Set("customer_context",
+                BuildCustomerContextDictionary(
+                    request_details_.billing_customer_number));
+  }
+  request_dict.Set("context", std::move(context));
+
+  request_dict.Set("instrument_id",
+                   base::NumberToString(request_details_.instrument_id));
+
+  if (!request_details_.risk_data.empty()) {
+    request_dict.Set("risk_data_encoded",
+                     BuildRiskDictionary(request_details_.risk_data));
+  }
+
+  switch (request_details_.source) {
+    case VirtualCardEnrollmentSource::kUpstream:
+      request_dict.Set("channel_type", "CHROME_UPSTREAM");
+      break;
+    case VirtualCardEnrollmentSource::kDownstream:
+    case VirtualCardEnrollmentSource::kSettingsPage:
+      request_dict.Set("channel_type", "CHROME_DOWNSTREAM");
+      break;
+    case VirtualCardEnrollmentSource::kNone:
+      NOTREACHED();
+  }
+
+  std::string request_content = base::WriteJson(request_dict).value_or("");
+  DVLOG(3) << "GetDetailsForEnrollmentRequest request body: "
+           << request_content;
+  return request_content;
+}
+
+void GetDetailsForEnrollmentRequest::ParseResponse(
+    const base::DictValue& response) {
+  const base::DictValue* google_legal_message =
+      response.FindDict("google_legal_message");
+  if (google_legal_message) {
+    LegalMessageLine::Parse(*google_legal_message,
+                            &response_details_.google_legal_message,
+                            /*escape_apostrophes=*/true);
+  }
+
+  const base::DictValue* external_legal_message =
+      response.FindDict("external_legal_message");
+  if (external_legal_message) {
+    LegalMessageLine::Parse(*external_legal_message,
+                            &response_details_.issuer_legal_message,
+                            /*escape_apostrophes=*/true);
+  }
+
+  const auto* context_token = response.FindString("context_token");
+  response_details_.vcn_context_token =
+      context_token ? *context_token : std::string();
+}
+
+bool GetDetailsForEnrollmentRequest::IsResponseComplete() {
+  return !response_details_.vcn_context_token.empty() &&
+         !response_details_.google_legal_message.empty();
+}
+
+void GetDetailsForEnrollmentRequest::RespondToDelegate(
+    PaymentsAutofillClient::PaymentsRpcResult result) {
+  std::move(callback_).Run(result, response_details_);
+}
+
+}  // namespace autofill::payments

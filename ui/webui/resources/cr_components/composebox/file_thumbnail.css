@@ -1,0 +1,557 @@
+/* Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #scheme=relative
+ * #css_wrapper_metadata_end */
+
+:host {
+  --image-chip-border-radius_: var(--file-chip-border-radius, 8px);
+  --pdf-icon-background-color_: rgba(219, 69, 55, 1); /* red */
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  height: 20px;
+  width: 20px;
+}
+
+.spinner-circle {
+  animation: spin 1.5s linear infinite;
+  fill: none;
+  stroke: var(--color-composebox-file-chip-spinner);
+  stroke-dasharray: 240;
+  stroke-dashoffset: 60;
+  stroke-linecap: round;
+  stroke-width: 10;
+  transform-origin: 50% 50%;
+}
+
+.img-thumbnail {
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+  width: 100%;
+}
+
+.img-chip {
+  aspect-ratio: 1 / 1;
+  align-items: center;
+  border-radius: var(--image-chip-border-radius_);
+  display: flex;
+  height: var(--file-chip-img-type-size, 44px);
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.img-overlay {
+  background-color: var(--color-composebox-file-image-overlay);
+  height: 100%;
+  left: 0;
+  opacity: 0;
+  position: absolute;
+  top: 0;
+  width: 100%;
+}
+
+#removeImgButton,
+#removeInjectedInputImgButton {
+  --cr-icon-button-fill-color:
+      var(--color-composebox-file-image-overlay-icon-color, white);
+  /* This defines width and height. No need to manually define it. */
+  --cr-icon-button-icon-size:
+      var(--file-chip-image-remove-button-icon-size, 20px);
+  --cr-icon-button-margin-end:
+      var(--file-chip-remove-button-margin-end,
+          var(--cr-icon-ripple-margin));
+  --cr-icon-button-margin-start:
+      var(--file-chip-remove-button-margin-start, 0);
+  border-radius: var(--image-chip-border-radius_);
+  display: flex;
+  inset-inline-end: 0;
+  inset-inline-start: 0;
+}
+
+.chip {
+  align-items: center;
+  background-color: var(--color-composebox-file-chip-background);
+  border-radius: var(--file-chip-border-radius, 8px);
+  display: flex;
+  gap: var(--file-chip-internal-gap, 6px);
+  height: var(--file-chip-height, 44px);
+  max-width: var(--file-chip-max-width, auto);
+  min-width: var(--file-chip-min-width, auto);
+  overflow: hidden;
+  /* Top and bottom padding should be taken care of through height,
+   * given that align-items is center (should be centered vertically).
+   */
+  padding: 0 var(--file-chip-padding-right, 12px)
+    0 var(--file-chip-padding-left, 8px);
+  position: relative;
+  width: var(--file-chip-width, 154px);
+}
+
+.thumbnail {
+  align-items: center;
+  background-color: var(--color-composebox-file-chip-favicon-background);
+  border-radius: var(--file-thumbnail-border-radius, 4px);
+  box-sizing: var(--file-chip-thumbnail-box-sizing, content-box);
+  display: flex;
+  flex-shrink: 0;
+  height: var(--file-chip-thumbnail-full-size, 16px);
+  justify-content: center;
+  padding: var(--file-chip-thumbnail-padding, 6px);
+  position: relative;
+  width: var(--file-chip-thumbnail-full-size, 16px);
+}
+
+.injected-input-img-thumbnail {
+  padding: 0;
+}
+
+.injected-input-img {
+  border-radius: 4px;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  width: 100%;
+}
+
+.pdf-icon {
+  background-color: transparent;
+  box-sizing: border-box;
+  color: var(--pdf-icon-background-color_);
+  height: var(--pdf-icon-size, 100%);
+  width: var(--pdf-icon-size, 100%);
+}
+
+.document-icon {
+  background-color: var(--color-composebox-background);
+  box-sizing: border-box;
+  color: var(--color-composebox-document-chip-icon);
+  height: var(--document-icon-size, 100%);
+  width: var(--document-icon-size, 100%);
+}
+
+.injected-input-icon {
+  box-sizing: border-box;
+  color: var(--aim-icon-color);
+  height: var(--injected-input-icon-size, 24px);
+  width: var(--injected-input-icon-size, 24px);
+}
+
+.chip-overlay {
+  border-radius: inherit;
+  inset: 0;
+  display: none;
+  pointer-events: none;
+  position: absolute;
+}
+
+.chip:hover .chip-overlay {
+  display: block;
+}
+
+.overlay {
+  align-items: center;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  opacity: 0;
+  position: absolute;
+  inset-inline-end: var(--file-chip-remove-button-inset-inline-end, 0);
+  inset-inline-start: var(--file-chip-remove-button-inset-inline-start, auto);
+  top: 0;
+  width: var(--file-chip-thumbnail-full-size, 44px);
+}
+
+.gradient-protection {
+  background: linear-gradient(
+    270deg,
+    var(--color-composebox-file-carousel-remove-gradient-start) 85.29%,
+    var(--color-composebox-file-carousel-remove-gradient-end) 123.53%
+  );
+  border-radius: 0 var(--file-chip-border-radius, 8px) var(--file-chip-border-radius, 8px) 0;
+  display: var(--file-chip-gradient-protection-display, block);
+  inline-size: var(--gradient-protection-width, 56px);
+  inset-block: 0;
+  inset-inline-end: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.remove-button {
+  --cr-icon-button-fill-color:
+      var(--color-file-chip-remove-button-fill, black);
+  /* This refers to hover color of the remove button if
+   * you just hover over the button, not the whole chip.
+   */
+  --cr-icon-button-hover-background-color:
+      var(--color-partial-file-chip-remove-button-hover-background,
+          var(--color-composebox-file-carousel-remove-button));
+  --cr-icon-button-icon-size:
+      var(--file-chip-remove-button-icon-size, 16px);
+  --cr-icon-button-margin-end:
+      var(--file-chip-remove-button-margin-end, 0);
+  --cr-icon-button-margin-start:
+      var(--file-chip-remove-button-margin-start, 0);
+  --cr-icon-button-size: var(--file-chip-remove-button-size,
+      24px);
+  /* This refers to hover color of the
+   * remove button if you just hover over the whole chip.
+   */
+  background-color: var(--color-full-file-chip-remove-button-hover-background,
+      var(--color-composebox-file-carousel-remove-button));
+  border-radius:
+    var(--file-chip-remove-button-border-radius, 50%);
+  inset-inline-end: 0;
+  inset-inline-start: 0;
+  position: relative;
+}
+
+.remove-button:hover {
+  /* This refers to hover color of the remove button
+   * if you just hover over the remove button itself.
+   */
+  background-color:
+      var(--color-partial-file-chip-remove-button-hover-background,
+          var(--color-composebox-file-carousel-remove-button));
+}
+
+:host-context([dir='rtl']) .gradient-protection {
+  transform: scaleX(-1);
+}
+
+.title {
+  color: var(--color-composebox-file-chip-text);
+  font-family: inherit;
+  font-size: var(--file-chip-title-text-size, 12px);
+  font-style: normal;
+  font-weight: 500;
+  line-height: var(--file-chip-title-line-height, 16px);
+  overflow: hidden;
+  position: relative;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.img-chip:hover .img-overlay,
+.img-chip:focus-within .img-overlay,
+.chip:hover .overlay,
+.chip:focus-within .overlay {
+  opacity: 1;
+}
+
+#tabThumbnail cr-composebox-tab-favicon {
+  background-size: contain;
+  height: 16px;
+  width: 16px;
+}
+
+:host([is-uploading_]) #tabThumbnail cr-composebox-tab-favicon {
+  opacity: 0.2;
+}
+
+#tabThumbnail {
+  position: relative;
+}
+
+#spinnerOverlay {
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.5);
+  border-radius: var(--file-thumbnail-border-radius, 50%);
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  left: 0;
+  position: absolute;
+  top: 0;
+  width: 100%;
+}
+
+.img-chip #spinnerOverlay {
+  border-radius: var(--image-chip-border-radius_);
+}
+
+cr-spinner {
+  /* Use the official themed color for composebox loading states */
+  --cr-spinner-color: var(--color-composebox-upload-button, red);
+  width: 16px;
+  height: 16px;
+}
+
+
+.tabInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.url {
+  color: var(--color-composebox-file-carousel-url);
+  font-size: var(--file-chip-url-text-size, 12px);
+  font-weight: 500;
+  line-height: var(--file-chip-url-line-height, 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* Android-only (Clank) chip styles, all scoped to :host([is-android]). */
+:host([is-android]) #imgChip {
+  align-items: center;
+  display: inline-flex;
+  height: 48px;
+}
+
+:host([is-android]) #imgChipContent {
+  align-items: center;
+  border-radius: 12px;
+  box-sizing: border-box;
+  display: flex;
+  height: 40px;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  width: 64px;
+}
+
+:host([is-android]) #imgChipStateLayer {
+  align-items: center;
+  box-sizing: border-box;
+  display: flex;
+  gap: 12px;
+  inset: 0;
+  justify-content: center;
+  padding: 6px 8px;
+  position: absolute;
+}
+
+:host([is-android]) #imgChipLeadingSlot {
+  flex-shrink: 0;
+  height: 18px;
+  width: 18px;
+}
+
+:host([is-android]) #removeImgButton {
+  --cr-icon-button-fill-color:
+      var(--color-composebox-image-chip-remove-button-icon-color, #1F1F1F);
+  --cr-icon-button-icon-size: 18px;
+  --cr-icon-button-margin-end: 0;
+  --cr-icon-button-margin-start: 0;
+  --cr-icon-button-size: 18px;
+  background-color:
+      var(--color-composebox-image-chip-remove-button-background, #FFF);
+  border-radius: 100px;
+  flex-shrink: 0;
+  opacity: 0.64;
+}
+
+:host([is-android]) #tabChip {
+  align-items: center;
+  display: inline-flex;
+  height: 48px;
+}
+
+:host([is-android]) #tabChip[hidden] {
+  display: none;
+}
+
+:host([is-android]) #tabChipContent {
+  align-items: center;
+  background-color: var(--color-composebox-tab-chip-background, #F0F4F9);
+  border-radius: 12px;
+  box-sizing: border-box;
+  display: flex;
+  gap: 8px;
+  height: 40px;
+  max-width: 132px;
+  padding: 0 8px;
+  width: 132px;
+}
+
+:host([is-android]) #documentChip .title,
+:host([is-android]) #tabChip .title {
+  flex: 1;
+  font-size: 14px;
+  line-height: 20px;
+  margin: 0;
+}
+
+:host([is-android]) #removeDocumentButton,
+:host([is-android]) #removeTabButton {
+  --cr-icon-button-icon-size: 18px;
+  --cr-icon-button-margin-end: 0;
+  --cr-icon-button-margin-start: 0;
+  --cr-icon-button-size: 18px;
+  flex-shrink: 0;
+}
+
+:host([is-android]) #removeDocumentButton {
+  --cr-icon-button-fill-color:
+      var(--color-composebox-document-chip-foreground, #1F1F1F);
+}
+
+:host([is-android]) #removeTabButton {
+  --cr-icon-button-fill-color:
+      var(--color-composebox-tab-chip-foreground, #1F1F1F);
+}
+
+:host([is-android]) #tabThumbnail cr-composebox-tab-favicon {
+  background-size: contain;
+  border-radius: 4px;
+  height: 24px;
+  width: 24px;
+}
+
+:host([is-android]) #tabThumbnail {
+  align-items: center;
+  border-radius: 3px;
+  display: flex;
+  flex-shrink: 0;
+  height: 24px;
+  justify-content: center;
+  position: relative;
+  width: 24px;
+}
+
+:host([is-android]) #documentChip {
+  align-items: center;
+  display: inline-flex;
+  height: 48px;
+}
+
+:host([is-android]) #documentChipContent {
+  align-items: center;
+  background-color: var(--color-composebox-document-chip-background, #F0F4F9);
+  border-radius: 12px;
+  box-sizing: border-box;
+  display: flex;
+  gap: 8px;
+  height: 40px;
+  max-width: 132px;
+  padding: 0 8px;
+  width: 132px;
+}
+
+:host([is-android]) #documentThumbnail {
+  --document-icon-size: 16px;
+  --pdf-icon-size: 16px;
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+/* No dedicated icon background on Clank. */
+:host([is-android]) .document-icon {
+  background-color: transparent;
+}
+
+@media (forced-colors: active) {
+  :host([is-android]) #documentChipContent,
+  :host([is-android]) #imgChipContent,
+  :host([is-android]) #tabChipContent {
+    border: 1px solid ButtonText;
+  }
+  :host([is-android]) #removeDocumentButton,
+  :host([is-android]) #removeImgButton,
+  :host([is-android]) #removeTabButton {
+    --cr-icon-button-fill-color: ButtonText;
+  }
+  .chip,
+  .img-chip {
+    border: 1px solid ButtonText;
+  }
+  .remove-button {
+    --cr-icon-button-fill-color: ButtonText;
+    --cr-icon-button-hover-background-color: ButtonFace;
+    border: 1px solid ButtonText;
+    box-sizing: border-box;
+  }
+}
+
+@keyframes slide-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(30px);
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes shrink-out {
+  0% {
+    opacity: 1;
+    width: var(--file-chip-width, 154px);
+    margin-inline-end: 0;
+  }
+  100% {
+    opacity: 0;
+    width: 0;
+    /* Offset the gap to avoid a glitch. */
+    margin-inline-end: calc(0px - var(--composebox-thumbnail-gap, 6px));
+  }
+}
+
+:host(.exiting) {
+  animation: var(--cr-composebox-file-thumbnail-exit-animation, none);
+}
+
+:host(.exiting:last-of-type) {
+  animation: var(--cr-composebox-file-thumbnail-exit-animation-last, none);
+}
+
+:host(.exiting:only-of-type) {
+  animation: none;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateY(30px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+:host(.entering) {
+  animation: var(--cr-composebox-file-thumbnail-entry-animation, none);
+}
+
+:host(.entering:first-of-type) {
+  animation: none;
+}

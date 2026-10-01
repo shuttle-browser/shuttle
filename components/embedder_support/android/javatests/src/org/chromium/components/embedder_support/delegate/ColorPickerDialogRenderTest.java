@@ -1,0 +1,103 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.components.embedder_support.delegate;
+
+import android.app.Activity;
+import android.graphics.Color;
+import android.os.Build;
+import android.view.View;
+
+import androidx.test.filters.MediumTest;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+import org.chromium.base.ThreadUtils;
+import org.chromium.base.test.BaseActivityTestRule;
+import org.chromium.base.test.params.BaseJUnit4RunnerDelegate;
+import org.chromium.base.test.params.ParameterAnnotations;
+import org.chromium.base.test.params.ParameterAnnotations.UseRunnerDelegate;
+import org.chromium.base.test.params.ParameterSet;
+import org.chromium.base.test.params.ParameterizedRunner;
+import org.chromium.base.test.util.DisableIf;
+import org.chromium.base.test.util.Feature;
+import org.chromium.components.embedder_support.R;
+import org.chromium.ui.test.util.BlankUiTestActivity;
+import org.chromium.ui.test.util.NightModeTestUtils;
+import org.chromium.ui.test.util.RenderTestRule;
+
+import java.io.IOException;
+import java.util.List;
+
+/** Render tests for color picker dialog. */
+@RunWith(ParameterizedRunner.class)
+@UseRunnerDelegate(BaseJUnit4RunnerDelegate.class)
+@DisableIf.Build(
+        sdk_is_greater_than = Build.VERSION_CODES.UPSIDE_DOWN_CAKE,
+        message = "crbug.com/552571146")
+// TODO(crbug.com/344923212): Failing when batched, batch this again.
+public class ColorPickerDialogRenderTest {
+    @ParameterAnnotations.ClassParameter
+    private static final List<ParameterSet> sClassParams =
+            new NightModeTestUtils.NightModeParams().getParameters();
+
+    @Rule
+    public BaseActivityTestRule<BlankUiTestActivity> mActivityTestRule =
+            new BaseActivityTestRule<>(BlankUiTestActivity.class);
+
+    @Rule
+    public RenderTestRule mRenderTestRule =
+            RenderTestRule.Builder.withPublicCorpus()
+                    .setBugComponent(RenderTestRule.Component.BLINK_FORMS_COLOR)
+                    .build();
+
+    private View mView;
+
+    public ColorPickerDialogRenderTest(boolean nightModeEnabled) {
+        NightModeTestUtils.setUpNightModeForBlankUiTestActivity(nightModeEnabled);
+        mRenderTestRule.setNightModeEnabled(nightModeEnabled);
+    }
+
+    @Before
+    public void setUp() throws Exception {
+        mActivityTestRule.launchActivity(null);
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    Activity activity = mActivityTestRule.getActivity();
+                    HtmlColorPickerDialogView dialog = new HtmlColorPickerDialogView(activity);
+                    HtmlColorPickerCoordinator colorPickerCoordinator =
+                            new HtmlColorPickerCoordinator(activity, (i) -> {}, dialog);
+                    mView = dialog.getContentView();
+                    mView.setBackgroundResource(R.color.default_bg_color_baseline);
+                    colorPickerCoordinator.show(Color.RED);
+                });
+    }
+
+    @After
+    public void tearDown() {
+        NightModeTestUtils.tearDownNightModeForBlankUiTestActivity();
+    }
+
+    @Test
+    @MediumTest
+    @Feature({"RenderTest"})
+    public void testRender_ColorPickerDialog() throws IOException {
+        mRenderTestRule.render(mView, "color_picker_dialog");
+    }
+
+    @Test
+    @MediumTest
+    @Feature({"RenderTest"})
+    public void testRender_ColorPickerDialog_Advanced() throws IOException {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    mView.findViewById(R.id.color_picker_view_switcher_button).performClick();
+                });
+        mRenderTestRule.render(mView, "color_picker_dialog_advanced");
+    }
+}

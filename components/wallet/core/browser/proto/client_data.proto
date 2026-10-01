@@ -1,0 +1,18 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+syntax = "proto2";
+
+package wallet;
+
+option optimize_for = LITE_RUNTIME;
+
+// Client data for the pass.
+message ClientData {
+  // Optional. Holds client-specific data for Chrome.
+  // Conceptually, this is an Any proto. In practice, it is a serialized Any
+  // proto to bypass ESF Any proto validation. This validation would fail, since
+  // the proto contained in the Any is only available on the client-side.
+  optional bytes chrome_client_data = 1;
+}

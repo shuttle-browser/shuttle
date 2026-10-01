@@ -1,0 +1,69 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "base/at_exit.h"
+#include "base/command_line.h"
+#include "base/feature_list.h"
+#include "base/metrics/field_trial.h"
+#include "components/variations/client_filterable_state.h"
+#include "components/variations/entropy_provider.h"
+#include "components/variations/proto/study.pb.h"
+#include "components/variations/proto/variations_seed.pb.h"
+#include "components/variations/proto/variations_seed_fuzzable.pb.h"
+#include "components/variations/variations_layers.h"
+#include "components/variations/variations_seed_processor.h"
+#include "components/variations/variations_test_utils.h"
+#include "testing/libfuzzer/proto/lpm_interface.h"
+
+namespace variations {
+namespace {
+
+struct Environment {
+  Environment() { base::CommandLine::Init(0, nullptr); }
+
+  base::AtExitManager at_exit_manager;
+};
+
+std::unique_ptr<ClientFilterableState> MockChromeClientFilterableState() {
+  auto client_state = CreateDummyClientFilterableState();
+  client_state->locale = "en-CA";
+  client_state->reference_date = base::Time::Now();
+  client_state->version = base::Version("20.0.0.0");
+  client_state->channel = Study::STABLE;
+  client_state->form_factor = Study::PHONE;
+  client_state->platform = Study::PLATFORM_ANDROID;
+  return client_state;
+}
+
+}  // namespace
+
+void CreateTrialsFromStudyFuzzer(const VariationsSeed& seed) {
+  base::FieldTrialList field_trial_list;
+  base::FeatureList feature_list;
+
+  // TODO(b/244252663): Add more coverage of client_state and entropy
+  // provider arguments.
+  auto client_state = MockChromeClientFilterableState();
+
+  EntropyProviders entropy_providers(
+      "client_id", {7999, 8000},
+      // The following is a test value for limited entropy randomization source
+      "00000000000000000000000000000001");
+  VariationsLayers layers(seed, entropy_providers);
+  StickyActivationManager sticky_activation_manager(/*local_state=*/nullptr);
+  VariationsSeedProcessor(sticky_activation_manager)
+      .CreateTrialsFromSeed(seed, *client_state, entropy_providers, layers,
+                            &feature_list);
+}
+
+DEFINE_PROTO_FUZZER(const fuzzable::variations::VariationsSeed& seed) {
+  variations::VariationsSeed lite_seed;
+  if (!lite_seed.ParseFromString(seed.SerializeAsString())) {
+    return;
+  }
+  static Environment env;
+  CreateTrialsFromStudyFuzzer(lite_seed);
+}
+
+}  // namespace variations

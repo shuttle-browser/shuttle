@@ -1,0 +1,692 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/search_engine_choice/search_engine_choice_dialog_service.h"
+
+#include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/strings/strcat.h"
+#include "base/strings/stringprintf.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/metrics/user_action_tester.h"
+#include "base/test/scoped_feature_list.h"
+#include "build/build_config.h"
+#include "build/chromeos_buildflags.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/search_engine_choice/search_engine_choice_dialog_service_factory.h"
+#include "chrome/browser/search_engine_choice/search_engine_choice_service_factory.h"
+#include "chrome/browser/search_engines/template_url_service_factory.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chrome/test/base/search_test_utils.h"
+#include "chrome/test/base/testing_browser_process.h"
+#include "chrome/test/base/testing_profile_manager.h"
+#include "components/country_codes/country_codes.h"
+#include "components/metrics/metrics_features.h"
+#include "components/regional_capabilities/regional_capabilities_switches.h"
+#include "components/regional_capabilities/regional_capabilities_utils.h"
+#include "components/search_engines/search_engine_choice/search_engine_choice_service.h"
+#include "components/search_engines/search_engine_choice/search_engine_choice_utils.h"
+#include "components/search_engines/search_engine_utils.h"
+#include "components/search_engines/search_engines_pref_names.h"
+#include "components/search_engines/search_engines_switches.h"
+#include "components/search_engines/search_engines_test_util.h"
+#include "components/search_engines/template_url_data_util.h"
+#include "components/search_engines/template_url_prepopulate_data.h"
+#include "components/search_engines/template_url_service.h"
+#include "components/signin/public/base/signin_switches.h"
+#include "components/sync_preferences/testing_pref_service_syncable.h"
+#include "content/public/test/browser_task_environment.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/search_engines_data/resources/definitions/prepopulated_engines.h"
+#include "third_party/search_engines_data/resources/definitions/regional_settings.h"
+
+using ::country_codes::CountryId;
+using ::regional_capabilities::SearchEngineChoiceScreenConditions;
+
+namespace {
+
+MATCHER_P(RecordedChoiceScreenEvent, event, "") {
+  return arg.GetBucketCount(
+             search_engines::kSearchEngineChoiceScreenEventsHistogram, event) ==
+             1 &&
+#if !BUILDFLAG(IS_CHROMEOS)
+         arg.GetBucketCount(
+             base::StrCat(
+                 {search_engines::kSearchEngineChoiceScreenEventsHistogram,
+                  ".Profile1"}),
+             event) == 1 &&
+#endif
+         arg.GetBucketCount(
+             search_engines::kPumaSearchChoiceScreenEventsHistogram, event) ==
+             1;
+}
+
+constexpr CountryId kBelgiumCountryId("BE");
+
+void SetUserSelectedDefaultSearchProvider(
+    TemplateURLService* template_url_service,
+    bool created_by_policy) {
+  constexpr char kCustomSearchEngineDomain[] = "bar.com";
+  constexpr char16_t kCustomSearchEngineKeyword[] = u"bar.com";
+
+  TemplateURLData data;
+  data.SetShortName(kCustomSearchEngineKeyword);
+  data.SetKeyword(kCustomSearchEngineKeyword);
+  data.SetURL(base::StringPrintf("https://%s/url?bar={searchTerms}",
+                                 kCustomSearchEngineDomain));
+  data.new_tab_url =
+      base::StringPrintf("https://%s/newtab", kCustomSearchEngineDomain);
+  data.alternate_urls.push_back(base::StringPrintf(
+      "https://%s/alt#quux={searchTerms}", kCustomSearchEngineDomain));
+
+  if (created_by_policy) {
+    data.policy_origin = TemplateURLData::PolicyOrigin::kDefaultSearchProvider;
+  }
+
+  TemplateURL* template_url =
+      template_url_service->Add(std::make_unique<TemplateURL>(data));
+  template_url_service->SetUserSelectedDefaultSearchProvider(template_url);
+}
+
+#if !BUILDFLAG(CHROME_FOR_TESTING)
+struct TestParam {
+  std::string test_suffix;
+  std::optional<regional_capabilities::SearchEngineCountryListOverride>
+      list_override;
+};
+
+// To be passed as 4th argument to `INSTANTIATE_TEST_SUITE_P()`, allows the test
+// to be named like `<TestClassName>.InvokeUi_default/<TestSuffix>` instead
+// of using the index of the param in `TestParam` as suffix.
+std::string ParamToTestSuffix(const ::testing::TestParamInfo<TestParam>& info) {
+  return info.param.test_suffix;
+}
+
+// Permutations of supported parameters.
+const TestParam kTestParams[] = {
+    {.test_suffix = "BelgiumSearchEngineList"},
+    {.test_suffix = "DefaultSearchEngineList",
+     .list_override =
+         regional_capabilities::SearchEngineCountryListOverride::kEeaDefault},
+    {.test_suffix = "AllEeaSearchEngineList",
+     .list_override =
+         regional_capabilities::SearchEngineCountryListOverride::kEeaAll},
+};
+#endif
+
+}  // namespace
+
+class SearchEngineChoiceDialogServiceTest : public testing::Test {
+ public:
+  SearchEngineChoiceDialogServiceTest()
+      : profile_manager_(TestingBrowserProcess::GetGlobal()) {
+    scoped_chrome_build_override_ = std::make_unique<base::AutoReset<bool>>(
+        SearchEngineChoiceDialogServiceFactory::
+            ScopedChromeBuildOverrideForTesting(
+                /*force_chrome_build=*/true));
+  }
+
+  void SetUp() override {
+    ASSERT_TRUE(profile_manager_.SetUp());
+
+    // The search engine choice feature is only enabled for countries in the
+    // EEA region.
+    base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
+        switches::kSearchEngineChoiceCountry, kBelgiumCountryId.CountryCode());
+    base::CommandLine::ForCurrentProcess()->AppendSwitch(
+        switches::kIgnoreNoFirstRunForSearchEngineChoiceScreen);
+
+    profile_ = profile_manager_.CreateTestingProfile("Profile 1");
+    TemplateURLServiceFactory::GetInstance()->SetTestingFactory(
+        profile(),
+        base::BindRepeating(&TemplateURLServiceFactory::BuildInstanceFor));
+  }
+
+  SearchEngineChoiceDialogService* GetSearchEngineChoiceDialogService(
+      bool force_fetch_search_engines = false) {
+    SearchEngineChoiceDialogService* search_engine_choice_dialog_service =
+        SearchEngineChoiceDialogServiceFactory::GetForProfile(profile());
+
+    if (force_fetch_search_engines) {
+      CHECK(search_engine_choice_dialog_service);
+
+      // Fetch the search engines to load the choice screen data in the service.
+      search_engine_choice_dialog_service->GetSearchEngines();
+    }
+
+    return search_engine_choice_dialog_service;
+  }
+
+  TestingProfile* profile() { return profile_; }
+  TestingProfileManager* profile_manager() { return &profile_manager_; }
+
+  const base::HistogramTester& histogram_tester() const {
+    return histogram_tester_;
+  }
+
+  const base::UserActionTester& user_action_tester() const {
+    return user_action_tester_;
+  }
+
+ private:
+  content::BrowserTaskEnvironment task_environment_;
+  TestingProfileManager profile_manager_;
+  raw_ptr<TestingProfile> profile_;
+  base::HistogramTester histogram_tester_;
+  base::UserActionTester user_action_tester_;
+  base::test::ScopedFeatureList feature_list_{
+      metrics::features::kPerProfileMetrics};
+  std::unique_ptr<base::AutoReset<bool>> scoped_chrome_build_override_;
+};
+
+#if !BUILDFLAG(CHROME_FOR_TESTING)
+class SearchEngineListCountryOverrideParametrizedTest
+    : public SearchEngineChoiceDialogServiceTest,
+      public testing::WithParamInterface<TestParam> {
+ public:
+  void SetUp() override {
+    SearchEngineChoiceDialogServiceTest::SetUp();
+    base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+    auto search_engine_list_override = GetParam().list_override;
+
+    if (search_engine_list_override.has_value() &&
+        search_engine_list_override.value() ==
+            regional_capabilities::SearchEngineCountryListOverride::kEeaAll) {
+      command_line->AppendSwitchASCII(switches::kSearchEngineChoiceCountry,
+                                      switches::kEeaListCountryOverride);
+    }
+    if (search_engine_list_override.has_value() &&
+        search_engine_list_override.value() ==
+            regional_capabilities::SearchEngineCountryListOverride::
+                kEeaDefault) {
+      command_line->AppendSwitchASCII(switches::kSearchEngineChoiceCountry,
+                                      switches::kDefaultListCountryOverride);
+    }
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(,
+                         SearchEngineListCountryOverrideParametrizedTest,
+                         testing::ValuesIn(kTestParams),
+                         &ParamToTestSuffix);
+
+TEST_F(SearchEngineChoiceDialogServiceTest,
+       ProfileEligibility_DesktopTypeChecks) {
+  auto ComputeProfileEligibility = [](Profile* profile) {
+    // TemplateURLService absence causes the profile to be unsupported.
+    TemplateURLServiceFactory::GetInstance()->SetTestingFactory(
+        profile,
+        base::BindRepeating(&TemplateURLServiceFactory::BuildInstanceFor));
+    return SearchEngineChoiceDialogServiceFactory::
+        ComputeProfileEligibilityForTesting(*profile);
+  };
+
+  TestingProfile* parent_guest = profile_manager()->CreateGuestProfile();
+  EXPECT_EQ(ComputeProfileEligibility(parent_guest),
+            SearchEngineChoiceScreenConditions::kEligible);
+
+  Profile* child_guest = parent_guest->GetOffTheRecordProfile(
+      Profile::OTRProfileID::PrimaryID(), /*create_if_needed=*/true);
+  EXPECT_EQ(ComputeProfileEligibility(child_guest),
+            SearchEngineChoiceScreenConditions::kEligible);
+
+  Profile* regular_profile = profile_manager()->CreateTestingProfile("Reg");
+  EXPECT_EQ(ComputeProfileEligibility(regular_profile),
+            SearchEngineChoiceScreenConditions::kEligible);
+
+  Profile* incognito_profile = regular_profile->GetOffTheRecordProfile(
+      Profile::OTRProfileID::PrimaryID(), /*create_if_needed=*/true);
+  EXPECT_EQ(ComputeProfileEligibility(incognito_profile),
+            SearchEngineChoiceScreenConditions::kUnsupportedBrowserType);
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest, NotifyLearnMoreLinkClicked) {
+  SearchEngineChoiceDialogService* search_engine_choice_dialog_service =
+      GetSearchEngineChoiceDialogService();
+
+  search_engine_choice_dialog_service->NotifyLearnMoreLinkClicked(
+      SearchEngineChoiceDialogService::EntryPoint::kDialog);
+  EXPECT_THAT(
+      histogram_tester(),
+      RecordedChoiceScreenEvent(search_engines::SearchEngineChoiceScreenEvents::
+                                    kLearnMoreWasDisplayed));
+
+  search_engine_choice_dialog_service->NotifyLearnMoreLinkClicked(
+      SearchEngineChoiceDialogService::EntryPoint::kFirstRunExperience);
+  EXPECT_THAT(
+      histogram_tester(),
+      RecordedChoiceScreenEvent(search_engines::SearchEngineChoiceScreenEvents::
+                                    kFreLearnMoreWasDisplayed));
+
+  search_engine_choice_dialog_service->NotifyLearnMoreLinkClicked(
+      SearchEngineChoiceDialogService::EntryPoint::kProfileCreation);
+  EXPECT_THAT(
+      histogram_tester(),
+      RecordedChoiceScreenEvent(search_engines::SearchEngineChoiceScreenEvents::
+                                    kProfileCreationLearnMoreDisplayed));
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest, NotifyMoreButtonClicked) {
+  SearchEngineChoiceDialogService* search_engine_choice_dialog_service =
+      GetSearchEngineChoiceDialogService();
+
+  search_engine_choice_dialog_service->NotifyMoreButtonClicked(
+      SearchEngineChoiceDialogService::EntryPoint::kDialog);
+  EXPECT_THAT(
+      histogram_tester(),
+      RecordedChoiceScreenEvent(
+          search_engines::SearchEngineChoiceScreenEvents::kMoreButtonClicked));
+
+  search_engine_choice_dialog_service->NotifyMoreButtonClicked(
+      SearchEngineChoiceDialogService::EntryPoint::kFirstRunExperience);
+  EXPECT_THAT(
+      histogram_tester(),
+      RecordedChoiceScreenEvent(search_engines::SearchEngineChoiceScreenEvents::
+                                    kFreMoreButtonClicked));
+
+  search_engine_choice_dialog_service->NotifyMoreButtonClicked(
+      SearchEngineChoiceDialogService::EntryPoint::kProfileCreation);
+  EXPECT_THAT(
+      histogram_tester(),
+      RecordedChoiceScreenEvent(search_engines::SearchEngineChoiceScreenEvents::
+                                    kProfileCreationMoreButtonClicked));
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest, NotifyChoiceMade_Dialog) {
+  SearchEngineChoiceDialogService* search_engine_choice_dialog_service =
+      GetSearchEngineChoiceDialogService(/*force_fetch_search_engines=*/true);
+
+  search_engine_choice_dialog_service->NotifyChoiceMade(
+      TemplateURLPrepopulateData::google.id,
+      /*save_guest_mode_selection=*/false,
+      SearchEngineChoiceDialogService::EntryPoint::kDialog);
+  EXPECT_THAT(
+      histogram_tester(),
+      RecordedChoiceScreenEvent(
+          search_engines::SearchEngineChoiceScreenEvents::kDefaultWasSet));
+  // Recorded when we call `SetUserSelectedDefaultSearchProvider()`.
+  histogram_tester().ExpectUniqueSample(
+      search_engines::kSearchEngineChoiceScreenDefaultSearchEngineTypeHistogram,
+      SearchEngineType::SEARCH_ENGINE_GOOGLE, 1);
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest, NotifyChoiceMade_Fre) {
+  SearchEngineChoiceDialogService* search_engine_choice_dialog_service =
+      GetSearchEngineChoiceDialogService(/*force_fetch_search_engines=*/true);
+
+  search_engine_choice_dialog_service->NotifyChoiceMade(
+      TemplateURLPrepopulateData::google.id,
+      /*save_guest_mode_selection=*/false,
+      SearchEngineChoiceDialogService::EntryPoint::kFirstRunExperience);
+  EXPECT_THAT(
+      histogram_tester(),
+      RecordedChoiceScreenEvent(
+          search_engines::SearchEngineChoiceScreenEvents::kFreDefaultWasSet));
+  histogram_tester().ExpectUniqueSample(
+      search_engines::kSearchEngineChoiceScreenDefaultSearchEngineTypeHistogram,
+      SearchEngineType::SEARCH_ENGINE_GOOGLE, 1);
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest, NotifyChoiceMade_ProfileCreation) {
+  SearchEngineChoiceDialogService* search_engine_choice_dialog_service =
+      GetSearchEngineChoiceDialogService(/*force_fetch_search_engines=*/true);
+
+  search_engine_choice_dialog_service->NotifyChoiceMade(
+      TemplateURLPrepopulateData::google.id,
+      /*save_guest_mode_selection=*/false,
+      SearchEngineChoiceDialogService::EntryPoint::kProfileCreation);
+  EXPECT_THAT(
+      histogram_tester(),
+      RecordedChoiceScreenEvent(search_engines::SearchEngineChoiceScreenEvents::
+                                    kProfileCreationDefaultWasSet));
+  histogram_tester().ExpectUniqueSample(
+      search_engines::kSearchEngineChoiceScreenDefaultSearchEngineTypeHistogram,
+      SearchEngineType::SEARCH_ENGINE_GOOGLE, 1);
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest,
+       NotifyChoiceMade_Guest_SaveSelection) {
+  EXPECT_FALSE(g_browser_process->local_state()->HasPrefPath(
+      prefs::kDefaultSearchProviderGuestModePrepopulatedId));
+
+  TestingProfile* parent_guest = profile_manager()->CreateGuestProfile();
+  Profile* child_guest = parent_guest->GetOffTheRecordProfile(
+      Profile::OTRProfileID::PrimaryID(), false);
+
+  TemplateURLServiceFactory::GetInstance()->SetTestingFactory(
+      parent_guest,
+      base::BindRepeating(&TemplateURLServiceFactory::BuildInstanceFor));
+
+  SearchEngineChoiceDialogService* search_engine_choice_dialog_service =
+      SearchEngineChoiceDialogServiceFactory::GetForProfile(child_guest);
+  const int kPrepopulatedId =
+      search_engine_choice_dialog_service->GetSearchEngines()
+          .at(0)
+          ->prepopulate_id();
+
+  search_engine_choice_dialog_service->NotifyChoiceMade(
+      kPrepopulatedId, /*save_guest_mode_selection=*/true,
+      SearchEngineChoiceDialogService::EntryPoint::kDialog);
+  EXPECT_EQ(g_browser_process->local_state()->GetInt64(
+                prefs::kDefaultSearchProviderGuestModePrepopulatedId),
+            kPrepopulatedId);
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest,
+       NotifyChoiceMade_Guest_DontSaveSelection) {
+  EXPECT_FALSE(g_browser_process->local_state()->HasPrefPath(
+      prefs::kDefaultSearchProviderGuestModePrepopulatedId));
+
+  TestingProfile* parent_guest = profile_manager()->CreateGuestProfile();
+  Profile* child_guest = parent_guest->GetOffTheRecordProfile(
+      Profile::OTRProfileID::PrimaryID(), false);
+
+  TemplateURLServiceFactory::GetInstance()->SetTestingFactory(
+      parent_guest,
+      base::BindRepeating(&TemplateURLServiceFactory::BuildInstanceFor));
+
+  SearchEngineChoiceDialogService* search_engine_choice_dialog_service =
+      SearchEngineChoiceDialogServiceFactory::GetForProfile(child_guest);
+  const int kPrepopulatedId =
+      search_engine_choice_dialog_service->GetSearchEngines()
+          .at(0)
+          ->prepopulate_id();
+
+  search_engine_choice_dialog_service->NotifyChoiceMade(
+      kPrepopulatedId, /*save_guest_mode_selection=*/false,
+      SearchEngineChoiceDialogService::EntryPoint::kDialog);
+  EXPECT_FALSE(g_browser_process->local_state()->HasPrefPath(
+      prefs::kDefaultSearchProviderGuestModePrepopulatedId));
+
+  histogram_tester().ExpectUniqueSample("Search.SaveGuestModeSelection", false,
+                                        1);
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest, DoNotCreateServiceIfPolicyIsSet) {
+  SetUserSelectedDefaultSearchProvider(
+      TemplateURLServiceFactory::GetForProfile(profile()),
+      /*created_by_policy=*/true);
+
+  SearchEngineChoiceDialogService* search_engine_choice_dialog_service =
+      GetSearchEngineChoiceDialogService();
+  EXPECT_FALSE(search_engine_choice_dialog_service);
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest,
+       SearchEngineChoicePropagatesFromParentProfileToIncognito) {
+  SearchEngineChoiceDialogService* parent_profile_choice_service =
+      SearchEngineChoiceDialogServiceFactory::GetForProfile(profile());
+  ASSERT_TRUE(parent_profile_choice_service);
+
+  int prepopulate_id =
+      parent_profile_choice_service->GetSearchEngines().at(0)->prepopulate_id();
+  parent_profile_choice_service->NotifyChoiceMade(
+      prepopulate_id, /*save_guest_mode_selection=*/false,
+      SearchEngineChoiceDialogService::EntryPoint::kDialog);
+
+  EXPECT_EQ(TemplateURLServiceFactory::GetForProfile(profile())
+                ->GetDefaultSearchProvider()
+                ->prepopulate_id(),
+            prepopulate_id);
+
+  Profile* incognito_profile =
+      profile()->GetPrimaryOTRProfile(/*create_if_needed=*/true);
+  EXPECT_EQ(TemplateURLServiceFactory::GetForProfile(incognito_profile)
+                ->GetDefaultSearchProvider()
+                ->prepopulate_id(),
+            prepopulate_id);
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest,
+       SearchEngineChoicePropagatesFromIncognitoToParentProfile) {
+  Profile* incognito_profile =
+      profile()->GetPrimaryOTRProfile(/*create_if_needed=*/true);
+  SearchEngineChoiceDialogService* incognito_profile_choice_service =
+      SearchEngineChoiceDialogServiceFactory::GetForProfile(incognito_profile);
+  ASSERT_TRUE(incognito_profile_choice_service);
+
+  int prepopulate_id = incognito_profile_choice_service->GetSearchEngines()
+                           .at(0)
+                           ->prepopulate_id();
+  incognito_profile_choice_service->NotifyChoiceMade(
+      prepopulate_id, /*save_guest_mode_selection=*/false,
+      SearchEngineChoiceDialogService::EntryPoint::kDialog);
+
+  EXPECT_EQ(TemplateURLServiceFactory::GetForProfile(incognito_profile)
+                ->GetDefaultSearchProvider()
+                ->prepopulate_id(),
+            prepopulate_id);
+  EXPECT_EQ(TemplateURLServiceFactory::GetForProfile(profile())
+                ->GetDefaultSearchProvider()
+                ->prepopulate_id(),
+            prepopulate_id);
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest, IsUrlSuitableForDialog) {
+  SearchEngineChoiceDialogService* choice_dialog_service =
+      SearchEngineChoiceDialogServiceFactory::GetForProfile(profile());
+  EXPECT_FALSE(choice_dialog_service->IsUrlSuitableForDialog(
+      GURL(chrome::kChromeUISettingsURL)));
+  EXPECT_FALSE(choice_dialog_service->IsUrlSuitableForDialog(
+      GURL(chrome::kChromeUIDevToolsURL)));
+  EXPECT_TRUE(choice_dialog_service->IsUrlSuitableForDialog(
+      chrome::ChromeUINewTabPageURLAsGURL()));
+  EXPECT_TRUE(
+      choice_dialog_service->IsUrlSuitableForDialog(GURL(url::kAboutBlankURL)));
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest,
+       CanSuppressPrivacySandboxPromo_Dialog) {
+  SearchEngineChoiceDialogService* choice_dialog_service =
+      SearchEngineChoiceDialogServiceFactory::GetForProfile(profile());
+  int prepopulated_id =
+      choice_dialog_service->GetSearchEngines().at(0)->prepopulate_id();
+
+  choice_dialog_service->NotifyChoiceMade(
+      prepopulated_id, /*save_guest_mode_selection=*/false,
+      SearchEngineChoiceDialogService::EntryPoint::kDialog);
+  EXPECT_TRUE(choice_dialog_service->CanSuppressPrivacySandboxPromo());
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest,
+       CanSuppressPrivacySandboxPromo_FRE) {
+  SearchEngineChoiceDialogService* choice_dialog_service =
+      SearchEngineChoiceDialogServiceFactory::GetForProfile(profile());
+  int prepopulated_id =
+      choice_dialog_service->GetSearchEngines().at(0)->prepopulate_id();
+
+  choice_dialog_service->NotifyChoiceMade(
+      prepopulated_id, /*save_guest_mode_selection=*/false,
+      SearchEngineChoiceDialogService::EntryPoint::kFirstRunExperience);
+  EXPECT_FALSE(choice_dialog_service->CanSuppressPrivacySandboxPromo());
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest,
+       CanSuppressPrivacySandboxPromo_ProfileCreation) {
+  SearchEngineChoiceDialogService* choice_dialog_service =
+      SearchEngineChoiceDialogServiceFactory::GetForProfile(profile());
+  int prepopulated_id =
+      choice_dialog_service->GetSearchEngines().at(0)->prepopulate_id();
+
+  choice_dialog_service->NotifyChoiceMade(
+      prepopulated_id, /*save_guest_mode_selection=*/false,
+      SearchEngineChoiceDialogService::EntryPoint::kProfileCreation);
+  EXPECT_FALSE(choice_dialog_service->CanSuppressPrivacySandboxPromo());
+}
+
+TEST_P(SearchEngineListCountryOverrideParametrizedTest,
+       CheckNumberOfSearchEngines) {
+  SearchEngineChoiceDialogService* choice_dialog_service =
+      SearchEngineChoiceDialogServiceFactory::GetForProfile(profile());
+  size_t expected_search_engine_list_size =
+      TemplateURLPrepopulateData::kRegionalSettings.find(kBelgiumCountryId)
+          ->second->search_engines.size();
+  auto search_engine_list_override = GetParam().list_override;
+
+  if (search_engine_list_override.has_value() &&
+      search_engine_list_override.value() ==
+          regional_capabilities::SearchEngineCountryListOverride::kEeaDefault) {
+    expected_search_engine_list_size =
+        regional_capabilities::GetDefaultPrepopulatedEngines().size();
+  }
+
+  if (search_engine_list_override.has_value() &&
+      search_engine_list_override.value() ==
+          regional_capabilities::SearchEngineCountryListOverride::kEeaAll) {
+    expected_search_engine_list_size =
+        regional_capabilities::GetAllEeaRegionPrepopulatedEngines().size();
+  }
+
+  EXPECT_EQ(choice_dialog_service->GetSearchEngines().size(),
+            expected_search_engine_list_size);
+}
+
+#else
+TEST_F(SearchEngineChoiceDialogServiceTest,
+       ServiceNotInitializedInChromeForTesting) {
+  SearchEngineChoiceDialogService* search_engine_choice_dialog_service =
+      GetSearchEngineChoiceDialogService();
+  ASSERT_EQ(search_engine_choice_dialog_service, nullptr);
+}
+#endif  // !BUILDFLAG(CHROME_FOR_TESTING)
+
+TEST_F(SearchEngineChoiceDialogServiceTest,
+       GetChoiceDataFromProfilePropagatesCurrentDefault) {
+  base::HistogramTester histogram_tester;
+  TemplateURLService* source_template_url_service =
+      TemplateURLServiceFactory::GetForProfile(profile());
+  search_test_utils::WaitForTemplateURLServiceToLoad(
+      source_template_url_service);
+
+  // Set a user-selected default search provider to ensure the source is
+  // FROM_USER.
+  SetUserSelectedDefaultSearchProvider(source_template_url_service,
+                                       /*created_by_policy=*/false);
+
+  const TemplateURL* underlying_default =
+      source_template_url_service->GetDefaultSearchProvider();
+  ASSERT_TRUE(underlying_default);
+  const std::string underlying_default_url = underlying_default->url();
+
+  std::optional<search_engines::ChoiceData> choice_data =
+      SearchEngineChoiceDialogService::GetChoiceDataFromProfile(*profile());
+  ASSERT_TRUE(choice_data.has_value());
+  EXPECT_EQ(choice_data->default_search_engine.url(), underlying_default_url);
+
+  histogram_tester.ExpectUniqueSample(
+      "Search.ChoiceDebug.PropagatedDataOutcome",
+      SearchEngineChoiceDialogService::CurrentDefaultPropagationOutcome::
+          kPropagatedCurrentDefault,
+      1);
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest,
+       GetChoiceDataFromProfileIgnoresExtensionProvidedDefault) {
+  base::HistogramTester histogram_tester;
+  TemplateURLService* source_template_url_service =
+      TemplateURLServiceFactory::GetForProfile(profile());
+  search_test_utils::WaitForTemplateURLServiceToLoad(
+      source_template_url_service);
+
+  // Install an extension-provided default search engine in the source profile.
+  std::unique_ptr<TemplateURLData> extension_data =
+      GenerateDummyTemplateURLData("extension");
+  source_template_url_service->Add(std::make_unique<TemplateURL>(
+      *extension_data, TemplateURL::NORMAL_CONTROLLED_BY_EXTENSION,
+      "extension_id", base::Time(), /*wants_to_be_default_engine=*/true));
+  SetExtensionDefaultSearchInPrefs(profile()->GetTestingPrefService(),
+                                   *extension_data);
+  ASSERT_TRUE(
+      source_template_url_service->IsExtensionControlledDefaultSearch());
+
+  // The choice data captured for propagation to a new profile should be absent
+  // for extensions under the new logic.
+  std::optional<search_engines::ChoiceData> choice_data =
+      SearchEngineChoiceDialogService::GetChoiceDataFromProfile(*profile());
+  EXPECT_EQ(choice_data, std::nullopt);
+
+  histogram_tester.ExpectUniqueSample(
+      "Search.ChoiceDebug.PropagatedDataOutcome",
+      SearchEngineChoiceDialogService::CurrentDefaultPropagationOutcome::
+          kSkippedIsExtension,
+      1);
+
+  // Propagating absent choice data should leave the destination profile's
+  // default search engine unchanged from its own default.
+  TestingProfile* destination_profile =
+      profile_manager()->CreateTestingProfile("Profile 2");
+  TemplateURLServiceFactory::GetInstance()->SetTestingFactory(
+      destination_profile,
+      base::BindRepeating(&TemplateURLServiceFactory::BuildInstanceFor));
+  TemplateURLService* destination_template_url_service =
+      TemplateURLServiceFactory::GetForProfile(destination_profile);
+  search_test_utils::WaitForTemplateURLServiceToLoad(
+      destination_template_url_service);
+
+  const std::string destination_default_url =
+      destination_template_url_service->GetDefaultSearchProvider()->url();
+
+  SearchEngineChoiceDialogService::UpdateProfileFromChoiceData(
+      *destination_profile, choice_data);
+  EXPECT_FALSE(
+      destination_template_url_service->IsExtensionControlledDefaultSearch());
+  EXPECT_EQ(destination_template_url_service->GetDefaultSearchProvider()->url(),
+            destination_default_url);
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest,
+       GetChoiceDataFromProfileSkipsIfNoUnderlyingDefault) {
+  base::HistogramTester histogram_tester;
+  TemplateURLService* source_template_url_service =
+      TemplateURLServiceFactory::GetForProfile(profile());
+  search_test_utils::WaitForTemplateURLServiceToLoad(
+      source_template_url_service);
+
+  // When no user choice is made, a fresh profile uses the fallback search
+  // engine, which skips under the new FROM_FALLBACK policy.
+  std::optional<search_engines::ChoiceData> choice_data =
+      SearchEngineChoiceDialogService::GetChoiceDataFromProfile(*profile());
+  EXPECT_EQ(choice_data, std::nullopt);
+
+  histogram_tester.ExpectUniqueSample(
+      "Search.ChoiceDebug.PropagatedDataOutcome",
+      SearchEngineChoiceDialogService::CurrentDefaultPropagationOutcome::
+          kSkippedIsFallback,
+      1);
+}
+
+TEST_F(SearchEngineChoiceDialogServiceTest,
+       GetChoiceDataFromProfileSkipsIfManagedByPolicy) {
+  base::HistogramTester histogram_tester;
+  TemplateURLService* source_template_url_service =
+      TemplateURLServiceFactory::GetForProfile(profile());
+  search_test_utils::WaitForTemplateURLServiceToLoad(
+      source_template_url_service);
+
+  TemplateURLData data;
+  data.SetShortName(u"policy");
+  data.SetKeyword(u"policy");
+  data.SetURL("https://policy/url?bar={searchTerms}");
+  profile()->GetTestingPrefService()->SetManagedPref(
+      DefaultSearchManager::kDefaultSearchProviderDataPrefName,
+      TemplateURLDataToDictionary(data));
+
+  ASSERT_TRUE(source_template_url_service->is_default_search_managed());
+
+  std::optional<search_engines::ChoiceData> choice_data =
+      SearchEngineChoiceDialogService::GetChoiceDataFromProfile(*profile());
+  EXPECT_EQ(choice_data, std::nullopt);
+
+  histogram_tester.ExpectUniqueSample(
+      "Search.ChoiceDebug.PropagatedDataOutcome",
+      SearchEngineChoiceDialogService::CurrentDefaultPropagationOutcome::
+          kSkippedDueToPolicies,
+      1);
+
+  // Clear for subsequent tests.
+  profile()->GetTestingPrefService()->RemoveManagedPref(
+      DefaultSearchManager::kDefaultSearchProviderDataPrefName);
+}

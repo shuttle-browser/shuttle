@@ -1,0 +1,380 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/optimization_guide/core/model_execution/model_execution_manager.h"
+
+#include <optional>
+
+#include "base/command_line.h"
+#include "base/functional/callback_helpers.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/notreached.h"
+#include "base/strings/strcat.h"
+#include "base/strings/stringprintf.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/types/expected.h"
+#include "components/optimization_guide/core/model_execution/feature_keys.h"
+#include "components/optimization_guide/core/model_execution/model_execution_features.h"
+#include "components/optimization_guide/core/model_execution/model_execution_fetcher_impl.h"
+#include "components/optimization_guide/core/model_execution/optimization_guide_model_execution_error.h"
+#include "components/optimization_guide/core/model_execution/remote_model_executor.h"
+#include "components/optimization_guide/core/model_quality/model_quality_log_entry.h"
+#include "components/optimization_guide/core/optimization_guide_enums.h"
+#include "components/optimization_guide/core/optimization_guide_logger.h"
+#include "components/optimization_guide/core/optimization_guide_prefs.h"
+#include "components/optimization_guide/core/optimization_guide_proto_util.h"
+#include "components/optimization_guide/core/optimization_guide_util.h"
+#include "components/optimization_guide/proto/common_types.pb.h"
+#include "net/base/url_util.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
+
+namespace optimization_guide {
+
+namespace {
+
+constexpr char kOptimizationGuideServiceModelExecutionDefaultURL[] =
+    "https://chromemodelexecution-pa.googleapis.com/v1:Execute";
+
+const std::string& ProtoName(ModelBasedCapabilityKey feature) {
+  return proto::ModelExecutionFeature_Name(
+      ToModelExecutionFeatureProto(feature));
+}
+
+class ScopedModelExecutionResponseLogger {
+ public:
+  ScopedModelExecutionResponseLogger(
+      ModelBasedCapabilityKey feature,
+      OptimizationGuideLogger* optimization_guide_logger)
+      : feature_(feature),
+        optimization_guide_logger_(optimization_guide_logger) {}
+
+  ~ScopedModelExecutionResponseLogger() {
+    if (!optimization_guide_logger_->ShouldEnableDebugLogs()) {
+      return;
+    }
+    OPTIMIZATION_GUIDE_LOGGER(
+        optimization_guide_common::mojom::LogSource::MODEL_EXECUTION,
+        optimization_guide_logger_)
+        << "OnModelExecutionResponse - Feature : " << ProtoName(feature_) << " "
+        << message_;
+  }
+
+  void set_message(const std::string& message) { message_ = message; }
+
+ private:
+  ModelBasedCapabilityKey feature_;
+  std::string message_;
+
+  // Not owned. Guaranteed to outlive |this| scoped object.
+  raw_ptr<OptimizationGuideLogger> optimization_guide_logger_;
+};
+
+void RecordModelExecutionResultHistogram(ModelBasedCapabilityKey feature,
+                                         bool result) {
+  base::UmaHistogramBoolean(
+      base::StrCat({"OptimizationGuide.ModelExecution.Result.",
+                    GetStringNameForModelExecutionFeature(feature)}),
+      result);
+}
+
+void RecordModelExecutionLatency(ModelBasedCapabilityKey feature,
+                                 base::TimeDelta latency) {
+  base::UmaHistogramMediumTimes(
+      base::StrCat({"OptimizationGuide.ModelExecution.FetchLatency2.",
+                    GetStringNameForModelExecutionFeature(feature)}),
+      latency);
+}
+
+// The maximum number of parallel `ExecuteModel()` calls allowed for the
+// `feature`. Must be at least 1.
+// If a new model execution request exceeds this limited, the oldest pending
+// execution is cancelled.
+size_t GetMaxParallelFeatureExecutions(ModelBasedCapabilityKey feature) {
+  switch (feature) {
+    case ModelBasedCapabilityKey::kCompose:
+    case ModelBasedCapabilityKey::kWallpaperSearch:
+    case ModelBasedCapabilityKey::kTest:
+    case ModelBasedCapabilityKey::kHistorySearch:
+    case ModelBasedCapabilityKey::kBlingPrototyping:
+    case ModelBasedCapabilityKey::kPasswordChangeSubmission:
+    case ModelBasedCapabilityKey::kEnhancedCalendar:
+    case ModelBasedCapabilityKey::kZeroStateSuggestions:
+    case ModelBasedCapabilityKey::kWalletablePassExtraction:
+    case ModelBasedCapabilityKey::kAmountExtraction:
+    case ModelBasedCapabilityKey::kIosSmartTabGrouping:
+    case ModelBasedCapabilityKey::kSkills:
+    case ModelBasedCapabilityKey::kScamDetection:
+    case ModelBasedCapabilityKey::kGeminiAntiscamProtection:
+    case ModelBasedCapabilityKey::kContentAnnotation:
+    case ModelBasedCapabilityKey::kFinds:
+    case ModelBasedCapabilityKey::kAnnotationReducerOnePResolver:
+    case ModelBasedCapabilityKey::kAnnotationReducerQueryClassifier:
+    case ModelBasedCapabilityKey::kContextualCueing:
+    case ModelBasedCapabilityKey::kCardRecommendations:
+    case ModelBasedCapabilityKey::kReadAloudGenerateText:
+      return 1;
+    case ModelBasedCapabilityKey::kReadAloudSynthesize:
+      // Since ReadAloud prefetches speech synthesis chunks concurrently for
+      // low-latency playback, allow multiple parallel executions.
+      return 10;
+    case ModelBasedCapabilityKey::kContextHub:
+      // Allow multiple parallel executions for `kContextHub` due to the large
+      // size of tab APC, which is inputted per tab into the model.
+      return 10;
+    case ModelBasedCapabilityKey::kFormsClassifications:
+      // Since there can be multiple forms on a single page, multiple parallel
+      // executions are allowed for `kFormsClassifications`.
+      return 10;
+    case ModelBasedCapabilityKey::kUpdaterChat:
+      // Allow multiple parallel executions for `kUpdaterChat` so the LLM
+      // can generate summaries for multiple log snippets concurrently,
+      // enabling the front-end to display a multi-snippet status view.
+      return 10;
+  }
+}
+
+bool IsEligibleForPrivateAI(ModelBasedCapabilityKey feature) {
+  switch (feature) {
+    case ModelBasedCapabilityKey::kContextualCueing:
+    case ModelBasedCapabilityKey::kFormsClassifications:
+    case ModelBasedCapabilityKey::kZeroStateSuggestions:
+    case ModelBasedCapabilityKey::kPasswordChangeSubmission:
+      return true;
+    default:
+      return false;
+  }
+}
+
+}  // namespace
+
+using ModelExecutionError =
+    OptimizationGuideModelExecutionError::ModelExecutionError;
+
+ModelExecutionManager::ModelExecutionManager(
+    scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
+    signin::IdentityManager* identity_manager,
+    std::unique_ptr<Delegate> delegate,
+    OptimizationGuideLogger* optimization_guide_logger,
+    base::WeakPtr<ModelQualityLogsUploaderService>
+        model_quality_uploader_service)
+    : model_quality_uploader_service_(model_quality_uploader_service),
+      optimization_guide_logger_(optimization_guide_logger),
+      model_execution_service_url_(GetModelExecutionServiceURL()),
+      delegate_(std::move(delegate)),
+      url_loader_factory_(url_loader_factory),
+      identity_manager_(identity_manager) {}
+
+ModelExecutionManager::~ModelExecutionManager() = default;
+
+void ModelExecutionManager::Shutdown() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  // Invalidate the weak pointers before clearing the active fetchers, which
+  // will cause the drop all the model execution consumer callbacks, and avoid
+  // all processing during destructor.
+  weak_ptr_factory_.InvalidateWeakPtrs();
+  active_model_execution_fetchers_.clear();
+}
+
+void ModelExecutionManager::AddExecutionResultForTesting(
+    ModelBasedCapabilityKey feature,
+    OptimizationGuideModelExecutionResult result) {
+  test_execution_results_.insert({feature, std::move(result)});
+}
+
+void ModelExecutionManager::ExecuteModel(
+    ModelBasedCapabilityKey feature,
+    const google::protobuf::MessageLite& request_metadata,
+    std::optional<base::TimeDelta> timeout,
+    std::unique_ptr<proto::LogAiDataRequest> log_ai_data_request,
+    ModelExecutionServiceType service_type,
+    OptimizationGuideModelExecutionResultCallback callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (test_execution_results_.find(feature) != test_execution_results_.end()) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(std::move(callback),
+                       std::move(test_execution_results_[feature]), nullptr));
+    test_execution_results_.erase(feature);
+    return;
+  }
+
+  if (optimization_guide_logger_->ShouldEnableDebugLogs()) {
+    OPTIMIZATION_GUIDE_LOGGER(
+        optimization_guide_common::mojom::LogSource::MODEL_EXECUTION,
+        optimization_guide_logger_)
+        << "ExecuteModel: " << ProtoName(feature);
+  }
+
+  // Create log request if not already provided.
+  if (!log_ai_data_request) {
+    log_ai_data_request = std::make_unique<proto::LogAiDataRequest>();
+  }
+
+  ActiveFeatureExecutions& fetchers_for_feature =
+      active_model_execution_fetchers_[feature];
+  if (fetchers_for_feature.size() == GetMaxParallelFeatureExecutions(feature)) {
+    // Cancel the fetcher with the smallest ID. Since IDs are assigned in
+    // increasing order, this cancels the oldest one.
+    fetchers_for_feature.erase(fetchers_for_feature.begin());
+  }
+  FetcherId fetcher_id = next_model_execution_fetcher_id++;
+  CHECK(service_type != ModelExecutionServiceType::kPrivateAi ||
+        IsEligibleForPrivateAI(feature))
+      << feature;
+  base::TimeTicks start_time = base::TimeTicks::Now();
+  auto fetcher = CreateModelExecutionFetcher(service_type);
+  if (!fetcher) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(
+            std::move(callback),
+            OptimizationGuideModelExecutionResult(
+                base::unexpected(OptimizationGuideModelExecutionError::
+                                     FromModelExecutionError(
+                                         ModelExecutionError::kGenericFailure)),
+                nullptr),
+            nullptr));
+    return;
+  }
+  auto fetcher_it =
+      fetchers_for_feature.emplace(fetcher_id, std::move(fetcher));
+  fetcher_it.first->second->ExecuteModel(
+      feature, identity_manager_, request_metadata, timeout,
+      base::BindOnce(&ModelExecutionManager::OnModelExecuteResponse,
+                     weak_ptr_factory_.GetWeakPtr(), feature, fetcher_id,
+                     std::move(log_ai_data_request), std::move(callback),
+                     start_time));
+}
+
+std::unique_ptr<ModelExecutionFetcher>
+ModelExecutionManager::CreateModelExecutionFetcher(
+    ModelExecutionServiceType service_type) {
+  switch (service_type) {
+    case ModelExecutionServiceType::kDefault:
+      return std::make_unique<ModelExecutionFetcherImpl>(
+          url_loader_factory_, model_execution_service_url_,
+          optimization_guide_logger_);
+    case ModelExecutionServiceType::kPrivateAi:
+      if (!delegate_) {
+        return nullptr;
+      }
+      return delegate_->CreatePrivateAiFetcher();
+  }
+}
+
+void ModelExecutionManager::OnModelExecuteResponse(
+    ModelBasedCapabilityKey feature,
+    FetcherId fetcher_id,
+    std::unique_ptr<proto::LogAiDataRequest> log_ai_data_request,
+    OptimizationGuideModelExecutionResultCallback callback,
+    base::TimeTicks start_time,
+    base::expected<const proto::ExecuteResponse,
+                   OptimizationGuideModelExecutionError> execute_response) {
+  RecordModelExecutionLatency(feature, base::TimeTicks::Now() - start_time);
+  active_model_execution_fetchers_[feature].erase(fetcher_id);
+  ScopedModelExecutionResponseLogger scoped_logger(feature,
+                                                   optimization_guide_logger_);
+
+  auto execution_info = std::make_unique<proto::ModelExecutionInfo>(
+      log_ai_data_request->model_execution_info());
+  // TODO(372535824): don't create a ModelQualityLogEntry here, just use
+  // ModelExecutionInfo.
+  // Create corresponding log entry for `log_ai_data_request` to pass it with
+  // the callback.
+  std::unique_ptr<ModelQualityLogEntry> log_entry =
+      std::make_unique<ModelQualityLogEntry>(model_quality_uploader_service_);
+  log_entry->log_ai_data_request()->MergeFrom(*log_ai_data_request);
+
+  if (!execute_response.has_value()) {
+    scoped_logger.set_message("Error: No Response");
+    RecordModelExecutionResultHistogram(feature, false);
+    auto error = execute_response.error();
+    execution_info->set_model_execution_error_enum(
+        static_cast<uint32_t>(error.error()));
+    log_entry->set_model_execution_error(error);
+    std::move(callback).Run(
+        OptimizationGuideModelExecutionResult(base::unexpected(error),
+                                              std::move(execution_info)),
+        std::move(log_entry));
+    return;
+  }
+
+  // Set the id if present.
+  if (execute_response->has_server_execution_id()) {
+    execution_info->set_execution_id(execute_response->server_execution_id());
+    log_entry->set_model_execution_id(execute_response->server_execution_id());
+  }
+
+  if (execute_response->has_error_response()) {
+    scoped_logger.set_message("Error: No Response Metadata");
+    log_entry->set_error_response(execute_response->error_response());
+    *execution_info->mutable_error_response() =
+        execute_response->error_response();
+    // For unallowed error states, don't log request data.
+    auto error =
+        OptimizationGuideModelExecutionError::FromModelExecutionServerError(
+            execute_response->error_response());
+    RecordModelExecutionResultHistogram(feature, false);
+    base::UmaHistogramEnumeration(
+        base::StrCat({"OptimizationGuide.ModelExecution.ServerError.",
+                      GetStringNameForModelExecutionFeature(feature)}),
+        error.error());
+    log_entry->set_model_execution_error(error);
+    execution_info->set_model_execution_error_enum(
+        static_cast<uint32_t>(error.error()));
+
+    if (!error.ShouldLogModelQuality()) {
+      log_entry = nullptr;
+      execution_info = nullptr;
+    }
+    std::move(callback).Run(
+        OptimizationGuideModelExecutionResult(base::unexpected(error),
+                                              std::move(execution_info)),
+        std::move(log_entry));
+    return;
+  }
+
+  if (!execute_response->has_response_metadata()) {
+    scoped_logger.set_message("Error: No Response Metadata");
+    RecordModelExecutionResultHistogram(feature, false);
+    auto error = OptimizationGuideModelExecutionError::FromModelExecutionError(
+        ModelExecutionError::kGenericFailure);
+    log_entry->set_model_execution_error(error);
+    execution_info->set_model_execution_error_enum(
+        static_cast<uint32_t>(error.error()));
+    // Log the request in case response is not present by passing the
+    // `execution_info`.
+    std::move(callback).Run(
+        OptimizationGuideModelExecutionResult(base::unexpected(error),
+                                              std::move(execution_info)),
+        std::move(log_entry));
+    return;
+  }
+
+  if (optimization_guide_logger_->ShouldEnableDebugLogs()) {
+    OPTIMIZATION_GUIDE_LOGGER(
+        optimization_guide_common::mojom::LogSource::MODEL_EXECUTION,
+        optimization_guide_logger_)
+        << "ExecuteModel Response: " << ProtoName(feature);
+  }
+
+  RecordModelExecutionResultHistogram(feature, true);
+  std::move(callback).Run(OptimizationGuideModelExecutionResult(
+                              base::ok(execute_response->response_metadata()),
+                              std::move(execution_info)),
+                          std::move(log_entry));
+}
+
+GURL GetModelExecutionServiceURL() {
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  if (command_line->HasSwitch(
+          kOptimizationGuideServiceModelExecutionURLSwitch)) {
+    return GURL(command_line->GetSwitchValueASCII(
+        kOptimizationGuideServiceModelExecutionURLSwitch));
+  }
+  return GURL(kOptimizationGuideServiceModelExecutionDefaultURL);
+}
+
+}  // namespace optimization_guide

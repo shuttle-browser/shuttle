@@ -1,0 +1,514 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ui/base/clipboard/test/test_clipboard.h"
+
+#include <stddef.h>
+
+#include <cstdio>
+#include <memory>
+#include <optional>
+#include <string_view>
+#include <utility>
+
+#include "base/containers/span.h"
+#include "base/memory/ptr_util.h"
+#include "base/notreached.h"
+#include "base/numerics/safe_conversions.h"
+#include "base/strings/string_view_util.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/types/optional_ref.h"
+#include "base/types/optional_util.h"
+#include "build/build_config.h"
+#include "build/buildflag.h"
+#include "build/chromecast_buildflags.h"
+#include "skia/ext/skia_utils_base.h"
+#include "ui/base/clipboard/clipboard.h"
+#include "ui/base/clipboard/clipboard_constants.h"
+#include "ui/base/clipboard/clipboard_monitor.h"
+#include "ui/base/clipboard/custom_data_helper.h"
+#include "ui/base/data_transfer_policy/data_transfer_endpoint.h"
+#include "ui/base/data_transfer_policy/data_transfer_policy_controller.h"
+#include "ui/gfx/codec/png_codec.h"
+
+namespace ui {
+
+namespace {
+bool IsReadAllowed(base::optional_ref<const DataTransferEndpoint> src,
+                   base::optional_ref<const DataTransferEndpoint> dst) {
+  auto* policy_controller = DataTransferPolicyController::Get();
+  if (!policy_controller)
+    return true;
+  return policy_controller->IsClipboardReadAllowed(src, dst, std::nullopt);
+}
+}  // namespace
+
+TestClipboard::TestClipboard()
+    : default_store_buffer_(ClipboardBuffer::kCopyPaste) {}
+
+TestClipboard::~TestClipboard() = default;
+
+TestClipboard* TestClipboard::CreateForCurrentThread() {
+  base::AutoLock lock(Clipboard::ClipboardMapLock());
+  auto* clipboard = new TestClipboard;
+  (*Clipboard::ClipboardMapPtr())[base::PlatformThread::CurrentId()] =
+      base::WrapUnique(clipboard);
+  return clipboard;
+}
+
+void TestClipboard::SetLastModifiedTime(const base::Time& time) {
+  last_modified_time_ = time;
+}
+
+void TestClipboard::OnPreShutdown() {}
+
+void TestClipboard::GetSource(ClipboardBuffer buffer,
+                              GetSourceCallback callback) const {
+  std::move(callback).Run(GetStore(buffer).GetDataSource());
+}
+
+const ClipboardSequenceNumberToken& TestClipboard::GetSequenceNumber(
+    ClipboardBuffer buffer) const {
+  return GetStore(buffer).sequence_number;
+}
+
+void TestClipboard::GetAllAvailableFormats(
+    ClipboardBuffer buffer,
+    const std::optional<DataTransferEndpoint>& data_dst,
+    base::OnceCallback<void(base::flat_set<ClipboardFormatType>)> callback)
+    const {
+  base::flat_set<ClipboardFormatType> formats;
+  const DataStore& store = GetStore(buffer);
+  if (!IsReadAllowed(store.data_src, base::OptionalToPtr(data_dst))) {
+    std::move(callback).Run(std::move(formats));
+    return;
+  }
+
+  for (const auto& entry : store.data) {
+    formats.insert(entry.first);
+  }
+
+  if (!store.filenames.empty()) {
+    formats.insert(ClipboardFormatType::FilenamesType());
+  }
+
+  // Chrome can retrieve an image from the clipboard as either a bitmap or PNG.
+  if (store.data.contains(ClipboardFormatType::PngType()) ||
+      store.data.contains(ClipboardFormatType::BitmapType())) {
+    formats.insert(ClipboardFormatType::PngType());
+    formats.insert(ClipboardFormatType::BitmapType());
+  }
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  // The linux clipboard treats the presence of text on the clipboard
+  // as the url format being available.
+  if (formats.contains(ClipboardFormatType::PlainTextType())) {
+    formats.insert(ClipboardFormatType::UrlType());
+  }
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+
+  std::move(callback).Run(std::move(formats));
+}
+
+void TestClipboard::Clear(ClipboardBuffer buffer) {
+  GetStore(buffer).Clear();
+}
+
+void TestClipboard::GetStandardFormats(
+    ClipboardBuffer buffer,
+    const std::optional<DataTransferEndpoint>& data_dst,
+    GetStandardFormatsCallback callback) const {
+  auto get_standard_formats =
+      [](const DataStore* store, GetStandardFormatsCallback callback,
+         base::flat_set<ClipboardFormatType> available_formats) {
+        std::vector<std::u16string> types;
+        if (available_formats.contains(ClipboardFormatType::PlainTextType())) {
+          types.push_back(kMimeTypePlainText16);
+        }
+        if (available_formats.contains(ClipboardFormatType::HtmlType())) {
+          types.push_back(kMimeTypeHtml16);
+        }
+        if (available_formats.contains(ClipboardFormatType::SvgType())) {
+          types.push_back(kMimeTypeSvg16);
+        }
+        if (available_formats.contains(ClipboardFormatType::RtfType())) {
+          types.push_back(kMimeTypeRtf16);
+        }
+        if (available_formats.contains(ClipboardFormatType::BitmapType()) ||
+            available_formats.contains(ClipboardFormatType::PngType())) {
+          types.push_back(kMimeTypePng16);
+        }
+        if (available_formats.contains(ClipboardFormatType::FilenamesType())) {
+          types.push_back(kMimeTypeUriList16);
+        }
+
+        auto it =
+            store->data.find(ClipboardFormatType::DataTransferCustomType());
+        if (it != store->data.end()) {
+          ReadCustomDataTypes(base::as_bytes(base::span(it->second)), &types);
+        }
+
+        std::move(callback).Run(std::move(types));
+      };
+
+  GetAllAvailableFormats(buffer, data_dst,
+                         base::BindOnce(get_standard_formats, &GetStore(buffer),
+                                        std::move(callback)));
+}
+
+void TestClipboard::ReadAvailableTypes(
+    ClipboardBuffer buffer,
+    const std::optional<DataTransferEndpoint>& data_dst,
+    ReadAvailableTypesCallback callback) const {
+  GetStandardFormats(buffer, data_dst, std::move(callback));
+}
+
+void TestClipboard::ReadText(
+    ClipboardBuffer buffer,
+    const std::optional<DataTransferEndpoint>& data_dst,
+    ReadTextCallback callback) const {
+  const DataStore& store = GetStore(buffer);
+  if (!IsReadAllowed(store.data_src, base::OptionalToPtr(data_dst))) {
+    std::move(callback).Run(u"");
+    return;
+  }
+
+  std::u16string result;
+  auto it = store.data.find(ClipboardFormatType::PlainTextType());
+  if (it != store.data.end()) {
+    result = base::UTF8ToUTF16(it->second);
+  }
+  std::move(callback).Run(std::move(result));
+}
+
+void TestClipboard::ReadAsciiText(
+    ClipboardBuffer buffer,
+    const std::optional<DataTransferEndpoint>& data_dst,
+    ReadAsciiTextCallback callback) const {
+  const DataStore& store = GetStore(buffer);
+  if (!IsReadAllowed(store.data_src, base::OptionalToPtr(data_dst))) {
+    std::move(callback).Run("");
+    return;
+  }
+
+  std::string result;
+  auto it = store.data.find(ClipboardFormatType::PlainTextType());
+  if (it != store.data.end()) {
+    result = it->second;
+  }
+  std::move(callback).Run(std::move(result));
+}
+
+void TestClipboard::ReadHTML(
+    ClipboardBuffer buffer,
+    const std::optional<DataTransferEndpoint>& data_dst,
+    ReadHtmlCallback callback) const {
+  const DataStore& store = GetStore(buffer);
+  if (!IsReadAllowed(store.data_src, base::OptionalToPtr(data_dst))) {
+    std::move(callback).Run(u"", GURL(), 0, 0);
+    return;
+  }
+
+  std::u16string markup;
+  auto it = store.data.find(ClipboardFormatType::HtmlType());
+  if (it != store.data.end()) {
+    markup = base::UTF8ToUTF16(it->second);
+  }
+  uint32_t markup_size = base::checked_cast<uint32_t>(markup.size());
+  std::move(callback).Run(std::move(markup), GURL(store.html_src_url), 0,
+                          markup_size);
+}
+
+void TestClipboard::ReadSvg(ClipboardBuffer buffer,
+                            const std::optional<DataTransferEndpoint>& data_dst,
+                            ReadSvgCallback callback) const {
+  const DataStore& store = GetStore(buffer);
+  if (!IsReadAllowed(store.data_src, base::OptionalToPtr(data_dst))) {
+    std::move(callback).Run(u"");
+    return;
+  }
+
+  std::u16string result;
+  auto it = store.data.find(ClipboardFormatType::SvgType());
+  if (it != store.data.end()) {
+    result = base::UTF8ToUTF16(it->second);
+  }
+  std::move(callback).Run(std::move(result));
+}
+
+void TestClipboard::ReadRTF(ClipboardBuffer buffer,
+                            const std::optional<DataTransferEndpoint>& data_dst,
+                            ReadRTFCallback callback) const {
+  const DataStore& store = GetStore(buffer);
+  if (!IsReadAllowed(store.data_src, base::OptionalToPtr(data_dst))) {
+    std::move(callback).Run("");
+    return;
+  }
+
+  std::string result;
+  auto it = store.data.find(ClipboardFormatType::RtfType());
+  if (it != store.data.end()) {
+    result = it->second;
+  }
+  std::move(callback).Run(std::move(result));
+}
+
+void TestClipboard::ReadPng(ClipboardBuffer buffer,
+                            const std::optional<DataTransferEndpoint>& data_dst,
+                            ReadPngCallback callback) const {
+  const DataStore& store = GetStore(buffer);
+  if (!IsReadAllowed(store.data_src, base::OptionalToPtr(data_dst))) {
+    std::move(callback).Run(std::vector<uint8_t>());
+    return;
+  }
+  std::move(callback).Run(store.png);
+}
+
+void TestClipboard::ReadDataTransferCustomData(
+    ClipboardBuffer buffer,
+    const std::u16string& type,
+    const std::optional<DataTransferEndpoint>& data_dst,
+    ReadDataTransferCustomDataCallback callback) const {
+  const DataStore& store = GetStore(buffer);
+  if (!IsReadAllowed(store.data_src, base::OptionalToPtr(data_dst))) {
+    std::move(callback).Run(u"");
+    return;
+  }
+
+  std::u16string result;
+  auto it = store.data.find(ClipboardFormatType::DataTransferCustomType());
+  if (it != store.data.end()) {
+    result = ReadCustomDataForType(base::as_byte_span(it->second), type)
+                 .value_or(u"");
+  }
+  std::move(callback).Run(std::move(result));
+}
+
+void TestClipboard::ReadFilenames(
+    ClipboardBuffer buffer,
+    const std::optional<DataTransferEndpoint>& data_dst,
+    ReadFilenamesCallback callback) const {
+  const DataStore& store = GetStore(buffer);
+  if (!IsReadAllowed(store.data_src, base::OptionalToPtr(data_dst))) {
+    std::move(callback).Run({});
+    return;
+  }
+
+  std::move(callback).Run(store.filenames);
+}
+
+// TODO(crbug.com/40704509): |data_dst| should be supported.
+void TestClipboard::ReadURL(const std::optional<DataTransferEndpoint>& data_dst,
+                            ReadUrlCallback callback) const {
+  const DataStore& store = GetDefaultStore();
+  if (!IsReadAllowed(store.data_src, base::OptionalToPtr(data_dst))) {
+    std::move(callback).Run(ClipboardUrlInfo());
+    return;
+  }
+
+  std::string url;
+  auto it = store.data.find(ClipboardFormatType::UrlType());
+  if (it != store.data.end()) {
+    url = it->second;
+  }
+  ClipboardUrlInfo url_info;
+  url_info.url = GURL(url);
+  url_info.title = base::UTF8ToUTF16(store.url_title);
+  std::move(callback).Run(std::move(url_info));
+}
+
+void TestClipboard::ReadData(
+    const ClipboardFormatType& format,
+    const std::optional<DataTransferEndpoint>& data_dst,
+    ReadDataCallback callback) const {
+  const DataStore& store = GetDefaultStore();
+  if (!IsReadAllowed(store.data_src, base::OptionalToPtr(data_dst))) {
+    std::move(callback).Run("");
+    return;
+  }
+
+  std::string result;
+  auto it = store.data.find(format);
+  if (it != store.data.end()) {
+    result = it->second;
+  }
+  std::move(callback).Run(std::move(result));
+}
+
+base::Time TestClipboard::GetLastModifiedTime() const {
+  return last_modified_time_;
+}
+
+void TestClipboard::ClearLastModifiedTime() {
+  last_modified_time_ = base::Time();
+}
+
+#if BUILDFLAG(IS_OZONE)
+bool TestClipboard::IsSelectionBufferAvailable() const {
+  return true;
+}
+#endif  // BUILDFLAG(IS_OZONE)
+
+void TestClipboard::WritePortableAndPlatformRepresentations(
+    ClipboardBuffer buffer,
+    const ObjectMap& objects,
+    const std::vector<RawData>& raw_objects,
+    std::vector<Clipboard::PlatformRepresentation> platform_representations,
+    std::unique_ptr<DataTransferEndpoint> data_src,
+    uint32_t privacy_types) {
+  Clear(buffer);
+  default_store_buffer_ = buffer;
+
+  GetStore(buffer).SetDataSource(base::OptionalFromPtr(data_src.get()));
+
+  DispatchPlatformRepresentations(std::move(platform_representations));
+  for (const auto& kv : objects) {
+    DispatchPortableRepresentation(kv.second);
+  }
+  for (const auto& raw_object : raw_objects) {
+    DispatchPortableRepresentation(raw_object);
+  }
+  default_store_buffer_ = ClipboardBuffer::kCopyPaste;
+}
+
+void TestClipboard::WriteText(std::string_view text) {
+  GetDefaultStore().data[ClipboardFormatType::PlainTextType()] = text;
+#if BUILDFLAG(IS_WIN)
+  // Create a dummy entry.
+  GetDefaultStore().data[ClipboardFormatType::PlainTextAType()];
+#endif
+  if (IsSupportedClipboardBuffer(ClipboardBuffer::kSelection))
+    GetStore(ClipboardBuffer::kSelection)
+        .data[ClipboardFormatType::PlainTextType()] = text;
+  ClipboardMonitor::GetInstance()->NotifyClipboardDataChanged();
+}
+
+void TestClipboard::WriteHTML(std::string_view markup,
+                              std::optional<std::string_view> source_url) {
+  GetDefaultStore().data[ClipboardFormatType::HtmlType()] = markup;
+  GetDefaultStore().html_src_url = source_url.value_or("");
+  ClipboardMonitor::GetInstance()->NotifyClipboardDataChanged();
+}
+
+void TestClipboard::WriteSvg(std::string_view markup) {
+  GetDefaultStore().data[ClipboardFormatType::SvgType()] = markup;
+  ClipboardMonitor::GetInstance()->NotifyClipboardDataChanged();
+}
+
+void TestClipboard::WriteRTF(std::string_view rtf) {
+  GetDefaultStore().data[ClipboardFormatType::RtfType()] = rtf;
+}
+
+void TestClipboard::WriteFilenames(std::vector<ui::FileInfo> filenames) {
+  GetDefaultStore().filenames = std::move(filenames);
+}
+
+void TestClipboard::WriteURL(const ClipboardUrlInfo& url_info) {
+  GetDefaultStore().data[ClipboardFormatType::UrlType()] = url_info.url.spec();
+#if !BUILDFLAG(IS_WIN)
+  GetDefaultStore().url_title = base::UTF16ToUTF8(url_info.title);
+#endif
+}
+
+void TestClipboard::WriteWebSmartPaste() {
+  // Create a dummy entry.
+  GetDefaultStore().data[ClipboardFormatType::WebKitSmartPasteType()];
+}
+
+void TestClipboard::WriteBitmap(const SkBitmap& bitmap) {
+  // We expect callers to sanitize `bitmap` to be N32 color type, to avoid
+  // out-of-bounds issues due to unexpected bits-per-pixel while copying the
+  // bitmap's pixel buffer. This DCHECK is to help alert us if we've missed
+  // something.
+  DCHECK_EQ(bitmap.colorType(), kN32_SkColorType);
+
+  // Create a dummy entry.
+  GetDefaultStore().data[ClipboardFormatType::BitmapType()];
+  GetDefaultStore().png =
+      gfx::PNGCodec::EncodeBGRASkBitmap(bitmap, /*discard_transparency=*/false)
+          .value();
+  ClipboardMonitor::GetInstance()->NotifyClipboardDataChanged();
+}
+
+void TestClipboard::WriteData(const ClipboardFormatType& format,
+                              base::span<const uint8_t> data) {
+  GetDefaultStore().data[format] = std::string(base::as_string_view(data));
+  ClipboardMonitor::GetInstance()->NotifyClipboardDataChanged();
+}
+
+void TestClipboard::StopUpdatingSequenceNumberForTesting() {
+  should_update_sequence_number_ = false;
+}
+
+void TestClipboard::UpdateSequenceManuallyForTesting(ClipboardBuffer buffer) {
+  GetStore(buffer).sequence_number = ClipboardSequenceNumberToken();
+}
+
+TestClipboard::DataStore::DataStore() = default;
+
+TestClipboard::DataStore::DataStore(const DataStore& other) {
+  sequence_number = other.sequence_number;
+  data = other.data;
+  url_title = other.url_title;
+  html_src_url = other.html_src_url;
+  png = other.png;
+  data_src = other.data_src;
+}
+
+TestClipboard::DataStore& TestClipboard::DataStore::operator=(
+    const DataStore& other) {
+  sequence_number = other.sequence_number;
+  data = other.data;
+  url_title = other.url_title;
+  html_src_url = other.html_src_url;
+  png = other.png;
+  data_src = other.data_src;
+  return *this;
+}
+
+TestClipboard::DataStore::~DataStore() = default;
+
+void TestClipboard::DataStore::Clear() {
+  data.clear();
+  url_title.clear();
+  html_src_url.clear();
+  png.clear();
+  filenames.clear();
+  data_src.reset();
+}
+
+void TestClipboard::DataStore::SetDataSource(
+    std::optional<DataTransferEndpoint> new_data_src) {
+  data_src = std::move(new_data_src);
+}
+
+std::optional<DataTransferEndpoint> TestClipboard::DataStore::GetDataSource()
+    const {
+  return data_src;
+}
+
+const TestClipboard::DataStore& TestClipboard::GetStore(
+    ClipboardBuffer buffer) const {
+  CHECK(IsSupportedClipboardBuffer(buffer));
+  return stores_[buffer];
+}
+
+TestClipboard::DataStore& TestClipboard::GetStore(ClipboardBuffer buffer) {
+  CHECK(IsSupportedClipboardBuffer(buffer));
+  DataStore& store = stores_[buffer];
+  if (should_update_sequence_number_) {
+    store.sequence_number = ClipboardSequenceNumberToken();
+  }
+  return store;
+}
+
+const TestClipboard::DataStore& TestClipboard::GetDefaultStore() const {
+  return GetStore(default_store_buffer_);
+}
+
+TestClipboard::DataStore& TestClipboard::GetDefaultStore() {
+  return GetStore(default_store_buffer_);
+}
+
+}  // namespace ui

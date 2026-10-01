@@ -1,0 +1,1714 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/actor/execution_engine.h"
+
+#include <algorithm>
+#include <initializer_list>
+#include <optional>
+#include <string>
+#include <string_view>
+
+#include "base/files/scoped_temp_dir.h"
+#include "base/strings/strcat.h"
+#include "base/test/bind.h"
+#include "base/test/gmock_callback_support.h"
+#include "base/test/gmock_expected_support.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/test_future.h"
+#include "base/time/time.h"
+#include "chrome/browser/actor/actor_keyed_service.h"
+#include "chrome/browser/actor/actor_task.h"
+#include "chrome/browser/actor/actor_test_util.h"
+#include "chrome/browser/actor/autofill_selection_dialog_event_handler.h"
+#include "chrome/browser/actor/enterprise_policy_checker.h"
+#include "chrome/browser/actor/site_policy.h"
+#include "chrome/browser/actor/tools/click_tool_request.h"
+#include "chrome/browser/actor/tools/fake_tool_request.h"
+#include "chrome/browser/actor/tools/tool_request.h"
+#include "chrome/browser/actor/tools/wait_tool.h"
+#include "chrome/browser/actor/ui/event_dispatcher.h"
+#include "chrome/browser/actor/ui/test_support/mock_event_dispatcher.h"
+#include "chrome/browser/optimization_guide/mock_optimization_guide_keyed_service.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
+#include "chrome/common/actor.mojom.h"
+#include "chrome/common/actor/action_result.h"
+#include "chrome/common/actor_webui.mojom.h"
+#include "chrome/common/chrome_features.h"
+#include "chrome/common/chrome_render_frame.mojom.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chrome/test/base/chrome_render_view_host_test_harness.h"
+#include "components/actor/core/actor_features.h"
+#include "components/actor/core/shared_types.h"
+#include "components/actor/public/mojom/actor_types.mojom.h"
+#include "components/autofill/core/browser/integrators/actor/actor_form_filling_types.h"
+#include "components/optimization_guide/content/browser/page_content_proto_provider.h"
+#include "components/optimization_guide/core/filters/optimization_hints_component_update_listener.h"
+#include "components/optimization_guide/core/optimization_guide_features.h"
+#include "components/optimization_guide/proto/hints.pb.h"
+#include "components/page_content_annotations/content/mojom/page_stability.mojom.h"
+#include "components/tabs/public/mock_tab_interface.h"
+#include "content/public/test/mock_navigation_handle.h"
+#include "content/public/test/navigation_simulator.h"
+#include "mojo/public/cpp/bindings/associated_receiver_set.h"
+#include "net/http/http_response_headers.h"
+#include "pdf/buildflags.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
+#include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
+#include "url/gurl.h"
+
+namespace actor {
+
+using ::optimization_guide::proto::Actions;
+using testing::_;
+using testing::Conditional;
+using testing::Eq;
+using testing::Field;
+using testing::Not;
+using testing::Property;
+using testing::VariantWith;
+using ChangeTaskState = ui::UiEventDispatcher::ChangeTaskState;
+using StopTask = ui::UiEventDispatcher::StopTask;
+using AddTab = ui::UiEventDispatcher::AddTab;
+using enum ActorTask::StoppedReason;
+
+namespace {
+constexpr int kFakeContentNodeId = 123;
+constexpr char kActionResultHistogram[] =
+    "Actor.ExecutionEngine.Action.ResultCode";
+constexpr char kActorTaskDurationCompletedHistogram[] =
+    "Actor.Task.Duration.Completed";
+constexpr char kActorTaskCountCompletedHistogram[] =
+    "Actor.Task.Count.Completed";
+constexpr char kActorClickToolDurationSuccessHistogram[] =
+    "Actor.Tools.ExecutionDuration.Click";
+constexpr char kActorFakeToolDurationHistogram[] =
+    "Actor.Tools.ExecutionDuration.FakeTool";
+constexpr char kActorTaskInterruptionCompletedHistogram[] =
+    "Actor.Task.Interruptions.Completed";
+constexpr char kActorTaskDurationWallClockCompletedHistogram[] =
+    "Actor.Task.Duration.WallClock.Completed";
+constexpr char kActorTaskDurationVisibleCompletedHistogram[] =
+    "Actor.Task.Duration.Visible.Completed";
+constexpr char kActorTaskDurationNotVisibleCompletedHistogram[] =
+    "Actor.Task.Duration.NotVisible.Completed";
+
+actor::mojom::ActionResultPtr MakeNotImplementedResult() {
+  return MakeResult(::actor::mojom::ActionResultCode::kNotImplemented);
+}
+
+class MockAutofillSelectionDialogEventHandler
+    : public AutofillSelectionDialogEventHandler {
+ public:
+  MockAutofillSelectionDialogEventHandler() = default;
+  ~MockAutofillSelectionDialogEventHandler() override = default;
+
+  MOCK_METHOD(
+      bool,
+      OnFormPresented,
+      (webui::mojom::AutofillSuggestionDialogOnFormPresentedParamsPtr params),
+      (override));
+  MOCK_METHOD(
+      void,
+      OnFormPreviewChanged,
+      (webui::mojom::AutofillSuggestionDialogOnFormPreviewChangedParamsPtr
+           params),
+      (override));
+  MOCK_METHOD(
+      bool,
+      OnFormConfirmed,
+      (webui::mojom::AutofillSuggestionDialogOnFormConfirmedParamsPtr params),
+      (override));
+
+  base::WeakPtr<MockAutofillSelectionDialogEventHandler> GetWeakPtr() {
+    return weak_factory_.GetWeakPtr();
+  }
+
+ private:
+  base::WeakPtrFactory<MockAutofillSelectionDialogEventHandler> weak_factory_{
+      this};
+};
+
+class FakeChromeRenderFrame : public chrome::mojom::ChromeRenderFrame {
+ public:
+  FakeChromeRenderFrame() = default;
+  ~FakeChromeRenderFrame() override = default;
+
+  void OverrideBinder(content::RenderFrameHost* rfh) {
+    blink::AssociatedInterfaceProvider* remote_interfaces =
+        rfh->GetRemoteAssociatedInterfaces();
+    remote_interfaces->OverrideBinderForTesting(
+        chrome::mojom::ChromeRenderFrame::Name_,
+        base::BindRepeating(&FakeChromeRenderFrame::Bind,
+                            base::Unretained(this)));
+  }
+
+  // chrome::mojom::ChromeRenderFrame:
+  void SetWindowFeatures(
+      blink::mojom::WindowFeaturesPtr window_features) override {}
+  void RequestReloadImageForContextNode() override {}
+  void RequestBitmapForContextNode(
+      RequestBitmapForContextNodeCallback callback) override {}
+  void RequestBitmapForContextNodeWithBoundsHint(
+      RequestBitmapForContextNodeWithBoundsHintCallback callback) override {}
+  void RequestBoundsHintForAllImages(
+      RequestBoundsHintForAllImagesCallback callback) override {}
+  void RequestImageForContextNode(
+      int32_t image_min_area_pixels,
+      const gfx::Size& image_max_size_pixels,
+      chrome::mojom::ImageFormat image_format,
+      int32_t quality,
+      RequestImageForContextNodeCallback callback) override {}
+  void ExecuteWebUIJavaScript(const std::u16string& javascript) override {}
+  void GetMediaFeedURL(GetMediaFeedURLCallback callback) override {}
+  void LoadBlockedPlugins(const std::string& identifier) override {}
+  void SetShouldDeferMediaLoad(bool should_defer) override {}
+
+  void InitializeTool(actor::mojom::ToolInvocationPtr request,
+                      InitializeToolCallback callback) override {
+    std::move(callback).Run(
+        mojom::InitializeToolResult::NewSuccessPoint(gfx::Point(100, 100)));
+  }
+  void ExecuteTool(const actor::TaskId& task_id,
+                   ExecuteToolCallback callback) override {
+    std::move(callback).Run(MakeOkResult());
+  }
+  void InvokeTool(actor::mojom::ToolInvocationPtr request,
+                  InvokeToolCallback callback) override {
+    std::move(callback).Run(MakeOkResult());
+  }
+  void StartActorJournal(
+      mojo::PendingAssociatedRemote<actor::mojom::JournalClient> client)
+      override {}
+  void CreatePageStabilityMonitor(
+      mojo::PendingReceiver<
+          page_content_annotations::mojom::PageStabilityMonitor> monitor,
+      const TaskId& task_id,
+      bool supports_paint_stability) override {}
+  void CancelTool(const TaskId& task_id) override {}
+  void GetCrossDocumentScriptToolResult(
+      const base::UnguessableToken& execution_id,
+      GetCrossDocumentScriptToolResultCallback callback) override {
+    std::move(callback).Run("");
+  }
+#if BUILDFLAG(IS_ANDROID)
+  void SetCCTClientHeader(const std::string& header) override {}
+#endif
+#if BUILDFLAG(ENABLE_PDF)
+  void PdfPageCaptured(const std::u16string& contents,
+                       const std::string& pdf_lang,
+                       const GURL& page_url) override {}
+#endif
+
+ private:
+  void Bind(mojo::ScopedInterfaceEndpointHandle handle) {
+    receivers_.Add(
+        this, mojo::PendingAssociatedReceiver<chrome::mojom::ChromeRenderFrame>(
+                  std::move(handle)));
+  }
+
+  mojo::AssociatedReceiverSet<chrome::mojom::ChromeRenderFrame> receivers_;
+};
+
+class ExecutionEngineTest : public ChromeRenderViewHostTestHarness {
+ public:
+  ExecutionEngineTest()
+      : ChromeRenderViewHostTestHarness(
+            content::BrowserTaskEnvironment::TimeSource::MOCK_TIME) {
+    scoped_feature_list_.InitAndEnableFeature(features::kGlicActor);
+  }
+  ~ExecutionEngineTest() override = default;
+
+  void SetUp() override {
+    ChromeRenderViewHostTestHarness::SetUp();
+    AssociateTabInterface();
+
+    // ExecutionEngine & ActorTask use separate UiEventDispatcher objects, so
+    // we create separate mocks for each.
+    std::unique_ptr<ui::UiEventDispatcher> ui_event_dispatcher =
+        ui::NewMockUiEventDispatcher();
+    std::unique_ptr<ui::UiEventDispatcher> task_ui_event_dispatcher =
+        ui::NewMockUiEventDispatcher();
+    mock_ui_event_dispatcher_ =
+        static_cast<ui::MockUiEventDispatcher*>(ui_event_dispatcher.get());
+    task_mock_ui_event_dispatcher_ =
+        static_cast<ui::MockUiEventDispatcher*>(task_ui_event_dispatcher.get());
+
+    ScopedExecutionEngineFactory scoped_execution_engine_factory(
+        base::BindLambdaForTesting([&](actor::ActorTask& task) {
+          CHECK(ui_event_dispatcher);
+          return actor::ExecutionEngine::CreateForTesting(
+              task, std::move(ui_event_dispatcher));
+        }));
+
+    task_ = ActorTask::CreateForTesting(
+        *ActorKeyedService::Get(profile()), TaskId(1),
+        std::move(task_ui_event_dispatcher),
+        /*options=*/nullptr, TestTaskSourceInfo(), &no_enterprise_checker_,
+        mock_actor_task_delegate_.GetWeakPtr());
+
+    for (auto& mock :
+         {mock_ui_event_dispatcher_, task_mock_ui_event_dispatcher_}) {
+      ON_CALL(*mock, OnPreTool)
+          .WillByDefault(
+              UiEventDispatcherCallback<ToolRequest>(base::BindRepeating(
+                  MakeOkResult, /*requires_page_stabilization=*/true)));
+      ON_CALL(*mock, OnPostTool)
+          .WillByDefault(
+              UiEventDispatcherCallback<ToolRequest>(base::BindRepeating(
+                  MakeOkResult, /*requires_page_stabilization=*/true)));
+      ON_CALL(*mock, OnActorTaskAsyncChange)
+          .WillByDefault(UiEventDispatcherCallback<
+                         ui::UiEventDispatcher::ActorTaskAsyncChange>(
+              base::BindRepeating(MakeOkResult,
+                                  /*requires_page_stabilization=*/true)));
+    }
+
+    ON_CALL(mock_actor_task_delegate_, RequestToShowUserConfirmationDialog)
+        .WillByDefault([](TaskId, const url::Origin&, bool,
+                          ActorTaskDelegate::UserConfirmationDialogCallback
+                              callback) {
+          std::move(callback).Run(
+              webui::mojom::UserConfirmationDialogResponse::New(
+                  webui::mojom::ConfirmationRequestResult::NewPermissionGranted(
+                      true)));
+        });
+  }
+
+  void TearDown() override {
+    testing::Mock::VerifyAndClearExpectations(mock_ui_event_dispatcher_);
+    testing::Mock::VerifyAndClearExpectations(task_mock_ui_event_dispatcher_);
+    mock_ui_event_dispatcher_ = nullptr;
+    task_mock_ui_event_dispatcher_ = nullptr;
+    if (!task_->IsCompleted()) {
+      task_->Stop(kTabDetached);
+    }
+    task_.reset();
+    ClearTabInterface();
+
+    ChromeRenderViewHostTestHarness::TearDown();
+  }
+
+  base::OnceCallback<std::unique_ptr<ToolRequest>()> MakeClickCallback(
+      int content_node_id) {
+    return base::BindLambdaForTesting([this, content_node_id]() {
+      std::string document_identifier =
+          *optimization_guide::DocumentIdentifierUserData::
+              GetDocumentIdentifier(main_rfh()->GetGlobalFrameToken());
+      actor::PageTarget target(
+          actor::DomNode{.node_id = content_node_id,
+                         .document_identifier = document_identifier});
+      std::unique_ptr<ToolRequest> request =
+          std::make_unique<actor::ClickToolRequest>(
+              GetTab()->GetHandle(), target, mojom::ClickType::kLeft,
+              mojom::ClickCount::kSingle);
+      return request;
+    });
+  }
+
+ protected:
+  // Note: action must be generated from a callback because this method
+  // navigates the render frame and the generated action must include a
+  // document identifier token which is only available after the navigation.
+  bool Act(const GURL& url,
+           base::OnceCallback<std::unique_ptr<ToolRequest>()> make_action) {
+    content::NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                               url);
+    fake_chrome_render_frame_.OverrideBinder(main_rfh());
+
+    ActResultFuture success;
+    std::unique_ptr<ToolRequest> action = std::move(make_action).Run();
+    task_->Act(ToRequestList(std::move(action)), success.GetCallback());
+    const auto& action_results = success.Get();
+    for (const auto& action_result : action_results) {
+      if (!IsOk(*action_result.result)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  tabs::MockTabInterface* GetTab() {
+    return tab_state_ ? &tab_state_->tab : nullptr;
+  }
+
+  void AssociateTabInterface() { tab_state_.emplace(web_contents()); }
+  void ClearTabInterface() { tab_state_.reset(); }
+
+  base::test::ScopedFeatureList scoped_feature_list_;
+  base::HistogramTester histograms_;
+  FakeChromeRenderFrame fake_chrome_render_frame_;
+  std::unique_ptr<ActorTask> task_;
+  raw_ptr<ui::MockUiEventDispatcher> mock_ui_event_dispatcher_;
+  raw_ptr<ui::MockUiEventDispatcher> task_mock_ui_event_dispatcher_;
+  testing::NiceMock<MockActorTaskDelegate> mock_actor_task_delegate_;
+
+ private:
+  std::optional<TestTabState> tab_state_;
+
+  MockPolicyChecker no_enterprise_checker_{
+      EnterprisePolicyChecker::UrlBlockReason::kNotBlocked};
+};
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_ActSucceedsOnSupportedUrl DISABLED_ActSucceedsOnSupportedUrl
+#else
+#define MAYBE_ActSucceedsOnSupportedUrl ActSucceedsOnSupportedUrl
+#endif
+TEST_F(ExecutionEngineTest, MAYBE_ActSucceedsOnSupportedUrl) {
+  EXPECT_CALL(*mock_ui_event_dispatcher_,
+              OnPreTool(Property(&ToolRequest::JournalEvent, Eq("Click")), _))
+      .Times(1);
+  EXPECT_CALL(*mock_ui_event_dispatcher_,
+              OnPostTool(Property(&ToolRequest::JournalEvent, Eq("Click")), _))
+      .Times(1);
+  EXPECT_CALL(
+      *task_mock_ui_event_dispatcher_,
+      OnActorTaskSyncChange(VariantWith<ChangeTaskState>(AllOf(
+          Field(&ChangeTaskState::old_state, ActorTask::State::kCreated),
+          Field(&ChangeTaskState::new_state, ActorTask::State::kActing)))))
+      .Times(1);
+  EXPECT_CALL(
+      *task_mock_ui_event_dispatcher_,
+      OnActorTaskSyncChange(VariantWith<ChangeTaskState>(AllOf(
+          Field(&ChangeTaskState::old_state, ActorTask::State::kActing),
+          Field(&ChangeTaskState::new_state, ActorTask::State::kReflecting)))));
+  EXPECT_CALL(*task_mock_ui_event_dispatcher_,
+              OnActorTaskAsyncChange(VariantWith<AddTab>(_), _))
+      .Times(1);
+  EXPECT_TRUE(
+      Act(GURL("http://localhost/"), MakeClickCallback(kFakeContentNodeId)));
+  histograms_.ExpectUniqueSample(kActionResultHistogram,
+                                 mojom::ActionResultCode::kOk, 1);
+  histograms_.ExpectTotalCount(kActorClickToolDurationSuccessHistogram, 1);
+}
+
+TEST_F(ExecutionEngineTest, ActFailsOnUnsupportedUrl) {
+  EXPECT_CALL(*mock_ui_event_dispatcher_, OnPreTool).Times(0);
+  EXPECT_CALL(*mock_ui_event_dispatcher_, OnPostTool).Times(0);
+  EXPECT_FALSE(Act(GURL(chrome::kChromeUIVersionURL),
+                   MakeClickCallback(kFakeContentNodeId)));
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_UiOnPreToolFails DISABLED_UiOnPreToolFails
+#else
+#define MAYBE_UiOnPreToolFails UiOnPreToolFails
+#endif
+TEST_F(ExecutionEngineTest, MAYBE_UiOnPreToolFails) {
+  EXPECT_CALL(*mock_ui_event_dispatcher_, OnPreTool)
+      .WillOnce(UiEventDispatcherCallback<ToolRequest>(
+          base::BindRepeating(MakeNotImplementedResult)));
+  EXPECT_CALL(*mock_ui_event_dispatcher_, OnPostTool).Times(0);
+  EXPECT_FALSE(
+      Act(GURL("http://localhost/"), MakeClickCallback(kFakeContentNodeId)));
+  histograms_.ExpectUniqueSample(kActionResultHistogram,
+                                 mojom::ActionResultCode::kNotImplemented, 1);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_UiOnPostToolFails DISABLED_UiOnPostToolFails
+#else
+#define MAYBE_UiOnPostToolFails UiOnPostToolFails
+#endif
+TEST_F(ExecutionEngineTest, MAYBE_UiOnPostToolFails) {
+  EXPECT_CALL(*mock_ui_event_dispatcher_, OnPreTool).Times(1);
+  EXPECT_CALL(*mock_ui_event_dispatcher_, OnPostTool)
+      .WillOnce(UiEventDispatcherCallback<ToolRequest>(
+          base::BindRepeating(MakeNotImplementedResult)));
+  EXPECT_FALSE(
+      Act(GURL("http://localhost/"), MakeClickCallback(kFakeContentNodeId)));
+  histograms_.ExpectUniqueSample(kActionResultHistogram,
+                                 mojom::ActionResultCode::kNotImplemented, 1);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_ActFailsWhenAddTabFails DISABLED_ActFailsWhenAddTabFails
+#else
+#define MAYBE_ActFailsWhenAddTabFails ActFailsWhenAddTabFails
+#endif
+TEST_F(ExecutionEngineTest, MAYBE_ActFailsWhenAddTabFails) {
+  EXPECT_CALL(*task_mock_ui_event_dispatcher_,
+              OnActorTaskAsyncChange(VariantWith<AddTab>(_), _))
+      .WillOnce(UiEventDispatcherCallback<
+                ui::UiEventDispatcher::ActorTaskAsyncChange>(
+          base::BindRepeating(MakeNotImplementedResult)));
+  EXPECT_FALSE(
+      Act(GURL("http://localhost/"), MakeClickCallback(kFakeContentNodeId)));
+
+  // Because AddTab occurs before entering ExecutionEngine, we don't expect a
+  // result to be recorded.
+  histograms_.ExpectTotalCount(kActionResultHistogram, 0);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_ActFailsWhenTabDestroyed DISABLED_ActFailsWhenTabDestroyed
+#else
+#define MAYBE_ActFailsWhenTabDestroyed ActFailsWhenTabDestroyed
+#endif
+TEST_F(ExecutionEngineTest, MAYBE_ActFailsWhenTabDestroyed) {
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(), GURL("http://localhost/"));
+
+  ActResultFuture result;
+
+  FakeChromeRenderFrame fake_chrome_render_frame;
+  fake_chrome_render_frame.OverrideBinder(main_rfh());
+
+  std::unique_ptr<ToolRequest> action =
+      MakeClickCallback(kFakeContentNodeId).Run();
+  task_->Act(ToRequestList(action), result.GetCallback());
+
+  ClearTabInterface();
+  DeleteContents();
+
+  ExpectErrorResult(result, mojom::ActionResultCode::kTabWentAway);
+  histograms_.ExpectUniqueSample(kActionResultHistogram,
+                                 mojom::ActionResultCode::kTabWentAway, 1);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_CrossOriginNavigationBeforeAction \
+  DISABLED_CrossOriginNavigationBeforeAction
+#else
+#define MAYBE_CrossOriginNavigationBeforeAction \
+  CrossOriginNavigationBeforeAction
+#endif
+TEST_F(ExecutionEngineTest, MAYBE_CrossOriginNavigationBeforeAction) {
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(), GURL("http://localhost/"));
+
+  FakeChromeRenderFrame fake_chrome_render_frame;
+  fake_chrome_render_frame.OverrideBinder(main_rfh());
+
+  ActResultFuture result;
+  base::test::TestFuture<void> start_future;
+  ExecutionEngineStateWaiter state_waiter(start_future.GetCallback(),
+                                          task_->GetExecutionEngine(),
+                                          ExecutionEngine::State::kStartAction);
+  std::unique_ptr<ToolRequest> action =
+      MakeClickCallback(kFakeContentNodeId).Run();
+  task_->Act(ToRequestList(std::move(action)), result.GetCallback());
+  ASSERT_TRUE(start_future.Wait());
+
+  // Before the action happens, commit a cross-origin navigation.
+  ASSERT_FALSE(result.IsReady());
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(), GURL("http://localhost:8000/"));
+
+  // TODO(mcnee): We currently just fail, but this should do something more
+  // graceful.
+  ExpectErrorResult(result, mojom::ActionResultCode::kCrossOriginNavigation);
+  histograms_.ExpectUniqueSample(
+      kActionResultHistogram, mojom::ActionResultCode::kCrossOriginNavigation,
+      1);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_CancelOngoingAction DISABLED_CancelOngoingAction
+#else
+#define MAYBE_CancelOngoingAction CancelOngoingAction
+#endif
+TEST_F(ExecutionEngineTest, MAYBE_CancelOngoingAction) {
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(), GURL("http://localhost/"));
+
+  base::test::TestFuture<ToolCallback> on_invoke_future;
+  base::test::TestFuture<void> on_destroy_future;
+  std::unique_ptr<ToolRequest> request = std::make_unique<FakeToolRequest>(
+      on_invoke_future.GetCallback(), on_destroy_future.GetCallback());
+
+  ActResultFuture result;
+  task_->Act(ToRequestList(request), result.GetCallback());
+
+  // Wait for the tool to be invoked, but don't complete it.
+  EXPECT_TRUE(on_invoke_future.Wait());
+
+  task_->GetExecutionEngine().CancelOngoingActions(
+      mojom::ActionResultCode::kTaskWentAway);
+
+  // The cancellation should destroy the tool.
+  EXPECT_TRUE(on_destroy_future.Wait());
+
+  ExpectErrorResult(result, mojom::ActionResultCode::kTaskWentAway);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_ActorTaskCompletedHistogram DISABLED_ActorTaskCompletedHistogram
+#else
+#define MAYBE_ActorTaskCompletedHistogram ActorTaskCompletedHistogram
+#endif
+TEST_F(ExecutionEngineTest, MAYBE_ActorTaskCompletedHistogram) {
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(), GURL("http://localhost/"));
+
+  FakeChromeRenderFrame fake_chrome_render_frame;
+  fake_chrome_render_frame.OverrideBinder(main_rfh());
+
+  for (size_t i = 0; i < 2; ++i) {
+    ActResultFuture result;
+    std::unique_ptr<ToolRequest> action =
+        MakeClickCallback(kFakeContentNodeId).Run();
+    std::unique_ptr<ToolRequest> action2 =
+        MakeClickCallback(kFakeContentNodeId).Run();
+
+    base::test::TestFuture<void> future;
+    ActorTaskStateWaiter wait_to_act(future.GetCallback(),
+                                     *ActorKeyedService::Get(profile()), *task_,
+                                     ActorTask::State::kActing);
+    task_->Act(ToRequestList(action, action2), result.GetCallback());
+    ASSERT_TRUE(future.Wait());
+  }
+
+  // Simulate time passing before the task stops
+  const base::TimeDelta task_duration = base::Milliseconds(123);
+  task_environment()->FastForwardBy(task_duration);
+
+  EXPECT_CALL(*task_mock_ui_event_dispatcher_,
+              OnActorTaskSyncChange(
+                  VariantWith<ui::MockUiEventDispatcher::RemoveTab>(_)))
+      .Times(testing::AnyNumber());
+  EXPECT_CALL(
+      *task_mock_ui_event_dispatcher_,
+      OnActorTaskSyncChange(VariantWith<StopTask>(AllOf(
+          Field(&StopTask::task_id, task_->id()),
+          Field(&StopTask::final_state, ActorTask::State::kFinished),
+          Field(&StopTask::title, task_->title()),
+          Field(&StopTask::last_acted_on_tab_handle, GetTab()->GetHandle())))))
+      .Times(1);
+
+  task_->Stop(kTaskComplete);
+  histograms_.ExpectTimeBucketCount(kActorTaskDurationCompletedHistogram,
+                                    task_duration, 1);
+  histograms_.ExpectBucketCount(kActorTaskCountCompletedHistogram, 4, 1);
+  histograms_.ExpectTimeBucketCount(
+      kActorTaskDurationWallClockCompletedHistogram, task_duration, 1);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_ActorTaskCompletedWithPauseHistogram \
+  DISABLED_ActorTaskCompletedWithPauseHistogram
+#else
+#define MAYBE_ActorTaskCompletedWithPauseHistogram \
+  ActorTaskCompletedWithPauseHistogram
+#endif
+TEST_F(ExecutionEngineTest, MAYBE_ActorTaskCompletedWithPauseHistogram) {
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(), GURL("http://localhost/"));
+
+  ActResultFuture result;
+
+  FakeChromeRenderFrame fake_chrome_render_frame;
+  fake_chrome_render_frame.OverrideBinder(main_rfh());
+
+  std::unique_ptr<ToolRequest> action =
+      MakeClickCallback(kFakeContentNodeId).Run();
+  task_->Act(ToRequestList(action), result.GetCallback());
+
+  // Simulate the first active period
+  const base::TimeDelta active_duration1 = base::Milliseconds(100);
+  task_environment()->FastForwardBy(active_duration1);
+
+  task_->Pause(/*from_actor=*/true);
+
+  // Time that passes while paused should not be counted.
+  task_environment()->FastForwardBy(base::Milliseconds(500));
+
+  task_->Resume();
+
+  // Simulate the second active period
+  const base::TimeDelta active_duration2 = base::Milliseconds(50);
+  task_environment()->FastForwardBy(active_duration2);
+
+  task_->Stop(kTaskComplete);
+  histograms_.ExpectTimeBucketCount(kActorTaskDurationCompletedHistogram,
+                                    active_duration1 + active_duration2, 1);
+  histograms_.ExpectBucketCount(kActorTaskCountCompletedHistogram, 1, 1);
+  histograms_.ExpectTimeBucketCount(
+      kActorTaskDurationWallClockCompletedHistogram, base::Milliseconds(650),
+      1);
+}
+
+class ExecutionEngineStopReasonParamTest
+    : public ExecutionEngineTest,
+      public testing::WithParamInterface<
+          std::tuple<ActorTask::StoppedReason, const char*>> {
+ public:
+  ExecutionEngineStopReasonParamTest() = default;
+};
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_ActorTaskStoppedHistogram DISABLED_ActorTaskStoppedHistogram
+#else
+#define MAYBE_ActorTaskStoppedHistogram ActorTaskStoppedHistogram
+#endif
+TEST_P(ExecutionEngineStopReasonParamTest, MAYBE_ActorTaskStoppedHistogram) {
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(), GURL("http://localhost/"));
+
+  FakeChromeRenderFrame fake_chrome_render_frame;
+  fake_chrome_render_frame.OverrideBinder(main_rfh());
+
+  for (size_t i = 0; i < 2; ++i) {
+    ActResultFuture result;
+    std::unique_ptr<ToolRequest> action =
+        MakeClickCallback(kFakeContentNodeId).Run();
+
+    base::test::TestFuture<void> future;
+    ActorTaskStateWaiter wait_to_act(future.GetCallback(),
+                                     *ActorKeyedService::Get(profile()), *task_,
+                                     ActorTask::State::kActing);
+    task_->Act(ToRequestList(action), result.GetCallback());
+    ASSERT_TRUE(future.Wait());
+  }
+
+  // Simulate time passing before the task is cancelled
+  const base::TimeDelta task_duration = base::Milliseconds(456);
+  task_environment()->FastForwardBy(task_duration);
+
+  auto [stopped_reason, histogram_suffix] = GetParam();
+  task_->Stop(stopped_reason);
+
+  histograms_.ExpectTimeBucketCount(
+      base::StrCat({"Actor.Task.Duration.", histogram_suffix}), task_duration,
+      1);
+  histograms_.ExpectBucketCount(
+      base::StrCat({"Actor.Task.Count.", histogram_suffix}), 2, 1);
+  histograms_.ExpectTimeBucketCount(
+      base::StrCat({"Actor.Task.Duration.WallClock.", histogram_suffix}),
+      task_duration, 1);
+}
+
+TEST_F(ExecutionEngineTest, ActorTaskCountAndDurationHistograms) {
+  // Task in Created state followed by Acting then Reflecting states.
+  const base::TimeDelta created_duration = base::Seconds(5);
+
+  ActResultFuture result;
+  std::unique_ptr<ToolRequest> action1 =
+      MakeClickCallback(kFakeContentNodeId).Run();
+  std::unique_ptr<ToolRequest> action2 =
+      MakeClickCallback(kFakeContentNodeId).Run();
+  std::unique_ptr<ToolRequest> action3 =
+      MakeClickCallback(kFakeContentNodeId).Run();
+  task_environment()->FastForwardBy(created_duration);
+
+  base::test::TestFuture<void> future;
+  ActorTaskStateWaiter wait_to_act(future.GetCallback(),
+                                   *ActorKeyedService::Get(profile()), *task_,
+                                   ActorTask::State::kActing);
+  task_->Act(ToRequestList(action1, action2, action3), result.GetCallback());
+  ASSERT_TRUE(future.Wait());
+
+  histograms_.ExpectTimeBucketCount(
+      "Actor.Task.StateTransition.Duration.Created", created_duration, 1);
+  histograms_.ExpectBucketCount(
+      "Actor.Task.StateTransition.ActionCount.Created_Acting", 0, 1);
+
+  // Task in PausedByUser state
+  task_->Pause(/*from_actor=*/false);
+  histograms_.ExpectBucketCount(
+      "Actor.Task.StateTransition.ActionCount.Acting_PausedByUser", 3, 1);
+
+  const base::TimeDelta pause_duration = base::Seconds(7);
+  task_environment()->FastForwardBy(pause_duration);
+
+  // Task in Resumed state.
+  task_->Resume();
+  histograms_.ExpectTimeBucketCount(
+      "Actor.Task.StateTransition.Duration.PausedByUser", pause_duration, 1);
+  histograms_.ExpectBucketCount(
+      "Actor.Task.StateTransition.ActionCount.PausedByUser_Reflecting", 0, 1);
+
+  const base::TimeDelta reflecting_duration = base::Seconds(8);
+  task_environment()->FastForwardBy(reflecting_duration);
+
+  // Task in PausedByActor state.
+  task_->Pause(/*from_actor=*/true);
+  histograms_.ExpectTimeBucketCount(
+      "Actor.Task.StateTransition.Duration.Reflecting", reflecting_duration, 1);
+  histograms_.ExpectBucketCount(
+      "Actor.Task.StateTransition.ActionCount.Reflecting_PausedByActor", 0, 1);
+
+  task_environment()->FastForwardBy(pause_duration);
+  // Task in Resumed state.
+  task_->Resume();
+  histograms_.ExpectTimeBucketCount(
+      "Actor.Task.StateTransition.Duration.PausedByActor", pause_duration, 1);
+  histograms_.ExpectBucketCount(
+      "Actor.Task.StateTransition.ActionCount.PausedByActor_Reflecting", 0, 1);
+
+  // Task in Finished state.
+  task_environment()->FastForwardBy(reflecting_duration);
+  task_->Stop(kTaskComplete);
+  histograms_.ExpectTimeBucketCount(
+      "Actor.Task.StateTransition.Duration.Reflecting", reflecting_duration, 2);
+  histograms_.ExpectBucketCount(
+      "Actor.Task.StateTransition.ActionCount.Reflecting_Finished", 0, 1);
+  histograms_.ExpectBucketCount(kActorTaskInterruptionCompletedHistogram, 2, 1);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_LatencyInfoAndActionDurationHistogram \
+  DISABLED_LatencyInfoAndActionDurationHistogram
+#else
+#define MAYBE_LatencyInfoAndActionDurationHistogram \
+  LatencyInfoAndActionDurationHistogram
+#endif
+TEST_F(ExecutionEngineTest, MAYBE_LatencyInfoAndActionDurationHistogram) {
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(), GURL("http://localhost/"));
+
+  ActResultFuture result;
+
+  FakeChromeRenderFrame fake_chrome_render_frame;
+  fake_chrome_render_frame.OverrideBinder(main_rfh());
+
+  const base::TimeDelta simulated_duration = base::Milliseconds(150);
+  const base::TimeTicks action_start_time = base::TimeTicks::Now();
+
+  base::test::TestFuture<ToolCallback> on_invoke_future;
+
+  std::unique_ptr<ToolRequest> action = std::make_unique<FakeToolRequest>(
+      on_invoke_future.GetCallback(), base::OnceClosure());
+
+  task_->Act(ToRequestList(action), result.GetCallback());
+
+  ASSERT_TRUE(on_invoke_future.Wait());
+  ASSERT_FALSE(result.IsReady()) << "Act should not be finished yet.";
+
+  // Fast forward time by the simulated duration before running callback to
+  // complete tool invocation.
+  task_environment()->FastForwardBy(simulated_duration);
+  std::move(on_invoke_future.Take()).Run(MakeOkResult());
+
+  ASSERT_TRUE(result.Wait());
+  const auto& action_results = result.Get();
+  for (const auto& action_result : action_results) {
+    EXPECT_TRUE(IsOk(*action_result.result));
+  }
+
+  const auto& actions_result = action_results;
+  EXPECT_EQ(actions_result.size(), 1u);
+  EXPECT_EQ(actions_result[0].start_time, action_start_time);
+  EXPECT_EQ(actions_result[0].end_time, action_start_time + simulated_duration);
+
+  EXPECT_EQ(actions_result[0].end_time - actions_result[0].start_time,
+            simulated_duration);
+  histograms_.ExpectTimeBucketCount(kActorFakeToolDurationHistogram,
+                                    simulated_duration, 1);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_CompletedWithInterruptHistogram \
+  DISABLED_CompletedWithInterruptHistogram
+#else
+#define MAYBE_CompletedWithInterruptHistogram CompletedWithInterruptHistogram
+#endif
+TEST_F(ExecutionEngineTest, MAYBE_CompletedWithInterruptHistogram) {
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(), GURL("http://localhost/"));
+
+  ActResultFuture result;
+
+  FakeChromeRenderFrame fake_chrome_render_frame;
+  fake_chrome_render_frame.OverrideBinder(main_rfh());
+
+  std::unique_ptr<ToolRequest> action =
+      MakeClickCallback(kFakeContentNodeId).Run();
+  task_->Act(ToRequestList(action), result.GetCallback());
+
+  // Simulate the first active period
+  const base::TimeDelta active_duration1 = base::Milliseconds(100);
+  task_environment()->FastForwardBy(active_duration1);
+
+  task_->Interrupt();
+
+  // Time that passes while paused should not be counted.
+  task_environment()->FastForwardBy(base::Milliseconds(500));
+
+  task_->Uninterrupt(ActorTask::State::kReflecting);
+
+  // Simulate the second active period
+  const base::TimeDelta active_duration2 = base::Milliseconds(50);
+  task_environment()->FastForwardBy(active_duration2);
+
+  task_->Stop(kTaskComplete);
+  histograms_.ExpectTimeBucketCount(kActorTaskDurationCompletedHistogram,
+                                    active_duration1 + active_duration2, 1);
+  histograms_.ExpectBucketCount(kActorTaskCountCompletedHistogram, 1, 1);
+  histograms_.ExpectBucketCount(kActorTaskInterruptionCompletedHistogram, 1, 1);
+  histograms_.ExpectTimeBucketCount(
+      kActorTaskDurationWallClockCompletedHistogram, base::Milliseconds(650),
+      1);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_VisibleNotVisibleActuationCompletedHistogram \
+  DISABLED_VisibleNotVisibleActuationCompletedHistogram
+#else
+#define MAYBE_VisibleNotVisibleActuationCompletedHistogram \
+  VisibleNotVisibleActuationCompletedHistogram
+#endif
+TEST_F(ExecutionEngineTest,
+       MAYBE_VisibleNotVisibleActuationCompletedHistogram) {
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(), GURL("http://localhost/"));
+  task_->AddTab(GetTab()->GetHandle(), /*stop_task_on_detach=*/true,
+                base::DoNothing());
+  web_contents()->WasShown();
+
+  // Simulate visible actuation.
+  const base::TimeDelta visible_duration = base::Milliseconds(100);
+  task_environment()->FastForwardBy(visible_duration);
+
+  // Deactivate the tab to simulate not-visible actuation.
+  web_contents()->WasHidden();
+
+  // Simulate not-visible actuation.
+  const base::TimeDelta not_visible_duration = base::Milliseconds(50);
+  task_environment()->FastForwardBy(not_visible_duration);
+
+  task_->Stop(kTaskComplete);
+
+  histograms_.ExpectTimeBucketCount(kActorTaskDurationVisibleCompletedHistogram,
+                                    visible_duration, 1);
+
+  histograms_.ExpectTimeBucketCount(
+      kActorTaskDurationNotVisibleCompletedHistogram, not_visible_duration, 1);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_VisibleNotVisibleActuationStoppedHistogram \
+  DISABLED_VisibleNotVisibleActuationStoppedHistogram
+#else
+#define MAYBE_VisibleNotVisibleActuationStoppedHistogram \
+  VisibleNotVisibleActuationStoppedHistogram
+#endif
+TEST_P(ExecutionEngineStopReasonParamTest,
+       MAYBE_VisibleNotVisibleActuationStoppedHistogram) {
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(), GURL("http://localhost/"));
+  task_->AddTab(GetTab()->GetHandle(), /*stop_task_on_detach=*/true,
+                base::DoNothing());
+  web_contents()->WasShown();
+
+  // Simulate visible actuation.
+  const base::TimeDelta visible_duration = base::Milliseconds(100);
+  task_environment()->FastForwardBy(visible_duration);
+
+  // Deactivate the tab to simulate not-visible actuation.
+  web_contents()->WasHidden();
+
+  // Simulate not-visible actuation.
+  const base::TimeDelta not_visible_duration = base::Milliseconds(50);
+  task_environment()->FastForwardBy(not_visible_duration);
+
+  auto [stopped_reason, histogram_suffix] = GetParam();
+  task_->Stop(stopped_reason);
+
+  histograms_.ExpectTimeBucketCount(
+      base::StrCat({"Actor.Task.Duration.Visible.", histogram_suffix}),
+      visible_duration, 1);
+  histograms_.ExpectTimeBucketCount(
+      base::StrCat({"Actor.Task.Duration.NotVisible.", histogram_suffix}),
+      not_visible_duration, 1);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_VisibleNotVisibleActuationWithPauseHistogram \
+  DISABLED_VisibleNotVisibleActuationWithPauseHistogram
+#else
+#define MAYBE_VisibleNotVisibleActuationWithPauseHistogram \
+  VisibleNotVisibleActuationWithPauseHistogram
+#endif
+TEST_F(ExecutionEngineTest,
+       MAYBE_VisibleNotVisibleActuationWithPauseHistogram) {
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(), GURL("http://localhost/"));
+  task_->AddTab(GetTab()->GetHandle(), /*stop_task_on_detach=*/true,
+                base::DoNothing());
+  web_contents()->WasShown();
+
+  // Simulate visible actuation.
+  const base::TimeDelta visible_duration1 = base::Milliseconds(100);
+  task_environment()->FastForwardBy(visible_duration1);
+
+  // Pause the task.
+  task_->Pause(/*from_actor=*/true);
+
+  // This time should not be counted.
+  task_environment()->FastForwardBy(base::Milliseconds(500));
+
+  // Resume the task.
+  task_->Resume();
+
+  // Simulate more visible actuation.
+  const base::TimeDelta visible_duration2 = base::Milliseconds(50);
+  task_environment()->FastForwardBy(visible_duration2);
+
+  task_->Stop(kTaskComplete);
+
+  histograms_.ExpectTimeBucketCount(kActorTaskDurationVisibleCompletedHistogram,
+                                    visible_duration1 + visible_duration2, 1);
+  histograms_.ExpectTimeBucketCount(
+      kActorTaskDurationNotVisibleCompletedHistogram, base::Milliseconds(0), 1);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_VisibleNotVisibleActuationWithWaitingHistogram \
+  DISABLED_VisibleNotVisibleActuationWithWaitingHistogram
+#else
+#define MAYBE_VisibleNotVisibleActuationWithWaitingHistogram \
+  VisibleNotVisibleActuationWithWaitingHistogram
+#endif
+TEST_F(ExecutionEngineTest,
+       MAYBE_VisibleNotVisibleActuationWithWaitingHistogram) {
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      web_contents(), GURL("http://localhost/"));
+  task_->AddTab(GetTab()->GetHandle(), /*stop_task_on_detach=*/true,
+                base::DoNothing());
+  web_contents()->WasShown();
+  task_->SetState(ActorTask::State::kReflecting);
+
+  // Simulate visible actuation.
+  const base::TimeDelta visible_duration1 = base::Milliseconds(100);
+  task_environment()->FastForwardBy(visible_duration1);
+
+  // Interrupt the task.
+  task_->Interrupt();
+
+  // This time should be counted.
+  const base::TimeDelta waiting_duration = base::Milliseconds(500);
+  task_environment()->FastForwardBy(waiting_duration);
+
+  // Uninterrupt the task.
+  task_->Uninterrupt(ActorTask::State::kReflecting);
+
+  // Simulate more visible actuation.
+  const base::TimeDelta visible_duration2 = base::Milliseconds(50);
+  task_environment()->FastForwardBy(visible_duration2);
+
+  task_->Stop(kTaskComplete);
+
+  histograms_.ExpectTimeBucketCount(
+      kActorTaskDurationVisibleCompletedHistogram,
+      visible_duration1 + waiting_duration + visible_duration2, 1);
+  histograms_.ExpectTimeBucketCount(
+      kActorTaskDurationNotVisibleCompletedHistogram, base::Milliseconds(0), 1);
+}
+
+TEST_F(ExecutionEngineTest,
+       RequestToShowAutofillSuggestions_DelegatesToActorTaskDelegate) {
+  // Get the real ActorKeyedService.
+  auto* actor_service = ActorKeyedService::Get(profile());
+  ASSERT_TRUE(actor_service);
+
+  // Prepare the data to be sent.
+  ExecutionEngine& execution_engine = task_->GetExecutionEngine();
+  std::vector<autofill::ActorFormFillingRequest> test_requests;
+  test_requests.emplace_back().requested_data =
+      autofill::ActorFormFillingRequestedData::kAddress;
+
+  // Hold the forwarded value in `received_requests`.
+  std::vector<autofill::ActorFormFillingRequest> received_requests;
+  base::WeakPtr<AutofillSelectionDialogEventHandler> received_handler;
+
+  MockAutofillSelectionDialogEventHandler event_handler;
+
+  // Expect the call to be forwarded to the task's ActorTaskDelegate.
+  EXPECT_CALL(mock_actor_task_delegate_,
+              RequestToShowAutofillSuggestionsDialog(task_->id(), _, _, _))
+      .WillOnce(testing::DoAll(testing::SaveArg<1>(&received_requests),
+                               testing::SaveArg<2>(&received_handler)));
+
+  // Call the method under test on the ExecutionEngine.
+  execution_engine.RequestToShowAutofillSuggestions(
+      test_requests, event_handler.GetWeakPtr(), base::DoNothing());
+
+  // The vector of requests broadcast by the service should match what we sent.
+  ASSERT_EQ(received_requests.size(), 1u);
+  EXPECT_EQ(received_requests[0].requested_data,
+            autofill::ActorFormFillingRequestedData::kAddress);
+  EXPECT_EQ(received_handler.get(), &event_handler);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    ExecutionEngineStopReasonParamTest,
+    testing::Values(std::make_tuple(kStoppedByUser, "Cancelled"),
+                    std::make_tuple(kTaskComplete, "Completed"),
+                    std::make_tuple(kModelError, "ModelError"),
+                    std::make_tuple(kChromeFailure, "ChromeFailure"),
+                    std::make_tuple(kTabDetached, "TabDetached"),
+                    std::make_tuple(kShutdown, "Shutdown"),
+                    std::make_tuple(kUserStartedNewChat, "NewChat"),
+                    std::make_tuple(kUserLoadedPreviousChat, "PreviousChat")));
+
+class ExecutionEngineNavigationGatingTest : public ExecutionEngineTest {
+ public:
+  ExecutionEngineNavigationGatingTest() {
+    scoped_feature_list_.InitAndEnableFeature(kGlicCrossOriginNavigationGating);
+  }
+  ~ExecutionEngineNavigationGatingTest() override = default;
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+TEST_F(ExecutionEngineNavigationGatingTest,
+       NavigationGatingMetricsRecordInitiatorOrigin_SameOriginAllowed) {
+  const GURL kInitiatorUrl("https://initiator.com/");
+  const url::Origin kInitiatorOrigin = url::Origin::Create(kInitiatorUrl);
+  const GURL kDestinationUrl("https://destination.com/");
+
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                             kDestinationUrl);
+
+  content::MockNavigationHandle navigation_handle(kDestinationUrl, main_rfh());
+  navigation_handle.set_initiator_origin(kInitiatorOrigin);
+
+  base::test::TestFuture<MayActOnUrlBlockReason> future;
+  task_->GetExecutionEngine().ShouldNavigationCommit(navigation_handle,
+                                                     future.GetCallback());
+
+  EXPECT_EQ(future.Get(), MayActOnUrlBlockReason::kAllowed);
+
+  histograms_.ExpectUniqueSample(
+      "Actor.NavigationGating.GatingDecision2",
+      /*sample=*/ExecutionEngine::GatingDecision::kAllowSameOrigin,
+      /*expected_bucket_count=*/1);
+
+  histograms_.ExpectUniqueSample("Actor.NavigationGating.SameOriginSource",
+                                 /*sample=*/true, /*expected_bucket_count=*/1);
+  histograms_.ExpectUniqueSample("Actor.NavigationGating.SameSiteSource",
+                                 /*sample=*/true, /*expected_bucket_count=*/1);
+  histograms_.ExpectUniqueSample("Actor.NavigationGating.SameOriginInitiator",
+                                 /*sample=*/false, /*expected_bucket_count=*/1);
+  histograms_.ExpectUniqueSample("Actor.NavigationGating.SameSiteInitiator",
+                                 /*sample=*/false, /*expected_bucket_count=*/1);
+}
+
+TEST_F(ExecutionEngineNavigationGatingTest,
+       ShouldDeferNavigation_OpaqueSourceWithPrecursor) {
+  const GURL kPrecursorUrl("https://example.com/");
+  const GURL kDestinationUrl("https://example.com/other");
+
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                             kPrecursorUrl);
+
+  // Navigate to a data URL to get an opaque origin with the precursor.
+  content::NavigationSimulator::NavigateAndCommitFromDocument(
+      GURL("data:text/html,foo"), main_rfh());
+
+  content::MockNavigationHandle navigation_handle(kDestinationUrl, main_rfh());
+
+  base::test::TestFuture<MayActOnUrlBlockReason> future;
+  task_->GetExecutionEngine().ShouldNavigationCommit(navigation_handle,
+                                                     future.GetCallback());
+
+  EXPECT_EQ(future.Get(), MayActOnUrlBlockReason::kAllowed);
+
+  // Verify that SameOriginSource is true, indicating it used the precursor
+  // origin.
+  histograms_.ExpectUniqueSample("Actor.NavigationGating.SameOriginSource",
+                                 /*sample=*/true, /*expected_bucket_count=*/1);
+}
+
+class ExecutionEngineUrlGatingTest : public ChromeRenderViewHostTestHarness {
+ public:
+  ExecutionEngineUrlGatingTest() = default;
+  ~ExecutionEngineUrlGatingTest() override = default;
+
+  void SetUp() override {
+    scoped_feature_list_.InitWithFeatures(
+        {features::kGlicActor,
+         optimization_guide::features::kOptimizationHints},
+        {});
+
+    ChromeRenderViewHostTestHarness::SetUp();
+
+    mock_optimization_guide_keyed_service_ = static_cast<
+        MockOptimizationGuideKeyedService*>(
+        OptimizationGuideKeyedServiceFactory::GetInstance()
+            ->SetTestingFactoryAndUse(
+                profile(),
+                base::BindOnce(
+                    &ExecutionEngineUrlGatingTest::CreateOptimizationService)));
+
+    // Simulate the component loading, as the implementation checks it, but the
+    // actual outcomes are determined by the mock.
+    ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
+    optimization_guide::OptimizationHintsComponentUpdateListener::GetInstance()
+        ->MaybeUpdateHintsComponent(
+            {base::Version("123"),
+             temp_dir_.GetPath().Append(FILE_PATH_LITERAL("dont_care"))});
+
+    ON_CALL(mock_actor_task_delegate_, RequestToShowUserConfirmationDialog)
+        .WillByDefault([](TaskId, const url::Origin&, bool,
+                          ActorTaskDelegate::UserConfirmationDialogCallback
+                              callback) {
+          std::move(callback).Run(
+              webui::mojom::UserConfirmationDialogResponse::New(
+                  webui::mojom::ConfirmationRequestResult::NewPermissionGranted(
+                      false)));
+        });
+  }
+
+  void TearDown() override {
+    if (task_) {
+      if (!task_->IsCompleted()) {
+        task_->Stop(ActorTask::StoppedReason::kTabDetached);
+      }
+      task_.reset();
+    }
+    mock_optimization_guide_keyed_service_ = nullptr;
+    ChromeRenderViewHostTestHarness::TearDown();
+  }
+
+ protected:
+  void SetExpectedOptimizationGuideCall(
+      const GURL& url,
+      optimization_guide::OptimizationGuideDecision result) {
+    EXPECT_CALL(
+        *mock_optimization_guide_keyed_service_,
+        CanApplyOptimization(
+            url, optimization_guide::proto::GLIC_ACTION_PAGE_BLOCK,
+            testing::An<
+                optimization_guide::OptimizationGuideDecisionCallback>()))
+        .WillOnce(base::test::RunOnceCallback<2>(
+            result, optimization_guide::OptimizationMetadata{}));
+  }
+
+  ActorTask& GetTask() {
+    GetExecutionEngine();
+    CHECK(task_);
+    return *task_;
+  }
+
+  void CheckUrl(const GURL& url,
+                bool expected_allowed,
+                EnterprisePolicyChecker::UrlBlockReason enterprise_reason) {
+    content::NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                               url);
+
+    TestTabState tab_state(web_contents());
+
+    task_policy_checker_.set_reason(enterprise_reason);
+
+    WaitTool::SetNoDelayForTesting();
+    std::unique_ptr<ToolRequest> tool_request = MakeWaitRequest(&tab_state.tab);
+    ASSERT_TRUE(tool_request->RequiresUrlCheckInCurrentTab());
+    ActResultFuture result;
+    GetTask().Act(ToRequestList(tool_request), result.GetCallback());
+
+    // The result should not be provided synchronously.
+    EXPECT_FALSE(result.IsReady());
+    ASSERT_EQ(result.Get().size(), 1u);
+    EXPECT_THAT(result.Get()[0].result->code,
+                Conditional(expected_allowed, mojom::ActionResultCode::kOk,
+                            Not(mojom::ActionResultCode::kOk)));
+  }
+
+  void CheckUrl(const GURL& url, bool expected_allowed) {
+    return CheckUrl(url, expected_allowed,
+                    EnterprisePolicyChecker::UrlBlockReason::kNotBlocked);
+  }
+
+  raw_ptr<MockOptimizationGuideKeyedService>
+      mock_optimization_guide_keyed_service_;
+
+  // Lazily creates a real ActorTask/ExecutionEngine and returns its engine, so
+  // that IsAcceptableNavigationDestination tests can exercise the
+  // OriginGatingChecker-backed path.
+  ExecutionEngine& GetExecutionEngine() {
+    if (!task_) {
+      std::unique_ptr<ui::UiEventDispatcher> engine_dispatcher =
+          ui::NewMockUiEventDispatcher();
+      std::unique_ptr<ui::UiEventDispatcher> task_dispatcher =
+          ui::NewMockUiEventDispatcher();
+      for (auto* mock :
+           {static_cast<ui::MockUiEventDispatcher*>(engine_dispatcher.get()),
+            static_cast<ui::MockUiEventDispatcher*>(task_dispatcher.get())}) {
+        ON_CALL(*mock, OnPreTool)
+            .WillByDefault(
+                UiEventDispatcherCallback<ToolRequest>(base::BindRepeating(
+                    MakeOkResult, /*requires_page_stabilization=*/true)));
+        ON_CALL(*mock, OnPostTool)
+            .WillByDefault(
+                UiEventDispatcherCallback<ToolRequest>(base::BindRepeating(
+                    MakeOkResult, /*requires_page_stabilization=*/true)));
+        ON_CALL(*mock, OnActorTaskAsyncChange)
+            .WillByDefault(UiEventDispatcherCallback<
+                           ui::UiEventDispatcher::ActorTaskAsyncChange>(
+                base::BindRepeating(MakeOkResult,
+                                    /*requires_page_stabilization=*/true)));
+      }
+      ScopedExecutionEngineFactory scoped_factory(base::BindLambdaForTesting(
+          [&](ActorTask& task) -> std::unique_ptr<ExecutionEngine> {
+            return ExecutionEngine::CreateForTesting(
+                task, std::move(engine_dispatcher));
+          }));
+      task_ = ActorTask::CreateForTesting(
+          *ActorKeyedService::Get(profile()), TaskId(1),
+          std::move(task_dispatcher),
+          /*options=*/nullptr, TestTaskSourceInfo(), &task_policy_checker_,
+          mock_actor_task_delegate_.GetWeakPtr());
+    }
+    return task_->GetExecutionEngine();
+  }
+
+  MockActorTaskDelegate& mock_actor_task_delegate() {
+    return mock_actor_task_delegate_;
+  }
+
+ private:
+  static std::unique_ptr<KeyedService> CreateOptimizationService(
+      content::BrowserContext* context) {
+    return std::make_unique<MockOptimizationGuideKeyedService>();
+  }
+
+  std::unique_ptr<ActorTask> task_;
+  MockPolicyChecker task_policy_checker_{
+      EnterprisePolicyChecker::UrlBlockReason::kNotBlocked};
+  testing::NiceMock<MockActorTaskDelegate> mock_actor_task_delegate_;
+
+  base::test::ScopedFeatureList scoped_feature_list_;
+  base::ScopedTempDir temp_dir_;
+};
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_LocalhostPromptsForUserConfirmation \
+  DISABLED_LocalhostPromptsForUserConfirmation
+#else
+#define MAYBE_LocalhostPromptsForUserConfirmation \
+  LocalhostPromptsForUserConfirmation
+#endif
+TEST_F(ExecutionEngineUrlGatingTest,
+       MAYBE_LocalhostPromptsForUserConfirmation) {
+  const GURL localhost_url("http://localhost/");
+  EXPECT_CALL(mock_actor_task_delegate(),
+              RequestToShowUserConfirmationDialog(
+                  _, url::Origin::Create(localhost_url), _, _))
+      .WillOnce(base::test::RunOnceCallback<3>(
+          webui::mojom::UserConfirmationDialogResponse::New(
+              webui::mojom::ConfirmationRequestResult::NewPermissionGranted(
+                  true))));
+  CheckUrl(localhost_url, /*expected_allowed=*/true);
+
+  const GURL ipv4_url("http://127.0.0.1/");
+  EXPECT_CALL(mock_actor_task_delegate(),
+              RequestToShowUserConfirmationDialog(
+                  _, url::Origin::Create(ipv4_url), _, _))
+      .WillOnce(base::test::RunOnceCallback<3>(
+          webui::mojom::UserConfirmationDialogResponse::New(
+              webui::mojom::ConfirmationRequestResult::NewPermissionGranted(
+                  true))));
+  CheckUrl(ipv4_url, /*expected_allowed=*/true);
+
+  const GURL ipv6_url("http://[::1]/");
+  EXPECT_CALL(mock_actor_task_delegate(),
+              RequestToShowUserConfirmationDialog(
+                  _, url::Origin::Create(ipv6_url), _, _))
+      .WillOnce(base::test::RunOnceCallback<3>(
+          webui::mojom::UserConfirmationDialogResponse::New(
+              webui::mojom::ConfirmationRequestResult::NewPermissionGranted(
+                  true))));
+  CheckUrl(ipv6_url, /*expected_allowed=*/true);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest, AllowAboutBlank) {
+  CheckUrl(GURL(url::kAboutBlankURL), true);
+}
+
+// TODO(crbug.com/480230075): Crashing on Android.
+#if BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
+#define MAYBE_BlockIpAddress DISABLED_BlockIpAddress
+#else
+#define MAYBE_BlockIpAddress BlockIpAddress
+#endif
+TEST_F(ExecutionEngineUrlGatingTest, MAYBE_BlockIpAddress) {
+  CheckUrl(GURL("https://8.8.8.8/"), false);
+  CheckUrl(GURL("https://[2001:4860:4860::8888]/"), false);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest, BlockNonHTTPScheme) {
+  CheckUrl(GURL("file:///my_file"), false);
+  CheckUrl(GURL("file://localhost/tmp"), false);
+  CheckUrl(GURL(chrome::kChromeUIVersionURL), false);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest, BlockInsecureHTTP) {
+  CheckUrl(GURL("http://a.test/"), false);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest, InsecureHTTPAllowedWhenSpecified) {
+  base::test::TestFuture<MayActOnUrlBlockReason> allowed;
+  GetExecutionEngine().IsAcceptableNavigationDestination(GURL("http://a.test/"),
+                                                         allowed.GetCallback());
+  EXPECT_EQ(allowed.Get(), MayActOnUrlBlockReason::kAllowed);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest, AllowIfNotBlocked) {
+  const GURL url("https://c.test/");
+  SetExpectedOptimizationGuideCall(
+      url, optimization_guide::OptimizationGuideDecision::kTrue);
+  CheckUrl(url, true);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest, BlockIfInBlocklist) {
+  const GURL url("https://c.test/");
+  SetExpectedOptimizationGuideCall(
+      url, optimization_guide::OptimizationGuideDecision::kFalse);
+  CheckUrl(url, false);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest, AllowIfNotBlockedForOriginGating) {
+  const GURL url("https://c.test/");
+  SetExpectedOptimizationGuideCall(
+      url, optimization_guide::OptimizationGuideDecision::kTrue);
+  base::test::TestFuture<bool> got_may_act;
+  EXPECT_THAT(MaybeCheckOptimizationGuideForSensitiveUrl(
+                  url, profile(), got_may_act.GetCallback()),
+              base::test::HasValue());
+  EXPECT_TRUE(got_may_act.Get());
+}
+
+TEST_F(ExecutionEngineUrlGatingTest, BlockIfInBlocklistForOriginGating) {
+  const GURL url("https://c.test/");
+  SetExpectedOptimizationGuideCall(
+      url, optimization_guide::OptimizationGuideDecision::kFalse);
+  base::test::TestFuture<bool> got_may_act;
+  EXPECT_THAT(MaybeCheckOptimizationGuideForSensitiveUrl(
+                  url, profile(), got_may_act.GetCallback()),
+              base::test::HasValue());
+  EXPECT_FALSE(got_may_act.Get());
+}
+
+TEST_F(ExecutionEngineUrlGatingTest, AllowedOriginsFromNavigationGating) {
+  const GURL url("https://c.test/");
+
+  EXPECT_CALL(
+      *mock_optimization_guide_keyed_service_,
+      CanApplyOptimization(
+          url, optimization_guide::proto::GLIC_ACTION_PAGE_BLOCK,
+          testing::An<optimization_guide::OptimizationGuideDecisionCallback>()))
+      .Times(2)
+      .WillOnce(base::test::RunOnceCallback<2>(
+          optimization_guide::OptimizationGuideDecision::kFalse,
+          optimization_guide::OptimizationMetadata{}))
+      .WillOnce(base::test::RunOnceCallback<2>(
+          optimization_guide::OptimizationGuideDecision::kTrue,
+          optimization_guide::OptimizationMetadata{}));
+
+  CheckUrl(url, false);
+
+  {
+    base::test::ScopedFeatureList scoped_feature_list;
+    scoped_feature_list.InitAndEnableFeature(kGlicCrossOriginNavigationGating);
+    CheckUrl(url, true);
+  }
+}
+
+TEST_F(ExecutionEngineUrlGatingTest, AllowIfDecisionUnknown) {
+  const GURL url("https://c.test/");
+  SetExpectedOptimizationGuideCall(
+      url, optimization_guide::OptimizationGuideDecision::kUnknown);
+  CheckUrl(url, true);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest, EnterprisePolicyBlock) {
+  const GURL url("https://c.test/");
+  EXPECT_CALL(
+      *mock_optimization_guide_keyed_service_,
+      CanApplyOptimization(
+          url, optimization_guide::proto::GLIC_ACTION_PAGE_BLOCK,
+          testing::An<optimization_guide::OptimizationGuideDecisionCallback>()))
+      .Times(0);
+  CheckUrl(url, false,
+           EnterprisePolicyChecker::UrlBlockReason::kExplicitlyBlocked);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest, EnterprisePolicyOrder) {
+  const GURL https_blocked_url("https://c.test/");
+  EXPECT_CALL(
+      *mock_optimization_guide_keyed_service_,
+      CanApplyOptimization(
+          https_blocked_url, optimization_guide::proto::GLIC_ACTION_PAGE_BLOCK,
+          testing::An<optimization_guide::OptimizationGuideDecisionCallback>()))
+      .Times(0);
+  // Enterprise policy overrules the opt guide blocklist for a particular site.
+  CheckUrl(https_blocked_url, true,
+           EnterprisePolicyChecker::UrlBlockReason::kExplicitlyAllowed);
+  // Enterprise policy can't be used to bypass invariants like supported
+  // schemes.
+  CheckUrl(GURL("file:///my_file"), false,
+           EnterprisePolicyChecker::UrlBlockReason::kExplicitlyAllowed);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest,
+       IsAcceptableNavigationDestination_AllowedByCache) {
+  const GURL url("https://c.test/");
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(kGlicCrossOriginNavigationGating);
+
+  EXPECT_CALL(
+      *mock_optimization_guide_keyed_service_,
+      CanApplyOptimization(
+          url, optimization_guide::proto::GLIC_ACTION_PAGE_BLOCK,
+          testing::An<optimization_guide::OptimizationGuideDecisionCallback>()))
+      .Times(0);
+
+  ExecutionEngine& engine = GetExecutionEngine();
+  engine.origin_gating_checker().AllowNavigationTo(url::Origin::Create(url),
+                                                   /*is_user_confirmed=*/true);
+  base::test::TestFuture<MayActOnUrlBlockReason> allowed;
+  engine.IsAcceptableNavigationDestination(url, allowed.GetCallback());
+  // Allowed by cache.
+  EXPECT_EQ(allowed.Get(), MayActOnUrlBlockReason::kAllowed);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest,
+       IsAcceptableNavigationDestination_FailsOpen) {
+  const GURL url("https://c.test/");
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(kGlicCrossOriginNavigationGating);
+
+  EXPECT_CALL(
+      *mock_optimization_guide_keyed_service_,
+      CanApplyOptimization(
+          url, optimization_guide::proto::GLIC_ACTION_PAGE_BLOCK,
+          testing::An<optimization_guide::OptimizationGuideDecisionCallback>()))
+      .Times(0);
+
+  base::test::TestFuture<MayActOnUrlBlockReason> allowed;
+  GetExecutionEngine().IsAcceptableNavigationDestination(url,
+                                                         allowed.GetCallback());
+  // Not allowed by the cache, but the policy fails open (without consulting
+  // the sensitive sites list).
+  EXPECT_EQ(allowed.Get(), MayActOnUrlBlockReason::kAllowed);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest, SafetyChecksForNextAction_AllowedByCache) {
+  const GURL url("https://c.test/");
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(kGlicCrossOriginNavigationGating);
+
+  EXPECT_CALL(
+      *mock_optimization_guide_keyed_service_,
+      CanApplyOptimization(
+          url, optimization_guide::proto::GLIC_ACTION_PAGE_BLOCK,
+          testing::An<optimization_guide::OptimizationGuideDecisionCallback>()))
+      .Times(0);
+
+  GetExecutionEngine().origin_gating_checker().AllowNavigationTo(
+      url::Origin::Create(url), /*is_user_confirmed=*/true);
+  CheckUrl(url, /*expected_allowed=*/true);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest,
+       SafetyChecksForNextAction_PromptsForSensitiveSite) {
+  const GURL url("https://c.test/");
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeaturesAndParameters(
+      {{kGlicCrossOriginNavigationGating,
+        {{"prompt_user_for_sensitive_navigations", "true"}}}},
+      {});
+
+  SetExpectedOptimizationGuideCall(
+      url, optimization_guide::OptimizationGuideDecision::kFalse);
+
+  EXPECT_CALL(
+      mock_actor_task_delegate(),
+      RequestToShowUserConfirmationDialog(_, url::Origin::Create(url),
+                                          /*for_blocklisted_origin=*/true, _))
+      .WillOnce(base::test::RunOnceCallback<3>(
+          webui::mojom::UserConfirmationDialogResponse::New(
+              webui::mojom::ConfirmationRequestResult::NewPermissionGranted(
+                  true))));
+
+  CheckUrl(url, /*expected_allowed=*/true);
+
+  // Subsequent check for the same origin is allowed via cache without
+  // re-prompting.
+  EXPECT_CALL(mock_actor_task_delegate(),
+              RequestToShowUserConfirmationDialog(_, _, _, _))
+      .Times(0);
+  CheckUrl(url, /*expected_allowed=*/true);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest,
+       ShouldDeferNavigation_CrossOriginNonSensitiveAllowed) {
+  const GURL source_url("https://a.test/");
+  const GURL destination_url("https://b.test/");
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeaturesAndParameters(
+      {{kGlicCrossOriginNavigationGating,
+        {{"prompt_user_for_sensitive_navigations", "false"}}}},
+      {});
+
+  SetExpectedOptimizationGuideCall(
+      destination_url, optimization_guide::OptimizationGuideDecision::kTrue);
+
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                             source_url);
+
+  content::MockNavigationHandle navigation_handle(destination_url, main_rfh());
+
+  base::test::TestFuture<MayActOnUrlBlockReason> future;
+  GetExecutionEngine().ShouldNavigationCommit(navigation_handle,
+                                              future.GetCallback());
+
+  EXPECT_EQ(future.Get(), MayActOnUrlBlockReason::kAllowed);
+}
+
+TEST_F(ExecutionEngineUrlGatingTest,
+       ShouldDeferNavigation_CrossOriginSensitiveBlocked) {
+  const GURL source_url("https://a.test/");
+  const GURL destination_url("https://b.test/");
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(kGlicCrossOriginNavigationGating);
+
+  SetExpectedOptimizationGuideCall(
+      destination_url, optimization_guide::OptimizationGuideDecision::kFalse);
+
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                             source_url);
+
+  content::MockNavigationHandle navigation_handle(destination_url, main_rfh());
+
+  base::test::TestFuture<MayActOnUrlBlockReason> future;
+  GetExecutionEngine().ShouldNavigationCommit(navigation_handle,
+                                              future.GetCallback());
+
+  EXPECT_EQ(future.Get(), MayActOnUrlBlockReason::kOptimizationGuideBlock);
+}
+
+struct MimeTestCase {
+  std::optional<std::string_view> content_type_header;
+  bool expected_allowed;
+};
+
+class ExecutionEngineMimeGatingTest
+    : public ExecutionEngineUrlGatingTest,
+      public testing::WithParamInterface<MimeTestCase> {
+ public:
+  std::optional<std::string_view> content_type_header() const {
+    return GetParam().content_type_header;
+  }
+
+  MayActOnUrlBlockReason expected_reason() const {
+    return GetParam().expected_allowed
+               ? MayActOnUrlBlockReason::kAllowed
+               : MayActOnUrlBlockReason::kDangerousMimeType;
+  }
+};
+
+TEST_P(ExecutionEngineMimeGatingTest, HandlesMimeTypes) {
+  const GURL source_url("https://example.com/");
+  const GURL destination_url("https://example.com/api");
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/{kGlicCrossOriginNavigationGating,
+                            kGlicBlockNavigationToDangerousContentTypes},
+      /*disabled_features=*/{});
+
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                             source_url);
+
+  content::MockNavigationHandle navigation_handle(destination_url, main_rfh());
+  navigation_handle.set_initiator_origin(url::Origin::Create(source_url));
+
+  net::HttpResponseHeaders::Builder builder(net::HttpVersion(1, 1), "200 OK");
+  if (content_type_header().has_value()) {
+    builder.AddHeader("Content-Type", *content_type_header());
+  }
+  navigation_handle.set_response_headers(builder.Build());
+
+  base::test::TestFuture<MayActOnUrlBlockReason> future;
+  GetExecutionEngine().ShouldNavigationCommit(navigation_handle,
+                                              future.GetCallback());
+
+  EXPECT_EQ(future.Get(), expected_reason());
+}
+
+INSTANTIATE_TEST_SUITE_P(,
+                         ExecutionEngineMimeGatingTest,
+                         testing::ValuesIn(std::initializer_list<MimeTestCase>{
+                             {"application/json", false},
+                             {"application/ld+json", false},
+                             {"application/x-javascript", false},
+                             {"application/hal+json", false},
+                             {"application/xml", false},
+                             {"text/csv", false},
+                             {"text/comma-separated-values", false},
+                             {"text/tsv", false},
+                             {"text/tab-separated-values", false},
+                             {"text/plain", true},
+                             {std::nullopt, true},
+                             {"text/html", true},
+                         }),
+                         [](const testing::TestParamInfo<MimeTestCase>& info) {
+                           std::string mime_type(
+                               info.param.content_type_header.value_or("null"));
+                           std::ranges::replace(mime_type, '/', '_');
+                           std::ranges::replace(mime_type, '+', '_');
+                           std::ranges::replace(mime_type, '-', '_');
+                           return mime_type;
+                         });
+
+TEST_F(ExecutionEngineUrlGatingTest,
+       ShouldDeferNavigation_DangerousMimeTypeFeatureDisabled) {
+  const GURL source_url("https://a.test/");
+  const GURL destination_url("https://a.test/data.json");
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/{kGlicCrossOriginNavigationGating},
+      /*disabled_features=*/{kGlicBlockNavigationToDangerousContentTypes});
+
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(web_contents(),
+                                                             source_url);
+
+  content::MockNavigationHandle navigation_handle(destination_url, main_rfh());
+  net::HttpResponseHeaders::Builder builder(net::HttpVersion(1, 1), "200 OK");
+  builder.AddHeader("Content-Type", "application/json");
+  navigation_handle.set_response_headers(builder.Build());
+
+  base::test::TestFuture<MayActOnUrlBlockReason> future;
+  GetExecutionEngine().ShouldNavigationCommit(navigation_handle,
+                                              future.GetCallback());
+
+  EXPECT_EQ(future.Get(), MayActOnUrlBlockReason::kAllowed);
+}
+
+}  // namespace
+
+}  // namespace actor

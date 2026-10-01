@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>
+      Test AudioContext.close() closes many contexts
+    </title>
+    <script src="../../resources/testharness.js"></script>
+    <script src="../../resources/testharnessreport.js"></script>
+  </head>
+  <body>
+    <script>
+      promise_test(async () => {
+        const MAX_ITERATION = 100;
+
+        for (let i = 0; i < MAX_ITERATION; ++i) {
+          const context = new AudioContext();
+          try {
+            await context.close();
+            assert_equals(
+                context.state,
+                'closed',
+                `context.state for closed context ${i + 1}`);
+          } catch (e) {
+            assert_equals(
+                context.state,
+                'closed',
+                `Context ${i + 1} failed to close`);
+          }
+        }
+      }, 'Test that closing a context releases the audio HW context');
+    </script>
+  </body>
+</html>

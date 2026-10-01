@@ -1,0 +1,20 @@
+Name: Emoji2
+Short Name: emoji2
+URL: https://androidx.dev/snapshots/builds/16217986/artifacts/repository/androidx/emoji2/emoji2/1.7.0-SNAPSHOT/emoji2-1.7.0-20260831.073015-1.aar
+Version: 1.7.0-SNAPSHOT
+Update Mechanism: Autoroll
+License: Apache-2.0
+License File: LICENSE
+CPEPrefix: unknown
+Security Critical: yes
+Shipped: yes
+License Android Compatible: yes
+
+Description:
+Core library to enable emoji compatibility in Kitkat and newer devices to avoid the empty emoji characters.
+
+See also: https://developer.android.com/jetpack/androidx/releases/emoji2#1.7.0-SNAPSHOT
+
+
+Local Modifications:
+No modifications.

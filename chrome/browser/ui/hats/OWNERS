@@ -1,0 +1,8 @@
+tov@chromium.org
+msramek@chromium.org
+
+per-file survey_config.cc=set noparent
+per-file survey_config.cc=file://chrome/browser/ui/hats/HATS_PRIVACY_OWNERS
+
+# emeritus:
+# fjacky@chromium.org

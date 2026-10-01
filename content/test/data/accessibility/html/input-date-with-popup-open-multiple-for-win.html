@@ -1,0 +1,17 @@
+<!--
+@BLINK-ALLOW:inputType=*
+@BLINK-ALLOW:ariaValueText*
+@MAC-ALLOW:AXRoleDescription
+@UIA-WIN-ALLOW:ControllerFor=*
+@UIA-WIN-ALLOW:LocalizedControlType='date picker'
+@DEFAULT-ACTION-ON:Show date picker Third date picker
+@WAIT-FOR:Sunday
+-->
+<!DOCTYPE html>
+<html>
+<body>
+  <input type="date" value="2008-09-01">
+  <input type="date" value="2008-09-01">
+  <input type="date" value="2008-09-01" aria-label="Third date picker">
+</body>
+</html>

@@ -1,0 +1,157 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/test/base/android/android_browser_test.h"
+
+#include <ranges>
+#include <vector>
+
+#include "base/command_line.h"
+#include "base/memory/raw_ptr.h"
+#include "base/strings/string_util.h"
+#include "chrome/browser/ui/android/tab_model/tab_model.h"
+#include "chrome/browser/ui/android/tab_model/tab_model_list.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "chrome/test/base/chrome_test_path_utils.h"
+#include "chrome/test/base/test_launcher_utils.h"
+#include "components/keyed_service/content/browser_context_dependency_manager.h"
+#include "content/public/test/test_utils.h"
+#include "extensions/buildflags/buildflags.h"
+
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+#include "extensions/common/extension_features.h"
+#endif
+
+namespace {
+AndroidBrowserTest* g_current_test = nullptr;
+}  // namespace
+
+AndroidBrowserTest::AndroidBrowserTest() {
+  // chrome::DIR_TEST_DATA isn't going to be setup until after we call
+  // ContentMain. However that is after tests' constructors or SetUp methods,
+  // which sometimes need it. So just override it.
+  chrome_test_utils::OverrideChromeTestDataDir();
+
+  InitializeHTTPSTestServer();
+
+  CreateTestServer(base::FilePath(FILE_PATH_LITERAL("chrome/test/data")));
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  // Allow unpacked extensions without developer mode for testing.
+  feature_list_.InitAndDisableFeature(
+      extensions_features::kExtensionDisableUnsupportedDeveloper);
+#endif
+  g_current_test = this;
+
+  create_services_subscription_ =
+      BrowserContextDependencyManager::GetInstance()
+          ->RegisterCreateServicesCallbackForTesting(base::BindRepeating(
+              &AndroidBrowserTest::SetUpBrowserContextKeyedServices,
+              base::Unretained(this)));
+}
+
+AndroidBrowserTest::~AndroidBrowserTest() {
+  g_current_test = nullptr;
+}
+
+AndroidBrowserTest* AndroidBrowserTest::GetCurrent() {
+  return g_current_test;
+}
+
+void AndroidBrowserTest::SetUp() {
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  SetUpCommandLine(command_line);
+  SetUpDefaultCommandLine(command_line);
+  ASSERT_TRUE(test_launcher_utils::CreateUserDataDir(&temp_user_data_dir_));
+
+  embedded_https_test_server().AddDefaultHandlers(GetChromeTestDataDir());
+
+  ASSERT_TRUE(SetUpUserDataDirectory());
+
+  BrowserTestBase::SetUp();
+}
+
+void AndroidBrowserTest::SetUpDefaultCommandLine(
+    base::CommandLine* command_line) {
+  test_launcher_utils::PrepareBrowserCommandLineForTests(command_line);
+  test_launcher_utils::PrepareBrowserCommandLineForBrowserTests(
+      command_line, /*open_about_blank_on_launch=*/true);
+}
+
+bool AndroidBrowserTest::SetUpUserDataDirectory() {
+  return true;
+}
+
+void AndroidBrowserTest::PreRunTestOnMainThread() {}
+
+void AndroidBrowserTest::PostRunTestOnMainThread() {
+  // Closing all tabs in a TabModel can result in it removing itself from
+  // TabModelList::models(), so we must copy the list first.
+  std::vector<raw_ptr<TabModel, VectorExperimental>> models =
+      TabModelList::models();
+  for (TabModel* model : models) {
+    // Ensure this model hasn't already been removed from the main model list.
+    if (!std::ranges::contains(TabModelList::models(), model)) {
+      continue;
+    }
+    CHECK(model);
+    bool is_otr_tab_model = model->IsOffTheRecord();
+    if (model->GetTabCount()) {
+      model->ForceCloseAllTabs();
+    }
+
+    // Off-the-record (incognito) TabModel will be destroyed by
+    // ForceCloseAllTabs() above, so we can't call TabModel::GetTabCount()
+    // again for off-the-record TabModel.
+    // Otherwise, we'll dereference a non-null, but invalid pointer.
+    if (!is_otr_tab_model) {
+      ASSERT_EQ(0, model->GetTabCount());
+    }
+  }
+
+  // Run any shutdown events from closing tabs.
+  content::RunAllPendingInMessageLoop();
+}
+
+// static
+size_t AndroidBrowserTest::GetTestPreCount() {
+  constexpr std::string_view kPreTestPrefix = "PRE_";
+  std::string_view test_name =
+      testing::UnitTest::GetInstance()->current_test_info()->name();
+  size_t count = 0;
+  while (base::StartsWith(test_name, kPreTestPrefix)) {
+    ++count;
+    test_name = test_name.substr(kPreTestPrefix.size());
+  }
+  return count;
+}
+
+base::FilePath AndroidBrowserTest::GetChromeTestDataDir() const {
+  return chrome_test_utils::GetChromeTestDataDir();
+}
+
+BrowserWindowInterface* AndroidBrowserTest::GetBrowserWindowInterface() const {
+  std::vector<BrowserWindowInterface*> all_browsers =
+      GetAllBrowserWindowInterfaces();
+  return all_browsers.empty() ? nullptr : all_browsers.front();
+}
+
+Profile* AndroidBrowserTest::GetProfile() const {
+  for (TabModel* model : TabModelList::models()) {
+    if (model->GetProfile()) {
+      return model->GetProfile();
+    }
+  }
+  return nullptr;
+}
+
+TabListInterface* AndroidBrowserTest::GetTabListInterface() const {
+  for (TabModel* model : TabModelList::models()) {
+    if (model->GetProfile() == GetProfile()) {
+      return model;
+    }
+  }
+  ADD_FAILURE() << "No TabModel found for the current profile.";
+  return nullptr;
+}

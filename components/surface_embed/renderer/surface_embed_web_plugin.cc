@@ -1,0 +1,547 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/surface_embed/renderer/surface_embed_web_plugin.h"
+
+#include "base/notimplemented.h"
+#include "cc/layers/picture_layer.h"
+#include "cc/layers/surface_layer.h"
+#include "cc/paint/paint_image_builder.h"
+#include "cc/paint/paint_op.h"
+#include "components/viz/common/surfaces/frame_sink_id.h"
+#include "components/viz/common/surfaces/surface_id.h"
+#include "content/public/renderer/render_frame.h"
+#include "content/public/renderer/render_frame_observer.h"
+#include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
+#include "third_party/blink/public/common/frame/frame_visual_properties.h"
+#include "third_party/blink/public/platform/platform.h"
+#include "third_party/blink/public/web/web_document.h"
+#include "third_party/blink/public/web/web_element.h"
+#include "third_party/blink/public/web/web_frame_widget.h"
+#include "third_party/blink/public/web/web_local_frame.h"
+#include "third_party/blink/public/web/web_plugin_container.h"
+#include "third_party/blink/public/web/web_plugin_params.h"
+#include "third_party/blink/public/web/web_view.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/core/SkBlendMode.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include "third_party/skia/include/core/SkImage.h"
+#include "ui/accessibility/ax_node_id_forward.h"
+#include "ui/gfx/geometry/size.h"
+
+namespace surface_embed {
+
+class SurfaceEmbedWebPlugin::AccessibilityObserver
+    : public content::RenderFrameObserver {
+ public:
+  AccessibilityObserver(content::RenderFrame* render_frame,
+                        SurfaceEmbedWebPlugin* plugin)
+      : content::RenderFrameObserver(render_frame), plugin_(plugin) {}
+  AccessibilityObserver(const AccessibilityObserver&) = delete;
+  AccessibilityObserver& operator=(const AccessibilityObserver&) = delete;
+  ~AccessibilityObserver() override = default;
+
+  void AccessibilityModeChanged(const ui::AXMode& mode) override {
+    if (mode.has_mode(ui::AXMode::kWebContents)) {
+      plugin_->OnAccessibilityModeEnabled();
+    }
+  }
+
+  void OnDestruct() override {}
+
+ private:
+  raw_ptr<SurfaceEmbedWebPlugin> plugin_;
+};
+
+namespace {
+
+base::UnguessableToken DecodeContentId(const std::string& id_string) {
+  if (id_string.empty()) {
+    return base::UnguessableToken();
+  }
+  std::optional<base::UnguessableToken> maybe_id =
+      base::UnguessableToken::DeserializeFromString(id_string);
+  return maybe_id.has_value() ? *maybe_id : base::UnguessableToken();
+}
+
+}  // namespace
+
+// static
+SurfaceEmbedWebPlugin* SurfaceEmbedWebPlugin::Create(
+    content::RenderFrame* render_frame,
+    const blink::WebPluginParams& params) {
+  // Read the content ID from the data-content-id attribute
+  base::UnguessableToken contents_id;
+  for (size_t i = 0; i < params.attribute_names.size(); ++i) {
+    if (params.attribute_names[i].Utf8() == "data-content-id") {
+      contents_id = DecodeContentId(params.attribute_values[i].Utf8());
+      break;
+    }
+  }
+
+  return new SurfaceEmbedWebPlugin(contents_id, render_frame, params);
+}
+
+SurfaceEmbedWebPlugin::SurfaceEmbedWebPlugin(
+    const base::UnguessableToken& contents_id,
+    content::RenderFrame* render_frame,
+    const blink::WebPluginParams& params)
+    : contents_id_(contents_id) {
+  render_frame->GetRemoteAssociatedInterfaces()->GetInterface(&host_);
+  accessibility_observer_ =
+      std::make_unique<AccessibilityObserver>(render_frame, this);
+}
+
+SurfaceEmbedWebPlugin::~SurfaceEmbedWebPlugin() = default;
+
+bool SurfaceEmbedWebPlugin::Initialize(blink::WebPluginContainer* container) {
+  container_ = container;
+  InitializeSurfaceLayer();
+
+  CHECK(host_);
+  mojo::PendingAssociatedRemote<mojom::SurfaceEmbed> pending_remote =
+      receiver_.BindNewEndpointAndPassRemote();
+  host_.set_disconnect_handler(base::BindOnce(
+      &SurfaceEmbedWebPlugin::OnHostDisconnected, base::Unretained(this)));
+  receiver_.set_disconnect_handler(base::BindOnce(
+      &SurfaceEmbedWebPlugin::OnHostDisconnected, base::Unretained(this)));
+
+  // Set up the SurfaceEmbed interface first.
+  host_->SetSurfaceEmbed(std::move(pending_remote));
+
+  // Then attach with the content ID.
+  if (!contents_id_.is_empty()) {
+    bool is_focused =
+        container_ &&
+        container_->GetDocument().FocusedElement() == container_->GetElement();
+    host_->AttachConnector(contents_id_, is_focused);
+  }
+
+  // If accessibility was already enabled before the plugin was created,
+  // send the info now. AccessibilityModeChanged only fires on transitions.
+  SendAccessibilityInfo();
+
+  return true;
+}
+
+void SurfaceEmbedWebPlugin::OnAccessibilityModeEnabled() {
+  SendAccessibilityInfo();
+}
+
+void SurfaceEmbedWebPlugin::SendAccessibilityInfo() {
+  if (!container_ || !host_) {
+    return;
+  }
+
+  content::RenderFrame* render_frame =
+      accessibility_observer_ ? accessibility_observer_->render_frame()
+                              : nullptr;
+  if (!render_frame || !render_frame->GetRenderAccessibility()) {
+    return;
+  }
+
+  // The embed element's AX ID identifies the parent-side node that the child
+  // accessibility tree is stitched onto.
+  //
+  // Note the plugin is always created before the AX tree is fully built, so we
+  // can't fetch the AX ID at this time. However, AX ID always maps to DOM Node
+  // ID so we can use this as a substitute. AXObjectCacheImpl keys every
+  // DOM-backed AXObject by its DOMNodeId and derives the AXID from
+  // DOMNodeIds::ExistingIdForNode(), so the id read here is exactly the AXID
+  // the object will have once it is created.
+  //
+  // The alternative, blink::WebAXObject::FromWebNode(), cannot be used here: it
+  // calls AXObjectCache::UpdateAXForAllDocuments(), which forces the *parent*
+  // renderer to synchronously serialize its entire AX tree. That serialization
+  // re-emits the persisted parent->child stitch link, so the parent->child link
+  // reaches the browser ahead of the child->parent link being requested here.
+  // A child->parent link arriving first is harmless (AX clients traverse from
+  // parent to child), but a parent->child link with no reciprocal child->parent
+  // link is a transient half-stitched state that crashes AX consumers.
+  //
+  // TODO(accessibility): Expose a supported way to obtain the AX ID for a node
+  // without forcing a full AX tree update, and use it here instead of relying
+  // on the DOM Node ID / AX ID equivalence.
+  ui::AXNodeID ax_id = container_->GetElement().GetDomNodeId();
+  if (ax_id == ui::kInvalidAXNodeID) {
+    return;
+  }
+
+  host_->SetParentAccessibilityInfo(ax_id);
+}
+
+void SurfaceEmbedWebPlugin::Destroy() {
+  paint_holding_helper_.ClearPaintHolding(layer_.get());
+  if (container_) {
+    container_->SetCcLayer(nullptr);
+    container_ = nullptr;
+  }
+  layer_.reset();
+  ReleaseCrashedLayer();
+
+  receiver_.reset();
+  host_.reset();
+
+  delete this;
+}
+
+blink::WebPluginContainer* SurfaceEmbedWebPlugin::Container() const {
+  return container_;
+}
+
+void SurfaceEmbedWebPlugin::UpdateAllLifecyclePhases(
+    blink::DocumentUpdateReason reason) {}
+
+void SurfaceEmbedWebPlugin::Paint(cc::PaintCanvas* canvas,
+                                  const gfx::Rect& rect) {
+  // No action needed as we're using a compositor layer to render.
+}
+
+viz::FrameSinkId SurfaceEmbedWebPlugin::GetFrameSinkId() {
+  return frame_sink_id_;
+}
+
+void SurfaceEmbedWebPlugin::UpdateGeometry(const gfx::Rect& window_rect,
+                                           const gfx::Rect& clip_rect,
+                                           const gfx::Rect& unobscured_rect,
+                                           bool is_visible) {
+  // Note: Layer bounds are set by WebPluginContainerImpl::Paint()
+  // so we don't need to set them here for the time being.
+
+  if (last_window_rect_ == window_rect && last_clip_rect_ == clip_rect &&
+      last_unobscured_rect_ == unobscured_rect &&
+      last_is_visible_ == is_visible && !frame_sink_id_changed_) {
+    return;
+  }
+
+  last_window_rect_ = window_rect;
+  last_clip_rect_ = clip_rect;
+  last_unobscured_rect_ = unobscured_rect;
+  last_is_visible_ = is_visible;
+
+  if (frame_sink_id_.is_valid()) {
+    SynchronizeVisualProperties(/*allow_paint_holding=*/false);
+  }
+}
+
+void SurfaceEmbedWebPlugin::UpdateFocus(bool focused,
+                                        blink::mojom::FocusType focus_type) {
+  if (host_) {
+    host_->OnEmbedElementFocused(focused, focus_type);
+  }
+}
+
+bool SurfaceEmbedWebPlugin::SupportsKeyboardFocus() const {
+  return true;
+}
+
+void SurfaceEmbedWebPlugin::UpdateVisibility(bool visible) {
+  bool prev_is_visible = last_is_visible_;
+  last_is_visible_ = visible;
+
+  if (last_is_visible_ != prev_is_visible && frame_sink_id_.is_valid()) {
+    SynchronizeVisualProperties(/*allow_paint_holding=*/false);
+  }
+}
+
+void SurfaceEmbedWebPlugin::UpdateRenderThrottlingStatus(bool is_throttled,
+                                                         bool subtree_throttled,
+                                                         bool display_locked) {
+  if (last_is_throttled_ == is_throttled &&
+      last_subtree_throttled_ == subtree_throttled &&
+      last_display_locked_ == display_locked) {
+    return;
+  }
+
+  last_is_throttled_ = is_throttled;
+  last_subtree_throttled_ = subtree_throttled;
+  last_display_locked_ = display_locked;
+
+  if (host_) {
+    host_->OnEmbedElementThrottlingStatusChanged(
+        mojom::RenderThrottlingStatus::New(is_throttled, subtree_throttled,
+                                           display_locked));
+  }
+}
+
+blink::WebInputEventResult SurfaceEmbedWebPlugin::HandleInputEvent(
+    const blink::WebCoalescedInputEvent& event,
+    ui::Cursor* cursor) {
+  return blink::WebInputEventResult::kNotHandled;
+}
+
+void SurfaceEmbedWebPlugin::DidReceiveResponse(
+    const blink::WebURLResponse& response) {
+  NOTIMPLEMENTED();
+}
+
+void SurfaceEmbedWebPlugin::DidReceiveData(base::span<const char> data) {
+  NOTIMPLEMENTED();
+}
+
+void SurfaceEmbedWebPlugin::DidFinishLoading() {
+  NOTIMPLEMENTED();
+}
+
+void SurfaceEmbedWebPlugin::DidFailLoading(const blink::WebURLError& error) {
+  NOTIMPLEMENTED();
+}
+
+void SurfaceEmbedWebPlugin::InitializeSurfaceLayer() {
+  parent_local_surface_id_allocator_ =
+      std::make_unique<viz::ParentLocalSurfaceIdAllocator>();
+  // We'll be embedding an outside surface layer.
+  layer_ = cc::SurfaceLayer::Create();
+  layer_->SetIsDrawable(true);
+  layer_->SetContentsOpaque(true);
+  layer_->SetBackgroundColor(SkColors::kTransparent);
+  layer_->SetSurfaceHitTestable(true);
+  // Don't use the layer for `container_` yet because it does not have a valid
+  // surface id.
+}
+
+void SurfaceEmbedWebPlugin::SynchronizeVisualProperties(
+    bool allow_paint_holding) {
+  // Note: This is largely based on RemoteFrame's SynchronizeVisualProperties().
+  // TODO(surface-embed): The following properties or pieces of functionality
+  // have not yet been vetted as needed or correct implementation:
+  // - css zoom between ancestor widget and embedding element (inclusive).
+  // - viewport segments, do these need any adjustment for plugin location/size?
+  // - compositor viewport, does it need to be more accurate (See RemoteFrame)?
+  //   Right now it's the part of the plugin that's visible.
+  // - cursor_accessibility_scale_factor
+  // - propagate parameter (see RemoteFrame's implementation, do we need to do
+  //   anything to propagate these changes through the embedded WebContents?)
+
+  if (!frame_sink_id_.is_valid()) {
+    return;
+  }
+
+  blink::FrameVisualProperties pending_visual_properties;
+
+  // No support for auto-resize.
+  pending_visual_properties.auto_resize_enabled = false;
+  pending_visual_properties.min_size_for_auto_resize = gfx::Size();
+  pending_visual_properties.max_size_for_auto_resize = gfx::Size();
+
+  blink::WebFrameWidget* ancestor_widget =
+      container_->GetDocument().GetFrame()->LocalRoot()->FrameWidget();
+  CHECK(ancestor_widget);
+
+  pending_visual_properties.zoom_level = ancestor_widget->GetZoomLevel();
+  pending_visual_properties.css_zoom_factor =
+      ancestor_widget->GetCSSZoomFactor();
+  pending_visual_properties.page_scale_factor = container_->PageScaleFactor();
+  pending_visual_properties.is_pinch_gesture_active =
+      ancestor_widget->PinchGestureActiveInMainFrame();
+  pending_visual_properties.screen_infos = ancestor_widget->GetScreenInfos();
+
+  // For separate WebContents acting like an iframe, the "visible viewport" is
+  // the portion of the plugin that is visible within the plugin bounds.
+  pending_visual_properties.visible_viewport_size =
+      gfx::Size(last_clip_rect_.width(), last_clip_rect_.height());
+
+  const std::vector<gfx::Rect>& viewport_segments =
+      ancestor_widget->ViewportSegments();
+  pending_visual_properties.root_widget_viewport_segments.assign(
+      viewport_segments.begin(), viewport_segments.end());
+  pending_visual_properties.rect_in_local_root = last_window_rect_;
+  pending_visual_properties.local_frame_size =
+      gfx::Size(last_window_rect_.width(), last_window_rect_.height());
+  pending_visual_properties.compositor_viewport = last_clip_rect_;
+  pending_visual_properties.compositing_scale_factor = 1.0f;
+  pending_visual_properties.cursor_accessibility_scale_factor = 1.0f;
+
+  bool synchronized_props_changed =
+      frame_sink_id_changed_ || !sent_visual_properties_ ||
+      sent_visual_properties_->auto_resize_enabled !=
+          pending_visual_properties.auto_resize_enabled ||
+      sent_visual_properties_->min_size_for_auto_resize !=
+          pending_visual_properties.min_size_for_auto_resize ||
+      sent_visual_properties_->max_size_for_auto_resize !=
+          pending_visual_properties.max_size_for_auto_resize ||
+      sent_visual_properties_->local_frame_size !=
+          pending_visual_properties.local_frame_size ||
+      sent_visual_properties_->rect_in_local_root !=
+          pending_visual_properties.rect_in_local_root ||
+      sent_visual_properties_->screen_infos !=
+          pending_visual_properties.screen_infos ||
+      sent_visual_properties_->zoom_level !=
+          pending_visual_properties.zoom_level ||
+      sent_visual_properties_->css_zoom_factor !=
+          pending_visual_properties.css_zoom_factor ||
+      sent_visual_properties_->page_scale_factor !=
+          pending_visual_properties.page_scale_factor ||
+      sent_visual_properties_->compositing_scale_factor !=
+          pending_visual_properties.compositing_scale_factor ||
+      sent_visual_properties_->cursor_accessibility_scale_factor !=
+          pending_visual_properties.cursor_accessibility_scale_factor ||
+      sent_visual_properties_->is_pinch_gesture_active !=
+          pending_visual_properties.is_pinch_gesture_active ||
+      sent_visual_properties_->visible_viewport_size !=
+          pending_visual_properties.visible_viewport_size ||
+      sent_visual_properties_->compositor_viewport !=
+          pending_visual_properties.compositor_viewport ||
+      sent_visual_properties_->root_widget_viewport_segments !=
+          pending_visual_properties.root_widget_viewport_segments ||
+      !sent_last_is_visible_ || sent_last_is_visible_ != last_is_visible_;
+
+  if (synchronized_props_changed) {
+    parent_local_surface_id_allocator_->GenerateId();
+  }
+
+  auto local_surface_id =
+      parent_local_surface_id_allocator_->GetCurrentLocalSurfaceId();
+  pending_visual_properties.local_surface_id = local_surface_id;
+
+  viz::SurfaceId surface_id(frame_sink_id_,
+                            pending_visual_properties.local_surface_id);
+  CHECK(surface_id.is_valid());
+  paint_holding_helper_.SetSurfaceId(layer_.get(), surface_id,
+                                     allow_paint_holding);
+  if (container_) {
+    container_->SetCcLayer(layer_.get());
+    container_->ScheduleAnimation();
+  }
+
+  if (synchronized_props_changed) {
+    host_->SynchronizeVisualProperties(pending_visual_properties,
+                                       last_is_visible_);
+    sent_visual_properties_ = pending_visual_properties;
+    sent_last_is_visible_ = last_is_visible_;
+    container_->ScheduleAnimation();
+  }
+
+  frame_sink_id_changed_ = false;
+}
+
+void SurfaceEmbedWebPlugin::OnHostDisconnected() {
+  // We handle closing the connection unexpectedly via the sad plugin path,
+  // since that provides fallback painting behavior suggesting that something
+  // went wrong.
+  ChildProcessGone();
+}
+
+void SurfaceEmbedWebPlugin::SetFrameSinkId(
+    const ::viz::FrameSinkId& frame_sink_id,
+    bool allow_paint_holding) {
+  CHECK(container_);
+  CHECK(frame_sink_id.is_valid());
+  // Make sure we use a normal layer, not crash one.
+  container_->SetCcLayer(layer_.get());
+  ReleaseCrashedLayer();
+
+  // The same ParentLocalSurfaceIdAllocator cannot provide LocalSurfaceIds for
+  // two different frame sinks, so recreate it here.
+  if (frame_sink_id_ != frame_sink_id) {
+    parent_local_surface_id_allocator_ =
+        std::make_unique<viz::ParentLocalSurfaceIdAllocator>();
+  }
+  frame_sink_id_ = frame_sink_id;
+  frame_sink_id_changed_ = true;
+
+  SynchronizeVisualProperties(allow_paint_holding);
+}
+
+void SurfaceEmbedWebPlugin::UpdateLocalSurfaceIdFromChild(
+    const ::viz::LocalSurfaceId& local_surface_id) {
+  if (!parent_local_surface_id_allocator_->UpdateFromChild(local_surface_id)) {
+    return;
+  }
+
+  // The viz::LocalSurfaceId has changed so we call SynchronizeVisualProperties
+  // here to embed it.
+  SynchronizeVisualProperties(/*allow_paint_holding=*/false);
+}
+
+void SurfaceEmbedWebPlugin::ChildProcessGone() {
+  paint_holding_helper_.ClearPaintHolding(layer_.get());
+  frame_sink_id_ = viz::FrameSinkId();
+  crashed_layer_ = cc::PictureLayer::Create(this);
+  crashed_layer_->SetMasksToBounds(true);
+  crashed_layer_->SetIsDrawable(true);
+  container_->SetCcLayer(crashed_layer_.get());
+  container_->ScheduleAnimation();
+}
+
+void SurfaceEmbedWebPlugin::RequestFocusOnEmbedElement(
+    RequestFocusOnEmbedElementCallback callback) {
+  if (container_) {
+    container_->GetElement().Focus();
+  }
+  std::move(callback).Run();
+}
+
+void SurfaceEmbedWebPlugin::AdvanceFocusFromEmbedElement(bool reverse) {
+  if (!container_) {
+    return;
+  }
+  if (container_->GetDocument().FocusedElement() != container_->GetElement()) {
+    return;
+  }
+  if (auto* frame = container_->GetDocument().GetFrame()) {
+    if (auto* view = frame->View()) {
+      view->AdvanceFocus(reverse);
+    }
+  }
+}
+
+scoped_refptr<cc::DisplayItemList>
+SurfaceEmbedWebPlugin::PaintContentsToDisplayList() {
+  blink::WebFrameWidget* ancestor_widget =
+      container_->GetDocument().GetFrame()->LocalRoot()->FrameWidget();
+  auto device_scale_factor =
+      ancestor_widget->GetOriginalScreenInfo().device_scale_factor;
+  // Adapted from ChildFrameCompositingHelper::PaintContentsToDisplayList().
+  auto layer_size = crashed_layer_->bounds();
+  auto display_list = base::MakeRefCounted<cc::DisplayItemList>();
+  display_list->StartPaint();
+  display_list->push<cc::DrawColorOp>(SkColors::kGray, SkBlendMode::kSrc);
+
+  SkBitmap* sad_bitmap = blink::Platform::Current()->GetSadPageBitmap();
+  if (sad_bitmap) {
+    float paint_width = sad_bitmap->width() * device_scale_factor;
+    float paint_height = sad_bitmap->height() * device_scale_factor;
+    if (layer_size.width() >= paint_width &&
+        layer_size.height() >= paint_height) {
+      float x = (layer_size.width() - paint_width) / 2.0f;
+      float y = (layer_size.height() - paint_height) / 2.0f;
+      if (device_scale_factor != 1.f) {
+        display_list->push<cc::SaveOp>();
+        display_list->push<cc::TranslateOp>(x, y);
+        display_list->push<cc::ScaleOp>(device_scale_factor,
+                                        device_scale_factor);
+        x = 0;
+        y = 0;
+      }
+
+      auto image = cc::PaintImageBuilder::WithDefault()
+                       .set_id(cc::PaintImage::GetNextId())
+                       .set_image(SkImages::RasterFromBitmap(*sad_bitmap),
+                                  cc::PaintImage::GetNextContentId())
+                       .TakePaintImage();
+      display_list->push<cc::DrawImageOp>(image, x, y);
+
+      if (device_scale_factor != 1.f) {
+        display_list->push<cc::RestoreOp>();
+      }
+    }
+  }
+  display_list->EndPaintOfUnpaired(gfx::Rect(layer_size));
+  display_list->Finalize();
+  return display_list;
+}
+
+bool SurfaceEmbedWebPlugin::FillsBoundsCompletely() const {
+  return true;
+}
+
+void SurfaceEmbedWebPlugin::ReleaseCrashedLayer() {
+  if (crashed_layer_) {
+    crashed_layer_->ClearClient();
+    crashed_layer_.reset();
+  }
+}
+
+}  // namespace surface_embed

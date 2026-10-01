@@ -1,0 +1,246 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/media_router/cast_browser_controller.h"
+
+#include <algorithm>
+
+#include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/browser_actions.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/media_router/media_router_ui_service.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/toolbar/toolbar_view.h"
+#include "components/media_router/browser/media_router.h"
+#include "components/media_router/browser/media_router_dialog_controller.h"
+#include "components/media_router/browser/media_router_factory.h"
+#include "components/media_router/browser/media_router_metrics.h"
+#include "components/tabs/public/tab_interface.h"
+#include "components/vector_icons/vector_icons.h"
+#include "ui/base/models/image_model.h"
+#include "ui/base/ui_base_features.h"
+
+namespace media_router {
+
+namespace {
+constexpr char kLoggerComponent[] = "CastBrowserController";
+}
+
+using Severity = media_router::IssueInfo::Severity;
+
+DEFINE_USER_DATA(CastBrowserController);
+
+// static
+CastBrowserController* CastBrowserController::From(
+    BrowserWindowInterface* browser) {
+  return Get(browser->GetUnownedUserDataHost());
+}
+
+CastBrowserController::CastBrowserController(BrowserWindowInterface* browser)
+    : CastBrowserController(
+          browser,
+          MediaRouterFactory::GetApiForBrowserContext(browser->GetProfile())) {}
+
+CastBrowserController::CastBrowserController(BrowserWindowInterface* browser,
+                                             MediaRouter* media_router)
+    : IssuesObserver(media_router->GetIssueManager()),
+      MediaRoutesObserver(media_router),
+      browser_(browser),
+      scoped_unowned_user_data_(browser->GetUnownedUserDataHost(), *this),
+      logger_(media_router->GetLogger()) {
+  IssuesObserver::Init();
+}
+
+CastBrowserController::~CastBrowserController() {
+  StopObservingMirroringMediaControllerHosts();
+}
+
+void CastBrowserController::OnIssue(const media_router::Issue& issue) {
+  issue_severity_ = issue.info().severity;
+  UpdateIcon();
+}
+
+void CastBrowserController::OnIssuesCleared() {
+  issue_severity_.reset();
+  UpdateIcon();
+}
+
+void CastBrowserController::OnRoutesUpdated(
+    const std::vector<media_router::MediaRoute>& routes) {
+  has_local_route_ =
+      std::ranges::contains(routes, true, &media_router::MediaRoute::is_local);
+  StopObservingMirroringMediaControllerHosts();
+  for (const auto& route : routes) {
+    const auto& route_id = route.media_route_id();
+    MirroringMediaControllerHost* mirroring_controller_host =
+        MediaRouterFactory::GetApiForBrowserContext(browser_->GetProfile())
+            ->GetMirroringMediaControllerHost(route_id);
+    if (mirroring_controller_host) {
+      mirroring_controller_host->AddObserver(this);
+      tracked_mirroring_routes_.emplace_back(route_id);
+    }
+  }
+  UpdateIcon();
+}
+
+void CastBrowserController::OnFreezeInfoChanged() {
+  UpdateIcon();
+}
+
+// TODO(crbug.com/375030079): Move this logic to the profile controller to avoid
+// recalculating the icon for every browser.
+void CastBrowserController::UpdateIcon() {
+  auto* action_item = static_cast<actions::StatefulImageActionItem*>(
+      actions::ActionManager::Get().FindAction(
+          kActionRouteMedia,
+          BrowserActions::From(browser_)->root_action_item()));
+  const gfx::VectorIcon* new_icon = nullptr;
+  bool active = false;
+
+  bool is_frozen = false;
+  for (const auto& route_id : tracked_mirroring_routes_) {
+    MirroringMediaControllerHost* mirroring_controller_host =
+        MediaRouterFactory::GetApiForBrowserContext(browser_->GetProfile())
+            ->GetMirroringMediaControllerHost(route_id);
+    if (mirroring_controller_host) {
+      is_frozen = is_frozen || mirroring_controller_host->IsFrozen();
+    }
+  }
+
+  if ((!issue_severity_ || issue_severity_ == Severity::NOTIFICATION) &&
+      !has_local_route_) {
+    new_icon = &(features::IsRoundedIconsEnabled()
+                     ? vector_icons::kCastIcon
+                     : vector_icons::kMediaRouterIdleChromeRefreshOldIcon);
+  } else if (issue_severity_ == Severity::WARNING) {
+    new_icon = &(features::IsRoundedIconsEnabled()
+                     ? vector_icons::kCastWarningIcon
+                     : vector_icons::kMediaRouterWarningChromeRefreshOldIcon);
+  } else if (is_frozen) {
+    new_icon = &(features::IsRoundedIconsEnabled()
+                     ? vector_icons::kCastPauseIcon
+                     : vector_icons::kMediaRouterPausedOldIcon);
+  } else {
+    new_icon = &(features::IsRoundedIconsEnabled()
+                     ? vector_icons::kCastConnectedIcon
+                     : vector_icons::kMediaRouterActiveChromeRefreshOldIcon);
+    active = true;
+  }
+
+  const auto& stateful_image = action_item->GetStatefulImage();
+  if (stateful_image.IsVectorIcon() &&
+      stateful_image.GetVectorIcon().vector_icon() == new_icon) {
+    return;
+  }
+
+  LogIconChange(new_icon);
+
+  action_item->SetStatefulImage(ui::ImageModel::FromVectorIcon(*new_icon));
+  action_item->SetProperty(kActionItemUnderlineIndicatorKey, active);
+
+  // If Cast button is a ToolbarButton, manually update icon and inset.
+  // Not necessary for WebUI version which tracks ActionItem changes.
+  if (ToolbarButton* button = GetToolbarButton()) {
+    button->UpdateIcon();
+    button->SetLayoutInsetDelta(
+        gfx::Insets(ui::TouchUiController::Get()->touch_ui() ? 4 : 0));
+  }
+}
+
+CastToolbarButtonController* CastBrowserController::GetActionController()
+    const {
+  return MediaRouterUIService::Get(browser_->GetProfile())->action_controller();
+}
+
+ToolbarButton* CastBrowserController::GetToolbarButton() const {
+  // If the Cast button is WebUI, it's not a ToolbarButton.
+  if (features::IsWebUIPinnedToolbarActionsEnabled()) {
+    return nullptr;
+  }
+  // if the browser view is missing for the given browser, then there's no view
+  // to update.
+  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser_);
+  if (!browser_view) {
+    return nullptr;
+  }
+
+  ToolbarButtonProvider* toolbar = browser_view->toolbar_button_provider();
+  if (!toolbar) {
+    return nullptr;
+  }
+
+  views::BubbleAnchor anchor =
+      toolbar->GetPinnedToolbarActions()->GetBubbleAnchor(kActionRouteMedia);
+  if (!anchor.GetIfView()) {
+    return nullptr;
+  }
+
+  return views::AsViewClass<ToolbarButton>(anchor.GetIfView());
+}
+
+void CastBrowserController::ToggleDialog() {
+  tabs::TabInterface* const tab = browser_->GetActiveTabInterface();
+  if (!tab || !tab->GetContents()) {
+    return;
+  }
+  MediaRouterDialogController* dialog_controller =
+      MediaRouterDialogController::GetOrCreateForWebContents(
+          tab->GetContents());
+  if (dialog_controller->IsShowingMediaRouterDialog()) {
+    dialog_controller->HideMediaRouterDialog();
+  } else {
+    dialog_controller->ShowMediaRouterDialog(
+        MediaRouterDialogActivationLocation::TOOLBAR);
+  }
+}
+
+void CastBrowserController::LogIconChange(const gfx::VectorIcon* icon) {
+  if (icon == &(features::IsRoundedIconsEnabled()
+                    ? vector_icons::kCastIcon
+                    : vector_icons::kMediaRouterIdleChromeRefreshOldIcon)) {
+    logger_->LogInfo(
+        mojom::LogCategory::kUi, kLoggerComponent,
+        "Cast toolbar icon indicates no active session nor issues.", "", "",
+        "");
+  } else if (icon == &vector_icons::kMediaRouterErrorCustomIcon) {
+    logger_->LogInfo(mojom::LogCategory::kUi, kLoggerComponent,
+                     "Cast toolbar icon shows a fatal issue.", "", "", "");
+  } else if (icon ==
+             &(features::IsRoundedIconsEnabled()
+                   ? vector_icons::kCastWarningIcon
+                   : vector_icons::kMediaRouterWarningChromeRefreshOldIcon)) {
+    logger_->LogInfo(mojom::LogCategory::kUi, kLoggerComponent,
+                     "Cast toolbar icon shows a warning issue.", "", "", "");
+  } else if (icon == &(features::IsRoundedIconsEnabled()
+                           ? vector_icons::kCastPauseIcon
+                           : vector_icons::kMediaRouterPausedOldIcon)) {
+    logger_->LogInfo(
+        mojom::LogCategory::kUi, kLoggerComponent,
+        "Cast toolbar icon indicated there is a paused mirroring session.", "",
+        "", "");
+  } else {
+    CHECK_EQ(icon,
+             &(features::IsRoundedIconsEnabled()
+                   ? vector_icons::kCastConnectedIcon
+                   : vector_icons::kMediaRouterActiveChromeRefreshOldIcon));
+    logger_->LogInfo(mojom::LogCategory::kUi, kLoggerComponent,
+                     "Cast toolbar icon is blue, indicating an active session.",
+                     "", "", "");
+  }
+}
+
+void CastBrowserController::StopObservingMirroringMediaControllerHosts() {
+  for (const auto& route_id : tracked_mirroring_routes_) {
+    media_router::MirroringMediaControllerHost* mirroring_controller_host =
+        MediaRouterFactory::GetApiForBrowserContext(browser_->GetProfile())
+            ->GetMirroringMediaControllerHost(route_id);
+    if (mirroring_controller_host) {
+      mirroring_controller_host->RemoveObserver(this);
+    }
+  }
+  tracked_mirroring_routes_.clear();
+}
+
+}  // namespace media_router

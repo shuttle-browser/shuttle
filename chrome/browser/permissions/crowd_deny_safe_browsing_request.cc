@@ -1,0 +1,136 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/permissions/crowd_deny_safe_browsing_request.h"
+
+#include <utility>
+
+#include "base/functional/bind.h"
+#include "base/location.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/task_runner.h"
+#include "base/task/task_traits.h"
+#include "base/time/clock.h"
+#include "base/timer/timer.h"
+#include "components/safe_browsing/core/browser/db/database_manager.h"
+#include "components/safe_browsing/core/browser/db/v5_get_hash_protocol_manager.h"
+#include "components/safe_browsing/core/common/features.h"
+#include "content/public/browser/browser_thread.h"
+#include "url/origin.h"
+
+namespace {
+
+// The maximum amount of time to wait for the Safe Browsing response.
+constexpr base::TimeDelta kSafeBrowsingCheckTimeout = base::Seconds(2);
+
+}  // namespace
+
+// CrowdDenySafeBrowsingRequest::SafeBrowsingClient --------------------------
+
+class CrowdDenySafeBrowsingRequest::SafeBrowsingClient
+    : public safe_browsing::SafeBrowsingDatabaseManager::Client {
+ public:
+  SafeBrowsingClient(
+      base::PassKey<safe_browsing::SafeBrowsingDatabaseManager::Client>
+          pass_key,
+      scoped_refptr<safe_browsing::SafeBrowsingDatabaseManager>
+          database_manager,
+      base::WeakPtr<safe_browsing::V5GetHashProtocolManager>
+          v5_get_hash_protocol_manager,
+      base::WeakPtr<CrowdDenySafeBrowsingRequest> handler,
+      scoped_refptr<base::TaskRunner> handler_task_runner)
+      : safe_browsing::SafeBrowsingDatabaseManager::Client(std::move(pass_key)),
+        database_manager_(database_manager),
+        v5_get_hash_protocol_manager_(v5_get_hash_protocol_manager),
+        handler_(handler),
+        handler_task_runner_(handler_task_runner) {}
+
+  ~SafeBrowsingClient() override {
+    if (timeout_.IsRunning())
+      database_manager_->CancelNotificationAbuseCheck(this);
+  }
+
+  base::WeakPtr<safe_browsing::V5GetHashProtocolManager>
+  GetV5GetHashProtocolManager() override {
+    return v5_get_hash_protocol_manager_;
+  }
+
+  void CheckOrigin(const url::Origin& origin) {
+    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+
+    // Start the timer before the call to CheckNotificationAbuseUrl(), as it may
+    // call back into OnCheckNotificationAbuseUrlResult() synchronously.
+    timeout_.Start(FROM_HERE, kSafeBrowsingCheckTimeout, this,
+                   &SafeBrowsingClient::OnTimeout);
+
+    if (database_manager_->CheckNotificationAbuseUrl(origin.GetURL(), this)) {
+      timeout_.Stop();
+      SendResultToHandler(Verdict::kAcceptable);
+    }
+  }
+
+ private:
+  SafeBrowsingClient(const SafeBrowsingClient&) = delete;
+  SafeBrowsingClient& operator=(const SafeBrowsingClient&) = delete;
+
+
+  void OnTimeout() {
+    database_manager_->CancelNotificationAbuseCheck(this);
+    SendResultToHandler(Verdict::kAcceptable);
+  }
+
+  void SendResultToHandler(Verdict verdict) {
+    handler_task_runner_->PostTask(
+        FROM_HERE,
+        base::BindOnce(&CrowdDenySafeBrowsingRequest::OnReceivedResult,
+                       handler_, verdict));
+  }
+
+  // SafeBrowsingDatabaseManager::Client:
+  void OnCheckNotificationAbuseUrlResult(bool is_abusive) override {
+    timeout_.Stop();
+    SendResultToHandler(is_abusive ? Verdict::kUnacceptable
+                                   : Verdict::kAcceptable);
+  }
+
+  base::OneShotTimer timeout_;
+  scoped_refptr<safe_browsing::SafeBrowsingDatabaseManager> database_manager_;
+  base::WeakPtr<safe_browsing::V5GetHashProtocolManager>
+      v5_get_hash_protocol_manager_;
+  base::WeakPtr<CrowdDenySafeBrowsingRequest> handler_;
+  scoped_refptr<base::TaskRunner> handler_task_runner_;
+};
+
+// CrowdDenySafeBrowsingRequest ----------------------------------------------
+
+CrowdDenySafeBrowsingRequest::CrowdDenySafeBrowsingRequest(
+    scoped_refptr<safe_browsing::SafeBrowsingDatabaseManager> database_manager,
+    base::WeakPtr<safe_browsing::V5GetHashProtocolManager>
+        v5_get_hash_protocol_manager,
+    const base::Clock* clock,
+    const url::Origin& origin,
+    VerdictCallback callback)
+    : callback_(std::move(callback)),
+      clock_(clock),
+      request_start_time_(clock->Now()) {
+  client_ = std::make_unique<SafeBrowsingClient>(
+      safe_browsing::SafeBrowsingDatabaseManager::Client::GetPassKey(),
+      database_manager, v5_get_hash_protocol_manager,
+      weak_factory_.GetWeakPtr(),
+      base::SequencedTaskRunner::GetCurrentDefault());
+  client_->CheckOrigin(origin);
+}
+
+CrowdDenySafeBrowsingRequest::~CrowdDenySafeBrowsingRequest() = default;
+
+void CrowdDenySafeBrowsingRequest::OnReceivedResult(Verdict verdict) {
+  base::UmaHistogramTimes("Permissions.CrowdDeny.SafeBrowsing.RequestDuration",
+                          clock_->Now() - request_start_time_);
+  base::UmaHistogramEnumeration("Permissions.CrowdDeny.SafeBrowsing.Verdict",
+                                verdict);
+
+  DCHECK(callback_);
+  std::move(callback_).Run(verdict);
+}

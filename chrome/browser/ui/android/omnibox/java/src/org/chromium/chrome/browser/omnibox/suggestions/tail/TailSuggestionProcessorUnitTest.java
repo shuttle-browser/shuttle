@@ -1,0 +1,126 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.omnibox.suggestions.tail;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.robolectric.RuntimeEnvironment;
+import org.robolectric.annotation.Config;
+
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider.ControlsPosition;
+import org.chromium.chrome.browser.omnibox.UrlBarEditingTextStateProvider;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxImageSupplier;
+import org.chromium.chrome.browser.omnibox.suggestions.AutocompleteUIContext;
+import org.chromium.chrome.browser.omnibox.suggestions.SuggestionHost;
+import org.chromium.chrome.browser.omnibox.suggestions.basic.BasicSuggestionProcessor.BookmarkState;
+import org.chromium.chrome.browser.share.ShareDelegate;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.components.omnibox.AutocompleteInput;
+import org.chromium.components.omnibox.AutocompleteMatch;
+import org.chromium.components.omnibox.AutocompleteMatchBuilder;
+import org.chromium.components.omnibox.OmniboxSuggestionType;
+import org.chromium.components.omnibox.action.OmniboxActionDelegate;
+import org.chromium.components.omnibox.suggestions.OmniboxSuggestionUiType;
+import org.chromium.ui.modelutil.PropertyModel;
+
+import java.util.function.Supplier;
+
+/** Tests for {@link TailSuggestionProcessor}. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class TailSuggestionProcessorUnitTest {
+    @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Mock private SuggestionHost mSuggestionHost;
+    @Mock private AutocompleteInput mInput;
+    @Mock private UrlBarEditingTextStateProvider mTextProvider;
+    @Mock private OmniboxImageSupplier mImageSupplier;
+    @Mock private Supplier<Tab> mTabSupplier;
+    @Mock private Supplier<ShareDelegate> mShareDelegateSupplier;
+    @Mock private BookmarkState mBookmarkState;
+    @Mock private OmniboxActionDelegate mActionDelegate;
+
+    private TailSuggestionProcessor mProcessor;
+    private AutocompleteMatch mSuggestion;
+    private PropertyModel mModel;
+
+    @Before
+    public void setUp() {
+        AutocompleteUIContext uiContext =
+                new AutocompleteUIContext(
+                        RuntimeEnvironment.application,
+                        mSuggestionHost,
+                        mTextProvider,
+                        mImageSupplier,
+                        mBookmarkState,
+                        mTabSupplier,
+                        mShareDelegateSupplier,
+                        ObservableSuppliers.createNonNull(ControlsPosition.TOP),
+                        mActionDelegate);
+        mProcessor = new TailSuggestionProcessor(uiContext);
+    }
+
+    /** Create search suggestion for test. */
+    private void createSearchSuggestion(int type, String title) {
+        mSuggestion =
+                AutocompleteMatchBuilder.searchWithType(type)
+                        .setDisplayText(title)
+                        .setFillIntoEdit("fill into edit: " + title)
+                        .build();
+        mModel = mProcessor.createModel();
+        mProcessor.populateModel(mInput, mSuggestion, mModel, 0);
+    }
+
+    @Test
+    @Config(qualifiers = "w400dp")
+    public void populateModel_tailSuggestion_phone() {
+        mProcessor.onSuggestionsReceived();
+        createSearchSuggestion(OmniboxSuggestionType.SEARCH_SUGGEST_TAIL, "tail");
+
+        assertTrue(mProcessor.doesProcessSuggestion(mSuggestion, 1));
+        // Alignment is suppressed on phones.
+        assertNull(mModel.get(TailSuggestionViewProperties.ALIGNMENT_MANAGER));
+        assertEquals("… tail", mModel.get(TailSuggestionViewProperties.TEXT).toString());
+        assertEquals(
+                "fill into edit: tail", mModel.get(TailSuggestionViewProperties.FILL_INTO_EDIT));
+    }
+
+    @Test
+    @Config(qualifiers = "w600dp-h820dp")
+    public void populateModel_tailSuggestion_tablet() {
+        mProcessor.onSuggestionsReceived();
+        createSearchSuggestion(OmniboxSuggestionType.SEARCH_SUGGEST_TAIL, "tail");
+
+        assertTrue(mProcessor.doesProcessSuggestion(mSuggestion, 1));
+        assertNotNull(mModel.get(TailSuggestionViewProperties.ALIGNMENT_MANAGER));
+        assertEquals("… tail", mModel.get(TailSuggestionViewProperties.TEXT).toString());
+        assertEquals(
+                "fill into edit: tail", mModel.get(TailSuggestionViewProperties.FILL_INTO_EDIT));
+    }
+
+    @Test
+    public void doesProcessSuggestion_nonTailSuggestion() {
+        mProcessor.onSuggestionsReceived();
+        createSearchSuggestion(OmniboxSuggestionType.SEARCH_SUGGEST, "search");
+        assertFalse(mProcessor.doesProcessSuggestion(mSuggestion, 1));
+    }
+
+    @Test
+    public void getViewTypeId_forFullTestCoverage() {
+        assertEquals(OmniboxSuggestionUiType.TAIL_SUGGESTION, mProcessor.getViewTypeId());
+    }
+}

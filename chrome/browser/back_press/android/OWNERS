@@ -1,0 +1,6 @@
+mschillaci@google.com
+adelm@google.com
+jinsukkim@chromium.org
+twellington@chromium.org
+
+per-file java/src/org/chromium/chrome/browser/back_press/CloseListenerManager.java=file://third_party/blink/renderer/core/html/closewatcher/OWNERS

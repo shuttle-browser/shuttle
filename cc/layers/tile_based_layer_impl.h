@@ -1,0 +1,695 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CC_LAYERS_TILE_BASED_LAYER_IMPL_H_
+#define CC_LAYERS_TILE_BASED_LAYER_IMPL_H_
+
+#include <algorithm>
+#include <limits>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "base/check_op.h"
+#include "cc/base/math_util.h"
+#include "cc/cc_export.h"
+#include "cc/debug/debug_colors.h"
+#include "cc/layers/append_quads_context.h"
+#include "cc/layers/append_quads_data.h"
+#include "cc/layers/layer_impl.h"
+#include "cc/layers/solid_color_layer_impl.h"
+#include "cc/tiles/tiling_set_coverage_iterator.h"
+#include "cc/trees/layer_tree_impl.h"
+#include "components/viz/common/quads/debug_border_draw_quad.h"
+#include "components/viz/common/quads/solid_color_draw_quad.h"
+#include "components/viz/common/quads/tile_draw_quad.h"
+#include "components/viz/common/resources/resource_id.h"
+#include "ui/gfx/geometry/rect_conversions.h"
+#include "ui/gfx/geometry/size_f.h"
+
+namespace cc {
+
+// Base class for layer impls that manipulate tiles (e.g., PictureLayerImpl
+// and TileDisplayLayerImpl).
+template <typename Tiling>
+class CC_EXPORT TileBasedLayerImpl : public LayerImpl {
+ public:
+  enum class TilingResolution {
+    kHigh,
+    kAboveHigh,
+    kBelowHigh,
+  };
+
+  enum class IterationStatus {
+    kContinue,
+    kStop,
+  };
+
+  TileBasedLayerImpl(const TileBasedLayerImpl&) = delete;
+  ~TileBasedLayerImpl() override = default;
+
+  TileBasedLayerImpl& operator=(const TileBasedLayerImpl&) = delete;
+
+  void SetIsBackdropFilterMask(bool is_backdrop_filter_mask) {
+    if (this->is_backdrop_filter_mask() == is_backdrop_filter_mask) {
+      return;
+    }
+    is_backdrop_filter_mask_ = is_backdrop_filter_mask;
+    SetNeedsPushProperties();
+  }
+
+  bool is_backdrop_filter_mask() const { return is_backdrop_filter_mask_; }
+
+  // LayerImpl overrides:
+  void AppendQuads(const AppendQuadsContext& context,
+                   viz::CompositorRenderPass* render_pass,
+                   AppendQuadsData* append_quads_data) override;
+  gfx::Rect GetDamageRect() const override { return damage_rect_; }
+  void ResetChangeTracking() override {
+    LayerImpl::ResetChangeTracking();
+    damage_rect_.SetRect(0, 0, 0, 0);
+  }
+  bool HasMissingTiles() const override;
+  gfx::Rect GetEnclosingVisibleRectInTargetSpace() const override {
+    return GetScaledEnclosingVisibleRectInTargetSpace(
+        GetMaximumContentsScaleForUseInAppendQuads());
+  }
+  void GetContentsResourceId(viz::ResourceId* resource_id,
+                             gfx::Size* resource_size,
+                             gfx::SizeF* resource_uv_size) const override;
+
+  bool GetNearestNeighbor() const { return nearest_neighbor_; }
+
+  void SetSolidColor(std::optional<SkColor4f> color) { solid_color_ = color; }
+
+  std::vector<float>& GetLastAppendQuadsScalesForTesting() {
+    return last_append_quads_scales_;
+  }
+
+  void set_produced_tile_last_append_quads(bool value) {
+    produced_tile_last_append_quads_ = value;
+  }
+  bool produced_tile_last_append_quads() const {
+    return produced_tile_last_append_quads_;
+  }
+
+  virtual float GetMaximumContentsScaleForUseInAppendQuads() const = 0;
+
+ protected:
+  TileBasedLayerImpl(LayerTreeImpl* tree_impl, int id)
+      : LayerImpl(tree_impl, id) {}
+
+  std::optional<SkColor4f> solid_color() const { return solid_color_; }
+  std::optional<gfx::Rect> CalculateCullRectInLayerSpace() const;
+
+  void ClearLastAppendQuadsScales() { last_append_quads_scales_.clear(); }
+
+  void AddScaleToLastAppendQuadsScales(float scale) {
+    if (last_append_quads_scales_.empty() ||
+        last_append_quads_scales_.back() != scale) {
+      last_append_quads_scales_.push_back(scale);
+    }
+  }
+
+  void UnionWithExistingDamage(const gfx::Rect& rect) {
+    damage_rect_.Union(rect);
+  }
+
+  void SetNearestNeighbor(bool nearest_neighbor) {
+    nearest_neighbor_ = nearest_neighbor;
+  }
+
+  bool LastAppendQuadsScalesContains(float scale) const {
+    return std::ranges::contains(last_append_quads_scales_, scale);
+  }
+
+  // Invokes `functor` for each visible tile in `coverage_rect`.
+  template <typename Functor>
+  void ForEachVisibleTile(const gfx::Rect& coverage_rect,
+                          float max_contents_scale,
+                          float ideal_scale_key,
+                          const Occlusion& scaled_occlusion,
+                          Functor functor) const;
+
+  // Invoked when a tile is determined to be ready to draw, allowing subclasses
+  virtual void WillProcessReadyToDrawTile(
+      const TilingSetCoverageIterator<Tiling>& iter) {}
+
+  // Returns true if the subclass wants to track the approximated visible
+  // content area for the given resolution.
+  virtual bool ShouldUpdateApproximatedVisibleContentArea(
+      TileResolution resolution) const {
+    return false;
+  }
+
+  // Returns true if a missing tile at the given geometry rect should be
+  // reported as missing (i.e. increment the num_missing_tiles counter).
+  // NOTE: TileDisplayLayerImpl does not currently track missing tiles (i.e. it
+  // does not override the default implementation of this method), as that info
+  // is used only to pass to `AppendQuadsData::num_missing_tiles` on the client
+  // side.
+  // TODO(crbug.com/401566175): Determine if we need to track
+  // `num_missing_tiles` on the Viz side in the longer term.
+  virtual bool ShouldReportTileAsMissing(
+      const gfx::Rect& tile_geometry_rect,
+      const gfx::Rect& scaled_viewport_for_tile_priority) const {
+    return false;
+  }
+
+  virtual gfx::Rect GetScaledViewportForTilePriority(float scale) const {
+    return gfx::Rect();
+  }
+
+  // Invoked after a quad has been appended to allow subclasses to perform any
+  // subclass-specific validation or tracking.
+  virtual void DidAppendQuad(viz::DrawQuad* quad,
+                             const TilingSetCoverageIterator<Tiling>& iter,
+                             AppendQuadsData* append_quads_data,
+                             bool is_checkerboard) {}
+
+  virtual bool ValidateTilingSetForContentsResourceId() const { return true; }
+
+ private:
+  // Invoked when the draw mode is DRAW_MODE_RESOURCELESS_SOFTWARE.
+  virtual void AppendQuadsForResourcelessSoftwareDraw(
+      const AppendQuadsContext& context,
+      viz::CompositorRenderPass* render_pass,
+      AppendQuadsData* append_quads_data,
+      viz::SharedQuadState* shared_quad_state,
+      const Occlusion& scaled_occlusion) = 0;
+
+  // Called just before starting the loop appending quads to allow subclasses to
+  // do any desired setup.
+  virtual void WillAppendQuads() {}
+
+  virtual gfx::Rect RecordedBounds() const = 0;
+
+  // Called for each tile covered by the layer. `quad_offset` is the offset by
+  // which appended quads should be adjusted. The return value is false if the
+  // tile was determined to be missing.
+  // NOTE: `shared_quad_state` is *not* adjusted by `quad_offset` when passed
+  // into this method to allow implementations to operate on the original state
+  // (e.g., to locate tiles in layer space). However, it will be properly
+  // adjusted before AppendQuads() returns to the caller.
+  bool AppendQuadForTile(TilingSetCoverageIterator<Tiling> iter,
+                         const AppendQuadsContext& context,
+                         viz::CompositorRenderPass* render_pass,
+                         AppendQuadsData* append_quads_data,
+                         viz::SharedQuadState* shared_quad_state,
+                         const Occlusion& scaled_occlusion,
+                         const gfx::Rect& offset_geometry_rect,
+                         const gfx::Rect& offset_visible_geometry_rect,
+                         const gfx::Rect& visible_geometry_rect,
+                         bool needs_blending,
+                         float max_contents_scale,
+                         const gfx::Rect& scaled_viewport_for_tile_priority);
+
+  virtual bool IsDirectlyCompositedImage() const = 0;
+
+  virtual TilingResolution GetTilingResolutionForDebugBorders(
+      const Tiling* tiling) const = 0;
+
+  virtual TilingSetCoverageIterator<Tiling> Cover(
+      const gfx::Rect& coverage_rect,
+      float coverage_scale,
+      float ideal_contents_scale) const = 0;
+
+  virtual float GetIdealContentsScaleKey() const = 0;
+
+  // Called at the end of AppendQuads() to allow subclasses to do any specific
+  // validation desired.
+  virtual void SanityCheckTilingState() const {}
+
+  // Appends a solid-color quad with color `color`.
+  void AppendSolidQuad(viz::CompositorRenderPass* render_pass,
+                       AppendQuadsData* append_quads_data,
+                       SkColor4f color);
+
+  bool is_backdrop_filter_mask_ : 1 = false;
+  std::optional<SkColor4f> solid_color_;
+
+  // List of tiling scales that were used last time we appended quads. This is
+  // used as an optimization not to remove tilings if they are still being
+  // drawn.
+  std::vector<float> last_append_quads_scales_;
+
+  // Denotes an area that is damaged and needs redraw. This is in the layer's
+  // space.
+  gfx::Rect damage_rect_;
+
+  bool nearest_neighbor_ : 1 = false;
+  bool produced_tile_last_append_quads_ : 1 = true;
+};
+
+template <typename Tiling>
+template <typename Functor>
+void TileBasedLayerImpl<Tiling>::ForEachVisibleTile(
+    const gfx::Rect& coverage_rect,
+    float max_contents_scale,
+    float ideal_scale_key,
+    const Occlusion& scaled_occlusion,
+    Functor functor) const {
+  const gfx::Rect scaled_recorded_bounds =
+      gfx::ScaleToEnclosingRect(RecordedBounds(), max_contents_scale);
+
+  for (auto iter = Cover(coverage_rect, max_contents_scale, ideal_scale_key);
+       iter; ++iter) {
+    const gfx::Rect& geometry_rect = iter.geometry_rect();
+    if (!scaled_recorded_bounds.Intersects(geometry_rect)) {
+      // This happens when the tiling rect is snapped to be bigger than the
+      // recorded bounds, and CoverageIterator returns a "missing" tile
+      // to cover some of the empty area. The tile should be ignored, otherwise
+      // it would be mistakenly treated as checkerboarded and drawn with the
+      // safe background color.
+      // TODO(crbug.com/328677988): Ideally we should check intersection with
+      // visible_geometry_rect and remove the visible_geometry_rect.IsEmpty()
+      // condition below.
+      continue;
+    }
+
+    gfx::Rect visible_geometry_rect =
+        scaled_occlusion.GetUnoccludedContentRect(geometry_rect);
+    if (visible_geometry_rect.IsEmpty()) {
+      continue;
+    }
+
+    if (functor(iter, visible_geometry_rect) == IterationStatus::kStop) {
+      break;
+    }
+  }
+}
+
+template <typename Tiling>
+void TileBasedLayerImpl<Tiling>::AppendQuads(
+    const AppendQuadsContext& context,
+    viz::CompositorRenderPass* render_pass,
+    AppendQuadsData* append_quads_data) {
+  // RenderSurfaceImpl::AppendQuads sets mask properties in the DrawQuad for
+  // the masked surface, which will apply to both the backdrop filter and the
+  // contents of the masked surface, so we should not append quads of the mask
+  // layer in DstIn blend mode which would apply the mask in another codepath.
+  if (is_backdrop_filter_mask()) {
+    return;
+  }
+
+  if (solid_color()) {
+    AppendSolidQuad(render_pass, append_quads_data, *solid_color());
+    return;
+  }
+
+  viz::SharedQuadState* shared_quad_state =
+      render_pass->CreateAndAppendSharedQuadState();
+  PopulateScaledSharedQuadState(shared_quad_state,
+                                GetMaximumContentsScaleForUseInAppendQuads(),
+                                contents_opaque());
+
+  if (IsDirectlyCompositedImage()) {
+    // Directly composited images should be clipped to the layer's content rect.
+    // When a PictureLayerTiling is created for a directly composited image, the
+    // layer bounds are multiplied by the raster scale in order to compute the
+    // tile size. If the aspect ratio of the layer doesn't match that of the
+    // image, it's possible that one of the dimensions of the resulting size
+    // (layer bounds * raster scale) is a fractional number, as raster scale
+    // does not scale x and y independently.
+    // When this happens, the ToEnclosingRect() operation in
+    // |PictureLayerTiling::EnclosingContentsRectFromLayer()| will
+    // create a tiling that, when scaled by |max_contents_scale| above, is
+    // larger than the layer bounds by a fraction of a pixel.
+    gfx::Rect bounds_in_target_space = MathUtil::MapEnclosingClippedRect(
+        draw_properties().target_space_transform, gfx::Rect(bounds()));
+    if (is_clipped()) {
+      bounds_in_target_space.Intersect(draw_properties().clip_rect);
+    }
+
+    if (shared_quad_state->clip_rect) {
+      bounds_in_target_space.Intersect(*shared_quad_state->clip_rect);
+    }
+
+    shared_quad_state->clip_rect = bounds_in_target_space;
+  }
+
+  const Occlusion scaled_occlusion =
+      draw_properties()
+          .occlusion_in_content_space.GetOcclusionWithGivenDrawTransform(
+              shared_quad_state->quad_to_target_transform);
+
+  if (context.draw_mode == DRAW_MODE_RESOURCELESS_SOFTWARE) {
+    AppendQuadsForResourcelessSoftwareDraw(context, render_pass,
+                                           append_quads_data, shared_quad_state,
+                                           scaled_occlusion);
+    return;
+  }
+
+  // If the visible rect is scrolled far enough away, then we may run into a
+  // floating point precision in AA calculations in the renderer. See
+  // crbug.com/765297. In order to avoid this, we shift the quads up from where
+  // they logically reside and adjust the shared_quad_state's transform instead.
+  // We only do this in scale/translate matrices to ensure the math is correct.
+  // NOTE: This method uses the original state in `shared_quad_state` to
+  // correctly locate the tiles to draw. For this reason, we delay adjusting
+  // `shared_quad_state` itself until the bottom of the method below.
+  gfx::Vector2d quad_offset;
+  if (shared_quad_state->quad_to_target_transform.IsScaleOrTranslation()) {
+    const auto& visible_rect = shared_quad_state->visible_quad_layer_rect;
+    quad_offset = gfx::Vector2d(-visible_rect.x(), -visible_rect.y());
+  }
+
+  gfx::Rect debug_border_rect(shared_quad_state->quad_layer_rect);
+  debug_border_rect.Offset(quad_offset);
+  AppendDebugBorderQuad(render_pass, debug_border_rect, shared_quad_state,
+                        append_quads_data);
+
+  const float device_scale_factor = layer_tree_impl()->device_scale_factor();
+  const float max_contents_scale = GetMaximumContentsScaleForUseInAppendQuads();
+  const float ideal_scale_key = GetIdealContentsScaleKey();
+
+  // Append debug borders for the quads in this layer.
+  if (ShowDebugBorders(DebugBorderType::LAYER)) {
+    for (auto iter = Cover(shared_quad_state->visible_quad_layer_rect,
+                           max_contents_scale, ideal_scale_key);
+         iter; ++iter) {
+      SkColor4f color;
+      float width;
+      if (*iter && iter->IsReadyToDraw()) {
+        TileDrawInfo::Mode mode = iter->draw_mode();
+        if (mode == TileDrawInfo::SOLID_COLOR_MODE) {
+          color = DebugColors::SolidColorTileBorderColor();
+          width = DebugColors::SolidColorTileBorderWidth(device_scale_factor);
+        } else if (mode == TileDrawInfo::OOM_MODE) {
+          color = DebugColors::OOMTileBorderColor();
+          width = DebugColors::OOMTileBorderWidth(device_scale_factor);
+        } else {
+          switch (GetTilingResolutionForDebugBorders(iter.CurrentTiling())) {
+            case TilingResolution::kHigh:
+              color = DebugColors::HighResTileBorderColor();
+              width = DebugColors::HighResTileBorderWidth(device_scale_factor);
+              break;
+            case TilingResolution::kAboveHigh:
+              color = DebugColors::AboveHighResTileBorderColor();
+              width =
+                  DebugColors::AboveHighResTileBorderWidth(device_scale_factor);
+              break;
+            case TilingResolution::kBelowHigh:
+              color = DebugColors::BelowHighResTileBorderColor();
+              width =
+                  DebugColors::BelowHighResTileBorderWidth(device_scale_factor);
+              break;
+          }
+        }
+      } else {
+        color = DebugColors::MissingTileBorderColor();
+        width = DebugColors::MissingTileBorderWidth(device_scale_factor);
+      }
+
+      auto* debug_border_quad =
+          render_pass->CreateAndAppendDrawQuad<viz::DebugBorderDrawQuad>();
+      gfx::Rect geometry_rect = iter.geometry_rect();
+      geometry_rect.Offset(quad_offset);
+      gfx::Rect visible_geometry_rect = geometry_rect;
+      debug_border_quad->SetNew(shared_quad_state, geometry_rect,
+                                visible_geometry_rect, color, width);
+    }
+  }
+
+  // Clear the set of scales that were used in the previous AppendQuads() in
+  // order to track the scales used in *this* invocation and be able to
+  // determine which scales are now unused and can be considered for removal.
+  ClearLastAppendQuadsScales();
+
+  WillAppendQuads();
+  const gfx::Rect scaled_viewport_for_tile_priority =
+      GetScaledViewportForTilePriority(max_contents_scale);
+
+  int missing_tile_count = 0;
+  ForEachVisibleTile(
+      shared_quad_state->visible_quad_layer_rect, max_contents_scale,
+      ideal_scale_key, scaled_occlusion,
+      [&](const TilingSetCoverageIterator<Tiling>& iter,
+          const gfx::Rect& visible_geometry_rect) {
+        gfx::Rect offset_geometry_rect = iter.geometry_rect();
+        offset_geometry_rect.Offset(quad_offset);
+        gfx::Rect offset_visible_geometry_rect = visible_geometry_rect;
+        offset_visible_geometry_rect.Offset(quad_offset);
+
+        const bool needs_blending = !contents_opaque();
+
+        append_quads_data->visible_layer_area +=
+            visible_geometry_rect.size().Area64();
+
+        if (!AppendQuadForTile(
+                iter, context, render_pass, append_quads_data,
+                shared_quad_state, scaled_occlusion, offset_geometry_rect,
+                offset_visible_geometry_rect, visible_geometry_rect,
+                needs_blending, max_contents_scale,
+                scaled_viewport_for_tile_priority)) {
+          missing_tile_count++;
+        }
+        return IterationStatus::kContinue;
+      });
+
+  if (missing_tile_count) {
+    append_quads_data->num_missing_tiles += missing_tile_count;
+    TRACE_EVENT_INSTANT("cc", "TileBasedLayerImpl::AppendQuads checkerboard",
+                        "missing_tile_count", missing_tile_count);
+  }
+
+  // Adjust shared_quad_state with the quad_offset, since we have
+  // adjusted each quad appended by that offset above.
+  shared_quad_state->quad_to_target_transform.Translate(-quad_offset);
+  shared_quad_state->quad_layer_rect.Offset(quad_offset);
+  shared_quad_state->visible_quad_layer_rect.Offset(quad_offset);
+
+  SanityCheckTilingState();
+}
+
+template <typename Tiling>
+bool TileBasedLayerImpl<Tiling>::HasMissingTiles() const {
+  if (is_backdrop_filter_mask()) {
+    return false;
+  }
+  if (solid_color()) {
+    return false;
+  }
+
+  const float max_contents_scale = GetMaximumContentsScaleForUseInAppendQuads();
+  const float ideal_scale_key = GetIdealContentsScaleKey();
+
+  const gfx::Size scaled_bounds =
+      gfx::ScaleToCeiledSize(bounds(), max_contents_scale);
+  gfx::Rect scaled_visible_layer_rect =
+      gfx::ScaleToEnclosingRect(visible_layer_rect(), max_contents_scale);
+  scaled_visible_layer_rect.Intersect(gfx::Rect(scaled_bounds));
+
+  if (scaled_visible_layer_rect.IsEmpty()) {
+    return false;
+  }
+
+  const Occlusion scaled_occlusion =
+      draw_properties()
+          .occlusion_in_content_space.GetOcclusionWithGivenDrawTransform(
+              GetScaledDrawTransform(max_contents_scale));
+
+  const gfx::Rect scaled_viewport_for_tile_priority =
+      GetScaledViewportForTilePriority(max_contents_scale);
+
+  bool has_missing = false;
+  ForEachVisibleTile(
+      scaled_visible_layer_rect, max_contents_scale, ideal_scale_key,
+      scaled_occlusion,
+      [&](const TilingSetCoverageIterator<Tiling>& iter,
+          const gfx::Rect& visible_geometry_rect) {
+        if (!*iter || !iter->IsReadyToDraw()) {
+          if (ShouldReportTileAsMissing(iter.geometry_rect(),
+                                        scaled_viewport_for_tile_priority)) {
+            has_missing = true;
+            return IterationStatus::kStop;
+          }
+        }
+        return IterationStatus::kContinue;
+      });
+
+  return has_missing;
+}
+
+template <typename Tiling>
+void TileBasedLayerImpl<Tiling>::GetContentsResourceId(
+    viz::ResourceId* resource_id,
+    gfx::Size* resource_size,
+    gfx::SizeF* resource_uv_size) const {
+  *resource_id = viz::kInvalidResourceId;
+
+  // We need contents resource for backdrop filter masks only.
+  if (!is_backdrop_filter_mask()) {
+    return;
+  }
+
+  if (!ValidateTilingSetForContentsResourceId()) {
+    return;
+  }
+
+  const float max_contents_scale = GetMaximumContentsScaleForUseInAppendQuads();
+  gfx::Rect content_rect =
+      gfx::ScaleToEnclosingRect(gfx::Rect(bounds()), max_contents_scale);
+  auto iter =
+      Cover(content_rect, max_contents_scale, GetIdealContentsScaleKey());
+
+  // Mask resource not ready yet.
+  if (!iter || !*iter) {
+    return;
+  }
+
+  // Masks only supported if they fit on exactly one tile.
+  DCHECK(iter.geometry_rect() == content_rect)
+      << "iter rect " << iter.geometry_rect().ToString() << " content rect "
+      << content_rect.ToString();
+
+  auto resource_id_opt = iter->GetResourceId();
+  auto resource_size_opt = iter->GetResourceSize();
+  if (!resource_id_opt || !resource_size_opt) {
+    return;
+  }
+
+  *resource_id = *resource_id_opt;
+  *resource_size = *resource_size_opt;
+  // |resource_uv_size| represents the range of UV coordinates that map to the
+  // content being drawn. Typically, we draw to the entire texture, so these
+  // coordinates are (1.0f, 1.0f). However, if we are rasterizing to an
+  // over-large texture, this size will be smaller, mapping to the subset of the
+  // texture being used.
+  gfx::SizeF requested_tile_size =
+      gfx::SizeF(iter.CurrentTiling()->tiling_rect().size());
+  DCHECK_LE(requested_tile_size.width(), resource_size->width());
+  DCHECK_LE(requested_tile_size.height(), resource_size->height());
+  *resource_uv_size =
+      gfx::SizeF(requested_tile_size.width() / resource_size->width(),
+                 requested_tile_size.height() / resource_size->height());
+}
+
+template <typename Tiling>
+bool TileBasedLayerImpl<Tiling>::AppendQuadForTile(
+    TilingSetCoverageIterator<Tiling> iter,
+    const AppendQuadsContext& context,
+    viz::CompositorRenderPass* render_pass,
+    AppendQuadsData* append_quads_data,
+    viz::SharedQuadState* shared_quad_state,
+    const Occlusion& scaled_occlusion,
+    const gfx::Rect& offset_geometry_rect,
+    const gfx::Rect& offset_visible_geometry_rect,
+    const gfx::Rect& visible_geometry_rect,
+    bool needs_blending,
+    float max_contents_scale,
+    const gfx::Rect& scaled_viewport_for_tile_priority) {
+  auto* tile = *iter;
+  bool has_draw_quad = false;
+  if (tile && tile->IsReadyToDraw()) {
+    WillProcessReadyToDrawTile(iter);
+
+    if (auto resource_id = tile->GetResourceId()) {
+      auto* quad = render_pass->CreateAndAppendDrawQuad<viz::TileDrawQuad>();
+      quad->SetNew(shared_quad_state, offset_geometry_rect,
+                   offset_visible_geometry_rect, needs_blending, *resource_id,
+                   iter.texture_rect(), GetNearestNeighbor(),
+                   !layer_tree_impl()->settings().enable_edge_anti_aliasing);
+      DidAppendQuad(quad, iter, append_quads_data, /*is_checkerboard=*/false);
+      has_draw_quad = true;
+    } else if (auto color = tile->GetSolidColor()) {
+      float alpha = color->fA * shared_quad_state->opacity;
+      if (alpha >= std::numeric_limits<float>::epsilon()) {
+        auto* quad =
+            render_pass->CreateAndAppendDrawQuad<viz::SolidColorDrawQuad>();
+        quad->SetNew(shared_quad_state, offset_geometry_rect,
+                     offset_visible_geometry_rect, *color,
+                     !layer_tree_impl()->settings().enable_edge_anti_aliasing);
+        DidAppendQuad(quad, iter, append_quads_data, /*is_checkerboard=*/false);
+      }
+      has_draw_quad = true;
+    }
+  }
+
+  if (!has_draw_quad) {
+    // Checkerboard due to missing raster.
+    SkColor4f color = safe_opaque_background_color();
+    if (ShowDebugBorders(DebugBorderType::LAYER)) {
+      // Fill the whole tile with the missing tile color.
+      color = DebugColors::DefaultCheckerboardColor();
+    }
+    auto* quad =
+        render_pass->CreateAndAppendDrawQuad<viz::SolidColorDrawQuad>();
+    quad->SetNew(shared_quad_state, offset_geometry_rect,
+                 offset_visible_geometry_rect, color, false);
+    DidAppendQuad(quad, iter, append_quads_data, /*is_checkerboard=*/true);
+
+    return /*tile_produced=*/!ShouldReportTileAsMissing(
+        iter.geometry_rect(), scaled_viewport_for_tile_priority);
+  }
+
+  if (ShouldUpdateApproximatedVisibleContentArea(iter.resolution())) {
+    append_quads_data->approximated_visible_content_area +=
+        visible_geometry_rect.size().Area64();
+  }
+  produced_tile_last_append_quads_ = true;
+  AddScaleToLastAppendQuadsScales(iter.CurrentTiling()->contents_scale_key());
+
+  return /*tile_produced=*/true;
+}
+
+template <typename Tiling>
+void TileBasedLayerImpl<Tiling>::AppendSolidQuad(
+    viz::CompositorRenderPass* render_pass,
+    AppendQuadsData* append_quads_data,
+    SkColor4f color) {
+  // TODO(crbug.com/41468388): This is still hard-coded at 1.0. This has some
+  // history:
+  //   - for crbug.com/769319, the contents scale was allowed to change, to
+  //     avoid blurring on high-dpi screens.
+  //   - for crbug.com/796558, the max device scale was hard-coded back to 1.0
+  //     for single-tile masks, to avoid problems with transforms.
+  // To avoid those transform/scale bugs, this is currently left at 1.0. See
+  // crbug.com/979672 for more context and test links.
+  float max_contents_scale = 1;
+
+  // The downstream CA layers use shared_quad_state to generate resources of
+  // the right size even if it is a solid color picture layer.
+  viz::SharedQuadState* shared_quad_state =
+      render_pass->CreateAndAppendSharedQuadState();
+  PopulateScaledSharedQuadState(shared_quad_state, max_contents_scale,
+                                contents_opaque());
+
+  AppendDebugBorderQuad(render_pass, gfx::Rect(bounds()), shared_quad_state,
+                        append_quads_data);
+
+  gfx::Rect scaled_visible_layer_rect =
+      shared_quad_state->visible_quad_layer_rect;
+  Occlusion occlusion = draw_properties().occlusion_in_content_space;
+
+  const EffectNode& effect_node = GetEffectTree().Node(effect_tree_index());
+  SolidColorLayerImpl::AppendSolidQuads(
+      render_pass, occlusion, shared_quad_state, scaled_visible_layer_rect,
+      color, !layer_tree_impl()->settings().enable_edge_anti_aliasing,
+      effect_node.blend_mode, append_quads_data);
+}
+
+template <typename Tiling>
+std::optional<gfx::Rect>
+TileBasedLayerImpl<Tiling>::CalculateCullRectInLayerSpace() const {
+  const ScrollTree& scroll_tree =
+      layer_tree_impl()->property_trees()->scroll_tree();
+  if (scroll_tree_index() != kInvalidPropertyNodeId) {
+    const ScrollNode& scroll_node = scroll_tree.Node(scroll_tree_index());
+    if (transform_tree_index() == scroll_node.transform_id) {
+      if (const gfx::Rect* cull_rect =
+              scroll_tree.ScrollingContentsCullRect(scroll_node.element_id)) {
+        return gfx::ToEnclosingRect(
+            // Convert into layer space.
+            gfx::RectF(*cull_rect) - offset_to_transform_parent());
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+
+}  // namespace cc
+
+#endif  // CC_LAYERS_TILE_BASED_LAYER_IMPL_H_

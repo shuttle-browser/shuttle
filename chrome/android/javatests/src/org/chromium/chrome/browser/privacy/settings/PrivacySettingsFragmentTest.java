@@ -1,0 +1,701 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.privacy.settings;
+
+import static androidx.test.espresso.Espresso.onView;
+import static androidx.test.espresso.action.ViewActions.click;
+import static androidx.test.espresso.assertion.ViewAssertions.doesNotExist;
+import static androidx.test.espresso.assertion.ViewAssertions.matches;
+import static androidx.test.espresso.matcher.ViewMatchers.hasDescendant;
+import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
+import static androidx.test.espresso.matcher.ViewMatchers.withId;
+import static androidx.test.espresso.matcher.ViewMatchers.withText;
+
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+
+import static org.chromium.ui.test.util.ViewUtils.clickOnClickableSpan;
+
+import android.text.TextUtils;
+import android.view.View;
+import android.widget.TextView;
+
+import androidx.recyclerview.widget.RecyclerView;
+import androidx.test.core.app.ApplicationProvider;
+import androidx.test.espresso.contrib.RecyclerViewActions;
+import androidx.test.filters.LargeTest;
+import androidx.test.filters.MediumTest;
+
+import org.hamcrest.Matcher;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.RuleChain;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+
+import org.chromium.base.ThreadUtils;
+import org.chromium.base.shared_preferences.SharedPreferencesManager;
+import org.chromium.base.test.util.CommandLineFlags;
+import org.chromium.base.test.util.CriteriaHelper;
+import org.chromium.base.test.util.DisabledTest;
+import org.chromium.base.test.util.DoNotBatch;
+import org.chromium.base.test.util.Feature;
+import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.base.test.util.HistogramWatcher;
+import org.chromium.base.test.util.UserActionTester;
+import org.chromium.chrome.R;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.flags.ChromeSwitches;
+import org.chromium.chrome.browser.incognito.IncognitoUtils;
+import org.chromium.chrome.browser.incognito.reauth.IncognitoReauthManager;
+import org.chromium.chrome.browser.incognito.reauth.IncognitoReauthSettingUtils;
+import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
+import org.chromium.chrome.browser.preferences.Pref;
+import org.chromium.chrome.browser.privacy_guide.PrivacyGuideInteractions;
+import org.chromium.chrome.browser.profiles.ProfileManager;
+import org.chromium.chrome.browser.settings.SettingsTestRule;
+import org.chromium.chrome.browser.settings.SettingsNavigationFactory;
+import org.chromium.chrome.browser.signin.SigninCheckerProvider;
+import org.chromium.chrome.browser.sync.settings.GoogleServicesSettings;
+import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
+import org.chromium.chrome.test.util.AdvancedProtectionTestRule;
+import org.chromium.chrome.test.util.ChromeRenderTestRule;
+import org.chromium.chrome.test.util.browser.signin.SigninTestRule;
+import org.chromium.components.browser_ui.settings.SettingsNavigation;
+import org.chromium.components.browser_ui.settings.search.SettingsIndexData;
+import org.chromium.components.browser_ui.site_settings.SingleCategorySettings;
+import org.chromium.components.browser_ui.site_settings.WebsitePreferenceBridge;
+import org.chromium.components.content_settings.ContentSetting;
+import org.chromium.components.content_settings.ContentSettingsType;
+import org.chromium.components.policy.test.annotations.Policies;
+import org.chromium.components.prefs.PrefService;
+import org.chromium.components.user_prefs.UserPrefs;
+import org.chromium.content_public.browser.test.NativeLibraryTestUtils;
+import org.chromium.ui.text.SpanApplier;
+import org.chromium.ui.text.SpanApplier.SpanInfo;
+
+import java.io.IOException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+
+/** Tests for {@link PrivacySettings}. */
+@RunWith(ChromeJUnit4ClassRunner.class)
+@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
+@DoNotBatch(reason = "Child account can leak to other tests in the suite.")
+@DisableFeatures(ChromeFeatureList.SETTINGS_MULTI_COLUMN)
+public class PrivacySettingsFragmentTest {
+    // Name of the histogram to record the entry on Privacy Guide via the S&P link-row.
+    public static final String ENTRY_EXIT_HISTOGRAM = "Settings.PrivacyGuide.EntryExit";
+
+    public final SettingsTestRule<PrivacySettings> mSettingsActivityTestRule =
+            new SettingsTestRule<>(PrivacySettings.class);
+
+    public final SigninTestRule mSigninTestRule = new SigninTestRule();
+    private static final int RENDER_TEST_REVISION = 2;
+    private static final int WEB_GPU_DISABLED_MESSAGE =
+            R.string.settings_privacy_and_security_advanced_protection_webgpu_disabled_bullet;
+
+    @Rule
+    public final AdvancedProtectionTestRule mAdvancedProtectionRule =
+            new AdvancedProtectionTestRule();
+
+    @Rule
+    public final RuleChain mRuleChain =
+            RuleChain.outerRule(mSigninTestRule).around(mSettingsActivityTestRule);
+
+    @Rule
+    public ChromeRenderTestRule mRenderTestRule =
+            ChromeRenderTestRule.Builder.withPublicCorpus()
+                    .setBugComponent(ChromeRenderTestRule.Component.UI_SETTINGS_PRIVACY)
+                    .setRevision(RENDER_TEST_REVISION)
+                    .build();
+
+    @Rule public MockitoRule mockito = MockitoJUnit.rule();
+
+    private UserActionTester mActionTester;
+    @Mock private SettingsNavigation mSettingsNavigation;
+
+    @Mock private SettingsIndexData mSearchIndexDataMock;
+
+    private void waitForOptionsMenu() {
+        CriteriaHelper.pollUiThread(
+                () -> {
+                    return mSettingsActivityTestRule
+                                    .getActivity()
+                                    .findViewById(R.id.menu_id_targeted_help)
+                            != null;
+                });
+    }
+
+    private void scrollToSetting(Matcher<View> matcher) {
+        onView(withId(R.id.recycler_view))
+                .perform(RecyclerViewActions.scrollTo(hasDescendant(matcher)));
+    }
+
+    private View getIncognitoReauthSettingView(PrivacySettings privacySettings) {
+        int titleResId =
+                IncognitoUtils.shouldOpenIncognitoAsWindow()
+                        ? R.string.settings_incognito_window_lock_title
+                        : R.string.settings_incognito_tab_lock_title;
+        String incognitoLockTitle = mSettingsActivityTestRule.getActivity().getString(titleResId);
+        onView(withId(R.id.recycler_view))
+                .perform(RecyclerViewActions.scrollTo(hasDescendant(withText(incognitoLockTitle))));
+        onView(withText(incognitoLockTitle)).check(matches(isDisplayed()));
+        for (int i = 0; i < privacySettings.getListView().getChildCount(); ++i) {
+            View view = privacySettings.getListView().getChildAt(i);
+            TextView titleView = view.findViewById(android.R.id.title);
+            if (titleView != null) {
+                String title = titleView.getText().toString();
+                if (TextUtils.equals(incognitoLockTitle, title)) {
+                    return view;
+                }
+            }
+        }
+        return null;
+    }
+
+    private void setPrivacyGuideViewed(boolean isViewed) {
+        ThreadUtils.runOnUiThreadBlocking(
+                () ->
+                        UserPrefs.get(ProfileManager.getLastUsedRegularProfile())
+                                .setBoolean(Pref.PRIVACY_GUIDE_VIEWED, isViewed));
+    }
+
+    private boolean isPrivacyGuideViewed() throws ExecutionException {
+        return ThreadUtils.runOnUiThreadBlocking(
+                () ->
+                        UserPrefs.get(ProfileManager.getLastUsedRegularProfile())
+                                .getBoolean(Pref.PRIVACY_GUIDE_VIEWED));
+    }
+
+    @Before
+    public void setUp() {
+        NativeLibraryTestUtils.loadNativeLibraryAndInitBrowserProcess();
+        mActionTester = new UserActionTester();
+    }
+
+    @After
+    public void tearDown() {
+        if (mActionTester != null) mActionTester.tearDown();
+    }
+
+    @Test
+    @LargeTest
+    @Feature({"RenderTest"})
+    @DisableFeatures({ChromeFeatureList.SETTINGS_MULTI_COLUMN})
+    public void testRenderTopView() throws IOException {
+        mSettingsActivityTestRule.startSettingsActivity();
+        waitForOptionsMenu();
+        View view =
+                mSettingsActivityTestRule
+                        .getActivity()
+                        .findViewById(android.R.id.content)
+                        .getRootView();
+        mRenderTestRule.render(view, "privacy_and_security_settings_top_view");
+    }
+
+    @Test
+    @LargeTest
+    @Feature({"RenderTest"})
+    @DisableFeatures({ChromeFeatureList.SETTINGS_MULTI_COLUMN})
+    public void testRenderBottomView() throws IOException {
+        mSettingsActivityTestRule.startSettingsActivity();
+        waitForOptionsMenu();
+        PrivacySettings fragment = mSettingsActivityTestRule.getFragment();
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    RecyclerView recyclerView = fragment.getView().findViewById(R.id.recycler_view);
+                    recyclerView.scrollToPosition(recyclerView.getAdapter().getItemCount() - 1);
+                });
+        View view =
+                mSettingsActivityTestRule
+                        .getActivity()
+                        .findViewById(android.R.id.content)
+                        .getRootView();
+        mRenderTestRule.render(view, "privacy_and_security_settings_bottom_view");
+    }
+
+    @Test
+    @LargeTest
+    @Feature({"RenderTest"})
+    @DisableFeatures({ChromeFeatureList.SETTINGS_MULTI_COLUMN})
+    public void testRenderWhenPrivacyGuideViewed() throws IOException {
+        setPrivacyGuideViewed(true);
+        mSettingsActivityTestRule.startSettingsActivity();
+        waitForOptionsMenu();
+        View view =
+                mSettingsActivityTestRule
+                        .getActivity()
+                        .findViewById(android.R.id.content)
+                        .getRootView();
+        mRenderTestRule.render(view, "privacy_and_security_privacy_guide_label_without_new");
+    }
+
+    @Test
+    @LargeTest
+    @Feature({"RenderTest"})
+    @DisableFeatures({ChromeFeatureList.SETTINGS_MULTI_COLUMN})
+    public void testRenderWhenPrivacyGuideNotViewed() throws IOException {
+        setPrivacyGuideViewed(false);
+        mSettingsActivityTestRule.startSettingsActivity();
+        waitForOptionsMenu();
+        View view =
+                mSettingsActivityTestRule
+                        .getActivity()
+                        .findViewById(android.R.id.content)
+                        .getRootView();
+        mRenderTestRule.render(view, "privacy_and_security_privacy_guide_label_with_new");
+    }
+
+    @Test
+    @LargeTest
+    @Feature({"RenderTest"})
+    @DisableFeatures(ChromeFeatureList.SETTINGS_MULTI_COLUMN)
+    public void testRenderIncognitoLockView_DeviceScreenLockDisabled() throws IOException {
+        IncognitoReauthManager.setIsIncognitoReauthFeatureAvailableForTesting(true);
+
+        mSettingsActivityTestRule.startSettingsActivity();
+        waitForOptionsMenu();
+        PrivacySettings fragment = mSettingsActivityTestRule.getFragment();
+
+        mRenderTestRule.render(
+                getIncognitoReauthSettingView(fragment),
+                "incognito_reauth_setting_screen_lock_disabled");
+    }
+
+    @Test
+    @LargeTest
+    @Feature({"RenderTest"})
+    @DisableFeatures(ChromeFeatureList.SETTINGS_MULTI_COLUMN)
+    public void testRenderIncognitoLockView_DeviceScreenLockEnabled() throws IOException {
+        IncognitoReauthManager.setIsIncognitoReauthFeatureAvailableForTesting(true);
+        IncognitoReauthSettingUtils.setIsDeviceScreenLockEnabledForTesting(true);
+
+        mSettingsActivityTestRule.startSettingsActivity();
+        waitForOptionsMenu();
+        PrivacySettings fragment = mSettingsActivityTestRule.getFragment();
+
+        mRenderTestRule.render(
+                getIncognitoReauthSettingView(fragment),
+                "incognito_reauth_setting_screen_lock_enabled");
+    }
+
+    @Test
+    @LargeTest
+    public void testPrivacyGuideLinkRowEntryPointUserAction() throws IOException {
+        mSettingsActivityTestRule.startSettingsActivity();
+        // Scroll down and open Privacy Guide page.
+        scrollToSetting(withText(R.string.privacy_guide_pref_summary));
+        onView(withText(R.string.privacy_guide_pref_summary)).perform(click());
+        // Verify that the user action is emitted when privacy guide is clicked
+        assertTrue(
+                mActionTester.getActions().contains("Settings.PrivacyGuide.StartPrivacySettings"));
+    }
+
+    @Test
+    @LargeTest
+    public void testPrivacyGuideLinkRowEntryExitHistogram() throws IOException {
+        mSettingsActivityTestRule.startSettingsActivity();
+
+        var histogram =
+                HistogramWatcher.newSingleRecordWatcher(
+                        ENTRY_EXIT_HISTOGRAM, PrivacyGuideInteractions.SETTINGS_LINK_ROW_ENTRY);
+
+        // Scroll down and open Privacy Guide page.
+        scrollToSetting(withText(R.string.privacy_guide_pref_summary));
+        onView(withText(R.string.privacy_guide_pref_summary)).perform(click());
+
+        histogram.assertExpected();
+    }
+
+    @Test
+    @LargeTest
+    public void testPrivacyGuideNewLabelVisibility() throws ExecutionException {
+        setPrivacyGuideViewed(false);
+        mSettingsActivityTestRule.startSettingsActivity();
+        assertFalse(isPrivacyGuideViewed());
+
+        // Open the privacy guide
+        onView(withText(R.string.privacy_guide_pref_summary)).perform(click());
+        // Tapping on the privacy guide row should mark the privacy guide as viewed
+        assertTrue(isPrivacyGuideViewed());
+    }
+
+    @Test
+    @LargeTest
+    // A random policy is required to make the device managed
+    @Policies.Add({@Policies.Item(key = "RandomPolicy", string = "true")})
+    public void testPrivacyGuideNotDisplayedWhenDeviceIsManaged() {
+        mSettingsActivityTestRule.startSettingsActivity();
+        onView(withText(R.string.privacy_guide_pref_summary)).check(doesNotExist());
+    }
+
+    @Test
+    @LargeTest
+    @DisabledTest(message = "crbug.com/40265353")
+    public void testPrivacyGuideNotDisplayedWhenUserIsChild() {
+        // TODO(crbug.com/40264499): Remove once SigninChecker is automatically created.
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> SigninCheckerProvider.get(ProfileManager.getLastUsedRegularProfile()));
+        mSigninTestRule.addChildTestAccountThenWaitForSignin();
+        mSettingsActivityTestRule.startSettingsActivity();
+        onView(withText(R.string.privacy_guide_pref_summary)).check(doesNotExist());
+    }
+
+    @Test
+    @LargeTest
+    public void testSignedOutFooterLink() {
+        mSettingsActivityTestRule.startSettingsActivity();
+        SettingsNavigationFactory.setInstanceForTesting(mSettingsNavigation);
+
+        onView(withId(R.id.recycler_view)).perform(RecyclerViewActions.scrollToLastPosition());
+        String footer =
+                mSettingsActivityTestRule
+                        .getActivity()
+                        .getString(
+                                R.string.privacy_chrome_data_and_google_services_signed_out_footer);
+        String footerWithoutSpans =
+                SpanApplier.applySpans(footer, new SpanInfo("<link>", "</link>", new Object()))
+                        .toString();
+        onView(withText(containsString(footerWithoutSpans))).perform(clickOnClickableSpan(0));
+
+        verify(mSettingsNavigation)
+                .startSettings(any(), eq(GoogleServicesSettings.class), eq(null), eq(true));
+    }
+
+    @Test
+    @LargeTest
+    public void testSettingsFragmentAttachedMetric() {
+        // Expect "PrivacySettings".hashCode() to be logged.
+        int expectedValue = 1505293227;
+        assertEquals(expectedValue, "PrivacySettings".hashCode());
+        try (var histogram =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Settings.FragmentAttached", expectedValue)) {
+            mSettingsActivityTestRule.startSettingsActivity();
+            SettingsNavigationFactory.setInstanceForTesting(mSettingsNavigation);
+        }
+    }
+
+    @Test
+    @LargeTest
+    public void testJavascriptOptimizerSummary_ToggleAllowed() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    WebsitePreferenceBridge.setDefaultContentSetting(
+                            ProfileManager.getLastUsedRegularProfile(),
+                            ContentSettingsType.JAVASCRIPT_OPTIMIZER,
+                            ContentSetting.ALLOW);
+                });
+        mSettingsActivityTestRule.startSettingsActivity();
+        int javascriptOptimizerLabel =
+                R.string.website_settings_privacy_and_security_javascript_optimizer_row_label;
+        scrollToSetting(withText(javascriptOptimizerLabel));
+        onView(withText(R.string.website_settings_category_javascript_optimizer_allowed_list))
+                .check(matches(isDisplayed()));
+    }
+
+    @Test
+    @LargeTest
+    public void testJavascriptOptimizerSummary_ToggleBlocked() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    WebsitePreferenceBridge.setDefaultContentSetting(
+                            ProfileManager.getLastUsedRegularProfile(),
+                            ContentSettingsType.JAVASCRIPT_OPTIMIZER,
+                            ContentSetting.BLOCK);
+                });
+        mSettingsActivityTestRule.startSettingsActivity();
+        int javascriptOptimizerLabel =
+                R.string.website_settings_privacy_and_security_javascript_optimizer_row_label;
+        scrollToSetting(withText(javascriptOptimizerLabel));
+        onView(withText(R.string.website_settings_category_javascript_optimizer_blocked_list))
+                .check(matches(isDisplayed()));
+    }
+
+    /**
+     * Test that advanced-protection-info is shown when (1) Advanced-Protection is on AND (2) Chrome
+     * doesn't have any stored preferences.
+     */
+    @Test
+    @LargeTest
+    public void testInfoShown_AdvancedProtectionOn_FirstRun() {
+        mAdvancedProtectionRule.setIsAdvancedProtectionRequestedByOs(true);
+
+        SharedPreferencesManager preferences = ChromeSharedPreferences.getInstance();
+        preferences
+                .getEditor()
+                .remove(ChromePreferenceKeys.OS_ADVANCED_PROTECTION_SETTING)
+                .remove(ChromePreferenceKeys.OS_ADVANCED_PROTECTION_SETTING_UPDATED_TIME)
+                .apply();
+
+        mSettingsActivityTestRule.startSettingsActivity();
+        scrollToSetting(withText(R.string.prefs_safe_browsing_title));
+        onView(withText(R.string.settings_privacy_and_security_advanced_protection_section_title))
+                .check(matches(isDisplayed()));
+    }
+
+    /**
+     * Test that advanced-protection-info is shown when (1) Advanced-Protection is on AND (2) the
+     * user turned on Advanced-Protection 1 day ago.
+     */
+    @Test
+    @LargeTest
+    public void testInfoShown_AdvancedProtectionOn_1DayAfterFirstRun() {
+        mAdvancedProtectionRule.setIsAdvancedProtectionRequestedByOs(true);
+        SharedPreferencesManager preferences = ChromeSharedPreferences.getInstance();
+        preferences.writeBoolean(ChromePreferenceKeys.OS_ADVANCED_PROTECTION_SETTING, true);
+        preferences.writeLong(
+                ChromePreferenceKeys.OS_ADVANCED_PROTECTION_SETTING_UPDATED_TIME,
+                System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1));
+
+        mSettingsActivityTestRule.startSettingsActivity();
+        scrollToSetting(withText(R.string.prefs_safe_browsing_title));
+        onView(withText(R.string.settings_privacy_and_security_advanced_protection_section_title))
+                .check(matches(isDisplayed()));
+    }
+
+    /**
+     * Test that advanced-protection-info is not shown when (1) Advanced-Protection is on AND (2)
+     * the user turned on Advanced-Protection a long time ago.
+     */
+    @Test
+    @LargeTest
+    public void testInfoNotShown_AdvancedProtectionOn_91DaysAfterFirstRun() {
+        mAdvancedProtectionRule.setIsAdvancedProtectionRequestedByOs(true);
+        SharedPreferencesManager preferences = ChromeSharedPreferences.getInstance();
+        preferences.writeBoolean(ChromePreferenceKeys.OS_ADVANCED_PROTECTION_SETTING, true);
+        preferences.writeLong(
+                ChromePreferenceKeys.OS_ADVANCED_PROTECTION_SETTING_UPDATED_TIME,
+                System.currentTimeMillis() - TimeUnit.DAYS.toMillis(91));
+
+        mSettingsActivityTestRule.startSettingsActivity();
+        scrollToSetting(withText(R.string.prefs_safe_browsing_title));
+        onView(withText(R.string.settings_privacy_and_security_advanced_protection_section_title))
+                .check(doesNotExist());
+    }
+
+    /** Test that advanced-protection-info is not shown when Advanced-Protection is off. */
+    @Test
+    @LargeTest
+    public void testInfoNotShown_AdvancedProtectionOff_FirstRun() {
+        mAdvancedProtectionRule.setIsAdvancedProtectionRequestedByOs(false);
+
+        SharedPreferencesManager preferences = ChromeSharedPreferences.getInstance();
+        preferences
+                .getEditor()
+                .remove(ChromePreferenceKeys.OS_ADVANCED_PROTECTION_SETTING)
+                .remove(ChromePreferenceKeys.OS_ADVANCED_PROTECTION_SETTING_UPDATED_TIME)
+                .apply();
+
+        mSettingsActivityTestRule.startSettingsActivity();
+        scrollToSetting(withText(R.string.prefs_safe_browsing_title));
+        onView(withText(R.string.settings_privacy_and_security_advanced_protection_section_title))
+                .check(doesNotExist());
+        String webGpuDisabledString =
+                mSettingsActivityTestRule.getActivity().getString(WEB_GPU_DISABLED_MESSAGE);
+        onView(withText(containsString(webGpuDisabledString))).check(doesNotExist());
+    }
+
+    /**
+     * Test that the webgpu string is not shown and advanced-protection-info is shown when (1)
+     * Advanced-Protection is on AND (2) the AAPM_BLOCKS_WEB_GPU feature is disabled.
+     */
+    @Test
+    @LargeTest
+    @DisableFeatures(ChromeFeatureList.AAPM_BLOCKS_WEB_GPU)
+    public void testWebGpuStringNotShown_AdvancedProtectionOn_FeatureDisabled() {
+        mAdvancedProtectionRule.setIsAdvancedProtectionRequestedByOs(true);
+
+        SharedPreferencesManager preferences = ChromeSharedPreferences.getInstance();
+        preferences
+                .getEditor()
+                .remove(ChromePreferenceKeys.OS_ADVANCED_PROTECTION_SETTING)
+                .remove(ChromePreferenceKeys.OS_ADVANCED_PROTECTION_SETTING_UPDATED_TIME)
+                .apply();
+
+        mSettingsActivityTestRule.startSettingsActivity();
+
+        // "advanced-protection-info" section should be visible
+        scrollToSetting(withText(R.string.prefs_safe_browsing_title));
+        onView(withText(R.string.settings_privacy_and_security_advanced_protection_section_title))
+                .check(matches(isDisplayed()));
+
+        // "webgpu-disabled" string should not be visible
+        String webGpuDisabledString =
+                mSettingsActivityTestRule.getActivity().getString(WEB_GPU_DISABLED_MESSAGE);
+        onView(withText(containsString(webGpuDisabledString))).check(doesNotExist());
+    }
+
+    /**
+     * Test that the webgpu string is shown and advanced-protection-info is shown when (1)
+     * Advanced-Protection is on AND (2) the AAPM_BLOCKS_WEB_GPU feature is enabled.
+     */
+    @Test
+    @LargeTest
+    @EnableFeatures(ChromeFeatureList.AAPM_BLOCKS_WEB_GPU)
+    public void testWebGpuStringShown_AdvancedProtectionOn_FeatureEnabled() {
+        mAdvancedProtectionRule.setIsAdvancedProtectionRequestedByOs(true);
+
+        SharedPreferencesManager preferences = ChromeSharedPreferences.getInstance();
+        preferences
+                .getEditor()
+                .remove(ChromePreferenceKeys.OS_ADVANCED_PROTECTION_SETTING)
+                .remove(ChromePreferenceKeys.OS_ADVANCED_PROTECTION_SETTING_UPDATED_TIME)
+                .apply();
+
+        mSettingsActivityTestRule.startSettingsActivity();
+
+        // "advanced-protection-info" section should be visible
+        scrollToSetting(withText(R.string.prefs_safe_browsing_title));
+        onView(withText(R.string.settings_privacy_and_security_advanced_protection_section_title))
+                .check(matches(isDisplayed()));
+
+        // "webgpu-disabled" string should also be visible
+        String webGpuDisabledString =
+                mSettingsActivityTestRule.getActivity().getString(WEB_GPU_DISABLED_MESSAGE);
+        onView(withText(containsString(webGpuDisabledString))).check(matches(isDisplayed()));
+    }
+
+    /**
+     * Test that Javascript-optimizer settings are shown when the user clicks the
+     * javascript-optimizer link in the advanced-protection section.
+     */
+    @Test
+    @LargeTest
+    public void testOnJavascriptOptimizerLinkClicked() {
+        SettingsNavigationFactory.setInstanceForTesting(mSettingsNavigation);
+        PrivacySettings.onJavascriptOptimizerLinkClicked(
+                ApplicationProvider.getApplicationContext());
+
+        verify(mSettingsNavigation)
+                .startSettings(
+                        any(),
+                        eq(SingleCategorySettings.class),
+                        argThat(
+                                fragmentArgs -> {
+                                    String category =
+                                            fragmentArgs.getString(
+                                                    SingleCategorySettings.EXTRA_CATEGORY);
+                                    return "javascript_optimizer".equals(category);
+                                }),
+                        eq(true));
+    }
+
+    @Test
+    @LargeTest
+    @EnableFeatures(ChromeFeatureList.UNIVERSAL_OPT_OUT_SETTINGS)
+    public void testUniversalOptOutSettingsVisible_EligibleAndTurnedOn() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    getPrefService().setBoolean(Pref.UNIVERSAL_OPT_OUT_ENABLED, true);
+                    getPrefService().setBoolean(Pref.UNIVERSAL_OPT_OUT_ELIGIBLE, true);
+                });
+        mSettingsActivityTestRule.startSettingsActivity();
+        scrollToSetting(withText(R.string.universal_opt_out_title));
+        onView(withText(R.string.universal_opt_out_title)).check(matches(isDisplayed()));
+    }
+
+    @Test
+    @LargeTest
+    @EnableFeatures(ChromeFeatureList.UNIVERSAL_OPT_OUT_SETTINGS)
+    public void testUniversalOptOutSettingsVisible_EligibleAndTurnedOff() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    getPrefService().setBoolean(Pref.UNIVERSAL_OPT_OUT_ENABLED, false);
+                    getPrefService().setBoolean(Pref.UNIVERSAL_OPT_OUT_ELIGIBLE, true);
+                });
+        mSettingsActivityTestRule.startSettingsActivity();
+        scrollToSetting(withText(R.string.universal_opt_out_title));
+        onView(withText(R.string.universal_opt_out_title)).check(matches(isDisplayed()));
+    }
+
+    @Test
+    @LargeTest
+    @EnableFeatures(ChromeFeatureList.UNIVERSAL_OPT_OUT_SETTINGS)
+    public void testUniversalOptOutSettingsVisible_NotEligibleAndTurnedOn() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    getPrefService().setBoolean(Pref.UNIVERSAL_OPT_OUT_ENABLED, true);
+                    getPrefService().setBoolean(Pref.UNIVERSAL_OPT_OUT_ELIGIBLE, false);
+                });
+        mSettingsActivityTestRule.startSettingsActivity();
+        scrollToSetting(withText(R.string.universal_opt_out_title));
+        onView(withText(R.string.universal_opt_out_title)).check(matches(isDisplayed()));
+    }
+
+    @Test
+    @LargeTest
+    @EnableFeatures(ChromeFeatureList.UNIVERSAL_OPT_OUT_SETTINGS)
+    public void testUniversalOptOutSettingsHidden_NotEligibleAndTurnedOff() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    getPrefService().setBoolean(Pref.UNIVERSAL_OPT_OUT_ENABLED, false);
+                    getPrefService().setBoolean(Pref.UNIVERSAL_OPT_OUT_ELIGIBLE, false);
+                });
+        mSettingsActivityTestRule.startSettingsActivity();
+        onView(withText(R.string.universal_opt_out_title)).check(doesNotExist());
+    }
+
+    @Test
+    @LargeTest
+    @DisableFeatures(ChromeFeatureList.UNIVERSAL_OPT_OUT_SETTINGS)
+    public void testUniversalOptOutSettingsHidden_FeatureDisabled() {
+        mSettingsActivityTestRule.startSettingsActivity();
+        onView(withText(R.string.universal_opt_out_title)).check(doesNotExist());
+    }
+
+    private PrefService getPrefService() {
+        return UserPrefs.get(ProfileManager.getLastUsedRegularProfile());
+    }
+
+    @Test
+    @MediumTest
+    @EnableFeatures(ChromeFeatureList.UNIVERSAL_OPT_OUT_SETTINGS)
+    public void testSearchableIndex_UniversalOptOutSettings_RemovedWhenNonEligible() {
+        var indexProvider = PrivacySettings.SEARCH_INDEX_DATA_PROVIDER;
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    getPrefService().setBoolean(Pref.UNIVERSAL_OPT_OUT_ENABLED, false);
+                    getPrefService().setBoolean(Pref.UNIVERSAL_OPT_OUT_ELIGIBLE, false);
+                    indexProvider.updateDynamicPreferences(
+                            mSettingsActivityTestRule.getActivity(),
+                            mSearchIndexDataMock,
+                            ProfileManager.getLastUsedRegularProfile());
+                });
+
+        verify(mSearchIndexDataMock)
+                .removeEntry(indexProvider.getUniqueId(PrivacySettings.PREF_UNIVERSAL_OPT_OUT));
+    }
+
+    @Test
+    @MediumTest
+    @DisableFeatures(ChromeFeatureList.UNIVERSAL_OPT_OUT_SETTINGS)
+    public void testSearchableIndex_UniversalOptOutSettings_RemovedWhenFeatureDisabled() {
+        var indexProvider = PrivacySettings.SEARCH_INDEX_DATA_PROVIDER;
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    indexProvider.updateDynamicPreferences(
+                            mSettingsActivityTestRule.getActivity(),
+                            mSearchIndexDataMock,
+                            ProfileManager.getLastUsedRegularProfile());
+                });
+
+        verify(mSearchIndexDataMock)
+                .removeEntry(indexProvider.getUniqueId(PrivacySettings.PREF_UNIVERSAL_OPT_OUT));
+    }
+}

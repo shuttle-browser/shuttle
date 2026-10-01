@@ -1,0 +1,187 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ash/video_conference/video_conference_manager_ash.h"
+
+#include <algorithm>
+#include <iterator>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "ash/constants/ash_features.h"
+#include "ash/system/video_conference/video_conference_common.h"
+#include "ash/system/video_conference/video_conference_tray_controller.h"
+#include "ash/webui/vc_background_ui/url_constants.h"
+#include "base/check.h"
+#include "base/functional/callback.h"
+#include "base/logging.h"
+#include "base/unguessable_token.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/ui/ash/system_web_apps/system_web_app_ui_utils.h"
+#include "chromeos/ash/components/system_web_apps/system_web_app_type.h"
+#include "components/services/app_service/public/cpp/app_launch_util.h"
+
+namespace ash {
+
+namespace {
+VideoConferenceManagerAsh* g_instance = nullptr;
+}  // namespace
+
+// static
+VideoConferenceManagerAsh* VideoConferenceManagerAsh::Get() {
+  return g_instance;
+}
+
+VideoConferenceManagerAsh::VideoConferenceManagerAsh() {
+  CHECK(!g_instance);
+  g_instance = this;
+
+  if (features::IsVideoConferenceEnabled()) {
+    GetTrayController()->Initialize(this);
+  }
+}
+
+VideoConferenceManagerAsh::~VideoConferenceManagerAsh() {
+  CHECK_EQ(g_instance, this);
+  g_instance = nullptr;
+}
+
+void VideoConferenceManagerAsh::RegisterCppClient(
+    VideoConferenceManagerClient* client,
+    const base::UnguessableToken& client_id) {
+  client_info_map_.try_emplace(client_id, ClientInfo{client});
+}
+
+void VideoConferenceManagerAsh::GetMediaApps(
+    base::OnceCallback<void(MediaApps)> ui_callback) {
+  MediaApps apps;
+
+  for (auto& [_, client_info] : client_info_map_) {
+    auto apps_from_client = client_info.client->GetMediaApps();
+    apps.insert(apps.end(), std::make_move_iterator(apps_from_client.begin()),
+                std::make_move_iterator(apps_from_client.end()));
+  }
+
+  // Sort all apps based on last activity time.
+  std::sort(apps.begin(), apps.end(),
+            [](const VideoConferenceMediaAppInfo& app1,
+               const VideoConferenceMediaAppInfo& app2) {
+              return app1.last_activity_time > app2.last_activity_time;
+            });
+
+  std::move(ui_callback).Run(std::move(apps));
+}
+
+void VideoConferenceManagerAsh::ReturnToApp(const base::UnguessableToken& id) {
+  for (auto& [_, client_info] : client_info_map_) {
+    client_info.client->ReturnToApp(id);
+  }
+}
+
+void VideoConferenceManagerAsh::SetSystemMediaDeviceStatus(
+    VideoConferenceMediaDevice device,
+    bool enabled) {
+  for (auto& [_, client_info] : client_info_map_) {
+    if (!client_info.client->SetSystemMediaDeviceStatus(device, enabled)) {
+      LOG(ERROR) << "VideoConferenceClient::SetSystemMediaDeviceStatus was "
+                    "unsuccessful.";
+    }
+  }
+}
+
+void VideoConferenceManagerAsh::CreateBackgroundImage() {
+  Profile* profile = ProfileManager::GetActiveUserProfile();
+  DCHECK(profile);
+  SystemAppLaunchParams params;
+  params.launch_source = apps::LaunchSource::kFromShelf;
+  LaunchSystemWebAppAsync(profile, SystemWebAppType::VC_BACKGROUND, params);
+}
+
+void VideoConferenceManagerAsh::NotifyMediaUsageUpdate(
+    VideoConferenceMediaUsageStatus status,
+    base::OnceCallback<void(bool)> callback) {
+  if (auto it = client_info_map_.find(status.client_id);
+      it != client_info_map_.end()) {
+    it->second.state = std::move(status.state);
+  } else {
+    LOG(ERROR) << "VideoConferenceManagerAsh::NotifyMediaUsageUpdate client_id "
+                  "does not exist.";
+    std::move(callback).Run(false);
+    return;
+  }
+
+  SendUpdatedState();
+  std::move(callback).Run(true);
+}
+
+void VideoConferenceManagerAsh::NotifyDeviceUsedWhileDisabled(
+    VideoConferenceMediaDevice device,
+    const std::u16string& app_name,
+    base::OnceCallback<void(bool)> callback) {
+  // TODO(crbug.com/40240249): Remove this conditional check once it becomes
+  // possible to enable ash features in lacros browsertests.
+  if (features::IsVideoConferenceEnabled()) {
+    GetTrayController()->HandleDeviceUsedWhileDisabled(std::move(device),
+                                                       app_name);
+  }
+  std::move(callback).Run(true);
+}
+
+void VideoConferenceManagerAsh::NotifyClientUpdate(
+    VideoConferenceClientUpdate update) {
+  // TODO(crbug.com/40240249): Remove this conditional check once it becomes
+  // possible to enable ash features in lacros browsertests.
+  if (features::IsVideoConferenceEnabled()) {
+    GetTrayController()->HandleClientUpdate(std::move(update));
+  }
+}
+
+void VideoConferenceManagerAsh::UnregisterClient(
+    const base::UnguessableToken& client_id) {
+  client_info_map_.erase(client_id);
+  SendUpdatedState();
+}
+
+VideoConferenceMediaState VideoConferenceManagerAsh::GetAggregatedState() {
+  VideoConferenceMediaState state;
+
+  for (auto& [_, client_info] : client_info_map_) {
+    auto& client_state = client_info.state;
+
+    state.has_media_app |= client_state.has_media_app;
+    state.has_camera_permission |= client_state.has_camera_permission;
+    state.has_microphone_permission |= client_state.has_microphone_permission;
+    state.is_capturing_camera |= client_state.is_capturing_camera;
+    state.is_capturing_microphone |= client_state.is_capturing_microphone;
+    state.is_capturing_screen |= client_state.is_capturing_screen;
+  }
+
+  // Theoretically, capturing should imply permission, but we have seen bugs
+  // in permission checker that returns inconsisitent result with capturing,
+  // which leads to a bad ui to the user. This workaround is not ideal but will
+  // prevent showing the bad ui.
+  // TODO(b/291147970): consider removing this.
+  state.has_camera_permission |= state.is_capturing_camera;
+  state.has_microphone_permission |= state.is_capturing_microphone;
+
+  return state;
+}
+
+void VideoConferenceManagerAsh::SendUpdatedState() {
+  // TODO(crbug.com/40240249): Remove this conditional check once it becomes
+  // possible to enable ash features in lacros browsertests.
+  if (features::IsVideoConferenceEnabled()) {
+    GetTrayController()->UpdateWithMediaState(GetAggregatedState());
+  }
+}
+
+VideoConferenceTrayController* VideoConferenceManagerAsh::GetTrayController() {
+  VideoConferenceTrayController* tray_controller =
+      VideoConferenceTrayController::Get();
+  DCHECK(tray_controller);
+  return tray_controller;
+}
+
+}  // namespace ash

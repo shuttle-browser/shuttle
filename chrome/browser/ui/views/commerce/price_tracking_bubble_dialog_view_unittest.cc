@@ -1,0 +1,318 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/commerce/price_tracking_bubble_dialog_view.h"
+
+#include "base/memory/raw_ptr.h"
+#include "base/test/mock_callback.h"
+#include "chrome/browser/bookmarks/bookmark_model_factory.h"
+#include "chrome/browser/commerce/shopping_service_factory.h"
+#include "chrome/browser/signin/identity_test_environment_profile_adaptor.h"
+#include "chrome/browser/sync/local_or_syncable_bookmark_sync_service_factory.h"
+#include "chrome/browser/ui/views/bookmarks/bookmark_editor_view.h"
+#include "chrome/browser/ui/views/chrome_constrained_window_views_client.h"
+#include "chrome/test/base/testing_profile.h"
+#include "chrome/test/views/chrome_test_widget.h"
+#include "chrome/test/views/chrome_views_test_base.h"
+#include "components/bookmarks/browser/bookmark_model.h"
+#include "components/bookmarks/browser/bookmark_utils.h"
+#include "components/bookmarks/test/bookmark_test_helpers.h"
+#include "components/commerce/core/mock_shopping_service.h"
+#include "components/constrained_window/constrained_window_views.h"
+#include "components/strings/grit/components_strings.h"
+#include "components/sync_bookmarks/bookmark_sync_service.h"
+#include "content/public/test/test_web_contents_factory.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/base/models/image_model.h"
+#include "ui/base/mojom/dialog_button.mojom.h"
+#include "ui/gfx/image/image.h"
+#include "ui/gfx/image/image_skia.h"
+#include "ui/views/controls/styled_label.h"
+#include "ui/views/test/widget_test.h"
+#include "ui/views/widget/any_widget_observer.h"
+#include "ui/views/widget/unique_widget_ptr.h"
+
+namespace {
+const char kTestURL[] = "http://www.google.com";
+const char16_t kTestBookmarkTitle[] = u"Bookmark title";
+}  // namespace
+
+class PriceTrackingBubbleDialogViewUnitTest : public ChromeViewsTestBase {
+ public:
+  void SetUp() override {
+    ChromeViewsTestBase::SetUp();
+
+    constrained_window::SetConstrainedWindowViewsClient(
+        CreateChromeConstrainedWindowViewsClient());
+
+    TestingProfile::Builder profile_builder;
+    profile_builder.AddTestingFactories(
+        IdentityTestEnvironmentProfileAdaptor::
+            GetIdentityTestEnvironmentFactoriesWithAppendedFactories(
+                {TestingProfile::TestingFactory{
+                     BookmarkModelFactory::GetInstance(),
+                     BookmarkModelFactory::GetDefaultFactory()},
+                 TestingProfile::TestingFactory{
+                     commerce::ShoppingServiceFactory::GetInstance(),
+                     base::BindRepeating([](content::BrowserContext* context) {
+                       return commerce::MockShoppingService::Build();
+                     })}}));
+    profile_ = profile_builder.Build();
+    web_contents_ = web_contents_factory_.CreateWebContents(profile_.get());
+
+    anchor_widget_ =
+        views::UniqueWidgetPtr(std::make_unique<ChromeTestWidget>());
+    views::Widget::InitParams widget_params(
+        views::Widget::InitParams::NATIVE_WIDGET_OWNS_WIDGET);
+    widget_params.context = GetContext();
+    anchor_widget_->Init(std::move(widget_params));
+
+    bubble_coordinator_ = std::make_unique<PriceTrackingBubbleCoordinator>(
+        anchor_widget_->GetContentsView());
+
+    SetUpDependencies();
+  }
+
+  void TearDown() override {
+    // Make sure the bubble is destroyed before the profile to avoid a crash.
+    if (bubble_coordinator_->GetBubble()) {
+      views::test::WidgetDestroyedWaiter destroyed_waiter(
+          bubble_coordinator_->GetBubble()->GetWidget());
+      bubble_coordinator_->GetBubble()->GetWidget()->Close();
+      destroyed_waiter.Wait();
+    }
+
+    bubble_coordinator_.reset();
+    anchor_widget_.reset();
+    content::WebContents* web_contents = web_contents_;
+    web_contents_ = nullptr;
+    web_contents_factory_.DestroyWebContents(web_contents);
+    bookmark_model_ = nullptr;
+    profile_.reset();
+    constrained_window::SetConstrainedWindowViewsClient(nullptr);
+
+    ChromeViewsTestBase::TearDown();
+  }
+
+  void CreateBubbleViewAndShow(
+      PriceTrackingBubbleDialogView::Type type,
+      std::optional<std::u16string> bookmark_folder_name = std::nullopt) {
+    SkBitmap bitmap;
+    bitmap.allocN32Pixels(1, 1);
+    bubble_coordinator_->Show(web_contents_, profile(), GURL(kTestURL),
+                              ui::ImageModel::FromImage(gfx::Image(
+                                  gfx::ImageSkia::CreateFrom1xBitmap(bitmap))),
+                              Callback().Get(), OnDialogClosingCallback().Get(),
+                              type, bookmark_folder_name);
+  }
+
+  Profile* profile() { return profile_.get(); }
+
+  base::MockCallback<PriceTrackingBubbleDialogView::OnTrackPriceCallback>&
+  Callback() {
+    return callback_;
+  }
+
+  base::MockCallback<base::OnceClosure>& OnDialogClosingCallback() {
+    return on_dialog_closing_callback_;
+  }
+
+  PriceTrackingBubbleCoordinator* BubbleCoordinator() {
+    return bubble_coordinator_.get();
+  }
+
+ protected:
+  virtual void SetUpDependencies() {
+    bookmark_model_ = BookmarkModelFactory::GetForBrowserContext(profile());
+    bookmarks::test::WaitForBookmarkModelToLoad(bookmark_model_);
+
+    // Pretend sync is on for bookmarks, required for price tracking.
+    LocalOrSyncableBookmarkSyncServiceFactory::GetForProfile(profile())
+        ->SetIsTrackingMetadataForTesting();
+
+    // Mock that the service is eligible for shopping list, required for price
+    // tracking.
+    commerce::MockShoppingService* mock_shopping_service =
+        static_cast<commerce::MockShoppingService*>(
+            commerce::ShoppingServiceFactory::GetForBrowserContext(profile()));
+    mock_shopping_service->SetIsShoppingListEligible(true);
+  }
+
+  raw_ptr<bookmarks::BookmarkModel, DanglingUntriaged> bookmark_model_;
+
+ private:
+  std::unique_ptr<TestingProfile> profile_;
+  content::TestWebContentsFactory web_contents_factory_;
+  raw_ptr<content::WebContents> web_contents_;
+  views::UniqueWidgetPtr anchor_widget_;
+  base::MockCallback<PriceTrackingBubbleDialogView::OnTrackPriceCallback>
+      callback_;
+  std::unique_ptr<PriceTrackingBubbleCoordinator> bubble_coordinator_;
+  base::MockCallback<base::OnceClosure> on_dialog_closing_callback_;
+};
+
+class PriceTrackingBubbleDialogViewLayoutUnitTest
+    : public PriceTrackingBubbleDialogViewUnitTest,
+      public ::testing::WithParamInterface<bool> {
+ public:
+  bool BookmarkWasCreated() { return GetParam(); }
+
+  static std::string DescribeParams(
+      const ::testing::TestParamInfo<ParamType>& info) {
+    if (info.param) {
+      return "TrackBookmarkedPage";
+    } else {
+      return "TrackNonBookmarkedPage";
+    }
+  }
+
+  std::u16string GetFolderName() {
+    if (BookmarkWasCreated()) {
+      return bookmark_folder_name_;
+    } else {
+      return u"Shopping list";
+    }
+  }
+
+ protected:
+  void SetUpDependencies() override {
+    PriceTrackingBubbleDialogViewUnitTest::SetUpDependencies();
+
+    EXPECT_FALSE(
+        bookmarks::IsBookmarkedByUser(bookmark_model_, GURL(kTestURL)));
+
+    if (BookmarkWasCreated()) {
+      auto* node = bookmarks::AddIfNotBookmarked(
+          bookmark_model_, GURL(kTestURL), kTestBookmarkTitle);
+      EXPECT_TRUE(
+          bookmarks::IsBookmarkedByUser(bookmark_model_, GURL(kTestURL)));
+      bookmark_folder_name_ = node->parent()->GetTitle();
+    }
+  }
+
+ private:
+  std::u16string bookmark_folder_name_;
+};
+
+TEST_P(PriceTrackingBubbleDialogViewLayoutUnitTest, FUEBubble) {
+  CreateBubbleViewAndShow(
+      PriceTrackingBubbleDialogView::Type::TYPE_FIRST_USE_EXPERIENCE,
+      GetFolderName());
+
+  auto* bubble = BubbleCoordinator()->GetBubble();
+  EXPECT_TRUE(bubble);
+
+  EXPECT_EQ(bubble->GetWindowTitle(),
+            l10n_util::GetStringUTF16(
+                IDS_OMNIBOX_TRACK_PRICE_DIALOG_TITLE_FIRST_RUN));
+
+  EXPECT_TRUE(bubble->GetBodyLabelForTesting());
+  EXPECT_EQ(bubble->GetBodyLabelForTesting()->GetText(),
+            l10n_util::GetStringFUTF16(
+                IDS_OMNIBOX_TRACK_PRICE_DIALOG_DESCRIPTION_FIRST_RUN,
+                GetFolderName()));
+
+  EXPECT_EQ(
+      bubble->GetDialogButtonLabel(ui::mojom::DialogButton::kOk),
+      l10n_util::GetStringUTF16(IDS_OMNIBOX_TRACK_PRICE_DIALOG_ACTION_BUTTON));
+  EXPECT_EQ(
+      bubble->GetDialogButtonLabel(ui::mojom::DialogButton::kCancel),
+      l10n_util::GetStringUTF16(IDS_OMNIBOX_TRACK_PRICE_DIALOG_CANCEL_BUTTON));
+}
+
+TEST_P(PriceTrackingBubbleDialogViewLayoutUnitTest, NormalBubble) {
+  // Price tracking can't happen if the bookmark wasn't created.
+  if (!BookmarkWasCreated()) {
+    return;
+  }
+
+  CreateBubbleViewAndShow(PriceTrackingBubbleDialogView::Type::TYPE_NORMAL,
+                          GetFolderName());
+
+  auto* bubble = BubbleCoordinator()->GetBubble();
+  EXPECT_TRUE(bubble);
+
+  EXPECT_EQ(bubble->GetWindowTitle(),
+            l10n_util::GetStringUTF16(IDS_OMNIBOX_TRACKING_PRICE_DIALOG_TITLE));
+
+  EXPECT_TRUE(bubble->GetBodyLabelForTesting());
+  std::u16string expected_label =
+      l10n_util::GetStringUTF16(IDS_PRICE_TRACKING_SAVE_DESCRIPTION);
+  std::u16string expected_save_label = l10n_util::GetStringFUTF16(
+      IDS_PRICE_TRACKING_SAVE_LOCATION, GetFolderName());
+  EXPECT_TRUE(bubble->GetBodyLabelForTesting()->GetText().find(
+                  expected_label) != std::u16string::npos);
+  EXPECT_TRUE(bubble->GetBodyLabelForTesting()->GetText().find(
+                  expected_save_label) != std::u16string::npos);
+  EXPECT_TRUE(bubble->GetBodyLabelForTesting()->GetFirstLinkForTesting());
+
+  EXPECT_EQ(bubble->GetDialogButtonLabel(ui::mojom::DialogButton::kOk),
+            l10n_util::GetStringUTF16(
+                IDS_OMNIBOX_TRACKING_PRICE_DIALOG_ACTION_BUTTON));
+  EXPECT_EQ(bubble->GetDialogButtonLabel(ui::mojom::DialogButton::kCancel),
+            l10n_util::GetStringUTF16(
+                IDS_OMNIBOX_TRACKING_PRICE_DIALOG_UNTRACK_BUTTON));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    PriceTrackingBubbleDialogViewLayoutUnitTest,
+    ::testing::Values(true, false),
+    &PriceTrackingBubbleDialogViewLayoutUnitTest::DescribeParams);
+
+class PriceTrackingBubbleDialogViewActionUnitTest
+    : public PriceTrackingBubbleDialogViewUnitTest {
+ protected:
+  void SetUpDependencies() override {
+    PriceTrackingBubbleDialogViewUnitTest::SetUpDependencies();
+    bookmarks::AddIfNotBookmarked(bookmark_model_, GURL(kTestURL),
+                                  kTestBookmarkTitle);
+  }
+};
+
+TEST_F(PriceTrackingBubbleDialogViewActionUnitTest, AcceptFUEBubble) {
+  CreateBubbleViewAndShow(
+      PriceTrackingBubbleDialogView::Type::TYPE_FIRST_USE_EXPERIENCE);
+
+  auto* bubble = BubbleCoordinator()->GetBubble();
+  EXPECT_TRUE(bubble);
+  EXPECT_CALL(Callback(), Run(true));
+  EXPECT_CALL(OnDialogClosingCallback(), Run());
+  bubble->Accept();
+}
+
+TEST_F(PriceTrackingBubbleDialogViewActionUnitTest, CancelNormalBubble) {
+  CreateBubbleViewAndShow(PriceTrackingBubbleDialogView::Type::TYPE_NORMAL);
+
+  auto* bubble = BubbleCoordinator()->GetBubble();
+  EXPECT_TRUE(bubble);
+  EXPECT_CALL(Callback(), Run(false));
+  EXPECT_CALL(OnDialogClosingCallback(), Run());
+  bubble->Cancel();
+}
+
+TEST_F(PriceTrackingBubbleDialogViewActionUnitTest,
+       ClickLinkInTheNormalBubble) {
+  CreateBubbleViewAndShow(PriceTrackingBubbleDialogView::Type::TYPE_NORMAL,
+                          /*bookmark_folder_name=*/u"Shopping list");
+
+  auto* bubble = BubbleCoordinator()->GetBubble();
+  EXPECT_TRUE(bubble);
+
+  auto bookmark_editor_waiter = views::NamedWidgetShownWaiter(
+      views::test::AnyWidgetTestPasskey{}, BookmarkEditorView::kViewClassName);
+
+  EXPECT_CALL(OnDialogClosingCallback(), Run());
+  bubble->GetBodyLabelForTesting()->ClickFirstLinkForTesting();
+  auto* bookmark_editor_widget = bookmark_editor_waiter.WaitIfNeededAndGet();
+  EXPECT_TRUE(bookmark_editor_widget);
+
+  task_environment()->RunUntilIdle();
+  EXPECT_FALSE(BubbleCoordinator()->GetBubble());
+
+  views::test::WidgetDestroyedWaiter destroyed_waiter(bookmark_editor_widget);
+  bookmark_editor_widget->Close();
+  destroyed_waiter.Wait();
+}

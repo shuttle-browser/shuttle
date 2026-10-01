@@ -1,0 +1,300 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/config.gni")
+import("//build/config/android/rules.gni")
+import("//extensions/buildflags/buildflags.gni")
+import("//third_party/jni_zero/jni_zero.gni")
+
+if (enable_extensions_core) {
+  # Thin headers-only target providing bridge interfaces to
+  # //chrome/browser/extensions without creating a circular dependency.
+  # //chrome/browser/extensions can dep on this without a cycle
+  # since this target does not depend on //chrome/browser/extensions.
+  source_set("public") {
+    sources = [
+      "extension_developer_private_bridge.h",
+      "extension_util_bridge.h",
+    ]
+    deps = [ "//base" ]
+  }
+
+  source_set("extensions") {
+    sources = [
+      "extension_action_context_menu_bridge.cc",
+      "extension_action_context_menu_bridge.h",
+      "extension_action_delegate_android.cc",
+      "extension_action_delegate_android.h",
+      "extension_action_popup_contents.cc",
+      "extension_action_popup_contents.h",
+      "extension_actions_bridge.cc",
+      "extension_actions_bridge.h",
+      "extension_developer_private_bridge.cc",
+      "extension_developer_private_bridge.h",
+      "extension_install_dialog_view_android.cc",
+      "extension_install_dialog_view_android.h",
+      "extension_keybinding_registry_android.cc",
+      "extension_keybinding_registry_android.h",
+      "extension_util_bridge.cc",
+      "extension_util_bridge.h",
+      "extensions_menu_delegate_android.cc",
+      "extensions_menu_delegate_android.h",
+      "extensions_toolbar_android.cc",
+      "extensions_toolbar_android.h",
+    ]
+    deps = [
+      "//base",
+      "//chrome/app:generated_resources",
+      "//chrome/browser/devtools",
+      "//chrome/browser/extensions",
+      "//chrome/browser/extensions/api/omnibox",
+      "//chrome/browser/extensions/api/web_navigation",
+      "//chrome/browser/profiles:profile",
+      "//chrome/browser/ui/android/extensions:jni_headers",
+      "//chrome/browser/ui/android/tab_model",
+      "//chrome/browser/ui/browser_window",
+      "//chrome/browser/ui/browser_window/internal",
+      "//chrome/browser/ui/color:color_headers",
+      "//chrome/browser/ui/extensions",
+      "//chrome/browser/ui/extensions:extensions_menu_handler",
+      "//chrome/browser/ui/toolbar",
+      "//content/public/browser",
+      "//extensions/browser",
+      "//extensions/browser:extension_action_enums",
+      "//extensions/common",
+      "//net",
+      "//ui/display",
+      "//ui/menus",
+      "//url",
+    ]
+  }
+}
+
+android_library("java") {
+  sources = [
+    "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionUi.java",
+    "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionUiBackend.java",
+  ]
+  srcjar_deps = []
+
+  deps = [
+    "//base:base_java",
+    "//base:content_uri_utils_java",
+    "//base:lifetime_java",
+    "//base:service_loader_java",
+    "//chrome/browser/profiles/android:java",
+    "//chrome/browser/settings:factory_java",
+    "//chrome/browser/tab:java",
+    "//chrome/browser/tabmodel:java",
+    "//chrome/browser/ui/android/theme:java",
+    "//chrome/browser/ui/browser_window/public/android:java",
+    "//chrome/browser/user_education:java",
+    "//components/browser_ui/widget/android:java",
+    "//components/feature_engagement/public:public_java",
+    "//content/public/android:content_java",
+    "//third_party/android_deps:material_design_java",
+    "//ui/android:ui_full_java",
+  ]
+
+  if (enable_extensions_core) {
+    deps += [
+      ":java_resources",
+      "//chrome/browser/flags:java",
+      "//components/browser_ui/modaldialog/android:java",
+      "//components/browser_ui/settings/android:java",
+      "//components/browser_ui/site_settings/android:java",
+      "//content/public/android:content_full_java",
+      "//third_party/androidx:androidx_annotation_annotation_java",
+      "//third_party/jni_zero:jni_zero_java",
+      "//ui/android:ui_utils_java",
+    ]
+    sources += [
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionAction.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionActionContextMenuBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionActionPopupContents.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionActionsBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionDeveloperPrivateBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionInstallDialogBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionUiBackendImpl.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionUtilBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionsMenuBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionsMenuButtonState.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionsMenuTypes.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionsToolbarBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/RequestAccessButtonParams.java",
+    ]
+    srcjar_deps += [
+      ":jni_headers",
+      "//chrome/browser/extensions:extension_context_menu_model_enums",
+      "//chrome/browser/ui/toolbar:toolbar_action_view_model_enums",
+      "//extensions/browser:extension_action_enums",
+      "//extensions/common:java_features_srcjar",
+    ]
+    resources_package = "org.chromium.chrome.browser.ui.extensions"
+  }
+}
+
+if (enable_extensions_core) {
+  generate_jni("jni_headers") {
+    sources = [
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionAction.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionActionContextMenuBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionActionPopupContents.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionActionsBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionDeveloperPrivateBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionInstallDialogBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionUtilBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionsMenuBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionsMenuButtonState.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionsMenuTypes.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/ExtensionsToolbarBridge.java",
+      "java/src/org/chromium/chrome/browser/ui/extensions/RequestAccessButtonParams.java",
+    ]
+  }
+}
+
+android_library("test_support_java") {
+  testonly = true
+  sources = [
+    "javatests/src/org/chromium/chrome/browser/ui/extensions/FakeExtensionUiBackend.java",
+    "javatests/src/org/chromium/chrome/browser/ui/extensions/FakeExtensionUiBackendRule.java",
+  ]
+  deps = [
+    ":java",
+    "//base:base_java",
+    "//base:base_java_test_support",
+    "//chrome/browser/profiles/android:java",
+    "//content/public/android:content_java",
+    "//extensions/buildflags:buildflags_java",
+    "//third_party/junit",
+    "//ui/android:ui_no_recycler_view_java",
+  ]
+
+  if (enable_extensions_core) {
+    sources += [
+      "javatests/src/org/chromium/chrome/browser/ui/extensions/ExtensionTestMessageListener.java",
+      "javatests/src/org/chromium/chrome/browser/ui/extensions/ExtensionTestUtils.java",
+      "javatests/src/org/chromium/chrome/browser/ui/extensions/FakeExtensionActionsBridge.java",
+      "javatests/src/org/chromium/chrome/browser/ui/extensions/FakeExtensionActionsBridgeRule.java",
+    ]
+    deps += [
+      "//chrome/browser/flags:java",
+      "//chrome/browser/ui/browser_window/public/android:java",
+      "//content/public/android:content_full_java",
+      "//extensions/browser:extension_action_enums",
+      "//third_party/jni_zero:jni_zero_java",
+    ]
+    srcjar_deps = [ ":test_support_jni_headers" ]
+  }
+}
+
+static_library("test_support") {
+  testonly = true
+  sources = []
+  deps = []
+
+  if (enable_extensions_core) {
+    sources += [
+      "extension_test_message_listener_android.cc",
+      "extension_test_message_listener_android.h",
+      "extension_test_utils.cc",
+    ]
+    deps += [
+      "//base",
+      "//chrome/browser/extensions",
+      "//chrome/browser/extensions:test_support",
+      "//chrome/browser/profiles:profile",
+      "//chrome/browser/ui/android/extensions:test_support_jni_headers",
+      "//chrome/browser/ui/extensions",
+      "//chrome/browser/ui/toolbar",
+      "//extensions:test_support",
+      "//extensions/browser",
+      "//extensions/common",
+    ]
+  }
+}
+
+if (enable_extensions_core) {
+  generate_jni("test_support_jni_headers") {
+    sources = [
+      "javatests/src/org/chromium/chrome/browser/ui/extensions/ExtensionTestMessageListener.java",
+      "javatests/src/org/chromium/chrome/browser/ui/extensions/ExtensionTestUtils.java",
+    ]
+  }
+
+  robolectric_library("junit") {
+    sources = [
+      "javatests/src/org/chromium/chrome/browser/ui/extensions/ExtensionDeveloperPrivateBridgeTest.java",
+      "javatests/src/org/chromium/chrome/browser/ui/extensions/ExtensionInstallDialogBridgeTest.java",
+    ]
+
+    deps = [
+      ":java",
+      ":java_resources",
+      ":test_support_java",
+      "//base:base_java",
+      "//base:base_java_test_support",
+      "//base:base_junit_test_support",
+      "//chrome/browser/profiles/android:java",
+      "//chrome/browser/settings:factory_java",
+      "//chrome/browser/ui/browser_window/public/android:java",
+      "//components/browser_ui/settings/android:java",
+      "//components/browser_ui/site_settings/android:java",
+      "//components/embedder_support/android:util_java",
+      "//content/public/android:content_full_java",
+      "//third_party/android_deps:material_design_java",
+      "//third_party/androidx:androidx_test_core_java",
+      "//third_party/androidx:androidx_test_ext_junit_java",
+      "//third_party/androidx:androidx_test_runner_java",
+      "//third_party/junit",
+      "//third_party/mockito:mockito_java",
+      "//ui/android:ui_java_test_support",
+      "//ui/android:ui_no_recycler_view_java",
+      "//ui/android:ui_utils_java",
+    ]
+  }
+}
+
+android_resources("java_resources") {
+  sources = [
+    "java/res/drawable/chrome_extension.xml",
+    "java/res/drawable/extension_request_access_button_bg.xml",
+    "java/res/drawable/extensions_menu_background_selector.xml",
+    "java/res/drawable/extensions_menu_button_bg.xml",
+    "java/res/drawable/extensions_menu_containment.xml",
+    "java/res/drawable/extensions_menu_context_menu_icon_selector.xml",
+    "java/res/drawable/extensions_zero_state.xml",
+    "java/res/drawable/ic_close.xml",
+    "java/res/drawable/ic_more_vert.xml",
+    "java/res/drawable/ic_settings.xml",
+    "java/res/drawable/ic_webstore.xml",
+    "java/res/layout/extension_action_button.xml",
+    "java/res/layout/extension_action_hover_card.xml",
+    "java/res/layout/extension_install_dialog.xml",
+    "java/res/layout/extension_install_dialog_permission_item.xml",
+    "java/res/layout/extensions_menu.xml",
+    "java/res/layout/extensions_menu_footer.xml",
+    "java/res/layout/extensions_menu_header.xml",
+    "java/res/layout/extensions_menu_item.xml",
+    "java/res/layout/extensions_menu_site_permissions_page.xml",
+    "java/res/layout/extensions_menu_site_permissions_page_header.xml",
+    "java/res/layout/extensions_request_access_item.xml",
+    "java/res/layout/extensions_toolbar_container.xml",
+    "java/res/values-night/colors.xml",
+    "java/res/values/colors.xml",
+    "java/res/values/dimens.xml",
+    "java/res/values/integers.xml",
+    "java/res/values/styles.xml",
+  ]
+
+  deps = [
+    "//chrome/app:java_strings_grd",
+    "//chrome/browser/ui/android/strings:ui_strings_grd",
+    "//chrome/browser/ui/android/theme:java_resources",
+    "//components/browser_ui/modaldialog/android:java_resources",
+    "//components/browser_ui/styles/android:java_resources",
+    "//components/browser_ui/widget/android:java_resources",
+    "//ui/android:ui_java_resources",
+  ]
+}

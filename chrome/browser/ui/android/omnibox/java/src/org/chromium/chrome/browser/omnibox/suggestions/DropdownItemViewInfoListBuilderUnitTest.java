@@ -1,0 +1,530 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.omnibox.suggestions;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
+
+import static org.chromium.components.omnibox.GroupConfigTestSupport.SECTION_1_NO_HEADER;
+import static org.chromium.components.omnibox.GroupConfigTestSupport.SECTION_2_WITH_HEADER;
+import static org.chromium.components.omnibox.GroupConfigTestSupport.SECTION_3_WITH_HEADER;
+import static org.chromium.components.omnibox.GroupConfigTestSupport.SECTION_MOST_VISITED;
+
+import android.content.Context;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.InOrder;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+
+import org.chromium.base.ContextUtils;
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.supplier.SupplierUtils;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider.ControlsPosition;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
+import org.chromium.chrome.browser.omnibox.suggestions.SuggestionCommonProperties.GroupSeparatorType;
+import org.chromium.chrome.browser.omnibox.suggestions.SuggestionCommonProperties.PositionalMode;
+import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
+import org.chromium.components.omnibox.AutocompleteInput;
+import org.chromium.components.omnibox.AutocompleteMatch;
+import org.chromium.components.omnibox.AutocompleteMatchBuilder;
+import org.chromium.components.omnibox.AutocompleteRequestType;
+import org.chromium.components.omnibox.AutocompleteResult;
+import org.chromium.components.omnibox.GroupsProto.GroupConfig;
+import org.chromium.components.omnibox.GroupsProto.GroupsInfo;
+import org.chromium.components.omnibox.OmniboxFeatureList;
+import org.chromium.components.omnibox.OmniboxSuggestionType;
+import org.chromium.components.omnibox.suggestions.OmniboxSuggestionUiType;
+import org.chromium.ui.modelutil.PropertyModel;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** Tests for {@link DropdownItemViewInfoListBuilder}. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class DropdownItemViewInfoListBuilderUnitTest {
+    private final Context mContext = ContextUtils.getApplicationContext();
+
+    @Rule public final MockitoRule mockitoRule = MockitoJUnit.rule();
+
+    @Mock private SuggestionProcessor mMockSuggestionProcessor;
+    @Mock private AutocompleteInput mInput;
+    @Captor private ArgumentCaptor<PropertyModel> mPropertyModelCaptor;
+
+    DropdownItemViewInfoListBuilder mBuilder;
+
+    @Before
+    public void setUp() {
+        when(mMockSuggestionProcessor.createModel())
+                .thenAnswer((mock) -> new PropertyModel(SuggestionCommonProperties.ALL_KEYS));
+        when(mMockSuggestionProcessor.getViewTypeId()).thenReturn(OmniboxSuggestionUiType.DEFAULT);
+
+        OmniboxResourceProvider resourceProvider =
+                new OmniboxResourceProvider(mContext, BrandedColorScheme.LIGHT_BRANDED_THEME);
+        mBuilder =
+                new DropdownItemViewInfoListBuilder(
+                        SupplierUtils.ofNull(),
+                        (url) -> false,
+                        ObservableSuppliers.createNonNull(ControlsPosition.TOP),
+                        resourceProvider);
+
+        mBuilder.registerSuggestionProcessor(mMockSuggestionProcessor);
+    }
+
+    /**
+     * Verify corner rounding and separator presence on a specific model.
+     *
+     * @param model the model to verify
+     * @param wantTopCornersRounded expected rounding state of top corners
+     * @param wantBottomCornersRounded expected rounding state of bottom corners
+     * @param wantSeparator expected state of the separator
+     */
+    void verifyRounding(
+            PropertyModel model,
+            boolean wantTopCornersRounded,
+            boolean wantBottomCornersRounded,
+            boolean wantSeparator) {
+        @PositionalMode int expectedMode;
+        if (wantTopCornersRounded && wantBottomCornersRounded) {
+            expectedMode = PositionalMode.SINGLE;
+        } else if (wantTopCornersRounded) {
+            expectedMode = PositionalMode.TOP;
+        } else if (wantBottomCornersRounded) {
+            expectedMode = PositionalMode.BOTTOM;
+        } else {
+            expectedMode = PositionalMode.MIDDLE;
+        }
+        assertEquals(expectedMode, model.get(SuggestionCommonProperties.BG_POSITIONAL_MODE));
+        assertEquals(wantSeparator, model.get(SuggestionCommonProperties.SHOW_DIVIDER));
+    }
+
+    @Test
+    public void buildDropdownViewInfoList_mixedGroups() {
+        final var groupsDetails =
+                GroupsInfo.newBuilder()
+                        .putGroupConfigs(1, SECTION_MOST_VISITED)
+                        .putGroupConfigs(2, SECTION_2_WITH_HEADER)
+                        .build();
+
+        when(mMockSuggestionProcessor.doesProcessSuggestion(any(), anyInt())).thenReturn(true);
+
+        AutocompleteMatch horizontal =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .setGroupId(1)
+                        .build();
+        AutocompleteMatch vertical =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .setGroupId(2)
+                        .build();
+
+        var actualList =
+                List.of(horizontal, horizontal, vertical, vertical, horizontal, horizontal);
+        var model =
+                mBuilder.buildDropdownViewInfoList(
+                        mInput, AutocompleteResult.fromCache(actualList, groupsDetails));
+
+        // 1 horizontal row + 2 vertical suggestions + 1 horizontal row.
+        assertEquals(4, model.size());
+
+        // Check reported positions in list.
+        verify(mMockSuggestionProcessor, atLeastOnce()).doesProcessSuggestion(horizontal, 0);
+        verify(mMockSuggestionProcessor).doesProcessSuggestion(vertical, 1);
+        verify(mMockSuggestionProcessor).doesProcessSuggestion(vertical, 2);
+        verify(mMockSuggestionProcessor, atLeastOnce()).doesProcessSuggestion(horizontal, 3);
+
+        verify(mMockSuggestionProcessor, times(2))
+                .populateModel(eq(mInput), eq(horizontal), any(), eq(0));
+        verify(mMockSuggestionProcessor).populateModel(eq(mInput), eq(vertical), any(), eq(1));
+        verify(mMockSuggestionProcessor).populateModel(eq(mInput), eq(vertical), any(), eq(2));
+        verify(mMockSuggestionProcessor, times(2))
+                .populateModel(eq(mInput), eq(horizontal), any(), eq(3));
+
+        // Other calls we expect to see.
+        verify(mMockSuggestionProcessor).onSuggestionsReceived();
+        verify(mMockSuggestionProcessor, times(4)).createModel();
+        verify(mMockSuggestionProcessor, atLeastOnce()).getViewTypeId();
+        verifyNoMoreInteractions(mMockSuggestionProcessor);
+    }
+
+    @Test
+    public void headers_buildsHeadersOnlyWhenGroupChanges() {
+        final List<AutocompleteMatch> actualList = new ArrayList<>();
+        final var groupsDetails =
+                GroupsInfo.newBuilder()
+                        .putGroupConfigs(1, SECTION_2_WITH_HEADER)
+                        .putGroupConfigs(2, SECTION_3_WITH_HEADER)
+                        .build();
+
+        when(mMockSuggestionProcessor.doesProcessSuggestion(any(), anyInt())).thenReturn(true);
+        AutocompleteMatch suggestionWithNoGroup =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .build();
+        AutocompleteMatch suggestionForGroup1 =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .setGroupId(1)
+                        .build();
+        AutocompleteMatch suggestionForGroup2 =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .setGroupId(2)
+                        .build();
+
+        actualList.add(suggestionWithNoGroup);
+        actualList.add(suggestionForGroup1);
+        actualList.add(suggestionForGroup1);
+        actualList.add(suggestionForGroup2);
+        actualList.add(suggestionForGroup2);
+
+        final InOrder verifier = inOrder(mMockSuggestionProcessor);
+        final List<DropdownItemViewInfo> model =
+                mBuilder.buildDropdownViewInfoList(
+                        mInput, AutocompleteResult.fromCache(actualList, groupsDetails));
+
+        verifier.verify(mMockSuggestionProcessor, times(1))
+                .populateModel(eq(mInput), eq(suggestionWithNoGroup), any(), eq(0));
+        verifier.verify(mMockSuggestionProcessor, times(1))
+                .populateModel(eq(mInput), eq(suggestionForGroup1), any(), eq(1));
+        verifier.verify(mMockSuggestionProcessor, times(1))
+                .populateModel(eq(mInput), eq(suggestionForGroup1), any(), eq(2));
+        verifier.verify(mMockSuggestionProcessor, times(1))
+                .populateModel(eq(mInput), eq(suggestionForGroup2), any(), eq(3));
+        verifier.verify(mMockSuggestionProcessor, times(1))
+                .populateModel(eq(mInput), eq(suggestionForGroup2), any(), eq(4));
+        assertEquals(5, model.size()); // 5 suggestions.
+
+        var defaultGroupConfig = GroupConfig.getDefaultInstance();
+
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, model.get(0).type);
+        assertEquals(model.get(0).groupConfig, defaultGroupConfig);
+        verifyRounding(model.get(0).model, true, true, false);
+        assertNull(model.get(0).model.get(SuggestionCommonProperties.HEADER_TITLE));
+
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, model.get(1).type);
+        assertEquals(model.get(1).groupConfig, SECTION_2_WITH_HEADER);
+        verifyRounding(model.get(1).model, true, false, true);
+        assertEquals(
+                SECTION_2_WITH_HEADER.getHeaderText(),
+                model.get(1).model.get(SuggestionCommonProperties.HEADER_TITLE));
+
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, model.get(2).type);
+        assertEquals(model.get(2).groupConfig, SECTION_2_WITH_HEADER);
+        verifyRounding(model.get(2).model, false, true, false);
+        assertNull(model.get(2).model.get(SuggestionCommonProperties.HEADER_TITLE));
+
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, model.get(3).type);
+        assertEquals(model.get(3).groupConfig, SECTION_3_WITH_HEADER);
+        verifyRounding(model.get(3).model, true, false, true);
+        assertEquals(
+                SECTION_3_WITH_HEADER.getHeaderText(),
+                model.get(3).model.get(SuggestionCommonProperties.HEADER_TITLE));
+
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, model.get(4).type);
+        assertEquals(model.get(4).groupConfig, SECTION_3_WITH_HEADER);
+        verifyRounding(model.get(4).model, false, true, false);
+        assertNull(model.get(4).model.get(SuggestionCommonProperties.HEADER_TITLE));
+    }
+
+    @Test
+    public void headers_respectGroupHeadersWithNoTitle() {
+        final List<AutocompleteMatch> actualList = new ArrayList<>();
+        final var groupsDetails =
+                GroupsInfo.newBuilder()
+                        .putGroupConfigs(1, SECTION_1_NO_HEADER)
+                        .putGroupConfigs(2, SECTION_2_WITH_HEADER)
+                        .build();
+
+        when(mMockSuggestionProcessor.doesProcessSuggestion(any(), anyInt())).thenReturn(true);
+        AutocompleteMatch suggestionWithNoGroup =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .build();
+        AutocompleteMatch suggestionForGroup1 =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .setGroupId(1)
+                        .build();
+        AutocompleteMatch suggestionForGroup2 =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .setGroupId(2)
+                        .build();
+
+        actualList.add(suggestionWithNoGroup);
+        actualList.add(suggestionForGroup1);
+        actualList.add(suggestionForGroup1);
+        actualList.add(suggestionForGroup2);
+        actualList.add(suggestionForGroup2);
+
+        final InOrder verifier = inOrder(mMockSuggestionProcessor);
+        final List<DropdownItemViewInfo> model =
+                mBuilder.buildDropdownViewInfoList(
+                        mInput, AutocompleteResult.fromCache(actualList, groupsDetails));
+
+        verifier.verify(mMockSuggestionProcessor, times(1))
+                .populateModel(eq(mInput), eq(suggestionWithNoGroup), any(), eq(0));
+        verifier.verify(mMockSuggestionProcessor, times(1))
+                .populateModel(eq(mInput), eq(suggestionForGroup1), any(), eq(1));
+        verifier.verify(mMockSuggestionProcessor, times(1))
+                .populateModel(eq(mInput), eq(suggestionForGroup1), any(), eq(2));
+        verifier.verify(mMockSuggestionProcessor, times(1))
+                .populateModel(eq(mInput), eq(suggestionForGroup2), any(), eq(3));
+        verifier.verify(mMockSuggestionProcessor, times(1))
+                .populateModel(eq(mInput), eq(suggestionForGroup2), any(), eq(4));
+
+        var defaultGroupConfig = GroupConfig.getDefaultInstance();
+
+        // We're showing:
+        // - 1 suggestion (no group)
+        // - 2 suggestions (Group 1 - no header)
+        // - 2 suggestions (Group 2 - with header)
+        assertEquals(5, model.size());
+
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, model.get(0).type);
+        assertEquals(model.get(0).groupConfig, defaultGroupConfig);
+        assertNull(model.get(0).model.get(SuggestionCommonProperties.HEADER_TITLE));
+
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, model.get(1).type);
+        assertEquals(
+                GroupSeparatorType.GAP,
+                model.get(1).model.get(SuggestionCommonProperties.GROUP_SEPARATOR_TYPE));
+        assertEquals(model.get(1).groupConfig, SECTION_1_NO_HEADER);
+        assertNull(model.get(1).model.get(SuggestionCommonProperties.HEADER_TITLE));
+
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, model.get(2).type);
+        assertEquals(model.get(2).groupConfig, SECTION_1_NO_HEADER);
+        assertNull(model.get(2).model.get(SuggestionCommonProperties.HEADER_TITLE));
+
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, model.get(3).type);
+        assertEquals(model.get(3).groupConfig, SECTION_2_WITH_HEADER);
+        assertEquals(
+                SECTION_2_WITH_HEADER.getHeaderText(),
+                model.get(3).model.get(SuggestionCommonProperties.HEADER_TITLE));
+
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, model.get(4).type);
+        assertEquals(model.get(4).groupConfig, SECTION_2_WITH_HEADER);
+        assertNull(model.get(4).model.get(SuggestionCommonProperties.HEADER_TITLE));
+    }
+
+    @Test
+    public void builder_propagatesOmniboxSessionStateChangeEvents() {
+        mBuilder.onOmniboxSessionStateChange(true);
+        verify(mMockSuggestionProcessor, times(1)).onOmniboxSessionStateChange(eq(true));
+
+        mBuilder.onOmniboxSessionStateChange(false);
+        verify(mMockSuggestionProcessor, times(1)).onOmniboxSessionStateChange(eq(false));
+
+        verifyNoMoreInteractions(mMockSuggestionProcessor);
+    }
+
+    @Test
+    public void builder_propagatesNativeInitializedEvent() {
+        mBuilder.onNativeInitialized();
+        verify(mMockSuggestionProcessor, times(1)).onNativeInitialized();
+
+        verifyNoMoreInteractions(mMockSuggestionProcessor);
+    }
+
+    @Test
+    @EnableFeatures(OmniboxFeatureList.AIM_SUPPRESS_VERBATIM_MATCH)
+    public void buildDropdownViewInfoList_aimMode_removesVerbatimMatches() {
+        when(mInput.getRequestType()).thenReturn(AutocompleteRequestType.AI_MODE);
+        when(mMockSuggestionProcessor.doesProcessSuggestion(any(), anyInt())).thenReturn(true);
+
+        AutocompleteMatch verbatim1 =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_WHAT_YOU_TYPED)
+                        .build();
+        AutocompleteMatch verbatim2 =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.URL_WHAT_YOU_TYPED)
+                        .build();
+        AutocompleteMatch regular =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .build();
+
+        var actualList = List.of(verbatim1, regular, verbatim2);
+        var model =
+                mBuilder.buildDropdownViewInfoList(
+                        mInput,
+                        AutocompleteResult.fromCache(actualList, GroupsInfo.getDefaultInstance()));
+
+        assertEquals(1, model.size());
+
+        verify(mMockSuggestionProcessor).populateModel(eq(mInput), eq(regular), any(), anyInt());
+        verify(mMockSuggestionProcessor, times(0))
+                .populateModel(eq(mInput), eq(verbatim1), any(), anyInt());
+        verify(mMockSuggestionProcessor, times(0))
+                .populateModel(eq(mInput), eq(verbatim2), any(), anyInt());
+    }
+
+    @Test
+    public void buildVerticalSuggestionsGroup_withoutGroupHeader_noPreviousGroup() {
+        var match =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .setGroupId(1)
+                        .build();
+        var matches = List.of(match, match);
+        when(mMockSuggestionProcessor.doesProcessSuggestion(any(), anyInt())).thenReturn(true);
+
+        var result =
+                mBuilder.buildVerticalSuggestionsGroup(
+                        mInput, SECTION_1_NO_HEADER, null, matches, /* firstVerticalPosition= */ 5);
+
+        verify(mMockSuggestionProcessor, times(2)).createModel();
+        verify(mMockSuggestionProcessor, atLeastOnce()).getViewTypeId();
+        verify(mMockSuggestionProcessor).doesProcessSuggestion(match, 5);
+        verify(mMockSuggestionProcessor).populateModel(eq(mInput), eq(match), any(), eq(5));
+        verify(mMockSuggestionProcessor).doesProcessSuggestion(match, 6);
+        verify(mMockSuggestionProcessor).populateModel(eq(mInput), eq(match), any(), eq(6));
+
+        verifyNoMoreInteractions(mMockSuggestionProcessor);
+
+        assertEquals(/* 2 suggestions = */ 2, result.size());
+    }
+
+    @Test
+    public void buildVerticalSuggestionsGroup_withoutGroupHeader_verticalPreviousGroup() {
+        var match =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .setGroupId(1)
+                        .build();
+        var matches = List.of(match, match);
+        when(mMockSuggestionProcessor.doesProcessSuggestion(any(), anyInt())).thenReturn(true);
+
+        var result =
+                mBuilder.buildVerticalSuggestionsGroup(
+                        mInput,
+                        SECTION_1_NO_HEADER,
+                        SECTION_2_WITH_HEADER,
+                        matches,
+                        /* firstVerticalPosition= */ 5);
+
+        verify(mMockSuggestionProcessor, times(2)).createModel();
+        verify(mMockSuggestionProcessor, atLeastOnce()).getViewTypeId();
+        verify(mMockSuggestionProcessor).doesProcessSuggestion(match, 5);
+        verify(mMockSuggestionProcessor).populateModel(eq(mInput), eq(match), any(), eq(5));
+        verify(mMockSuggestionProcessor).doesProcessSuggestion(match, 6);
+        verify(mMockSuggestionProcessor).populateModel(eq(mInput), eq(match), any(), eq(6));
+
+        verifyNoMoreInteractions(mMockSuggestionProcessor);
+
+        assertEquals(/* 2 suggestions = */ 2, result.size());
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, result.get(0).type);
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, result.get(1).type);
+        assertEquals(
+                GroupSeparatorType.GAP,
+                result.get(0).model.get(SuggestionCommonProperties.GROUP_SEPARATOR_TYPE));
+    }
+
+    @Test
+    public void buildVerticalSuggestionsGroup_withGroupHeader_noPreviousGroup() {
+        var match =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .setGroupId(1)
+                        .build();
+        var matches = List.of(match, match);
+        when(mMockSuggestionProcessor.doesProcessSuggestion(any(), anyInt())).thenReturn(true);
+
+        var result =
+                mBuilder.buildVerticalSuggestionsGroup(
+                        mInput,
+                        SECTION_2_WITH_HEADER,
+                        null,
+                        matches,
+                        /* firstVerticalPosition= */ 7);
+
+        verify(mMockSuggestionProcessor, times(2)).createModel();
+        verify(mMockSuggestionProcessor, atLeastOnce()).getViewTypeId();
+        verify(mMockSuggestionProcessor).doesProcessSuggestion(match, 7);
+        verify(mMockSuggestionProcessor).populateModel(eq(mInput), eq(match), any(), eq(7));
+        verify(mMockSuggestionProcessor).doesProcessSuggestion(match, 8);
+        verify(mMockSuggestionProcessor).populateModel(eq(mInput), eq(match), any(), eq(8));
+
+        verifyNoMoreInteractions(mMockSuggestionProcessor);
+
+        assertEquals(/* 2 suggestions = */ 2, result.size());
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, result.get(0).type);
+        assertEquals(OmniboxSuggestionUiType.DEFAULT, result.get(1).type);
+        assertEquals(
+                SECTION_2_WITH_HEADER.getHeaderText(),
+                result.get(0).model.get(SuggestionCommonProperties.HEADER_TITLE));
+        assertNull(result.get(1).model.get(SuggestionCommonProperties.HEADER_TITLE));
+    }
+
+    @Test
+    public void buildHorizontalSuggestionsGroup_withoutGroupHeader() {
+        var match =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .setGroupId(1)
+                        .build();
+        var matches = List.of(match, match);
+        when(mMockSuggestionProcessor.doesProcessSuggestion(any(), anyInt())).thenReturn(true);
+
+        var result =
+                mBuilder.buildHorizontalSuggestionsGroup(
+                        mInput, SECTION_1_NO_HEADER, matches, /* position= */ 5);
+
+        verify(mMockSuggestionProcessor).getViewTypeId();
+        verify(mMockSuggestionProcessor).createModel();
+        verify(mMockSuggestionProcessor, atLeastOnce()).doesProcessSuggestion(match, 5);
+        verify(mMockSuggestionProcessor, times(2))
+                .populateModel(eq(mInput), eq(match), mPropertyModelCaptor.capture(), eq(5));
+        verifyNoMoreInteractions(mMockSuggestionProcessor);
+
+        assertEquals(/* 1 suggestion row = */ 1, result.size());
+
+        // Verify that the same PropertyModel was used to build UI element, and it's the one that
+        // was returned.
+        assertEquals(
+                mPropertyModelCaptor.getAllValues().get(0),
+                mPropertyModelCaptor.getAllValues().get(1));
+        assertEquals(mPropertyModelCaptor.getValue(), result.get(0).model);
+    }
+
+    @Test
+    public void buildHorizontalSuggestionsGroup_withGroupHeader() {
+        var match =
+                AutocompleteMatchBuilder.searchWithType(OmniboxSuggestionType.SEARCH_SUGGEST)
+                        .setGroupId(1)
+                        .build();
+        var matches = List.of(match, match);
+        when(mMockSuggestionProcessor.doesProcessSuggestion(any(), anyInt())).thenReturn(true);
+
+        var result =
+                mBuilder.buildHorizontalSuggestionsGroup(
+                        mInput, SECTION_2_WITH_HEADER, matches, /* position= */ 7);
+
+        verify(mMockSuggestionProcessor).getViewTypeId();
+        verify(mMockSuggestionProcessor).createModel();
+        verify(mMockSuggestionProcessor, atLeastOnce()).doesProcessSuggestion(match, 7);
+        verify(mMockSuggestionProcessor, times(2))
+                .populateModel(eq(mInput), eq(match), mPropertyModelCaptor.capture(), eq(7));
+
+        verifyNoMoreInteractions(mMockSuggestionProcessor);
+
+        assertEquals(/* 1 suggestion row = */ 1, result.size());
+
+        // Verify that the same PropertyModel was used to build UI element, and it's the one that
+        // was returned.
+        assertEquals(
+                mPropertyModelCaptor.getAllValues().get(0),
+                mPropertyModelCaptor.getAllValues().get(1));
+        assertEquals(mPropertyModelCaptor.getValue(), result.get(0).model);
+        assertEquals(
+                SECTION_2_WITH_HEADER.getHeaderText(),
+                result.get(0).model.get(SuggestionCommonProperties.HEADER_TITLE));
+    }
+}

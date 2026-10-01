@@ -1,0 +1,623 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import eslintPluginLit from '../../third_party/node/node_modules/eslint-plugin-lit/lib/index.js';
+import stylistic from '../../third_party/node/node_modules/@stylistic/eslint-plugin/dist/index.js';
+import typescriptEslint from '../../third_party/node/node_modules/@typescript-eslint/eslint-plugin/dist/index.js';
+import tsParser from '../../third_party/node/node_modules/@typescript-eslint/parser/dist/index.js';
+
+const noRestrictedSyntaxCases = [
+  {
+    selector:
+        'CallExpression[callee.object.name=JSON][callee.property.name=parse] > CallExpression[callee.object.name=JSON][callee.property.name=stringify]',
+    message:
+        'Don\'t use JSON.parse(JSON.stringify(...)) to clone objects. Use structuredClone() instead.',
+  },
+  {
+    // https://google.github.io/styleguide/tsguide.html#return-type-only-generics
+    selector:
+        'TSAsExpression > CallExpression > MemberExpression[property.name=/^querySelector$/]',
+    message:
+        'Don\'t use \'querySelector(...) as Type\'. Use the type parameter, \'querySelector<Type>(...)\' instead',
+  },
+  {
+    // https://google.github.io/styleguide/tsguide.html#return-type-only-generics
+    selector:
+        'TSAsExpression > TSNonNullExpression > CallExpression > MemberExpression[property.name=/^querySelector$/]',
+    message:
+        'Don\'t use \'querySelector(...)! as Type\'. Use the type parameter, \'querySelector<Type>(...)\', followed by an assertion instead',
+  },
+  {
+    // https://google.github.io/styleguide/tsguide.html#return-type-only-generics
+    selector:
+        'TSAsExpression > CallExpression > MemberExpression[property.name=/^querySelectorAll$/]',
+    message:
+        'Don\'t use \'querySelectorAll(...) as Type\'. Use the type parameter, \'querySelectorAll<Type>(...)\' instead',
+  },
+  {
+    // Prevent a common misuse of "!" operator.
+    selector:
+        'TSNonNullExpression > CallExpression > MemberExpression[property.name=/^querySelectorAll$/]',
+    message:
+        'Remove unnecessary "!" non-null operator after querySelectorAll(). It always returns a non-null result',
+  },
+  {
+    // Prevent unnecessary usage of dispatchEvent(new Event('click'))
+    'selector': 'NewExpression[callee.name=Event][arguments.0.type=Literal][arguments.0.value=click]',
+    'message': 'Don\'t use dispatchEvent(new Event(\'click\')) for click events. Use the click() method instead.',
+  },
+  {
+    // https://google.github.io/styleguide/jsguide.html#es-module-imports
+    //  1) Matching only import URLs that have at least one '/' slash,
+    //  to avoid false positives for NodeJS imports like `import fs from
+    //  'fs';`. Using '\u002F' instead of '/' as the suggested
+    //  workaround for https://github.com/eslint/eslint/issues/16555
+    //  2) Allowing extensions that have a length between 2-4 characters
+    //  (for example js, css, json)
+    selector:
+        'ImportDeclaration[source.value=/^.*\\u002F.*(?<!\\.[a-z]{2}|\\.[a-z]{3}|\\.[a-z]{4})$/]',
+    message:
+        'Disallowed extensionless import. Explicitly specify the extension suffix.',
+  },
+  {
+    selector: ':matches(PropertyDefinition, AccessorProperty)[definite=true]',
+    message:
+        'Do not use the non-null assertion operator (!) on class property declarations. Initialize properties with dummy or default values instead.',
+  },
+  {
+    selector: 'MemberExpression[computed=true] > Literal[value=/_$/]',
+    message:
+        'Do not use bracket access to access private properties or methods ending in an underscore. Validate the effects of a test input in the DOM instead.',
+  },
+  {
+    selector: 'MemberExpression[computed=true] >' +
+              ' TemplateLiteral > TemplateElement[value.raw=/_$/]',
+    message:
+        'Do not use bracket access to access private properties or methods ending in an underscore. Validate the effects of a test input in the DOM instead.',
+  },
+];
+
+const noRestrictedImportsPaths = [
+  {
+    name:
+        'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js',
+    importNames: ['Polymer'],
+    message: 'Use PolymerElement instead.',
+  },
+  {
+    name: '//resources/polymer/v3_0/polymer/polymer_bundled.min.js',
+    importNames: ['Polymer'],
+    message: 'Use PolymerElement instead.',
+  },
+  {
+    name: 'chrome://webui-test/chai.js',
+    message: 'Use chrome://webui-test/chai_assert.js instead.',
+  },
+  {
+    name: '//webui-test/chai.js',
+    message: 'Use chrome://webui-test/chai_assert.js instead.',
+  },
+  {
+    name: 'chrome://resources/cr_components/composebox/composebox.js',
+    message:
+        'Prevent new composebox usage until it is cleaned up. See crbug.com/497887993.',
+  },
+  {
+    name: '//resources/cr_components/composebox/composebox.js',
+    message:
+        'Prevent new composebox usage until it is cleaned up. See crbug.com/497887993.',
+  },
+  {
+    name: 'chrome-untrusted://resources/cr_components/composebox/composebox.js',
+    message:
+        'Prevent new composebox usage until it is cleaned up. See crbug.com/497887993.',
+  },
+];
+
+export default [
+  {
+    // In the flat config style, the only way to have global ignores is for the
+    // first configuration to have exactly 1 entry: ignores.
+    // All paths are relative to src/.
+    ignores: [
+      // Ignore because eslint doesn't understand // <if expr>
+      'chrome/browser/resources/gaia_auth_host/authenticator.js',
+      'chrome/browser/resources/gaia_auth_host/password_change_authenticator.js',
+
+      // No point linting auto-generated files.
+      'tools/typescript/definitions/**/*',
+
+      // Ignore generated checked-in JS file.
+      'ios/tools/documents_statistics_viewer/tsc/viewer.js',
+
+      // No point checking minify_js expected output tests.
+      'ui/webui/resources/tools/tests/minify_js/*_expected.js',
+
+      // ESLint is disabled for directories that use custom linting rules,
+      // which is no longer supported. TODO(https://crbug.com/369766161):
+      // Bring directories into conformance to re-enable linting.
+      'ash/webui/*',
+      'chrome/browser/resources/chromeos/**/*',
+      'chrome/test/data/webui/chromeos/**/*.js',
+
+      // camera_app_ui and recorder_app_ui conforms to global ESLint.
+      '!ash/webui/camera_app_ui',
+      '!ash/webui/recorder_app_ui',
+
+      // Omitted: These are "raw" dumps from user data dirs. We shouldn't bother
+      // formatting / linting them.
+      'chrome/test/data/extensions/profiles/*',
+      'chrome/test/data/extensions/good/*',
+
+      // Omitted: Platform apps are deprecated on all platforms.
+      'chrome/test/data/extensions/platform_apps/*',
+    ],
+  },
+  {
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+    },
+    plugins: {
+      '@stylistic': stylistic,
+    },
+    rules: {
+      // Enabled checks.
+      'brace-style': ['error', '1tbs'],
+
+      // https://google.github.io/styleguide/jsguide.html#features-arrays-trailing-comma
+      // https://google.github.io/styleguide/jsguide.html#features-objects-use-trailing-comma
+      'comma-dangle': ['error', 'always-multiline'],
+
+      // https://google.github.io/styleguide/jsguide.html#features-switch-statements
+      // https://google.github.io/styleguide/tsguide.html#switch-statements
+      'default-case': 'error',
+      'default-case-last': 'error',
+
+      curly: ['error', 'multi-line', 'consistent'],
+      'new-parens': 'error',
+      'no-array-constructor': 'error',
+
+      'no-console': [
+        'error', {
+          allow: ['info', 'warn', 'error', 'assert'],
+        }
+      ],
+
+      'no-debugger': 'error',
+      'no-extra-boolean-cast': 'error',
+      'no-extra-semi': 'error',
+      'no-new-wrappers': 'error',
+
+      'no-restricted-imports': [
+        'error', {paths: [...noRestrictedImportsPaths]},
+      ],
+
+      'no-restricted-properties': [
+        'error',
+        {
+          property: '__lookupGetter__',
+          message: 'Use Object.getOwnPropertyDescriptor',
+        },
+        {
+          property: '__lookupSetter__',
+          message: 'Use Object.getOwnPropertyDescriptor',
+        },
+        {
+          property: '__defineGetter__',
+          message: 'Use Object.defineProperty',
+        },
+        {
+          property: '__defineSetter__',
+          message: 'Use Object.defineProperty',
+        },
+        {
+          object: 'cr',
+          property: 'exportPath',
+          message: 'Use ES modules or cr.define() instead',
+        },
+      ],
+
+      'no-restricted-syntax': ['error', ...noRestrictedSyntaxCases],
+      'no-throw-literal': 'error',
+      'no-trailing-spaces': 'error',
+      'no-var': 'error',
+      'prefer-const': 'error',
+
+      quotes: [
+        'error', 'single', {
+          allowTemplateLiterals: true,
+        }
+      ],
+
+      semi: ['error', 'always'],
+
+      // https://google.github.io/styleguide/jsguide.html#features-one-variable-per-declaration
+      'one-var': [
+        'error', {
+          let : 'never',
+          const : 'never',
+        }
+      ],
+
+      // https://google.github.io/styleguide/tsguide.html#equality-checks
+      // https://google.github.io/styleguide/jsguide.html#features-equality-checks
+      eqeqeq: [
+        'error', 'always', {
+          null: 'ignore',
+        }
+      ],
+
+      '@stylistic/eol-last': ['error'],
+
+      // TODO(dpapad): Add more checks according to our styleguide.
+    },
+  },
+  {
+    files: ['**/*.ts'],
+
+    plugins: {
+      '@typescript-eslint': typescriptEslint,
+      '@stylistic': stylistic,
+    },
+
+    languageOptions: {
+      parser: tsParser,
+    },
+
+    rules: {
+      'no-unused-vars': 'off',
+
+      '@typescript-eslint/no-unused-vars': [
+        'error', {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '.*',
+        }
+      ],
+
+      // https://google.github.io/styleguide/tsguide.html#array-constructor
+      // Note: The rule below only partially enforces the styleguide, since it
+      // it does not flag invocations of the constructor with a single
+      // parameter.
+      'no-array-constructor': 'off',
+      '@typescript-eslint/no-array-constructor': 'error',
+
+      // https://google.github.io/styleguide/tsguide.html#automatic-semicolon-insertion
+      semi: 'off',
+      '@stylistic/semi': ['error'],
+
+      // https://google.github.io/styleguide/tsguide.html#arrayt-type
+      '@typescript-eslint/array-type': [
+        'error', {
+          default: 'array-simple',
+        }
+      ],
+
+      // https://google.github.io/styleguide/tsguide.html#type-assertions-syntax
+      '@typescript-eslint/consistent-type-assertions': [
+        'error', {
+          assertionStyle: 'as',
+        }
+      ],
+
+      // https://google.github.io/styleguide/tsguide.html#interfaces-vs-type-aliases
+      '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
+
+      // https://google.github.io/styleguide/tsguide.html#import-type
+      '@typescript-eslint/consistent-type-imports': 'error',
+
+      // https://google.github.io/styleguide/tsguide.html#visibility
+      '@typescript-eslint/explicit-member-accessibility': [
+        'error', {
+          accessibility: 'no-public',
+
+          overrides: {
+            parameterProperties: 'off',
+          },
+        }
+      ],
+
+      // https://google.github.io/styleguide/jsguide.html#naming
+      '@typescript-eslint/naming-convention': [
+        'error', {
+          selector:
+              ['class', 'interface', 'typeAlias', 'enum', 'typeParameter'],
+          format: ['StrictPascalCase'],
+
+          filter: {
+            // Exclude TypeScript defined interfaces HTMLElementTagNameMap
+            // and HTMLElementEventMap.
+            // Exclude native DOM types which are always named like
+            // HTML<Foo>Element.
+            // Exclude native DOM interfaces.
+            // Exclude the deprecated WebUIListenerBehavior interface.
+            regex:
+                '^(HTMLElementTagNameMap|HTMLElementEventMap|HTML[A-Za-z]{0,}Element|UIEvent|UIEventInit|DOMError|WebUIListenerBehavior)$',
+            match: false,
+          },
+        },
+        {
+          selector: 'enumMember',
+          format: ['UPPER_CASE'],
+        },
+        {
+          selector: 'classMethod',
+          format: ['strictCamelCase'],
+          modifiers: ['public'],
+        },
+        {
+          selector: 'classMethod',
+          format: ['strictCamelCase'],
+          modifiers: ['private'],
+          trailingUnderscore: 'allow',
+
+          // Disallow the 'Tap_' suffix, in favor of 'Click_' in event
+          // handlers. Note: Unfortunately this ESLint rule does not provide a
+          // way to customize the error message to better inform developers.
+          custom: {
+            regex: '^on[a-zA-Z0-9]+Tap$',
+            match: false,
+          },
+        },
+        {
+          selector: 'classProperty',
+          format: ['UPPER_CASE'],
+          modifiers: ['private', 'static', 'readonly'],
+        },
+        {
+          selector: 'classProperty',
+          format: ['UPPER_CASE'],
+          modifiers: ['public', 'static', 'readonly'],
+        },
+        {
+          selector: 'classProperty',
+          format: ['camelCase'],
+          modifiers: ['public'],
+        },
+        {
+          selector: 'classProperty',
+          format: ['camelCase'],
+          modifiers: ['protected'],
+          trailingUnderscore: 'allow',
+        },
+        {
+          selector: 'classProperty',
+          format: ['camelCase'],
+          modifiers: ['private'],
+          trailingUnderscore: 'allow',
+        },
+        {
+          selector: 'parameter',
+          format: ['camelCase'],
+          leadingUnderscore: 'allow',
+        },
+        {
+          selector: 'function',
+          format: ['camelCase'],
+        }
+      ],
+
+      // https://google.github.io/styleguide/tsguide.html#member-property-declarations
+      '@stylistic/member-delimiter-style': [
+        'error', {
+          multiline: {
+            delimiter: 'comma',
+            requireLast: true,
+          },
+
+          singleline: {
+            delimiter: 'comma',
+            requireLast: false,
+          },
+
+          overrides: {
+            interface: {
+              multiline: {
+                delimiter: 'semi',
+                requireLast: true,
+              },
+
+              singleline: {
+                delimiter: 'semi',
+                requireLast: false,
+              },
+            },
+          },
+        }
+      ],
+
+      // https://google.github.io/styleguide/tsguide.html#wrapper-types
+      '@typescript-eslint/no-restricted-types': [
+        'error', {
+          types: {
+            String: {
+              message: 'Use string instead',
+              fixWith: 'string',
+            },
+
+            Boolean: {
+              message: 'Use boolean instead',
+              fixWith: 'boolean',
+            },
+
+            Number: {
+              message: 'Use number instead',
+              fixWith: 'number',
+            },
+
+            Symbol: {
+              message: 'Use symbol instead',
+              fixWith: 'symbol',
+            },
+
+            BigInt: {
+              message: 'Use bigint instead',
+              fixWith: 'bigint',
+            },
+          },
+        }
+      ],
+
+      // https://google.github.io/styleguide/tsguide.html#ts-ignore
+      '@typescript-eslint/ban-ts-comment': [
+        'error', {
+          'ts-expect-error': true,
+          'ts-ignore': true,
+          'ts-nocheck': true,
+        }
+      ],
+    },
+  },
+  {
+    'files': ['**/*.html.ts'],
+    'plugins': {
+      'eslint-plugin-lit': eslintPluginLit,
+    },
+    'rules': {
+      'eslint-plugin-lit/quoted-expressions': ['error', 'always'],
+      'no-restricted-imports': [
+        'error', {
+          paths: [
+            ...noRestrictedImportsPaths,
+            {
+              name: 'chrome://resources/js/load_time_data.js',
+              message: 'Use $i18n{} or I18nMixin methods for strings. Use reactive properties for feature flags.',
+            },
+            {
+              name: '//resources/js/load_time_data.js',
+              message: 'Use $i18n{} or I18nMixin methods for strings. Use reactive properties for feature flags.',
+            },
+          ],
+        }
+      ],
+    },
+  },
+  {
+    // The following files are served from chrome://resources/ and the rules
+    // below enforce restrictions documented in
+    // ui/webui/resources/cr_elements/README.md and
+    // ui/webui/resources/cr_components/README.md.
+    // These checks are not overriding default style configuration, instead they
+    // are performing correctness checks and therefore custom ESLint rules are
+    // justified.
+    files: [
+      'ui/webui/resources/cr_components/**/*.html.ts',
+      'ui/webui/resources/cr_elements/**/*.html.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': ['error', ...noRestrictedSyntaxCases, {
+        'selector': 'Literal[value=/\\$i18n{.*}/]',
+        'message': 'Can\'t use $i18n{...} placeholders in ui/webui/resources/ HTML templates. Use I18nMixinLit instead.'
+      },
+      {
+        'selector': 'TemplateElement[value.raw=/\\$i18n{.*}/]',
+        'message': 'Can\'t use $i18n{...} placeholders in ui/webui/resources/ HTML templates. Use I18nMixinLit instead.'
+      }],
+    },
+  },
+  {
+    // Conceptually these rules can be applied to the whole code base, but
+    // they're only current applicable to WebUI tests. Moving them here is a
+    // performance optimization.
+    files: ['chrome/test/data/webui/**/*.[jt]s'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'MockInteractions',
+          property: 'tap',
+          message:
+              'Do not use on-tap handlers in prod code, and use the native click() method in tests. See more context at crbug.com/812035.',
+        },
+        {
+          object: 'test',
+          property: 'only',
+          message:
+              'test.only() silently disables other tests in the same suite(). Did you forget deleting it before uploading? Use test.skip() instead to explicitly disable certain test() cases.',
+        },
+      ]
+    }
+  },
+  {
+    files: ['chrome/test/data/webui/settings/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error', {
+          paths: [
+            {
+              name: 'chrome://resources/js/load_time_data.js',
+              importNames: ['loadTimeData'],
+              message: 'Import from chrome://settings/settings.js instead.',
+            },
+            {
+              name: 'chrome://webui-test/chai.js',
+              message: 'Use chrome://webui-test/chai_assert.js instead.',
+            },
+            {
+              name: '//webui-test/chai.js',
+              message: 'Use chrome://webui-test/chai_assert.js instead.',
+            },
+          ],
+        }
+      ],
+    }
+  },
+  {
+    // See b/266455078. Don't add new files to this list.
+    files: [
+      'chrome/browser/resources/ash/settings/internet_page/internet_subpage.ts',
+      'chrome/browser/resources/ash/settings/multidevice_page/multidevice_permissions_setup_dialog.ts',
+    ],
+    rules: {
+      '@typescript-eslint/ban-ts-comment': [
+        'error', {
+          'ts-ignore': true,
+          'ts-nocheck': true,
+        }
+      ],
+    },
+  },
+  {
+    // TODO(crbug.com/497887993): Allow existing usages of composebox.ts until
+    // the shared composebox files are cleaned up.
+    files: [
+      'chrome/browser/resources/contextual_tasks/composebox.ts',
+      'chrome/browser/resources/contextual_tasks/onboarding_tooltip.ts',
+      'chrome/browser/resources/lens/overlay/side_panel/side_panel_app.ts',
+      'chrome/browser/resources/new_tab_page/app.ts',
+      'chrome/browser/resources/new_tab_page/lazy_load.ts',
+      'chrome/browser/resources/omnibox_popup/aim_app.ts',
+      'chrome/test/data/webui/contextual_tasks/composebox_misc_inputs_test.ts',
+      'chrome/test/data/webui/cr_components/composebox/composebox_drag_drop_test.ts',
+      'chrome/test/data/webui/cr_components/composebox/composebox_input_placeholder_test.ts',
+      'chrome/test/data/webui/cr_components/composebox/composebox_test.ts',
+      'chrome/test/data/webui/cr_components/composebox/composebox_voice_search_test.ts',
+      'chrome/test/data/webui/cr_components/composebox/composebox_voice_search_recognition_test.ts',
+      'chrome/test/data/webui/cr_components/composebox/composebox_voice_search_flags_test.ts',
+      'chrome/test/data/webui/cr_components/composebox/composebox_test_utils.ts',
+      'chrome/test/data/webui/lens/side_panel/composebox_test.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error', {
+          paths: noRestrictedImportsPaths.filter(
+              path => !path.name.includes('composebox')),
+        }
+      ],
+    },
+  },
+  {
+    // TODO(crbug.com/546208720): Clean up bracket access of private properties/methods in
+    // `ui/file_manager`.
+    files: ['ui/file_manager/**/*.[jt]s'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...noRestrictedSyntaxCases.filter(
+            c => !c.message.includes('Do not use bracket access')),
+      ],
+    },
+  },
+];

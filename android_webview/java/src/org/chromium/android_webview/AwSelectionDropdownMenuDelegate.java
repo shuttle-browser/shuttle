@@ -1,0 +1,174 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.android_webview;
+
+import android.content.Context;
+import android.content.res.Resources;
+import android.os.Build;
+import android.view.Display;
+import android.view.Gravity;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.PopupWindow;
+
+import androidx.annotation.RequiresApi;
+
+import org.chromium.base.Log;
+import org.chromium.base.StrictModeContext;
+import org.chromium.components.embedder_support.application.ClassLoaderContextWrapperFactory;
+import org.chromium.components.embedder_support.selection.DefaultSelectionDropdownMenuDelegate;
+import org.chromium.content_public.browser.SelectionPopupController;
+import org.chromium.ui.display.DisplayAndroidManager;
+import org.chromium.ui.hierarchicalmenu.HierarchicalMenuController;
+import org.chromium.ui.listmenu.BasicListMenu;
+import org.chromium.ui.listmenu.ListMenuUtils;
+import org.chromium.ui.modelutil.MVCListAdapter;
+
+/**
+ * WebView implementation of dropdown text selection menu delegate. The functionality provided by
+ * this class is only available on Android U+.
+ */
+public class AwSelectionDropdownMenuDelegate extends DefaultSelectionDropdownMenuDelegate {
+
+    private static final String TAG = "AwSelectionDropdown";
+
+    private AwSelectionDropdownMenuDelegate() {
+        // No external instantiation.
+    }
+
+    @Override
+    public void show(
+            Context context,
+            View rootView,
+            MVCListAdapter.ModelList items,
+            ItemClickListener clickListener,
+            Runnable dismissMenuCallback,
+            int x,
+            int y) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // WebView text selection drop-down menu is only supported on Android U+.
+            return;
+        }
+
+        HierarchicalMenuController<Object> hierarchicalMenuController =
+                ListMenuUtils.createHierarchicalMenuController(context);
+        hierarchicalMenuController.setupCallbacks(
+                /* headerModelList= */ null, items, dismissMenuCallback);
+
+        // Dismiss the previous popup window if it's showing.
+        dismiss();
+
+        // Offset the x & y coordinates based on the root view's location in
+        // the window.
+        final int[] locationInWindow = new int[2];
+        rootView.getLocationInWindow(locationInWindow);
+        x += locationInWindow[0];
+        y += locationInWindow[1];
+
+        final BasicListMenu menu = getListMenu(context, items, clickListener);
+        final int[] menuDimensions = menu.getMenuDimensions();
+        final int menuWidth = getIdealMenuWidth(context, menuDimensions[0]);
+        final int menuHeight = menuDimensions[1];
+
+        // We will always try to show the menu to the right and below the anchor point unless
+        // there isn't enough room. Padding is intentionally left out of the calculations below
+        // because we want to allow the drop-down menu to show above the root's padding.
+        final int spaceToRightOfMenu = rootView.getRight() - x;
+        final boolean canShowRightOfAnchorPoint = spaceToRightOfMenu >= menuWidth;
+        if (!canShowRightOfAnchorPoint) {
+            // Check if there is enough room to the left instead.
+            final int spaceToLeftOfMenu = x - rootView.getLeft();
+            final boolean canShowLeftOfAnchorPoint = spaceToLeftOfMenu >= menuWidth;
+            if (!canShowLeftOfAnchorPoint) {
+                // There is not enough horizontal room for the drop-down menu.
+                cleanup();
+                return;
+            }
+        }
+
+        final int spaceBelowMenu = rootView.getBottom() - y;
+        final boolean canShowBelowAnchorPoint = spaceBelowMenu >= menuHeight;
+        if (!canShowBelowAnchorPoint) {
+            // Check if there is enough room above instead.
+            final int spaceAboveMenu = y - rootView.getTop();
+            final boolean canShowAboveAnchorPoint = spaceAboveMenu >= menuHeight;
+            if (!canShowAboveAnchorPoint) {
+                // There is not enough vertical room for the drop-down menu.
+                cleanup();
+                return;
+            }
+        }
+
+        // Figure out the horizontal and vertical positioning of the menu based on space
+        // available.
+        x = canShowRightOfAnchorPoint ? x : x - menuWidth;
+        y = canShowBelowAnchorPoint ? y : y - menuHeight;
+
+        mPopupWindow = new PopupWindow(menu.getContentView(), menuWidth, menuHeight, true);
+        mPopupWindow.setAnimationStyle(android.R.style.Animation_Dialog);
+        mPopupWindow.setElevation(
+                context.getResources().getDimensionPixelSize(R.dimen.list_menu_elevation));
+        mPopupWindow.setOnDismissListener(this::cleanup);
+        mPopupWindow.setFocusable(true);
+        hierarchicalMenuController.setupBackPressBehaviorForPopupWindow(
+                menu.getContentView(), () -> mPopupWindow.dismiss());
+        try {
+            mPopupWindow.showAtLocation(rootView, Gravity.NO_GRAVITY, x, y);
+        } catch (WindowManager.BadTokenException e) {
+            // The app likely passed the wrong context into WebView e.g. the application
+            // context, is being used in a multi-display environment, and the popup
+            // window show attempt was on the wrong display.
+            Log.e(
+                    TAG,
+                    "Could not show text selection drop-down. Did you pass the Activity Context to"
+                            + " the WebView constructor?");
+            cleanup();
+        }
+    }
+
+    /** For nulling out references after drop-down dismissal or the inability to show. */
+    private void cleanup() {
+        mPopupWindow = null;
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    @Override
+    protected BasicListMenu getListMenu(
+            final Context context,
+            MVCListAdapter.ModelList items,
+            ItemClickListener clickListener) {
+        Context windowContext;
+        // `createWindowContext` on some devices writes to disk. See crbug.com/1408587.
+        try (StrictModeContext ignored = StrictModeContext.allowAllThreadPolicies()) {
+            Display display = DisplayAndroidManager.getDefaultDisplayForContext(context);
+            windowContext =
+                    ClassLoaderContextWrapperFactory.get(
+                            context.createWindowContext(
+                                    display, WindowManager.LayoutParams.TYPE_APPLICATION, null));
+        }
+
+        assert windowContext != null : "Window context cannot be null.";
+
+        return new BasicListMenu(
+                windowContext,
+                items,
+                (model, view) -> clickListener.onItemClick(model),
+                /* backgroundDrawable= */ Resources.ID_NULL,
+                /* backgroundTintColor= */ Resources.ID_NULL,
+                /* bottomHairlineColor= */ null);
+    }
+
+    /**
+     * This method is a no-op if the device is not Android U+. Creates and sets the WebView
+     * drop-down text selection menu delegate on the {@link SelectionPopupController}.
+     *
+     * @param controller the selection popup controller to attach the delegate to.
+     */
+    public static void maybeSetWebViewDropdownSelectionMenuDelegate(
+            SelectionPopupController controller) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return;
+        controller.setDropdownMenuDelegate(new AwSelectionDropdownMenuDelegate());
+    }
+}

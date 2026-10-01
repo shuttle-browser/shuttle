@@ -1,0 +1,17 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/enterprise/platform_auth/platform_auth_features.h"
+
+#include "base/feature_list.h"
+
+namespace enterprise_auth {
+
+BASE_FEATURE(kEnableExtensibleEnterpriseSSO, base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kAndroidEntraSSO, base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kCloudApAuthDataQueueing, base::FEATURE_ENABLED_BY_DEFAULT);
+
+}  // namespace enterprise_auth

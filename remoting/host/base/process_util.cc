@@ -1,0 +1,127 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "remoting/host/base/process_util.h"
+
+#include <string.h>
+
+#include <string>
+
+#include "base/files/file_util.h"
+#include "base/logging.h"
+#include "base/notimplemented.h"
+#include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
+#include "build/build_config.h"
+
+#if BUILDFLAG(IS_WIN)
+#include <windows.h>
+
+#include "base/win/scoped_handle.h"
+#endif
+
+namespace remoting {
+
+base::FilePath GetProcessImagePath(base::ProcessId pid) {
+#if BUILDFLAG(IS_LINUX)
+  // See: https://man7.org/linux/man-pages/man5/procfs.5.html. It says the
+  // symlink will have "(deleted)" appended to the original pathname, but in
+  // practice it also has a preceding space.
+  static constexpr char kExeDeletedSuffix[] = " (deleted)";
+  // We don't get the image path from the command line, since it's spoofable by
+  // the process itself.
+  base::FilePath process_exe_path(
+      base::StringPrintf("/proc/%" CrPRIdPid "/exe", pid));
+  base::FilePath process_image_path;
+  base::ReadSymbolicLink(process_exe_path, &process_image_path);
+  // TODO(yuweih): See if we can run this method on a worker thread that allows
+  // blocking and use base::PathExists() instead.
+  bool path_exists = access(process_image_path.value().c_str(), F_OK) == 0;
+  if (!path_exists) {
+    std::string process_base_name = process_image_path.BaseName().value();
+    if (!base::EndsWith(process_base_name, kExeDeletedSuffix,
+                        base::CompareCase::INSENSITIVE_ASCII)) {
+      LOG(ERROR) << "Unexpected process image path: " << process_image_path
+                 << ". Path doesn't exist and doesn't end with '"
+                 << kExeDeletedSuffix << "'";
+      return base::FilePath();
+    }
+    VLOG(1) << "Process image for PID " << pid
+            << " no longer exists in its original path.";
+    return process_image_path.DirName().Append(process_base_name.substr(
+        0, process_base_name.size() - strlen(kExeDeletedSuffix)));
+  }
+  return process_image_path;
+#elif BUILDFLAG(IS_WIN)
+  base::Process process =
+      base::Process::OpenWithAccess(pid, PROCESS_QUERY_LIMITED_INFORMATION);
+  if (!process.IsValid()) {
+    PLOG(ERROR) << "OpenProcess failed";
+    return base::FilePath();
+  }
+  return GetProcessImagePath(process);
+#else
+  NOTIMPLEMENTED();
+  return base::FilePath();
+#endif
+}
+
+base::FilePath GetProcessImagePath(const base::Process& process) {
+#if BUILDFLAG(IS_WIN)
+  std::array<wchar_t, MAX_PATH + 1> buffer;
+  DWORD size = buffer.size();
+  if (!QueryFullProcessImageName(process.Handle(), 0, buffer.data(), &size)) {
+    PLOG(ERROR) << "QueryFullProcessImageName failed";
+    return base::FilePath();
+  }
+  DCHECK_GT(size, 0u);
+  DCHECK_LT(size, buffer.size());
+  return base::FilePath(base::FilePath::StringViewType(buffer.data(), size));
+#else
+  return GetProcessImagePath(process.Pid());
+#endif
+}
+
+#if BUILDFLAG(IS_WIN)
+base::ProcessId GetLauncherProcessIdFromPipes(HANDLE stdin_handle,
+                                              HANDLE stdout_handle) {
+  if (stdin_handle == INVALID_HANDLE_VALUE || stdin_handle == nullptr ||
+      stdout_handle == INVALID_HANDLE_VALUE || stdout_handle == nullptr) {
+    return base::kNullProcessId;
+  }
+
+  if (::GetFileType(stdin_handle) != FILE_TYPE_PIPE ||
+      ::GetFileType(stdout_handle) != FILE_TYPE_PIPE) {
+    return base::kNullProcessId;
+  }
+
+  ULONG stdin_server_pid = 0;
+  if (!::GetNamedPipeServerProcessId(stdin_handle, &stdin_server_pid)) {
+    PLOG(ERROR) << "GetNamedPipeServerProcessId failed for stdin";
+    return base::kNullProcessId;
+  }
+
+  ULONG stdout_server_pid = 0;
+  if (!::GetNamedPipeServerProcessId(stdout_handle, &stdout_server_pid)) {
+    PLOG(ERROR) << "GetNamedPipeServerProcessId failed for stdout";
+    return base::kNullProcessId;
+  }
+
+  if (stdin_server_pid != stdout_server_pid) {
+    LOG(ERROR)
+        << "stdin and stdout pipes belong to different server processes ("
+        << stdin_server_pid << " vs " << stdout_server_pid << ")";
+    return base::kNullProcessId;
+  }
+
+  return static_cast<base::ProcessId>(stdin_server_pid);
+}
+
+base::ProcessId GetLauncherProcessIdFromStdioPipes() {
+  return GetLauncherProcessIdFromPipes(::GetStdHandle(STD_INPUT_HANDLE),
+                                       ::GetStdHandle(STD_OUTPUT_HANDLE));
+}
+#endif
+
+}  // namespace remoting

@@ -1,0 +1,889 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "services/webnn/tflite/graph_impl_litert.h"
+
+#include "base/command_line.h"
+#include "base/containers/flat_map.h"
+#include "base/containers/to_vector.h"
+#include "base/files/file_util.h"
+#include "base/location.h"
+#include "base/logging.h"
+#include "base/memory/raw_ptr_exclusion.h"
+#include "base/memory/raw_ref.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/notimplemented.h"
+#include "base/notreached.h"
+#include "base/strings/strcat.h"
+#include "base/strings/stringprintf.h"
+#include "base/system/sys_info.h"
+#include "base/task/task_traits.h"
+#include "base/task/thread_pool.h"
+#include "base/types/expected_macros.h"
+#include "mojo/public/cpp/bindings/self_owned_receiver.h"
+#include "services/webnn/buildflags.h"
+#include "services/webnn/error.h"
+#include "services/webnn/public/cpp/webnn_trace.h"
+#include "services/webnn/public/cpp/webnn_types.h"
+#include "services/webnn/public/mojom/webnn_context_provider.mojom.h"
+#include "services/webnn/public/mojom/webnn_device.mojom.h"
+#include "services/webnn/public/mojom/webnn_error.mojom.h"
+#include "services/webnn/public/mojom/webnn_graph.mojom.h"
+#include "services/webnn/queueable_resource_state.h"
+#include "services/webnn/queueable_resource_state_base.h"
+#include "services/webnn/resource_task.h"
+#include "services/webnn/tflite/buffer_content_tflite.h"
+#include "services/webnn/tflite/context_impl_litert.h"
+#include "services/webnn/tflite/graph_builder_tflite.h"
+#include "services/webnn/tflite/tensor_impl_tflite.h"
+#include "services/webnn/webnn_constant_operand.h"
+#include "services/webnn/webnn_graph_impl.h"
+#include "services/webnn/webnn_switches.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
+#include "third_party/dawn/include/dawn/native/DawnNative.h"
+#include "third_party/dawn/include/dawn/webgpu.h"
+#include "third_party/flatbuffers/src/include/flatbuffers/flatbuffers.h"
+#include "third_party/litert/buildflags.h"
+#include "third_party/litert/src/litert/c/litert_common.h"
+#include "third_party/litert/src/litert/cc/litert_compiled_model.h"
+#include "third_party/litert/src/litert/cc/litert_element_type.h"
+#include "third_party/litert/src/litert/cc/litert_environment.h"
+#include "third_party/litert/src/litert/cc/litert_environment_options.h"
+#include "third_party/litert/src/litert/cc/litert_expected.h"
+#include "third_party/litert/src/litert/cc/litert_layout.h"
+#include "third_party/litert/src/litert/cc/litert_model.h"
+#include "third_party/litert/src/litert/cc/litert_options.h"
+#include "third_party/litert/src/litert/cc/litert_ranked_tensor_type.h"
+#include "third_party/litert/src/litert/cc/litert_tensor_buffer.h"
+#include "third_party/litert/src/litert/cc/options/litert_gpu_options.h"
+
+#if BUILDFLAG(BUILD_LITERT_WITH_XNNPACK)
+#include "third_party/litert/src/tflite/delegates/xnnpack/xnnpack_delegate.h"
+#include "third_party/xnnpack/src/include/xnnpack.h"  // nogncheck
+#endif
+
+#if BUILDFLAG(WEBNN_ENABLE_TFLITE_PROFILER)
+#include "third_party/litert/src/litert/cc/litert_profiler.h"
+#endif
+
+namespace webnn::litert {
+
+namespace {
+
+using ::webnn::tflite::BufferContent;
+using ::webnn::tflite::TensorDescriptor;
+
+// TODO(crbug.com/524317888): Replace this struct with the type defined directly
+// in LiteRT headers once exported.
+struct LiteRtWebGpuFlushCallback {
+  void (*callback)(void* user_data) = nullptr;
+  // RAW_PTR_EXCLUSION: Must match the LiteRT C callback ABI.
+  RAW_PTR_EXCLUSION void* user_data = nullptr;
+};
+
+void RunClosure(void* user_data) {
+  if (!user_data) {
+    return;
+  }
+  auto* closure = static_cast<base::RepeatingClosure*>(user_data);
+  if (!closure->is_null()) {
+    closure->Run();
+  }
+}
+
+void DumpModelToFile(const flatbuffers::DetachedBuffer& model_content) {
+  base::ThreadPool::PostTask(
+      FROM_HERE,
+      {base::MayBlock(), base::TaskPriority::BEST_EFFORT,
+       base::TaskShutdownBehavior::BLOCK_SHUTDOWN},
+      base::BindOnce(
+          [](std::vector<uint8_t> data) {
+            static uint64_t dump_count = 0;
+            base::FilePath dump_directory =
+                base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
+                    switches::kWebNNTfliteDumpModel);
+            base::FilePath dump_path = dump_directory.AppendASCII(
+                base::StringPrintf("model%d.tflite", dump_count++));
+            base::WriteFile(dump_path, data);
+          },
+          base::ToVector(model_content)));
+}
+
+::litert::ElementType GetLiteRtElementType(OperandDataType data_type) {
+  switch (data_type) {
+    case OperandDataType::kFloat32:
+      return ::litert::ElementType::Float32;
+    case OperandDataType::kFloat16:
+      return ::litert::ElementType::Float16;
+    case OperandDataType::kInt32:
+      return ::litert::ElementType::Int32;
+    case OperandDataType::kUint32:
+      return ::litert::ElementType::UInt32;
+    case OperandDataType::kInt64:
+      return ::litert::ElementType::Int64;
+    case OperandDataType::kUint64:
+      return ::litert::ElementType::UInt64;
+    case OperandDataType::kInt8:
+      return ::litert::ElementType::Int8;
+    case OperandDataType::kUint8:
+      return ::litert::ElementType::UInt8;
+    case OperandDataType::kInt4:
+      return ::litert::ElementType::Int4;
+    default:
+      return ::litert::ElementType::None;
+  }
+}
+
+bool CheckShapeMatch(base::span<const uint32_t> expected_shape,
+                     base::span<const int32_t> actual_shape) {
+  return std::ranges::equal(
+      expected_shape, actual_shape, [](uint32_t a, int32_t b) {
+        return base::IsValueInRangeForNumericType<int32_t>(a) &&
+               static_cast<int32_t>(a) == b;
+      });
+}
+
+template <typename T>
+base::expected<T, mojom::ErrorPtr> AsBaseExpected(
+    ::litert::Expected<T> result,
+    std::string_view error_message = "") {
+  if (result.HasValue()) {
+    if constexpr (std::is_void_v<T>) {
+      return base::ok();
+    } else {
+      return std::move(result.Value());
+    }
+  }
+  std::string message(result.Error().Message());
+  if (!error_message.empty()) {
+    message = base::StrCat({error_message, ": ", message});
+  }
+  return base::unexpected(
+      mojom::Error::New(mojom::Error::Code::kUnknownError, std::move(message)));
+}
+
+}  // namespace
+
+// Represents the non-thread-safe collection of resources associated with a
+// particular graph and compute context.
+class GraphImplLiteRt::ComputeResources {
+ public:
+  static base::expected<std::unique_ptr<ComputeResources>, mojom::ErrorPtr>
+  Create(mojom::Device context_device,
+         bool is_xnnpack_enabled,
+         WebGpuContextProperties webgpu_properties,
+         tflite::GraphBuilderTflite::Result build_graph_result) {
+    auto self = std::make_unique<ComputeResources>(
+        std::move(build_graph_result.input_name_to_descriptor),
+        std::move(build_graph_result.output_name_to_descriptor));
+    self->webgpu_properties_ = std::move(webgpu_properties);
+
+    self->model_content_ = std::move(build_graph_result.buffer);
+    if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+            switches::kWebNNTfliteDumpModel)) {
+      DumpModelToFile(self->model_content_);
+    }
+
+    ASSIGN_OR_RETURN(::litert::Options compilation_options,
+                     self->GetCompilationOptions(
+                         context_device, is_xnnpack_enabled,
+                         build_graph_result.graph_requires_fp32_precision));
+
+    self->weights_file_ = std::make_unique<::litert::ScopedFile>(
+        build_graph_result.weights_file.TakePlatformFile());
+
+    compilation_options.SetExternalWeightScopedFile(
+        *self->weights_file_,
+        std::move(build_graph_result.weights_section_map));
+
+    std::vector<::litert::EnvironmentOptions::Option> env_options;
+    if (context_device == mojom::Device::kGpu) {
+      const DawnProcTable* dawn_procs = static_cast<const DawnProcTable*>(
+          self->webgpu_properties_.dawn_procs.get());
+
+      if (!dawn_procs && !self->webgpu_properties_.wgpu_device) {
+        dawn_procs = &dawn::native::GetProcs();
+      }
+      if (dawn_procs) {
+        env_options.emplace_back(
+            ::litert::EnvironmentOptions::Tag::kWebGpuProcs,
+            reinterpret_cast<int64_t>(dawn_procs));
+      }
+      if (self->webgpu_properties_.wgpu_device && dawn_procs) {
+        WGPUDevice c_device = self->webgpu_properties_.wgpu_device.get();
+        env_options.emplace_back(
+            ::litert::EnvironmentOptions::Tag::kWebGpuDevice,
+            reinterpret_cast<int64_t>(c_device));
+        // `deviceGetQueue` returns the device's singleton default queue. LiteRT
+        // retains its own reference during Environment creation, and all
+        // underlying queue resources and client proxies are automatically
+        // destroyed when `c_device` is released upon context destruction, so
+        // we don't explicitly release the queue release here.
+        env_options.emplace_back(
+            ::litert::EnvironmentOptions::Tag::kWebGpuQueue,
+            reinterpret_cast<int64_t>(dawn_procs->deviceGetQueue(c_device)));
+      }
+      if (!self->webgpu_properties_.webgpu_flush.is_null()) {
+        self->litert_webgpu_flush_callback_ = {
+            .callback = &RunClosure,
+            .user_data = &self->webgpu_properties_.webgpu_flush,
+        };
+        env_options.emplace_back(
+            ::litert::EnvironmentOptions::Tag::kWebGpuFlushCallback,
+            reinterpret_cast<int64_t>(&self->litert_webgpu_flush_callback_));
+      }
+    }
+    ASSIGN_OR_RETURN(
+        self->env_,
+        AsBaseExpected(::litert::Environment::Create(
+            ::litert::EnvironmentOptions(absl::MakeConstSpan(env_options)))));
+
+    ASSIGN_OR_RETURN(
+        self->model_,
+        AsBaseExpected(::litert::CompiledModel::Create(
+            *self->env_,
+            ::litert::BufferRef<uint8_t>(absl::MakeSpan(self->model_content_)),
+            compilation_options)));
+
+    // The profiler (if enabled) must be initialized before tensors are
+    // allocated.
+#if BUILDFLAG(WEBNN_ENABLE_TFLITE_PROFILER)
+    ASSIGN_OR_RETURN(self->profiler_,
+                     AsBaseExpected(self->model_->GetProfiler()));
+#endif
+    // TODO(crbug.com/454732289): LiteRT currently provides no API to query
+    // runtime accelerators. As a temporary workaround we infer the target
+    // devices from the compilation options when the model is fully
+    // accelerated. Replace this inference with the official LiteRT API once
+    // it becomes available.
+    if (self->model_->IsFullyAccelerated()) {
+      ASSIGN_OR_RETURN(
+          auto hardware_accelerators,
+          AsBaseExpected(compilation_options.GetHardwareAccelerators()));
+      if (hardware_accelerators & kLiteRtHwAcceleratorGpu) {
+        self->devices.push_back(mojom::Device::kGpu);
+      }
+      if (hardware_accelerators & kLiteRtHwAcceleratorNpu) {
+        self->devices.push_back(mojom::Device::kNpu);
+      }
+      if (hardware_accelerators & kLiteRtHwAcceleratorCpu) {
+        self->devices.push_back(mojom::Device::kCpu);
+      }
+    } else {
+      self->devices.push_back(mojom::Device::kCpu);
+    }
+
+    for (const auto& [name, input] : self->input_name_to_descriptor) {
+      self->input_tensor_types.push_back(::litert::RankedTensorType(
+          GetLiteRtElementType(input.descriptor.data_type()),
+          ::litert::Layout(
+              ::litert::Dimensions(input.descriptor.shape().begin(),
+                                   input.descriptor.shape().end()))));
+    }
+
+    ASSIGN_OR_RETURN(auto output_layouts,
+                     AsBaseExpected(self->model_->GetOutputTensorLayouts(
+                                        /*signature_index=*/0,
+                                        /*update_allocation=*/true),
+                                    "Failed to get output tensor layouts"));
+
+    if (self->output_name_to_descriptor.size() != output_layouts.size()) {
+      return base::unexpected(mojom::Error::New(
+          mojom::Error::Code::kUnknownError,
+          base::StringPrintf(
+              "The number of outputs in the model (%zu) doesn't match the "
+              "expected number of outputs (%zu).",
+              output_layouts.size(), self->output_name_to_descriptor.size())));
+    }
+
+    for (size_t i = 0; i < self->output_name_to_descriptor.size(); ++i) {
+      const auto& [name, output] = self->output_name_to_descriptor[i];
+      auto& layout = output_layouts[i];
+      // For scalar outputs the LiteRT tensor rank is 1 but the WebNN output
+      // rank is 0, so we skip the shape check for this case.
+      if (!output.descriptor.shape().empty() &&
+          !CheckShapeMatch(output.descriptor.shape(), layout.Dimensions())) {
+        return base::unexpected(mojom::Error::New(
+            mojom::Error::Code::kUnknownError,
+            base::StringPrintf(
+                "The shape of output tensor '%s' doesn't match the model's "
+                "output shape.",
+                name.c_str())));
+      }
+
+      auto tensor_type = ::litert::RankedTensorType(
+          GetLiteRtElementType(output.descriptor.data_type()),
+          std::move(layout));
+      ASSIGN_OR_RETURN(auto required_bytes,
+                       AsBaseExpected(tensor_type.Bytes()));
+      if (output.descriptor.PackedByteLength() != required_bytes) {
+        return base::unexpected(mojom::Error::New(
+            mojom::Error::Code::kUnknownError,
+            base::StringPrintf(
+                "Output buffer size (%zu bytes) is different from "
+                "the required size (%zu bytes) for output "
+                "tensor '%s'",
+                output.descriptor.PackedByteLength(),
+                static_cast<size_t>(required_bytes), name.c_str())));
+      }
+      self->output_tensor_types.push_back(std::move(tensor_type));
+    }
+
+    return self;
+  }
+
+  ComputeResources(std::vector<std::pair<std::string, TensorDescriptor>>
+                       input_name_to_descriptor,
+                   std::vector<std::pair<std::string, TensorDescriptor>>
+                       output_name_to_descriptor)
+      : input_name_to_descriptor(std::move(input_name_to_descriptor)),
+        output_name_to_descriptor(std::move(output_name_to_descriptor)) {}
+
+  ~ComputeResources() {
+#if BUILDFLAG(WEBNN_ENABLE_TFLITE_PROFILER)
+    auto profile_summary = profiler_.GetProfileSummary(model_->Get());
+    if (profile_summary) {
+      VLOG(1) << "LiteRt Profiler Summary:\n" << *profile_summary;
+    } else {
+      VLOG(1) << "Failed to get LiteRt profiler summary: "
+              << profile_summary.Error().Message();
+    }
+#endif
+  }
+
+  base::expected<void, mojom::ErrorPtr> DoDispatchImpl(
+      const std::vector<std::pair<std::string, TensorDescriptor>>& inputs,
+      const std::vector<std::pair<std::string, TensorDescriptor>>& outputs,
+      const base::flat_map<int, raw_ref<const BufferContent>>& buffers,
+      ScopedTrace& scoped_trace) {
+    scoped_trace.AddStep("Set up input and output buffers");
+
+    std::vector<::litert::TensorBuffer> input_buffers;
+    input_buffers.reserve(inputs.size());
+    for (int i = 0; i < inputs.size(); ++i) {
+      const auto& [name, input] = inputs[i];
+      const auto& buffer = buffers.at(input.tensor_index);
+      ASSIGN_OR_RETURN(
+          auto litert_buffer,
+          AsBaseExpected(::litert::TensorBuffer::CreateFromHostMemory(
+                             *env_, input_tensor_types[i],
+                             buffer->AsSpan().data(), buffer->AllocatedSize()),
+                         "Failed to create input LiteRT buffer"));
+      input_buffers.push_back(std::move(litert_buffer));
+    }
+
+    std::vector<::litert::TensorBuffer> output_buffers;
+    output_buffers.reserve(outputs.size());
+    for (int i = 0; i < outputs.size(); ++i) {
+      const auto& [name, output] = outputs[i];
+      const auto& buffer = buffers.at(output.tensor_index);
+      ASSIGN_OR_RETURN(
+          auto litert_buffer,
+          AsBaseExpected(::litert::TensorBuffer::CreateFromHostMemory(
+                             *env_, output_tensor_types[i],
+                             buffer->AsSpan().data(), buffer->AllocatedSize()),
+                         "Failed to create output LiteRT buffer"));
+      output_buffers.push_back(std::move(litert_buffer));
+    }
+
+    scoped_trace.AddStep("Run inference");
+#if BUILDFLAG(WEBNN_ENABLE_TFLITE_PROFILER)
+    profiler_.StartProfiling();
+#endif
+    auto status = model_->Run(input_buffers, output_buffers);
+#if BUILDFLAG(WEBNN_ENABLE_TFLITE_PROFILER)
+    profiler_.StopProfiling();
+#endif
+
+    if (!status) {
+      return base::unexpected(mojom::Error::New(
+          mojom::Error::Code::kUnknownError,
+          base::StrCat({"Failed to compute: ", status.Error().Message()})));
+    }
+
+    return base::ok();
+  }
+
+  void DoDispatch(
+      const std::vector<std::pair<std::string, TensorDescriptor>>& inputs,
+      const std::vector<std::pair<std::string, TensorDescriptor>>& outputs,
+      base::flat_map<int, raw_ref<const BufferContent>> buffers,
+      ScopedTrace scoped_trace) {
+    auto result = DoDispatchImpl(inputs, outputs, buffers, scoped_trace);
+    if (!result.has_value()) {
+      LOG(ERROR) << result.error()->message;
+    }
+  }
+
+  base::flat_map<int, raw_ref<const BufferContent>> CollectBuffersForDispatch(
+      const base::flat_map<
+          int,
+          scoped_refptr<QueueableResourceState<BufferContent>>>& inputs,
+      const base::flat_map<
+          int,
+          scoped_refptr<QueueableResourceState<BufferContent>>>& outputs) {
+    std::vector<std::pair<int, raw_ref<const BufferContent>>> buffers;
+    buffers.reserve(inputs.size() + outputs.size());
+
+    for (const auto& [tensor_idx, buffer] : inputs) {
+      buffers.emplace_back(tensor_idx, buffer->GetSharedLockedResource());
+    }
+    for (const auto& [tensor_idx, buffer] : outputs) {
+      buffers.emplace_back(tensor_idx, *buffer->GetExclusivelyLockedResource());
+    }
+
+    return buffers;
+  }
+
+  std::vector<mojom::Device> devices;
+
+  // Used for getting queueable input/output resources.
+  std::vector<std::pair<std::string, TensorDescriptor>>
+      input_name_to_descriptor;
+  std::vector<std::pair<std::string, TensorDescriptor>>
+      output_name_to_descriptor;
+
+  std::vector<::litert::RankedTensorType> input_tensor_types;
+  std::vector<::litert::RankedTensorType> output_tensor_types;
+
+  bool UseDawnWire() const { return webgpu_properties_.IsValid(); }
+
+ private:
+  base::expected<::litert::Options, mojom::ErrorPtr> GetCompilationOptions(
+      mojom::Device context_device,
+      bool is_xnnpack_enabled,
+      bool graph_requires_fp32_precision) {
+    auto options = ::litert::Options::Create();
+    if (!options) {
+      return base::unexpected(
+          mojom::Error::New(mojom::Error::Code::kUnknownError,
+                            base::StringPrintf("Unable to create Options: %s",
+                                               options.Error().Message())));
+    }
+    ::litert::HwAcceleratorSet accelerators(::litert::HwAccelerators::kNone);
+
+    // TODO(crbug.com/454732289): Support NPU accelerator.
+    if (context_device == mojom::Device::kNpu) {
+      accelerators |= ::litert::HwAccelerators::kNpu;
+    }
+
+    if (context_device == mojom::Device::kGpu) {
+      accelerators |= ::litert::HwAccelerators::kGpu;
+      auto gpu_options = options->GetGpuOptions();
+      if (!gpu_options) {
+        return base::unexpected(mojom::Error::New(
+            mojom::Error::Code::kUnknownError,
+            base::StringPrintf("Unable to create GPU Options: %s",
+                               gpu_options.Error().Message())));
+      }
+      gpu_options->SetPrecision(graph_requires_fp32_precision
+                                    ? ::litert::GpuOptions::Precision::kFp32
+                                    : ::litert::GpuOptions::Precision::kFp16);
+    }
+#if BUILDFLAG(BUILD_LITERT_WITH_XNNPACK)
+    accelerators |= ::litert::HwAccelerators::kCpu;
+    auto cpu_options = options->GetCpuOptions();
+    if (!cpu_options) {
+      return base::unexpected(mojom::Error::New(
+          mojom::Error::Code::kUnknownError,
+          base::StringPrintf("Unable to create CPU Options: %s",
+                             cpu_options.Error().Message())));
+    }
+    // Fall back to LiteRT's built-in optimized kernels when `xnn_initialize()`
+    // failed during `WebNNContextImpl` construction.
+    if (!is_xnnpack_enabled) {
+      cpu_options->SetKernelMode(kLiteRtCpuKernelModeBuiltin);
+    }
+#if BUILDFLAG(WEBNN_ENABLE_TFLITE_PROFILER)
+    // `SetXNNPackFlags` only applies to the XNNPACK kernel mode; skip it
+    // when falling back to LiteRT's built-in kernels.
+    if (is_xnnpack_enabled) {
+      cpu_options->SetXNNPackFlags(XNN_FLAG_BASIC_PROFILING);
+    }
+    auto runtime_options = options->GetRuntimeOptions();
+    if (!runtime_options) {
+      return base::unexpected(mojom::Error::New(
+          mojom::Error::Code::kUnknownError,
+          base::StringPrintf("Unable to create Runtime Options: %s",
+                             runtime_options.Error().Message())));
+    }
+    runtime_options->SetEnableProfiling(true);
+#endif
+    // On a lower-end system, use only one thread for 1 or 2 cores, use half
+    // of the cores for less than 8 cores. On systems with more cores, the max
+    // number threads is 4 to be used for inference.
+    int num_of_threads =
+        std::min(4, (base::SysInfo::NumberOfProcessors() + 1) / 2);
+    cpu_options->SetNumThreads(num_of_threads);
+#endif
+    auto set_accelerators_status =
+        options->SetHardwareAccelerators(accelerators);
+    if (!set_accelerators_status) {
+      return base::unexpected(mojom::Error::New(
+          mojom::Error::Code::kUnknownError,
+          base::StringPrintf("Unable to set HW Accelerators: %s",
+                             set_accelerators_status.Error().Message())));
+    }
+    return std::move(*options);
+  }
+
+  WebGpuContextProperties webgpu_properties_;
+  // C ABI adapter passed to LiteRT. The actual flush implementation and
+  // resource lifetime are owned by webgpu_properties.webgpu_flush.
+  LiteRtWebGpuFlushCallback litert_webgpu_flush_callback_;
+  std::unique_ptr<::litert::ScopedFile> weights_file_;
+  flatbuffers::DetachedBuffer model_content_;
+  std::optional<::litert::Environment> env_;
+  std::optional<::litert::CompiledModel> model_;
+
+#if BUILDFLAG(WEBNN_ENABLE_TFLITE_PROFILER)
+  ::litert::Profiler profiler_;
+#endif
+};
+
+// static
+void GraphImplLiteRt::CreateAndBuild(
+    mojom::GraphInfoPtr graph_info,
+    ComputeResourceInfo compute_resource_info,
+    base::flat_map<OperandId, std::unique_ptr<WebNNConstantOperand>>
+        constant_operands,
+    ContextImplLiteRt& context,
+    WebGpuContextProperties webgpu_properties,
+    base::File weights_file,
+    mojo::PendingRemote<mojom::WeightsFileSession> session,
+    WebNNContextImpl::CreateGraphImplCallback callback) {
+  base::flat_map<OperandId, base::flat_set<OperationId>>
+      operand_to_dependent_operations =
+          std::move(compute_resource_info.operand_to_dependent_operations);
+  base::flat_map<OperandId, OperationId> operand_to_producing_operation =
+      std::move(compute_resource_info.operand_to_producing_operation);
+
+  mojo::SharedRemote<mojom::WeightsFileSession> shared_session;
+  if (session.is_valid()) {
+    // Bind on the context sequence: `SharedRemote` needs a sequenced
+    // task runner. Once bound it can be sync-called from any thread.
+    shared_session =
+        mojo::SharedRemote<mojom::WeightsFileSession>(std::move(session));
+  }
+  // Keep a ref for `DidBuildGraph` to call `Finalize` after the build.
+  mojo::SharedRemote<mojom::WeightsFileSession> session_for_finalize =
+      shared_session;
+
+  base::ThreadPool::PostTaskAndReplyWithResult(
+      FROM_HERE,
+      {base::TaskPriority::USER_BLOCKING,
+       base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN, base::MayBlock(),
+       base::WithBaseSyncPrimitives()},
+      base::BindOnce(&GraphImplLiteRt::BuildGraphOnBackgroundThread,
+                     context.properties(), context.options().device,
+                     std::move(graph_info), std::move(constant_operands),
+                     std::move(operand_to_dependent_operations),
+                     std::move(operand_to_producing_operation),
+                     std::move(weights_file), std::move(shared_session)),
+      base::BindOnce(&GraphImplLiteRt::DidBuildGraph, context.AsWeakPtr(),
+                     std::move(compute_resource_info), context.options().device,
+                     context.IsXNNPackInitialized(),
+                     std::move(webgpu_properties),
+                     std::move(session_for_finalize), std::move(callback)));
+}
+
+// static
+base::expected<tflite::GraphBuilderTflite::Result, mojom::ErrorPtr>
+GraphImplLiteRt::BuildGraphOnBackgroundThread(
+    ContextProperties context_properties,
+    mojom::Device context_device,
+    mojom::GraphInfoPtr graph_info,
+    base::flat_map<OperandId, std::unique_ptr<WebNNConstantOperand>>
+        constant_operands,
+    base::flat_map<OperandId, base::flat_set<OperationId>>
+        operand_to_dependent_operations,
+    base::flat_map<OperandId, OperationId> operand_to_producing_operation,
+    base::File weights_file,
+    mojo::SharedRemote<mojom::WeightsFileSession> shared_session) {
+  ASSIGN_OR_RETURN(
+      tflite::GraphBuilderTflite::Result result,
+      tflite::GraphBuilderTflite::CreateAndBuild(
+          context_properties, context_device, *graph_info,
+          std::move(constant_operands),
+          std::move(operand_to_dependent_operations),
+          std::move(operand_to_producing_operation), std::move(weights_file),
+          std::move(shared_session),
+          /*use_external_buffer=*/true),
+      [](std::string error) {
+        return mojom::Error::New(mojom::Error::Code::kNotSupportedError,
+                                 std::move(error));
+      });
+  return result;
+}
+
+// static
+void GraphImplLiteRt::DidBuildGraph(
+    base::WeakPtr<WebNNContextImpl> context,
+    ComputeResourceInfo compute_resource_info,
+    mojom::Device context_device,
+    bool is_xnnpack_enabled,
+    WebGpuContextProperties webgpu_properties,
+    mojo::SharedRemote<mojom::WeightsFileSession> session,
+    WebNNContextImpl::CreateGraphImplCallback callback,
+    base::expected<tflite::GraphBuilderTflite::Result, mojom::ErrorPtr>
+        result) {
+  if (!context) {
+    return;
+  }
+  if (!result.has_value()) {
+    std::move(callback).Run(base::unexpected(std::move(result.error())));
+    return;
+  }
+
+  if (session) {
+    // Call `Finalize` on the session; move `session` into the reply closure so
+    // the pipe stays open until the browser replies, then drops on closure
+    // exit.
+    mojom::WeightsFileSession* session_ptr = session.get();
+    session_ptr->Finalize(base::BindOnce(
+        [](mojo::SharedRemote<mojom::WeightsFileSession> /*session_keepalive*/,
+           base::WeakPtr<WebNNContextImpl> context,
+           ComputeResourceInfo compute_resource_info,
+           mojom::Device context_device, bool is_xnnpack_enabled,
+           WebGpuContextProperties webgpu_properties,
+           WebNNContextImpl::CreateGraphImplCallback callback,
+           tflite::GraphBuilderTflite::Result build_result,
+           base::File sealed_file) {
+          if (!context) {
+            return;
+          }
+          if (!sealed_file.IsValid()) {
+            std::move(callback).Run(base::unexpected(
+                mojom::Error::New(mojom::Error::Code::kUnknownError,
+                                  "Failed to finalize weights file.")));
+            return;
+          }
+          build_result.weights_file = std::move(sealed_file);
+          DispatchCreateComputeResources(
+              std::move(context), std::move(compute_resource_info),
+              context_device, is_xnnpack_enabled, std::move(webgpu_properties),
+              std::move(callback), std::move(build_result));
+        },
+        std::move(session), std::move(context),
+        std::move(compute_resource_info), context_device, is_xnnpack_enabled,
+        std::move(webgpu_properties), std::move(callback), std::move(*result)));
+    return;
+  }
+
+  // In incognito mode (or when no weights file session is used), weights are
+  // written directly into an anonymous temporary in-memory file during graph
+  // building without a backing disk session IPC. We skip `session->Finalize`
+  // and proceed directly to compute resource creation.
+  DispatchCreateComputeResources(
+      std::move(context), std::move(compute_resource_info), context_device,
+      is_xnnpack_enabled, std::move(webgpu_properties), std::move(callback),
+      std::move(*result));
+}
+
+// static
+void GraphImplLiteRt::DispatchCreateComputeResources(
+    base::WeakPtr<WebNNContextImpl> context,
+    ComputeResourceInfo compute_resource_info,
+    mojom::Device context_device,
+    bool is_xnnpack_enabled,
+    WebGpuContextProperties webgpu_properties,
+    WebNNContextImpl::CreateGraphImplCallback callback,
+    tflite::GraphBuilderTflite::Result build_result) {
+  // For WebGPU execution in renderer, Dawn Wire client objects (`wgpu_device`,
+  // `wgpu_queue`) have strict single-thread affinity and must be accessed
+  // on the context's owning task runner (the sequence where the Dawn device
+  // and ContextImplLiteRt live).
+  // For CPU/NPU execution, compute resources and compilation do not depend on
+  // Dawn and can safely run on the asynchronous worker ThreadPool to avoid
+  // blocking the context sequence.
+  // TODO(crbug.com/524317888): Remove the background task runner and
+  // ResourceTask for non-GPU cases; a single task runner should be used for the
+  // entire MLContext.
+  scoped_refptr<base::TaskRunner> compute_task_runner =
+      webgpu_properties.IsValid()
+          ? context->owning_task_runner()
+          : base::ThreadPool::CreateTaskRunner(
+                {base::TaskPriority::USER_BLOCKING,
+                 base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN,
+                 base::MayBlock()});
+
+  compute_task_runner->PostTaskAndReplyWithResult(
+      FROM_HERE,
+      base::BindOnce(&GraphImplLiteRt::CreateComputeResources, context_device,
+                     is_xnnpack_enabled, std::move(webgpu_properties),
+                     std::move(build_result)),
+      base::BindOnce(&GraphImplLiteRt::DidCreateAndBuild, std::move(context),
+                     std::move(compute_resource_info), std::move(callback)));
+}
+
+// static
+base::expected<std::unique_ptr<GraphImplLiteRt::ComputeResources>,
+               mojom::ErrorPtr>
+GraphImplLiteRt::CreateComputeResources(
+    mojom::Device context_device,
+    bool is_xnnpack_enabled,
+    WebGpuContextProperties webgpu_properties,
+    tflite::GraphBuilderTflite::Result result) {
+  ASSIGN_OR_RETURN(std::unique_ptr<ComputeResources> compute_resources,
+                   ComputeResources::Create(context_device, is_xnnpack_enabled,
+                                            std::move(webgpu_properties),
+                                            std::move(result)));
+  return compute_resources;
+}
+
+void GraphImplLiteRt::DidCreateAndBuild(
+    base::WeakPtr<WebNNContextImpl> context,
+    ComputeResourceInfo compute_resource_info,
+    WebNNContextImpl::CreateGraphImplCallback callback,
+    base::expected<std::unique_ptr<ComputeResources>, mojom::ErrorPtr>
+        compute_resources) {
+  if (!context) {
+    return;
+  }
+
+  if (!compute_resources.has_value()) {
+    std::move(callback).Run(
+        base::unexpected(std::move(compute_resources.error())));
+    return;
+  }
+
+  auto devices = std::move((*compute_resources)->devices);
+  auto input_name_to_index =
+      std::move((*compute_resources)->input_name_to_descriptor);
+  auto output_name_to_index =
+      std::move((*compute_resources)->output_name_to_descriptor);
+  auto compute_resources_state =
+      base::MakeRefCounted<QueueableResourceState<ComputeResources>>(
+          std::move(*compute_resources));
+  std::move(callback).Run(base::MakeRefCounted<GraphImplLiteRt>(
+      std::move(compute_resource_info), std::move(input_name_to_index),
+      std::move(output_name_to_index), std::move(compute_resources_state),
+      *context, std::move(devices)));
+}
+
+GraphImplLiteRt::~GraphImplLiteRt() = default;
+
+GraphImplLiteRt::GraphImplLiteRt(
+    ComputeResourceInfo compute_resource_info,
+    std::vector<std::pair<std::string, tflite::TensorDescriptor>>
+        input_name_to_descriptor,
+    std::vector<std::pair<std::string, tflite::TensorDescriptor>>
+        output_name_to_descriptor,
+    scoped_refptr<QueueableResourceState<ComputeResources>>
+        compute_resources_state,
+    WebNNContextImpl& context,
+    std::vector<mojom::Device> devices)
+    : WebNNGraphImpl(context,
+                     std::move(compute_resource_info),
+                     std::move(devices)),
+      compute_resources_state_(std::move(compute_resources_state)),
+      input_name_to_descriptor_(std::move(input_name_to_descriptor)),
+      output_name_to_descriptor_(std::move(output_name_to_descriptor)) {}
+
+void GraphImplLiteRt::DispatchImpl(
+    const base::flat_map<std::string, scoped_refptr<WebNNTensorImpl>>
+        named_inputs,
+    const base::flat_map<std::string, scoped_refptr<WebNNTensorImpl>>
+        named_outputs) {
+  ScopedTrace scoped_trace("GraphImplLiteRt::DispatchImpl");
+
+  std::vector<
+      std::pair<int, scoped_refptr<QueueableResourceState<BufferContent>>>>
+      input_buffer_states, output_buffer_states;
+  input_buffer_states.reserve(input_name_to_descriptor_.size());
+  output_buffer_states.reserve(output_name_to_descriptor_.size());
+
+  // The caller guarantees that all expected tensors have been provided.
+  for (const auto& [name, descriptor] : input_name_to_descriptor_) {
+    auto* tflite_tensor =
+        static_cast<tflite::TensorImplTflite*>(named_inputs.at(name).get());
+    input_buffer_states.emplace_back(descriptor.tensor_index,
+                                     tflite_tensor->GetBufferState());
+  }
+
+  for (const auto& [name, descriptor] : output_name_to_descriptor_) {
+    auto* tflite_tensor =
+        static_cast<tflite::TensorImplTflite*>(named_outputs.at(name).get());
+    output_buffer_states.emplace_back(descriptor.tensor_index,
+                                      tflite_tensor->GetBufferState());
+  }
+
+  // Input tensors will be read from while the graph is executing, so lock them
+  // them as shared/read-only.
+  std::vector<scoped_refptr<QueueableResourceStateBase>> shared_resources;
+  shared_resources.reserve(input_name_to_descriptor_.size());
+  for (const auto& [name, buffer_state] : input_buffer_states) {
+    shared_resources.push_back(buffer_state);
+  }
+
+  // Exclusively reserve all output tensors - which will be written to - and
+  // this graph's compute resources while the graph is executing.
+  std::vector<scoped_refptr<QueueableResourceStateBase>> exclusive_resources;
+  // Extra +1 is for the compute resources.
+  exclusive_resources.reserve(1 + output_name_to_descriptor_.size());
+  exclusive_resources.push_back(compute_resources_state_);
+  for (const auto& [name, buffer_state] : output_buffer_states) {
+    exclusive_resources.push_back(buffer_state);
+  }
+
+  scoped_trace.AddStep("Acquire resources");
+  auto task = base::MakeRefCounted<ResourceTask>(
+      std::move(shared_resources), std::move(exclusive_resources),
+      base::BindOnce(
+          [](scoped_refptr<QueueableResourceState<ComputeResources>>
+                 compute_resources_state,
+             base::flat_map<
+                 int, scoped_refptr<QueueableResourceState<BufferContent>>>
+                 input_buffer_states,
+             base::flat_map<
+                 int, scoped_refptr<QueueableResourceState<BufferContent>>>
+                 output_buffer_states,
+             const std::vector<
+                 std::pair<std::string, tflite::TensorDescriptor>>&
+                 input_name_to_descriptor,
+             const std::vector<
+                 std::pair<std::string, tflite::TensorDescriptor>>&
+                 output_name_to_descriptor,
+             ScopedTrace scoped_trace, base::OnceClosure completion_closure) {
+            ComputeResources* raw_compute_resources =
+                compute_resources_state->GetExclusivelyLockedResource();
+
+            base::flat_map<int, raw_ref<const BufferContent>> buffers =
+                raw_compute_resources->CollectBuffersForDispatch(
+                    input_buffer_states, output_buffer_states);
+
+            // When executing in-renderer over WebGPU, Dawn Wire client objects
+            // (`wgpu_device`, command queues) are strictly sequence-bound and
+            // thread-unsafe. We must execute `DoDispatch` synchronously inline
+            // on the current calling sequence rather than offloading to an
+            // asynchronous background CPU worker pool.
+            if (raw_compute_resources->UseDawnWire()) {
+              raw_compute_resources->DoDispatch(
+                  input_name_to_descriptor, output_name_to_descriptor,
+                  std::move(buffers), std::move(scoped_trace));
+              std::move(completion_closure).Run();
+            } else {
+              // Compute tasks can take a significant amount of time, use the
+              // thread pool to avoid blocking the main thread.
+              base::ThreadPool::PostTaskAndReply(
+                  FROM_HERE,
+                  base::BindOnce(
+                      &ComputeResources::DoDispatch,
+                      // Unretained is safe here because a reference to
+                      // a `QueueableResourceState` corresponding to
+                      // `raw_compute_resources` is held by the
+                      // `ResourceTask` until `completion_closure` is run below.
+                      base::Unretained(raw_compute_resources),
+                      input_name_to_descriptor, output_name_to_descriptor,
+                      std::move(buffers), std::move(scoped_trace)),
+                  std::move(completion_closure));
+            }
+          },
+          compute_resources_state_, std::move(input_buffer_states),
+          std::move(output_buffer_states), input_name_to_descriptor_,
+          output_name_to_descriptor_, std::move(scoped_trace)));
+  task->Enqueue();
+}
+
+}  // namespace webnn::litert

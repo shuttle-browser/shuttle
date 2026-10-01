@@ -1,0 +1,214 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.toolbar.adaptive;
+
+import android.content.Context;
+import android.content.res.Configuration;
+import android.graphics.drawable.Drawable;
+import android.view.View;
+
+import org.chromium.base.Callback;
+import org.chromium.base.ResettersForTesting;
+import org.chromium.base.metrics.RecordUserAction;
+import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.lifecycle.ActivityLifecycleDispatcher;
+import org.chromium.chrome.browser.lifecycle.ConfigurationChangedObserver;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tabmodel.TabCreatorManager;
+import org.chromium.chrome.browser.tabmodel.TabCreatorUtil;
+import org.chromium.chrome.browser.tabstrip.StripVisibilityState;
+import org.chromium.chrome.browser.toolbar.R;
+import org.chromium.chrome.browser.toolbar.optional_button.BaseButtonDataProvider;
+import org.chromium.chrome.browser.toolbar.optional_button.ButtonData.ButtonSpec;
+import org.chromium.chrome.browser.user_education.IphCommandBuilder;
+import org.chromium.components.browser_ui.widget.highlight.ViewHighlighter.HighlightParams;
+import org.chromium.components.browser_ui.widget.highlight.ViewHighlighter.HighlightShape;
+import org.chromium.components.embedder_support.util.UrlUtilities;
+import org.chromium.components.feature_engagement.EventConstants;
+import org.chromium.components.feature_engagement.FeatureConstants;
+import org.chromium.components.feature_engagement.Tracker;
+import org.chromium.ui.base.DeviceFormFactor;
+
+import java.util.function.Supplier;
+
+/**
+ * Optional toolbar button which opens a new tab. May be used by {@link
+ * AdaptiveToolbarButtonController}.
+ */
+@NullMarked
+public class OptionalNewTabButtonController extends BaseButtonDataProvider
+        implements ConfigurationChangedObserver {
+    private static @Nullable TabCreatorManager sTabCreatorManagerForTesting;
+    private static @Nullable Supplier<@Nullable Tab> sActiveTabSupplierForTesting;
+
+    /** Context used for fetching resources and window size. */
+    private final Context mContext;
+
+    private final Supplier<@Nullable TabCreatorManager> mTabCreatorManagerSupplier;
+    private final Supplier<@Nullable Tracker> mTrackerSupplier;
+
+    private boolean mIsTablet;
+    private final ActivityLifecycleDispatcher mActivityLifecycleDispatcher;
+    private final MonotonicObservableSupplier<@StripVisibilityState Integer>
+            mTabStripVisibilitySupplier;
+    private final Callback<Integer> mOnTabStripVisibilityStateChanged =
+            this::onTabStripVisibilityStateChanged;
+
+    /**
+     * Creates {@code OptionalNewTabButtonController}.
+     *
+     * @param context The Context for retrieving resources, etc.
+     * @param buttonDrawable Drawable for the new tab button.
+     * @param activityLifecycleDispatcher Dispatcher for activity lifecycle events, e.g.
+     *     configuration changes.
+     * @param tabCreatorManagerSupplier Used to open new tabs.
+     * @param activeTabSupplier Used to access the current tab.
+     * @param trackerSupplier Supplier for the current profile tracker.
+     * @param tabStripVisibilitySupplier Supplier for the visibility of the tab strip.
+     */
+    public OptionalNewTabButtonController(
+            Context context,
+            Drawable buttonDrawable,
+            ActivityLifecycleDispatcher activityLifecycleDispatcher,
+            Supplier<@Nullable TabCreatorManager> tabCreatorManagerSupplier,
+            Supplier<@Nullable Tab> activeTabSupplier,
+            Supplier<@Nullable Tracker> trackerSupplier,
+            MonotonicObservableSupplier<@StripVisibilityState Integer> tabStripVisibilitySupplier) {
+        super(
+                activeTabSupplier,
+                /* modalDialogManager= */ null,
+                new ButtonSpec.Builder(
+                                buttonDrawable,
+                                context.getString(R.string.button_new_tab),
+                                /* supportsTinting= */ true)
+                        .setButtonVariant(AdaptiveToolbarButtonVariant.NEW_TAB)
+                        .setHoverTooltipTextId(R.string.new_tab_title)
+                        .build());
+        setShouldShowOnIncognitoTabs(true);
+
+        mContext = context;
+        mTabCreatorManagerSupplier = tabCreatorManagerSupplier;
+        mTrackerSupplier = trackerSupplier;
+        mActivityLifecycleDispatcher = activityLifecycleDispatcher;
+        mActivityLifecycleDispatcher.register(this);
+
+        mIsTablet = DeviceFormFactor.isNonMultiDisplayContextOnTablet(mContext);
+        mTabStripVisibilitySupplier = tabStripVisibilitySupplier;
+        if (ChromeFeatureList.sToolbarTabletResizeRefactor.isEnabled()) {
+            mTabStripVisibilitySupplier.addSyncObserverAndPostIfNonNull(
+                    mOnTabStripVisibilityStateChanged);
+        }
+    }
+
+    public static void setTabCreatorManagerForTesting(
+            @Nullable TabCreatorManager tabCreatorManager) {
+        sTabCreatorManagerForTesting = tabCreatorManager;
+        ResettersForTesting.register(() -> sTabCreatorManagerForTesting = null);
+    }
+
+    public static void setActiveTabSupplierForTesting(@Nullable Supplier<@Nullable Tab> supplier) {
+        sActiveTabSupplierForTesting = supplier;
+        ResettersForTesting.register(() -> sActiveTabSupplierForTesting = null);
+    }
+
+    @Override
+    public void onClick(View view) {
+        Tab activeTab = getActiveTab();
+        TabCreatorManager tabCreatorManager = getTabCreatorManager();
+        if (activeTab == null || tabCreatorManager == null) {
+            return;
+        }
+
+        boolean isIncognito = activeTab.isIncognito();
+        RecordUserAction.record("MobileTopToolbarOptionalButtonNewTab");
+        TabCreatorUtil.launchNtp(tabCreatorManager.getTabCreator(isIncognito));
+
+        Tracker tracker = mTrackerSupplier.get();
+        if (tracker != null) {
+            tracker.notifyEvent(EventConstants.ADAPTIVE_TOOLBAR_CUSTOMIZATION_NEW_TAB_OPENED);
+        }
+    }
+
+    private @Nullable TabCreatorManager getTabCreatorManager() {
+        if (sTabCreatorManagerForTesting != null) {
+            return sTabCreatorManagerForTesting;
+        }
+        return mTabCreatorManagerSupplier.get();
+    }
+
+    private @Nullable Tab getActiveTab() {
+        if (sActiveTabSupplierForTesting != null) {
+            return sActiveTabSupplierForTesting.get();
+        }
+        return mActiveTabSupplier.get();
+    }
+
+    private void onTabStripVisibilityStateChanged(@StripVisibilityState int tabStripVisibility) {
+        mButtonData.setCanShow(shouldShowButton(mActiveTabSupplier.get()));
+        notifyObservers(true);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration configuration) {
+        boolean isTablet = DeviceFormFactor.isNonMultiDisplayContextOnTablet(mContext);
+        if (mIsTablet == isTablet && !ChromeFeatureList.sToolbarTabletResizeRefactor.isEnabled()) {
+            return;
+        }
+        mIsTablet = isTablet;
+
+        mButtonData.setCanShow(shouldShowButton(mActiveTabSupplier.get()));
+    }
+
+    @Override
+    protected boolean shouldShowButton(@Nullable Tab tab) {
+        if (tab == null) return false;
+        if (!super.shouldShowButton(tab)) return false;
+        // On tablets, the new tab button can be shown when the tab strip is not visible, if the
+        // tablet toolbar resize refactor is enabled.
+        if (mIsTablet) {
+            if (!ChromeFeatureList.sToolbarTabletResizeRefactor.isEnabled()
+                    || mTabStripVisibilitySupplier.get() == null
+                    || mTabStripVisibilitySupplier.get() != StripVisibilityState.HIDDEN_BY_FADE) {
+                return false;
+            }
+        }
+        if (UrlUtilities.isNtpUrl(tab.getUrl())) return false;
+
+        return true;
+    }
+
+    /**
+     * Returns an IPH for this button. Only called once native is initialized and when {@code
+     * AdaptiveToolbarFeatures.isCustomizationEnabled()} is true.
+     *
+     * @param tab Current tab.
+     */
+    @Override
+    protected IphCommandBuilder getIphCommandBuilder(Tab tab) {
+        HighlightParams params = new HighlightParams(HighlightShape.CIRCLE);
+        params.setBoundsRespectPadding(true);
+        IphCommandBuilder iphCommandBuilder =
+                new IphCommandBuilder(
+                                tab.getContext().getResources(),
+                                FeatureConstants
+                                        .ADAPTIVE_BUTTON_IN_TOP_TOOLBAR_CUSTOMIZATION_NEW_TAB_FEATURE,
+                                /* stringId= */ R.string.adaptive_toolbar_button_new_tab_iph,
+                                /* accessibilityStringId= */ R.string
+                                        .adaptive_toolbar_button_new_tab_iph)
+                        .setHighlightParams(params);
+        return iphCommandBuilder;
+    }
+
+    @Override
+    public void destroy() {
+        if (mTabStripVisibilitySupplier != null) {
+            mTabStripVisibilitySupplier.removeObserver(mOnTabStripVisibilityStateChanged);
+        }
+        super.destroy();
+    }
+}

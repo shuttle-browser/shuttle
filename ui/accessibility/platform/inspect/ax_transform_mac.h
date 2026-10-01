@@ -1,0 +1,75 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef UI_ACCESSIBILITY_PLATFORM_INSPECT_AX_TRANSFORM_MAC_H_
+#define UI_ACCESSIBILITY_PLATFORM_INSPECT_AX_TRANSFORM_MAC_H_
+
+#import <Accessibility/Accessibility.h>
+#import <Cocoa/Cocoa.h>
+
+#include "base/component_export.h"
+#include "base/values.h"
+#include "ui/accessibility/platform/ax_platform_node_delegate.h"
+#include "ui/accessibility/platform/inspect/ax_tree_indexer_mac.h"
+
+namespace ui {
+
+// Returns the base::Value representation of the given NSObject.
+COMPONENT_EXPORT(AX_PLATFORM)
+base::Value AXNSObjectToBaseValue(id, const AXTreeIndexerMac*);
+
+// Returns the base::DictValue representation of the given AXCustomContent.
+base::DictValue AXCustomContentToBaseValue(AXCustomContent*);
+
+// Returns the base::Value representation of the given NSAccessibilityElement.
+COMPONENT_EXPORT(AX_PLATFORM)
+base::Value AXElementToBaseValue(id, const AXTreeIndexerMac*);
+
+// Returns the base::Value representation of the given AXPosition.
+base::Value AXPositionToBaseValue(const AXPlatformNodeDelegate::AXPosition&,
+                                  const AXTreeIndexerMac*);
+
+// Returns the base::Value representation of the given AXTextMarker.
+base::Value AXTextMarkerToBaseValue(id, const AXTreeIndexerMac*);
+
+// Returns the base::Value representation of the given AXTextMarkerRange.
+base::Value AXTextMarkerRangeToBaseValue(id, const AXTreeIndexerMac*);
+
+// Returns the base::DictValue representation of the given NSAttributedString.
+COMPONENT_EXPORT(AX_PLATFORM)
+base::Value NSAttributedStringToBaseValue(NSAttributedString*,
+                                          const AXTreeIndexerMac*);
+
+// Returns the base::Value representation of CGColorRef in the form CGColor(r,
+// g, b, a).
+COMPONENT_EXPORT(AX_PLATFORM)
+base::Value CGColorRefToBaseValue(CGColorRef color);
+
+// Returns the base::Value representation of nil.
+COMPONENT_EXPORT(AX_PLATFORM) base::Value AXNilToBaseValue();
+
+// Returns the base::ListValue representation of the given NSArray.
+COMPONENT_EXPORT(AX_PLATFORM)
+base::ListValue AXNSArrayToBaseValue(NSArray*, const AXTreeIndexerMac*);
+
+// Returns the base::DictValue representation of the given NSDictionary.
+COMPONENT_EXPORT(AX_PLATFORM)
+base::DictValue AXNSDictionaryToBaseValue(NSDictionary*,
+                                          const AXTreeIndexerMac*);
+
+// Returns the base::DictValue representation of the given NSPoint.
+COMPONENT_EXPORT(AX_PLATFORM) base::DictValue AXNSPointToBaseValue(NSPoint);
+
+// Returns the base::DictValue representation of the given NSSize.
+COMPONENT_EXPORT(AX_PLATFORM) base::DictValue AXNSSizeToBaseValue(NSSize);
+
+// Returns the base::DictValue representation of the given NSRect.
+COMPONENT_EXPORT(AX_PLATFORM) base::DictValue AXNSRectToBaseValue(NSRect);
+
+// Returns the base::DictValue representation of the given NSRange.
+COMPONENT_EXPORT(AX_PLATFORM) base::DictValue AXNSRangeToBaseValue(NSRange);
+
+}  // namespace ui
+
+#endif  // UI_ACCESSIBILITY_PLATFORM_INSPECT_AX_TRANSFORM_MAC_H_

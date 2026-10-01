@@ -1,0 +1,19 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("features") {
+  sources = [
+    "features.h",
+    "features.mm",
+  ]
+  deps = [ "//base" ]
+}
+
+source_set("pref_names") {
+  sources = [
+    "pref_names.h",
+    "pref_names.mm",
+  ]
+  deps = [ "//components/prefs" ]
+}

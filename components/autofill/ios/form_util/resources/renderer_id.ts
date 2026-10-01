@@ -1,0 +1,95 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+/**
+ * @fileoverview Contains functions for setting stable renderer IDs to html
+ * forms and fields.
+ */
+
+import {HAS_BEEN_PASSWORD_SYMBOL, ID_SYMBOL, UNIQUE_ID_ATTRIBUTE} from '//components/autofill/ios/form_util/resources/fill_constants.js';
+import {gCrWeb} from '//ios/web/public/js_messaging/resources/gcrweb.js';
+
+// Extends the Element to add the ability to access its properties
+// via the [] notation.
+declare interface IndexableElement extends Element {
+  [key: symbol]: number|boolean;
+}
+
+/**
+ * Maps elements using their unique ID.
+ * Since the autofill API is exclusive to the isolated content world,
+ * checking for its registration ensures this map is only created there.
+ */
+export function getElementMap(): Map<any, any>|null {
+  if (typeof document.__gCrElementMap === 'undefined') {
+    if (gCrWeb.hasRegisteredApi('autofill')) {
+      document.__gCrElementMap = new Map();
+    } else {
+      return null;
+    }
+  }
+  return document.__gCrElementMap;
+}
+
+/**
+ * Stores the next available ID for forms and fields. By convention, 0 means
+ * null, so we start at 1 and increment from there.
+ */
+if (typeof document[ID_SYMBOL] === 'undefined') {
+  document[ID_SYMBOL] = 1;
+}
+
+/**
+ * Returns true if the password fields tracking feature is enabled.
+ */
+function isTrackPasswordFieldsEnabled(): boolean {
+  if (!gCrWeb.hasRegisteredApi('autofill_form_features')) {
+    return false;
+  }
+  return gCrWeb.getRegisteredApi('autofill_form_features')
+      .getFunction('isAutofillTrackPasswordFieldsEnabled')();
+}
+
+/**
+ * @param element Form or form input element.
+ */
+// TODO: (crbug.com/466396701) Add assert to functions called from the page
+// content world.
+export function setUniqueIDIfNeeded(element: IndexableElement): void {
+  try {
+    if (typeof element[ID_SYMBOL] === 'undefined') {
+      const elementID = document[ID_SYMBOL]!++;
+      element[ID_SYMBOL] = elementID;
+
+      //  Store a copy of the ID in the DOM. Utility function getUniqueID will use
+      //  the DOM copy when running in the page content world.
+      element.setAttribute(UNIQUE_ID_ATTRIBUTE, elementID.toString());
+
+      const elementMap = getElementMap();
+      if (elementMap) {
+        elementMap.set(elementID, new WeakRef(element));
+
+        // Set a flag to indicate if this element is a password field.
+        if (element instanceof HTMLInputElement &&
+            element.type === 'password' && isTrackPasswordFieldsEnabled()) {
+          element[HAS_BEEN_PASSWORD_SYMBOL] = true;
+        }
+      }
+    }
+  } catch (e) {
+  }
+}
+
+/**
+ * @param id Unique ID.
+ * @return element Form or form input element.
+ */
+export function getElementByUniqueID(id: number): Element|null {
+  try {
+    const elementMap = getElementMap();
+    return elementMap ? elementMap.get(id).deref() : null;
+  } catch (e) {
+    return null;
+  }
+}

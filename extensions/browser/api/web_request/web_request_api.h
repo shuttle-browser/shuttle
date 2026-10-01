@@ -1,0 +1,526 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef EXTENSIONS_BROWSER_API_WEB_REQUEST_WEB_REQUEST_API_H_
+#define EXTENSIONS_BROWSER_API_WEB_REQUEST_WEB_REQUEST_API_H_
+
+#include <stdint.h>
+
+#include <list>
+#include <map>
+#include <optional>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "base/containers/unique_ptr_adapters.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/memory/weak_ptr.h"
+#include "base/strings/string_util.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
+#include "base/values.h"
+#include "content/public/browser/content_browser_client.h"
+#include "content/public/browser/global_request_id.h"
+#include "content/public/common/child_process_id.h"
+#include "extensions/browser/api/declarative_webrequest/request_stage.h"
+#include "extensions/browser/api/web_request/extension_web_request_event_router.h"
+#include "extensions/browser/api/web_request/web_request_event_router_factory.h"
+#include "extensions/browser/api/web_request/web_request_permissions.h"
+#include "extensions/browser/browser_context_keyed_api_factory.h"
+#include "extensions/browser/event_router.h"
+#include "extensions/browser/extension_api_frame_id_map.h"
+#include "extensions/browser/extension_function.h"
+#include "extensions/browser/extension_registry_observer.h"
+#include "extensions/buildflags/buildflags.h"
+#include "extensions/common/extension_id.h"
+#include "net/base/auth.h"
+#include "net/base/completion_once_callback.h"
+#include "net/http/http_request_headers.h"
+#include "services/metrics/public/cpp/ukm_source_id.h"
+#include "services/network/public/mojom/url_loader_factory.mojom.h"
+#include "services/network/public/mojom/websocket.mojom.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
+
+static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
+
+class GURL;
+
+namespace content {
+class BrowserContext;
+class RenderFrameHost;
+}  // namespace content
+
+namespace net {
+class AuthCredentials;
+class HttpResponseHeaders;
+class SiteForCookies;
+}  // namespace net
+
+namespace network {
+class URLLoaderFactoryBuilder;
+}  // namespace network
+
+namespace extensions {
+class WebViewGuest;
+
+// Support class for the WebRequest API. Lives on the UI thread. Most of the
+// work is done by ExtensionWebRequestEventRouter below. This class observes
+// extensions::EventRouter to deal with event listeners. There is one instance
+// per BrowserContext which is shared with incognito.
+class WebRequestAPI : public BrowserContextKeyedAPI,
+                      public EventRouter::Observer,
+                      public ExtensionRegistryObserver {
+ public:
+  // A callback used to asynchronously respond to an intercepted authentication
+  // request. If `should_cancel` is true the request will be cancelled.
+  // Otherwise any supplied `credentials` will be used. If no credentials are
+  // supplied, default browser behavior will follow (e.g. UI prompt for login).
+  using AuthRequestCallback = base::OnceCallback<void(
+      const std::optional<net::AuthCredentials>& credentials,
+      bool should_cancel)>;
+
+  // An interface which is held by ProxySet defined below.
+  class Proxy {
+   public:
+    virtual ~Proxy() = default;
+
+    // Asks the Proxy to handle an auth request on behalf of one of its known
+    // in-progress network requests. If the request will *not* be handled by
+    // the proxy, `callback` should be invoked with |std::nullopt|.
+    virtual void HandleAuthRequest(
+        const net::AuthChallengeInfo& auth_info,
+        scoped_refptr<net::HttpResponseHeaders> response_headers,
+        int32_t request_id,
+        AuthRequestCallback callback);
+
+    // Called when an extension that can execute declarativeNetRequest actions
+    // is unloaded, so orphaned DNR actions on current requests can be cleaned
+    // up.
+    virtual void OnDNRExtensionUnloaded(const Extension* extension) = 0;
+  };
+
+  // A ProxySet is a set of proxies used by WebRequestAPI: It holds Proxy
+  // instances, and removes all proxies when it is destroyed.
+  class ProxySet {
+   public:
+    ProxySet();
+
+    ProxySet(const ProxySet&) = delete;
+    ProxySet& operator=(const ProxySet&) = delete;
+
+    ~ProxySet();
+
+    // Add a Proxy.
+    void AddProxy(std::unique_ptr<Proxy> proxy);
+    // Remove a Proxy. The removed proxy is deleted upon this call.
+    void RemoveProxy(Proxy* proxy);
+
+    // Associates `proxy` with `id`. `proxy` must already be registered within
+    // this ProxySet.
+    //
+    // Each Proxy may be responsible for multiple requests, but any given
+    // request identified by `id` must be associated with only a single proxy.
+    void AssociateProxyWithRequestId(Proxy* proxy,
+                                     const content::GlobalRequestID& id);
+
+    // Disassociates `proxy` with `id`. `proxy` must already be registered
+    // within this ProxySet.
+    void DisassociateProxyWithRequestId(Proxy* proxy,
+                                        const content::GlobalRequestID& id);
+
+    Proxy* GetProxyFromRequestId(const content::GlobalRequestID& id);
+
+    void MaybeProxyAuthRequest(
+        const net::AuthChallengeInfo& auth_info,
+        scoped_refptr<net::HttpResponseHeaders> response_headers,
+        const content::GlobalRequestID& request_id,
+        AuthRequestCallback callback);
+
+    void OnDNRExtensionUnloaded(const Extension* extension);
+
+   private:
+    // Although these members are initialized on the UI thread, we expect at
+    // least one memory barrier before actually calling Generate in the IO
+    // thread, so we don't protect them with a lock.
+    std::set<std::unique_ptr<Proxy>, base::UniquePtrComparator> proxies_;
+
+    // Bi-directional mapping between request ID and Proxy for faster lookup.
+    std::map<content::GlobalRequestID, raw_ptr<Proxy, CtnExperimental>>
+        request_id_to_proxy_map_;
+    std::map<Proxy*, std::set<content::GlobalRequestID>>
+        proxy_to_request_id_map_;
+  };
+
+  class RequestIDGenerator {
+   public:
+    RequestIDGenerator();
+
+    RequestIDGenerator(const RequestIDGenerator&) = delete;
+    RequestIDGenerator& operator=(const RequestIDGenerator&) = delete;
+
+    ~RequestIDGenerator();
+
+    // Generates a WebRequest ID. If `SaveID()` was previously called with the
+    // same (`routing_id`, `request_id_from_client`) pair, returns the saved ID
+    // and removes the mapping. Otherwise, generates and returns a new unique
+    // ID.
+    uint64_t Generate(int32_t routing_id, int32_t request_id_from_client);
+
+    // Maps a WebRequest ID to a (`routing_id`, `request_id_from_client`) pair
+    // when a request is restarted. Callers must subsequently call `Generate()`
+    // with the same pair to reclaim the ID and prevent memory leaks.
+    void SaveID(int32_t routing_id,
+                int32_t request_id_from_client,
+                uint64_t request_id);
+
+    // Generates a non-zero request ID to forward to the network service for
+    // requests originating from child processes. Values are unique for the
+    // lifetime of this generator (until wrap-around).
+    int32_t GenerateNetworkRequestId();
+
+   private:
+    uint64_t id_ = 0;
+    int32_t network_request_id_ = 0;
+    std::map<std::pair<int32_t, int32_t>, uint64_t> saved_id_map_;
+  };
+
+  explicit WebRequestAPI(content::BrowserContext* context);
+
+  WebRequestAPI(const WebRequestAPI&) = delete;
+  WebRequestAPI& operator=(const WebRequestAPI&) = delete;
+
+  ~WebRequestAPI() override;
+
+  // BrowserContextKeyedAPI support:
+  static BrowserContextKeyedAPIFactory<WebRequestAPI>* GetFactoryInstance();
+  void Shutdown() override;
+
+  class TestObserver {
+   public:
+    TestObserver();
+    TestObserver(const TestObserver&) = delete;
+    TestObserver& operator=(const TestObserver&) = delete;
+    virtual ~TestObserver();
+
+    // Called when `ResetURLLoaderFactories()` has been performed.
+    virtual void OnDidResetURLLoaderFactories() {}
+  };
+
+  static void SetObserverForTest(TestObserver* observer);
+
+  // EventRouter::Observer overrides:
+  void OnListenerAdded(const EventListenerInfo& details) override;
+  void OnListenerRemoved(const EventListenerInfo& details) override;
+  void OnListenerUpdated(const EventListenerInfo& details) override;
+
+  // If any WebRequest event listeners are currently active for this
+  // BrowserContext, |*factory_request| is swapped out for a new request which
+  // proxies through an internal URLLoaderFactory. This supports lifetime
+  // observation and control on behalf of the WebRequest API.
+  // `frame` and `render_process_id` are the frame and render process id in
+  // which the URLLoaderFactory will be used. `frame` can be nullptr for
+  // factories proxied for service worker.
+  //
+  // `navigation_response_task_runner` is a task runner that may be non-null for
+  // navigation requests and can be used to run navigation request blocking
+  // tasks.
+  //
+  // Returns `true` if the URLLoaderFactory will be proxied; `false` otherwise.
+  bool MaybeProxyURLLoaderFactory(
+      content::BrowserContext* browser_context,
+      content::RenderFrameHost* frame,
+      int render_process_id,
+      content::ContentBrowserClient::URLLoaderFactoryType type,
+      std::optional<int64_t> navigation_id,
+      ukm::SourceIdObj ukm_source_id,
+      network::URLLoaderFactoryBuilder& factory_builder,
+      mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>*
+          header_client,
+      scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner,
+      const url::Origin& request_initiator = url::Origin());
+
+  // Any request which requires authentication to complete will be bounced
+  // through this method.
+  //
+  // If this returns `true`, `callback` will eventually be invoked on the UI
+  // thread.
+  bool MaybeProxyAuthRequest(
+      content::BrowserContext* browser_context,
+      const net::AuthChallengeInfo& auth_info,
+      scoped_refptr<net::HttpResponseHeaders> response_headers,
+      const content::GlobalRequestID& request_id,
+      bool is_request_for_navigation,
+      AuthRequestCallback callback,
+      WebViewGuest* web_view_guest);
+
+  // Starts proxying the connection with `factory`. This function can be called
+  // only when MayHaveProxies() returns true.
+  void ProxyWebSocket(
+      content::RenderFrameHost* frame,
+      content::ContentBrowserClient::WebSocketFactory factory,
+      const GURL& url,
+      const net::SiteForCookies& site_for_cookies,
+      const std::optional<std::string>& user_agent,
+      mojo::PendingRemote<network::mojom::WebSocketHandshakeClient>
+          handshake_client,
+      mojo::PendingRemote<network::mojom::TrustedHeaderClient> header_client);
+
+  // Starts proxying WebTransport handshake.
+  void ProxyWebTransport(
+      content::RenderProcessHost& render_process_host,
+      int frame_routing_id,
+      const GURL& url,
+      const url::Origin& initiator_origin,
+      mojo::PendingRemote<network::mojom::WebTransportHandshakeClient>
+          handshake_client,
+      content::ContentBrowserClient::WillCreateWebTransportCallback callback);
+
+  void ForceProxyForTesting();
+
+  // Returns true if any extension is installed that could potentially require
+  // network request proxying (e.g. extensions with 'webRequest',
+  // 'declarativeNetRequest', or 'webview' permissions). This is a global
+  // check; for frame-specific decisions, use `MayHaveProxiesForFrame()`.
+  bool MayHaveProxies() const;
+
+  // Returns true if any installed extension has the 'webRequest' or
+  // 'declarativeNetRequest' permission, or if proxying is forced for testing.
+  bool HasWebRequestOrDeclarativeWebRequestExtension() const;
+
+  // Returns true if any installed extension has the 'webRequest' permission,
+  // or if proxying is forced for testing.
+  bool HasWebRequestExtension() const;
+
+  // Returns true if requests from the given `render_frame_host` should be
+  // proxied by the WebRequestAPI. If kOptimizeWebRequestProxy is enabled,
+  // this performs a strict check based on whether the frame is a guest
+  // (WebView/Controlled Frame) or if global extensions are present.
+  bool MayHaveProxiesForFrame(
+      content::RenderFrameHost* render_frame_host) const;
+
+  bool HasExtraHeadersListenerForTesting();
+
+ private:
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  //
+  // LINT.IfChange(ProxyDecision)
+  enum class ProxyDecision {
+    // Proxy will not be used.
+    kWillNotProxy = 0,
+    // Proxy will be used for Extensions installed with webRequest API uses.
+    kWillProxyForExtension = 1,
+    // Proxy will be used for WebUI to use the webRequestInternal API.
+    kWillProxyForWebUI = 2,
+    // Proxy will be used for the <webview> permitted to use webRequest API.
+    kWillProxyForEmbedderWebView = 3,
+    // Proxy will be used for the telemetry service.
+    kWillProxyForTelemetry = 4,
+
+    kMaxValue = kWillProxyForTelemetry,
+  };
+  // LINT.ThenChange(/tools/metrics/histograms/metadata/extensions/enums.xml:WebRequestProxyDecision)
+
+  friend class BrowserContextKeyedAPIFactory<WebRequestAPI>;
+
+  // BrowserContextKeyedAPI support:
+  static const char* service_name() { return "WebRequestAPI"; }
+  static const bool kServiceRedirectedInIncognito = true;
+  static const bool kServiceIsNULLWhileTesting = true;
+
+  // Checks if |MayHaveProxies()| has changed, and resets URLLoaderFactories
+  // if so.
+  void UpdateMayHaveProxies();
+
+  void ResetURLLoaderFactories();
+
+  // ExtensionRegistryObserver implementation.
+  void OnExtensionLoaded(content::BrowserContext* browser_context,
+                         const Extension* extension) override;
+  void OnExtensionUnloaded(content::BrowserContext* browser_context,
+                           const Extension* extension,
+                           UnloadedExtensionReason reason) override;
+
+  // This a proxy API for the tasks that are posted. It is either called
+  // when the task is run and forwards to the corresponding member function
+  // in ExtensionWebRequestEventRouter, or not, if the owning BrowserContext
+  // goes away or the WeakPtr instance bound in the callback is invalidated.
+  // For per-context (parent event named) registrations, `filter`,
+  // `extra_info_spec`, and `web_view_instance_id` narrow the update to a
+  // single registration.
+  void UpdateActiveListener(
+      void* browser_context_id,
+      WebRequestEventRouter::ListenerUpdateType update_type,
+      const ExtensionId& extension_id,
+      const std::string& sub_event_name,
+      content::ChildProcessId render_process_id,
+      int worker_thread_id,
+      int64_t service_worker_version_id,
+      const std::optional<WebRequestEventRouter::RequestFilter>& filter,
+      std::optional<int> extra_info_spec,
+      std::optional<int> web_view_instance_id);
+
+  // This a proxy API for the tasks that are posted. It is either called
+  // when the task is run and forwards to the corresponding member function
+  // in ExtensionWebRequestEventRouter, or not, if the owning BrowserContext
+  // goes away or the WeakPtr instance bound in the callback is invalidated.
+  // For per-context (parent event named) registrations, `filter` and
+  // `extra_info_spec` narrow the removal to a single registration.
+  void RemoveLazyListener(
+      content::BrowserContext* browser_context,
+      const ExtensionId& extension_id,
+      const std::string& sub_event_name,
+      const std::optional<WebRequestEventRouter::RequestFilter>& filter,
+      std::optional<int> extra_info_spec);
+
+  // Internal implementation of MaybeProxyURLLoaderFactory that returns a
+  // detailed reason, ProxyDecision, to tell why the proxy is used.
+  ProxyDecision MaybeProxyURLLoaderFactoryInternal(
+      content::BrowserContext* browser_context,
+      content::RenderFrameHost* frame,
+      int render_process_id,
+      content::ContentBrowserClient::URLLoaderFactoryType type,
+      std::optional<int64_t> navigation_id,
+      ukm::SourceIdObj ukm_source_id,
+      network::URLLoaderFactoryBuilder& factory_builder,
+      mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>*
+          header_client,
+      scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner,
+      const url::Origin& request_initiator = url::Origin());
+
+  // Returns true if the given `render_frame_host` is a guest frame embedded by
+  // a WebUI that has access to the `webRequestInternal` API.
+  bool IsAvailableToWebViewEmbedderWebUIFrame(
+      content::RenderFrameHost* render_frame_host) const;
+
+  // Returns true if the given `render_frame_host` is a guest frame embedded by
+  // a web page that has access to the `webRequestInternal` API (e.g. Isolated
+  // Web Apps).
+  bool IsAvailableToWebViewEmbedderWebPageFrame(
+      content::RenderFrameHost* render_frame_host) const;
+
+  // Returns true if the given `render_frame_host` is a guest frame embedded by
+  // an extension that has a `webview` permission.
+  bool IsAvailableToWebViewEmbedderExtensionFrame(
+      content::RenderFrameHost* render_frame_host) const;
+
+  // Counts of active extensions for this BrowserContext that use kWebRequest*
+  // or  kDeclarative{Web|Net}Request* permissions.
+  int web_request_extension_count_ = 0;
+  int declarative_request_extension_count_ = 0;
+
+  // Set of extension IDs that have the 'webview' permission.
+  absl::flat_hash_set<ExtensionId> web_view_extension_ids_;
+
+  const raw_ptr<content::BrowserContext, DanglingUntriaged> browser_context_;
+
+  RequestIDGenerator request_id_generator_;
+  std::unique_ptr<ProxySet> proxies_;
+
+  // Stores the last result of |MayHaveProxies()|, so it can be used in
+  // |UpdateMayHaveProxies()|.
+  bool may_have_proxies_;
+
+  base::WeakPtrFactory<WebRequestAPI> weak_factory_{this};
+};
+
+template <>
+struct BrowserContextFactoryDependencies<WebRequestAPI> {
+  static void DeclareFactoryDependencies(
+      BrowserContextKeyedAPIFactory<WebRequestAPI>* factory) {
+    // Restore the default dependency on the ExtensionSystemFactory that is
+    // otherwise lost when explicitly specializing this template.
+    if (ExtensionsBrowserClient::Get()) {
+      factory->DependsOn(
+          ExtensionsBrowserClient::Get()->GetExtensionSystemFactory());
+    }
+
+    // Ensure the EventRouter outlives the WebRequestAPI so that proxies can
+    // safely broadcast network errors during profile teardown.
+    factory->DependsOn(WebRequestEventRouterFactory::GetInstance());
+  }
+};
+
+class WebRequestInternalFunction : public ExtensionFunction {
+ public:
+  WebRequestInternalFunction() = default;
+
+ protected:
+  ~WebRequestInternalFunction() override = default;
+
+  const ExtensionId& extension_id_safe() const {
+    return extension() ? extension_id() : base::EmptyString();
+  }
+};
+
+class WebRequestInternalAddEventListenerFunction
+    : public WebRequestInternalFunction {
+ public:
+  DECLARE_EXTENSION_FUNCTION("webRequestInternal.addEventListener",
+                             WEBREQUESTINTERNAL_ADDEVENTLISTENER)
+
+ protected:
+  ~WebRequestInternalAddEventListenerFunction() override = default;
+
+  // ExtensionFunction:
+  ResponseAction Run() override;
+};
+
+class WebRequestInternalEventHandledFunction
+    : public WebRequestInternalFunction {
+ public:
+  DECLARE_EXTENSION_FUNCTION("webRequestInternal.eventHandled",
+                             WEBREQUESTINTERNAL_EVENTHANDLED)
+
+ protected:
+  ~WebRequestInternalEventHandledFunction() override = default;
+
+ private:
+  // Routes a blocking response to the matching `WebRequestEventRouter` method,
+  // based on the `WebRequestPerContextEventDispatch` feature:
+  // - If disabled, the legacy per-listener sub-event name identifies the
+  //   responding listener; this method routes to `OnEventHandled()`.
+  // - If enabled, the per-context parent event name is used; this method
+  //   routes to `OnEventHandledForTarget()`, carrying the responding
+  //   listener's `extra_info_spec`.
+  // Used both on the success path and to unblock the request when a response
+  // failed validation.
+  void RouteEventResponse(
+      const std::string& event_name,
+      const std::string& sub_event_name,
+      uint64_t request_id,
+      int render_process_id,
+      int web_view_instance_id,
+      int extra_info_spec,
+      std::unique_ptr<WebRequestEventRouter::EventResponse> response);
+
+  // ExtensionFunction:
+  ResponseAction Run() override;
+};
+
+class WebRequestHandlerBehaviorChangedFunction
+    : public WebRequestInternalFunction {
+ public:
+  DECLARE_EXTENSION_FUNCTION("webRequest.handlerBehaviorChanged",
+                             WEBREQUEST_HANDLERBEHAVIORCHANGED)
+
+ protected:
+  ~WebRequestHandlerBehaviorChangedFunction() override = default;
+
+  // ExtensionFunction:
+  void GetQuotaLimitHeuristics(
+      extensions::QuotaLimitHeuristics* heuristics) const override;
+  // Handle quota exceeded gracefully: Only warn the user but still execute the
+  // function.
+  void OnQuotaExceeded(std::string error) override;
+  ResponseAction Run() override;
+};
+
+}  // namespace extensions
+
+#endif  // EXTENSIONS_BROWSER_API_WEB_REQUEST_WEB_REQUEST_API_H_

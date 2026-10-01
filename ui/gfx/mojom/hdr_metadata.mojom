@@ -1,0 +1,24 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module gfx.mojom;
+
+import "skia/public/mojom/hdr_metadata.mojom";
+import "skia/public/mojom/skcolorspace_primaries.mojom";
+
+// Mojo equivalent of gfx::HdrMetadataExtendedRange. No validation is done on
+// any of these values during deserialization.
+struct HdrMetadataExtendedRange {
+  float current_headroom;
+  float desired_headroom;
+};
+
+// Mojo equivalent of gfx::HDRMetadata.
+struct HDRMetadata {
+  skia.mojom.SkHdrMasteringDisplayColorVolume? mdcv;
+  skia.mojom.SkHdrContentLightLevelInformation? clli;
+  float? ndwl;
+  HdrMetadataExtendedRange? extended_range;
+  skia.mojom.SkHdrAdaptiveGlobalToneMap? agtm;
+};

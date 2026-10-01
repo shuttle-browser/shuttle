@@ -1,0 +1,71 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("ui") {
+  sources = [
+    "actor_overlay_glow_view.h",
+    "actor_overlay_glow_view.mm",
+    "actor_overlay_glow_view_data.h",
+    "actor_overlay_scrim_view.h",
+    "actor_overlay_scrim_view.mm",
+    "actor_overlay_view_controller.h",
+    "actor_overlay_view_controller.mm",
+    "actor_tool_chip_view.h",
+    "actor_tool_chip_view.mm",
+    "actuation_header_view.h",
+    "actuation_header_view.mm",
+    "actuation_task_button.h",
+    "actuation_task_button.mm",
+    "actuation_task_card_view.h",
+    "actuation_task_card_view.mm",
+    "actuation_worklog_accessory_view.h",
+    "actuation_worklog_accessory_view.mm",
+    "actuation_worklog_compact_view.h",
+    "actuation_worklog_compact_view.mm",
+    "actuation_worklog_constants.h",
+    "actuation_worklog_item_view.h",
+    "actuation_worklog_item_view.mm",
+    "actuation_worklog_view.h",
+    "actuation_worklog_view.mm",
+    "actuation_worklog_view_data.h",
+    "actuation_worklog_view_data.mm",
+  ]
+  deps = [
+    "//base",
+    "//ios/chrome/browser/app_bar/ui:constants",
+    "//ios/chrome/browser/shared/coordinator/scene/state",
+    "//ios/chrome/browser/shared/ui:buildflags",
+    "//ios/chrome/browser/shared/ui/elements/gradient",
+    "//ios/chrome/browser/shared/ui/symbols",
+    "//ios/chrome/browser/shared/ui/util",
+    "//ios/chrome/browser/shared/ui/util:util_swift",
+    "//ios/chrome/common/ui/colors",
+    "//ios/chrome/common/ui/util",
+    "//ui/base",
+  ]
+  frameworks = [ "UIKit.framework" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "actor_overlay_scrim_view_unittest.mm",
+    "actor_overlay_view_controller_unittest.mm",
+    "test/actor_ui_test_utils_unittest.mm",
+  ]
+  deps = [
+    ":ui",
+    "test:test_support",
+    "//ios/chrome/browser/app_bar/ui:constants",
+    "//ios/chrome/browser/shared/coordinator/layout_guide",
+    "//ios/chrome/browser/shared/coordinator/scene/state",
+    "//ios/chrome/browser/shared/coordinator/scene/state:test_support",
+    "//ios/chrome/browser/shared/ui/util",
+    "//ios/chrome/browser/shared/ui/util:util_swift",
+    "//ios/chrome/test:test_support",
+    "//ios/web/public/test",
+    "//testing/gtest",
+    "//ui/base",
+  ]
+}

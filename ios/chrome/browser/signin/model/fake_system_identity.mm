@@ -1,0 +1,208 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/signin/model/fake_system_identity.h"
+
+#import "base/apple/foundation_util.h"
+#import "base/strings/sys_string_conversions.h"
+#import "google_apis/gaia/gaia_id.h"
+
+namespace {
+NSString* const kCoderUserEmailKey = @"UserEmail";
+NSString* const kCoderRefreshTokenKey = @"RefreshToken";
+NSString* const kCoderGaiaIDKey = @"GaiaID";
+NSString* const kCoderUserFullNameKey = @"UserFullName";
+NSString* const kCoderUserGivenNameKey = @"UserGivenName";
+NSString* const kCoderHasValidAuthKey = @"HasValidAuth";
+}  // namespace
+
+@implementation FakeSystemIdentity {
+  GaiaId _gaiaID;
+}
+
++ (std::string)encodeIdentitiesToBase64:
+    (NSArray<FakeSystemIdentity*>*)identities {
+  NSError* error = nil;
+  NSData* data = [NSKeyedArchiver archivedDataWithRootObject:identities
+                                       requiringSecureCoding:NO
+                                                       error:&error];
+  CHECK(!error);
+  NSString* string = [data base64EncodedStringWithOptions:
+                               NSDataBase64EncodingEndLineWithCarriageReturn];
+  return base::SysNSStringToUTF8(string);
+}
+
++ (NSArray<FakeSystemIdentity*>*)identitiesFromBase64String:
+    (const std::string&)string {
+  NSData* data = [[NSData alloc]
+      initWithBase64EncodedString:base::SysUTF8ToNSString(string)
+                          options:NSDataBase64DecodingIgnoreUnknownCharacters];
+  NSSet* classes =
+      [NSSet setWithArray:@[ [NSArray class], [FakeSystemIdentity class] ]];
+  NSError* error = nil;
+  NSArray* identities = [NSKeyedUnarchiver unarchivedObjectOfClasses:classes
+                                                            fromData:data
+                                                               error:&error];
+  return identities;
+}
+
++ (instancetype)fakeIdentity1 {
+  return [FakeSystemIdentity identityWithEmail:@"foo1@gmail.com"];
+}
+
++ (instancetype)fakeIdentity2 {
+  return [FakeSystemIdentity identityWithEmail:@"foo2@gmail.com"];
+}
+
++ (instancetype)fakeIdentity3 {
+  return [FakeSystemIdentity identityWithEmail:@"foo3@gmail.com"];
+}
+
++ (instancetype)fakeIdentity4 {
+  return [FakeSystemIdentity identityWithEmail:@"foo4@gmail.com"];
+}
+
++ (instancetype)fakeManagedIdentity {
+  return [FakeSystemIdentity identityWithEmail:@"foo@google.com"];
+}
+
++ (instancetype)fakeIdentityWithMissingGivenName {
+  NSString* email = @"missing_given@gmail.com";
+  GaiaId gaiaID = GaiaId("missing_given_GAIAID");
+  return [[FakeSystemIdentity alloc] initWithEmail:email
+                                            gaiaID:gaiaID
+                                          fullName:@"Missing Given"
+                                         givenName:nil];
+}
+
++ (instancetype)fakeIdentityWithMissingNames {
+  NSString* email = @"missing_names@gmail.com";
+  GaiaId gaiaID = GaiaId("missing_names_GAIAID");
+  return [[FakeSystemIdentity alloc] initWithEmail:email
+                                            gaiaID:gaiaID
+                                          fullName:nil
+                                         givenName:nil];
+}
+
++ (instancetype)identityWithEmail:(NSString*)email {
+  // GaiaID cannot look like an email address.
+  NSString* withoutAtSign = [email stringByReplacingOccurrencesOfString:@"@"
+                                                             withString:@"_"];
+  GaiaId gaiaID =
+      GaiaId([NSString stringWithFormat:@"%@_GAIAID", withoutAtSign]);
+  return [[FakeSystemIdentity alloc] initWithEmail:email gaiaID:gaiaID];
+}
+
++ (instancetype)identityWithEmail:(NSString*)email
+                           gaiaID:(const GaiaId&)gaiaID {
+  return [[FakeSystemIdentity alloc] initWithEmail:email gaiaID:gaiaID];
+}
+
+- (instancetype)initWithEmail:(NSString*)email gaiaID:(const GaiaId&)gaiaID {
+  NSArray* split = [email componentsSeparatedByString:@"@"];
+  CHECK_EQ(split.count, 2ul);
+  return [self initWithEmail:email
+                      gaiaID:gaiaID
+                    fullName:split[0]
+                   givenName:split[0]];
+}
+
+- (instancetype)initWithEmail:(NSString*)email
+                       gaiaID:(const GaiaId&)gaiaID
+                     fullName:(NSString*)fullName
+                    givenName:(NSString*)givenName {
+  if ((self = [super init])) {
+    CHECK(!gaiaID.empty());
+    _gaiaID = gaiaID;
+    _userEmail = [email copy];
+    _userFullName = [fullName copy];
+    _userGivenName = [givenName copy];
+    _hasValidAuth = YES;
+  }
+  return self;
+}
+
+// Overrides the method to return YES so that the object will be passed by value
+// in EDO. This requires the object confirm to NSSecureCoding protocol.
+- (BOOL)edo_isEDOValueType {
+  return YES;
+}
+
+// Overrides `isEqual` and `hash` methods to compare objects by values. This is
+// useful when the object is passed by value between processes in EG2.
+- (BOOL)isEqual:(id)object {
+  if (self == object) {
+    return YES;
+  }
+
+  FakeSystemIdentity* other = base::apple::ObjCCast<FakeSystemIdentity>(object);
+  if (!other) {
+    return NO;
+  }
+
+  // This is similar to Google implementation of identity’s equality.
+  // TODO(crbug.com/517249368): Change the implementation of system identities
+  // and fake system identities so that the equality only considers gaiaId.
+  return _gaiaID == other.gaiaId &&
+         ((!_refreshToken && !other.refreshToken) ||
+          [_refreshToken isEqualToString:other.refreshToken]);
+}
+
+- (NSUInteger)hash {
+  return std::hash<std::string>()(_gaiaID.ToString());
+}
+
+#pragma mark - Properties
+
+- (GaiaId)gaiaId {
+  return _gaiaID;
+}
+
+- (NSString*)hashedGaiaID {
+  return [NSString stringWithFormat:@"%@_hash", _gaiaID.ToNSString()];
+}
+
+#pragma mark - NSSecureCoding
+
+- (void)encodeWithCoder:(NSCoder*)coder {
+  [coder encodeObject:_userEmail forKey:kCoderUserEmailKey];
+  [coder encodeObject:_gaiaID.ToNSString() forKey:kCoderGaiaIDKey];
+  [coder encodeObject:_userFullName forKey:kCoderUserFullNameKey];
+  [coder encodeObject:_userGivenName forKey:kCoderUserGivenNameKey];
+  [coder encodeBool:_hasValidAuth forKey:kCoderHasValidAuthKey];
+  [coder encodeObject:_refreshToken forKey:kCoderRefreshTokenKey];
+}
+
+- (id)initWithCoder:(NSCoder*)coder {
+  if ((self = [super init])) {
+    _userEmail = [coder decodeObjectOfClass:[NSString class]
+                                     forKey:kCoderUserEmailKey];
+    _gaiaID = GaiaId([coder decodeObjectOfClass:[NSString class]
+                                         forKey:kCoderGaiaIDKey]);
+    _userFullName = [coder decodeObjectOfClass:[NSString class]
+                                        forKey:kCoderUserFullNameKey];
+    _userGivenName = [coder decodeObjectOfClass:[NSString class]
+                                         forKey:kCoderUserGivenNameKey];
+    _hasValidAuth = [coder decodeBoolForKey:kCoderHasValidAuthKey];
+    _refreshToken = [coder decodeObjectOfClass:[NSString class]
+                                        forKey:kCoderRefreshTokenKey];
+  }
+  return self;
+}
+
++ (BOOL)supportsSecureCoding {
+  return YES;
+}
+
+#pragma mark - Debug
+
+- (NSString*)description {
+  return [NSString stringWithFormat:@"<%@: %p, GaiaID: \"%@\", name: \"%@\", "
+                                    @"email: \"%@\">",
+                                    self.class.description, self,
+                                    self.gaiaId.ToNSString(), self.userFullName,
+                                    self.userEmail];
+}
+
+@end

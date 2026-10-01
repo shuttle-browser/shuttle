@@ -1,0 +1,2800 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "net/cert/internal/trust_store_chrome.h"
+
+#include "base/containers/extend.h"
+#include "base/containers/fixed_flat_map.h"
+#include "base/containers/span.h"
+#include "base/containers/to_vector.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
+#include "base/strings/string_view_util.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/values_test_util.h"
+#include "crypto/sha2.h"
+#include "net/base/features.h"
+#include "net/cert/root_store_proto_lite/root_store.pb.h"
+#include "net/cert/root_store_proto_lite/signer_set.pb.h"
+#include "net/cert/x509_certificate.h"
+#include "net/cert/x509_util.h"
+#include "net/log/net_log_with_source.h"
+#include "net/log/test_net_log.h"
+#include "net/test/cert_builder.h"
+#include "net/test/cert_test_util.h"
+#include "net/test/chrome_root_store_test_util.h"
+#include "net/test/test_data_directory.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/boringssl/src/pki/cert_errors.h"
+#include "third_party/boringssl/src/pki/parsed_certificate.h"
+#include "third_party/boringssl/src/pki/signature_algorithm.h"
+#include "third_party/boringssl/src/pki/trust_store.h"
+
+namespace net {
+namespace {
+
+#include "net/data/ssl/chrome_root_store/chrome-root-store-test-data-inc.cc"
+#include "net/data/ssl/chrome_root_store/signer-set-inc.cc"
+
+std::shared_ptr<const bssl::ParsedCertificate> ToParsedCertificate(
+    bssl::UniquePtr<CRYPTO_BUFFER> cert_buffer) {
+  bssl::CertErrors errors;
+  std::shared_ptr<const bssl::ParsedCertificate> parsed =
+      bssl::ParsedCertificate::Create(
+          std::move(cert_buffer), x509_util::DefaultParseCertificateOptions(),
+          &errors);
+  EXPECT_TRUE(parsed) << errors.ToDebugString();
+  return parsed;
+}
+
+std::shared_ptr<const bssl::ParsedCertificate> ToParsedCertificate(
+    const X509Certificate& cert) {
+  return ToParsedCertificate(bssl::UpRef(cert.cert_buffer()));
+}
+
+scoped_refptr<X509Certificate> MakeTestRoot() {
+  auto builder = std::make_unique<CertBuilder>(nullptr, nullptr);
+  auto now = base::Time::Now();
+  builder->SetValidity(now - base::Days(1), now + base::Days(1));
+  builder->SetBasicConstraints(/*is_ca=*/true, /*path_len=*/-1);
+  builder->SetKeyUsages(
+      {bssl::KEY_USAGE_BIT_KEY_CERT_SIGN, bssl::KEY_USAGE_BIT_CRL_SIGN});
+  return builder->GetX509Certificate();
+}
+
+std::unique_ptr<bssl::CertPathBuilderResultPath> MakeTestPathForRootCert(
+    std::shared_ptr<const bssl::ParsedCertificate> cert) {
+  std::unique_ptr<bssl::CertPathBuilderResultPath> result =
+      std::make_unique<bssl::CertPathBuilderResultPath>();
+  // This is unrealistic to only contain the root cert, but it's good enough
+  // for the test.
+  result->certs = {cert};
+  result->last_cert_trust = bssl::CertificateTrust::ForTrustAnchor();
+  result->trust_anchor =
+      bssl::TrustAnchor(bssl::CertificateTrust::ForTrustAnchor());
+  return result;
+}
+
+std::unique_ptr<bssl::CertPathBuilderResultPath> MakeTestPathForMtcAnchor(
+    std::shared_ptr<const bssl::MTCAnchor> mtc_anchor) {
+  std::unique_ptr<bssl::CertPathBuilderResultPath> result =
+      std::make_unique<bssl::CertPathBuilderResultPath>();
+  // This is unrealistic to only contain the root cert, but it's good enough
+  // for the test.
+  result->certs = {mtc_anchor->AsCert()};
+  result->last_cert_trust = mtc_anchor->CertTrust();
+  result->trust_anchor = bssl::TrustAnchor(mtc_anchor->CertTrust(), mtc_anchor);
+  return result;
+}
+
+std::shared_ptr<const bssl::ParsedCertificate>
+FindParsedCertificateInCertificateList(const std::string& hash,
+                                       CertificateList certs) {
+  for (const auto& cert : certs) {
+    std::shared_ptr<const bssl::ParsedCertificate> parsed =
+        ToParsedCertificate(*cert);
+    std::string sha256_hex =
+        base::HexEncodeLower(crypto::SHA256Hash(parsed->der_cert()));
+    if (sha256_hex == hash) {
+      return parsed;
+    }
+  }
+  return nullptr;
+}
+
+TEST(TrustStoreChromeTestNoFixture, ContainsCert) {
+  std::unique_ptr<TrustStoreChrome> trust_store_chrome =
+      TrustStoreChrome::CreateTrustStoreForTesting(
+          base::span<const ChromeRootCertInfo>(kChromeRootCertList),
+          base::span(kEutlRootCertList),
+          /*version=*/1);
+
+  // Check every certificate in test_store.certs is included.
+  CertificateList certs = CreateCertificateListFromFile(
+      GetTestNetDataDirectory().AppendASCII("ssl/chrome_root_store"),
+      "test_store.certs", X509Certificate::FORMAT_PEM_CERT_SEQUENCE);
+  ASSERT_EQ(certs.size(), 7u);
+
+  size_t eutl_certs = 0;
+  for (const auto& cert : certs) {
+    std::shared_ptr<const bssl::ParsedCertificate> parsed =
+        ToParsedCertificate(*cert);
+    ASSERT_TRUE(trust_store_chrome->Contains(parsed.get()));
+    bssl::CertificateTrust trust = trust_store_chrome->GetTrust(parsed.get());
+    EXPECT_TRUE(trust.IsTrustAnchor());
+    // Count how many certs are on the EUTL.
+    bssl::CertificateTrust eutl_trust =
+        trust_store_chrome->eutl_trust_store()->GetTrust(parsed.get());
+    if (eutl_trust.type == bssl::CertificateTrustType::TRUSTED_ANCHOR) {
+      eutl_certs++;
+    }
+  }
+  // There should be one cert from test_store.certs on the EUTL.
+  EXPECT_EQ(eutl_certs, 1);
+
+  // Other certificates should not be included. Which test cert used here isn't
+  // important as long as it isn't one of the certificates in the
+  // chrome_root_store/test_store.certs.
+  scoped_refptr<X509Certificate> other_cert =
+      ImportCertFromFile(GetTestCertsDirectory(), "root_ca_cert.pem");
+  ASSERT_TRUE(other_cert);
+  std::shared_ptr<const bssl::ParsedCertificate> other_parsed =
+      ToParsedCertificate(*other_cert);
+  ASSERT_FALSE(trust_store_chrome->Contains(other_parsed.get()));
+  bssl::CertificateTrust trust =
+      trust_store_chrome->GetTrust(other_parsed.get());
+  EXPECT_EQ(bssl::CertificateTrust::ForUnspecified().ToDebugString(),
+            trust.ToDebugString());
+}
+
+TEST(TrustStoreChromeTestNoFixture, ContainsEutlCert) {
+  std::unique_ptr<TrustStoreChrome> trust_store_chrome =
+      TrustStoreChrome::CreateTrustStoreForTesting(
+          base::span<const ChromeRootCertInfo>(kChromeRootCertList),
+          base::span(kEutlRootCertList),
+          /*version=*/1);
+
+  const std::string kEUTLCertHash =
+      "f7c7e28fb5e79f314aaac6bbba932f15e1a72069f435d4c9e707f93ca1482ee3";
+
+  // Check that the EUTL certificate in test_additional.certs is included in
+  // the EUTL trust store, but not trusted for TLS connection establishment.
+  CertificateList certs = CreateCertificateListFromFile(
+      GetTestNetDataDirectory().AppendASCII("ssl/chrome_root_store"),
+      "test_additional.certs", X509Certificate::FORMAT_PEM_CERT_SEQUENCE);
+  std::shared_ptr<const bssl::ParsedCertificate> parsed =
+      FindParsedCertificateInCertificateList(kEUTLCertHash, certs);
+  ASSERT_TRUE(parsed);
+
+  bssl::CertificateTrust eutl_trust =
+      trust_store_chrome->eutl_trust_store()->GetTrust(parsed.get());
+  EXPECT_EQ(bssl::CertificateTrust::ForTrustAnchor().ToDebugString(),
+            eutl_trust.ToDebugString());
+
+  EXPECT_FALSE(trust_store_chrome->Contains(parsed.get()));
+  bssl::CertificateTrust trust = trust_store_chrome->GetTrust(parsed.get());
+  EXPECT_EQ(bssl::CertificateTrust::ForUnspecified().ToDebugString(),
+            trust.ToDebugString());
+
+  // Other certificates should not be included. Which test cert used here isn't
+  // important as long as it isn't one of the certificates in the
+  // chrome_root_store/test_store.certs.
+  scoped_refptr<X509Certificate> other_cert =
+      ImportCertFromFile(GetTestCertsDirectory(), "root_ca_cert.pem");
+  ASSERT_TRUE(other_cert);
+  std::shared_ptr<const bssl::ParsedCertificate> other_parsed =
+      ToParsedCertificate(*other_cert);
+  eutl_trust =
+      trust_store_chrome->eutl_trust_store()->GetTrust(other_parsed.get());
+  EXPECT_EQ(bssl::CertificateTrust::ForUnspecified().ToDebugString(),
+            eutl_trust.ToDebugString());
+}
+
+TEST(TrustStoreChromeTestNoFixture, Constraints) {
+  std::unique_ptr<TrustStoreChrome> trust_store_chrome =
+      TrustStoreChrome::CreateTrustStoreForTesting(
+          base::span<const ChromeRootCertInfo>(kChromeRootCertList),
+          base::span(kEutlRootCertList),
+          /*version=*/1);
+
+  const std::string kUnconstrainedCertHash =
+      "568d6905a2c88708a4b3025190edcfedb1974a606a13c6e5290fcb2ae63edab5";
+  const std::string kConstrainedCertHash =
+      "6b9c08e86eb0f767cfad65cd98b62149e5494a67f5845e7bd1ed019f27b86bd6";
+
+  std::shared_ptr<const bssl::ParsedCertificate> constrained_cert;
+  std::shared_ptr<const bssl::ParsedCertificate> unconstrained_cert;
+
+  CertificateList certs = CreateCertificateListFromFile(
+      GetTestNetDataDirectory().AppendASCII("ssl/chrome_root_store"),
+      "test_store.certs", X509Certificate::FORMAT_PEM_CERT_SEQUENCE);
+  for (const auto& cert : certs) {
+    std::shared_ptr<const bssl::ParsedCertificate> parsed =
+        ToParsedCertificate(*cert);
+    std::string sha256_hex =
+        base::HexEncodeLower(crypto::SHA256Hash(parsed->der_cert()));
+    if (sha256_hex == kConstrainedCertHash) {
+      constrained_cert = parsed;
+    } else if (sha256_hex == kUnconstrainedCertHash) {
+      unconstrained_cert = parsed;
+    }
+  }
+
+  ASSERT_TRUE(unconstrained_cert);
+  EXPECT_TRUE(trust_store_chrome
+                  ->GetConstraintsForCert(
+                      MakeTestPathForRootCert(unconstrained_cert).get())
+                  .empty());
+
+  ASSERT_TRUE(constrained_cert);
+  base::span<const ChromeRootCertConstraints> constraints =
+      trust_store_chrome->GetConstraintsForCert(
+          MakeTestPathForRootCert(constrained_cert).get());
+  ASSERT_EQ(constraints.size(), 3U);
+
+  EXPECT_FALSE(constraints[0].sct_all_after.has_value());
+  ASSERT_TRUE(constraints[0].sct_not_after.has_value());
+  EXPECT_EQ(
+      constraints[0].sct_not_after.value().InMillisecondsSinceUnixEpoch() /
+          1000,
+      0x5af);
+  EXPECT_FALSE(constraints[0].min_version.has_value());
+  ASSERT_TRUE(constraints[0].max_version_exclusive.has_value());
+  EXPECT_EQ(constraints[0].max_version_exclusive.value().components(),
+            std::vector<uint32_t>({125, 0, 6368, 2}));
+  EXPECT_THAT(constraints[0].permitted_dns_names,
+              testing::ElementsAre("foo.example.com", "bar.example.com"));
+
+  EXPECT_FALSE(constraints[1].sct_not_after.has_value());
+  ASSERT_TRUE(constraints[1].sct_all_after.has_value());
+  EXPECT_EQ(
+      constraints[1].sct_all_after.value().InMillisecondsSinceUnixEpoch() /
+          1000,
+      0x2579);
+  ASSERT_TRUE(constraints[1].min_version.has_value());
+  EXPECT_FALSE(constraints[1].max_version_exclusive.has_value());
+  EXPECT_EQ(constraints[1].min_version.value().components(),
+            std::vector<uint32_t>({128}));
+  EXPECT_TRUE(constraints[1].permitted_dns_names.empty());
+
+  EXPECT_THAT(constraints[2].permitted_dns_names,
+              testing::ElementsAre("baz.example.com"));
+
+  // Other certificates should return nullptr if they are queried for CRS
+  // constraints. Which test cert used here isn't important as long as it isn't
+  // one of the certificates in the chrome_root_store/test_store.certs.
+  scoped_refptr<X509Certificate> other_cert =
+      ImportCertFromFile(GetTestCertsDirectory(), "root_ca_cert.pem");
+  ASSERT_TRUE(other_cert);
+  std::shared_ptr<const bssl::ParsedCertificate> other_parsed =
+      ToParsedCertificate(*other_cert);
+  ASSERT_TRUE(other_parsed);
+  EXPECT_FALSE(trust_store_chrome->Contains(other_parsed.get()));
+  EXPECT_TRUE(
+      trust_store_chrome
+          ->GetConstraintsForCert(MakeTestPathForRootCert(other_parsed).get())
+          .empty());
+}
+
+TEST(TrustStoreChromeTestNoFixture, MTCConstraints) {
+  for (bool use_test_roots : {false, true}) {
+    SCOPED_TRACE(use_test_roots);
+
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeatureStates(
+        {{net::features::kTLSTrustAnchorIDs, true},
+         {net::features::kVerifyMTCs, true},
+         {net::features::kTestRootStore, use_test_roots}});
+
+    constexpr uint8_t kUnconstrainedAnchorCaId[] = {0x09, 0x01, 0x03, 0x04};
+    auto unconstrained_mtc_anchor = std::make_shared<const bssl::MTCAnchor>(
+        kUnconstrainedAnchorCaId, bssl::SignatureAlgorithm::kMldsa44,
+        x509_util::CreateCryptoBuffer(std::string_view("fake key")),
+        std::vector<bssl::LogTrustedSubtrees>());
+
+    constexpr uint8_t kConstrainedAnchorCaId[] = {0x08, 0x04, 0x05, 0x06};
+    auto constrained_mtc_anchor = std::make_shared<const bssl::MTCAnchor>(
+        kConstrainedAnchorCaId, bssl::SignatureAlgorithm::kMldsa44,
+        x509_util::CreateCryptoBuffer(std::string_view("fake key")),
+        std::vector<bssl::LogTrustedSubtrees>());
+
+    constexpr uint8_t kUntrustedConstrainedAnchorCaId[] = {0x06, 0x04, 0x05,
+                                                           0x06};
+    auto untrusted_constrained_mtc_anchor =
+        std::make_shared<const bssl::MTCAnchor>(
+            kUntrustedConstrainedAnchorCaId, bssl::SignatureAlgorithm::kMldsa44,
+            x509_util::CreateCryptoBuffer(std::string_view("fake key")),
+            std::vector<bssl::LogTrustedSubtrees>());
+
+    constexpr uint8_t kUnknownAnchorCaId[] = {0x07, 0x07, 0x07, 0x07};
+    auto unknown_mtc_anchor = std::make_shared<const bssl::MTCAnchor>(
+        kUnknownAnchorCaId, bssl::SignatureAlgorithm::kMldsa44,
+        x509_util::CreateCryptoBuffer(std::string_view("fake key")),
+        std::vector<bssl::LogTrustedSubtrees>());
+
+    chrome_root_store::SignerSet signer_set;
+    signer_set.mutable_timestamp()->set_seconds(1);
+
+    AddSignerSetIssuer(signer_set, kUnconstrainedAnchorCaId, "test operator",
+                       std::nullopt);
+
+    {
+      auto* issuer = AddSignerSetIssuer(signer_set, kConstrainedAnchorCaId,
+                                        "test operator", std::nullopt);
+
+      auto* proto_constraints = issuer->add_constraints();
+      proto_constraints->set_sct_not_after_sec(0x5AF);
+      proto_constraints->set_max_version_exclusive("125.0.6368.2");
+      proto_constraints->add_permitted_dns_names("foo.example.com");
+      proto_constraints->add_permitted_dns_names("bar.example.com");
+      proto_constraints->set_index_not_after(1234);
+      proto_constraints->set_index_after(987);
+      proto_constraints->set_validity_starts_not_after_sec(56781);
+      proto_constraints->set_validity_starts_after_sec(1236890);
+
+      proto_constraints = issuer->add_constraints();
+      proto_constraints->add_permitted_dns_names("mtc.example.com");
+    }
+
+    {
+      auto* issuer =
+          AddSignerSetIssuer(signer_set, kUntrustedConstrainedAnchorCaId,
+                             "test operator", std::nullopt);
+      issuer->set_realm(chrome_root_store::REALM_UNTRUSTED_VALIDATION_ONLY);
+
+      auto* proto_constraints = issuer->add_constraints();
+      proto_constraints->add_permitted_dns_names("example.com");
+    }
+
+    ChromeRootStoreData root_store_data = ChromeRootStoreData::CreateForTesting(
+        kChromeRootCertList, kEutlRootCertList, /*version=*/1);
+    std::optional<ChromeRootStoreSignerSet> signer_set_data =
+        ChromeRootStoreSignerSet::CreateFromProto(signer_set);
+    ASSERT_TRUE(signer_set_data);
+    root_store_data.SetSignerSet(*signer_set_data);
+
+    TrustStoreChrome trust_store_chrome(&root_store_data, nullptr);
+
+    // Unconstrained MTC anchor should return empty constraints span.
+    EXPECT_TRUE(
+        trust_store_chrome
+            .GetConstraintsForCert(
+                MakeTestPathForMtcAnchor(unconstrained_mtc_anchor).get())
+            .empty());
+
+    {
+      // Constrained MTC anchor should return constraints matching those in
+      // test_store.textproto.
+      base::span<const ChromeRootCertConstraints> constraints =
+          trust_store_chrome.GetConstraintsForCert(
+              MakeTestPathForMtcAnchor(constrained_mtc_anchor).get());
+      ASSERT_EQ(constraints.size(), 2U);
+
+      EXPECT_FALSE(constraints[0].sct_all_after.has_value());
+      ASSERT_TRUE(constraints[0].sct_not_after.has_value());
+      EXPECT_EQ(
+          constraints[0].sct_not_after.value().InMillisecondsSinceUnixEpoch() /
+              1000,
+          0x5af);
+      EXPECT_FALSE(constraints[0].min_version.has_value());
+      ASSERT_TRUE(constraints[0].max_version_exclusive.has_value());
+      EXPECT_EQ(constraints[0].max_version_exclusive.value().components(),
+                std::vector<uint32_t>({125, 0, 6368, 2}));
+      EXPECT_THAT(constraints[0].permitted_dns_names,
+                  testing::ElementsAre("foo.example.com", "bar.example.com"));
+      EXPECT_EQ(constraints[0].index_not_after, 1234U);
+      EXPECT_EQ(constraints[0].index_after, 987U);
+
+      ASSERT_TRUE(constraints[0].validity_starts_not_after.has_value());
+      EXPECT_EQ(constraints[0]
+                        .validity_starts_not_after.value()
+                        .InMillisecondsSinceUnixEpoch() /
+                    1000,
+                56781);
+
+      ASSERT_TRUE(constraints[0].validity_starts_after.has_value());
+      EXPECT_EQ(constraints[0]
+                        .validity_starts_after.value()
+                        .InMillisecondsSinceUnixEpoch() /
+                    1000,
+                1236890);
+
+      EXPECT_THAT(constraints[1].permitted_dns_names,
+                  testing::ElementsAre("mtc.example.com"));
+    }
+
+    if (use_test_roots) {
+      // Untrusted MTC anchor should return constraints when kTestRootStore flag
+      // is enabled.
+      base::span<const ChromeRootCertConstraints> constraints =
+          trust_store_chrome.GetConstraintsForCert(
+              MakeTestPathForMtcAnchor(untrusted_constrained_mtc_anchor).get());
+      ASSERT_EQ(constraints.size(), 1U);
+      EXPECT_THAT(constraints[0].permitted_dns_names,
+                  testing::ElementsAre("example.com"));
+    } else {
+      // Untrusted MTC anchor should return empty constraints span when
+      // kTestRootStore is disabled.
+      EXPECT_TRUE(
+          trust_store_chrome
+              .GetConstraintsForCert(
+                  MakeTestPathForMtcAnchor(untrusted_constrained_mtc_anchor)
+                      .get())
+              .empty());
+    }
+
+    // Other MTC anchor that doesn't match anything in test_store.textproto
+    // should also return empty span. (Currently the chrome root store is the
+    // only source of MTC anchors so this shouldn't be possible to hit in
+    // practice, but supporting non-CRS MTC anchors may be allowed some day.)
+    EXPECT_TRUE(trust_store_chrome
+                    .GetConstraintsForCert(
+                        MakeTestPathForMtcAnchor(unknown_mtc_anchor).get())
+                    .empty());
+  }
+}
+
+// TODO(crbug.com/452986179): test MTC anchor constraint overrides once
+// implemented.
+
+TEST(TrustStoreChromeTestNoFixture, EnforceAnchorExpiryAndConstraints) {
+  std::unique_ptr<TrustStoreChrome> trust_store_chrome =
+      TrustStoreChrome::CreateTrustStoreForTesting(
+          base::span<const ChromeRootCertInfo>(kChromeRootCertList),
+          base::span(kEutlRootCertList),
+          /*version=*/1);
+
+  std::map<std::string /* SHA-256 hash of certificate */,
+           bssl::CertificateTrust>
+      tests = {
+          {"568d6905a2c88708a4b3025190edcfedb1974a606a13c6e5290fcb2ae63edab5",
+           bssl::CertificateTrust::ForTrustAnchor()},
+          {"d92e93252eabca950870b94331990963a2dd5db96d833c82b08e41afd1719178",
+           bssl::CertificateTrust::ForTrustAnchor().WithEnforceAnchorExpiry()},
+          {"68b9c761219a5b1f0131784474665db61bbdb109e00f05ca9f74244ee5f5f52b",
+           bssl::CertificateTrust::ForTrustAnchor()
+               .WithEnforceAnchorConstraints()},
+          {"687fa451382278fff0c8b11f8d43d576671c6eb2bceab413fb83d965d06d2ff2",
+           bssl::CertificateTrust::ForTrustAnchor()
+               .WithEnforceAnchorExpiry()
+               .WithEnforceAnchorConstraints()},
+      };
+
+  CertificateList certs = CreateCertificateListFromFile(
+      GetTestNetDataDirectory().AppendASCII("ssl/chrome_root_store"),
+      "test_store.certs", X509Certificate::FORMAT_PEM_CERT_SEQUENCE);
+
+  for (const auto& test : tests) {
+    std::shared_ptr<const bssl::ParsedCertificate> cert =
+        FindParsedCertificateInCertificateList(test.first, certs);
+    bssl::CertificateTrust trust = trust_store_chrome->GetTrust(cert.get());
+    EXPECT_TRUE(trust.IsTrustAnchor());
+    EXPECT_EQ(trust.enforce_anchor_expiry, test.second.enforce_anchor_expiry);
+    EXPECT_EQ(trust.enforce_anchor_constraints,
+              test.second.enforce_anchor_constraints);
+  }
+}
+
+TEST(TrustStoreChromeTestNoFixture,
+     EnforceAnchorExpiryAndConstraintsFromProto) {
+  for (bool enforce_anchor_expiry : {false, true}) {
+    for (bool enforce_anchor_constraints : {false, true}) {
+      scoped_refptr<X509Certificate> root = MakeTestRoot();
+      chrome_root_store::RootStore root_store;
+      chrome_root_store::TrustAnchor* anchor = root_store.add_trust_anchors();
+      anchor->set_der(
+          net::x509_util::CryptoBufferAsStringPiece(root->cert_buffer()));
+      anchor->set_enforce_anchor_expiry(enforce_anchor_expiry);
+      anchor->set_enforce_anchor_constraints(enforce_anchor_constraints);
+
+      std::optional<ChromeRootStoreData> root_store_data =
+          ChromeRootStoreData::CreateFromRootStoreProto(root_store);
+      ASSERT_TRUE(root_store_data);
+      TrustStoreChrome trust_store_chrome(&root_store_data.value(),
+                                          /*mtc_metadata=*/nullptr);
+
+      std::shared_ptr<const bssl::ParsedCertificate> parsed =
+          ToParsedCertificate(*root);
+      bssl::CertificateTrust trust = trust_store_chrome.GetTrust(parsed.get());
+      EXPECT_TRUE(trust.IsTrustAnchor());
+      EXPECT_EQ(trust.enforce_anchor_expiry, enforce_anchor_expiry);
+      EXPECT_EQ(trust.enforce_anchor_constraints, enforce_anchor_constraints);
+    }
+  }
+}
+
+// Tests that, for a compiled-in root store, certificates in |additional_certs|
+// are compiled in as trust anchors when indicated, with associated trust anchor
+// IDs when present, with |enforce_anchor_expiry| and
+// |enforce_anchor_constraints| flags enforced.
+TEST(TrustStoreChromeTestNoFixture,
+     LoadCompiledTrustAnchorsWithTrustAnchorIDs) {
+  std::unique_ptr<TrustStoreChrome> trust_store_chrome =
+      TrustStoreChrome::CreateTrustStoreForTesting(
+          base::span<const ChromeRootCertInfo>(kChromeRootCertList),
+          base::span(kEutlRootCertList),
+          /*version=*/1);
+
+  // Map of hex-encoded SHA-256 hashes of |trust_anchors| certificates that have
+  // associated Trust Anchor IDs to their expected CertificateTrust setting.
+  std::map<std::string, bssl::CertificateTrust>
+      expected_trust_anchor_trust_by_hash = {
+          {"687fa451382278fff0c8b11f8d43d576671c6eb2bceab413fb83d965d06d2ff2",
+           bssl::CertificateTrust::ForTrustAnchor()
+               .WithEnforceAnchorExpiry()
+               .WithEnforceAnchorConstraints()},
+      };
+
+  // Map of hex-encoded SHA-256 hashes of |additional_certs| certificates that
+  // are marked as trust anchors, and have associated Trust Anchor IDs, to their
+  // expected CertificateTrust setting.
+  std::map<std::string, bssl::CertificateTrust>
+      expected_additional_certificate_trust_by_hash = {
+          {"72a34ac2b424aed3f6b0b04755b88cc027dccc806fddb22b4cd7c47773973ec0",
+           bssl::CertificateTrust::ForTrustAnchor().WithEnforceAnchorExpiry()},
+          {"e6fe22bf45e4f0d3b85c59e02c0f495418e1eb8d3210f788d48cd5e1cb547cd4",
+           bssl::CertificateTrust::ForTrustAnchor()
+               .WithEnforceAnchorConstraints()},
+          {"973a41276ffd01e027a2aad49e34c37846d3e976ff6a620b6712e33832041aa6",
+           bssl::CertificateTrust::ForTrustAnchor()
+               .WithEnforceAnchorExpiry()
+               .WithEnforceAnchorConstraints()}};
+
+  CertificateList trust_anchor_certs = CreateCertificateListFromFile(
+      GetTestNetDataDirectory().AppendASCII("ssl/chrome_root_store"),
+      "test_store.certs", X509Certificate::FORMAT_PEM_CERT_SEQUENCE);
+
+  CertificateList additional_certs = CreateCertificateListFromFile(
+      GetTestNetDataDirectory().AppendASCII("ssl/chrome_root_store"),
+      "test_additional.certs", X509Certificate::FORMAT_PEM_CERT_SEQUENCE);
+
+  size_t certs_with_tai = 0;
+  for (const auto& cert : kChromeRootCertList) {
+    if (cert.trust_anchor_id.empty()) {
+      continue;
+    }
+
+    certs_with_tai++;
+    std::string hash =
+        base::HexEncodeLower(crypto::SHA256Hash(cert.root_cert_der));
+    bool is_additional_cert =
+        expected_additional_certificate_trust_by_hash.contains(hash);
+    bssl::CertificateTrust expected_trust =
+        is_additional_cert ? expected_additional_certificate_trust_by_hash[hash]
+                           : expected_trust_anchor_trust_by_hash[hash];
+
+    std::shared_ptr<const bssl::ParsedCertificate> parsed_cert =
+        is_additional_cert
+            ? FindParsedCertificateInCertificateList(hash, additional_certs)
+            : FindParsedCertificateInCertificateList(hash, trust_anchor_certs);
+    ASSERT_TRUE(parsed_cert);
+
+    // Check that the certificate is present in the trust store as an anchor,
+    // with the expected settings for expiry and X.509 constraints.
+    // TODO(crbug.com/414630735): check that the correct Trust Anchor ID is
+    // stored in TrustStoreChrome, once implemented. (Right now TrustStoreChrome
+    // throws out Trust Anchor IDs and doesn't keep them around.)
+    bssl::CertificateTrust trust =
+        trust_store_chrome->GetTrust(parsed_cert.get());
+    EXPECT_TRUE(trust.IsTrustAnchor());
+    EXPECT_EQ(trust.enforce_anchor_expiry,
+              expected_trust.enforce_anchor_expiry);
+    EXPECT_EQ(trust.enforce_anchor_constraints,
+              expected_trust.enforce_anchor_constraints);
+  }
+  EXPECT_EQ(4u, certs_with_tai);
+}
+
+TEST(TrustStoreChromeTestNoFixture, CrsRootIds) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      {{features::kTLSTrustAnchorIDs, features::kVerifyMTCs}}, {});
+
+  std::map<std::string /* SHA-256 hash of certificate */,
+           std::optional<int32_t>>
+      tests = {
+          // basic trust_anchor case:
+          {"568d6905a2c88708a4b3025190edcfedb1974a606a13c6e5290fcb2ae63edab5",
+           4},
+          // trust_anchor that also is an eutl:
+          {"55926084ec963a64b96e2abe01ce0ba86a64fbfebcc7aab5afc155b37fd76066",
+           3},
+          // trust_anchor with constraints:
+          {"6b9c08e86eb0f767cfad65cd98b62149e5494a67f5845e7bd1ed019f27b86bd6",
+           7},
+          // trust_anchor without crs_root_id:
+          {"68b9c761219a5b1f0131784474665db61bbdb109e00f05ca9f74244ee5f5f52b",
+           std::nullopt},
+          // trust_anchor and trusted additional_cert with same crs_root_id:
+          {"d947432abde7b7fa90fc2e6b59101b1280e0e1c7e4e40fa3c6887fff57a7f4cf",
+           21},
+          {"e6fe22bf45e4f0d3b85c59e02c0f495418e1eb8d3210f788d48cd5e1cb547cd4",
+           21},
+          // trusted additional_cert without crs_root_id:
+          {"973a41276ffd01e027a2aad49e34c37846d3e976ff6a620b6712e33832041aa6",
+           std::nullopt},
+          // additional cert that is untrusted and not in eutl with an id gets
+          // discarded:
+          {"7e0e16c0056f41a9f4c61f571503c3bcf079e2bddb228bf2219ac31200496b5c",
+           std::nullopt},
+      };
+  // Note: MTC root ids are only tested in the CrsRootIdsFromProto test. The
+  // SignerSet loading path for compiled-in and from proto are nearly
+  // identical, so doesn't seem worth having the extra complication of being
+  // able to use a separate set of compiled-in test data.
+
+  ChromeRootStoreData root_store_data = ChromeRootStoreData::CreateForTesting(
+      kChromeRootCertList, kEutlRootCertList, /*version=*/1);
+  TrustStoreChrome trust_store_chrome(&root_store_data, nullptr);
+
+  CertificateList certs = CreateCertificateListFromFile(
+      GetTestNetDataDirectory().AppendASCII("ssl/chrome_root_store"),
+      "test_store.certs", X509Certificate::FORMAT_PEM_CERT_SEQUENCE);
+  base::Extend(
+      certs,
+      CreateCertificateListFromFile(
+          GetTestNetDataDirectory().AppendASCII("ssl/chrome_root_store"),
+          "test_additional.certs", X509Certificate::FORMAT_PEM_CERT_SEQUENCE));
+
+  for (const auto& test : tests) {
+    std::shared_ptr<const bssl::ParsedCertificate> cert =
+        FindParsedCertificateInCertificateList(test.first, certs);
+
+    EXPECT_EQ(test.second, trust_store_chrome.GetCrsRootIdForCert(
+                               MakeTestPathForRootCert(cert).get()));
+  }
+}
+
+TEST(TrustStoreChromeTestNoFixture, CrsRootIdsFromProto) {
+  for (bool use_test_roots : {false, true}) {
+    SCOPED_TRACE(use_test_roots);
+
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeatureStates(
+        {{net::features::kTLSTrustAnchorIDs, true},
+         {net::features::kVerifyMTCs, true},
+         {net::features::kTestRootStore, use_test_roots}});
+
+    chrome_root_store::RootStore root_store;
+    chrome_root_store::SignerSet signer_set;
+
+    scoped_refptr<X509Certificate> root_with_id_5 = MakeTestRoot();
+    {
+      chrome_root_store::TrustAnchor* anchor = root_store.add_trust_anchors();
+      anchor->set_der(net::x509_util::CryptoBufferAsStringPiece(
+          root_with_id_5->cert_buffer()));
+      anchor->set_crs_root_id(5);
+    }
+
+    scoped_refptr<X509Certificate> root_with_no_id = MakeTestRoot();
+    {
+      chrome_root_store::TrustAnchor* anchor = root_store.add_trust_anchors();
+      anchor->set_der(net::x509_util::CryptoBufferAsStringPiece(
+          root_with_no_id->cert_buffer()));
+    }
+
+    scoped_refptr<X509Certificate> trusted_additional_cert_with_id_7 =
+        MakeTestRoot();
+    {
+      chrome_root_store::TrustAnchor* anchor =
+          root_store.add_additional_certs();
+      anchor->set_der(net::x509_util::CryptoBufferAsStringPiece(
+          trusted_additional_cert_with_id_7->cert_buffer()));
+      anchor->set_tls_trust_anchor(true);
+      anchor->set_crs_root_id(7);
+    }
+
+    scoped_refptr<X509Certificate> untrusted_additional_cert_with_id =
+        MakeTestRoot();
+    {
+      chrome_root_store::TrustAnchor* anchor =
+          root_store.add_additional_certs();
+      anchor->set_der(net::x509_util::CryptoBufferAsStringPiece(
+          untrusted_additional_cert_with_id->cert_buffer()));
+      anchor->set_tls_trust_anchor(false);
+      anchor->set_crs_root_id(9);
+    }
+
+    std::shared_ptr<const bssl::MTCAnchor> mtc_anchor_with_id_11;
+    {
+      constexpr uint8_t kCaId[] = {0x01, 0x05};
+      AddSignerSetIssuer(signer_set, kCaId, "operator", 11);
+
+      mtc_anchor_with_id_11 = std::make_shared<const bssl::MTCAnchor>(
+          kCaId, bssl::SignatureAlgorithm::kMldsa44,
+          x509_util::CreateCryptoBuffer(std::string_view("fake key")),
+          std::vector<bssl::LogTrustedSubtrees>());
+    }
+
+    std::shared_ptr<const bssl::MTCAnchor> mtc_anchor_with_no_id;
+    {
+      constexpr uint8_t kCaId[] = {0x01, 0x06};
+      AddSignerSetIssuer(signer_set, kCaId, "operator", std::nullopt);
+
+      mtc_anchor_with_no_id = std::make_shared<const bssl::MTCAnchor>(
+          kCaId, bssl::SignatureAlgorithm::kMldsa44,
+          x509_util::CreateCryptoBuffer(std::string_view("fake key")),
+          std::vector<bssl::LogTrustedSubtrees>());
+    }
+
+    std::shared_ptr<const bssl::MTCAnchor> untrusted_mtc_anchor_with_id;
+    {
+      constexpr uint8_t kCaId[] = {0x01, 0x07};
+      auto* issuer = AddSignerSetIssuer(signer_set, kCaId, "operator", 13);
+      issuer->set_realm(chrome_root_store::REALM_UNTRUSTED_VALIDATION_ONLY);
+
+      untrusted_mtc_anchor_with_id = std::make_shared<const bssl::MTCAnchor>(
+          kCaId, bssl::SignatureAlgorithm::kMldsa44,
+          x509_util::CreateCryptoBuffer(std::string_view("fake key")),
+          std::vector<bssl::LogTrustedSubtrees>());
+    }
+
+    std::shared_ptr<const bssl::MTCAnchor> unknown_mtc_anchor;
+    {
+      constexpr uint8_t kCaId[] = {0x01, 0x08};
+      unknown_mtc_anchor = std::make_shared<const bssl::MTCAnchor>(
+          kCaId, bssl::SignatureAlgorithm::kMldsa44,
+          x509_util::CreateCryptoBuffer(std::string_view("fake key")),
+          std::vector<bssl::LogTrustedSubtrees>());
+    }
+
+    std::optional<ChromeRootStoreData> root_store_data =
+        ChromeRootStoreData::CreateFromRootStoreProto(root_store);
+    ASSERT_TRUE(root_store_data);
+    std::optional<ChromeRootStoreSignerSet> parsed_set =
+        ChromeRootStoreSignerSet::CreateFromProto(signer_set);
+    ASSERT_TRUE(parsed_set);
+    root_store_data->SetSignerSet(*parsed_set);
+    TrustStoreChrome trust_store_chrome(&root_store_data.value(), nullptr);
+
+    EXPECT_EQ(5,
+              trust_store_chrome.GetCrsRootIdForCert(
+                  MakeTestPathForRootCert(ToParsedCertificate(*root_with_id_5))
+                      .get()));
+    EXPECT_EQ(std::nullopt,
+              trust_store_chrome.GetCrsRootIdForCert(
+                  MakeTestPathForRootCert(ToParsedCertificate(*root_with_no_id))
+                      .get()));
+    EXPECT_EQ(7,
+              trust_store_chrome.GetCrsRootIdForCert(
+                  MakeTestPathForRootCert(
+                      ToParsedCertificate(*trusted_additional_cert_with_id_7))
+                      .get()));
+    EXPECT_EQ(std::nullopt,
+              trust_store_chrome.GetCrsRootIdForCert(
+                  MakeTestPathForRootCert(
+                      ToParsedCertificate(*untrusted_additional_cert_with_id))
+                      .get()));
+
+    EXPECT_EQ(11, trust_store_chrome.GetCrsRootIdForCert(
+                      MakeTestPathForMtcAnchor(mtc_anchor_with_id_11).get()));
+
+    EXPECT_EQ(std::nullopt,
+              trust_store_chrome.GetCrsRootIdForCert(
+                  MakeTestPathForMtcAnchor(mtc_anchor_with_no_id).get()));
+
+    EXPECT_EQ(
+        use_test_roots ? std::make_optional(13) : std::nullopt,
+        trust_store_chrome.GetCrsRootIdForCert(
+            MakeTestPathForMtcAnchor(untrusted_mtc_anchor_with_id).get()));
+
+    EXPECT_EQ(std::nullopt,
+              trust_store_chrome.GetCrsRootIdForCert(
+                  MakeTestPathForMtcAnchor(unknown_mtc_anchor).get()));
+  }
+}
+
+// Tests that, for a compiled-in root store, certificates in |additional_certs|
+// are compiled in as trust anchors when indicated, even if they have no
+// associated Trust Anchor ID.
+TEST(TrustStoreChromeTestNoFixture,
+     LoadCompiledTrustAnchorsWithNoTrustAnchorID) {
+  std::unique_ptr<TrustStoreChrome> trust_store_chrome =
+      TrustStoreChrome::CreateTrustStoreForTesting(
+          base::span<const ChromeRootCertInfo>(kChromeRootCertList),
+          base::span(kEutlRootCertList),
+          /*version=*/1);
+
+  const std::string kAdditionalCertTrustAnchorWithNoTAIHash =
+      "19400be5b7a31fb733917700789d2f0a2471c0c9d506c0e504c06c16d7cb17c0";
+
+  CertificateList additional_certs = CreateCertificateListFromFile(
+      GetTestNetDataDirectory().AppendASCII("ssl/chrome_root_store"),
+      "test_additional.certs", X509Certificate::FORMAT_PEM_CERT_SEQUENCE);
+
+  std::shared_ptr<const bssl::ParsedCertificate> parsed_cert =
+      FindParsedCertificateInCertificateList(
+          kAdditionalCertTrustAnchorWithNoTAIHash, additional_certs);
+  ASSERT_TRUE(parsed_cert);
+  bssl::CertificateTrust trust =
+      trust_store_chrome->GetTrust(parsed_cert.get());
+  EXPECT_TRUE(trust.IsTrustAnchor());
+  EXPECT_TRUE(trust.enforce_anchor_expiry);
+  EXPECT_TRUE(trust.enforce_anchor_constraints);
+}
+
+// Tests that, for a root loaded from a proto, certificates in
+// |additional_certs| are loaded into TrustStoreChrome as trust anchors when
+// indicated, with |enforce_anchor_expiry| and |enforce_anchor_constraints|
+// flags enforced.
+TEST(TrustStoreChromeTestNoFixture, LoadProtoAdditionalCertsAsTrustAnchors) {
+  for (bool enforce_anchor_expiry : {true, false}) {
+    for (bool enforce_anchor_constraints : {true, false}) {
+      scoped_refptr<X509Certificate> root = MakeTestRoot();
+      chrome_root_store::RootStore root_store;
+      chrome_root_store::TrustAnchor* anchor =
+          root_store.add_additional_certs();
+      anchor->set_der(
+          net::x509_util::CryptoBufferAsStringPiece(root->cert_buffer()));
+      anchor->set_enforce_anchor_expiry(enforce_anchor_expiry);
+      anchor->set_enforce_anchor_constraints(enforce_anchor_constraints);
+      anchor->set_tls_trust_anchor(true);
+      anchor->set_trust_anchor_id("\x01\x02\x03\x04");
+
+      std::optional<ChromeRootStoreData> root_store_data =
+          ChromeRootStoreData::CreateFromRootStoreProto(root_store);
+      ASSERT_TRUE(root_store_data);
+      TrustStoreChrome trust_store_chrome(&root_store_data.value(),
+                                          /*mtc_metadata=*/nullptr);
+
+      std::shared_ptr<const bssl::ParsedCertificate> parsed =
+          ToParsedCertificate(*root);
+      bssl::CertificateTrust trust = trust_store_chrome.GetTrust(parsed.get());
+      EXPECT_TRUE(trust.IsTrustAnchor());
+      EXPECT_EQ(trust.enforce_anchor_expiry, enforce_anchor_expiry);
+      EXPECT_EQ(trust.enforce_anchor_constraints, enforce_anchor_constraints);
+      // TODO(crbug.com/414630735): check that the correct Trust Anchor ID is
+      // stored in TrustStoreChrome, once implemented. (Right now
+      // TrustStoreChrome throws out Trust Anchor IDs and doesn't keep them
+      // around.)
+    }
+  }
+}
+
+// Tests that, for a root loaded from a proto, certificates in
+// |additional_certs| are loaded into TrustStoreChrome as trust anchors when
+// indicated, even if there is no Trust Anchor ID set.
+TEST(TrustStoreChromeTestNoFixture,
+     LoadProtoAdditionalCertsAsTrustAnchorsWithNoTrustAnchorID) {
+  scoped_refptr<X509Certificate> root = MakeTestRoot();
+  chrome_root_store::RootStore root_store;
+  chrome_root_store::TrustAnchor* anchor = root_store.add_additional_certs();
+  anchor->set_der(
+      net::x509_util::CryptoBufferAsStringPiece(root->cert_buffer()));
+  anchor->set_enforce_anchor_expiry(true);
+  anchor->set_enforce_anchor_constraints(true);
+  anchor->set_tls_trust_anchor(true);
+  // `trust_anchor_id` is left unset here.
+
+  std::optional<ChromeRootStoreData> root_store_data =
+      ChromeRootStoreData::CreateFromRootStoreProto(root_store);
+  ASSERT_TRUE(root_store_data);
+  TrustStoreChrome trust_store_chrome(&root_store_data.value(),
+                                      /*mtc_metadata=*/nullptr);
+
+  std::shared_ptr<const bssl::ParsedCertificate> parsed =
+      ToParsedCertificate(*root);
+  bssl::CertificateTrust trust = trust_store_chrome.GetTrust(parsed.get());
+  EXPECT_TRUE(trust.IsTrustAnchor());
+  EXPECT_TRUE(trust.enforce_anchor_expiry);
+  EXPECT_TRUE(trust.enforce_anchor_constraints);
+}
+
+// Tests that, for a root loaded from a proto, certificates in
+// |additional_certs| are not loaded into TrustStoreChrome as trust anchors when
+// |tls_trust_anchor| is false.
+TEST(TrustStoreChromeTestNoFixture, LoadProtoNonAnchorsAreNotTrusted) {
+  scoped_refptr<X509Certificate> root = MakeTestRoot();
+  chrome_root_store::RootStore root_store;
+  chrome_root_store::TrustAnchor* anchor = root_store.add_additional_certs();
+  anchor->set_der(
+      net::x509_util::CryptoBufferAsStringPiece(root->cert_buffer()));
+  anchor->set_enforce_anchor_expiry(true);
+  anchor->set_enforce_anchor_constraints(true);
+  // |tls_trust_anchor| is left unset here.
+  anchor->set_trust_anchor_id("\x01\x02\x03\x04");
+
+  std::optional<ChromeRootStoreData> root_store_data =
+      ChromeRootStoreData::CreateFromRootStoreProto(root_store);
+  ASSERT_TRUE(root_store_data);
+  TrustStoreChrome trust_store_chrome(&root_store_data.value(),
+                                      /*mtc_metadata=*/nullptr);
+
+  std::shared_ptr<const bssl::ParsedCertificate> parsed =
+      ToParsedCertificate(*root);
+  EXPECT_FALSE(trust_store_chrome.Contains(parsed.get()));
+  // TODO(crbug.com/414630735): check that the above Trust Anchor ID is
+  // not present in TrustStoreChrome, once implemented. (Right now
+  // TrustStoreChrome throws out Trust Anchor IDs and doesn't keep them around.)
+}
+
+// Tests that TLS Trust Anchor IDs are loaded correctly from the compiled-in
+// root store.
+TEST(TrustStoreChromeTestNoFixture, LoadCompiledInTrustAnchorIDs) {
+  std::vector<std::vector<uint8_t>> trust_anchor_ids =
+      TrustStoreChrome::GetTrustAnchorIDsFromCompiledInRootStore(
+          base::span<const ChromeRootCertInfo>(kChromeRootCertList));
+  EXPECT_THAT(trust_anchor_ids,
+              testing::UnorderedElementsAre(
+                  std::vector<uint8_t>({0x05u, 0x05u, 0x05u}),
+                  std::vector<uint8_t>({0x01u, 0x01u, 0x01u, 0x01u}),
+                  std::vector<uint8_t>({0x03u, 0x03u, 0x03u, 0x03u}),
+                  std::vector<uint8_t>({0x02u, 0x02u, 0x02u, 0x02u})));
+}
+
+TEST(TrustStoreChromeTestNoFixture, LoadCompiledInMtcTrustAnchorCaIds) {
+  for (bool use_test_roots : {false, true}) {
+    SCOPED_TRACE(use_test_roots);
+
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeatureStates(
+        {{net::features::kTLSTrustAnchorIDs, true},
+         {net::features::kVerifyMTCs, true},
+         {net::features::kTestRootStore, use_test_roots}});
+
+    chrome_root_store::SignerSet signer_set;
+    signer_set.mutable_timestamp()->set_seconds(1);
+
+    constexpr uint8_t kCaId[] = {0x01, 0x05};
+    AddSignerSetIssuer(signer_set, kCaId, "operator", 11);
+
+    constexpr uint8_t kUntrustedCaId[] = {0x01, 0x06};
+    AddSignerSetIssuer(signer_set, kUntrustedCaId, "operator", 12)
+        ->set_realm(chrome_root_store::REALM_UNTRUSTED_VALIDATION_ONLY);
+
+    constexpr uint8_t kCa2Id[] = {0x02, 0x05};
+    AddSignerSetIssuer(signer_set, kCa2Id, "operator", 11);
+
+    constexpr uint8_t kUntrustedCa2Id[] = {0x02, 0x06};
+    AddSignerSetIssuer(signer_set, kUntrustedCa2Id, "operator", 12)
+        ->set_realm(chrome_root_store::REALM_UNTRUSTED_VALIDATION_ONLY);
+
+    std::optional<ChromeRootStoreSignerSet> parsed_set =
+        ChromeRootStoreSignerSet::CreateFromProto(signer_set);
+    ASSERT_TRUE(parsed_set);
+
+    if (use_test_roots) {
+      EXPECT_THAT(
+          TrustStoreChrome::GetTrustedMtcCaIDsFromCompiledInRootStoreForTesting(
+              *parsed_set),
+          testing::UnorderedElementsAre(
+              base::ToVector(kCaId), base::ToVector(kUntrustedCaId),
+              base::ToVector(kCa2Id), base::ToVector(kUntrustedCa2Id)));
+    } else {
+      EXPECT_THAT(
+          TrustStoreChrome::GetTrustedMtcCaIDsFromCompiledInRootStoreForTesting(
+              *parsed_set),
+          testing::UnorderedElementsAre(base::ToVector(kCaId),
+                                        base::ToVector(kCa2Id)));
+    }
+  }
+}
+
+std::tuple<std::shared_ptr<const bssl::MTCAnchor>,
+           std::shared_ptr<const bssl::ParsedCertificate>>
+MakeTestMtcAnchorAndLeaf(MtcLogBuilder& mtc_log_builder) {
+  std::unique_ptr<net::CertBuilder> mtc_leaf_builder =
+      std::move(net::CertBuilder::CreateSimpleChain(1u)[0]);
+
+  uint64_t leaf_index = mtc_log_builder.AddEntry(*mtc_leaf_builder);
+  mtc_log_builder.AdvanceLandmark();
+
+  auto leaf_buffer =
+      mtc_log_builder.CreateSignaturelessCertificateBuffer(leaf_index);
+  CHECK(leaf_buffer);
+  std::shared_ptr<const bssl::ParsedCertificate> mtc_leaf =
+      ToParsedCertificate(std::move(leaf_buffer));
+
+  return {std::make_shared<bssl::MTCAnchor>(
+              mtc_log_builder.ca_id(), bssl::SignatureAlgorithm::kMldsa44,
+              x509_util::CreateCryptoBuffer(std::string_view("fake key")),
+              mtc_log_builder.GetPerLogLandmarkSubtreeHashes()),
+          std::move(mtc_leaf)};
+}
+
+TEST(TrustStoreChromeTestNoFixture, LoadMtcTrustAnchors) {
+  for (bool use_test_roots : {false, true}) {
+    SCOPED_TRACE(use_test_roots);
+    constexpr uint8_t kTestMtcCaId_1[] = {0x09u, 0x01u, 0x03u, 0x04u};
+    constexpr uint8_t kUntrustedMtcCaId[] = {0x09u, 0x02u, 0x03u, 0x04u};
+    constexpr uint8_t kTestMtcCaId_3[] = {0x08u, 0x03u, 0x02u, 0x01u};
+    constexpr uint8_t kTestMtcCaId_4[] = {0x08u, 0x04u, 0x05u, 0x06u};
+
+    MtcLogBuilder mtc_log_builder(kTestMtcCaId_1, /*log_number=*/1);
+    auto [mtc_anchor, mtc_leaf] = MakeTestMtcAnchorAndLeaf(mtc_log_builder);
+
+    MtcLogBuilder untrusted_mtc_log_builder(kUntrustedMtcCaId,
+                                            /*log_number=*/1);
+    auto [untrusted_mtc_anchor, untrusted_mtc_leaf] =
+        MakeTestMtcAnchorAndLeaf(untrusted_mtc_log_builder);
+
+    MtcLogBuilder mtc_log_builder_3(kTestMtcCaId_3, /*log_number=*/1);
+    auto [mtc_anchor_3, mtc_leaf_3] =
+        MakeTestMtcAnchorAndLeaf(mtc_log_builder_3);
+
+    MtcLogBuilder mtc_log_builder_4(kTestMtcCaId_4, /*log_number=*/1);
+    auto [mtc_anchor_4, mtc_leaf_4] =
+        MakeTestMtcAnchorAndLeaf(mtc_log_builder_4);
+
+    constexpr uint8_t kUnknownMtcCaId[] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    MtcLogBuilder mtc_log_builder_unknown(kUnknownMtcCaId, /*log_number=*/1);
+    auto [mtc_anchor_unknown, mtc_leaf_unknown] =
+        MakeTestMtcAnchorAndLeaf(mtc_log_builder_unknown);
+
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeatureStates(
+        {{net::features::kTLSTrustAnchorIDs, true},
+         {net::features::kVerifyMTCs, true},
+         {net::features::kTestRootStore, use_test_roots}});
+
+    chrome_root_store::SignerSet signer_set;
+    signer_set.mutable_timestamp()->set_seconds(1);
+    AddSignerSetIssuer(signer_set, kTestMtcCaId_1, "operator", 11);
+    AddSignerSetIssuer(signer_set, kUntrustedMtcCaId, "operator", 12)
+        ->set_realm(chrome_root_store::REALM_UNTRUSTED_VALIDATION_ONLY);
+    AddSignerSetIssuer(signer_set, kTestMtcCaId_3, "operator", 13);
+    AddSignerSetIssuer(signer_set, kTestMtcCaId_4, "operator", 14);
+
+    {
+      ChromeRootStoreData root_store_data =
+          ChromeRootStoreData::CreateForTesting(
+              kChromeRootCertList, kEutlRootCertList, /*version=*/1);
+      std::optional<ChromeRootStoreSignerSet> parsed_set =
+          ChromeRootStoreSignerSet::CreateFromProto(signer_set);
+      ASSERT_TRUE(parsed_set);
+      root_store_data.SetSignerSet(*parsed_set);
+
+      TrustStoreChrome trust_store_chrome(&root_store_data, nullptr);
+
+      EXPECT_TRUE(trust_store_chrome.ContainsMTCAnchor(mtc_anchor.get()));
+      EXPECT_TRUE(trust_store_chrome.GetTrustedMTCIssuerOf(mtc_leaf.get()));
+
+      EXPECT_EQ(use_test_roots, trust_store_chrome.ContainsMTCAnchor(
+                                    untrusted_mtc_anchor.get()));
+      EXPECT_EQ(use_test_roots, !!trust_store_chrome.GetTrustedMTCIssuerOf(
+                                    untrusted_mtc_leaf.get()));
+
+      EXPECT_TRUE(trust_store_chrome.ContainsMTCAnchor(mtc_anchor_3.get()));
+      EXPECT_TRUE(trust_store_chrome.GetTrustedMTCIssuerOf(mtc_leaf_3.get()));
+
+      EXPECT_TRUE(trust_store_chrome.ContainsMTCAnchor(mtc_anchor_4.get()));
+      EXPECT_TRUE(trust_store_chrome.GetTrustedMTCIssuerOf(mtc_leaf_4.get()));
+
+      EXPECT_FALSE(
+          trust_store_chrome.ContainsMTCAnchor(mtc_anchor_unknown.get()));
+      EXPECT_FALSE(
+          trust_store_chrome.GetTrustedMTCIssuerOf(mtc_leaf_unknown.get()));
+    }
+
+    chrome_root_store::MtcMetadata mtc_metadata_proto;
+    mtc_metadata_proto.set_update_time_seconds(
+        base::Time::Now().InMillisecondsSinceUnixEpoch() / 1000);
+
+    // Only the first and fourth log are added to the MtcMetadata proto.
+    mtc_log_builder.FillMtcMetadataAnchorProto(
+        mtc_metadata_proto.add_mtc_anchor_data());
+    mtc_log_builder_4.FillMtcMetadataAnchorProto(
+        mtc_metadata_proto.add_mtc_anchor_data());
+    // Also add metadata for the MTC anchor that is not present in the
+    // SignerSet. It should be ignored and this anchor should still be
+    // considered untrusted.
+    mtc_log_builder_unknown.FillMtcMetadataAnchorProto(
+        mtc_metadata_proto.add_mtc_anchor_data());
+
+    auto mtc_metadata = ChromeRootStoreMtcMetadata::CreateFromMtcMetadataProto(
+        mtc_metadata_proto);
+    ASSERT_TRUE(mtc_metadata);
+
+    // The presence of MtcMetadata is not required for a MTC CA to be considered
+    // trusted (since it still can be used with standalone MTCs even if the
+    // trusted landmark data isn't available.) This just confirms that if a
+    // MtcMetadata is supplied, with data for only some of the MTC CAs, it has
+    // no effect on which MTC CAs are considered trusted.
+    {
+      ChromeRootStoreData root_store_data =
+          ChromeRootStoreData::CreateForTesting(
+              kChromeRootCertList, kEutlRootCertList, /*version=*/1);
+      std::optional<ChromeRootStoreSignerSet> parsed_set =
+          ChromeRootStoreSignerSet::CreateFromProto(signer_set);
+      ASSERT_TRUE(parsed_set);
+      root_store_data.SetSignerSet(*parsed_set);
+
+      TrustStoreChrome trust_store_chrome(&root_store_data, &*mtc_metadata);
+
+      EXPECT_TRUE(trust_store_chrome.ContainsMTCAnchor(mtc_anchor.get()));
+      EXPECT_TRUE(trust_store_chrome.GetTrustedMTCIssuerOf(mtc_leaf.get()));
+
+      EXPECT_EQ(use_test_roots, trust_store_chrome.ContainsMTCAnchor(
+                                    untrusted_mtc_anchor.get()));
+      EXPECT_EQ(use_test_roots, !!trust_store_chrome.GetTrustedMTCIssuerOf(
+                                    untrusted_mtc_leaf.get()));
+
+      EXPECT_TRUE(trust_store_chrome.ContainsMTCAnchor(mtc_anchor_3.get()));
+      EXPECT_TRUE(trust_store_chrome.GetTrustedMTCIssuerOf(mtc_leaf_3.get()));
+
+      EXPECT_TRUE(trust_store_chrome.ContainsMTCAnchor(mtc_anchor_4.get()));
+      EXPECT_TRUE(trust_store_chrome.GetTrustedMTCIssuerOf(mtc_leaf_4.get()));
+
+      EXPECT_FALSE(
+          trust_store_chrome.ContainsMTCAnchor(mtc_anchor_unknown.get()));
+      EXPECT_FALSE(
+          trust_store_chrome.GetTrustedMTCIssuerOf(mtc_leaf_unknown.get()));
+    }
+  }
+}
+
+TEST(TrustStoreChromeTestNoFixture, OverrideConstraints) {
+  // Root1: has no constraints and no override constraints
+  // Root2: has constraints and no override constraints
+  // Root3: has no constraints and has override constraints
+  // Root4: has constraints and has override constraints
+  // Root5: not present in CRS and no override constraints
+  // Root6: not present in CRS but has override constraints
+  scoped_refptr<X509Certificate> root1 = MakeTestRoot();
+  scoped_refptr<X509Certificate> root2 = MakeTestRoot();
+  scoped_refptr<X509Certificate> root3 = MakeTestRoot();
+  scoped_refptr<X509Certificate> root4 = MakeTestRoot();
+  scoped_refptr<X509Certificate> root5 = MakeTestRoot();
+  scoped_refptr<X509Certificate> root6 = MakeTestRoot();
+
+  std::vector<StaticChromeRootCertConstraints> c2 = {{.min_version = "20"}};
+  std::vector<StaticChromeRootCertConstraints> c4 = {{.min_version = "40"}};
+  std::vector<ChromeRootCertInfo> root_cert_info = {
+      {root1->cert_span(), {}},
+      {root2->cert_span(), c2},
+      {root3->cert_span(), {}},
+      {root4->cert_span(), c4},
+  };
+
+  base::flat_map<std::array<uint8_t, crypto::kSHA256Length>,
+                 std::vector<ChromeRootCertConstraints>>
+      override_constraints;
+
+  override_constraints[crypto::SHA256Hash(root3->cert_span())] = {
+      {std::nullopt,
+       std::nullopt,
+       std::nullopt,
+       /*max_version_exclusive=*/std::make_optional(base::Version("31")),
+       {},
+       std::nullopt,
+       std::nullopt,
+       std::nullopt,
+       std::nullopt}};
+
+  override_constraints[crypto::SHA256Hash(root4->cert_span())] = {
+      {std::nullopt,
+       std::nullopt,
+       std::nullopt,
+       /*max_version_exclusive=*/std::make_optional(base::Version("41")),
+       {},
+       std::nullopt,
+       std::nullopt,
+       std::nullopt,
+       std::nullopt}};
+
+  override_constraints[crypto::SHA256Hash(root6->cert_span())] = {
+      {std::nullopt,
+       std::nullopt,
+       std::nullopt,
+       /*max_version_exclusive=*/std::make_optional(base::Version("61")),
+       {},
+       std::nullopt,
+       std::nullopt,
+       std::nullopt,
+       std::nullopt}};
+
+  std::unique_ptr<TrustStoreChrome> trust_store_chrome =
+      TrustStoreChrome::CreateTrustStoreForTesting(
+          std::move(root_cert_info),
+          /*eutl_certs=*/{},
+          /*version=*/1, std::move(override_constraints));
+
+  {
+    std::shared_ptr<const bssl::ParsedCertificate> parsed =
+        ToParsedCertificate(*root1);
+    ASSERT_TRUE(parsed);
+    EXPECT_TRUE(trust_store_chrome->Contains(parsed.get()));
+    EXPECT_TRUE(
+        trust_store_chrome
+            ->GetConstraintsForCert(MakeTestPathForRootCert(parsed).get())
+            .empty());
+  }
+
+  {
+    std::shared_ptr<const bssl::ParsedCertificate> parsed =
+        ToParsedCertificate(*root2);
+    ASSERT_TRUE(parsed);
+    EXPECT_TRUE(trust_store_chrome->Contains(parsed.get()));
+
+    base::span<const ChromeRootCertConstraints> constraints =
+        trust_store_chrome->GetConstraintsForCert(
+            MakeTestPathForRootCert(parsed).get());
+    ASSERT_EQ(constraints.size(), 1U);
+    EXPECT_EQ(constraints[0].min_version.value().components(),
+              std::vector<uint32_t>({20}));
+    EXPECT_FALSE(constraints[0].max_version_exclusive.has_value());
+  }
+
+  {
+    std::shared_ptr<const bssl::ParsedCertificate> parsed =
+        ToParsedCertificate(*root3);
+    ASSERT_TRUE(parsed);
+    EXPECT_TRUE(trust_store_chrome->Contains(parsed.get()));
+
+    base::span<const ChromeRootCertConstraints> constraints =
+        trust_store_chrome->GetConstraintsForCert(
+            MakeTestPathForRootCert(parsed).get());
+    ASSERT_EQ(constraints.size(), 1U);
+    EXPECT_FALSE(constraints[0].min_version.has_value());
+    EXPECT_EQ(constraints[0].max_version_exclusive.value().components(),
+              std::vector<uint32_t>({31}));
+  }
+
+  {
+    std::shared_ptr<const bssl::ParsedCertificate> parsed =
+        ToParsedCertificate(*root4);
+    ASSERT_TRUE(parsed);
+    EXPECT_TRUE(trust_store_chrome->Contains(parsed.get()));
+
+    base::span<const ChromeRootCertConstraints> constraints =
+        trust_store_chrome->GetConstraintsForCert(
+            MakeTestPathForRootCert(parsed).get());
+    ASSERT_EQ(constraints.size(), 1U);
+    EXPECT_FALSE(constraints[0].min_version.has_value());
+    EXPECT_EQ(constraints[0].max_version_exclusive.value().components(),
+              std::vector<uint32_t>({41}));
+  }
+
+  {
+    std::shared_ptr<const bssl::ParsedCertificate> parsed =
+        ToParsedCertificate(*root5);
+    ASSERT_TRUE(parsed);
+    EXPECT_FALSE(trust_store_chrome->Contains(parsed.get()));
+    EXPECT_TRUE(
+        trust_store_chrome
+            ->GetConstraintsForCert(MakeTestPathForRootCert(parsed).get())
+            .empty());
+  }
+
+  {
+    std::shared_ptr<const bssl::ParsedCertificate> parsed =
+        ToParsedCertificate(*root6);
+    ASSERT_TRUE(parsed);
+    EXPECT_FALSE(trust_store_chrome->Contains(parsed.get()));
+
+    base::span<const ChromeRootCertConstraints> constraints =
+        trust_store_chrome->GetConstraintsForCert(
+            MakeTestPathForRootCert(parsed).get());
+    ASSERT_EQ(constraints.size(), 1U);
+    EXPECT_FALSE(constraints[0].min_version.has_value());
+    EXPECT_EQ(constraints[0].max_version_exclusive.value().components(),
+              std::vector<uint32_t>({61}));
+  }
+}
+
+TEST(TrustStoreChromeTestNoFixture, ParseCommandLineConstraintsEmpty) {
+  EXPECT_TRUE(TrustStoreChrome::ParseCrsConstraintsSwitch("").empty());
+  EXPECT_TRUE(TrustStoreChrome::ParseCrsConstraintsSwitch("invalid").empty());
+  EXPECT_TRUE(TrustStoreChrome::ParseCrsConstraintsSwitch(
+                  "invalidhash:sctnotafter=123456")
+                  .empty());
+}
+
+TEST(TrustStoreChromeTestNoFixture, ParseCommandLineConstraintsErrorHandling) {
+  auto constraints = TrustStoreChrome::ParseCrsConstraintsSwitch(
+      // Valid hash and valid constraint name with invalid value (missing `,`
+      // between constraints, so sctallafter value will not be parsable as an
+      // integer). Should result in a constraintset with every constraint
+      // being nullopt.
+      "568c8ef6b526d1394bca052ba3e4d1f4d7a8d9c88c55a1a9ab7ca0fae2dc5473:"
+      "sctallafter=9876543sctnotafter=1234567890+"
+      // Invalid hash (valid hex, but too short).
+      "37a9761b69457987abbc8636182d8273498719659716397401f98e019b20a9:"
+      "sctallafter=9876543+"
+      // Invalid hash (valid hex, but too long).
+      "37a9761b69457987abbc8636182d8273498719659716397401f98e019b20a91111:"
+      "sctallafter=9876543+"
+      // Invalid constraint mapping (missing `:` between hash and constraint).
+      "737a9761b69457987abbc8636182d8273498719659716397401f98e019b20a98"
+      "sctallafter=9876543+"
+      // Invalid and valid hashes with both invalid and valid constraints.
+      "11,a7e0c75d7f772fccf26a6ac1f7b0a86a482e2f3d326bc911c95d56ff3d4906d5,22:"
+      "invalidconstraint=hello,sctnotafter=789012345+"
+      // Missing `+` between constraint mappings.
+      // This will parse the next hash and minversion all as an invalid
+      // sctallafter value and then the maxversionexclusive will apply to the
+      // previous root hash.
+      "65ee41e8a8c27b71b6bfcf44653c8e8370ec5e106e272592c2fbcbadf8dc5763:"
+      "sctnotafter=123456,sctallafter=54321"
+      "3333333333333333333333333333333333333333333333333333333333333333:"
+      "minversion=1,maxversionexclusive=2.3");
+  EXPECT_EQ(constraints.size(), 3U);
+
+  {
+    constexpr uint8_t hash[] = {0x56, 0x8c, 0x8e, 0xf6, 0xb5, 0x26, 0xd1, 0x39,
+                                0x4b, 0xca, 0x05, 0x2b, 0xa3, 0xe4, 0xd1, 0xf4,
+                                0xd7, 0xa8, 0xd9, 0xc8, 0x8c, 0x55, 0xa1, 0xa9,
+                                0xab, 0x7c, 0xa0, 0xfa, 0xe2, 0xdc, 0x54, 0x73};
+    auto it = constraints.find(base::span(hash));
+    ASSERT_NE(it, constraints.end());
+    ASSERT_EQ(it->second.size(), 1U);
+    const auto& constraint1 = it->second[0];
+    EXPECT_FALSE(constraint1.sct_not_after.has_value());
+    EXPECT_FALSE(constraint1.sct_all_after.has_value());
+    EXPECT_FALSE(constraint1.min_version.has_value());
+    EXPECT_FALSE(constraint1.max_version_exclusive.has_value());
+    EXPECT_THAT(constraint1.permitted_dns_names, testing::IsEmpty());
+  }
+  {
+    constexpr uint8_t hash[] = {0xa7, 0xe0, 0xc7, 0x5d, 0x7f, 0x77, 0x2f, 0xcc,
+                                0xf2, 0x6a, 0x6a, 0xc1, 0xf7, 0xb0, 0xa8, 0x6a,
+                                0x48, 0x2e, 0x2f, 0x3d, 0x32, 0x6b, 0xc9, 0x11,
+                                0xc9, 0x5d, 0x56, 0xff, 0x3d, 0x49, 0x06, 0xd5};
+    auto it = constraints.find(base::span(hash));
+    ASSERT_NE(it, constraints.end());
+    ASSERT_EQ(it->second.size(), 1U);
+
+    const auto& constraint1 = it->second[0];
+    ASSERT_TRUE(constraint1.sct_not_after.has_value());
+    EXPECT_EQ(constraint1.sct_not_after->InMillisecondsSinceUnixEpoch() / 1000,
+              789012345);
+    EXPECT_FALSE(constraint1.sct_all_after.has_value());
+    EXPECT_FALSE(constraint1.min_version.has_value());
+    EXPECT_FALSE(constraint1.max_version_exclusive.has_value());
+    EXPECT_THAT(constraint1.permitted_dns_names, testing::IsEmpty());
+  }
+
+  {
+    unsigned char hash[] = {0x65, 0xee, 0x41, 0xe8, 0xa8, 0xc2, 0x7b, 0x71,
+                            0xb6, 0xbf, 0xcf, 0x44, 0x65, 0x3c, 0x8e, 0x83,
+                            0x70, 0xec, 0x5e, 0x10, 0x6e, 0x27, 0x25, 0x92,
+                            0xc2, 0xfb, 0xcb, 0xad, 0xf8, 0xdc, 0x57, 0x63};
+
+    auto it = constraints.find(base::span(hash));
+    ASSERT_NE(it, constraints.end());
+    ASSERT_EQ(it->second.size(), 1U);
+    const auto& constraint = it->second[0];
+    ASSERT_TRUE(constraint.sct_not_after.has_value());
+    EXPECT_EQ(constraint.sct_not_after->InMillisecondsSinceUnixEpoch() / 1000,
+              123456);
+    EXPECT_FALSE(constraint.sct_all_after.has_value());
+    EXPECT_FALSE(constraint.min_version.has_value());
+    EXPECT_EQ(constraint.max_version_exclusive, base::Version({2, 3}));
+    EXPECT_THAT(constraint.permitted_dns_names, testing::IsEmpty());
+  }
+}
+
+TEST(TrustStoreChromeTestNoFixture,
+     ParseCommandLineConstraintsOneRootOneConstraint) {
+  auto constraints = TrustStoreChrome::ParseCrsConstraintsSwitch(
+      "65ee41e8a8c27b71b6bfcf44653c8e8370ec5e106e272592c2fbcbadf8dc5763:"
+      "sctnotafter=123456");
+  EXPECT_EQ(constraints.size(), 1U);
+  unsigned char hash[] = {0x65, 0xee, 0x41, 0xe8, 0xa8, 0xc2, 0x7b, 0x71,
+                          0xb6, 0xbf, 0xcf, 0x44, 0x65, 0x3c, 0x8e, 0x83,
+                          0x70, 0xec, 0x5e, 0x10, 0x6e, 0x27, 0x25, 0x92,
+                          0xc2, 0xfb, 0xcb, 0xad, 0xf8, 0xdc, 0x57, 0x63};
+
+  auto it = constraints.find(base::span(hash));
+  ASSERT_NE(it, constraints.end());
+  ASSERT_EQ(it->second.size(), 1U);
+  const auto& constraint = it->second[0];
+  ASSERT_TRUE(constraint.sct_not_after.has_value());
+  EXPECT_EQ(constraint.sct_not_after->InMillisecondsSinceUnixEpoch() / 1000,
+            123456);
+  EXPECT_FALSE(constraint.sct_all_after.has_value());
+  EXPECT_FALSE(constraint.min_version.has_value());
+  EXPECT_FALSE(constraint.max_version_exclusive.has_value());
+}
+
+TEST(TrustStoreChromeTestNoFixture,
+     ParseCommandLineConstraintsMultipleRootsMultipleConstraints) {
+  auto constraints = TrustStoreChrome::ParseCrsConstraintsSwitch(
+      "784ecaa8b9dfcc826547f806f759abd6b4481582fc7e377dc3e6a0a959025126,"
+      "a7e0c75d7f772fccf26a6ac1f7b0a86a482e2f3d326bc911c95d56ff3d4906d5:"
+      "sctnotafter=123456,sctallafter=7689,"
+      "minversion=1.2.3.4,maxversionexclusive=10,"
+      "dns=foo.com,dns=bar.com+"
+      "a7e0c75d7f772fccf26a6ac1f7b0a86a482e2f3d326bc911c95d56ff3d4906d5,"
+      "568c8ef6b526d1394bca052ba3e4d1f4d7a8d9c88c55a1a9ab7ca0fae2dc5473:"
+      "sctallafter=9876543,sctnotafter=1234567890");
+  EXPECT_EQ(constraints.size(), 3U);
+
+  {
+    constexpr uint8_t hash1[] = {
+        0x78, 0x4e, 0xca, 0xa8, 0xb9, 0xdf, 0xcc, 0x82, 0x65, 0x47, 0xf8,
+        0x06, 0xf7, 0x59, 0xab, 0xd6, 0xb4, 0x48, 0x15, 0x82, 0xfc, 0x7e,
+        0x37, 0x7d, 0xc3, 0xe6, 0xa0, 0xa9, 0x59, 0x02, 0x51, 0x26};
+    auto it = constraints.find(base::span(hash1));
+    ASSERT_NE(it, constraints.end());
+    ASSERT_EQ(it->second.size(), 1U);
+    const auto& constraint1 = it->second[0];
+    ASSERT_TRUE(constraint1.sct_not_after.has_value());
+    EXPECT_EQ(constraint1.sct_not_after->InMillisecondsSinceUnixEpoch() / 1000,
+              123456);
+    ASSERT_TRUE(constraint1.sct_all_after.has_value());
+    EXPECT_EQ(constraint1.sct_all_after->InMillisecondsSinceUnixEpoch() / 1000,
+              7689);
+    EXPECT_EQ(constraint1.min_version, base::Version({1, 2, 3, 4}));
+    EXPECT_EQ(constraint1.max_version_exclusive, base::Version({10}));
+    EXPECT_THAT(constraint1.permitted_dns_names,
+                testing::ElementsAre("foo.com", "bar.com"));
+  }
+
+  {
+    constexpr uint8_t hash2[] = {
+        0xa7, 0xe0, 0xc7, 0x5d, 0x7f, 0x77, 0x2f, 0xcc, 0xf2, 0x6a, 0x6a,
+        0xc1, 0xf7, 0xb0, 0xa8, 0x6a, 0x48, 0x2e, 0x2f, 0x3d, 0x32, 0x6b,
+        0xc9, 0x11, 0xc9, 0x5d, 0x56, 0xff, 0x3d, 0x49, 0x06, 0xd5};
+    auto it = constraints.find(base::span(hash2));
+    ASSERT_NE(it, constraints.end());
+    ASSERT_EQ(it->second.size(), 2U);
+
+    const auto& constraint1 = it->second[0];
+    ASSERT_TRUE(constraint1.sct_not_after.has_value());
+    EXPECT_EQ(constraint1.sct_not_after->InMillisecondsSinceUnixEpoch() / 1000,
+              123456);
+    ASSERT_TRUE(constraint1.sct_all_after.has_value());
+    EXPECT_EQ(constraint1.sct_all_after->InMillisecondsSinceUnixEpoch() / 1000,
+              7689);
+    EXPECT_EQ(constraint1.min_version, base::Version({1, 2, 3, 4}));
+    EXPECT_EQ(constraint1.max_version_exclusive, base::Version({10}));
+    EXPECT_THAT(constraint1.permitted_dns_names,
+                testing::ElementsAre("foo.com", "bar.com"));
+
+    const auto& constraint2 = it->second[1];
+    ASSERT_TRUE(constraint2.sct_not_after.has_value());
+    EXPECT_EQ(constraint2.sct_not_after->InMillisecondsSinceUnixEpoch() / 1000,
+              1234567890);
+    ASSERT_TRUE(constraint2.sct_all_after.has_value());
+    EXPECT_EQ(constraint2.sct_all_after->InMillisecondsSinceUnixEpoch() / 1000,
+              9876543);
+    EXPECT_FALSE(constraint2.min_version.has_value());
+    EXPECT_FALSE(constraint2.max_version_exclusive.has_value());
+    EXPECT_THAT(constraint2.permitted_dns_names, testing::IsEmpty());
+  }
+
+  {
+    constexpr uint8_t hash3[] = {
+        0x56, 0x8c, 0x8e, 0xf6, 0xb5, 0x26, 0xd1, 0x39, 0x4b, 0xca, 0x05,
+        0x2b, 0xa3, 0xe4, 0xd1, 0xf4, 0xd7, 0xa8, 0xd9, 0xc8, 0x8c, 0x55,
+        0xa1, 0xa9, 0xab, 0x7c, 0xa0, 0xfa, 0xe2, 0xdc, 0x54, 0x73};
+    auto it = constraints.find(base::span(hash3));
+    ASSERT_NE(it, constraints.end());
+    ASSERT_EQ(it->second.size(), 1U);
+    const auto& constraint1 = it->second[0];
+    ASSERT_TRUE(constraint1.sct_not_after.has_value());
+    EXPECT_EQ(constraint1.sct_not_after->InMillisecondsSinceUnixEpoch() / 1000,
+              1234567890);
+    ASSERT_TRUE(constraint1.sct_all_after.has_value());
+    EXPECT_EQ(constraint1.sct_all_after->InMillisecondsSinceUnixEpoch() / 1000,
+              9876543);
+    EXPECT_FALSE(constraint1.min_version.has_value());
+    EXPECT_FALSE(constraint1.max_version_exclusive.has_value());
+    EXPECT_THAT(constraint1.permitted_dns_names, testing::IsEmpty());
+  }
+}
+
+TEST(TrustStoreChromeTestNoFixture, SignerSetUpdates) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(features::kVerifyMTCs);
+
+  // Check CreateFromCompiled populates the set.
+  ChromeRootStoreSignerSet compiled_set =
+      ChromeRootStoreSignerSet::CreateFromCompiled();
+  EXPECT_FALSE(compiled_set.version().empty());
+
+  chrome_root_store::SignerSet proto;
+  proto.mutable_timestamp()->set_seconds(123456);
+  proto.set_version("2.0.0");
+  proto.set_compatibility_version(0);
+
+  // Add an issuer that has a key that exists in the built-in list.
+  ASSERT_FALSE(kSignerKeys.empty());
+  auto compiled_key_it = kSignerKeys.begin();
+  base::span<const uint8_t> compiled_key_bytes = compiled_key_it->second;
+
+  std::vector<uint8_t> expected_base_id1 = {0x01, 0x02, 0x03};
+  auto* issuer1 = AddSignerSetIssuer(proto, expected_base_id1, "op1", 1);
+  issuer1->set_friendly_name("compiled_key_issuer_with_bytes");
+  issuer1->set_key(base::as_string_view(compiled_key_bytes));
+
+  // Add an issuer with a new key.
+  std::vector<uint8_t> expected_base_id2 = {0x04, 0x05, 0x06, 0x07};
+  std::vector<uint8_t> new_key_bytes = {0x01, 0x02, 0x03, 0x04};
+  auto* issuer2 = AddSignerSetIssuer(proto, expected_base_id2, "op2", 2);
+  issuer2->set_friendly_name("new_key_issuer");
+  issuer2->set_key(base::as_string_view(new_key_bytes));
+
+  std::optional<ChromeRootStoreSignerSet> parsed_set =
+      ChromeRootStoreSignerSet::CreateFromProto(proto);
+  ASSERT_TRUE(parsed_set.has_value());
+  EXPECT_EQ(parsed_set->version(), "2.0.0");
+  ASSERT_EQ(parsed_set->trusted_issuers().size(), 2U);
+
+  // issuer1 should have the compiled key bytes.
+  ASSERT_TRUE(parsed_set->trusted_issuers()[0].key);
+  EXPECT_EQ(base::ToVector(x509_util::CryptoBufferAsSpan(
+                parsed_set->trusted_issuers()[0].key.get())),
+            base::ToVector(compiled_key_bytes));
+
+  // issuer2 should have the new key bytes.
+  ASSERT_TRUE(parsed_set->trusted_issuers()[1].key);
+  EXPECT_EQ(base::ToVector(x509_util::CryptoBufferAsSpan(
+                parsed_set->trusted_issuers()[1].key.get())),
+            new_key_bytes);
+
+  // Check base_id parsing matches expected relative OID DER.
+  EXPECT_EQ(parsed_set->trusted_issuers()[0].base_id, expected_base_id1);
+  EXPECT_EQ(parsed_set->trusted_issuers()[1].base_id, expected_base_id2);
+}
+
+// Tests the filtering during SignerSet proto parsing that removes issuers
+// which are untrusted or retired.
+TEST(TrustStoreChromeTestNoFixture, SignerSetCreationIssuerFiltering) {
+  chrome_root_store::SignerSet proto;
+  proto.mutable_timestamp()->set_seconds(123456);
+
+  const std::vector<uint8_t> kIssuerUsable = {0x01};
+  AddSignerSetIssuer(proto, kIssuerUsable, "op", std::nullopt);
+
+  const std::vector<uint8_t> kIssuerNoRealm = {0x02};
+  AddSignerSetIssuer(proto, kIssuerNoRealm, "op", std::nullopt)->clear_realm();
+
+  const std::vector<uint8_t> kIssuerUntrustedRealm = {0x03};
+  AddSignerSetIssuer(proto, kIssuerUntrustedRealm, "op", std::nullopt)
+      ->set_realm(chrome_root_store::REALM_UNTRUSTED_VALIDATION_ONLY);
+
+  const std::vector<uint8_t> kIssuerStateUnset = {0x04};
+  AddSignerSetIssuer(proto, kIssuerStateUnset, "op", std::nullopt)
+      ->mutable_state_history(0)
+      ->set_state(chrome_root_store::STATE_UNSET);
+
+  const std::vector<uint8_t> kIssuerStateCandidate = {0x05};
+  AddSignerSetIssuer(proto, kIssuerStateCandidate, "op", std::nullopt)
+      ->mutable_state_history(0)
+      ->set_state(chrome_root_store::STATE_CANDIDATE);
+
+  const std::vector<uint8_t> kIssuerStateRemoved = {0x06};
+  AddSignerSetIssuer(proto, kIssuerStateRemoved, "op", std::nullopt)
+      ->mutable_state_history(0)
+      ->set_state(chrome_root_store::STATE_REMOVED);
+
+  const std::vector<uint8_t> kIssuerStateQualified = {0x07};
+  AddSignerSetIssuer(proto, kIssuerStateQualified, "op", std::nullopt)
+      ->mutable_state_history(0)
+      ->set_state(chrome_root_store::STATE_QUALIFIED);
+
+  const std::vector<uint8_t> kIssuerStateFrozen = {0x08};
+  AddSignerSetIssuer(proto, kIssuerStateFrozen, "op", std::nullopt)
+      ->mutable_state_history(0)
+      ->set_state(chrome_root_store::STATE_FROZEN);
+
+  const std::vector<uint8_t> kIssuerNoSignatureAlgorithm = {0x09};
+  AddSignerSetIssuer(proto, kIssuerNoSignatureAlgorithm, "op", std::nullopt)
+      ->clear_signature_algorithm();
+
+  const std::vector<uint8_t> kIssuerUnknownSignatureAlgorithm = {0x0a};
+  AddSignerSetIssuer(proto, kIssuerUnknownSignatureAlgorithm, "op",
+                     std::nullopt)
+      ->set_signature_algorithm(
+          static_cast<chrome_root_store::SignatureAlgorithm>(999999));
+
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeatures({features::kVerifyMTCs},
+                                  {features::kTestRootStore});
+    std::optional<ChromeRootStoreSignerSet> parsed_set =
+        ChromeRootStoreSignerSet::CreateFromProto(proto);
+    ASSERT_TRUE(parsed_set.has_value());
+    std::vector<std::vector<uint8_t>> usable_issuer_ids;
+    for (const auto& issuer : parsed_set->trusted_issuers()) {
+      usable_issuer_ids.push_back(issuer.base_id);
+    }
+    EXPECT_THAT(usable_issuer_ids,
+                testing::UnorderedElementsAre(
+                    kIssuerUsable, kIssuerStateQualified, kIssuerStateFrozen));
+  }
+
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeatures(
+        {features::kVerifyMTCs, features::kTestRootStore}, {});
+    std::optional<ChromeRootStoreSignerSet> parsed_set =
+        ChromeRootStoreSignerSet::CreateFromProto(proto);
+    ASSERT_TRUE(parsed_set.has_value());
+    std::vector<std::vector<uint8_t>> usable_issuer_ids;
+    for (const auto& issuer : parsed_set->trusted_issuers()) {
+      usable_issuer_ids.push_back(issuer.base_id);
+    }
+    // If the kTestRootStore flag was set, then the usable list should be the
+    // same as before, plus the signers that have a realm of
+    // realm_untrusted_validation_only.
+    EXPECT_THAT(usable_issuer_ids,
+                testing::UnorderedElementsAre(
+                    kIssuerUsable, kIssuerStateQualified, kIssuerStateFrozen,
+                    kIssuerUntrustedRealm));
+  }
+}
+
+// Tests the filtering during SignerSet proto parsing that removes mirrors
+// which are untrusted or retired.
+TEST(TrustStoreChromeTestNoFixture, SignerSetCreationMirrorFiltering) {
+  chrome_root_store::SignerSet proto;
+  proto.mutable_timestamp()->set_seconds(123456);
+
+  const std::vector<uint8_t> kMirrorUsable = {0x01};
+  AddSignerSetMirror(proto, kMirrorUsable, "op");
+
+  const std::vector<uint8_t> kMirrorNoRealm = {0x02};
+  AddSignerSetMirror(proto, kMirrorNoRealm, "op")->clear_realm();
+
+  const std::vector<uint8_t> kMirrorUntrustedRealm = {0x03};
+  AddSignerSetMirror(proto, kMirrorUntrustedRealm, "op")
+      ->set_realm(chrome_root_store::REALM_UNTRUSTED_VALIDATION_ONLY);
+
+  const std::vector<uint8_t> kMirrorStateUnset = {0x04};
+  AddSignerSetMirror(proto, kMirrorStateUnset, "op")
+      ->mutable_state_history(0)
+      ->set_state(chrome_root_store::STATE_UNSET);
+
+  const std::vector<uint8_t> kMirrorStateCandidate = {0x05};
+  AddSignerSetMirror(proto, kMirrorStateCandidate, "op")
+      ->mutable_state_history(0)
+      ->set_state(chrome_root_store::STATE_CANDIDATE);
+
+  const std::vector<uint8_t> kMirrorStateRemoved = {0x06};
+  AddSignerSetMirror(proto, kMirrorStateRemoved, "op")
+      ->mutable_state_history(0)
+      ->set_state(chrome_root_store::STATE_REMOVED);
+
+  const std::vector<uint8_t> kMirrorStateQualified = {0x07};
+  AddSignerSetMirror(proto, kMirrorStateQualified, "op")
+      ->mutable_state_history(0)
+      ->set_state(chrome_root_store::STATE_QUALIFIED);
+
+  const std::vector<uint8_t> kMirrorStateFrozen = {0x08};
+  AddSignerSetMirror(proto, kMirrorStateFrozen, "op")
+      ->mutable_state_history(0)
+      ->set_state(chrome_root_store::STATE_FROZEN);
+
+  const std::vector<uint8_t> kMirrorNoSignatureAlgorithm = {0x09};
+  AddSignerSetMirror(proto, kMirrorNoSignatureAlgorithm, "op")
+      ->clear_signature_algorithm();
+
+  const std::vector<uint8_t> kMirrorUnknownSignatureAlgorithm = {0x0a};
+  AddSignerSetMirror(proto, kMirrorUnknownSignatureAlgorithm, "op")
+      ->set_signature_algorithm(
+          static_cast<chrome_root_store::SignatureAlgorithm>(999999));
+
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeatures({features::kVerifyMTCs},
+                                  {features::kTestRootStore});
+    std::optional<ChromeRootStoreSignerSet> parsed_set =
+        ChromeRootStoreSignerSet::CreateFromProto(proto);
+    ASSERT_TRUE(parsed_set.has_value());
+    std::vector<std::vector<uint8_t>> usable_mirror_ids;
+    for (const auto& mirror : parsed_set->trusted_mirrors()) {
+      usable_mirror_ids.push_back(mirror.base_id);
+    }
+    EXPECT_THAT(usable_mirror_ids,
+                testing::UnorderedElementsAre(
+                    kMirrorUsable, kMirrorStateQualified, kMirrorStateFrozen));
+  }
+
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeatures(
+        {features::kVerifyMTCs, features::kTestRootStore}, {});
+    std::optional<ChromeRootStoreSignerSet> parsed_set =
+        ChromeRootStoreSignerSet::CreateFromProto(proto);
+    ASSERT_TRUE(parsed_set.has_value());
+    std::vector<std::vector<uint8_t>> usable_mirror_ids;
+    for (const auto& mirror : parsed_set->trusted_mirrors()) {
+      usable_mirror_ids.push_back(mirror.base_id);
+    }
+    // If the kTestRootStore flag was set, then the usable list should be the
+    // same as before, plus the signers that have a realm of
+    // realm_untrusted_validation_only.
+    EXPECT_THAT(usable_mirror_ids,
+                testing::UnorderedElementsAre(
+                    kMirrorUsable, kMirrorStateQualified, kMirrorStateFrozen,
+                    kMirrorUntrustedRealm));
+  }
+}
+
+TEST(TrustStoreChromeTestNoFixture, ParseMtcMetadataProto) {
+  chrome_root_store::MtcMetadata proto;
+  proto.set_update_time_seconds(987654321);
+
+  // 1. Add experiment format MtcAnchorData.
+  {
+    // The MtcAnchorData proto message previously could contain either
+    // davidben-08 or plants-05 style data. The presence of the `ca_id` field
+    // indicates this message contains plants-05 data.  Since the davidben-08
+    // fields were removed from the proto definition the test can't easily
+    // populate a davidben-08 style message. (Perhaps it could with the
+    // "UnknownFieldSet" API, but not really worth the trouble.) All we really
+    // care about is testing that the parser ignores a message that doesn't
+    // have `ca_id` set.
+    // TODO(crbug.com/520071497): Remove this if we remove the has_ca_id
+    // conditional in ChromeRootStoreMtcMetadata::CreateFromMtcMetadataProto.
+    proto.add_mtc_anchor_data();
+  }
+
+  // 2. Add plants format MtcAnchorData.
+  {
+    auto* anchor = proto.add_mtc_anchor_data();
+    anchor->set_ca_id("\x01\x03\x06\x01\x04\x02");
+
+    // Add revoked indices
+    auto* revoked = anchor->add_revoked_indices();
+    revoked->set_start_inclusive(500);
+    revoked->set_end_exclusive(600);
+
+    // Add log 1 (log number 5)
+    {
+      auto* log = anchor->add_mtc_log_data();
+      log->set_log_number(5);
+      auto* range = log->mutable_trusted_landmark_ids_range();
+      range->set_min_active_landmark_inclusive(30);
+      range->set_last_landmark_inclusive(40);
+
+      auto* subtree = log->add_trusted_subtrees();
+      subtree->set_start_inclusive(300);
+      subtree->set_end_exclusive(400);
+      subtree->set_hash(std::string(32, '\xbb'));
+    }
+
+    // Add log 2 (log number 8)
+    {
+      auto* log = anchor->add_mtc_log_data();
+      log->set_log_number(8);
+      auto* range = log->mutable_trusted_landmark_ids_range();
+      range->set_min_active_landmark_inclusive(50);
+      range->set_last_landmark_inclusive(60);
+
+      auto* subtree = log->add_trusted_subtrees();
+      subtree->set_start_inclusive(700);
+      subtree->set_end_exclusive(800);
+      subtree->set_hash(std::string(32, '\xcc'));
+    }
+  }
+  // Add plants format MtcAnchorData that has revoked_indices but no log_data.
+  {
+    auto* anchor = proto.add_mtc_anchor_data();
+    anchor->set_ca_id("\x01\x03\x06\x01\x04\x03");
+
+    // Add revoked indices
+    auto* revoked = anchor->add_revoked_indices();
+    revoked->set_start_inclusive(700);
+    revoked->set_end_exclusive(800);
+  }
+
+  auto mtc_metadata =
+      ChromeRootStoreMtcMetadata::CreateFromMtcMetadataProto(proto);
+  ASSERT_TRUE(mtc_metadata.has_value());
+  EXPECT_EQ(mtc_metadata->update_time(),
+            base::Time::UnixEpoch() + base::Seconds(987654321));
+
+  // Check newer format logs.
+  const auto& plants05_map = mtc_metadata->mtc_anchor_data();
+  ASSERT_EQ(plants05_map.size(), 2U);
+
+  {
+    // CA_ID (\x01\x03\x06\x01\x04\x02)
+    std::vector<uint8_t> ca_id = {0x01, 0x03, 0x06, 0x01, 0x04, 0x02};
+    auto new_it = plants05_map.find(ca_id);
+    ASSERT_NE(new_it, plants05_map.end());
+
+    ASSERT_EQ(new_it->second.revoked_serials.size(), 1U);
+    EXPECT_EQ(new_it->second.revoked_serials.begin()->first, 600U);
+    EXPECT_EQ(new_it->second.revoked_serials.begin()->second, 500U);
+
+    ASSERT_EQ(new_it->second.trusted_landmark_ranges.size(), 2U);
+    // Log 1: 5
+    EXPECT_EQ(new_it->second.trusted_landmark_ranges[0].log_number, 5U);
+    EXPECT_EQ(new_it->second.trusted_landmark_ranges[0].landmark_min_inclusive,
+              30U);
+    EXPECT_EQ(new_it->second.trusted_landmark_ranges[0].landmark_max_inclusive,
+              40U);
+    // Log 2: 8
+    EXPECT_EQ(new_it->second.trusted_landmark_ranges[1].log_number, 8U);
+    EXPECT_EQ(new_it->second.trusted_landmark_ranges[1].landmark_min_inclusive,
+              50U);
+    EXPECT_EQ(new_it->second.trusted_landmark_ranges[1].landmark_max_inclusive,
+              60U);
+
+    ASSERT_EQ(new_it->second.trusted_subtrees.size(), 2U);
+    EXPECT_EQ(new_it->second.trusted_subtrees[0].log_number, 5U);
+    ASSERT_EQ(new_it->second.trusted_subtrees[0].trusted_subtrees.size(), 1U);
+    EXPECT_EQ(
+        new_it->second.trusted_subtrees[0].trusted_subtrees[0].range.start,
+        300U);
+    EXPECT_EQ(new_it->second.trusted_subtrees[0].trusted_subtrees[0].range.end,
+              400U);
+    EXPECT_EQ(base::ToVector(
+                  new_it->second.trusted_subtrees[0].trusted_subtrees[0].hash),
+              std::vector<uint8_t>(32, 0xbb));
+
+    EXPECT_EQ(new_it->second.trusted_subtrees[1].log_number, 8U);
+    ASSERT_EQ(new_it->second.trusted_subtrees[1].trusted_subtrees.size(), 1U);
+    EXPECT_EQ(
+        new_it->second.trusted_subtrees[1].trusted_subtrees[0].range.start,
+        700U);
+    EXPECT_EQ(new_it->second.trusted_subtrees[1].trusted_subtrees[0].range.end,
+              800U);
+    EXPECT_EQ(base::ToVector(
+                  new_it->second.trusted_subtrees[1].trusted_subtrees[0].hash),
+              std::vector<uint8_t>(32, 0xcc));
+  }
+
+  {
+    // CA_ID (\x01\x03\x06\x01\x04\x03)
+    std::vector<uint8_t> ca_id = {0x01, 0x03, 0x06, 0x01, 0x04, 0x03};
+    auto new_it = plants05_map.find(ca_id);
+    ASSERT_NE(new_it, plants05_map.end());
+
+    ASSERT_EQ(new_it->second.revoked_serials.size(), 1U);
+    EXPECT_EQ(new_it->second.revoked_serials.begin()->first, 800U);
+    EXPECT_EQ(new_it->second.revoked_serials.begin()->second, 700U);
+
+    ASSERT_EQ(new_it->second.trusted_landmark_ranges.size(), 0U);
+    ASSERT_EQ(new_it->second.trusted_subtrees.size(), 0U);
+  }
+}
+
+class TrustStoreChromeMtcCosignerPolicyTest : public ::testing::Test {
+ public:
+  static constexpr uint8_t kCaId1[] = {0x03, 0x08, 0x04, 0x09, 0x01};
+  static constexpr uint8_t kCaId2[] = {0x04, 0x08, 0x04, 0x09};
+  static constexpr uint8_t kMirrorId1[] = {0x03, 0x08, 0x04, 0x09, 0x02};
+  static constexpr uint8_t kMirrorId2[] = {0x04, 0x08, 0x04, 0x10};
+  static constexpr uint8_t kUnknownId[] = {0x99, 0x08, 0x04, 0x10};
+  static constexpr char kOperator1[] = "op1";
+  static constexpr char kOperator2[] = "op2";
+
+  void SetUp() override {
+    feature_list_.InitWithFeatures(
+        {{features::kTLSTrustAnchorIDs, features::kVerifyMTCs}}, {});
+
+    chrome_root_store::RootStore root_store;
+
+    // Unused traditional root, necessary for ChromeRootStoreData parsing to
+    // succeed.
+    scoped_refptr<X509Certificate> root = MakeTestRoot();
+    root_store.add_trust_anchors()->set_der(
+        base::as_string_view(root->cert_span()));
+
+    root_store_data_ =
+        ChromeRootStoreData::CreateFromRootStoreProto(root_store);
+    ASSERT_TRUE(root_store_data_);
+
+    now_ = base::Time::Now();
+    uint64_t now_seconds = now_.InSecondsFSinceUnixEpoch();
+    signer_set_.mutable_timestamp()->set_seconds(now_seconds);
+
+    ca1_signer_ = AddSignerSetIssuer(signer_set_, kCaId1, kOperator1, 1);
+
+    ca2_signer_ = AddSignerSetIssuer(signer_set_, kCaId2, kOperator2, 2);
+
+    mirror1_signer_ = AddSignerSetMirror(signer_set_, kMirrorId1, kOperator1);
+
+    mirror2_signer_ = AddSignerSetMirror(signer_set_, kMirrorId2, kOperator2);
+  }
+
+  // Create a TrustStoreChrome using the configured SignerSet proto. Changes to
+  // the proto or the Signer objects can be made by the test function before
+  // calling this.
+  std::unique_ptr<TrustStoreChrome> CreateTrustStoreChromeWithSignerSetProto() {
+    std::optional<ChromeRootStoreSignerSet> signer_set_data =
+        ChromeRootStoreSignerSet::CreateFromProto(signer_set_);
+    if (!signer_set_data) {
+      ADD_FAILURE();
+      return nullptr;
+    }
+    root_store_data_->SetSignerSet(*signer_set_data);
+
+    return std::make_unique<TrustStoreChrome>(&root_store_data_.value(),
+                                              nullptr);
+  }
+
+  std::shared_ptr<const bssl::ParsedCertificate> CreateCa1LeafCert(
+      base::Time cert_not_before) {
+    std::unique_ptr<net::CertBuilder> mtc_leaf_builder =
+        std::move(net::CertBuilder::CreateSimpleChain(1u)[0]);
+    mtc_leaf_builder->SetValidity(cert_not_before,
+                                  cert_not_before + base::Days(10));
+    uint64_t leaf_index_1 = mtc_log_1_.AddEntry(*mtc_leaf_builder);
+
+    // Note: the cosigner list used in creating the test cert here doesn't
+    // actually matter for the IsMtcCosignerPolicySatisfied implementation,
+    // which only depends on the list of valid_additional_cosigners that are
+    // passed in from the verification results.
+    auto leaf_1_der =
+        mtc_log_1_.CreateStandaloneCertificate(leaf_index_1, {&ca1_cosigner_});
+    if (!leaf_1_der) {
+      ADD_FAILURE();
+      return nullptr;
+    }
+    return ToParsedCertificate(x509_util::CreateCryptoBuffer(*leaf_1_der));
+  }
+
+  base::Time now_;
+  std::optional<ChromeRootStoreData> root_store_data_;
+  chrome_root_store::SignerSet signer_set_;
+
+  // These point to fields of `signer_set_`.
+  chrome_root_store::Signer* ca1_signer_;
+  chrome_root_store::Signer* ca2_signer_;
+  chrome_root_store::Signer* mirror1_signer_;
+  chrome_root_store::Signer* mirror2_signer_;
+
+  net::MtcLogBuilder mtc_log_1_{kCaId1, /*log_number=*/1};
+  MtcLogBuilder::Cosigner ca1_cosigner_{
+      base::ToVector(kCaId1), crypto::keypair::PrivateKey::GenerateMldsa44(),
+      bssl::SignatureAlgorithm::kMldsa44};
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+TEST_F(TrustStoreChromeMtcCosignerPolicyTest, SimpleTests) {
+  std::unique_ptr<TrustStoreChrome> trust_store_chrome =
+      CreateTrustStoreChromeWithSignerSetProto();
+
+  // GetMTCAnchorData should only return for issuers, not mirrors.
+  const auto* ca1_data = trust_store_chrome->GetMTCAnchorData(kCaId1);
+  ASSERT_TRUE(ca1_data);
+  EXPECT_EQ(1, ca1_data->signer_config.crs_root_id);
+
+  const auto* ca2_data = trust_store_chrome->GetMTCAnchorData(kCaId2);
+  ASSERT_TRUE(ca2_data);
+  EXPECT_EQ(2, ca2_data->signer_config.crs_root_id);
+
+  EXPECT_FALSE(trust_store_chrome->GetMTCAnchorData(kMirrorId1));
+  EXPECT_FALSE(trust_store_chrome->GetMTCAnchorData(kMirrorId2));
+  EXPECT_FALSE(trust_store_chrome->GetMTCAnchorData(kUnknownId));
+
+  // GetMtcMirrorKey should only return mirrors, not issuers.
+  EXPECT_NE(std::nullopt, trust_store_chrome->GetMtcMirrorKey(kMirrorId1));
+  EXPECT_NE(std::nullopt, trust_store_chrome->GetMtcMirrorKey(kMirrorId2));
+
+  EXPECT_EQ(std::nullopt, trust_store_chrome->GetMtcMirrorKey(kCaId1));
+  EXPECT_EQ(std::nullopt, trust_store_chrome->GetMtcMirrorKey(kCaId2));
+  EXPECT_EQ(std::nullopt, trust_store_chrome->GetMtcMirrorKey(kUnknownId));
+
+  std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+      CreateCa1LeafCert(now_);
+  ASSERT_TRUE(leaf_1);
+  std::shared_ptr<const bssl::MTCAnchor> mtc_anchor_1 =
+      trust_store_chrome->GetTrustedMTCIssuerOf(leaf_1.get());
+  ASSERT_TRUE(mtc_anchor_1);
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy is satisfied at current time, as long as one usable, independent
+    // mirror is valid.
+    EXPECT_TRUE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": true,
+      "reason": "mirror policy satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "satisfies policy"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Unknown or unusable mirrors being present in the valid cosigners list are
+    // ignored, so the result is still valid.
+    EXPECT_TRUE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(),
+        {base::ToVector(kUnknownId), base::ToVector(kMirrorId1),
+         base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": true,
+      "reason": "mirror policy satisfied",
+      "verified_cosigners": [
+        {"id": "3208.4.16", "status": "mirror data missing"},
+        {"id": "3.8.4.9.2", "status": "same operator as CA"},
+        {"id": "4.8.4.16", "status": "satisfies policy"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Mirror 1 has same operator as CA 1, so this is not valid.
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId1)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "policy not satisfied",
+      "verified_cosigners": [
+        {"id": "3.8.4.9.2", "status": "same operator as CA"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // ... but if the signer_set is older than the timebomb, then policy checks
+    // are skipped and it should be allowed.
+    EXPECT_TRUE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_ + base::Days(71), mtc_anchor_1.get(),
+        {base::ToVector(kMirrorId1)}, net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": true,
+      "reason": "old SignerSet",
+      "verified_cosigners": [
+        {"id": "3.8.4.9.2"}
+      ]
+    })"));
+  }
+}
+
+TEST_F(TrustStoreChromeMtcCosignerPolicyTest,
+       DisableMirroringRequirementsKillSwitch) {
+  for (bool disable_mtc_mirroring_requirements : {false, true}) {
+    root_store_data_->SetDisableMtcMirroringRequirements(
+        disable_mtc_mirroring_requirements);
+    std::unique_ptr<TrustStoreChrome> trust_store_chrome =
+        CreateTrustStoreChromeWithSignerSetProto();
+
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(now_);
+    ASSERT_TRUE(leaf_1);
+    std::shared_ptr<const bssl::MTCAnchor> mtc_anchor_1 =
+        trust_store_chrome->GetTrustedMTCIssuerOf(leaf_1.get());
+    ASSERT_TRUE(mtc_anchor_1);
+
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // With an independent mirror cosigner, verification should succeed in both
+    // cases.
+    EXPECT_TRUE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+
+    // Mirror 1 has same operator as CA 1, so this is not valid, but will
+    // succeed if the mirroring requirements are disabled.
+    EXPECT_EQ(disable_mtc_mirroring_requirements,
+              trust_store_chrome->IsMtcCosignerPolicySatisfied(
+                  *leaf_1, now_, mtc_anchor_1.get(),
+                  {base::ToVector(kMirrorId1)}, net_log));
+
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(2u, events.size());
+    if (disable_mtc_mirroring_requirements) {
+      EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+        "is_valid": true,
+        "reason": "kill switch",
+        "verified_cosigners": [
+          {"id": "4.8.4.16"}
+        ]
+      })"));
+      EXPECT_THAT(events[1].params, base::test::IsJson(R"({
+        "is_valid": true,
+        "reason": "kill switch",
+        "verified_cosigners": [
+          {"id": "3.8.4.9.2"}
+        ]
+      })"));
+    } else {
+      EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+        "is_valid": true,
+        "reason": "mirror policy satisfied",
+        "verified_cosigners": [
+          {"id": "4.8.4.16", "status": "satisfies policy"}
+        ]
+      })"));
+      EXPECT_THAT(events[1].params, base::test::IsJson(R"({
+        "is_valid": false,
+        "reason": "policy not satisfied",
+        "verified_cosigners": [
+          {"id": "3.8.4.9.2", "status": "same operator as CA"}
+        ]
+      })"));
+    }
+  }
+}
+
+// Test a CA signer that goes from candidate -> usable -> frozen.
+TEST_F(TrustStoreChromeMtcCosignerPolicyTest, IssuerStateChange) {
+  base::Time candidate_start_time = now_ - base::Days(20);
+  base::Time usable_start_time = now_ - base::Days(10);
+  base::Time frozen_start_time = now_;
+
+  auto* state = ca1_signer_->mutable_state_history(0);
+  state->set_state(chrome_root_store::STATE_FROZEN);
+  state->mutable_state_start()->set_seconds(
+      frozen_start_time.InSecondsFSinceUnixEpoch());
+
+  state = ca1_signer_->add_state_history();
+  state->set_state(chrome_root_store::STATE_USABLE);
+  state->mutable_state_start()->set_seconds(
+      usable_start_time.InSecondsFSinceUnixEpoch());
+
+  state = ca1_signer_->add_state_history();
+  state->set_state(chrome_root_store::STATE_CANDIDATE);
+  state->mutable_state_start()->set_seconds(
+      candidate_start_time.InSecondsFSinceUnixEpoch());
+
+  std::unique_ptr<TrustStoreChrome> trust_store_chrome =
+      CreateTrustStoreChromeWithSignerSetProto();
+
+  std::shared_ptr<const bssl::ParsedCertificate> leaf_1_now =
+      CreateCa1LeafCert(now_);
+  ASSERT_TRUE(leaf_1_now);
+  std::shared_ptr<const bssl::MTCAnchor> mtc_anchor_1 =
+      trust_store_chrome->GetTrustedMTCIssuerOf(leaf_1_now.get());
+  ASSERT_TRUE(mtc_anchor_1);
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued before the state history starts.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(candidate_start_time - base::Seconds(1));
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "CA not usable at cert time",
+      "verified_cosigners": [
+        {"id": "4.8.4.16"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued during the candidate state.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(candidate_start_time);
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "CA not usable at cert time",
+      "verified_cosigners": [
+        {"id": "4.8.4.16"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued at the end of the candidate state.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(usable_start_time - base::Seconds(1));
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "CA not usable at cert time",
+      "verified_cosigners": [
+        {"id": "4.8.4.16"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy succeeds for a cert issued at the start of the usable state.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(usable_start_time);
+    EXPECT_TRUE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": true,
+      "reason": "mirror policy satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "satisfies policy"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy succeeds for a cert issued at the end of the usable state.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(frozen_start_time - base::Seconds(1));
+    EXPECT_TRUE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": true,
+      "reason": "mirror policy satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "satisfies policy"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued during the frozen state.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(frozen_start_time);
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "CA not usable at cert time",
+      "verified_cosigners": [
+        {"id": "4.8.4.16"}
+      ]
+    })"));
+  }
+}
+
+// Test a mirror signer that goes from candidate -> usable -> frozen.
+// (Essentially the same test as IssuerStateChange but for mirror state.)
+TEST_F(TrustStoreChromeMtcCosignerPolicyTest, MirrorStateChange) {
+  base::Time candidate_start_time = now_ - base::Days(20);
+  base::Time usable_start_time = now_ - base::Days(10);
+  base::Time frozen_start_time = now_;
+
+  auto* state = mirror2_signer_->mutable_state_history(0);
+  state->set_state(chrome_root_store::STATE_FROZEN);
+  state->mutable_state_start()->set_seconds(
+      frozen_start_time.InSecondsFSinceUnixEpoch());
+
+  state = mirror2_signer_->add_state_history();
+  state->set_state(chrome_root_store::STATE_USABLE);
+  state->mutable_state_start()->set_seconds(
+      usable_start_time.InSecondsFSinceUnixEpoch());
+
+  state = mirror2_signer_->add_state_history();
+  state->set_state(chrome_root_store::STATE_CANDIDATE);
+  state->mutable_state_start()->set_seconds(
+      candidate_start_time.InSecondsFSinceUnixEpoch());
+
+  std::unique_ptr<TrustStoreChrome> trust_store_chrome =
+      CreateTrustStoreChromeWithSignerSetProto();
+
+  std::shared_ptr<const bssl::ParsedCertificate> leaf_1_now =
+      CreateCa1LeafCert(now_);
+  ASSERT_TRUE(leaf_1_now);
+  std::shared_ptr<const bssl::MTCAnchor> mtc_anchor_1 =
+      trust_store_chrome->GetTrustedMTCIssuerOf(leaf_1_now.get());
+  ASSERT_TRUE(mtc_anchor_1);
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued before the state history starts.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(candidate_start_time - base::Seconds(1));
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "policy not satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "mirror not usable at cert time"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued during the candidate state.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(candidate_start_time);
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "policy not satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "mirror not usable at cert time"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued at the end of the candidate state.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(usable_start_time - base::Seconds(1));
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "policy not satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "mirror not usable at cert time"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy succeeds for a cert issued at the start of the usable state.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(usable_start_time);
+    EXPECT_TRUE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": true,
+      "reason": "mirror policy satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "satisfies policy"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy succeeds for a cert issued at the end of the usable state.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(frozen_start_time - base::Seconds(1));
+    EXPECT_TRUE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": true,
+      "reason": "mirror policy satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "satisfies policy"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued during the frozen state.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(frozen_start_time);
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "policy not satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "mirror not usable at cert time"}
+      ]
+    })"));
+  }
+}
+
+// Test a CA signer with operator history changes.
+TEST_F(TrustStoreChromeMtcCosignerPolicyTest, IssuerOperatorChange) {
+  // Going back and forth from the same operator is a bit unrealistic, but
+  // good enough to test the policy logic.
+  base::Time op2_1st_start_time = now_ - base::Days(20);
+  base::Time op1_start_time = now_ - base::Days(10);
+  base::Time op2_2nd_start_time = now_;
+
+  auto* operator_history = ca1_signer_->mutable_operator_history(0);
+  operator_history->set_name(kOperator2);
+  operator_history->mutable_operator_start()->set_seconds(
+      op2_2nd_start_time.InSecondsFSinceUnixEpoch());
+
+  operator_history = ca1_signer_->add_operator_history();
+  operator_history->set_name(kOperator1);
+  operator_history->mutable_operator_start()->set_seconds(
+      op1_start_time.InSecondsFSinceUnixEpoch());
+
+  operator_history = ca1_signer_->add_operator_history();
+  operator_history->set_name(kOperator2);
+  operator_history->mutable_operator_start()->set_seconds(
+      op2_1st_start_time.InSecondsFSinceUnixEpoch());
+
+  std::unique_ptr<TrustStoreChrome> trust_store_chrome =
+      CreateTrustStoreChromeWithSignerSetProto();
+
+  std::shared_ptr<const bssl::ParsedCertificate> leaf_1_now =
+      CreateCa1LeafCert(now_);
+  ASSERT_TRUE(leaf_1_now);
+  std::shared_ptr<const bssl::MTCAnchor> mtc_anchor_1 =
+      trust_store_chrome->GetTrustedMTCIssuerOf(leaf_1_now.get());
+  ASSERT_TRUE(mtc_anchor_1);
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued before the operator history starts.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(op2_1st_start_time - base::Seconds(1));
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "CA not usable at cert time",
+      "verified_cosigners": [
+        {"id": "4.8.4.16"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued during the 1st period where the CA has
+    // operator 2, which is the same as the operator of mirror 2.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(op2_1st_start_time);
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "policy not satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "same operator as CA"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued at the end of that period.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(op1_start_time - base::Seconds(1));
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "policy not satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "same operator as CA"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy succeeds for a cert issued at the start of period where it has
+    // operator 1.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(op1_start_time);
+    EXPECT_TRUE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": true,
+      "reason": "mirror policy satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "satisfies policy"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy succeeds for a cert issued at the end of the operator 1 period.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(op2_2nd_start_time - base::Seconds(1));
+    EXPECT_TRUE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": true,
+      "reason": "mirror policy satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "satisfies policy"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued during the 2nd period with operator 2.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(op2_2nd_start_time);
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "policy not satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "same operator as CA"}
+      ]
+    })"));
+  }
+}
+
+// Test a mirror signer with operator history changes.
+// (Essentially the same test as IssuerOperatorChange but for mirror operator.)
+TEST_F(TrustStoreChromeMtcCosignerPolicyTest, MirrorOperatorChange) {
+  // Going back and forth from the same operator is a bit unrealistic, but
+  // good enough to test the policy logic.
+  base::Time op1_1st_start_time = now_ - base::Days(20);
+  base::Time op2_start_time = now_ - base::Days(10);
+  base::Time op1_2nd_start_time = now_;
+
+  auto* operator_history = mirror2_signer_->mutable_operator_history(0);
+  operator_history->set_name(kOperator1);
+  operator_history->mutable_operator_start()->set_seconds(
+      op1_2nd_start_time.InSecondsFSinceUnixEpoch());
+
+  operator_history = mirror2_signer_->add_operator_history();
+  operator_history->set_name(kOperator2);
+  operator_history->mutable_operator_start()->set_seconds(
+      op2_start_time.InSecondsFSinceUnixEpoch());
+
+  operator_history = mirror2_signer_->add_operator_history();
+  operator_history->set_name(kOperator1);
+  operator_history->mutable_operator_start()->set_seconds(
+      op1_1st_start_time.InSecondsFSinceUnixEpoch());
+
+  std::unique_ptr<TrustStoreChrome> trust_store_chrome =
+      CreateTrustStoreChromeWithSignerSetProto();
+
+  std::shared_ptr<const bssl::ParsedCertificate> leaf_1_now =
+      CreateCa1LeafCert(now_);
+  ASSERT_TRUE(leaf_1_now);
+  std::shared_ptr<const bssl::MTCAnchor> mtc_anchor_1 =
+      trust_store_chrome->GetTrustedMTCIssuerOf(leaf_1_now.get());
+  ASSERT_TRUE(mtc_anchor_1);
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued before the operator history starts.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(op1_1st_start_time - base::Seconds(1));
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "policy not satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "mirror not usable at cert time"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued during the 1st period where the mirror has
+    // operator 1, which is the same as the operator of CA 1.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(op1_1st_start_time);
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "policy not satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "same operator as CA"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued at the end of that period.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(op2_start_time - base::Seconds(1));
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "policy not satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "same operator as CA"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy succeeds for a cert issued at the start of period where the
+    // mirror has operator 2.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(op2_start_time);
+    EXPECT_TRUE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": true,
+      "reason": "mirror policy satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "satisfies policy"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy succeeds for a cert issued at the end of the operator 2 period.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(op1_2nd_start_time - base::Seconds(1));
+    EXPECT_TRUE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": true,
+      "reason": "mirror policy satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "satisfies policy"}
+      ]
+    })"));
+  }
+
+  {
+    RecordingNetLogObserver net_log_observer(NetLogCaptureMode::kDefault);
+    NetLogWithSource net_log = NetLogWithSource::Make(NetLogSourceType::NONE);
+
+    // Policy fails for a cert issued during the 2nd period with operator 1.
+    std::shared_ptr<const bssl::ParsedCertificate> leaf_1 =
+        CreateCa1LeafCert(op1_2nd_start_time);
+    EXPECT_FALSE(trust_store_chrome->IsMtcCosignerPolicySatisfied(
+        *leaf_1, now_, mtc_anchor_1.get(), {base::ToVector(kMirrorId2)},
+        net_log));
+    auto events = net_log_observer.GetEntriesWithType(
+        NetLogEventType::CERT_MTC_COSIGNER_POLICY_CHECKED);
+    ASSERT_EQ(1u, events.size());
+    EXPECT_THAT(events[0].params, base::test::IsJson(R"({
+      "is_valid": false,
+      "reason": "policy not satisfied",
+      "verified_cosigners": [
+        {"id": "4.8.4.16", "status": "same operator as CA"}
+      ]
+    })"));
+  }
+}
+
+}  // namespace
+}  // namespace net

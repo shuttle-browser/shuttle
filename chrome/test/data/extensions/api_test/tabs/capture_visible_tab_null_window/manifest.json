@@ -1,0 +1,13 @@
+{
+  "name": "chrome.tabs.captureVisibleTab test: nullWindow",
+  "version": "0.1",
+  "manifest_version": 3,
+  "description": "end-to-end browser test for chrome.tabs.captureVisibleTab",
+  "permissions": ["tabs"],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

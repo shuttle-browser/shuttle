@@ -1,0 +1,272 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/autofill/core/browser/metrics/payments/bnpl_metrics.h"
+
+#include <string>
+#include <string_view>
+
+#include "base/feature_list.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/notreached.h"
+#include "base/strings/strcat.h"
+#include "base/time/time.h"
+#include "components/autofill/core/browser/data_model/payments/bnpl_issuer.h"
+#include "components/autofill/core/common/autofill_payments_features.h"
+#include "services/metrics/public/cpp/ukm_builders.h"
+#include "services/metrics/public/cpp/ukm_recorder.h"
+#include "services/metrics/public/cpp/ukm_source_id.h"
+
+namespace autofill::autofill_metrics {
+
+using IssuerId = ::autofill::BnplIssuer::IssuerId;
+
+std::string_view GetHistogramSuffixFromIssuerId(IssuerId issuer_id) {
+  switch (issuer_id) {
+    case IssuerId::kBnplAffirm:
+      return "Affirm";
+    case IssuerId::kBnplZip:
+      return "Zip";
+    case IssuerId::kBnplAfterpay:
+      return "Afterpay";
+    case IssuerId::kBnplKlarna:
+      return "Klarna";
+  }
+  NOTREACHED();
+}
+
+std::string_view ConvertBnplFlowResultToString(BnplFlowResult result) {
+  switch (result) {
+    case BnplFlowResult::kSuccess:
+      return "Success";
+    case BnplFlowResult::kFailure:
+      return "Failure";
+    case BnplFlowResult::kUserClosed:
+      return "UserClosed";
+  }
+  NOTREACHED();
+}
+
+void LogBnplPrefToggled(bool enabled) {
+  base::UmaHistogramBoolean("Autofill.SettingsPage.BnplToggled", enabled);
+}
+
+void LogBnplIssuersSyncedCountAtStartup(int count) {
+  base::UmaHistogramCounts100("Autofill.Bnpl.IssuersSyncedCount.Startup",
+                              count);
+}
+
+void LogBnplTosDialogShown(IssuerId issuer_id) {
+  std::string histogram_name =
+      base::StrCat({"Autofill.Bnpl.TosDialogShown.",
+                    GetHistogramSuffixFromIssuerId(issuer_id)});
+  base::UmaHistogramBoolean(histogram_name, /*sample=*/true);
+}
+
+void LogBnplTosDialogResult(BnplTosDialogResult result, IssuerId issuer_id) {
+  std::string histogram_name =
+      base::StrCat({"Autofill.Bnpl.TosDialogResult.",
+                    GetHistogramSuffixFromIssuerId(issuer_id)});
+  base::UmaHistogramEnumeration(histogram_name, result);
+}
+
+void LogSelectBnplIssuerDialogResult(SelectBnplIssuerDialogResult result) {
+  base::UmaHistogramEnumeration("Autofill.Bnpl.SelectionDialogResult", result);
+}
+
+void LogBnplIssuerSelection(IssuerId issuer_id) {
+  base::UmaHistogramEnumeration("Autofill.Bnpl.SelectionDialogIssuerSelected",
+                                issuer_id);
+}
+
+void LogBnplSuggestionUnavailableReason(
+    BnplSuggestionUnavailableReason reason) {
+  base::UmaHistogramEnumeration("Autofill.Bnpl.SuggestionUnavailableReason",
+                                reason);
+}
+
+void LogBnplPopupWindowShown(IssuerId issuer_id) {
+  std::string histogram_name =
+      base::StrCat({"Autofill.Bnpl.PopupWindowShown.",
+                    GetHistogramSuffixFromIssuerId(issuer_id)});
+  base::UmaHistogramBoolean(histogram_name, /*sample=*/true);
+}
+
+void LogBnplPopupWindowResult(IssuerId issuer_id, BnplFlowResult result) {
+  std::string histogram_name =
+      base::StrCat({"Autofill.Bnpl.PopupWindowResult.",
+                    GetHistogramSuffixFromIssuerId(issuer_id)});
+  base::UmaHistogramEnumeration(histogram_name, result);
+}
+
+void LogBnplPopupWindowLatency(base::TimeDelta duration,
+                               IssuerId issuer_id,
+                               BnplFlowResult result) {
+  std::string histogram_name =
+      base::StrCat({"Autofill.Bnpl.PopupWindowLatency.",
+                    GetHistogramSuffixFromIssuerId(issuer_id), ".",
+                    ConvertBnplFlowResultToString(result)});
+
+  base::UmaHistogramLongTimes(histogram_name, duration);
+}
+
+void LogSuggestionShownForPayLaterTab(bool contains_pay_later_tab_suggestions,
+                                      ukm::SourceId ukm_source_id) {
+  autofill_metrics::LogPayLaterTabsFormEvent(
+      autofill_metrics::PayLaterTabsFormEvent::kSuggestionsShown);
+  if (contains_pay_later_tab_suggestions) {
+    autofill_metrics::LogPayLaterTabsFormEvent(
+        autofill_metrics::PayLaterTabsFormEvent::
+            kSuggestionsShownWithPayLaterTab);
+    ukm::builders::Autofill_PayLaterTabShown(ukm_source_id)
+        .SetShown(true)
+        .Record(ukm::UkmRecorder::Get());
+  }
+}
+
+void LogPayLaterTabSelected(ukm::SourceId ukm_source_id) {
+  autofill_metrics::LogPayLaterTabsFormEvent(
+      autofill_metrics::PayLaterTabsFormEvent::kSwitchedToPayLaterTab);
+  ukm::builders::Autofill_PayLaterTabSelected(ukm_source_id)
+      .SetSelected(true)
+      .Record(ukm::UkmRecorder::Get());
+}
+
+void LogPayLaterTabSuggestionAccepted(IssuerId issuer_id,
+                                      ukm::SourceId ukm_source_id) {
+  ukm::builders::Autofill_PayLaterTabSuggestionAccepted(ukm_source_id)
+      .SetAccepted(true)
+      .Record(ukm::UkmRecorder::Get());
+  switch (issuer_id) {
+    case IssuerId::kBnplAffirm:
+      autofill_metrics::LogPayLaterTabsFormEvent(
+          autofill_metrics::PayLaterTabsFormEvent::kAffirmAccepted);
+      return;
+    case IssuerId::kBnplZip:
+      autofill_metrics::LogPayLaterTabsFormEvent(
+          autofill_metrics::PayLaterTabsFormEvent::kZipAccepted);
+      return;
+    case IssuerId::kBnplAfterpay:
+      autofill_metrics::LogPayLaterTabsFormEvent(
+          autofill_metrics::PayLaterTabsFormEvent::kAfterpayAccepted);
+      return;
+    case IssuerId::kBnplKlarna:
+      autofill_metrics::LogPayLaterTabsFormEvent(
+          autofill_metrics::PayLaterTabsFormEvent::kKlarnaAccepted);
+      return;
+  }
+  NOTREACHED();
+}
+
+void LogPayLaterTabsFormEvent(PayLaterTabsFormEvent event) {
+  base::UmaHistogramEnumeration(
+      "Autofill.FormEvents.CreditCard.Bnpl.PayLaterTab", event);
+}
+
+void LogBnplFormEvent(BnplFormEvent event) {
+  base::UmaHistogramEnumeration("Autofill.FormEvents.CreditCard.Bnpl", event);
+}
+
+void LogBnplSuggestionShown(ukm::SourceId ukm_source_id) {
+  LogBnplFormEvent(BnplFormEvent::kBnplSuggestionShown);
+  ukm::builders::Autofill_BnplSuggestionShown(ukm_source_id)
+      .SetShown(true)
+      .Record(ukm::UkmRecorder::Get());
+}
+
+void LogBnplSuggestionAccepted(ukm::SourceId ukm_source_id,
+                               int credit_card_suggestions_count) {
+  LogBnplFormEvent(BnplFormEvent::kBnplSuggestionAccepted);
+  ukm::builders::Autofill_BnplSuggestionAccepted(ukm_source_id)
+      .SetAccepted(true)
+      .Record(ukm::UkmRecorder::Get());
+  base::UmaHistogramCounts100(
+      "Autofill.Bnpl.SuggestionAccepted.CreditCardSuggestionsCount",
+      credit_card_suggestions_count);
+}
+
+void LogFormFilledWithBnplVcn(IssuerId issuer_id) {
+  if (base::FeatureList::IsEnabled(
+          features::kAutofillEnablePayNowPayLaterTabs)) {
+    switch (issuer_id) {
+      case IssuerId::kBnplAffirm:
+        LogPayLaterTabsFormEvent(PayLaterTabsFormEvent::kFormFilledWithAffirm);
+        return;
+      case IssuerId::kBnplZip:
+        LogPayLaterTabsFormEvent(PayLaterTabsFormEvent::kFormFilledWithZip);
+        return;
+      case IssuerId::kBnplAfterpay:
+        LogPayLaterTabsFormEvent(
+            PayLaterTabsFormEvent::kFormFilledWithAfterpay);
+        return;
+      case IssuerId::kBnplKlarna:
+        LogPayLaterTabsFormEvent(PayLaterTabsFormEvent::kFormFilledWithKlarna);
+        return;
+    }
+    NOTREACHED();
+  } else {
+    switch (issuer_id) {
+      case IssuerId::kBnplAffirm:
+        LogBnplFormEvent(BnplFormEvent::kFormFilledWithAffirm);
+        return;
+      case IssuerId::kBnplZip:
+        LogBnplFormEvent(BnplFormEvent::kFormFilledWithZip);
+        return;
+      case IssuerId::kBnplAfterpay:
+        LogBnplFormEvent(BnplFormEvent::kFormFilledWithAfterpay);
+        return;
+      case IssuerId::kBnplKlarna:
+        LogBnplFormEvent(BnplFormEvent::kFormFilledWithKlarna);
+        return;
+    }
+    NOTREACHED();
+  }
+}
+
+void LogFormSubmittedWithBnplVcn(IssuerId issuer_id) {
+  if (base::FeatureList::IsEnabled(
+          features::kAutofillEnablePayNowPayLaterTabs)) {
+    switch (issuer_id) {
+      case IssuerId::kBnplAffirm:
+        LogPayLaterTabsFormEvent(
+            PayLaterTabsFormEvent::kFormSubmittedWithAffirm);
+        return;
+      case IssuerId::kBnplZip:
+        LogPayLaterTabsFormEvent(PayLaterTabsFormEvent::kFormSubmittedWithZip);
+        return;
+      case IssuerId::kBnplAfterpay:
+        LogPayLaterTabsFormEvent(
+            PayLaterTabsFormEvent::kFormSubmittedWithAfterpay);
+        return;
+      case IssuerId::kBnplKlarna:
+        LogPayLaterTabsFormEvent(
+            PayLaterTabsFormEvent::kFormSubmittedWithKlarna);
+        return;
+    }
+    NOTREACHED();
+  } else {
+    switch (issuer_id) {
+      case IssuerId::kBnplAffirm:
+        LogBnplFormEvent(BnplFormEvent::kFormSubmittedWithAffirm);
+        return;
+      case IssuerId::kBnplZip:
+        LogBnplFormEvent(BnplFormEvent::kFormSubmittedWithZip);
+        return;
+      case IssuerId::kBnplAfterpay:
+        LogBnplFormEvent(BnplFormEvent::kFormSubmittedWithAfterpay);
+        return;
+      case IssuerId::kBnplKlarna:
+        LogBnplFormEvent(BnplFormEvent::kFormSubmittedWithKlarna);
+        return;
+    }
+    NOTREACHED();
+  }
+}
+
+void LogBnplSelectionDialogShown() {
+  base::UmaHistogramBoolean("Autofill.Bnpl.SelectionDialogShown",
+                            /*sample=*/true);
+}
+
+}  // namespace autofill::autofill_metrics

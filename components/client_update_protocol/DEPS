@@ -1,0 +1,5 @@
+include_rules = [
+  "-content",
+  "+crypto",
+  "+third_party/fuzztest/src/fuzztest/fuzztest.h",
+]

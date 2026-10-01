@@ -1,0 +1,306 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module tab_search.mojom;
+
+import "components/tab_groups/public/mojom/tab_group_types.mojom";
+import "components/tabs/public/mojom/tabs.mojom";
+import "mojo/public/mojom/base/string16.mojom";
+import "mojo/public/mojom/base/time.mojom";
+import "mojo/public/mojom/base/token.mojom";
+import "url/mojom/url.mojom";
+
+
+// Orientation of a split view. Needs to be kept in sync with
+// split_tabs::SplitTabLayout in components/split_tabs/split_tab_visual_data.h.
+enum SplitTabLayout {
+  kSideBySide = 0,
+  kStacked = 1,
+};
+
+// Collection of tab searching details associated with a profile.
+struct ProfileData {
+  array<Window> windows;
+  array<TabGroup> tab_groups;
+  array<RecentlyClosedTab> recently_closed_tabs;
+  array<RecentlyClosedTabGroup> recently_closed_tab_groups;
+  array<RecentlyClosedSplitView> recently_closed_split_views;
+  bool recently_closed_section_expanded;
+};
+
+struct TokenRange {
+  uint32 start;
+  uint32 length;
+};
+
+// Properties and tabs associated with a window.
+struct Window {
+  // Whether the window is active.
+  bool active;
+
+  // Whether the window is hosting the WebUI page.
+  bool is_host_window;
+
+  // The height of the window.
+  uint32 height;
+
+  // The tabs that are currently open in the window.
+  array<Tab> tabs;
+};
+
+// Information about an existing open tab.
+struct Tab {
+  // Whether the tab is active.
+  bool active;
+
+  // Whether the tab is visible.
+  bool visible;
+
+  // The alert states of the tab.
+  array<tabs.mojom.TabAlertState> alert_states;
+
+  // The unique identifier of the tab.
+  int32 tab_id;
+
+  // The group identifier of the tab.
+  mojo_base.mojom.Token? group_id;
+
+  // Whether the tab is pinned.
+  bool pinned;
+
+  // Whether the tab is split.
+  bool split;
+
+  // The split view identifier of the tab.
+  mojo_base.mojom.Token? split_id;
+
+  // The layout orientation of the split view, if split.
+  SplitTabLayout? split_layout;
+
+  // The title of the tab.
+  string title;
+
+  // The URL of the tab.
+  url.mojom.Url url;
+
+  // The URL of the favicon in data scheme.
+  // Only used in OTR profile where chrome://favicon2 is not available.
+  url.mojom.Url? favicon_url;
+
+  // Whether the favicon is the default one.
+  bool is_default_favicon;
+
+  // Whether the tab strip should show the icon.
+  bool show_icon;
+
+  // Time ticks when the tab is last active. This value is used to order open
+  // tabs by recency.
+  mojo_base.mojom.TimeTicks last_active_time_ticks;
+
+  // String representing the elapsed time since the tab was last active.
+  string last_active_elapsed_text;
+};
+
+// Information about a recently closed tab. Recently closed tabs that were
+// closed as part of closing a group will contain a session id belonging to
+// the group while recently closed tabs that were closed individually will
+// contain a group id that associates them with either an open or no longer
+// present tab group.
+struct RecentlyClosedTab {
+  // The unique identifier of the tab.
+  int32 tab_id;
+
+  // The group identifier of the tab.
+  mojo_base.mojom.Token? group_id;
+
+  // The split view identifier of the tab.
+  mojo_base.mojom.Token? split_id;
+
+  // The title of the tab.
+  string title;
+
+  // The URL of the tab.
+  url.mojom.Url url;
+
+  // Elapsed time since the tab was last closed. This value is used to order
+  // closed tabs by recency.
+  mojo_base.mojom.Time last_active_time;
+
+  // String representing the elapsed time since the tab was closed.
+  string last_active_elapsed_text;
+};
+
+// Information about a tab group.
+struct TabGroup {
+  // The unique identifier of the tab group.
+  mojo_base.mojom.Token id;
+
+  // The color of the tab group.
+  tab_groups.mojom.Color color;
+
+  // The title of the tab group.
+  string title;
+};
+
+// Information about a recently closed tab group.
+struct RecentlyClosedTabGroup {
+  // The unique identifier of the tab group that is only valid for the duration
+  // of the session.
+  int32 session_id;
+
+  // The unique identifier of the tab group.
+  mojo_base.mojom.Token id;
+
+  // The color of the tab group.
+  tab_groups.mojom.Color color;
+
+  // The title of the tab group.
+  string title;
+
+  // A count of tabs that belong to the tab group.
+  uint32 tab_count;
+
+  // Elapsed time since the group was closed.
+  mojo_base.mojom.Time last_active_time;
+
+  // String representing the elapsed time since the group was closed.
+  string last_active_elapsed_text;
+};
+
+// Information about a recently closed split view.
+struct RecentlyClosedSplitView {
+  // The unique identifier of the split view that is only valid for the duration
+  // of the session.
+  int32 session_id;
+
+  // The unique identifier of the split view.
+  mojo_base.mojom.Token id;
+
+  // A count of tabs that belong to the split view.
+  uint32 tab_count;
+
+  // Elapsed time since the split view was closed.
+  mojo_base.mojom.Time last_active_time;
+
+  // String representing the elapsed time since the split view was closed.
+  string last_active_elapsed_text;
+
+  // The URLs of the tabs in the split view.
+  array<url.mojom.Url> tab_urls;
+
+  // The layout orientation of the split view.
+  SplitTabLayout layout;
+
+  // The group identifier of the split view, if all of its tabs are in a group.
+  mojo_base.mojom.Token? group_id;
+};
+
+// Information about switching to a tab.
+struct SwitchToTabInfo {
+  int32 tab_id;
+};
+
+// Information about a tab update.
+struct TabUpdateInfo {
+  // Whether the tab is in the active window.
+  bool in_active_window;
+
+  // Whether the tab is in the window hosting WebUI page.
+  bool in_host_window;
+
+  // The tab that was updated.
+  Tab tab;
+};
+
+// Information about a tab removal event.
+struct TabsRemovedInfo {
+  // The tab Ids for the removed tabs.
+  array<int32> tab_ids;
+
+  // Recently closed tab objects that were created for the removed tabs.
+  array<RecentlyClosedTab> recently_closed_tabs;
+};
+
+// Browser-side handler for search requests from WebUI page.
+interface SearchHandler {
+  // Match a search text against a list of strings, returning a list of
+  // matched ranges for each string. The returned array of arrays must map
+  // 1-to-1 with the `targets` array.
+  // Empty array of TokenRanges means no match.
+  GetRangesIgnoringCaseAndAccents(
+      string search_text,
+      array<string> targets) => (array<array<TokenRange>> ranges);
+};
+
+// Used by the WebUI page to bootstrap bidirectional communication.
+interface PageHandlerFactory {
+  // The WebUI calls this method when the page is first initialized.
+  CreatePageHandler(
+      pending_remote<Page> page, pending_receiver<PageHandler> handler);
+};
+
+// Browser-side handler for requests from WebUI page.
+interface PageHandler {
+  // Close a specific tab.
+  CloseTab(int32 tab_id);
+
+  // Close multiple specific tabs.
+  CloseTabs(array<int32> tab_ids);
+
+  // Close the tab hosting this WebUI.
+  CloseWebUiTab();
+
+  // Get window and tab data for the current profile.
+  GetProfileData() => (ProfileData profile_data);
+
+  // Returns whether or not the tab associated with this WebUI, if any, is in a
+  // split view.
+  GetIsSplit() => (bool is_split);
+
+  // Switch to a specific tab.
+  SwitchToTab(SwitchToTabInfo switch_to_tab_info);
+
+  // Open a recently closed tab or tab group.
+  OpenRecentlyClosedEntry(int32 session_id);
+
+  // Within a split view, replace the current tab with the given tab.
+  ReplaceActiveSplitTab(int32 replacement_tab_id);
+
+  // Save a user's preference for the state of the expandable 'Recently Closed'
+  // list section.
+  SaveRecentlyClosedExpandedPref(bool expanded);
+
+  // Force trigger the tab group tutorial.
+  StartTabGroupTutorial();
+
+  // Notify the backend that the UI is ready to be shown.
+  MaybeShowUI();
+
+};
+
+// WebUI-side handler for requests from the browser.
+interface Page {
+  // Called when the window hosting the WebUI page changes.
+  HostWindowChanged();
+
+  // Called when we require a full refresh of the JS's tab list data structures.
+  // Typically used when tabs in the current profile are deleted, inserted,
+  // moved or replaced.
+  // `profile_tabs` is a collection of all open tabs in the current profile.
+  // This is always populated with at least 1 (the currently active) tab.
+  TabsChanged(ProfileData profile_tabs);
+
+  // Called when a tab's data has changed and we need only issue an update for
+  // that specific tab in the JS's data structures. Typically used for url,
+  // title, or favicon changes. The TabUpdateInfo's `tab` is always populated
+  // with the latest data for the affected tab.
+  TabUpdated(TabUpdateInfo tabUpdateInfo);
+
+  // Callback when tabs are removed.
+  TabsRemoved(TabsRemovedInfo tabsRemovedInfo);
+
+  // Called when the tab corresponding to this WebUI, if any, has become newly
+  // unsplit.
+  TabUnsplit();
+};

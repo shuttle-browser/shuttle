@@ -1,0 +1,7 @@
+include_rules = [
+  "-chrome",
+
+  "+chrome/browser/ash/fwupd",
+
+  "+chrome/browser/profiles",
+]

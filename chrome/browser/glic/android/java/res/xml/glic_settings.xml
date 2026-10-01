@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2026 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+<PreferenceScreen
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:title="@string/glic_setting_label">
+
+    <org.chromium.chrome.browser.glic.GlicExtraInfoPreference
+        android:key="glic_custom_box_preference"
+        android:layout="@layout/glic_settings_extra_info"
+        android:selectable="false"
+        app:backgroundStyle="none" />
+
+    <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
+        android:key="glic_preference_section"
+        android:title="@string/settings_glic_preferences_section" />
+
+    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+            android:key="glic_button"
+            android:title="@string/glic_pin"
+            android:summary="@string/settings_glic_button_toggle_sublabel"
+            android:fragment="org.chromium.chrome.browser.toolbar.adaptive.settings.AdaptiveToolbarSettingsFragment" />
+
+    <org.chromium.components.browser_ui.settings.ChromeSwitchPreference
+            android:key="glic_button_toggle"
+            android:title="@string/glic_pin"
+            android:summary="@string/settings_glic_button_toggle_sublabel"
+            android:defaultValue="false" />
+
+    <org.chromium.components.browser_ui.settings.ChromeSwitchPreference
+            android:key="glic_bottom_bar_button_toggle"
+            android:title="@string/settings_show_gemini_in_bottom_bar_title"
+            android:summary="@string/settings_show_gemini_in_bottom_bar_summary"
+            android:defaultValue="true" />
+
+    <org.chromium.components.browser_ui.settings.ChromeSwitchPreference
+            android:key="glic_launcher_enabled"
+            android:title="@string/settings_glic_launcher_enabled_title"
+            android:summary="@string/settings_glic_os_widget_toggle_sublabel"
+            android:defaultValue="false" />
+
+    <!-- TODO(b/531824318): Make the shortcut customizable. -->
+    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+            android:key="glic_launcher_hotkey"
+            android:selectable="false"
+            android:title="@string/settings_glic_keyboard_shortcut"
+            android:summary="@string/settings_glic_keyboard_shortcut_sublabel"
+            app:widgetLayout="@layout/preference_widget_hotkey" />
+
+    <!-- TODO(b/531824318): Make the shortcut customizable. -->
+    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+            android:key="glic_navigation_shortcut"
+            android:selectable="false"
+            android:title="@string/settings_glic_navigation_shortcut"
+            android:summary="@string/settings_glic_navigation_shortcut_sublabel"
+            app:widgetLayout="@layout/preference_widget_hotkey_navigation" />
+
+    <org.chromium.components.browser_ui.settings.ChromeBasePreferenceCategory
+        android:key="glic_permissions_section"
+        android:title="@string/settings_glic_permissions_section" />
+
+    <org.chromium.components.browser_ui.settings.ChromeSwitchPreference
+        android:key="permissions_location"
+        android:title="@string/settings_glic_permissions_location_toggle"
+        android:summary="@string/settings_glic_permissions_location_toggle_sublabel_data_protected"
+        android:defaultValue="false">
+        <extra android:name="content_settings_type" android:value="GEOLOCATION_WITH_OPTIONS" />
+        <extra android:name="supports_precise" android:value="true" />
+    </org.chromium.components.browser_ui.settings.ChromeSwitchPreference>
+
+    <org.chromium.components.browser_ui.settings.ChromeExpandableSwitchPreference
+        android:key="glic_permissions_default_tab_access"
+        android:title="@string/settings_glic_permissions_default_tab_access_toggle"
+        android:summary="@string/settings_glic_permissions_default_tab_access_toggle_sublabel_data_protected"
+        app:expandedContentLayout="@layout/glic_default_tab_access" />
+
+    <org.chromium.components.browser_ui.settings.ChromeExpandableSwitchPreference
+        android:key="glic_permissions_auto_browse"
+        android:title="@string/settings_glic_permissions_chrome_web_actuation_toggle"
+        android:summary="@string/settings_glic_permissions_chrome_web_actuation_toggle_sublabel"
+        app:expandedContentLayout="@layout/glic_auto_browse" />
+
+    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+        android:key="glic_actor_login_permissions"
+        android:title=
+            "@string/settings_glic_actor_login_permissions_section_title"
+        android:summary="@string/settings_glic_actor_login_permissions_section_sublabel"
+        android:fragment=
+            "org.chromium.chrome.browser.glic.GlicActorLoginPermissionsFragment" />
+
+    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+        android:key="glic_permissions_activity"
+        android:title="@string/settings_glic_permissions_activity_button"
+        android:summary="@string/settings_glic_permissions_activity_button_sublabel"
+        android:widgetLayout="@layout/preference_widget_open_in_new" />
+
+    <org.chromium.components.browser_ui.settings.ChromeBasePreference
+        android:key="glic_extensions"
+        android:title="@string/settings_glic_extensions_button"
+        android:summary="@string/settings_glic_extensions_button_sublabel"
+        android:widgetLayout="@layout/preference_widget_open_in_new" />
+
+
+</PreferenceScreen>

@@ -1,0 +1,216 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_TIMING_PAINT_TIMING_DETECTOR_H_
+#define THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_TIMING_PAINT_TIMING_DETECTOR_H_
+
+#include "base/auto_reset.h"
+#include "base/gtest_prod_util.h"
+#include "base/time/time.h"
+#include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/paint/timing/largest_contentful_paint_calculator.h"
+#include "third_party/blink/renderer/core/paint/timing/lcp_objects.h"
+#include "third_party/blink/renderer/core/paint/timing/paint_timing_visualizer.h"
+#include "third_party/blink/renderer/core/scroll/scroll_types.h"
+#include "third_party/blink/renderer/platform/graphics/paint/ignore_paint_timing_scope.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
+#include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
+#include "ui/gfx/geometry/rect.h"
+
+namespace blink {
+
+class Document;
+class Image;
+class ImagePaintTimingDetector;
+class ImageResourceContent;
+class LayoutBoxModelObject;
+class LayoutObject;
+class MediaTiming;
+class Node;
+class PaintTiming;
+class PropertyTreeStateOrAlias;
+class StyleFetchedImage;
+class StyleImage;
+class TextPaintTimingDetector;
+class StyleImage;
+
+// `PaintTimingDetector` receives signals when text and image elements are
+// painted and forwards those signals to more specific paint detectors
+// (`ImagePaintTimingDetector` and `TextPaintTimingDetector`), which are
+// responsible for tracking paint and presentation time for contentful image and
+// text elements. This information is used for various performance metrics,
+// including Largest Contentful Paint (LCP), Interaction Contentful Paint (ICP),
+// and (text) ElementTiming.
+//
+// See also https://www.w3.org/TR/paint-timing/
+class CORE_EXPORT PaintTimingDetector
+    : public GarbageCollected<PaintTimingDetector> {
+  friend class ImagePaintTimingDetectorTest;
+  friend class TextPaintTimingDetectorTest;
+
+ public:
+  static PaintTimingDetector& From(Document&);
+
+  explicit PaintTimingDetector(PaintTiming*);
+
+  // Returns true if the image might ultimately be a candidate for largest
+  // paint, otherwise false. When this method is called we do not know the
+  // largest status for certain, because we need to wait for presentation.
+  // Hence the "maybe" return value.
+  static bool NotifyBackgroundImagePaint(
+      Node&,
+      const Image&,
+      const StyleImage&,
+      const PropertyTreeStateOrAlias& current_paint_chunk_properties,
+      const gfx::Rect& image_border);
+  // Returns true if the image is a candidate for largest paint, otherwise
+  // false. See the comment for NotifyBackgroundImagePaint(...).
+  static bool NotifyImagePaint(
+      const LayoutObject&,
+      const gfx::Size& intrinsic_size,
+      const MediaTiming& media_timing,
+      const PropertyTreeStateOrAlias& current_paint_chunk_properties,
+      const gfx::Rect& image_border);
+  static void NotifyFirstVideoFrame(
+      const LayoutObject&,
+      const gfx::Size& intrinsic_size,
+      const MediaTiming& media_timing,
+      const PropertyTreeStateOrAlias& current_paint_chunk_properties,
+      const gfx::Rect& image_border);
+  inline static void NotifyTextPaint(const gfx::Rect& text_visual_rect);
+
+  // Called when the "src" attribute changes on a <video> element and the change
+  // is attributable to an interaction.
+  static void NotifyInteractionTriggeredVideoSrcChange(const LayoutObject&);
+
+  void Trace(Visitor* visitor) const;
+
+  void NotifyImageFinished(const LayoutObject&, const MediaTiming*);
+  void NotifyBackgroundImageFinished(const StyleFetchedImage*);
+  void NotifyImageRemoved(const LayoutObject&, const ImageResourceContent*);
+  void NotifyPaintFinished();
+
+  void DidChangePerformanceTiming();
+
+  inline static bool IsTracing() {
+    return TRACE_EVENT_CATEGORY_ENABLED("loading");
+  }
+
+  gfx::RectF BlinkSpaceToDIPs(const gfx::RectF& float_rect) const;
+  gfx::RectF CalculateVisualRect(const gfx::Rect& visual_rect,
+                                 const PropertyTreeStateOrAlias&) const;
+
+  TextPaintTimingDetector& GetTextPaintTimingDetector() const {
+    DCHECK(text_paint_timing_detector_);
+    return *text_paint_timing_detector_;
+  }
+  ImagePaintTimingDetector& GetImagePaintTimingDetector() const {
+    DCHECK(image_paint_timing_detector_);
+    return *image_paint_timing_detector_;
+  }
+  PaintTiming& GetPaintTiming() { return *paint_timing_; }
+
+  // Reports the largest image and text candidates painted under non-nested 0
+  // opacity layer.
+  void ReportIgnoredContent();
+
+  PaintTimingVisualizer* Visualizer() { return visualizer_.get(); }
+
+ private:
+  FRIEND_TEST_ALL_PREFIXES(ImagePaintTimingDetectorTest,
+                           LargestImagePaint_Detached_Frame);
+
+  // Returns the `LocalDOMWindow` associated with the relevant document, or
+  // nullptr if the associated frame is detached.
+  LocalDOMWindow* DomWindow() const;
+
+  // Returns the `LocalFrame` associated with the relevant document. Must not be
+  // called after frame detach.
+  LocalFrame& GetFrame() const;
+
+  // The `PaintTiming` that this detector belongs to.
+  const Member<PaintTiming> paint_timing_;
+
+  // This member lives forever because it is also used for Text Element
+  // Timing.
+  const Member<TextPaintTimingDetector> text_paint_timing_detector_;
+  // This member lives forever, to detect LCP entries for soft navigations.
+  const Member<ImagePaintTimingDetector> image_paint_timing_detector_;
+
+  // Because PaintTimingVisualizer is a TraceSessionObserver, unique_ptr is
+  // needed to avoid having a reference back into GCed memory, which is
+  // forbidden by oilpan.
+  std::unique_ptr<PaintTimingVisualizer> visualizer_;
+};
+
+// Largest Text Paint and Text Element Timing aggregate text nodes by these
+// text nodes' ancestors. In order to tell whether a text node is contained by
+// another node efficiently, The aggregation relies on the paint order of the
+// rendering tree (https://www.w3.org/TR/CSS21/zindex.html). Because of the
+// paint order, we can assume that if a text node T is visited during the visit
+// of another node B, then B contains T. This class acts as the hook to certain
+// container nodes (block object or inline object) to tell whether a text node
+// is their descendant. The hook should be placed right before visiting the
+// subtree of an container node, so that the constructor and the destructor can
+// tell the start and end of the visit.
+// TODO(crbug.com/960946): we should document the text aggregation.
+class ScopedPaintTimingDetectorBlockPaintHook {
+  STACK_ALLOCATED();
+
+ public:
+  // This constructor does nothing by itself. It will only set relevant
+  // variables when EmplaceIfNeeded() is called successfully. The lifetime of
+  // the object helps keeping the lifetime of |reset_top_| and |data_| to the
+  // appropriate scope.
+  ScopedPaintTimingDetectorBlockPaintHook() {}
+  ScopedPaintTimingDetectorBlockPaintHook(
+      const ScopedPaintTimingDetectorBlockPaintHook&) = delete;
+  ScopedPaintTimingDetectorBlockPaintHook& operator=(
+      const ScopedPaintTimingDetectorBlockPaintHook&) = delete;
+
+  void EmplaceIfNeeded(const LayoutBoxModelObject&,
+                       const PropertyTreeStateOrAlias&);
+  ~ScopedPaintTimingDetectorBlockPaintHook();
+
+ private:
+  friend class PaintTimingDetector;
+  inline static void AggregateTextPaint(const gfx::Rect& visual_rect) {
+    // TODO(crbug.com/40614549): This check was allegedly needed for legacy
+    // multicol, but that implementation is now gone. Turn into DCHECK?
+    if (top_ && top_->data_) {
+      top_->data_->aggregated_visual_rect_.Union(visual_rect);
+    }
+  }
+
+  std::optional<base::AutoReset<ScopedPaintTimingDetectorBlockPaintHook*>>
+      reset_top_;
+  struct Data {
+    STACK_ALLOCATED();
+
+   public:
+    Data(const LayoutBoxModelObject& aggregator,
+         const PropertyTreeStateOrAlias&,
+         TextPaintTimingDetector*);
+
+    const LayoutBoxModelObject& aggregator_;
+    const PropertyTreeStateOrAlias& property_tree_state_;
+    TextPaintTimingDetector* detector_;
+    gfx::Rect aggregated_visual_rect_;
+  };
+  std::optional<Data> data_;
+  static ScopedPaintTimingDetectorBlockPaintHook* top_;
+};
+
+// static
+inline void PaintTimingDetector::NotifyTextPaint(
+    const gfx::Rect& text_visual_rect) {
+  if (IgnorePaintTimingScope::ShouldIgnore()) {
+    return;
+  }
+  ScopedPaintTimingDetectorBlockPaintHook::AggregateTextPaint(text_visual_rect);
+}
+
+}  // namespace blink
+
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_PAINT_TIMING_PAINT_TIMING_DETECTOR_H_

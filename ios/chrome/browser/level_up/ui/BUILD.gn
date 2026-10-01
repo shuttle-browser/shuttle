@@ -1,0 +1,91 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/ios/rules.gni")
+
+source_set("ui") {
+  sources = [
+    "level_up_all_tasks_view_controller.h",
+    "level_up_all_tasks_view_controller.mm",
+    "level_up_completed_task_header_row_view.h",
+    "level_up_completed_task_header_row_view.mm",
+    "level_up_consumer.h",
+    "level_up_profile_consumer.h",
+    "level_up_progress_bar.h",
+    "level_up_progress_bar.mm",
+    "level_up_progress_view.h",
+    "level_up_progress_view.mm",
+    "level_up_stat_view.h",
+    "level_up_stat_view.mm",
+    "level_up_task_collection_view_cell.h",
+    "level_up_task_collection_view_cell.mm",
+    "level_up_task_icon_view.h",
+    "level_up_task_icon_view.mm",
+    "level_up_task_row_view.h",
+    "level_up_task_row_view.mm",
+    "level_up_view_controller.h",
+    "level_up_view_controller.mm",
+    "level_up_welcome_header_view.h",
+    "level_up_welcome_header_view.mm",
+  ]
+
+  deps = [
+    ":promo",
+    "//base",
+    "//ios/chrome/app/strings",
+    "//ios/chrome/browser/level_up/coordinator:view_models",
+    "//ios/chrome/browser/level_up/model",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/shared/ui/elements/gradient",
+    "//ios/chrome/browser/shared/ui/symbols",
+    "//ios/chrome/browser/shared/ui/table_view",
+    "//ios/chrome/common/ui/colors",
+    "//ios/chrome/common/ui/util",
+    "//ios/public/provider/chrome/browser/lottie:lottie_animation_api",
+    "//ui/base",
+  ]
+
+  public_deps = [
+    ":lottie_resources",
+    ":resources",
+  ]
+
+  frameworks = [ "UIKit.framework" ]
+}
+
+bundle_data_xcassets("resources") {
+  catalog = "resources/Assets.xcassets"
+  sources = [
+    "resources/Assets.xcassets/Contents.json",
+    "resources/Assets.xcassets/level_up_promo_header_image.imageset/Contents.json",
+    "resources/Assets.xcassets/level_up_promo_header_image.imageset/level_up_promo@2x.png",
+    "resources/Assets.xcassets/level_up_promo_header_image.imageset/level_up_promo@3x.png",
+  ]
+}
+
+bundle_data("lottie_resources") {
+  sources = [
+    "resources/passwords_verified.json",
+    "resources/photo_searches_performed.json",
+    "resources/tabs_decluttered.json",
+    "resources/typing_saved.json",
+  ]
+  outputs = [ "{{bundle_resources_dir}}/{{source_file_part}}" ]
+}
+
+source_set("promo") {
+  sources = [
+    "level_up_promo_view_controller.h",
+    "level_up_promo_view_controller.mm",
+  ]
+
+  deps = [
+    "//ios/chrome/app/strings",
+    "//ios/chrome/common/ui/button_stack",
+    "//ios/chrome/common/ui/promo_style",
+    "//ui/base",
+  ]
+
+  public_deps = [ ":resources" ]
+}

@@ -1,0 +1,46 @@
+arc_support: This policy has no effect on the <ph name="ANDROID_NAME">Android</ph> <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> app. If Safety Mode
+  on <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> should be enforced, installation of the <ph name="ANDROID_NAME">Android</ph> <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> app should be
+  disallowed.
+caption: Force minimum <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> Restricted Mode
+desc: |-
+  Setting the policy enforces a minimum Restricted mode on <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> and prevents users from picking a less restricted mode. If you set it to:
+
+        * Strict, Strict Restricted mode on <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> is always active.
+
+        * Moderate, the user may only pick Moderate Restricted mode and Strict Restricted mode on <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph>, but can't turn off Restricted mode.
+
+        * Off or if no value is set, Restricted mode on <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> isn't enforced by Chrome. External policies such as <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> policies might still enforce Restricted mode.
+default: 0
+example_value: 0
+features:
+  can_be_recommended: false
+  dynamic_refresh: true
+  per_profile: true
+future_on:
+- fuchsia
+items:
+- caption: Do not enforce Restricted Mode on <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph>
+  name: 'Off'
+  value: 0
+- caption: Enforce at least Moderate Restricted Mode on <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph>
+  name: Moderate
+  value: 1
+- caption: Enforce Strict Restricted Mode for <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph>
+  name: Strict
+  value: 2
+owners:
+- file://components/policy/OWNERS
+- poromov@chromium.org
+schema:
+  enum:
+  - 0
+  - 1
+  - 2
+  type: integer
+supported_on:
+- chrome.*:55-
+- chrome_os:55-
+- android:55-
+tags:
+- filtering
+type: int-enum

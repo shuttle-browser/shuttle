@@ -1,0 +1,28 @@
+# Copyright 2023 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("message") {
+  sources = [
+    "autofill_legal_message_line.h",
+    "autofill_legal_message_line.mm",
+  ]
+  deps = [
+    "//base",
+    "//components/autofill/core/browser:legal_message_line",
+    "//url",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "autofill_legal_message_line_unittest.mm" ]
+  deps = [
+    ":message",
+    "//base",
+    "//components/autofill/core/browser:legal_message_line",
+    "//components/autofill/core/browser:test_support",
+    "//testing/gtest",
+    "//url",
+  ]
+}

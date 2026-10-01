@@ -1,0 +1,364 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/core/animation/timeline_offset.h"
+
+#include "base/metrics/histogram_functions.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_timeline_range_offset.h"
+#include "third_party/blink/renderer/core/css/css_identifier_value.h"
+#include "third_party/blink/renderer/core/css/css_identifier_value_mappings.h"
+#include "third_party/blink/renderer/core/css/css_style_sheet.h"
+#include "third_party/blink/renderer/core/css/css_to_length_conversion_data.h"
+#include "third_party/blink/renderer/core/css/css_value_list.h"
+#include "third_party/blink/renderer/core/css/cssom/css_numeric_value.h"
+#include "third_party/blink/renderer/core/css/parser/css_parser_local_context.h"
+#include "third_party/blink/renderer/core/css/parser/css_tokenizer.h"
+#include "third_party/blink/renderer/core/css/properties/computed_style_utils.h"
+#include "third_party/blink/renderer/core/css/properties/css_parsing_utils.h"
+#include "third_party/blink/renderer/core/css/resolver/element_resolve_context.h"
+#include "third_party/blink/renderer/core/css/style_sheet_contents.h"
+#include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/dom/element.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+
+namespace blink {
+
+namespace {
+
+void ThrowExceptionForInvalidTimelineOffset(ExceptionState& exception_state) {
+  exception_state.ThrowTypeError(
+      "Animation range must be a name <length-percent> pair");
+}
+
+enum class TimelineOffsetValueType {
+  kValid,
+  kRelativeOrElementDependent,
+  kInvalid,
+};
+
+TimelineOffsetValueType ClassifyTimelineOffsetValue(const CSSValue* value) {
+  const auto* primitive_value = DynamicTo<CSSPrimitiveValue>(value);
+  if (!primitive_value) {
+    return TimelineOffsetValueType::kInvalid;
+  }
+  if (primitive_value->IsElementDependent()) {
+    return TimelineOffsetValueType::kRelativeOrElementDependent;
+  }
+
+  if (primitive_value->IsPercentage()) {
+    return TimelineOffsetValueType::kValid;
+  }
+
+  CSSPrimitiveValue::LengthTypeFlags unit_types;
+  primitive_value->AccumulateLengthUnitTypes(unit_types);
+  if (!unit_types.any()) {
+    return TimelineOffsetValueType::kInvalid;
+  }
+
+  unit_types.reset(CSSPrimitiveValue::kUnitTypePixels);
+  unit_types.reset(CSSPrimitiveValue::kUnitTypePercentage);
+  return unit_types.none()
+             ? TimelineOffsetValueType::kValid
+             : TimelineOffsetValueType::kRelativeOrElementDependent;
+}
+
+bool ShouldRejectTimelineOffsetValue(const CSSValue* value) {
+  const TimelineOffsetValueType value_type = ClassifyTimelineOffsetValue(value);
+  if (value_type == TimelineOffsetValueType::kInvalid) {
+    return true;
+  }
+
+  const bool would_reject =
+      value_type == TimelineOffsetValueType::kRelativeOrElementDependent;
+  base::UmaHistogramBoolean(
+      "Blink.Animation.RangeOffsetHasRelativeOrElementDependentLength",
+      would_reject);
+  return would_reject &&
+         RuntimeEnabledFeatures::AnimationRangeRejectRelativeLengthsEnabled();
+}
+
+}  // anonymous namespace
+
+/* static */
+String TimelineOffset::TimelineRangeNameToString(
+    TimelineOffset::NamedRange range_name) {
+  switch (range_name) {
+    case NamedRange::kNone:
+      return "none";
+
+    case NamedRange::kCover:
+      return "cover";
+
+    case NamedRange::kContain:
+      return "contain";
+
+    case NamedRange::kEntry:
+      return "entry";
+
+    case NamedRange::kEntryCrossing:
+      return "entry-crossing";
+
+    case NamedRange::kExit:
+      return "exit";
+
+    case NamedRange::kExitCrossing:
+      return "exit-crossing";
+
+    case NamedRange::kScroll:
+      return "scroll";
+  }
+}
+
+String TimelineOffset::ToString() const {
+  CSSValueList* list = CSSValueList::CreateSpaceSeparated();
+  if (name != NamedRange::kNone) {
+    list->Append(*MakeGarbageCollected<CSSIdentifierValue>(name));
+  }
+  list->Append(*CSSValue::Create(offset, 1));
+  return list->CssText();
+}
+
+bool TimelineOffset::UpdateOffset(Element* element, CSSValue* value) {
+  Length new_offset = ResolveLength(element, value);
+  float new_zoom = 1.0f;
+  if (const auto* style = element->GetComputedStyle()) {
+    new_zoom = style->EffectiveZoom();
+    new_offset = new_offset.Zoom(new_zoom);
+  }
+  zoom = new_zoom;
+
+  if (new_offset != offset) {
+    offset = new_offset;
+    return true;
+  }
+  return false;
+}
+
+/* static */
+std::optional<TimelineOffset> TimelineOffset::Create(
+    Element* element,
+    String css_text,
+    double default_percent,
+    ExceptionState& exception_state) {
+  if (!element) {
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kInvalidStateError,
+        "Unable to parse TimelineOffset from CSS text with a null effect or "
+        "target");
+    return std::nullopt;
+  }
+
+  Document& document = element->GetDocument();
+
+  CSSParserTokenStream stream(css_text);
+  stream.ConsumeWhitespace();
+
+  // TODO(crbug.com/490153753): CSS Typed OM currently lacks support for the
+  // random() function, preventing its use within the ViewTimeline API. Revisit
+  // once CSS Typed OM support for random() is implemented.
+  CSSParserLocalContext local_context =
+      CSSParserLocalContext::CreateWithoutPropertyForCSSOM();
+  const CSSValue* value = css_parsing_utils::ConsumeAnimationRange(
+      stream, *document.ElementSheet().Contents()->ParserContext(),
+      local_context,
+      /* default_offset_percent */ default_percent, /*allow_auto=*/false);
+
+  if (!value || !stream.AtEnd()) {
+    ThrowExceptionForInvalidTimelineOffset(exception_state);
+    return std::nullopt;
+  }
+
+  if (IsA<CSSIdentifierValue>(value)) {
+    DCHECK_EQ(CSSValueID::kNormal, To<CSSIdentifierValue>(*value).GetValueID());
+    return std::nullopt;
+  }
+
+  const auto& list = To<CSSValueList>(*value);
+
+  DCHECK(list.length());
+  NamedRange range_name = NamedRange::kNone;
+  Length offset = Length::Percent(default_percent);
+
+  // Extract the range name and offset CSSValue from the parsed list.
+  const CSSValue* css_offset_value = nullptr;
+  if (list.Item(0).IsIdentifierValue()) {
+    range_name = To<CSSIdentifierValue>(list.Item(0)).ConvertTo<NamedRange>();
+    if (list.length() == 2u) {
+      css_offset_value = &list.Item(1);
+    }
+  } else {
+    css_offset_value = &list.Item(0);
+  }
+
+  // Resolve the offset and store CSS text for values that need re-resolution.
+  std::optional<String> style_dependent_offset_str;
+  if (css_offset_value) {
+    if (ShouldRejectTimelineOffsetValue(css_offset_value)) {
+      ThrowExceptionForInvalidTimelineOffset(exception_state);
+      return std::nullopt;
+    }
+    offset = ResolveLength(element, css_offset_value);
+    if (IsStyleDependent(css_offset_value) || offset.IsFixed()) {
+      style_dependent_offset_str = css_offset_value->CssText();
+    }
+  }
+
+  return TimelineOffset(range_name, offset, style_dependent_offset_str);
+}
+
+/* static */
+std::optional<TimelineOffset> TimelineOffset::Create(
+    Element* element,
+    const V8UnionStringOrTimelineRangeOffset* range_offset,
+    double default_percent,
+    ExceptionState& exception_state) {
+  if (range_offset->IsString()) {
+    return Create(element, range_offset->GetAsString(), default_percent,
+                  exception_state);
+  }
+
+  TimelineRangeOffset* value = range_offset->GetAsTimelineRangeOffset();
+  NamedRange name =
+      value->hasRangeName() ? value->rangeName().AsEnum() : NamedRange::kNone;
+
+  Length parsed_offset;
+  std::optional<String> style_dependent_offset_str;
+  if (value->hasOffset()) {
+    CSSNumericValue* offset = value->offset();
+    const CSSPrimitiveValue* css_value =
+        DynamicTo<CSSPrimitiveValue>(offset->ToCSSValue());
+
+    if (ShouldRejectTimelineOffsetValue(css_value)) {
+      exception_state.ThrowTypeError(
+          "CSSNumericValue must use an absolute length or percentage for "
+          "animation range.");
+      return std::nullopt;
+    }
+
+    // Pure px and percentage CSSNumericValues have a context-independent
+    // numeric result. Element-dependent expressions are rejected when the
+    // feature is enabled and cannot currently be constructed through CSS Typed
+    // OM when it is disabled.
+    if (css_value->IsPx()) {
+      std::optional<double> number = css_value->GetValueIfKnown();
+      CHECK(number.has_value());
+      parsed_offset = Length::Fixed(number.value());
+      style_dependent_offset_str = css_value->CssText();
+    } else if (css_value->IsPercentage()) {
+      std::optional<double> number = css_value->GetValueIfKnown();
+      CHECK(number.has_value());
+      parsed_offset = Length::Percent(number.value());
+    } else {
+      parsed_offset = TimelineOffset::ResolveLength(element, css_value);
+      style_dependent_offset_str = css_value->CssText();
+    }
+  } else {
+    parsed_offset = Length::Percent(default_percent);
+  }
+  return TimelineOffset(name, parsed_offset, style_dependent_offset_str);
+}
+
+/* static */
+bool TimelineOffset::IsStyleDependent(const CSSValue* value) {
+  const CSSPrimitiveValue* primitive_value =
+      DynamicTo<CSSPrimitiveValue>(value);
+  if (!primitive_value) {
+    return true;
+  }
+
+  if (primitive_value->IsPercentage()) {
+    return false;
+  }
+
+  if (primitive_value->IsPx()) {
+    return false;
+  }
+
+  return true;
+}
+
+/* static */
+Length TimelineOffset::ResolveLength(Element* element, const CSSValue* value) {
+  if (auto* numeric_literal = DynamicTo<CSSNumericLiteralValue>(value)) {
+    if (numeric_literal->IsPercentage()) {
+      return Length::Percent(numeric_literal->ClampedDoubleValue());
+    }
+    if (numeric_literal->IsPx()) {
+      return Length::Fixed(numeric_literal->ClampedDoubleValue());
+    }
+  }
+
+  // Elements without the computed style don't have a layout box,
+  // so the timeline will be inactive.
+  // See ScrollTimeline::IsResolved.
+  if (!element->GetComputedStyle()) {
+    return Length::Fixed();
+  }
+  ElementResolveContext element_resolve_context(*element);
+  Document& document = element->GetDocument();
+  CSSToLengthConversionData::Flags ignored_flags = 0;
+
+  // Use zoom=1.0 to produce CSS pixel values, consistent with the early returns
+  // above for plain px/percentage values. Using EffectiveZoom() here would
+  // cause pixel values inside calc() expressions to be pre-zoomed, which leads
+  // to double-zooming when callers (e.g. ComputeTriggerBoundary) later apply
+  // zoom explicitly via Length::Zoom().
+  CSSToLengthConversionData length_conversion_data(
+      element->ComputedStyleRef(), element_resolve_context.ParentStyle(),
+      element_resolve_context.RootElementStyle(),
+      CSSToLengthConversionData::ViewportSize(document.GetLayoutView()),
+      CSSToLengthConversionData::ContainerSizes(element),
+      CSSToLengthConversionData::AnchorData(),
+      /*zoom=*/1.0f, ignored_flags, element);
+
+  return To<CSSPrimitiveValue>(*value).ConvertToLength(length_conversion_data);
+}
+
+/* static */
+CSSValue* TimelineOffset::ParseOffset(Document* document, String css_text) {
+  if (!document) {
+    return nullptr;
+  }
+
+  CSSParserTokenStream stream(css_text);
+  stream.ConsumeWhitespace();
+
+  // TODO(crbug.com/490153753): CSS Typed OM currently lacks support for the
+  // random() function, preventing its use within the ViewTimeline API. Revisit
+  // once CSS Typed OM support for random() is implemented.
+  CSSParserLocalContext local_context =
+      CSSParserLocalContext::CreateWithoutPropertyForCSSOM();
+  CSSValue* value = css_parsing_utils::ConsumeLengthOrPercent(
+      stream, *document->ElementSheet().Contents()->ParserContext(),
+      local_context, CSSPrimitiveValue::ValueRange::kAll);
+
+  if (!stream.AtEnd()) {
+    return nullptr;
+  }
+
+  return value;
+}
+
+/* static */
+TimelineOffsetOrAuto TimelineOffsetOrAuto::Create(
+    Element* element,
+    const V8UnionStringOrTimelineRangeOffset* range_offset,
+    double default_percent,
+    ExceptionState& exception_state) {
+  if (range_offset->IsString()) {
+    String offset_string = range_offset->GetAsString();
+    CSSParserTokenStream stream(offset_string);
+    stream.ConsumeWhitespace();
+
+    if (css_parsing_utils::ConsumeIdent<CSSValueID::kAuto>(stream) &&
+        stream.AtEnd()) {
+      return TimelineOffsetOrAuto();
+    }
+  }
+
+  return TimelineOffsetOrAuto(TimelineOffset::Create(
+      element, range_offset, default_percent, exception_state));
+}
+
+}  // namespace blink

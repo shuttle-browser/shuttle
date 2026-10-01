@@ -1,0 +1,161 @@
+# Copyright 2020 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/buildflag_header.gni")
+import("//build/config/ios/ios_sdk.gni")
+import("//ios/build/chrome_build.gni")
+
+source_set("credential_provider") {
+  sources = [
+    "ASPasskeyCredentialIdentity+credential.h",
+    "ASPasskeyCredentialIdentity+credential.mm",
+    "ASPasswordCredentialIdentity+credential.h",
+    "ASPasswordCredentialIdentity+credential.mm",
+    "archivable_credential+passkey.h",
+    "archivable_credential+passkey.mm",
+    "archivable_credential.h",
+    "archivable_credential.mm",
+    "archivable_credential_store.h",
+    "archivable_credential_store.mm",
+    "archivable_credential_util.h",
+    "archivable_credential_util.mm",
+    "constants.h",
+    "constants.mm",
+    "credential_provider_migration_notifier.h",
+    "credential_provider_migration_notifier.mm",
+    "credential_store_util.h",
+    "credential_store_util.mm",
+    "memory_credential_store.h",
+    "memory_credential_store.mm",
+    "multi_store_credential_store.h",
+    "multi_store_credential_store.mm",
+    "passkey_model_observer_bridge.h",
+    "passkey_model_observer_bridge.mm",
+    "user_defaults_credential_store.h",
+    "user_defaults_credential_store.mm",
+  ]
+  deps = [
+    ":ui",
+    "//base",
+    "//components/sync/protocol",
+    "//components/webauthn/core/browser:passkey_model",
+    "//ios/chrome/common:ios_app_bundle_id_prefix_buildflags",
+    "//ios/chrome/common/app_group",
+  ]
+  frameworks = [
+    "AuthenticationServices.framework",
+    "Foundation.framework",
+  ]
+}
+
+source_set("ui") {
+  sources = [
+    "credential.h",
+    "credential_store.h",
+  ]
+  frameworks = [ "Foundation.framework" ]
+}
+
+source_set("mock_credential_store") {
+  testonly = true
+  sources = [
+    "mock_credential_store.h",
+    "mock_credential_store.mm",
+  ]
+  deps = [ ":ui" ]
+}
+
+source_set("passkey_keychain_provider_header") {
+  sources = [ "passkey_keychain_provider.h" ]
+  deps = [
+    "//base",
+    "//components/webauthn/ios:passkey_types",
+  ]
+  assert_no_deps = [ "//ios/chrome/browser/*" ]
+  frameworks = [ "Foundation.framework" ]
+}
+
+source_set("passkey_keychain_provider_implementation") {
+  sources = [ "passkey_keychain_provider.mm" ]
+  deps = [
+    ":passkey_keychain_provider_header",
+    "//base",
+  ]
+  assert_no_deps = [ "//ios/chrome/browser/*" ]
+  frameworks = [ "Foundation.framework" ]
+}
+
+# Defines which internal target to use for the provider, depending on whether
+# the keychain logic is used in Chrome or an extension.
+template("passkey_keychain_provider") {
+  _variant = target_name
+  _provider_target_name = "passkey_keychain_provider_${_variant}"
+  _bridge_target_name = "passkey_keychain_provider_bridge_${_variant}"
+
+  source_set(_provider_target_name) {
+    public_deps = [ ":passkey_keychain_provider_header" ]
+    deps = [ invoker.provider_target ]
+    assert_no_deps = [ "//ios/chrome/browser/*" ]
+    frameworks = [ "Foundation.framework" ]
+  }
+
+  source_set(_bridge_target_name) {
+    sources = [
+      "passkey_keychain_provider_bridge.h",
+      "passkey_keychain_provider_bridge.mm",
+    ]
+    deps = [
+      ":${_provider_target_name}",
+      ":credential_provider",
+      "//base",
+      "//components/sync/protocol",
+      "//components/webauthn/core/browser:passkey_model",
+      "//components/webauthn/ios:passkey_types",
+    ]
+    frameworks = [ "Foundation.framework" ]
+  }
+}
+
+passkey_keychain_provider("chrome") {
+  provider_target = ios_passkey_keychain_provider_chrome_target
+}
+
+passkey_keychain_provider("extension") {
+  provider_target = ios_passkey_keychain_provider_extension_target
+}
+
+source_set("net_util") {
+  sources = [
+    "net_util.h",
+    "net_util.mm",
+  ]
+  deps = [
+    "//base",
+    "//net/base:registry_controlled_domains",
+    "//url",
+  ]
+  frameworks = [ "Foundation.framework" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "archivable_credential_store_unittest.mm",
+    "archivable_credential_unittest.mm",
+    "as_credential_identity_categories_unittest.mm",
+    "credential_store_util_unittest.mm",
+    "memory_credential_store_unittest.mm",
+    "multi_store_credential_store_unittest.mm",
+    "net_util_unittest.mm",
+    "user_defaults_credential_store_unittest.mm",
+  ]
+  deps = [
+    ":credential_provider",
+    ":net_util",
+    "//base/test:test_support",
+    "//components/sync/protocol",
+    "//net/base:registry_controlled_domains",
+    "//testing/gtest",
+  ]
+}

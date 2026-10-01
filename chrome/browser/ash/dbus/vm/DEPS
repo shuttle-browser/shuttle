@@ -1,0 +1,37 @@
+include_rules = [
+  # ChromeOS should not depend on //chrome. See //docs/chromeos/code.md for
+  # details.
+  "-chrome",
+
+  # This directory is in //chrome, which violates the rule above. Allow this
+  # directory to #include its own files.
+  "+chrome/browser/ash/dbus/vm",
+
+  # Existing dependencies within //chrome. There is an active effort to
+  # refactor //chrome/browser/ash to break these dependencies; see b/332804822.
+  # Whenever possible, avoid adding new //chrome dependencies to this list.
+  #
+  # Files residing in certain directories (e.g., //chrome/browser) are listed
+  # individually. Other dependencies within //chrome are listed on a per-
+  # directory basis. See //tools/chromeos/gen_deps.sh for details.
+  "+chrome/browser/ash/borealis",
+  "+chrome/browser/ash/bruschetta",
+  "+chrome/browser/ash/crostini",
+  "+chrome/browser/ash/dbus",
+  "+chrome/browser/ash/exo",
+  "+chrome/browser/ash/guest_os",
+  "+chrome/browser/ash/policy/core",
+  "+chrome/browser/ash/profiles",
+  "+chrome/browser/chromeos/policy/dlp",
+  "+chrome/browser/profiles",
+  "+chrome/browser/ui/select_file_policy/chrome_select_file_policy.h",
+]
+
+specific_include_rules = {
+  "vm_applications_service_provider\\.cc": [
+    "+chrome/browser/ui/views/select_file_dialog_extension/select_file_dialog_extension.h",
+  ],
+  ".*_unittest\\.cc": [
+    "+chrome/test/base/testing_profile.h",
+  ],
+}

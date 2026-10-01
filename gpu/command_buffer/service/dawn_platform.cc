@@ -1,0 +1,388 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "gpu/command_buffer/service/dawn_platform.h"
+
+#include <mutex>
+#include <string_view>
+
+#include "base/compiler_specific.h"
+#include "base/containers/fixed_flat_map.h"
+#include "base/metrics/histogram.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/rand_util.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_util.h"
+#include "base/synchronization/waitable_event.h"
+#include "base/task/post_job.h"
+#include "base/task/thread_pool.h"
+#include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
+#include "gpu/command_buffer/service/dawn_caching_interface.h"
+#include "gpu/config/gpu_finch_features.h"
+#include "gpu/vulkan/buildflags.h"
+#include "ui/gl/progress_reporter.h"
+
+#if BUILDFLAG(ENABLE_VULKAN)
+#include "gpu/vulkan/vulkan_util.h"
+#endif
+
+namespace gpu::webgpu {
+
+namespace {
+
+class AsyncWaitableEventImpl
+    : public base::RefCountedThreadSafe<AsyncWaitableEventImpl> {
+ public:
+  AsyncWaitableEventImpl()
+      : waitable_event_(base::WaitableEvent::ResetPolicy::MANUAL,
+                        base::WaitableEvent::InitialState::NOT_SIGNALED) {}
+
+  void Wait() { waitable_event_.Wait(); }
+
+  bool IsComplete() { return waitable_event_.IsSignaled(); }
+
+  void MarkAsComplete() { waitable_event_.Signal(); }
+
+ private:
+  friend class base::RefCountedThreadSafe<AsyncWaitableEventImpl>;
+  ~AsyncWaitableEventImpl() = default;
+
+  base::WaitableEvent waitable_event_;
+};
+
+class AsyncWaitableEvent : public dawn::platform::WaitableEvent {
+ public:
+  AsyncWaitableEvent()
+      : waitable_event_impl_(base::MakeRefCounted<AsyncWaitableEventImpl>()) {}
+  ~AsyncWaitableEvent() override = default;
+
+  void Wait() override { waitable_event_impl_->Wait(); }
+
+  bool IsComplete() override { return waitable_event_impl_->IsComplete(); }
+
+  scoped_refptr<AsyncWaitableEventImpl> GetWaitableEventImpl() const {
+    return waitable_event_impl_;
+  }
+
+ private:
+  scoped_refptr<AsyncWaitableEventImpl> waitable_event_impl_;
+};
+
+class AsyncJobHandle : public dawn::platform::JobHandle {
+ public:
+  explicit AsyncJobHandle(base::JobHandle&& job_handle)
+      : job_handle_(std::move(job_handle)) {}
+  ~AsyncJobHandle() override = default;
+
+  // Chromium's JobHandle can either be cancelled or joined, but not both (it
+  // crashes if you try to |Join| after |Cancel|). The Dawn platform's JobHandle
+  // allows both to be called without error, so we wrap it here and avoid
+  // calling them more than once.
+  void Cancel() override {
+    std::call_once(once_flag_, [&]() { job_handle_.Cancel(); });
+  }
+  void Join() override {
+    std::call_once(once_flag_, [&]() { job_handle_.Join(); });
+  }
+
+ private:
+  std::once_flag once_flag_;
+  base::JobHandle job_handle_;
+};
+
+class AsyncWorkerTaskPool : public dawn::platform::WorkerTaskPool {
+ public:
+  explicit AsyncWorkerTaskPool(gl::ProgressReporter* progress_reporter)
+      : progress_reporter_(progress_reporter) {}
+  ~AsyncWorkerTaskPool() override = default;
+
+  std::unique_ptr<dawn::platform::WaitableEvent> PostWorkerTask(
+      dawn::platform::PostWorkerTaskCallback callback,
+      void* user_data) override {
+    std::unique_ptr<AsyncWaitableEvent> waitable_event =
+        std::make_unique<AsyncWaitableEvent>();
+    base::ThreadPool::PostTask(
+        FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_BLOCKING},
+        base::BindOnce(&RunWorkerTask, callback, user_data, progress_reporter_,
+                       waitable_event->GetWaitableEventImpl()));
+    return waitable_event;
+  }
+
+  std::unique_ptr<dawn::platform::JobHandle> PostWorkerJob(
+      dawn::platform::PostWorkerJobCallback callback,
+      void* user_data) override {
+    std::unique_ptr<AsyncJobHandle> job_handle =
+        std::make_unique<AsyncJobHandle>(base::PostJob(
+            FROM_HERE, {base::TaskPriority::USER_VISIBLE},
+            base::BindRepeating(&RunWorkerJob, callback, user_data),
+            base::BindRepeating([](size_t) -> size_t { return 1; })));
+    return job_handle;
+  }
+
+ private:
+  static void RunWorkerTask(
+      dawn::platform::PostWorkerTaskCallback callback,
+      void* user_data,
+      gl::ProgressReporter* progress_reporter,
+      scoped_refptr<AsyncWaitableEventImpl> waitable_event_impl) {
+    TRACE_EVENT0("toplevel", "DawnPlatformImpl::RunWorkerTask");
+    callback(user_data);
+    if (progress_reporter) {
+      progress_reporter->ReportProgress();
+    }
+    waitable_event_impl->MarkAsComplete();
+  }
+
+  static void RunWorkerJob(dawn::platform::PostWorkerJobCallback callback,
+                           void* user_data,
+                           base::JobDelegate* delegate) {
+    dawn::platform::JobStatus status = dawn::platform::JobStatus::Continue;
+    while (!delegate->ShouldYield()) {
+      if (status != dawn::platform::JobStatus::Continue) {
+        return;
+      }
+      status = callback(user_data);
+    }
+  }
+
+  const raw_ptr<gl::ProgressReporter> progress_reporter_;
+};
+
+void RecordDelayedUMA(scoped_refptr<DawnPlatform::CacheCountsMap> cache_map,
+                      std::string uma_prefix) {
+  base::AutoLock autolock(cache_map->lock);
+  for (auto const& [base_name, cache_counts] : cache_map->counts) {
+    // Report Hit counts
+    base::UmaHistogramCounts10000(
+        uma_prefix + base_name + "CacheHit.Counts.90SecondsPostStartup",
+        cache_counts.cache_hit_count);
+
+    // Report Miss counts
+    base::UmaHistogramCounts10000(
+        uma_prefix + base_name + "CacheMiss.Counts.90SecondsPostStartup",
+        cache_counts.cache_miss_count);
+
+    // Report Percentage
+    int total_counts =
+        cache_counts.cache_hit_count + cache_counts.cache_miss_count;
+    if (total_counts > 0) {
+      int hit_percentage = (cache_counts.cache_hit_count * 100) / total_counts;
+
+      base::UmaHistogramPercentage(
+          uma_prefix + base_name + "CacheHit.Percentage.90SecondsPostStartup",
+          hit_percentage);
+    }
+  }
+}
+
+// Some metrics are subsampled as they are on critical path.
+bool ShouldRecordMetric(std::string_view name) {
+  static constexpr double kSubsamplingProb = 0.01;
+  return name == "Vulkan.VkQueueSubmitUS"
+             ? base::ShouldRecordSubsampledMetric(kSubsamplingProb)
+             : true;
+}
+
+#if BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_ANDROID)
+// A collection for which a unified metric is emitted for Ganesh/Graphite Vulkan
+// backends.
+constexpr auto kUnifiedSkiaMetrics =
+    base::MakeFixedFlatMap<std::string_view, void (*)(base::TimeDelta)>(
+        // Also emitted from CreateGraphicsPipelinesHook with same name.
+        {{"Vulkan.CreateGraphicsPipelines.CacheHit",
+          &gpu::EmitVkCreateGraphicsPipelinesUMA},
+         {"Vulkan.CreateGraphicsPipelines.CacheMiss",
+          &gpu::EmitVkCreateGraphicsPipelinesUMA},
+         {"Vulkan.VkQueueSubmitUS", &gpu::EmitVkQueueSubmitUMA}});
+
+bool ShouldEmitUnifiedHistogram(const std::string& uma_prefix,
+                                const char* name) {
+  if (uma_prefix == "GPU.GraphiteDawn." && kUnifiedSkiaMetrics.contains(name)) {
+    return true;
+  }
+  return false;
+}
+#endif  // BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_ANDROID)
+
+void EmitUnifiedHistogram(const std::string& uma_prefix,
+                          const char* name,
+                          int sample) {
+#if BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_ANDROID)
+  if (!ShouldEmitUnifiedHistogram(uma_prefix, name)) {
+    return;
+  }
+  kUnifiedSkiaMetrics.at(name)(base::Microseconds(sample));
+#endif  // BUILDFLAG(ENABLE_VULKAN) && BUILDFLAG(IS_ANDROID)
+}
+
+}  // anonymous namespace
+
+DawnPlatform::CacheCountsMap::CacheCountsMap() = default;
+DawnPlatform::CacheCountsMap::~CacheCountsMap() = default;
+
+DawnPlatform::DawnPlatform(
+    std::unique_ptr<DawnCachingInterface> dawn_caching_interface,
+    gl::ProgressReporter* progress_reporter,
+    const char* uma_prefix,
+    bool record_cache_count_uma)
+    : dawn_caching_interface_(std::move(dawn_caching_interface)),
+      progress_reporter_(progress_reporter),
+      uma_prefix_(uma_prefix),
+      cache_map_(base::MakeRefCounted<CacheCountsMap>()),
+      startup_time_(base::TimeTicks::Now()) {
+  if (record_cache_count_uma) {
+    base::ThreadPool::PostDelayedTask(
+        FROM_HERE, base::BindOnce(&RecordDelayedUMA, cache_map_, uma_prefix_),
+        base::Seconds(90));
+  }
+}
+
+DawnPlatform::~DawnPlatform() = default;
+
+double DawnPlatform::MonotonicallyIncreasingTime() {
+  return (base::TimeTicks::Now() - base::TimeTicks()).InSecondsF();
+}
+
+void DawnPlatform::HistogramCacheCountHelper(std::string_view name,
+                                             int sample,
+                                             int min,
+                                             int max,
+                                             int bucketCount) {
+  if (name.find("Cache") != std::string_view::npos) {
+    base::AutoLock autolock(cache_map_->lock);
+    std::string_view base_name = name;
+    bool is_hit = false;
+    size_t pos = base_name.find("CacheHit");
+    if (pos != std::string_view::npos) {
+      base_name = base_name.substr(0, pos);
+      is_hit = true;
+    } else {
+      pos = base_name.find("CacheMiss");
+      if (pos != std::string_view::npos) {
+        base_name = base_name.substr(0, pos);
+      }
+    }
+
+    auto& cache_counts = cache_map_->counts[base_name];
+    if (is_hit) {
+      ++cache_counts.cache_hit_count;
+    } else {
+      ++cache_counts.cache_miss_count;
+    }
+
+    if (base::TimeTicks::Now() - startup_time_ <= base::Seconds(90)) {
+      base::UmaHistogramCustomCounts(
+          base::StrCat({uma_prefix_, name, ".90SecondsPostStartup"}), sample,
+          min, max, bucketCount);
+    }
+  }
+}
+
+void DawnPlatform::HistogramCustomCounts(const char* name,
+                                         int sample,
+                                         int min,
+                                         int max,
+                                         int bucketCount) {
+  base::UmaHistogramCustomCounts(uma_prefix_ + name, sample, min, max,
+                                 bucketCount);
+  HistogramCacheCountHelper(name, sample, min, max, bucketCount);
+  EmitUnifiedHistogram(uma_prefix_, name, sample);
+}
+
+void DawnPlatform::HistogramCustomCountsHPC(const char* name,
+                                            int sample,
+                                            int min,
+                                            int max,
+                                            int bucketCount) {
+  if (base::TimeTicks::IsHighResolution()) {
+    if (ShouldRecordMetric(name)) {
+      base::UmaHistogramCustomCounts(uma_prefix_ + name, sample, min, max,
+                                     bucketCount);
+      HistogramCacheCountHelper(name, sample, min, max, bucketCount);
+    }
+    EmitUnifiedHistogram(uma_prefix_, name, sample);
+  }
+}
+
+void DawnPlatform::HistogramEnumeration(const char* name,
+                                        int sample,
+                                        int boundaryValue) {
+  base::UmaHistogramExactLinear(uma_prefix_ + name, sample, boundaryValue);
+}
+
+void DawnPlatform::HistogramSparse(const char* name, int sample) {
+  base::UmaHistogramSparse(uma_prefix_ + name, sample);
+}
+
+void DawnPlatform::HistogramBoolean(const char* name, bool sample) {
+  base::UmaHistogramBoolean(uma_prefix_ + name, sample);
+}
+
+dawn::platform::CachingInterface* DawnPlatform::GetCachingInterface() {
+  return dawn_caching_interface_.get();
+}
+
+std::unique_ptr<dawn::platform::WorkerTaskPool>
+DawnPlatform::CreateWorkerTaskPool() {
+  return std::make_unique<AsyncWorkerTaskPool>(progress_reporter_);
+}
+
+bool DawnPlatform::IsFeatureEnabled(dawn::platform::Features feature) {
+  switch (feature) {
+    case dawn::platform::Features::kWebGPUUseDXC:
+      // (crbug.com/362247692): Feature is enabled by default.
+      return true;
+    case dawn::platform::Features::kWebGPUEnableRangeAnalysisForRobustness:
+      return base::FeatureList::IsEnabled(
+          features::kWebGPUEnableRangeAnalysisForRobustness);
+    case dawn::platform::Features::kWebGPUUseSpirv14:
+      return base::FeatureList::IsEnabled(features::kWebGPUUseSpirv14);
+    case dawn::platform::Features::kWebGPUDecomposeUniformBuffers:
+      return base::FeatureList::IsEnabled(
+          features::kWebGPUDecomposeUniformBuffers);
+    case dawn::platform::Features::kWebGPUUseHLSL2021:
+      return base::FeatureList::IsEnabled(features::kWebGPUUseHLSL2021);
+    case dawn::platform::Features::kWebGPUUseSpirvReconvergenceMode:
+      return base::FeatureList::IsEnabled(
+          features::kWebGPUUseSpirvReconvergenceMode);
+    default:
+      return false;
+  }
+}
+
+void DawnPlatform::ReportProgress() {
+  if (progress_reporter_) {
+    progress_reporter_->ReportProgress();
+  }
+}
+
+void DawnPlatform::OnFramePresented() {
+  // Report cache hits' stats but only for first presentation.
+  base::AutoLock autolock(cache_map_->lock);
+  if (did_report_1st_present_cache_stats_) {
+    return;
+  }
+  did_report_1st_present_cache_stats_ = true;
+
+  for (auto const& [base_name, cache_counts] : cache_map_->counts) {
+    // Report Hit counts
+    base::UmaHistogramCounts10000(
+        uma_prefix_ + base_name + "CacheHit.Counts.1stPresent",
+        cache_counts.cache_hit_count);
+
+    // Report Percentage
+    int total_counts =
+        cache_counts.cache_hit_count + cache_counts.cache_miss_count;
+    if (total_counts > 0) {
+      int hit_percentage = (cache_counts.cache_hit_count * 100) / total_counts;
+
+      base::UmaHistogramPercentage(
+          uma_prefix_ + base_name + "CacheHit.Percentage.1stPresent",
+          hit_percentage);
+    }
+  }
+}
+
+}  // namespace gpu::webgpu

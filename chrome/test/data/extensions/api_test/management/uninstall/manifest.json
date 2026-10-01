@@ -1,0 +1,9 @@
+{
+  "name": "Extension Management API Test",
+  "version": "0.1",
+  "manifest_version": 3,
+  "background": {
+    "service_worker": "uninstall.js"
+  },
+  "permissions": ["management"]
+}

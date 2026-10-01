@@ -1,0 +1,48 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/updater/win/ui/resources/resources.grh"
+
+#include <winres.h>
+#include <winresrc.h>
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDI_APP   ICON    "chrome/updater/win/ui/resources/google_update.ico"
+
+IDB_ERROR_ILLUSTRATION BITMAP  "chrome/updater/win/ui/resources/error.bmp"
+IDB_BACKGROUND_LIGHT BITMAP  "chrome/updater/win/ui/resources/updater_gradient_background_light.bmp"
+IDB_BACKGROUND_DARK BITMAP  "chrome/updater/win/ui/resources/updater_gradient_background_dark.bmp"
+
+IDD_PROGRESS DIALOGEX 0, 0, 433, 218
+STYLE DS_SETFONT | WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX
+FONT 8, "MS Shell Dlg", 0, 0, 0x0
+BEGIN
+    CTEXT       "",IDC_TITLE_BAR_SPACER,0,0,1,34, WS_VISIBLE
+    PUSHBUTTON  "",IDC_GET_HELP,310,180,54,22,BS_FLAT | WS_VISIBLE
+    PUSHBUTTON  "",IDC_CLOSE,368,180,54,22,BS_FLAT | WS_VISIBLE
+    PUSHBUTTON  "",IDC_BUTTON1,171,180,120,22,BS_FLAT | WS_VISIBLE
+    PUSHBUTTON  "",IDC_BUTTON2,295,180,120,22,BS_FLAT | WS_VISIBLE
+    CONTROL     "",IDC_PROGRESS,"msctls_progress32",WS_VISIBLE,30,117,373,10
+    CTEXT       "",IDC_INSTALLER_STATE_TEXT,15,64,403,48,WS_VISIBLE
+    CTEXT       "",IDC_INFO_TEXT,15,175,403,38,WS_VISIBLE
+    CTEXT       "",IDC_PAUSE_RESUME_TEXT,375,96,48,38,SS_NOTIFY | WS_VISIBLE
+    CTEXT       "",IDC_COMPLETE_TEXT,15,64,403,98,SS_NOTIFY | WS_VISIBLE
+    CTEXT       "",IDC_ERROR_TEXT,15,132,403,50,SS_NOTIFY | WS_VISIBLE
+    CONTROL     IDB_ERROR_ILLUSTRATION,IDC_ERROR_ILLUSTRATION,"Static",SS_BITMAP | SS_CENTERIMAGE | WS_VISIBLE,189,62,66,40
+    CONTROL     "",IDC_APP_BITMAP,"Static",SS_BITMAP | SS_CENTERIMAGE | WS_VISIBLE,185,162,63,17
+END
+
+IDD_INSTALL_STOPPED DIALOGEX 0, 0, 260, 80
+STYLE DS_SETFONT | WS_DLGFRAME | WS_POPUP
+FONT 8, "MS Shell Dlg", 0, 0, 0x0
+BEGIN
+    CTEXT           "",IDC_TITLE_BAR_SPACER,0,0,1,15,WS_VISIBLE
+    DEFPUSHBUTTON   "",IDOK,162,53,90,19,BS_FLAT
+    PUSHBUTTON      "",IDCANCEL,64,53,90,19,BS_FLAT
+    CTEXT           "",IDC_INSTALL_STOPPED_TEXT,7,17,244,34
+END
+

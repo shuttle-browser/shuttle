@@ -1,0 +1,19 @@
+include_rules = [
+  "+base",
+  "+crypto",
+  "+net",
+  "+services/network/public/cpp",
+  "+services/network/public/mojom",
+  "+sql",
+  "+third_party/anonymous_tokens/src/anonymous_tokens/cpp/privacy_pass/athm_token_encodings_utils.h",
+  "+url",
+]
+
+specific_include_rules = {
+  ".*unittest\\.cc": [
+    "+services/network/test",
+  ],
+  "run_all_unittests\\.cc": [
+    "+mojo/core/embedder",
+  ],
+}

@@ -1,0 +1,1571 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.toolbar.optional_button;
+
+import static androidx.test.espresso.matcher.ViewMatchers.assertThat;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
+import static org.robolectric.Shadows.shadowOf;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
+import android.graphics.ColorFilter;
+import android.graphics.drawable.Drawable;
+import android.os.Handler;
+import android.os.Looper;
+import android.transition.Transition;
+import android.view.ContextThemeWrapper;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.View.OnClickListener;
+import android.view.View.OnLongClickListener;
+import android.view.ViewGroup;
+import android.view.ViewGroup.LayoutParams;
+import android.widget.FrameLayout;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.TextView;
+
+import androidx.appcompat.content.res.AppCompatResources;
+import androidx.core.widget.ImageViewCompat;
+
+import org.hamcrest.Matchers;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.robolectric.Robolectric;
+import org.robolectric.shadows.ShadowLooper;
+
+import org.chromium.base.Callback;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.toolbar.R;
+import org.chromium.chrome.browser.toolbar.adaptive.AdaptiveToolbarButtonVariant;
+import org.chromium.chrome.browser.toolbar.adaptive.AdaptiveToolbarFeatures;
+import org.chromium.chrome.browser.toolbar.optional_button.ButtonData.ButtonSpec;
+import org.chromium.chrome.browser.toolbar.optional_button.OptionalButtonConstants.TransitionType;
+import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
+import org.chromium.components.browser_ui.widget.textbubble.TextBubble;
+import org.chromium.ui.listmenu.ListMenuButton;
+import org.chromium.ui.test.util.MockitoHelper;
+
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
+
+/** Unit tests for OptionalButtonView. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class OptionalButtonViewTest {
+    private Context mActivity;
+
+    private OptionalButtonView mOptionalButtonView;
+    private ImageButton mInnerButton;
+    private TextView mActionChipLabel;
+    private ImageView mButtonBackground;
+    private ShadowLooper mShadowLooper;
+    private BooleanSupplier mMockAnimationChecker;
+    private Callback<Transition> mMockBeginDelayedTransition;
+    private ViewGroup mMockTransitionRoot;
+    private ListMenuButton mButton;
+    private ImageView mAnimationView;
+
+    @Before
+    public void setUp() {
+        mActivity =
+                new ContextThemeWrapper(
+                        Robolectric.setupActivity(Activity.class),
+                        R.style.Theme_BrowserUI_DayNight);
+        mMockAnimationChecker = mock(BooleanSupplier.class);
+        when(mMockAnimationChecker.getAsBoolean()).thenReturn(true);
+
+        mOptionalButtonView =
+                (OptionalButtonView)
+                        LayoutInflater.from(mActivity)
+                                .inflate(R.layout.optional_button_layout, null);
+        mOptionalButtonView.setLayoutParams(
+                new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        mOptionalButtonView.setIsAnimationAllowedPredicate(mMockAnimationChecker);
+        mOptionalButtonView.layout(10, 10, 10, 10);
+
+        mMockBeginDelayedTransition = MockitoHelper.mockCallback();
+
+        mMockTransitionRoot = mock(ViewGroup.class);
+        when(mMockTransitionRoot.isLaidOut()).thenReturn(true);
+        when(mMockTransitionRoot.isAttachedToWindow()).thenReturn(true);
+        mOptionalButtonView.setTransitionRoot(mMockTransitionRoot);
+
+        mShadowLooper = shadowOf(Looper.getMainLooper());
+        Handler handler = new Handler(Looper.getMainLooper());
+        // This handler is used to schedule the action chip collapse.
+        mOptionalButtonView.setHandlerForTesting(handler);
+
+        // This function replaces calls to TransitionManager.beginDelayedTransition which is hard to
+        // mock as it's static.
+        mOptionalButtonView.setFakeBeginDelayedTransitionForTesting(mMockBeginDelayedTransition);
+
+        mInnerButton = (ImageButton) mOptionalButtonView.getButtonView();
+        mAnimationView = mOptionalButtonView.getAnimationViewForTesting();
+        mActionChipLabel = mOptionalButtonView.findViewById(R.id.action_chip_label);
+        mButtonBackground =
+                mOptionalButtonView.findViewById(R.id.swappable_icon_secondary_background);
+        mButton = mOptionalButtonView.findViewById(R.id.optional_toolbar_button);
+    }
+
+    private ButtonDataImpl getDataForStaticNewTabIconButton() {
+        Drawable iconDrawable = AppCompatResources.getDrawable(mActivity, R.drawable.new_tab_icon);
+        return getDataForStaticNewTabIconButton(iconDrawable);
+    }
+
+    private ButtonDataImpl getDataForStaticNewTabIconButton(Drawable iconDrawable) {
+        OnClickListener clickListener = mock(OnClickListener.class);
+        OnLongClickListener longClickListener = mock(OnLongClickListener.class);
+        String contentDescription = mActivity.getString(R.string.button_new_tab);
+
+        // Whether a button is static or dynamic is determined by the button variant.
+        ButtonSpec buttonSpec =
+                new ButtonSpec.Builder(
+                                iconDrawable, contentDescription, /* supportsTinting= */ true)
+                        .setOnClickListener(clickListener)
+                        .setOnLongClickListener(longClickListener)
+                        .setButtonVariant(AdaptiveToolbarButtonVariant.NEW_TAB)
+                        .setHoverTooltipTextId(R.string.new_tab_title)
+                        .build();
+        ButtonDataImpl buttonData =
+                new ButtonDataImpl(/* canShow= */ true, /* isEnabled= */ true, buttonSpec);
+
+        return buttonData;
+    }
+
+    private ButtonDataImpl getDataForReaderModeIconButton() {
+        Drawable iconDrawable =
+                AppCompatResources.getDrawable(mActivity, R.drawable.ic_mic_white_24dp);
+        OnClickListener clickListener = mock(OnClickListener.class);
+        OnLongClickListener longClickListener = mock(OnLongClickListener.class);
+        String contentDescription = mActivity.getString(R.string.show_reading_mode_text);
+
+        // Whether a button is static or dynamic is determined by the button variant.
+        ButtonSpec buttonSpec =
+                new ButtonSpec.Builder(
+                                iconDrawable, contentDescription, /* supportsTinting= */ true)
+                        .setOnClickListener(clickListener)
+                        .setOnLongClickListener(longClickListener)
+                        .setButtonVariant(AdaptiveToolbarButtonVariant.READER_MODE)
+                        .build();
+        ButtonDataImpl buttonData =
+                new ButtonDataImpl(/* canShow= */ true, /* isEnabled= */ true, buttonSpec);
+
+        return buttonData;
+    }
+
+    private ButtonDataImpl getDataForReaderModeActionChip() {
+        Drawable iconDrawable = AppCompatResources.getDrawable(mActivity, R.drawable.new_tab_icon);
+        OnClickListener clickListener = mock(OnClickListener.class);
+        OnLongClickListener longClickListener = mock(OnLongClickListener.class);
+        String contentDescription = mActivity.getString(R.string.actionbar_share);
+        int actionChipLabelResId = R.string.adaptive_toolbar_button_preference_share;
+
+        ButtonSpec buttonSpec =
+                new ButtonSpec.Builder(
+                                iconDrawable, contentDescription, /* supportsTinting= */ true)
+                        .setOnClickListener(clickListener)
+                        .setOnLongClickListener(longClickListener)
+                        .setButtonVariant(AdaptiveToolbarButtonVariant.READER_MODE)
+                        .setActionChipLabelResId(actionChipLabelResId)
+                        .build();
+        ButtonDataImpl buttonData =
+                new ButtonDataImpl(/* canShow= */ true, /* isEnabled= */ true, buttonSpec);
+
+        return buttonData;
+    }
+
+    private ButtonDataImpl getDataForTestingTooltipText(int buttonVariant, int tooltipTextIdRes) {
+        Drawable iconDrawable = AppCompatResources.getDrawable(mActivity, R.drawable.new_tab_icon);
+        OnClickListener clickListener = mock(OnClickListener.class);
+        OnLongClickListener longClickListener = mock(OnLongClickListener.class);
+        String contentDescription = mActivity.getString(R.string.actionbar_share);
+
+        ButtonSpec buttonSpec =
+                new ButtonSpec.Builder(
+                                iconDrawable, contentDescription, /* supportsTinting= */ true)
+                        .setOnClickListener(clickListener)
+                        .setOnLongClickListener(longClickListener)
+                        .setButtonVariant(buttonVariant)
+                        .setHoverTooltipTextId(tooltipTextIdRes)
+                        .build();
+
+        ButtonDataImpl buttonData =
+                new ButtonDataImpl(/* canShow= */ true, /* isEnabled= */ true, buttonSpec);
+
+        return buttonData;
+    }
+
+    private ButtonDataImpl getDataForButtonWithoutTint(Drawable iconDrawable) {
+        OnClickListener clickListener = mock(OnClickListener.class);
+        OnLongClickListener longClickListener = mock(OnLongClickListener.class);
+        String contentDescription = mActivity.getString(R.string.actionbar_share);
+
+        ButtonSpec buttonSpec =
+                new ButtonSpec.Builder(
+                                iconDrawable, contentDescription, /* supportsTinting= */ false)
+                        .setOnClickListener(clickListener)
+                        .setOnLongClickListener(longClickListener)
+                        .build();
+        ButtonDataImpl buttonData =
+                new ButtonDataImpl(/* canShow= */ true, /* isEnabled= */ true, buttonSpec);
+
+        return buttonData;
+    }
+
+    @Test
+    public void testHoverTooltipText() {
+        // Test whether share button tooltip Text is set correctly.
+        ButtonData buttonData =
+                getDataForTestingTooltipText(
+                        AdaptiveToolbarButtonVariant.SHARE,
+                        R.string.adaptive_toolbar_button_preference_share);
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        assertEquals(
+                "Tooltip text for share button is not as expected",
+                mButton.getTooltipText(),
+                mActivity
+                        .getResources()
+                        .getString(R.string.adaptive_toolbar_button_preference_share));
+
+        // Test whether voice search button tooltip Text is set correctly.
+        buttonData =
+                getDataForTestingTooltipText(
+                        AdaptiveToolbarButtonVariant.VOICE,
+                        R.string.adaptive_toolbar_button_preference_voice_search);
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        assertEquals(
+                "Tooltip text for voice search button is not as expected",
+                mButton.getTooltipText(),
+                mActivity
+                        .getResources()
+                        .getString(R.string.adaptive_toolbar_button_preference_voice_search));
+
+        // Test whether new tab button tooltip Text is set correctly.
+        buttonData =
+                getDataForTestingTooltipText(
+                        AdaptiveToolbarButtonVariant.NEW_TAB, R.string.button_new_tab);
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        assertEquals(
+                "Tooltip text for new tab button is not as expected",
+                mButton.getTooltipText(),
+                mActivity.getResources().getString(R.string.button_new_tab));
+
+        // Test whether reader mode tooltip text falls back to the content description.
+        buttonData = getDataForTestingTooltipText(AdaptiveToolbarButtonVariant.READER_MODE, 0);
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        assertEquals(
+                "Tooltip text for reader mode button is not as expected",
+                mActivity.getString(R.string.actionbar_share),
+                mButton.getTooltipText());
+    }
+
+    @Test
+    public void testSetButtonEnabled() {
+        ButtonDataImpl disabledButton = getDataForReaderModeIconButton();
+        disabledButton.setEnabled(false);
+
+        mOptionalButtonView.updateButtonWithAnimation(disabledButton);
+
+        // The enabled property should be reflected immediately.
+        assertFalse(mOptionalButtonView.getButtonView().isEnabled());
+        assertFalse(mActionChipLabel.isEnabled());
+    }
+
+    @Test
+    public void testSetEnabledMethod() {
+        ButtonDataImpl buttonData = getDataForReaderModeActionChip();
+
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // setEnabled updates the button's enabled status without requiring a new ButtonData.
+        mOptionalButtonView.setEnabled(false);
+
+        assertFalse(mOptionalButtonView.getButtonView().isEnabled());
+        assertFalse(mActionChipLabel.isEnabled());
+    }
+
+    @Test
+    public void testSetPaddingStart() {
+        mOptionalButtonView.setPaddingStart(42);
+
+        assertEquals(42, mOptionalButtonView.getPaddingStart());
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testSetIconDrawableWithAnimation_throwsExceptionWithNoTransitionRoot() {
+        mOptionalButtonView.setTransitionRoot(null);
+
+        // If we don't set a transitionRoot then we can't perform transitions.
+        mOptionalButtonView.updateButtonWithAnimation(null);
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testSetIconDrawableWithAnimation_throwsExceptionWithNoAnimationPredicate() {
+        // If we don't set an isAnimationAllowedPredicate then we can't perform transitions.
+        mOptionalButtonView.setIsAnimationAllowedPredicate(null);
+        mOptionalButtonView.updateButtonWithAnimation(null);
+    }
+
+    @Test
+    public void testSetIconDrawableWithAnimation_fromHiddenToIcon() {
+        ButtonData buttonData = getDataForReaderModeIconButton();
+        String contentDescriptionString = buttonData.getButtonSpec().getContentDescription();
+
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        assertEquals(View.VISIBLE, mOptionalButtonView.getVisibility());
+        assertEquals(View.VISIBLE, mInnerButton.getVisibility());
+        assertEquals(buttonData.getButtonSpec().getDrawable(), mInnerButton.getDrawable());
+        assertEquals(contentDescriptionString, mInnerButton.getContentDescription());
+        // Dynamic buttons have a background.
+        assertEquals(View.VISIBLE, mButtonBackground.getVisibility());
+        assertEquals(View.GONE, mActionChipLabel.getVisibility());
+    }
+
+    @Test
+    public void testUpdateButtonWithAnimation_transitionDropped() {
+        ButtonData buttonData = getDataForReaderModeIconButton();
+
+        // This triggers the transition state machine, which clears the click listener
+        // and adds an OnPreDrawListener to detect if the transition is dropped.
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // Simulate the framework dropping the transition (onTransitionStart is NEVER called).
+        // Triggering pre-draw will execute our fallback listener.
+        mOptionalButtonView.getViewTreeObserver().dispatchOnPreDraw();
+
+        // The fallback listener posts a Runnable to the handler to call onTransitionEnd.
+        mShadowLooper.idle();
+
+        // The click listener should be restored since the state machine was forcefully completed.
+        mInnerButton.performClick();
+        verify(buttonData.getButtonSpec().getOnClickListener()).onClick(any());
+    }
+
+    @Test
+    public void testSetIconDrawableWithAnimation_swapIcons() {
+        ButtonData firstButtonData = getDataForReaderModeIconButton();
+        ButtonData secondButtonData = getDataForStaticNewTabIconButton();
+
+        // Transition from hidden to firstIcon.
+        mOptionalButtonView.updateButtonWithAnimation(firstButtonData);
+
+        // Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Transition from firstIcon to secondIcon.
+        mOptionalButtonView.updateButtonWithAnimation(secondButtonData);
+
+        // Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+
+        // In the middle of the transition all handlers should be disabled.
+        mInnerButton.performClick();
+        mInnerButton.performLongClick();
+
+        mOptionalButtonView.onTransitionEnd(null);
+
+        mInnerButton.performClick();
+        mInnerButton.performLongClick();
+
+        assertEquals(View.VISIBLE, mOptionalButtonView.getVisibility());
+        assertEquals(View.VISIBLE, mInnerButton.getVisibility());
+        assertEquals(secondButtonData.getButtonSpec().getDrawable(), mInnerButton.getDrawable());
+        // Second button is static, it has no background.
+        assertEquals(View.GONE, mButtonBackground.getVisibility());
+        verify(secondButtonData.getButtonSpec().getOnClickListener()).onClick(any());
+        verify(secondButtonData.getButtonSpec().getOnLongClickListener()).onLongClick(any());
+        verifyNoMoreInteractions(
+                firstButtonData.getButtonSpec().getOnClickListener(),
+                firstButtonData.getButtonSpec().getOnLongClickListener());
+    }
+
+    @Test
+    public void testSetIconDrawableWithAnimation_swapIcons_withAndWithoutTint() {
+
+        // First button has an icon that supports tinting (e.g. new tab).
+        Drawable firstButtonIcon =
+                AppCompatResources.getDrawable(mActivity, R.drawable.ic_star_24dp);
+        ButtonData firstButtonDataWithTint = getDataForStaticNewTabIconButton(firstButtonIcon);
+
+        // Second button has an icon that doesn't support tinting (e.g. user profile pic).
+        Drawable secondButtonIcon =
+                AppCompatResources.getDrawable(mActivity, R.drawable.ic_star_filled_24dp);
+        ButtonData secondButtonDataWithoutTint = getDataForButtonWithoutTint(secondButtonIcon);
+
+        // This tint color comes from the current dynamic color or set by a website.
+        ColorStateList tintColor = ColorStateList.valueOf(Color.RED);
+        mOptionalButtonView.setColorStateList(tintColor);
+
+        // Transition from hidden to firstIcon.
+        mOptionalButtonView.updateButtonWithAnimation(firstButtonDataWithTint);
+
+        // Start transition, normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+
+        // Record the drawable being animated and its tint color.
+        Drawable buttonDrawableWhileShowing = mInnerButton.getDrawable();
+        ColorStateList buttonTintWhileShowing = ImageViewCompat.getImageTintList(mInnerButton);
+
+        // Finish transition, normally called by TransitionManager.
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Record the button's drawable and tint color after the animation.
+        Drawable buttonDrawableAfterShowing = mInnerButton.getDrawable();
+        ColorStateList buttonTintAfterShowing = ImageViewCompat.getImageTintList(mInnerButton);
+
+        // Transition from the tinted button to the one that doesn't support tint.
+        mOptionalButtonView.updateButtonWithAnimation(secondButtonDataWithoutTint);
+
+        // Start transition, Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+
+        // During the swap animation we show both buttons at the same time, in this case
+        // mInnerButton is hiding the previous tinted icon, while mAnimationView is showing the new
+        // untinted icon.
+        // Record both drawables and their tints.
+        Drawable animationDrawableWhileSwapping = mAnimationView.getDrawable();
+        ColorStateList animationTintWhileSwapping =
+                ImageViewCompat.getImageTintList(mAnimationView);
+        Drawable buttonDrawableWhileSwapping = mInnerButton.getDrawable();
+        ColorStateList buttonTintWhileSwapping = ImageViewCompat.getImageTintList(mInnerButton);
+
+        // Finish transition, normally called by TransitionManager.
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // After the animation only mInnerButton remains visible, it instantly changes its drawable
+        // and tint to the new icon.
+        Drawable buttonDrawableAfterSwapping = mInnerButton.getDrawable();
+        ColorStateList buttonTintAfterSwapping = ImageViewCompat.getImageTintList(mInnerButton);
+
+        // Verify that while the first button is appearing it is shown with tint.
+        assertEquals(firstButtonIcon, buttonDrawableWhileShowing);
+        assertEquals(tintColor, buttonTintWhileShowing);
+
+        // Verify that after the first button appeared it maintained its tint.
+        assertEquals(firstButtonIcon, buttonDrawableAfterShowing);
+        assertEquals(tintColor, buttonTintAfterShowing);
+
+        // Verify that while the second button replaced the first one each one had the correct tint.
+        assertEquals(secondButtonIcon, animationDrawableWhileSwapping);
+        assertNull(animationTintWhileSwapping);
+        assertEquals(firstButtonIcon, buttonDrawableWhileSwapping);
+        assertEquals(tintColor, buttonTintWhileSwapping);
+
+        // Verify that after swapping the second button remained untinted.
+        assertEquals(secondButtonIcon, buttonDrawableAfterSwapping);
+        assertNull(buttonTintAfterSwapping);
+    }
+
+    @Test
+    public void testSetIconDrawableWithAnimation_expandActionChipFromHidden() {
+        ButtonData actionChipButtonData = getDataForReaderModeActionChip();
+        String actionChipLabel =
+                mActivity
+                        .getResources()
+                        .getString(actionChipButtonData.getButtonSpec().getActionChipLabelResId());
+
+        // Setting an action chip label string indicates that the button should transition to an
+        // action chip
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButtonData);
+
+        // Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+        // In the middle of the expand transition we shouldn't listen to clicks.
+        mInnerButton.performClick();
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Click listener should be set when the expand transition is finished.
+        mInnerButton.performClick();
+
+        verify(actionChipButtonData.getButtonSpec().getOnClickListener(), times(1)).onClick(any());
+        assertEquals(View.VISIBLE, mOptionalButtonView.getVisibility());
+        assertEquals(View.VISIBLE, mInnerButton.getVisibility());
+        assertEquals(View.VISIBLE, mActionChipLabel.getVisibility());
+        assertEquals(actionChipLabel, mActionChipLabel.getText());
+    }
+
+    @Test
+    public void testSetIconDrawableWithAnimation_expandAndCollapseActionChipFromHidden() {
+        ButtonData actionChipButtonData = getDataForReaderModeActionChip();
+
+        // Setting an action chip label string indicates that the button should transition to an
+        // action chip
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButtonData);
+
+        // Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Advance looper to begin collapse transition.
+        mShadowLooper.runToEndOfTasks();
+
+        // Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+        // Click listener should remain active during this transition.
+        mInnerButton.performClick();
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Click listener should remain the same after the transition
+        mInnerButton.performClick();
+
+        verify(actionChipButtonData.getButtonSpec().getOnClickListener(), times(2)).onClick(any());
+        assertEquals(View.VISIBLE, mOptionalButtonView.getVisibility());
+        assertEquals(View.VISIBLE, mInnerButton.getVisibility());
+        assertEquals(View.GONE, mActionChipLabel.getVisibility());
+    }
+
+    @Test
+    public void testSetIconDrawableWithAnimation_expandActionChipFromAnotherIcon() {
+        ButtonData staticButtonData = getDataForStaticNewTabIconButton();
+        ButtonData actionChipButtonData = getDataForReaderModeActionChip();
+
+        // Transition from hidden to staticButton.
+        mOptionalButtonView.updateButtonWithAnimation(staticButtonData);
+
+        // Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Transition from firstIcon to an action chip with secondIcon.
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButtonData);
+
+        // Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+        // Click button in the middle of the action chip expansion transition, nothing should
+        // happen.
+        mInnerButton.performClick();
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Second click listener should be set after action chip expansion is finished.
+        mInnerButton.performClick();
+
+        verify(actionChipButtonData.getButtonSpec().getOnClickListener(), times(1)).onClick(any());
+        verifyNoMoreInteractions(staticButtonData.getButtonSpec().getOnClickListener());
+        assertEquals(View.VISIBLE, mOptionalButtonView.getVisibility());
+        assertEquals(View.VISIBLE, mInnerButton.getVisibility());
+        assertEquals(View.VISIBLE, mActionChipLabel.getVisibility());
+    }
+
+    @Test
+    public void testSetIconDrawableWithAnimation_updateActionChipLabel() {
+        ButtonData actionChipButtonData1 = getDataForReaderModeActionChip();
+
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButtonData1);
+
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        assertEquals(View.VISIBLE, mOptionalButtonView.getVisibility());
+        assertEquals(View.VISIBLE, mActionChipLabel.getVisibility());
+        assertEquals(
+                mActivity
+                        .getResources()
+                        .getString(actionChipButtonData1.getButtonSpec().getActionChipLabelResId()),
+                mActionChipLabel.getText());
+
+        Drawable iconDrawable = AppCompatResources.getDrawable(mActivity, R.drawable.new_tab_icon);
+        OnClickListener clickListener = mock(OnClickListener.class);
+        OnLongClickListener longClickListener = mock(OnLongClickListener.class);
+        String contentDescription = mActivity.getString(R.string.actionbar_share);
+        int actionChipLabelResId = R.string.adaptive_toolbar_button_preference_voice_search;
+
+        ButtonSpec buttonSpec =
+                new ButtonSpec.Builder(iconDrawable, contentDescription, true)
+                        .setOnClickListener(clickListener)
+                        .setOnLongClickListener(longClickListener)
+                        .setButtonVariant(AdaptiveToolbarButtonVariant.READER_MODE)
+                        .setActionChipLabelResId(actionChipLabelResId)
+                        .build();
+        ButtonDataImpl actionChipButtonData2 = new ButtonDataImpl();
+        actionChipButtonData2.setButtonSpec(buttonSpec);
+        actionChipButtonData2.setCanShow(true);
+        actionChipButtonData2.setEnabled(true);
+
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButtonData2);
+
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        assertEquals(View.VISIBLE, mOptionalButtonView.getVisibility());
+        assertEquals(View.VISIBLE, mActionChipLabel.getVisibility());
+        assertEquals(
+                mActivity.getResources().getString(actionChipLabelResId),
+                mActionChipLabel.getText());
+    }
+
+    @Test
+    public void testUpdateButtonWithAnimation_actionChipWithAlternativeColor() {
+        ButtonData actionChipButtonData = getDataForReaderModeActionChip();
+
+        // Outside of tests alternative color is controlled by a field trial param for each button
+        // variant.
+        AdaptiveToolbarFeatures.setAlternativeColorOverrideForTesting(
+                actionChipButtonData.getButtonSpec().getButtonVariant(), true);
+
+        // Transition from hidden to action chip
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButtonData);
+
+        // Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        ColorFilter filterAfterExpansion = mButtonBackground.getColorFilter();
+
+        // Advance looper to begin collapse transition.
+        mShadowLooper.runToEndOfTasks();
+        // Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        ColorFilter filterAfterCollapse = mButtonBackground.getColorFilter();
+
+        assertNotNull(filterAfterCollapse);
+        assertNotNull(filterAfterExpansion);
+        assertNotEquals(filterAfterCollapse, filterAfterExpansion);
+    }
+
+    @Test
+    public void testUpdateButtonWithAnimation_actionChipWithCustomColors() {
+        ButtonDataImpl actionChipButtonData = getDataForReaderModeActionChip();
+
+        // Use custom background and text color attributes.
+        int backgroundColorAttr = R.attr.colorTertiaryContainer;
+        int textColorAttr = R.attr.colorOnTertiaryContainer;
+
+        actionChipButtonData.setButtonSpec(
+                new ButtonSpec.Builder(actionChipButtonData.getButtonSpec())
+                        .setActionChipBackgroundColorResId(backgroundColorAttr)
+                        .setActionChipTextColorResId(textColorAttr)
+                        .build());
+
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButtonData);
+
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        int expectedTextColor =
+                com.google.android.material.color.MaterialColors.getColor(
+                        mOptionalButtonView, textColorAttr);
+        assertEquals(expectedTextColor, mActionChipLabel.getCurrentTextColor());
+
+        assertEquals(
+                ColorStateList.valueOf(expectedTextColor),
+                ImageViewCompat.getImageTintList(mButton));
+
+        assertNotNull(mButtonBackground.getColorFilter());
+    }
+
+    @Test
+    public void testSetIconDrawableWithAnimation_hideIcon() {
+        ButtonData buttonData = getDataForStaticNewTabIconButton();
+
+        // Transition from hidden to firstIcon.
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Setting the icon drawable to null should trigger a hiding transition.
+        mOptionalButtonView.updateButtonWithAnimation(null);
+
+        // Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Button should now be hidden, and its callbacks should be removed.
+        mInnerButton.performClick();
+
+        verify(buttonData.getButtonSpec().getOnClickListener(), never()).onClick(any());
+        assertEquals(View.GONE, mOptionalButtonView.getVisibility());
+        assertEquals(View.GONE, mInnerButton.getVisibility());
+        assertEquals(View.GONE, mActionChipLabel.getVisibility());
+    }
+
+    @Test
+    public void testTransitionCallbacks() {
+        ButtonData firstButton = getDataForStaticNewTabIconButton();
+        ButtonData secondButton = getDataForReaderModeIconButton();
+        ButtonData actionChipButton = getDataForReaderModeActionChip();
+
+        Runnable beforeDelayedTransitionCallback = mock(Runnable.class);
+        Runnable beforeShowTransitionCallback = mock(Runnable.class);
+        Runnable beforeHideTransitionCallback = mock(Runnable.class);
+        Callback<Integer> transitionStartedCallback = MockitoHelper.mockCallback();
+        Callback<Integer> transitionFinishedCallback = MockitoHelper.mockCallback();
+
+        mOptionalButtonView.setTransitionStartedCallback(transitionStartedCallback);
+        mOptionalButtonView.setTransitionFinishedCallback(transitionFinishedCallback);
+        mOptionalButtonView.setOnBeforeDelayedTransitionCallback(beforeDelayedTransitionCallback);
+        mOptionalButtonView.setOnBeforeShowTransitionCallback(beforeShowTransitionCallback);
+        mOptionalButtonView.setOnBeforeHideTransitionCallback(beforeHideTransitionCallback);
+
+        InOrder inOrder =
+                inOrder(
+                        beforeDelayedTransitionCallback,
+                        beforeShowTransitionCallback,
+                        beforeHideTransitionCallback,
+                        transitionStartedCallback,
+                        transitionFinishedCallback);
+
+        // Transition from hidden to firstButton.
+        mOptionalButtonView.updateButtonWithAnimation(firstButton);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Transition from firstButton to secondButton
+        mOptionalButtonView.updateButtonWithAnimation(secondButton);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Transition back to firstButton.
+        mOptionalButtonView.updateButtonWithAnimation(firstButton);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Transition from secondButton to actionChipButton
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButton);
+        // Run callbacks for expansion transition.
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Advance looper to begin collapse transition.
+        mShadowLooper.runToEndOfTasks();
+        // Run callbacks for collapse transition.
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Transition from actionChipButton to hidden.
+        mOptionalButtonView.updateButtonWithAnimation(null);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Verify that callbacks are called in the expected order with the right arguments.
+        inOrder.verify(beforeDelayedTransitionCallback).run();
+        inOrder.verify(beforeShowTransitionCallback).run();
+        inOrder.verify(transitionStartedCallback).onResult(TransitionType.SHOWING);
+        inOrder.verify(transitionFinishedCallback).onResult(TransitionType.SHOWING);
+        inOrder.verify(beforeDelayedTransitionCallback).run();
+        inOrder.verify(transitionStartedCallback).onResult(TransitionType.SWAPPING);
+        inOrder.verify(transitionFinishedCallback).onResult(TransitionType.SWAPPING);
+        inOrder.verify(beforeDelayedTransitionCallback).run();
+        inOrder.verify(transitionStartedCallback).onResult(TransitionType.SWAPPING);
+        inOrder.verify(transitionFinishedCallback).onResult(TransitionType.SWAPPING);
+        inOrder.verify(beforeDelayedTransitionCallback).run();
+        inOrder.verify(transitionStartedCallback).onResult(TransitionType.EXPANDING_ACTION_CHIP);
+        inOrder.verify(transitionFinishedCallback).onResult(TransitionType.EXPANDING_ACTION_CHIP);
+        inOrder.verify(beforeDelayedTransitionCallback).run();
+        inOrder.verify(transitionStartedCallback).onResult(TransitionType.COLLAPSING_ACTION_CHIP);
+        inOrder.verify(transitionFinishedCallback).onResult(TransitionType.COLLAPSING_ACTION_CHIP);
+        inOrder.verify(beforeDelayedTransitionCallback).run();
+        inOrder.verify(beforeHideTransitionCallback).run();
+        inOrder.verify(transitionStartedCallback).onResult(TransitionType.HIDING);
+        inOrder.verify(transitionFinishedCallback).onResult(TransitionType.HIDING);
+    }
+
+    @Test
+    public void testTransitionCallbacks_withAnimationDisabled() {
+        ButtonData firstButton = getDataForStaticNewTabIconButton();
+        ButtonData secondButton = getDataForReaderModeIconButton();
+        ButtonData actionChipButton = getDataForReaderModeActionChip();
+        when(mMockAnimationChecker.getAsBoolean()).thenReturn(false);
+
+        Runnable beforeDelayedTransitionCallback = mock(Runnable.class);
+        Runnable beforeShowTransitionCallback = mock(Runnable.class);
+        Runnable beforeHideTransitionCallback = mock(Runnable.class);
+        Callback<Integer> transitionStartedCallback = MockitoHelper.mockCallback();
+        Callback<Integer> transitionFinishedCallback = MockitoHelper.mockCallback();
+
+        mOptionalButtonView.setTransitionStartedCallback(transitionStartedCallback);
+        mOptionalButtonView.setTransitionFinishedCallback(transitionFinishedCallback);
+        mOptionalButtonView.setOnBeforeDelayedTransitionCallback(beforeDelayedTransitionCallback);
+        mOptionalButtonView.setOnBeforeShowTransitionCallback(beforeShowTransitionCallback);
+        mOptionalButtonView.setOnBeforeHideTransitionCallback(beforeHideTransitionCallback);
+
+        InOrder inOrder =
+                inOrder(
+                        beforeDelayedTransitionCallback,
+                        beforeShowTransitionCallback,
+                        beforeHideTransitionCallback,
+                        transitionStartedCallback,
+                        transitionFinishedCallback);
+
+        // Transition from hidden to firstButton.
+        mOptionalButtonView.updateButtonWithAnimation(firstButton);
+
+        // Transition from firstButton to secondButton
+        mOptionalButtonView.updateButtonWithAnimation(secondButton);
+
+        // Transition back to firstButton.
+        mOptionalButtonView.updateButtonWithAnimation(firstButton);
+
+        // Transition from secondButton to actionChipButton, when animations are disabled we don't
+        // expand the action chip, as the width change would look jarring. Instead we just update
+        // its icon.
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButton);
+
+        // Transition from actionChipButton to hidden.
+        mOptionalButtonView.updateButtonWithAnimation(null);
+
+        // Verify that callbacks are called in the expected order with the right arguments,
+        // non-animated updates use either SHOWING or HIDING.
+        inOrder.verify(beforeDelayedTransitionCallback).run();
+        inOrder.verify(beforeShowTransitionCallback).run();
+        inOrder.verify(transitionStartedCallback).onResult(TransitionType.SHOWING);
+        inOrder.verify(transitionFinishedCallback).onResult(TransitionType.SHOWING);
+        inOrder.verify(beforeDelayedTransitionCallback).run();
+        inOrder.verify(beforeShowTransitionCallback).run();
+        inOrder.verify(transitionStartedCallback).onResult(TransitionType.SHOWING);
+        inOrder.verify(transitionFinishedCallback).onResult(TransitionType.SHOWING);
+        inOrder.verify(beforeDelayedTransitionCallback).run();
+        inOrder.verify(beforeShowTransitionCallback).run();
+        inOrder.verify(transitionStartedCallback).onResult(TransitionType.SHOWING);
+        inOrder.verify(transitionFinishedCallback).onResult(TransitionType.SHOWING);
+        inOrder.verify(beforeDelayedTransitionCallback).run();
+        inOrder.verify(beforeShowTransitionCallback).run();
+        inOrder.verify(transitionStartedCallback).onResult(TransitionType.SHOWING);
+        inOrder.verify(transitionFinishedCallback).onResult(TransitionType.SHOWING);
+        inOrder.verify(beforeDelayedTransitionCallback).run();
+        inOrder.verify(beforeHideTransitionCallback).run();
+        inOrder.verify(transitionStartedCallback).onResult(TransitionType.HIDING);
+        inOrder.verify(transitionFinishedCallback).onResult(TransitionType.HIDING);
+    }
+
+    @Test
+    public void testUpdateButton_earlyReturnIfNothingChanged() {
+        ButtonData firstButton = getDataForStaticNewTabIconButton();
+
+        mOptionalButtonView.updateButtonWithAnimation(firstButton);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        mOptionalButtonView.updateButtonWithAnimation(firstButton);
+
+        // Calling updateButtonWithAnimation with the same button many times shouldn't begin
+        // repeated animations.
+        verify(mMockBeginDelayedTransition).onResult(any());
+    }
+
+    @Test
+    public void testUpdateButton_earlyReturnIfSameVariant() {
+        ButtonData readerModeButtonData = getDataForReaderModeIconButton();
+
+        mOptionalButtonView.updateButtonWithAnimation(readerModeButtonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        mOptionalButtonView.updateButtonWithAnimation(readerModeButtonData);
+
+        // Calling updateButtonWithAnimation with the same button variant many times shouldn't begin
+        // repeated animations.
+        verify(mMockBeginDelayedTransition).onResult(any());
+    }
+
+    @Test
+    public void testUpdateButton_sameButtonWithDifferentDrawableTriggersTransition() {
+        ButtonDataImpl readerModeButtonData = getDataForReaderModeIconButton();
+
+        mOptionalButtonView.updateButtonWithAnimation(readerModeButtonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        Drawable newIconDrawable =
+                AppCompatResources.getDrawable(mActivity, R.drawable.new_tab_icon);
+        ButtonSpec originalButtonSpec = readerModeButtonData.getButtonSpec();
+        // Create a copy of the original ButtonSpec with a different drawable.
+        readerModeButtonData.setButtonSpec(
+                new ButtonSpec.Builder(originalButtonSpec).setDrawable(newIconDrawable).build());
+
+        mOptionalButtonView.updateButtonWithAnimation(readerModeButtonData);
+
+        // Calling updateButtonWithAnimation with the same button variant but with a different
+        // drawable should not begin a new transition (bypassed).
+        verify(mMockBeginDelayedTransition, times(1)).onResult(any());
+    }
+
+    @Test
+    public void testUpdateButton_sameButtonWithDifferentSpecTriggersTransition() {
+        ButtonDataImpl buttonData = getDataForStaticNewTabIconButton();
+
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Keep the same ButtonData instance, but use a different spec.
+        buttonData.setButtonSpec(getDataForReaderModeIconButton().getButtonSpec());
+
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // Calling updateButtonWithAnimation with the same ButtonData instance but with a different
+        // variant many times should begin a new animation.
+        verify(mMockBeginDelayedTransition, times(2)).onResult(any());
+    }
+
+    @Test
+    public void testUpdateButton_sameButtonWithDifferentVisibilityTriggersTransition() {
+        ButtonDataImpl buttonData = getDataForStaticNewTabIconButton();
+
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Keep the same ButtonData instance, but set it to not show.
+        buttonData.setCanShow(false);
+
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // Calling updateButtonWithAnimation with the same ButtonData instance but with a different
+        // visibility many times should begin a new animation.
+        verify(mMockBeginDelayedTransition, times(2)).onResult(any());
+    }
+
+    @Test
+    public void testUpdateButton_actionChipWidthIsRestricted() {
+        ButtonDataImpl buttonData = getDataForReaderModeActionChip();
+        // Set a string that's too long as an action chip label. Real code measures the number of
+        // pixels this will take on screen, but robolectric just uses the character count, so use
+        // any string with more than 150 characters.
+        buttonData.updateActionChipResourceId(R.string.sync_encryption_create_passphrase);
+
+        int maxActionChipWidth =
+                mOptionalButtonView
+                        .getResources()
+                        .getDimensionPixelSize(
+                                R.dimen.toolbar_phone_optional_button_action_chip_max_width);
+
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Button shouldn't be wider than the established maximum.
+        assertThat(
+                mOptionalButtonView.getLayoutParams().width,
+                Matchers.lessThanOrEqualTo(maxActionChipWidth));
+    }
+
+    @Test
+    public void testUpdateButtonWithAnimation_showIconWithTextBubble() {
+        TextBubble.setSkipShowCheckForTesting(true);
+
+        // Test that an action chip displays a text bubble instead of expansion/collapse
+        // animation when |setShowTextBubble()| passes a predicate returning |true|.
+        ButtonDataImpl buttonData = getDataForReaderModeActionChip();
+        buttonData.setShouldShowTextBubble(true);
+
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // Get past the delay to show the text bubble.
+        mShadowLooper.runToEndOfTasks();
+
+        // Icon is visible without animation.
+        assertEquals(View.VISIBLE, mOptionalButtonView.getVisibility());
+        assertEquals(View.VISIBLE, mInnerButton.getVisibility());
+        assertEquals(View.GONE, mActionChipLabel.getVisibility());
+
+        // Text bubble is showing.
+        assertThat(TextBubble.getTextBubbleSetForTesting().size(), Matchers.greaterThan(0));
+    }
+
+    @Test
+    public void testUpdateButton_canChangeOwnVisibility() {
+        ButtonDataImpl buttonData = getDataForReaderModeActionChip();
+        mOptionalButtonView.setVisibility(View.GONE);
+        mOptionalButtonView.setCanChangeVisibility(false);
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // OptionalButtonView stays invisible after going through the animation.
+        assertEquals(View.GONE, mOptionalButtonView.getVisibility());
+    }
+
+    @Test
+    public void testUpdateButton_shouldWaitUntilTransitionRootIsLaidOut() {
+        ButtonDataImpl buttonData = getDataForReaderModeActionChip();
+
+        // Set transition root to be not laid out. If this happens then TransitionManager won't run
+        // any transitions.
+        when(mMockTransitionRoot.isLaidOut()).thenReturn(false);
+
+        // Try to update the button before the transition root is laid out.
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // We shouldn't begin a transition yet.
+        verify(mMockBeginDelayedTransition, never()).onResult(any());
+
+        // Run that listener once the view is laid out.
+        when(mMockTransitionRoot.isLaidOut()).thenReturn(true);
+        mOptionalButtonView.getViewTreeObserver().dispatchOnGlobalLayout();
+
+        // Now we should begin our transition.
+        verify(mMockBeginDelayedTransition).onResult(any());
+    }
+
+    @Test
+    public void testUpdateButton_shouldIgnoreChangesWhileWaitingForLayout() {
+        ButtonDataImpl buttonData = getDataForReaderModeActionChip();
+
+        // Set transition root to be not laid out. If this happens then TransitionManager won't run
+        // any transitions.
+        when(mMockTransitionRoot.isLaidOut()).thenReturn(false);
+
+        // Try to update the button before its transition root is laid out.
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // Change the attributes of buttonData without calling updateButtonWithAnimation again, this
+        // should have no effect on the button's state after the transition.
+        buttonData.setCanShow(false);
+
+        // Run that listener once the view is laid out.
+        when(mMockTransitionRoot.isLaidOut()).thenReturn(true);
+        mOptionalButtonView.getViewTreeObserver().dispatchOnGlobalLayout();
+
+        // Normally called by TransitionManager.
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Button should be visible, the property change that happened between
+        // updateButtonWithAnimation and layout is ignored.
+        assertEquals(View.VISIBLE, mOptionalButtonView.getVisibility());
+        assertEquals(View.VISIBLE, mInnerButton.getVisibility());
+        assertEquals(View.VISIBLE, mActionChipLabel.getVisibility());
+    }
+
+    @Test
+    public void testUpdateButton_shouldHideActionChipLabelWhenUpdatingWithoutAnimations() {
+        ButtonDataImpl actionChipButtonData = getDataForReaderModeActionChip();
+        ButtonDataImpl regularButtonData = getDataForStaticNewTabIconButton();
+
+        // Allow animations
+        when(mMockAnimationChecker.getAsBoolean()).thenReturn(true);
+
+        // Show action chip.
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButtonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Block animations.
+        when(mMockAnimationChecker.getAsBoolean()).thenReturn(false);
+
+        // Switch to regular button
+        mOptionalButtonView.updateButtonWithAnimation(regularButtonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Action chip shouldn't be visible
+        assertEquals(View.GONE, mActionChipLabel.getVisibility());
+    }
+
+    @Test
+    public void testUpdateButton_sameVariantUpdatesShouldNotBeAnimated() {
+        ArgumentCaptor<Transition> transitionArgumentCaptor =
+                ArgumentCaptor.forClass(Transition.class);
+        // Create two ButtonData objects for the same variant (NEW_TAB) with different icons.
+        ButtonDataImpl newTabButtonData =
+                getDataForStaticNewTabIconButton(
+                        AppCompatResources.getDrawable(mActivity, R.drawable.ic_star_24dp));
+        ButtonDataImpl updatedNewTabButtonData =
+                getDataForStaticNewTabIconButton(
+                        AppCompatResources.getDrawable(mActivity, R.drawable.ic_star_filled_24dp));
+
+        // First show the first icon.
+        mOptionalButtonView.updateButtonWithAnimation(newTabButtonData);
+
+        verify(mMockBeginDelayedTransition).onResult(transitionArgumentCaptor.capture());
+        // Going from no button to a button should be animated.
+        assertNotEquals(0, transitionArgumentCaptor.getValue().getDuration());
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Now show the second icon, with the same variant but a different drawable.
+        mOptionalButtonView.updateButtonWithAnimation(updatedNewTabButtonData);
+
+        // Verify no new transition was started (it was bypassed).
+        verify(mMockBeginDelayedTransition, times(1)).onResult(any());
+
+        // Now hide the button.
+        mOptionalButtonView.updateButtonWithAnimation(null);
+        verify(mMockBeginDelayedTransition, times(2)).onResult(transitionArgumentCaptor.capture());
+        // Hiding the button should be animated.
+        assertNotEquals(0, transitionArgumentCaptor.getValue().getDuration());
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+    }
+
+    @Test
+    public void testUpdateButton_differentVariantUpdatesShouldBeAnimated() {
+        ArgumentCaptor<Transition> transitionArgumentCaptor =
+                ArgumentCaptor.forClass(Transition.class);
+        // Create two ButtonData objects with different variants.
+        ButtonData newTabButtonData = getDataForStaticNewTabIconButton();
+        ButtonData readerModeButtonData = getDataForReaderModeIconButton();
+
+        // First show the new tab variant.
+        mOptionalButtonView.updateButtonWithAnimation(newTabButtonData);
+
+        verify(mMockBeginDelayedTransition).onResult(transitionArgumentCaptor.capture());
+        // Going from no button to a button should be animated.
+        assertNotEquals(0, transitionArgumentCaptor.getValue().getDuration());
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Now show the reader mode button.
+        mOptionalButtonView.updateButtonWithAnimation(readerModeButtonData);
+
+        verify(mMockBeginDelayedTransition, times(2)).onResult(transitionArgumentCaptor.capture());
+        // Changing variants should be animated.
+        assertNotEquals(0, transitionArgumentCaptor.getValue().getDuration());
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+    }
+
+    @Test
+    public void testSetIconDrawableWithAnimation_expandAndCollapseActionChip_customDelay() {
+        int customDelay = 5000;
+        ButtonDataImpl actionChipButtonData = getDataForReaderModeActionChip();
+        actionChipButtonData.setButtonSpec(
+                new ButtonSpec.Builder(actionChipButtonData.getButtonSpec())
+                        .setActionChipCollapseDelayMs(customDelay)
+                        .build());
+
+        Callback<Integer> transitionStartedCallback = MockitoHelper.mockCallback();
+        mOptionalButtonView.setTransitionStartedCallback(transitionStartedCallback);
+
+        // Show action chip.
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButtonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Verify that the collapse task was scheduled with the custom delay.
+        mShadowLooper.idleFor(customDelay - 1, TimeUnit.MILLISECONDS);
+        verify(transitionStartedCallback, never()).onResult(TransitionType.COLLAPSING_ACTION_CHIP);
+
+        mShadowLooper.idleFor(1, TimeUnit.MILLISECONDS);
+
+        mOptionalButtonView.onTransitionStart(null);
+        verify(transitionStartedCallback).onResult(TransitionType.COLLAPSING_ACTION_CHIP);
+    }
+
+    @Test
+    public void testOnDetachedFromWindow_cancelsPendingActionChipCollapse() {
+        ButtonDataImpl actionChipButtonData = getDataForReaderModeActionChip();
+        int collapseDelay =
+                actionChipButtonData.getButtonSpec().getActionChipCollapseDelayMs();
+
+        Callback<Integer> transitionStartedCallback = MockitoHelper.mockCallback();
+        mOptionalButtonView.setTransitionStartedCallback(transitionStartedCallback);
+
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButtonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        mOptionalButtonView.onDetachedFromWindow();
+
+        mShadowLooper.idleFor(collapseDelay + 1, TimeUnit.MILLISECONDS);
+        verify(transitionStartedCallback, never())
+                .onResult(TransitionType.COLLAPSING_ACTION_CHIP);
+    }
+
+    @Test
+    public void testCancelTransition_cancelsPendingActionChipCollapse() {
+        ButtonDataImpl actionChipButtonData = getDataForReaderModeActionChip();
+        int collapseDelay =
+                actionChipButtonData.getButtonSpec().getActionChipCollapseDelayMs();
+
+        Callback<Integer> transitionStartedCallback = MockitoHelper.mockCallback();
+        mOptionalButtonView.setTransitionStartedCallback(transitionStartedCallback);
+
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButtonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        mOptionalButtonView.cancelTransition();
+
+        mShadowLooper.idleFor(collapseDelay + 1, TimeUnit.MILLISECONDS);
+        verify(transitionStartedCallback, never())
+                .onResult(TransitionType.COLLAPSING_ACTION_CHIP);
+    }
+
+    @Test
+    public void testHide_cancelsPendingActionChipCollapse() {
+        ButtonDataImpl actionChipButtonData = getDataForReaderModeActionChip();
+        int collapseDelay =
+                actionChipButtonData.getButtonSpec().getActionChipCollapseDelayMs();
+
+        Callback<Integer> transitionStartedCallback = MockitoHelper.mockCallback();
+        mOptionalButtonView.setTransitionStartedCallback(transitionStartedCallback);
+
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButtonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        mOptionalButtonView.updateButtonWithAnimation(null);
+
+        mShadowLooper.idleFor(collapseDelay + 1, TimeUnit.MILLISECONDS);
+        verify(transitionStartedCallback, never())
+                .onResult(TransitionType.COLLAPSING_ACTION_CHIP);
+    }
+
+    @Test
+    public void testSetSuppressCollapsedBackground() {
+        mOptionalButtonView.setSuppressCollapsedBackground(true);
+
+        ButtonDataImpl buttonData = getDataForStaticNewTabIconButton();
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        assertNull(mButton.getBackground());
+        assertEquals(View.GONE, mButtonBackground.getVisibility());
+
+        mOptionalButtonView.setSuppressCollapsedBackground(false);
+        assertNotNull(mButton.getBackground());
+    }
+
+    @Test
+    public void testActionChipShowsBackgroundEvenIfSuppressed() {
+        mOptionalButtonView.setSuppressCollapsedBackground(true);
+
+        ButtonDataImpl buttonData = getDataForReaderModeActionChip();
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Background should be visible when expanded, despite suppression.
+        assertEquals(View.VISIBLE, mButtonBackground.getVisibility());
+
+        // Advance looper to begin collapse transition.
+        mShadowLooper.runToEndOfTasks();
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Background should be hidden after collapse because it's suppressed.
+        assertEquals(View.GONE, mButtonBackground.getVisibility());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ANDROID_BOTTOM_BAR)
+    public void testBackgroundMargins_Enabled() {
+        ButtonDataImpl buttonData = getDataForReaderModeIconButton();
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        FrameLayout.LayoutParams backgroundLayoutParams =
+                (FrameLayout.LayoutParams) mButtonBackground.getLayoutParams();
+        int expectedMargin =
+                mOptionalButtonView
+                        .getContext()
+                        .getResources()
+                        .getDimensionPixelSize(
+                                R.dimen.toolbar_phone_optional_button_background_vertical_margin);
+        assertEquals(expectedMargin, backgroundLayoutParams.topMargin);
+        assertEquals(expectedMargin, backgroundLayoutParams.bottomMargin);
+    }
+
+    @Test
+    public void testBrandedColorSchemeChange_reappliesTheming() {
+        ButtonDataImpl actionChipButtonData = getDataForReaderModeActionChip();
+
+        mOptionalButtonView.setBrandedColorScheme(BrandedColorScheme.APP_DEFAULT);
+        mOptionalButtonView.setColorStateList(ColorStateList.valueOf(Color.BLUE));
+        mOptionalButtonView.setBackgroundColorFilter(Color.GRAY);
+
+        mOptionalButtonView.updateButtonWithAnimation(actionChipButtonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        ColorFilter defaultBackgroundFilter = mButtonBackground.getColorFilter();
+        ColorStateList defaultButtonTint = ImageViewCompat.getImageTintList(mButton);
+        int defaultTextColor = mActionChipLabel.getCurrentTextColor();
+
+        assertNotNull(defaultBackgroundFilter);
+        assertEquals(ColorStateList.valueOf(Color.BLUE), defaultButtonTint);
+        assertEquals(Color.BLUE, defaultTextColor);
+
+        // Change color scheme to branded
+        mOptionalButtonView.setBrandedColorScheme(BrandedColorScheme.LIGHT_BRANDED_THEME);
+        mOptionalButtonView.setColorStateList(ColorStateList.valueOf(Color.RED));
+        mOptionalButtonView.setBackgroundColorFilter(Color.YELLOW);
+
+        ColorFilter brandedBackgroundFilter = mButtonBackground.getColorFilter();
+        ColorStateList brandedButtonTint = ImageViewCompat.getImageTintList(mButton);
+        int brandedTextColor = mActionChipLabel.getCurrentTextColor();
+
+        assertNotNull(brandedBackgroundFilter);
+        assertNotEquals(defaultBackgroundFilter, brandedBackgroundFilter);
+        assertEquals(ColorStateList.valueOf(Color.RED), brandedButtonTint);
+        assertEquals(Color.RED, brandedTextColor);
+
+        // Revert back to unbranded/default color scheme
+        mOptionalButtonView.setBrandedColorScheme(BrandedColorScheme.APP_DEFAULT);
+        mOptionalButtonView.setColorStateList(ColorStateList.valueOf(Color.BLUE));
+        mOptionalButtonView.setBackgroundColorFilter(Color.GRAY);
+
+        assertEquals(defaultBackgroundFilter, mButtonBackground.getColorFilter());
+        assertEquals(ColorStateList.valueOf(Color.BLUE), ImageViewCompat.getImageTintList(mButton));
+        assertEquals(Color.BLUE, mActionChipLabel.getCurrentTextColor());
+    }
+
+    @Test
+    public void testUpdateButton_withoutAnimations_preservesContentDescription() {
+        ButtonDataImpl buttonData = getDataForReaderModeIconButton();
+        String contentDescriptionString = buttonData.getButtonSpec().getContentDescription();
+
+        // Disable animations.
+        when(mMockAnimationChecker.getAsBoolean()).thenReturn(false);
+
+        // Update the button.
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // Content description should be set immediately.
+        assertEquals(contentDescriptionString, mButton.getContentDescription());
+
+        // Simulate transition start with a 0-duration transition.
+        Transition transition = mock(Transition.class);
+        when(transition.getDuration()).thenReturn(0L);
+        mOptionalButtonView.onTransitionStart(transition);
+
+        // Content description should NOT be cleared to null.
+        assertEquals(contentDescriptionString, mButton.getContentDescription());
+
+        // Simulate transition end.
+        mOptionalButtonView.onTransitionEnd(transition);
+
+        // Content description should still be correct.
+        assertEquals(contentDescriptionString, mButton.getContentDescription());
+    }
+
+    @Test
+    public void testUpdateButton_withAnimations_clearsContentDescriptionDuringTransition() {
+        ButtonDataImpl buttonData = getDataForReaderModeIconButton();
+        String contentDescriptionString = buttonData.getButtonSpec().getContentDescription();
+
+        // Enable animations.
+        when(mMockAnimationChecker.getAsBoolean()).thenReturn(true);
+
+        // Update the button.
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // Content description should be set immediately.
+        assertEquals(contentDescriptionString, mButton.getContentDescription());
+
+        // Simulate transition start with an animated transition (duration > 0).
+        Transition transition = mock(Transition.class);
+        when(transition.getDuration()).thenReturn(225L);
+        mOptionalButtonView.onTransitionStart(transition);
+
+        // Content description should be cleared to null during transition.
+        assertNull(mButton.getContentDescription());
+
+        // Simulate transition end.
+        mOptionalButtonView.onTransitionEnd(transition);
+
+        // Content description should be restored.
+        assertEquals(contentDescriptionString, mButton.getContentDescription());
+    }
+
+    @Test
+    public void testTransition_viewNotAttached_forcesShowTransitionEnd() {
+        // Override the default stubbing for this test.
+        when(mMockTransitionRoot.isAttachedToWindow()).thenReturn(false);
+
+        ButtonData buttonData = getDataForReaderModeIconButton();
+        Callback<Integer> transitionFinishedCallback = MockitoHelper.mockCallback();
+        mOptionalButtonView.setTransitionFinishedCallback(transitionFinishedCallback);
+
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // Since the view is not attached, the transition should be forced to end immediately.
+        // This means the transitionFinishedCallback should be called with SHOWING.
+        verify(transitionFinishedCallback).onResult(TransitionType.SHOWING);
+
+        // And the state should be updated (not RUNNING_SHOW_TRANSITION).
+        assertEquals(View.VISIBLE, mOptionalButtonView.getVisibility());
+        assertEquals(View.VISIBLE, mInnerButton.getVisibility());
+        assertEquals(buttonData.getButtonSpec().getDrawable(), mInnerButton.getDrawable());
+    }
+
+    @Test
+    public void testTransition_viewNotAttached_forcesHideTransitionEnd() {
+        // Start with the button shown. It is attached by default in setUp.
+        ButtonData buttonData = getDataForReaderModeIconButton();
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        mOptionalButtonView.onTransitionStart(null);
+        mOptionalButtonView.onTransitionEnd(null);
+
+        // Now set it to not attached.
+        when(mMockTransitionRoot.isAttachedToWindow()).thenReturn(false);
+
+        Callback<Integer> transitionFinishedCallback = MockitoHelper.mockCallback();
+        mOptionalButtonView.setTransitionFinishedCallback(transitionFinishedCallback);
+
+        // Trigger hide.
+        mOptionalButtonView.updateButtonWithAnimation(null);
+
+        // Should force end immediately.
+        verify(transitionFinishedCallback).onResult(TransitionType.HIDING);
+
+        // Button should be hidden immediately.
+        assertEquals(View.GONE, mOptionalButtonView.getVisibility());
+    }
+
+    @Test
+    public void testUpdateButton_viewNotLaidOut_forcesSyncTransition() {
+        // Inflate a new view but do NOT call layout() on it, so isLaidOut() remains false.
+        OptionalButtonView unlaidOutView =
+                (OptionalButtonView)
+                        LayoutInflater.from(mActivity)
+                                .inflate(R.layout.optional_button_layout, null);
+        unlaidOutView.setLayoutParams(
+                new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        unlaidOutView.setIsAnimationAllowedPredicate(mMockAnimationChecker);
+        unlaidOutView.setTransitionRoot(mMockTransitionRoot);
+        unlaidOutView.setFakeBeginDelayedTransitionForTesting(mMockBeginDelayedTransition);
+        unlaidOutView.setHandlerForTesting(new Handler(Looper.getMainLooper()));
+
+        ImageButton innerButton = (ImageButton) unlaidOutView.getButtonView();
+
+        ButtonData buttonData = getDataForReaderModeIconButton();
+        Callback<Integer> transitionFinishedCallback = MockitoHelper.mockCallback();
+        unlaidOutView.setTransitionFinishedCallback(transitionFinishedCallback);
+
+        unlaidOutView.updateButtonWithAnimation(buttonData);
+
+        // Since the view is not laid out, it should force animate=false and run synchronously.
+        // This means beginDelayedTransition should NOT be called.
+        verify(mMockBeginDelayedTransition, never()).onResult(any());
+
+        // And the transitionFinishedCallback should be called immediately with SHOWING.
+        verify(transitionFinishedCallback).onResult(TransitionType.SHOWING);
+
+        // And the button should be visible and clickable.
+        assertEquals(View.VISIBLE, unlaidOutView.getVisibility());
+        assertEquals(View.VISIBLE, innerButton.getVisibility());
+
+        // Verify it is clickable by performing click and long click.
+        innerButton.performClick();
+        verify(buttonData.getButtonSpec().getOnClickListener()).onClick(any());
+
+        innerButton.performLongClick();
+        verify(buttonData.getButtonSpec().getOnLongClickListener()).onLongClick(any());
+    }
+
+    @Test
+    public void testTransitionDelegate() {
+        // Remove the fake transition so it falls through to the delegate.
+        mOptionalButtonView.setFakeBeginDelayedTransitionForTesting(null);
+
+        Callback<Transition> mockDelegate = MockitoHelper.mockCallback();
+        mOptionalButtonView.setTransitionDelegate(mockDelegate);
+
+        // Ensure view is laid out and animation is allowed.
+        mOptionalButtonView.layout(0, 0, 100, 100);
+        when(mMockAnimationChecker.getAsBoolean()).thenReturn(true);
+        when(mMockTransitionRoot.isAttachedToWindow()).thenReturn(true);
+
+        ButtonData buttonData = getDataForReaderModeIconButton();
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+
+        // The delegate should be called instead of TransitionManager.
+        verify(mockDelegate).onResult(any(Transition.class));
+    }
+
+    @Test
+    public void testUpdateButton_whenHidden_showsButtonEvenIfSameButtonData() {
+        mOptionalButtonView.layout(0, 0, 100, 100);
+        when(mMockAnimationChecker.getAsBoolean()).thenReturn(false);
+
+        ButtonData buttonData = getDataForReaderModeIconButton();
+        // First show the button.
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        assertEquals(View.VISIBLE, mOptionalButtonView.getVisibility());
+
+        // Now hide the button.
+        mOptionalButtonView.updateButtonWithAnimation(null);
+        assertEquals(View.GONE, mOptionalButtonView.getVisibility());
+
+        // Updating with the exact same buttonData while hidden should NOT return early,
+        // but should show the button again.
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        assertEquals(View.VISIBLE, mOptionalButtonView.getVisibility());
+    }
+
+    @Test
+    public void testUpdateButton_whenRunningTransition_clearsRunningTransitionAndUpdates() {
+        mOptionalButtonView.layout(0, 0, 100, 100);
+        when(mMockAnimationChecker.getAsBoolean()).thenReturn(true);
+        when(mMockTransitionRoot.isAttachedToWindow()).thenReturn(true);
+
+        ButtonData buttonData = getDataForReaderModeIconButton();
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        mOptionalButtonView.onTransitionStart(null);
+
+        // Transition is now running (state = RUNNING_SHOW_TRANSITION).
+        // Calling updateButtonWithAnimation with the same buttonData must NOT return early,
+        // but must end the transition and update the button.
+        mOptionalButtonView.updateButtonWithAnimation(buttonData);
+        assertEquals(View.VISIBLE, mOptionalButtonView.getVisibility());
+    }
+
+    @Test
+    public void testHasOverlappingRendering_returnsFalse() {
+        assertFalse(mOptionalButtonView.hasOverlappingRendering());
+    }
+
+    @Test
+    public void testSetLayerType_zeroDimensions_coercesHardwareLayerToNone() {
+        mOptionalButtonView.layout(/* l= */ 0, /* t= */ 0, /* r= */ 0, /* b= */ 0);
+        assertEquals(0, mOptionalButtonView.getWidth());
+        assertEquals(0, mOptionalButtonView.getHeight());
+
+        mOptionalButtonView.setLayerType(View.LAYER_TYPE_HARDWARE, /* paint= */ null);
+        assertEquals(View.LAYER_TYPE_NONE, mOptionalButtonView.getLayerType());
+    }
+
+    @Test
+    public void testSetLayerType_positiveDimensions_preservesHardwareLayer() {
+        mOptionalButtonView.layout(/* l= */ 0, /* t= */ 0, /* r= */ 100, /* b= */ 100);
+        assertEquals(100, mOptionalButtonView.getWidth());
+        assertEquals(100, mOptionalButtonView.getHeight());
+
+        mOptionalButtonView.setLayerType(View.LAYER_TYPE_HARDWARE, /* paint= */ null);
+        assertEquals(View.LAYER_TYPE_HARDWARE, mOptionalButtonView.getLayerType());
+    }
+
+    @Test
+    public void testOnLayout_zeroDimensions_resetsHardwareLayerToNone() {
+        mOptionalButtonView.layout(/* l= */ 0, /* t= */ 0, /* r= */ 100, /* b= */ 100);
+        mOptionalButtonView.setLayerType(View.LAYER_TYPE_HARDWARE, /* paint= */ null);
+        assertEquals(View.LAYER_TYPE_HARDWARE, mOptionalButtonView.getLayerType());
+
+        mOptionalButtonView.layout(/* l= */ 0, /* t= */ 0, /* r= */ 0, /* b= */ 0);
+        assertEquals(0, mOptionalButtonView.getWidth());
+        assertEquals(0, mOptionalButtonView.getHeight());
+        assertEquals(View.LAYER_TYPE_NONE, mOptionalButtonView.getLayerType());
+    }
+}

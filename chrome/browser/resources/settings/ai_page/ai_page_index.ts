@@ -1,0 +1,223 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+/**
+ * @fileoverview
+ * 'settings-ai-page-index' is the settings page containing settings for
+ * passwords, payment methods and addresses.
+ */
+import 'chrome://resources/cr_elements/cr_view_manager/cr_view_manager.js';
+import '/shared/settings/prefs/prefs.js';
+import './ai_info_card.js';
+import './ai_mode_search_page.js';
+import './ai_page.js';
+import '../glic_page/glic_page.js';
+import '../glic_page/glic_subpage.js';
+import './inline_cue_menu_page.js';
+
+import type {CrViewManagerElement} from 'chrome://resources/cr_elements/cr_view_manager/cr_view_manager.js';
+import {assert} from 'chrome://resources/js/assert.js';
+import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+
+import {loadTimeData} from '../i18n_setup.js';
+import {routes} from '../route.js';
+import {RouteObserverMixin} from '../router.js';
+import type {Route, SettingsRoutes} from '../router.js';
+import type {SettingsPlugin} from '../settings_main/settings_plugin.js';
+import {SearchableViewContainerMixin} from '../settings_page/searchable_view_container_mixin.js';
+
+import {getTemplate} from './ai_page_index.html.js';
+
+
+export interface SettingsAiPageIndexElement {
+  $: {
+    viewManager: CrViewManagerElement,
+  };
+}
+
+const SettingsAiPageIndexElementBase =
+    SearchableViewContainerMixin(RouteObserverMixin(PolymerElement));
+
+export class SettingsAiPageIndexElement extends SettingsAiPageIndexElementBase
+    implements SettingsPlugin {
+  static get is() {
+    return 'settings-ai-page-index';
+  }
+
+  static get template() {
+    return getTemplate();
+  }
+
+  static get properties() {
+    return {
+      prefs: Object,
+
+      routes_: {
+        type: Object,
+        value: () => routes,
+      },
+
+      showGlicSettings_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showGlicSettings'),
+      },
+
+      showAiPageAiFeatureSection_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showAiPageAiFeatureSection'),
+      },
+
+      showComposeControl_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showComposeControl'),
+      },
+
+      showHistorySearchControl_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showHistorySearchControl'),
+      },
+
+      enableAiModeSearchSetting_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('enableAiModeSearchSetting'),
+      },
+
+      actorLoginFederatedLoginSupportEnabled_: {
+        type: Boolean,
+        value: () =>
+            loadTimeData.getBoolean('actorLoginFederatedLoginSupportEnabled'),
+      },
+
+      showAiSuggestionsControl_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showAiSuggestionsControl'),
+      },
+
+      showInlineCueMenuControl_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showInlineCueMenuControl'),
+      },
+
+      showSkillsSettingPage_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showSkillsSettingPage'),
+      },
+
+      showDictationControl_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showDictationControl'),
+      },
+    };
+  }
+
+  declare prefs: Record<string, unknown>;
+  declare private routes_: SettingsRoutes;
+  declare private showGlicSettings_: boolean;
+  declare private showAiPageAiFeatureSection_: boolean;
+  declare private showComposeControl_: boolean;
+  declare private showHistorySearchControl_: boolean;
+  declare private enableAiModeSearchSetting_: boolean;
+  declare private actorLoginFederatedLoginSupportEnabled_: boolean;
+  declare private showAiSuggestionsControl_: boolean;
+  declare private showInlineCueMenuControl_: boolean;
+  declare private showSkillsSettingPage_: boolean;
+  declare private showDictationControl_: boolean;
+
+  private showDefaultViews_() {
+    const defaultViews: string[] = ['aiInfoCard'];
+
+    if (this.showAiPageAiFeatureSection_) {
+      defaultViews.push('parent');
+    }
+
+    if (this.enableAiModeSearchSetting_) {
+      defaultViews.push('aiModeSearch');
+    }
+
+    if (this.showGlicSettings_) {
+      defaultViews.push('glic');
+    }
+
+    this.$.viewManager.switchViews(
+        defaultViews, 'no-animation', 'no-animation');
+  }
+
+  private shouldShowPermissionsPage_(): boolean {
+    return this.showGlicSettings_ &&
+        this.actorLoginFederatedLoginSupportEnabled_;
+  }
+
+  override currentRouteChanged(newRoute: Route, oldRoute?: Route) {
+    super.currentRouteChanged(newRoute, oldRoute);
+
+    // Need to wait for currentRouteChanged observers on child views to run
+    // first, before switching views.
+    queueMicrotask(() => {
+      switch (newRoute) {
+        case routes.AI:
+          this.showDefaultViews_();
+          break;
+        case routes.BASIC:
+          // Switch back to the default view in case they are part of search
+          // results.
+          this.showDefaultViews_();
+          break;
+        case routes.HISTORY_SEARCH:
+          assert(this.showHistorySearchControl_);
+          this.$.viewManager.switchView(
+              'historySearch', 'no-animation', 'no-animation');
+          break;
+        case routes.OFFER_WRITING_HELP:
+          assert(this.showComposeControl_);
+          this.$.viewManager.switchView(
+              'compose', 'no-animation', 'no-animation');
+          break;
+        case routes.GEMINI:
+          assert(this.showGlicSettings_);
+          this.$.viewManager.switchView(
+              'gemini', 'no-animation', 'no-animation');
+          break;
+        case routes.GEMINI_LOGIN:
+          assert(this.showGlicSettings_);
+          assert(this.actorLoginFederatedLoginSupportEnabled_);
+          this.$.viewManager.switchView(
+              'geminiLoginPermissions', 'no-animation', 'no-animation');
+          break;
+        case routes.AI_SUGGESTIONS:
+          assert(this.showAiSuggestionsControl_);
+          this.$.viewManager.switchView(
+              'aiSuggestions', 'no-animation', 'no-animation');
+          break;
+        case routes.INLINE_CUE_MENU:
+          assert(this.showInlineCueMenuControl_);
+          this.$.viewManager.switchView(
+              'inlineCueMenu', 'no-animation', 'no-animation');
+          break;
+        case routes.SKILLS:
+          assert(this.showSkillsSettingPage_);
+          this.$.viewManager.switchView(
+              'skills', 'no-animation', 'no-animation');
+          break;
+        case routes.DICTATION:
+          assert(this.showDictationControl_);
+          this.$.viewManager.switchView(
+              'dictation', 'no-animation', 'no-animation');
+          break;
+        default:
+          // Nothing to do. Other parent elements are responsible for updating
+          // the displayed contents.
+          break;
+      }
+    });
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'settings-ai-page-index': SettingsAiPageIndexElement;
+  }
+}
+
+customElements.define(
+    SettingsAiPageIndexElement.is, SettingsAiPageIndexElement);

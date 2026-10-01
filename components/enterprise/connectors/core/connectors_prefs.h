@@ -1,0 +1,106 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_ENTERPRISE_CONNECTORS_CORE_CONNECTORS_PREFS_H_
+#define COMPONENTS_ENTERPRISE_CONNECTORS_CORE_CONNECTORS_PREFS_H_
+
+#include "build/build_config.h"
+#include "components/enterprise/buildflags/buildflags.h"
+
+class PrefRegistrySimple;
+
+namespace enterprise_connectors {
+
+#if BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
+// Pref that maps to the "CacheEncryptionEnabled" policy.
+extern const char kCacheEncryptionEnabledPref[];
+
+// Pref that for storing the primary key used for encrypting the HTTP cache.
+// This key is stored in the user's profile preferences and is itself encrypted.
+extern const char kEncryptedCachePrimaryKey[];
+#endif
+
+// Pref that maps to the "OnFileAttachedEnterpriseConnector" policy.
+extern const char kOnFileAttachedPref[];
+
+// Pref that maps to the "OnFileDownloadedEnterpriseConnector" policy.
+extern const char kOnFileDownloadedPref[];
+
+// Pref that maps to the "OnBulkDataEntryEnterpriseConnector" policy.
+extern const char kOnBulkDataEntryPref[];
+
+// Pref that maps to the "OnPrintEnterpriseConnector" policy.
+extern const char kOnPrintPref[];
+
+// Pref that maps to the "OnDataCopiedEnterpriseConnector" policy.
+extern const char kOnDataCopiedPref[];
+
+// Pref that maps to the "OnNetworkRequestEnterpriseConnector" policy.
+extern const char kOnNetworkRequestPref[];
+
+#if BUILDFLAG(IS_CHROMEOS)
+// Pref that maps to the "OnFileTransferEnterpriseConnector" policy.
+extern const char kOnFileTransferPref[];
+#endif
+
+// Pref that maps to the "OnSecurityEventEnterpriseConnector" policy.
+extern const char kOnSecurityEventPref[];
+
+// Pref that maps to the "EnterpriseRealTimeUrlCheckMode" policy.
+// The "safebrowsing" prefix is kept for backward compatibility as this constant
+// used to be in a SB file.
+inline constexpr char kEnterpriseRealTimeUrlCheckMode[] =
+    "safebrowsing.enterprise_real_time_url_check_mode";
+
+// Prefs that map to the scope of each policy using a
+// EnterpriseConnectorsPolicyHandler.
+extern const char kOnFileAttachedScopePref[];
+extern const char kOnFileDownloadedScopePref[];
+extern const char kOnBulkDataEntryScopePref[];
+extern const char kOnPrintScopePref[];
+extern const char kOnDataCopiedScopePref[];
+extern const char kOnNetworkRequestScopePref[];
+#if BUILDFLAG(IS_CHROMEOS)
+extern const char kOnFileTransferScopePref[];
+#endif
+extern const char kOnSecurityEventScopePref[];
+inline constexpr const char kWatermarkStyleFillOpacityPref[] =
+    "policy.watermark_style.fill_opacity";
+inline constexpr const char kWatermarkStyleOutlineOpacityPref[] =
+    "policy.watermark_style.outline_opacity";
+inline constexpr const char kWatermarkStyleFontSizePref[] =
+    "policy.watermark_style.font_size";
+inline constexpr const char kWatermarkStyleTimestampTimezonePref[] =
+    "policy.watermark_style.timestamp_timezone";
+inline constexpr const char kWatermarkStyleFillOpacityFieldName[] =
+    "fill_opacity";
+inline constexpr const char kWatermarkStyleOutlineOpacityFieldName[] =
+    "outline_opacity";
+inline constexpr const char kWatermarkStyleFontSizeFieldName[] = "font_size";
+inline constexpr const char kWatermarkStyleTimestampTimezoneFieldName[] =
+    "timestamp_timezone";
+
+// Different tuned default values are set for mobiles and Desktops based on
+// their screen sizes, screen resolutions etc.
+inline constexpr int kWatermarkStyleFillOpacityDefault =
+    BUILDFLAG(IS_IOS) ? 10 : 4;
+inline constexpr int kWatermarkStyleOutlineOpacityDefault =
+    BUILDFLAG(IS_IOS) ? 15 : 6;
+inline constexpr int kWatermarkStyleFontSizeDefault =
+    BUILDFLAG(IS_IOS) ? 16 : 24;
+inline constexpr const char kWatermarkStyleTimestampTimezoneDefault[] =
+    "user_device";
+
+inline constexpr char kEnterpriseRealTimeUrlCheckScope[] =
+    "safebrowsing.enterprise_real_time_url_check_scope";
+
+extern const char kLatestCrashReportCreationTime[];
+extern const char kLatestTelomereReportCreationTime[];
+
+void RegisterProfilePrefs(PrefRegistrySimple* registry);
+void RegisterLocalStatePrefs(PrefRegistrySimple* registry);
+
+}  // namespace enterprise_connectors
+
+#endif  // COMPONENTS_ENTERPRISE_CONNECTORS_CORE_CONNECTORS_PREFS_H_

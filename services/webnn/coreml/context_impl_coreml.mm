@@ -1,0 +1,116 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "services/webnn/coreml/context_impl_coreml.h"
+
+#import <CoreML/CoreML.h>
+
+#include "base/sequence_checker.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_manager.h"
+#include "services/webnn/coreml/graph_builder_coreml.h"
+#include "services/webnn/coreml/graph_impl_coreml.h"
+#include "services/webnn/coreml/tensor_impl_coreml.h"
+#include "services/webnn/gpu_task_scheduler.h"
+#include "services/webnn/public/cpp/context_properties.h"
+#include "services/webnn/public/cpp/webnn_types.h"
+#include "services/webnn/public/mojom/webnn_context_provider.mojom.h"
+#include "services/webnn/webnn_constant_operand.h"
+#include "services/webnn/webnn_context_impl.h"
+#include "services/webnn/webnn_context_provider_impl.h"
+
+namespace webnn::coreml {
+
+// static
+std::unique_ptr<WebNNContextImpl, OnTaskRunnerDeleter>
+ContextImplCoreml::Create(
+    mojo::PendingReceiver<mojom::WebNNContext> receiver,
+    base::WeakPtr<WebNNContextProviderImpl> context_provider,
+    mojom::CreateContextOptionsPtr options,
+    std::unique_ptr<GpuTaskScheduler> gpu_task_scheduler,
+    scoped_refptr<gpu::MemoryTracker> memory_tracker,
+    scoped_refptr<base::SingleThreadTaskRunner> owning_task_runner,
+    gpu::SharedImageManager* shared_image_manager,
+    scoped_refptr<base::SingleThreadTaskRunner> main_task_runner) {
+  auto task_runner = owning_task_runner;
+  std::unique_ptr<WebNNContextImpl, OnTaskRunnerDeleter> context_impl(
+      new ContextImplCoreml(std::move(receiver), std::move(context_provider),
+                            std::move(options), std::move(gpu_task_scheduler),
+                            std::move(memory_tracker),
+                            std::move(owning_task_runner), shared_image_manager,
+                            std::move(main_task_runner)),
+      OnTaskRunnerDeleter(std::move(task_runner)));
+  return context_impl;
+}
+
+ContextImplCoreml::ContextImplCoreml(
+    mojo::PendingReceiver<mojom::WebNNContext> receiver,
+    base::WeakPtr<WebNNContextProviderImpl> context_provider,
+    mojom::CreateContextOptionsPtr options,
+    std::unique_ptr<GpuTaskScheduler> gpu_task_scheduler,
+    scoped_refptr<gpu::MemoryTracker> memory_tracker,
+    scoped_refptr<base::SingleThreadTaskRunner> owning_task_runner,
+    gpu::SharedImageManager* shared_image_manager,
+    scoped_refptr<base::SingleThreadTaskRunner> main_task_runner)
+    : WebNNContextImpl(std::move(receiver),
+                       std::move(context_provider),
+                       ContextBackendUma::kCoreML,
+                       GraphBuilderCoreml::GetContextProperties(),
+                       std::move(options),
+                       mojo::ScopedDataPipeConsumerHandle(),
+                       mojo::ScopedDataPipeProducerHandle(),
+                       std::move(gpu_task_scheduler),
+                       std::move(memory_tracker),
+                       std::move(owning_task_runner),
+                       shared_image_manager,
+                       std::move(main_task_runner)) {}
+
+ContextImplCoreml::~ContextImplCoreml() = default;
+
+base::WeakPtr<WebNNContextImpl> ContextImplCoreml::AsWeakPtr() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return weak_factory_.GetWeakPtr();
+}
+
+void ContextImplCoreml::CreateGraphImpl(
+    mojom::GraphInfoPtr graph_info,
+    WebNNGraphImpl::ComputeResourceInfo compute_resource_info,
+    base::flat_map<OperandId, std::unique_ptr<WebNNConstantOperand>>
+        constant_operands,
+    CreateGraphImplCallback callback) {
+  GraphImplCoreml::CreateAndBuild(
+      *this, std::move(graph_info), std::move(compute_resource_info),
+      std::move(constant_operands), options().Clone(), properties(),
+      std::move(callback));
+}
+
+base::expected<scoped_refptr<WebNNTensorImpl>, mojom::ErrorPtr>
+ContextImplCoreml::CreateTensorImpl(
+    mojo::PendingAssociatedReceiver<mojom::WebNNTensor> receiver,
+    mojom::TensorInfoPtr tensor_info) {
+  return TensorImplCoreml::Create(std::move(receiver), *this,
+                                  std::move(tensor_info));
+}
+
+base::expected<scoped_refptr<WebNNTensorImpl>, mojom::ErrorPtr>
+ContextImplCoreml::CreateTensorFromSharedImageImpl(
+    mojo::PendingAssociatedReceiver<mojom::WebNNTensor> receiver,
+    mojom::TensorInfoPtr tensor_info,
+    WebNNTensorImpl::RepresentationPtr representation) {
+  return TensorImplCoreml::Create(std::move(receiver), *this,
+                                  std::move(tensor_info),
+                                  std::move(representation));
+}
+
+std::string_view ContextImplCoreml::GetBackendName() const {
+  return "CoreML";
+}
+
+std::vector<mojom::WebNNExecutionProviderDetailsPtr>
+ContextImplCoreml::GetExecutionProvidersInfo() const {
+  // CoreML does not have the concept of execution providers, so we return an
+  // empty list.
+  return {};
+}
+
+}  // namespace webnn::coreml

@@ -1,0 +1,22 @@
+Name: Wuffs (Wrangling Untrusted File Formats Safely)
+Short name: Wuffs
+URL: https://github.com/google/wuffs-mirror-release-c
+Version: v0.3.5
+Revision: 7411f488fe2e2c205c3d3b3d28638b7356522930
+Update Mechanism: Autoroll
+Security critical: yes
+License: MIT, Apache-2.0
+License File: src/LICENSE
+Shipped: yes
+
+Description:
+Codecs (compression, images, etc.) written in a custom memory-safe programming
+language, transpiled to C.
+
+To map from a https://github.com/google/wuffs-mirror-release-c commit hash
+(e.g. 600cd96c) to a https://github.com/google/wuffs commit hash (e.g.
+1b9a6cb8), look for the "Sibling directory" line in
+https://github.com/google/wuffs-mirror-release-c/blob/600cd96c/sync.txt
+
+Local Modifications:
+None.

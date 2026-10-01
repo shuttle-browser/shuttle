@@ -1,0 +1,404 @@
+/* Copyright 2026 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=//resources/cr_elements/cr_icons_lit.css.js
+ * #import=./omnibox_popup_shared_style.css.js
+ * #scheme=relative
+ * #include=cr-icons-lit omnibox-popup-shared-style
+ * #css_wrapper_metadata_end */
+
+:host {
+  --cr-searchbox-icon-top-position: 0;
+  --cr-searchbox-border-radius: calc(0.5 * var(--cr-searchbox-height));
+  --cr-searchbox-icon-spacing: 11px;
+  --cr-searchbox-icon-width: 26px;
+  --cr-searchbox-inner-icon-margin: 8px;
+  --cr-searchbox-shadow: 0 4px 8px 3px rgba(0, 0, 0, 0.15),
+      0 1px 3px 0 rgba(0, 0, 0, 0.30);
+  --cr-searchbox-voice-icon-offset: 16px;
+  --cr-searchbox-voice-search-button-width: 0px;
+  --cr-searchbox-width: calc(100% - 2 * var(--alignment-inset-horizontal));
+  border-radius: var(--cr-searchbox-border-radius);
+  display: block;
+  font-size: var(--cr-searchbox-font-size, 16px);
+  margin-top: 0;
+  margin-inline: auto;
+  height: var(--cr-searchbox-height);
+  width: var(--cr-searchbox-width);
+  z-index: 99;
+}
+
+/* TODO(b/519185419): Get layout constants and font sizes from a C++ layout
+ *    helper instead of manually defining them here. */
+:host([is-touch-ui_]) {
+  /* Match Touch UI insets: 6px top, 1px horizontal. */
+  --alignment-inset-top: 6px;
+  --alignment-inset-horizontal: 1px;
+  --cr-searchbox-font-size: 15px;
+  --cr-searchbox-height: 36px;
+  --cr-searchbox-icon-size-in-searchbox: 20px;
+  --location-bar-page-info-icon-vertical-padding: 3px;
+}
+
+/* TODO(b/519185419): Get layout constants and font sizes from a C++ layout
+ *    helper instead of manually defining them here. */
+:host(:not([is-touch-ui_])) {
+  /* Alignment insets from C++ (OmniboxPopupFullPresenter::GetLocationBarAlignmentInsets).
+   * Standard: 5px top, 6px horizontal. */
+  --alignment-inset-top: 5px;
+  --alignment-inset-horizontal: 6px;
+  --cr-searchbox-font-size: 14px;
+  --cr-searchbox-height: 32px;
+  --cr-searchbox-icon-size-in-searchbox: 16px;
+  --location-bar-page-info-icon-vertical-padding: 5px;
+}
+
+:host([searchbox-chrome-refresh-theming][dropdown-is-visible]) {
+  --cr-searchbox-shadow: 0 0 12px 4px var(--color-searchbox-shadow);
+}
+
+:host([searchbox-chrome-refresh-theming]:not([searchbox-steady-state-shadow]):not([dropdown-is-visible])) {
+  --cr-searchbox-shadow: none;
+}
+
+/* TODO(b/511199705): Ensure input has correct size when results visible. */
+/* TODO(b/504669359): Define other location bar border colors such as high contrast. */
+:host(:not([dropdown-is-visible])) {
+  --cr-searchbox-icon-right-position: 2px;
+  --cr-searchbox-input-height: calc(
+      var(--cr-searchbox-height) -
+      2 * var(--location-bar-page-info-icon-vertical-padding));
+  --cr-searchbox-shadow: inset 0 0 0 1px var(--color-location-bar-border-on-mismatch);
+  --cr-searchbox-width: calc(100% - 2 * var(--alignment-inset-horizontal));
+  box-sizing: border-box;
+  margin-inline: auto;
+  margin-top: var(--alignment-inset-top);
+  margin-bottom: var(--alignment-inset-top);
+}
+
+:host(:not([dropdown-is-visible]):not([has-input-selection_]):not([is-focused_])) #inputWrapper:hover:not(:focus-within) {
+  cursor: text;
+  background-color: var(--color-omnibox-results-background-hovered);
+}
+
+:host(:not([dropdown-is-visible])) #inputWrapper:focus-within,
+:host([is-focused_]:not([dropdown-is-visible])) #inputWrapper,
+:host([is-focused_][has-input-selection_]) #inputWrapper {
+  --cr-searchbox-shadow: none;
+  box-shadow: 0 0 0 2px var(--cr-focus-outline-color);
+}
+
+/* TODO(b/511199705): Widget is too wide when dropdown is visible. This is a
+   workaround until we fix that. */
+:host([dropdown-is-visible]) {
+  --cr-searchbox-icon-container-size: 28px;
+  --cr-searchbox-icon-left-position: 16px;
+  --cr-searchbox-icon-right-position: 10px;
+  --cr-searchbox-border-radius: 16px;
+  --cr-searchbox-width: 100%;
+}
+
+
+:host([searchbox-voice-search-enabled_]) {
+  --cr-searchbox-voice-search-button-width: var(--cr-searchbox-icon-width);
+}
+
+:host([searchbox-lens-search-enabled_]) {
+  --cr-searchbox-voice-icon-offset: 53px;
+}
+
+@media (forced-colors: active) {
+  :host {
+    border: 1px solid ActiveBorder;
+  }
+}
+
+#inputWrapper {
+  background-color: var(--color-searchbox-background);
+  border-radius: var(--cr-searchbox-border-radius);
+  box-shadow: var(--cr-searchbox-shadow);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  min-height: var(--cr-searchbox-height);
+  position: relative;
+  width: 100%;
+}
+
+cr-searchbox-input::part(searchbox-input) {
+  align-self: center;
+  box-sizing: border-box;
+  height: var(--cr-searchbox-input-height);
+  padding-bottom: 2px;
+  padding-top: 0;
+}
+
+/* When the window is inactive (top container has focus), the selection should
+   still be the same color. */
+cr-searchbox-input::part(searchbox-input)::selection,
+cr-searchbox-input::part(searchbox-input):window-inactive::selection {
+  background-color: var(--color-omnibox-selection-background);
+  color: var(--color-omnibox-selection-foreground);
+}
+
+cr-searchbox-input::part(icon) {
+  align-self: center;
+}
+
+.searchbox-icon-button {
+  background-color: transparent;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 21px 21px;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  height: 100%;
+  outline: none;
+  padding: 0;
+  pointer-events: auto;
+  position: static;
+  right: 16px;
+  width: var(--cr-searchbox-icon-width);
+  z-index: 100;
+}
+
+/* When voice/lens icons are monochrome, they are webkit mask images.
+ * Webkit mask images hide borders so container rules are created to
+ * show focus borders on these icons. */
+.searchbox-icon-button-container {
+  align-items: center;
+  border-radius: 50%;
+  display: flex;
+  flex-shrink: 0;
+  height: var(--cr-searchbox-height);
+  justify-content: center;
+  position: relative;
+  width: var(--cr-searchbox-height);
+  z-index: 100;
+}
+
+@media (forced-colors: active) {
+  .searchbox-icon-button-container {
+    background-color: ButtonText;
+  }
+  .searchbox-icon-button-container:focus-within {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+
+:host-context(.focus-outline-visible) .searchbox-icon-button-container:focus-within {
+  box-shadow: 0 0 0 2px var(--cr-focus-outline-color);
+}
+
+:host(:not([use-webkit-search-icons_])) #voiceSearchButton {
+  background-image: url(//resources/cr_components/searchbox/icons/mic_old.svg);
+}
+
+:host(:not([use-webkit-search-icons_])) #lensSearchButton {
+  background-image: url(//resources/cr_components/searchbox/icons/camera.svg);
+}
+
+:host([use-webkit-search-icons_]) #voiceSearchButton {
+  -webkit-mask-image: url(//resources/cr_components/searchbox/icons/mic_old.svg);
+}
+
+:host([use-webkit-search-icons_]) #lensSearchButton {
+  -webkit-mask-image: url(//resources/cr_components/searchbox/icons/camera.svg);
+}
+
+:host(:not([use-webkit-search-icons_])) #debugButton {
+  background-image: url(//resources/cr_components/searchbox/icons/dino_cr23_old.svg);
+}
+
+:host([use-webkit-search-icons_]) #voiceSearchButton,
+:host([use-webkit-search-icons_]) #lensSearchButton {
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 21px 21px;
+  background-color: var(--color-searchbox-lens-voice-icon-background);
+}
+
+:host([use-webkit-search-icons_]) #debugButton {
+  -webkit-mask-image: url(//resources/cr_components/searchbox/icons/dino_cr23.svg);
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: var(--cr-searchbox-icon-size-in-searchbox, 16px) var(--cr-searchbox-icon-size-in-searchbox, 16px);
+  background-color: var(--color-searchbox-lens-voice-icon-background);
+}
+
+cr-searchbox-dropdown::part(dropdown-content) {
+  background-color: unset;
+  border-radius: 0;
+  box-shadow: unset;
+  gap: unset;
+  margin-bottom: unset;
+  overflow: unset;
+  padding-top: unset;
+}
+
+omnibox-popup-contextual-entrypoint {
+  --contextual-entrypoint-and-carousel-context-menu-container-padding-inline-start: 0;
+}
+
+.searchbox-icon-button-container.lens {
+  margin-inline-end: 10px;
+}
+
+.searchbox-icon-button-container.voice {
+  margin-inline-end: 4px;
+}
+
+.searchbox-icon-button-container.debug {
+  align-self: center;
+  cursor: pointer;
+  margin-inline-end: 6px;
+  pointer-events: auto;
+}
+
+.searchbox-icon-button-container.debug:hover {
+  background-color: var(--color-omnibox-results-background-hovered);
+}
+
+#debugButton {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: var(--cr-searchbox-icon-size-in-searchbox, 16px) var(--cr-searchbox-icon-size-in-searchbox, 16px);
+  height: var(--cr-searchbox-icon-size-in-searchbox, 16px);
+  width: var(--cr-searchbox-icon-size-in-searchbox, 16px);
+}
+
+:host([multi-line-enabled]) {
+  height: auto;
+  min-height: var(--cr-searchbox-height);
+}
+
+:host([multi-line-enabled]) cr-searchbox-input::part(searchbox-input) {
+  height: auto;
+  min-height: var(--cr-searchbox-input-height);
+}
+
+#composeButton {
+  --cr-button-height: 24px;
+  align-self: center;
+}
+
+#composeButton::part(glow-container) {
+  height: 24px;
+  margin-inline-end: 2px;
+  top: 0;
+}
+
+:host([dropdown-is-visible]) #composeButton::part(glow-container) {
+  margin-inline-end: 9px;
+  top: -2px;
+}
+
+#composeButton::part(compose-button) {
+  --cr-hover-background-color: transparent;
+  cursor: default;
+  background-color: var(--color-sys-tonal-container);
+  color: var(--color-sys-on-tonal-container);
+  font-size: 13px;
+  font-weight: 500;
+  padding-inline-end: 12.5px;
+  padding-inline-start: 8px;
+}
+
+#composeButton[dynamic]::part(compose-button) {
+  padding-inline-end: 10.5px;
+}
+
+:host([searchbox-dynamic-color-scheme_]) #composeButton::part(compose-button) {
+  background-color: var(--color-omnibox-results-background-hovered);
+}
+
+#composeButton::part(compose-icon) {
+  height: 15px;
+  max-width: 15px;
+}
+
+#composeButton[dynamic]::part(compose-icon) {
+  inset-inline-start: 6px;
+}
+
+:host(:not([aim-button-icon-only_])) #composeButton[dynamic][has-user-input]::part(compose-icon) {
+  max-width: 0;
+}
+
+#composeButton::part(compose-icon-favicon) {
+  height: 16px;
+  max-width: 16px;
+}
+
+#composeButton::part(label) {
+  margin-inline-start: 1px;
+}
+
+#composeButton[dynamic]::part(label) {
+  margin-inline-start: 18px;
+}
+
+#composeButton[dynamic][has-user-input]::part(label) {
+  transform: translateX(-16px);
+}
+
+#composeButton::part(arrow-icon) {
+  height: 15px;
+  max-width: 15px;
+}
+
+#composeButton[dynamic][has-user-input]::part(arrow-icon) {
+  inset-inline-end: 7px;
+}
+
+:host([aim-button-icon-only_]) #composeButton::part(compose-button) {
+  border-radius: 50%;
+  padding: 0;
+  /* Match width to height (24px) for a 1:1 circular icon button. */
+  min-width: var(--cr-button-height);
+  width: var(--cr-button-height);
+}
+
+:host([aim-button-icon-only_]) #composeButton::part(compose-icon) {
+  inset-inline-start: unset;
+  opacity: 1;
+  position: static;
+  scale: 1;
+  transform: none;
+  visibility: visible;
+  width: 15px;
+}
+
+:host([aim-button-icon-only_]) #composeButton::part(compose-icon-favicon) {
+  width: 16px;
+}
+
+:host([aim-button-icon-only_]) #composeButton::part(label),
+:host([aim-button-icon-only_]) #composeButton::part(arrow-icon) {
+  display: none;
+}
+
+#composeButton::part(hoverBackground) {
+  background-color: var(--color-sys-state-hover-dim-blend-protection);
+  display: block;
+  opacity: 0;
+  transition: opacity 250ms linear;
+}
+
+#composeButton:hover::part(hoverBackground) {
+  opacity: 1;
+}
+
+:host-context([webui-rounded-icons]):host(:not([use-webkit-search-icons_])) #voiceSearchButton {
+  background-image: url(//resources/cr_components/searchbox/icons/mic.svg);
+}
+
+:host-context([webui-rounded-icons]):host([use-webkit-search-icons_]) #voiceSearchButton {
+  -webkit-mask-image: url(//resources/cr_components/searchbox/icons/mic.svg);
+}

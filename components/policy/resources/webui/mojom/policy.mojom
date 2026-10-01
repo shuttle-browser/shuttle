@@ -1,0 +1,225 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module policy.mojom;
+
+import "mojo/public/mojom/base/values.mojom";
+
+// The type of the policy log result object. The definition is based on
+// components/policy/core/common/policy_logger.cc Log::GetAsValue().
+struct Log {
+  string message;
+  string log_severity;
+  string log_source;
+  string file_and_line;
+  string location;
+  string timestamp;
+};
+
+// Specifies the action that triggered a call to `GetPolicies`.
+enum GetPoliciesReason {
+  kCopy = 0,
+  kExport,
+};
+
+// Represents data to be displayed in the status box on chrome://policy.
+struct Status {
+  string policy_description_key;
+  bool flex_org_warning;
+  string? asset_id;
+  string? location;
+  string? directory_api_id;
+  string client_id;
+  bool? is_off_hours_active;
+  string device_id;
+  string enrollment_token;
+  string domain;
+  string? machine;
+  string? version;
+  string? username;
+  string? gaia_id;
+  string? profile_id;
+  string status;
+  string extension_install_status;
+  string? refresh_interval;
+  string? time_since_last_refresh;
+  string? time_since_last_fetch_attempt;
+  string? extension_install_time_since_last_refresh;
+  string? extension_install_time_since_last_fetch_attempt;
+  string? last_cloud_report_sent_timestamp;
+  string? time_since_last_cloud_report_sent;
+  string? enterprise_domain_manager;
+  bool? is_affiliated;
+  bool policies_push_available;
+  bool error;
+  bool extension_install_error;
+};
+
+// Represents a conflicting policy value.
+struct Conflict {
+  // Enforcement level of conflicting policy, can be "recommended" or
+  // "mandatory".
+  // TODO(crbug.com/40897784): This should be an enum or a bool.
+  string level;
+
+  // Scope of the conflicting policy, examples values are "device" or "user".
+  // TODO(crbug.com/40897784): This should be an enum.
+  string scope;
+
+  // The name of the policy provider from which the conflicting policy
+  // originated.
+  string source;
+
+  // The actual conflicting policy value.
+  mojo_base.mojom.Value? value;
+};
+
+// Represents an individual policy and its associated metadata.
+struct Policy {
+  // True if the policy was ignored by Chrome.
+  bool ignored;
+
+  // Name of the policy.
+  string name;
+
+  // Enforcement level of this policy, can be "recommended" or "mandatory".
+  // TODO(crbug.com/40897784): This should be an enum or a bool.
+  string level;
+
+  // Scope of this policy, examples values are "device" or "user".
+  // TODO(crbug.com/40897784): This should be an enum.
+  string scope;
+
+  // The name of the policy provider from which this policy originated.
+  string source;
+
+  // The actual value of this policy.
+  mojo_base.mojom.Value value;
+
+  // True if restart is required to apply this policy.
+  bool restart_required;
+
+  // True if the policy has been deprecated.
+  bool deprecated;
+
+  // True if the policy has not been released yet.
+  bool future;
+
+  // True if all conflicting values have been successfully merged.
+  // Null if no merging was necessary.
+  bool? all_sources_merged;
+
+  // List of lower precedence conflicting values for this policy.
+  array<Conflict> conflicts;
+
+  // List of policies that were superseded by this policy.
+  array<Conflict> superseded;
+
+  // Localized human readable messages.
+  // Do not attempt to parse programmatically.
+  string error;
+  string warning;
+  string info;
+};
+
+// Represents a policy group/namespace with metadata and corresponding policies.
+struct PolicyGroup {
+  // Name of this policy group/namespace.
+  string name;
+
+  // Maps policy name to its representation.
+  map<string, Policy> policies;
+
+  // Ordered list of localized strings defining the policy source precedence
+  // order.
+  // This field is only present for the "Policy Precedence" group.
+  array<string>? precedence_order;
+
+  // Indicates whether this policy group belongs to an installed Chrome
+  // Extension.
+  bool is_extension;
+
+  // Indicates whether these policies apply to the ChromeOS sign-in screen.
+  bool for_signin_screen;
+};
+
+struct PolicyGroupsResponse {
+  // List of policy group ids specifying the presentation order for
+  // `policy_groups`.
+  array<string> policy_ids_presentation_order;
+
+  // Maps policy group id to a given policy group.
+  map<string, PolicyGroup> policy_groups;
+};
+
+// Messages sent from the renderer WebUI TS to the browser process C++.
+interface PolicyPageHandler {
+  // Test function to verify the mojo interface works.
+  // TODO: crbug.com/40897784 - clean this up once the migration is complete.
+  GetDebugString() => (string message);
+
+  // Saves the provided `policies` (expected to be a JSON string) to the local
+  // state preferences and triggers a browser restart to apply them on the next
+  // startup.
+  RestartBrowser(string policies);
+
+  // Simulates user affiliation on the LocalTestPolicyProvider.
+  // The callback is invoked once the affiliation state has been successfully
+  // updated.
+  SetUserAffiliated(bool affiliated) => ();
+
+  // Retrieves the currently applied test policies from the
+  // LocalTestPolicyProvider.
+  // Returns `policies` as a JSON-formatted string.
+  GetAppliedTestPolicies() => (string policies);
+
+  // Clears any applied test policies and profile separation preferences,
+  // reverting the browser back to its standard policy provider behavior.
+  RevertLocalTestPolicies();
+
+  // Applies the given `policies` (expected to be a JSON string) and
+  // `profile_separation_response` to the LocalTestPolicyProvider.
+  // The callback is invoked once the policies have been successfully loaded.
+  SetLocalTestPolicies(string policies, string profile_separation_response)
+      => ();
+
+  // Returns the policy logs displayed on the chrome://policy/logs.
+  GetPolicyLogs() => (array<Log> policy_logs);
+
+  // Checks whether the promotion banner should be displayed.
+  // Promotion banner is only supported on desktop platforms.
+  [EnableIfNot=is_ios|is_android]
+  CheckPromotionEligibility() => (bool should_show_promotion);
+
+  // Notifies the browser that the user has dismissed the promotion banner.
+  [EnableIfNot=is_ios|is_android]
+  SetBannerDismissed();
+
+  // Records UMA metrics for when the user redirects via the banner.
+  [EnableIfNot=is_ios|is_android]
+  RecordBannerRedirected();
+
+  // Retrieves all current policies in raw JSON format. These are then either
+  // copied to user's clipboard or downloaded. The action is denoted by `reason`
+  // for metrics.
+  GetPoliciesJson(GetPoliciesReason reason) => (string policies_json);
+};
+
+// Messages sent from the browser process C++ to the renderer WebUI TS.
+interface PolicyPageClient {
+  // Notifies the UI about Policy status update. `status` maps policy provider
+  // name to its metadata.
+  // See `policy::PolicyStatusProvider` for more details.
+  StatusUpdated(map<string, Status> status);
+};
+
+// The factory interface used to bootstrap the connection between the
+// chrome://policy WebUI and the browser process.
+interface PolicyPageHandlerFactory {
+  // Called by the renderer to initialize the communication channel.
+  // `handler` is used to send commands from TypeScript to C++.
+  // `client` is used to send spontaneous updates from C++ to TypeScript.
+  CreateHandler(pending_receiver<PolicyPageHandler> handler,
+                pending_remote<PolicyPageClient> client);
+};

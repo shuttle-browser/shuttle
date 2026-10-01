@@ -1,0 +1,117 @@
+AXWebArea
+++AXGroup
+++++AXGroup
+++++++AXStaticText AXValue='Default: '
+++++++AXTextField AXTitle='Default:'
+++++AXGroup
+++++++AXStaticText AXValue='Button: '
+++++++AXButton AXTitle='Button:'
+++++AXCheckBox AXTitle='Checkbox:' AXValue=0
+++++AXGroup
+++++++AXStaticText AXValue='Color: '
+++++++AXColorWell AXTitle='Color:' AXValue='rgb 0.00000 0.00000 0.00000 1'
+++++AXGroup
+++++++AXStaticText AXValue='Date: '
+++++++AXDateField AXTitle='Date:'
+++++++++AXGroup
+++++++++++AXGroup
+++++++++++++AXIncrementor AXDescription='Month Date:' AXTitle='Month Date:' AXValue=0
+++++++++++++AXStaticText AXValue='/'
+++++++++++++AXIncrementor AXDescription='Day Date:' AXTitle='Day Date:' AXValue=0
+++++++++++++AXStaticText AXValue='/'
+++++++++++++AXIncrementor AXDescription='Year Date:' AXTitle='Year Date:' AXValue=0
+++++++++AXPopUpButton AXDescription='Show date picker Date:' AXTitle='Show date picker Date:'
+++++AXGroup
+++++++AXStaticText AXValue='Datetime: '
+++++++AXTextField AXTitle='Datetime:'
+++++AXGroup
+++++++AXStaticText AXValue='Datetime-local: '
+++++++AXDateField AXTitle='Datetime-local:'
+++++++++AXGroup
+++++++++++AXGroup
+++++++++++++AXIncrementor AXDescription='Month Datetime-local:' AXTitle='Month Datetime-local:' AXValue=0
+++++++++++++AXStaticText AXValue='/'
+++++++++++++AXIncrementor AXDescription='Day Datetime-local:' AXTitle='Day Datetime-local:' AXValue=0
+++++++++++++AXStaticText AXValue='/'
+++++++++++++AXIncrementor AXDescription='Year Datetime-local:' AXTitle='Year Datetime-local:' AXValue=0
+++++++++++++AXStaticText AXValue=', '
+++++++++++++AXIncrementor AXDescription='Hours Datetime-local:' AXTitle='Hours Datetime-local:' AXValue=0
+++++++++++++AXStaticText AXValue=':'
+++++++++++++AXIncrementor AXDescription='Minutes Datetime-local:' AXTitle='Minutes Datetime-local:' AXValue=0
+++++++++++++AXStaticText AXValue=' '
+++++++++++++AXIncrementor AXDescription='AM/PM Datetime-local:' AXTitle='AM/PM Datetime-local:' AXValue=0
+++++++++AXPopUpButton AXDescription='Show local date and time picker Datetime-local:' AXTitle='Show local date and time picker Datetime-local:'
+++++AXGroup
+++++++AXStaticText AXValue='Email: '
+++++++AXTextField AXTitle='Email:'
+++++AXGroup
+++++++AXStaticText AXValue='Empty: '
+++++++AXTextField AXTitle='Empty:'
+++++AXGroup
+++++++AXStaticText AXValue='File: '
+++++++AXButton AXTitle='File:: No file chosen'
+++++AXGroup
+++++++AXStaticText AXValue='Image: '
+++++++AXButton AXTitle='Image:'
+++++AXStaticText AXValue=' '
+++++AXGroup
+++++++AXStaticText AXValue='Invalid: '
+++++++AXTextField AXTitle='Invalid:'
+++++AXGroup
+++++++AXStaticText AXValue='Month: '
+++++++AXDateField AXTitle='Month:'
+++++++++AXGroup
+++++++++++AXGroup
+++++++++++++AXIncrementor AXDescription='Month Month:' AXTitle='Month Month:' AXValue=0
+++++++++++++AXStaticText AXValue=' '
+++++++++++++AXIncrementor AXDescription='Year Month:' AXTitle='Year Month:' AXValue=0
+++++++++AXPopUpButton AXDescription='Show month picker Month:' AXTitle='Show month picker Month:'
+++++AXGroup
+++++++AXStaticText AXValue='Number: '
+++++++AXIncrementor AXTitle='Number:'
+++++AXGroup
+++++++AXStaticText AXValue='Password: '
+++++++AXTextField AXSubrole=AXSecureTextField AXTitle='Password:'
+++++AXRadioButton AXTitle='Radio:' AXValue=0
+++++AXGroup
+++++++AXStaticText AXValue='Range: '
+++++++AXSlider AXTitle='Range:' AXValue=50
+++++AXGroup
+++++++AXStaticText AXValue='Reset: '
+++++++AXButton AXTitle='Reset:'
+++++AXGroup
+++++++AXStaticText AXValue='Search: '
+++++++AXTextField AXSubrole=AXSearchField AXTitle='Search:'
+++++AXGroup
+++++++AXStaticText AXValue='Submit: '
+++++++AXButton AXTitle='Submit:'
+++++AXGroup
+++++++AXStaticText AXValue='Tel: '
+++++++AXTextField AXTitle='Tel:'
+++++AXGroup
+++++++AXStaticText AXValue='Text: '
+++++++AXTextField AXTitle='Text:'
+++++AXGroup
+++++++AXStaticText AXValue='Time: '
+++++++AXTimeField AXTitle='Time:'
+++++++++AXGroup
+++++++++++AXGroup
+++++++++++++AXIncrementor AXDescription='Hours Time:' AXTitle='Hours Time:' AXValue=0
+++++++++++++AXStaticText AXValue=':'
+++++++++++++AXIncrementor AXDescription='Minutes Time:' AXTitle='Minutes Time:' AXValue=0
+++++++++++++AXStaticText AXValue=' '
+++++++++++++AXIncrementor AXDescription='AM/PM Time:' AXTitle='AM/PM Time:' AXValue=0
+++++++++AXPopUpButton AXDescription='Show time picker Time:' AXTitle='Show time picker Time:'
+++++AXGroup
+++++++AXStaticText AXValue='Url: '
+++++++AXTextField AXTitle='Url:'
+++++AXGroup
+++++++AXStaticText AXValue='Week: '
+++++++AXDateField AXTitle='Week:'
+++++++++AXGroup
+++++++++++AXGroup
+++++++++++++AXStaticText AXValue='Week '
+++++++++++++AXIncrementor AXDescription='Week Week:' AXTitle='Week Week:' AXValue=0
+++++++++++++AXStaticText AXValue=', '
+++++++++++++AXIncrementor AXDescription='Year Week:' AXTitle='Year Week:' AXValue=0
+++++++++AXPopUpButton AXDescription='Show week picker Week:' AXTitle='Show week picker Week:'

@@ -1,0 +1,426 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import type {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
+
+import {LineFocusType} from '../content/read_anything_types.js';
+import type {AudioBrowserProxy} from '../read_aloud/audio_browser_proxy.js';
+import {AudioBrowserProxyImpl} from '../read_aloud/audio_browser_proxy.js';
+
+import type {VisualBrowserProxy} from './visual_browser_proxy.js';
+import {VisualBrowserProxyImpl} from './visual_browser_proxy.js';
+
+// Empty state colors.
+const EMPTY_STATE_HEADING = 'var(--color-read-anything-foreground';
+const EMPTY_STATE_BODY_DEFAULT =
+    'var(--color-side-panel-card-secondary-foreground)';
+// Container colors.
+const BACKGROUND_DEFAULT = 'var(--color-sys-base-container-elevated)';
+const BACKGROUND_CUSTOM = 'var(--color-read-anything-background';
+const FOREGROUND_DEFAULT = 'var(--color-sys-on-surface)';
+const FOREGROUND_CUSTOM = 'var(--color-read-anything-foreground';
+const TRANSPARENT = 'transparent';
+// User text selection colors.
+const SELECTION_BACKGROUND_DEFAULT = 'var(--color-text-selection-background)';
+const SELECTION_BACKGROUND_CUSTOM = 'var(--color-read-anything-text-selection';
+const SELECTION_FOREGROUND_DEFAULT = 'var(--color-text-selection-foreground)';
+const SELECTION_FOREGROUND_DARK = 'var(--google-grey-900)';
+const SELECTION_FOREGROUND_LIGHT = 'var(--google-grey-800)';
+// Read aloud highlight colors.
+const HIGHLIGHT_CURRENT =
+    'var(--color-read-anything-current-read-aloud-highlight';
+const HIGHLIGHT_PREVIOUS_DEFAULT = 'var(--color-sys-on-surface-subtle)';
+const HIGHLIGHT_PREVIOUS_CUSTOM =
+    'var(--color-read-anything-previous-read-aloud-highlight';
+// Link colors.
+const LINK_DEFAULT = 'var(--color-read-anything-link-default';
+const LINK_VISITED = 'var(--color-read-anything-link-visited';
+// Read aloud player colors.
+const AUDIO_PLAYER_BACKGROUND =
+    'var(--color-read-anything-audio-player-background';
+const AUDIO_PLAYER_ICON = 'var(--color-read-anything-audio-player-icon';
+// Immersive mode specific colors.
+const TOOLBAR_ICON = 'var(--color-read-anything-toolbar-icon';
+const TOOLBAR_ICON_HOVER_BACKGROUND =
+    'var(--color-read-anything-toolbar-icon-hover-background';
+const TOOLBAR_FOCUS_OUTLINE = 'var(--color-read-anything-toolbar-focus-outline';
+const ON_AUDIO_PLAYER_FOCUS_OUTLINE =
+    'var(--color-read-anything-on-audio-player-focus-outline';
+const AUDIO_CONTROLS_ICON = 'var(--color-read-anything-audio-controls-icon';
+const FULL_PAGE_SCROLLBAR = 'var(--color-read-anything-full-page-scrollbar';
+// Line focus styles.
+// Determined by experimentation to balance visibility without risking
+// obstructing any text.
+const LINE_FOCUS_LINE_HEIGHT_SCALE = 2;
+const LINE_FOCUS_BOX_SHADOW_LINE = 'none';
+const LINE_FOCUS_BOX_SHADOW_WINDOW =
+    '0 0 0 9999px var(--color-read-anything-line-focus-scrim)';
+const LINE_FOCUS_BG_LINE_DEFAULT = 'var(--color-sys-state-focus-ring)';
+const LINE_FOCUS_BG_LINE_CUSTOM = 'var(--color-read-anything-line-focus';
+const LINE_FOCUS_BG_WINDOW = 'none';
+
+// Suffixes used in combination with the color vars above to get the color
+// values for the current theme.
+enum ColorSuffix {
+  DEFAULT = '',
+  DARK = '-dark',
+  LIGHT = '-light',
+  YELLOW = '-yellow',
+  BLUE = '-blue',
+  HIGH_CONTRAST = '-high-contrast',
+  LOW_CONTRAST_LIGHT = '-low-contrast-light',
+  LOW_CONTRAST_DARK = '-low-contrast-dark',
+}
+
+// Handles updating the visual styles for the Reading mode content panel.
+export class AppStyleUpdater {
+  private app_: CrLitElement;
+  private visualBrowserProxy_: VisualBrowserProxy =
+      VisualBrowserProxyImpl.getInstance();
+  private audioBrowserProxy_: AudioBrowserProxy =
+      AudioBrowserProxyImpl.getInstance();
+
+  constructor(app: CrLitElement) {
+    this.app_ = app;
+  }
+
+  setMaxLineWidth() {
+    this.setStyle_(
+        '--max-width', `${this.visualBrowserProxy_.getMaxLineWidth()}ch`);
+  }
+
+  setPaddingForLineFocus(padding: number) {
+    if (!this.visualBrowserProxy_.isLineFocusEnabled()) {
+      return;
+    }
+
+    this.setStyle_('--line-focus-padding', `${padding}px`);
+  }
+
+  getPaddingForLineFocus(): number {
+    if (!this.visualBrowserProxy_.isLineFocusEnabled()) {
+      return 0;
+    }
+    const padding = this.app_.style.getPropertyValue('--line-focus-padding');
+    return padding ? parseInt(padding) : 0;
+  }
+
+  setLineFocusPos(y: number, height: number) {
+    this.setStyle_('--line-focus-y', `${y}px`);
+    if (height > 0) {
+      this.setStyle_('--line-focus-height', `${height}px`);
+    }
+  }
+
+  setLineFocusStyle(type: LineFocusType) {
+    this.setToolbarIconColorForLineFocus_(type);
+    if (!this.visualBrowserProxy_.isLineFocusEnabled() ||
+        type === LineFocusType.NONE) {
+      this.setStyle_('--line-focus-display', 'none');
+      return;
+    }
+
+    const isWindow = type === LineFocusType.WINDOW;
+    if (!isWindow) {
+      this.setLineFocusHeight();
+    }
+    this.setStyle_(
+        '--line-focus-shadow',
+        isWindow ? LINE_FOCUS_BOX_SHADOW_WINDOW : LINE_FOCUS_BOX_SHADOW_LINE);
+    const lineFocusBgLine =
+        this.getLineFocusColor_(this.getCurrentColorSuffix_());
+    this.setStyle_(
+        '--line-focus-bg', isWindow ? LINE_FOCUS_BG_WINDOW : lineFocusBgLine);
+    this.setStyle_('--line-focus-display', 'block');
+  }
+
+  private setToolbarIconColorForLineFocus_(type: LineFocusType) {
+    if (!this.visualBrowserProxy_.isLineFocusEnabled()) {
+      return;
+    }
+
+    // Since the window line focus scrim goes into the toolbar area, update the
+    // toolbar icons as needed to maintain visibility on top of the dark scrim.
+    const isWindow = type === LineFocusType.WINDOW;
+    const colorSuffix =
+        isWindow ? ColorSuffix.DARK : this.getCurrentColorSuffix_();
+    this.setStyle_(
+        '--toolbar-icon-color', this.getToolbarIconColor_(colorSuffix));
+  }
+
+  setLineFocusHeight() {
+    // The height of the line focus underline should be dependent on the font
+    // size. This height should be overridden dynamically if the line focus is a
+    // window.
+    this.setStyle_(
+        '--line-focus-height',
+        `${
+            this.visualBrowserProxy_.getFontSize() *
+            LINE_FOCUS_LINE_HEIGHT_SCALE}px`);
+  }
+
+  setAllTextStyles() {
+    this.setLineSpacing();
+    this.setLetterSpacing();
+    this.setFont();
+    this.setFontSize();
+    this.setTheme();
+  }
+
+  setLineSpacing() {
+    const lineHeight = this.visualBrowserProxy_.getLineSpacingValue(
+        this.visualBrowserProxy_.getLineSpacing());
+    this.setStyle_('--line-height', `${lineHeight}`);
+
+    const minLineHeight = this.visualBrowserProxy_.getLineSpacingValue(
+        this.visualBrowserProxy_.getStandardLineSpacing());
+    const pSpacing = minLineHeight ? (lineHeight / minLineHeight) : lineHeight;
+    this.setStyle_('--paragraph-spacing', `${pSpacing}em`);
+  }
+
+  setLetterSpacing() {
+    const letterSpacing = this.visualBrowserProxy_.getLetterSpacingValue(
+        this.visualBrowserProxy_.getLetterSpacing());
+    this.setStyle_('--letter-spacing', `${letterSpacing}em`);
+  }
+
+  setFontSize() {
+    this.setStyle_(
+        '--font-size', `${this.visualBrowserProxy_.getFontSize()}em`);
+  }
+
+  setFont() {
+    this.setStyle_(
+        '--font-family',
+        this.visualBrowserProxy_.getValidatedFontName(
+            this.visualBrowserProxy_.getFontName()));
+  }
+
+  setHighlight() {
+    this.setStyle_(
+        '--current-highlight-bg-color',
+        this.getCurrentHighlightColor_(this.getCurrentColorSuffix_()));
+  }
+
+  setTheme() {
+    const colorSuffix = this.getCurrentColorSuffix_();
+    this.setStyle_('--background-color', this.getBackgroundColor_(colorSuffix));
+    this.setStyle_('--foreground-color', this.getForegroundColor_(colorSuffix));
+    this.setStyle_('--selection-color', this.getSelectionColor_(colorSuffix));
+    this.setStyle_(
+        '--current-highlight-bg-color',
+        this.getCurrentHighlightColor_(colorSuffix));
+    this.setStyle_(
+        '--previous-highlight-color',
+        this.getPreviousHighlightColor_(colorSuffix));
+    this.setStyle_(
+        '--sp-empty-state-heading-color',
+        `${EMPTY_STATE_HEADING}${colorSuffix})`);
+    this.setStyle_(
+        '--sp-empty-state-body-color',
+        this.getEmptyStateBodyColor_(colorSuffix));
+    this.setStyle_('--link-color', `${LINK_DEFAULT}${colorSuffix})`);
+    this.setStyle_('--visited-link-color', `${LINK_VISITED}${colorSuffix})`);
+    this.setStyle_(
+        '--audio-player-background-color',
+        this.getAudioPlayerBackgroundColor_(colorSuffix));
+    this.setStyle_(
+        '--audio-player-icon-color',
+        this.getAudioPlayerIconColor_(colorSuffix));
+    const lineFocusBg = this.app_.style.getPropertyValue('--line-focus-bg');
+    const isLineFocusWindow = lineFocusBg === LINE_FOCUS_BG_WINDOW;
+    if (!isLineFocusWindow) {
+      this.setStyle_('--line-focus-bg', this.getLineFocusColor_(colorSuffix));
+    }
+
+    // When line focus window mode is enabled, the toolbar icons are on top of
+    // a dark scrim, so they should not change color when the theme changes.
+    // Therefore, only update the toolbar icon colors when line focus is
+    // disabled (via flag), off, or in line mode.
+    const lineFocusDisplay =
+        this.app_.style.getPropertyValue('--line-focus-display');
+    if (!this.visualBrowserProxy_.isLineFocusEnabled() ||
+        lineFocusDisplay === 'none' || !isLineFocusWindow) {
+      this.setStyle_(
+          '--toolbar-icon-color', this.getToolbarIconColor_(colorSuffix));
+    }
+    this.setStyle_(
+        '--toolbar-icon-hover-background-color',
+        this.getToolbarIconHoverBackgroundColor_(colorSuffix));
+    this.setStyle_(
+        '--toolbar-focus-outline-color',
+        this.getToolbarFocusOutlineColor_(colorSuffix));
+    this.setStyle_(
+        '--on-audio-player-focus-outline-color',
+        this.getOnAudioPlayerFocusOutlineColor_(colorSuffix));
+    this.setStyle_(
+        '--audio-controls-icon-color',
+        this.getAudioControlsIconColor_(colorSuffix));
+    this.setStyle_(
+        '--toggle-inactive-background-color',
+        this.getToggleInactiveBackgroundColor_(colorSuffix));
+    this.setStyle_(
+        '--toggle-active-background-color',
+        this.getToggleActiveBackgroundColor_(colorSuffix));
+    this.setStyle_(
+        '--color-read-anything-full-page-scrollbar',
+        this.getFullPageScrollbarColor_(colorSuffix));
+
+    document.documentElement.style.setProperty(
+        '--selection-color', this.getSelectionColor_(colorSuffix));
+    document.documentElement.style.setProperty(
+        '--selection-text-color', this.getSelectionTextColor_(colorSuffix));
+  }
+
+  private setStyle_(key: string, val: string) {
+    this.app_.style.setProperty(key, val);
+  }
+
+  private getCurrentColorSuffix_(): ColorSuffix {
+    switch (this.visualBrowserProxy_.getColorTheme()) {
+      case this.visualBrowserProxy_.getLightTheme():
+        return ColorSuffix.LIGHT;
+      case this.visualBrowserProxy_.getDarkTheme():
+        return ColorSuffix.DARK;
+      case this.visualBrowserProxy_.getYellowTheme():
+        return ColorSuffix.YELLOW;
+      case this.visualBrowserProxy_.getBlueTheme():
+        return ColorSuffix.BLUE;
+      case this.visualBrowserProxy_.getHighContrastTheme():
+        return ColorSuffix.HIGH_CONTRAST;
+      case this.visualBrowserProxy_.getLowContrastLightTheme():
+        return ColorSuffix.LOW_CONTRAST_LIGHT;
+      case this.visualBrowserProxy_.getLowContrastDarkTheme():
+        return ColorSuffix.LOW_CONTRAST_DARK;
+      default:
+        return ColorSuffix.DEFAULT;
+    }
+  }
+
+  private getEmptyStateBodyColor_(colorSuffix: ColorSuffix): string {
+    switch (colorSuffix) {
+      case ColorSuffix.DEFAULT:
+        return EMPTY_STATE_BODY_DEFAULT;
+      default:
+        return `${EMPTY_STATE_HEADING}${colorSuffix})`;
+    }
+  }
+
+  private getCurrentHighlightColor_(colorSuffix: ColorSuffix): string {
+    if (!this.audioBrowserProxy_.isHighlightOn()) {
+      return TRANSPARENT;
+    }
+    if (colorSuffix === ColorSuffix.DEFAULT) {
+      return SELECTION_BACKGROUND_DEFAULT;
+    }
+    return `${HIGHLIGHT_CURRENT}${colorSuffix})`;
+  }
+
+  private getPreviousHighlightColor_(colorSuffix: ColorSuffix): string {
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        HIGHLIGHT_PREVIOUS_DEFAULT :
+        `${HIGHLIGHT_PREVIOUS_CUSTOM}${colorSuffix})`;
+  }
+
+  private getBackgroundColor_(colorSuffix: ColorSuffix): string {
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        BACKGROUND_DEFAULT :
+        `${BACKGROUND_CUSTOM}${colorSuffix})`;
+  }
+
+  private getForegroundColor_(colorSuffix: ColorSuffix): string {
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        FOREGROUND_DEFAULT :
+        `${FOREGROUND_CUSTOM}${colorSuffix})`;
+  }
+
+  private getSelectionColor_(colorSuffix: ColorSuffix): string {
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        SELECTION_BACKGROUND_DEFAULT :
+        `${SELECTION_BACKGROUND_CUSTOM}${colorSuffix})`;
+  }
+
+  private getSelectionTextColor_(colorSuffix: ColorSuffix): string {
+    if (colorSuffix === ColorSuffix.DEFAULT) {
+      return SELECTION_FOREGROUND_DEFAULT;
+    }
+
+    return (window.matchMedia('(prefers-color-scheme: dark)').matches) ?
+        SELECTION_FOREGROUND_DARK :
+        SELECTION_FOREGROUND_LIGHT;
+  }
+
+  private getLineFocusColor_(colorSuffix: ColorSuffix): string {
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        LINE_FOCUS_BG_LINE_DEFAULT :
+        `${LINE_FOCUS_BG_LINE_CUSTOM}${colorSuffix})`;
+  }
+
+  private getAudioPlayerBackgroundColor_(colorSuffix: ColorSuffix): string {
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        `${AUDIO_PLAYER_BACKGROUND})` :
+        `${AUDIO_PLAYER_BACKGROUND}${colorSuffix})`;
+  }
+
+  private getAudioPlayerIconColor_(colorSuffix: ColorSuffix): string {
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        `${AUDIO_PLAYER_ICON})` :
+        `${AUDIO_PLAYER_ICON}${colorSuffix})`;
+  }
+
+  private getToolbarIconColor_(colorSuffix: ColorSuffix): string {
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        `${TOOLBAR_ICON})` :
+        `${TOOLBAR_ICON}${colorSuffix})`;
+  }
+
+  private getToolbarIconHoverBackgroundColor_(colorSuffix: ColorSuffix):
+      string {
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        `${TOOLBAR_ICON_HOVER_BACKGROUND})` :
+        `${TOOLBAR_ICON_HOVER_BACKGROUND}${colorSuffix})`;
+  }
+
+  private getToolbarFocusOutlineColor_(colorSuffix: ColorSuffix): string {
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        `${TOOLBAR_FOCUS_OUTLINE})` :
+        `${TOOLBAR_FOCUS_OUTLINE}${colorSuffix})`;
+  }
+
+  private getOnAudioPlayerFocusOutlineColor_(colorSuffix: ColorSuffix): string {
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        `${ON_AUDIO_PLAYER_FOCUS_OUTLINE})` :
+        `${ON_AUDIO_PLAYER_FOCUS_OUTLINE}${colorSuffix})`;
+  }
+
+  private getAudioControlsIconColor_(colorSuffix: ColorSuffix): string {
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        `${AUDIO_CONTROLS_ICON})` :
+        `${AUDIO_CONTROLS_ICON}${colorSuffix})`;
+  }
+
+  private getFullPageScrollbarColor_(colorSuffix: ColorSuffix): string {
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        `${FULL_PAGE_SCROLLBAR})` :
+        `${FULL_PAGE_SCROLLBAR}${colorSuffix})`;
+  }
+
+  private getToggleInactiveBackgroundColor_(colorSuffix: ColorSuffix): string {
+    if (colorSuffix === ColorSuffix.BLUE) {
+      return `${AUDIO_PLAYER_ICON}${colorSuffix})`;
+    }
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        `${AUDIO_PLAYER_BACKGROUND})` :
+        `${AUDIO_PLAYER_BACKGROUND}${colorSuffix})`;
+  }
+
+  private getToggleActiveBackgroundColor_(colorSuffix: ColorSuffix): string {
+    if (colorSuffix === ColorSuffix.BLUE) {
+      return `${AUDIO_PLAYER_BACKGROUND}${colorSuffix})`;
+    }
+    return (colorSuffix === ColorSuffix.DEFAULT) ?
+        `${AUDIO_PLAYER_ICON})` :
+        `${AUDIO_PLAYER_ICON}${colorSuffix})`;
+  }
+}

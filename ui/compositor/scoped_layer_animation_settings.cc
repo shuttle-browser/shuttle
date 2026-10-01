@@ -1,0 +1,178 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ui/compositor/scoped_layer_animation_settings.h"
+
+#include <stddef.h>
+
+#include "base/memory/raw_ptr.h"
+#include "base/scoped_observation.h"
+#include "ui/compositor/layer.h"
+#include "ui/compositor/layer_animation_observer.h"
+#include "ui/compositor/layer_animation_sequence.h"
+#include "ui/compositor/layer_animator.h"
+#include "ui/compositor/layer_observer.h"
+#include "ui/compositor/scoped_layer_request.h"
+
+namespace ui {
+
+namespace {
+
+const int kScopedLayerAnimationDefaultTransitionDurationMs = 200;
+
+template <typename LockType>
+class ScopedLayerAnimationObserver : public ui::ImplicitAnimationObserver,
+                                     public ui::LayerObserver {
+ public:
+  explicit ScopedLayerAnimationObserver(ui::Layer* layer) {
+    layer_observation_.Observe(layer);
+    lock_.emplace(layer);
+  }
+
+  ScopedLayerAnimationObserver(const ScopedLayerAnimationObserver&) = delete;
+  ScopedLayerAnimationObserver& operator=(const ScopedLayerAnimationObserver&) =
+      delete;
+
+  ~ScopedLayerAnimationObserver() override = default;
+
+  // ui::ImplicitAnimationObserver overrides:
+  void OnImplicitAnimationsCompleted() override {
+    // If the animation finishes before the layer is destroyed, we will release
+    // the lock and destroy `this`.
+    lock_.reset();
+    if (layer_observation_.IsObserving()) {
+      layer_observation_.GetSource()
+          ->GetAnimator()
+          ->RemoveAndDestroyOwnedObserver(this);
+    }
+  }
+
+  // ui::LayerObserver overrides:
+  void LayerDestroyed(ui::Layer* layer) override {
+    // If the animation is still going past layer destruction then we want the
+    // layer to keep the request until the animation has finished. We will defer
+    // deleting `this` until the animation finishes.
+    layer_observation_.Reset();
+  }
+
+ private:
+  std::optional<LockType> lock_;
+  base::ScopedObservation<ui::Layer, ui::LayerObserver> layer_observation_{
+      this};
+};
+
+using ScopedRenderSurfaceCaching =
+    ScopedLayerAnimationObserver<ScopedCacheRenderSurfaceLock>;
+
+using ScopedDeferredPainting = ScopedLayerAnimationObserver<ScopedPaintLock>;
+
+using ScopedTrilinearFiltering =
+    ScopedLayerAnimationObserver<ScopedTrilinearFilteringLock>;
+
+void AddObserverToSettings(
+    ui::ScopedLayerAnimationSettings* settings,
+    std::unique_ptr<ui::ImplicitAnimationObserver> observer) {
+  settings->AddObserver(observer.get());
+  settings->GetAnimator()->AddOwnedObserver(std::move(observer));
+}
+
+void AddScopedDeferredPaintingObserverRecursive(
+    ui::Layer* layer,
+    ui::ScopedLayerAnimationSettings* settings) {
+  if (layer->AsTextured()) {
+    auto observer = std::make_unique<ScopedDeferredPainting>(layer);
+    AddObserverToSettings(settings, std::move(observer));
+  }
+  for (ui::Layer* child : layer->children()) {
+    AddScopedDeferredPaintingObserverRecursive(child, settings);
+  }
+}
+
+}  // namespace
+
+// ScopedLayerAnimationSettings ------------------------------------------------
+ScopedLayerAnimationSettings::ScopedLayerAnimationSettings(
+    scoped_refptr<LayerAnimator> animator)
+    : animator_(animator),
+      old_is_transition_duration_locked_(
+          animator->is_transition_duration_locked_),
+      old_transition_duration_(animator->GetTransitionDuration()),
+      old_tween_type_(animator->tween_type()),
+      old_preemption_strategy_(animator->preemption_strategy()) {
+  SetTransitionDuration(
+      base::Milliseconds(kScopedLayerAnimationDefaultTransitionDurationMs));
+}
+
+ScopedLayerAnimationSettings::~ScopedLayerAnimationSettings() {
+  animator_->is_transition_duration_locked_ =
+      old_is_transition_duration_locked_;
+  animator_->SetTransitionDuration(old_transition_duration_);
+  animator_->set_tween_type(old_tween_type_);
+  animator_->set_preemption_strategy(old_preemption_strategy_);
+
+  for (ImplicitAnimationObserver* observer : observers_) {
+    // Directly remove |observer| from |LayerAnimator::observers_| rather than
+    // calling LayerAnimator::RemoveObserver(), to avoid removing it from the
+    // observer list of LayerAnimationSequences that have already been
+    // scheduled.
+    animator_->observers_.RemoveObserver(observer);
+    observer->SetActive(true);
+  }
+}
+
+void ScopedLayerAnimationSettings::AddObserver(
+    ImplicitAnimationObserver* observer) {
+  observers_.insert(observer);
+  animator_->AddObserver(observer);
+}
+
+void ScopedLayerAnimationSettings::SetTransitionDuration(
+    base::TimeDelta duration) {
+  animator_->SetTransitionDuration(duration);
+}
+
+base::TimeDelta ScopedLayerAnimationSettings::GetTransitionDuration() const {
+  return animator_->GetTransitionDuration();
+}
+
+void ScopedLayerAnimationSettings::LockTransitionDuration() {
+  animator_->is_transition_duration_locked_ = true;
+}
+
+void ScopedLayerAnimationSettings::SetTweenType(gfx::Tween::Type tween_type) {
+  animator_->set_tween_type(tween_type);
+}
+
+gfx::Tween::Type ScopedLayerAnimationSettings::GetTweenType() const {
+  return animator_->tween_type();
+}
+
+void ScopedLayerAnimationSettings::SetPreemptionStrategy(
+    LayerAnimator::PreemptionStrategy strategy) {
+  animator_->set_preemption_strategy(strategy);
+}
+
+LayerAnimator::PreemptionStrategy
+ScopedLayerAnimationSettings::GetPreemptionStrategy() const {
+  return animator_->preemption_strategy();
+}
+
+void ScopedLayerAnimationSettings::CacheRenderSurface() {
+  auto observer = std::make_unique<ScopedRenderSurfaceCaching>(
+      animator_->delegate()->GetLayer());
+  AddObserverToSettings(this, std::move(observer));
+}
+
+void ScopedLayerAnimationSettings::DeferPaint() {
+  AddScopedDeferredPaintingObserverRecursive(animator_->delegate()->GetLayer(),
+                                             this);
+}
+
+void ScopedLayerAnimationSettings::TrilinearFiltering() {
+  auto observer = std::make_unique<ScopedTrilinearFiltering>(
+      animator_->delegate()->GetLayer());
+  AddObserverToSettings(this, std::move(observer));
+}
+
+}  // namespace ui

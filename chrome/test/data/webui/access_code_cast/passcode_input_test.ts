@@ -1,0 +1,163 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import 'chrome://access-code-cast/passcode_input/passcode_input.js';
+
+import type {PasscodeInputElement} from 'chrome://access-code-cast/passcode_input/passcode_input.js';
+import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import {microtasksFinished} from 'chrome://webui-test/test_util.js';
+
+suite('PasscodeInputElementTest', () => {
+  let c2cInput: PasscodeInputElement;
+
+  setup(async () => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+
+    c2cInput = document.createElement('c2c-passcode-input');
+    c2cInput.length = 6;
+    document.body.appendChild(c2cInput);
+
+    await microtasksFinished();
+  });
+
+  test('value set correctly', async () => {
+    const testValue = 'hello';
+    c2cInput.value = testValue;
+    await microtasksFinished();
+    assertEquals(c2cInput.$.inputElement.value, testValue);
+  });
+
+  test('focus shown correctly', async () => {
+    c2cInput.value = '';
+    c2cInput.focusInput();
+    await microtasksFinished();
+
+    assertTrue(c2cInput.focused, 'input not focused');
+    const charBoxes = c2cInput.shadowRoot.querySelectorAll('.char-box');
+    assertEquals(6, charBoxes.length);
+    assertTrue(charBoxes[0]!.classList.contains('focused'));
+    assertTrue(charBoxes[1]!.classList.contains('focused'));
+    assertTrue(charBoxes[2]!.classList.contains('focused'));
+  });
+
+  test('cursor is rendered correctly', async () => {
+    const testValue = 'test';
+    c2cInput.value = testValue;
+    c2cInput.focusInput();
+    await microtasksFinished();
+
+    // Case 1: Cursor is after all text.
+    c2cInput.$.inputElement
+        .setSelectionRange(testValue.length, testValue.length);
+    c2cInput.$.inputElement.dispatchEvent(new Event('select'));
+    await microtasksFinished();
+
+    assertTrue(c2cInput.getDisplayChar(testValue.length).classList
+        .contains('cursor-empty'));
+    assertFalse(c2cInput.getDisplayChar(testValue.length).classList
+        .contains('cursor-start'));
+    assertFalse(c2cInput.getDisplayChar(testValue.length).classList
+        .contains('cursor-filled'));
+    assertFalse(c2cInput.getDisplayChar(testValue.length - 1).classList
+        .contains('cursor-empty'));
+    assertFalse(c2cInput.getDisplayChar(testValue.length - 1).classList
+        .contains('cursor-start'));
+    assertFalse(c2cInput.getDisplayChar(testValue.length - 1).classList
+        .contains('cursor-filled'));
+    assertFalse(c2cInput.getDisplayChar(testValue.length + 1).classList
+        .contains('cursor-empty'));
+    assertFalse(c2cInput.getDisplayChar(testValue.length + 1).classList
+        .contains('cursor-start'));
+    assertFalse(c2cInput.getDisplayChar(testValue.length + 1).classList
+        .contains('cursor-filled'));
+
+    // Case 2: Cursor is before all text
+    c2cInput.$.inputElement.setSelectionRange(0, 0);
+    c2cInput.$.inputElement.dispatchEvent(new Event('select'));
+    await microtasksFinished();
+
+    assertFalse(c2cInput.getDisplayChar(0).classList
+        .contains('cursor-empty'));
+    assertTrue(c2cInput.getDisplayChar(0).classList
+        .contains('cursor-start'));
+    assertFalse(c2cInput.getDisplayChar(0).classList
+        .contains('cursor-filled'));
+    assertFalse(c2cInput.getDisplayChar(1).classList
+        .contains('cursor-empty'));
+    assertFalse(c2cInput.getDisplayChar(1).classList
+        .contains('cursor-start'));
+    assertFalse(c2cInput.getDisplayChar(1).classList
+        .contains('cursor-filled'));
+    assertFalse(c2cInput.getDisplayChar(2).classList
+        .contains('cursor-empty'));
+    assertFalse(c2cInput.getDisplayChar(2).classList
+        .contains('cursor-start'));
+    assertFalse(c2cInput.getDisplayChar(2).classList
+        .contains('cursor-filled'));
+
+    // Case 3: Cursor is between characters of text
+    c2cInput.$.inputElement.setSelectionRange(1, 1);
+    c2cInput.$.inputElement.dispatchEvent(new Event('select'));
+    await microtasksFinished();
+
+    assertFalse(c2cInput.getDisplayChar(0).classList
+        .contains('cursor-empty'));
+    assertFalse(c2cInput.getDisplayChar(0).classList
+        .contains('cursor-start'));
+    assertTrue(c2cInput.getDisplayChar(0).classList
+        .contains('cursor-filled'));
+    assertFalse(c2cInput.getDisplayChar(1).classList
+        .contains('cursor-empty'));
+    assertFalse(c2cInput.getDisplayChar(1).classList
+        .contains('cursor-start'));
+    assertFalse(c2cInput.getDisplayChar(1).classList
+        .contains('cursor-filled'));
+    assertFalse(c2cInput.getDisplayChar(2).classList
+        .contains('cursor-empty'));
+    assertFalse(c2cInput.getDisplayChar(2).classList
+        .contains('cursor-start'));
+    assertFalse(c2cInput.getDisplayChar(2).classList
+        .contains('cursor-filled'));
+  });
+
+  test('disabled state propogates correctly', async () => {
+    c2cInput.value = '';
+    c2cInput.disabled = false;
+    await microtasksFinished();
+
+    assertFalse(c2cInput.$.inputElement.disabled);
+    assertFalse(c2cInput.getDisplayChar(0).classList.contains('disabled'));
+    assertFalse(c2cInput.getDisplayChar(1).classList.contains('disabled'));
+    assertFalse(c2cInput.getDisplayChar(2).classList.contains('disabled'));
+
+    c2cInput.disabled = true;
+    await microtasksFinished();
+
+    assertTrue(c2cInput.$.inputElement.disabled);
+    assertTrue(c2cInput.getDisplayChar(0).classList.contains('disabled'));
+    assertTrue(c2cInput.getDisplayChar(1).classList.contains('disabled'));
+    assertTrue(c2cInput.getDisplayChar(2).classList.contains('disabled'));
+  });
+});
+
+suite('PasscodeInputElementInitialFocusTest', () => {
+  let c2cInput: PasscodeInputElement;
+
+  setup(async () => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+
+    c2cInput = document.createElement('c2c-passcode-input');
+    c2cInput.length = 6;
+    document.body.appendChild(c2cInput);
+    // Immediately after adding it to the body, focus.
+    await c2cInput.focusInput();
+
+    await microtasksFinished();
+  });
+
+  test('focuses input correctly', () => {
+    const innerActiveElement = c2cInput.shadowRoot.activeElement;
+    assertTrue(innerActiveElement === c2cInput.$.inputElement);
+  });
+});

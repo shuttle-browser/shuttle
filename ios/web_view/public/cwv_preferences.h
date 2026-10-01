@@ -1,0 +1,105 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_WEB_VIEW_PUBLIC_CWV_PREFERENCES_H_
+#define IOS_WEB_VIEW_PUBLIC_CWV_PREFERENCES_H_
+
+#import <Foundation/Foundation.h>
+
+#import "cwv_export.h"
+
+NS_ASSUME_NONNULL_BEGIN
+
+// Preferences for user settings. The preferences are stored on the local
+// storage.
+CWV_EXPORT
+@interface CWVPreferences : NSObject
+
+// Whether or not translation as a feature is turned on. Defaults to |YES|.
+// Because translate settings are shared from incognito to non-incognito, this
+// has no effect if this instance is from an incognito CWVWebViewConfiguration.
+@property(nonatomic, assign, getter=isTranslationEnabled)
+    BOOL translationEnabled;
+
+// Whether or not profile autofill is turned on. Defaults to |YES|.
+// If enabled, contents of submitted profiles may be saved and offered as a
+// suggestion in either the same or similar forms.
+@property(nonatomic, assign, getter=isProfileAutofillEnabled)
+    BOOL profileAutofillEnabled;
+
+// Whether or not credit card autofill is turned on. Defaults to |YES|.
+// If enabled, contents of submitted credit cards may be saved and offered as a
+// suggestion in either the same or similar forms.
+@property(nonatomic, assign, getter=isCreditCardAutofillEnabled)
+    BOOL creditCardAutofillEnabled;
+
+// Whether or not CWVWebView allows saving passwords for autofill. Defaults to
+// |YES|. When it is NO, it doesn't ask if you want to save passwords but will
+// continue to fill passwords.
+//
+// TODO(crbug.com/40602365): Preference should also control autofill behavior
+// for the passwords.
+@property(nonatomic, assign, getter=isPasswordAutofillEnabled)
+    BOOL passwordAutofillEnabled;
+
+// Whether or not password leak checks will be performed after successful form
+// submission. Defaults to |YES|.
+@property(nonatomic, assign, getter=isPasswordLeakCheckEnabled)
+    BOOL passwordLeakCheckEnabled;
+
+// Controls whether or not WebViewPasswordManagerClient is hardened against
+// WebState destruction.
+@property(nonatomic, assign, getter=isPasswordManagerSafeLifecycleEnabled)
+    BOOL passwordManagerSafeLifecycleEnabled;
+
+// Whether or not safe browsing is enabled.
+// Specifically this controls whether or not
+// -[CWVNavigationDelegate handleUnsafeURLWithHandler:] is called.
+// Defaults to |YES|.
+@property(nonatomic, assign, getter=isSafeBrowsingEnabled)
+    BOOL safeBrowsingEnabled;
+
+// Whether or not address sync is enabled.
+@property(nonatomic, assign, getter=isAutofillAddressSyncEnabled)
+    BOOL autofillAddressSyncEnabled;
+
+// Whether or not address sync is enabled.
+@property(nonatomic, assign, getter=isPasswordAffiliationEnabled)
+    BOOL passwordAffiliationEnabled;
+
+// Whether or not credit card virtual card usage is enabled.
+@property(nonatomic, assign, getter=isAutofillVCNUsageEnabled)
+    BOOL autofillVCNUsageEnabled;
+
+// Controls whether or not CWVAutofillController is hardened against WebState
+// destruction.
+@property(nonatomic, assign, getter=isAutofillSafeLifecycleEnabled)
+    BOOL autofillSafeLifecycleEnabled;
+
+// Whether or not to trigger a non-fatal check during initialization.
+// This is for integration testing purposes of non-fatal checks on clients.
+// Defaults to NO. In-memory only i.e. doesn't persist through startups.
+// TODO(crbug.com/503005390): Remove after release integration testing in
+// stable.
+@property(nonatomic, assign, getter=isTriggerNonFatalCheckEnabled)
+    BOOL triggerNonFatalCheck;
+
+- (instancetype)init NS_UNAVAILABLE;
+
+// Resets all translation settings back to default. In particular, this will
+// change all translation policies back to CWVTranslationPolicyAsk, and set
+// |translationEnabled| to YES. Because translate settings are shared from
+// incognito to non-incognito, this has no effect if this instance is from an
+// incognito CWVWebViewConfiguration.
+- (void)resetTranslationSettings;
+
+// Immediately writes any changes in memory to disk.
+// `completionHandler` callback when writes are committed.
+- (void)commitPendingWrite:(void (^)(void))completionHandler;
+
+@end
+
+NS_ASSUME_NONNULL_END
+
+#endif  // IOS_WEB_VIEW_PUBLIC_CWV_PREFERENCES_H_

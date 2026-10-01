@@ -1,0 +1,50 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_PERMISSIONS_RESOLVERS_GEOLOCATION_PERMISSION_RESOLVER_H_
+#define COMPONENTS_PERMISSIONS_RESOLVERS_GEOLOCATION_PERMISSION_RESOLVER_H_
+
+#include "components/permissions/resolvers/permission_resolver.h"
+#include "third_party/blink/public/mojom/permissions/permission_status.mojom-forward.h"
+
+namespace blink::mojom {
+class PermissionDescriptor;
+}  // namespace blink::mojom
+
+namespace permissions {
+
+struct PermissionPromptDecision;
+
+// A |PermissionResolver| for the geolocation permission supporting
+// approximate/precise location requests.
+class GeolocationPermissionResolver : public PermissionResolver {
+ public:
+  explicit GeolocationPermissionResolver(
+      const blink::mojom::PermissionDescriptor& permission_descriptor);
+
+  blink::mojom::PermissionStatus DeterminePermissionStatus(
+      const PermissionSetting& setting) const override;
+
+  GeolocationPromptType GetGeolocationPromptType(
+      bool is_embedded_permission_element_initiated,
+      const PermissionSetting& current_setting_state) const;
+
+  PromptParameters GetPromptParameters(
+      const PermissionSetting& current_setting_state) const override;
+
+  bool requested_precise() { return requested_precise_; }
+
+ protected:
+  PermissionSetting ComputePermissionDecisionResultInternal(
+      const PermissionSetting& previous_setting,
+      const PermissionPromptDecision& decision,
+      std::optional<GeolocationPromptType> prompt_type) const override;
+
+ private:
+  bool requested_precise_;
+};
+
+}  // namespace permissions
+
+#endif  // COMPONENTS_PERMISSIONS_RESOLVERS_GEOLOCATION_PERMISSION_RESOLVER_H_

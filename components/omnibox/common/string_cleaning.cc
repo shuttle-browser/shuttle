@@ -1,0 +1,72 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/omnibox/common/string_cleaning.h"
+
+#include <string>
+#include <string_view>
+
+#include "base/i18n/case_conversion.h"
+#include "base/strings/escape.h"
+#include "base/strings/utf_offset_string_conversions.h"
+#include "components/url_formatter/url_formatter.h"
+#include "url/gurl.h"
+
+namespace omnibox {
+
+namespace {
+// The maximum length of URL or title returned by the Cleanup functions.
+const size_t kCleanedUpUrlMaxLength = 1024u;
+const size_t kCleanedUpTitleMaxLength = 1024u;
+}  // namespace
+
+// Attempts to shorten a URL safely (i.e., by preventing the end of the URL from
+// being in the middle of an escape sequence) to no more than
+// 'kCleanedUpUrlMaxLength' characters, returning the result.
+std::string TruncateUrl(std::string_view url) {
+  if (url.length() <= kCleanedUpUrlMaxLength) {
+    return std::string(url);
+  }
+
+  // If we're in the middle of an escape sequence, truncate just before it.
+  if (url[kCleanedUpUrlMaxLength - 1] == '%') {
+    return std::string(url.substr(0, kCleanedUpUrlMaxLength - 1));
+  }
+  if (url[kCleanedUpUrlMaxLength - 2] == '%') {
+    return std::string(url.substr(0, kCleanedUpUrlMaxLength - 2));
+  }
+
+  return std::string(url.substr(0, kCleanedUpUrlMaxLength));
+}
+
+std::u16string CleanUpUrlForMatching(
+    const GURL& gurl,
+    base::OffsetAdjuster::Adjustments* adjustments) {
+  DCHECK(gurl.is_valid());
+
+  // Avoid re-parsing the URL when no truncation is needed (the common case).
+  // TruncateUrl returns the spec unchanged for URLs under
+  // kCleanedUpUrlMaxLength (1024 chars), so constructing a new GURL from it is
+  // redundant.
+  const std::string& spec = gurl.spec();
+  const bool needs_truncation = spec.length() > kCleanedUpUrlMaxLength;
+  GURL truncated_url;
+  if (needs_truncation) {
+    truncated_url = GURL(TruncateUrl(spec));
+  }
+  const GURL& url_to_format = needs_truncation ? truncated_url : gurl;
+
+  base::OffsetAdjuster::Adjustments tmp_adjustments;
+  return base::i18n::ToLower(url_formatter::FormatUrlWithAdjustments(
+      url_to_format, url_formatter::kFormatUrlOmitUsernamePassword,
+      base::UnescapeRule::SPACES | base::UnescapeRule::PATH_SEPARATORS |
+          base::UnescapeRule::URL_SPECIAL_CHARS_EXCEPT_PATH_SEPARATORS,
+      nullptr, nullptr, adjustments ? adjustments : &tmp_adjustments));
+}
+
+std::u16string CleanUpTitleForMatching(std::u16string_view title) {
+  return base::i18n::ToLower(title.substr(0u, kCleanedUpTitleMaxLength));
+}
+
+}  // namespace omnibox

@@ -1,0 +1,16 @@
+{
+  "name": "bfcache test activetab",
+  "version": "0.1",
+  "manifest_version": 3,
+  "description": "Checks that activeTab permission plays nice with back forward cache.",
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "activeTab test"
+  }
+}

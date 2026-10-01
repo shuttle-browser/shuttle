@@ -1,0 +1,385 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "extensions/browser/app_window/app_window.h"
+
+#include "base/memory/raw_ptr.h"
+#include "base/run_loop.h"
+#include "base/strings/stringprintf.h"
+#include "build/build_config.h"
+#include "chrome/browser/apps/app_service/app_service_proxy.h"
+#include "chrome/browser/apps/app_service/app_service_proxy_factory.h"
+#include "chrome/browser/apps/platform_apps/app_browsertest_util.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/apps/chrome_app_window_client.h"
+#include "components/services/app_service/public/cpp/app_launch_params.h"
+#include "components/services/app_service/public/cpp/app_launch_util.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/browser_test_utils.h"
+#include "content/public/test/test_utils.h"
+#include "extensions/browser/app_window/app_window_geometry_cache.h"
+#include "extensions/browser/app_window/native_app_window.h"
+#include "extensions/common/constants.h"
+#include "extensions/common/extension.h"
+#include "extensions/common/extension_id.h"
+#include "extensions/components/native_app_window/native_app_window_views.h"
+#include "extensions/test/extension_test_message_listener.h"
+#include "extensions/test/result_catcher.h"
+#include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
+#include "ui/display/display_switches.h"
+#include "url/gurl.h"
+
+using extensions::AppWindowGeometryCache;
+using extensions::ResultCatcher;
+
+// This helper class can be used to wait for changes in the app window
+// geometry cache registry for a specific window in a specific extension.
+class GeometryCacheChangeHelper : AppWindowGeometryCache::Observer {
+ public:
+  GeometryCacheChangeHelper(AppWindowGeometryCache* cache,
+                            const extensions::ExtensionId& extension_id,
+                            const std::string& window_id,
+                            const gfx::Rect& bounds)
+      : cache_(cache),
+        extension_id_(extension_id),
+        window_id_(window_id),
+        bounds_(bounds),
+        satisfied_(false),
+        waiting_(false) {
+    cache_->AddObserver(this);
+  }
+
+  // This method will block until the app window geometry cache registry will
+  // provide a bound for |window_id_| that is entirely different (as in x/y/w/h)
+  // from the initial |bounds_|.
+  void WaitForEntirelyChanged() {
+    if (satisfied_)
+      return;
+
+    waiting_ = true;
+    loop_.Run();
+  }
+
+  // Implements the AppWindowGeometryCache::Observer interface.
+  void OnGeometryCacheChanged(const extensions::ExtensionId& extension_id,
+                              const std::string& window_id,
+                              const gfx::Rect& bounds) override {
+    if (extension_id != extension_id_ || window_id != window_id_)
+      return;
+
+    if (bounds_.x() != bounds.x() && bounds_.y() != bounds.y() &&
+        bounds_.width() != bounds.width() &&
+        bounds_.height() != bounds.height()) {
+      satisfied_ = true;
+      cache_->RemoveObserver(this);
+
+      if (waiting_)
+        loop_.QuitWhenIdle();
+    }
+  }
+
+ private:
+  raw_ptr<AppWindowGeometryCache> cache_;
+  extensions::ExtensionId extension_id_;
+  std::string window_id_;
+  gfx::Rect bounds_;
+  bool satisfied_;
+  bool waiting_;
+  // base::RunLoop used to require kNestableTaskAllowed
+  base::RunLoop loop_{base::RunLoop::Type::kNestableTasksAllowed};
+};
+
+// Helper class for tests related to the Apps Window API (chrome.app.window).
+class AppWindowAPITest : public extensions::PlatformAppBrowserTest {
+ protected:
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    extensions::PlatformAppBrowserTest::SetUpCommandLine(command_line);
+    command_line->AppendSwitchASCII(::switches::kForceDeviceScaleFactor, "1.0");
+  }
+
+  bool RunAppWindowAPITest(const char* testName) {
+    if (!BeginAppWindowAPITest(testName))
+      return false;
+
+    ResultCatcher catcher;
+    if (!catcher.GetNextResult()) {
+      message_ = catcher.message();
+      return false;
+    }
+
+    return true;
+  }
+
+  bool RunAppWindowAPITestAndWaitForRoundTrip(const char* testName) {
+    if (!BeginAppWindowAPITest(testName))
+      return false;
+
+    ExtensionTestMessageListener round_trip_listener("WaitForRoundTrip",
+                                                     ReplyBehavior::kWillReply);
+    if (!round_trip_listener.WaitUntilSatisfied()) {
+      message_ = "Did not get the 'WaitForRoundTrip' message.";
+      return false;
+    }
+
+    round_trip_listener.Reply("");
+
+    ResultCatcher catcher;
+    if (!catcher.GetNextResult()) {
+      message_ = catcher.message();
+      return false;
+    }
+
+    return true;
+  }
+
+ private:
+  bool BeginAppWindowAPITest(const char* testName) {
+    ExtensionTestMessageListener launched_listener("Launched",
+                                                   ReplyBehavior::kWillReply);
+    LoadAndLaunchPlatformApp("window_api", &launched_listener);
+    if (!launched_listener.WaitUntilSatisfied()) {
+      message_ = "Did not get the 'Launched' message.";
+      return false;
+    }
+
+    launched_listener.Reply(testName);
+    return true;
+  }
+};
+
+// These tests are flaky after https://codereview.chromium.org/57433010/.
+// See http://crbug.com/40341463.
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, TestCreate) {
+  ASSERT_TRUE(RunAppWindowAPITest("testCreate")) << message_;
+}
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, TestSingleton) {
+  ASSERT_TRUE(RunAppWindowAPITest("testSingleton")) << message_;
+}
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, TestCloseEvent) {
+  ASSERT_TRUE(RunAppWindowAPITest("testCloseEvent")) << message_;
+}
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, DISABLED_TestMaximize) {
+  ASSERT_TRUE(RunAppWindowAPITest("testMaximize")) << message_;
+}
+
+// Flaky on Linux. http://crbug.com/40389643.
+#if BUILDFLAG(IS_LINUX)
+#define MAYBE_TestMinimize DISABLED_TestMinimize
+#else
+#define MAYBE_TestMinimize TestMinimize
+#endif
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, MAYBE_TestMinimize) {
+  ASSERT_TRUE(RunAppWindowAPITest("testMinimize")) << message_;
+}
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, DISABLED_TestRestore) {
+  ASSERT_TRUE(RunAppWindowAPITest("testRestore")) << message_;
+}
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, DISABLED_TestRestoreAfterClose) {
+  ASSERT_TRUE(RunAppWindowAPITest("testRestoreAfterClose")) << message_;
+}
+
+// These tests will be flaky in Linux as window bounds change asynchronously.
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+#define MAYBE_TestDeprecatedBounds DISABLED_TestDeprecatedBounds
+#define MAYBE_TestInitialBounds DISABLED_TestInitialBounds
+#define MAYBE_TestInitialConstraints DISABLED_TestInitialConstraints
+#define MAYBE_TestSetBounds DISABLED_TestSetBounds
+#define MAYBE_TestSetSizeConstraints DISABLED_TestSetSizeConstraints
+#else
+#define MAYBE_TestDeprecatedBounds TestDeprecatedBounds
+#define MAYBE_TestInitialBounds TestInitialBounds
+#define MAYBE_TestInitialConstraints TestInitialConstraints
+#define MAYBE_TestSetBounds TestSetBounds
+// Disabled as flakey, see http://crbug.com/41143711 for details.
+#define MAYBE_TestSetSizeConstraints DISABLED_TestSetSizeConstraints
+#endif
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, MAYBE_TestDeprecatedBounds) {
+  ASSERT_TRUE(RunAppWindowAPITest("testDeprecatedBounds")) << message_;
+}
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, MAYBE_TestInitialBounds) {
+  ASSERT_TRUE(RunAppWindowAPITest("testInitialBounds")) << message_;
+}
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, MAYBE_TestInitialConstraints) {
+  ASSERT_TRUE(RunAppWindowAPITest("testInitialConstraints")) << message_;
+}
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, MAYBE_TestSetBounds) {
+  ASSERT_TRUE(RunAppWindowAPITest("testSetBounds")) << message_;
+}
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, MAYBE_TestSetSizeConstraints) {
+  ASSERT_TRUE(RunAppWindowAPITest("testSetSizeConstraints")) << message_;
+}
+
+// Flaky failures on mac_rel and WinXP, see http://crbug.com/40343413.
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest,
+                       DISABLED_TestRestoreGeometryCacheChange) {
+  // This test is similar to the other AppWindowAPI tests except that at some
+  // point the app will send a 'ListenGeometryChange' message at which point the
+  // test will check if the geometry cache entry for the test window has
+  // changed. When the change happens, the test will let the app know so it can
+  // continue running.
+  ExtensionTestMessageListener launched_listener("Launched",
+                                                 ReplyBehavior::kWillReply);
+
+  const extensions::Extension* extension = LoadExtension(
+      test_data_dir_.AppendASCII("platform_apps").AppendASCII("window_api"));
+  EXPECT_TRUE(extension);
+
+  apps::AppServiceProxyFactory::GetForProfile(browser()->GetProfile())
+      ->LaunchAppWithParams(apps::AppLaunchParams(
+          extension->id(), apps::LaunchContainer::kLaunchContainerNone,
+          WindowOpenDisposition::NEW_WINDOW, apps::LaunchSource::kFromTest));
+
+  ExtensionTestMessageListener geometry_listener("ListenGeometryChange",
+                                                 ReplyBehavior::kWillReply);
+
+  ASSERT_TRUE(launched_listener.WaitUntilSatisfied());
+  launched_listener.Reply("testRestoreAfterGeometryCacheChange");
+
+  ASSERT_TRUE(geometry_listener.WaitUntilSatisfied());
+
+  GeometryCacheChangeHelper geo_change_helper_1(
+      AppWindowGeometryCache::Get(browser()->GetProfile()), extension->id(),
+      // The next line has information that has to stay in sync with the app.
+      "test-ra", gfx::Rect(200, 200, 200, 200));
+
+  GeometryCacheChangeHelper geo_change_helper_2(
+      AppWindowGeometryCache::Get(browser()->GetProfile()), extension->id(),
+      // The next line has information that has to stay in sync with the app.
+      "test-rb", gfx::Rect(200, 200, 200, 200));
+
+  // These calls will block until the app window geometry cache will change.
+  geo_change_helper_1.WaitForEntirelyChanged();
+  geo_change_helper_2.WaitForEntirelyChanged();
+
+  ResultCatcher catcher;
+  geometry_listener.Reply("");
+  ASSERT_TRUE(catcher.GetNextResult());
+}
+
+// TODO(benwells): Implement on Mac.
+#if defined(USE_AURA)
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, TestFrameColors) {
+  ASSERT_TRUE(RunAppWindowAPITest("testFrameColors")) << message_;
+}
+#endif
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, TestVisibleOnAllWorkspaces) {
+  ASSERT_TRUE(
+      RunAppWindowAPITestAndWaitForRoundTrip("testVisibleOnAllWorkspaces"))
+      << message_;
+}
+
+namespace {
+
+class ClosingOnFullscreenTransitionWindow
+    : public native_app_window::NativeAppWindowViews {
+ public:
+  ClosingOnFullscreenTransitionWindow() = default;
+  ~ClosingOnFullscreenTransitionWindow() override = default;
+
+  void SetFullscreen(int fullscreen_types) override {
+    // Simulate window closure during fullscreen transition (e.g. as can happen
+    // on macOS when spinning a nested run loop).
+    widget()->CloseNow();
+  }
+};
+
+class TestAppWindowClient : public ChromeAppWindowClient {
+ public:
+  TestAppWindowClient() = default;
+  ~TestAppWindowClient() override = default;
+
+  std::unique_ptr<extensions::NativeAppWindow> CreateNativeAppWindow(
+      extensions::AppWindow* window,
+      extensions::AppWindow::CreateParams* params) override {
+    auto native_window =
+        std::make_unique<ClosingOnFullscreenTransitionWindow>();
+    native_window->Init(window, *params);
+    return native_window;
+  }
+};
+
+}  // namespace
+
+// Regression test for crbug.com/516948486.
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest, UafInSetNativeWindowFullscreen) {
+  const extensions::Extension* extension = LoadExtension(
+      test_data_dir_.AppendASCII("platform_apps").AppendASCII("window_api"));
+  ASSERT_TRUE(extension);
+
+  TestAppWindowClient test_client;
+  // `AppWindowClient::Set()` has a DCHECK verifying that we don't overwrite a
+  // non-null client with another non-null client. We must clear the existing
+  // client (set during browser startup) before setting our test client.
+  extensions::AppWindowClient::Set(nullptr);
+  extensions::AppWindowClient::Set(&test_client);
+
+  extensions::AppWindow* window =
+      CreateAppWindowFromParams(browser()->GetProfile(), extension,
+                                extensions::AppWindow::CreateParams());
+  ASSERT_TRUE(window);
+
+  // Trigger fullscreen transition. In our placeholder `SetFullscreen()`,
+  // `OnNativeClose()` will be called, deleting `window`. Without the weak
+  // pointer check in `SetNativeWindowFullscreen()`, this call would result in a
+  // Use-After-Free when `RestoreAlwaysOnTop()` is reached.
+  SetNativeWindowFullscreenForTesting(window);
+
+  // Clear our test client before restoring the production client.
+  extensions::AppWindowClient::Set(nullptr);
+  extensions::AppWindowClient::Set(ChromeAppWindowClient::GetInstance());
+}
+
+IN_PROC_BROWSER_TEST_F(AppWindowAPITest,
+                       RendererInitiatedCrossProcessNavigationBlocked) {
+  ASSERT_TRUE(StartEmbeddedTestServer());
+
+  // Launch a platform app and wait for it to be ready.
+  ExtensionTestMessageListener listener("ready", ReplyBehavior::kWillReply);
+  const extensions::Extension* extension =
+      LoadAndLaunchPlatformApp("windows_api_set_icon", &listener);
+  ASSERT_TRUE(extension);
+  listener.Reply("");
+
+  extensions::AppWindow* app_window = GetFirstAppWindow();
+  ASSERT_TRUE(app_window);
+  content::WebContents* web_contents = app_window->web_contents();
+  ASSERT_TRUE(web_contents);
+
+  // Clear browser_handles_all_top_level_requests to simulate a compromised
+  // renderer (which would ignore this preference and try to navigate directly).
+  web_contents->GetMutableRendererPrefs()
+      ->browser_handles_all_top_level_requests = false;
+  web_contents->SyncRendererPrefs();
+
+  GURL target_url = embedded_test_server()->GetURL("/title1.html");
+
+  content::TestNavigationManager navigation_manager(web_contents, target_url);
+
+  // Trigger renderer-initiated navigation.
+  ASSERT_TRUE(content::ExecJs(web_contents,
+                              base::StringPrintf("window.location.href = '%s';",
+                                                 target_url.spec().c_str())));
+
+  ASSERT_TRUE(navigation_manager.WaitForNavigationFinished());
+
+  EXPECT_FALSE(navigation_manager.was_committed());
+  EXPECT_FALSE(navigation_manager.was_successful());
+
+  // Verify we didn't actually navigate.
+  EXPECT_NE(target_url, web_contents->GetLastCommittedURL());
+}

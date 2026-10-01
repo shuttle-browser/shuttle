@@ -1,0 +1,40 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module payments.mojom;
+
+import "url/mojom/url.mojom";
+
+enum PaymentHandlerStatus {
+  SUCCESS,
+  NOT_FOUND,
+  NO_ACTIVE_WORKER,
+  STORAGE_OPERATION_FAILED,
+  FETCH_INSTRUMENT_ICON_FAILED,
+  FETCH_PAYMENT_APP_INFO_FAILED,
+};
+
+enum PaymentDelegation {
+  SHIPPING_ADDRESS,
+  PAYER_NAME,
+  PAYER_PHONE,
+  PAYER_EMAIL,
+};
+
+// This interface provides implementation of PaymentManager.idl in render
+// side. This interface is implemented by payment_manager.cc and runs in browser
+// side.
+interface PaymentManager {
+  // |context_url| is the url of the web page creating this interface.
+  // |service_worker_scope| is passed as string since it is from
+  // ServiceWorkerRegistration and the interface is used for
+  // ServiceWorkerRegistration.idl
+  Init(url.mojom.Url context_url, string service_worker_scope);
+  SetUserHint(string user_hint);
+  // A method from PaymentManager.idl which lets payment handlers specify
+  // whether or not they can handle shipping address or contact info (payer's
+  // name/email/phone).
+  EnableDelegations(array<PaymentDelegation> delegations)
+     =>(PaymentHandlerStatus status);
+};

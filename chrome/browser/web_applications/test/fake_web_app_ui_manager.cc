@@ -1,0 +1,325 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/web_applications/test/fake_web_app_ui_manager.h"
+
+#include <optional>
+#include <utility>
+
+#include "base/files/file_path.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
+#include "base/logging.h"
+#include "base/notimplemented.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/test/bind.h"
+#include "chrome/browser/ui/web_applications/web_app_run_on_os_login_notification.h"
+#include "chrome/browser/web_applications/web_app.h"
+#include "chrome/browser/web_applications/web_app_command_scheduler.h"
+#include "chrome/browser/web_applications/web_app_install_info.h"
+#include "chrome/browser/web_applications/web_app_provider.h"
+#include "chrome/browser/web_applications/web_app_registrar.h"
+#include "components/services/app_service/public/cpp/app_launch_util.h"
+#include "components/webapps/browser/install_result_code.h"
+#include "components/webapps/browser/uninstall_result_code.h"
+
+namespace web_app {
+
+FakeWebAppUiManager::FakeWebAppUiManager() = default;
+
+FakeWebAppUiManager::~FakeWebAppUiManager() = default;
+
+void FakeWebAppUiManager::Start() {}
+
+void FakeWebAppUiManager::Shutdown() {}
+
+void FakeWebAppUiManager::SetNumWindowsForApp(const webapps::AppId& app_id,
+                                              size_t num_windows_for_app) {
+  app_id_to_num_windows_map_[app_id] = num_windows_for_app;
+
+  if (num_windows_for_app != 0) {
+    return;
+  }
+
+  auto it = windows_closed_requests_map_.find(app_id);
+  if (it == windows_closed_requests_map_.end()) {
+    return;
+  }
+  for (auto& callback : it->second) {
+    std::move(callback).Run();
+  }
+
+  windows_closed_requests_map_.erase(it);
+}
+
+void FakeWebAppUiManager::SetOnNotifyOnAllAppWindowsClosedCallback(
+    base::RepeatingCallback<void(webapps::AppId)> callback) {
+  notify_on_all_app_windows_closed_callback_ = std::move(callback);
+}
+
+void FakeWebAppUiManager::SetOnLaunchWebAppCallback(
+    OnLaunchWebAppCallback callback) {
+  on_launch_web_app_callback_ = std::move(callback);
+}
+
+WebAppUiManagerImpl* FakeWebAppUiManager::AsImpl() {
+  return nullptr;
+}
+
+size_t FakeWebAppUiManager::GetNumWindowsForApp(const webapps::AppId& app_id) {
+  if (!app_id_to_num_windows_map_.contains(app_id)) {
+    return 0;
+  }
+  return app_id_to_num_windows_map_[app_id];
+}
+
+void FakeWebAppUiManager::CloseAppWindows(const webapps::AppId& app_id) {
+  SetNumWindowsForApp(app_id, 0);
+}
+
+void FakeWebAppUiManager::NotifyOnAllAppWindowsClosed(
+    const webapps::AppId& app_id,
+    base::OnceClosure callback) {
+  notify_on_all_app_windows_closed_callback_.Run(app_id);
+
+  if (GetNumWindowsForApp(app_id) == 0) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, std::move(callback));
+    return;
+  }
+
+  windows_closed_requests_map_[app_id].push_back(std::move(callback));
+}
+
+bool FakeWebAppUiManager::CanAddAppToQuickLaunchBar() const {
+  return can_add_to_quick_launch_bar_;
+}
+
+void FakeWebAppUiManager::AddAppToQuickLaunchBar(const webapps::AppId& app_id) {
+  if (can_add_to_quick_launch_bar_) {
+    quick_launch_bar_apps_.insert(app_id);
+  }
+}
+
+bool FakeWebAppUiManager::IsAppInQuickLaunchBar(
+    const webapps::AppId& app_id) const {
+  return quick_launch_bar_apps_.contains(app_id);
+}
+
+bool FakeWebAppUiManager::IsAppMigrationSuggested(
+    BrowserWindowInterface* window) const {
+  return false;
+}
+
+bool FakeWebAppUiManager::IsAppMigrationDialogShowing(
+    BrowserWindowInterface* window) const {
+  return false;
+}
+
+bool FakeWebAppUiManager::CanReparentAppTabToWindow(
+    const webapps::AppId& app_id,
+    bool shortcut_created,
+    content::WebContents* web_contents) const {
+  return true;
+}
+
+BrowserWindowInterface* FakeWebAppUiManager::ReparentAppTabToWindow(
+    content::WebContents* contents,
+    const webapps::AppId& app_id,
+    bool shortcut_created) {
+  ++num_reparent_tab_calls_;
+  return nullptr;
+}
+
+BrowserWindowInterface* FakeWebAppUiManager::ReparentAppTabToWindow(
+    content::WebContents* contents,
+    const webapps::AppId& app_id,
+    base::OnceCallback<void(content::WebContents*)> completion_callback) {
+  ++num_reparent_tab_calls_;
+  std::move(completion_callback).Run(contents);
+  return nullptr;
+}
+
+void FakeWebAppUiManager::ShowSubAppsInstallDialog(
+    content::WebContents* initiating_web_contents,
+    const std::vector<std::unique_ptr<WebAppInstallInfo>>& sub_apps,
+    const webapps::AppId& parent_app_id,
+    base::OnceCallback<void(bool)> callback) {
+  std::move(callback).Run(true);
+}
+
+void FakeWebAppUiManager::LaunchWebApp(apps::AppLaunchParams params,
+                                       LaunchWebAppWindowSetting launch_setting,
+                                       Profile& profile,
+                                       LaunchWebAppDebugValueCallback callback,
+                                       WithAppResources& lock) {
+  // Due to this sometimes causing confusion in tests, print that a launch has
+  // been faked. To have launches create real WebContents in unit_tests (which
+  // will be non-functional anyways), populate the WebAppUiManagerImpl in the
+  // FakeWebAppProvider during startup.
+  LOG(INFO) << "Pretending to launch web app " << params.app_id;
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE,
+      base::BindOnce(std::move(callback), /*browser=*/nullptr,
+                     /*web_contents=*/nullptr, params.container,
+                     base::Value("FakeWebAppUiManager::LaunchWebApp")));
+  if (on_launch_web_app_callback_) {
+    on_launch_web_app_callback_.Run(std::move(params),
+                                    std::move(launch_setting));
+  }
+}
+
+#if BUILDFLAG(IS_CHROMEOS)
+void FakeWebAppUiManager::MigrateLauncherState(
+    const webapps::AppId& from_app_id,
+    const webapps::AppId& to_app_id,
+    base::OnceClosure callback) {
+  std::move(callback).Run();
+}
+
+void FakeWebAppUiManager::DisplayRunOnOsLoginNotification(
+    const base::flat_map<webapps::AppId,
+                         WebAppUiManager::RoolNotificationBehavior>& apps,
+    base::WeakPtr<Profile> profile) {
+  // Still show the notification so it can be tested using the
+  // NotificationDisplayServiceTester
+  web_app::DisplayRunOnOsLoginNotification(apps, std::move(profile));
+}
+
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+void FakeWebAppUiManager::NotifyAppRelaunchState(
+    const webapps::AppId& placeholder_app_id,
+    const webapps::AppId& final_app_id,
+    const std::u16string& final_app_name,
+    base::WeakPtr<Profile> profile,
+    AppRelaunchState relaunch_state) {}
+
+content::WebContents* FakeWebAppUiManager::CreateNewTab() {
+  return nullptr;
+}
+
+bool FakeWebAppUiManager::IsWebContentsActiveTabInBrowser(
+    content::WebContents* web_contents) {
+  return true;
+}
+
+void FakeWebAppUiManager::TriggerInstallDialog(
+    content::WebContents* web_contents,
+    webapps::WebappInstallSource source,
+    InstallCallback callback) {
+  std::move(callback).Run("", trigger_install_dialog_result_code_);
+}
+
+void FakeWebAppUiManager::TriggerInstallDialogForManifestInstall(
+    content::WebContents* initiating_web_contents,
+    base::WeakPtr<content::Page> initiating_page,
+    std::unique_ptr<webapps::MlInstallOperationTracker> tracker,
+    blink::mojom::ManifestPtr manifest,
+    const GURL& manifest_url,
+    const GURL& requesting_page_url,
+    InstallCallback callback) {
+  NOTIMPLEMENTED();
+}
+
+void FakeWebAppUiManager::TriggerLaunchDialogForBackgroundInstall(
+    content::WebContents* initiating_web_contents,
+    const webapps::AppId& app_id,
+    Profile* profile,
+    const std::string& app_name,
+    const SkBitmap& icon,
+    base::OnceCallback<void(bool accepted)> callback) {
+  NOTIMPLEMENTED();
+}
+
+void FakeWebAppUiManager::PresentUserUninstallDialog(
+    const webapps::AppId& app_id,
+    webapps::WebappUninstallSource uninstall_source,
+    BrowserWindow* parent_window,
+    UninstallCompleteCallback callback) {
+  std::move(callback).Run(webapps::UninstallResultCode::kAppRemoved);
+}
+
+void FakeWebAppUiManager::PresentUserUninstallDialog(
+    const webapps::AppId& app_id,
+    webapps::WebappUninstallSource uninstall_source,
+    gfx::NativeWindow parent_window,
+    UninstallCompleteCallback callback) {
+  std::move(callback).Run(webapps::UninstallResultCode::kAppRemoved);
+}
+
+void FakeWebAppUiManager::PresentUserUninstallDialog(
+    const webapps::AppId& app_id,
+    webapps::WebappUninstallSource uninstall_source,
+    gfx::NativeWindow parent_window,
+    UninstallCompleteCallback callback,
+    UninstallScheduledCallback scheduled_callback) {
+  std::move(scheduled_callback).Run(/*uninstall_scheduled=*/true);
+  std::move(callback).Run(webapps::UninstallResultCode::kAppRemoved);
+}
+
+void FakeWebAppUiManager::SetProvider(WebAppProvider* provider) {
+  provider_ = provider;
+}
+
+void FakeWebAppUiManager::SetTriggerInstallDialogResultCode(
+    webapps::InstallResultCode code) {
+  trigger_install_dialog_result_code_ = code;
+}
+
+void FakeWebAppUiManager::UninstallAppSilentlyForMigration(
+    const webapps::AppId& app_id) {
+  if (provider_) {
+    const WebApp* app = provider_->registrar_unsafe().GetAppById(app_id);
+    if (!app) {
+      return;
+    }
+    WebAppManagementTypes sources = app->GetSources();
+    for (WebAppManagement::Type source : sources) {
+      provider_->scheduler().RemoveInstallManagementMaybeUninstall(
+          app_id, source,
+          webapps::WebappUninstallSource::kUninstallAndReplaceMigration,
+          base::DoNothing());
+    }
+  }
+}
+
+void FakeWebAppUiManager::ShowProfileErrorDialogForCorruptDB() {
+  ++num_show_profile_error_dialog_calls_;
+}
+
+void FakeWebAppUiManager::ShowIntentPicker(
+    const GURL& url,
+    content::WebContents* web_contents,
+    ShowIntentPickerBubbleCallback callback,
+    std::optional<webapps::AppId> scoped_app_id) {}
+
+void FakeWebAppUiManager::LaunchOrFocusIsolatedWebAppInstaller(
+    const base::FilePath& bundle_path) {}
+
+void FakeWebAppUiManager::MaybeCreateEnableSupportedLinksInfobar(
+    content::WebContents* web_contents,
+    const std::string& launch_name) {}
+
+void FakeWebAppUiManager::MaybeCreateWebAppBlockedMigrationInfoBar(
+    content::WebContents* web_contents,
+    base::OnceClosure on_dismiss_callback) {}
+
+void FakeWebAppUiManager::MaybeRemoveWebAppBlockedMigrationInfoBar(
+    content::WebContents* web_contents) {}
+
+void FakeWebAppUiManager::MaybeShowIPHPromoForAppsLaunchedViaLinkCapturing(
+    BrowserWindowInterface* browser,
+    Profile* profile,
+    const std::string& app_id) {}
+
+FakeWebAppUiManager* FakeWebAppUiManager::AsFakeWebAppUiManagerForTesting() {
+  return this;
+}
+
+void FakeWebAppUiManager::SetCanAddAppToQuickLaunchBar(bool can_add) {
+  can_add_to_quick_launch_bar_ = can_add;
+}
+
+}  // namespace web_app

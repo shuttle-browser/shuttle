@@ -1,0 +1,5 @@
+include_rules = [
+  "+components/google/core/common/google_util.h",
+  "+google_apis/google_api_keys.h",
+  "+ui/accessibility/ax_text_utils.h",
+]

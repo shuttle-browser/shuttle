@@ -1,0 +1,120 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "base/run_loop.h"
+#include "build/build_config.h"
+#include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/browser_window.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/media_router/media_router_ui_service.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/toolbar/cast/cast_toolbar_button_controller.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/media_router/app_menu_test_api.h"
+#include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions_container.h"
+#include "chrome/browser/ui/views/toolbar/toolbar_view.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "chrome/test/base/ui_test_utils.h"
+#include "content/public/test/browser_test.h"
+#include "ui/views/layout/animating_layout_manager_test_util.h"
+#include "ui/views/test/widget_test.h"
+#include "ui/views/widget/widget.h"
+
+namespace media_router {
+
+class MediaRouterUIBrowserTest : public InProcessBrowserTest {
+ public:
+  MediaRouterUIBrowserTest()
+      : issue_(Issue::CreateIssueWithIssueInfo(
+            IssueInfo("title notification",
+                      IssueInfo::Severity::NOTIFICATION,
+                      "sinkId1"))) {}
+  ~MediaRouterUIBrowserTest() override = default;
+
+  void SetUpOnMainThread() override {
+    routes_ = {MediaRoute("routeId1",
+                          MediaSource("urn:x-org.chromium.media:source:tab:*"),
+                          "sinkId1", "description", true)};
+
+    CHECK(!features::IsWebUIPinnedToolbarActionsEnabled())
+        << "Test needs modification to support WebUIPinnedToolbarActions";
+    auto* pinned_toolbar_actions_container =
+        static_cast<PinnedToolbarActionsContainer*>(
+            BrowserView::GetBrowserViewForBrowser(browser())
+                ->toolbar_button_provider()
+                ->GetPinnedToolbarActions());
+    views::test::ReduceAnimationDuration(pinned_toolbar_actions_container);
+  }
+
+  bool ToolbarIconExists() {
+    base::RunLoop().RunUntilIdle();
+    views::View* cast_icon = GetCastIcon();
+    return cast_icon && cast_icon->GetVisible();
+  }
+
+  void SetAlwaysShowActionPref(bool always_show) {
+    CastToolbarButtonController::SetAlwaysShowActionPref(
+        browser()->GetProfile(), always_show);
+  }
+
+ protected:
+  views::View* GetCastIcon() {
+    CHECK(!features::IsWebUIPinnedToolbarActionsEnabled())
+        << "Test needs modification to support WebUIPinnedToolbarActions";
+    return BrowserView::GetBrowserViewForBrowser(browser())
+        ->toolbar_button_provider()
+        ->GetPinnedToolbarActions()
+        ->GetBubbleAnchor(kActionRouteMedia)
+        .GetIfView();
+  }
+
+  CastToolbarButtonController* action_controller() {
+    return MediaRouterUIService::Get(browser()->GetProfile())
+        ->action_controller();
+  }
+
+  Issue issue_;
+
+  // A vector of MediaRoutes that includes a local route.
+  std::vector<MediaRoute> routes_;
+};
+
+IN_PROC_BROWSER_TEST_F(MediaRouterUIBrowserTest,
+                       EphemeralToolbarIconForRoutesAndIssues) {
+  action_controller()->OnIssue(issue_);
+  EXPECT_TRUE(ToolbarIconExists());
+  action_controller()->OnIssuesCleared();
+  EXPECT_FALSE(ToolbarIconExists());
+
+  action_controller()->OnRoutesUpdated(routes_);
+  EXPECT_TRUE(ToolbarIconExists());
+  action_controller()->OnRoutesUpdated(std::vector<MediaRoute>());
+  EXPECT_FALSE(ToolbarIconExists());
+
+  SetAlwaysShowActionPref(true);
+  EXPECT_TRUE(ToolbarIconExists());
+  SetAlwaysShowActionPref(false);
+  EXPECT_FALSE(ToolbarIconExists());
+}
+
+IN_PROC_BROWSER_TEST_F(MediaRouterUIBrowserTest,
+                       EphemeralToolbarIconWithMultipleWindows) {
+  action_controller()->OnRoutesUpdated(routes_);
+  EXPECT_TRUE(ToolbarIconExists());
+
+  // Opening and closing a window shouldn't affect the state of the ephemeral
+  // icon. Creating and removing the icon with multiple windows open should
+  // also work.
+  BrowserWindowInterface* browser2 = CreateBrowser(browser()->GetProfile());
+  EXPECT_TRUE(ToolbarIconExists());
+  action_controller()->OnRoutesUpdated(std::vector<MediaRoute>());
+  EXPECT_FALSE(ToolbarIconExists());
+  action_controller()->OnRoutesUpdated(routes_);
+  EXPECT_TRUE(ToolbarIconExists());
+  browser2->GetWindow()->Close();
+  EXPECT_TRUE(ToolbarIconExists());
+}
+
+}  // namespace media_router

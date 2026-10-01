@@ -1,0 +1,624 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webui/settings/search_engines_handler.h"
+
+#include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/time/time.h"
+#include "base/values.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/regional_capabilities/regional_capabilities_service_factory.h"
+#include "chrome/browser/search_engine_choice/search_engine_choice_service_factory.h"
+#include "chrome/browser/search_engines/template_url_service_factory.h"
+#include "chrome/test/base/testing_browser_process.h"
+#include "chrome/test/base/testing_profile_manager.h"
+#include "components/country_codes/country_codes.h"
+#include "components/regional_capabilities/regional_capabilities_service.h"
+#include "components/regional_capabilities/regional_capabilities_switches.h"
+#include "components/safe_browsing/core/common/safe_browsing_prefs.h"
+#include "components/search_engines/search_engine_choice/search_engine_choice_service.h"
+#include "components/search_engines/search_engine_choice/search_engine_choice_utils.h"
+#include "components/search_engines/search_engine_split_metrics.h"
+#include "components/search_engines/search_engine_type.h"
+#include "components/search_engines/search_engines_pref_names.h"
+#include "components/search_engines/search_engines_test_util.h"
+#include "components/search_engines/template_url.h"
+#include "components/search_engines/template_url_service.h"
+#include "components/signin/public/base/signin_switches.h"
+#include "components/version_info/version_info.h"
+#include "content/public/test/browser_task_environment.h"
+#include "content/public/test/test_web_contents_factory.h"
+#include "content/public/test/test_web_ui.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/search_engines_data/resources/definitions/prepopulated_engines.h"
+#include "ui/events/devices/device_data_manager.h"
+
+using ::country_codes::CountryId;
+
+namespace settings {
+namespace {
+TemplateURL* AddSearchEngine(TemplateURLService* template_url_service,
+                             const std::string& name,
+                             const std::u16string& keyword,
+                             int prepopulated_id,
+                             std::optional<std::string> url) {
+  TemplateURLData default_search_engine;
+  default_search_engine.SetShortName(base::UTF8ToUTF16(name));
+  default_search_engine.SetKeyword(keyword);
+  default_search_engine.prepopulate_id = prepopulated_id;
+
+  if (url.has_value()) {
+    default_search_engine.SetURL(*url);
+  } else {
+    default_search_engine.SetURL("http://" + name +
+                                 "foo.com/url?bar={searchTerms}");
+  }
+  default_search_engine.alternate_urls.push_back("http://" + name +
+                                                 "/alt#quux={searchTerms}");
+  return template_url_service->Add(
+      std::make_unique<TemplateURL>(default_search_engine));
+}
+}  // namespace
+
+class SearchEnginesHandlerTest : public testing::Test {
+ public:
+  SearchEnginesHandlerTest()
+      : profile_manager_(TestingBrowserProcess::GetGlobal()) {
+    ui::DeviceDataManager::CreateInstance();
+  }
+
+  void SetUp() override {
+    testing::Test::SetUp();
+
+    // The search engine choice feature is only enabled for countries in the
+    // EEA region.
+    base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
+        switches::kSearchEngineChoiceCountry, "BE");
+
+    ASSERT_TRUE(profile_manager_.SetUp());
+  }
+
+  void ConfigureTestWithRegularProfile(
+      base::OnceCallback<void(TemplateURLService&)> post_service_init_callback =
+          {}) {
+    ConfigureTestWithProfile(profile_manager_.CreateTestingProfile("Profile 1"),
+                             std::move(post_service_init_callback));
+  }
+
+  void ConfigureTestWithProfile(Profile* profile,
+                                base::OnceCallback<void(TemplateURLService&)>
+                                    post_service_init_callback = {}) {
+    // The test should be configured only once.
+    ASSERT_FALSE(handler_);
+    ASSERT_FALSE(web_ui_);
+
+    profile_ = profile;
+
+    TemplateURLServiceFactory::GetInstance()->SetTestingFactoryAndUse(
+        profile,
+        base::BindRepeating(&TemplateURLServiceFactory::BuildInstanceFor));
+    TemplateURLService* template_url_service =
+        TemplateURLServiceFactory::GetForProfile(profile);
+    bing_engine_ = AddSearchEngine(template_url_service, "bing",
+                                   TemplateURLPrepopulateData::bing.keyword,
+                                   TemplateURLPrepopulateData::bing.id,
+                                   TemplateURLPrepopulateData::bing.search_url);
+    TemplateURL* default_engine = AddSearchEngine(
+        template_url_service, "foo.com", u"foo_com", /*prepopulated_id=*/0,
+        /*url=*/std::nullopt);
+
+    template_url_service->SetUserSelectedDefaultSearchProvider(default_engine);
+
+    if (post_service_init_callback) {
+      std::move(post_service_init_callback).Run(*template_url_service);
+    }
+
+    web_ui_ = std::make_unique<content::TestWebUI>();
+    web_ui_->set_web_contents(web_contents_factory_.CreateWebContents(profile));
+
+    handler_ = std::make_unique<SearchEnginesHandler>(profile);
+    handler_->set_web_ui(web_ui_.get());
+
+    handler()->AllowJavascript();
+    handler()->RegisterMessages();
+    web_ui()->ClearTrackedCalls();
+  }
+
+  content::TestWebUI* web_ui() { return web_ui_.get(); }
+  Profile* profile() const { return profile_; }
+  SearchEnginesHandler* handler() const { return handler_.get(); }
+  base::HistogramTester& histogram_tester() { return histogram_tester_; }
+
+  TestingProfileManager& profile_manager() { return profile_manager_; }
+
+  int bing_id() { return bing_engine_->id(); }
+
+ private:
+  base::HistogramTester histogram_tester_;
+  content::BrowserTaskEnvironment task_environment_;
+  TestingProfileManager profile_manager_;
+  content::TestWebContentsFactory web_contents_factory_;
+
+  raw_ptr<TemplateURL> bing_engine_ = nullptr;
+  raw_ptr<Profile> profile_ = nullptr;
+  std::unique_ptr<content::TestWebUI> web_ui_;
+  std::unique_ptr<SearchEnginesHandler> handler_;
+};
+
+TEST_F(SearchEnginesHandlerTest, ChangeInTemplateUrlDataTriggersCallback) {
+  ConfigureTestWithRegularProfile();
+
+  EXPECT_EQ(0U, web_ui()->call_data().size());
+  TemplateURLService* template_url_service =
+      TemplateURLServiceFactory::GetForProfile(profile());
+  TemplateURL* template_url = AddSearchEngine(template_url_service, "bar.com",
+                                              u"bar_com", /*prepopulated_id=*/0,
+                                              /*url=*/std::nullopt);
+
+  EXPECT_EQ(1U, web_ui()->call_data().size());
+  const content::TestWebUI::CallData& call_data = *web_ui()->call_data().back();
+  EXPECT_EQ("cr.webUIListenerCallback", call_data.function_name());
+  EXPECT_EQ("search-engines-changed", call_data.arg1()->GetString());
+
+  template_url_service->SetUserSelectedDefaultSearchProvider(template_url);
+  EXPECT_EQ(2U, web_ui()->call_data().size());
+  const content::TestWebUI::CallData& second_call_data =
+      *web_ui()->call_data().back();
+  EXPECT_EQ("cr.webUIListenerCallback", second_call_data.function_name());
+  EXPECT_EQ("search-engines-changed", second_call_data.arg1()->GetString());
+}
+
+TEST_F(SearchEnginesHandlerTest,
+       SettingTheDefaultSearchEngineRecordsHistogram) {
+  ConfigureTestWithRegularProfile();
+
+  base::ListValue first_call_args;
+  // Search engine model id.
+  first_call_args.Append(bing_id());
+  first_call_args.Append(static_cast<int>(
+      search_engines::ChoiceMadeLocation::kSearchEngineSettings));
+  first_call_args.Append(base::Value());  // saveGuestChoice
+  web_ui()->HandleReceivedMessage("setDefaultSearchEngine", first_call_args);
+
+  histogram_tester().ExpectUniqueSample(
+      search_engines::kSearchEngineChoiceScreenDefaultSearchEngineTypeHistogram,
+      SearchEngineType::SEARCH_ENGINE_BING, 1);
+
+  base::ListValue second_call_args;
+  // Search engine model id.
+  second_call_args.Append(bing_id());
+  second_call_args.Append(
+      static_cast<int>(search_engines::ChoiceMadeLocation::kSearchSettings));
+  second_call_args.Append(base::Value());  // saveGuestChoice
+  web_ui()->HandleReceivedMessage("setDefaultSearchEngine", second_call_args);
+
+  histogram_tester().ExpectUniqueSample(
+      search_engines::kSearchEngineChoiceScreenDefaultSearchEngineTypeHistogram,
+      SearchEngineType::SEARCH_ENGINE_BING, 1);
+}
+
+TEST_F(SearchEnginesHandlerTest,
+       ModifyingSearchEngineSetsSearchEngineChoiceTimestamp) {
+  ConfigureTestWithRegularProfile();
+  PrefService* pref_service = profile()->GetPrefs();
+
+  EXPECT_FALSE(pref_service->HasPrefPath(
+      prefs::kDefaultSearchProviderChoiceScreenCompletionTimestamp));
+  EXPECT_FALSE(pref_service->HasPrefPath(
+      prefs::kDefaultSearchProviderChoiceScreenCompletionVersion));
+
+  base::ListValue args;
+  // Search engine model id.
+  args.Append(bing_id());
+  args.Append(static_cast<int>(
+      search_engines::ChoiceMadeLocation::kSearchEngineSettings));
+  args.Append(base::Value());  // saveGuestChoice
+  web_ui()->HandleReceivedMessage("setDefaultSearchEngine", args);
+
+  EXPECT_NEAR(pref_service->GetInt64(
+                  prefs::kDefaultSearchProviderChoiceScreenCompletionTimestamp),
+              base::Time::Now().ToDeltaSinceWindowsEpoch().InSeconds(),
+              /*abs_error=*/2);
+  EXPECT_EQ(pref_service->GetString(
+                prefs::kDefaultSearchProviderChoiceScreenCompletionVersion),
+            version_info::GetVersionNumber());
+}
+
+TEST_F(SearchEnginesHandlerTest,
+       RecordingSearchEngineShouldBeDoneAfterSettingDefault) {
+  ConfigureTestWithRegularProfile();
+  TemplateURLService* template_url_service =
+      TemplateURLServiceFactory::GetForProfile(profile());
+
+  const TemplateURL* default_search_engine =
+      template_url_service->GetDefaultSearchProvider();
+  SearchEngineType default_search_engine_type =
+      default_search_engine->GetEngineType(
+          template_url_service->search_terms_data());
+
+  CHECK_NE(default_search_engine_type, SearchEngineType::SEARCH_ENGINE_BING);
+  base::ListValue args;
+  // Search engine model id.
+  args.Append(bing_id());
+  args.Append(static_cast<int>(
+      search_engines::ChoiceMadeLocation::kSearchEngineSettings));
+  args.Append(base::Value());  // saveGuestChoice
+  web_ui()->HandleReceivedMessage("setDefaultSearchEngine", args);
+
+  histogram_tester().ExpectUniqueSample(
+      search_engines::kSearchEngineChoiceScreenDefaultSearchEngineTypeHistogram,
+      SearchEngineType::SEARCH_ENGINE_BING, 1);
+}
+
+TEST_F(SearchEnginesHandlerTest, GetSaveGuestChoiceRegularProfile) {
+  ConfigureTestWithRegularProfile();
+
+  EXPECT_EQ(0U, web_ui()->call_data().size());
+  base::ListValue args;
+  args.Append("callback_id");
+  web_ui()->HandleReceivedMessage("getSaveGuestChoice", args);
+  EXPECT_EQ(1U, web_ui()->call_data().size());
+  auto& call_data = web_ui()->call_data().back();
+  EXPECT_EQ(call_data->arg1()->GetString(), "callback_id");
+  // arg2 is a boolean that is true if the callback is successful.
+  EXPECT_TRUE(call_data->arg2()->GetBool());
+  // arg3 is our result.
+  EXPECT_TRUE(call_data->arg3()->is_none());
+}
+
+TEST_F(SearchEnginesHandlerTest, GetSaveGuestChoiceGuestProfile) {
+  ConfigureTestWithProfile(profile_manager().CreateGuestProfile());
+  auto* choice_service =
+      search_engines::SearchEngineChoiceServiceFactory::GetForProfile(
+          profile());
+  ASSERT_TRUE(
+      regional_capabilities::RegionalCapabilitiesServiceFactory::GetForProfile(
+          profile())
+          ->IsInEeaCountry());
+  ASSERT_TRUE(choice_service->IsDsePropagationAllowedForGuest());
+
+  EXPECT_EQ(0U, web_ui()->call_data().size());
+  {
+    base::ListValue args;
+    args.Append("callback_id_1");
+    web_ui()->HandleReceivedMessage("getSaveGuestChoice", args);
+    EXPECT_EQ(1U, web_ui()->call_data().size());
+    auto& call_data = web_ui()->call_data().back();
+    EXPECT_EQ(call_data->arg1()->GetString(), "callback_id_1");
+    // arg2 is a boolean that is true if the callback is successful.
+    EXPECT_TRUE(call_data->arg2()->GetBool());
+    // arg3 is our result.
+    EXPECT_FALSE(call_data->arg3()->GetBool());
+  }
+
+  choice_service->SetSavedSearchEngineBetweenGuestSessions(2);
+  {
+    base::ListValue args;
+    args.Append("callback_id_2");
+    web_ui()->HandleReceivedMessage("getSaveGuestChoice", args);
+    EXPECT_EQ(2U, web_ui()->call_data().size());
+    auto& call_data = web_ui()->call_data().back();
+    EXPECT_EQ(call_data->arg1()->GetString(), "callback_id_2");
+    // arg2 is a boolean that is true if the callback is successful.
+    EXPECT_TRUE(call_data->arg2()->GetBool());
+    // arg3 is our result.
+    EXPECT_TRUE(call_data->arg3()->GetBool());
+  }
+}
+
+TEST_F(SearchEnginesHandlerTest, GetSaveGuestChoiceGuestProfile_NonEEA) {
+  base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
+      switches::kSearchEngineChoiceCountry, "US");
+
+  ConfigureTestWithProfile(profile_manager().CreateGuestProfile());
+  auto* choice_service =
+      search_engines::SearchEngineChoiceServiceFactory::GetForProfile(
+          profile());
+  ASSERT_FALSE(
+      regional_capabilities::RegionalCapabilitiesServiceFactory::GetForProfile(
+          profile())
+          ->IsInEeaCountry());
+  ASSERT_FALSE(choice_service->IsDsePropagationAllowedForGuest());
+
+  EXPECT_EQ(0U, web_ui()->call_data().size());
+  {
+    base::ListValue args;
+    args.Append("callback_id_1");
+    web_ui()->HandleReceivedMessage("getSaveGuestChoice", args);
+    EXPECT_EQ(1U, web_ui()->call_data().size());
+    auto& call_data = web_ui()->call_data().back();
+    EXPECT_EQ(call_data->arg1()->GetString(), "callback_id_1");
+    // arg2 is a boolean that is true if the callback is successful.
+    EXPECT_TRUE(call_data->arg2()->GetBool());
+    // arg3 is our result.
+    EXPECT_TRUE(call_data->arg3()->is_none());
+  }
+}
+
+TEST_F(SearchEnginesHandlerTest, UpdateSavedGuestSearch) {
+  ConfigureTestWithProfile(profile_manager().CreateGuestProfile());
+
+  auto* choice_service =
+      search_engines::SearchEngineChoiceServiceFactory::GetForProfile(
+          profile());
+  ASSERT_TRUE(
+      regional_capabilities::RegionalCapabilitiesServiceFactory::GetForProfile(
+          profile())
+          ->IsInEeaCountry());
+  ASSERT_TRUE(choice_service->IsDsePropagationAllowedForGuest());
+
+  EXPECT_EQ(std::nullopt,
+            choice_service->GetSavedSearchEngineBetweenGuestSessions());
+  {
+    base::ListValue args;
+    // Search engine model id.
+    args.Append(bing_id());
+    args.Append(static_cast<int>(
+        search_engines::ChoiceMadeLocation::kSearchEngineSettings));
+    args.Append(true);  // saveGuestChoice
+    web_ui()->HandleReceivedMessage("setDefaultSearchEngine", args);
+  }
+  // Check that saved guest DSE is updated.
+  EXPECT_EQ(TemplateURLPrepopulateData::bing.id,
+            choice_service->GetSavedSearchEngineBetweenGuestSessions());
+
+  {
+    base::ListValue args;
+    // Search engine model id.
+    args.Append(bing_id());
+    args.Append(static_cast<int>(
+        search_engines::ChoiceMadeLocation::kSearchEngineSettings));
+    args.Append(base::Value());  // saveGuestChoice
+    web_ui()->HandleReceivedMessage("setDefaultSearchEngine", args);
+  }
+  // Check that saved DSE doesn't change if a null saveGuestChoice parameter is
+  // passed in.
+  EXPECT_EQ(TemplateURLPrepopulateData::bing.id,
+            choice_service->GetSavedSearchEngineBetweenGuestSessions());
+
+  {
+    base::ListValue args;
+    // Search engine model id.
+    args.Append(bing_id());
+    args.Append(static_cast<int>(
+        search_engines::ChoiceMadeLocation::kSearchEngineSettings));
+    args.Append(false);  // saveGuestChoice
+    web_ui()->HandleReceivedMessage("setDefaultSearchEngine", args);
+  }
+  // Check that saved DSE is removed when saveGuestChoice is off.
+  EXPECT_EQ(std::nullopt,
+            choice_service->GetSavedSearchEngineBetweenGuestSessions());
+}
+
+TEST_F(SearchEnginesHandlerTest, UpdateSavedGuestSearch_NonEEA) {
+  base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
+      switches::kSearchEngineChoiceCountry, "US");
+
+  ConfigureTestWithProfile(profile_manager().CreateGuestProfile());
+
+  auto* choice_service =
+      search_engines::SearchEngineChoiceServiceFactory::GetForProfile(
+          profile());
+  ASSERT_FALSE(
+      regional_capabilities::RegionalCapabilitiesServiceFactory::GetForProfile(
+          profile())
+          ->IsInEeaCountry());
+  ASSERT_FALSE(choice_service->IsDsePropagationAllowedForGuest());
+
+  EXPECT_EQ(std::nullopt,
+            choice_service->GetSavedSearchEngineBetweenGuestSessions());
+  {
+    base::ListValue args;
+    // Search engine model id.
+    args.Append(bing_id());
+    args.Append(static_cast<int>(
+        search_engines::ChoiceMadeLocation::kSearchEngineSettings));
+    args.Append(true);  // saveGuestChoice
+    web_ui()->HandleReceivedMessage("setDefaultSearchEngine", args);
+  }
+  // When not in EEA, the saved guest DSE does not get updated, even if
+  // `saveGuestChoice` was somehow enabled.
+  EXPECT_EQ(std::nullopt,
+            choice_service->GetSavedSearchEngineBetweenGuestSessions());
+}
+
+TEST_F(SearchEnginesHandlerTest, TrafficHijackingHeuristic_Unknown) {
+  ConfigureTestWithRegularProfile();
+
+  histogram_tester().ExpectBucketCount(
+      "Settings.SearchEngines.SearchHijackingDetector.HeuristicAvailable",
+      false, 1);
+  histogram_tester().ExpectBucketCount(
+      "Settings.SearchEngines.SearchHijackingDetector.HeuristicAvailable", true,
+      0);
+  histogram_tester().ExpectTotalCount(
+      "Settings.SearchEngines.SearchHijackingDetector.HeuristicMatch", 0);
+  histogram_tester().ExpectTotalCount(
+      "Settings.SearchEngines.SearchHijackingDetector.HeuristicAvailable", 1);
+}
+
+TEST_F(SearchEnginesHandlerTest, TrafficHijackingHeuristic_NoMatch) {
+  TestingProfile* test_profile =
+      profile_manager().CreateTestingProfile("Profile 1");
+  test_profile->GetPrefs()->SetTime(
+      prefs::kExtensionTelemetrySearchHijackingLastCheckTime,
+      base::Time::Now());
+
+  ConfigureTestWithProfile(test_profile);
+
+  histogram_tester().ExpectBucketCount(
+      "Settings.SearchEngines.SearchHijackingDetector.HeuristicAvailable", true,
+      1);
+  histogram_tester().ExpectBucketCount(
+      "Settings.SearchEngines.SearchHijackingDetector.HeuristicAvailable",
+      false, 0);
+  histogram_tester().ExpectBucketCount(
+      "Settings.SearchEngines.SearchHijackingDetector.HeuristicMatch", false,
+      1);
+  histogram_tester().ExpectBucketCount(
+      "Settings.SearchEngines.SearchHijackingDetector.HeuristicMatch", true, 0);
+}
+
+TEST_F(SearchEnginesHandlerTest, TrafficHijackingHeuristic_Match) {
+  TestingProfile* test_profile =
+      profile_manager().CreateTestingProfile("Profile 1");
+  PrefService* pref_service = test_profile->GetPrefs();
+
+  pref_service->SetTime(prefs::kExtensionTelemetrySearchHijackingLastCheckTime,
+                        base::Time::Now());
+
+  base::DictValue signal_data;
+  signal_data.Set(
+      "detection_timestamp",
+      base::NumberToString(base::Time::Now().InMillisecondsSinceUnixEpoch()));
+  pref_service->SetDict(prefs::kExtensionTelemetrySearchHijackingSignalData,
+                        std::move(signal_data));
+
+  ConfigureTestWithProfile(test_profile);
+
+  histogram_tester().ExpectBucketCount(
+      "Settings.SearchEngines.SearchHijackingDetector.HeuristicAvailable", true,
+      1);
+  histogram_tester().ExpectBucketCount(
+      "Settings.SearchEngines.SearchHijackingDetector.HeuristicMatch", true, 1);
+  histogram_tester().ExpectBucketCount(
+      "Settings.SearchEngines.SearchHijackingDetector.HeuristicMatch", false,
+      0);
+}
+
+TEST_F(SearchEnginesHandlerTest, IsRecommendedFromPolicy) {
+  ConfigureTestWithRegularProfile();
+  TemplateURLService* template_url_service =
+      TemplateURLServiceFactory::GetForProfile(profile());
+
+  TemplateURLData rec_data;
+  rec_data.SetShortName(u"Recommended Search");
+  rec_data.SetKeyword(u"rec_keyword");
+  rec_data.SetURL("https://www.recommended.com/search?q={searchTerms}");
+  rec_data.policy_origin =
+      TemplateURLData::PolicyOrigin::kDefaultSearchProvider;
+  rec_data.enforced_by_policy = false;
+
+  template_url_service->Add(std::make_unique<TemplateURL>(rec_data));
+
+  base::ListValue args;
+  args.Append("callback_id");
+  web_ui()->HandleReceivedMessage("getCategorizedTemplateUrls", args);
+
+  const content::TestWebUI::CallData& call_data = *web_ui()->call_data().back();
+  EXPECT_EQ("cr.webUIResponse", call_data.function_name());
+  EXPECT_EQ("callback_id", call_data.arg1()->GetString());
+  EXPECT_TRUE(call_data.arg2()->GetBool());
+
+  ASSERT_TRUE(call_data.arg3()->is_dict());
+  const base::DictValue& response = call_data.arg3()->GetDict();
+
+  const base::ListValue* active_shortcuts =
+      response.FindList("activeSiteShortcuts");
+  ASSERT_TRUE(active_shortcuts);
+
+  bool found_rec = false;
+  for (const auto& entry : *active_shortcuts) {
+    ASSERT_TRUE(entry.is_dict());
+    const base::DictValue& dict = entry.GetDict();
+    if (dict.FindString("keyword") &&
+        *dict.FindString("keyword") == "rec_keyword") {
+      found_rec = true;
+      EXPECT_TRUE(dict.FindBool("isRecommendedFromPolicy").value_or(false));
+      EXPECT_FALSE(dict.FindBool("isManaged").value_or(true));
+    }
+  }
+  EXPECT_TRUE(found_rec);
+}
+
+TEST_F(SearchEnginesHandlerTest, OseSplitMetrics_NonJapan_NotRecorded) {
+  ConfigureTestWithRegularProfile();
+
+  base::ListValue args;
+  args.Append("callback_id");
+  web_ui()->HandleReceivedMessage("getCategorizedTemplateUrls", args);
+
+  histogram_tester().ExpectTotalCount(
+      "Search.OseSplitYahooJapan.DseTypeOnSettingsPageLoad", 0);
+  histogram_tester().ExpectTotalCount(
+      "Search.OseSplitYahooJapan.CountOnSettingsPageLoad", 0);
+  histogram_tester().ExpectTotalCount(
+      "Search.OseSplitYahooJapan.EngineStateOnSettingsPageLoad", 0);
+}
+
+TEST_F(SearchEnginesHandlerTest, OseSplitMetrics_Japan_Recorded) {
+  base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
+      switches::kSearchEngineChoiceCountry, "JP");
+  ConfigureTestWithRegularProfile(
+      base::BindOnce([](TemplateURLService& template_url_service) {
+        AddSearchEngine(&template_url_service, "yahoo_jp", u"yj1",
+                        TemplateURLPrepopulateData::yahoo_jp.id,
+                        TemplateURLPrepopulateData::yahoo_jp.search_url);
+        AddSearchEngine(&template_url_service, "yahoo_jp_next", u"yj2",
+                        TemplateURLPrepopulateData::yahoo_jp_next.id,
+                        TemplateURLPrepopulateData::yahoo_jp_next.search_url);
+      }));
+
+  base::ListValue args;
+  args.Append("callback_id");
+  web_ui()->HandleReceivedMessage("getCategorizedTemplateUrls", args);
+
+  histogram_tester().ExpectTotalCount(
+      "Search.OseSplitYahooJapan.DseTypeOnSettingsPageLoad", 0);
+  histogram_tester().ExpectUniqueSample(
+      "Search.OseSplitYahooJapan.CountOnSettingsPageLoad", 2, 1);
+  histogram_tester().ExpectBucketCount(
+      "Search.OseSplitYahooJapan.EngineStateOnSettingsPageLoad",
+      search_engines::OseSplitEngineState::kLegacyNotDseCustomized, 1);
+  histogram_tester().ExpectBucketCount(
+      "Search.OseSplitYahooJapan.EngineStateOnSettingsPageLoad",
+      search_engines::OseSplitEngineState::kNewNotDseCustomized, 1);
+  histogram_tester().ExpectTotalCount(
+      "Search.OseSplitYahooJapan.EngineStateOnSettingsPageLoad", 2);
+
+  // Calling again in the same session should not record duplicate samples.
+  base::ListValue args2;
+  args2.Append("callback_id_2");
+  web_ui()->HandleReceivedMessage("getCategorizedTemplateUrls", args2);
+
+  histogram_tester().ExpectTotalCount(
+      "Search.OseSplitYahooJapan.DseTypeOnSettingsPageLoad", 0);
+  histogram_tester().ExpectTotalCount(
+      "Search.OseSplitYahooJapan.CountOnSettingsPageLoad", 1);
+  histogram_tester().ExpectTotalCount(
+      "Search.OseSplitYahooJapan.EngineStateOnSettingsPageLoad", 2);
+}
+
+TEST_F(SearchEnginesHandlerTest, OseSplitMetrics_Japan_YahooDse_Recorded) {
+  base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
+      switches::kSearchEngineChoiceCountry, "JP");
+  ConfigureTestWithRegularProfile(
+      base::BindOnce([](TemplateURLService& template_url_service) {
+        TemplateURL* yj =
+            AddSearchEngine(&template_url_service, "yahoo_jp", u"yj1",
+                            TemplateURLPrepopulateData::yahoo_jp.id,
+                            TemplateURLPrepopulateData::yahoo_jp.search_url);
+        template_url_service.SetUserSelectedDefaultSearchProvider(yj);
+      }));
+
+  base::ListValue args;
+  args.Append("callback_id");
+  web_ui()->HandleReceivedMessage("getCategorizedTemplateUrls", args);
+
+  histogram_tester().ExpectUniqueSample(
+      "Search.OseSplitYahooJapan.DseTypeOnSettingsPageLoad",
+      search_engines::OseSplitType::kLegacy, 1);
+  histogram_tester().ExpectUniqueSample(
+      "Search.OseSplitYahooJapan.CountOnSettingsPageLoad", 1, 1);
+  histogram_tester().ExpectUniqueSample(
+      "Search.OseSplitYahooJapan.EngineStateOnSettingsPageLoad",
+      search_engines::OseSplitEngineState::kLegacyDseCustomized, 1);
+}
+
+}  // namespace settings

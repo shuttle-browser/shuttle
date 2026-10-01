@@ -1,0 +1,95 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/performance_manager/decorators/process_priority_aggregator_data.h"
+
+#include "base/check_op.h"
+#include "base/dcheck_is_on.h"
+#include "base/notreached.h"
+#include "base/numerics/safe_conversions.h"
+
+namespace performance_manager {
+
+ProcessPriorityAggregatorData::ProcessPriorityAggregatorData() = default;
+
+void ProcessPriorityAggregatorData::Decrement(
+    base::Process::Priority priority) {
+  switch (priority) {
+    case base::Process::Priority::kMinValue:
+#if DCHECK_IS_ON()
+      DCHECK_LT(0u, lowest_count_);
+      --lowest_count_;
+#endif
+      return;
+
+    case base::Process::Priority::kUserVisible: {
+      DCHECK_LT(0u, user_visible_count_);
+      --user_visible_count_;
+      return;
+    }
+
+    case base::Process::Priority::kUserBlocking: {
+      DCHECK_LT(0u, user_blocking_count_);
+      --user_blocking_count_;
+      return;
+    }
+  }
+
+  NOTREACHED();
+}
+
+void ProcessPriorityAggregatorData::Increment(
+    base::Process::Priority priority) {
+  switch (priority) {
+    case base::Process::Priority::kMinValue:
+#if DCHECK_IS_ON()
+      ++lowest_count_;
+#endif
+      return;
+
+    case base::Process::Priority::kUserVisible: {
+      ++user_visible_count_;
+      return;
+    }
+
+    case base::Process::Priority::kUserBlocking: {
+      ++user_blocking_count_;
+      return;
+    }
+  }
+
+  NOTREACHED();
+}
+
+bool ProcessPriorityAggregatorData::IsEmpty() const {
+#if DCHECK_IS_ON()
+  if (lowest_count_) {
+    return false;
+  }
+#endif
+  return user_blocking_count_ == 0 && user_visible_count_ == 0;
+}
+
+base::Process::Priority ProcessPriorityAggregatorData::GetPriority() const {
+  if (user_blocking_count_ > 0) {
+    return base::Process::Priority::kUserBlocking;
+  }
+  if (user_visible_count_ > 0) {
+    return base::Process::Priority::kUserVisible;
+  }
+  return base::Process::Priority::kMinValue;
+}
+
+base::DictValue ProcessPriorityAggregatorData::Describe() const {
+  base::DictValue ret;
+  ret.Set("user_visible_count", base::saturated_cast<int>(user_visible_count_));
+  ret.Set("user_blocking_count",
+          base::saturated_cast<int>(user_blocking_count_));
+#if DCHECK_IS_ON()
+  ret.Set("lowest_count", base::saturated_cast<int>(lowest_count_));
+#endif  // DCHECK_IS_ON()
+  return ret;
+}
+
+}  // namespace performance_manager

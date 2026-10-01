@@ -1,0 +1,599 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/page_info/page_info_cookies_content_view.h"
+
+#include <memory>
+#include <string_view>
+
+#include "base/strings/string_util.h"
+#include "base/test/scoped_feature_list.h"
+#include "chrome/browser/ui/layout_constants.h"
+#include "chrome/browser/ui/page_info/chrome_page_info_delegate.h"
+#include "chrome/browser/ui/views/page_info/page_info_view_factory.h"
+#include "chrome/test/base/testing_profile.h"
+#include "chrome/test/views/chrome_views_test_base.h"
+#include "components/content_settings/core/common/cookie_controls_state.h"
+#include "components/page_info/page_info.h"
+#include "components/strings/grit/components_strings.h"
+#include "components/strings/grit/privacy_sandbox_strings.h"
+#include "components/vector_icons/vector_icons.h"
+#include "content/public/test/test_renderer_host.h"
+#include "content/public/test/web_contents_tester.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/base/ui_base_features.h"
+#include "ui/gfx/vector_icon_types.h"
+#include "ui/views/accessibility/view_accessibility.h"
+#include "ui/views/layout/box_layout_view.h"
+#include "ui/views/test/widget_test.h"
+#include "ui/views/vector_icons.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chrome/browser/ash/login/users/fake_chrome_user_manager.h"
+#include "components/account_id/account_id.h"
+#include "components/user_manager/scoped_user_manager.h"
+#include "google_apis/gaia/gaia_id.h"
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+namespace {
+
+std::u16string_view GetManageButtonSubtitle(views::View* content_view) {
+  auto* manage_button = content_view->GetViewByID(
+      PageInfoViewFactory::VIEW_ID_PAGE_INFO_LINK_OR_BUTTON_COOKIE_DIALOG);
+  EXPECT_TRUE(manage_button);
+  return static_cast<RichHoverButton*>(manage_button)->GetSubtitleText();
+}
+
+const char* GetVectorIconName(views::ImageView* image_view) {
+  return image_view->GetImageModel().GetVectorIcon().vector_icon()->name;
+}
+
+PageInfoCookiesContentView::CookiesInfo DefaultCookieInfoForTests(
+    int days_to_expiration = 0) {
+  PageInfoCookiesContentView::CookiesInfo cookie_info;
+  cookie_info.allowed_sites_count = 10;
+  // base::Time() represents a null when used as an expiration.
+  cookie_info.expiration =
+      days_to_expiration ? base::Time::Now() + base::Days(days_to_expiration)
+                         : base::Time();
+  cookie_info.controls_state = CookieControlsState::kBlocked3pc;
+  cookie_info.enforcement = CookieControlsEnforcement::kNoEnforcement;
+  cookie_info.is_incognito = false;
+  return cookie_info;
+}
+
+const int kDaysToExpiration = 30;
+
+}  // namespace
+
+class PageInfoCookiesContentViewBaseTestClass : public ChromeViewsTestBase {
+ public:
+  PageInfoCookiesContentViewBaseTestClass() = default;
+
+  void SetUp() override {
+    feature_list_.InitWithFeaturesAndParameters(EnabledFeatures(), {});
+    ChromeViewsTestBase::SetUp();
+
+#if BUILDFLAG(IS_CHROMEOS)
+    auto fake_user_manager = std::make_unique<ash::FakeChromeUserManager>();
+    auto* fake_user_manager_ptr = fake_user_manager.get();
+    scoped_user_manager_ = std::make_unique<user_manager::ScopedUserManager>(
+        std::move(fake_user_manager));
+
+    const GaiaId kTestUserGaiaId("1111111111");
+    auto account_id =
+        AccountId::FromUserEmailGaiaId("test@example.com", kTestUserGaiaId);
+    fake_user_manager_ptr->AddUserWithAffiliation(account_id,
+                                                  /*is_affiliated=*/true);
+    fake_user_manager_ptr->LoginUser(account_id);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+    const GURL url("http://a.com");
+    profile_ = std::make_unique<TestingProfile>();
+    web_contents_ =
+        content::WebContentsTester::CreateTestWebContents(profile_.get(), nullptr);
+    content::WebContentsTester::For(web_contents_.get())
+        ->NavigateAndCommit(url);
+
+    presenter_ = std::make_unique<PageInfo>(
+        std::make_unique<ChromePageInfoDelegate>(web_contents_.get()),
+        web_contents_.get(), url);
+    content_view_ =
+        std::make_unique<PageInfoCookiesContentView>(presenter_.get());
+  }
+
+  void TearDown() override {
+    content_view_.reset();
+    presenter_.reset();
+    web_contents_.reset();
+    profile_.reset();
+#if BUILDFLAG(IS_CHROMEOS)
+    scoped_user_manager_.reset();
+#endif  // BUILDFLAG(IS_CHROMEOS)
+    ChromeViewsTestBase::TearDown();
+  }
+
+  PageInfoCookiesContentView* content_view() { return content_view_.get(); }
+
+  views::StyledLabel* third_party_cookies_description_label() {
+    return content_view_->cookies_description_label_;
+  }
+
+  views::View* third_party_cookies_description_wrapper() {
+    return content_view_->cookies_description_wrapper_;
+  }
+
+  views::BoxLayoutView* third_party_cookies_container() {
+    return content_view_->third_party_cookies_container_;
+  }
+
+  views::BoxLayoutView* third_party_cookies_label_wrapper() {
+    return content_view_->third_party_cookies_label_wrapper_;
+  }
+
+  views::Label* third_party_cookies_title() {
+    return content_view_->third_party_cookies_title_;
+  }
+
+  views::Label* third_party_cookies_description() {
+    return content_view_->third_party_cookies_description_;
+  }
+
+  views::ToggleButton* third_party_cookies_toggle() {
+    return content_view_->third_party_cookies_toggle_;
+  }
+
+  views::ImageView* third_party_cookies_enforced_icon() {
+    return content_view_->third_party_cookies_enforced_icon_;
+  }
+
+  views::Label* third_party_cookies_toggle_subtitle() {
+    return content_view_->third_party_cookies_toggle_subtitle_;
+  }
+
+  RichControlsContainerView* third_party_cookies_row() {
+    return content_view_->third_party_cookies_row_;
+  }
+
+  ui::ImageModel GetImageModel(const gfx::VectorIcon& icon) {
+    return ui::ImageModel::FromVectorIcon(
+        icon, ui::kColorIcon,
+        GetLayoutConstant(LayoutConstant::kPageInfoIconSize));
+  }
+
+  virtual std::vector<base::test::FeatureRefAndParams> EnabledFeatures() {
+    return {};
+  }
+
+#if BUILDFLAG(IS_CHROMEOS)
+  std::unique_ptr<user_manager::ScopedUserManager> scoped_user_manager_;
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+  content::RenderViewHostTestEnabler rvh_test_enabler_;
+  std::unique_ptr<TestingProfile> profile_;
+  std::unique_ptr<content::WebContents> web_contents_;
+  base::test::ScopedFeatureList feature_list_;
+  std::unique_ptr<PageInfo> presenter_;
+  std::unique_ptr<PageInfoCookiesContentView> content_view_;
+};
+
+class PageInfoCookiesContentViewTest
+    : public PageInfoCookiesContentViewBaseTestClass {};
+
+TEST_F(PageInfoCookiesContentViewTest, ThirdPartyCookiesAllowedByDefault) {
+  PageInfoCookiesContentView::CookiesInfo cookie_info =
+      DefaultCookieInfoForTests();
+  cookie_info.controls_state = CookieControlsState::kHidden;
+  content_view()->SetCookieInfo(cookie_info);
+
+  // Third-party cookies section:
+  EXPECT_FALSE(third_party_cookies_container()->GetVisible());
+  EXPECT_EQ(
+      third_party_cookies_description_label()->GetText(),
+      l10n_util::GetStringFUTF16(
+          IDS_PAGE_INFO_COOKIES_DESCRIPTION,
+          l10n_util::GetStringUTF16(IDS_PAGE_INFO_COOKIES_SETTINGS_LINK)));
+
+  // Manage cookies button:
+  auto subtitle = GetManageButtonSubtitle(content_view());
+  EXPECT_EQ(subtitle, l10n_util::GetPluralStringFUTF16(
+                          IDS_PAGE_INFO_COOKIES_ALLOWED_SITES_COUNT,
+                          cookie_info.allowed_sites_count));
+}
+
+TEST_F(PageInfoCookiesContentViewTest, ThirdPartyCookiesBlocked) {
+  PageInfoCookiesContentView::CookiesInfo cookie_info =
+      DefaultCookieInfoForTests();
+  content_view()->SetCookieInfo(cookie_info);
+
+  EXPECT_TRUE(third_party_cookies_container()->GetVisible());
+  EXPECT_EQ(
+      third_party_cookies_description_label()->GetText(),
+      l10n_util::GetStringFUTF16(
+          IDS_PAGE_INFO_COOKIES_DESCRIPTION,
+          l10n_util::GetStringUTF16(IDS_PAGE_INFO_COOKIES_SETTINGS_LINK)));
+  EXPECT_EQ(
+      third_party_cookies_title()->GetText(),
+      l10n_util::GetStringUTF16(IDS_PAGE_INFO_COOKIES_SITE_NOT_WORKING_TITLE));
+  EXPECT_EQ(third_party_cookies_description()->GetText(),
+            l10n_util::GetStringUTF16(
+                IDS_PAGE_INFO_COOKIES_SITE_NOT_WORKING_DESCRIPTION_PERMANENT));
+  EXPECT_TRUE(third_party_cookies_label_wrapper()->GetVisible());
+  EXPECT_EQ(third_party_cookies_row()->GetIconForTesting(),
+            GetImageModel(features::IsRoundedIconsEnabled()
+                              ? views::kVisibilityOffIcon
+                              : views::kEyeCrossedRefreshOldIcon));
+  EXPECT_TRUE(third_party_cookies_toggle()->GetVisible());
+  EXPECT_FALSE(third_party_cookies_toggle()->GetIsOn());
+  EXPECT_FALSE(third_party_cookies_enforced_icon()->GetVisible());
+
+  EXPECT_EQ(third_party_cookies_toggle_subtitle()->GetText(),
+            l10n_util::GetStringUTF16(
+                IDS_TRACKING_PROTECTION_BUBBLE_3PC_BLOCKED_SUBTITLE));
+
+  // Manage cookies button:
+  EXPECT_EQ(GetManageButtonSubtitle(content_view()),
+            l10n_util::GetPluralStringFUTF16(
+                IDS_PAGE_INFO_COOKIES_ALLOWED_SITES_COUNT,
+                cookie_info.allowed_sites_count));
+}
+
+TEST_F(PageInfoCookiesContentViewTest, ThirdPartyCookiesAllowedPermanent) {
+  PageInfoCookiesContentView::CookiesInfo cookie_info =
+      DefaultCookieInfoForTests();
+  cookie_info.controls_state = CookieControlsState::kAllowed3pc;
+  content_view()->SetCookieInfo(cookie_info);
+
+  EXPECT_TRUE(third_party_cookies_container()->GetVisible());
+  EXPECT_EQ(
+      third_party_cookies_description_label()->GetText(),
+      l10n_util::GetStringFUTF16(
+          IDS_PAGE_INFO_COOKIES_DESCRIPTION,
+          l10n_util::GetStringUTF16(IDS_PAGE_INFO_COOKIES_SETTINGS_LINK)));
+  EXPECT_EQ(third_party_cookies_title()->GetText(),
+            l10n_util::GetStringUTF16(
+                IDS_PAGE_INFO_TRACKING_PROTECTION_PERMANENT_ALLOWED_TITLE));
+  EXPECT_EQ(
+      third_party_cookies_description()->GetText(),
+      l10n_util::GetStringUTF16(
+          IDS_PAGE_INFO_TRACKING_PROTECTION_COOKIES_PERMANENT_ALLOWED_DESCRIPTION));
+  EXPECT_TRUE(third_party_cookies_label_wrapper()->GetVisible());
+  EXPECT_EQ(third_party_cookies_row()->GetIconForTesting(),
+            GetImageModel(features::IsRoundedIconsEnabled()
+                              ? views::kVisibilityIcon
+                              : views::kEyeRefreshOldIcon));
+  EXPECT_TRUE(third_party_cookies_toggle()->GetVisible());
+  EXPECT_TRUE(third_party_cookies_toggle()->GetIsOn());
+  EXPECT_FALSE(third_party_cookies_enforced_icon()->GetVisible());
+
+  EXPECT_EQ(third_party_cookies_toggle_subtitle()->GetText(),
+            l10n_util::GetStringUTF16(
+                IDS_TRACKING_PROTECTION_BUBBLE_3PC_ALLOWED_SUBTITLE));
+
+  // Manage cookies button:
+  EXPECT_EQ(GetManageButtonSubtitle(content_view()),
+            l10n_util::GetPluralStringFUTF16(
+                IDS_PAGE_INFO_COOKIES_ALLOWED_SITES_COUNT,
+                cookie_info.allowed_sites_count));
+}
+
+TEST_F(PageInfoCookiesContentViewTest, ThirdPartyCookiesAllowedTemporary) {
+  PageInfoCookiesContentView::CookiesInfo cookie_info =
+      DefaultCookieInfoForTests(kDaysToExpiration);
+  cookie_info.controls_state = CookieControlsState::kAllowed3pc;
+  content_view()->SetCookieInfo(cookie_info);
+
+  EXPECT_TRUE(third_party_cookies_container()->GetVisible());
+  EXPECT_EQ(
+      third_party_cookies_description_label()->GetText(),
+      l10n_util::GetStringFUTF16(
+          IDS_PAGE_INFO_COOKIES_DESCRIPTION,
+          l10n_util::GetStringUTF16(IDS_PAGE_INFO_COOKIES_SETTINGS_LINK)));
+  EXPECT_EQ(third_party_cookies_title()->GetText(),
+            l10n_util::GetPluralStringFUTF16(
+                IDS_PAGE_INFO_TRACKING_PROTECTION_COOKIES_BLOCKED_RESTART_TITLE,
+                kDaysToExpiration));
+  EXPECT_EQ(third_party_cookies_description()->GetText(),
+            l10n_util::GetStringUTF16(
+                IDS_PAGE_INFO_TRACKING_PROTECTION_COOKIES_RESTART_DESCRIPTION));
+  EXPECT_TRUE(third_party_cookies_label_wrapper()->GetVisible());
+  EXPECT_EQ(third_party_cookies_row()->GetIconForTesting(),
+            GetImageModel(features::IsRoundedIconsEnabled()
+                              ? views::kVisibilityIcon
+                              : views::kEyeRefreshOldIcon));
+  EXPECT_TRUE(third_party_cookies_toggle()->GetVisible());
+  EXPECT_TRUE(third_party_cookies_toggle()->GetIsOn());
+  EXPECT_FALSE(third_party_cookies_enforced_icon()->GetVisible());
+
+  EXPECT_EQ(third_party_cookies_toggle_subtitle()->GetText(),
+            l10n_util::GetStringUTF16(
+                IDS_TRACKING_PROTECTION_BUBBLE_3PC_ALLOWED_SUBTITLE));
+
+  // Manage cookies button:
+  EXPECT_EQ(GetManageButtonSubtitle(content_view()),
+            l10n_util::GetPluralStringFUTF16(
+                IDS_PAGE_INFO_COOKIES_ALLOWED_SITES_COUNT,
+                cookie_info.allowed_sites_count));
+}
+
+TEST_F(PageInfoCookiesContentViewTest, ThirdPartyCookiesBlockedByPolicy) {
+  PageInfoCookiesContentView::CookiesInfo cookie_info =
+      DefaultCookieInfoForTests();
+  cookie_info.enforcement = CookieControlsEnforcement::kEnforcedByPolicy;
+  content_view()->SetCookieInfo(cookie_info);
+
+  EXPECT_TRUE(third_party_cookies_container()->GetVisible());
+  EXPECT_EQ(
+      third_party_cookies_description_label()->GetText(),
+      l10n_util::GetStringFUTF16(
+          IDS_PAGE_INFO_COOKIES_DESCRIPTION,
+          l10n_util::GetStringUTF16(IDS_PAGE_INFO_COOKIES_SETTINGS_LINK)));
+  EXPECT_EQ(third_party_cookies_row()->GetIconForTesting(),
+            GetImageModel(features::IsRoundedIconsEnabled()
+                              ? views::kVisibilityOffIcon
+                              : views::kEyeCrossedRefreshOldIcon));
+  EXPECT_FALSE(third_party_cookies_label_wrapper()->GetVisible());
+  EXPECT_FALSE(third_party_cookies_toggle()->GetVisible());
+  EXPECT_FALSE(third_party_cookies_toggle()->GetIsOn());
+
+  EXPECT_EQ(third_party_cookies_toggle_subtitle()->GetText(),
+            l10n_util::GetStringUTF16(
+                IDS_TRACKING_PROTECTION_BUBBLE_3PC_BLOCKED_SUBTITLE));
+
+  EXPECT_TRUE(third_party_cookies_enforced_icon()->GetVisible());
+  EXPECT_STREQ(GetVectorIconName(third_party_cookies_enforced_icon()),
+               features::IsRoundedIconsEnabled()
+                   ? vector_icons::kDomainIcon.name
+                   : vector_icons::kBusinessChromeRefreshOldIcon.name);
+  EXPECT_EQ(
+      third_party_cookies_enforced_icon()->GetTooltipText(),
+      l10n_util::GetStringUTF16(IDS_PAGE_INFO_PERMISSION_MANAGED_BY_POLICY));
+
+  // Manage cookies button:
+  EXPECT_EQ(GetManageButtonSubtitle(content_view()),
+            l10n_util::GetPluralStringFUTF16(
+                IDS_PAGE_INFO_COOKIES_ALLOWED_SITES_COUNT,
+                cookie_info.allowed_sites_count));
+}
+
+TEST_F(PageInfoCookiesContentViewTest, ThirdPartyCookiesAllowedByPolicy) {
+  PageInfoCookiesContentView::CookiesInfo cookie_info =
+      DefaultCookieInfoForTests();
+  cookie_info.controls_state = CookieControlsState::kAllowed3pc;
+  cookie_info.enforcement = CookieControlsEnforcement::kEnforcedByPolicy;
+  content_view()->SetCookieInfo(cookie_info);
+
+  EXPECT_TRUE(third_party_cookies_container()->GetVisible());
+  EXPECT_EQ(
+      third_party_cookies_description_label()->GetText(),
+      l10n_util::GetStringFUTF16(
+          IDS_PAGE_INFO_COOKIES_DESCRIPTION,
+          l10n_util::GetStringUTF16(IDS_PAGE_INFO_COOKIES_SETTINGS_LINK)));
+  EXPECT_EQ(third_party_cookies_row()->GetIconForTesting(),
+            GetImageModel(features::IsRoundedIconsEnabled()
+                              ? views::kVisibilityIcon
+                              : views::kEyeRefreshOldIcon));
+  EXPECT_FALSE(third_party_cookies_label_wrapper()->GetVisible());
+  EXPECT_FALSE(third_party_cookies_toggle()->GetVisible());
+  EXPECT_TRUE(third_party_cookies_toggle()->GetIsOn());
+
+  EXPECT_EQ(third_party_cookies_toggle_subtitle()->GetText(),
+            l10n_util::GetStringUTF16(
+                IDS_TRACKING_PROTECTION_BUBBLE_3PC_ALLOWED_SUBTITLE));
+
+  EXPECT_TRUE(third_party_cookies_enforced_icon()->GetVisible());
+  EXPECT_STREQ(GetVectorIconName(third_party_cookies_enforced_icon()),
+               features::IsRoundedIconsEnabled()
+                   ? vector_icons::kDomainIcon.name
+                   : vector_icons::kBusinessChromeRefreshOldIcon.name);
+  EXPECT_EQ(
+      third_party_cookies_enforced_icon()->GetTooltipText(),
+      l10n_util::GetStringUTF16(IDS_PAGE_INFO_PERMISSION_MANAGED_BY_POLICY));
+
+  // Manage cookies button:
+  EXPECT_EQ(GetManageButtonSubtitle(content_view()),
+            l10n_util::GetPluralStringFUTF16(
+                IDS_PAGE_INFO_COOKIES_ALLOWED_SITES_COUNT,
+                cookie_info.allowed_sites_count));
+}
+
+TEST_F(PageInfoCookiesContentViewTest, ThirdPartyCookiesBlockedByExtension) {
+  PageInfoCookiesContentView::CookiesInfo cookie_info =
+      DefaultCookieInfoForTests();
+  cookie_info.enforcement = CookieControlsEnforcement::kEnforcedByExtension;
+  content_view()->SetCookieInfo(cookie_info);
+
+  EXPECT_TRUE(third_party_cookies_container()->GetVisible());
+  EXPECT_EQ(
+      third_party_cookies_description_label()->GetText(),
+      l10n_util::GetStringFUTF16(
+          IDS_PAGE_INFO_COOKIES_DESCRIPTION,
+          l10n_util::GetStringUTF16(IDS_PAGE_INFO_COOKIES_SETTINGS_LINK)));
+  EXPECT_EQ(third_party_cookies_row()->GetIconForTesting(),
+            GetImageModel(features::IsRoundedIconsEnabled()
+                              ? views::kVisibilityOffIcon
+                              : views::kEyeCrossedRefreshOldIcon));
+  EXPECT_FALSE(third_party_cookies_label_wrapper()->GetVisible());
+  EXPECT_FALSE(third_party_cookies_toggle()->GetVisible());
+  EXPECT_FALSE(third_party_cookies_toggle()->GetIsOn());
+
+  EXPECT_EQ(third_party_cookies_toggle_subtitle()->GetText(),
+            l10n_util::GetStringUTF16(
+                IDS_TRACKING_PROTECTION_BUBBLE_3PC_BLOCKED_SUBTITLE));
+
+  EXPECT_TRUE(third_party_cookies_enforced_icon()->GetVisible());
+  EXPECT_STREQ(GetVectorIconName(third_party_cookies_enforced_icon()),
+               features::IsRoundedIconsEnabled()
+                   ? vector_icons::kChromeExtensionIcon.name
+                   : vector_icons::kExtensionChromeRefreshOldIcon.name);
+  EXPECT_EQ(
+      third_party_cookies_enforced_icon()->GetTooltipText(),
+      l10n_util::GetStringUTF16(IDS_PAGE_INFO_PERMISSION_MANAGED_BY_EXTENSION));
+
+  // Manage cookies button:
+  EXPECT_EQ(GetManageButtonSubtitle(content_view()),
+            l10n_util::GetPluralStringFUTF16(
+                IDS_PAGE_INFO_COOKIES_ALLOWED_SITES_COUNT,
+                cookie_info.allowed_sites_count));
+}
+
+TEST_F(PageInfoCookiesContentViewTest, ThirdPartyCookiesAllowedByExtension) {
+  PageInfoCookiesContentView::CookiesInfo cookie_info =
+      DefaultCookieInfoForTests();
+  cookie_info.controls_state = CookieControlsState::kAllowed3pc;
+  cookie_info.enforcement = CookieControlsEnforcement::kEnforcedByExtension;
+  content_view()->SetCookieInfo(cookie_info);
+
+  EXPECT_TRUE(third_party_cookies_container()->GetVisible());
+  EXPECT_EQ(
+      third_party_cookies_description_label()->GetText(),
+      l10n_util::GetStringFUTF16(
+          IDS_PAGE_INFO_COOKIES_DESCRIPTION,
+          l10n_util::GetStringUTF16(IDS_PAGE_INFO_COOKIES_SETTINGS_LINK)));
+  EXPECT_EQ(third_party_cookies_row()->GetIconForTesting(),
+            GetImageModel(features::IsRoundedIconsEnabled()
+                              ? views::kVisibilityIcon
+                              : views::kEyeRefreshOldIcon));
+  EXPECT_FALSE(third_party_cookies_label_wrapper()->GetVisible());
+  EXPECT_FALSE(third_party_cookies_toggle()->GetVisible());
+  EXPECT_TRUE(third_party_cookies_toggle()->GetIsOn());
+
+  EXPECT_EQ(third_party_cookies_toggle_subtitle()->GetText(),
+            l10n_util::GetStringUTF16(
+                IDS_TRACKING_PROTECTION_BUBBLE_3PC_ALLOWED_SUBTITLE));
+
+  EXPECT_TRUE(third_party_cookies_enforced_icon()->GetVisible());
+  EXPECT_STREQ(GetVectorIconName(third_party_cookies_enforced_icon()),
+               features::IsRoundedIconsEnabled()
+                   ? vector_icons::kChromeExtensionIcon.name
+                   : vector_icons::kExtensionChromeRefreshOldIcon.name);
+  EXPECT_EQ(
+      third_party_cookies_enforced_icon()->GetTooltipText(),
+      l10n_util::GetStringUTF16(IDS_PAGE_INFO_PERMISSION_MANAGED_BY_EXTENSION));
+
+  // Manage cookies button:
+  EXPECT_EQ(GetManageButtonSubtitle(content_view()),
+            l10n_util::GetPluralStringFUTF16(
+                IDS_PAGE_INFO_COOKIES_ALLOWED_SITES_COUNT,
+                cookie_info.allowed_sites_count));
+}
+
+TEST_F(PageInfoCookiesContentViewTest, ThirdPartyCookiesBlockedBySetting) {
+  // This is not be possible, but the UI still should be able to handle this
+  // state correctly.
+  PageInfoCookiesContentView::CookiesInfo cookie_info =
+      DefaultCookieInfoForTests();
+  cookie_info.enforcement = CookieControlsEnforcement::kEnforcedByCookieSetting;
+  content_view()->SetCookieInfo(cookie_info);
+
+  EXPECT_TRUE(third_party_cookies_container()->GetVisible());
+  EXPECT_EQ(
+      third_party_cookies_description_label()->GetText(),
+      l10n_util::GetStringFUTF16(
+          IDS_PAGE_INFO_COOKIES_DESCRIPTION,
+          l10n_util::GetStringUTF16(IDS_PAGE_INFO_COOKIES_SETTINGS_LINK)));
+  EXPECT_EQ(third_party_cookies_row()->GetIconForTesting(),
+            GetImageModel(features::IsRoundedIconsEnabled()
+                              ? views::kVisibilityOffIcon
+                              : views::kEyeCrossedRefreshOldIcon));
+  EXPECT_FALSE(third_party_cookies_label_wrapper()->GetVisible());
+  EXPECT_FALSE(third_party_cookies_toggle()->GetVisible());
+  EXPECT_FALSE(third_party_cookies_toggle()->GetIsOn());
+
+  EXPECT_EQ(third_party_cookies_toggle_subtitle()->GetText(),
+            l10n_util::GetStringUTF16(
+                IDS_TRACKING_PROTECTION_BUBBLE_3PC_BLOCKED_SUBTITLE));
+
+  EXPECT_TRUE(third_party_cookies_enforced_icon()->GetVisible());
+  EXPECT_STREQ(GetVectorIconName(third_party_cookies_enforced_icon()),
+               features::IsRoundedIconsEnabled()
+                   ? vector_icons::kSettingsIcon.name
+                   : vector_icons::kSettingsChromeRefreshOldIcon.name);
+  EXPECT_EQ(
+      third_party_cookies_enforced_icon()->GetTooltipText(),
+      l10n_util::GetStringUTF16(
+          IDS_PAGE_INFO_BLOCK_THIRD_PARTY_COOKIES_MANAGED_BY_SETTINGS_TOOLTIP));
+
+  // Manage cookies button:
+  EXPECT_EQ(GetManageButtonSubtitle(content_view()),
+            l10n_util::GetPluralStringFUTF16(
+                IDS_PAGE_INFO_COOKIES_ALLOWED_SITES_COUNT,
+                cookie_info.allowed_sites_count));
+}
+
+TEST_F(PageInfoCookiesContentViewTest, ThirdPartyCookiesAllowedBySetting) {
+  PageInfoCookiesContentView::CookiesInfo cookie_info =
+      DefaultCookieInfoForTests();
+  cookie_info.controls_state = CookieControlsState::kAllowed3pc;
+  cookie_info.enforcement = CookieControlsEnforcement::kEnforcedByCookieSetting;
+  content_view()->SetCookieInfo(cookie_info);
+
+  EXPECT_TRUE(third_party_cookies_container()->GetVisible());
+  EXPECT_EQ(
+      third_party_cookies_description_label()->GetText(),
+      l10n_util::GetStringFUTF16(
+          IDS_PAGE_INFO_COOKIES_DESCRIPTION,
+          l10n_util::GetStringUTF16(IDS_PAGE_INFO_COOKIES_SETTINGS_LINK)));
+  EXPECT_EQ(third_party_cookies_row()->GetIconForTesting(),
+            GetImageModel(features::IsRoundedIconsEnabled()
+                              ? views::kVisibilityIcon
+                              : views::kEyeRefreshOldIcon));
+  EXPECT_FALSE(third_party_cookies_label_wrapper()->GetVisible());
+  EXPECT_FALSE(third_party_cookies_toggle()->GetVisible());
+  EXPECT_TRUE(third_party_cookies_toggle()->GetIsOn());
+
+  EXPECT_EQ(third_party_cookies_toggle_subtitle()->GetText(),
+            l10n_util::GetStringUTF16(
+                IDS_TRACKING_PROTECTION_BUBBLE_3PC_ALLOWED_SUBTITLE));
+
+  EXPECT_TRUE(third_party_cookies_enforced_icon()->GetVisible());
+  EXPECT_STREQ(GetVectorIconName(third_party_cookies_enforced_icon()),
+               features::IsRoundedIconsEnabled()
+                   ? vector_icons::kSettingsIcon.name
+                   : vector_icons::kSettingsChromeRefreshOldIcon.name);
+  EXPECT_EQ(
+      third_party_cookies_enforced_icon()->GetTooltipText(),
+      l10n_util::GetStringUTF16(
+          IDS_PAGE_INFO_BLOCK_THIRD_PARTY_COOKIES_MANAGED_BY_SETTINGS_TOOLTIP));
+
+  // Manage cookies button:
+  EXPECT_EQ(GetManageButtonSubtitle(content_view()),
+            l10n_util::GetPluralStringFUTF16(
+                IDS_PAGE_INFO_COOKIES_ALLOWED_SITES_COUNT,
+                cookie_info.allowed_sites_count));
+}
+
+struct ThirdPartyCookiesA11yParam {
+  CookieControlsState state;
+  int subtitle_id;
+};
+
+class PageInfoCookiesContentViewA11yNameTest
+    : public PageInfoCookiesContentViewTest,
+      public testing::WithParamInterface<ThirdPartyCookiesA11yParam> {};
+
+TEST_P(PageInfoCookiesContentViewA11yNameTest,
+       ThirdPartyCookiesToggleA11yName) {
+  PageInfoCookiesContentView::CookiesInfo cookie_info =
+      DefaultCookieInfoForTests();
+  cookie_info.controls_state = GetParam().state;
+  content_view()->SetCookieInfo(cookie_info);
+  EXPECT_EQ(
+      third_party_cookies_toggle()->GetViewAccessibility().GetCachedName(),
+      base::JoinString({l10n_util::GetStringUTF16(
+                            IDS_PAGE_INFO_COOKIES_THIRD_PARTY_COOKIES_LABEL),
+                        l10n_util::GetStringUTF16(GetParam().subtitle_id)},
+                       u"\n"));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    PageInfoCookiesContentViewA11yNameTest,
+    testing::Values(
+        ThirdPartyCookiesA11yParam{
+            CookieControlsState::kBlocked3pc,
+            IDS_TRACKING_PROTECTION_BUBBLE_3PC_BLOCKED_SUBTITLE},
+        ThirdPartyCookiesA11yParam{
+            CookieControlsState::kAllowed3pc,
+            IDS_TRACKING_PROTECTION_BUBBLE_3PC_ALLOWED_SUBTITLE}));

@@ -1,0 +1,300 @@
+exit code: 0
+stdout:
+stderr:
+output:
+{
+    "spdxVersion": "SPDX-2.2",
+    "SPDXID": "SPDXRef-DOCUMENT",
+    "name": "Chromium",
+    "documentNamespace": "https://chromium.googlesource.com/chromium/src/tools/",
+    "creationInfo": {
+        "creators": [
+            "Tool: spdx_writer.py"
+        ]
+    },
+    "dataLicense": "CC0-1.0",
+    "documentDescribes": [
+        "SPDXRef-Package-Chromium"
+    ],
+    "packages": [
+        {
+            "SPDXID": "SPDXRef-Package-Chromium",
+            "name": "Chromium",
+            "licenseConcluded": "LicenseRef-Chromium"
+        },
+        {
+            "SPDXID": "SPDXRef-Package-AlwaysIncluded",
+            "name": "AlwaysIncluded",
+            "licenseConcluded": "LicenseRef-AlwaysIncluded"
+        },
+        {
+            "SPDXID": "SPDXRef-Package-narluga",
+            "name": "narluga",
+            "licenseConcluded": "LicenseRef-narluga"
+        },
+        {
+            "SPDXID": "SPDXRef-Package-narluga-1",
+            "name": "narluga",
+            "licenseConcluded": "LicenseRef-narluga-1"
+        },
+        {
+            "SPDXID": "SPDXRef-Package-Sample-3",
+            "name": "Sample 3",
+            "licenseConcluded": "LicenseRef-Sample-3"
+        },
+        {
+            "SPDXID": "SPDXRef-Package-Sample-4--Restricted-Approved-",
+            "name": "Sample 4 (Restricted Approved)",
+            "licenseConcluded": "LicenseRef-Sample-4--Restricted-Approved-"
+        },
+        {
+            "SPDXID": "SPDXRef-Package-Sample-5--Restricted-Not-Approved-",
+            "name": "Sample 5 (Restricted Not Approved)",
+            "licenseConcluded": "LicenseRef-Sample-5--Restricted-Not-Approved-"
+        },
+        {
+            "SPDXID": "SPDXRef-Package-Sample-6--Reciprocal-",
+            "name": "Sample 6 (Reciprocal)",
+            "licenseConcluded": "LicenseRef-Sample-6--Reciprocal-"
+        },
+        {
+            "SPDXID": "SPDXRef-Package-Sample-7--Reciprocal-Internal-",
+            "name": "Sample 7 (Reciprocal Internal)",
+            "licenseConcluded": "LicenseRef-Sample-7--Reciprocal-Internal-"
+        },
+        {
+            "SPDXID": "SPDXRef-Package-Sample-8--Reciprocal-Internal-Android-Compatible-",
+            "name": "Sample 8 (Reciprocal Internal Android Compatible)",
+            "licenseConcluded": "LicenseRef-Sample-8--Reciprocal-Internal-Android-Compatible-"
+        },
+        {
+            "SPDXID": "SPDXRef-Package-Sample-Library",
+            "name": "Sample Library",
+            "licenseConcluded": "LicenseRef-Sample-Library"
+        },
+        {
+            "SPDXID": "SPDXRef-Package-Sample-Library-2a",
+            "name": "Sample Library 2a",
+            "licenseConcluded": "LicenseRef-Sample-Library-2a"
+        },
+        {
+            "SPDXID": "SPDXRef-Package-Sample-Library-2a-1",
+            "name": "Sample Library 2a",
+            "licenseConcluded": "LicenseRef-Sample-Library-2a-1"
+        },
+        {
+            "SPDXID": "SPDXRef-Package-Sub-Component",
+            "name": "Sub Component",
+            "licenseConcluded": "LicenseRef-Sub-Component"
+        }
+    ],
+    "hasExtractedLicensingInfos": [
+        {
+            "name": "Chromium",
+            "licenseId": "LicenseRef-Chromium",
+            "extractedText": "Chromium Root License file\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/LICENSE"
+                }
+            ]
+        },
+        {
+            "name": "AlwaysIncluded",
+            "licenseId": "LicenseRef-AlwaysIncluded",
+            "extractedText": "Extra license file.\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/extra_dir/LICENSE"
+                }
+            ]
+        },
+        {
+            "name": "narluga",
+            "licenseId": "LicenseRef-narluga",
+            "extractedText": "narluga v1 license file\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/subdir/third_party/narluga_v1/LICENSE"
+                }
+            ]
+        },
+        {
+            "name": "narluga",
+            "licenseId": "LicenseRef-narluga-1",
+            "extractedText": "narluga v2 license file\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/subdir/third_party/narluga_v2/LICENSE"
+                }
+            ]
+        },
+        {
+            "name": "Sample 3",
+            "licenseId": "LicenseRef-Sample-3",
+            "extractedText": "Sample 3 license\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/third_party/sample3/the_license"
+                }
+            ]
+        },
+        {
+            "name": "Sample 4 (Restricted Approved)",
+            "licenseId": "LicenseRef-Sample-4--Restricted-Approved-",
+            "extractedText": "GPL-2.0 License Content\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/third_party/sample4/LICENSE"
+                }
+            ]
+        },
+        {
+            "name": "Sample 5 (Restricted Not Approved)",
+            "licenseId": "LicenseRef-Sample-5--Restricted-Not-Approved-",
+            "extractedText": "GPL-2.0 License Content\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/third_party/sample5/LICENSE"
+                }
+            ]
+        },
+        {
+            "name": "Sample 6 (Reciprocal)",
+            "licenseId": "LicenseRef-Sample-6--Reciprocal-",
+            "extractedText": "CDDL-1.0 License Content\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/third_party/sample6/LICENSE"
+                }
+            ]
+        },
+        {
+            "name": "Sample 7 (Reciprocal Internal)",
+            "licenseId": "LicenseRef-Sample-7--Reciprocal-Internal-",
+            "extractedText": "Mock CDDL-1.0 License text for Sample 7.\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/clank/third_party/sample7/LICENSE"
+                }
+            ]
+        },
+        {
+            "name": "Sample 8 (Reciprocal Internal Android Compatible)",
+            "licenseId": "LicenseRef-Sample-8--Reciprocal-Internal-Android-Compatible-",
+            "extractedText": "Mock CDDL-1.0 License text for Sample 8.\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/clank/third_party/sample8/LICENSE"
+                }
+            ]
+        },
+        {
+            "name": "Sample Library",
+            "licenseId": "LicenseRef-Sample-Library",
+            "extractedText": "Sample license file.\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/third_party/sample/LICENSE"
+                }
+            ]
+        },
+        {
+            "name": "Sample Library 2a",
+            "licenseId": "LicenseRef-Sample-Library-2a",
+            "extractedText": "Apache license.\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/third_party/sample2/LICENSE.apache"
+                }
+            ]
+        },
+        {
+            "name": "Sample Library 2a",
+            "licenseId": "LicenseRef-Sample-Library-2a-1",
+            "extractedText": "MIT license.\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/third_party/sample2/LICENSE.mit"
+                }
+            ]
+        },
+        {
+            "name": "Sub Component",
+            "licenseId": "LicenseRef-Sub-Component",
+            "extractedText": "MIT license.\n",
+            "crossRefs": [
+                {
+                    "url": "https://source.chromium.org/chromium/chromium/src/+/main:/third_party/sample3/sub_component/LICENSE"
+                }
+            ]
+        }
+    ],
+    "relationships": [
+        {
+            "spdxElementId": "SPDXRef-Package-Chromium",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-Package-AlwaysIncluded"
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-Chromium",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-Package-narluga"
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-Chromium",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-Package-narluga-1"
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-Chromium",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-Package-Sample-3"
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-Chromium",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-Package-Sample-4--Restricted-Approved-"
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-Chromium",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-Package-Sample-5--Restricted-Not-Approved-"
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-Chromium",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-Package-Sample-6--Reciprocal-"
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-Chromium",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-Package-Sample-7--Reciprocal-Internal-"
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-Chromium",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-Package-Sample-8--Reciprocal-Internal-Android-Compatible-"
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-Chromium",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-Package-Sample-Library"
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-Chromium",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-Package-Sample-Library-2a"
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-Chromium",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-Package-Sample-Library-2a-1"
+        },
+        {
+            "spdxElementId": "SPDXRef-Package-Chromium",
+            "relationshipType": "CONTAINS",
+            "relatedSpdxElement": "SPDXRef-Package-Sub-Component"
+        }
+    ]
+}

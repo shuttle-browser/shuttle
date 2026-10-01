@@ -1,0 +1,18 @@
+include_rules = [
+  "+components/autofill/core/browser",
+  "-ios/chrome/browser/autofill/model",
+  "+ios/chrome/browser/autofill/ui_bundled/util",
+  "+ios/chrome/common/ui",
+]
+
+# TODO(crbug.com/549289651): Remove this once dependency on
+# AutofillLegalMessageLine is resolved.
+
+specific_include_rules = {
+  "wallet_reminder_notice_view_controller.mm": [
+    "+ios/chrome/browser/autofill/model/message/autofill_legal_message_line.h",
+  ],
+  "wallet_reminder_notice_view_controller_unittest.mm": [
+    "+ios/chrome/browser/autofill/model/message/autofill_legal_message_line.h",
+  ],
+}

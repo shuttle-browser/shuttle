@@ -1,0 +1,62 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_ANDROID_COMPOSITOR_SCENE_LAYER_SCROLLING_BOTTOM_VIEW_SCENE_LAYER_H_
+#define CHROME_BROWSER_ANDROID_COMPOSITOR_SCENE_LAYER_SCROLLING_BOTTOM_VIEW_SCENE_LAYER_H_
+
+#include "base/android/jni_android.h"
+#include "base/android/jni_weak_ref.h"
+#include "base/android/scoped_java_ref.h"
+#include "chrome/browser/ui/android/layouts/scene_layer.h"
+#include "components/viz/common/quads/offset_tag.h"
+#include "ui/android/resources/resource_manager_impl.h"
+
+namespace cc::slim {
+class Layer;
+class UIResourceLayer;
+}  // namespace cc::slim
+
+namespace android {
+
+class ScrollingBottomViewSceneLayer : public SceneLayer {
+ public:
+  ScrollingBottomViewSceneLayer(JNIEnv* env,
+                                const base::android::JavaRef<jobject>& jobj);
+
+  ScrollingBottomViewSceneLayer(const ScrollingBottomViewSceneLayer&) = delete;
+  ScrollingBottomViewSceneLayer& operator=(
+      const ScrollingBottomViewSceneLayer&) = delete;
+
+  ~ScrollingBottomViewSceneLayer() override;
+
+  // Update the compositor version of the view.
+  void UpdateScrollingBottomViewLayer(
+      JNIEnv* env,
+      const base::android::JavaRef<jobject>& jresource_manager,
+      int32_t view_resource_id,
+      int32_t shadow_height,
+      float x_offset,
+      float y_offset,
+      bool show_shadow,
+      const base::android::JavaRef<jobject>& joffset_tag,
+      int32_t bottom_padding,
+      int32_t content_height);
+
+  void SetContentTree(JNIEnv* env,
+                      const base::android::JavaRef<jobject>& jcontent_tree);
+
+  SkColor GetBackgroundColor() override;
+
+  bool ShouldShowBackground() override;
+
+ private:
+  bool should_show_background_;
+  SkColor background_color_;
+  scoped_refptr<cc::slim::Layer> view_container_;
+  scoped_refptr<cc::slim::UIResourceLayer> view_layer_;
+};
+
+}  // namespace android
+
+#endif  // CHROME_BROWSER_ANDROID_COMPOSITOR_SCENE_LAYER_SCROLLING_BOTTOM_VIEW_SCENE_LAYER_H_

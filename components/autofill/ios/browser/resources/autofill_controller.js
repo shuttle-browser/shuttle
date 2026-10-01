@@ -1,0 +1,664 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import * as fill_constants from '//components/autofill/ios/form_util/resources/fill_constants.js';
+import * as inferenceUtil from '//components/autofill/ios/form_util/resources/fill_element_inference_util.js';
+import * as fillUtil from '//components/autofill/ios/form_util/resources/fill_util.js';
+import {fieldWasEditedByUser, unownedFormElementsAndFieldSetsToFormData, wasEditedByUser, webFormElementToFormData} from '//components/autofill/ios/form_util/resources/fill_web_form.js';
+import {clipRect, getFormControlElements, getFormElementFromIdentifier, getIframeElements, getVisibleRectRespectingClips} from '//components/autofill/ios/form_util/resources/form_utils.js';
+import {getElementByUniqueID} from '//components/autofill/ios/form_util/resources/renderer_id.js';
+import {CrWebApi, gCrWeb} from '//ios/web/public/js_messaging/resources/gcrweb.js';
+import {isTextField, sendWebKitMessage, trim} from '//ios/web/public/js_messaging/resources/utils.js';
+
+/**
+ * @fileoverview Installs Autofill management functions on the __gCrWeb object.
+ *
+ * It scans the DOM, extracting and storing forms and returns a JSON string
+ * representing an array of objects, each of which represents an Autofill form
+ * with information about a form to be filled and/or submitted and it can be
+ * translated to class FormData
+ * (chromium/src/components/autofill/core/common/form_data.h) for further
+ * processing.
+ */
+
+/**
+ * The autofill data for a form.
+ * @typedef {{
+ *   fields: !Object<string, !Object<string, string>>,
+ * }}
+ */
+// eslint-disable-next-line no-var
+var FormData;
+
+/**
+ * The delay between filling two fields
+ *
+ * Page need time to propagate the events after setting one field. Add a delay
+ * between filling two fields. In milliseconds.
+ *
+ * @type {number}
+ */
+const delayBetweenFieldFillingMs = 50;
+
+/**
+ * The last element that was autofilled.
+ *
+ * @type {Element}
+ */
+let lastAutoFilledElement = null;
+
+/**
+ * Whether CSS for autofilled elements has been injected into the page.
+ *
+ * @type {boolean}
+ */
+let styleInjected = false;
+
+/**
+ * The name of the message handler in C++ land.
+ *
+ * @type {string}
+ */
+const NATIVE_MESSAGE_HANDLER = 'autofill_controller';
+
+/**
+ * An identifying string for messages with the result of a form fill event.
+ * Used on the C++ side.
+ */
+const FORM_FILLED_COMMAND = 'formFilled';
+
+/**
+ * Retrieves the registered 'autofill_form_features' CrWebApi
+ * instance for use in this file.
+ */
+const autofillFormFeaturesApi =
+    gCrWeb.getRegisteredApi('autofill_form_features');
+
+/**
+ * Determines whether the form is interesting enough to send to the browser for
+ * further operations.
+ *
+ * It is based on the logic in
+ *     bool IsFormInteresting(const FormData& form);
+ * in chromium/src/components/autofill/content/renderer/form_cache.cc
+ *
+ * @param {AutofillFormData} form Form to examine.
+ * @return {boolean} Whether the form is sufficiently interesting.
+ */
+function isFormInteresting_(form) {
+  return form.fields.length > 0 ||
+      (form.child_frames && form.child_frames.length > 0);
+}
+
+/**
+ * Returns the unowned iframes in the document. An unowned iframe doesn't have a
+ * <form> as a direct or indirect ancestor.
+ * @returns {Element[]} An array containing the unowned iframe elements. Is
+ *     empty if no match.
+ */
+function getUnownedIframes() {
+  if (fillUtil.isAutofillOptimizationFormSearchEnabled()) {
+    const iframes = getIframeElements(document);
+    const result = [];
+    for (const iframe of iframes) {
+      if (!iframe.closest('form')) {
+        result.push(iframe);
+      }
+    }
+    return result;
+  } else {
+    return Array.from(getIframeElements(document))
+        .filter(e => !e.closest('form'));
+  }
+}
+
+/**
+ * Scans the page for fields not owned by a form, and returns a synthetic form
+ * containing them, if any are found. Returns null otherwise.
+ * @param {boolean} restrictUnownedFieldsToFormlessCheckout Whether extraction
+ *     should exclude fields outside checkout fields.
+ * @return {AutofillFormData|null} A form containing the unowned fields, or null
+ *     if no such fields were found.
+ */
+function extractUnownedFields(restrictUnownedFieldsToFormlessCheckout) {
+  const fieldsets = [];
+  const unownedControlElements =
+      fillUtil.getUnownedAutofillableFormFieldElements(fieldsets);
+  const numEditableUnownedElements = unownedControlElements.length;
+  const iframeElements = getUnownedIframes();
+  if (numEditableUnownedElements > 0 || iframeElements.length > 0) {
+    const unownedForm = new fillUtil.AutofillFormData();
+    const hasUnownedForm = unownedFormElementsAndFieldSetsToFormData(
+        window, fieldsets, unownedControlElements, iframeElements,
+        restrictUnownedFieldsToFormlessCheckout, unownedForm);
+    if (hasUnownedForm) {
+      return unownedForm;
+    }
+  }
+  return null;
+}
+
+/**
+ * Scans DOM and returns a JSON string representation of forms and form
+ * extraction results. This is just a wrapper around extractNewForms() to JSON
+ * encode the forms, for convenience.
+ *
+ * @param {bool} restrictUnownedFieldsToFormlessCheckout whether forms made of
+ *     unowned fields (i.e., not within a <form> tag) should be restricted to
+ *     those that appear to be in a checkout flow.
+ * @return {string} A JSON encoded an array of the forms data.
+ */
+function extractForms(restrictUnownedFieldsToFormlessCheckout) {
+  const forms = extractNewForms(restrictUnownedFieldsToFormlessCheckout);
+  return fillUtil.stringify(forms);
+}
+
+/**
+ * Resolves the target element matching `fieldID`, checking activeElement,
+ * closest contenteditable container, or looking up by renderer ID.
+ *
+ * @param {number|string} fieldID Renderer ID of the target element.
+ * @return {Element|null} The resolved target element, or null if not found.
+ */
+function resolveActiveFieldOrEditableContainer(fieldID) {
+  if (fieldID == null) {
+    return null;
+  }
+
+  const activeElement = document.activeElement;
+  if (activeElement &&
+      fieldID.toString() === fillUtil.getUniqueID(activeElement)) {
+    return activeElement;
+  }
+
+  // If activeElement is a child node inside a contenteditable host, resolve the
+  // parent contenteditable container matching fieldID.
+  const container = activeElement?.closest?.('[contenteditable]');
+  if (container && fillUtil.isContentEditable(container) &&
+      fieldID.toString() === fillUtil.getUniqueID(container)) {
+    return container;
+  }
+
+  return null;
+}
+
+/**
+ * Fills data into the active form field.
+ *
+ * @param {AutofillFormFieldData} data The data to fill in.
+ * @return {boolean} Whether the field was filled successfully.
+ */
+function fillActiveFormField(data) {
+  const fieldID = data['renderer_id'];
+  if (typeof fieldID === 'undefined') {
+    return false;
+  }
+  const activeElement = resolveActiveFieldOrEditableContainer(fieldID);
+  if (!activeElement) {
+    return false;
+  }
+  lastAutoFilledElement = activeElement;
+  return fillFormField(data, activeElement);
+}
+
+/**
+ * Fills data into the form field identified by `data['renderer_id']`.
+ * This is similar to `fillActiveFormField`, but does not require that the
+ * target field be `document.activeElement`.
+ *
+ * @param {AutofillFormFieldData} data The data to fill in.
+ * @return {boolean} Whether the field was filled successfully.
+ */
+function fillSpecificFormField(data) {
+  const fieldID = data['renderer_id'];
+  if (typeof fieldID === 'undefined') {
+    return false;
+  }
+  const field = getElementByUniqueID(fieldID);
+  if (!field) {
+    return false;
+  }
+  lastAutoFilledElement = field;
+  return fillFormField(data, field);
+}
+
+/**
+ * Scrolls the form field identified by `fieldId` into view.
+ *
+ * @param {number} fieldId The renderer ID of the field to scroll into view.
+ */
+function scrollFieldIntoView(fieldId) {
+  const element = getElementByUniqueID(fieldId);
+  if (!element) {
+    return;
+  }
+
+  // Perform a virtual scroll check first to verify if it is scrollable into
+  // view.
+  let visibleRect = getVisibleRectRespectingClips(
+      element, /*shouldAdjustRectForScroll=*/ true);
+  if (!visibleRect) {
+    return;
+  }
+
+  const viewportWidth =
+      window.innerWidth || document.documentElement.clientWidth;
+  const viewportHeight =
+      window.innerHeight || document.documentElement.clientHeight;
+  const viewportBox = {
+    left: 0,
+    top: 0,
+    right: viewportWidth,
+    bottom: viewportHeight,
+  };
+  visibleRect = clipRect(visibleRect, viewportBox);
+  if (!visibleRect) {
+    return;
+  }
+
+  // Actually scroll the element into view.
+  element.scrollIntoView({block: 'nearest', inline: 'nearest'});
+}
+
+// Remove Autofill styling when control element is edited by the user.
+function controlElementInputListener_(evt) {
+  if (evt.isTrusted) {
+    evt.target.removeAttribute('chrome-autofilled');
+    evt.target.isAutofilled = false;
+    evt.target.removeEventListener('input', controlElementInputListener_);
+  }
+}
+
+/**
+ * Fills a number of fields in the same named form for full-form Autofill.
+ * Applies Autofill CSS (i.e. yellow background) to filled elements.
+ * Only empty fields will be filled, except that field with ID
+ * |forceFillFieldID| will always be filled even if non-empty.
+ *
+ * @param {!FormData} data Autofill data to fill in.
+ * @return {string} JSON encoded list of renderer IDs of filled elements.
+ */
+function fillForm(data) {
+  // Inject CSS to style the autofilled elements with a yellow background.
+  if (!styleInjected) {
+    const style = document.createElement('style');
+    style.textContent = '[chrome-autofilled] {' +
+        'background-color:#E8F0FE !important;' +
+        'background-image:none !important;' +
+        'color:#000000 !important;' +
+        '}';
+    document.head.appendChild(style);
+    styleInjected = true;
+  }
+  const filledElements = {};
+  const modifiedForms = new Set();
+
+  let delay = 0;
+
+  for (const [fieldId, fieldData] of Object.entries(data.fields)) {
+    const element = getElementByUniqueID(Number(fieldId));
+
+    if (!inferenceUtil.isAutofillableElement(element)) {
+      continue;
+    }
+
+    // Skip non-empty fields unless:
+    // a) The element's identifier matches |forceFillFieldIdentifier|; or
+    // b) The element is a 'select-one' element. 'select-one' elements are
+    //    always autofilled; see AutofillManager::FillOrPreviewDataModelForm().
+    // c) The "value" or "placeholder" attributes match the value, if any; or
+    // d) The value has not been set by the user.
+    const shouldBeForceFilled = element === document.activeElement;
+    if (element.value && fieldWasEditedByUser(element) &&
+        !sanitizedFieldIsEmpty(element.value) && !shouldBeForceFilled &&
+        !inferenceUtil.isSelectElement(element) &&
+        !((element.hasAttribute('value') &&
+           element.getAttribute('value') === element.value) ||
+          (element.hasAttribute('placeholder') &&
+           element.getAttribute('placeholder').toLowerCase() ===
+               element.value.toLowerCase()))) {
+      continue;
+    }
+
+    modifiedForms.add(fieldData.hostFormId);
+
+    (function(_element, _value, _isAutofilled, _delay) {
+      window.setTimeout(function() {
+        fillUtil.setInputElementValue(_value, _element, function() {
+          if (_isAutofilled) {
+            _element.setAttribute('chrome-autofilled', '');
+            _element.isAutofilled = true;
+            _element.addEventListener('input', controlElementInputListener_);
+          } else {
+            _element.removeAttribute('chrome-autofilled');
+            _element.isAutofilled = false;
+            _element.removeEventListener('input', controlElementInputListener_);
+          }
+        });
+      }, _delay);
+    })(element, fieldData.value, fieldData.isAutofilled, delay);
+    delay += delayBetweenFieldFillingMs;
+    filledElements[fillUtil.getUniqueID(element)] = fieldData.value;
+  }
+
+  // After the last form fill event, re-extract the form and report back to the
+  // browser that filling has completed. `delay` currently holds the scheduled
+  // time of the last fill plus `delayBetweenFieldFillingMs`.
+  const reportFormFill = function(_form, _delay) {
+    window.setTimeout(() => {
+      let formData = new fillUtil.AutofillFormData();
+      if (_form) {
+        if (!webFormElementToFormData(window, _form, null, formData)) {
+          formData = null;
+        }
+      } else {
+        formData = extractUnownedFields(
+            /*restrictUnownedFieldsToFormlessCheckout=*/ false);
+      }
+      if (formData) {
+        sendWebKitMessage(NATIVE_MESSAGE_HANDLER, {
+          'command': FORM_FILLED_COMMAND,
+          'form_data': formData,
+          'frame': gCrWeb.getFrameId(),
+        });
+      }
+    }, _delay);
+  };
+
+  // Remove Autofill styling when form receives 'reset' event.
+  // Individual control elements may be left with 'input' event listeners but
+  // they are harmless.
+  const formResetListener = function(evt) {
+    const controlElements = getFormControlElements(evt.target);
+    for (let i = 0; i < controlElements.length; ++i) {
+      controlElements[i].removeAttribute('chrome-autofilled');
+      controlElements[i].isAutofilled = false;
+    }
+    evt.target.removeEventListener('reset', formResetListener);
+  };
+
+  for (const id of modifiedForms) {
+    const form = getElementByUniqueID(id);
+    // This is safe to call even if `form` is null. `modifiedForms` may contain
+    // 0 to indicate we filled fields outside of forms. `reportFormFill` handles
+    // this case explicitly.
+    reportFormFill(form, delay);
+
+    if (form && form.tagName === 'FORM') {
+      form.addEventListener('reset', formResetListener);
+    }
+  }
+
+  return fillUtil.stringify(filledElements);
+}
+
+/**
+ * Scans the DOM in |frame| extracting and storing forms. Fills |forms| with
+ * extracted forms.
+ *
+ * This method is based on the logic in method:
+ *
+ *     std::vector<FormData> ExtractNewForms();
+ *
+ * in chromium/src/components/autofill/content/renderer/form_cache.cc.
+ *
+ * The difference is in this implementation, the cache is not considered.
+ * Initial values of select and checkable elements are not recorded at the
+ * moment.
+ *
+ * @param {bool} restrictUnownedFieldsToFormlessCheckout whether forms made of
+ *     unowned fields (i.e., not within a <form> tag) should be restricted to
+ *     those that appear to be in a checkout flow.
+ * @return {Array<AutofillFormData>} The extracted forms.
+ */
+function extractNewForms(restrictUnownedFieldsToFormlessCheckout) {
+  const forms = [];
+  // Protect against custom implementation of Array.toJSON in host pages.
+  (function() {
+    forms.toJSON = null;
+  })();
+
+  /** @type {HTMLCollection} */
+  const webForms = document.forms;
+
+  let numFieldsSeen = 0;
+  let numFramesSeen = 0;
+
+  // Returns true if the child frames can be extracted.
+  const canExtractChildFrames = () =>
+      numFramesSeen <= fill_constants.MAX_EXTRACTABLE_FRAMES ||
+      !autofillFormFeaturesApi.getFunction(
+          'isAutofillAcrossIframesThrottlingEnabled')();
+
+  for (let formIndex = 0; formIndex < webForms.length; ++formIndex) {
+    /** @type {HTMLFormElement} */
+    const formElement = webForms[formIndex];
+    const controlElements = extractAutofillableElementsInForm(formElement);
+    const numEditableElements = controlElements.length;
+    const hasChildFrames =
+        formElement.getElementsByTagName('iframe').length > 0;
+
+    if (numEditableElements === 0 && !hasChildFrames) {
+      continue;
+    }
+
+    const form = new fillUtil.AutofillFormData();
+    if (!webFormElementToFormData(
+            window, formElement, null, form, /*field=*/ undefined,
+            canExtractChildFrames())) {
+      continue;
+    }
+
+    numFieldsSeen += form['fields'].length;
+    if (numFieldsSeen > fill_constants.MAX_EXTRACTABLE_FIELDS) {
+      break;
+    }
+
+    numFramesSeen += (form.child_frames ?? []).length;
+    // Clear the frames for the form if the limit was busted after parsing this
+    // form. Child frames will still be registered for this form but won't be
+    // part for the frame tree for the form. Child frames for the forms
+    // following this one won't be extracted nor registered.
+    if (!canExtractChildFrames()) {
+      form.child_frames = [];
+    }
+
+    if (isFormInteresting_(form)) {
+      forms.push(form);
+    }
+  }
+
+  // Look for more extractable fields outside of forms.
+  const unownedForm = extractUnownedFields(
+      restrictUnownedFieldsToFormlessCheckout, canExtractChildFrames());
+
+  if (unownedForm) {
+    numFramesSeen += (unownedForm.child_frames ?? []).length;
+    if (!canExtractChildFrames()) {
+      // Do not associate child frames with the form if the limit of frames
+      // across forms was reached. Forms that were parsed before this one will
+      // still keep their child frames.
+      unownedForm.child_frames = [];
+    }
+
+    numFieldsSeen += unownedForm['fields'].length;
+    if (numFieldsSeen <= fill_constants.MAX_EXTRACTABLE_FIELDS) {
+      if (isFormInteresting_(unownedForm)) {
+        forms.push(unownedForm);
+      }
+    }
+  }
+
+  return forms;
+}
+
+/**
+ * Sets the |field|'s value to the value in |data|.
+ * Also sets the "autofilled" attribute.
+ *
+ * It is based on the logic in
+ *     void FillFormField(const FormFieldData& data,
+ *                        bool is_initiating_node,
+ *                        blink::WebFormControlElement* field)
+ * in chromium/src/components/autofill/content/renderer/form_autofill_util.cc.
+ *
+ * Different from FillFormField(), is_initiating_node is not considered in
+ * this implementation.
+ *
+ * @param {AutofillFormFieldData} data Data that will be filled into field.
+ * @param {FormControlElement} field The element to which data will be filled.
+ * @return {boolean} Whether the field was filled successfully.
+ */
+function fillFormField(data, field) {
+  // Nothing to fill.
+  if (!data['value'] || data['value'].length === 0) {
+    return false;
+  }
+
+  let filled = false;
+  if (fillUtil.isContentEditable(field)) {
+    // Default `should_insert_at_cursor` to true if the field is
+    // omitted/undefined.
+    const insertAtCursor = data['should_insert_at_cursor'] ?? true;
+    filled =
+        fillUtil.setContentEditableValue(data['value'], field, insertAtCursor);
+    wasEditedByUser.set(field, true);
+  } else if (
+      isTextField(field) || inferenceUtil.isTextAreaElement(field) ||
+      (inferenceUtil.isDateField(field) &&
+       autofillFormFeaturesApi.getFunction(
+           'isAutofillSupportDateInputEnabled')())) {
+    let sanitizedValue = data['value'];
+
+    if (isTextField(field)) {
+      // If the 'max_length' attribute contains a negative value, the default
+      // maxlength value is used.
+      let maxLength = data['max_length'];
+      if (maxLength < 0) {
+        maxLength = fill_constants.MAX_DATA_LENGTH;
+      }
+      sanitizedValue = data['value'].substr(0, maxLength);
+    }
+
+    if (data['should_insert_at_cursor']) {
+      filled = fillUtil.insertInputElementValueAtCursor(sanitizedValue, field);
+    } else {
+      filled = fillUtil.setInputElementValue(sanitizedValue, field);
+    }
+
+    // This is a hack to avoid showing Undo autofill when a field is filled with
+    // manual fallback sheet, as this path does not path by
+    // `components/autofill/core/browser/` and therefore data required to
+    // correctly Undo is not populated in `FormAutofillHistory`.
+    // TODO(crbug.com/487617428): Remove after fixing the filling paths.
+    wasEditedByUser.set(field, true);
+
+  } else if (inferenceUtil.isSelectElement(field)) {
+    filled = fillUtil.setInputElementValue(data['value'], field);
+  }
+  return filled;
+}
+
+/**
+ * Returns the auto-fillable form control elements in |formElement|.
+ *
+ * It is based on the logic in:
+ *     std::vector<blink::WebFormControlElement>
+ *     ExtractAutofillableElementsFromSet(
+ *         const WebVector<WebFormControlElement>& control_elements);
+ * in chromium/src/components/autofill/content/renderer/form_autofill_util.h.
+ *
+ * @param {Array<FormControlElement>} controlElements Set of control elements.
+ * @return {Array<FormControlElement>} The array of autofillable elements.
+ */
+function extractAutofillableElementsFromSet(controlElements) {
+  const autofillableElements = [];
+  for (let i = 0; i < controlElements.length; ++i) {
+    const element = controlElements[i];
+    if (!inferenceUtil.isAutofillableElement(element)) {
+      continue;
+    }
+    autofillableElements.push(element);
+  }
+  return autofillableElements;
+}
+
+/**
+ * Returns all the auto-fillable form control elements in |formElement|.
+ *
+ * It is based on the logic in
+ *     void ExtractAutofillableElementsInForm(
+ *         const blink::WebFormElement& form_element);
+ * in chromium/src/components/autofill/content/renderer/form_autofill_util.h.
+ *
+ * @param {HTMLFormElement} formElement A form element to be processed.
+ * @return {Array<FormControlElement>} The array of autofillable elements.
+ */
+// TODO: crbug.com/448990422 - Remove all utility functions
+// from the gCrWeb object.
+function extractAutofillableElementsInForm(formElement) {
+  const controlElements = getFormControlElements(formElement);
+  return extractAutofillableElementsFromSet(controlElements);
+}
+
+/**
+ * For debugging purposes, annotate forms on the page with prediction data using
+ * the placeholder attribute.
+ *
+ * @param {Object<AutofillFormData>} data The form and field identifiers with
+ *     their prediction data.
+ */
+function fillPredictionData(data) {
+  for (const formName in data) {
+    const form = getFormElementFromIdentifier(formName);
+    const formData = data[formName];
+    const controlElements = getFormControlElements(form);
+    for (let i = 0; i < controlElements.length; ++i) {
+      const element = controlElements[i];
+      if (!inferenceUtil.isAutofillableElement(element)) {
+        continue;
+      }
+      const elementID = fillUtil.getUniqueID(element);
+      const value = formData[elementID];
+      if (value) {
+        element.placeholder = value;
+      }
+    }
+  }
+}
+
+/**
+ * Returns whether |value| contains only formating characters.
+ *
+ * It is based on the logic in
+ *     void SanitizedFieldIsEmpty(const std::u16string& value);
+ * in chromium/src/components/autofill/common/autofill_util.h.
+ *
+ * @param {HTMLFormElement} formElement A form element to be processed.
+ * @return {Array<FormControlElement>} The array of autofillable elements.
+ */
+// TODO: crbug.com/448990422 - Remove all utility functions
+// from the gCrWeb object.
+function sanitizedFieldIsEmpty(value) {
+  // Some sites enter values such as ____-____-____-____ or (___)-___-____ in
+  // their fields. Check if the field value is empty after the removal of the
+  // formatting characters.
+  return trim(value.replace(/[-_()/|]/g, '')) === '';
+}
+
+const autofillAPI = new CrWebApi('autofill');
+
+autofillAPI.addFunction(
+    'extractAutofillableElementsInForm', extractAutofillableElementsInForm);
+autofillAPI.addFunction('extractForms', extractForms);
+autofillAPI.addFunction('extractNewForms', extractNewForms);
+autofillAPI.addFunction('fillActiveFormField', fillActiveFormField);
+autofillAPI.addFunction('fillForm', fillForm);
+autofillAPI.addFunction('fillFormField', fillFormField);
+autofillAPI.addFunction('fillPredictionData', fillPredictionData);
+autofillAPI.addFunction('fillSpecificFormField', fillSpecificFormField);
+autofillAPI.addFunction('sanitizedFieldIsEmpty', sanitizedFieldIsEmpty);
+autofillAPI.addFunction('scrollFieldIntoView', scrollFieldIntoView);
+
+gCrWeb.registerApi(autofillAPI);

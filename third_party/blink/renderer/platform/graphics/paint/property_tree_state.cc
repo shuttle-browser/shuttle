@@ -1,0 +1,220 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/platform/graphics/paint/property_tree_state.h"
+
+#include <memory>
+
+#include "cc/trees/sticky_position_constraint.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/wtf/text/format.h"
+#include "third_party/blink/renderer/platform/wtf/text/strcat.h"
+
+namespace blink {
+
+namespace {
+
+using IsCompositedScrollFunction =
+    PropertyTreeState::IsCompositedScrollFunction;
+
+const TransformPaintPropertyNode* NearestCompositedScrollTranslation(
+    const TransformPaintPropertyNode& scroll_translation,
+    IsCompositedScrollFunction is_composited_scroll) {
+  for (auto* t = &scroll_translation; t->Parent();
+       t = &t->UnaliasedParent()->NearestScrollTranslationNode()) {
+    if (is_composited_scroll(*t)) {
+      return t;
+    }
+  }
+  return nullptr;
+}
+
+enum TransformCompositingBoundaryType {
+  kNotSameBoundary,
+  kSameBoundary,
+  kThroughMergeableComposited,
+  kThroughMergeableCompositedScrollRangeDependent,
+};
+
+TransformCompositingBoundaryType InSameTransformCompositingBoundary(
+    const TransformPaintPropertyNode& t1,
+    const TransformPaintPropertyNode& t2,
+    IsCompositedScrollFunction is_composited_scroll) {
+  const auto* composited_ancestor1 = t1.NearestDirectlyCompositedAncestor();
+  const auto* composited_ancestor2 = t2.NearestDirectlyCompositedAncestor();
+  if (composited_ancestor1 != composited_ancestor2) {
+    if (composited_ancestor1 && composited_ancestor2) {
+      if (RuntimeEnabledFeatures::MergeFixedLayersEnabled() &&
+          composited_ancestor1->CanMergeForFixedPosition(
+              *composited_ancestor2)) {
+        return kThroughMergeableComposited;
+      }
+      if (RuntimeEnabledFeatures::MergeStickyLayersEnabled()) {
+        switch (composited_ancestor1->CanMergeForStickyPosition(
+            *composited_ancestor2)) {
+          case cc::StickyPositionConstraint::CanMergeResult::kCannotMerge:
+            break;
+          case cc::StickyPositionConstraint::CanMergeResult::kCanAlwaysMerge:
+            return kThroughMergeableComposited;
+          case cc::StickyPositionConstraint::CanMergeResult::
+              kCanMergeWithinScrollRange:
+            return kThroughMergeableCompositedScrollRangeDependent;
+        }
+      }
+    }
+    return kNotSameBoundary;
+  }
+
+  // There may be indirectly composited scroll translations below the common
+  // nearest directly composited ancestor. Check if t1 and t2 have the same
+  // nearest composited scroll translation.
+  const auto& scroll_translation1 = t1.NearestScrollTranslationNode();
+  const auto& scroll_translation2 = t2.NearestScrollTranslationNode();
+  if (&scroll_translation1 == &scroll_translation2) {
+    return kSameBoundary;
+  }
+  if (NearestCompositedScrollTranslation(scroll_translation1,
+                                         is_composited_scroll) ==
+      NearestCompositedScrollTranslation(scroll_translation2,
+                                         is_composited_scroll)) {
+    return kSameBoundary;
+  }
+  return kNotSameBoundary;
+}
+
+bool ClipChainInTransformCompositingBoundary(
+    const ClipPaintPropertyNode& node,
+    const ClipPaintPropertyNode& ancestor,
+    const TransformPaintPropertyNode& transform,
+    IsCompositedScrollFunction is_composited_scroll) {
+  for (const auto* n = &node; n != &ancestor; n = n->UnaliasedParent()) {
+    if (InSameTransformCompositingBoundary(
+            transform, n->LocalTransformSpace().Unalias(),
+            is_composited_scroll) != kSameBoundary) {
+      return false;
+    }
+  }
+  return true;
+}
+
+}  // namespace
+
+std::optional<PropertyTreeState::UpcastResult> PropertyTreeState::CanUpcastWith(
+    const PropertyTreeState& guest,
+    IsCompositedScrollFunction is_composited_scroll) const {
+  // A number of criteria need to be met:
+  //   1. The guest effect must be a descendant of the home effect. However this
+  // check is enforced by the layerization recursion. Here we assume the guest
+  // has already been upcasted to the same effect.
+  //   2. The guest transform and the home transform have compatible backface
+  // visibility.
+  //   3. The guest transform space must be within compositing boundary of the
+  // home transform space.
+  //   4. The local space of each clip on the ancestor chain must be within
+  // compositing boundary of the home transform space.
+  DCHECK_EQ(&Effect(), &guest.Effect());
+
+  const TransformPaintPropertyNode* upcast_transform = nullptr;
+  bool scroll_range_dependent = false;
+  // Fast-path for the common case of the transform state being equal.
+  if (&Transform() == &guest.Transform()) {
+    upcast_transform = &Transform();
+  } else {
+    auto same_boundary = InSameTransformCompositingBoundary(
+        Transform(), guest.Transform(), is_composited_scroll);
+    if (same_boundary == kNotSameBoundary) {
+      return std::nullopt;
+    }
+    if (Transform().IsBackfaceHidden() !=
+        guest.Transform().IsBackfaceHidden()) {
+      return std::nullopt;
+    }
+
+    if (same_boundary == kSameBoundary) {
+      upcast_transform =
+          &Transform().LowestCommonAncestor(guest.Transform()).Unalias();
+    } else {
+      if (same_boundary == kThroughMergeableCompositedScrollRangeDependent) {
+        scroll_range_dependent = true;
+      }
+      CHECK(RuntimeEnabledFeatures::MergeFixedLayersEnabled() ||
+            RuntimeEnabledFeatures::MergeStickyLayersEnabled());
+      const auto* composited1 = Transform().NearestDirectlyCompositedAncestor();
+      const auto* composited2 =
+          guest.Transform().NearestDirectlyCompositedAncestor();
+      // We will merge across `composited1` and `composited2`. They are ensured
+      // by TransformPaintPropertyNode::CanMerge*() to have a common composited
+      // ancestor, so that we won't merge though any other compositing
+      // boundaries.
+      //           common_composited_ancestor
+      //               |               |
+      //             T1...           T2...
+      //               |               |
+      //          composited1     composited2
+      //               |               |
+      //              this           guest
+      DCHECK_EQ(
+          composited1->UnaliasedParent()->NearestDirectlyCompositedAncestor(),
+          composited2->UnaliasedParent()->NearestDirectlyCompositedAncestor());
+      // The merge will not across any non-2d-translation transforms, to ensure
+      // the additional compositor translation on the layer is equivalent to it
+      // applied on `composited1` and `composited2` separately. This is implied
+      // by the conditions in TransformPaintPropertyNode::CanMerge*().
+      DCHECK_EQ(composited1->RootOf2dTranslation(),
+                composited2->RootOf2dTranslation());
+      // Use `composited1` instead of the common ancestor to make `composited1`
+      // still composited to keep the fixed-position flags etc. and allow cc
+      // to apply additional translation on the node.
+      // For paint chunks under `guest`, PaintChunksToCcLayers::Convert() will
+      // generate paint operations that are equivalent to the following:
+      //    Save
+      //    Concat(composited1^-1 * T1...^-1 * composited2 * T2... * guest)
+      //      paint chunk paint operations
+      //    Restore
+      upcast_transform = composited1;
+    }
+  }
+
+  const ClipPaintPropertyNode* upcast_clip = nullptr;
+  if (&Clip() == &guest.Clip()) {
+    upcast_clip = &Clip();
+  } else {
+    upcast_clip = &Clip().LowestCommonAncestor(guest.Clip()).Unalias();
+    if (!ClipChainInTransformCompositingBoundary(
+            Clip(), *upcast_clip, *upcast_transform, is_composited_scroll) ||
+        !ClipChainInTransformCompositingBoundary(guest.Clip(), *upcast_clip,
+                                                 *upcast_transform,
+                                                 is_composited_scroll)) {
+      return std::nullopt;
+    }
+  }
+
+  return std::make_optional<PropertyTreeState::UpcastResult>(
+      PropertyTreeState(*upcast_transform, *upcast_clip, Effect()),
+      scroll_range_dependent);
+}
+
+String PropertyTreeStateOrAlias::ToString() const {
+  return Format("t:{} c:{} e:{}", transform_, clip_, effect_);
+}
+
+#if DCHECK_IS_ON()
+
+String PropertyTreeStateOrAlias::ToTreeString() const {
+  return StrCat({"transform:\n", Transform().ToTreeString(), "\nclip:\n",
+                 Clip().ToTreeString(), "\neffect:\n",
+                 Effect().ToTreeString()});
+}
+
+#endif
+
+std::unique_ptr<JSONObject> PropertyTreeStateOrAlias::ToJSON() const {
+  std::unique_ptr<JSONObject> result = std::make_unique<JSONObject>();
+  result->SetObject("transform", transform_->ToJSON());
+  result->SetObject("clip", clip_->ToJSON());
+  result->SetObject("effect", effect_->ToJSON());
+  return result;
+}
+
+}  // namespace blink

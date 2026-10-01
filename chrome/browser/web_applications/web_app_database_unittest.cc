@@ -1,0 +1,470 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/web_applications/web_app_database.h"
+
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "base/base64.h"
+#include "base/base_switches.h"
+#include "base/feature_list.h"
+#include "base/files/file_path.h"
+#include "base/memory/raw_ptr.h"
+#include "base/run_loop.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/to_string.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/test/bind.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_command_line.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/test_future.h"
+#include "base/test/with_feature_override.h"
+#include "base/time/time.h"
+#include "build/build_config.h"
+#include "chrome/browser/extensions/test_extension_system.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/web_applications/test/isolated_web_app_test_utils.h"
+#include "chrome/browser/web_applications/generated_icon_fix_manager.h"
+#include "chrome/browser/web_applications/model/integrity_block_data.h"
+#include "chrome/browser/web_applications/model/isolation_data.h"
+#include "chrome/browser/web_applications/mojom/user_display_mode.mojom.h"
+#include "chrome/browser/web_applications/proto/web_app.pb.h"
+#include "chrome/browser/web_applications/proto/web_app_database_metadata.pb.h"
+#include "chrome/browser/web_applications/proto/web_app_install_state.pb.h"
+#include "chrome/browser/web_applications/scope_extension_info.h"
+#include "chrome/browser/web_applications/test/fake_web_app_database_factory.h"
+#include "chrome/browser/web_applications/test/fake_web_app_provider.h"
+#include "chrome/browser/web_applications/test/fake_web_app_ui_manager.h"
+#include "chrome/browser/web_applications/test/os_integration_test_override_impl.h"
+#include "chrome/browser/web_applications/test/test_file_utils.h"
+#include "chrome/browser/web_applications/test/web_app_install_test_utils.h"
+#include "chrome/browser/web_applications/test/web_app_test.h"
+#include "chrome/browser/web_applications/test/web_app_test_utils.h"
+#include "chrome/browser/web_applications/user_display_mode.h"
+#include "chrome/browser/web_applications/web_app.h"
+#include "chrome/browser/web_applications/web_app_command_manager.h"
+#include "chrome/browser/web_applications/web_app_constants.h"
+#include "chrome/browser/web_applications/web_app_database_serialization.h"
+#include "chrome/browser/web_applications/web_app_helpers.h"
+#include "chrome/browser/web_applications/web_app_install_info.h"
+#include "chrome/browser/web_applications/web_app_install_manager.h"
+#include "chrome/browser/web_applications/web_app_management_type.h"
+#include "chrome/browser/web_applications/web_app_proto_utils.h"
+#include "chrome/browser/web_applications/web_app_registrar.h"
+#include "chrome/browser/web_applications/web_app_registry_update.h"
+#include "chrome/browser/web_applications/web_app_sync_bridge.h"
+#include "chrome/browser/web_applications/web_app_utils.h"
+#include "chrome/common/pref_names.h"
+#include "components/prefs/pref_service.h"
+#include "components/services/app_service/public/cpp/file_handler.h"
+#include "components/services/app_service/public/cpp/protocol_handler_info.h"
+#include "components/services/app_service/public/cpp/share_target.h"
+#include "components/sync/model/data_type_store.h"
+#include "components/sync/protocol/web_app_specifics.pb.h"
+#include "components/sync/test/mock_data_type_local_change_processor.h"
+#include "components/web_package/signed_web_bundles/ed25519_public_key.h"
+#include "components/web_package/signed_web_bundles/ed25519_signature.h"
+#include "components/web_package/signed_web_bundles/signed_web_bundle_signature_stack_entry.h"
+#include "components/webapps/isolated_web_apps/types/storage_location.h"
+#include "components/webapps/isolated_web_apps/types/update_channel.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/features.h"
+#include "url/gurl.h"
+#include "url/origin.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chrome/browser/web_applications/web_app_run_on_os_login_manager.h"
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+namespace web_app {
+
+using ::testing::_;
+using ::testing::Eq;
+using ::testing::Field;
+using ::testing::IsNull;
+using ::testing::NotNull;
+using ::testing::Optional;
+using ::testing::Property;
+using ::testing::VariantWith;
+
+class WebAppDatabaseTest : public WebAppTest {
+ public:
+  bool IsDatabaseRegistryEqualToRegistrar() {
+    Registry registry = database_factory().ReadRegistry();
+    return IsRegistryEqual(mutable_registrar().registry(), registry);
+  }
+
+  void WriteBatch(
+      std::unique_ptr<syncer::DataTypeStore::WriteBatch> write_batch) {
+    base::RunLoop run_loop;
+
+    database_factory().GetStore()->CommitWriteBatch(
+        std::move(write_batch),
+        base::BindLambdaForTesting(
+            [&](const std::optional<syncer::ModelError>& error) {
+              EXPECT_FALSE(error);
+              run_loop.Quit();
+            }));
+
+    run_loop.Run();
+  }
+
+  Registry WriteWebApps(uint32_t num_apps,
+                        bool exclude_fields_with_side_effects = false) {
+    Registry registry;
+
+    auto write_batch = database_factory().GetStore()->CreateWriteBatch();
+
+    for (uint32_t i = 0; i < num_apps; ++i) {
+      test::CreateRandomWebAppParams params;
+      params.seed = i;
+      params.exclude_fields_with_side_effects =
+          exclude_fields_with_side_effects;
+      std::unique_ptr<WebApp> app = test::CreateRandomWebApp(params);
+      std::unique_ptr<proto::WebApp> proto = WebAppToProto(*app);
+      const webapps::AppId app_id = app->app_id();
+
+      write_batch->WriteData(app_id, proto->SerializeAsString());
+
+      registry.emplace(app_id, std::move(app));
+    }
+    proto::DatabaseMetadata metadata;
+    metadata.set_version(WebAppDatabase::GetCurrentDatabaseVersion());
+    write_batch->WriteData(std::string(WebAppDatabase::kDatabaseMetadataKey),
+                           metadata.SerializeAsString());
+    WriteBatch(std::move(write_batch));
+
+    return registry;
+  }
+
+ protected:
+  FakeWebAppDatabaseFactory& database_factory() {
+    return *fake_provider().GetDatabaseFactory().AsFakeWebAppDatabaseFactory();
+  }
+
+  WebAppRegistrar& registrar() { return fake_provider().GetRegistrarMutable(); }
+
+  WebAppRegistrarMutable& mutable_registrar() {
+    return fake_provider().GetRegistrarMutable();
+  }
+
+  WebAppSyncBridge& sync_bridge() {
+    return fake_provider().sync_bridge_unsafe();
+  }
+
+  void RegisterApp(std::unique_ptr<WebApp> web_app) {
+    ScopedRegistryUpdate update = sync_bridge().BeginUpdate();
+    update->CreateApp(std::move(web_app));
+  }
+
+  void UnregisterApp(const webapps::AppId& app_id) {
+    ScopedRegistryUpdate update = sync_bridge().BeginUpdate();
+    update->DeleteApp(app_id);
+  }
+
+  void UnregisterAll() {
+    ScopedRegistryUpdate update = sync_bridge().BeginUpdate();
+    for (const webapps::AppId& app_id : registrar().GetAppIds()) {
+      update->DeleteApp(app_id);
+    }
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_{
+      blink::features::kWebAppMigrationApi};
+};
+
+TEST_F(WebAppDatabaseTest, WriteAndReadRegistry) {
+  test::AwaitStartWebAppProviderAndSubsystems(profile());
+  EXPECT_TRUE(registrar().is_empty());
+
+  const uint32_t num_apps = 1000;
+
+  test::CreateRandomWebAppParams params;
+  params.seed = 0;
+  std::unique_ptr<WebApp> app = test::CreateRandomWebApp(params);
+  webapps::AppId app_id = app->app_id();
+  RegisterApp(std::move(app));
+  EXPECT_TRUE(IsDatabaseRegistryEqualToRegistrar());
+
+  for (uint32_t i = 1; i <= num_apps; ++i) {
+    params.seed = i;
+    std::unique_ptr<WebApp> extra_app = test::CreateRandomWebApp(params);
+    RegisterApp(std::move(extra_app));
+  }
+  EXPECT_TRUE(IsDatabaseRegistryEqualToRegistrar());
+
+  UnregisterApp(app_id);
+  EXPECT_TRUE(IsDatabaseRegistryEqualToRegistrar());
+
+  UnregisterAll();
+  EXPECT_TRUE(IsDatabaseRegistryEqualToRegistrar());
+}
+
+TEST_F(WebAppDatabaseTest, WriteAndDeleteAppsWithCallbacks) {
+  test::AwaitStartWebAppProviderAndSubsystems(profile());
+  EXPECT_TRUE(registrar().is_empty());
+
+  const uint32_t num_apps = 100;
+
+  RegistryUpdateData::Apps apps_to_create;
+  std::vector<webapps::AppId> apps_to_delete;
+  Registry expected_registry;
+
+#if BUILDFLAG(IS_CHROMEOS)
+  bool allow_system_source = true;
+#else
+  bool allow_system_source = false;
+#endif
+
+  for (uint32_t i = 0; i < num_apps; ++i) {
+    test::CreateRandomWebAppParams params;
+    params.seed = i;
+    params.allow_system_source = allow_system_source;
+    std::unique_ptr<WebApp> app = test::CreateRandomWebApp(params);
+    apps_to_delete.push_back(app->app_id());
+    apps_to_create.push_back(std::move(app));
+
+    std::unique_ptr<WebApp> expected_app = test::CreateRandomWebApp(params);
+    expected_registry.emplace(expected_app->app_id(), std::move(expected_app));
+  }
+
+  {
+    base::test::TestFuture<bool> future;
+    {
+      ScopedRegistryUpdate update =
+          sync_bridge().BeginUpdate(future.GetCallback());
+      for (std::unique_ptr<WebApp>& web_app : apps_to_create) {
+        update->CreateApp(std::move(web_app));
+      }
+    }
+    EXPECT_TRUE(future.Take());
+
+    Registry registry_written = database_factory().ReadRegistry();
+    EXPECT_TRUE(IsRegistryEqual(registry_written, expected_registry));
+  }
+
+  {
+    base::test::TestFuture<bool> future;
+    {
+      ScopedRegistryUpdate update =
+          sync_bridge().BeginUpdate(future.GetCallback());
+      for (const webapps::AppId& app_id : apps_to_delete) {
+        update->DeleteApp(app_id);
+      }
+    }
+    EXPECT_TRUE(future.Take());
+
+    Registry registry_deleted = database_factory().ReadRegistry();
+    EXPECT_TRUE(registry_deleted.empty());
+  }
+}
+
+// Read a database where all apps are already in a valid state, so there should
+// be no difference between the apps written and read.
+TEST_F(WebAppDatabaseTest, OpenDatabaseAndReadRegistry) {
+  constexpr int kNumApps = 20;
+  auto disable_sync_install_and_missing_os_integration = WebAppSyncBridge::
+      DisableResumeSyncInstallAndMissingOsIntegrationForTesting();
+  auto disable_generated_icon_fixes =
+      GeneratedIconFixManager::DisableGeneratedIconFixesForTesting();
+#if BUILDFLAG(IS_CHROMEOS)
+  // Some random apps will be configured to run on login, and by doing so we
+  // will 'fix' the InstallState if the OS integration is not there. So disable
+  // this behavior to prevent this from occurring.
+  auto disable_run_on_os_login =
+      WebAppRunOnOsLoginManager::SkipStartupForTesting();
+#endif  // BUILDFLAG(IS_CHROMEOS)
+  base::HistogramTester histogram_tester;
+  Registry registry =
+      WriteWebApps(kNumApps, /*exclude_fields_with_side_effects=*/true);
+  test::AwaitStartWebAppProviderAndSubsystems(profile());
+  histogram_tester.ExpectBucketCount("WebApp.Database.ValidProto", true,
+                                     kNumApps);
+  fake_provider().command_manager().AwaitAllCommandsCompleteForTesting();
+  EXPECT_TRUE(IsRegistryEqual(mutable_registrar().registry(), registry,
+                              /*exclude_current_os_integration=*/true));
+  EXPECT_TRUE(IsRegistryEqual(database_factory().ReadRegistry(), registry,
+                              /*exclude_current_os_integration=*/true));
+  EXPECT_EQ(database_factory().ReadMetadata().version(),
+            WebAppDatabase::GetCurrentDatabaseVersion());
+}
+
+// Tests handling crashes fixed in crbug.com/40894450.
+TEST_F(WebAppDatabaseTest, MigrateFromMissingShortcutsSizes) {
+  test::CreateRandomWebAppParams params;
+  std::unique_ptr<WebApp> base_app = test::CreateRandomWebApp(params);
+  // Ensure we are not a sub app.
+  base_app->SetParentAppId(std::nullopt);
+  WebAppShortcutsMenuItemInfo shortcut_item_info{};
+  shortcut_item_info.name = u"shortcut";
+  shortcut_item_info.url = GURL("http://example.com/shortcut");
+  shortcut_item_info.downloaded_icon_sizes.any = {42};
+  shortcut_item_info.downloaded_icon_sizes.maskable = {24};
+  shortcut_item_info.downloaded_icon_sizes.monochrome = {123};
+  base_app->SetShortcutsMenuInfo({shortcut_item_info});
+  webapps::AppId app_id = base_app->app_id();
+
+  std::unique_ptr<proto::WebApp> base_proto = WebAppToProto(*base_app);
+
+  proto::WebApp proto_without_shortcut_info(*base_proto);
+  proto_without_shortcut_info.clear_shortcuts_menu_item_infos();
+  // Fail to parse when fewer shortcut infos than downloaded sizes. No evidence
+  // this happens in the wild.
+  EXPECT_EQ(ParseWebAppProto(proto_without_shortcut_info, app_id), nullptr);
+
+  // If DB is missing downloaded shortcut icon sizes information, expect to pad
+  // the vector with empty IconSizes structs so the vectors in WebApp have equal
+  // length.
+  proto::WebApp proto_without_downloaded_sizes(*base_proto);
+  proto_without_downloaded_sizes.clear_downloaded_shortcuts_menu_icons_sizes();
+  auto roundtrip_app = ParseWebAppProto(proto_without_downloaded_sizes,
+                                        /*expected_app_id=*/app_id);
+
+  auto app_with_empty_downloaded_sizes = std::make_unique<WebApp>(*base_app);
+  shortcut_item_info.downloaded_icon_sizes = {};
+  app_with_empty_downloaded_sizes->SetShortcutsMenuInfo({shortcut_item_info});
+
+  EXPECT_EQ(base::ToString(*roundtrip_app),
+            base::ToString(*app_with_empty_downloaded_sizes));
+}
+
+MATCHER_P(FilePathContainsPath, path, "") {
+  return testing::ExplainMatchResult(
+      testing::Property(&base::FilePath::AsUTF8Unsafe,
+                        testing::HasSubstr(path)),
+      arg, result_listener);
+}
+
+TEST_F(WebAppDatabaseTest, DowngradeCorruptionRecovery) {
+  base::test::ScopedCommandLine scoped_command_line;
+  scoped_command_line.GetProcessCommandLine()->AppendSwitch(
+      switches::kNoErrorDialogs);
+
+  constexpr int kNumApps = 3;
+  fake_provider().UseRealOsIntegrationManager();
+  auto disable_sync_install_and_missing_os_integration = WebAppSyncBridge::
+      DisableResumeSyncInstallAndMissingOsIntegrationForTesting();
+  auto disable_generated_icon_fixes =
+      GeneratedIconFixManager::DisableGeneratedIconFixesForTesting();
+#if BUILDFLAG(IS_CHROMEOS)
+  auto disable_run_on_os_login =
+      WebAppRunOnOsLoginManager::SkipStartupForTesting();
+#endif  // BUILDFLAG(IS_CHROMEOS)
+  base::HistogramTester histogram_tester;
+
+  // 1. Write the apps and metadata.
+  Registry registry =
+      WriteWebApps(kNumApps, /*exclude_fields_with_side_effects=*/true);
+
+  // 2. Overwrite the database metadata to simulate a downgrade from a future
+  // version.
+  {
+    auto write_batch = database_factory().GetStore()->CreateWriteBatch();
+    proto::DatabaseMetadata metadata;
+    metadata.set_version(WebAppDatabase::GetCurrentDatabaseVersion() + 1);
+    write_batch->WriteData(std::string(WebAppDatabase::kDatabaseMetadataKey),
+                           metadata.SerializeAsString());
+    WriteBatch(std::move(write_batch));
+  }
+
+  // 3. Keep track of the file utils deletions.
+  auto test_file_utils = base::MakeRefCounted<TestFileUtils>();
+  fake_provider().SetFileUtils(test_file_utils);
+
+  // 4. Start the WebAppProvider to trigger the startup sequence.
+  test::AwaitStartWebAppProviderAndSubsystems(profile());
+
+  // 5. Verify that the profile error dialog was shown.
+  EXPECT_EQ(fake_ui_manager().num_show_profile_error_dialog_calls(), 1);
+
+  // 6. Wait for the background cleanup task to complete.
+  // The WebAppProvider should now have an empty registry and the store should
+  // be cleared.
+  EXPECT_TRUE(registrar().is_empty());
+
+  // 7. Verify the OS integration cleanup and file deletion was done.
+  EXPECT_FALSE(test_file_utils->deleted_files().empty());
+  std::vector<testing::Matcher<base::FilePath>> expected_deleted_files;
+  for (const auto& [app_id, app] : registry) {
+    std::string manifest_resources_dir_name =
+        base::FilePath(FILE_PATH_LITERAL("Manifest Resources"))
+            .AppendASCII(app_id)
+            .AsUTF8Unsafe();
+    expected_deleted_files.push_back(
+        FilePathContainsPath(manifest_resources_dir_name));
+
+    std::string os_integration_dir_name =
+        base::FilePath()
+            .AppendASCII(GenerateApplicationNameFromAppId(app_id))
+            .AsUTF8Unsafe();
+    expected_deleted_files.push_back(
+        FilePathContainsPath(os_integration_dir_name));
+  }
+  // Check that out of all the files deleted by the system, the ones we expect
+  // to be deleted are in there.
+  EXPECT_THAT(test_file_utils->deleted_files(),
+              testing::IsSupersetOf(expected_deleted_files));
+
+  // 8. Verify prefs were cleared.
+  EXPECT_TRUE(
+      profile()->GetPrefs()->GetDict(prefs::kWebAppsPreferences).empty());
+  EXPECT_TRUE(
+      profile()->GetPrefs()->GetDict(prefs::kWebAppsDailyMetrics).empty());
+}
+
+class BadWebAppDatabaseFactory : public AbstractWebAppDatabaseFactory {
+ public:
+  syncer::OnceDataTypeStoreFactory GetStoreFactory() override {
+    return base::BindOnce(
+        [](syncer::DataType type,
+           base::OnceCallback<void(const std::optional<syncer::ModelError>&,
+                                   std::unique_ptr<syncer::DataTypeStore>)>
+               callback) {
+          std::move(callback).Run(
+              syncer::ModelError(
+                  FROM_HERE,
+                  syncer::ModelError::Type::kDataTypeStoreBackendDbOpenFailed),
+              nullptr);
+        });
+  }
+  bool IsSyncingApps() override { return true; }
+  FakeWebAppDatabaseFactory* AsFakeWebAppDatabaseFactory() override {
+    return nullptr;
+  }
+};
+
+TEST_F(WebAppDatabaseTest, DatabaseOpenErrorPreventsSubsystemStartup) {
+  base::test::ScopedCommandLine scoped_command_line;
+  scoped_command_line.GetProcessCommandLine()->AppendSwitch(
+      switches::kNoErrorDialogs);
+
+  fake_provider().SetDatabaseFactory(
+      std::make_unique<BadWebAppDatabaseFactory>());
+
+  fake_provider().StartWithSubsystems();
+
+  {
+    base::RunLoop run_loop;
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, run_loop.QuitClosure());
+    run_loop.Run();
+  }
+
+  EXPECT_FALSE(fake_provider()
+                   .sync_bridge_unsafe()
+                   .GetDatabaseForTesting()
+                   ->is_opened());
+  EXPECT_TRUE(fake_provider().on_registry_ready().is_signaled());
+  EXPECT_FALSE(fake_provider().is_registry_ready());
+  EXPECT_EQ(
+      fake_provider().command_manager().GetStartedCommandCountForTesting(), 0);
+}
+
+}  // namespace web_app

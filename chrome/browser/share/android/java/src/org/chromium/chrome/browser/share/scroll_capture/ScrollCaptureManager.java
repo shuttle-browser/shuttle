@@ -1,0 +1,83 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.share.scroll_capture;
+
+import android.os.Build.VERSION_CODES;
+import android.view.View;
+
+import androidx.annotation.RequiresApi;
+
+import org.chromium.base.Callback;
+import org.chromium.base.supplier.NullableObservableSupplier;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabObserver;
+
+/**
+ * A ScrollCaptureManager is responsible for providing snapshots of the active tab to be used for
+ * long screenshots.
+ */
+@NullMarked
+public class ScrollCaptureManager implements TabObserver, Callback<@Nullable Tab> {
+    private final NullableObservableSupplier<Tab> mTabSupplier;
+    private final ScrollCaptureManagerDelegate mDelegate;
+    private @Nullable Tab mCurrentTab;
+    private @Nullable View mCurrentView;
+
+    @RequiresApi(api = VERSION_CODES.S)
+    public ScrollCaptureManager(NullableObservableSupplier<Tab> tabSupplier) {
+        this(tabSupplier, new ScrollCaptureManagerDelegateImpl());
+    }
+
+    ScrollCaptureManager(
+            NullableObservableSupplier<Tab> tabSupplier, ScrollCaptureManagerDelegate delegate) {
+        mTabSupplier = tabSupplier;
+        mDelegate = delegate;
+        mTabSupplier.addSyncObserverAndPostIfNonNull(this);
+    }
+
+    @Override
+    public void onResult(@Nullable Tab tab) {
+        if (mCurrentTab != null) {
+            mCurrentTab.removeObserver(this);
+        }
+        mCurrentTab = tab;
+        mDelegate.setCurrentTab(tab);
+        if (tab != null) {
+            tab.addObserver(this);
+            onContentChanged(tab);
+        }
+    }
+
+    @Override
+    public void onContentChanged(Tab tab) {
+        if (mCurrentView != null) {
+            removeScrollCaptureBindings(mCurrentView);
+            mCurrentView = null;
+        }
+
+        if (tab.isNativePage() || tab.isShowingCustomView() || tab.isShowingErrorPage()) return;
+
+        mCurrentView = tab.getView();
+        if (mCurrentView != null) {
+            addScrollCaptureBindings(mCurrentView);
+        }
+    }
+
+    private void addScrollCaptureBindings(View view) {
+        mDelegate.addScrollCaptureBindings(view);
+    }
+
+    private void removeScrollCaptureBindings(View view) {
+        mDelegate.removeScrollCaptureBindings(view);
+    }
+
+    public void destroy() {
+        mTabSupplier.removeObserver(this);
+        if (mCurrentTab != null) mCurrentTab.removeObserver(this);
+        if (mCurrentView != null) removeScrollCaptureBindings(mCurrentView);
+    }
+}

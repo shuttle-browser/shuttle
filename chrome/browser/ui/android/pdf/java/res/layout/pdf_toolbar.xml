@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2026 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<org.chromium.chrome.browser.pdf.PdfToolbar
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/pdf_toolbar"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/toolbar_height_no_shadow"
+    android:focusable="true"
+    android:visibility="gone"
+    android:paddingEnd="8dp"
+    android:background="@drawable/toolbar_no_divider">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/pdf_toolbar_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <TextView
+            android:id="@+id/pdf_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxWidth="300dp"
+            app:layout_constrainedWidth="true"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:paddingEnd="12dp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/pdf_toolbar_group_center"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintHorizontal_bias="0.0"
+            android:textAppearance="@style/TextAppearance.TextLargeThick.Primary"
+            android:layout_gravity="start|center_vertical" />
+
+        <LinearLayout
+            android:id="@+id/pdf_toolbar_group_center"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constrainedWidth="true">
+
+            <!-- page_navigation -->
+            <EditText
+                android:id="@+id/current_page"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:maxEms="2"
+                android:textAppearance="@style/TextAppearance.TextSmall.Primary"
+                android:background="@drawable/modern_toolbar_input_field_background"
+                android:inputType="number"
+                android:digits="0123456789"
+                android:imeOptions="actionGo"
+                android:cursorVisible="true"
+                android:importantForAutofill="no"
+                android:textAlignment="center"
+                tools:ignore="LabelFor"/>
+
+            <TextView
+                android:id="@+id/page_count_divider"
+                android:text=" / "
+                tools:ignore="HardcodedText"
+                android:paddingStart="4dp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.TextSmall.Primary" />
+
+            <TextView
+                android:id="@+id/page_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:textAppearance="@style/TextAppearance.TextSmall.Primary"
+                android:paddingEnd="12dp" />
+
+            <!-- nav_zoom_divider -->
+            <View
+                android:id="@+id/nav_zoom_divider"
+                android:layout_width="1dp"
+                android:layout_height="24dp"
+                android:background="@color/divider_color"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="12dp" />
+
+            <!-- zoom_controls -->
+            <org.chromium.ui.widget.ChromeImageButton
+                android:id="@+id/zoom_decrease_button"
+                style="@style/ToolbarButton"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_marginStart="12dp"
+                android:contentDescription="@string/page_zoom_decrease_zoom_button_text"
+                android:src="@drawable/ic_remove"
+                app:tint="@color/default_icon_color_tint_list"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:paddingEnd="12dp" />
+
+            <TextView
+                android:id="@+id/zoom_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:textAppearance="@style/TextAppearance.TextSmall.Primary" />
+
+            <org.chromium.ui.widget.ChromeImageButton
+                android:id="@+id/zoom_increase_button"
+                style="@style/ToolbarButton"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:contentDescription="@string/page_zoom_increase_zoom_button_text"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:src="@drawable/ic_add_24dp"
+                app:tint="@color/default_icon_color_tint_list" />
+
+            <!-- zoom_fit_divider -->
+            <View
+                android:id="@+id/zoom_fit_divider"
+                android:layout_width="1dp"
+                android:layout_height="24dp"
+                android:background="@color/divider_color"
+                android:layout_marginStart="12dp" />
+
+            <org.chromium.ui.widget.ChromeImageButton
+                android:id="@+id/fit_to_page_button"
+                style="@style/ToolbarButton"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:contentDescription="@string/pdf_fit_page"
+                android:paddingStart="20dp"
+                android:paddingEnd="12dp"
+                android:src="@drawable/ic_fit_page_height_24dp"
+                app:tint="@color/default_icon_color_tint_list" />
+
+
+            <!-- fit_edit_divider -->
+            <View
+                android:id="@+id/fit_edit_divider"
+                android:layout_width="1dp"
+                android:layout_height="24dp"
+                android:background="@color/divider_color"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp" />
+
+            <org.chromium.ui.widget.ChromeImageButton
+                android:id="@+id/edit_button"
+                style="@style/ToolbarButton"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:contentDescription="@string/pdf_draw"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:src="@drawable/ic_edit_24dp"
+                android:background="@drawable/pdf_edit_button_background"
+                app:tint="@color/pdf_edit_button_tint" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/pdf_toolbar_group_end"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical|end"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@id/pdf_toolbar_group_center"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintHorizontal_bias="1.0"
+            android:paddingEnd="0dp"
+            app:layout_constrainedWidth="true">
+
+            <org.chromium.ui.widget.ChromeImageButton
+                android:id="@+id/download_button"
+                android:contentDescription="@string/menu_save_page_as"
+                style="@style/ToolbarButton"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:src="@drawable/ic_download"
+                app:tint="@color/default_icon_color_tint_list" />
+
+            <org.chromium.ui.widget.ButtonCompat
+                android:id="@+id/done_button"
+                android:contentDescription="@string/done"
+                style="@style/TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:text="@string/done"
+                app:buttonColor="?attr/colorPrimary"
+                app:buttonTextColor="?attr/colorOnPrimary"
+                android:visibility="gone" />
+
+            <org.chromium.ui.widget.ChromeImageButton
+                android:id="@+id/print_button"
+                android:contentDescription="@string/menu_print"
+                style="@style/ToolbarButton"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:src="@drawable/ic_print_24dp"
+                app:tint="@color/default_icon_color_tint_list" />
+
+            <org.chromium.ui.listmenu.ListMenuButton
+                android:id="@+id/more_menu_button"
+                style="@style/ToolbarButton"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:paddingStart="12dp"
+                android:src="@drawable/ic_more_vert_24dp"
+                app:tint="@color/default_icon_color_tint_list" />
+
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</org.chromium.chrome.browser.pdf.PdfToolbar>

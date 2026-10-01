@@ -1,0 +1,416 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import './bookmark_bar.js';
+import './content_region.js';
+import './extensions_bar.js';
+import './icons.html.js';
+import './side_panel.js';
+import '/strings.m.js';
+import './tab_strip/tab_strip.js';
+import './webview.js';
+import './webui_browser_searchbox.js';
+import 'chrome://resources/cr_elements/cr_button/cr_button.js';
+import 'chrome://resources/cr_elements/cr_icon_button/cr_icon_button.js';
+import 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
+
+import {ColorChangeUpdater} from '//resources/cr_components/color_change_listener/colors_css_updater.js';
+import {assert, assertNotReachedCase} from '//resources/js/assert.js';
+import {loadTimeData} from '//resources/js/load_time_data.js';
+import type {Tab as TabData} from '/tab_strip_api/tab_strip_api_data_model.mojom-webui.js';
+import {TrackedElementManager} from 'chrome://resources/js/tracked_element/tracked_element_manager.js';
+import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
+
+import {getCss} from './app.css.js';
+import {getHtml} from './app.html.js';
+import {browserProxyFactory, FullscreenContext, SecurityIcon} from './browser.mojom-webui.js';
+import type {ContentRegionElement} from './content_region.js';
+import type {SidePanelElement} from './side_panel.js';
+import type {TabActivated, TabAdded, TabClosed, TabUpdated} from './tab_strip/events.js';
+import {TabStripElement} from './tab_strip/tab_strip.js';
+import type {WebuiBrowserSearchboxElement} from './webui_browser_searchbox.js';
+
+export interface WebuiBrowserAppElement {
+  $: {
+    address: WebuiBrowserSearchboxElement,
+    appMenuButton: HTMLElement,
+    avatarButton: HTMLElement,
+    backButton: HTMLElement,
+    forwardButton: HTMLElement,
+    locationIconButton: HTMLElement,
+    contentRegion: ContentRegionElement,
+    sidePanel: SidePanelElement,
+    tabstrip: TabStripElement,
+  };
+}
+
+export class WebuiBrowserAppElement extends CrLitElement {
+  static get is() {
+    return 'webui-browser-app';
+  }
+
+  static override get styles() {
+    return getCss();
+  }
+
+  override render() {
+    return getHtml.bind(this)();
+  }
+
+  static override get properties() {
+    return {
+      backButtonDisabled_: {state: true, type: Boolean},
+      forwardButtonDisabled_: {state: true, type: Boolean},
+      fullscreenMode_:
+          {type: String, reflect: true, attribute: 'fullscreen-mode'},
+      showingSidePanel_: {state: true, type: Boolean},
+      reloadOrStopIcon_: {state: true, type: String},
+      showLocationIconButton_: {type: Boolean, reflect: true},
+      locationIcon_: {state: true, type: String},
+      tabStripInset_: {state: true, type: Number},
+      inactive_: {
+        type: Boolean,
+        reflect: true,
+        attribute: 'inactive',
+      },
+    };
+  }
+
+  private trackedElementManager_: TrackedElementManager;
+  private longPressTimer_: number = 0;
+  protected accessor backButtonDisabled_: boolean = true;
+  protected accessor forwardButtonDisabled_: boolean = true;
+  protected accessor fullscreenMode_: string = '';
+  protected accessor reloadOrStopIcon_: string = 'icon-refresh';
+  protected accessor showingSidePanel_: boolean = false;
+  protected accessor showLocationIconButton_: boolean = false;
+  protected accessor locationIcon_: string = 'no-encryption';
+  protected accessor tabStripInset_: number =
+      loadTimeData.valueExists('tabStripInset') ?
+      loadTimeData.getInteger('tabStripInset') :
+      0;
+  protected accessor inactive_: boolean = false;
+
+  constructor() {
+    super();
+    ColorChangeUpdater.forDocument().start();
+
+    this.trackedElementManager_ = TrackedElementManager.getInstance();
+
+    const callbackRouter = browserProxyFactory.getInstance().callbackRouter;
+    callbackRouter.showSidePanel.addListener(this.showSidePanel_.bind(this));
+    callbackRouter.closeSidePanel.addListener(this.closeSidePanel_.bind(this));
+    callbackRouter.onFullscreenModeChanged.addListener(
+        this.onFullscreenModeChanged_.bind(this));
+    callbackRouter.onPaintAsActiveChanged.addListener((active: boolean) => {
+      this.inactive_ = !active;
+    });
+  }
+
+  override async connectedCallback() {
+    // Important. Properties are not reactive without calling
+    // super.connectedCallback().
+    super.connectedCallback();
+    this.trackedElementManager_.startTracking(
+        this.$.address, 'kLocationBarElementId');
+    this.trackedElementManager_.startTracking(
+        this.$.appMenuButton, 'kToolbarAppMenuButtonElementId');
+    this.trackedElementManager_.startTracking(
+        this.$.avatarButton, 'kToolbarAvatarButtonElementId');
+    this.trackedElementManager_.startTracking(
+        this.$.backButton, 'kToolbarBackButtonElementId');
+    this.trackedElementManager_.startTracking(
+        this.$.forwardButton, 'kToolbarForwardButtonElementId');
+    this.trackedElementManager_.startTracking(
+        this.$.locationIconButton, 'kLocationIconElementId');
+    this.trackedElementManager_.startTracking(
+        this.$.contentRegion, 'kContentsContainerViewElementId');
+    this.setUpLongPress_(this.$.backButton, /*isBack=*/ true);
+    this.setUpLongPress_(this.$.forwardButton, /*isBack=*/ false);
+    const {width} =
+        await browserProxyFactory.getInstance().handler.getTabStripInset();
+    this.tabStripInset_ = width;
+  }
+
+  // TabStripControllerDelegate:
+  refreshLayout() {
+    this.updateToolbarButtons_();
+  }
+
+  // Map from SecurityIcon values to the names of icons defined in
+  // icons.html.ts.
+  private securityIconToIconNameMap = new Map<SecurityIcon, string>([
+    [SecurityIcon.HttpChromeRefresh, 'info'],
+    [SecurityIcon.SecurePageInfoChromeRefresh, 'page-info'],
+    [SecurityIcon.NoEncryption, 'no-encryption'],
+    [
+      SecurityIcon.NotSecureWarningChromeRefresh,
+      'warning',
+    ],
+    [SecurityIcon.BusinessChromeRefresh, 'domain'],
+    [SecurityIcon.DangerousChromeRefresh, 'dangerous-filled'],
+    [SecurityIcon.ProductChromeRefresh, 'chrome-product'],
+    [SecurityIcon.ExtensionChromeRefresh, 'chrome-extension'],
+    [SecurityIcon.OfflinePin, 'OfflinePinIcon-custom'],
+  ]);
+
+  protected onAppMenuClick_(_: Event) {
+    browserProxyFactory.getInstance().handler.openAppMenu();
+  }
+
+  protected onBookmarksClick_() {
+    if (this.showingSidePanel_ && this.$.sidePanel.isShowingBookmarks()) {
+      this.closeSidePanel_();
+    } else {
+      this.showingSidePanel_ = true;
+      this.$.sidePanel.showBookmarks();
+    }
+  }
+
+  protected onAvatarClick_(_: Event) {
+    browserProxyFactory.getInstance().handler.openProfileMenu();
+  }
+
+  protected onMinimizeClick_(_: Event) {
+    browserProxyFactory.getInstance().handler.minimize();
+  }
+
+  protected onMaximizeClick_(_: Event) {
+    browserProxyFactory.getInstance().handler.maximize();
+  }
+
+  protected onRestoreClick_(_: Event) {
+    browserProxyFactory.getInstance().handler.restore();
+  }
+
+  protected onCloseClick_(_: Event) {
+    browserProxyFactory.getInstance().handler.close();
+  }
+
+  protected onBackClick_(_: Event) {
+    if (this.$.contentRegion.activeWebview) {
+      this.$.contentRegion.activeWebview.goBack();
+    }
+  }
+
+  protected onBackContextmenu_(e: Event) {
+    e.preventDefault();
+    browserProxyFactory.getInstance().handler.showBackForwardMenu(
+        /*isBack=*/ true);
+  }
+
+  protected onForwardClick_(_: Event) {
+    if (this.$.contentRegion.activeWebview) {
+      this.$.contentRegion.activeWebview.goForward();
+    }
+  }
+
+  protected onForwardContextmenu_(e: Event) {
+    e.preventDefault();
+    browserProxyFactory.getInstance().handler.showBackForwardMenu(
+        /*isBack=*/ false);
+  }
+
+  // Long-press on back/forward buttons shows the navigation history menu,
+  // matching the 500ms delay used by ToolbarButton in Views.
+  private setUpLongPress_(button: HTMLElement, isBack: boolean) {
+    const clearTimer = () => {
+      window.clearTimeout(this.longPressTimer_);
+      this.longPressTimer_ = 0;
+    };
+    button.addEventListener('pointerdown', (e: PointerEvent) => {
+      // Ignore non-left mouse button down.
+      if (e.button !== 0) {
+        return;
+      }
+      this.longPressTimer_ = window.setTimeout(() => {
+        clearTimer();
+        browserProxyFactory.getInstance().handler.showBackForwardMenu(isBack);
+      }, 500);
+    });
+    button.addEventListener('pointerup', clearTimer);
+    button.addEventListener('pointerleave', clearTimer);
+  }
+
+  protected onReloadOrStopClick_(_: Event) {
+    if (this.$.contentRegion.activeWebview) {
+      if (this.reloadOrStopIcon_ === 'icon-refresh') {
+        this.$.contentRegion.activeWebview.reload();
+      } else {
+        this.$.contentRegion.activeWebview.stopLoading();
+      }
+    }
+  }
+
+  protected reloadOrStopTooltip_(): string {
+    if (this.reloadOrStopIcon_ === 'icon-refresh') {
+      return loadTimeData.getString('tooltipReload');
+    } else {
+      return loadTimeData.getString('tooltipStop');
+    }
+  }
+
+  protected onTabAdded_(event: CustomEvent<TabAdded>) {
+    this.$.contentRegion.createWebView(event.detail.id, event.detail.isActive);
+    this.refreshLayout();
+  }
+
+  protected onTabClosed_(event: CustomEvent<TabClosed>) {
+    this.$.contentRegion.removeTab(event.detail);
+    this.refreshLayout();
+  }
+
+  protected onTabActivated_(event: CustomEvent<TabActivated>) {
+    // TODO(crbug.com/537801193): store and restore focus on tab switch.
+    this.$.contentRegion.activateTab(event.detail.id);
+    this.updateUrlForActiveTab_(event.detail);
+    this.refreshLayout();
+  }
+
+  protected onTabUpdated_(event: CustomEvent<TabUpdated>) {
+    const tabData = event.detail;
+    if (!tabData.isActive) {
+      return;
+    }
+
+    this.$.contentRegion.activateTab(tabData.id);
+    this.updateUrlForActiveTab_(tabData);
+    this.refreshLayout();
+  }
+
+  private updateUrlForActiveTab_(active: TabData) {
+    assert(active.isActive);
+
+    let displayUrl = '';
+    const activeTabUrl = active.url;
+    // TODO(webium): Should match
+    // ChromeLocationBarModelDelegate::ShouldDisplayURL and
+    // LocationBarModelImpl::GetFormattedURL logic.
+    //
+    // There are also likely some subtleties about what happens when the user
+    // is typing and the tab navigates.
+    const isNTP = activeTabUrl.startsWith('chrome://newtab');
+    if (!isNTP) {
+      displayUrl = activeTabUrl;
+
+      const tabWebView = this.$.contentRegion.activeWebview;
+      if (tabWebView) {
+        tabWebView.getSecurityIcon().then(securityIcon => {
+          // The content may have changed by the time this is resolved.
+          if (this.$.contentRegion.activeWebview === tabWebView) {
+            const iconName = this.securityIconToIconNameMap.get(securityIcon);
+            assert(iconName);
+            this.locationIcon_ = iconName;
+            // Failure here indicates a new icon needs to be added to
+            // icons.html.ts and then to |securityIconToIconNameMap|.
+          }
+        });
+      }
+    }
+    this.showLocationIconButton_ = !isNTP;
+    this.$.address.setInputText(displayUrl);
+    this.$.contentRegion.classList.toggle('modalScrim', active.isBlocked);
+  }
+
+  private async updateToolbarButtons_() {
+    const webview = this.$.contentRegion.activeWebview;
+    if (webview) {
+      const [canGoBack, canGoForward] =
+          await Promise.all([webview.canGoBack(), webview.canGoForward()]);
+      this.backButtonDisabled_ = !canGoBack;
+      this.forwardButtonDisabled_ = !canGoForward;
+    } else {
+      this.backButtonDisabled_ = true;
+      this.forwardButtonDisabled_ = true;
+    }
+  }
+
+  protected override firstUpdated() {
+    browserProxyFactory.getInstance()
+        .callbackRouter.setFocusToLocationBar.addListener(
+            this.setFocusToLocationBar.bind(this));
+    browserProxyFactory.getInstance()
+        .callbackRouter.setReloadStopState.addListener(
+            this.setReloadStopState.bind(this));
+  }
+
+  protected onTabDragMousedown_(e: MouseEvent) {
+    if (e.target instanceof TabStripElement) {
+      this.$.tabstrip.dragMouseDown(e);
+    }
+  }
+
+  protected setFocusToLocationBar(isUserInitiated: boolean) {
+    this.$.address.focusInput();
+
+    // If the user initiated the selection (e.g. by pressing Ctrl-L) we want to
+    // select everything in order to make it easy to replace the URL. This is
+    // also useful for some cases where we auto-focus (e.g. about:blank set as
+    // the NTP) if they're not actively using the omnibox, which we check by
+    // looking at the focus. See OmniBoxViewViews::SetFocus() for the
+    // inspiration.
+    if (isUserInitiated || this.shadowRoot.activeElement !== this.$.address) {
+      this.$.address.selectAll();
+    }
+  }
+
+  protected setReloadStopState(isLoading: boolean) {
+    this.reloadOrStopIcon_ = isLoading ? 'icon-clear' : 'icon-refresh';
+    this.updateToolbarButtons_();
+  }
+
+
+  protected showSidePanel_(guestContentsId: string, title: string) {
+    this.showingSidePanel_ = true;
+    this.$.sidePanel.show(guestContentsId, title);
+  }
+
+  protected closeSidePanel_() {
+    this.$.sidePanel.close();
+    this.showingSidePanel_ = false;
+  }
+
+  // This function is called when the side panel closes itself. For example,
+  // when user clicks the close "x" button.
+  protected onSidePanelClosed_() {
+    this.showingSidePanel_ = false;
+  }
+
+  protected onFullscreenModeChanged_(
+      isFullscreen: boolean, context: FullscreenContext|null) {
+    if (!isFullscreen) {
+      this.fullscreenMode_ = '';
+    } else {
+      // When fullscreen is true, we should always have a context
+      assert(
+          context !== null,
+          'Context must be provided when isFullscreen is true');
+
+      switch (context) {
+        case FullscreenContext.kTab:
+          this.fullscreenMode_ = 'tab';
+          break;
+        case FullscreenContext.kBrowser:
+          this.fullscreenMode_ = 'browser';
+          break;
+        default:
+          assertNotReachedCase(context);
+      }
+    }
+  }
+
+  protected onLocationIconClick_(_: Event) {
+    if (this.$.contentRegion.activeWebview) {
+      this.$.contentRegion.activeWebview.openPageInfoMenu();
+    }
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'webui-browser-app': WebuiBrowserAppElement;
+  }
+}
+
+customElements.define(WebuiBrowserAppElement.is, WebuiBrowserAppElement);

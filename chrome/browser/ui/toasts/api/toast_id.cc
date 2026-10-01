@@ -1,0 +1,125 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/toasts/api/toast_id.h"
+
+#include <string>
+#include <string_view>
+
+#include "base/notreached.h"
+
+std::string_view GetToastName(ToastId toast_id) {
+  switch (toast_id) {
+    case ToastId::kLinkCopied:
+      return "LinkCopied";
+    case ToastId::kImageCopied:
+      return "ImageCopied";
+    case ToastId::kLinkToHighlightCopied:
+      return "LinkToHighlightCopied";
+    case ToastId::kAddedToReadingList:
+      return "AddedToReadingList";
+    case ToastId::kNonMilestoneUpdate:
+      return "NonMilestoneUpdate";
+    case ToastId::kClearBrowsingData:
+      return "ClearBrowsingData";
+    case ToastId::kSyncEsbOn:
+      return "SyncEsbOn";
+    case ToastId::kSyncEsbOnWithoutActionButton:
+      return "SyncEsbOnWithoutActionButton";
+    case ToastId::kSyncEsbOff:
+      return "SyncEsbOff";
+    case ToastId::kSkillSaved:
+      return "SkillSaved";
+    case ToastId::kSkillDeleted:
+      return "SkillDeleted";
+    case ToastId::kTabGroupSyncTabRemoved:
+      return "TabGroupSyncTabRemoved";
+    case ToastId::kTabGroupSyncUserJoined:
+      return "TabGroupSyncUserJoined";
+    case ToastId::kTabGroupSyncRemovedFromGroup:
+      return "TabGroupSyncRemovedFromGroup";
+    case ToastId::kTabGroupSharingVersionUpToDate:
+      return "TabGroupSharingVersionUpToDate";
+    case ToastId::kVideoFrameCopied:
+      return "VideoFrameCopied";
+    case ToastId::kClosePinnedTab:
+      return "ClosePinnedTab";
+    case ToastId::kGeminiWorkingOnTask:
+      return "GeminiWorkingOnTask";
+    case ToastId::kDiceUserMigrated:
+      return "DiceUserMigrated";
+    case ToastId::kEmailVerified:
+      return "EmailVerified";
+    case ToastId::kGlicShareImageFailed:
+      return "GlicShareImageFailed";
+    case ToastId::kCopiedToClipboard:
+      return "CopiedToClipboard";
+    case ToastId::kEnhancedBundledSecuritySettings:
+      return "EnhancedBundledSecuritySettings";
+    case ToastId::kAutofillAiFetchEntityErrorMessage:
+      return "AutofillAiFetchEntityErrorMessage";
+    case ToastId::kTranslate:
+      return "Translate";
+    case ToastId::kAutofillAiSaveToWalletErrorMessage:
+      return "AutofillAiSaveToWalletErrorMessage";
+    case ToastId::kRecordReplay:
+      return "RecordReplay";
+    case ToastId::kAutoSignIn:
+      return "AutoSignIn";
+    case ToastId::kMultistepFilterSuggestion:
+      return "MultistepFilterSuggestion";
+    case ToastId::kMultistepFilterSuggestionRecent:
+      return "MultistepFilterSuggestionRecent";
+    case ToastId::kSkillSavedWithoutInvokeButton:
+      return "SkillSavedWithoutInvokeButton";
+    case ToastId::kSendTabToSelfTabOpened:
+      return "SendTabToSelfOpened";
+    case ToastId::kSendTabToSelfTabsOpenedInBackground:
+      return "SendTabToSelfTabsOpenedInBackground";
+    case ToastId::kSendTabToSelfSuccess:
+      return "SendTabToSelfSuccess";
+    case ToastId::kSendTabToSelfFailure:
+      return "SendTabToSelfFailure";
+    case ToastId::kSendTabToSelfSuccessThrottled:
+      return "SendTabToSelfSuccessThrottled";
+    case ToastId::kReportUnsafeSiteConfirmation:
+      return "ReportUnsafeSiteConfirmation";
+    case ToastId::kDefaultBrowserUpdateSuccess:
+      return "DefaultBrowserUpdateSuccess";
+    case ToastId::kSendTabToSelfNoInternetConnection:
+      return "SendTabToSelfNoInternetConnection";
+    case ToastId::kIndigoInvokeError:
+      return "IndigoInvokeError";
+    case ToastId::kTabStripSwitchDelayedHorizontal:
+      return "TabStripSwitchDelayedHorizontal";
+    case ToastId::kTabStripSwitchDelayedVertical:
+      return "TabStripSwitchDelayedVertical";
+    case ToastId::kAutofillAiPreFetchErrorMessage:
+      return "AutofillAiPreFetchErrorMessage";
+    case ToastId::kEnterpriseCopyAudit:
+      return "EnterpriseCopyAudit";
+    case ToastId::kEnterpriseCopyKeptInManagedChrome:
+      return "EnterpriseCopyKeptInManagedChrome";
+    case ToastId::kDictationError:
+      return "DictationError";
+    case ToastId::kDictationStopped:
+      return "DictationStopped";
+    case ToastId::kDictationNoMicrophoneError:
+      return "DictationNoMicrophoneError";
+    case ToastId::kGlicSelectionHiddenForSite:
+      return "GlicSelectionHiddenForSite";
+    case ToastId::kEnterpriseCopyWarning:
+      return "EnterpriseCopyWarning";
+    case ToastId::kEnterpriseCopyBlocked:
+      return "EnterpriseCopyBlocked";
+    case ToastId::kIndigoDeleteError:
+      return "IndigoDeleteError";
+    case ToastId::kIndigoDeleteSuccess:
+      return "IndigoDeleteSuccess";
+    case ToastId::kAtMemorySpiiFetchErrorMessage:
+      return "AtMemorySpiiFetchErrorMessage";
+  }
+
+  NOTREACHED();
+}

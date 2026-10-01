@@ -1,0 +1,5 @@
+include_rules = [
+  # keep-sorted start
+  "+components/signin/internal/identity_manager",
+  # keep-sorted end
+]

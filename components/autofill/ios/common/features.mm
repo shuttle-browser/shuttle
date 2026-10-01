@@ -1,0 +1,84 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "components/autofill/ios/common/features.h"
+
+// Keep the alphabetical order.
+
+// LINT.IfChange(autofill_allow_default_prevented_submission)
+BASE_FEATURE(kAutofillAllowDefaultPreventedSubmission,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+// LINT.ThenChange(/components/autofill/ios/form_util/resources/autofill_form_features.ts:autofill_allow_default_prevented_submission)
+
+// LINT.IfChange(autofill_count_form_submission_in_renderer)
+BASE_FEATURE(kAutofillCountFormSubmissionInRenderer,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+// LINT.ThenChange(//components/autofill/ios/form_util/resources/autofill_form_features.ts:autofill_count_form_submission_in_renderer)
+
+// LINT.IfChange(autofill_dedupe_form_submission)
+BASE_FEATURE(kAutofillDedupeFormSubmission, base::FEATURE_ENABLED_BY_DEFAULT);
+// LINT.ThenChange(/components/autofill/ios/form_util/resources/autofill_form_features.ts:autofill_dedupe_form_submission)
+
+// LINT.IfChange(autofill_email_verification)
+BASE_FEATURE(kAutofillEmailVerification, base::FEATURE_DISABLED_BY_DEFAULT);
+// LINT.ThenChange(/components/autofill/ios/form_util/resources/autofill_form_features.ts:autofill_email_verification)
+
+BASE_FEATURE(kAutofillFixXhrForXframe, base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kAutofillExtractFullUrlOnIOs, base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kAutofillFormSubmissionEventsInCaptureMode,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kAutofillPaymentsSheetDetachInvalidatedListenersIos,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kAutofillPaymentsSheetStateless,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kAutofillPaymentsSheetV2Ios, base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kAutofillPaymentsSheetV3Ios, base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kAutofillRejectFormSubmissionsWithoutUserGesture,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// LINT.IfChange(autofill_report_form_submission_errors)
+BASE_FEATURE(kAutofillReportFormSubmissionErrors,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+// LINT.ThenChange(/components/autofill/ios/form_util/resources/autofill_form_features.ts:autofill_report_form_submission_errors)
+
+BASE_FEATURE(kAutofillStickyInfobarIos, base::FEATURE_ENABLED_BY_DEFAULT);
+
+// LINT.IfChange(autofill_support_content_editable_ios)
+BASE_FEATURE(kAutofillSupportContentEditableIos,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+// LINT.ThenChange(//components/autofill/ios/form_util/resources/autofill_form_features.ts:autofill_support_content_editable_ios)
+
+// LINT.IfChange(autofill_support_date_input)
+BASE_FEATURE_WITH_COUNTRY_RESTRICTIONS(kAutofillSupportDateInput,
+                                       base::FEATURE_ENABLED_FOR_COUNTRIES,
+                                       "us");
+// LINT.ThenChange(//components/autofill/ios/form_util/resources/autofill_form_features.ts:autofill_support_date_input)
+
+BASE_FEATURE(kAutofillThrottleDocumentFormScanIos,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+// Minimal period of time between the document form scanning batches.
+extern const base::FeatureParam<int> kAutofillDocumentFormScanPeriodMs = {
+    &kAutofillThrottleDocumentFormScanIos,
+    /*name=*/"period-ms", /*default_value=*/250};
+
+BASE_FEATURE(kAutofillThrottleDocumentFormScanForceFirstScanIos,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// LINT.IfChange(autofill_track_password_fields_ios)
+BASE_FEATURE(kAutofillTrackPasswordFieldsIos, base::FEATURE_ENABLED_BY_DEFAULT);
+// LINT.ThenChange(/components/autofill/ios/form_util/resources/autofill_form_features.ts:autofill_track_password_fields_ios)
+
+BASE_FEATURE(kAutofillThrottleFilteredDocumentFormScanIos,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+// Minimal period of time between the filtered document form scanning batches.
+extern const base::FeatureParam<int> kAutofillFilteredDocumentFormScanPeriodMs =
+    {&kAutofillThrottleFilteredDocumentFormScanIos,
+     /*name=*/"period-ms", /*default_value=*/250};

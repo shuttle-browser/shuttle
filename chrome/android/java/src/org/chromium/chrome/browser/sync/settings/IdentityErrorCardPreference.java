@@ -1,0 +1,159 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.sync.settings;
+
+import static org.chromium.build.NullUtil.assumeNonNull;
+
+import android.content.Context;
+import android.util.AttributeSet;
+import android.view.View;
+import android.widget.Button;
+import android.widget.ImageView;
+import android.widget.TextView;
+
+import androidx.appcompat.content.res.AppCompatResources;
+import androidx.preference.PreferenceViewHolder;
+
+import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.build.annotations.Initializer;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.R;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.sync.SyncServiceFactory;
+import org.chromium.chrome.browser.sync.settings.SyncSettingsUtils.ErrorCardDetails;
+import org.chromium.chrome.browser.sync.settings.SyncSettingsUtils.ErrorUiAction;
+import org.chromium.components.browser_ui.settings.ChromeBasePreference;
+import org.chromium.components.sync.SyncService;
+import org.chromium.components.sync.UserActionableError;
+
+@NullMarked
+public class IdentityErrorCardPreference extends ChromeBasePreference
+        implements SyncService.SyncStateChangedListener {
+    public interface Listener {
+        /** Called when the user clicks the button. */
+        void onIdentityErrorCardButtonClicked(@UserActionableError int error);
+
+        /** Called when the visibility of the error card changes. */
+        default void onIdentityErrorCardVisibilityChanged() {}
+    }
+
+    private @Nullable Profile mProfile;
+    private @Nullable SyncService mSyncService;
+    private Listener mListener;
+
+    private @UserActionableError int mIdentityError;
+
+    public IdentityErrorCardPreference(Context context, AttributeSet attrs) {
+        super(context, attrs);
+
+        setLayoutResource(R.layout.signin_settings_card_view);
+        mIdentityError = UserActionableError.NONE;
+    }
+
+    @Override
+    public int getCustomBackgroundStyle() {
+        return BackgroundStyle.NONE;
+    }
+
+    /**
+     * Initialize the dependencies for the IdentityErrorCardPreference and update the error card.
+     */
+    @Initializer
+    public void initialize(Profile profile, Listener listener) {
+        assert getParent() != null : "Not attached to any parent.";
+
+        mProfile = profile;
+        mSyncService = SyncServiceFactory.getForProfile(mProfile);
+        mListener = listener;
+
+        if (mSyncService != null) {
+            mSyncService.addSyncStateChangedListener(this);
+        }
+        update();
+    }
+
+    @Override
+    public void onDetached() {
+        super.onDetached();
+        if (mSyncService != null) {
+            mSyncService.removeSyncStateChangedListener(this);
+        }
+    }
+
+    @Override
+    public void onBindViewHolder(PreferenceViewHolder holder) {
+        super.onBindViewHolder(holder);
+
+        if (mIdentityError == UserActionableError.NONE) {
+            return;
+        }
+        holder.setDividerAllowedAbove(false);
+        setupIdentityErrorCardView(holder.findViewById(R.id.signin_settings_card));
+    }
+
+    private void update() {
+        @UserActionableError int error = SyncSettingsUtils.getSyncError(mProfile);
+        if (error == mIdentityError) {
+            // Nothing changed.
+            return;
+        }
+        mIdentityError = error;
+        if (shouldShowErrorCard()) {
+            if (!isVisible()) {
+                setVisible(true);
+                mListener.onIdentityErrorCardVisibilityChanged();
+            }
+            notifyChanged();
+            RecordHistogram.recordEnumeratedHistogram(
+                    "Sync.IdentityErrorCard"
+                            + SyncSettingsUtils.getHistogramSuffixForError(mIdentityError),
+                    ErrorUiAction.SHOWN,
+                    ErrorUiAction.NUM_ENTRIES);
+        } else {
+            if (isVisible()) {
+                setVisible(false);
+                mListener.onIdentityErrorCardVisibilityChanged();
+            }
+        }
+    }
+
+    private void setupIdentityErrorCardView(View card) {
+        Context context = getContext();
+
+        ImageView image = card.findViewById(R.id.signin_settings_card_icon);
+        image.setContentDescription(
+                context.getString(R.string.accessibility_account_management_row_account_error));
+        image.setImageDrawable(AppCompatResources.getDrawable(context, R.drawable.ic_error));
+
+        TextView error = card.findViewById(R.id.signin_settings_card_description);
+        Button button = card.findViewById(R.id.signin_settings_card_button);
+
+        ErrorCardDetails errorCardDetails =
+                assumeNonNull(SyncSettingsUtils.getIdentityErrorErrorCardDetails(mIdentityError));
+        error.setText(context.getString(errorCardDetails.message));
+        button.setText(context.getString(errorCardDetails.buttonLabel));
+
+        button.setOnClickListener(
+                v -> {
+                    RecordHistogram.recordEnumeratedHistogram(
+                            "Sync.IdentityErrorCard"
+                                    + SyncSettingsUtils.getHistogramSuffixForError(mIdentityError),
+                            ErrorUiAction.BUTTON_CLICKED,
+                            ErrorUiAction.NUM_ENTRIES);
+                    mListener.onIdentityErrorCardButtonClicked(mIdentityError);
+                });
+    }
+
+    /** {@link SyncService.SyncStateChangedListener} implementation. */
+    @Override
+    public void syncStateChanged() {
+        update();
+    }
+
+    private boolean shouldShowErrorCard() {
+        return mIdentityError != UserActionableError.NONE;
+    }
+}

@@ -1,0 +1,61 @@
+<html>
+<head>
+<script>
+if (window.testRunner)
+    testRunner.dumpAsText();
+
+showFailure = function(s)
+{
+    document.body.innerHTML = "FAILURE: " + s;
+}
+
+window.onload = function()
+{
+    element1 = document.createElement("x");
+    element2 = document.createElement("x");
+    element3 = document.createElement("x");
+    parent   = document.createElement("x");
+    dummy    = document.createElement("x");
+    
+    doc = document.implementation.createHTMLDocument();
+    
+    parent.appendChild(element1);
+    const observer = new MutationObserver((records) => {
+        for (const r of records) {
+            if (r.type !== 'childList') continue;
+            for (const n of (r.removedNodes || [])) {
+                if (n === element1) {
+                    doc.adoptNode(parent);
+                    observer.disconnect();
+                    return;
+                }
+            }
+        }
+    });
+    observer.observe(parent, { childList: true });
+    try {
+        document.body.appendChild(element1);
+    } catch (e) { }
+    observer.disconnect();
+    if (element1.ownerDocument != element1.parentElement.ownerDocument)
+        return showFailure("appendChild");
+    
+    document.adoptNode(parent);
+    parent.appendChild(element2);
+    try {
+        doc.body.insertBefore(element2, dummy);
+    } catch (e) { }
+    if (element2.ownerDocument != element2.parentElement.ownerDocument)
+        return showFailure("insertBefore");
+    
+    parent.appendChild(element3);
+    try {
+        doc.body.replaceChild(element3, dummy);
+    } catch (e) { }
+    if (element3.ownerDocument != element3.parentElement.ownerDocument)
+        return showFailure("replaceChild");
+}
+</script>
+</head>
+<body>SUCCESS</body>
+</html>

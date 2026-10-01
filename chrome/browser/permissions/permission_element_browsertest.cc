@@ -1,0 +1,928 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <memory>
+#include <optional>
+
+#include "base/command_line.h"
+#include "base/strings/strcat.h"
+#include "base/strings/stringprintf.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
+#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+#include "chrome/browser/media/webrtc/media_stream_device_permission_context.h"
+#include "chrome/browser/permissions/permission_manager_factory.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/views/permissions/embedded_permission_prompt_content_scrim_view.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "chrome/test/base/ui_test_utils.h"
+#include "chrome/test/base/web_feature_histogram_tester.h"
+#include "components/content_settings/core/common/content_settings.h"
+#include "components/metrics/content/subprocess_metrics_provider.h"
+#include "components/permissions/permission_manager.h"
+#include "components/permissions/permission_request_manager.h"
+#include "components/permissions/test/mock_permission_request.h"
+#include "components/permissions/test/permission_request_observer.h"
+#include "components/ukm/test_ukm_recorder.h"
+#include "components/zoom/zoom_controller.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/browser_test_utils.h"
+#include "content/public/test/render_frame_host_test_support.h"
+#include "content/public/test/test_devtools_protocol_client.h"
+#include "media/base/media_switches.h"
+#include "net/test/embedded_test_server/embedded_test_server.h"
+#include "services/metrics/public/cpp/ukm_builders.h"
+#include "third_party/blink/public/common/features_generated.h"
+#include "third_party/blink/public/mojom/permissions/permission.mojom-shared.h"
+#include "ui/events/base_event_utils.h"
+#include "ui/views/widget/any_widget_observer.h"
+
+namespace {
+
+// Simulates a click on an element with the given |id|.
+void ClickElementWithId(content::WebContents* web_contents,
+                        const std::string& id) {
+  ASSERT_TRUE(
+      content::ExecJs(web_contents, content::JsReplace("clickById($1)", id)));
+}
+
+}  // namespace
+
+class PermissionElementBrowserTestBase
+    : public InProcessBrowserTest,
+      public content::TestDevToolsProtocolClient {
+ public:
+  PermissionElementBrowserTestBase() = default;
+
+  PermissionElementBrowserTestBase(const PermissionElementBrowserTestBase&) =
+      delete;
+  PermissionElementBrowserTestBase& operator=(
+      const PermissionElementBrowserTestBase&) = delete;
+
+  ~PermissionElementBrowserTestBase() override = default;
+
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    InProcessBrowserTest::SetUpCommandLine(command_line);
+    command_line->AppendSwitch(switches::kUseFakeDeviceForMediaStream);
+  }
+
+  void SetUpOnMainThread() override {
+    // Open and reset DevTools. This is needed to be able to observer the
+    // devtools issues being raised.
+    AttachToWebContents(web_contents());
+    SendCommandSync("Audits.enable");
+    ClearNotifications();
+
+    ASSERT_TRUE(embedded_test_server()->Start());
+    console_observer_ =
+        std::make_unique<content::WebContentsConsoleObserver>(web_contents());
+    ASSERT_TRUE(ui_test_utils::NavigateToURLBlockUntilNavigationsComplete(
+        browser(),
+        embedded_test_server()->GetURL("/permissions/permission_element.html"),
+        1));
+  }
+
+  void TearDownOnMainThread() override { DetachProtocolClient(); }
+
+  content::WebContents* web_contents() {
+    return browser()->GetTabStripModel()->GetWebContentsAt(0);
+  }
+
+  void WaitForPromptActionEvent(const std::string& id) {
+    ExpectConsoleMessage(id + "-promptaction");
+  }
+
+  void WaitForUpdateGrantedPermissionElement(const std::string& id) {
+    ExpectConsoleMessage(id + "-granted");
+  }
+
+  void WaitForDismissEvent(const std::string& id) {
+    ExpectConsoleMessage(id + "-promptdismiss");
+  }
+
+  void ExpectNoEvents() { EXPECT_EQ(0u, console_observer_->messages().size()); }
+
+  void ExpectConsoleMessage(const std::string& expected_message,
+                            std::optional<blink::mojom::ConsoleMessageLevel>
+                                log_level = std::nullopt) {
+    EXPECT_TRUE(console_observer_->Wait());
+
+    EXPECT_EQ(1u, console_observer_->messages().size());
+    EXPECT_EQ(expected_message, console_observer_->GetMessageAt(0));
+    if (log_level) {
+      EXPECT_EQ(log_level.value(), console_observer_->messages()[0].log_level);
+    }
+
+    // WebContentsConsoleObserver::Wait() will only wait until there is at least
+    // one message. We need to reset the |console_observer_| in order to be able
+    // to wait for the next message.
+    console_observer_ =
+        std::make_unique<content::WebContentsConsoleObserver>(web_contents());
+  }
+
+  void TestPromptPosition(
+      permissions::feature_params::PermissionElementPromptPosition position) {
+    auto* permission_request_manager =
+        permissions::PermissionRequestManager::FromWebContents(web_contents());
+
+    permissions::PermissionRequestObserver observer(web_contents());
+    ClickElementWithId(web_contents(), "camera");
+    observer.Wait();
+
+    EXPECT_EQ(
+        permission_request_manager->GetCurrentPrompt()->GetPromptPosition(),
+        position);
+
+    permission_request_manager->Dismiss(/*prompt_options=*/std::monostate());
+  }
+
+  void WaitForDevtoolsIssue(const std::string& expected_issue_type) {
+    WaitForMatchingNotification(
+        "Audits.issueAdded",
+        base::BindRepeating(
+            [](const std::string& expected_issue_type,
+               const base::DictValue& params) {
+              const std::string* code =
+                  params.FindStringByDottedPath("issue.code");
+              if (!code) {
+                return false;
+              }
+              const std::string* issue_type = params.FindStringByDottedPath(
+                  "issue.details.permissionElementIssueDetails.issueType");
+              if (!issue_type) {
+                return false;
+              }
+              return *code == "PermissionElementIssue" &&
+                     *issue_type == expected_issue_type;
+            },
+            expected_issue_type));
+  }
+
+  void ResetPermissions() {
+    HostContentSettingsMap* map = HostContentSettingsMapFactory::GetForProfile(
+        Profile::FromBrowserContext(web_contents()->GetBrowserContext()));
+    map->SetContentSettingDefaultScope(
+        embedded_test_server()->base_url(), embedded_test_server()->base_url(),
+        ContentSettingsType::MEDIASTREAM_CAMERA, CONTENT_SETTING_DEFAULT);
+    map->SetContentSettingDefaultScope(
+        embedded_test_server()->base_url(), embedded_test_server()->base_url(),
+        ContentSettingsType::MEDIASTREAM_MIC, CONTENT_SETTING_DEFAULT);
+    map->SetContentSettingDefaultScope(
+        embedded_test_server()->base_url(), embedded_test_server()->base_url(),
+        ContentSettingsType::GEOLOCATION, CONTENT_SETTING_DEFAULT);
+  }
+
+ protected:
+  base::test::ScopedFeatureList feature_list_;
+  std::unique_ptr<content::WebContentsConsoleObserver> console_observer_;
+};
+
+class PermissionElementBrowserTest : public PermissionElementBrowserTestBase {
+ public:
+  PermissionElementBrowserTest() {
+    feature_list_.InitWithFeatures(
+        {blink::features::kGeolocationElement,
+         blink::features::kUserMediaElement,
+         blink::features::kUserMediaElementLegacy,
+         blink::features::kBypassPepcSecurityForTesting},
+        {permissions::features::kPermissionElementPromptPositioning});
+  }
+};
+
+// TODO(crbug.com/532784506): Re-enable this test on Mac.
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
+#define MAYBE_RequestPermissionDispatchResolveEvent \
+  DISABLED_RequestPermissionDispatchResolveEvent
+#else
+#define MAYBE_RequestPermissionDispatchResolveEvent \
+  RequestPermissionDispatchResolveEvent
+#endif
+
+IN_PROC_BROWSER_TEST_F(PermissionElementBrowserTest,
+                       MAYBE_RequestPermissionDispatchResolveEvent) {
+  permissions::PermissionRequestManager::AutoResponseType responses[] = {
+      permissions::PermissionRequestManager::AutoResponseType::ACCEPT_ALL,
+      permissions::PermissionRequestManager::AutoResponseType::ACCEPT_ONCE,
+      permissions::PermissionRequestManager::AutoResponseType::DENY_ALL};
+
+  std::string permission_ids[] = {"geolocation", "microphone", "camera",
+                                  "camera-microphone"};
+  HostContentSettingsMap* map = HostContentSettingsMapFactory::GetForProfile(
+      Profile::FromBrowserContext(web_contents()->GetBrowserContext()));
+  for (const auto& response : responses) {
+    permissions::PermissionRequestManager::FromWebContents(web_contents())
+        ->set_auto_response_for_test(response);
+    for (const auto& id : permission_ids) {
+      permissions::PermissionRequestObserver observer(web_contents());
+      ClickElementWithId(web_contents(), id);
+      observer.Wait();
+      WaitForPromptActionEvent(id);
+      map->SetContentSettingDefaultScope(
+          embedded_test_server()->base_url(),
+          embedded_test_server()->base_url(),
+          ContentSettingsType::MEDIASTREAM_CAMERA, CONTENT_SETTING_DEFAULT);
+      map->SetContentSettingDefaultScope(embedded_test_server()->base_url(),
+                                         embedded_test_server()->base_url(),
+                                         ContentSettingsType::MEDIASTREAM_MIC,
+                                         CONTENT_SETTING_DEFAULT);
+      map->SetContentSettingDefaultScope(embedded_test_server()->base_url(),
+                                         embedded_test_server()->base_url(),
+                                         ContentSettingsType::GEOLOCATION,
+                                         CONTENT_SETTING_DEFAULT);
+    }
+  }
+}
+
+IN_PROC_BROWSER_TEST_F(PermissionElementBrowserTest,
+                       DispatchResolveEventUpdateGrantedElement) {
+  permissions::PermissionRequestManager::FromWebContents(web_contents())
+      ->set_auto_response_for_test(
+          permissions::PermissionRequestManager::AutoResponseType::ACCEPT_ALL);
+  std::string permission_ids[] = {"geolocation", "microphone", "camera",
+                                  "camera-microphone"};
+  for (const auto& id : permission_ids) {
+    permissions::PermissionRequestObserver observer(web_contents());
+    ClickElementWithId(web_contents(), id);
+    observer.Wait();
+    WaitForPromptActionEvent(id);
+    ASSERT_TRUE(content::ExecJs(
+        web_contents(), content::JsReplace("notifyWhenGranted($1);", id)));
+    WaitForUpdateGrantedPermissionElement(id);
+    ResetPermissions();
+  }
+}
+
+class PermissionServiceInterceptor : public blink::mojom::PermissionObserver {
+ public:
+  explicit PermissionServiceInterceptor(
+      content::RenderFrameHost* render_frame_host)
+      : render_frame_host_(render_frame_host) {
+    OverrideBinderForTesting();
+  }
+
+  ~PermissionServiceInterceptor() override = default;
+
+  blink::mojom::PermissionService* GetForwardingInterface() {
+    return permission_service_.get();
+  }
+
+  void AddPermissionStatusObserver(blink::mojom::PermissionName permission) {
+    auto descriptor = blink::mojom::PermissionDescriptor::New();
+    descriptor->name = permission;
+    GetForwardingInterface()->AddPageEmbeddedPermissionObserver(
+        std::move(descriptor), blink::mojom::PermissionStatus::ASK,
+        GetRemote());
+  }
+
+  // Blocks until getting status granted event.
+  void WaitForPermissionGranted() { loop_.Run(); }
+
+ private:
+  mojo::PendingRemote<blink::mojom::PermissionObserver> GetRemote() {
+    mojo::PendingRemote<blink::mojom::PermissionObserver> remote;
+    observer_receiver_.Bind(remote.InitWithNewPipeAndPassReceiver());
+    return remote;
+  }
+
+  // blink::mojom::PermissionObserver implementation.
+  void OnPermissionStatusChange(
+      blink::mojom::PermissionStatusWithDetailsPtr status) override {
+    if (status->status == blink::mojom::PermissionStatus::GRANTED) {
+      loop_.Quit();
+    }
+  }
+
+  void OverrideBinderForTesting() {
+    content::CreatePermissionService(
+        render_frame_host_, permission_service_.BindNewPipeAndPassReceiver());
+  }
+
+  base::RunLoop loop_;
+  const raw_ptr<content::RenderFrameHost> render_frame_host_;
+  mojo::Remote<blink::mojom::PermissionService> permission_service_;
+  mojo::Receiver<blink::mojom::PermissionObserver> observer_receiver_{this};
+};
+
+IN_PROC_BROWSER_TEST_F(PermissionElementBrowserTest,
+                       CombinedPermissionAndDeviceStatusesGranted) {
+  permissions::PermissionRequestManager::FromWebContents(web_contents())
+      ->set_auto_response_for_test(
+          permissions::PermissionRequestManager::AutoResponseType::ACCEPT_ALL);
+  PermissionServiceInterceptor permission_service(
+      web_contents()->GetPrimaryMainFrame());
+  MediaStreamDevicePermissionContext* camera_permission_context =
+      static_cast<MediaStreamDevicePermissionContext*>(
+          PermissionManagerFactory::GetForProfile(browser()->GetProfile())
+              ->GetPermissionContextForTesting(
+                  ContentSettingsType::MEDIASTREAM_CAMERA));
+  camera_permission_context->set_can_request_device_permission_for_test(
+      /*can_request=*/false);
+  camera_permission_context->set_has_device_permission_for_test(
+      /*has_permission=*/false);
+  permission_service.AddPermissionStatusObserver(
+      blink::mojom::PermissionName::VIDEO_CAPTURE);
+  ClickElementWithId(web_contents(), "camera");
+  // Simulate that we accept the device permission request.
+  camera_permission_context->set_can_request_device_permission_for_test(
+      /*can_request=*/true);
+  camera_permission_context->set_has_device_permission_for_test(
+      /*has_permission=*/true);
+  permission_service.WaitForPermissionGranted();
+  camera_permission_context->set_can_request_device_permission_for_test(
+      std::nullopt);
+  camera_permission_context->set_has_device_permission_for_test(std::nullopt);
+}
+
+IN_PROC_BROWSER_TEST_F(PermissionElementBrowserTest,
+                       RequestPermissionDispatchDismissEvent) {
+  permissions::PermissionRequestManager::FromWebContents(web_contents())
+      ->set_auto_response_for_test(
+          permissions::PermissionRequestManager::AutoResponseType::DISMISS);
+  std::string permission_ids[] = {"geolocation", "microphone", "camera",
+                                  "camera-microphone"};
+  for (const auto& id : permission_ids) {
+    permissions::PermissionRequestObserver observer(web_contents());
+    ClickElementWithId(web_contents(), id);
+    observer.Wait();
+    WaitForDismissEvent(id);
+  }
+}
+
+IN_PROC_BROWSER_TEST_F(PermissionElementBrowserTest,
+                       ClickingScrimViewDispatchDismissEvent) {
+  permissions::PermissionRequestManager::FromWebContents(web_contents())
+      ->set_auto_response_for_test(
+          permissions::PermissionRequestManager::AutoResponseType::NONE);
+  std::string permission_ids[] = {"geolocation", "microphone", "camera",
+                                  "camera-microphone"};
+  for (const auto& id : permission_ids) {
+    views::NamedWidgetShownWaiter waiter(
+        views::test::AnyWidgetTestPasskey{},
+        "EmbeddedPermissionPromptContentScrimWidget");
+    ClickElementWithId(web_contents(), id);
+    auto* scrim_view = static_cast<EmbeddedPermissionPromptContentScrimView*>(
+        waiter.WaitIfNeededAndGet()->GetContentsView());
+    scrim_view->OnMousePressed(
+        ui::MouseEvent(ui::EventType::kMousePressed, gfx::Point(), gfx::Point(),
+                       ui::EventTimeForNow(), ui::EF_LEFT_MOUSE_BUTTON, 0));
+    WaitForDismissEvent(id);
+  }
+}
+
+IN_PROC_BROWSER_TEST_F(PermissionElementBrowserTest,
+                       TappingScrimViewDispatchDismissEvent) {
+  permissions::PermissionRequestManager::FromWebContents(web_contents())
+      ->set_auto_response_for_test(
+          permissions::PermissionRequestManager::AutoResponseType::NONE);
+  std::string permission_ids[] = {"geolocation", "microphone", "camera",
+                                  "camera-microphone"};
+  for (const auto& id : permission_ids) {
+    views::NamedWidgetShownWaiter waiter(
+        views::test::AnyWidgetTestPasskey{},
+        "EmbeddedPermissionPromptContentScrimWidget");
+    ClickElementWithId(web_contents(), id);
+    auto* scrim_view = static_cast<EmbeddedPermissionPromptContentScrimView*>(
+        waiter.WaitIfNeededAndGet()->GetContentsView());
+    ui::GestureEvent tap_down(
+        gfx::Point().x(), gfx::Point().y(), 0, base::TimeTicks::Now(),
+        ui::GestureEventDetails(ui::EventType::kGestureTapDown));
+    scrim_view->OnGestureEvent(&tap_down);
+    ui::GestureEvent tap_up(
+        gfx::Point().x(), gfx::Point().y(), 0, base::TimeTicks::Now(),
+        ui::GestureEventDetails(ui::EventType::kGestureTap));
+    scrim_view->OnGestureEvent(&tap_up);
+    WaitForDismissEvent(id);
+  }
+}
+
+IN_PROC_BROWSER_TEST_F(PermissionElementBrowserTest, TabSwitchingClosesPrompt) {
+  permissions::PermissionRequestManager::FromWebContents(web_contents())
+      ->set_auto_response_for_test(
+          permissions::PermissionRequestManager::AutoResponseType::NONE);
+
+  permissions::PermissionRequestObserver observer(web_contents());
+  ClickElementWithId(web_contents(), "camera");
+  observer.Wait();
+
+  std::unique_ptr<content::WebContents> new_tab = content::WebContents::Create(
+      content::WebContents::CreateParams(browser()->GetProfile()));
+  browser()->GetTabStripModel()->AppendWebContents(std::move(new_tab),
+                                                   /*foreground*/ false);
+
+  ExpectNoEvents();
+  browser()->GetTabStripModel()->ActivateTabAt(1);
+  WaitForDismissEvent("camera");
+}
+
+IN_PROC_BROWSER_TEST_F(PermissionElementBrowserTest,
+                       DoubleClickDoesNotTriggerTwoRequests) {
+  permissions::PermissionRequestObserver observer1(web_contents());
+
+  // Click the element twice.
+  ClickElementWithId(web_contents(), "microphone");
+  ClickElementWithId(web_contents(), "microphone");
+
+  WaitForDevtoolsIssue("RequestInProgress");
+
+  // Multiple clicks on the same permission element should only trigger one
+  // request.
+  observer1.Wait();
+  EXPECT_TRUE(observer1.request_shown());
+
+  // Dismiss the prompt.
+  auto* permission_request_manager =
+      permissions::PermissionRequestManager::FromWebContents(web_contents());
+  permission_request_manager->Dismiss(/*prompt_options=*/std::monostate());
+  WaitForDismissEvent("microphone");
+
+  permission_request_manager->set_auto_response_for_test(
+      permissions::PermissionRequestManager::AutoResponseType::DISMISS);
+  // Verify that no duplicate "microphone" requests or dismiss events are
+  // created.
+  permissions::PermissionRequestObserver observer2(web_contents());
+  ClickElementWithId(web_contents(), "camera");
+  observer2.Wait();
+  EXPECT_TRUE(observer2.request_shown());
+  WaitForDismissEvent("camera");
+
+  // Verify that clicking again on the same element after the prompt was
+  // dismissed, results in a permission request being shown.
+  permissions::PermissionRequestObserver observer3(web_contents());
+  ClickElementWithId(web_contents(), "microphone");
+  observer3.Wait();
+  WaitForDismissEvent("microphone");
+  EXPECT_TRUE(observer3.request_shown());
+}
+
+class PermissionElementWithSecurityBrowserTest
+    : public PermissionElementBrowserTestBase {
+ public:
+  PermissionElementWithSecurityBrowserTest() {
+    feature_list_.InitWithFeatures({blink::features::kGeolocationElement,
+                                    blink::features::kUserMediaElement,
+                                    blink::features::kUserMediaElementLegacy},
+                                   {});
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(PermissionElementWithSecurityBrowserTest,
+                       JsClickingDisabledWithoutFeature) {
+  permissions::PermissionRequestObserver permission_observer(web_contents());
+
+  // Clicking via JS should be disabled.
+  ClickElementWithId(web_contents(), "microphone");
+  WaitForDevtoolsIssue("UntrustedEvent");
+  EXPECT_FALSE(permission_observer.request_shown());
+
+  // Also attempt clicking by creating a MouseEvent.
+  ASSERT_TRUE(content::ExecJs(
+      web_contents(),
+      content::JsReplace("document.getElementById($1).dispatchEvent(new "
+                         "MouseEvent('click'));",
+                         "microphone")));
+
+  WaitForDevtoolsIssue("UntrustedEvent");
+  EXPECT_FALSE(permission_observer.request_shown());
+
+  // Now generate a legacy microphone permission request and wait until it is
+  // observed. Then verify that no other requests have arrived.
+  ASSERT_TRUE(content::ExecJs(
+      web_contents(),
+      "const stream = navigator.mediaDevices.getUserMedia({audio: true});"));
+  permission_observer.Wait();
+  EXPECT_TRUE(permission_observer.request_shown());
+
+  // Verify that we have observed the non-PEPC initiated request.
+  EXPECT_EQ(
+      permissions::PermissionRequestManager::FromWebContents(web_contents())
+          ->Requests()
+          .size(),
+      1U);
+  EXPECT_FALSE(
+      permissions::PermissionRequestManager::FromWebContents(web_contents())
+          ->Requests()[0]
+          ->IsEmbeddedPermissionElementInitiated());
+}
+
+class PermissionElementStandardizedBrowserZoomTest
+    : public PermissionElementBrowserTestBase,
+      public ::testing::WithParamInterface<bool> {
+ public:
+  PermissionElementStandardizedBrowserZoomTest() {
+    // Also enable/disable the StandardizedBrowserZoom feature.
+    if (GetParam()) {
+      feature_list_.InitWithFeatures(
+          {blink::features::kGeolocationElement,
+           blink::features::kUserMediaElement,
+           blink::features::kUserMediaElementLegacy,
+           blink::features::kBypassPepcSecurityForTesting,
+           blink::features::kStandardizedBrowserZoom},
+          {});
+    } else {
+      feature_list_.InitWithFeatures(
+          {blink::features::kGeolocationElement,
+           blink::features::kUserMediaElement,
+           blink::features::kUserMediaElementLegacy,
+           blink::features::kBypassPepcSecurityForTesting},
+          {blink::features::kStandardizedBrowserZoom});
+    }
+  }
+};
+
+IN_PROC_BROWSER_TEST_P(PermissionElementStandardizedBrowserZoomTest,
+                       BrowserZoomDoesNotAffectValidation) {
+  permissions::PermissionRequestManager::FromWebContents(web_contents())
+      ->set_auto_response_for_test(
+          permissions::PermissionRequestManager::AutoResponseType::ACCEPT_ALL);
+  zoom::ZoomController* zoom_controller =
+      zoom::ZoomController::FromWebContents(web_contents());
+
+  // 2x zoom is enough since the font-size is already set to xxx-large which is
+  // the upper bound.
+  zoom_controller->SetZoomLevel(2);
+
+  for (const auto& id :
+       {"geolocation", "camera", "microphone", "camera-microphone"}) {
+    // The permission element still works.
+    ClickElementWithId(web_contents(), id);
+    WaitForPromptActionEvent(id);
+    ExpectNoEvents();
+
+    // Now set the CSS "zoom" to 2x.
+    ASSERT_TRUE(content::ExecJs(
+        web_contents(),
+        content::JsReplace("document.getElementById($1).style.zoom = 2;", id)));
+    WaitForDevtoolsIssue("FontSizeTooLarge");
+    ResetPermissions();
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         PermissionElementStandardizedBrowserZoomTest,
+                         testing::Bool());
+
+class PermissionElementNearElementBrowserTest
+    : public PermissionElementBrowserTestBase {
+ public:
+  PermissionElementNearElementBrowserTest() {
+    feature_list_.InitWithFeaturesAndParameters(
+        {{blink::features::kGeolocationElement, {}},
+         {blink::features::kUserMediaElement, {}},
+         {blink::features::kUserMediaElementLegacy, {}},
+         {blink::features::kBypassPepcSecurityForTesting, {}},
+         {permissions::features::kPermissionElementPromptPositioning,
+          {{"PermissionElementPromptPositioningParam", "near_element"}}}},
+        {});
+  }
+};
+
+class PermissionElementWindowMiddleBrowserTest
+    : public PermissionElementBrowserTestBase {
+ public:
+  PermissionElementWindowMiddleBrowserTest() {
+    feature_list_.InitWithFeaturesAndParameters(
+        {{blink::features::kGeolocationElement, {}},
+         {blink::features::kUserMediaElement, {}},
+         {blink::features::kUserMediaElementLegacy, {}},
+         {blink::features::kBypassPepcSecurityForTesting, {}},
+         {permissions::features::kPermissionElementPromptPositioning,
+          {{"PermissionElementPromptPositioningParam", "window_middle"}}}},
+        {});
+  }
+};
+
+class PermissionElementLegacyPromptBrowserTest
+    : public PermissionElementBrowserTestBase {
+ public:
+  PermissionElementLegacyPromptBrowserTest() {
+    feature_list_.InitWithFeaturesAndParameters(
+        {{blink::features::kGeolocationElement, {}},
+         {blink::features::kUserMediaElement, {}},
+         {blink::features::kUserMediaElementLegacy, {}},
+         {blink::features::kBypassPepcSecurityForTesting, {}},
+         {permissions::features::kPermissionElementPromptPositioning,
+          {{"PermissionElementPromptPositioningParam", "legacy_prompt"}}}},
+        {});
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(PermissionElementBrowserTest, DefaultPromptPosition) {
+  TestPromptPosition(permissions::feature_params::
+                         PermissionElementPromptPosition::kWindowMiddle);
+}
+
+IN_PROC_BROWSER_TEST_F(PermissionElementNearElementBrowserTest,
+                       PromptPosition) {
+  TestPromptPosition(permissions::feature_params::
+                         PermissionElementPromptPosition::kNearElement);
+}
+
+IN_PROC_BROWSER_TEST_F(PermissionElementWindowMiddleBrowserTest,
+                       PromptPosition) {
+  TestPromptPosition(permissions::feature_params::
+                         PermissionElementPromptPosition::kWindowMiddle);
+}
+
+IN_PROC_BROWSER_TEST_F(PermissionElementLegacyPromptBrowserTest,
+                       PromptPosition) {
+  TestPromptPosition(permissions::feature_params::
+                         PermissionElementPromptPosition::kLegacyPrompt);
+}
+
+// This text fixture does not navigate to any particular URL by default, the
+// tests instead decide which URL to navigate the page to.
+class MiscellaneousElementBrowserTest
+    : public PermissionElementBrowserTestBase {
+ public:
+  MiscellaneousElementBrowserTest() {
+    feature_list_.InitWithFeatures(
+        {blink::features::kGeolocationElement,
+         blink::features::kUserMediaElement,
+         blink::features::kUserMediaElementLegacy,
+         blink::features::kBypassPepcSecurityForTesting,
+         blink::features::kInstallElement},
+        {permissions::features::kPermissionElementPromptPositioning});
+  }
+
+  void SetUpOnMainThread() override {
+    ASSERT_TRUE(embedded_test_server()->Start());
+    console_observer_ =
+        std::make_unique<content::WebContentsConsoleObserver>(web_contents());
+  }
+
+  void NavigateToURL(const std::string& url) {
+    ASSERT_TRUE(ui_test_utils::NavigateToURLBlockUntilNavigationsComplete(
+        browser(), embedded_test_server()->GetURL(url), 1));
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(MiscellaneousElementBrowserTest,
+                       EventContentAttributes) {
+  NavigateToURL("/permissions/permission_element_events_tester.html");
+  const char* id = "microphone";
+  {
+    permissions::PermissionRequestManager::FromWebContents(web_contents())
+        ->set_auto_response_for_test(
+            permissions::PermissionRequestManager::AutoResponseType::DISMISS);
+    permissions::PermissionRequestObserver observer(web_contents());
+    ClickElementWithId(web_contents(), id);
+    observer.Wait();
+    WaitForDismissEvent(id);
+  }
+
+  {
+    permissions::PermissionRequestManager::FromWebContents(web_contents())
+        ->set_auto_response_for_test(permissions::PermissionRequestManager::
+                                         AutoResponseType::ACCEPT_ALL);
+    permissions::PermissionRequestObserver observer(web_contents());
+    ClickElementWithId(web_contents(), id);
+    observer.Wait();
+    WaitForPromptActionEvent(id);
+  }
+}
+
+IN_PROC_BROWSER_TEST_F(MiscellaneousElementBrowserTest,
+                       EventsBubbleAndAreCancelable) {
+  NavigateToURL("/permissions/permission_element_events_tester.html");
+  const char* id = "camera";
+
+  {
+    permissions::PermissionRequestManager::FromWebContents(web_contents())
+        ->set_auto_response_for_test(
+            permissions::PermissionRequestManager::AutoResponseType::DISMISS);
+    permissions::PermissionRequestObserver observer(web_contents());
+    ClickElementWithId(web_contents(), id);
+    observer.Wait();
+
+    // The event is reported by the parent element, then the grandparent
+    // element.
+    ExpectConsoleMessage(base::StrCat({"parent-", id, "-promptdismiss"}));
+    ExpectConsoleMessage(base::StrCat({"parent-", id, "-cancelable-true"}));
+    ExpectConsoleMessage(base::StrCat({"parent-", id, "-bubbles-true"}));
+
+    ExpectConsoleMessage(base::StrCat({"grandparent-", id, "-promptdismiss"}));
+    ExpectConsoleMessage(
+        base::StrCat({"grandparent-", id, "-cancelable-true"}));
+    ExpectConsoleMessage(base::StrCat({"grandparent-", id, "-bubbles-true"}));
+  }
+
+  {
+    permissions::PermissionRequestManager::FromWebContents(web_contents())
+        ->set_auto_response_for_test(permissions::PermissionRequestManager::
+                                         AutoResponseType::ACCEPT_ALL);
+    permissions::PermissionRequestObserver observer(web_contents());
+    ClickElementWithId(web_contents(), id);
+    observer.Wait();
+
+    // The event is reported by the parent element, then the grandparent
+    // element.
+    ExpectConsoleMessage(base::StrCat({"parent-", id, "-promptaction"}));
+    ExpectConsoleMessage(base::StrCat({"parent-", id, "-cancelable-true"}));
+    ExpectConsoleMessage(base::StrCat({"parent-", id, "-bubbles-true"}));
+
+    ExpectConsoleMessage(base::StrCat({"grandparent-", id, "-promptaction"}));
+    ExpectConsoleMessage(
+        base::StrCat({"grandparent-", id, "-cancelable-true"}));
+    ExpectConsoleMessage(base::StrCat({"grandparent-", id, "-bubbles-true"}));
+  }
+}
+
+// Test crash reported in crbug.com/374034614, caused by a race condition
+// between HtmlPermissionElement::OnEmbeddedPermissionsDecided and
+// HtmlPermissionElement::OnPermissionStatusChange.
+IN_PROC_BROWSER_TEST_F(MiscellaneousElementBrowserTest,
+                       CrashWhenElementHidesOnGrant) {
+  NavigateToURL("/permissions/permission_element_hide_when_granted.html");
+  permissions::PermissionRequestManager::FromWebContents(web_contents())
+      ->set_auto_response_for_test(
+          permissions::PermissionRequestManager::AutoResponseType::ACCEPT_ALL);
+  HostContentSettingsMap* map = HostContentSettingsMapFactory::GetForProfile(
+      Profile::FromBrowserContext(web_contents()->GetBrowserContext()));
+
+  // The original crash is a race condition that seems to reproduce about half
+  // the time. Therefore we run this multiple times and with multiple elements
+  // to ensure the chance of this test passing is minimal if the crash root
+  // cause is not fixed.
+  int test_runs = 5;
+  while (test_runs--) {
+    for (const auto& id : {"camera", "microphone", "geolocation"}) {
+      permissions::PermissionRequestObserver observer(web_contents());
+      ClickElementWithId(web_contents(), id);
+      observer.Wait();
+    }
+
+    map->SetContentSettingDefaultScope(
+        embedded_test_server()->base_url(), embedded_test_server()->base_url(),
+        ContentSettingsType::MEDIASTREAM_CAMERA, CONTENT_SETTING_DEFAULT);
+    map->SetContentSettingDefaultScope(
+        embedded_test_server()->base_url(), embedded_test_server()->base_url(),
+        ContentSettingsType::MEDIASTREAM_MIC, CONTENT_SETTING_DEFAULT);
+    map->SetContentSettingDefaultScope(
+        embedded_test_server()->base_url(), embedded_test_server()->base_url(),
+        ContentSettingsType::GEOLOCATION, CONTENT_SETTING_DEFAULT);
+  }
+}
+
+IN_PROC_BROWSER_TEST_F(PermissionElementBrowserTest,
+                       CrashWhenInDocumentWithoutWindow) {
+  ASSERT_TRUE(content::ExecJs(web_contents(), R"(
+    const doc = document.cloneNode();
+    doc.write("<geolocation id=geolocation>")
+  )"));
+
+  {
+    permissions::PermissionRequestManager::FromWebContents(web_contents())
+        ->set_auto_response_for_test(permissions::PermissionRequestManager::
+                                         AutoResponseType::ACCEPT_ALL);
+    permissions::PermissionRequestObserver observer(web_contents());
+    ClickElementWithId(web_contents(), "geolocation");
+    observer.Wait();
+    WaitForPromptActionEvent("geolocation");
+  }
+}
+
+IN_PROC_BROWSER_TEST_F(MiscellaneousElementBrowserTest, CountMetrics) {
+  WebFeatureHistogramTester histogram_tester;
+  ukm::TestAutoSetUkmRecorder ukm_recorder;
+  NavigateToURL("/permissions/permission_element_count.html");
+
+  // Even though we have two geolocation elements in the page, the count only
+  // increments once.
+  histogram_tester.ExpectCounts(
+      {{blink::mojom::WebFeature::kHTMLGeolocationElement, 1}});
+  histogram_tester.ExpectCounts(
+      {{blink::mojom::WebFeature::kHTMLInstallElement, 1}});
+  histogram_tester.ExpectCounts(
+      {{blink::mojom::WebFeature::kHTMLUserMediaElement, 1}});
+  // Make sure that the count for the obsolete permission element is not
+  // incremented.
+  histogram_tester.ExpectCounts(
+      {{blink::mojom::WebFeature::kHTMLPermissionElement, 0}});
+
+  // UKM metrics are recorded when the page is unloaded or on a new navigation.
+  browser()->GetTabStripModel()->CloseAllTabs();
+  base::RunLoop().RunUntilIdle();
+
+  auto entries = ukm_recorder.GetEntriesByName(
+      ukm::builders::Blink_UseCounter::kEntryName);
+  std::vector<int64_t> ukm_features;
+  for (const ukm::mojom::UkmEntry* entry : entries) {
+    const auto* metric = ukm_recorder.GetEntryMetric(
+        entry, ukm::builders::Blink_UseCounter::kFeatureName);
+    if (metric) {
+      ukm_features.push_back(*metric);
+    }
+  }
+
+  EXPECT_THAT(ukm_features,
+              testing::Contains(static_cast<int64_t>(
+                  blink::mojom::WebFeature::kHTMLGeolocationElement)));
+  EXPECT_THAT(ukm_features,
+              testing::Contains(static_cast<int64_t>(
+                  blink::mojom::WebFeature::kHTMLInstallElement)));
+  EXPECT_THAT(ukm_features,
+              testing::Contains(static_cast<int64_t>(
+                  blink::mojom::WebFeature::kHTMLUserMediaElement)));
+}
+
+IN_PROC_BROWSER_TEST_F(MiscellaneousElementBrowserTest, InvalidStyleMetrics) {
+  base::HistogramTester histogram_tester;
+  NavigateToURL("/permissions/permission_element_invalid_style.html");
+
+  content::FetchHistogramsFromChildProcesses();
+  metrics::SubprocessMetricsProvider::MergeHistogramDeltasForTesting();
+
+  // Verify the histogram for the invalid style reasons.
+  // 5: kInvalidDisplayProperty (e.g. display: inline)
+  EXPECT_GE(histogram_tester.GetBucketCount(
+                "Blink.CapabilityElement.Geolocation.InvalidStyle.Reason", 5),
+            1);
+  // 3: kTooSmallFontSize (e.g. font-size: 0px)
+  EXPECT_GE(histogram_tester.GetBucketCount(
+                "Blink.CapabilityElement.Install.InvalidStyle.Reason", 3),
+            1);
+  // 1: kNonOpaqueColorOrBackgroundColor (e.g. color: rgba(0, 0, 0, 0.5))
+  EXPECT_GE(histogram_tester.GetBucketCount(
+                "Blink.CapabilityElement.UserMedia.InvalidStyle.Reason", 1),
+            1);
+}
+
+IN_PROC_BROWSER_TEST_F(MiscellaneousElementBrowserTest,
+                       CapabilityElementAttributesCountMetrics) {
+  WebFeatureHistogramTester histogram_tester;
+  ukm::TestAutoSetUkmRecorder ukm_recorder;
+  NavigateToURL("/permissions/capability_element_attributes.html");
+
+  // Access all attributes of InPagePermissionMixin and verify they are counted.
+  std::string attributes[] = {
+      "isValid",
+      "invalidReason",
+      "initialPermissionStatus",
+      "permissionStatus",
+      "onpromptaction",
+      "onpromptdismiss",
+      "onvalidationstatuschange",
+  };
+
+  for (const auto& attr : attributes) {
+    ASSERT_TRUE(content::ExecJs(
+        web_contents(),
+        content::JsReplace("document.getElementById('geolocation')[$1]", attr)));
+  }
+
+  histogram_tester.ExpectCounts({
+      {blink::mojom::WebFeature::kCapabilityElementIsValid, 1},
+      {blink::mojom::WebFeature::kCapabilityElementInvalidReason, 1},
+      {blink::mojom::WebFeature::kCapabilityElementInitialPermissionStatus, 1},
+      {blink::mojom::WebFeature::kCapabilityElementPermissionStatus, 1},
+      {blink::mojom::WebFeature::kCapabilityElementOnPromptAction, 1},
+      {blink::mojom::WebFeature::kCapabilityElementOnPromptDismiss, 1},
+      {blink::mojom::WebFeature::kCapabilityElementOnValidationStatusChange, 1},
+  });
+
+  // UKM metrics are recorded when the page is unloaded or on a new navigation.
+  browser()->GetTabStripModel()->CloseAllTabs();
+  base::RunLoop().RunUntilIdle();
+
+  auto entries = ukm_recorder.GetEntriesByName(
+      ukm::builders::Blink_UseCounter::kEntryName);
+  std::vector<int64_t> ukm_features;
+  for (const ukm::mojom::UkmEntry* entry : entries) {
+    const auto* metric = ukm_recorder.GetEntryMetric(
+        entry, ukm::builders::Blink_UseCounter::kFeatureName);
+    if (metric) {
+      ukm_features.push_back(*metric);
+    }
+  }
+
+  EXPECT_THAT(ukm_features,
+              testing::Contains(static_cast<int64_t>(
+                  blink::mojom::WebFeature::kCapabilityElementIsValid)));
+  EXPECT_THAT(ukm_features,
+              testing::Contains(static_cast<int64_t>(
+                  blink::mojom::WebFeature::kCapabilityElementInvalidReason)));
+  EXPECT_THAT(ukm_features,
+              testing::Contains(static_cast<int64_t>(
+                  blink::mojom::WebFeature::
+                      kCapabilityElementInitialPermissionStatus)));
+  EXPECT_THAT(
+      ukm_features,
+      testing::Contains(static_cast<int64_t>(
+          blink::mojom::WebFeature::kCapabilityElementPermissionStatus)));
+  EXPECT_THAT(ukm_features,
+              testing::Contains(static_cast<int64_t>(
+                  blink::mojom::WebFeature::kCapabilityElementOnPromptAction)));
+  EXPECT_THAT(
+      ukm_features,
+      testing::Contains(static_cast<int64_t>(
+          blink::mojom::WebFeature::kCapabilityElementOnPromptDismiss)));
+  EXPECT_THAT(ukm_features,
+              testing::Contains(static_cast<int64_t>(
+                  blink::mojom::WebFeature::
+                      kCapabilityElementOnValidationStatusChange)));
+}

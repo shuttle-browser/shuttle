@@ -1,0 +1,518 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/page_content_annotations/core/page_content_annotations_service.h"
+
+#include <algorithm>
+#include <array>
+
+#include "base/files/scoped_temp_dir.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/test/gmock_callback_support.h"
+#include "base/test/gmock_move_support.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/task_environment.h"
+#include "base/time/time.h"
+#include "build/build_config.h"
+#include "components/history/core/browser/history_database_params.h"
+#include "components/history/core/browser/history_service.h"
+#include "components/history/core/browser/history_types.h"
+#include "components/history/core/test/history_service_test_util.h"
+#include "components/history/core/test/test_history_database.h"
+#include "components/optimization_guide/core/delivery/test_optimization_guide_model_provider.h"
+#include "components/optimization_guide/core/hints/test_optimization_guide_decider.h"
+#include "components/optimization_guide/core/optimization_guide_features.h"
+#include "components/optimization_guide/core/optimization_guide_proto_util.h"
+#include "components/page_content_annotations/core/page_content_annotations_features.h"
+#include "components/page_content_annotations/core/test_page_content_annotator.h"
+#include "components/search_engines/search_engines_test_environment.h"
+#include "components/search_engines/template_url_service.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace page_content_annotations {
+
+namespace {
+
+using ::testing::_;
+
+const TemplateURLService::Initializer kTemplateURLData[] = {
+    {"default-engine.com", "http://default-engine.com/search?q={searchTerms}",
+     "Default"},
+    {"non-default-engine.com", "http://non-default-engine.com?q={searchTerms}",
+     "Not Default"},
+};
+
+constexpr base::TimeDelta kWaitForTitleDelay = base::Milliseconds(5000);
+constexpr base::TimeDelta kBatchTimeout = base::Seconds(1);
+
+class MockHistoryService : public history::HistoryService {
+ public:
+  MockHistoryService() = default;
+
+  MOCK_METHOD(void,
+              AddContentModelAnnotationsForVisit,
+              (const history::VisitContentModelAnnotations&, history::VisitID),
+              (override));
+
+  MOCK_METHOD(void,
+              AddSearchMetadataForVisit,
+              (const GURL&, const std::u16string&, history::VisitID),
+              (override));
+
+  MOCK_METHOD(void,
+              AddPageMetadataForVisit,
+              (const std::string&, history::VisitID),
+              (override));
+
+  MOCK_METHOD(void,
+              SetHasUrlKeyedImageForVisit,
+              (bool, history::VisitID),
+              (override));
+};
+
+class FakeOptimizationGuideDecider
+    : public optimization_guide::TestOptimizationGuideDecider {
+ public:
+  void RegisterOptimizationTypes(
+      const std::vector<optimization_guide::proto::OptimizationType>&
+          optimization_types) override {
+    registered_optimization_types_ = optimization_types;
+  }
+
+  std::vector<optimization_guide::proto::OptimizationType>
+  registered_optimization_types() {
+    return registered_optimization_types_;
+  }
+
+  void CanApplyOptimization(
+      const GURL& url,
+      optimization_guide::proto::OptimizationType optimization_type,
+      optimization_guide::OptimizationGuideDecisionCallback callback) override {
+    std::string url_spec = url.spec();
+    if (optimization_type == optimization_guide::proto::PAGE_ENTITIES &&
+        url == GURL("http://hasmetadata.com/")) {
+      optimization_guide::proto::PageEntitiesMetadata page_entities_metadata;
+      page_entities_metadata.set_alternative_title("alternative title");
+
+      optimization_guide::OptimizationMetadata metadata;
+      metadata.set_any_metadata(
+          optimization_guide::AnyWrapProto(page_entities_metadata));
+      std::move(callback).Run(
+          optimization_guide::OptimizationGuideDecision::kTrue, metadata);
+      return;
+    }
+    if (optimization_type == optimization_guide::proto::SALIENT_IMAGE &&
+        url == GURL("http://hasimageurl.com")) {
+      optimization_guide::proto::SalientImageMetadata salient_image_metadata;
+      salient_image_metadata.add_thumbnails()->set_image_url(
+          "http://gstatic.com/image");
+
+      optimization_guide::OptimizationMetadata metadata;
+      metadata.set_any_metadata(
+          optimization_guide::AnyWrapProto(salient_image_metadata));
+      std::move(callback).Run(
+          optimization_guide::OptimizationGuideDecision::kTrue, metadata);
+      return;
+    }
+    if (url == GURL("http://wrongmetadata.com/")) {
+      optimization_guide::OptimizationMetadata metadata;
+      optimization_guide::proto::Entity entity;
+      metadata.set_any_metadata(optimization_guide::AnyWrapProto(entity));
+      std::move(callback).Run(
+          optimization_guide::OptimizationGuideDecision::kTrue, metadata);
+      return;
+    }
+    std::move(callback).Run(
+        optimization_guide::OptimizationGuideDecision::kFalse, {});
+  }
+
+  optimization_guide::OptimizationGuideDecision CanApplyOptimization(
+      const GURL& url,
+      optimization_guide::proto::OptimizationType optimization_type,
+      optimization_guide::OptimizationMetadata* optimization_metadata)
+      override {
+    NOTREACHED();
+  }
+
+ private:
+  std::vector<optimization_guide::proto::OptimizationType>
+      registered_optimization_types_;
+};
+
+class MockPageContentAnnotationsObserver
+    : public PageContentAnnotationsService::PageContentAnnotationsObserver {
+ public:
+  MOCK_METHOD(void,
+              OnPageContentAnnotated,
+              (const HistoryVisit&, const PageContentAnnotationsResult&),
+              (override));
+};
+
+}  // namespace
+
+class PageContentAnnotationsServiceTest : public testing::Test {
+ public:
+  PageContentAnnotationsServiceTest()
+      : search_engines_test_environment_(
+            {.template_url_service_initializer = kTemplateURLData}) {
+    scoped_feature_list_.InitAndDisableFeature(
+        optimization_guide::features::kPreventLongRunningPredictionModels);
+  }
+  ~PageContentAnnotationsServiceTest() override = default;
+
+  void SetUp() override {
+    ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
+    optimization_guide_model_provider_ = std::make_unique<
+        optimization_guide::TestOptimizationGuideModelProvider>();
+    history_service_ =
+        std::make_unique<testing::StrictMock<MockHistoryService>>();
+    history_service_->Init(
+        history::TestHistoryDatabaseParamsForPath(temp_dir_.GetPath()));
+
+    optimization_guide_decider_ =
+        std::make_unique<FakeOptimizationGuideDecider>();
+
+    // Instantiate service.
+    service_ = std::make_unique<PageContentAnnotationsService>(
+        "en-US", "us", optimization_guide_model_provider_.get(),
+        history_service_.get(),
+        search_engines_test_environment_.template_url_service(),
+        /*zero_suggest_cache_service=*/nullptr,
+        /*database_provider=*/nullptr,
+        /*database_dir=*/base::FilePath(),
+        /*optimization_guide_logger=*/nullptr,
+        optimization_guide_decider_.get(),
+        /*embedder_metadata_provider=*/nullptr,
+        /*background_task_runner=*/nullptr);
+
+    test_annotator_ = std::make_unique<TestPageContentAnnotator>();
+    test_annotator_->UseVisibilityScores(/*model_info=*/std::nullopt,
+                                         {{"test", 0.5}});
+    service_->OverridePageContentAnnotatorForTesting(test_annotator_.get());
+  }
+
+  void TearDown() override {
+    history::BlockUntilHistoryProcessesPendingRequests(history_service_.get());
+    testing::Test::TearDown();
+  }
+
+  // Simulates a visit to URL.
+  void VisitURL(const GURL& url,
+                const std::u16string& title,
+                history::VisitID visit_id,
+                std::optional<int64_t> local_navigation_id,
+                bool is_synced_visit = false,
+                base::Time timestamp = base::Time(),
+                history::VisitResponseCodeCategory response_code_category =
+                    history::VisitResponseCodeCategory::kNot404) {
+    history::URLRow url_row(url);
+    url_row.set_title(title);
+    history::VisitRow new_visit;
+    new_visit.visit_id = visit_id;
+    new_visit.visit_time = timestamp;
+    new_visit.originator_cache_guid = is_synced_visit ? "otherdevice" : "";
+    service_->OnURLVisitedWithNavigationId(
+        history_service_.get(),
+        std::move(history::VisitedURLInfo(
+            url_row, new_visit, response_code_category, local_navigation_id)));
+  }
+
+  FakeOptimizationGuideDecider* optimization_guide_decider() {
+    return optimization_guide_decider_.get();
+  }
+
+  base::ScopedTempDir temp_dir_;
+  base::test::TaskEnvironment task_environment_{
+      base::test::TaskEnvironment::TimeSource::MOCK_TIME};
+
+  PageContentAnnotationsService* service() { return service_.get(); }
+
+ protected:
+  std::unique_ptr<MockHistoryService> history_service_;
+  base::test::ScopedFeatureList scoped_feature_list_;
+
+  std::unique_ptr<optimization_guide::TestOptimizationGuideModelProvider>
+      optimization_guide_model_provider_;
+  search_engines::SearchEnginesTestEnvironment search_engines_test_environment_;
+  std::unique_ptr<TestPageContentAnnotator> test_annotator_;
+  std::unique_ptr<FakeOptimizationGuideDecider> optimization_guide_decider_;
+  std::unique_ptr<PageContentAnnotationsService> service_;
+};
+
+TEST_F(PageContentAnnotationsServiceTest, ObserveLocalVisitNonSearch) {
+  history::VisitID visit_id = 1;
+
+#if !defined(ARCH_CPU_ARMEL)
+  EXPECT_CALL(*history_service_,
+              AddContentModelAnnotationsForVisit(_, visit_id));
+#endif
+
+  VisitURL(GURL("https://example.com"), u"test", visit_id,
+           /*local_navigation_id=*/1,
+           /*is_synced_visit=*/false);
+
+  task_environment_.FastForwardBy(kWaitForTitleDelay + kBatchTimeout +
+                                  base::Milliseconds(1));
+}
+
+TEST_F(PageContentAnnotationsServiceTest, NonHTTPUrlIgnored) {
+  history::VisitID visit_id = 1;
+
+  EXPECT_CALL(*history_service_,
+              AddContentModelAnnotationsForVisit(_, visit_id))
+      .Times(0);
+
+  VisitURL(GURL("data:,"), u"test", visit_id,
+           /*local_navigation_id=*/1,
+           /*is_synced_visit=*/false);
+
+  task_environment_.FastForwardBy(kWaitForTitleDelay + kBatchTimeout +
+                                  base::Milliseconds(1));
+}
+
+TEST_F(PageContentAnnotationsServiceTest, VisitWith404ResponseIgnored) {
+  history::VisitID visit_id = 1;
+
+  EXPECT_CALL(*history_service_,
+              AddContentModelAnnotationsForVisit(_, visit_id))
+      .Times(0);
+
+  VisitURL(GURL("https://example.com"), u"404test", visit_id,
+           /*local_navigation_id=*/1,
+           /*is_synced_visit=*/true,
+           /*timestamp=*/base::Time(),
+           history::VisitResponseCodeCategory::k404);
+
+  task_environment_.FastForwardBy(kWaitForTitleDelay + kBatchTimeout +
+                                  base::Milliseconds(1));
+}
+
+TEST_F(PageContentAnnotationsServiceTest, ObserveSyncedVisitsNonSearch) {
+  history::VisitID visit_id = 1;
+
+#if !defined(ARCH_CPU_ARMEL)
+  EXPECT_CALL(*history_service_,
+              AddContentModelAnnotationsForVisit(_, visit_id));
+#endif
+
+  VisitURL(GURL("https://example.com"), u"test", visit_id,
+           /*local_navigation_id=*/1,
+           /*is_synced_visit=*/true);
+
+  task_environment_.FastForwardBy(kWaitForTitleDelay + kBatchTimeout +
+                                  base::Milliseconds(1));
+}
+
+TEST_F(PageContentAnnotationsServiceTest, ObserveLocalVisitsSearch) {
+  history::VisitID visit_id = 1;
+  base::HistogramTester histogram_tester;
+
+  EXPECT_CALL(*history_service_, AddSearchMetadataForVisit(_, _, visit_id));
+
+#if !defined(ARCH_CPU_ARMEL)
+  EXPECT_CALL(*history_service_,
+              AddContentModelAnnotationsForVisit(_, visit_id));
+#endif
+
+  VisitURL(GURL("http://www.google.com/search?q=test#frag"), u"Test Page",
+           visit_id, /*local_navigation_id=*/1,
+           /*is_synced_visit=*/false);
+
+  task_environment_.FastForwardBy(kWaitForTitleDelay + kBatchTimeout +
+                                  base::Milliseconds(1));
+
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.PageContentAnnotations.GoogleSearchMetadataExtracted",
+      true, 1);
+}
+
+TEST_F(PageContentAnnotationsServiceTest, ObserveSyncedVisitsSearch) {
+  history::VisitID visit_id = 1;
+
+  EXPECT_CALL(*history_service_, AddSearchMetadataForVisit(_, _, visit_id));
+
+#if !defined(ARCH_CPU_ARMEL)
+  EXPECT_CALL(*history_service_,
+              AddContentModelAnnotationsForVisit(_, visit_id));
+#endif
+
+  VisitURL(GURL("https://default-engine.com/search?q=test#frag"), u"Test Page",
+           visit_id, /*local_navigation_id=*/1,
+           /*is_synced_visit=*/true);
+
+  task_environment_.FastForwardBy(kWaitForTitleDelay + kBatchTimeout +
+                                  base::Milliseconds(1));
+}
+
+#if defined(ARCH_CPU_ARMEL)
+#define MAYBE_BatchLimitTriggersJob DISABLED_BatchLimitTriggersJob
+#else
+#define MAYBE_BatchLimitTriggersJob BatchLimitTriggersJob
+#endif
+TEST_F(PageContentAnnotationsServiceTest, MAYBE_BatchLimitTriggersJob) {
+  EXPECT_CALL(*history_service_, AddContentModelAnnotationsForVisit(_, _))
+      .Times(5);
+
+  for (int i = 0; i < 5; ++i) {
+    // history::kInvalidVisitID is 0, so we need to use i+1 for visit IDs.
+    VisitURL(GURL("https://example.com"), u"test", /*visit_id=*/i + 1,
+             /*local_navigation_id=*/i,
+             /*is_synced_visit=*/false);
+  }
+
+  task_environment_.FastForwardBy(kWaitForTitleDelay + base::Milliseconds(1));
+}
+
+#if defined(ARCH_CPU_ARMEL)
+#define MAYBE_BatchSizeTimeout DISABLED_BatchSizeTimeout
+#else
+#define MAYBE_BatchSizeTimeout BatchSizeTimeout
+#endif
+TEST_F(PageContentAnnotationsServiceTest, MAYBE_BatchSizeTimeout) {
+  history::VisitID visit_id = 1;
+
+  EXPECT_CALL(*history_service_,
+              AddContentModelAnnotationsForVisit(_, visit_id));
+
+  VisitURL(GURL("https://example.com"), u"test", visit_id,
+           /*local_navigation_id=*/1,
+           /*is_synced_visit=*/false);
+
+  task_environment_.FastForwardBy(kWaitForTitleDelay + kBatchTimeout +
+                                  base::Milliseconds(1));
+}
+
+#if defined(ARCH_CPU_ARMEL)
+#define MAYBE_OlderVisitsDropped DISABLED_OlderVisitsDropped
+#else
+#define MAYBE_OlderVisitsDropped OlderVisitsDropped
+#endif
+TEST_F(PageContentAnnotationsServiceTest, MAYBE_OlderVisitsDropped) {
+  // First 5 visits are processed, then the next 6 are queued and the
+  // most recent 5 are annotated (the oldest queued visit is dropped).
+  constexpr base::Time kTestTime = base::Time() + base::Days(1000);
+  constexpr std::array<base::Time, 11> kTimestamps = {
+      // First batch of 5:
+      kTestTime + base::Days(1),
+      kTestTime + base::Days(2),
+      kTestTime + base::Days(3),
+      kTestTime + base::Days(4),
+      kTestTime + base::Days(5),
+
+      // Second batch queued while batch 1 is active:
+      kTestTime + base::Days(14),
+      kTestTime + base::Days(8),
+      kTestTime + base::Days(13),
+      kTestTime + base::Days(15),
+      kTestTime + base::Days(12),
+
+      // Arrives while queue is full, discarded since it's the oldest queued:
+      kTestTime + base::Days(6),
+  };
+  base::flat_map<std::string, double> titles_to_score;
+  for (int i = 0; i < 11; ++i) {
+    titles_to_score[base::StrCat({"test", base::NumberToString(i)})] =
+        0.5 + i * 0.05;
+  }
+  test_annotator_->UseVisibilityScores(std::nullopt, titles_to_score);
+
+  for (int i = 1; i <= 10; ++i) {
+    EXPECT_CALL(*history_service_, AddContentModelAnnotationsForVisit(_, i));
+  }
+
+  for (int i = 0; i < 11; ++i) {
+    // history::kInvalidVisitID is 0, so we use i+1 for our visit IDs.
+    VisitURL(GURL("https://example.com"),
+             base::UTF8ToUTF16(base::StrCat({"test", base::NumberToString(i)})),
+             /*visit_id=*/i + 1,
+             /*local_navigation_id=*/i,
+             /*is_synced_visit=*/false, kTimestamps[i]);
+  }
+  task_environment_.FastForwardBy(base::Seconds(15));
+}
+
+TEST_F(PageContentAnnotationsServiceTest, RegistersType) {
+  std::vector<optimization_guide::proto::OptimizationType>
+      registered_optimization_types =
+          optimization_guide_decider()->registered_optimization_types();
+  EXPECT_TRUE(std::ranges::contains(registered_optimization_types,
+                                    optimization_guide::proto::PAGE_ENTITIES));
+  EXPECT_TRUE(std::ranges::contains(registered_optimization_types,
+                                    optimization_guide::proto::SALIENT_IMAGE));
+}
+
+TEST_F(PageContentAnnotationsServiceTest, DoesNotPersistIfServerHasNoData) {
+  VisitURL(GURL("http://www.nohints.com"), u"sometitle", 13,
+           /*local_navigation_id=*/1);
+}
+
+TEST_F(PageContentAnnotationsServiceTest,
+       DoesNotPersistIfServerReturnsWrongMetadata) {
+  // Navigate.
+  VisitURL(GURL("http://wrongmetadata.com"), u"sometitle", 13,
+           /*local_navigation_id=*/1);
+}
+
+TEST_F(PageContentAnnotationsServiceTest, RequestsToPersistIfHasPageMetadata) {
+  EXPECT_CALL(*history_service_,
+              AddPageMetadataForVisit("alternative title", 13));
+
+  // Navigate.
+  VisitURL(GURL("http://hasmetadata.com"), u"sometitle", 13,
+           /*local_navigation_id=*/1);
+}
+
+TEST_F(PageContentAnnotationsServiceTest,
+       RequestsToPersistIfHasSalientImageMetadata) {
+  EXPECT_CALL(*history_service_, SetHasUrlKeyedImageForVisit(true, 13));
+
+  // Navigate.
+  VisitURL(GURL("http://hasimageurl.com"), u"sometitle", 13,
+           /*local_navigation_id=*/1);
+}
+
+TEST_F(PageContentAnnotationsServiceTest, CategoryClassifierObserver) {
+  MockPageContentAnnotationsObserver observer;
+  service_->AddObserver(AnnotationType::kCategoryClassifier, &observer);
+
+  GURL url("https://example.com/");
+  history::VisitID visit_id = 1;
+
+#if !defined(ARCH_CPU_ARMEL)
+  EXPECT_CALL(*history_service_,
+              AddContentModelAnnotationsForVisit(_, visit_id));
+#endif
+
+  VisitURL(url, u"test", visit_id, /*local_navigation_id=*/1);
+  task_environment_.FastForwardBy(kWaitForTitleDelay + kBatchTimeout +
+                                  base::Milliseconds(1));
+
+  std::vector<Category> categories = {
+      {CategoryType::kEducation, 0.5},
+      {CategoryType::kShopping, 0.8},
+  };
+
+  EXPECT_CALL(observer, OnPageContentAnnotated(_, _))
+      .WillOnce([&](const HistoryVisit& visit,
+                    const PageContentAnnotationsResult& result) {
+        EXPECT_EQ(visit.url, url);
+        EXPECT_EQ(result.GetType(), AnnotationType::kCategoryClassifier);
+        const std::vector<Category>& results = result.GetCategoryResults();
+        EXPECT_EQ(results.size(), 2u);
+        EXPECT_EQ(results[0].category_type, CategoryType::kEducation);
+        EXPECT_EQ(results[0].score, 0.5f);
+        EXPECT_EQ(results[1].category_type, CategoryType::kShopping);
+        EXPECT_EQ(results[1].score, 0.8f);
+      });
+
+  service()->OnCategoriesClassified(url, /*source_id=*/0, categories);
+
+  service_->RemoveObserver(AnnotationType::kCategoryClassifier, &observer);
+}
+
+}  // namespace page_content_annotations

@@ -1,0 +1,26 @@
+<script>
+    if (window.testRunner)
+        testRunner.dumpAsText();
+
+    function log(message)
+    {
+        var console = document.getElementById("console");
+        console.appendChild(document.createTextNode(message + "\n"));
+    }
+
+    function dumpDOM(frame)
+    {
+        var doc = frame.contentDocument;
+        var root = doc.documentElement;
+        log(root.innerHTML);
+
+        var viewer = internals.shadowRoot(root);
+        log("XML viewer in iframe: " + !!viewer);
+        if (viewer) {
+            log("XML viewer shows source XML: " +
+                viewer.textContent.includes("SOURCE XML: <<<&тест&>>>"));
+        }
+    }
+</script>
+<pre id="console"></pre>
+<iframe onload="dumpDOM(this)" src="resources/xslt-text.xml"></iframe>

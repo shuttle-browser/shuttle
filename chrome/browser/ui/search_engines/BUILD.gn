@@ -1,0 +1,126 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//extensions/buildflags/buildflags.gni")
+
+source_set("search_engines") {
+  public = [
+    "edit_search_engine_controller.h",
+    "search_engine_tab_helper.h",
+    "template_url_table_model.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/find_bar",
+    "//chrome/common:mojo_bindings",
+    "//components/favicon/core",
+    "//components/find_in_page",
+    "//components/search_engines",
+    "//content/public/browser",
+    "//mojo/public/cpp/bindings",
+    "//ui/base",
+    "//ui/gfx",
+  ]
+
+  sources = [
+    "edit_search_engine_controller.cc",
+    "search_engine_tab_helper.cc",
+    "template_url_table_model.cc",
+  ]
+
+  if (!is_android) {
+    public += [ "keyword_editor_controller.h" ]
+    sources += [ "keyword_editor_controller.cc" ]
+  }
+
+  deps = [
+    "//base:i18n",
+    "//chrome/browser/autocomplete:aim_eligibility_service",
+    "//chrome/browser/favicon",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/search_engines",
+    "//chrome/common",
+    "//components/omnibox/browser",
+    "//components/omnibox/common",
+    "//components/prefs",
+    "//components/search_engines",
+    "//components/url_formatter",
+    "//services/network/public/mojom",
+    "//third_party/icu:icui18n",
+    "//third_party/icu:icuuc_public",
+    "//url",
+  ]
+
+  if (is_win || is_mac) {
+    if (enable_extensions_core) {
+      public += [ "default_search_extension_controlled_controller.h" ]
+      sources += [ "default_search_extension_controlled_controller.cc" ]
+
+      deps += [
+        "//chrome/browser/extensions",
+        "//chrome/browser/ui/extensions",
+        "//chrome/browser/ui/tabs:tabs_public",
+        "//components/tabs:public",
+      ]
+    }
+  }
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  if (!is_android) {
+    sources = [ "keyword_editor_controller_unittest.cc" ]
+  }
+
+  deps = [
+    ":search_engines",
+    "//chrome/browser/profiles:profile",
+    "//chrome/test:test_support",
+    "//components/omnibox/common",
+    "//components/sync_preferences:test_support",
+    "//content/test:test_support",
+  ]
+
+  if (is_win || is_mac) {
+    if (enable_extensions_core) {
+      sources +=
+          [ "default_search_extension_controlled_controller_unittest.cc" ]
+      deps += [
+        "//chrome/browser/search_engines",
+        "//chrome/browser/ui/extensions",
+        "//chrome/browser/ui/tabs:test_support",
+        "//components/tabs:test_support",
+      ]
+    }
+  }
+
+  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
+  # enable the diagnostic by removing this line.
+  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+}
+
+if (!is_android) {
+  source_set("browser_tests") {
+    testonly = true
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+    sources = [ "search_engine_tab_helper_browsertest.cc" ]
+    deps = [
+      ":search_engines",
+      "//chrome/browser/profiles:profile",
+      "//chrome/browser/search_engines",
+      "//chrome/browser/ui/tabs:tab_enums",
+      "//chrome/browser/ui/tabs:tab_strip",
+      "//chrome/test:test_support",
+      "//chrome/test:test_support_ui",
+      "//content/test:test_support",
+      "//net:test_support",
+    ]
+
+    # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
+    # enable the diagnostic by removing this line.
+    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+  }
+}

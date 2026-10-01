@@ -1,0 +1,7 @@
+This is a testharness.js-based test.
+[FAIL] Unrelated hint, target=hint with dialog
+  assert_equals: Incorrect behavior expected false but got true
+[FAIL] Unrelated hint, target=hint with fullscreen
+  assert_equals: Incorrect behavior expected false but got true
+Harness: the test ran to completion.
+

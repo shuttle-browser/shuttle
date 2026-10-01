@@ -1,0 +1,185 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/updater/test/server.h"
+
+#include <algorithm>
+#include <iterator>
+#include <list>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "base/check.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/json/json_reader.h"
+#include "base/logging.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/strings/string_util.h"
+#include "base/time/time.h"
+#include "base/values.h"
+#include "build/build_config.h"
+#include "build/buildflag.h"
+#include "chrome/updater/test/http_request.h"
+#include "chrome/updater/test/integration_test_commands.h"
+#include "chrome/updater/test/integration_tests_impl.h"
+#include "net/http/http_status_code.h"
+#include "net/test/embedded_test_server/embedded_test_server.h"
+#include "net/test/embedded_test_server/http_request.h"
+#include "net/test/embedded_test_server/http_response.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/strings/str_format.h"
+#include "third_party/zlib/google/compression_utils.h"
+
+namespace updater::test {
+namespace {
+
+#if BUILDFLAG(IS_MAC) && defined(ARCH_CPU_X86_64) && !defined(NDEBUG)
+// Debug x86_64 binaries exceed 600 MB, causing slow CECA launch due to
+// Gatekeeper verification and Rosetta translation.
+constexpr base::TimeDelta kCecaConnectionTimeout = base::Seconds(50);
+#else
+constexpr base::TimeDelta kCecaConnectionTimeout = base::Seconds(10);
+#endif
+
+std::string DebugStringForReq(HttpRequest& request) {
+  std::vector<std::string> request_strs;
+
+  request_strs.push_back("Request:");
+  request_strs.push_back(absl::StrFormat("Path: %s", request.relative_url));
+  request_strs.push_back("Headers: {");
+  for (const auto& [name, value] : request.headers) {
+    request_strs.push_back(absl::StrFormat("    %s: %s", name, value));
+  }
+  request_strs.push_back("}");
+
+  std::optional<base::Value> json = base::JSONReader::Read(
+      request.decoded_content, base::JSON_PARSE_CHROMIUM_EXTENSIONS);
+  if (json) {
+    request_strs.push_back(absl::StrFormat("Content (JSON, pretty-printed): %s",
+                                           json->DebugString()));
+  } else {
+    request_strs.push_back(
+        absl::StrFormat("Content: %s", GetPrintableContent(request)));
+  }
+
+  return base::JoinString(request_strs, "\n  ");
+}
+
+}  // namespace
+
+ScopedServer::ScopedServer(scoped_refptr<IntegrationTestCommands> commands) {
+  test_server_.RegisterRequestHandler(base::BindRepeating(
+      &ScopedServer::HandleRequest, base::Unretained(this)));
+  EXPECT_TRUE((test_server_handle_ = test_server_.StartAndReturnHandle()));
+  CHECK(commands);
+  commands->EnterTestMode(update_url(), crash_upload_url(),
+                          /*app_logo_url=*/{},
+                          /*event_logging_url=*/{}, base::Minutes(5),
+                          base::Seconds(2), kCecaConnectionTimeout,
+                          /*event_logging_permission_provider=*/std::nullopt);
+}
+
+ScopedServer::~ScopedServer() {
+  for (const auto& request_matcher_group : request_matcher_groups_) {
+    // Forces `request_matcher` to log to help debugging, unless the
+    // matcher matches the empty request.
+    ADD_FAILURE() << "Unmet expectation: ";
+    std::ranges::for_each(request_matcher_group, [](request::Matcher matcher) {
+      matcher.Run(HttpRequest());
+    });
+  }
+}
+
+void ScopedServer::ExpectOnce(request::MatcherGroup request_matcher_group,
+                              const std::string& response_body,
+                              net::HttpStatusCode http_status_code) {
+  request_matcher_groups_.push_back(std::move(request_matcher_group));
+  responses_.emplace_back(
+      http_status_code,
+      base::BindRepeating([](const std::string& response_body,
+                             bool v4) { return response_body; },
+                          response_body));
+}
+
+void ScopedServer::ExpectOnce(
+    request::MatcherGroup request_matcher_group,
+    base::RepeatingCallback<std::string(bool)> response_body_provider,
+    net::HttpStatusCode http_status_code) {
+  request_matcher_groups_.push_back(std::move(request_matcher_group));
+  responses_.emplace_back(http_status_code, response_body_provider);
+}
+
+std::unique_ptr<net::test_server::HttpResponse> ScopedServer::HandleRequest(
+    const net::test_server::HttpRequest& req) {
+  HttpRequest request(req);
+  VLOG(0) << "Handle request at path:" << request.relative_url;
+  VLOG(3) << DebugStringForReq(request);
+  auto response = std::make_unique<net::test_server::BasicHttpResponse>();
+  if (request_matcher_groups_.empty()) {
+    VLOG(0) << "Unexpected request.";
+    ADD_FAILURE() << "Unexpected " << DebugStringForReq(request);
+    response->set_code(net::HTTP_INTERNAL_SERVER_ERROR);
+    return response;
+  }
+  if (!std::ranges::all_of(request_matcher_groups_.front(),
+                           [&request](request::Matcher matcher) {
+                             return matcher.Run(request);
+                           })) {
+    VLOG(0) << "Request did not match.";
+    ADD_FAILURE() << "Unmatched " << DebugStringForReq(request);
+    response->set_code(net::HTTP_INTERNAL_SERVER_ERROR);
+    return response;
+  }
+
+  if (request.relative_url.starts_with(download_path()) &&
+      !download_delay_.is_zero()) {
+    VLOG(0) << "Delay download response by: " << download_delay_;
+    response.reset(new net::test_server::DelayedHttpResponse(download_delay_));
+  }
+
+  const auto& [response_code, response_body_provider] = responses_.front();
+  const std::string response_body =
+      response_body_provider.Run(re2::RE2::PartialMatch(
+          request.decoded_content, "\"protocol\": *\"4\\.0\""));
+  response->set_code(response_code);
+  if (request.relative_url.starts_with(device_management_path())) {
+    response->set_content_type("application/x-protobuf");
+  }
+  if (request.relative_url.starts_with(proxy_pac_path())) {
+    VLOG(1) << "PAC proxy settings: [ " << response_body << "]";
+  }
+
+  if (gzip_response_) {
+    if (!request.headers.contains("Accept-Encoding") ||
+        request.headers["Accept-Encoding"].find("gzip") == std::string::npos) {
+      VLOG(0) << "gzip `Accept-Encoding` not found in request.";
+      ADD_FAILURE() << "gzip `Accept-Encoding` not found in request, "
+                    << DebugStringForReq(request);
+      response->set_code(net::HTTP_INTERNAL_SERVER_ERROR);
+      return response;
+    }
+
+    std::string compressed_body;
+    if (!compression::GzipCompress(response_body, &compressed_body)) {
+      VLOG(0) << "gzip compression failed.";
+      ADD_FAILURE() << "gzip compression failed, "
+                    << DebugStringForReq(request);
+      response->set_code(net::HTTP_INTERNAL_SERVER_ERROR);
+      return response;
+    }
+    response->AddCustomHeader("Content-Encoding", "gzip");
+    response->set_content(compressed_body);
+  } else {
+    response->set_content(response_body);
+  }
+
+  request_matcher_groups_.pop_front();
+  responses_.pop_front();
+  return response;
+}
+
+}  // namespace updater::test

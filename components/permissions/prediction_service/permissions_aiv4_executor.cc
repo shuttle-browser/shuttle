@@ -1,0 +1,116 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/permissions/prediction_service/permissions_aiv4_executor.h"
+
+#include <array>
+#include <vector>
+
+#include "base/metrics/histogram_functions.h"
+#include "base/types/optional_ref.h"
+#include "build/build_config.h"
+#include "components/optimization_guide/core/optimization_guide_util.h"
+#include "components/permissions/prediction_service/permissions_aiv4_model_metadata.pb.h"
+#include "third_party/tflite_support/src/tensorflow_lite_support/cc/task/core/task_utils.h"
+
+namespace permissions {
+
+using ModelInput = PermissionsAiv4Executor::ModelInput;
+using ModelOutput = PermissionsAiv4Executor::ModelOutput;
+using ::passage_embeddings::Embedding;
+using ::tflite::task::core::PopulateTensor;
+
+// The default size of the text input tensor for the model. This is
+// necessary if the model metadata does not provide this value.
+// Note: This 768 dimension is tied to the current production passage
+// embedding models and is mirrored in the AIv4 test models.
+constexpr int kDefaultTextInputSize = 768;
+
+PermissionsAiv4ExecutorInput::PermissionsAiv4ExecutorInput(
+    SkBitmap snapshot,
+    std::vector<float> inner_text_embedding)
+    : snapshot(snapshot),
+      inner_text_embedding(std::move(inner_text_embedding)) {}
+
+PermissionsAiv4ExecutorInput::~PermissionsAiv4ExecutorInput() = default;
+PermissionsAiv4ExecutorInput::PermissionsAiv4ExecutorInput(
+    const PermissionsAiv4ExecutorInput&) = default;
+PermissionsAiv4ExecutorInput::PermissionsAiv4ExecutorInput(
+    PermissionsAiv4ExecutorInput&&) = default;
+
+bool PermissionsAiv4Executor::Preprocess(
+    const std::vector<TfLiteTensor*>& input_tensors,
+    const ModelInput& input) {
+  DCHECK(input_tensors.size() == 2);
+
+  int expected_input_size = kDefaultTextInputSize;
+  if (input.metadata.has_value() &&
+      input.metadata.value().has_text_embeddings_input_size()) {
+    expected_input_size = input.metadata.value().text_embeddings_input_size();
+  }
+
+  const auto& embedding_data = input.inner_text_embedding;
+  if (static_cast<int>(embedding_data.size()) != expected_input_size) {
+    VLOG(1)
+        << "[PermissionsAiv4Executor]: Input Size does not match expectations: "
+        << embedding_data.size() << " vs (expected) " << expected_input_size;
+    return false;
+  }
+  if (!PopulateTensor<float>(embedding_data.data(), expected_input_size,
+                             input_tensors[0])
+           .ok()) {
+    VLOG(1) << "[PermissionsAiv4Executor]: Failed to copy passage "
+               "embedding.";
+    return false;
+  }
+  if (!ConvertSkBitMapToTfliteTensor(input_tensors[1], input.snapshot)) {
+    VLOG(1)
+        << "[PermissionsAiv4Executor]: Failed to convert skbitmap to tflite "
+           "tensor data.";
+    return false;
+  }
+  VLOG(1) << "[PermissionsAiv4Executor]: Successfully encoded input!";
+  SetThresholdValues(input.metadata);
+  return true;
+}
+
+void PermissionsAiv4Executor::SetThresholdValues(
+    base::optional_ref<const PermissionsAiv4ModelMetadata> metadata) {
+  bool use_hardcoded_values =
+      !metadata.has_value() || !metadata.value().has_relevance_thresholds();
+  base::UmaHistogramBoolean("Permissions.AIv4.UseHardcodedPredictionThresholds",
+                            use_hardcoded_values);
+
+  if (use_hardcoded_values) {
+    DCHECK(request_type() == RequestType::kNotifications ||
+           request_type() == RequestType::kGeolocation);
+
+    // Empirically determined thresholds, that map to relevance enum vals as
+    // follows:
+    // val < thr[0] -> VeryLow
+    // ...
+    // val < thr[4] -> High
+    // val >= thr[4] -> VeryHigh
+#if BUILDFLAG(IS_ANDROID)  
+    if (request_type() == RequestType::kGeolocation) {
+      set_relevance_thresholds({0.075f, 0.223f, 0.64f, 0.85f});
+    } else {
+      set_relevance_thresholds({0.005f, 0.023f, 0.12f, 0.37f});
+    }
+#else
+    if (request_type() == RequestType::kGeolocation) {
+      set_relevance_thresholds({0.033f, 0.077f, 0.2f, 0.49f});
+    } else {
+      set_relevance_thresholds({0.008f, 0.024f, 0.11f, 0.32f});
+    }
+#endif
+    return;
+  }
+  const auto& thresholds = metadata.value().relevance_thresholds();
+  set_relevance_thresholds(
+      {thresholds.min_low_relevance(), thresholds.min_medium_relevance(),
+       thresholds.min_high_relevance(), thresholds.min_very_high_relevance()});
+}
+
+}  // namespace permissions

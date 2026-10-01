@@ -1,0 +1,234 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/app/spotlight/actions_spotlight_manager.h"
+
+#import <CoreSpotlight/CoreSpotlight.h>
+
+#import "base/apple/foundation_util.h"
+#import "base/metrics/histogram_macros.h"
+#import "base/strings/sys_string_conversions.h"
+#import "ios/chrome/app/app_startup_parameters.h"
+#import "ios/chrome/app/spotlight/searchable_item_factory.h"
+#import "ios/chrome/app/spotlight/spotlight_interface.h"
+#import "ios/chrome/app/spotlight/spotlight_logger.h"
+#import "ios/chrome/browser/lens/ui_bundled/lens_availability.h"
+#import "ios/chrome/browser/lens/ui_bundled/lens_entrypoint.h"
+#import "ios/chrome/common/app_group/app_group_constants.h"
+#import "ios/chrome/grit/ios_branded_strings.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "net/base/apple/url_conversions.h"
+#import "ui/base/l10n/l10n_util.h"
+#import "url/gurl.h"
+
+namespace {
+
+NSString* SpotlightActionFromString(NSString* query) {
+  NSString* domain =
+      [NSString stringWithFormat:@"%@.", spotlight::StringFromSpotlightDomain(
+                                             spotlight::DOMAIN_ACTIONS)];
+  DCHECK([query hasPrefix:domain]);
+  return
+      [query substringWithRange:NSMakeRange([domain length],
+                                            [query length] - [domain length])];
+}
+
+}  // namespace
+
+namespace spotlight {
+
+// Constants for Spotlight action links.
+NSString* const kSpotlightActionNewTab = @"OpenNewTab";
+NSString* const kSpotlightActionNewIncognitoTab = @"OpenIncognitoTab";
+NSString* const kSpotlightActionVoiceSearch = @"OpenVoiceSearch";
+NSString* const kSpotlightActionQRScanner = @"OpenQRScanner";
+NSString* const kSpotlightActionSetDefaultBrowser = @"SetDefaultBrowser";
+NSString* const kSpotlightActionLens = @"OpenLensFromSpotlight";
+
+// The histogram used to record user actions performed on the spotlight actions.
+const char kSpotlightActionsHistogram[] = "IOS.Spotlight.Action";
+
+// LINT.IfChange
+// TODO(crbug.com/462018636): This code will be soon migrated to
+// task_request_user_activity.mm, so any change should be reflected also there.
+// Contact fedegermi for additional information or support.
+BOOL SetStartupParametersForSpotlightAction(
+    NSString* query,
+    AppStartupParameters* startupParams) {
+  DCHECK(startupParams);
+  NSString* action = SpotlightActionFromString(query);
+  if ([action isEqualToString:kSpotlightActionNewIncognitoTab]) {
+    UMA_HISTOGRAM_ENUMERATION(kSpotlightActionsHistogram,
+                              SPOTLIGHT_ACTION_NEW_INCOGNITO_TAB_PRESSED,
+                              SPOTLIGHT_ACTION_COUNT);
+    [startupParams setApplicationMode:ApplicationModeForTabOpening::INCOGNITO
+                 forceApplicationMode:NO];
+  } else if ([action isEqualToString:kSpotlightActionVoiceSearch]) {
+    UMA_HISTOGRAM_ENUMERATION(kSpotlightActionsHistogram,
+                              SPOTLIGHT_ACTION_VOICE_SEARCH_PRESSED,
+                              SPOTLIGHT_ACTION_COUNT);
+    [startupParams setApplicationMode:ApplicationModeForTabOpening::NORMAL
+                 forceApplicationMode:NO];
+    [startupParams setPostOpeningAction:START_VOICE_SEARCH];
+  } else if ([action isEqualToString:kSpotlightActionQRScanner]) {
+    UMA_HISTOGRAM_ENUMERATION(kSpotlightActionsHistogram,
+                              SPOTLIGHT_ACTION_QR_CODE_SCANNER_PRESSED,
+                              SPOTLIGHT_ACTION_COUNT);
+    [startupParams setApplicationMode:ApplicationModeForTabOpening::NORMAL
+                 forceApplicationMode:NO];
+    [startupParams setPostOpeningAction:START_QR_CODE_SCANNER];
+  } else if ([action isEqualToString:kSpotlightActionNewTab]) {
+    UMA_HISTOGRAM_ENUMERATION(kSpotlightActionsHistogram,
+                              SPOTLIGHT_ACTION_NEW_TAB_PRESSED,
+                              SPOTLIGHT_ACTION_COUNT);
+    [startupParams setApplicationMode:ApplicationModeForTabOpening::NORMAL
+                 forceApplicationMode:NO];
+  } else if ([action isEqualToString:kSpotlightActionSetDefaultBrowser]) {
+    UMA_HISTOGRAM_ENUMERATION(kSpotlightActionsHistogram,
+                              SPOTLIGHT_ACTION_SET_DEFAULT_BROWSER_PRESSED,
+                              SPOTLIGHT_ACTION_COUNT);
+    [[UIApplication sharedApplication]
+                  openURL:[NSURL
+                              URLWithString:UIApplicationOpenSettingsURLString]
+                  options:{}
+        completionHandler:nil];
+  } else if ([action isEqualToString:kSpotlightActionLens]) {
+    UMA_HISTOGRAM_ENUMERATION(kSpotlightActionsHistogram,
+                              SPOTLIGHT_ACTION_LENS_PRESSED,
+                              SPOTLIGHT_ACTION_COUNT);
+    [startupParams setApplicationMode:ApplicationModeForTabOpening::NORMAL
+                 forceApplicationMode:NO];
+    [startupParams setPostOpeningAction:START_LENS_FROM_SPOTLIGHT];
+  } else {
+    return NO;
+  }
+  return YES;
+}
+// LINT.ThenChange(//ios/chrome/app/task_request_user_activity.mm)
+
+}  // namespace spotlight
+
+@implementation ActionsSpotlightManager
+
++ (ActionsSpotlightManager*)actionsSpotlightManager {
+  return [[ActionsSpotlightManager alloc]
+      initWithSpotlightInterface:[SpotlightInterface defaultInterface]
+           searchableItemFactory:
+               [[SearchableItemFactory alloc]
+                   initWithLargeIconService:nil
+                                     domain:spotlight::DOMAIN_ACTIONS
+                      useTitleInIdentifiers:YES]];
+}
+
+#pragma mark public methods
+
+- (instancetype)
+    initWithSpotlightInterface:(SpotlightInterface*)spotlightInterface
+         searchableItemFactory:(SearchableItemFactory*)searchableItemFactory {
+  self = [super initWithSpotlightInterface:spotlightInterface
+                     searchableItemFactory:searchableItemFactory];
+  return self;
+}
+
+- (void)indexActionsWithIsGoogleDefaultSearchEngine:
+    (BOOL)isGoogleDefaultSearchEngine {
+  __weak ActionsSpotlightManager* weakSelf = self;
+  dispatch_after(
+      dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(1 * NSEC_PER_SEC)),
+      dispatch_get_main_queue(), ^{
+        ActionsSpotlightManager* strongSelf = weakSelf;
+        [strongSelf clearAndAddSpotlightActionsWithIsGoogleDefaultSearchEngine:
+                        isGoogleDefaultSearchEngine];
+      });
+}
+
+#pragma mark private methods
+
+// Clears and re-inserts all Spotlight actions.
+- (void)clearAndAddSpotlightActionsWithIsGoogleDefaultSearchEngine:
+    (BOOL)isGoogleDefaultSearchEngine {
+  __weak ActionsSpotlightManager* weakSelf = self;
+
+  [self.searchableItemFactory cancelItemsGeneration];
+  [self.spotlightInterface
+      deleteSearchableItemsWithDomainIdentifiers:@[
+        spotlight::StringFromSpotlightDomain(spotlight::DOMAIN_ACTIONS)
+      ]
+                               completionHandler:^(NSError* error) {
+                                 dispatch_after(
+                                     dispatch_time(DISPATCH_TIME_NOW,
+                                                   static_cast<int64_t>(
+                                                       1 * NSEC_PER_SEC)),
+                                     dispatch_get_main_queue(), ^{
+                                       ActionsSpotlightManager* strongSelf =
+                                           weakSelf;
+
+                                       if (!strongSelf) {
+                                         return;
+                                       }
+
+                                       [strongSelf
+                                           reindexActionsToSpotlight:
+                                               isGoogleDefaultSearchEngine];
+                                     });
+                               }];
+}
+
+- (void)reindexActionsToSpotlight:(BOOL)isGoogleDefaultSearchEngine {
+  NSString* voiceSearchTitle =
+      l10n_util::GetNSString(IDS_IOS_APPLICATION_SHORTCUT_VOICE_SEARCH_TITLE);
+  NSString* voiceSearchAction = spotlight::kSpotlightActionVoiceSearch;
+
+  NSString* newTabTitle =
+      l10n_util::GetNSString(IDS_IOS_APPLICATION_SHORTCUT_NEWSEARCH_TITLE);
+  NSString* newTabAction = spotlight::kSpotlightActionNewTab;
+
+  NSString* incognitoTitle = l10n_util::GetNSString(
+      IDS_IOS_APPLICATION_SHORTCUT_INCOGNITOSEARCH_TITLE);
+  NSString* incognitoAction = spotlight::kSpotlightActionNewIncognitoTab;
+
+  NSString* qrScannerTitle =
+      l10n_util::GetNSString(IDS_IOS_APPLICATION_SHORTCUT_QR_SCANNER_TITLE);
+  NSString* qrScannerAction = spotlight::kSpotlightActionQRScanner;
+
+  NSString* defaultBrowserTitle =
+      l10n_util::GetNSString(IDS_IOS_APPLICATION_SHORTCUT_SET_DEFAULT_BROWSER);
+  NSString* defaultBrowserAction = spotlight::kSpotlightActionSetDefaultBrowser;
+
+  NSMutableArray<CSSearchableItem*>* spotlightItems = [NSMutableArray array];
+
+  [spotlightItems addObjectsFromArray:@[
+    [self itemForAction:voiceSearchAction title:voiceSearchTitle],
+    [self itemForAction:newTabAction title:newTabTitle],
+    [self itemForAction:incognitoAction title:incognitoTitle],
+    [self itemForAction:qrScannerAction title:qrScannerTitle],
+    [self itemForAction:defaultBrowserAction title:defaultBrowserTitle],
+  ]];
+
+  const BOOL useLens =
+      lens_availability::CheckAndLogAvailabilityForLensEntryPoint(
+          LensEntrypoint::Spotlight, isGoogleDefaultSearchEngine);
+  if (useLens) {
+    NSString* lensTitle =
+        l10n_util::GetNSString(IDS_IOS_APPLICATION_SHORTCUT_LENS_TITLE);
+    NSString* lensAction = spotlight::kSpotlightActionLens;
+    [spotlightItems addObject:[self itemForAction:lensAction title:lensTitle]];
+  }
+
+  [self.spotlightInterface indexSearchableItems:spotlightItems];
+}
+
+// Creates a new Spotlight entry with title `title` for the given `action`.
+- (CSSearchableItem*)itemForAction:(NSString*)action title:(NSString*)title {
+  NSString* domainID =
+      spotlight::StringFromSpotlightDomain(spotlight::DOMAIN_ACTIONS);
+
+  NSString* itemID = [NSString stringWithFormat:@"%@.%@", domainID, action];
+
+  return [self.searchableItemFactory searchableItem:title
+                                             itemID:itemID
+                                 additionalKeywords:@[]];
+}
+
+@end

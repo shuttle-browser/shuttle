@@ -1,0 +1,105 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_ENTERPRISE_CONNECTORS_CONNECTORS_SERVICE_H_
+#define CHROME_BROWSER_ENTERPRISE_CONNECTORS_CONNECTORS_SERVICE_H_
+
+#include <memory>
+
+#include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
+#include "base/no_destructor.h"
+#include "build/build_config.h"
+#include "chrome/browser/enterprise/connectors/connectors_manager.h"
+#include "chrome/browser/profiles/profile.h"
+#include "components/enterprise/common/proto/connectors.pb.h"
+#include "components/enterprise/connectors/core/connectors_manager_base.h"
+#include "components/enterprise/connectors/core/connectors_service_base.h"
+#include "components/keyed_service/content/browser_context_keyed_service_factory.h"
+#include "components/keyed_service/core/keyed_service.h"
+#include "content/public/browser/browser_context.h"
+
+namespace storage {
+class FileSystemURL;
+}
+
+namespace enterprise_connectors {
+
+// A keyed service to access ConnectorsManager, which tracks Connector policies.
+class ConnectorsService : public ConnectorsServiceBase, public KeyedService {
+ public:
+  using ConnectorsServiceBase::GetAnalysisSettings;
+
+  ConnectorsService(content::BrowserContext* context,
+                    std::unique_ptr<ConnectorsManagerBase> manager);
+  ~ConnectorsService() override;
+
+  // Accessors that call the corresponding method in ConnectorsManager.
+  std::optional<ReportingSettings> GetReportingSettings() override;
+
+#if BUILDFLAG(IS_CHROMEOS)
+  std::optional<AnalysisSettings> GetAnalysisSettings(
+      const storage::FileSystemURL& source_url,
+      const storage::FileSystemURL& destination_url,
+      AnalysisConnector connector);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+  // Returns the CBCM domain or profile domain that enables connector policies.
+  // If both set Connector policies, the CBCM domain is returned as it has
+  // precedence.
+  std::string GetManagementDomain();
+
+  // ConnectorsServiceBase:
+  std::optional<std::string> GetBrowserDmToken() const override;
+  std::unique_ptr<ClientMetadata> BuildClientMetadata(bool is_cloud) override;
+
+ private:
+  FRIEND_TEST_ALL_PREFIXES(ConnectorsServiceProfileTypeBrowserTest, IsEnabled);
+  FRIEND_TEST_ALL_PREFIXES(ConnectorsServiceReportingFeatureTest,
+                           ChromeOsManagedGuestSessionFlagSetInMgs);
+  FRIEND_TEST_ALL_PREFIXES(ConnectorsServiceReportingFeatureTest,
+                           ChromeOsManagedGuestSessionFlagNotSetInUserSession);
+
+  // ConnectorsServiceBase:
+  std::optional<DmToken> GetDmToken(const char* scope_pref) const override;
+  bool ConnectorsEnabled() const override;
+  PrefService* GetPrefs() override;
+  const PrefService* GetPrefs() const override;
+  policy::CloudPolicyManager* GetManagedUserCloudPolicyManager() const override;
+  bool IsURLExemptFromAnalysis(const GURL& url,
+                               AnalysisConnector connector) override;
+  bool IsProfileAffiliated() const override;
+  std::string GetProfileEmail() const override;
+  std::string GetDeviceClientId() const override;
+
+  // Returns the policy::PolicyScope stored in the given |scope_pref|.
+  policy::PolicyScope GetPolicyScope(const char* scope_pref) const override;
+
+  // Returns ClientMetadata populated with minimum required information
+  std::unique_ptr<ClientMetadata> GetBasicClientMetadata(Profile* profile);
+
+  raw_ptr<content::BrowserContext> context_;
+};
+
+class ConnectorsServiceFactory : public BrowserContextKeyedServiceFactory {
+ public:
+  static ConnectorsServiceFactory* GetInstance();
+  static ConnectorsService* GetForBrowserContext(
+      content::BrowserContext* context);
+
+ private:
+  ConnectorsServiceFactory();
+  ~ConnectorsServiceFactory() override;
+  friend base::NoDestructor<ConnectorsServiceFactory>;
+
+  // BrowserContextKeyedServiceFactory:
+  std::unique_ptr<KeyedService> BuildServiceInstanceForBrowserContext(
+      content::BrowserContext* context) const override;
+  content::BrowserContext* GetBrowserContextToUse(
+      content::BrowserContext* context) const override;
+};
+
+}  // namespace enterprise_connectors
+
+#endif  // CHROME_BROWSER_ENTERPRISE_CONNECTORS_CONNECTORS_SERVICE_H_

@@ -1,0 +1,69 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_AUTHENTICATION_UI_BUNDLED_CELLS_CENTRAL_ACCOUNT_VIEW_H_
+#define IOS_CHROME_BROWSER_AUTHENTICATION_UI_BUNDLED_CELLS_CENTRAL_ACCOUNT_VIEW_H_
+
+#import <UIKit/UIKit.h>
+
+#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_item.h"
+
+@class CentralAccountView;
+
+// Delegate protocol for CentralAccountView.
+@protocol CentralAccountViewDelegate <NSObject>
+
+// Called when the user taps on the AI subscription chip view.
+- (void)centralAccountViewDidTapAISubscriptionChip:(CentralAccountView*)view;
+
+@end
+
+// View for the signed-in account, used in account settings page. Contains the
+// following subviews:
+// 1. Rounded avatarImage used for the account user picture. The value cannot be
+// nil.
+// 2. Name displayed in main label. The value can be nil.
+// In case the value is nil, the main label will show the email and there will
+// be no secondary label.
+// 3. Email subtitle displayed in secondary label. The value cannot be nil.
+@interface CentralAccountView : UIView
+
+// The delegate to handle interactions with the view.
+@property(nonatomic, weak) id<CentralAccountViewDelegate> delegate;
+
+- (instancetype)initWithFrame:(CGRect)frame
+                  avatarImage:(UIImage*)avatarImage
+              showsAITierRing:(BOOL)showsAITierRing
+               aiTierFullName:(NSString*)aiTierFullName
+         subscriptionChipView:(UIView*)subscriptionChipView
+                         name:(NSString*)name
+                        email:(NSString*)email
+        managementDescription:(NSString*)managementDescription
+              useLargeMargins:(BOOL)useLargeMargins;
+
+// Returns the avatar image.
+- (UIImage*)avatarImage;
+
+// Returns the avatar view container.
+- (UIView*)avatarView;
+
+// The title of the view. The name if it’s set otherwise the email.
+- (NSString*)title;
+
+// The subtitle of the view. The email if the name is set, otherwise nil.
+- (NSString*)subtitle;
+
+// The full name of the AI tier. May be nil.
+- (NSString*)aiTierFullName;
+
+- (BOOL)managed;
+
+- (NSString*)managementDescription;
+
+// update the top padding.
+- (void)updateTopPadding:(CGFloat)existingPadding;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_AUTHENTICATION_UI_BUNDLED_CELLS_CENTRAL_ACCOUNT_VIEW_H_

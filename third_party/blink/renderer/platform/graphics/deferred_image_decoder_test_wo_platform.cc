@@ -1,0 +1,189 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <array>
+#include <memory>
+
+#include "base/containers/span.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/numerics/safe_conversions.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/task_environment.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/buildflags.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/renderer/platform/graphics/deferred_image_decoder.h"
+#include "third_party/blink/renderer/platform/image-decoders/image_decoder_test_helpers.h"
+#include "third_party/blink/renderer/platform/wtf/shared_buffer.h"
+#include "third_party/blink/renderer/platform/wtf/vector.h"
+#include "third_party/skia/include/core/SkCanvas.h"
+#include "third_party/skia/include/core/SkImage.h"
+#include "third_party/skia/include/core/SkImageInfo.h"
+#include "third_party/skia/include/core/SkPixmap.h"
+#include "third_party/skia/include/core/SkSurface.h"
+
+namespace blink {
+namespace {
+
+sk_sp<SkImage> CreateFrameAtIndex(DeferredImageDecoder* decoder, size_t index) {
+  return SkImages::DeferredFromGenerator(
+      std::make_unique<SkiaPaintImageGenerator>(
+          decoder->CreateGenerator(), index,
+          cc::PaintImage::kDefaultGeneratorClientId));
+}
+
+}  // namespace
+
+/**
+ *  Used to test decoding SkImages out of order.
+ *  e.g.
+ *  SkImage* imageA = decoder.createFrameAtIndex(0);
+ *  // supply more (but not all) data to the decoder
+ *  SkImage* imageB = decoder.createFrameAtIndex(laterFrame);
+ *  draw(imageB);
+ *  draw(imageA);
+ *
+ *  This results in using the same ImageDecoder (in the ImageDecodingStore) to
+ *  decode less data the second time. This test ensures that it is safe to do
+ *  so.
+ *
+ *  @param fileName File to decode
+ *  @param bytesForFirstFrame Number of bytes needed to return an SkImage
+ *  @param laterFrame Frame to decode with almost complete data. Can be 0.
+ */
+static void MixImages(const char* file_name,
+                      size_t bytes_for_first_frame,
+                      size_t later_frame) {
+  base::test::SingleThreadTaskEnvironment task_environment;
+  const Vector<char> file = ReadFile(file_name);
+
+  scoped_refptr<SharedBuffer> partial_file =
+      SharedBuffer::Create(base::span(file).first(bytes_for_first_frame));
+  std::unique_ptr<DeferredImageDecoder> decoder = DeferredImageDecoder::Create(
+      partial_file, false, ImageDecoder::kAlphaPremultiplied,
+      ColorBehavior::kIgnore);
+  ASSERT_NE(decoder, nullptr);
+  sk_sp<SkImage> partial_image = CreateFrameAtIndex(decoder.get(), 0);
+
+  scoped_refptr<SharedBuffer> almost_complete_file =
+      SharedBuffer::Create(base::span(file).first(file.size() - 1));
+  decoder->SetData(almost_complete_file, false);
+  sk_sp<SkImage> image_with_more_data =
+      CreateFrameAtIndex(decoder.get(), later_frame);
+
+  // we now want to ensure we don't crash if we access these in this order
+  SkImageInfo info = SkImageInfo::MakeN32Premul(10, 10);
+  sk_sp<SkSurface> surf = SkSurfaces::Raster(info);
+  surf->getCanvas()->drawImage(image_with_more_data, 0, 0);
+  surf->getCanvas()->drawImage(partial_image, 0, 0);
+}
+
+TEST(DeferredImageDecoderTestWoPlatform, mixImagesGif) {
+  MixImages("/images/resources/animated.gif", 818u, 1u);
+}
+
+TEST(DeferredImageDecoderTestWoPlatform, mixImagesPng) {
+  MixImages("/images/resources/mu.png", 910u, 0u);
+}
+
+TEST(DeferredImageDecoderTestWoPlatform, mixImagesJpg) {
+  MixImages("/images/resources/2-dht.jpg", 177u, 0u);
+}
+
+TEST(DeferredImageDecoderTestWoPlatform, mixImagesWebp) {
+  MixImages("/images/resources/webp-animated.webp", 142u, 1u);
+}
+
+TEST(DeferredImageDecoderTestWoPlatform, mixImagesBmp) {
+  MixImages("/images/resources/gracehopper.bmp", 122u, 0u);
+}
+
+TEST(DeferredImageDecoderTestWoPlatform, mixImagesIco) {
+  MixImages("/images/resources/wrong-frame-dimensions.ico", 1376u, 1u);
+}
+
+TEST(DeferredImageDecoderTestWoPlatform, fragmentedSignature) {
+  base::test::SingleThreadTaskEnvironment task_environment;
+  constexpr auto test_files = std::to_array<const char*>({
+      "/images/resources/animated.gif",
+      "/images/resources/mu.png",
+      "/images/resources/2-dht.jpg",
+      "/images/resources/webp-animated.webp",
+      "/images/resources/gracehopper.bmp",
+      "/images/resources/wrong-frame-dimensions.ico",
+  });
+
+  for (const auto* test_file : test_files) {
+    Vector<char> file_data = ReadFile(test_file);
+    auto [first_byte, rest_of_data] = base::span(file_data).split_at(1u);
+
+    // Truncated signature (only 1 byte).  Decoder instantiation should fail.
+    scoped_refptr<SharedBuffer> buffer = SharedBuffer::Create(first_byte);
+    EXPECT_FALSE(ImageDecoder::HasSufficientDataToSniffMimeType(
+        *buffer, /*all_data_received=*/false));
+    EXPECT_EQ(nullptr, DeferredImageDecoder::Create(
+                           buffer, false, ImageDecoder::kAlphaPremultiplied,
+                           ColorBehavior::kIgnore));
+
+    // Append the rest of the data.  We should be able to sniff the signature
+    // now, even if segmented. Keep all_data_received false to exercise the
+    // incremental data path.
+    buffer->Append(rest_of_data);
+    EXPECT_TRUE(ImageDecoder::HasSufficientDataToSniffMimeType(
+        *buffer, /*all_data_received=*/false));
+    std::unique_ptr<DeferredImageDecoder> decoder =
+        DeferredImageDecoder::Create(buffer, false,
+                                     ImageDecoder::kAlphaPremultiplied,
+                                     ColorBehavior::kIgnore);
+    ASSERT_NE(decoder, nullptr);
+    EXPECT_TRUE(String(test_file).ends_with(decoder->FilenameExtension()));
+  }
+}
+
+#if BUILDFLAG(ENABLE_JXL_DECODER)
+// A complete image can be shorter than the longest signature used for MIME
+// sniffing: the smallest valid naked JPEG XL codestream is 12 bytes. Decoder
+// instantiation must succeed once all data is received, even if the data is
+// too short for regular signature sniffing. See crbug.com/507903802.
+TEST(DeferredImageDecoderTestWoPlatform, completeDataShorterThanSniffLength) {
+  base::test::SingleThreadTaskEnvironment task_environment;
+  base::test::ScopedFeatureList feature_list(features::kJXLImageFormat);
+
+  // base64: /wrfBwiDBAwASyAY, a 256x128 all-black image.
+  static constexpr std::array<uint8_t, 12> kSmallJxl = {
+      0xFF, 0x0A, 0xDF, 0x07, 0x08, 0x83, 0x04, 0x0C, 0x00, 0x4B, 0x20, 0x18};
+  scoped_refptr<SharedBuffer> buffer =
+      SharedBuffer::Create(base::span(kSmallJxl));
+
+  // With incomplete data, there is not enough to sniff the MIME type.
+  EXPECT_FALSE(ImageDecoder::HasSufficientDataToSniffMimeType(
+      *buffer, /*all_data_received=*/false));
+  EXPECT_EQ(nullptr, DeferredImageDecoder::Create(
+                         buffer, false, ImageDecoder::kAlphaPremultiplied,
+                         ColorBehavior::kIgnore));
+
+  // With complete data, sniffing must proceed with the available bytes.
+  EXPECT_TRUE(ImageDecoder::HasSufficientDataToSniffMimeType(
+      *buffer, /*all_data_received=*/true));
+  std::unique_ptr<DeferredImageDecoder> decoder = DeferredImageDecoder::Create(
+      buffer, true, ImageDecoder::kAlphaPremultiplied, ColorBehavior::kIgnore);
+  ASSERT_NE(decoder, nullptr);
+  EXPECT_EQ("jxl", decoder->FilenameExtension());
+  ASSERT_TRUE(decoder->IsSizeAvailable());
+  EXPECT_EQ(256, decoder->Size().width());
+  EXPECT_EQ(128, decoder->Size().height());
+
+  sk_sp<SkImage> image = CreateFrameAtIndex(decoder.get(), 0);
+  ASSERT_NE(image, nullptr);
+
+  // Force a lazy decode by reading pixels.
+  SkImageInfo info = SkImageInfo::MakeN32Premul(256, 128);
+  Vector<char> storage(
+      base::checked_cast<wtf_size_t>(info.computeMinByteSize()));
+  SkPixmap pixmap(info, storage.data(), info.minRowBytes());
+  EXPECT_TRUE(image->readPixels(pixmap, 0, 0));
+}
+#endif  // BUILDFLAG(ENABLE_JXL_DECODER)
+
+}  // namespace blink

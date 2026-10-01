@@ -1,0 +1,85 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.bookmarks;
+
+import android.view.MenuItem;
+import android.view.View;
+import android.widget.TextView;
+
+import androidx.appcompat.widget.Toolbar;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.ui.modelutil.PropertyKey;
+import org.chromium.ui.modelutil.PropertyModel;
+
+/** View binder for the folder picker activity. */
+@NullMarked
+public class BookmarkFolderPickerViewBinder {
+    public static void bind(PropertyModel model, View view, PropertyKey key) {
+        if (key == BookmarkFolderPickerProperties.TOOLBAR_TITLE) {
+            if (BookmarkUtils.isDesktopBookmarksDialogEnabled()) {
+                TextView title = view.findViewById(R.id.title);
+                if (title != null) {
+                    title.setText(model.get(BookmarkFolderPickerProperties.TOOLBAR_TITLE));
+                }
+            } else {
+                Toolbar toolbar = view.findViewById(R.id.toolbar);
+                if (toolbar != null) {
+                    toolbar.setTitle(model.get(BookmarkFolderPickerProperties.TOOLBAR_TITLE));
+                }
+            }
+        } else if (key == BookmarkFolderPickerProperties.NAVIGATION_ICON_VISIBLE) {
+            if (BookmarkUtils.isDesktopBookmarksDialogEnabled()) {
+                View backButton = view.findViewById(R.id.back_button);
+                if (backButton != null) {
+                    boolean visible =
+                            model.get(BookmarkFolderPickerProperties.NAVIGATION_ICON_VISIBLE);
+                    backButton.setVisibility(visible ? View.VISIBLE : View.GONE);
+                }
+            }
+        } else if (key == BookmarkFolderPickerProperties.CANCEL_CLICK_LISTENER) {
+            View cancelButton = view.findViewById(R.id.cancel_button);
+            if (cancelButton != null) {
+                cancelButton.setOnClickListener(
+                        (ignored) ->
+                                model.get(BookmarkFolderPickerProperties.CANCEL_CLICK_LISTENER)
+                                        .run());
+            }
+        } else if (key == BookmarkFolderPickerProperties.NEW_FOLDER_CLICK_LISTENER) {
+            View newFolderButton = view.findViewById(R.id.new_folder_button);
+            if (newFolderButton != null) {
+                newFolderButton.setOnClickListener(
+                        (ignored) ->
+                                model.get(BookmarkFolderPickerProperties.NEW_FOLDER_CLICK_LISTENER)
+                                        .run());
+            }
+        } else if (key == BookmarkFolderPickerProperties.MOVE_CLICK_LISTENER) {
+            View moveButton = view.findViewById(R.id.move_button);
+            moveButton.setOnClickListener(
+                    (ignored) ->
+                            model.get(BookmarkFolderPickerProperties.MOVE_CLICK_LISTENER).run());
+        } else if (key == BookmarkFolderPickerProperties.MOVE_BUTTON_ENABLED) {
+            View moveButton = view.findViewById(R.id.move_button);
+            moveButton.setEnabled(model.get(BookmarkFolderPickerProperties.MOVE_BUTTON_ENABLED));
+        } else if (key == BookmarkFolderPickerProperties.ADD_NEW_FOLDER_BUTTON_ENABLED) {
+            boolean enabled =
+                    model.get(BookmarkFolderPickerProperties.ADD_NEW_FOLDER_BUTTON_ENABLED);
+            if (BookmarkUtils.isDesktopBookmarksDialogEnabled()) {
+                View newFolderButton = view.findViewById(R.id.new_folder_button);
+                if (newFolderButton != null) {
+                    newFolderButton.setEnabled(enabled);
+                }
+            } else {
+                Toolbar toolbar = view.findViewById(R.id.toolbar);
+                MenuItem addNewFolderMenuItem =
+                        toolbar.getMenu().findItem(R.id.create_new_folder_menu_id);
+                // The containing mediator will be initialized before the menu.
+                if (addNewFolderMenuItem != null) {
+                    addNewFolderMenuItem.setEnabled(enabled);
+                }
+            }
+        }
+    }
+}

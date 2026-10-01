@@ -1,0 +1,10 @@
+{
+  "name" : "Preference API Test Extension (Incognito)",
+  "version" : "0.1",
+  "manifest_version": 3,
+  "description" : "Preference API Test Extension (Incognito)",
+  "permissions": [ "privacy" ],
+  "background": {
+    "service_worker": "test.js"
+  }
+}

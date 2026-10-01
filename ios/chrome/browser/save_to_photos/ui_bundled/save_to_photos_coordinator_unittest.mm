@@ -1,0 +1,542 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/save_to_photos/ui_bundled/save_to_photos_coordinator.h"
+
+#import <StoreKit/StoreKit.h>
+
+#import "base/apple/foundation_util.h"
+#import "base/test/metrics/histogram_tester.h"
+#import "base/test/scoped_feature_list.h"
+#import "components/signin/public/identity_manager/identity_test_environment.h"
+#import "components/test/ios/test_utils.h"
+#import "ios/chrome/browser/account_picker/ui_bundled/account_picker_configuration.h"
+#import "ios/chrome/browser/account_picker/ui_bundled/account_picker_coordinator.h"
+#import "ios/chrome/browser/account_picker/ui_bundled/account_picker_coordinator_delegate.h"
+#import "ios/chrome/browser/authentication/add_account_signin/coordinator/add_account_signin_coordinator.h"
+#import "ios/chrome/browser/authentication/add_account_signin/public/add_account_signin_enums.h"
+#import "ios/chrome/browser/authentication/ui_bundled/continuation.h"
+#import "ios/chrome/browser/authentication/ui_bundled/signin/signin_constants.h"
+#import "ios/chrome/browser/authentication/ui_bundled/signin/signin_coordinator.h"
+#import "ios/chrome/browser/photos/model/photos_metrics.h"
+#import "ios/chrome/browser/photos/model/photos_service_factory.h"
+#import "ios/chrome/browser/save_to_photos/ui_bundled/save_to_photos_coordinator.h"
+#import "ios/chrome/browser/save_to_photos/ui_bundled/save_to_photos_mediator.h"
+#import "ios/chrome/browser/save_to_photos/ui_bundled/save_to_photos_mediator_delegate.h"
+#import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
+#import "ios/chrome/browser/shared/model/web_state_list/web_state_opener.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/google_one_commands.h"
+#import "ios/chrome/browser/shared/public/commands/manage_storage_alert_commands.h"
+#import "ios/chrome/browser/shared/public/commands/save_to_photos_commands.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/shared/public/commands/settings_commands.h"
+#import "ios/chrome/browser/shared/public/commands/show_signin_command.h"
+#import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/signin/model/chrome_account_manager_service_factory.h"
+#import "ios/chrome/browser/signin/model/fake_system_identity.h"
+#import "ios/chrome/browser/signin/model/fake_system_identity_manager.h"
+#import "ios/chrome/browser/signin/model/identity_manager_factory.h"
+#import "ios/chrome/browser/signin/model/identity_test_environment_browser_state_adaptor.h"
+#import "ios/chrome/browser/store_kit/model/store_kit_coordinator.h"
+#import "ios/chrome/test/fakes/fake_ui_view_controller.h"
+#import "ios/web/public/test/fakes/fake_web_state.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "testing/gtest_mac.h"
+#import "testing/platform_test.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+#import "third_party/ocmock/gtest_support.h"
+#import "url/origin.h"
+
+namespace {
+
+// Fake image URL to create the coordinator.
+const char kFakeImageUrl[] = "http://example.com/image.png";
+
+}  // namespace
+
+// Unit tests for the SaveToPhotosCoordinator.
+class SaveToPhotosCoordinatorTest : public PlatformTest {
+ protected:
+  void SetUp() final {
+    PlatformTest::SetUp();
+    TestProfileIOS::Builder builder;
+    builder.AddTestingFactory(
+        IdentityManagerFactory::GetInstance(),
+        base::BindRepeating(IdentityTestEnvironmentBrowserStateAdaptor::
+                                BuildIdentityManagerForTests));
+    profile_ = std::move(builder).Build();
+    browser_ = std::make_unique<TestBrowser>(profile_.get());
+    std::unique_ptr<web::FakeWebState> web_state =
+        std::make_unique<web::FakeWebState>();
+    browser_->GetWebStateList()->InsertWebState(
+        std::move(web_state),
+        WebStateList::InsertionParams::Automatic().Activate());
+
+    base_view_controller_ = [[FakeUIViewController alloc] init];
+
+    mock_save_to_photos_commands_handler_ =
+        OCMStrictProtocolMock(@protocol(SaveToPhotosCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:mock_save_to_photos_commands_handler_
+                     forProtocol:@protocol(SaveToPhotosCommands)];
+    mock_snackbar_commands_handler_ =
+        OCMStrictProtocolMock(@protocol(SnackbarCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:mock_snackbar_commands_handler_
+                     forProtocol:@protocol(SnackbarCommands)];
+    mock_scene_handler_ = OCMStrictProtocolMock(@protocol(SceneCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:mock_scene_handler_
+                     forProtocol:@protocol(SceneCommands)];
+    mock_settings_commands_handler_ =
+        OCMStrictProtocolMock(@protocol(SettingsCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:mock_settings_commands_handler_
+                     forProtocol:@protocol(SettingsCommands)];
+    mock_google_one_commands_handler_ =
+        OCMStrictProtocolMock(@protocol(GoogleOneCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:mock_google_one_commands_handler_
+                     forProtocol:@protocol(GoogleOneCommands)];
+    mock_save_to_photos_mediator_ = OCMClassMock([SaveToPhotosMediator class]);
+    mock_account_picker_coordinator_ =
+        OCMClassMock([AccountPickerCoordinator class]);
+    fake_identity_ = [FakeSystemIdentity fakeIdentity1];
+  }
+
+  // Set up the mediator stub to ensure the coordinator creates a fake mediator.
+  void SetUpMediatorStub() {
+    OCMStub([mock_save_to_photos_mediator_ alloc])
+        .andReturn(mock_save_to_photos_mediator_);
+    OCMStub([mock_save_to_photos_mediator_
+                    initWithPhotosService:ios::OCM::AnyPointer<PhotosService>()
+                              prefService:ios::OCM::AnyPointer<PrefService>()
+                    accountManagerService:ios::OCM::AnyPointer<
+                                              ChromeAccountManagerService>()
+                    authenticationService:ios::OCM::AnyPointer<
+                                              AuthenticationService>()
+                          identityManager:ios::OCM::AnyPointer<
+                                              signin::IdentityManager>()
+                manageStorageAlertHandler:[OCMArg any]
+                             sceneHandler:[OCMArg any]
+                         googleOneHandler:[OCMArg any]])
+        .andReturn(mock_save_to_photos_mediator_);
+  }
+
+  // Set up the account picker stub to ensure the coordinator creates a fake
+  // account picker.
+  void SetUpAccountPickerCoordinatorStub(
+      AccountPickerConfiguration* configuration,
+      FakeUIViewController* view_controller) {
+    OCMStub([mock_account_picker_coordinator_ alloc])
+        .andReturn(mock_account_picker_coordinator_);
+    AccountPickerConfiguration* expected_configuration = configuration;
+    OCMStub([mock_account_picker_coordinator_
+                initWithBaseViewController:base_view_controller_
+                                   browser:browser_.get()
+                             configuration:expected_configuration
+                               accessPoint:signin_metrics::AccessPoint::
+                                               kSaveToPhotosIos])
+        .andReturn(mock_account_picker_coordinator_);
+    OCMStub([mock_account_picker_coordinator_ viewController])
+        .andReturn(view_controller);
+  }
+
+  void TearDown() final {
+    EXPECT_OCMOCK_VERIFY(mock_save_to_photos_commands_handler_);
+    EXPECT_OCMOCK_VERIFY(mock_snackbar_commands_handler_);
+    EXPECT_OCMOCK_VERIFY(mock_scene_handler_);
+    EXPECT_OCMOCK_VERIFY(mock_settings_commands_handler_);
+    EXPECT_OCMOCK_VERIFY(mock_google_one_commands_handler_);
+    EXPECT_OCMOCK_VERIFY(mock_save_to_photos_mediator_);
+    EXPECT_OCMOCK_VERIFY(mock_account_picker_coordinator_);
+    [mock_save_to_photos_mediator_ stopMocking];
+    [mock_account_picker_coordinator_ stopMocking];
+    PlatformTest::TearDown();
+  }
+
+  // Create a SaveToPhotosCoordinator to test.
+  SaveToPhotosCoordinator* CreateSaveToPhotosCoordinator() {
+    return [[SaveToPhotosCoordinator alloc]
+        initWithBaseViewController:base_view_controller_
+                           browser:browser_.get()
+                          imageURL:GURL(kFakeImageUrl)
+                          referrer:web::Referrer()
+                          webState:GetActiveWebState()
+                           frameID:"fake_frame_id"
+                       frameOrigin:url::Origin::Create(
+                                       GURL("http://chromium.test/"))];
+  }
+
+  // Returns the browser's active web state.
+  web::FakeWebState* GetActiveWebState() {
+    return static_cast<web::FakeWebState*>(
+        browser_->GetWebStateList()->GetActiveWebState());
+  }
+
+  // Helper to run sign-in flow tests and verify histogram logging.
+  //
+  // Arguments:
+  // - `simulated_signin_result`: The mock sign-in result (e.g., success,
+  // canceled) that the SigninCoordinator will return when its completion
+  // callback is invoked.
+  // - `expected_histogram`: The expected histogram sample to be logged to
+  //   `kSaveToPhotosSignInResultHistogram`.
+  // - `should_continue_saving_image`: Whether the coordinator is expected to
+  // notify the mediator that the user successfully signed in.
+  void TestSignInResultHistogram(
+      SigninCoordinatorResult simulated_signin_result,
+      SaveToPhotosSignInResult expected_histogram,
+      BOOL should_continue_saving_image) {
+    base::test::ScopedFeatureList scoped_feature_list;
+    scoped_feature_list.InitAndEnableFeature(kIOSSaveToPhotosSignedOut);
+
+    SetUpMediatorStub();
+
+    SaveToPhotosCoordinator* coordinator = CreateSaveToPhotosCoordinator();
+    [coordinator start];
+
+    id signin_coordinator_mock = OCMClassMock([SigninCoordinator class]);
+
+    signin_metrics::AccessPoint access_point =
+        signin_metrics::AccessPoint::kSaveToPhotosIos;
+    SigninContextStyle context_style = SigninContextStyle::kDefault;
+    ChangeProfileContinuationProvider continuation_provider =
+        DoNothingContinuationProvider();
+
+    OCMExpect(
+        [signin_coordinator_mock
+            consistencyPromoSigninCoordinatorWithBaseViewController:[OCMArg any]
+                                                            browser:browser_
+                                                                        .get()
+                                                       contextStyle:
+                                                           context_style
+                                                        accessPoint:access_point
+                                               confirmChangeProfile:[OCMArg any]
+                                               prepareChangeProfile:[OCMArg any]
+                                               continuationProvider:
+                                                   continuation_provider])
+        .ignoringNonObjectArgs()
+        .andReturn(signin_coordinator_mock);
+
+    SigninCoordinator* signin_coordinator = signin_coordinator_mock;
+
+    // Capture the completion callback to invoke it manually later.
+    __block SigninCoordinatorCompletionCallback signin_completion = nil;
+    OCMExpect([signin_coordinator
+        setSigninCompletion:AssignValueToVariable(signin_completion)]);
+    OCMExpect([signin_coordinator start]);
+
+    // Trigger the sign-in flow by simulating a delegate call from the mediator.
+    [static_cast<id<SaveToPhotosMediatorDelegate>>(coordinator) openSignIn];
+    EXPECT_OCMOCK_VERIFY(signin_coordinator_mock);
+
+    // If the sign-in is expected to succeed, expect the coordinator to notify
+    // the mediator with the signed-in identity.
+    if (should_continue_saving_image) {
+      OCMExpect([mock_save_to_photos_mediator_
+          userSignedInToSaveImageWithIdentity:fake_identity_]);
+    }
+    OCMExpect([signin_coordinator stop]);
+    base::HistogramTester histogram_tester;
+
+    ASSERT_TRUE(signin_completion);
+    signin_completion(signin_coordinator, simulated_signin_result,
+                      fake_identity_);
+
+    histogram_tester.ExpectUniqueSample(kSaveToPhotosSignInResultHistogram,
+                                        expected_histogram, 1);
+
+    EXPECT_OCMOCK_VERIFY(mock_save_to_photos_mediator_);
+    EXPECT_OCMOCK_VERIFY(signin_coordinator_mock);
+
+    [signin_coordinator_mock stopMocking];
+    [coordinator stop];
+  }
+
+  web::WebTaskEnvironment task_environment_;
+  std::unique_ptr<TestProfileIOS> profile_;
+  std::unique_ptr<TestBrowser> browser_;
+  FakeUIViewController* base_view_controller_;
+  FakeSystemIdentity* fake_identity_;
+
+  id mock_save_to_photos_mediator_;
+  id mock_account_picker_coordinator_;
+  id mock_save_to_photos_commands_handler_;
+  id mock_snackbar_commands_handler_;
+  id mock_scene_handler_;
+  id mock_settings_commands_handler_;
+  id mock_google_one_commands_handler_;
+};
+
+// Tests that the SaveToPhotosCoordinator creates the mediator when started and
+// disconnects it when stopped.
+TEST_F(SaveToPhotosCoordinatorTest, StartsAndDisconnectsMediator) {
+  SaveToPhotosCoordinator* coordinator = CreateSaveToPhotosCoordinator();
+
+  PhotosService* photosService =
+      PhotosServiceFactory::GetForProfile(profile_.get());
+  PrefService* prefService = profile_->GetPrefs();
+  ChromeAccountManagerService* accountManagerService =
+      ChromeAccountManagerServiceFactory::GetForProfile(profile_.get());
+  signin::IdentityManager* identityManager =
+      IdentityManagerFactory::GetForProfile(profile_.get());
+
+  OCMExpect([mock_save_to_photos_mediator_ alloc])
+      .andReturn(mock_save_to_photos_mediator_);
+  ASSERT_TRUE(
+      [coordinator.class conformsToProtocol:@protocol(
+                                                ManageStorageAlertCommands)]);
+  OCMExpect(
+      [mock_save_to_photos_mediator_
+              initWithPhotosService:photosService
+                        prefService:prefService
+              accountManagerService:accountManagerService
+              authenticationService:ios::OCM::AnyPointer<
+                                        AuthenticationService>()
+                    identityManager:identityManager
+          manageStorageAlertHandler:static_cast<id<ManageStorageAlertCommands>>(
+                                        browser_->GetCommandDispatcher())
+                       sceneHandler:static_cast<id<SceneCommands>>(
+                                        browser_->GetCommandDispatcher())
+                   googleOneHandler:static_cast<id<GoogleOneCommands>>(
+                                        browser_->GetCommandDispatcher())])
+      .andReturn(mock_save_to_photos_mediator_);
+  ASSERT_TRUE(
+      [coordinator conformsToProtocol:@protocol(SaveToPhotosMediatorDelegate)]);
+  OCMExpect([mock_save_to_photos_mediator_
+      setDelegate:static_cast<id<SaveToPhotosMediatorDelegate>>(coordinator)]);
+  OCMExpect([[mock_save_to_photos_mediator_ ignoringNonObjectArgs]
+      startWithImageURL:GURL()
+               referrer:web::Referrer()
+               webState:GetActiveWebState()
+                frameID:""
+            frameOrigin:url::Origin()]);
+  [coordinator start];
+  EXPECT_OCMOCK_VERIFY(mock_save_to_photos_mediator_);
+
+  OCMExpect([mock_save_to_photos_mediator_ disconnect]);
+  [coordinator stop];
+  EXPECT_OCMOCK_VERIFY(mock_save_to_photos_mediator_);
+}
+
+// Tests that the SaveToPhotosCoordinator presents/dismisses an
+// UIAlertController with the expected content when the mediator asks to
+// show/hide it.
+TEST_F(SaveToPhotosCoordinatorTest, ShowsAndHidesTryAgainOrCancelAlert) {
+  SetUpMediatorStub();
+  AccountPickerConfiguration* account_picker_configuration =
+      [[AccountPickerConfiguration alloc] init];
+  FakeUIViewController* account_picker_view_controller =
+      [[FakeUIViewController alloc] init];
+  SetUpAccountPickerCoordinatorStub(account_picker_configuration,
+                                    account_picker_view_controller);
+
+  SaveToPhotosCoordinator* coordinator = CreateSaveToPhotosCoordinator();
+  [coordinator start];
+
+  ASSERT_TRUE(
+      [coordinator conformsToProtocol:@protocol(SaveToPhotosMediatorDelegate)]);
+  [static_cast<id<SaveToPhotosMediatorDelegate>>(coordinator)
+      showAccountPickerWithConfiguration:account_picker_configuration
+                        selectedIdentity:nil];
+
+  NSString* alertTitle = @"Alert Title";
+  NSString* alertMessage = @"Alert message.";
+  NSString* tryAgainTitle = @"Try Again";
+  ProceduralBlock tryAgainAction = ^{
+  };
+  NSString* cancelTitle = @"Cancel";
+  ProceduralBlock cancelAction = ^{
+  };
+
+  EXPECT_EQ(nil, account_picker_view_controller.presentedViewController);
+
+  [static_cast<id<SaveToPhotosMediatorDelegate>>(coordinator)
+      showTryAgainOrCancelAlertWithTitle:alertTitle
+                                 message:alertMessage
+                           tryAgainTitle:tryAgainTitle
+                          tryAgainAction:tryAgainAction
+                             cancelTitle:cancelTitle
+                            cancelAction:cancelAction];
+
+  UIAlertController* alertController = base::apple::ObjCCast<UIAlertController>(
+      account_picker_view_controller.presentedViewController);
+  EXPECT_NE(nil, alertController);
+  EXPECT_NSEQ(alertTitle, alertController.title);
+  EXPECT_NSEQ(alertMessage, alertController.message);
+  ASSERT_EQ(2U, alertController.actions.count);
+  EXPECT_NSEQ(tryAgainTitle, alertController.actions[0].title);
+  EXPECT_EQ(UIAlertActionStyleDefault, alertController.actions[0].style);
+  EXPECT_NSEQ(alertController.actions[0], alertController.preferredAction);
+  EXPECT_NSEQ(cancelTitle, alertController.actions[1].title);
+  EXPECT_EQ(UIAlertActionStyleCancel, alertController.actions[1].style);
+
+  [coordinator stop];
+}
+
+// Tests that the SaveToPhotosCoordinator creates/destroys an
+// StoreKitCoordinator with the expected content when the mediator asks to
+// show/hide it.
+TEST_F(SaveToPhotosCoordinatorTest, ShowsAndHidesStoreKit) {
+  SetUpMediatorStub();
+
+  SaveToPhotosCoordinator* coordinator = CreateSaveToPhotosCoordinator();
+  [coordinator start];
+
+  ASSERT_TRUE(
+      [coordinator conformsToProtocol:@protocol(SaveToPhotosMediatorDelegate)]);
+
+  NSString* productIdentifier = @"product_identifier";
+  NSString* providerToken = @"provider_token";
+  NSString* campaignToken = @"campaign_token";
+
+  id mock_store_kit_coordinator = OCMClassMock([StoreKitCoordinator class]);
+  OCMExpect([mock_store_kit_coordinator alloc])
+      .andReturn(mock_store_kit_coordinator);
+  OCMExpect([mock_store_kit_coordinator
+                initWithBaseViewController:base_view_controller_
+                                   browser:browser_.get()])
+      .andReturn(mock_store_kit_coordinator);
+  OCMExpect([mock_store_kit_coordinator
+      setDelegate:static_cast<id<SaveToPhotosMediatorDelegate>>(coordinator)]);
+  NSDictionary* expectedITunesProductParameters = @{
+    SKStoreProductParameterITunesItemIdentifier : productIdentifier,
+    SKStoreProductParameterProviderToken : providerToken,
+    SKStoreProductParameterCampaignToken : campaignToken
+  };
+  OCMExpect([mock_store_kit_coordinator
+      setITunesProductParameters:expectedITunesProductParameters]);
+  OCMExpect([base::apple::ObjCCast<StoreKitCoordinator>(
+      mock_store_kit_coordinator) start]);
+
+  [static_cast<id<SaveToPhotosMediatorDelegate>>(coordinator)
+      showStoreKitWithProductIdentifier:productIdentifier
+                          providerToken:providerToken
+                          campaignToken:campaignToken];
+  EXPECT_OCMOCK_VERIFY(mock_store_kit_coordinator);
+
+  OCMExpect([base::apple::ObjCCast<StoreKitCoordinator>(
+      mock_store_kit_coordinator) stop]);
+  [static_cast<id<SaveToPhotosMediatorDelegate>>(coordinator) hideStoreKit];
+  EXPECT_OCMOCK_VERIFY(mock_store_kit_coordinator);
+
+  [coordinator stop];
+}
+
+// Tests that the SaveToPhotosCoordinator presents a snackbar with the expected
+// content when the mediator asks to show it.
+TEST_F(SaveToPhotosCoordinatorTest, ShowsSnackbar) {
+  SetUpMediatorStub();
+
+  SaveToPhotosCoordinator* coordinator = CreateSaveToPhotosCoordinator();
+  [coordinator start];
+
+  ASSERT_TRUE(
+      [coordinator conformsToProtocol:@protocol(SaveToPhotosMediatorDelegate)]);
+
+  NSString* message = @"Snackbar message";
+  NSString* buttonText = @"Button text";
+  ProceduralBlock messageAction = ^{
+  };
+  void (^completionAction)(BOOL) = ^(BOOL) {
+  };
+
+  OCMExpect([mock_snackbar_commands_handler_
+      showSnackbarWithMessage:message
+                   buttonText:buttonText
+                messageAction:messageAction
+             completionAction:completionAction]);
+  [static_cast<id<SaveToPhotosMediatorDelegate>>(coordinator)
+      showSnackbarWithMessage:message
+                   buttonText:buttonText
+                messageAction:messageAction
+             completionAction:completionAction];
+  EXPECT_OCMOCK_VERIFY(mock_snackbar_commands_handler_);
+
+  [coordinator stop];
+}
+
+// Tests that the SaveToPhotosCoordinator uses the -hideSaveToPhotos command
+// when the mediator asks.
+TEST_F(SaveToPhotosCoordinatorTest, HideSaveToPhotosStopsSaveToPhotos) {
+  SetUpMediatorStub();
+
+  SaveToPhotosCoordinator* coordinator = CreateSaveToPhotosCoordinator();
+  [coordinator start];
+
+  ASSERT_TRUE(
+      [coordinator conformsToProtocol:@protocol(SaveToPhotosMediatorDelegate)]);
+
+  OCMExpect([mock_save_to_photos_commands_handler_ stopSaveToPhotos]);
+  [static_cast<id<SaveToPhotosMediatorDelegate>>(coordinator) hideSaveToPhotos];
+  EXPECT_OCMOCK_VERIFY(mock_save_to_photos_commands_handler_);
+
+  [coordinator stop];
+}
+
+// Tests that the SaveToPhotosCoordinator creates/destroys an
+// AccountPickerCoordinator with the expected configuration when the mediator
+// asks to show/hide it.
+TEST_F(SaveToPhotosCoordinatorTest, ShowsAndHidesAccountPicker) {
+  SetUpMediatorStub();
+  AccountPickerConfiguration* account_picker_configuration =
+      [[AccountPickerConfiguration alloc] init];
+  FakeUIViewController* account_picker_view_controller =
+      [[FakeUIViewController alloc] init];
+  SetUpAccountPickerCoordinatorStub(account_picker_configuration,
+                                    account_picker_view_controller);
+
+  SaveToPhotosCoordinator* coordinator = CreateSaveToPhotosCoordinator();
+  [coordinator start];
+
+  ASSERT_TRUE(
+      [coordinator conformsToProtocol:@protocol(SaveToPhotosMediatorDelegate)]);
+  OCMExpect([mock_account_picker_coordinator_
+      setDelegate:static_cast<id<SaveToPhotosMediatorDelegate>>(coordinator)]);
+  OCMExpect([base::apple::ObjCCast<AccountPickerCoordinator>(
+      mock_account_picker_coordinator_) start]);
+
+  [static_cast<id<SaveToPhotosMediatorDelegate>>(coordinator)
+      showAccountPickerWithConfiguration:account_picker_configuration
+                        selectedIdentity:nil];
+  EXPECT_OCMOCK_VERIFY(mock_account_picker_coordinator_);
+
+  OCMExpect([base::apple::ObjCCast<AccountPickerCoordinator>(
+      mock_account_picker_coordinator_) stopAnimated:YES]);
+  [static_cast<id<SaveToPhotosMediatorDelegate>>(coordinator)
+      hideAccountPicker];
+  EXPECT_OCMOCK_VERIFY(mock_account_picker_coordinator_);
+
+  [coordinator stop];
+}
+
+// Tests that the coordinator logs a success histogram when sign-in succeeds.
+TEST_F(SaveToPhotosCoordinatorTest, LogsSignInSuccessHistogram) {
+  TestSignInResultHistogram(
+      /*simulated_signin_result=*/SigninCoordinatorResultSuccess,
+      /*expected_histogram=*/SaveToPhotosSignInResult::kSignInSuccess,
+      /*should_continue_saving_image=*/YES);
+}
+
+// Tests that the coordinator logs a canceled histogram when sign-in is canceled
+// by the user.
+TEST_F(SaveToPhotosCoordinatorTest, LogsSignInCanceledHistogram) {
+  TestSignInResultHistogram(
+      /*simulated_signin_result=*/SigninCoordinatorResultCanceledByUser,
+      /*expected_histogram=*/SaveToPhotosSignInResult::kSignInCanceled,
+      /*should_continue_saving_image=*/NO);
+}
+
+// Tests that the coordinator logs a failed histogram when sign-in fails.
+TEST_F(SaveToPhotosCoordinatorTest, LogsSignInFailedHistogram) {
+  TestSignInResultHistogram(
+      /*simulated_signin_result=*/SigninCoordinatorResultInterrupted,
+      /*expected_histogram=*/SaveToPhotosSignInResult::kSignInFailed,
+      /*should_continue_saving_image=*/NO);
+}

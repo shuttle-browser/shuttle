@@ -1,0 +1,217 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module blink.mojom;
+
+import "services/on_device_model/public/mojom/download_observer.mojom";
+import "third_party/blink/public/mojom/ai/ai_common.mojom";
+import "third_party/blink/public/mojom/ai/ai_semantic_embedder.mojom";
+import "third_party/blink/public/mojom/ai/ai_language_model.mojom";
+import "third_party/blink/public/mojom/ai/ai_proofreader.mojom";
+import "third_party/blink/public/mojom/ai/ai_rewriter.mojom";
+import "third_party/blink/public/mojom/ai/ai_summarizer.mojom";
+import "third_party/blink/public/mojom/ai/ai_writer.mojom";
+
+// LINT.IfChange(ModelAvailabilityCheckResult)
+enum ModelAvailabilityCheckResult {
+  // The model is readily available and the text session can be created.
+  kAvailable = 0,
+  // The model is not available but the test session can be created after
+  // downloading the model.
+  kDownloadable = 1,
+  // The model is not available but it's being downloaded.
+  kDownloading = 2,
+  // The model cannot be created because the service is not running.
+  kUnavailableServiceNotRunning = 3,
+  // The model does not support the requested language options.
+  kUnavailableUnsupportedLanguage = 4,
+
+  // The following reasons are from
+  // `optimization_guide::OnDeviceModelEligibilityReason`.
+
+  // The model is not available because of unknown reason.
+  kUnavailableUnknown = 5,
+  // The model is not available because the feature flag gating on-device model
+  // execution was disabled.
+  kUnavailableFeatureNotEnabled = 6,
+  // The model is not available because the on-device model was available but
+  // there was not an execution config available for the feature.
+  kUnavailableConfigNotAvailableForFeature = 7,
+  // The model is not available because the GPU is blocked.
+  kUnavailableGpuBlocked = 8,
+  // The model is not available because the on-device model process crashed too
+  // many times for this version.
+  kUnavailableTooManyRecentCrashes = 9,
+  // The model is not available because the on-device safety model was required
+  // but not available.
+  kUnavailableSafetyModelNotAvailable = 10,
+  // The model is not available because the on-device safety model was
+  // available but there was not a safety config available for the feature.
+  kUnavailableSafetyConfigNotAvailableForFeature = 11,
+  // The model is not available because the on-device language detection model
+  // was required but not available.
+  kUnavailableLanguageDetectionModelNotAvailable = 12,
+  // The model is not available because the on-device model execution for this
+  // feature was not enabled.
+  kUnavailableFeatureExecutionNotEnabled = 13,
+  // The model is not available because the on-device model adaptation was
+  // required but not available.
+  kUnavailableModelAdaptationNotAvailable = 14,
+  // Validation has not completed for the model yet.
+  kUnavailableValidationPending = 15,
+  // Validation failed for the model.
+  kUnavailableValidationFailed = 16,
+  // The device is not eligible for running on-device model.
+  kUnavailableModelNotEligible = 17,
+  // The device does not have sufficient disk space for the on-device model.
+  kUnavailableInsufficientDiskSpace = 18,
+  // The on-device translation is not available for the given pair of languages.
+  kUnavailableTranslationNotEligible = 19,
+  // The on-device model is not available because the enterprise policy
+  // disables the feature.
+  kUnavailableEnterprisePolicyDisabled = 20,
+  // The specified options are not supported with the requested performance
+  // preference.
+  kUnavailableIncompatiblePreferenceOptions = 21,
+  // The specified options are not supported with speculative decoding (MTP).
+  kUnavailableIncompatibleSpeculativeDecodingOptions = 22,
+  // The device does not have sufficient disk space to build caches for the
+  // on-device model.
+  kUnavailableInsufficientDiskSpaceForCaches = 23,
+
+  // Append new line here
+};
+// LINT.ThenChange(//third_party/blink/renderer/modules/ai/exception_helpers.cc:ConvertModelAvailabilityCheckResultToDebugString)
+
+// The client interface that receives an AIWriter from an AIManager.
+interface AIManagerCreateWriterClient {
+  // Called with a created writer's mojo interface as a result for the
+  // CreateWriter() method of the AIManager.
+  OnResult(pending_remote<blink.mojom.AIWriter> writer, uint64 context_window);
+
+  // Called when the manager cannot create an AIWriter.
+  // `quota_error_info` may provide additional info for kInitialInputTooLarge.
+  OnError(AIManagerCreateClientError error, QuotaErrorInfo? quota_error_info);
+};
+
+// The client interface that receives an AIRewriter from an AIManager.
+interface AIManagerCreateRewriterClient {
+  // Called with a created rewriter's mojo interface as a result for the
+  // CreateRewriter() method of the AIManager.
+  OnResult(pending_remote<blink.mojom.AIRewriter> rewriter,
+           uint64 context_window);
+
+  // Called when the manager cannot create an AIRewriter.
+  // `quota_error_info` may provide additional info for kInitialInputTooLarge.
+  OnError(AIManagerCreateClientError error, QuotaErrorInfo? quota_error_info);
+};
+
+// The client interface that receives an AISummarizer from an AIManager.
+interface AIManagerCreateSummarizerClient {
+  // Called with a created summarizer's mojo interface as a result for the
+  // CreateSummarizer() method of the AIManager.
+  OnResult(pending_remote<blink.mojom.AISummarizer> summarizer,
+           uint64 context_window);
+
+  // Called when the manager cannot create an AISummarizer.
+  // `quota_error_info` may provide additional info for kInitialInputTooLarge.
+  OnError(AIManagerCreateClientError error, QuotaErrorInfo? quota_error_info);
+};
+
+// The client interface that receives an AIProofreader from an AIManager.
+interface AIManagerCreateProofreaderClient {
+  // Called with a created proofreader's mojo interface as a result for the
+  // CreateProofreader() method of the AIManager.
+  OnResult(pending_remote<blink.mojom.AIProofreader> proofreader,
+           uint64 context_window);
+
+  // Called when the manager cannot create an AIProofreader.
+  // `quota_error_info` may provide additional info for kInitialInputTooLarge.
+  OnError(AIManagerCreateClientError error, QuotaErrorInfo? quota_error_info);
+};
+
+
+// The client interface that receives an AISemanticEmbedder from an AIManager.
+interface AIManagerCreateSemanticEmbedderClient {
+  // Called with a created embedder's mojo interface as a result for the
+  // CreateSemanticEmbedder() method of the AIManager.
+  OnResult(pending_remote<blink.mojom.AISemanticEmbedder> embedder);
+
+  // Called when the manager cannot create an AISemanticEmbedder.
+  OnError(AIManagerCreateClientError error);
+};
+
+// The manager that could create a new session for the model.
+//
+// This interface is implemented by the browser process and called by the
+// renderer process (untrusted).
+interface AIManager {
+  // Returns language model availability info from the underlying service.
+  CanCreateLanguageModel(AILanguageModelCreateOptions options) =>
+      (ModelAvailabilityCheckResult result);
+  // Creates a language model, passing the result or error to the client.
+  // Creation will be aborted if the client is disconnected.
+  CreateLanguageModel(
+    pending_remote<AIManagerCreateLanguageModelClient> client,
+    AILanguageModelCreateOptions options,
+    pending_remote<on_device_model.mojom.DownloadObserver>? monitor
+  );
+  // Returns summarizer model availability info from the underlying service.
+  // TODO(crbug.com/390477782): `options` field is optional since it is not
+  // supplied by `capabilities()` API. Make it non-optional once
+  // `capabilities()` is removed.
+  CanCreateSummarizer(AISummarizerCreateOptions? options) =>
+    (ModelAvailabilityCheckResult result);
+  // Creates a summarizer, passing the result or error to the client.
+  // Creation will be aborted if the client is disconnected.
+  CreateSummarizer(
+    pending_remote<AIManagerCreateSummarizerClient> client,
+    AISummarizerCreateOptions options,
+    pending_remote<on_device_model.mojom.DownloadObserver>? monitor);
+  // Returns the model params for the language model API.
+  GetLanguageModelParams() => (
+    AILanguageModelParams? language_model_params
+  );
+  // Returns writer model availability info from the underlying service.
+  CanCreateWriter(AIWriterCreateOptions options) =>
+      (ModelAvailabilityCheckResult result);
+  // Creates a new writer, passing the result or error to the client.
+  // Creation will be aborted if the client is disconnected.
+  // `shared_context` in `options` is a string that is set in the
+  // AIWriterCreateOptions when the JS API `ai.writer.create()` is called.
+  CreateWriter(pending_remote<AIManagerCreateWriterClient> client,
+               AIWriterCreateOptions options,
+               pending_remote<on_device_model.mojom.DownloadObserver>? monitor);
+  // Returns rewriter model availability info from the underlying service.
+  CanCreateRewriter(AIRewriterCreateOptions options) =>
+      (ModelAvailabilityCheckResult result);
+  // Creates a new rewriter, passing the result or error to the client.
+  // Creation will be aborted if the client is disconnected.
+  // `shared_context`, `tone` and `length` in `options` are set in the
+  // AIRewriterCreateOptions when the JS API `ai.rewriter.create()` is called.
+  CreateRewriter(pending_remote<AIManagerCreateRewriterClient> client,
+                 AIRewriterCreateOptions options,
+                 pending_remote<on_device_model.mojom.DownloadObserver>? monitor);
+  // Returns proofreader model availability info from the underlying service.
+  CanCreateProofreader(AIProofreaderCreateOptions options) =>
+      (ModelAvailabilityCheckResult result);
+  // Creates a new proofreader, passing the result or error to the client.
+  // Creation will be aborted if the client is disconnected.
+  CreateProofreader(pending_remote<AIManagerCreateProofreaderClient> client,
+                    AIProofreaderCreateOptions options,
+                    pending_remote<on_device_model.mojom.DownloadObserver>? monitor);
+  // Returns embedder model availability info from the underlying service.
+  CanCreateSemanticEmbedder() => (ModelAvailabilityCheckResult result);
+
+  // Creates an embedder, passing the result or error to the client.
+  // Creation will be aborted if the client is disconnected.
+  CreateSemanticEmbedder(
+    pending_remote<AIManagerCreateSemanticEmbedderClient> client,
+    // If `monitor` is provided, the client will receive download progress
+    // updates if the model needs to be downloaded. If it is not provided, the
+    // download will still proceed if necessary, but the client will only be
+    // notified upon completion or failure via the `client` interface.
+    pending_remote<on_device_model.mojom.DownloadObserver>? monitor
+  );
+};

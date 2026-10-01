@@ -1,0 +1,202 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_TOOLBAR_TOOLBAR_ACTION_VIEW_MODEL_H_
+#define CHROME_BROWSER_UI_TOOLBAR_TOOLBAR_ACTION_VIEW_MODEL_H_
+
+#include <string>
+
+#include "base/callback_list.h"
+#include "base/functional/callback_forward.h"
+#include "chrome/browser/extensions/extension_context_menu_model.h"
+#include "chrome/browser/ui/extensions/extension_popup_types.h"
+#include "chrome/browser/ui/toolbar/toolbar_action_hover_card_types.h"
+#include "extensions/browser/permissions/site_permissions_helper.h"
+#include "ui/base/models/image_model.h"
+
+namespace content {
+class WebContents;
+}
+
+namespace gfx {
+class Size;
+}
+
+namespace ui {
+class MenuModel;
+}
+
+// The basic controller class for an action that is shown on the toolbar -
+// an extension action (like browser actions) or a component action (like
+// Media Router).
+class ToolbarActionViewModel {
+ public:
+  // The source for the action invocation. Used in UMA; do not reorder or delete
+  // entries.
+  // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.chrome.browser.ui.toolbar
+  enum class InvocationSource {
+    // The action was invoked from a command (keyboard shortcut).
+    kCommand = 0,
+
+    // The action was invoked by the user activating (via mouse or keyboard)
+    // the action button in the toolbar.
+    kToolbarButton = 1,
+
+    // The action was invoked by the user activating (via mouse or keyboard)
+    // the entry in the Extensions Menu.
+    kMenuEntry = 2,
+
+    // The action was invoked by the user activating (via mouse or keyboard)
+    // the entry in the legacy overflow (3-dot) menu.
+    // Removed 2021/04.
+    // kLegacyOverflowedEntry = 3,
+
+    // The action was invoked programmatically via an API.
+    kApi = 4,
+
+    // The action was invoked by the user activating (via mouse or keyboard) the
+    // request access button in the toolbar.
+    kRequestAccessButton = 5,
+
+    // The action was invoked by the Chrome Devtools Protocol.
+    kCdp = 6,
+
+    kMaxValue = kCdp,
+  };
+
+  // State for the toolbar action view's hover card.
+  struct HoverCardState {
+    // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.chrome.browser.ui.toolbar
+    enum class SiteAccess {
+      // All extensions are allowed on the current site by the user.
+      kAllExtensionsAllowed,
+
+      // All extensions are blocked on the current site by the user.
+      kAllExtensionsBlocked,
+
+      // The extension has access to the current site.
+      kExtensionHasAccess,
+
+      // The extension requests access to the current site.
+      kExtensionRequestsAccess,
+
+      // The extension does not want access to the current site.
+      kExtensionDoesNotWantAccess,
+    };
+
+    // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.chrome.browser.ui.toolbar
+    enum class AdminPolicy {
+      kNone,
+
+      // Extension is force pinned by administrator.
+      kPinnedByAdmin,
+
+      // Extension if force installed by administrator.
+      kInstalledByAdmin,
+    };
+
+    SiteAccess site_access;
+    AdminPolicy policy;
+  };
+
+  // Helper struct to hold hover card strings.
+  struct HoverCardUiState {
+    HoverCardUiState();
+    HoverCardUiState(HoverCardUiState&&);
+    HoverCardUiState& operator=(HoverCardUiState&&);
+    ~HoverCardUiState();
+
+    std::optional<std::u16string> site_access_title;
+    std::optional<std::u16string> site_access_description;
+    std::optional<std::u16string> policy_text;
+  };
+
+  virtual ~ToolbarActionViewModel() = default;
+
+  // Returns the unique ID of this particular action. For extensions, this is
+  // the extension id; for component actions, this is the name of the component.
+  virtual std::string GetId() const = 0;
+
+  // Registers an update observer of the action's icon.
+  virtual base::CallbackListSubscription RegisterIconUpdateObserver(
+      base::RepeatingClosure observer) = 0;
+
+  // Returns the icon to use for the given |web_contents| and |size|.
+  virtual ui::ImageModel GetIcon(content::WebContents* web_contents,
+                                 const gfx::Size& size) = 0;
+
+  // Returns the name of the action.
+  virtual std::u16string GetActionName() const = 0;
+
+  // Returns the title of the action on the given `web_contents`, which may be
+  // different than the action's name.
+  virtual std::u16string GetActionTitle(
+      content::WebContents* web_contents) const = 0;
+
+  // Returns the accessible name to use for the given |web_contents|.
+  // May be passed null, or a |web_contents| that returns -1 for
+  // |sessions::SessionTabHelper::IdForTab(..)|.
+  virtual std::u16string GetAccessibleName(
+      content::WebContents* web_contents) const = 0;
+
+  // Returns the tooltip to use for the given |web_contents|.
+  virtual std::u16string GetTooltip(
+      content::WebContents* web_contents) const = 0;
+
+  // Returns the hover card state to use for the given `web_contents`.
+  virtual HoverCardState GetHoverCardState(
+      content::WebContents* web_contents) const = 0;
+
+  // Returns the appropriate `HoverCardUiState` to use.
+  virtual HoverCardUiState GetHoverCardUiState(
+      const ToolbarActionViewModel::HoverCardState& state,
+      content::WebContents* web_contents) const = 0;
+
+  // Returns true if the action should be enabled on the given |web_contents|.
+  virtual bool IsEnabled(content::WebContents* web_contents) const = 0;
+
+  // Returns whether there is currently a popup visible.
+  virtual bool IsShowingPopup() const = 0;
+
+  // Hides the current popup, if one is visible.
+  virtual void HidePopup() = 0;
+
+  // Returns the native view for the popup, if one is active.
+  virtual gfx::NativeView GetPopupNativeViewForTesting() = 0;
+
+  // Returns the context menu model, or null if no context menu should be shown.
+  virtual ui::MenuModel* GetContextMenu(
+      extensions::ExtensionContextMenuModel::ContextMenuSource
+          context_menu_source) = 0;
+
+  // Executes the default behavior associated with the action. This should only
+  // be called as a result of a user action.
+  virtual void ExecuteUserAction(InvocationSource source) = 0;
+
+  // Shows the toolbar action popup as a result of an API call. It is the
+  // caller's responsibility to guarantee it is valid to show a popup (i.e.,
+  // the action is enabled, has a popup, etc).
+  virtual void TriggerPopupForAPI(ShowPopupCallback callback) = 0;
+
+  // Registers an accelerator. Called when the view is added to a widget.
+  virtual void RegisterCommand() {}
+
+  // Unregisters an accelerator. Called when the view is removed from a widget.
+  virtual void UnregisterCommand() {}
+
+  // Returns true if this controller can handle accelerators (i.e., keyboard
+  // commands) on the currently-active WebContents.
+  // This must only be called if the extension has an associated command.
+  virtual bool CanHandleAccelerators() const = 0;
+
+  // Tries to handle the accelerator press, and returns whether the event was
+  // handled.
+  virtual bool TryHandleAcceleratorPress() = 0;
+
+  // Returns the PageInteractionStatus for the current page.
+  virtual extensions::SitePermissionsHelper::SiteInteraction GetSiteInteraction(
+      content::WebContents* web_contents) const = 0;
+};
+
+#endif  // CHROME_BROWSER_UI_TOOLBAR_TOOLBAR_ACTION_VIEW_MODEL_H_

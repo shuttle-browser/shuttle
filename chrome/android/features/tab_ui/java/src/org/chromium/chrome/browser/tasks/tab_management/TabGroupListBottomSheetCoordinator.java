@@ -1,0 +1,226 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.tasks.tab_management;
+
+import android.content.Context;
+
+import androidx.annotation.IntDef;
+import androidx.annotation.VisibleForTesting;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.R;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabFavicon;
+import org.chromium.chrome.browser.tab_group_sync.TabGroupSyncServiceFactory;
+import org.chromium.chrome.browser.tab_ui.TabListFaviconProvider;
+import org.chromium.chrome.browser.tab_ui.TabListMode;
+import org.chromium.chrome.browser.tabmodel.TabGroupUtils.TabGroupCreationCallback;
+import org.chromium.chrome.browser.tabmodel.TabGroupUtils.TabMovedCallback;
+import org.chromium.chrome.browser.tabmodel.TabModel;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetContent;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetController.StateChangeReason;
+import org.chromium.components.tab_group_sync.TabGroupSyncService;
+import org.chromium.ui.base.WindowAndroid;
+import org.chromium.ui.base.WindowAndroid.ActivityStateObserver;
+import org.chromium.ui.modelutil.LayoutViewBuilder;
+import org.chromium.ui.modelutil.MVCListAdapter;
+import org.chromium.ui.modelutil.SimpleRecyclerViewAdapter;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.util.List;
+
+/** Coordinator for the Tab Group List Bottom Sheet. */
+@NullMarked
+public class TabGroupListBottomSheetCoordinator {
+    @IntDef({RowType.EXISTING_GROUP, RowType.NEW_GROUP})
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface RowType {
+        int NEW_GROUP = 0;
+        int EXISTING_GROUP = 1;
+    }
+
+    interface TabGroupListBottomSheetCoordinatorDelegate {
+        /** Requests to show the bottom sheet content. */
+        boolean requestShowContent();
+
+        /** Hides the bottom sheet. */
+        void hide(@StateChangeReason int hideReason);
+
+        /** Adds padding to the bottom of the recycler view. */
+        void addPadding();
+
+        /**
+         * Checks to see see whether the bottom sheet content is the same as this bottom sheet's
+         * content view.
+         *
+         * @param content The content to be checked.
+         */
+        boolean isSameContentView(@Nullable BottomSheetContent content);
+
+        /** Invalidates any cached content height measurements. */
+        void invalidateContentHeight();
+    }
+
+    private final TabGroupListBottomSheetView mView;
+    private final BottomSheetController mBottomSheetController;
+    private final SimpleRecyclerViewAdapter mSimpleRecyclerViewAdapter;
+    private final TabListFaviconProvider mTabListFaviconProvider;
+    private final TabGroupListBottomSheetMediator mMediator;
+    private final @Nullable WindowAndroid mWindowAndroid;
+    private final @Nullable ActivityStateObserver mActivityStateObserver;
+
+    /**
+     * @param context The {@link Context} to attach the bottom sheet to.
+     * @param profile The current user profile.
+     * @param tabGroupCreationCallback Used to follow up on tab group creation.
+     * @param tabMovedCallback Used to follow up on a tab being moved groups or ungrouped.
+     * @param tabModel Used to read current tab groups.
+     * @param bottomSheetController Used to interact with the bottom sheet.
+     * @param supportsShowNewGroup Whether the 'New Tab Group' row is supported.
+     * @param destroyOnHide Whether this object should be destroyed on hiding the bottom sheet.
+     * @param windowAndroid Used to observe activity state changes.
+     */
+    public TabGroupListBottomSheetCoordinator(
+            Context context,
+            Profile profile,
+            TabGroupCreationCallback tabGroupCreationCallback,
+            @Nullable TabMovedCallback tabMovedCallback,
+            TabModel tabModel,
+            BottomSheetController bottomSheetController,
+            boolean supportsShowNewGroup,
+            boolean destroyOnHide,
+            @Nullable WindowAndroid windowAndroid) {
+        mView =
+                new TabGroupListBottomSheetView(
+                        context, bottomSheetController, supportsShowNewGroup);
+        mBottomSheetController = bottomSheetController;
+
+        MVCListAdapter.ModelList modelList = new MVCListAdapter.ModelList();
+        mSimpleRecyclerViewAdapter =
+                new SimpleRecyclerViewAdapter(modelList) {
+                    @Override
+                    public void onViewRecycled(ViewHolder holder) {
+                        if (holder.getItemViewType() == RowType.EXISTING_GROUP) {
+                            TabGroupRowViewBinder.onViewRecycled((TabGroupRowView) holder.itemView);
+                        }
+                        super.onViewRecycled(holder);
+                    }
+                };
+
+        mSimpleRecyclerViewAdapter.registerType(
+                RowType.NEW_GROUP,
+                new LayoutViewBuilder<>(R.layout.tab_group_new_group_row),
+                TabGroupListBottomSheetNewGroupRowViewBinder::bind);
+        mSimpleRecyclerViewAdapter.registerType(
+                RowType.EXISTING_GROUP,
+                new LayoutViewBuilder<>(R.layout.tab_group_row),
+                TabGroupRowViewBinder::bind);
+        mView.setRecyclerViewAdapter(mSimpleRecyclerViewAdapter);
+
+        mTabListFaviconProvider =
+                new TabListFaviconProvider(
+                        context,
+                        TabListMode.GRID,
+                        R.dimen.default_favicon_corner_radius,
+                        TabFavicon::getBitmap);
+
+        boolean isProfileOffTheRecord = profile.isOffTheRecord();
+        FaviconResolver faviconResolver =
+                isProfileOffTheRecord
+                        ? TabGroupListFaviconResolverFactory.buildLocal(
+                                context, profile, mTabListFaviconProvider)
+                        : TabGroupListFaviconResolverFactory.build(
+                                context, profile, mTabListFaviconProvider);
+        @Nullable TabGroupSyncService tabGroupSyncService =
+                isProfileOffTheRecord ? null : TabGroupSyncServiceFactory.getForProfile(profile);
+
+        TabGroupListBottomSheetCoordinatorDelegate delegate = createDelegate(destroyOnHide);
+        mMediator =
+                new TabGroupListBottomSheetMediator(
+                        context,
+                        modelList,
+                        tabModel,
+                        tabGroupCreationCallback,
+                        tabMovedCallback,
+                        faviconResolver,
+                        tabGroupSyncService,
+                        bottomSheetController,
+                        delegate,
+                        supportsShowNewGroup);
+
+        mWindowAndroid = windowAndroid;
+        if (mWindowAndroid != null) {
+            mActivityStateObserver =
+                    new ActivityStateObserver() {
+                        @Override
+                        public void onActivityPaused() {
+                            if (mBottomSheetController.getCurrentSheetContent() == mView) {
+                                delegate.hide(StateChangeReason.NONE);
+                            }
+                        }
+                    };
+            mWindowAndroid.addActivityStateObserver(mActivityStateObserver);
+        } else {
+            mActivityStateObserver = null;
+        }
+    }
+
+    /** Creates the delegate. */
+    @VisibleForTesting
+    TabGroupListBottomSheetCoordinatorDelegate createDelegate(boolean destroyOnHide) {
+        return new TabGroupListBottomSheetCoordinatorDelegate() {
+            @Override
+            public boolean requestShowContent() {
+                return mBottomSheetController.requestShowContent(mView, /* animate= */ true);
+            }
+
+            @Override
+            public void hide(@StateChangeReason int hideReason) {
+                mBottomSheetController.hideContent(mView, /* animate= */ true, hideReason);
+                if (destroyOnHide) {
+                    destroy();
+                }
+            }
+
+            @Override
+            public void addPadding() {
+                mView.addBottomPadding();
+            }
+
+            @Override
+            public boolean isSameContentView(@Nullable BottomSheetContent content) {
+                return content != null && content.getContentView() == mView.getContentView();
+            }
+
+            @Override
+            public void invalidateContentHeight() {
+                mView.invalidateContentHeight();
+            }
+        };
+    }
+
+    /**
+     * Requests to show the bottom sheet.
+     *
+     * @param tabs The list of tabs to be added to a group.
+     */
+    public void showBottomSheet(List<Tab> tabs) {
+        mMediator.requestShowContent(tabs);
+    }
+
+    /** Permanently cleans up this component. */
+    public void destroy() {
+        if (mWindowAndroid != null && mActivityStateObserver != null) {
+            mWindowAndroid.removeActivityStateObserver(mActivityStateObserver);
+        }
+        mMediator.destroy();
+        mSimpleRecyclerViewAdapter.destroy();
+        mTabListFaviconProvider.destroy();
+    }
+}

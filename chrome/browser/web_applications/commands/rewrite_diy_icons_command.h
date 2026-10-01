@@ -1,0 +1,51 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_WEB_APPLICATIONS_COMMANDS_REWRITE_DIY_ICONS_COMMAND_H_
+#define CHROME_BROWSER_WEB_APPLICATIONS_COMMANDS_REWRITE_DIY_ICONS_COMMAND_H_
+
+#include <memory>
+
+#include "base/functional/callback.h"
+#include "base/memory/weak_ptr.h"
+#include "chrome/browser/web_applications/commands/web_app_command.h"
+#include "chrome/browser/web_applications/locks/app_lock.h"
+#include "chrome/browser/web_applications/os_integration/os_integration_manager.h"
+#include "chrome/browser/web_applications/scheduler/rewrite_diy_icons_result.h"
+#include "components/webapps/common/web_app_id.h"
+
+namespace web_app {
+
+struct ShortcutInfo;
+
+// On macOS, rewrites the icons for a DIY app to apply the correct mask, if this
+// operation has not yet occurred. This is a one-time migration for existing
+// DIY apps to ensure their icons look correct in the dock and other system
+// surfaces.
+class RewriteDiyIconsCommand
+    : public WebAppCommand<AppLock, RewriteIconResult> {
+ public:
+  RewriteDiyIconsCommand(const webapps::AppId& app_id,
+                         RewriteIconResultCallback callback);
+
+  ~RewriteDiyIconsCommand() override;
+
+  RewriteDiyIconsCommand(const RewriteDiyIconsCommand&) = delete;
+  RewriteDiyIconsCommand& operator=(const RewriteDiyIconsCommand&) = delete;
+
+  // WebAppCommand:
+  void StartWithLock(std::unique_ptr<AppLock> lock) override;
+
+ private:
+  void OnGetShortcutInfo(std::unique_ptr<ShortcutInfo> info);
+  void OnUpdatedShortcuts(bool success);
+
+  const webapps::AppId app_id_;
+  std::unique_ptr<AppLock> lock_;
+  base::WeakPtrFactory<RewriteDiyIconsCommand> weak_factory_{this};
+};
+
+}  // namespace web_app
+
+#endif  // CHROME_BROWSER_WEB_APPLICATIONS_COMMANDS_REWRITE_DIY_ICONS_COMMAND_H_

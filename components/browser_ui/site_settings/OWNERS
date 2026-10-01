@@ -1,0 +1,10 @@
+andypaicu@chromium.org
+dullweber@chromium.org
+tommasin@chromium.org
+lyf@chromium.org
+
+# Allow to review / approve mechanical changes (e.g. search indexing)
+file://components/browser_ui/settings/OWNERS
+
+# emeritus:
+# hkamila@chromium.org

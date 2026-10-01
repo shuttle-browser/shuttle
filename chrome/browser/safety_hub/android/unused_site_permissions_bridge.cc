@@ -1,0 +1,188 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/safety_hub/android/unused_site_permissions_bridge.h"
+
+#include <jni.h>
+
+#include <vector>
+
+#include "base/android/jni_string.h"
+#include "base/android/scoped_java_ref.h"
+#include "base/check.h"
+#include "base/json/json_string_value_serializer.h"
+#include "base/time/time.h"
+#include "base/values.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/safety_hub/revoked_permissions_service.h"
+#include "chrome/browser/ui/safety_hub/revoked_permissions_service_factory.h"
+#include "chrome/browser/ui/safety_hub/unused_site_permissions_manager.h"
+#include "components/content_settings/core/common/content_settings_constraints.h"
+#include "components/content_settings/core/common/content_settings_pattern.h"
+#include "components/content_settings/core/common/content_settings_types.h"
+#include "components/page_info/page_info_ui.h"
+#include "url/gurl.h"
+#include "url/origin.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "chrome/browser/safety_hub/android/jni_headers/PermissionsData_jni.h"
+#include "chrome/browser/safety_hub/android/jni_headers/UnusedSitePermissionsBridge_jni.h"
+
+PermissionsData FromJavaPermissionsData(
+    JNIEnv* env,
+    const base::android::JavaRef<jobject>& jobject) {
+  PermissionsData permissions_data;
+
+  permissions_data.primary_pattern = ContentSettingsPattern::FromString(
+      Java_PermissionsData_getOrigin(env, jobject));
+  CHECK(permissions_data.primary_pattern.IsValid());
+
+  int error_code = 0;
+  std::string error_message;
+  std::unique_ptr<base::Value> permission_map =
+      JSONStringValueDeserializer(
+          Java_PermissionsData_getSerializedRevokedPermissionsMap(env, jobject))
+          .Deserialize(&error_code, &error_message);
+  CHECK_EQ(error_code, 0) << error_message;
+  for (auto&& [permission_type, value] : permission_map->GetDict()) {
+    permissions_data.permissions.insert(std::make_pair(
+        UnusedSitePermissionsManager::ConvertKeyToContentSettingsType(
+            permission_type),
+        std::move(value)));
+  }
+
+  const base::Time expiration = base::Time::FromDeltaSinceWindowsEpoch(
+      base::Microseconds(Java_PermissionsData_getExpiration(env, jobject)));
+  const base::TimeDelta lifetime =
+      base::Microseconds(Java_PermissionsData_getLifetime(env, jobject));
+  permissions_data.constraints =
+      content_settings::ContentSettingConstraints(expiration - lifetime);
+  permissions_data.constraints.set_lifetime(lifetime);
+
+  permissions_data.revocation_type = static_cast<PermissionsRevocationType>(
+      Java_PermissionsData_getRevocationType(env, jobject));
+
+  return permissions_data;
+}
+
+base::android::ScopedJavaLocalRef<jobject> ToJavaPermissionsData(
+    JNIEnv* env,
+    const PermissionsData& obj) {
+  std::vector<int32_t> permissions;
+  base::DictValue permission_map;
+  for (const auto& [type, value] : obj.permissions) {
+    permissions.push_back(static_cast<int32_t>(type));
+    permission_map.Set(
+        UnusedSitePermissionsManager::ConvertContentSettingsTypeToKey(type),
+        value.Clone());
+  }
+
+  // Converting a primary pattern to an origin is normally an anti-pattern
+  // but here it is ok since the primary pattern belongs to a single
+  // origin. Therefore, it has a fully defined URL+scheme+port which makes
+  // converting primary pattern to origin successful.
+  url::Origin origin =
+      UnusedSitePermissionsManager::ConvertPrimaryPatternToOrigin(
+          obj.primary_pattern);
+  std::string serialized_permission_map;
+  JSONStringValueSerializer(&serialized_permission_map)
+      .Serialize(permission_map);
+  return Java_PermissionsData_create(
+      env, origin.Serialize(), permissions,
+      obj.constraints.expiration().ToDeltaSinceWindowsEpoch().InMicroseconds(),
+      obj.constraints.lifetime().InMicroseconds(),
+      static_cast<int32_t>(obj.revocation_type), serialized_permission_map);
+}
+
+std::vector<PermissionsData> GetRevokedPermissions(Profile* profile) {
+  RevokedPermissionsService* service =
+      RevokedPermissionsServiceFactory::GetForProfile(profile);
+  CHECK(service);
+  const auto service_result =
+      service->GetRevokedPermissions()->GetRevokedPermissions();
+  return std::vector<PermissionsData>(service_result.begin(),
+                                      service_result.end());
+}
+
+void RegrantPermissions(Profile* profile, const std::string& origin_str) {
+  RevokedPermissionsService* service =
+      RevokedPermissionsServiceFactory::GetForProfile(profile);
+  CHECK(service);
+
+  url::Origin origin = url::Origin::Create(GURL(origin_str));
+  service->RegrantPermissionsForOrigin(origin);
+}
+
+void UndoRegrantPermissions(Profile* profile,
+                            const PermissionsData& permissions_data) {
+  RevokedPermissionsService* service =
+      RevokedPermissionsServiceFactory::GetForProfile(profile);
+  CHECK(service);
+
+  service->UndoRegrantPermissionsForOrigin(permissions_data);
+}
+
+void ClearRevokedPermissionsReviewList(Profile* profile) {
+  RevokedPermissionsService* service =
+      RevokedPermissionsServiceFactory::GetForProfile(profile);
+  CHECK(service);
+
+  service->ClearRevokedPermissionsList();
+}
+
+void RestoreRevokedPermissionsReviewList(
+    Profile* profile,
+    const std::vector<PermissionsData>& permissions_data_list) {
+  RevokedPermissionsService* service =
+      RevokedPermissionsServiceFactory::GetForProfile(profile);
+  CHECK(service);
+  service->RestoreDeletedRevokedPermissionsList(permissions_data_list);
+}
+
+std::vector<std::u16string> ContentSettingsTypeToString(
+    const std::vector<int32_t>& content_settings_type_list) {
+  std::vector<std::u16string> content_settings_string_list;
+  for (int32_t content_settings_type : content_settings_type_list) {
+    content_settings_string_list.push_back(PageInfoUI::PermissionTypeToUIString(
+        static_cast<ContentSettingsType>(content_settings_type)));
+  }
+  return content_settings_string_list;
+}
+
+static std::vector<PermissionsData>
+JNI_UnusedSitePermissionsBridge_GetRevokedPermissions(Profile* profile) {
+  return GetRevokedPermissions(profile);
+}
+
+static void JNI_UnusedSitePermissionsBridge_RegrantPermissions(
+    Profile* profile,
+    const std::string& origin_str) {
+  RegrantPermissions(profile, origin_str);
+}
+
+static void JNI_UnusedSitePermissionsBridge_UndoRegrantPermissions(
+    Profile* profile,
+    const PermissionsData& permissions_data) {
+  UndoRegrantPermissions(profile, permissions_data);
+}
+
+static void JNI_UnusedSitePermissionsBridge_ClearRevokedPermissionsReviewList(
+    Profile* profile) {
+  ClearRevokedPermissionsReviewList(profile);
+}
+
+static void JNI_UnusedSitePermissionsBridge_RestoreRevokedPermissionsReviewList(
+    Profile* profile,
+    const std::vector<PermissionsData>& permissions_data_list) {
+  RestoreRevokedPermissionsReviewList(profile, permissions_data_list);
+}
+
+static std::vector<std::u16string>
+JNI_UnusedSitePermissionsBridge_ContentSettingsTypeToString(
+    const std::vector<std::int32_t>& content_settings_type_list) {
+  return ContentSettingsTypeToString(content_settings_type_list);
+}
+
+DEFINE_JNI(PermissionsData)
+DEFINE_JNI(UnusedSitePermissionsBridge)

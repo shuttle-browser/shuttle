@@ -1,0 +1,163 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// This file was exported from google3, do not edit manually.
+// See README.chromium for details.
+
+edition = "2023";
+
+option optimize_for = LITE_RUNTIME;
+option java_package = "org.chromium.components.metrics";
+
+option java_outer_classname = "SampledProfileProtos";
+
+package metrics;
+
+import "third_party/metrics_proto/call_stack_profile.proto";
+import "third_party/metrics_proto/device_state.proto";
+import "third_party/metrics_proto/execution_context.proto";
+import "third_party/metrics_proto/perf_data.proto";
+import "third_party/metrics_proto/perf_stat.proto";
+import "third_party/metrics_proto/system_profile.proto";
+
+option features.utf8_validation = NONE;
+
+// Protocol buffer for collected sample-based profiling data.
+// Contains the parameters and data from a single profile collection event.
+
+// Next tag: 23
+message SampledProfile {
+  // Indicates the event that triggered this collection.
+  enum TriggerEvent {
+    option features.enum_type = CLOSED;
+
+    UNKNOWN_TRIGGER_EVENT = 0;
+
+    // The profile was triggered by periodic sampling.  Periodically sampled
+    // profiles are collected once per uniformly sized period interval.  Within
+    // each interval, the sampled data is collected at a random time.  For
+    // example, if the interval is 60 s, then data would be collected at a
+    // random point in each of the intervals [0, 60 s), [60 s, 120 s), etc.
+    PERIODIC_COLLECTION = 1;
+
+    // The profile was collected upon resume from suspend.
+    RESUME_FROM_SUSPEND = 2;
+
+    // The profile was collected upon restoring a previous session.
+    RESTORE_SESSION = 3;
+
+    // The profile was collected at process startup.
+    PROCESS_STARTUP = 4;
+
+    // The profile was collected after jank was detected while executing a task.
+    JANKY_TASK = 5;
+
+    // The profile was collected after a thread was determined to be hung.
+    THREAD_HUNG = 6;
+
+    // The heap profile was triggered by periodic sampling. The time intervals
+    // between trigger events conform to the Poisson process with certain mean
+    // interval between collections.
+    PERIODIC_HEAP_COLLECTION = 7;
+
+    // The heap churn profile was triggered by periodic sampling of alloc-frees.
+    PERIODIC_HEAP_CHURN_COLLECTION = 8;
+  }
+
+  TriggerEvent trigger_event = 1;
+
+  // The process in which the profile was collected.
+  Process process = 11;
+
+  // The thread in which the profile was collected.
+  Thread thread = 12;
+
+  // Map of Chrome PIDs running on the system when the profile was collected.
+  // Each Chrome PID is mapped to its process type.
+  // This field and the below thread_types field assume that the PID/TID
+  // information are collected in a short duration for a single session such
+  // that, the PID/TID reuse is highly unlikely.
+  // The information from these two fields is used to map chrome samples
+  // collected for a specific PID/TID to the corresponding process type and
+  // thread type.
+  map<uint32, Process> process_types = 13;
+
+  // A list of pids that belong to Lacros binaries, which are a subset of the
+  // keys of the process_types above.
+  repeated uint32 lacros_pids = 18;
+
+  // The version string of the Lacros Chrome browser running on a CrOS machine.
+  // It a 4-tuple of numbers separated by dots.
+  // Note: unlike the app_version in the system_profile.proto, this does not
+  // include any additional suffixes such as development build or bitness.
+  // This, and lacros_channel are only populated when lacros binaries are
+  // found in the running processes, i.e. when lacros_pids is not empty.
+  string lacros_version = 19;
+
+  // The channel of the Lacros Chrome browser running on a CrOS machine.
+  SystemProfileProto.Channel lacros_channel = 20;
+
+  // Map of Chrome TIDs running on the system when the profile was collected.
+  // Each Chrome TID is mapped to its thread type.
+  map<uint32, Thread> thread_types = 14;
+
+  // Fields 2-3: Time durations are given in ticks, and represent system uptime
+  // rather than wall time.
+
+  // Time after system boot when the collection took place, in milliseconds.
+  int64 ms_after_boot = 2;
+
+  // Time after last login when the collection took place, in milliseconds.
+  int64 ms_after_login = 3;
+
+  // The duration for which the machine was suspended prior to collecting the
+  // sampled profile. Only set when |trigger_event| is RESUME_FROM_SUSPEND.
+  int64 suspend_duration_ms = 5;
+
+  // Number of milliseconds after a resume that profile was collected. Only set
+  // when |trigger_event| is RESUME_FROM_SUSPEND.
+  int64 ms_after_resume = 6;
+
+  // Number of tabs restored during a session restore. Only set when
+  // |trigger_event| is RESTORE_SESSION.
+  int32 num_tabs_restored = 7;
+
+  // Number of milliseconds after a session restore that a profile was
+  // collected. Only set when |trigger_event| is RESTORE_SESSION.
+  int64 ms_after_restore = 8;
+
+  // Sampled profile data collected from Linux perf tool.
+  PerfDataProto perf_data = 4;
+
+  // Sampled profile data collected by periodic sampling of call stacks.
+  CallStackProfile call_stack_profile = 9;
+
+  // Perf counter data collected using "perf stat".
+  PerfStatProto perf_stat = 10;
+
+  // The maximum frequency in MHz reported for each logical CPU on the device.
+  // This is a repeated field, where entry 0 corresponds to core 0, entry 1 to
+  // core 1, and so on. The field is optional and populated only for metrics
+  // that can use the max frequency to compute a CPU utilization metric, e.g.
+  // when measuring CPU cycles.
+  repeated uint32 cpu_max_frequency_mhz = 15;
+
+  // The pressure-stall information that describes the state of CPU utilization
+  // of the system.
+  // The percent of the time that runnable processes are delayed because the CPU
+  // is unavailable, accumulated over 10 seconds.
+  float psi_cpu_last_10s_pct = 16;
+
+  // The percent of the time that runnable processes are delayed because the CPU
+  // is unavailable, accumulated over 60 seconds.
+  float psi_cpu_last_60s_pct = 17;
+
+  // The device thermal state when the profile was collected.
+  ThermalState thermal_state = 21;
+
+  // The operating system's advertised speed limit for CPUs in percent. Values
+  // below 100 indicate that the system is impairing processing power due to
+  // thermal management.
+  int32 cpu_speed_limit_percent = 22;
+}

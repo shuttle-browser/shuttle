@@ -1,0 +1,121 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("ui") {
+  sources = [
+    "composebox_animation_context.h",
+    "composebox_dismiss_animator.h",
+    "composebox_dismiss_animator.mm",
+    "composebox_favicons_accordion_view.h",
+    "composebox_favicons_accordion_view.mm",
+    "composebox_input_item.h",
+    "composebox_input_item.mm",
+    "composebox_input_item_cell.h",
+    "composebox_input_item_cell.mm",
+    "composebox_input_item_collection.h",
+    "composebox_input_item_collection.mm",
+    "composebox_input_item_view.h",
+    "composebox_input_item_view.mm",
+    "composebox_input_plate_consumer.h",
+    "composebox_input_plate_mutator.h",
+    "composebox_input_plate_view_controller.h",
+    "composebox_input_plate_view_controller.mm",
+    "composebox_input_plate_view_controller_delegate.h",
+    "composebox_present_animator.h",
+    "composebox_present_animator.mm",
+    "composebox_view_controller.h",
+    "composebox_view_controller.mm",
+  ]
+  deps = [
+    ":state",
+    ":ui_util",
+    "//base",
+    "//base:i18n",
+    "//build:branding_buildflags",
+    "//ios/chrome/app/strings",
+    "//ios/chrome/browser/composebox/coordinator:constants",
+    "//ios/chrome/browser/composebox/public:animation",
+    "//ios/chrome/browser/composebox/public:attachment_options",
+    "//ios/chrome/browser/composebox/public:constants",
+    "//ios/chrome/browser/composebox/public:entrypoint",
+    "//ios/chrome/browser/composebox/public:features",
+    "//ios/chrome/browser/composebox/public:input_item_source",
+    "//ios/chrome/browser/composebox/public:input_plate_controls",
+    "//ios/chrome/browser/composebox/public:model_options",
+    "//ios/chrome/browser/composebox/public:theme",
+    "//ios/chrome/browser/composebox/shared/metrics",
+    "//ios/chrome/browser/composebox/shared/ui",
+    "//ios/chrome/browser/drag_and_drop/model",
+    "//ios/chrome/browser/keyboard/ui_bundled",
+    "//ios/chrome/browser/ntp/ui_bundled/incognito",
+    "//ios/chrome/browser/omnibox/public:constants",
+    "//ios/chrome/browser/omnibox/ui:omnibox_internal",
+    "//ios/chrome/browser/omnibox/ui/popup",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/shared/public/features",
+    "//ios/chrome/browser/shared/ui/elements",
+    "//ios/chrome/browser/shared/ui/symbols",
+    "//ios/chrome/browser/shared/ui/util",
+    "//ios/chrome/browser/shared/ui/util:util_swift",
+    "//ios/chrome/browser/tab_picker/coordinator",
+    "//ios/chrome/common/ui/colors",
+    "//ios/chrome/common/ui/util",
+    "//ios/public/provider/chrome/browser/glow_effect:glow_effect_api",
+    "//ios/web/public",
+    "//ui/base",
+  ]
+  public_deps = [ "//ios/chrome/browser/composebox/shared/ui" ]
+}
+
+source_set("ui_util") {
+  sources = [
+    "composebox_ui_util.h",
+    "composebox_ui_util.mm",
+  ]
+  deps = [
+    "//base",
+    "//build:branding_buildflags",
+    "//ios/chrome/browser/shared/ui:buildflags",
+    "//ios/chrome/browser/shared/ui/symbols",
+    "//third_party/omnibox_proto",
+  ]
+  frameworks = [ "UIKit.framework" ]
+}
+
+source_set("state") {
+  sources = [
+    "composebox_ui_config.h",
+    "composebox_ui_config.mm",
+    "composebox_ui_input_state.h",
+    "composebox_ui_input_state.mm",
+  ]
+  deps = [
+    ":ui_util",
+    "//base",
+    "//ios/chrome/app/strings",
+    "//ios/chrome/browser/composebox/coordinator:constants",
+    "//ios/chrome/browser/composebox/menu/coordinator:shared_tab",
+    "//ios/chrome/browser/composebox/public:attachment_options",
+    "//ios/chrome/browser/composebox/public:composebox_mode",
+    "//ios/chrome/browser/composebox/public:model_options",
+    "//ios/chrome/browser/shared/ui/symbols",
+    "//ui/base",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "composebox_favicons_accordion_view_unittest.mm",
+    "composebox_ui_config_unittest.mm",
+  ]
+  deps = [
+    ":state",
+    ":ui",
+    "//base/test:test_support",
+    "//ios/chrome/app/strings",
+    "//testing/gtest",
+    "//ui/base",
+  ]
+}

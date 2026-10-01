@@ -1,0 +1,145 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/tabs/tab/tab_context_menu_controller.h"
+
+#include <memory>
+
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "components/tabs/public/mock_tab_interface.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/accelerators/accelerator.h"
+#include "ui/events/event_constants.h"
+#include "ui/events/keycodes/keyboard_codes.h"
+
+using ::testing::Return;
+
+namespace {
+const TabStripModel::ContextMenuCommand kCommand =
+    TabStripModel::ContextMenuCommand::CommandReload;
+const int kEventFlags = ui::EF_SHIFT_DOWN;
+ui::Accelerator kAccelerator(ui::VKEY_CANCEL, ui::EF_SHIFT_DOWN);
+}  // namespace
+
+class MockTabContextMenuControllerDelegate
+    : public TabContextMenuController::Delegate {
+ public:
+  MOCK_METHOD(bool,
+              IsContextMenuCommandChecked,
+              (TabStripModel::ContextMenuCommand command_id),
+              (override));
+  MOCK_METHOD(bool,
+              IsContextMenuCommandEnabled,
+              (tabs::TabInterface * tab,
+               TabStripModel::ContextMenuCommand command_id),
+              (override));
+  MOCK_METHOD(bool,
+              IsContextMenuCommandAlerted,
+              (TabStripModel::ContextMenuCommand command_id),
+              (override));
+  MOCK_METHOD(void,
+              ExecuteContextMenuCommand,
+              (tabs::TabInterface * tab,
+               TabStripModel::ContextMenuCommand command_id,
+               int event_flags),
+              (override));
+  MOCK_METHOD(bool,
+              GetContextMenuAccelerator,
+              (int command_id, ui::Accelerator* accelerator),
+              (override));
+};
+
+class TabContextMenuControllerTest : public testing::Test {
+ public:
+  TabContextMenuControllerTest() = default;
+  ~TabContextMenuControllerTest() override = default;
+
+  void SetUp() override {
+    testing::Test::SetUp();
+    tab_ = std::make_unique<tabs::MockTabInterface>();
+    controller_ = std::make_unique<TabContextMenuController>(tab_->GetHandle(),
+                                                             &mock_delegate_);
+  }
+
+ protected:
+  std::unique_ptr<tabs::TabInterface> tab_;
+  std::unique_ptr<TabContextMenuController> controller_;
+  testing::StrictMock<MockTabContextMenuControllerDelegate> mock_delegate_;
+};
+
+// Verifies IsCommandIdChecked's return value depends on the callback.
+TEST_F(TabContextMenuControllerTest, VerifyingIsCheckedCallback) {
+  EXPECT_CALL(mock_delegate_, IsContextMenuCommandChecked)
+      .WillOnce(Return(true));
+  EXPECT_TRUE(controller_->IsCommandIdChecked(static_cast<int>(kCommand)));
+
+  EXPECT_CALL(mock_delegate_, IsContextMenuCommandChecked)
+      .WillOnce(Return(false));
+  EXPECT_FALSE(controller_->IsCommandIdChecked(static_cast<int>(kCommand)));
+}
+
+// Verifies IsCommandIdEnabled's return value depends on the callback.
+TEST_F(TabContextMenuControllerTest, VerifyingIsEnabledCallback) {
+  EXPECT_CALL(mock_delegate_, IsContextMenuCommandEnabled)
+      .WillOnce(Return(true));
+  EXPECT_TRUE(controller_->IsCommandIdEnabled(static_cast<int>(kCommand)));
+
+  EXPECT_CALL(mock_delegate_, IsContextMenuCommandEnabled)
+      .WillOnce(Return(false));
+  EXPECT_FALSE(controller_->IsCommandIdEnabled(static_cast<int>(kCommand)));
+}
+
+// Verifies that IsCommandIdAlerted's return value depends on the callback.
+TEST_F(TabContextMenuControllerTest, VerifyingIsAlertedCallback) {
+  EXPECT_CALL(mock_delegate_, IsContextMenuCommandAlerted)
+      .WillOnce(Return(true));
+  EXPECT_TRUE(controller_->IsCommandIdAlerted(static_cast<int>(kCommand)));
+
+  EXPECT_CALL(mock_delegate_, IsContextMenuCommandAlerted)
+      .WillOnce(Return(false));
+  EXPECT_FALSE(controller_->IsCommandIdAlerted(static_cast<int>(kCommand)));
+}
+
+// Verifies that ExecuteCommand depends on the callback.
+TEST_F(TabContextMenuControllerTest, VerifyingExecuteCommandCallback) {
+  EXPECT_CALL(mock_delegate_, ExecuteContextMenuCommand);
+
+  // If ExecuteCommand fails to execute the callback the previous EXPECT_CALL
+  // will fail.
+  controller_->ExecuteCommand(static_cast<int>(kCommand), kEventFlags);
+}
+
+// Verifies that GetAcceleratorForCommandId's output accelerator value depends
+// on the callback.
+TEST_F(TabContextMenuControllerTest, VerifyingGetAcceleratorCallback) {
+  EXPECT_CALL(mock_delegate_, GetContextMenuAccelerator)
+      .WillOnce([&](int, ui::Accelerator* res_accelerator) {
+        *res_accelerator = kAccelerator;
+        return true;
+      });
+
+  ui::Accelerator result_accelerator;
+  EXPECT_TRUE(controller_->GetAcceleratorForCommandId(
+      static_cast<int>(kCommand), &result_accelerator));
+  EXPECT_EQ(result_accelerator, kAccelerator);
+}
+
+// Verifies that custom extension command IDs are intercepted and do not
+// delegate to mock_delegate_ (which would fail because no expectations are set
+// on it).
+TEST_F(TabContextMenuControllerTest, ExtensionCommandInterception) {
+  const int kExtensionCommandId =
+      49000;  // Matches custom extension command range
+
+  // Since no model is loaded, these should safely return false/default values
+  // and should NOT call mock_delegate_.
+  EXPECT_FALSE(controller_->IsCommandIdEnabled(kExtensionCommandId));
+  EXPECT_FALSE(controller_->IsCommandIdChecked(kExtensionCommandId));
+  EXPECT_FALSE(controller_->IsCommandIdVisible(kExtensionCommandId));
+
+  // ExecuteCommand should return without calling mock_delegate_'s
+  // ExecuteContextMenuCommand.
+  controller_->ExecuteCommand(kExtensionCommandId, kEventFlags);
+}

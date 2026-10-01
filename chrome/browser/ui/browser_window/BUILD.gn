@@ -1,0 +1,114 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//chrome/common/features.gni")
+
+# This is the public interface for a browser window. Most features in
+# //chrome/browser depend on this interface, and thus to prevent circular
+# dependencies this interface should not depend on anything else in //chrome.
+source_set("browser_window") {
+  sources = [
+    "public/browser_collection.h",
+    "public/browser_collection_observer.h",
+    "public/browser_window_interface.h",
+    "public/browser_window_interface_iterator.h",
+    "public/global_browser_collection.h",
+    "public/global_browser_collection_platform_delegate.h",
+    "public/profile_browser_collection.h",
+  ]
+  public_deps = [
+    "//content/public/browser",
+    "//ui/gfx",
+  ]
+  deps = [
+    "//components/sessions:session_id",
+    "//ui/base/unowned_user_data",
+  ]
+
+  if (!is_android) {
+    sources += [
+      "public/browser_window_features.h",
+      "public/desktop_browser_window_capabilities.h",
+      "public/embedder_browser_window_features.h",
+    ]
+    public_deps += [
+      "//base",
+      "//chrome/common:buildflags",
+      "//extensions/buildflags",
+      "//ui/base:types",
+    ]
+  }
+}
+
+source_set("create_browser_window") {
+  sources = [ "public/create_browser_window.h" ]
+
+  public_deps = [
+    "//chrome/browser/ui/browser_window",
+    "//components/tab_groups",
+    "//ui/base/mojom:ui_base_types",
+  ]
+}
+
+if (!is_android) {
+  source_set("interactive_ui_tests") {
+    testonly = true
+
+    sources = []
+    deps = []
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+    # TODO(crbug.com/483366391): Enable this on ChromeOS once the
+    # BaseWindow::Activate() behaviour is fixed.
+    if (!is_chromeos) {
+      # This is in the browser_tests target on Android
+      sources += [ "internal/global_browser_collection_interactive_ui_test.cc" ]
+      deps += [
+        ":browser_window",
+        ":create_browser_window",
+        "//base",
+        "//base/test:test_support",
+        "//chrome/browser/ui",
+        "//chrome/browser/ui/browser_window/test:test_support",
+        "//chrome/test:test_support",
+        "//content/test:test_support",
+        "//testing/gtest",
+      ]
+    }
+  }
+}
+
+# These tests don't work on mobile Android due to the lack of multi-window
+# support.
+if (!is_android || is_desktop_android) {
+  source_set("browser_tests") {
+    testonly = true
+    sources = [ "internal/profile_browser_collection_browsertest.cc" ]
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+    deps = [
+      ":browser_window",
+      ":create_browser_window",
+      "//base",
+      "//base/test:test_support",
+      "//chrome/browser/ui",
+      "//chrome/browser/ui/browser_window/test:test_support",
+      "//chrome/test:test_support",
+      "//content/test:test_support",
+      "//testing/gtest",
+    ]
+
+    if (is_android) {
+      # This is in the interactive_ui_tests target on non-Android
+      sources += [ "internal/global_browser_collection_interactive_ui_test.cc" ]
+      deps += [
+        "//chrome/browser/ui/browser_window/test:android_browser_test_support",
+      ]
+    } else {
+      sources += [
+        "internal/create_browser_window_browsertest.cc",
+        "public/browser_window_interface_iterator_browsertest.cc",
+      ]
+    }
+  }
+}

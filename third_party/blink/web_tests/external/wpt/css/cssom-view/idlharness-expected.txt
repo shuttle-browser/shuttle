@@ -1,0 +1,14 @@
+This is a testharness.js-based test.
+Found 5 FAIL, 0 TIMEOUT, 0 NOTRUN.
+[FAIL] Screen interface: existence and properties of interface object
+  assert_equals: prototype of self's property "Screen" is not Function.prototype expected function "function () { [native code] }" but got function "function EventTarget() { [native code] }"
+[FAIL] Screen interface: existence and properties of interface prototype object
+  assert_equals: prototype of Screen.prototype is not Object.prototype expected object "[object Object]" but got object "[object EventTarget]"
+[FAIL] HTMLElement interface: attribute scrollParent
+  assert_throws_js: getting property on prototype object must throw TypeError function "function () { [native code] }" did not throw
+[FAIL] HTMLElement interface: document.createElement("div") must inherit property "scrollParent" with the proper type
+  assert_true: instanceof Element expected true got false
+[FAIL] HTMLElement interface: document.createElement("img") must inherit property "scrollParent" with the proper type
+  assert_true: instanceof Element expected true got false
+Harness: the test ran to completion.
+

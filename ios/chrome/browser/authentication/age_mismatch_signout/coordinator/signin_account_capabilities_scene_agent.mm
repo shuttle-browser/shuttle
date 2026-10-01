@@ -1,0 +1,440 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/authentication/age_mismatch_signout/coordinator/signin_account_capabilities_scene_agent.h"
+
+#import <set>
+#import <vector>
+
+#import "base/barrier_closure.h"
+#import "base/functional/bind.h"
+#import "base/functional/callback.h"
+#import "base/functional/callback_helpers.h"
+#import "base/location.h"
+#import "base/metrics/histogram_functions.h"
+#import "base/not_fatal_until.h"
+#import "base/strings/sys_string_conversions.h"
+#import "base/time/time.h"
+#import "base/timer/timer.h"
+#import "components/prefs/pref_service.h"
+#import "components/signin/public/base/consent_level.h"
+#import "components/signin/public/base/signin_metrics.h"
+#import "components/signin/public/identity_manager/account_capabilities.h"
+#import "components/signin/public/identity_manager/identity_manager.h"
+#import "components/signin/public/identity_manager/objc/identity_manager_observer_bridge.h"
+#import "components/signin/public/identity_manager/primary_account_change_event.h"
+#import "google_apis/gaia/gaia_id.h"
+#import "ios/chrome/app/profile/profile_state.h"
+#import "ios/chrome/app/profile/profile_state_observer.h"
+#import "ios/chrome/browser/authentication/age_mismatch_signout/coordinator/age_mismatch_signout_coordinator.h"
+#import "ios/chrome/browser/authentication/age_mismatch_signout/ui/age_mismatch_prompt_mode.h"
+#import "ios/chrome/browser/authentication/ui_bundled/signin/signin_utils.h"
+#import "ios/chrome/browser/scoped_ui_blocker/ui_bundled/scoped_ui_blocker.h"
+#import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
+#import "ios/chrome/browser/shared/coordinator/scene/scene_ui_provider.h"
+#import "ios/chrome/browser/shared/coordinator/scene/state/scene_ui_blocker_state.h"
+#import "ios/chrome/browser/shared/model/application_context/application_context.h"
+#import "ios/chrome/browser/shared/model/browser/browser.h"
+#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
+#import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
+#import "ios/chrome/browser/shared/model/prefs/pref_names.h"
+#import "ios/chrome/browser/shared/model/profile/profile_ios.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/shared/public/commands/show_signin_command.h"
+#import "ios/chrome/browser/signin/model/authentication_service.h"
+#import "ios/chrome/browser/signin/model/authentication_service_factory.h"
+#import "ios/chrome/browser/signin/model/identity_manager_factory.h"
+#import "ios/chrome/browser/signin/model/signin_util.h"
+#import "ios/chrome/browser/signin/model/system_identity.h"
+#import "ios/chrome/browser/signin/model/system_identity_manager.h"
+
+@interface SigninAccountCapabilitiesSceneAgent () <
+    AgeMismatchSignoutCoordinatorDelegate,
+    ExternalPrivacyContextUIProvider,
+    IdentityManagerObserving,
+    ProfileStateObserver,
+    SceneUIBlockerStateObserver,
+    UIBlockerManagerObserver>
+
+// Called once the sign-out is done.
+// `identity` is the primary identity before sign-out.
+- (void)ageMismatchSignOutDoneFromIdentity:(id<SystemIdentity>)identity;
+
+@end
+
+namespace {
+
+// Called once the sign-out is done. It calls
+// `-[SigninAccountCapabilitiesSceneAgent
+// ageMismatchSignOutDoneFromIdentity:]` to continue the workflow.
+void SignOutDoneForSceneState(id<SystemIdentity> identity,
+                              SceneState* scene_state) {
+  SigninAccountCapabilitiesSceneAgent* scene_agent =
+      [SigninAccountCapabilitiesSceneAgent agentFromScene:scene_state];
+  [scene_agent ageMismatchSignOutDoneFromIdentity:identity];
+}
+
+}  //  namespace
+
+@implementation SigninAccountCapabilitiesSceneAgent {
+  // SceneUIProvider that provides the scene UI objects.
+  __weak id<SceneUIProvider> _sceneUIProvider;
+
+  // UI blocker used on signout or during the Age Mismatch prompt. This needs to
+  // be reseted in -[SceneStateObserver sceneStateDidDisableUI:] if it still
+  // exists.
+  std::unique_ptr<ScopedUIBlocker> _applicationUIBlocker;
+
+  std::unique_ptr<signin::IdentityManagerObserverBridge>
+      _identityManagerObserver;
+
+  // Coordinator for the Age Mismatch prompt.
+  AgeMismatchSignoutCoordinator* _ageMismatchSignoutCoordinator;
+
+  // Tracks if a sign-out from an age mismatch is currently in progress.
+  BOOL _isAgeMismatchSignoutInProgress;
+}
+
+- (instancetype)initWithSceneUIProvider:(id<SceneUIProvider>)sceneUIProvider {
+  self = [super init];
+  if (self) {
+    _sceneUIProvider = sceneUIProvider;
+    GetApplicationContext()
+        ->GetSystemIdentityManager()
+        ->RegisterExternalPrivacyContextProvider(self);
+  }
+  return self;
+}
+
+- (BOOL)isSignoutInProgress {
+  return _isAgeMismatchSignoutInProgress || _ageMismatchSignoutCoordinator;
+}
+
+#pragma mark - ObservingSceneAgent
+
+- (void)setSceneState:(SceneState*)sceneState {
+  [super setSceneState:sceneState];
+  [self.sceneState.profileState addObserver:self];
+  [self.sceneState.profileState addUIBlockerManagerObserver:self];
+  [self.sceneState.uiBlockerState addObserver:self];
+
+  signin::IdentityManager* identityManager =
+      IdentityManagerFactory::GetForProfile(
+          self.sceneState.profileState.profile);
+  if (identityManager && !_identityManagerObserver) {
+    _identityManagerObserver =
+        std::make_unique<signin::IdentityManagerObserverBridge>(identityManager,
+                                                                self);
+    [self checkPrimaryAccountCanSignInToChromeCapability];
+  }
+}
+
+#pragma mark - SceneStateObserver
+
+- (void)sceneState:(SceneState*)sceneState
+    transitionedToActivationLevel:(SceneActivationLevel)level {
+  [self notifyProviderReadyIfUIAvailable];
+  if (level == SceneActivationLevelForegroundActive) {
+    [self checkPrimaryAccountCanSignInToChromeCapability];
+  }
+}
+
+- (void)sceneStateDidDisableUI:(SceneState*)sceneState {
+  GetApplicationContext()
+      ->GetSystemIdentityManager()
+      ->UnregisterExternalPrivacyContextProvider(self);
+  [self.sceneState.profileState removeUIBlockerManagerObserver:self];
+  [self.sceneState.profileState removeObserver:self];
+  [self.sceneState.uiBlockerState removeObserver:self];
+  [self.sceneState removeObserver:self];
+  _identityManagerObserver.reset();
+  _ageMismatchSignoutCoordinator.delegate = nil;
+  [_ageMismatchSignoutCoordinator stop];
+  _ageMismatchSignoutCoordinator = nil;
+  _applicationUIBlocker.reset();
+}
+
+#pragma mark - SceneUIBlockerStateObserver
+
+- (void)didHideModalOverlay {
+  [self notifyProviderReadyIfUIAvailable];
+}
+
+#pragma mark - ProfileStateObserver
+
+- (void)profileState:(ProfileState*)profileState
+    didTransitionToInitStage:(ProfileInitStage)nextInitStage
+               fromInitStage:(ProfileInitStage)fromInitStage {
+  // The services (including e.g. IdentityManager) are available at this stage.
+  if (nextInitStage >= ProfileInitStage::kProfileLoaded &&
+      !_identityManagerObserver) {
+    signin::IdentityManager* identityManager =
+        IdentityManagerFactory::GetForProfile(
+            self.sceneState.profileState.profile);
+    _identityManagerObserver =
+        std::make_unique<signin::IdentityManagerObserverBridge>(identityManager,
+                                                                self);
+    [self checkPrimaryAccountCanSignInToChromeCapability];
+  }
+  [self notifyProviderReadyIfUIAvailable];
+}
+
+#pragma mark - IdentityManagerObserving
+
+- (void)extendedAccountInfoDidUpdate:(const AccountInfo&)info {
+  signin::IdentityManager* identityManager =
+      IdentityManagerFactory::GetForProfile(
+          self.sceneState.profileState.profile);
+  CHECK(identityManager);
+  if (!identityManager->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
+    return;
+  }
+  CoreAccountInfo primaryAccountInfo =
+      identityManager->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin);
+  if (info.gaia == primaryAccountInfo.gaia) {
+    [self checkPrimaryAccountCanSignInToChromeCapability];
+  }
+}
+
+// Checks CanSignInToChrome for age mismatch when setting the primary account.
+// Needed for profile switches (e.g. from managed accounts) where capabilities
+// are unknown, ensuring immediate signout if the capability is already
+// available.
+- (void)primaryAccountDidChange:
+    (const signin::PrimaryAccountChangeEvent&)event {
+  switch (event.GetEventTypeFor(signin::ConsentLevel::kSignin)) {
+    case signin::PrimaryAccountChangeEvent::Type::kSet:
+      [self checkPrimaryAccountCanSignInToChromeCapability];
+      break;
+    case signin::PrimaryAccountChangeEvent::Type::kNone:
+    case signin::PrimaryAccountChangeEvent::Type::kCleared:
+      break;
+  }
+}
+
+#pragma mark - UIBlockerManagerObserver
+
+- (void)currentUIBlockerRemoved {
+  [self notifyProviderReadyIfUIAvailable];
+}
+
+#pragma mark - AgeMismatchSignoutCoordinatorDelegate
+
+- (void)ageMismatchSignoutCoordinatorUserWantsToStaySignedOut:
+    (AgeMismatchSignoutCoordinator*)coordinator {
+  CHECK_EQ(coordinator, _ageMismatchSignoutCoordinator,
+           base::NotFatalUntil::M153);
+  [self stopAgeMismatchSignoutCoordinator];
+}
+
+- (void)ageMismatchSignoutCoordinatorUserWantsToUseAnotherAccount:
+    (AgeMismatchSignoutCoordinator*)coordinator {
+  CHECK_EQ(coordinator, _ageMismatchSignoutCoordinator,
+           base::NotFatalUntil::M155);
+  // The coordinator should not be stopped while the delegate method is called,
+  // to avoid reentry issues.
+  __weak __typeof(self) weakSelf = self;
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE,
+      base::BindOnce(
+          [](__typeof(self) strong_self) {
+            [strong_self closeAgeMismatchSignoutCoordinatorAndSignin];
+          },
+          weakSelf));
+}
+
+#pragma mark - ExternalPrivacyContextUIProvider
+
+- (UIViewController*)viewControllerForExternalPrivacyContext {
+  if ([self isUIAvailableToShowIOSPrompt]) {
+    return [_sceneUIProvider activeViewController];
+  }
+  return nil;
+}
+
+- (void)blockUIForExternalPrivacyContextBuild {
+  CHECK([self isUIAvailableToShowIOSPrompt]);
+  CHECK(!_applicationUIBlocker);
+  SceneState* sceneState = self.sceneState;
+  _applicationUIBlocker =
+      ScopedUIBlocker::AppScoped(sceneState, sceneState.profileState.appState);
+}
+
+- (void)unblockUIOnExternalPrivacyContextBuilt {
+  _applicationUIBlocker.reset();
+}
+
+#pragma mark - Private
+
+// Checks if the primary account has the capability set to false and triggers
+// sign-out if so. If the capability is true, records the age mismatch sign-out
+// to proper sign-in duration histogram if applicable.
+- (void)checkPrimaryAccountCanSignInToChromeCapability {
+  signin::IdentityManager* identityManager =
+      IdentityManagerFactory::GetForProfile(
+          self.sceneState.profileState.profile);
+  if (!identityManager) {
+    return;
+  }
+  CoreAccountInfo primaryAccountInfo =
+      identityManager->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin);
+  if (primaryAccountInfo.IsEmpty()) {
+    return;
+  }
+
+  AccountInfo accountInfo = identityManager->FindExtendedAccountInfoByAccountId(
+      primaryAccountInfo.account_id);
+  switch (accountInfo.GetAccountCapabilities().can_sign_in_to_chrome()) {
+    case signin::Tribool::kUnknown:
+      break;
+    case signin::Tribool::kFalse: {
+      __weak __typeof(self) weakSelf = self;
+      base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE, base::BindOnce(
+                         [](__typeof(self) strong_self) {
+                           [strong_self handleAgeMismatchSignout];
+                         },
+                         weakSelf));
+      break;
+    }
+    case signin::Tribool::kTrue: {
+      PrefService* localState = GetApplicationContext()->GetLocalState();
+      CHECK(localState);
+      base::Time signoutTime =
+          localState->GetTime(prefs::kAgeMismatchSignoutTimestamp);
+      if (!signoutTime.is_null()) {
+        base::TimeDelta duration = base::Time::Now() - signoutTime;
+        base::UmaHistogramCustomTimes(
+            "Signin.AgeMismatchSignout.TimeToProperSignin", duration,
+            base::Seconds(1), base::Days(14), 50);
+        localState->ClearPref(prefs::kAgeMismatchSignoutTimestamp);
+      }
+      break;
+    }
+  }
+}
+
+- (void)notifyProviderReadyIfUIAvailable {
+  if ([self isUIAvailableToShowIOSPrompt]) {
+    GetApplicationContext()
+        ->GetSystemIdentityManager()
+        ->ExternalPrivacyContextProviderReady(self);
+  }
+}
+
+// Stops `_ageMismatchSignoutCoordinator` and start the sign-in commands.
+- (void)closeAgeMismatchSignoutCoordinatorAndSignin {
+  [self stopAgeMismatchSignoutCoordinator];
+  ShowSigninCommand* command = [[ShowSigninCommand alloc]
+      initWithOperation:AuthenticationOperation::kSigninOnly
+            accessPoint:signin_metrics::AccessPoint::kAgeMismatchSignout];
+  [command addSigninCompletion:^(SigninCoordinator*, SigninCoordinatorResult,
+                                 id<SystemIdentity>){
+      // The completion is required by the API, this is a rare case where there
+      // is no action to do once being signed in.
+  }];
+  id<SceneCommands> sceneCommandsHandler = HandlerForProtocol(
+      self.sceneState.browserProviderInterface.mainBrowserProvider.browser
+          ->GetCommandDispatcher(),
+      SceneCommands);
+  [sceneCommandsHandler showSignin:command
+                baseViewController:[_sceneUIProvider activeViewController]];
+}
+
+- (void)stopAgeMismatchSignoutCoordinator {
+  _applicationUIBlocker.reset();
+  _ageMismatchSignoutCoordinator.delegate = nil;
+  [_ageMismatchSignoutCoordinator stop];
+  _ageMismatchSignoutCoordinator = nil;
+}
+
+// Signs out the user and shows the age mismatch signout UI.
+- (void)handleAgeMismatchSignout {
+  ProfileIOS* profile = self.sceneState.profileState.profile;
+  AuthenticationService* authenticationService =
+      AuthenticationServiceFactory::GetForProfile(profile);
+  if (!authenticationService) {
+    return;
+  }
+
+  id<SystemIdentity> primaryIdentity =
+      authenticationService->GetPrimaryIdentity();
+
+  if (primaryIdentity && !_isAgeMismatchSignoutInProgress) {
+    _isAgeMismatchSignoutInProgress = YES;
+
+    SceneState* sceneState = self.sceneState;
+    _applicationUIBlocker = ScopedUIBlocker::AppScoped(
+        sceneState, sceneState.profileState.appState);
+
+    signin::SignoutCompletion signoutCompletion =
+        base::BindOnce(&SignOutDoneForSceneState, primaryIdentity);
+    signin::MultiProfileSignOutForProfile(
+        profile, self.sceneState.sceneSessionID,
+        signin_metrics::ProfileSignout::kSignoutFromCanSignInToChromeCapability,
+        std::move(signoutCompletion));
+  }
+}
+
+// Whether the UI is available to show an iOS prompt, which could be displayed
+// when External Privacy Contexts are being built.
+- (BOOL)isUIAvailableToShowIOSPrompt {
+  if (self.sceneState.profileState.initStage < ProfileInitStage::kFinal) {
+    return NO;
+  }
+
+  if (self.sceneState.activationLevel < SceneActivationLevelForegroundActive) {
+    return NO;
+  }
+
+  if (self.isSignoutInProgress) {
+    return NO;
+  }
+
+  if (self.sceneState.profileState.currentUIBlocker) {
+    return NO;
+  }
+
+  if (self.sceneState.signinInProgress) {
+    return NO;
+  }
+
+  return YES;
+}
+
+- (void)ageMismatchSignOutDoneFromIdentity:(id<SystemIdentity>)identity {
+  PrefService* localState = GetApplicationContext()->GetLocalState();
+  CHECK(localState);
+  if (localState->GetTime(prefs::kAgeMismatchSignoutTimestamp).is_null()) {
+    localState->SetTime(prefs::kAgeMismatchSignoutTimestamp, base::Time::Now());
+  }
+  if (_isAgeMismatchSignoutInProgress) {
+    // This case is when there was no profile switching during sign-out.
+    // This method is called on the scene agent who triggered the sign-out flow.
+    CHECK(_applicationUIBlocker, base::NotFatalUntil::M155);
+    // Sign-out is done.
+    _isAgeMismatchSignoutInProgress = NO;
+  } else {
+    // This case is when there was a profile switching during sign-out.
+    // This method is called on the newly created scene agent. This scene agent
+    // didn't trigger the sign-out. But it needs to finish the workflow.
+    CHECK(!_applicationUIBlocker, base::NotFatalUntil::M155);
+    SceneState* sceneState = self.sceneState;
+    _applicationUIBlocker = ScopedUIBlocker::AppScoped(
+        sceneState, sceneState.profileState.appState);
+  }
+  CHECK(!_ageMismatchSignoutCoordinator, base::NotFatalUntil::M155);
+  // Show the age mismatch signout screen.
+  _ageMismatchSignoutCoordinator = [[AgeMismatchSignoutCoordinator alloc]
+      initWithBaseViewController:[_sceneUIProvider activeViewController]
+                         browser:self.sceneState.browserProviderInterface
+                                     .mainBrowserProvider.browser
+                        identity:identity
+                            mode:AgeMismatchPromptMode::kStandard];
+  _ageMismatchSignoutCoordinator.delegate = self;
+  [_ageMismatchSignoutCoordinator start];
+}
+
+@end

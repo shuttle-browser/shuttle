@@ -1,0 +1,210 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.page_info;
+
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import android.content.Context;
+import android.view.View;
+
+import androidx.annotation.Nullable;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.robolectric.RobolectricTestRunner;
+
+import org.chromium.base.ContextUtils;
+import org.chromium.base.test.BaseRobolectricTestRule;
+import org.chromium.base.test.util.HistogramWatcher;
+import org.chromium.components.browser_ui.site_settings.BaseSiteSettingsFragment;
+import org.chromium.components.content_settings.ContentSetting;
+import org.chromium.components.content_settings.ContentSettingsType;
+import org.chromium.components.page_info.PageInfoControllerDelegate;
+import org.chromium.components.page_info.PageInfoMainController;
+import org.chromium.components.page_info.PageInfoPermissionsController;
+import org.chromium.components.page_info.PageInfoPermissionsController.PermissionObject;
+import org.chromium.components.page_info.PageInfoRowView;
+import org.chromium.components.permissions.AndroidPermissionRequester;
+import org.chromium.components.permissions.PermissionUtil;
+import org.chromium.components.permissions.PermissionUtilJni;
+import org.chromium.content_public.browser.WebContents;
+import org.chromium.ui.base.WindowAndroid;
+import org.chromium.url.GURL;
+
+import java.util.Arrays;
+
+/** Tests for PageInfoPermissionsController. */
+@RunWith(RobolectricTestRunner.class)
+public class PageInfoPermissionsControllerTest {
+    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+    @Rule public BaseRobolectricTestRule mBaseRule = new BaseRobolectricTestRule();
+
+    @Mock private PageInfoMainController mMainController;
+    @Mock private PageInfoRowView mRowView;
+    @Mock private PageInfoControllerDelegate mDelegate;
+    @Mock private WebContents mWebContents;
+    @Mock private WindowAndroid mWindowAndroid;
+    @Mock private Context mContext;
+    @Mock private PermissionUtil.Natives mPermissionUtilJni;
+
+    private GURL mPageUrl;
+    private PageInfoPermissionsController mController;
+    private boolean mRequestAndroidPermissionsResult;
+    private AndroidPermissionRequester.RequestDelegate mRequestDelegateCaptured;
+
+    @Before
+    public void setUp() {
+        PermissionUtilJni.setInstanceForTesting(mPermissionUtilJni);
+        mPageUrl = new GURL("https://example.com");
+
+        when(mRowView.getContext()).thenReturn(mContext);
+        when(mContext.getResources())
+                .thenReturn(ContextUtils.getApplicationContext().getResources());
+        when(mMainController.getURL()).thenReturn(mPageUrl);
+        when(mWebContents.getTopLevelNativeWindow()).thenReturn(mWindowAndroid);
+
+        mController =
+                new PageInfoPermissionsController(
+                        mMainController,
+                        mRowView,
+                        mDelegate,
+                        mWebContents,
+                        ContentSettingsType.NOTIFICATIONS) {
+                    @Override
+                    protected boolean requestAndroidPermissions(
+                            WindowAndroid windowAndroid,
+                            int[] contentSettingsTypes,
+                            AndroidPermissionRequester.RequestDelegate delegate) {
+                        mRequestDelegateCaptured = delegate;
+                        return mRequestAndroidPermissionsResult;
+                    }
+
+                    @Override
+                    protected boolean canCreateSubpageFragment() {
+                        return true;
+                    }
+
+                    @Override
+                    protected @Nullable View addSubpageFragment(BaseSiteSettingsFragment fragment) {
+                        return null;
+                    }
+
+                    @Override
+                    protected void removeSubpageFragment() {}
+                };
+    }
+
+    @After
+    public void tearDown() {
+        PermissionUtilJni.setInstanceForTesting(null);
+    }
+
+    @Test
+    public void testOnNotificationSubscribeClicked_RequestsPermission_Granted() {
+        when(mPermissionUtilJni.resolveNotificationsPermissionRequest(
+                        mWebContents, mPageUrl, ContentSetting.ALLOW))
+                .thenReturn(true);
+        mRequestAndroidPermissionsResult = true;
+        HistogramWatcher histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Permissions.ClapperLoud.PageInfo.OsPromptResolved", true);
+
+        mController.onNotificationSubscribeClicked();
+
+        mRequestDelegateCaptured.onAndroidPermissionAccepted();
+
+        verify(mPermissionUtilJni)
+                .resolveNotificationsPermissionRequest(
+                        mWebContents, mPageUrl, ContentSetting.ALLOW);
+        histogramWatcher.assertExpected();
+    }
+
+    @Test
+    public void testOnNotificationSubscribeClicked_RequestsPermission_OS_Level_Canceled() {
+        mRequestAndroidPermissionsResult = true;
+        HistogramWatcher histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Permissions.ClapperLoud.PageInfo.OsPromptResolved", false);
+
+        mController.onNotificationSubscribeClicked();
+
+        mRequestDelegateCaptured.onAndroidPermissionCanceled();
+
+        verify(mPermissionUtilJni).dismissNotificationsPermissionRequest(mWebContents, mPageUrl);
+        histogramWatcher.assertExpected();
+    }
+
+    @Test
+    public void testOnNotificationSubscribeClicked_PermissionAlreadyGranted() {
+        when(mPermissionUtilJni.resolveNotificationsPermissionRequest(
+                        mWebContents, mPageUrl, ContentSetting.ALLOW))
+                .thenReturn(true);
+        mRequestAndroidPermissionsResult = false;
+        mController.onNotificationSubscribeClicked();
+
+        verify(mPermissionUtilJni)
+                .resolveNotificationsPermissionRequest(
+                        mWebContents, mPageUrl, ContentSetting.ALLOW);
+    }
+
+    @Test
+    public void testOnNotificationSubscribeClicked_NullWindow() {
+        when(mPermissionUtilJni.resolveNotificationsPermissionRequest(
+                        mWebContents, mPageUrl, ContentSetting.ALLOW))
+                .thenReturn(true);
+        when(mWebContents.getTopLevelNativeWindow()).thenReturn(null);
+
+        mController.onNotificationSubscribeClicked();
+
+        verify(mPermissionUtilJni)
+                .resolveNotificationsPermissionRequest(
+                        mWebContents, mPageUrl, ContentSetting.ALLOW);
+    }
+
+    @Test
+    public void testOnSubpageRemoved_RequestsPermission_Denied() throws Exception {
+        PermissionObject permission =
+                new PermissionObject(
+                        ContentSettingsType.NOTIFICATIONS,
+                        "Notifications",
+                        "notifications",
+                        /* allowed= */ false,
+                        /* warningTextResource= */ 0,
+                        /* requested= */ true);
+        mController.setPermissions(Arrays.asList(permission));
+
+        mController.onSubpageRemoved();
+
+        verify(mPermissionUtilJni)
+                .resolveNotificationsPermissionRequest(
+                        mWebContents, mPageUrl, ContentSetting.BLOCK);
+    }
+
+    @Test
+    public void testOnPermissionsReset_RequestsPermission_Revoked() {
+        PermissionObject permission =
+                new PermissionObject(
+                        ContentSettingsType.NOTIFICATIONS,
+                        "Notifications",
+                        "notifications",
+                        /* allowed= */ false,
+                        /* warningTextResource= */ 0,
+                        /* requested= */ true);
+        mController.setPermissions(Arrays.asList(permission));
+
+        mController.onPermissionsReset();
+
+        verify(mPermissionUtilJni)
+                .resolveNotificationsPermissionRequest(
+                        mWebContents, mPageUrl, ContentSetting.DEFAULT);
+    }
+}

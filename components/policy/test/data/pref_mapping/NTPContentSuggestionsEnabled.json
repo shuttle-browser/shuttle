@@ -1,0 +1,15 @@
+[
+  {
+    "os": [
+      "android"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "ntp_snippets.enable",
+      "default_value": true,
+      "values_to_test": [
+        true,
+        false
+      ]
+    }
+  }
+]

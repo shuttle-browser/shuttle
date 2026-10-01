@@ -1,0 +1,274 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/user_education/browser_help_bubble.h"
+
+#include <string>
+
+#include "base/types/pass_key.h"
+#include "chrome/app/chrome_command_ids.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+#include "chrome/browser/ui/color/chrome_color_id.h"
+#include "chrome/browser/ui/focus/browser_focus_controller.h"
+#include "chrome/browser/ui/views/chrome_typography.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/user_education/impl/browser_feature_promo_controller.h"
+#include "chrome/browser/user_education/user_education_service.h"
+#include "chrome/browser/user_education/user_education_service_factory.h"
+#include "chrome/grit/generated_resources.h"
+#include "components/tabs/public/tab_interface.h"
+#include "components/user_education/common/feature_promo/feature_promo_controller.h"
+#include "components/user_education/common/tutorial/tutorial_service.h"
+#include "components/user_education/webui/help_bubble_handler.h"
+#include "components/user_education/webui/help_bubble_webui.h"
+#include "ui/base/accelerators/accelerator.h"
+#include "ui/base/interaction/safe_castable.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/views/accessibility/view_accessibility.h"
+#include "ui/views/accessible_pane_view.h"
+#include "ui/views/interaction/element_tracker_views.h"
+#include "ui/views/view_utils.h"
+#include "ui/webui/tracked_element/tracked_element_handler.h"
+#include "ui/webui/tracked_element/tracked_element_web_ui.h"
+
+WEB_CONTENTS_USER_DATA_KEY_IMPL(ForceWebUIHelpBubbles);
+
+ForceWebUIHelpBubbles::ForceWebUIHelpBubbles(content::WebContents* contents)
+    : content::WebContentsUserData<ForceWebUIHelpBubbles>(*contents) {}
+ForceWebUIHelpBubbles::~ForceWebUIHelpBubbles() = default;
+
+void ForceWebUIHelpBubbles::SetForceWebUIForAnchors(
+    std::initializer_list<ui::ElementIdentifier> help_bubble_anchors) {
+  forced_anchors_.insert(help_bubble_anchors.begin(),
+                         help_bubble_anchors.end());
+}
+
+bool ForceWebUIHelpBubbles::ShouldForceWebUIForAnchor(
+    ui::ElementIdentifier anchor_id) const {
+  return forced_anchors_.contains(anchor_id);
+}
+
+BrowserHelpBubbleDelegate::BrowserHelpBubbleDelegate() = default;
+BrowserHelpBubbleDelegate::~BrowserHelpBubbleDelegate() = default;
+
+std::vector<ui::Accelerator>
+BrowserHelpBubbleDelegate::GetPaneNavigationAccelerators(
+    ui::TrackedElement* anchor_element) const {
+  std::vector<ui::Accelerator> result;
+  if (anchor_element->IsA<views::TrackedElementViews>()) {
+    auto* widget =
+        anchor_element->AsA<views::TrackedElementViews>()->view()->GetWidget();
+    if (widget) {
+      auto* const client_view = widget->GetPrimaryWindowWidget()->client_view();
+      if (client_view && views::IsViewClass<BrowserView>(client_view)) {
+        auto* const browser_view = static_cast<BrowserView*>(client_view);
+        ui::Accelerator accel;
+        if (browser_view->GetAccelerator(IDC_FOCUS_NEXT_PANE, &accel)) {
+          result.push_back(accel);
+        }
+        if (browser_view->GetAccelerator(IDC_FOCUS_PREVIOUS_PANE, &accel)) {
+          result.push_back(accel);
+        }
+        if (browser_view->GetAccelerator(
+                IDC_FOCUS_INACTIVE_POPUP_FOR_ACCESSIBILITY, &accel)) {
+          result.push_back(accel);
+        }
+      }
+    }
+  }
+  return result;
+}
+
+int BrowserHelpBubbleDelegate::GetTitleTextContext() const {
+  return ChromeTextContext::CONTEXT_IPH_BUBBLE_TITLE;
+}
+int BrowserHelpBubbleDelegate::GetBodyTextContext() const {
+  return ChromeTextContext::CONTEXT_IPH_BUBBLE_BODY;
+}
+
+// These methods return color codes that will be handled by the app's theming
+// system.
+ui::ColorId BrowserHelpBubbleDelegate::GetHelpBubbleBackgroundColorId() const {
+  return kColorFeaturePromoBubbleBackground;
+}
+ui::ColorId BrowserHelpBubbleDelegate::GetHelpBubbleForegroundColorId() const {
+  return kColorFeaturePromoBubbleForeground;
+}
+ui::ColorId
+BrowserHelpBubbleDelegate::GetHelpBubbleDefaultButtonBackgroundColorId() const {
+  return kColorFeaturePromoBubbleDefaultButtonBackground;
+}
+ui::ColorId
+BrowserHelpBubbleDelegate::GetHelpBubbleDefaultButtonForegroundColorId() const {
+  return kColorFeaturePromoBubbleDefaultButtonForeground;
+}
+ui::ColorId BrowserHelpBubbleDelegate::GetHelpBubbleButtonBorderColorId()
+    const {
+  return kColorFeaturePromoBubbleButtonBorder;
+}
+ui::ColorId BrowserHelpBubbleDelegate::GetHelpBubbleCloseButtonInkDropColorId()
+    const {
+  return kColorFeaturePromoBubbleCloseButtonInkDrop;
+}
+
+TabWebUIHelpBubbleFactoryBrowser::TabWebUIHelpBubbleFactoryBrowser() = default;
+TabWebUIHelpBubbleFactoryBrowser::~TabWebUIHelpBubbleFactoryBrowser() = default;
+
+std::unique_ptr<user_education::HelpBubble>
+TabWebUIHelpBubbleFactoryBrowser::CreateBubble(
+    ui::TrackedElement* element,
+    user_education::HelpBubbleParams params) {
+  const bool focus =
+      params.focus_on_show_hint.value_or(!params.buttons.empty());
+  auto result =
+      HelpBubbleFactoryWebUI::CreateBubble(element, std::move(params));
+
+  // Some bubbles should start focused.
+  if (result && focus) {
+    // Assuming the help bubble is in the active web contents in a browser
+    // window, in order to be consistent with other help bubbles, we should
+    // ensure the contents pane is focused.
+    if (const auto* const contents =
+            result->AsA<user_education::HelpBubbleWebUI>()->GetWebContents()) {
+      if (BrowserWindowInterface* browser =
+              GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
+                  contents)) {
+        if (browser->GetActiveTabInterface() &&
+            browser->GetActiveTabInterface()->GetContents() == contents) {
+          BrowserFocusController::From(browser)->FocusWebContentsPane();
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+DEFINE_SAFE_CAST_TARGET(TabWebUIHelpBubbleFactoryBrowser)
+
+FloatingWebUIHelpBubbleFactoryBrowser::FloatingWebUIHelpBubbleFactoryBrowser(
+    const user_education::HelpBubbleDelegate* delegate)
+    : FloatingWebUIHelpBubbleFactory(delegate) {}
+FloatingWebUIHelpBubbleFactoryBrowser::
+    ~FloatingWebUIHelpBubbleFactoryBrowser() = default;
+
+bool FloatingWebUIHelpBubbleFactoryBrowser::CanBuildBubbleForTrackedElement(
+    const ui::TrackedElement* element) const {
+  if (!element->IsA<ui::TrackedElementWebUI>()) {
+    return false;
+  }
+
+  // If this is a WebUI in a tab, then don't use this factory.
+  const auto* contents =
+      element->AsA<ui::TrackedElementWebUI>()->handler()->web_contents();
+  if (contents) {
+    if (auto* forced = ForceWebUIHelpBubbles::FromWebContents(contents)) {
+      if (forced->ShouldForceWebUIForAnchor(element->identifier())) {
+        return false;
+      }
+    }
+  }
+  // Note: this checks all tabs for their WebContents.
+  if (GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(contents)) {
+    return false;
+  }
+
+  // Ensure that this WebUI fulfils the requirements for a floating help
+  // bubble.
+  return FloatingWebUIHelpBubbleFactory::CanBuildBubbleForTrackedElement(
+      element);
+}
+
+// static
+void BrowserHelpBubble::MaybeCloseOverlappingHelpBubbles(
+    const views::View* view) {
+  const gfx::Rect bounds = view->GetBoundsInScreen();
+  auto* const browser = BrowserFeaturePromoController::GetBrowserForView(view);
+  MaybeCloseOverlappingHelpBubbles(browser, bounds);
+}
+
+// static
+void BrowserHelpBubble::MaybeCloseOverlappingHelpBubbles(
+    BrowserWindowInterface* browser,
+    const gfx::Rect& bounds_in_screen) {
+  if (!browser) {
+    return;
+  }
+
+  auto* const service =
+      UserEducationServiceFactory::GetForBrowserContext(browser->GetProfile());
+  if (!service) {
+    return;
+  }
+
+
+  if (auto* const controller = service->GetFeaturePromoController(
+          base::PassKey<BrowserHelpBubble>())) {
+    static_cast<user_education::FeaturePromoControllerImpl*>(controller)
+        ->DismissNonCriticalBubbleInRegion(bounds_in_screen);
+  }
+
+  service->tutorial_service().DismissBubbleInRegion(bounds_in_screen);
+}
+
+// static
+std::u16string BrowserHelpBubble::GetFocusHelpBubbleScreenReaderHint(
+    user_education::FeaturePromoSpecification::PromoType promo_type,
+    const ui::AcceleratorProvider* accelerator_provider,
+    ui::TrackedElement* anchor_element) {
+  // No message is required as this is a background bubble with a
+  // screen reader-specific prompt and will dismiss itself.
+  if (promo_type ==
+      user_education::FeaturePromoSpecification::PromoType::kToast) {
+    return std::u16string();
+  }
+
+  const std::u16string accelerator_text =
+      GetFocusBubbleAcceleratorText(accelerator_provider);
+
+  // Present the user with the full help bubble navigation shortcut.
+  auto* const anchor_view = anchor_element->AsA<views::TrackedElementViews>();
+  if (promo_type ==
+          user_education::FeaturePromoSpecification::PromoType::kTutorial ||
+      (anchor_view &&
+       (anchor_view->view()
+            ->GetViewAccessibility()
+            .IsAccessibilityFocusable() ||
+        views::IsViewClass<views::AccessiblePaneView>(anchor_view->view())))) {
+    return l10n_util::GetStringFUTF16(IDS_FOCUS_HELP_BUBBLE_TOGGLE_DESCRIPTION,
+                                      accelerator_text);
+  }
+
+  // Present the user with an abridged help bubble navigation shortcut.
+  return l10n_util::GetStringFUTF16(IDS_FOCUS_HELP_BUBBLE_DESCRIPTION,
+                                    accelerator_text);
+}
+
+// static
+std::u16string BrowserHelpBubble::GetFocusTutorialBubbleScreenReaderHint(
+    const ui::AcceleratorProvider* accelerator_provider) {
+  const std::u16string accelerator_text =
+      GetFocusBubbleAcceleratorText(accelerator_provider);
+  return l10n_util::GetStringFUTF16(IDS_FOCUS_HELP_BUBBLE_TUTORIAL_DESCRIPTION,
+                                    accelerator_text);
+}
+
+// static
+std::u16string BrowserHelpBubble::GetFocusBubbleAcceleratorText(
+    const ui::AcceleratorProvider* provider) {
+  ui::Accelerator accelerator;
+#if BUILDFLAG(IS_CHROMEOS)
+  // IDC_FOCUS_NEXT_PANE still reports as F6 on ChromeOS, but many ChromeOS
+  // devices do not have function keys. Therefore, instead prompt the other
+  // accelerator that does the same thing.
+  static const auto kAccelerator = IDC_FOCUS_INACTIVE_POPUP_FOR_ACCESSIBILITY;
+#else
+  static const auto kAccelerator = IDC_FOCUS_NEXT_PANE;
+#endif
+  CHECK(provider->GetAcceleratorForCommandId(kAccelerator, &accelerator));
+  return accelerator.GetShortcutText();
+}
+
+DEFINE_SAFE_CAST_TARGET(FloatingWebUIHelpBubbleFactoryBrowser)

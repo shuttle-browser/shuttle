@@ -1,0 +1,130 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/android/compositor/scene_layer/scrolling_bottom_view_scene_layer.h"
+
+#include "base/android/jni_android.h"
+#include "base/android/jni_array.h"
+#include "cc/input/android/offset_tag_android.h"
+#include "cc/slim/layer.h"
+#include "cc/slim/ui_resource_layer.h"
+#include "components/viz/common/quads/offset_tag.h"
+#include "ui/android/resources/resource_manager_impl.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "chrome/browser/ui/android/toolbar/jni_headers/ScrollingBottomViewSceneLayer_jni.h"
+
+using base::android::JavaRef;
+
+namespace android {
+
+ScrollingBottomViewSceneLayer::ScrollingBottomViewSceneLayer(
+    JNIEnv* env,
+    const JavaRef<jobject>& jobj)
+    : SceneLayer(env, jobj),
+      should_show_background_(false),
+      background_color_(SK_ColorWHITE),
+      view_container_(cc::slim::Layer::Create()),
+      view_layer_(cc::slim::UIResourceLayer::Create()) {
+  layer()->SetIsDrawable(true);
+
+  view_container_->SetIsDrawable(true);
+  view_container_->SetMasksToBounds(true);
+
+  view_layer_->SetIsDrawable(true);
+  view_container_->AddChild(view_layer_);
+}
+
+ScrollingBottomViewSceneLayer::~ScrollingBottomViewSceneLayer() = default;
+
+void ScrollingBottomViewSceneLayer::UpdateScrollingBottomViewLayer(
+    JNIEnv* env,
+    const JavaRef<jobject>& jresource_manager,
+    int32_t view_resource_id,
+    int32_t shadow_height,
+    float x_offset,
+    float y_offset,
+    bool show_shadow,
+    const JavaRef<jobject>& joffset_tag,
+    int32_t bottom_padding,
+    int32_t content_height) {
+  ui::ResourceManager* resource_manager =
+      ui::ResourceManagerImpl::FromJavaObject(jresource_manager);
+  ui::Resource* bottom_view_resource = resource_manager->GetResource(
+      ui::ANDROID_RESOURCE_TYPE_DYNAMIC, view_resource_id);
+
+  // If the resource isn't available, don't bother doing anything else.
+  if (!bottom_view_resource)
+    return;
+
+  view_layer_->SetUIResourceId(bottom_view_resource->ui_resource()->id());
+
+  int effective_content_height =
+      content_height > 0 ? content_height
+                         : (bottom_view_resource->size().height() -
+                            (show_shadow ? shadow_height : 0) - bottom_padding);
+
+  int texture_y_offset = 0;
+  int shadow_offset = 0;
+  if (!show_shadow) {
+    texture_y_offset -= shadow_height;
+  } else {
+    shadow_offset = shadow_height;
+  }
+
+  int container_height =
+      effective_content_height + bottom_padding + shadow_offset;
+
+  view_container_->SetBounds(
+      gfx::Size(bottom_view_resource->size().width(), container_height));
+  view_container_->SetPosition(
+      gfx::PointF(0, y_offset - shadow_offset - effective_content_height));
+
+  viz::OffsetTag offset_tag = cc::android::FromJavaOffsetTag(env, joffset_tag);
+  view_container_->SetOffsetTag(offset_tag);
+
+  // The view's layer should be the same size as the texture.
+  view_layer_->SetBounds(gfx::Size(bottom_view_resource->size().width(),
+                                   bottom_view_resource->size().height()));
+  view_layer_->SetPosition(gfx::PointF(x_offset, texture_y_offset));
+}
+
+void ScrollingBottomViewSceneLayer::SetContentTree(
+    JNIEnv* env,
+    const JavaRef<jobject>& jcontent_tree) {
+  SceneLayer* content_tree = FromJavaObject(env, jcontent_tree);
+  if (!content_tree || !content_tree->layer())
+    return;
+
+  if (!content_tree->layer()->parent() ||
+      (content_tree->layer()->parent()->id() != layer_->id())) {
+    layer_->AddChild(content_tree->layer());
+    layer_->AddChild(view_container_);
+  }
+
+  // Propagate the background color up from the content layer.
+  should_show_background_ = content_tree->ShouldShowBackground();
+  background_color_ = content_tree->GetBackgroundColor();
+}
+
+SkColor ScrollingBottomViewSceneLayer::GetBackgroundColor() {
+  return background_color_;
+}
+
+bool ScrollingBottomViewSceneLayer::ShouldShowBackground() {
+  return should_show_background_;
+}
+
+static int64_t JNI_ScrollingBottomViewSceneLayer_Init(
+    JNIEnv* env,
+    const JavaRef<jobject>& jobj) {
+  // This will automatically bind to the Java object and pass ownership there.
+  ScrollingBottomViewSceneLayer* scene_layer =
+      new ScrollingBottomViewSceneLayer(env, jobj);
+  return reinterpret_cast<intptr_t>(scene_layer);
+}
+
+}  // namespace android
+
+DEFINE_JNI(ScrollingBottomViewSceneLayer)

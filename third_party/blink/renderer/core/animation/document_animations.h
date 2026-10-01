@@ -1,0 +1,186 @@
+/*
+ * Copyright (C) 2013 Google Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following disclaimer
+ * in the documentation and/or other materials provided with the
+ * distribution.
+ *     * Neither the name of Google Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#ifndef THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_DOCUMENT_ANIMATIONS_H_
+#define THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_DOCUMENT_ANIMATIONS_H_
+
+#include <optional>
+
+#include "third_party/blink/renderer/core/animation/animation.h"
+#include "third_party/blink/renderer/core/animation/css/css_animation.h"
+#include "third_party/blink/renderer/core/animation/css/css_timeline_map.h"
+#include "third_party/blink/renderer/core/animation/deferred_timeline.h"
+#include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/dom/document_lifecycle.h"
+#include "third_party/blink/renderer/core/dom/trigger_scoped_name.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_vector.h"
+#include "third_party/blink/renderer/platform/heap/member.h"
+#include "third_party/blink/renderer/platform/heap/persistent.h"
+
+namespace blink {
+
+class AnimationTimeline;
+class Document;
+class PaintArtifactCompositor;
+
+class CORE_EXPORT SVGImageAnimationsToReset final
+    : public GarbageCollected<SVGImageAnimationsToReset> {
+ public:
+  void Trace(Visitor* visitor) const;
+
+  void Clear();
+  void Add(CSSAnimation&);
+  void Resume();
+
+  bool HasAnimationsForTesting() const {
+    return !animations_to_resume_.empty();
+  }
+  bool HasAnimationForTesting(const CSSAnimation&) const;
+
+ private:
+  HeapVector<Member<CSSAnimation>> animations_to_resume_;
+};
+
+class CORE_EXPORT DocumentAnimations final
+    : public GarbageCollected<DocumentAnimations> {
+ public:
+  DocumentAnimations(Document*);
+  ~DocumentAnimations() = default;
+
+  uint64_t TransitionGeneration() const {
+    return current_transition_generation_;
+  }
+  void IncrementTrasitionGeneration() { current_transition_generation_++; }
+  void AddTimeline(AnimationTimeline&);
+  void UpdateAnimationTimingForAnimationFrame();
+  bool NeedsAnimationTimingUpdate();
+  void UpdateAnimationTimingIfNeeded();
+  void GetAnimationsTargetingTreeScope(HeapVector<Member<Animation>>&,
+                                       const TreeScope&);
+
+  void RetargetAnimationsForPseudoElement(PseudoElement* new_effect_target);
+
+  // Updates existing animations as part of generating a new (document
+  // lifecycle) frame. Note that this considers and updates state for
+  // both composited and non-composited animations.
+  void UpdateAnimations(
+      DocumentLifecycle::LifecycleState required_lifecycle_state,
+      const PaintArtifactCompositor*,
+      bool compositor_properties_updated);
+
+  size_t GetAnimationsCount();
+
+  void MarkAnimationsCompositorPending();
+
+  HeapVector<Member<Animation>> getAnimations(const TreeScope&);
+  void PrepareAnimationsForSVGImageReset(
+      SVGImageAnimationsToReset& animations_to_reset);
+
+  // Detach compositor timelines to prevent further ticking of any animations
+  // associated with the timelines.  Detached timelines may be subsequently
+  // reattached if needed.
+  void DetachCompositorTimelines();
+
+  // Detach animation triggers on the compositor.
+  void DetachCompositorTriggers();
+
+  const HeapHashSet<WeakMember<AnimationTimeline>>& GetTimelinesForTesting()
+      const {
+    return timelines_;
+  }
+
+  using TriggerAttachmentMap =
+      HeapHashMap<Member<const TriggerScopedName>,
+                  std::pair<Member<AnimationTrigger>,
+                            Member<const StyleTriggerAttachment>>>;
+  static void FindRelevantTriggerAttachments(
+      CSSAnimation& animation,
+      TriggerScopedNameMap& global_trigger_map,
+      TriggerAttachmentMap& relevant_attachments_out);
+  static void UpdateTriggerAttachments(
+      CSSAnimation& animation,
+      const TriggerAttachmentMap& relevant_attachments);
+
+  void AddAnimationTrigger(AnimationTrigger& trigger);
+
+  // This attaches CSS Animations to AnimationTriggers declared by
+  // trigger-instantiating properties like timeline-trigger or event-trigger.
+  // It matches the CSS Animations to the AnimationTriggers by matching the
+  // names declared in the trigger-instantiating property with the names
+  // declared in the animation-trigger property.
+  void UpdateAnimationTriggerAttachments();
+  void AddCSSAnimationNeedingTriggerAttachment(CSSAnimation* animation);
+
+  const HeapHashSet<WeakMember<CSSAnimation>>&
+  CSSAnimationsNeedingTriggerAttachmentForTesting() const {
+    return css_animations_needing_trigger_attachment_;
+  }
+
+  void UpdateCompositorAnimationTriggers(
+      const PaintArtifactCompositor* paint_artifact_compositor);
+
+  DeferredTimeline& GetGlobalDeferredTimeline(const AtomicString& name) {
+    return *global_deferred_timelines_.Find(*document_, name);
+  }
+
+  uint64_t current_transition_generation_;
+  void Trace(Visitor*) const;
+
+ protected:
+  using ReplaceableAnimationsMap =
+      HeapHashMap<Member<Element>, Member<GCedHeapVector<Member<Animation>>>>;
+  void RemoveReplacedAnimations(ReplaceableAnimationsMap*);
+
+ private:
+  void MarkPendingIfCompositorPropertyAnimationChanges(
+      const PaintArtifactCompositor*);
+
+  Member<Document> document_;
+  HeapHashSet<WeakMember<AnimationTimeline>> timelines_;
+  HeapHashSet<WeakMember<AnimationTrigger>> triggers_;
+  // Animations which should be attached to triggers after style and layout
+  // updates.
+  HeapHashSet<WeakMember<CSSAnimation>>
+      css_animations_needing_trigger_attachment_;
+  // In the new timeline name scoping model, names have document-global
+  // visibility by default. This is implementing by having CSSAnimations::
+  // FindAncestor[Deferred]Timeline() look up names in this map
+  // as a last resort.
+  //
+  // Only used when the CSSTimelineScopeGlobal flag is enabled.
+  CSSDeferredTimelineMap global_deferred_timelines_{StyleTimelineScope{
+      StyleTimelineScope::Type::kAll, /*names=*/Vector<AtomicString>()}};
+};
+
+}  // namespace blink
+
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_DOCUMENT_ANIMATIONS_H_

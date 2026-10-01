@@ -1,0 +1,193 @@
+// Copyright (C) 2023 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Cronet handles all of its licenses declaration in the top level Android.bp and
+// LICENSE files (//external/cronet/Android.bp and //external/cronet/LICENSE).
+// Boringsll's license can also be found at
+// //external/cronet/third_party/boringssl/src/LICENSE.
+
+package {
+    default_visibility: [
+        "//external/cronet:__subpackages__",
+        "//packages/modules/Connectivity/Tethering:__subpackages__",
+    ],
+    // See: http://go/android-license-faq
+    // A large-scale-change added 'default_applicable_licenses' to import
+    // all of the 'license_kinds' from "external_cronet_license"
+    // to get the below license kinds:
+    //   legacy_unencumbered
+    //   SPDX-license-identifier-Apache-2.0
+    //   SPDX-license-identifier-BSD
+    //   SPDX-license-identifier-BSD-3-Clause
+    //   SPDX-license-identifier-ISC
+    //   SPDX-license-identifier-MIT
+    //   SPDX-license-identifier-OpenSSL
+    default_applicable_licenses: ["external_cronet_license"],
+}
+
+build = ["sources.bp"]
+
+cc_defaults {
+    name: "${GN2BP_MODULE_PREFIX}boringssl_defaults",
+    stl: "none",
+    apex_available: [
+        "com.android.tethering",
+    ],
+    min_sdk_version: "30",
+    include_dirs: [
+        "external/cronet/${GN2BP_IMPORT_CHANNEL}/buildtools/third_party/libc++/",
+        "external/cronet/${GN2BP_IMPORT_CHANNEL}/third_party/libc++/src/include",
+        "external/cronet/${GN2BP_IMPORT_CHANNEL}/third_party/libc++abi/src/include",
+    ],
+    static_libs: [
+        "${GN2BP_MODULE_PREFIX}buildtools_third_party_libc___libc__",
+        "${GN2BP_MODULE_PREFIX}buildtools_third_party_libc__abi_libc__abi"
+    ],
+    local_include_dirs: ["src/include"],
+    export_include_dirs: ["src/include"],
+}
+
+cc_defaults {
+    name: "${GN2BP_MODULE_PREFIX}libcrypto_defaults",
+    defaults: ["${GN2BP_MODULE_PREFIX}third_party_boringssl_boringssl__flags_libcrypto"],
+    target: {
+        android: {
+            cflags: ["-DBORINGSSL_SHARED_LIBRARY"],
+            // On FIPS builds (i.e. Android only) prevent other libraries
+            // from pre-empting symbols in libcrypto which could affect FIPS
+            // compliance and cause integrity checks to fail. See b/160231064.
+            ldflags: ["-Wl,-Bsymbolic"],
+        },
+    },
+    // Disable native coverage to prevent linker errors in coverage builds.
+    // The FIPS module (${GN2BP_MODULE_PREFIX}bcm_object) is built without coverage.
+    // This is because of the usage of cc_objects which implicitly disables coverage (b/270027426).
+    // If the rest of libcrypto is built with coverage, LLD prefers the coverage
+    // versions of C++ templates and discards the duplicate templates inside
+    // bcm_object.o. Because bcm_object.o is partially linked (ld -r), discarding
+    // its templates accidentally discards its entire .text section.
+    // See b/520364006 for more information.
+    native_coverage: false,
+    local_include_dirs: ["src/crypto"],
+}
+
+cc_object {
+    name: "${GN2BP_MODULE_PREFIX}bcm_object",
+    defaults: [
+        "${GN2BP_MODULE_PREFIX}boringssl_defaults",
+        "${GN2BP_MODULE_PREFIX}libcrypto_bcm_sources",
+        "${GN2BP_MODULE_PREFIX}libcrypto_defaults",
+    ],
+    sanitize: {
+        address: false,
+        hwaddress: false,
+        // This is a placeholder
+        // to help prevent
+        // merge conflicts.
+        memtag_stack: false,
+        // This is a placeholder
+        // to help prevent
+        // merge conflicts.
+        fuzzer: false,
+        memtag_globals: false,
+    },
+    target: {
+        android: {
+            cflags: [
+                "-DBORINGSSL_FIPS",
+                "-fPIC",
+                // -fno[data|text]-sections required to ensure a
+                // single text and data section for FIPS integrity check
+                "-fno-data-sections",
+                "-fno-function-sections",
+            ],
+            linker_script: "src/crypto/fipsmodule/fips_shared.lds",
+        },
+        // From //external/boringssl: Temporary hack to let BoringSSL build with a new compiler.
+        // This doesn't enable HWASAN unconditionally, it just causes
+        // BoringSSL's asm code to unconditionally use a HWASAN-compatible
+        // global variable reference so that the non-HWASANified (because of
+        // sanitize: { hwaddress: false } above) code in the BCM can
+        // successfully link against the HWASANified code in the rest of
+        // BoringSSL in HWASAN builds.
+        android_arm64: {
+            asflags: [
+                "-fsanitize=hwaddress",
+            ],
+        },
+    },
+}
+
+// libcrypto must be compiled as a separate shared library to pass the
+// FIPS integrity test (POST). the FIPS self-check mechanism requires the
+// crypto code to be in its own segregated block so that its integrity can
+// be verified. All other components of boringSSL should be statically
+// linked to the main shared library.
+//
+// See https://boringssl.googlesource.com/boringssl/+/master/crypto/fipsmodule/FIPS.md#shared-build
+// for more information on FIPS compliance.
+cc_defaults {
+    name: "${GN2BP_MODULE_PREFIX}libcrypto_shared_library_defaults",
+    defaults: [
+        "${GN2BP_MODULE_PREFIX}boringssl_defaults",
+        "${GN2BP_MODULE_PREFIX}libcrypto_defaults",
+        "${GN2BP_MODULE_PREFIX}libcrypto_sources",
+    ],
+    unique_host_soname: true,
+    srcs: [
+        ":${GN2BP_MODULE_PREFIX}bcm_object",
+    ],
+    target: {
+        android: {
+            cflags: [
+                "-DBORINGSSL_FIPS",
+            ],
+            sanitize: {
+                // Disable address sanitizing otherwise libcrypto will not report
+                // itself as being in FIPS mode, which causes boringssl_self_test
+                // to fail.
+                address: false,
+            },
+            inject_bssl_hash: true,
+        },
+    },
+}
+
+cc_library_shared {
+    name: "${GN2BP_MODULE_PREFIX}libcrypto",
+    // Make sure to use the same name between tot and stable, so that
+    // AFDO understands they are the same library.
+    stem: "libcrypto_httpengine",
+    defaults: ["${GN2BP_MODULE_PREFIX}libcrypto_shared_library_defaults"],
+    // See the comment on the target in `version_script` for more information about why this
+    // setup exists this way.
+    version_script: ":${GN2BP_MODULE_PREFIX}generate_libcronet_libcrypto_symbol_linker_script",
+    afdo: true
+}
+
+cc_library_shared {
+    name: "${GN2BP_MODULE_PREFIX}libcrypto_unstripped",
+    defaults: ["${GN2BP_MODULE_PREFIX}libcrypto_shared_library_defaults"],
+}
+
+cc_library_static {
+    name: "${GN2BP_MODULE_PREFIX}ssl_and_pki",
+    defaults: [
+        "${GN2BP_MODULE_PREFIX}boringssl_defaults",
+        "${GN2BP_MODULE_PREFIX}libssl_sources",
+        "${GN2BP_MODULE_PREFIX}libpki_sources",
+        "${GN2BP_MODULE_PREFIX}third_party_boringssl_boringssl__flags",
+    ],
+    shared_libs: ["${GN2BP_MODULE_PREFIX}libcrypto_unstripped"],
+}

@@ -1,0 +1,65 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.actor.ui;
+
+import android.view.View;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.ui.modelutil.PropertyKey;
+import org.chromium.ui.modelutil.PropertyModel.ReadableObjectPropertyKey;
+import org.chromium.ui.modelutil.PropertyModel.WritableBooleanPropertyKey;
+import org.chromium.ui.modelutil.PropertyModel.WritableIntPropertyKey;
+
+/** Properties defined for the Actor Overlay model. */
+@NullMarked
+class ActorOverlayProperties {
+    /** Whether the overlay is currently visible. */
+    public static final WritableBooleanPropertyKey VISIBLE = new WritableBooleanPropertyKey();
+
+    /** The left margin of the overlay. */
+    public static final WritableIntPropertyKey LEFT_MARGIN = new WritableIntPropertyKey();
+
+    /** The top margin of the overlay. */
+    public static final WritableIntPropertyKey TOP_MARGIN = new WritableIntPropertyKey();
+
+    /** The right margin of the overlay. */
+    public static final WritableIntPropertyKey RIGHT_MARGIN = new WritableIntPropertyKey();
+
+    /** The bottom margin of the overlay. */
+    public static final WritableIntPropertyKey BOTTOM_MARGIN = new WritableIntPropertyKey();
+
+    /** The click listener for the overlay. */
+    public static final ReadableObjectPropertyKey<View.OnClickListener> ON_CLICK_LISTENER =
+            new ReadableObjectPropertyKey<>();
+
+    /** Whether the take over task button is visible. */
+    public static final WritableBooleanPropertyKey TAKE_OVER_TASK_BUTTON_VISIBLE =
+            new WritableBooleanPropertyKey();
+
+    /** The click listener for the take over task button. */
+    public static final ReadableObjectPropertyKey<View.OnClickListener>
+            ON_TAKE_OVER_CLICK_LISTENER = new ReadableObjectPropertyKey<>();
+
+    /** The position of browser controls (top or bottom). */
+    public static final WritableIntPropertyKey CONTROLS_POSITION = new WritableIntPropertyKey();
+
+    /** The top margin of the handoff button. */
+    public static final WritableIntPropertyKey HANDOFF_BUTTON_TOP_MARGIN =
+            new WritableIntPropertyKey();
+
+    /** All keys for the property model. */
+    public static final PropertyKey[] ALL_KEYS = {
+        VISIBLE,
+        TOP_MARGIN,
+        BOTTOM_MARGIN,
+        LEFT_MARGIN,
+        RIGHT_MARGIN,
+        CONTROLS_POSITION,
+        HANDOFF_BUTTON_TOP_MARGIN,
+        ON_CLICK_LISTENER,
+        TAKE_OVER_TASK_BUTTON_VISIBLE,
+        ON_TAKE_OVER_CLICK_LISTENER
+    };
+}

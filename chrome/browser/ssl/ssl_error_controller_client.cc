@@ -1,0 +1,136 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ssl/ssl_error_controller_client.h"
+
+#include <string>
+
+#include "base/command_line.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/metrics/field_trial_params.h"
+#include "base/process/launch.h"
+#include "base/task/thread_pool.h"
+#include "build/build_config.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/certificate_viewer.h"
+#include "chrome/browser/interstitials/enterprise_util.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ssl/stateful_ssl_host_state_delegate_factory.h"
+#include "chrome/common/pref_names.h"
+#include "chrome/common/url_constants.h"
+#include "components/safe_browsing/core/common/safe_browsing_prefs.h"
+#include "components/security_interstitials/content/content_metrics_helper.h"
+#include "components/security_interstitials/content/settings_page_helper.h"
+#include "components/security_interstitials/content/stateful_ssl_host_state_delegate.h"
+#include "components/security_interstitials/content/utils.h"
+#include "content/public/browser/browser_thread.h"
+#include "content/public/browser/web_contents.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "ash/constants/ash_features.h"
+#include "ash/webui/settings/public/constants/routes.mojom.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/ui/settings_window_manager_chromeos.h"
+#include "chrome/common/webui_url_constants.h"
+#endif
+
+#if BUILDFLAG(IS_WIN)
+#include "base/base_paths_win.h"
+#include "base/path_service.h"
+#include "base/win/windows_version.h"
+#endif
+
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/browser_commands.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+#include "chrome/browser/ui/web_applications/app_browser_controller.h"
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+using content::Referrer;
+
+SSLErrorControllerClient::SSLErrorControllerClient(
+    content::WebContents* web_contents,
+    const net::SSLInfo& ssl_info,
+    net::Error cert_error,
+    const GURL& request_url,
+    std::unique_ptr<security_interstitials::MetricsHelper> metrics_helper,
+    std::unique_ptr<security_interstitials::SettingsPageHelper>
+        settings_page_helper)
+    : SecurityInterstitialControllerClient(
+          web_contents,
+          std::move(metrics_helper),
+          Profile::FromBrowserContext(web_contents->GetBrowserContext())
+              ->GetPrefs(),
+          g_browser_process->GetApplicationLocale(),
+          chrome::ChromeUINewTabURLAsGURL(),
+          std::move(settings_page_helper)),
+      ssl_info_(ssl_info),
+      request_url_(request_url),
+      cert_error_(cert_error) {}
+
+SSLErrorControllerClient::~SSLErrorControllerClient() = default;
+
+void SSLErrorControllerClient::GoBack() {
+  SecurityInterstitialControllerClient::GoBackAfterNavigationCommitted();
+}
+
+void SSLErrorControllerClient::Proceed() {
+  content::WebContents* const web_contents = this->web_contents();
+  MaybeTriggerSecurityInterstitialProceededEvent(web_contents, request_url_,
+                                                 "SSL_ERROR", cert_error_);
+#if !BUILDFLAG(IS_ANDROID)
+  // Web Apps should not be allowed to run if there is a problem with their
+  // certificate. So, when users click proceed on an interstitial, move the tab
+  // to a regular Chrome window and proceed as usual there.
+  // TODO(crbug.com/505461569): Support Android.
+  BrowserWindowInterface* browser =
+      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(web_contents);
+  if (web_app::AppBrowserController::IsWebApp(browser))
+    chrome::OpenInChrome(browser);
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+  Profile* profile =
+      Profile::FromBrowserContext(web_contents->GetBrowserContext());
+  StatefulSSLHostStateDelegate* state =
+      static_cast<StatefulSSLHostStateDelegate*>(
+          profile->GetSSLHostStateDelegate());
+  // StatefulSSLHostStateDelegate can be null during tests.
+  if (state) {
+    // Notifies the browser process when a certificate exception is allowed.
+    web_contents->SetAlwaysSendSubresourceNotifications();
+
+    state->AllowCert(request_url_.GetHost(), *ssl_info_.cert.get(), cert_error_,
+                     InterstitialRenderFrameHost()->GetStoragePartition());
+    Reload();
+  }
+}
+
+bool SSLErrorControllerClient::CanLaunchDateAndTimeSettings() {
+  return true;
+}
+
+void SSLErrorControllerClient::LaunchDateAndTimeSettings() {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+
+#if BUILDFLAG(IS_CHROMEOS)
+  chrome::SettingsWindowManager::GetInstance()->ShowOSSettings(
+      ProfileManager::GetActiveUserProfile(),
+      chromeos::settings::mojom::kSystemPreferencesSectionPath);
+#else
+  base::ThreadPool::PostTask(
+      FROM_HERE, {base::TaskPriority::USER_VISIBLE, base::MayBlock()},
+      base::BindOnce(&security_interstitials::LaunchDateAndTimeSettings));
+#endif
+}
+
+#if !BUILDFLAG(IS_ANDROID)
+void SSLErrorControllerClient::ShowCertificateViewer() {
+  // TODO(crbug.com/436274249): support "view certificate" on android too.
+  ::ShowCertificateViewer(web_contents(),
+                          web_contents()->GetTopLevelNativeWindow(),
+                          ssl_info_.cert.get());
+}
+#endif

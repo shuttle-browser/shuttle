@@ -1,0 +1,63 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+syntax = "proto2";
+
+package bound_session_credentials;
+
+// Required in Chrome.
+option optimize_for = LITE_RUNTIME;
+
+// Represents a single bound cookie that the browser periodically refreshes
+// to keep the bound session running.
+message CookieCredential {
+  optional string name = 1;
+  optional string domain = 2;
+  optional string path = 3;
+}
+
+// Represents a single bound credential that the browser periodically refreshes.
+// Currently supports only a cookie credential.
+message Credential {
+  oneof credential {
+    CookieCredential cookie_credential = 1;
+  }
+}
+
+message Timestamp {
+  // Represents microseconds since the Windows epoch.
+  required int64 microseconds = 1;
+}
+
+enum SessionOrigin {
+  // The session origin is unspecified. This should be used only for sessions
+  // that were created before the session origin was tracked.
+  SESSION_ORIGIN_UNSPECIFIED = 0;
+
+  // The session originated from DBSC registration header.
+  SESSION_ORIGIN_REGISTRATION = 1;
+
+  // The session originated from OAuthMultilogin.
+  SESSION_ORIGIN_OAML = 2;
+}
+
+// Set of parameters for a single device bound session.
+message BoundSessionParams {
+  // Site on which the bound session is running.
+  // The protocol is currently in a prototype state and only supports
+  // "google.com".
+  optional string site = 1;
+  // Bound session ID received from the server.
+  optional string session_id = 2;
+  // Wrapped binding key.
+  optional bytes wrapped_key = 3;
+  // List of credentials that the browser needs to refresh periodically.
+  repeated Credential credentials = 4;
+  // Creation time of the session.
+  optional Timestamp creation_time = 5;
+  // URL of the refresh endpoint.
+  optional string refresh_url = 6;
+  // Where the session originated from.
+  optional SessionOrigin session_origin = 7;
+}

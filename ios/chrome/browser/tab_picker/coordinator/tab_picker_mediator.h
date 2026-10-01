@@ -1,0 +1,29 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_TAB_PICKER_COORDINATOR_TAB_PICKER_MEDIATOR_H_
+#define IOS_CHROME_BROWSER_TAB_PICKER_COORDINATOR_TAB_PICKER_MEDIATOR_H_
+
+#import <set>
+
+#import "ios/chrome/browser/shared/public/commands/tab_picker_commands.h"
+#import "ios/chrome/browser/tab_picker/ui/tab_picker_mutator.h"
+#import "ios/chrome/browser/tab_switcher/tab_grid/base_grid/coordinator/base_grid_mediator.h"
+#import "ios/web/public/web_state.h"
+
+@class TabPickerParams;
+@protocol TabPickerConsumer;
+
+// The tab picker mediator.
+@interface TabPickerMediator : BaseGridMediator <TabPickerMutator>
+
+- (instancetype)initWithGridConsumer:(id<TabCollectionConsumer>)gridConsumer
+                   tabPickerConsumer:(id<TabPickerConsumer>)tabPickerConsumer
+                              params:(TabPickerParams*)params
+            tabPickerCompletionBlock:
+                (TabPickerCompletionBlock)tabPickerCompletionBlock;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_TAB_PICKER_COORDINATOR_TAB_PICKER_MEDIATOR_H_

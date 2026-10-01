@@ -1,0 +1,11 @@
+include_rules = [
+  "+chrome/browser/browser_process.h",
+  "+chrome/browser/profiles",
+  "+chrome/browser/ui/profiles",
+  "+components/autofill/core/browser",
+  "+components/prefs",
+  "+components/search_engines",
+  "+components/signin/public",
+  "+components/webdata_services",
+  "+content/public/browser",
+]

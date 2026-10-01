@@ -1,0 +1,45 @@
+<!--
+Copyright 2026 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chrome Android Layout Inspector</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+  <script src="utils.js"></script>
+  <script src="math.js"></script>
+  <script src="model.js"></script>
+  <script src="ui_common.js"></script>
+  <script src="layout_ui.js"></script>
+  <script src="screenshot_ui.js"></script>
+  <script src="app.js"></script>
+</head>
+<body>
+  <div id="div-controls">
+    <button id="btn-load" class="action-button"
+         data-hint="CTRL_LOAD">Load</button>
+  </div>
+  <div id="div-main" class="main-layout">
+    <div id="div-pane-screenshot">
+      <div id="div-screenshot">
+        <div class="screenshot-inner">
+          <canvas class="canv-base"></canvas>
+        </div>
+      </div>
+    </div>
+    <div id="div-main-splitter"></div>
+    <div id="div-pane-view-tree"></div>
+  </div>
+  <div id="div-info-bar" class="idle">
+    <div class="hint-text"></div>
+  </div>
+  <div id="div-overlay" class="hidden">
+    <div class="content">Loading...</div>
+  </div>
+</body>
+</html>

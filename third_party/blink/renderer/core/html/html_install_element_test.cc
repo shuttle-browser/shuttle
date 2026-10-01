@@ -1,0 +1,561 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/core/html/html_install_element.h"
+
+#include "base/containers/span.h"
+#include "base/run_loop.h"
+#include "base/test/run_until.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/test_future.h"
+#include "mojo/public/cpp/bindings/receiver_set.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/features_generated.h"
+#include "third_party/blink/public/mojom/web_install/web_install.mojom-blink.h"
+#include "third_party/blink/public/strings/grit/permission_element_strings.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_install_result.h"
+#include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/dom/document_init.h"
+#include "third_party/blink/renderer/core/dom/events/event.h"
+#include "third_party/blink/renderer/core/frame/frame_test_helpers.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
+#include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
+#include "third_party/blink/renderer/core/html/html_permission_element_test_helper.h"
+#include "third_party/blink/renderer/core/html/install_result_event.h"
+#include "third_party/blink/renderer/core/html_names.h"
+#include "third_party/blink/renderer/core/testing/page_test_base.h"
+#include "third_party/blink/renderer/core/testing/sim/sim_request.h"
+#include "third_party/blink/renderer/core/testing/sim/sim_test.h"
+#include "third_party/blink/renderer/core/testing/wait_for_event.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
+#include "third_party/blink/renderer/platform/testing/testing_platform_support.h"
+#include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+
+namespace blink {
+
+using mojom::blink::PermissionDescriptor;
+using mojom::blink::PermissionDescriptorPtr;
+using mojom::blink::PermissionName;
+using mojom::blink::PermissionObserver;
+using mojom::blink::PermissionService;
+using MojoPermissionStatus = mojom::blink::PermissionStatus;
+
+namespace {
+
+constexpr char kInstallString[] = "Install";
+constexpr char kLaunchString[] = "Launch";
+constexpr char kExampleSite[] = "https://site.example/app.manifest";
+
+// Result strings for InstallResultEvent.
+constexpr char kResultSuccess[] = "success";
+constexpr char kResultAborted[] = "aborted";
+constexpr char kResultInvalidData[] = "invalid_data";
+
+String ResourceIdToString(int resource_id) {
+  switch (resource_id) {
+    case IDS_PERMISSION_REQUEST_INSTALL:
+      return kInstallString;
+    case IDS_PERMISSION_REQUEST_LAUNCH:
+      return kLaunchString;
+    default:
+      return "";
+  }
+}
+
+class LocalePlatformSupport : public TestingPlatformSupport {
+ public:
+  WebString QueryLocalizedString(int resource_id) override {
+    if (ResourceIdToString(resource_id).empty()) {
+      return TestingPlatformSupport::QueryLocalizedString(resource_id);
+    }
+    return ResourceIdToString(resource_id);
+  }
+};
+
+class MockWebInstallService : public mojom::blink::WebInstallService {
+ public:
+  MockWebInstallService() = default;
+  ~MockWebInstallService() override = default;
+
+  void BindHandle(mojo::ScopedMessagePipeHandle handle) {
+    receivers_.Add(this, mojo::PendingReceiver<mojom::blink::WebInstallService>(
+                             std::move(handle)));
+  }
+
+  // mojom::blink::WebInstallService impl:
+  void IsInstalled(mojom::blink::ManifestInstallOptionsPtr options,
+                   IsInstalledCallback callback) override {
+    std::move(callback).Run(false);
+  }
+
+  void InstallFromManifest(mojom::blink::ManifestInstallOptionsPtr options,
+                           InstallFromManifestCallback callback) override {
+    NOTIMPLEMENTED();
+  }
+
+  void ElementInstallFromManifest(
+      mojom::blink::ManifestInstallOptionsPtr options,
+      InstallFromManifestCallback callback) override {
+    CHECK(!manifest_callback_) << "Keep the tests simple: one call at a time.";
+    manifest_options_ = std::move(options);
+    manifest_callback_ = std::move(callback);
+    called_.SetValue();
+  }
+
+  // Test helpers:
+  void WaitForCall() { EXPECT_TRUE(called_.Wait()); }
+  bool WasCalled() const { return !manifest_callback_.is_null(); }
+
+  void RespondManifestWithSuccess() {
+    CHECK(manifest_callback_);
+    std::move(manifest_callback_)
+        .Run(mojom::blink::WebInstallServiceResult::kSuccess);
+    called_.Clear();
+  }
+
+  void RespondManifestWithAbortError() {
+    CHECK(manifest_callback_);
+    std::move(manifest_callback_)
+        .Run(mojom::blink::WebInstallServiceResult::kAbortError);
+    called_.Clear();
+  }
+
+  void RespondManifestWithDataError() {
+    CHECK(manifest_callback_);
+    std::move(manifest_callback_)
+        .Run(mojom::blink::WebInstallServiceResult::kDataError);
+    called_.Clear();
+  }
+
+  const mojom::blink::ManifestInstallOptionsPtr& manifest_options() const {
+    return manifest_options_;
+  }
+
+ private:
+  mojo::ReceiverSet<mojom::blink::WebInstallService> receivers_;
+  mojom::blink::ManifestInstallOptionsPtr manifest_options_;
+  InstallFromManifestCallback manifest_callback_;
+  base::test::TestFuture<void> called_;
+};
+
+}  // namespace
+
+class HTMLInstallElementTestBase : public PageTestBase {
+ protected:
+  explicit HTMLInstallElementTestBase()
+      : PageTestBase(base::test::TaskEnvironment::TimeSource::MOCK_TIME) {}
+
+  void WaitForElementRegistration(HTMLInstallElement* element) {
+    GetDocument().body()->AppendChild(element);
+    GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+    GetDocument().View()->UpdateAllLifecyclePhasesForTest();
+    WaitForPermissionElementRegistration(element);
+  }
+
+  InstallResultEvent* WaitForInstallResultEvent(HTMLInstallElement* element) {
+    auto* wait = MakeGarbageCollected<WaitForEvent>(
+        element, event_type_names::kInstallresult);
+    return static_cast<InstallResultEvent*>(wait->GetLastEvent());
+  }
+
+  void CheckInnerText(HTMLInstallElement* element,
+                      const String& expected_text) {
+    GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+    GetDocument().View()->UpdateAllLifecyclePhasesForTest();
+    base::RunLoop run_loop;
+    // `UpdateText` is called via `PostTask`, so `innerText` is checked within a
+    // `PostTask` to ensure it's updated.
+    GetDocument()
+        .GetTaskRunner(TaskType::kInternalDefault)
+        ->PostTask(
+            FROM_HERE,
+            blink::BindOnce(
+                [](HTMLInstallElement* element, const String& expected_text,
+                   base::RepeatingClosure quit_closure) {
+                  EXPECT_EQ(
+                      expected_text,
+                      element->permission_text_span_for_testing()->innerText());
+                  quit_closure.Run();
+                },
+                WeakPersistent(element), expected_text,
+                run_loop.QuitClosure()));
+    run_loop.Run();
+  }
+
+  void SetUp() override {
+    PageTestBase::SetUp();
+    scoped_feature_list_.InitAndEnableFeature(blink::features::kInstallElement);
+    GetFrame().GetBrowserInterfaceBroker().SetBinderForTesting(
+        PermissionService::Name_,
+        blink::BindRepeating(
+            &PermissionElementTestPermissionService::BindHandle,
+            base::Unretained(&permission_service_)));
+    GetFrame().GetBrowserInterfaceBroker().SetBinderForTesting(
+        mojom::blink::WebInstallService::Name_,
+        blink::BindRepeating(&MockWebInstallService::BindHandle,
+                             base::Unretained(&web_install_service_)));
+  }
+
+  void TearDown() override {
+    GetFrame().GetBrowserInterfaceBroker().SetBinderForTesting(
+        PermissionService::Name_, {});
+    GetFrame().GetBrowserInterfaceBroker().SetBinderForTesting(
+        mojom::blink::WebInstallService::Name_, {});
+    PageTestBase::TearDown();
+  }
+
+ protected:
+  MockWebInstallService web_install_service_;
+
+ private:
+  PermissionElementTestPermissionService permission_service_;
+  ScopedTestingPlatformSupport<LocalePlatformSupport> support_;
+  base::test::ScopedFeatureList scoped_feature_list_;
+  ScopedInstallElementForTest scoped_feature_{true};
+  // We need this to test activation behavior in the unit testing framework
+  // without doing a thrilling amount of setup.
+  ScopedBypassPepcSecurityForTestingForTest bypass_pepc_security_for_testing_{
+      true};
+};
+
+TEST_F(HTMLInstallElementTestBase, Type) {
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  EXPECT_EQ(AtomicString("install"), element->GetType());
+}
+
+TEST_F(HTMLInstallElementTestBase, ManifestId) {
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  EXPECT_TRUE(element->ManifestId().empty());
+
+  constexpr char kManifestId[] = "https://site.example/manifest.json";
+  element->setAttribute(html_names::kManifestidAttr, AtomicString(kManifestId));
+  EXPECT_EQ(kManifestId, element->ManifestId());
+}
+
+TEST_F(HTMLInstallElementTestBase, RenderedText) {
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+
+  WaitForElementRegistration(element);
+
+  CheckInnerText(element, kInstallString);
+}
+
+TEST_F(HTMLInstallElementTestBase, InstalledStateHiddenInCanvasSubtree) {
+  ScopedCanvasDrawElementForTest canvas_draw_element_enabled(true);
+
+  auto* canvas = GetDocument().CreateRawElement(html_names::kCanvasTag);
+  canvas->setAttribute(html_names::kLayoutsubtreeAttr, g_empty_atom);
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  canvas->AppendChild(element);
+  GetDocument().body()->AppendChild(canvas);
+  GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+  GetDocument().View()->UpdateAllLifecyclePhasesForTest();
+  WaitForPermissionElementRegistration(element);
+  ASSERT_TRUE(element->IsInCanvasSubtree());
+  CheckInnerText(element, kInstallString);
+
+  element->OnIsInstalledResult(true);
+
+  CheckInnerText(element, kInstallString);
+  EXPECT_FALSE(element->show_as_launch());
+
+  // A queued appearance task may have captured the installed state before the
+  // element entered the canvas subtree.
+  element->UpdateAppearanceTask(true);
+  CheckInnerText(element, kInstallString);
+  EXPECT_FALSE(element->show_as_launch());
+}
+
+TEST_F(HTMLInstallElementTestBase,
+       InstalledStateClearedWhenMovedIntoCanvasSubtree) {
+  ScopedCanvasDrawElementForTest canvas_draw_element_enabled(true);
+
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  WaitForElementRegistration(element);
+  element->OnIsInstalledResult(true);
+  CheckInnerText(element, kLaunchString);
+  ASSERT_TRUE(element->show_as_launch());
+
+  auto* canvas = GetDocument().CreateRawElement(html_names::kCanvasTag);
+  canvas->setAttribute(html_names::kLayoutsubtreeAttr, g_empty_atom);
+  GetDocument().body()->AppendChild(canvas);
+  canvas->AppendChild(element);
+
+  ASSERT_TRUE(element->IsInCanvasSubtree());
+  CheckInnerText(element, kInstallString);
+  EXPECT_FALSE(element->show_as_launch());
+}
+
+TEST_F(HTMLInstallElementTestBase, ActivationSuccess) {
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  WaitForElementRegistration(element);
+
+  element->DispatchEvent(*Event::Create(event_type_names::kDOMActivate));
+
+  // The manifest install method should be called.
+  web_install_service_.WaitForCall();
+
+  // No install target was specified, so no options were sent to the service.
+  EXPECT_TRUE(web_install_service_.manifest_options().is_null());
+
+  // Success should trigger an `installresult` event with result "success".
+  web_install_service_.RespondManifestWithSuccess();
+  InstallResultEvent* event = WaitForInstallResultEvent(element);
+  ASSERT_TRUE(event);
+  EXPECT_EQ(kResultSuccess, event->result().AsString());
+}
+
+TEST_F(HTMLInstallElementTestBase, ActivationAborted) {
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  WaitForElementRegistration(element);
+
+  element->DispatchEvent(*Event::Create(event_type_names::kDOMActivate));
+
+  // The manifest install method should be called.
+  web_install_service_.WaitForCall();
+
+  // No install target was specified, so no options were sent to the service.
+  EXPECT_TRUE(web_install_service_.manifest_options().is_null());
+
+  // AbortError should trigger an `installresult` event with result "aborted".
+  web_install_service_.RespondManifestWithAbortError();
+  InstallResultEvent* event = WaitForInstallResultEvent(element);
+  ASSERT_TRUE(event);
+  EXPECT_EQ(kResultAborted, event->result().AsString());
+}
+
+// installurl has been removed but still need to be handled gracefully.
+TEST_F(HTMLInstallElementTestBase, InstallurlWithManifestReturnsInvalidData) {
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  element->setAttribute(html_names::kInstallurlAttr,
+                        AtomicString(kExampleSite));
+  element->setAttribute(html_names::kManifestAttr, AtomicString(kExampleSite));
+  element->setAttribute(html_names::kManifestidAttr,
+                        AtomicString(kExampleSite));
+  WaitForElementRegistration(element);
+
+  element->DispatchEvent(*Event::Create(event_type_names::kDOMActivate));
+
+  InstallResultEvent* event = WaitForInstallResultEvent(element);
+  ASSERT_TRUE(event);
+  EXPECT_EQ(kResultInvalidData, event->result().AsString());
+  EXPECT_FALSE(web_install_service_.WasCalled());
+}
+
+// The `oninstallresult` content attribute should map to the `installresult`
+// event, matching the `oninstallresult` IDL attribute.
+TEST_F(HTMLInstallElementTestBase, OnInstallResultContentAttribute) {
+  EXPECT_EQ(
+      event_type_names::kInstallresult,
+      HTMLElement::EventNameForAttributeName(html_names::kOninstallresultAttr));
+}
+
+// SimTest-based fixture that loads a real page so content-attribute event
+// handlers compile and execute as JavaScript.
+class HTMLInstallElementFiringSimTest : public SimTest {
+ protected:
+  void SetUp() override {
+    SimTest::SetUp();
+    MainFrame().GetFrame()->GetBrowserInterfaceBroker().SetBinderForTesting(
+        PermissionService::Name_,
+        blink::BindRepeating(
+            &PermissionElementTestPermissionService::BindHandle,
+            base::Unretained(&permission_service_)));
+    MainFrame().GetFrame()->GetBrowserInterfaceBroker().SetBinderForTesting(
+        mojom::blink::WebInstallService::Name_,
+        blink::BindRepeating(&MockWebInstallService::BindHandle,
+                             base::Unretained(&web_install_service_)));
+  }
+
+  void TearDown() override {
+    MainFrame().GetFrame()->GetBrowserInterfaceBroker().SetBinderForTesting(
+        PermissionService::Name_, {});
+    MainFrame().GetFrame()->GetBrowserInterfaceBroker().SetBinderForTesting(
+        mojom::blink::WebInstallService::Name_, {});
+    SimTest::TearDown();
+  }
+
+  Vector<String>& ConsoleMessages() {
+    return static_cast<frame_test_helpers::TestWebFrameClient*>(
+               MainFrame().Client())
+        ->ConsoleMessages();
+  }
+
+  MockWebInstallService web_install_service_;
+
+ private:
+  PermissionElementTestPermissionService permission_service_;
+  base::test::ScopedFeatureList scoped_feature_list_{
+      blink::features::kInstallElement};
+  ScopedInstallElementForTest scoped_install_feature_{true};
+  ScopedBypassPepcSecurityForTestingForTest bypass_pepc_security_for_testing_{
+      true};
+};
+
+// The `oninstallresult` content-attribute handler should execute as JavaScript
+// when the `installresult` event is dispatched.
+TEST_F(HTMLInstallElementFiringSimTest, OnInstallResultContentAttributeFires) {
+  SimRequest resource("https://example.test", "text/html");
+  LoadURL("https://example.test");
+  resource.Complete(R"HTML(
+    <body>
+      <install id='i'
+        style='display:inline-block; width:100px; height:30px'
+        oninstallresult="console.log('installresult: ' + event.result)">
+      </install>
+    </body>
+  )HTML");
+
+  Compositor().BeginFrame();
+  auto* element = To<HTMLInstallElement>(
+      GetDocument().QuerySelector(AtomicString("install")));
+  ASSERT_TRUE(element);
+  GetDocument().View()->UpdateAllLifecyclePhasesForTest();
+  WaitForPermissionElementRegistration(element);
+
+  element->DispatchEvent(*Event::Create(event_type_names::kDOMActivate));
+  web_install_service_.WaitForCall();
+  web_install_service_.RespondManifestWithSuccess();
+
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return !ConsoleMessages().empty(); }));
+  EXPECT_TRUE(ConsoleMessages()[0].contains("installresult: success"));
+}
+
+TEST_F(HTMLInstallElementTestBase, ManifestAttribute) {
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  EXPECT_TRUE(element->Manifest().empty());
+
+  element->setAttribute(html_names::kManifestAttr, AtomicString(kExampleSite));
+  EXPECT_EQ(kExampleSite, element->Manifest());
+}
+
+TEST_F(HTMLInstallElementTestBase, ActivationWithManifestAttribute) {
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  element->setAttribute(html_names::kManifestAttr, AtomicString(kExampleSite));
+  WaitForElementRegistration(element);
+
+  element->DispatchEvent(*Event::Create(event_type_names::kDOMActivate));
+
+  web_install_service_.WaitForCall();
+
+  // manifest attribute was specified, so ManifestInstallOptions were sent.
+  EXPECT_FALSE(web_install_service_.manifest_options().is_null());
+  EXPECT_EQ(web_install_service_.manifest_options()->manifest_url,
+            KURL(kExampleSite));
+  EXPECT_FALSE(
+      web_install_service_.manifest_options()->manifest_id.has_value());
+
+  // Success should trigger an `installresult` event with result "success".
+  web_install_service_.RespondManifestWithSuccess();
+  InstallResultEvent* event = WaitForInstallResultEvent(element);
+  ASSERT_TRUE(event);
+  EXPECT_EQ(kResultSuccess, event->result().AsString());
+}
+
+TEST_F(HTMLInstallElementTestBase, ActivationWithManifestAndManifestId) {
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  element->setAttribute(html_names::kManifestAttr, AtomicString(kExampleSite));
+  constexpr char kManifestId[] = "https://site.example/my-app-id";
+  element->setAttribute(html_names::kManifestidAttr, AtomicString(kManifestId));
+  WaitForElementRegistration(element);
+
+  element->DispatchEvent(*Event::Create(event_type_names::kDOMActivate));
+
+  web_install_service_.WaitForCall();
+
+  EXPECT_FALSE(web_install_service_.manifest_options().is_null());
+  EXPECT_EQ(web_install_service_.manifest_options()->manifest_url,
+            KURL(kExampleSite));
+  EXPECT_EQ(web_install_service_.manifest_options()->manifest_id,
+            KURL(kManifestId));
+
+  web_install_service_.RespondManifestWithSuccess();
+  InstallResultEvent* event = WaitForInstallResultEvent(element);
+  ASSERT_TRUE(event);
+  EXPECT_EQ(kResultSuccess, event->result().AsString());
+}
+
+TEST_F(HTMLInstallElementTestBase, ActivationWithManifestAbortError) {
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  element->setAttribute(html_names::kManifestAttr, AtomicString(kExampleSite));
+  WaitForElementRegistration(element);
+
+  element->DispatchEvent(*Event::Create(event_type_names::kDOMActivate));
+
+  web_install_service_.WaitForCall();
+
+  // AbortError should trigger an `installresult` event with result "aborted".
+  web_install_service_.RespondManifestWithAbortError();
+  InstallResultEvent* event = WaitForInstallResultEvent(element);
+  ASSERT_TRUE(event);
+  EXPECT_EQ(kResultAborted, event->result().AsString());
+}
+
+TEST_F(HTMLInstallElementTestBase, ActivationWithManifestDataError) {
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  element->setAttribute(html_names::kManifestAttr, AtomicString(kExampleSite));
+  WaitForElementRegistration(element);
+
+  element->DispatchEvent(*Event::Create(event_type_names::kDOMActivate));
+
+  web_install_service_.WaitForCall();
+
+  // DataError should trigger an `installresult` event with result
+  // "invalid_data".
+  web_install_service_.RespondManifestWithDataError();
+  InstallResultEvent* event = WaitForInstallResultEvent(element);
+  ASSERT_TRUE(event);
+  EXPECT_EQ(kResultInvalidData, event->result().AsString());
+}
+
+TEST_F(HTMLInstallElementTestBase, ManifestIdOnlyReturnsInvalidData) {
+  // manifestid alone is not supported and should trigger an `installresult`
+  // event with result "invalid_data" without calling the service.
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  element->setAttribute(html_names::kManifestidAttr,
+                        AtomicString("https://site.example/manifest.json"));
+  WaitForElementRegistration(element);
+
+  element->DispatchEvent(*Event::Create(event_type_names::kDOMActivate));
+
+  InstallResultEvent* event = WaitForInstallResultEvent(element);
+  ASSERT_TRUE(event);
+  EXPECT_EQ(kResultInvalidData, event->result().AsString());
+
+  // web_install_service_ should NOT have been called since manifestid alone is
+  // not supported.
+}
+
+TEST_F(HTMLInstallElementTestBase, InvalidManifestUrlReturnsInvalidData) {
+  HTMLInstallElement* element =
+      MakeGarbageCollected<HTMLInstallElement>(GetDocument());
+  element->setAttribute(html_names::kManifestAttr,
+                        AtomicString("not a valid url"));
+  WaitForElementRegistration(element);
+
+  element->DispatchEvent(*Event::Create(event_type_names::kDOMActivate));
+
+  InstallResultEvent* event = WaitForInstallResultEvent(element);
+  ASSERT_TRUE(event);
+  EXPECT_EQ(kResultInvalidData, event->result().AsString());
+}
+
+}  // namespace blink

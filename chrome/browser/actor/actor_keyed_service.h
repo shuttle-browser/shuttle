@@ -1,0 +1,327 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_ACTOR_ACTOR_KEYED_SERVICE_H_
+#define CHROME_BROWSER_ACTOR_ACTOR_KEYED_SERVICE_H_
+
+#include <memory>
+#include <vector>
+
+#include "base/callback_list.h"
+#include "base/compiler_specific.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
+#include "base/observer_list.h"
+#include "base/scoped_observation.h"
+#include "base/supports_user_data.h"
+#include "base/types/expected.h"
+#include "chrome/browser/actor/actor_task.h"
+#include "chrome/browser/actor/actor_task_delegate.h"
+#include "chrome/browser/glic/host/glic.mojom.h"
+#include "chrome/browser/page_content_annotations/multi_source_page_context_fetcher.h"
+#include "chrome/browser/profiles/profile_observer.h"
+#include "chrome/common/actor/action_result.h"
+#include "chrome/common/actor_webui.mojom.h"
+#include "chrome/common/buildflags.h"
+#include "components/actor/core/aggregated_journal.h"
+#include "components/actor/core/task_id.h"
+#include "components/actor/core/task_source_info.h"
+#include "components/download/content/public/all_download_item_notifier.h"
+#include "components/keyed_service/core/keyed_service.h"
+#include "components/page_content_annotations/content/page_context_fetcher.h"
+#include "components/sessions/core/session_id.h"
+#include "components/tabs/public/tab_interface.h"
+
+class Profile;
+
+namespace content {
+class BrowserContext;
+}  // namespace content
+
+namespace actor {
+class AggregatedJournalFileSerializer;
+namespace ui {
+class ActorUiStateManagerInterface;
+}
+
+class EnterprisePolicyChecker;
+class ActorTaskMetadata;
+class ToolRequest;
+class TabObservationStrategy;
+
+// This class owns all ActorTasks for a given profile. ActorTasks are kept in
+// memory until the process is destroyed.
+class ActorKeyedService : public KeyedService,
+                          public base::SupportsUserData,
+                          public ProfileObserver,
+                          public download::AllDownloadItemNotifier::Observer {
+ public:
+  explicit ActorKeyedService(Profile* profile);
+  ActorKeyedService(const ActorKeyedService&) = delete;
+  ActorKeyedService& operator=(const ActorKeyedService&) = delete;
+  ~ActorKeyedService() override;
+
+  void Shutdown() override;
+
+  // Convenience method, may return nullptr.
+  static ActorKeyedService* Get(content::BrowserContext* context);
+
+  // TODO(crbug.com/428014205): Create a mock ActorKeyedService for testing so
+  // we can remove this function.
+  void SetActorUiStateManagerForTesting(
+      std::unique_ptr<ui::ActorUiStateManagerInterface> ausm);
+
+  const std::map<TaskId, const ActorTask*> GetActiveTasks() const;
+
+  size_t GetActiveTasksCount() const;
+
+  std::vector<TaskId> FindTaskIdsInActive(
+      base::FunctionRef<bool(const ActorTask&)> predicate) const;
+
+  // Stop and clear all active tasks for testing only.
+  void ResetForTesting();
+
+  // Starts a new task with an execution engine and returns the new task's id.
+  // `options`, when provided, contains information used to initialize the task.
+  // The provided `policy_checker` must be non-null and it must outlive the
+  // ActorTask.
+  TaskId CreateTask(const TaskSourceInfo& source_info,
+                    const EnterprisePolicyChecker* policy_checker);
+  TaskId CreateTaskWithOptions(const TaskSourceInfo& source_info,
+                               const EnterprisePolicyChecker* policy_checker,
+                               webui::mojom::TaskOptionsPtr options,
+                               base::WeakPtr<ActorTaskDelegate> delegate,
+                               std::optional<glic::mojom::InvocationSource>
+                                   initial_invocation_source = std::nullopt);
+  TaskId CreateTaskForTesting(
+      std::unique_ptr<actor::ui::UiEventDispatcher> ui_event_dispatcher,
+      const TaskSourceInfo& source_info,
+      const EnterprisePolicyChecker* policy_checker,
+      webui::mojom::TaskOptionsPtr options,
+      base::WeakPtr<ActorTaskDelegate> delegate,
+      std::optional<glic::mojom::InvocationSource> initial_invocation_source =
+          std::nullopt);
+
+  // Executes the given ToolRequest actions using the execution engine for the
+  // given task id.
+  using PerformActionsCallback = base::OnceCallback<void(
+      std::vector<ActionResultWithLatencyInfo> /* action_results */,
+      TabObservationStrategy /* observation_strategy */)>;
+  void PerformActions(TaskId task_id,
+                      std::vector<std::unique_ptr<ToolRequest>>&& actions,
+                      ActorTaskMetadata task_metadata,
+                      PerformActionsCallback callback);
+
+  // Stops a task by its ID, `stop_reason` determines the reason for the task
+  // stopping.
+  void StopTask(TaskId task_id, ActorTask::StoppedReason stop_reason);
+
+  // Returns the task with the given ID. Returns nullptr if the task does not
+  // exist.
+  ActorTask* GetTask(TaskId task_id);
+
+  // The associated journal for the associated profile.
+  AggregatedJournal& GetJournal() LIFETIME_BOUND { return journal_; }
+
+  // The associated ActorUiStateManager for the associated profile.
+  ui::ActorUiStateManagerInterface* GetActorUiStateManager();
+
+  // Sets/clears pending actuation indicator on a tab prior to an ActorTask
+  // starting.
+  void SetTabPendingActuation(tabs::TabHandle tab_handle);
+  bool ClearTabPendingActuation(tabs::TabHandle tab_handle);
+
+  // Returns true if there is a task that is actively (i.e. not paused) acting
+  // in the given `tab`.
+  bool IsActiveOnTab(const tabs::TabInterface& tab) const;
+
+  // Returns an ActorTask which has the given tab in its set. Returns null if no
+  // task has `tab`. Note: a returned task may be paused.
+  ActorTask* GetTaskFromTab(const tabs::TabInterface& tab) const;
+
+  Profile* GetProfile();
+
+  using TabObservationResult =
+      page_content_annotations::FetchPageContextResultCallbackArg;
+  // Request a TabObservation be generated from the given tab.
+  void RequestTabObservation(
+      tabs::TabInterface& tab,
+      TaskId task_id,
+      std::optional<page_content_annotations::ScreenshotOptions::
+                        ScreenshotCollectionOptions>
+          screenshot_collection_options,
+      base::OnceCallback<void(TabObservationResult)> callback);
+
+  // A TabObservationResult may return the successful side of the base::expected
+  // but the partial errors in the FetchPageContextResult may be considered a
+  // failing result for actor. Returns a failing string in any case the result
+  // isn't usable for actor. Returns nullopt if the result is fully successful.
+  static std::optional<std::string> ExtractErrorMessageIfFailed(
+      const TabObservationResult& result);
+
+  using TaskStateChangedCallback = base::RepeatingCallback<void(ActorTask&)>;
+  // Registers a callback to be notified of state changes for any task. The
+  // callback receives a reference to the affected ActorTask. Note: For
+  // transitions to a completed state, the task is removed from the service's
+  // internal tracking before the callback is invoked. Consequently, the task
+  // will not be discoverable via GetTask() or GetActiveTasks() during this
+  // final notification.
+  base::CallbackListSubscription AddTaskStateChangedCallback(
+      TaskStateChangedCallback callback);
+
+  void NotifyTaskStateChanged(ActorTask& task);
+
+  // Notifies subscribers when the visibility of tabs controlled by an active
+  // ActorTask changes (when `task.has_visible_tab()` toggles between true and
+  // false).
+  //
+  // Note on scope and visibility semantics:
+  // - Scope: This strictly tracks tabs under active control by an ActorTask; it
+  //   does not monitor unassociated browser tabs, nor is it triggered by
+  //   Picture-in-Picture (PiP) transitions (which are managed per-task via
+  //   `ActorTask::SetIsInPip()`).
+  // - Definition of "Visible": Evaluates whether any controlled tab's
+  //   WebContents reports `content::Visibility::VISIBLE`. A tab partially
+  //   occluded by an overlapping window or overlay remains VISIBLE; switching
+  //   to another tab transitions the task to not visible.
+  //   TODO(crbug.com/540512932): Full window minimization and complete window
+  //   occlusion are not yet tracked.
+  using TaskVisibilityChangedCallback =
+      base::RepeatingCallback<void(ActorTask&)>;
+  base::CallbackListSubscription AddTaskVisibilityChangedCallback(
+      TaskVisibilityChangedCallback callback);
+  void NotifyTaskVisibilityChanged(ActorTask& task);
+
+  using TaskStepProgressChangedCallback =
+      base::RepeatingCallback<void(ActorTask&, const std::string&)>;
+  base::CallbackListSubscription AddTaskStepProgressChangedCallback(
+      TaskStepProgressChangedCallback callback);
+  void NotifyTaskStepProgressChanged(ActorTask& task,
+                                     const std::string& step_progress);
+
+  // Returns the acting task for web_contents. Returns nullptr if acting task
+  // does not exist.
+  const ActorTask* GetActingActorTaskForWebContents(
+      content::WebContents* web_contents);
+
+  using CreateActorTabCallback = base::OnceCallback<void(tabs::TabInterface*)>;
+  void CreateActorTab(TaskId task_id,
+                      bool open_in_background,
+                      tabs::TabHandle initiator_tab_handle,
+                      SessionID initiator_window_id,
+                      CreateActorTabCallback callback);
+
+  // download::AllDownloadItemNotifier::Observer
+  void OnDownloadCreated(content::DownloadManager* manager,
+                         download::DownloadItem* item) override;
+
+  // Once the profile is initialized, we can get the DownloadManager for the
+  // download::AllDownloadItemNotifier::Observer
+  void OnProfileInitializationComplete(Profile* profile) override;
+
+  class BackgroundActuationObserver : public base::CheckedObserver {
+   public:
+    virtual void OnBackgroundTabPrepared(
+        tabs::TabInterface* tab,
+        const std::string& glic_trigger_message_id) = 0;
+    virtual void OnBackgroundSetupFailed(
+        const std::string& glic_trigger_message_id) = 0;
+  };
+
+  void AddObserver(BackgroundActuationObserver* observer);
+  void RemoveObserver(BackgroundActuationObserver* observer);
+  void NotifyBackgroundTabReady(tabs::TabInterface* tab,
+                                const std::string& glic_trigger_message_id);
+  void NotifyBackgroundSetupFailed(const std::string& glic_trigger_message_id);
+
+  using MessageTriggerTaskStoppedCallback =
+      base::RepeatingCallback<void(const std::string&)>;
+  base::CallbackListSubscription AddMessageTriggerTaskStoppedCallback(
+      MessageTriggerTaskStoppedCallback callback);
+  void OnMessageTriggerTaskStopped(const std::string& message_id);
+
+#if BUILDFLAG(IS_ANDROID)
+  using EnsureForegroundServiceStartedCallback =
+      base::RepeatingCallback<void(const std::string&)>;
+  base::CallbackListSubscription AddForegroundServiceStartedCallback(
+      EnsureForegroundServiceStartedCallback callback);
+  void EnsureForegroundServiceStarted(
+      const std::string& glic_trigger_message_id);
+#endif
+
+  base::WeakPtr<ActorKeyedService> GetWeakPtr();
+
+ private:
+  TaskId CreateTaskImpl(
+      std::unique_ptr<actor::ui::UiEventDispatcher> ui_event_dispatcher,
+      const TaskSourceInfo& source_info,
+      const EnterprisePolicyChecker* policy_checker,
+      webui::mojom::TaskOptionsPtr options,
+      base::WeakPtr<ActorTaskDelegate> delegate,
+      std::optional<glic::mojom::InvocationSource> initial_invocation_source);
+
+  // The callback used for ExecutorEngine::Act.
+  void OnActionsFinished(
+      PerformActionsCallback callback,
+      std::vector<ActionResultWithLatencyInfo> action_results,
+      TabObservationStrategy observation_strategy);
+
+  // The jounrnal should be last in destruction order since other things like
+  // ActorTask might be using a SafeRef to this object.
+  AggregatedJournal journal_;
+
+  void InitializeTraceRecording(const base::FilePath& trace_path);
+  void OnTraceFilePathResolved(const base::FilePath& resolved_path);
+  void OnTraceFileInitDone(bool success);
+
+  // Serializes journal events to a file when --actor-trace-path is set.
+  std::unique_ptr<AggregatedJournalFileSerializer> trace_file_serializer_;
+
+  // download notifier for metrics and the profile observer to help set up the
+  // download notifier.
+  std::unique_ptr<download::AllDownloadItemNotifier> download_notifier_;
+  base::ScopedObservation<Profile, ProfileObserver> profile_observation_{this};
+
+  // Needs to be declared before the tasks, as they will indirectly have a
+  // reference to it. This ensures the correct destruction order.
+  std::unique_ptr<ui::ActorUiStateManagerInterface> actor_ui_state_manager_;
+
+  std::map<TaskId, std::unique_ptr<ActorTask>> active_tasks_;
+
+  // Tasks that are stopped are deleted asynchronously by being placed into this
+  // map and deleted from a posted task. We use this map so that Shutdown() can
+  // force synchronous deletion since ActorTask holds references to objects
+  // owned by other keyed services which need to be released.
+  std::map<TaskId, std::unique_ptr<ActorTask>> pending_delete_tasks_;
+
+  TaskId::Generator next_task_id_;
+
+  base::RepeatingCallbackList<void(ActorTask&)>
+      task_visibility_change_callback_list_;
+
+  base::RepeatingCallbackList<void(ActorTask&, const std::string&)>
+      task_step_progress_change_callback_list_;
+
+  base::RepeatingCallbackList<void(ActorTask&)>
+      task_state_change_callback_list_;
+
+  base::ObserverList<BackgroundActuationObserver> observers_;
+
+  base::RepeatingCallbackList<void(const std::string&)>
+      message_trigger_task_stopped_callbacks_;
+
+#if BUILDFLAG(IS_ANDROID)
+  base::RepeatingCallbackList<void(const std::string&)>
+      ensure_foreground_service_started_callbacks_;
+#endif
+
+  // Owns this.
+  raw_ptr<Profile> profile_;
+
+  base::WeakPtrFactory<ActorKeyedService> weak_ptr_factory_{this};
+};
+
+}  // namespace actor
+#endif  // CHROME_BROWSER_ACTOR_ACTOR_KEYED_SERVICE_H_

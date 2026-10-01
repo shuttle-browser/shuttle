@@ -1,0 +1,267 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/core/timing/background_tracing_helper.h"
+
+#include <string_view>
+
+#include "base/compiler_specific.h"
+#include "base/containers/span.h"
+#include "base/feature_list.h"
+#include "base/numerics/byte_conversions.h"
+#include "base/rand_util.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_split.h"
+#include "base/trace_event/named_trigger.h"
+#include "base/trace_event/typed_macros.h"
+#include "crypto/hash.h"
+#include "crypto/obsolete/md5.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/scheme_registry.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/core/timing/performance_mark.h"
+#include "third_party/blink/renderer/platform/instrumentation/resource_coordinator/renderer_resource_coordinator.h"
+#include "third_party/blink/renderer/platform/weborigin/kurl.h"
+#include "third_party/blink/renderer/platform/weborigin/security_origin.h"
+#include "third_party/blink/renderer/platform/wtf/text/ascii_ctype.h"
+#include "third_party/blink/renderer/platform/wtf/text/number_parsing_options.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_to_number.h"
+#include "url/url_constants.h"
+
+namespace blink {
+
+uint32_t MD5Hash32ForBackgroundTracingHelper(std::string_view string) {
+  auto digest = crypto::obsolete::Md5::Hash(string);
+  return base::U32FromBigEndian(base::span(digest).first<4u>());
+}
+
+uint64_t SHA256Hash64ForBackgroundTracingHelper(std::string_view string) {
+  auto digest = crypto::hash::Sha256(string);
+  return base::U64FromBigEndian(base::span(digest).first<8u>());
+}
+
+namespace {
+
+// Converts `chars` to a 1-16 character hash. If successful the parsed hash is
+// returned.
+std::optional<uint64_t> ConvertToHashInteger(std::string_view chars) {
+  // Fail if the hash string is too long or empty.
+  if (chars.size() == 0 || chars.size() > 16) {
+    return std::nullopt;
+  }
+  for (auto c : chars) {
+    if (!IsAsciiHexDigit(c)) {
+      return std::nullopt;
+    }
+  }
+  return HexCharactersToUInt64(base::as_byte_span(chars),
+                               NumberParsingOptions());
+}
+
+static constexpr char kTriggerPrefix[] = "trigger:";
+
+std::string GenerateFullTrigger(std::string_view site,
+                                std::string_view mark_name) {
+  return base::StrCat({site, "-", mark_name});
+}
+
+BackgroundTracingHelper::SiteHashSet MakeSiteHashSet() {
+  // Do nothing if the feature is not enabled.
+  if (!base::FeatureList::IsEnabled(
+          features::kBackgroundTracingPerformanceMark)) {
+    return {};
+  }
+  // Get the allow-list from the Finch configuration.
+  std::string allow_list =
+      features::kBackgroundTracingPerformanceMark_AllowList.Get();
+
+  // Parse the allow-list. Silently ignoring malformed configuration data simply
+  // means the feature will be disabled when this occurs.
+  return BackgroundTracingHelper::ParsePerformanceMarkSiteHashes(allow_list);
+}
+
+}  // namespace
+
+BackgroundTracingHelper::BackgroundTracingHelper(ExecutionContext* context) {
+  // Used to configure a per-origin allowlist of performance.mark events that
+  // are permitted to be included in background traces. See crbug.com/1181774.
+
+  // If there's no allow-list, then bail early.
+  if (GetSiteHashSet().empty()) {
+    return;
+  }
+
+  // Only support http and https origins to actual remote servers.
+  auto* origin = context->GetSecurityOrigin();
+  if (origin->IsLocal() || origin->IsOpaque() || origin->IsLocalhost())
+    return;
+  if (!CommonSchemeRegistry::IsExtensionScheme(origin->Protocol().Ascii()) &&
+      origin->Protocol() != url::kHttpScheme &&
+      origin->Protocol() != url::kHttpsScheme) {
+    return;
+  }
+
+  // Get the hash of the domain in an encoded format (friendly for converting to
+  // ASCII, and matching the format in which URLs will be encoded prior to
+  // hashing in the Finch list).
+  String this_site = EncodeWithUrlEscapeSequences(origin->Domain());
+  std::string this_site_ascii = this_site.Ascii();
+  uint32_t this_site_hash_32 = MD5Hash32(this_site_ascii);
+  uint64_t this_site_hash_64 = SHA256Hash64(this_site_ascii);
+
+  // We only need the site information if it's allowed by the allow list.
+  if (GetSiteHashSet().Contains(this_site_hash_64) ||
+      GetSiteHashSet().Contains(this_site_hash_32)) {
+    site_ = this_site_ascii;
+    site_hash_ = this_site_hash_32;
+  }
+
+  // Extract a unique ID for the ExecutionContext, using the UnguessableToken
+  // associated with it. This squishes the 128 bits of token down into a 32-bit
+  // ID.
+  auto token = context->GetExecutionContextToken();
+  uint64_t merged = token.value().GetHighForSerialization() ^
+                    token.value().GetLowForSerialization();
+  execution_context_id_ = static_cast<uint32_t>(merged & 0xffffffff) ^
+                          static_cast<uint32_t>((merged >> 32) & 0xffffffff);
+}
+
+BackgroundTracingHelper::~BackgroundTracingHelper() = default;
+
+void BackgroundTracingHelper::MaybeEmitBackgroundTracingPerformanceMarkEvent(
+    const PerformanceMark& mark) {
+  if (site_.empty()) {
+    return;
+  }
+
+  // Parse the mark and the numerical suffix, if any.
+  if (!MarkNameIsTrigger(mark.name())) {
+    return;
+  }
+  auto mark_and_id = SplitMarkNameAndId(mark.name());
+  std::string mark_name = mark_and_id.first.ToString().Ascii();
+  uint32_t mark_hash = MD5Hash32(mark_name);
+
+  // Emit the trace events. We emit hashes and strings to facilitate local trace
+  // consumption. However, the strings will be stripped and only the hashes
+  // shipped externally.
+
+  auto event_lambda = [&](perfetto::EventContext ctx) {
+    auto* event = ctx.event<perfetto::protos::pbzero::ChromeTrackEvent>();
+    auto* data = event->set_chrome_hashed_performance_mark();
+    data->set_site_hash(site_hash_);
+    data->set_site(site_);
+    data->set_mark_hash(mark_hash);
+    data->set_mark(mark_name);
+    data->set_execution_context_id(execution_context_id_);
+    if (mark_and_id.second.has_value()) {
+      data->set_sequence_number(*mark_and_id.second);
+    }
+  };
+
+  // For additional context, also emit a paired event marking *when* the
+  // performance.mark was actually created.
+  TRACE_EVENT_INSTANT("blink,latency", "performance.mark.created",
+                      event_lambda);
+
+  // Emit an event with the actual timestamp associated with the mark.
+  TRACE_EVENT_INSTANT("blink,latency", "performance.mark",
+                      mark.UnsafeTimeForTraces(), event_lambda);
+
+  base::trace_event::EmitNamedTrigger(GenerateFullTrigger(site_, mark_name),
+                                      mark_and_id.second);
+}
+
+void BackgroundTracingHelper::Trace(Visitor*) const {}
+
+// static
+const BackgroundTracingHelper::SiteHashSet&
+BackgroundTracingHelper::GetSiteHashSet() {
+  // This needs to be thread-safe because performance.mark is supported by both
+  // windows and workers.
+  DEFINE_THREAD_SAFE_STATIC_LOCAL(SiteHashSet, site_hash_set_,
+                                  (MakeSiteHashSet()));
+  return site_hash_set_;
+}
+
+// static
+wtf_size_t BackgroundTracingHelper::GetIdSuffixPos(StringView string) {
+  // Extract any trailing integers.
+  wtf_size_t cursor = string.length();
+  while (cursor > 0) {
+    // SAFETY: non-zero cursor <= length implies cursor - 1 is valid.
+    char c = UNSAFE_BUFFERS(string[cursor - 1]);
+    if (!IsAsciiDigit(c)) {
+      break;
+    }
+    --cursor;
+  }
+
+  // A valid suffix must have 1 or more integers.
+  if (cursor == string.length()) {
+    return 0;
+  }
+
+  // A valid suffix must be preceded by an underscore and at least one prefix
+  // character.
+  if (cursor < 2)
+    return 0;
+
+  // A valid suffix must be preceded by an underscore.
+  // SAFETY: cursor is 2 or more and not EOS per checks above.
+  if (UNSAFE_BUFFERS(string[cursor - 1]) != '_') {
+    return 0;
+  }
+
+  // Return the location of the underscore.
+  return cursor - 1;
+}
+
+bool BackgroundTracingHelper::MarkNameIsTrigger(StringView mark_name) {
+  return mark_name.starts_with(kTriggerPrefix) &&
+         mark_name.length() >= std::size(kTriggerPrefix);
+}
+
+std::pair<StringView, std::optional<uint32_t>>
+BackgroundTracingHelper::SplitMarkNameAndId(StringView mark_name) {
+  DCHECK(MarkNameIsTrigger(mark_name));
+  // Extract a sequence number suffix, if it exists.
+  mark_name = StringView(mark_name, std::size(kTriggerPrefix) - 1);
+  wtf_size_t sequence_number_pos = GetIdSuffixPos(mark_name);
+  if (sequence_number_pos == 0) {
+    return std::make_pair(mark_name, std::nullopt);
+  }
+  auto suffix = StringView(mark_name, sequence_number_pos + 1);
+  mark_name = StringView(mark_name, 0, sequence_number_pos);
+  return std::make_pair(mark_name, StringToUint(suffix, {}));
+}
+
+// static
+uint32_t BackgroundTracingHelper::MD5Hash32(std::string_view string) {
+  return MD5Hash32ForBackgroundTracingHelper(string);
+}
+
+// static
+uint64_t BackgroundTracingHelper::SHA256Hash64(std::string_view string) {
+  return SHA256Hash64ForBackgroundTracingHelper(string);
+}
+
+// static
+BackgroundTracingHelper::SiteHashSet
+BackgroundTracingHelper::ParsePerformanceMarkSiteHashes(
+    std::string_view allow_list) {
+  SiteHashSet allow_listed_hashes;
+  auto hashes = base::SplitStringPiece(allow_list, ",", base::TRIM_WHITESPACE,
+                                       base::SPLIT_WANT_NONEMPTY);
+  for (auto& hash_str : hashes) {
+    auto hash = ConvertToHashInteger(hash_str);
+    if (!hash.has_value()) {
+      return {};
+    }
+    allow_listed_hashes.insert(*hash);
+  }
+  return allow_listed_hashes;
+}
+
+}  // namespace blink

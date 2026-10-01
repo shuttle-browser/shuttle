@@ -1,0 +1,76 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//components/enterprise/buildflags/buildflags.gni")
+
+source_set("policy") {
+  sources = []
+  if (!is_android) {
+    sources += [
+      "http_header_injection_policy_handler.cc",
+      "http_header_injection_policy_handler.h",
+    ]
+  }
+
+  deps = [
+    ":core",
+    "//base",
+    "//components/policy/core/browser",
+    "//components/prefs",
+    "//components/strings:components_strings",
+    "//components/url_matcher",
+    "//net",
+    "//url",
+  ]
+}
+
+static_library("core") {
+  sources = [
+    "features.cc",
+    "features.h",
+    "http_header_injection_matcher.cc",
+    "http_header_injection_matcher.h",
+    "http_header_injection_rule.cc",
+    "http_header_injection_rule.h",
+    "http_header_injection_service.cc",
+    "http_header_injection_service.h",
+    "network_header_injection_prefs.cc",
+    "network_header_injection_prefs.h",
+  ]
+
+  deps = [
+    "//base",
+    "//components/keyed_service/core",
+    "//components/prefs",
+    "//components/url_matcher",
+    "//net",
+    "//url",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "http_header_injection_matcher_unittest.cc",
+    "http_header_injection_rule_unittest.cc",
+    "http_header_injection_service_unittest.cc",
+  ]
+  if (!is_android) {
+    sources += [ "http_header_injection_policy_handler_unittest.cc" ]
+  }
+
+  deps = [
+    ":core",
+    ":policy",
+    "//base",
+    "//base/test:test_support",
+    "//components/policy/core/browser",
+    "//components/prefs",
+    "//components/prefs:test_support",
+    "//components/strings:components_strings",
+    "//net",
+    "//testing/gtest",
+    "//url",
+  ]
+}

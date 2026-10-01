@@ -1,0 +1,40 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/bookmarks/ui_bundled/cells/bookmark_text_field_item.h"
+
+#import "testing/gtest/include/gtest/gtest.h"
+#import "testing/gtest_mac.h"
+#import "testing/platform_test.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+#import "third_party/ocmock/gtest_support.h"
+
+namespace {
+
+using BookmarkTextFieldItemTest = PlatformTest;
+
+TEST_F(BookmarkTextFieldItemTest, DelegateGetsTextFieldEvents) {
+  BookmarkTextFieldItem* item = [[BookmarkTextFieldItem alloc] initWithType:0];
+  BookmarkTextFieldCell* cell =
+      [[BookmarkTextFieldCell alloc] initWithFrame:CGRectZero];
+  id mockDelegate =
+      [OCMockObject mockForProtocol:@protocol(BookmarkTextFieldItemDelegate)];
+  item.delegate = mockDelegate;
+  [item configureCell:cell];
+  EXPECT_EQ(mockDelegate, cell.textField.delegate);
+
+  cell.textField.text = @"Foo";
+  EXPECT_OCMOCK_VERIFY(mockDelegate);
+}
+
+TEST_F(BookmarkTextFieldItemTest, TextFieldGetsText) {
+  BookmarkTextFieldItem* item = [[BookmarkTextFieldItem alloc] initWithType:0];
+  BookmarkTextFieldCell* cell =
+      [[BookmarkTextFieldCell alloc] initWithFrame:CGRectZero];
+  item.text = @"Foo";
+  [item configureCell:cell];
+  EXPECT_NSEQ(@"Foo", cell.textField.text);
+}
+
+}  // namespace

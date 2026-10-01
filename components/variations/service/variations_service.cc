@@ -1,0 +1,1595 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/variations/service/variations_service.h"
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include <algorithm>
+#include <optional>
+#include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
+
+#include "base/base64.h"
+#include "base/command_line.h"
+#include "base/containers/fixed_flat_set.h"
+#include "base/containers/flat_set.h"
+#include "base/debug/crash_logging.h"
+#include "base/debug/dump_without_crashing.h"
+#include "base/feature_list.h"
+#include "base/feature_list_internal.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
+#include "base/memory/ptr_util.h"
+#include "base/memory/raw_ptr.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/metrics/runtime_field_trial_overrides.h"
+#include "base/observer_list.h"
+#include "base/strings/string_util.h"
+#include "base/task/thread_pool.h"
+#include "base/trace_event/trace_event.h"
+#include "base/types/pass_key.h"
+#include "base/values.h"
+#include "base/version.h"
+#include "base/version_info/version_info.h"
+#include "build/branding_buildflags.h"
+#include "build/build_config.h"
+#include "components/encrypted_messages/encrypted_message.pb.h"
+#include "components/encrypted_messages/message_encrypter.h"
+#include "components/metrics/metrics_state_manager.h"
+#include "components/metrics/startup_visibility.h"
+#include "components/network_time/network_time_tracker.h"
+#include "components/pref_registry/pref_registry_syncable.h"
+#include "components/prefs/pref_registry_simple.h"
+#include "components/prefs/pref_service.h"
+#include "components/variations/experiment_group_ids.h"
+#include "components/variations/field_trial_internals_utils.h"
+#include "components/variations/pref_names.h"
+#include "components/variations/proto/study.pb.h"
+#include "components/variations/proto/variations_seed.pb.h"
+#include "components/variations/seed_response.h"
+#include "components/variations/sticky_activation_manager.h"
+#include "components/variations/study_filtering.h"
+#include "components/variations/variations_associated_data.h"
+#include "components/variations/variations_safe_seed_store.h"
+#include "components/variations/variations_seed_processor.h"
+#include "components/variations/variations_seed_simulator.h"
+#include "components/variations/variations_switches.h"
+#include "components/variations/variations_url_constants.h"
+#include "components/version_info/channel.h"
+#include "components/version_info/version_info.h"
+#include "net/base/net_errors.h"
+#include "net/base/url_util.h"
+#include "net/http/http_response_headers.h"
+#include "net/http/http_status_code.h"
+#include "net/traffic_annotation/network_traffic_annotation.h"
+#include "services/network/public/cpp/resource_request.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "services/network/public/cpp/simple_url_loader.h"
+#include "services/network/public/mojom/url_response_head.mojom.h"
+#include "url/gurl.h"
+
+namespace variations {
+namespace {
+
+// Returns true if the trial specified by `trial_name` has any Google web
+// experiment IDs.
+// Note: This iterates through all values of `IDCollectionKey`, which includes
+// `GOOGLE_APP`. Although `GOOGLE_APP` is not technically a Google web ID, for
+// simplicity, trials specifying `GOOGLE_APP` variation IDs are also excluded
+// from runtime mutability.
+bool TrialHasGoogleWebExperimentId(std::string_view trial_name) {
+  for (int i = 0; i < ID_COLLECTION_COUNT; ++i) {
+    if (HasGoogleVariationID(static_cast<IDCollectionKey>(i), trial_name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Constants used for encrypting the if-none-match header if we are retrieving a
+// seed over http.
+const char kEncryptedMessageLabel[] = "chrome variations";
+
+// Key is used to encrypt headers in seed retrieval requests that happen over
+// HTTP connections (when retrying after an unsuccessful HTTPS retrieval
+// attempt).
+const uint8_t kServerPublicKey[] = {
+    0x51, 0xcc, 0x52, 0x67, 0x42, 0x47, 0x3b, 0x10, 0xe8, 0x63, 0x18,
+    0x3c, 0x61, 0xa7, 0x96, 0x76, 0x86, 0x91, 0x40, 0x71, 0x39, 0x5f,
+    0x31, 0x1a, 0x39, 0x5b, 0x76, 0xb1, 0x6b, 0x3d, 0x6a, 0x2b};
+
+const uint32_t kServerPublicKeyVersion = 1;
+
+// For the HTTP date headers, the resolution of the server time is 1 second.
+const uint32_t kServerTimeResolutionInSeconds = 1;
+
+// Timeout for fetching the variations seed.
+const base::TimeDelta kVariationsSeedFetchTimeout = base::Seconds(60);
+
+// Whether the VariationsService should fetch the seed for testing.
+bool g_should_fetch_for_testing = false;
+
+// Returns a string that will be used for the value of the 'osname' URL param
+// to the variations server.
+std::string GetPlatformString() {
+  const std::string forced_platform =
+      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+          switches::kFakeVariationsPlatform);
+  if (!forced_platform.empty()) {
+    static constexpr auto kPlatforms = base::MakeFixedFlatSet<std::string_view>(
+        {"android", "android_webview", "chromeos", "fuchsia", "ios", "linux",
+         "mac", "win"});
+    if (kPlatforms.contains(forced_platform)) {
+      return forced_platform;
+    } else {
+      DVLOG(1) << "Invalid platform provided: " << forced_platform;
+    }
+  }
+
+#if BUILDFLAG(IS_WIN)
+  return "win";
+#elif BUILDFLAG(IS_IOS)
+  return "ios";
+#elif BUILDFLAG(IS_MAC)
+  return "mac";
+#elif BUILDFLAG(IS_CHROMEOS)
+  return "chromeos";
+#elif BUILDFLAG(IS_ANDROID)
+  return "android";
+#elif BUILDFLAG(IS_FUCHSIA)
+  return "fuchsia";
+#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_BSD) || BUILDFLAG(IS_SOLARIS)
+  // Default BSD and SOLARIS to Linux to not break those builds, although these
+  // platforms are not officially supported by Chrome.
+  return "linux";
+#else
+#error Unknown platform
+#endif
+}
+
+// Gets the restrict parameter from either the passed override, the client or
+// |policy_pref_service|.
+std::string GetRestrictParameterValue(const std::string& restrict_mode_override,
+                                      VariationsServiceClient* client,
+                                      PrefService* policy_pref_service) {
+  if (!restrict_mode_override.empty()) {
+    return restrict_mode_override;
+  }
+
+  std::string parameter;
+  if (client->OverridesRestrictParameter(&parameter) || !policy_pref_service) {
+    return parameter;
+  }
+
+  return policy_pref_service->GetString(prefs::kVariationsRestrictParameter);
+}
+
+// Reported to UMA, keep in sync with enums.xml and don't renumber entries.
+enum class ResourceRequestsAllowedState {
+  kAllowed,
+  kNotAllowed,
+  kAllowedNotified,
+  kNotAllowedEulaNotAccepted,
+  kNotAllowedNetworkDown,
+  kNotAllowedCommandLineDisabled,
+  kNotAllowedNetworkStateNotInitialized,
+  kMaxValue = kNotAllowedNetworkStateNotInitialized,
+};
+
+// Records UMA histogram with the current resource requests allowed state.
+void RecordRequestsAllowedHistogram(ResourceRequestsAllowedState state) {
+  base::UmaHistogramEnumeration("Variations.ResourceRequestsAllowed", state);
+}
+
+// Converts ResourceRequestAllowedNotifier::State to the corresponding
+// ResourceRequestsAllowedState value.
+ResourceRequestsAllowedState ResourceRequestStateToHistogramValue(
+    web_resource::ResourceRequestAllowedNotifier::State state) {
+  using web_resource::ResourceRequestAllowedNotifier;
+  switch (state) {
+    case ResourceRequestAllowedNotifier::DISALLOWED_EULA_NOT_ACCEPTED:
+      return ResourceRequestsAllowedState::kNotAllowedEulaNotAccepted;
+    case ResourceRequestAllowedNotifier::DISALLOWED_NETWORK_DOWN:
+      return ResourceRequestsAllowedState::kNotAllowedNetworkDown;
+    case ResourceRequestAllowedNotifier::DISALLOWED_COMMAND_LINE_DISABLED:
+      return ResourceRequestsAllowedState::kNotAllowedCommandLineDisabled;
+    case ResourceRequestAllowedNotifier::
+        DISALLOWED_NETWORK_STATE_NOT_INITIALIZED:
+      return ResourceRequestsAllowedState::
+          kNotAllowedNetworkStateNotInitialized;
+    case ResourceRequestAllowedNotifier::ALLOWED:
+      return ResourceRequestsAllowedState::kAllowed;
+  }
+  NOTREACHED();
+}
+
+// Returns the header value for |name| from |headers| or an empty string_view if
+// not set.
+std::string_view GetHeaderValue(const net::HttpResponseHeaders* headers,
+                                std::string_view name) {
+  return headers->EnumerateHeader(nullptr, name).value_or(std::string_view());
+}
+
+// Returns the list of values for |name| from |headers|. If the header in not
+// set, return an empty list.
+std::vector<std::string> GetHeaderValuesList(
+    const net::HttpResponseHeaders* headers,
+    std::string_view name) {
+  std::vector<std::string> values;
+  size_t iter = 0;
+  while (std::optional<std::string_view> value =
+             headers->EnumerateHeader(&iter, name)) {
+    values.emplace_back(*value);
+  }
+  return values;
+}
+
+// Looks for delta and gzip compression instance manipulation flags set by the
+// server in |headers|. Checks the order of flags and presence of unknown
+// instance manipulations. If successful, |is_delta_compressed| and
+// |is_gzip_compressed| contain compression flags and true is returned.
+bool GetInstanceManipulations(const net::HttpResponseHeaders* headers,
+                              bool* is_delta_compressed,
+                              bool* is_gzip_compressed) {
+  std::vector<std::string> ims = GetHeaderValuesList(headers, "IM");
+  const auto delta_im = std::ranges::find(ims, "x-bm");
+  const auto gzip_im = std::ranges::find(ims, "gzip");
+  *is_delta_compressed = delta_im != ims.end();
+  *is_gzip_compressed = gzip_im != ims.end();
+
+  // The IM field should not have anything but x-bm and gzip.
+  size_t im_count =
+      (*is_delta_compressed ? 1 : 0) + (*is_gzip_compressed ? 1 : 0);
+  if (im_count != ims.size()) {
+    DVLOG(1) << "Unrecognized instance manipulations in "
+             << base::JoinString(ims, ",")
+             << "; only x-bm and gzip are supported";
+    return false;
+  }
+
+  // The IM field defines order in which instance manipulations were applied.
+  // The client requests and supports gzip-compressed delta-compressed seeds,
+  // but not vice versa.
+  if (*is_delta_compressed && *is_gzip_compressed && delta_im > gzip_im) {
+    DVLOG(1) << "Unsupported instance manipulations order: "
+             << "requested x-bm,gzip but received gzip,x-bm";
+    return false;
+  }
+
+  return true;
+}
+
+// Variations seed fetching is only enabled in official Chrome builds, if a URL
+// is specified on the command line, and for testing.
+bool IsFetchingEnabled() {
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kDisableVariationsSeedFetch)) {
+    return false;
+  }
+#else
+  if (!base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kVariationsServerURL) &&
+      !g_should_fetch_for_testing) {
+    DVLOG(1)
+        << "Not performing repeated fetching in unofficial build without --"
+        << switches::kVariationsServerURL << " specified.";
+    return false;
+  }
+#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  return true;
+}
+
+// Returns the already downloaded first run seed, and clear the seed from the
+// native-side prefs. At this point, the seed has already been fetched from the
+// native seed storage, so it's no longer needed there. This is done regardless
+// if we fail or succeed below - since if we succeed, we're good to go and if we
+// fail, we probably don't want to keep around the bad content anyway.
+std::unique_ptr<SeedResponse> MaybeImportFirstRunSeed(
+    VariationsServiceClient* client,
+    PrefService* local_state) {
+  if (!local_state->HasPrefPath(prefs::kVariationsSeedSignature)) {
+    DVLOG(1) << "Importing first run seed from native preferences.";
+    return client->TakeSeedFromNativeVariationsSeedStore();
+  }
+  return nullptr;
+}
+
+// Checks if the given runtime mutable `study`/`experiment` has already been
+// applied.
+// NOTE: This is just checking if the names match. If, say, the study's
+// variation IDs were updated without updating the group name, this would
+// return that the study/experiment has already been applied.
+bool RuntimeMutableExperimentAlreadyApplied(
+    const Study& study,
+    const Study::Experiment& experiment) {
+  auto* runtime_field_trial_overrides =
+      base::RuntimeFieldTrialOverrides::GetInstance();
+  auto runtime_override_info =
+      runtime_field_trial_overrides->GetRuntimeOverride(study.name());
+  base::FieldTrial* existing_trial = base::FieldTrialList::Find(study.name());
+  return
+      // Check if the override has been applied.
+      (runtime_override_info.has_value() &&
+       runtime_override_info->group_name == experiment.name()) ||
+      // It's possible it wasn't applied as a runtime override but simply as
+      // a regular FieldTrial at startup.
+      (existing_trial &&
+       existing_trial->GetGroupNameWithoutActivation() == experiment.name() &&
+       !runtime_field_trial_overrides->IsFieldTrialOverridden(*existing_trial));
+}
+
+// Encrypts the serial number and encodes it in base64. Returns std::nullopt
+// on failure.
+std::optional<std::string> EncryptAndEncodeSerialNumber(
+    const std::string& serial_number) {
+  std::string encrypted;
+  encrypted_messages::EncryptedMessage encrypted_message;
+  if (!encrypted_messages::EncryptSerializedMessage(
+          kServerPublicKey, kServerPublicKeyVersion, kEncryptedMessageLabel,
+          serial_number, &encrypted_message) ||
+      !encrypted_message.SerializeToString(&encrypted)) {
+    return std::nullopt;
+  }
+  return base::Base64Encode(encrypted);
+}
+
+}  // namespace
+
+BASE_FEATURE(kVariationsRuntimeMutability, base::FEATURE_DISABLED_BY_DEFAULT);
+
+#if BUILDFLAG(IS_CHROMEOS)
+// This is a utility which syncs the policy-managed value of
+// |prefs::kDeviceVariationsRestrictionsByPolicy| into
+// |prefs::kVariationsRestrictionsByPolicy|.
+// TODO(crbug.com/40121933): Remove this workaround and implement a better long
+// term solution.
+class DeviceVariationsRestrictionByPolicyApplicator {
+ public:
+  DeviceVariationsRestrictionByPolicyApplicator(
+      PrefService* policy_pref_service)
+      : policy_pref_service_(policy_pref_service) {
+    DCHECK(policy_pref_service_);
+    const PrefService::PrefInitializationStatus prefs_init_status =
+        policy_pref_service_->GetAllPrefStoresInitializationStatus();
+    if (prefs_init_status == PrefService::INITIALIZATION_STATUS_WAITING) {
+      policy_pref_service_->AddPrefInitObserver(
+          base::BindOnce(&DeviceVariationsRestrictionByPolicyApplicator::
+                             OnPolicyPrefServiceInitialized,
+                         weak_ptr_factory_.GetWeakPtr()));
+      return;
+    }
+    OnPolicyPrefServiceInitialized(prefs_init_status ==
+                                   PrefService::INITIALIZATION_STATUS_SUCCESS);
+  }
+
+  ~DeviceVariationsRestrictionByPolicyApplicator() = default;
+
+  DeviceVariationsRestrictionByPolicyApplicator(
+      const DeviceVariationsRestrictionByPolicyApplicator& other) = delete;
+  DeviceVariationsRestrictionByPolicyApplicator& operator=(
+      const DeviceVariationsRestrictionByPolicyApplicator& other) = delete;
+
+ private:
+  void OnPolicyPrefServiceInitialized(bool successful) {
+    // If PrefService initialization was not successful, another component will
+    // display an error message to the user.
+    if (!successful) {
+      return;
+    }
+
+    pref_change_registrar_ = std::make_unique<PrefChangeRegistrar>();
+    pref_change_registrar_->Init(policy_pref_service_);
+    pref_change_registrar_->Add(
+        prefs::kDeviceVariationsRestrictionsByPolicy,
+        base::BindRepeating(&DeviceVariationsRestrictionByPolicyApplicator::
+                                OnDevicePolicyChange,
+                            weak_ptr_factory_.GetWeakPtr()));
+    // Also process the initial value.
+    OnDevicePolicyChange();
+  }
+
+  // Observes the changes in prefs::kDeviceVariationsRestrictionsByPolicy,
+  // and saves and retrieve its local state value, then sets
+  // prefs::kVariationsRestrictParameter with that new value. That's to
+  // reflect the changes of chromeos policy into the user policy.
+  // TODO(crbug.com/40121933): Remove that workaround, and make a better long
+  // term solution.
+  void OnDevicePolicyChange() {
+    const std::string& device_policy =
+        prefs::kDeviceVariationsRestrictionsByPolicy;
+    const std::string& user_policy = prefs::kVariationsRestrictionsByPolicy;
+
+    if (policy_pref_service_->IsManagedPreference(device_policy)) {
+      const int device_value = policy_pref_service_->GetInteger(device_policy);
+      policy_pref_service_->SetInteger(user_policy, device_value);
+    } else {
+      policy_pref_service_->ClearPref(user_policy);
+    }
+  }
+
+  const raw_ptr<PrefService> policy_pref_service_;
+
+  // Watch the changes of the variations prefs.
+  std::unique_ptr<PrefChangeRegistrar> pref_change_registrar_;
+
+  base::WeakPtrFactory<DeviceVariationsRestrictionByPolicyApplicator>
+      weak_ptr_factory_{this};
+};
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+VariationsService::VariationsService(
+    std::unique_ptr<VariationsServiceClient> client,
+    std::unique_ptr<web_resource::ResourceRequestAllowedNotifier> notifier,
+    PrefService* local_state,
+    metrics::MetricsStateManager* state_manager)
+    : client_(std::move(client)),
+      local_state_(local_state),
+      state_manager_(state_manager),
+      policy_pref_service_(local_state),
+      resource_request_allowed_notifier_(std::move(notifier)),
+      safe_seed_manager_(local_state),
+      // TODO(crbug.com/421912603): Verify whether all callers should pass
+      // `true` here.
+      entropy_providers_(state_manager_->CreateEntropyProviders(
+          /*enable_limited_entropy_mode=*/true)),
+      field_trial_creator_(
+          client_.get(),
+          std::make_unique<VariationsSeedStore>(
+              local_state,
+              MaybeImportFirstRunSeed(client_.get(), local_state),
+              /*signature_verification_enabled_on_load=*/
+              client_->EnableSignatureVerificationOnLoad(),
+              /*signature_verification_enabled_on_receive=*/true,
+              std::make_unique<VariationsSafeSeedStore>(
+                  local_state,
+                  client_.get()->GetVariationsSeedFileDir(),
+                  client_.get()->GetChannelForVariations(),
+                  entropy_providers_.get()),
+              client_.get()->GetChannelForVariations(),
+              client_.get()->GetVariationsSeedFileDir(),
+              entropy_providers_.get())) {
+  DCHECK(client_);
+  DCHECK(resource_request_allowed_notifier_);
+
+#if BUILDFLAG(IS_CHROMEOS)
+  device_variations_restrictions_by_policy_applicator_ =
+      std::make_unique<DeviceVariationsRestrictionByPolicyApplicator>(
+          policy_pref_service_);
+#endif
+}
+
+VariationsService::~VariationsService() {
+  for (auto& observer : observer_list_) {
+    observer.OnVariationsServiceDestroyed();
+  }
+}
+
+void VariationsService::PerformPreMainMessageLoopStartup() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  InitResourceRequestedAllowedNotifier();
+
+// Android instead calls OnAppEnterForeground() which then calls
+// StartRepeatedVariationsSeedFetch(). This is too early to do it on Android
+// because at this point the |restrict_mode_| hasn't been set yet. See also
+// the CHECK in SetRestrictMode().
+#if !BUILDFLAG(IS_ANDROID)
+  if (!IsFetchingEnabled()) {
+    return;
+  }
+
+  StartRepeatedVariationsSeedFetch();
+#endif  // !BUILDFLAG(IS_ANDROID)
+}
+
+void VariationsService::AddObserver(Observer* observer) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  observer_list_.AddObserver(observer);
+}
+
+void VariationsService::RemoveObserver(Observer* observer) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  observer_list_.RemoveObserver(observer);
+}
+
+void VariationsService::OnAppEnterForeground() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (!IsFetchingEnabled()) {
+    return;
+  }
+
+  // On mobile platforms, initialize the fetch scheduler when we receive the
+  // first app foreground notification.
+  if (!request_scheduler_) {
+    StartRepeatedVariationsSeedFetch();
+  }
+  request_scheduler_->OnAppEnterForeground();
+}
+
+void VariationsService::SetRestrictMode(const std::string& restrict_mode) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  // This should be called before the server URL has been computed. Note: This
+  // uses a CHECK because this is relevant for the behavior in release official
+  // builds that talk to the variations server - which don't enable DCHECKs.
+  CHECK(variations_server_url_.is_empty());
+  restrict_mode_ = restrict_mode;
+}
+
+bool VariationsService::IsLikelyDogfoodClient() const {
+  // The param is typically only set for dogfood clients, though in principle it
+  // could be set in other rare contexts as well.
+  const std::string restrict_mode = GetRestrictParameterValue(
+      restrict_mode_, client_.get(), policy_pref_service_);
+  return !restrict_mode.empty();
+}
+
+void VariationsService::SetIsLikelyDogfoodClientForTesting(
+    bool is_dogfood_client) {
+  // Any non-empty value for the `restrict_mode_` is treated as a dogfood client
+  // (see above).
+  if (is_dogfood_client) {
+    restrict_mode_ = "nonempty";
+  } else {
+    restrict_mode_ = std::string();
+  }
+}
+
+GURL VariationsService::GetVariationsServerURL(HttpOptions http_options) {
+  const bool secure = http_options == USE_HTTPS;
+  const std::string restrict_mode = GetRestrictParameterValue(
+      restrict_mode_, client_.get(), policy_pref_service_);
+
+  // If there's a restrict mode, we don't want to fall back to HTTP to avoid
+  // toggling restrict mode state.
+  if (!secure && !restrict_mode.empty()) {
+    return GURL();
+  }
+
+  std::string server_url_string(
+      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+          secure ? switches::kVariationsServerURL
+                 : switches::kVariationsInsecureServerURL));
+  if (server_url_string.empty()) {
+    server_url_string = secure ? kDefaultServerUrl : kDefaultInsecureServerUrl;
+  }
+  GURL server_url = GURL(server_url_string);
+  if (!restrict_mode.empty()) {
+    DCHECK(secure);
+    server_url = net::AppendOrReplaceQueryParameter(server_url, "restrict",
+                                                    restrict_mode);
+  }
+  server_url = net::AppendOrReplaceQueryParameter(
+      server_url, "osname",
+      osname_server_param_override_.empty() ? GetPlatformString()
+                                            : osname_server_param_override_);
+
+  // Add channel to the request URL.
+  version_info::Channel channel = client_->GetChannelForVariations();
+  if (channel != version_info::Channel::UNKNOWN) {
+    server_url = net::AppendOrReplaceQueryParameter(
+        server_url, "channel", version_info::GetChannelString(channel));
+  }
+
+  // Add milestone to the request URL.
+  const std::string milestone = version_info::GetMajorVersionNumber();
+  if (!milestone.empty()) {
+    server_url =
+        net::AppendOrReplaceQueryParameter(server_url, "milestone", milestone);
+  }
+
+  const std::string corpus =
+      base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+          switches::kVariationsSeedCorpus);
+  if (!corpus.empty()) {
+    server_url =
+        net::AppendOrReplaceQueryParameter(server_url, "corpus", corpus);
+  }
+
+  if (!server_url.is_valid()) {
+    SCOPED_CRASH_KEY_STRING1024("VariationsService", "server_url",
+                                server_url.possibly_invalid_spec());
+    base::debug::DumpWithoutCrashing();
+  }
+  return server_url;
+}
+
+void VariationsService::EnsureLocaleEquals(const std::string& locale) {
+#if BUILDFLAG(IS_CHROMEOS)
+  // Chrome OS may switch language on the fly.
+  return;
+#else
+
+#if BUILDFLAG(IS_ANDROID)
+  // TODO(asvitkine): Speculative early return to silence CHECK failures on
+  // Android, see crbug.com/912320.
+  if (locale.empty()) {
+    return;
+  }
+#endif
+
+  // Uses a CHECK rather than a DCHECK to ensure that issues are caught since
+  // problems in this area may only appear in the wild due to official builds
+  // and end user machines.
+  if (locale != field_trial_creator_.application_locale()) {
+    // TODO(crbug.com/41430274): Report the two values in crash keys.
+    static auto* lhs_key = base::debug::AllocateCrashKeyString(
+        "mismatched_locale_lhs", base::debug::CrashKeySize::Size256);
+    static auto* rhs_key = base::debug::AllocateCrashKeyString(
+        "mismatched_locale_rhs", base::debug::CrashKeySize::Size256);
+    base::debug::ScopedCrashKeyString scoped_lhs(lhs_key, locale);
+    base::debug::ScopedCrashKeyString scoped_rhs(
+        rhs_key, field_trial_creator_.application_locale());
+    CHECK_EQ(locale, field_trial_creator_.application_locale());
+  }
+#endif
+}
+
+// static
+std::string VariationsService::GetDefaultVariationsServerURLForTesting() {
+  return kDefaultServerUrl;
+}
+
+// static
+void VariationsService::RegisterPrefs(PrefRegistrySimple* registry) {
+  SafeSeedManager::RegisterPrefs(registry);
+  VariationsSeedStore::RegisterPrefs(registry);
+  RegisterFieldTrialInternalsPrefs(*registry);
+  StickyActivationManager::RegisterPrefs(*registry);
+
+  registry->RegisterIntegerPref(
+      prefs::kDeviceVariationsRestrictionsByPolicy,
+      static_cast<int>(RestrictionPolicy::NO_RESTRICTIONS));
+  registry->RegisterDictionaryPref(
+      prefs::kVariationsGoogleGroups,
+      static_cast<int>(RestrictionPolicy::NO_RESTRICTIONS));
+  // This preference is used to override the variations country code which is
+  // consistent across different chrome version.
+  registry->RegisterStringPref(prefs::kVariationsPermanentOverriddenCountry,
+                               std::string());
+  // This preference keeps track of ChromeVariations enum policy which
+  // allows the admin to restrict the set of variations applied.
+  registry->RegisterIntegerPref(
+      prefs::kVariationsRestrictionsByPolicy,
+      static_cast<int>(RestrictionPolicy::NO_RESTRICTIONS));
+  // This preference will only be written by the policy service, which will fill
+  // it according to a value stored in the User Policy.
+  registry->RegisterStringPref(prefs::kVariationsRestrictParameter,
+                               std::string());
+}
+
+// static
+void VariationsService::RegisterProfilePrefs(
+    user_prefs::PrefRegistrySyncable* registry) {
+  // This preference will only be written by the policy service, which will fill
+  // it according to a value stored in the User Policy.
+  registry->RegisterStringPref(prefs::kVariationsRestrictParameter,
+                               std::string());
+}
+
+// static
+std::unique_ptr<VariationsService> VariationsService::Create(
+    std::unique_ptr<VariationsServiceClient> client,
+    PrefService* local_state,
+    metrics::MetricsStateManager* state_manager,
+    const char* disable_network_switch,
+    web_resource::ResourceRequestAllowedNotifier::NetworkConnectionTrackerGetter
+        network_connection_tracker_getter) {
+  return base::WrapUnique(new VariationsService(
+      std::move(client),
+      std::make_unique<web_resource::ResourceRequestAllowedNotifier>(
+          local_state, disable_network_switch,
+          std::move(network_connection_tracker_getter)),
+      local_state, state_manager));
+}
+
+// static
+void VariationsService::EnableFetchForTesting() {
+  g_should_fetch_for_testing = true;
+}
+
+void VariationsService::DoActualFetch() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  // Normally, there shouldn't be a fetch in progress when this fires.
+  // However it's not impossible - for example if Chrome was paused (e.g. in a
+  // debugger or if the machine was suspended) and the previous request hasn't
+  // completed yet. In this case, don't start a new request and just let the
+  // previous one finish.
+  if (is_fetching_seed_) {
+    return;
+  }
+  is_fetching_seed_ = true;
+  last_request_was_http_retry_ = false;
+  FetchSeedOverHTTPS();
+}
+
+void VariationsService::FetchSeedOverHTTPS() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DoFetchFromURL(variations_server_url_, GetLatestSerialNumber());
+}
+
+void VariationsService::FetchSeedOverHTTP() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  std::string serial_number = GetLatestSerialNumber();
+  if (!serial_number.empty()) {
+    base::ThreadPool::PostTaskAndReplyWithResult(
+        FROM_HERE, {base::TaskPriority::USER_VISIBLE},
+        base::BindOnce(&EncryptAndEncodeSerialNumber, std::move(serial_number)),
+        base::BindOnce(&VariationsService::ContinueRetryOverHTTP,
+                       weak_ptr_factory_.GetWeakPtr(),
+                       insecure_variations_server_url_));
+    return;
+  }
+  // If no serial number, just fetch without header.
+  DoFetchFromURL(insecure_variations_server_url_, std::string());
+}
+
+const std::string& VariationsService::GetLatestSerialNumber() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return field_trial_creator_.seed_store()->GetLatestSerialNumber();
+}
+
+void VariationsService::DoFetchFromURL(const GURL& url,
+                                       std::string header_serial_number) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK(IsFetchingEnabled());
+  DCHECK(!pending_seed_request_);
+
+  CHECK(state_manager_);
+  safe_seed_manager_.RecordFetchStarted(state_manager_->startup_visibility());
+
+  net::NetworkTrafficAnnotationTag traffic_annotation =
+      net::DefineNetworkTrafficAnnotation("chrome_variations_service", R"(
+        semantics {
+          sender: "Chrome Variations Service"
+          description:
+            "Retrieves the list of Google Chrome's Variations from the server, "
+            "which will apply to the next Chrome session upon a restart."
+          trigger:
+            "Requests are made periodically while Google Chrome is running."
+          data: "The operating system name."
+          destination: GOOGLE_OWNED_SERVICE
+        }
+        policy {
+          cookies_allowed: NO
+          setting: "This feature cannot be disabled by settings."
+          policy_exception_justification:
+            "The ChromeVariations policy prevents Variations from applying, "
+            "but Google Chrome still downloads Variations from the server "
+            "periodically. This way, the downloaded Variations apply "
+            "immediately on restart if you unset the ChromeVariations policy."
+        })");
+  auto resource_request = std::make_unique<network::ResourceRequest>();
+  resource_request->url = url;
+  resource_request->credentials_mode = network::mojom::CredentialsMode::kOmit;
+
+  const bool enable_deltas =
+      !header_serial_number.empty() && !delta_error_since_last_success_;
+
+  if (!header_serial_number.empty()) {
+    resource_request->headers.SetHeader("If-None-Match",
+                                        std::move(header_serial_number));
+  }
+  // Tell the server that delta-compressed and gzipped seeds are supported.
+  const char* supported_im = enable_deltas ? "x-bm,gzip" : "gzip";
+  resource_request->headers.SetHeader("A-IM", supported_im);
+
+  pending_seed_request_ = network::SimpleURLLoader::Create(
+      std::move(resource_request), traffic_annotation);
+  // Ensure our callback is called even with "304 Not Modified" responses.
+  pending_seed_request_->SetAllowHttpErrorResults(true);
+  pending_seed_request_->SetTimeoutDuration(kVariationsSeedFetchTimeout);
+  pending_seed_request_->DownloadToStringOfUnboundedSizeUntilCrashAndDie(
+      client_->GetURLLoaderFactory().get(),
+      base::BindOnce(&VariationsService::OnSimpleLoaderComplete,
+                     weak_ptr_factory_.GetWeakPtr()));
+
+  const base::TimeTicks now = base::TimeTicks::Now();
+  base::TimeDelta time_since_last_fetch;
+  // Record a time delta of 0 (default value) if there was no previous fetch.
+  if (!last_request_started_time_.is_null()) {
+    time_since_last_fetch = now - last_request_started_time_;
+  }
+  base::UmaHistogramCustomCounts("Variations.TimeSinceLastFetchAttempt",
+                                 time_since_last_fetch.InMinutes(), 1,
+                                 base::Days(7).InMinutes(), 50);
+  ++request_count_;
+  last_request_started_time_ = now;
+  delta_error_since_last_success_ = false;
+}
+
+void VariationsService::ContinueRetryOverHTTP(
+    const GURL& url,
+    std::optional<std::string> encrypted_serial_number) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (!encrypted_serial_number.has_value()) {
+    // Encryption failed. Abort retry.
+    DVLOG(1) << "Failed to encrypt serial number for HTTP retry.";
+    is_fetching_seed_ = false;
+    return;
+  }
+
+  DoFetchFromURL(url, std::move(encrypted_serial_number).value());
+}
+
+void VariationsService::StoreSeed(std::string seed_data,
+                                  std::string seed_signature,
+                                  std::string country_code,
+                                  std::string geo_level1,
+                                  base::Time date_fetched,
+                                  bool is_delta_compressed,
+                                  bool is_gzip_compressed) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  base::OnceCallback<void(bool, VariationsSeed)> done_callback =
+      base::BindOnce(&VariationsService::OnSeedStoreResult,
+                     weak_ptr_factory_.GetWeakPtr(), is_delta_compressed);
+  field_trial_creator_.seed_store()->StoreSeedData(
+      std::move(done_callback), std::move(seed_data), std::move(seed_signature),
+      std::move(country_code), std::move(geo_level1), date_fetched,
+      is_delta_compressed, is_gzip_compressed,
+      /*require_synchronous=*/false);
+}
+
+void VariationsService::OnSeedStoreResult(bool is_delta_compressed,
+                                          bool store_success,
+                                          VariationsSeed seed) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (!store_success && is_delta_compressed) {
+    delta_error_since_last_success_ = true;
+    // |request_scheduler_| will be null during unit tests.
+    if (request_scheduler_) {
+      request_scheduler_->ScheduleFetchShortly();
+    }
+  }
+
+  if (store_success) {
+    // When the new seed is stored, the active seed will be stored as the safe
+    // seed.
+    RecordSuccessfulFetchNewSeed();
+
+    // Do a simulation to determine if there are any kill-switches that would be
+    // activated by this seed on the next session.
+    PerformSimulationWithVersion(seed, client_->GetVersionForSimulation());
+
+    // Do a simulation to determine and apply any runtime mutable changes to the
+    // the current session.
+    // TODO(crbug.com/482450632): See if there is logic that can be consolidated
+    // between this and `PerformSimulationWithVersion()` above (which is used
+    // for badging killswitches).
+    if (base::FeatureList::IsEnabled(kVariationsRuntimeMutability)) {
+      SimulateAndApplyRuntimeMutableChanges(seed);
+    }
+
+    NotifySeedFetched();
+  }
+}
+
+void VariationsService::SimulateAndApplyRuntimeMutableChanges(
+    const VariationsSeed& seed) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  // TODO(crbug.com/482450632): Consider doing the heavy work in the
+  // background.
+
+  const base::Version& current_version = version_info::GetVersion();
+  if (!current_version.IsValid()) {
+    DVLOG(1) << "VariationsService: SimulateAndApplyRuntimeMutableChanges "
+             << "failed, version is invalid. GetVersionNumber() is: "
+             << version_info::GetVersionNumber();
+    return;
+  }
+
+  std::unique_ptr<ClientFilterableState> client_state =
+      field_trial_creator_.GetClientFilterableStateForVersion(current_version);
+  VariationsLayers layers(seed, *entropy_providers_);
+  // Filter for studies that are explicitly declared as runtime mutable, as it
+  // is an opt-in functionality.
+  auto filtered_studies = FilterAndValidateStudies(
+      seed, *client_state, layers,
+      [](const Study& study) { return study.runtime_mutable(); });
+
+  DVLOG(1) << "VariationsService: SimulateAndApplyRuntimeMutableChanges "
+           << "found " << filtered_studies.size() << " mutable studies.";
+
+  for (const ProcessedStudy& study : filtered_studies) {
+    DVLOG(1) << "VariationsService: Simulating / applying runtime mutable "
+             << "changes for study: " << study.study()->name();
+    // Simulate group assignment for the study, and apply it if necessary.
+    scoped_refptr<base::FieldTrial> simulated_trial =
+        VariationsSeedProcessor(field_trial_creator_.sticky_activation_manager(
+                                    base::PassKey<VariationsService>()))
+            .CreateTrialFromStudy(
+                base::PassKey<VariationsService>(), study, *entropy_providers_,
+                layers, base::FeatureList::GetInstance(), /*simulated=*/true);
+    ApplyRuntimeMutableChangesResult result =
+        ApplyRuntimeMutableChanges(simulated_trial.get(), study);
+    base::UmaHistogramEnumeration(
+        "Variations.ApplyRuntimeMutableChanges.Result", result);
+  }
+}
+
+void VariationsService::InitResourceRequestedAllowedNotifier() {
+  // ResourceRequestAllowedNotifier does not install an observer if there is no
+  // NetworkChangeNotifier, which results in never being notified of changes to
+  // network status.
+  resource_request_allowed_notifier_->Init(this, /*leaky=*/false,
+                                           /*wait_for_eula=*/false);
+}
+
+void VariationsService::StartRepeatedVariationsSeedFetch() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  // Initialize Variations server URLs.
+  variations_server_url_ = GetVariationsServerURL(USE_HTTPS);
+  insecure_variations_server_url_ = GetVariationsServerURL(USE_HTTP);
+
+  DCHECK(!request_scheduler_);
+  request_scheduler_.reset(VariationsRequestScheduler::Create(
+      base::BindRepeating(&VariationsService::FetchVariationsSeed,
+                          weak_ptr_factory_.GetWeakPtr()),
+      local_state_));
+  // Note that the act of starting the scheduler will start the fetch, if the
+  // scheduler deems appropriate.
+  request_scheduler_->Start();
+}
+
+void VariationsService::FetchVariationsSeed() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (seed_fetching_paused_) {
+    DVLOG(1) << "Variations seed fetching is paused. Skipping fetch.";
+    return;
+  }
+
+  const web_resource::ResourceRequestAllowedNotifier::State state =
+      resource_request_allowed_notifier_->GetResourceRequestsAllowedState();
+  RecordRequestsAllowedHistogram(ResourceRequestStateToHistogramValue(state));
+  if (state != web_resource::ResourceRequestAllowedNotifier::ALLOWED) {
+    DVLOG(1) << "Resource requests were not allowed. Waiting for notification.";
+    return;
+  }
+
+  DoActualFetch();
+}
+
+void VariationsService::NotifyExperimentChangesDetected(
+    const SeedSimulationResult& result) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (result.kill_critical_group_change_count > 0) {
+    for (auto& observer : observer_list_) {
+      observer.OnExperimentChangesDetected(Observer::CRITICAL);
+    }
+  } else if (result.kill_best_effort_group_change_count > 0) {
+    for (auto& observer : observer_list_) {
+      observer.OnExperimentChangesDetected(Observer::BEST_EFFORT);
+    }
+  }
+}
+
+void VariationsService::NotifySeedFetched() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  for (auto& observer : observer_list_) {
+    observer.OnSeedFetched();
+  }
+}
+
+void VariationsService::OnSimpleLoaderComplete(
+    std::optional<std::string> response_body) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  TRACE_EVENT0("browser", "VariationsService::OnSimpleLoaderComplete");
+
+  const bool is_first_request = !initial_request_completed_;
+  initial_request_completed_ = true;
+
+  const base::TimeTicks now = base::TimeTicks::Now();
+  if (is_first_request &&
+      !local_state_->HasPrefPath(prefs::kVariationsSeedSignature)) {
+    base::UmaHistogramTimes("Variations.SeedFetchTimeOnFirstRun",
+                            now - last_request_started_time_);
+  }
+
+  const network::mojom::URLResponseHead* response_info =
+      pending_seed_request_->ResponseInfo();
+  const scoped_refptr<net::HttpResponseHeaders> headers =
+      response_info ? response_info->headers : nullptr;
+  const int response_code = headers ? headers->response_code() : -1;
+  const int net_error = pending_seed_request_->NetError();
+  const bool is_success = headers && response_body && (net_error == net::OK);
+
+  pending_seed_request_.reset();
+  if (last_request_was_http_retry_) {
+    base::UmaHistogramSparse("Variations.SeedFetchResponseOrErrorCode.HTTP",
+                             is_success ? response_code : net_error);
+  } else {
+    base::UmaHistogramSparse("Variations.SeedFetchResponseOrErrorCode",
+                             is_success ? response_code : net_error);
+  }
+  if (!is_success) {
+    DVLOG(1) << "Variations server request failed with error: " << net_error
+             << ": " << net::ErrorToString(net_error);
+    // It's common for the very first fetch attempt to fail (e.g. the network
+    // may not yet be available). In such a case, try again soon, rather than
+    // waiting the full time interval.
+    // |request_scheduler_| will be null during unit tests.
+    if (is_first_request && request_scheduler_) {
+      is_fetching_seed_ = false;
+      request_scheduler_->ScheduleFetchShortly();
+      return;
+    }
+
+    if (MaybeRetryOverHTTP()) {
+      // If the retry was successfully started, return immediately,
+      // OnSimpleLoaderComplete will be called again when the new fetch
+      // finishes.
+      return;
+    }
+  }
+
+  // We are sure we won't retry. Mark to false right here.
+  is_fetching_seed_ = false;
+
+  // Return if there was a failure. Note that we check both |is_success| which
+  // is set above and the response code. There could be a case where there's a
+  // HTTP_OK response code but |is_success| is false, for example if the fetch
+  // download was interrupted after having been started.
+  if (!is_success || (response_code != net::HTTP_OK &&
+                      response_code != net::HTTP_NOT_MODIFIED)) {
+    DVLOG(1) << "Variations server request failed: is_success=" << is_success
+             << " response_code=" << response_code
+             << " net_error=" << net_error;
+    return;
+  }
+  // At this point, |headers| and |response_body| should exist.
+  DCHECK(headers);
+  DCHECK(response_body);
+
+  std::optional<base::Time> response_date = headers->GetDateValue();
+  // If the seed was fetched securely, opportunistically update the network time
+  // tracker with the headers time.
+  if (response_date && !last_request_was_http_retry_) {
+    DCHECK(!response_date->is_null());
+
+    const base::TimeDelta latency = now - last_request_started_time_;
+    client_->GetNetworkTimeTracker()->UpdateNetworkTime(
+        response_date.value(), base::Seconds(kServerTimeResolutionInSeconds),
+        latency, now);
+  }
+
+  if (response_code == net::HTTP_NOT_MODIFIED) {
+    // TODO(crbug.com/420652919): Reject responses without a date.
+    RecordSuccessfulFetchSeedNotModified(response_date.value_or(base::Time()));
+    return;
+  }
+
+  // We're now handling the HTTP_OK success case.
+  DCHECK_EQ(response_code, net::HTTP_OK);
+
+  bool is_delta_compressed;
+  bool is_gzip_compressed;
+  if (!GetInstanceManipulations(headers.get(), &is_delta_compressed,
+                                &is_gzip_compressed)) {
+    // The header does not specify supported instance manipulations, unable to
+    // process data. Details of errors were logged by GetInstanceManipulations.
+    ReportUnsupportedSeedFormatError();
+    return;
+  }
+
+  std::string_view signature =
+      GetHeaderValue(headers.get(), "X-Seed-Signature");
+  std::string_view country_code;
+  std::string_view geo_level1;
+  // Only trust the header contents when the seed was fetched over HTTPS. This
+  // does not apply to the seed signature as that can't be easily forged.
+  // Note: In the case of an insecure fetch, the empty `country_code` and
+  // `geo_level1` strings will be ignored downstream and the existing location
+  // values in Local State will be preserved.
+  if (!last_request_was_http_retry_) {
+    country_code = GetHeaderValue(headers.get(), "X-Country");
+    geo_level1 = GetHeaderValue(headers.get(), "X-Geo-Level-1");
+  }
+  StoreSeed(std::move(*response_body), std::string(signature),
+            std::string(country_code), std::string(geo_level1),
+            response_date.value_or(base::Time()), is_delta_compressed,
+            is_gzip_compressed);
+}
+
+bool VariationsService::MaybeRetryOverHTTP() {
+  // If the current fetch attempt was over an HTTPS connection, retry the
+  // fetch immediately over an HTTP connection. We only do this if an insecure
+  // variations URL is set and its scheme is HTTP.
+  if (!last_request_was_http_retry_ &&
+      !insecure_variations_server_url_.is_empty() &&
+      insecure_variations_server_url_.SchemeIs(url::kHttpScheme)) {
+    last_request_was_http_retry_ = true;
+    FetchSeedOverHTTP();
+    return true;
+  }
+  return false;
+}
+
+void VariationsService::OnResourceRequestsAllowed() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  // Note that this only attempts to fetch the seed at most once per period
+  // (kSeedFetchPeriodHours). This works because
+  // |resource_request_allowed_notifier_| only calls this method if an
+  // attempt was made earlier that fails (which implies that the period had
+  // elapsed). After a successful attempt is made, the notifier will know not
+  // to call this method again until another failed attempt occurs.
+  RecordRequestsAllowedHistogram(
+      ResourceRequestsAllowedState::kAllowedNotified);
+  DVLOG(1) << "Retrying fetch.";
+  DoActualFetch();
+
+  // This service must have created a scheduler in order for this to be called.
+  DCHECK(request_scheduler_);
+  request_scheduler_->Reset();
+}
+
+void VariationsService::PerformSimulationWithVersion(
+    const VariationsSeed& seed,
+    const base::Version& version) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (!version.IsValid()) {
+    return;
+  }
+
+  std::unique_ptr<ClientFilterableState> client_state =
+      field_trial_creator_.GetClientFilterableStateForVersion(version);
+  auto result = SimulateSeedStudies(seed, *client_state, *entropy_providers_);
+
+  NotifyExperimentChangesDetected(result);
+}
+
+ApplyRuntimeMutableChangesResult VariationsService::ApplyRuntimeMutableChanges(
+    base::FieldTrial* simulated_trial,
+    const ProcessedStudy& processed_study) {
+  using enum ApplyRuntimeMutableChangesResult;
+
+  if (!simulated_trial) {
+    // The simulated trial may be null, e.g. if the study had no randomized
+    // experiments at all.
+    return kSimulatedGroupIsNull;
+  }
+
+  // The selected group may not actually exist in the given seed (e.g. if the
+  // group was forced by the command line).
+  const std::string& group_name =
+      simulated_trial->GetGroupNameWithoutActivation();
+  DVLOG(1) << "VariationsService: Simulated " << processed_study.study()->name()
+           << " into group: " << group_name;
+  int experiment_index = processed_study.GetExperimentIndexByName(group_name);
+  if (experiment_index == -1) {
+    return kSimulatedGroupNotFound;
+  }
+
+  const Study& study = *processed_study.study();
+  const Study::Experiment& experiment = study.experiment(experiment_index);
+
+  // For now, only allow killswitches (disabling features) or groups specifying
+  // no features.
+  if (experiment.feature_association().enable_feature_size() > 0) {
+    return kNotStrictKillswitch;
+  }
+
+  // For now, only allow ACTIVATE_ON_STARTUP studies.
+  if (study.activation_type() != Study::ACTIVATE_ON_STARTUP) {
+    return kNotStartsActive;
+  }
+
+  // Only allow permanent consistency. Otherwise, the user may get constantly
+  // bounced between different groups every time a new seed is fetched.
+  if (study.consistency() != Study::PERMANENT) {
+    return kNotPermanentConsistency;
+  }
+
+  // TODO(crbug.com/482450020): Support runtime mutability for Google web
+  // studies. For now, disallow applying a runtime experiment if it has a
+  // Google web experiment ID.
+  if (HasGoogleWebExperimentId(experiment)) {
+    return kRuntimeExperimentHasGoogleWebId;
+  }
+
+  // TODO(crbug.com/482450632): Support params for runtime mutable experiments.
+  // For now, disallow applying a runtime experiment if it has params.
+  if (experiment.param_size() > 0) {
+    return kRuntimeExperimentHasParams;
+  }
+
+  // If the runtime mutable experiment has already been applied, don't need to
+  // apply it again.
+  if (RuntimeMutableExperimentAlreadyApplied(study, experiment)) {
+    return kAlreadyApplied;
+  }
+
+  // At this point, the runtime mutable experiment is eligible to be applied.
+  // However, we need to ensure this can be done safely.
+  auto* feature_list = base::FeatureList::GetInstance();
+
+  // First, ensure that all features referenced have runtime mutability enabled
+  // and are eligible (not overridden from command line).
+  base::flat_set<std::string> feature_names(
+      experiment.feature_association().disable_feature().begin(),
+      experiment.feature_association().disable_feature().end());
+  for (const std::string& feature_name : feature_names) {
+    if (!feature_list->HasRuntimeMutabilityEnabledByFeatureName(feature_name)) {
+      return kNonRuntimeMutableFeature;
+    }
+    if (feature_list->IsFeatureOverriddenFromCommandLine(feature_name)) {
+      return kFeatureOverriddenFromCommandLine;
+    }
+  }
+
+  // Second, ensure that all the features are currently being controlled by the
+  // same trial (or none of them are controlled by a trial). E.g. if the
+  // experiment killswitches FeatureA and FeatureB, but currently FeatureA is
+  // associated with Trial1 while FeatureB is associated with Trial2, then it is
+  // not valid.
+  // TODO(crbug.com/482450632): Technically the outlined scenario is safe and
+  // could be supported as it results in a valid state that is fully contained
+  // in the killswitch seed. But for now, prevent these cases for simplicity.
+  auto* runtime_field_trial_overrides =
+      base::RuntimeFieldTrialOverrides::GetInstance();
+  base::FeatureList::ControllingTrialInfo controlling_trial_info;
+  if (!feature_names.empty()) {
+    base::flat_set<base::FeatureList::ControllingTrialInfo>
+        controlling_trial_infos;
+    for (const std::string& feature_name : feature_names) {
+      controlling_trial_infos.insert(
+          feature_list->GetControllingTrialInfoByFeatureName(feature_name));
+    }
+    if (controlling_trial_infos.size() != 1) {
+      return kFeaturesNotControlledBySameTrial;
+    }
+    controlling_trial_info = *controlling_trial_infos.begin();
+  } else {
+    // For runtime experiments that do not specify any feature, we consider the
+    // "controlling trial" (the trial that this experiment will ultimately be
+    // overriding) to be the trial with the same name. It's possible there are
+    // no such trial (i.e. this won't be overriding any trial) -- this is
+    // handled later on below.
+    if (runtime_field_trial_overrides->GetRuntimeOverride(study.name())) {
+      controlling_trial_info = {
+          .trial_name = study.name(),
+          .is_runtime_override = true,
+      };
+    } else if (base::FieldTrialList::Find(study.name())) {
+      controlling_trial_info = {
+          .trial_name = study.name(),
+          .is_runtime_override = false,
+      };
+    }
+  }
+
+  // Third, the trial that controls the features (if any) does not specify any
+  // additional features. E.g. if the trial enables both FeatureA and FeatureB,
+  // but the new runtime mutable experiment only killswitches FeatureA, this
+  // would create an invalid state that does not exist in any individual seed
+  // (FeatureA disabled, FeatureB enabled).
+  const std::string& controlling_trial_name = controlling_trial_info.trial_name;
+  bool controlling_trial_is_runtime_override =
+      controlling_trial_info.is_runtime_override;
+  // It's possible that no trial is currently controlling the features. E.g.,
+  // say FeatureA and FeatureB are both ENABLED_BY_DEFAULT and are not
+  // controlled by any trial. If a runtime mutable killswitch is deployed to
+  // killswitch both features, then `controlling_trial_name` will be empty,
+  // which is valid. However, if a future runtime mutable killswitch is deployed
+  // again (e.g. going from killswitch at 50% to 100%), `controlling_trial_name`
+  // will not be empty anymore, and will only apply if the new killswitch
+  // specifies the same set of features as the original killswitch.
+  if (!controlling_trial_name.empty()) {
+    base::flat_set<std::string> associated_features =
+        feature_list->GetFeaturesAssociatedWithTrial(controlling_trial_info);
+
+    if (feature_names != associated_features) {
+      return kControllingTrialHasOtherFeatures;
+    }
+
+    // TODO(crbug.com/482450020): Support runtime mutability for Google web
+    // studies. For now, disallow overriding a trial that has Google web
+    // experiment IDs.
+    if (TrialHasGoogleWebExperimentId(controlling_trial_name)) {
+      return kOverriddenTrialHasGoogleWebId;
+    }
+  }
+
+  // Fourth, ensure there is not already a trial with the same name as the
+  // runtime mutable experiment we are about to apply (i.e. name collision). The
+  // only exception where this is allowed is if this runtime mutable experiment
+  // will override that existing trial. (Otherwise, metrics logs would report
+  // the same trial multiple times (with different groups), but these are
+  // expected to be unique). For example:
+  //  * MyTrial/Enabled -> MyTrial/Killswitch50Pct -> MyTrial/Killswitch100Pct,
+  //    both killswitch applications should be allowed. In both cases, there
+  //    already exists a trial (or runtime trial override), but it is being
+  //    overridden by the killswitch, so there is no collision.
+  //  * Similarly, MyTrial/Enabled -> MyTrialKillswitch/Disabled50 ->
+  //    MyTrial/Disabled100 would be allowed (the trial name changed in the
+  //    middle, but reverted back to the original name after) since it does not
+  //    result in a name collision.
+  //  * However, MyTrial/Enabled -> Killswitch/Disabled50 would not be allowed
+  //    if there was already an unrelated trial (or runtime trial override)
+  //    named "Killswitch".
+  //
+  // First step is to find the trial that this will be overriding (if any), and
+  // any previous overrides that this is replacing (if any).
+  const base::FieldTrial* trial_to_override;
+  std::string previous_override_to_replace;
+  if (controlling_trial_is_runtime_override) {
+    DCHECK(!controlling_trial_name.empty());
+    const auto& runtime_override_info =
+        runtime_field_trial_overrides->GetRuntimeOverride(
+            controlling_trial_name);
+    if (!runtime_override_info.has_value()) {
+      // This should never happen.
+      return kControllingTrialNotFound;
+    }
+    trial_to_override = runtime_override_info->overridden_trial.get();
+    previous_override_to_replace = runtime_override_info->trial_name;
+    DCHECK_EQ(previous_override_to_replace, controlling_trial_name);
+  } else if (!controlling_trial_name.empty()) {
+    trial_to_override = base::FieldTrialList::Find(controlling_trial_name);
+    if (!trial_to_override) {
+      // This should never happen.
+      return kControllingTrialNotFound;
+    }
+  } else {
+    trial_to_override = nullptr;
+  }
+  // If there exists a trial with this runtime mutable trial's name, but we're
+  // not overriding it, then we have a collision.
+  if (base::FieldTrialList::Find(study.name())) {
+    if (!trial_to_override || trial_to_override->trial_name() != study.name()) {
+      return kTrialNameCollision;
+    }
+  }
+  // If there exists a runtime override with this runtime mutable experiment's
+  // name, but we're not replacing it, then we have a collision.
+  if (runtime_field_trial_overrides->GetRuntimeOverride(study.name()) &&
+      previous_override_to_replace != study.name()) {
+    return kTrialNameCollision;
+  }
+
+  // Apply the runtime mutable experiment! Note that we apply the runtime
+  // FieldTrial override first, then update the features' runtime state. Because
+  // histograms can be emitted from any threads, it's technically possible (but
+  // very unlikely) that there's a race where a histogram is emitted after the
+  // trial was overridden, but before the features' state was updated. By doing
+  // the mutation in this order, in those extreme edge cases, we ensure we
+  // pollute the runtime mutable study (rather than the original study). This
+  // should be OK because we currently only support killswitches, and those are
+  // not meant to be analyzed as they generally don't have a control group.
+  // (We could try creating logs in between the steps to try and really properly
+  // associate the histograms with the actual trials they were associated with,
+  // but the race condition would still exist regardless).
+  bool trial_override_result =
+      runtime_field_trial_overrides->ApplyRuntimeOverride(
+          base::PassKey<VariationsService>(), study.name(), group_name,
+          trial_to_override, previous_override_to_replace);
+  DCHECK(trial_override_result);
+  if (!trial_override_result) {
+    // This should never happen.
+    return kApplyRuntimeFieldTrialOverrideFailed;
+  }
+  for (const auto& feature_name : feature_names) {
+    DVLOG(1) << "VariationsService: Applying runtime override to disable "
+             << "feature: " << feature_name;
+    auto update = feature_list->PrepareRuntimeMutableFeatureStateUpdate(
+        base::PassKey<VariationsService>(), study.name(), group_name,
+        feature_name, base::FeatureList::OVERRIDE_DISABLE_FEATURE);
+    DCHECK(update.has_value());
+    if (!update.has_value()) {
+      // This should never happen, but if it does, we're in a bad state
+      // where only a subset features may have been runtime overridden.
+      return kUpdateFeatureStateFailed;
+    }
+    // TODO(crbug.com/536852124): Rather than calling these callbacks here,
+    // put `update` into a container, so that all pre-mutation callbacks can
+    // be called, then all mutation callbacks, then all postmutation callbacks.
+    update->RunPreMutationCallback();
+    update->UpdateState();
+    update->RunPostMutationCallback();
+  }
+  // TODO(crbug.com/482450632): Clean up overridden trial's variation IDs, and
+  // register any new ones from the new trial.
+
+  // As a sanity check, do some validation to ensure that the state is valid.
+  // All the features' runtime state should be updated to reflect the new
+  // override.
+  for (const std::string& feature_name : feature_names) {
+    if (feature_list->GetAssociatedRuntimeFieldTrialOverrideByFeatureName(
+            feature_name) != study.name()) {
+      return kValidationFailed;
+    }
+  }
+  // The runtime override info should match our parameters.
+  auto runtime_override_info =
+      runtime_field_trial_overrides->GetRuntimeOverride(study.name());
+  if (!runtime_override_info.has_value() ||
+      runtime_override_info->trial_name != study.name() ||
+      runtime_override_info->group_name != group_name ||
+      runtime_override_info->overridden_trial.get() != trial_to_override) {
+    return kValidationFailed;
+  }
+
+  return kSuccess;
+}
+
+bool VariationsService::CallMaybeRetryOverHTTPForTesting() {
+  return MaybeRetryOverHTTP();
+}
+
+void VariationsService::RecordSuccessfulFetchNewSeed() {
+  safe_seed_manager_.RecordSuccessfulFetch(field_trial_creator_.seed_store());
+}
+
+void VariationsService::RecordSuccessfulFetchSeedNotModified(
+    base::Time response_date) {
+  // Update the client-side fetch time to the current time.
+  field_trial_creator_.seed_store()->RecordLastFetchTime(base::Time::Now());
+  safe_seed_manager_.RecordSuccessfulFetch(field_trial_creator_.seed_store());
+
+  // Update the seed date value in local state (used for expiry check on
+  // next start up), since 304 is a successful response. Note that the
+  // serial number included in the request is always that of the latest
+  // seed, even when running in safe mode, so it's appropriate to always
+  // modify the latest seed's date.
+  field_trial_creator_.seed_store()->UpdateSeedDateAndLogDayChange(
+      response_date);
+}
+
+VariationsSeedStore* VariationsService::GetSeedStoreForTesting() {
+  return field_trial_creator_.seed_store();
+}
+
+base::Time VariationsService::GetLatestSeedFetchTime() {
+  return field_trial_creator_.seed_store()->GetLatestSeedFetchTime();
+}
+
+void VariationsService::GetStoredSeedInfoForDebugging(
+    base::OnceCallback<void(StoredSeedInfo)> done_callback,
+    VariationsSeedStore::SeedType seed_type) {
+  field_trial_creator_.seed_store()->GetStoredSeedInfoForDebugging(
+      std::move(done_callback), seed_type);
+}
+
+std::unique_ptr<ClientFilterableState>
+VariationsService::GetClientFilterableStateForVersion() {
+  const base::Version current_version(version_info::GetVersionNumber());
+  DCHECK(current_version.IsValid());
+  return field_trial_creator_.GetClientFilterableStateForVersion(
+      current_version);
+}
+
+std::string VariationsService::GetLatestCountry() const {
+  return field_trial_creator_.GetLatestCountry();
+}
+
+std::string VariationsService::GetLatestGeoLevel1() const {
+  return field_trial_creator_.GetLatestGeoLevel1();
+}
+
+bool VariationsService::SetUpFieldTrials(
+    const std::vector<std::string>& variation_ids,
+    const std::vector<base::FeatureList::FeatureOverrideInfo>& extra_overrides,
+    std::unique_ptr<base::FeatureList> feature_list,
+    PlatformFieldTrials* platform_field_trials) {
+  ForceTrialsAtStartup(*local_state_);
+
+  return field_trial_creator_.SetUpFieldTrials(
+      variation_ids, extra_overrides, std::move(feature_list), state_manager_,
+      platform_field_trials, &safe_seed_manager_,
+      /*add_entropy_source_to_variations_ids=*/false, *entropy_providers_);
+}
+
+void VariationsService::GetStudiesAvailableToForce(
+    base::OnceCallback<void(std::vector<StudyGroupNames>)> done_callback) {
+  field_trial_creator_.seed_store()->LoadSeed(
+      base::IgnoreArgs<std::string, std::string>(base::BindOnce(
+          &VariationsService::GetStudiesAvailableToForceFromSeed,
+          weak_ptr_factory_.GetWeakPtr(), std::move(done_callback))));
+}
+
+SeedType VariationsService::GetSeedType() const {
+  return field_trial_creator_.seed_type();
+}
+
+void VariationsService::SetSeedFetchingPaused(
+    base::PassKey<metrics::RuntimeMutableFeaturesHandlerBase> pass_key,
+    bool paused) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (seed_fetching_paused_ == paused) {
+    return;
+  }
+  seed_fetching_paused_ = paused;
+  DVLOG(1) << "Variations seed fetching " << (paused ? "paused" : "resumed");
+  if (!seed_fetching_paused_) {
+    FetchVariationsSeed();
+  }
+}
+
+bool VariationsService::IsSeedFetchingPaused() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return seed_fetching_paused_;
+}
+
+VariationsSource VariationsService::GetVariationsSource() const {
+  return field_trial_creator_.variations_source();
+}
+
+void VariationsService::CancelCurrentRequestForTesting() {
+  pending_seed_request_.reset();
+  is_fetching_seed_ = false;
+  // Cancel any pending replies (like ContinueRetryOverHTTP) or callbacks.
+  weak_ptr_factory_.InvalidateWeakPtrs();
+}
+
+void VariationsService::StartRepeatedVariationsSeedFetchForTesting() {
+  InitResourceRequestedAllowedNotifier();
+  return StartRepeatedVariationsSeedFetch();
+}
+
+void VariationsService::OverridePlatform(
+    Study::Platform platform,
+    const std::string& osname_server_param_override) {
+  field_trial_creator_.OverrideVariationsPlatform(platform);
+  osname_server_param_override_ = osname_server_param_override;
+}
+
+std::string VariationsService::GetOverriddenPermanentCountry() const {
+  return local_state_->GetString(prefs::kVariationsPermanentOverriddenCountry);
+}
+
+std::string VariationsService::GetStoredPermanentCountry() const {
+  return field_trial_creator_.GetPermanentConsistencyCountry();
+}
+
+bool VariationsService::OverrideStoredPermanentCountry(
+    const std::string& country_override) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  const std::string country_override_lowercase =
+      base::ToLowerASCII(country_override);
+  const std::string stored_country =
+      local_state_->GetString(prefs::kVariationsPermanentOverriddenCountry);
+
+  if (stored_country == country_override_lowercase) {
+    return false;
+  }
+
+  field_trial_creator_.StoreVariationsOverriddenCountry(
+      country_override_lowercase);
+  return true;
+}
+
+void VariationsService::GetStudiesAvailableToForceFromSeed(
+    base::OnceCallback<void(std::vector<StudyGroupNames>)> done_callback,
+    bool success,
+    VariationsSeed seed) {
+  if (!success) {
+    std::move(done_callback).Run({});
+    return;
+  }
+
+  auto entropy_providers = state_manager_->CreateEntropyProviders(
+      /*enable_limited_entropy_mode=*/true);
+  auto studies = variations::GetStudiesAvailableToForce(
+      seed, *entropy_providers, *GetClientFilterableStateForVersion());
+  std::move(done_callback).Run(std::move(studies));
+}
+
+}  // namespace variations

@@ -1,0 +1,119 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/segmentation_platform/embedder/home_modules/auxiliary_search_promo.h"
+
+#include "base/test/scoped_feature_list.h"
+#include "components/prefs/testing_pref_service.h"
+#include "components/segmentation_platform/embedder/home_modules/constants.h"
+#include "components/segmentation_platform/embedder/home_modules/home_modules_card_registry_android.h"
+#include "components/segmentation_platform/embedder/home_modules/test_utils.h"
+#include "components/segmentation_platform/public/constants.h"
+#include "components/segmentation_platform/public/features.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace segmentation_platform::home_modules {
+
+class AuxiliarySearchPromoTest : public testing::Test {
+ public:
+  AuxiliarySearchPromoTest() = default;
+  ~AuxiliarySearchPromoTest() override = default;
+
+  void SetUp() override {
+    AuxiliarySearchPromo::RegisterProfilePrefs(pref_service_.registry());
+    feature_list_.InitWithFeatures({features::kAndroidAppIntegrationModule},
+                                   {});
+  }
+
+ protected:
+  TestingPrefServiceSimple pref_service_;
+  base::test::ScopedFeatureList feature_list_;
+};
+
+TEST_F(AuxiliarySearchPromoTest, GetInputsReturnsExpectedInputs) {
+  auto card = std::make_unique<AuxiliarySearchPromo>(&pref_service_);
+  std::map<SignalKey, FeatureQuery> inputs = card->GetInputs();
+  EXPECT_EQ(inputs.size(), 1u);
+  EXPECT_NE(inputs.find(kAuxiliarySearchAvailable), inputs.end());
+}
+
+TEST_F(AuxiliarySearchPromoTest, TestComputeCardResult_Shown) {
+  auto card = std::make_unique<AuxiliarySearchPromo>(&pref_service_);
+  AllCardSignals all_signals =
+      CreateAllCardSignals(card.get(), {/* kAuxiliarySearchAvailable */ 1});
+  CardSelectionSignals card_signal(&all_signals, kAuxiliarySearch);
+  CardSelectionInfo::ShowResult result = card->ComputeCardResult(card_signal);
+  EXPECT_EQ(EphemeralHomeModuleRank::kTop, result.position);
+}
+
+TEST_F(AuxiliarySearchPromoTest, TestComputeCardResult_NotShown) {
+  auto card = std::make_unique<AuxiliarySearchPromo>(&pref_service_);
+  AllCardSignals all_signals =
+      CreateAllCardSignals(card.get(), {/* kAuxiliarySearchAvailable */ 0});
+  CardSelectionSignals card_signal(&all_signals, kAuxiliarySearch);
+  CardSelectionInfo::ShowResult result = card->ComputeCardResult(card_signal);
+  EXPECT_EQ(EphemeralHomeModuleRank::kNotShown, result.position);
+}
+
+TEST_F(AuxiliarySearchPromoTest, TestComputeCardResult_ShownOncePerSession) {
+  auto card = std::make_unique<AuxiliarySearchPromo>(&pref_service_);
+  AllCardSignals all_signals =
+      CreateAllCardSignals(card.get(), {/* kAuxiliarySearchAvailable */ 1});
+  CardSelectionSignals card_signal(&all_signals, kAuxiliarySearch);
+
+  // The card should be shown initially.
+  CardSelectionInfo::ShowResult result = card->ComputeCardResult(card_signal);
+  EXPECT_EQ(EphemeralHomeModuleRank::kTop, result.position);
+
+  // Record an impression for the card in this session.
+  card->OnShow(&pref_service_, nullptr);
+
+  // Subsequent calls in the same session should not show the card.
+  result = card->ComputeCardResult(card_signal);
+  EXPECT_EQ(EphemeralHomeModuleRank::kNotShown, result.position);
+}
+
+TEST_F(AuxiliarySearchPromoTest,
+       TestComputeCardResult_ForceShownOverridesSessionLimit) {
+  feature_list_.Reset();
+  feature_list_.InitWithFeaturesAndParameters(
+      {{features::kAndroidAppIntegrationModule,
+        {{"force_card_shown", "true"}}}},
+      {});
+
+  auto card = std::make_unique<AuxiliarySearchPromo>(&pref_service_);
+  AllCardSignals all_signals =
+      CreateAllCardSignals(card.get(), {/* kAuxiliarySearchAvailable */ 1});
+  CardSelectionSignals card_signal(&all_signals, kAuxiliarySearch);
+
+  // Record an impression in this session.
+  card->OnShow(&pref_service_, nullptr);
+
+  // The card should still be shown when force_card_shown is true.
+  CardSelectionInfo::ShowResult result = card->ComputeCardResult(card_signal);
+  EXPECT_EQ(EphemeralHomeModuleRank::kTop, result.position);
+}
+
+// Validates that `IsEnabled()` returns true when under the impression limit and
+// false otherwise.
+TEST_F(AuxiliarySearchPromoTest,
+       IsEnabledReturnsFalseWhenImpressionLimitReached) {
+  auto card = std::make_unique<AuxiliarySearchPromo>(&pref_service_);
+
+  EXPECT_TRUE(AuxiliarySearchPromo::IsEnabled(&pref_service_));
+
+  int max_impressions = features::kMaxAuxiliarySearchCardImpressions.Get();
+
+  // Recreate the card each iteration to simulate separate sessions.
+  for (int i = 0; i < max_impressions; ++i) {
+    auto session_card = std::make_unique<AuxiliarySearchPromo>(&pref_service_);
+    EXPECT_TRUE(AuxiliarySearchPromo::IsEnabled(&pref_service_));
+    session_card->OnShow(&pref_service_, nullptr);
+  }
+
+  // Once max impressions are hit, it should no longer be enabled.
+  EXPECT_FALSE(AuxiliarySearchPromo::IsEnabled(&pref_service_));
+}
+
+}  // namespace segmentation_platform::home_modules

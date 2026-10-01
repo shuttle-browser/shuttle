@@ -1,0 +1,292 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+edition = "2024";
+
+option optimize_for = LITE_RUNTIME;
+
+package lens;
+
+import "tool_mode.proto";
+import "tool_substate.proto";
+import "model_mode.proto";
+import "actions_data.proto";
+import "aim_query.proto";
+import "modality_chip_props.proto";
+
+// Feature Capabilities shared between AIM and Client. Both sides need to
+// support a feature for it to WAI. Sent in the handshake request/response so
+// both ends of communication are aware of what features to support.
+enum FeatureCapability {
+  option features.enum_type = CLOSED;
+
+  // Default value. The only supported feature is sending a query from the
+  // client to AIM.
+  DEFAULT = 0;
+
+  // AiModeOpenThreadsView event
+  OPEN_THREADS_VIEW = 15;
+
+  // SetCobrowsingDisplayMode event
+  COBROWSING_DISPLAY_CONTROL = 17;
+
+  // AiModeUpdateThreadContextLibrary() method
+  THREAD_CONTEXT_LIBRARY = 18;
+
+  // notifyZeroStateRendered() method
+  NOTIFY_ZERO_STATE_RENDERED = 20;
+
+  // setChromeDesktopInputPlateConfiguration() method
+  SET_CHROME_DESKTOP_INPUT_PLATE_CONFIGURATION = 24;
+
+  // unlockInput() method
+  UNLOCK_INPUT = 25;
+
+  // lockInput() method
+  LOCK_INPUT = 26;
+
+  // AiModeExitTool event
+  EXIT_TOOL = 29;
+
+  // openLinkInSidePanelMode() method
+  OPEN_LINK_IN_SIDE_PANEL_MODE = 31;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Client -> AIM messages
+////////////////////////////////////////////////////////////////////////////////
+
+// Message clients send to AIM to initiate a handshake. Sent continuously on
+// page load until AIM acknowledges with a HandshakeResponse.
+message HandshakePing {
+  // The list of features supports by this client.
+  repeated FeatureCapability capabilities = 1;
+}
+
+// Message from client to AIM to submit a query.
+message SubmitQuery {
+  // The set of data that's required to generate a response from the LLM.
+  // Queries can be unimodal (text only or image only) or multimodal (e.g. text
+  // + image).
+  QueryPayload payload = 1;
+}
+
+// Payload for SetCobrowsingDisplayMode event.
+message CobrowsingDisplayModeParams {
+  enum DisplayMode {
+    UNKNOWN = 0;
+    COBROWSING_TAB = 1;
+    COBROWSING_SIDEPANEL = 2;
+  }
+  DisplayMode display_mode = 1;
+}
+
+// Message from client to AIM to update the display mode for cobrowsing.
+message SetCobrowsingDisplayMode {
+  CobrowsingDisplayModeParams params = 1;
+}
+
+// Payload for the AiModeOpenThreadsView event.
+message OpenThreadsViewPayload {}
+
+// Message from client to AIM to open the threads view.
+message OpenThreadsView {
+  OpenThreadsViewPayload payload = 1;
+}
+
+// Payload for InjectedInputUpdate event.
+message InjectedInputUpdatePayload {
+  enum UpdateType {
+    UNKNOWN = 0;
+    REMOVED = 1;
+  }
+  // The ID of the input that was updated.
+  string id = 1;
+
+  UpdateType update_type = 2;
+}
+
+// Message from client to AIM to send an update on an injected input.
+message InjectedInputUpdate {
+  InjectedInputUpdatePayload payload = 1;
+}
+
+// Payload for the ExitTool Event.
+message ExitToolPayload {
+  // The tool to exit.
+  int32 tool_mode = 1;
+  // The new tool mode we are switching to.
+  int32 new_tool_mode = 2;
+}
+
+// Message from client to AIM to exit a tool.
+message ExitTool {
+  ExitToolPayload payload = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AIM -> Client messages
+////////////////////////////////////////////////////////////////////////////////
+
+// Message AIM sends to clients to confirm a handshake, at which point the
+// client can send messages to AIM knowing they will be delivered.
+message HandshakeResponse {
+  // The list of features supported by this AIM instance.
+  repeated FeatureCapability capabilities = 1;
+}
+
+// The message for clients to send messages to AIM.
+message ClientToAimMessage {
+  oneof event_message {
+    HandshakePing handshake_ping = 1;
+    SubmitQuery submit_query = 2;
+    OpenThreadsView open_threads_view = 3;
+    SetCobrowsingDisplayMode set_cobrowsing_display_mode = 4;
+    InjectedInputUpdate injected_input_update = 5;
+    ExitTool exit_tool = 6;
+    ActionsResult actions_result = 7;
+  }
+}
+
+// The message for AIM to send messages to native clients.
+message AimToClientMessage {
+  oneof event_message {
+    HandshakeResponse handshake_response = 1;
+    HideInput hide_input = 2;
+    RestoreInput restore_input = 3;
+    EnterBasicMode enter_basic_mode = 4;
+    ExitBasicMode exit_basic_mode = 5;
+    UpdateThreadContextLibrary update_thread_context_library = 7;
+    NotifyZeroStateRendered notify_zero_state_rendered = 8;
+    InputPlateParametersRequest set_chrome_desktop_input_plate_configuration =
+        9;
+    InjectInput inject_input = 10;
+    RemoveInjectedInput remove_injected_input = 11;
+    UnlockInput unlock_input = 12;
+    LockInput lock_input = 13;
+    OpenLinkInSidePanelMode open_link_in_side_panel_mode = 14;
+    ExecuteActions execute_actions = 15;
+    UpdateInputPlateStateRequest update_input_plate_state = 16;
+  }
+}
+
+// Message AIM sends to clients to execute actions.
+// NOTE: This message is strictly for prototyping WebMCP and script tool
+// integration in AIM at this time.
+message ExecuteActions {
+  optimization_guide.proto.Actions actions = 1;
+}
+
+// Message clients send to AIM with the results of executed actions.
+// NOTE: This message is strictly for prototyping WebMCP and script tool
+// integration in AIM at this time.
+message ActionsResult {
+  optimization_guide.proto.ActionsResult actions_result = 1;
+}
+
+// Message AIM sends to clients to unlock the input plate.
+message UnlockInput {}
+
+// Message AIM sends to clients to lock the input plate.
+message LockInput {}
+
+// Message AIM sends to clients to hide the input plate.
+message HideInput {}
+
+// Message AIM sends to clients to restore the input plate.
+message RestoreInput {}
+
+// Message AIM sends to clients to enter basic mode.
+message EnterBasicMode {}
+
+// Message AIM sends to clients to exit basic mode.
+message ExitBasicMode {}
+
+// Message AIM sends to clients to notify when zero state is rendered.
+message NotifyZeroStateRendered {
+  bool is_zero_state_rendered = 1;
+}
+
+// Message AIM sends to client to update chrome input plate position and size.
+// Can use negative margins if need top or right margins. Max width and height
+// will be converted to uint32 in Chrome due to Mojo security constraints, so
+// keep values within uint32 AND int32 range [0, 2,147,483,647].
+message InputPlateParametersRequest {
+  int32 max_width = 1;      // [0, 2,147,483,647]
+  int32 max_height = 2;     // [0, 2,147,483,647]
+  int32 margin_bottom = 3;  // [-2,147,483,648, 2,147,483,647]
+  int32 margin_left = 4;    // [-2,147,483,648, 2,147,483,647]
+}
+
+// Message AIM sends to clients to update the thread context library.
+message UpdateThreadContextLibrary {
+  repeated Context contexts = 1;
+}
+
+// Context input for AIM threads.
+message Context {
+  // Unique identifier for the user uploaded context (e.g. PDF). This is created
+  // during context upload.
+  int64 context_id = 1;
+  oneof context_input {
+    Image image = 2;
+    Pdf pdf = 3;
+    Webpage webpage = 4;
+  }
+
+  // True if the context/media is derived from a Chrome tab.
+  bool has_chrome_tab_data = 23;
+}
+
+message Image {
+  string title = 1;
+  string url = 2;
+}
+
+message Pdf {
+  string title = 1;
+  string url = 2;
+}
+
+message Webpage {
+  string title = 1;
+  string url = 2;
+}
+
+// Message AIM sends to clients to inject an input into the input plate.
+message InjectInput {
+  // Optional string with which to populate the input plate after injecting.
+  string query_text = 1;
+
+  // When true, the input plate will expand to show all current inputs.
+  bool expand = 2;
+
+  // A modality, which can serve as a unimodal or multimodal input. Contains
+  // generic rendering info, as well as modality-specific data.
+  ModalityChipProps modality = 3;
+
+  // When true, the input plate will submit the query after injecting the input.
+  bool submit_after_injection = 4;
+
+  // When true, the scrim will be hidden when the input plate is expanded.
+  bool hide_scrim_on_expand = 5;
+}
+
+// Message AIM sends to clients to remove a specified injected input from the
+// input plate.
+message RemoveInjectedInput {
+  // The ID of the input to remove.
+  string id = 1;
+}
+
+// Message AIM sends to clients to notify to open a link in the side panel.
+message OpenLinkInSidePanelMode {
+  string url = 1;
+}
+
+message UpdateInputPlateStateRequest {
+  omnibox.ToolMode active_tool = 1;
+  omnibox.ToolSubstate active_tool_substate = 2;
+  omnibox.ModelMode active_model = 3;
+}

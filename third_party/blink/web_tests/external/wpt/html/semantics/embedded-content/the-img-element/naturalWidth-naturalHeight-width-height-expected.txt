@@ -1,0 +1,64 @@
+This is a testharness.js-based test.
+Found 30 FAIL, 0 TIMEOUT, 0 NOTRUN.
+[FAIL] SVG image, with natural width being negative
+  assert_equals: naturalWidth expected 300 but got 0
+[FAIL] SVG image, with natural width being negative (when not rendered)
+  assert_equals: naturalWidth when not rendered expected 300 but got 0
+[FAIL] SVG image, with natural height being negative
+  assert_equals: naturalHeight expected 150 but got 0
+[FAIL] SVG image, with natural height being negative (when not rendered)
+  assert_equals: naturalHeight when not rendered expected 150 but got 0
+[FAIL] SVG image, with natural width being negative, and aspect ratio from viewBox
+  assert_equals: naturalWidth expected 300 but got 0
+[FAIL] SVG image, with natural width being negative, and aspect ratio from viewBox (when not rendered)
+  assert_equals: naturalWidth when not rendered expected 300 but got 0
+[FAIL] SVG image, with natural height being negative, and aspect ratio from viewBox
+  assert_equals: naturalWidth expected 300 but got 0
+[FAIL] SVG image, with natural height being negative, and aspect ratio from viewBox (when not rendered)
+  assert_equals: naturalWidth when not rendered expected 300 but got 0
+[FAIL] SVG image, with natural width and height being negative, and aspect ratio from viewBox
+  assert_equals: naturalWidth expected 300 but got 0
+[FAIL] SVG image, with natural width and height being negative, and aspect ratio from viewBox (when not rendered)
+  assert_equals: naturalWidth when not rendered expected 300 but got 0
+[FAIL] SVG image, with natural width being negative (with srcset/1x)
+  assert_equals: naturalWidth expected 300 but got 0
+[FAIL] SVG image, with natural width being negative (with srcset/1x) (when not rendered)
+  assert_equals: naturalWidth when not rendered expected 300 but got 0
+[FAIL] SVG image, with natural height being negative (with srcset/1x)
+  assert_equals: naturalHeight expected 150 but got 0
+[FAIL] SVG image, with natural height being negative (with srcset/1x) (when not rendered)
+  assert_equals: naturalHeight when not rendered expected 150 but got 0
+[FAIL] SVG image, with natural width being negative, and aspect ratio from viewBox (with srcset/1x)
+  assert_equals: naturalWidth expected 300 but got 0
+[FAIL] SVG image, with natural width being negative, and aspect ratio from viewBox (with srcset/1x) (when not rendered)
+  assert_equals: naturalWidth when not rendered expected 300 but got 0
+[FAIL] SVG image, with natural height being negative, and aspect ratio from viewBox (with srcset/1x)
+  assert_equals: naturalWidth expected 300 but got 0
+[FAIL] SVG image, with natural height being negative, and aspect ratio from viewBox (with srcset/1x) (when not rendered)
+  assert_equals: naturalWidth when not rendered expected 300 but got 0
+[FAIL] SVG image, with natural width and height being negative, and aspect ratio from viewBox (with srcset/1x)
+  assert_equals: naturalWidth expected 300 but got 0
+[FAIL] SVG image, with natural width and height being negative, and aspect ratio from viewBox (with srcset/1x) (when not rendered)
+  assert_equals: naturalWidth when not rendered expected 300 but got 0
+[FAIL] SVG image, with natural width being negative (with srcset/2x)
+  assert_equals: naturalWidth expected 300 but got 0
+[FAIL] SVG image, with natural width being negative (with srcset/2x) (when not rendered)
+  assert_equals: naturalWidth when not rendered expected 300 but got 0
+[FAIL] SVG image, with natural height being negative (with srcset/2x)
+  assert_equals: naturalHeight expected 150 but got 0
+[FAIL] SVG image, with natural height being negative (with srcset/2x) (when not rendered)
+  assert_equals: naturalHeight when not rendered expected 150 but got 0
+[FAIL] SVG image, with natural width being negative, and aspect ratio from viewBox (with srcset/2x)
+  assert_equals: naturalWidth expected 300 but got 0
+[FAIL] SVG image, with natural width being negative, and aspect ratio from viewBox (with srcset/2x) (when not rendered)
+  assert_equals: naturalWidth when not rendered expected 300 but got 0
+[FAIL] SVG image, with natural height being negative, and aspect ratio from viewBox (with srcset/2x)
+  assert_equals: naturalWidth expected 300 but got 0
+[FAIL] SVG image, with natural height being negative, and aspect ratio from viewBox (with srcset/2x) (when not rendered)
+  assert_equals: naturalWidth when not rendered expected 300 but got 0
+[FAIL] SVG image, with natural width and height being negative, and aspect ratio from viewBox (with srcset/2x)
+  assert_equals: naturalWidth expected 300 but got 0
+[FAIL] SVG image, with natural width and height being negative, and aspect ratio from viewBox (with srcset/2x) (when not rendered)
+  assert_equals: naturalWidth when not rendered expected 300 but got 0
+Harness: the test ran to completion.
+

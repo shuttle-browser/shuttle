@@ -1,0 +1,15 @@
+include_rules = [
+  "+components/dom_distiller/core",
+  "+content/public/browser",
+  "+content/public/common",
+  "+content/public/test",
+]
+
+specific_include_rules = {
+  "content_utils_browsertest\\.cc": [
+    "+content/shell",
+  ],
+  "content_utils_unittest\\.cc": [
+    "+crypto",
+  ]
+}

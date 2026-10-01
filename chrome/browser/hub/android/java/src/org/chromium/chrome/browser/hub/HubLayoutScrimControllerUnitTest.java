@@ -1,0 +1,147 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.hub;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+
+import android.app.Activity;
+import android.view.View;
+import android.widget.FrameLayout;
+
+import androidx.annotation.ColorInt;
+import androidx.core.content.ContextCompat;
+import androidx.test.filters.SmallTest;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.robolectric.Robolectric;
+import org.robolectric.android.controller.ActivityController;
+
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.supplier.SettableNonNullObservableSupplier;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.RobolectricUtil;
+import org.chromium.components.browser_ui.styles.SemanticColorUtils;
+import org.chromium.components.browser_ui.widget.scrim.ScrimManager;
+import org.chromium.components.browser_ui.widget.scrim.ScrimManager.ScrimClient;
+import org.chromium.components.browser_ui.widget.scrim.ScrimProperties;
+import org.chromium.ui.base.TestActivity;
+import org.chromium.ui.modelutil.PropertyModel;
+
+/** Unit tests for {@link HubLayoutScrimController}. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class HubLayoutScrimControllerUnitTest {
+    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Captor private ArgumentCaptor<PropertyModel> mPropertyModelArgumentCaptor;
+
+    private ActivityController<TestActivity> mActivityController;
+    private Activity mActivity;
+    private View mAnchorView;
+    private ScrimManager mScrimManager;
+    private SettableNonNullObservableSupplier<Boolean> mIsIncognitoSupplier;
+    private HubLayoutScrimController mScrimController;
+
+    @Before
+    public void setUp() {
+        mActivityController = Robolectric.buildActivity(TestActivity.class).setup();
+        onActivity(mActivityController.get());
+    }
+
+    private void onActivity(Activity activity) {
+        mActivity = activity;
+        FrameLayout rootView = new FrameLayout(mActivity);
+        mActivity.setContentView(rootView);
+
+        mAnchorView = new View(mActivity);
+        rootView.addView(mAnchorView);
+
+        mScrimManager = spy(new ScrimManager(mActivity, rootView, ScrimClient.NONE));
+
+        mIsIncognitoSupplier = ObservableSuppliers.createNonNull(false);
+
+        mScrimController =
+                new HubLayoutScrimController(
+                        mScrimManager, () -> mAnchorView, mIsIncognitoSupplier);
+    }
+
+    @After
+    public void tearDown() {
+        mScrimManager.destroy();
+        mActivityController.close();
+    }
+
+    @Test
+    @SmallTest
+    public void testShowAndHide() {
+        assertFalse(mScrimManager.isShowingScrim());
+        mScrimController.startShowingScrim();
+
+        // This is not an exhaustive test of properties impacts as the ScrimTest already covers
+        // this.
+        assertTrue(mScrimManager.isShowingScrim());
+        verify(mScrimManager).showScrim(mPropertyModelArgumentCaptor.capture());
+        assertPropertyModel(mIsIncognitoSupplier.get());
+
+        // Finish the animation.
+        RobolectricUtil.runAllBackgroundAndUi();
+
+        mScrimController.startHidingScrim();
+        verify(mScrimManager).hideScrim(any(), eq(true), anyInt());
+        RobolectricUtil.runAllBackgroundAndUi();
+
+        assertFalse(mScrimManager.isShowingScrim());
+
+        mIsIncognitoSupplier.set(true);
+        assertPropertyModel(false);
+    }
+
+    @Test
+    @SmallTest
+    public void testShowForceAnimationToFinish() {
+        mIsIncognitoSupplier.set(true);
+        assertFalse(mScrimManager.isShowingScrim());
+
+        mScrimController.startShowingScrim();
+        assertTrue(mScrimManager.isShowingScrim());
+        verify(mScrimManager).showScrim(mPropertyModelArgumentCaptor.capture());
+        assertPropertyModel(mIsIncognitoSupplier.get());
+
+        // Force the animation to finish.
+        mScrimController.forceAnimationToFinish();
+        verify(mScrimManager).forceAnimationToFinish(any());
+
+        assertTrue(mScrimManager.isShowingScrim());
+
+        mIsIncognitoSupplier.set(false);
+        assertPropertyModel(mIsIncognitoSupplier.get());
+    }
+
+    private void assertPropertyModel(boolean isIncognito) {
+        PropertyModel model = mPropertyModelArgumentCaptor.getValue();
+        assertEquals(mAnchorView, model.get(ScrimProperties.ANCHOR_VIEW));
+        assertFalse(model.get(ScrimProperties.SHOW_IN_FRONT_OF_ANCHOR_VIEW));
+        assertTrue(model.get(ScrimProperties.AFFECTS_STATUS_BAR));
+        final @ColorInt Integer scrimColor =
+                isIncognito
+                        ? ContextCompat.getColor(mActivity, R.color.default_bg_color_dark)
+                        : SemanticColorUtils.getDefaultBgColor(mActivity);
+        assertEquals(scrimColor, model.get(ScrimProperties.BACKGROUND_COLOR));
+    }
+}

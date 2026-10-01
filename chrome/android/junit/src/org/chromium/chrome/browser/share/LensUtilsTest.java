@@ -1,0 +1,45 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.share;
+
+import android.content.pm.PackageInfo;
+
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.RuntimeEnvironment;
+import org.robolectric.Shadows;
+import org.robolectric.shadows.ShadowPackageManager;
+
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.chrome.browser.IntentHandler;
+
+/** Tests of {@link LensUtils}. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class LensUtilsTest {
+    @Before
+    public void setUp() {
+        ShadowPackageManager pm =
+                Shadows.shadowOf(RuntimeEnvironment.getApplication().getPackageManager());
+        PackageInfo packageInfo = new PackageInfo();
+        packageInfo.packageName = IntentHandler.PACKAGE_GSA;
+        pm.installPackage(packageInfo);
+    }
+
+    @Test
+    public void isGoogleLensFeatureEnabled_incognito() {
+        Assert.assertFalse(
+                "Feature incorrectly enabled when incognito",
+                LensUtils.isGoogleLensFeatureEnabled(true));
+    }
+
+    @Test
+    public void isGoogleLensFeatureEnabled_standard() {
+        Assert.assertTrue(
+                "Feature incorrectly enabled when non-incognito",
+                LensUtils.isGoogleLensFeatureEnabled(false));
+    }
+}

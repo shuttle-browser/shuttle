@@ -1,0 +1,43 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_WEBAUTHN_FEATURES_H_
+#define COMPONENTS_WEBAUTHN_FEATURES_H_
+
+#include "base/component_export.h"
+#include "base/feature_list.h"
+#include "base/metrics/field_trial_params.h"
+#include "build/build_config.h"
+
+namespace webauthn::features {
+
+#if BUILDFLAG(IS_ANDROID)
+// A development feature flag to control the CredMan mode.
+COMPONENT_EXPORT(WEBAUTHN)
+BASE_DECLARE_FEATURE(kWebAuthnAndroidCredManForDev);
+// Parameter for `kWebAuthnAndroidCredManForDev` to specify the mode.
+// Can be "disabled", "full" or "parallel".
+COMPONENT_EXPORT(WEBAUTHN)
+extern const base::FeatureParam<std::string> kWebAuthnAndroidCredManForDevMode;
+
+// Disables sending the smart-card transport in FIDO2 API calls. This is a
+// temporary workaround for crbug.com/555599813.
+COMPONENT_EXPORT(WEBAUTHN)
+BASE_DECLARE_FEATURE(kWebAuthnFilterSmartCardTransport);
+
+#endif  // BUILDFLAG(IS_ANDROID)
+
+#if !BUILDFLAG(IS_ANDROID)
+
+// Controls deletion of passkeys that have been hidden for a while.
+BASE_DECLARE_FEATURE(kDeleteOldHiddenPasskeys);
+
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+// Reject RP IDs inside the caller's public suffix.
+BASE_DECLARE_FEATURE(kRejectRpIdsInsideCallersPublicSuffix);
+
+}  // namespace webauthn::features
+
+#endif  // COMPONENTS_WEBAUTHN_FEATURES_H_

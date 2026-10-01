@@ -1,0 +1,396 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "components/autofill/ios/form_util/form_activity_params.h"
+
+#import "base/strings/string_number_conversions.h"
+#import "base/strings/sys_string_conversions.h"
+#import "components/autofill/ios/browser/autofill_util.h"
+#import "ios/web/public/js_messaging/script_message.h"
+
+using base::SysUTF8ToNSString;
+
+namespace autofill {
+
+namespace {
+
+constexpr char kActivityTypeBlur[] = "blur";
+constexpr char kActivityTypeChange[] = "change";
+constexpr char kActivityTypeFocus[] = "focus";
+constexpr char kActivityTypeFormChanged[] = "form_changed";
+constexpr char kActivityTypeInput[] = "input";
+constexpr char kActivityTypeKeyUp[] = "keyup";
+constexpr char kActivityTypeUnknown[] = "unknown";
+
+constexpr char kFieldTypeButton[] = "button";
+constexpr char kFieldTypeCheckbox[] = "checkbox";
+constexpr char kFieldTypeColor[] = "color";
+constexpr char kFieldTypeContentEditable[] = "contenteditable";
+constexpr char kFieldTypeDate[] = "date";
+constexpr char kFieldTypeDateTimeLocal[] = "datetime-local";
+constexpr char kFieldTypeEmail[] = "email";
+constexpr char kFieldTypeFile[] = "file";
+constexpr char kFieldTypeHidden[] = "hidden";
+constexpr char kFieldTypeImage[] = "image";
+constexpr char kFieldTypeMonth[] = "month";
+constexpr char kFieldTypeNumber[] = "number";
+constexpr char kFieldTypePassword[] = "password";
+constexpr char kFieldTypeRadio[] = "radio";
+constexpr char kFieldTypeRange[] = "range";
+constexpr char kFieldTypeReset[] = "reset";
+constexpr char kFieldTypeSearch[] = "search";
+constexpr char kFieldTypeSelectOne[] = "select-one";
+constexpr char kFieldTypeSubmit[] = "submit";
+constexpr char kFieldTypeTel[] = "tel";
+constexpr char kFieldTypeText[] = "text";
+constexpr char kFieldTypeTime[] = "time";
+constexpr char kFieldTypeUrl[] = "url";
+constexpr char kFieldTypeWeek[] = "week";
+constexpr char kFieldTypeUnknown[] = "unknown";
+
+const char* ToString(FormActivityParams::ActivityType type) {
+  switch (type) {
+    case FormActivityParams::ActivityType::kBlur:
+      return kActivityTypeBlur;
+    case FormActivityParams::ActivityType::kChange:
+      return kActivityTypeChange;
+    case FormActivityParams::ActivityType::kFocus:
+      return kActivityTypeFocus;
+    case FormActivityParams::ActivityType::kFormChanged:
+      return kActivityTypeFormChanged;
+    case FormActivityParams::ActivityType::kInput:
+      return kActivityTypeInput;
+    case FormActivityParams::ActivityType::kKeyUp:
+      return kActivityTypeKeyUp;
+    case FormActivityParams::ActivityType::kUnknown:
+      return kActivityTypeUnknown;
+  }
+}
+
+const char* ToString(FormActivityParams::FieldType field_type) {
+  switch (field_type) {
+    case FormActivityParams::FieldType::kButton:
+      return kFieldTypeButton;
+    case FormActivityParams::FieldType::kCheckbox:
+      return kFieldTypeCheckbox;
+    case FormActivityParams::FieldType::kColor:
+      return kFieldTypeColor;
+    case FormActivityParams::FieldType::kContentEditable:
+      return kFieldTypeContentEditable;
+    case FormActivityParams::FieldType::kDate:
+      return kFieldTypeDate;
+    case FormActivityParams::FieldType::kDateTimeLocal:
+      return kFieldTypeDateTimeLocal;
+    case FormActivityParams::FieldType::kEmail:
+      return kFieldTypeEmail;
+    case FormActivityParams::FieldType::kFile:
+      return kFieldTypeFile;
+    case FormActivityParams::FieldType::kHidden:
+      return kFieldTypeHidden;
+    case FormActivityParams::FieldType::kImage:
+      return kFieldTypeImage;
+    case FormActivityParams::FieldType::kMonth:
+      return kFieldTypeMonth;
+    case FormActivityParams::FieldType::kNumber:
+      return kFieldTypeNumber;
+    case FormActivityParams::FieldType::kObfuscated:
+      return kFieldTypePassword;
+    case FormActivityParams::FieldType::kRadio:
+      return kFieldTypeRadio;
+    case FormActivityParams::FieldType::kRange:
+      return kFieldTypeRange;
+    case FormActivityParams::FieldType::kReset:
+      return kFieldTypeReset;
+    case FormActivityParams::FieldType::kSearch:
+      return kFieldTypeSearch;
+    case FormActivityParams::FieldType::kSelectOne:
+      return kFieldTypeSelectOne;
+    case FormActivityParams::FieldType::kSubmit:
+      return kFieldTypeSubmit;
+    case FormActivityParams::FieldType::kTel:
+      return kFieldTypeTel;
+    case FormActivityParams::FieldType::kText:
+      return kFieldTypeText;
+    case FormActivityParams::FieldType::kTime:
+      return kFieldTypeTime;
+    case FormActivityParams::FieldType::kUrl:
+      return kFieldTypeUrl;
+    case FormActivityParams::FieldType::kWeek:
+      return kFieldTypeWeek;
+    case FormActivityParams::FieldType::kUnknown:
+      return kFieldTypeUnknown;
+  }
+}
+
+}  // namespace
+
+BaseFormActivityParams::BaseFormActivityParams() = default;
+BaseFormActivityParams::BaseFormActivityParams(
+    const BaseFormActivityParams& other) = default;
+BaseFormActivityParams::~BaseFormActivityParams() = default;
+
+FormActivityParams::FormActivityParams() = default;
+FormActivityParams::FormActivityParams(const FormActivityParams& other) =
+    default;
+FormActivityParams::~FormActivityParams() = default;
+
+FormRemovalParams::FormRemovalParams() = default;
+FormRemovalParams::FormRemovalParams(const FormRemovalParams& other) = default;
+FormRemovalParams::~FormRemovalParams() = default;
+
+bool BaseFormActivityParams::FromMessage(const web::ScriptMessage& message,
+                                         const base::DictValue** message_body,
+                                         BaseFormActivityParams* params) {
+  if (!message.legacy_body() || !message.legacy_body()->is_dict()) {
+    // Ignore invalid message.
+    return false;
+  }
+
+  const auto& message_body_dict = message.legacy_body()->GetDict();
+  *message_body = &message_body_dict;
+  const std::string* frame_id = message_body_dict.FindString("frameID");
+  if (!frame_id) {
+    return false;
+  }
+
+  params->frame_id = *frame_id;
+  params->is_main_frame = message.is_main_frame();
+
+  return true;
+}
+
+bool BaseFormActivityParams::operator==(const BaseFormActivityParams&) const =
+    default;
+
+std::ostream& operator<<(std::ostream& os,
+                         const BaseFormActivityParams& params) {
+  os << "frame_id: " << params.frame_id;
+  os << ", is_main_frame: " << params.is_main_frame;
+  return os;
+}
+
+bool FormActivityParams::FromMessage(const web::ScriptMessage& message,
+                                     FormActivityParams* params) {
+  const base::DictValue* message_body = nullptr;
+  if (!BaseFormActivityParams::FromMessage(message, &message_body, params)) {
+    return false;
+  }
+
+  const std::string* form_name = message_body->FindString("formName");
+  const std::string* form_renderer_id =
+      message_body->FindString("formRendererID");
+  const std::string* field_identifier =
+      message_body->FindString("fieldIdentifier");
+  const std::string* field_renderer_id =
+      message_body->FindString("fieldRendererID");
+  const std::string* field_type = message_body->FindString("fieldType");
+  const std::string* type = message_body->FindString("type");
+  const std::string* value = message_body->FindString("value");
+
+  if (!form_name || !form_renderer_id) {
+    params->input_missing = true;
+  }
+
+  if (form_name) {
+    params->form_name = *form_name;
+  }
+
+  if (form_renderer_id) {
+    // Parse the form renderer id.
+    // Fallback to 0 if invalid or no form id provided, which is interpreted in
+    // Autofill as the field not being owned by a form element.
+    base::StringToUint(*form_renderer_id, &params->form_renderer_id.value());
+  }
+
+  std::optional<bool> has_user_gesture =
+      message_body->FindBool("hasUserGesture");
+  if (!field_identifier || !field_renderer_id || !field_type || !type ||
+      !value || !has_user_gesture) {
+    params->input_missing = true;
+  }
+
+  if (field_identifier) {
+    params->field_identifier = *field_identifier;
+  }
+  if (field_renderer_id) {
+    base::StringToUint(*field_renderer_id, &params->field_renderer_id.value());
+  }
+  if (field_type) {
+    params->field_type = StringToFieldType(*field_type);
+  }
+  if (type) {
+    params->type = StringToActivityType(*type);
+  }
+  if (value) {
+    params->value = *value;
+  }
+  if (has_user_gesture) {
+    params->has_user_gesture = *has_user_gesture;
+  }
+
+  return true;
+}
+
+FormActivityParams::ActivityType FormActivityParams::StringToActivityType(
+    std::string_view type) {
+  if (type == kActivityTypeBlur) {
+    return ActivityType::kBlur;
+  }
+  if (type == kActivityTypeChange) {
+    return ActivityType::kChange;
+  }
+  if (type == kActivityTypeFocus) {
+    return ActivityType::kFocus;
+  }
+  if (type == kActivityTypeFormChanged) {
+    return ActivityType::kFormChanged;
+  }
+  if (type == kActivityTypeInput) {
+    return ActivityType::kInput;
+  }
+  if (type == kActivityTypeKeyUp) {
+    return ActivityType::kKeyUp;
+  }
+  return ActivityType::kUnknown;
+}
+
+const char* FormActivityParams::ActivityTypeToString(ActivityType type) {
+  return ToString(type);
+}
+
+FormActivityParams::FieldType FormActivityParams::StringToFieldType(
+    std::string_view field_type) {
+  if (field_type == kFieldTypeButton) {
+    return FieldType::kButton;
+  }
+  if (field_type == kFieldTypeCheckbox) {
+    return FieldType::kCheckbox;
+  }
+  if (field_type == kFieldTypeColor) {
+    return FieldType::kColor;
+  }
+  if (field_type == kFieldTypeContentEditable) {
+    return FieldType::kContentEditable;
+  }
+  if (field_type == kFieldTypeDate) {
+    return FieldType::kDate;
+  }
+  if (field_type == kFieldTypeDateTimeLocal) {
+    return FieldType::kDateTimeLocal;
+  }
+  if (field_type == kFieldTypeEmail) {
+    return FieldType::kEmail;
+  }
+  if (field_type == kFieldTypeFile) {
+    return FieldType::kFile;
+  }
+  if (field_type == kFieldTypeHidden) {
+    return FieldType::kHidden;
+  }
+  if (field_type == kFieldTypeImage) {
+    return FieldType::kImage;
+  }
+  if (field_type == kFieldTypeMonth) {
+    return FieldType::kMonth;
+  }
+  if (field_type == kFieldTypeNumber) {
+    return FieldType::kNumber;
+  }
+  if (field_type == kFieldTypePassword) {
+    return FieldType::kObfuscated;
+  }
+  if (field_type == kFieldTypeRadio) {
+    return FieldType::kRadio;
+  }
+  if (field_type == kFieldTypeRange) {
+    return FieldType::kRange;
+  }
+  if (field_type == kFieldTypeReset) {
+    return FieldType::kReset;
+  }
+  if (field_type == kFieldTypeSearch) {
+    return FieldType::kSearch;
+  }
+  if (field_type == kFieldTypeSelectOne) {
+    return FieldType::kSelectOne;
+  }
+  if (field_type == kFieldTypeSubmit) {
+    return FieldType::kSubmit;
+  }
+  if (field_type == kFieldTypeTel) {
+    return FieldType::kTel;
+  }
+  if (field_type == kFieldTypeText) {
+    return FieldType::kText;
+  }
+  if (field_type == kFieldTypeTime) {
+    return FieldType::kTime;
+  }
+  if (field_type == kFieldTypeUrl) {
+    return FieldType::kUrl;
+  }
+  if (field_type == kFieldTypeWeek) {
+    return FieldType::kWeek;
+  }
+  return FieldType::kUnknown;
+}
+
+const char* FormActivityParams::FieldTypeToString(FieldType field_type) {
+  return ToString(field_type);
+}
+
+bool FormActivityParams::operator==(const FormActivityParams& params) const {
+  return BaseFormActivityParams::operator==(params) &&
+         (form_name == params.form_name) &&
+         (form_renderer_id == params.form_renderer_id) &&
+         (field_identifier == params.field_identifier) &&
+         (field_renderer_id == params.field_renderer_id) &&
+         (field_type == params.field_type) && (value == params.value) &&
+         (type == params.type) && (has_user_gesture == params.has_user_gesture);
+}
+
+std::ostream& operator<<(std::ostream& os, const FormActivityParams& params) {
+  os << static_cast<const BaseFormActivityParams&>(params);
+  os << ", form_name: " << params.form_name;
+  os << ", form_renderer_id: " << params.form_renderer_id;
+  os << ", field_identifier: " << params.field_identifier;
+  os << ", field_renderer_id: " << params.field_renderer_id;
+  os << ", field_type: " << ToString(params.field_type);
+  os << ", value: " << params.value;
+  os << ", type: " << ToString(params.type);
+  os << ", has_user_gesture: " << params.has_user_gesture;
+  return os;
+}
+
+bool FormRemovalParams::FromMessage(const web::ScriptMessage& message,
+                                    FormRemovalParams* params) {
+  const base::DictValue* message_body = nullptr;
+  if (!BaseFormActivityParams::FromMessage(message, &message_body, params)) {
+    return false;
+  }
+
+  // Parse array of form id's.
+  if (const std::string* removed_form_ids =
+          message_body->FindString("removedFormIDs")) {
+    if (const auto extracted_form_ids =
+            ExtractIDs<FormRendererId>(SysUTF8ToNSString(*removed_form_ids))) {
+      params->removed_forms = std::move(*extracted_form_ids);
+    }
+  }
+
+  // Parse array of field id's.
+  if (const std::string* removed_field_ids =
+          message_body->FindString("removedFieldIDs")) {
+    if (const auto extracted_field_ids = ExtractIDs<FieldRendererId>(
+            SysUTF8ToNSString(*removed_field_ids))) {
+      params->removed_unowned_fields = *extracted_field_ids;
+    }
+  }
+
+  // Params are valid if there are removed forms and/or removed unowned fields.
+  return !params->removed_forms.empty() ||
+         !params->removed_unowned_fields.empty();
+}
+
+}  // namespace autofill

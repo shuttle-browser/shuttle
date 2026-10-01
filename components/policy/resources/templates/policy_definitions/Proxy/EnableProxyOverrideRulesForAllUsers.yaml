@@ -1,0 +1,25 @@
+caption: Controls which managed users can set the <ph name="PROXY_OVERRIDE_RULES_POLICY_NAME">ProxyOverrideRules</ph> policy.
+desc:
+  When this policy is set to 0 or left unset, the <ph name="PROXY_OVERRIDE_RULES_POLICY_NAME">ProxyOverrideRules</ph> policy will only be applied at the user scope for affiliated users.
+
+  When this policy is set to 1, the <ph name="PROXY_OVERRIDE_RULES_POLICY_NAME">ProxyOverrideRules</ph> policy will be applied at the user scope, even that user is unaffiliated.
+
+example_value: 1
+default: 0
+features:
+  dynamic_refresh: true
+  per_profile: false
+supported_on:
+- chrome.*:145-
+owners:
+- seblalancette@chromium.org
+- domfc@chromium.org
+- cbe-eng@google.com
+schema:
+  enum:
+  - 0
+  - 1
+  type: integer
+tags:
+- system-security
+type: int

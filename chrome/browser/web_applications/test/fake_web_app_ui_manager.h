@@ -1,0 +1,230 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_WEB_APPLICATIONS_TEST_FAKE_WEB_APP_UI_MANAGER_H_
+#define CHROME_BROWSER_WEB_APPLICATIONS_TEST_FAKE_WEB_APP_UI_MANAGER_H_
+
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "base/containers/flat_map.h"
+#include "base/containers/flat_set.h"
+#include "base/functional/callback_forward.h"
+#include "base/functional/callback_helpers.h"
+#include "base/values.h"
+#include "chrome/browser/web_applications/web_app_ui_manager.h"
+#include "components/services/app_service/public/cpp/app_launch_util.h"
+#include "components/webapps/browser/install_result_code.h"
+#include "components/webapps/browser/installable/ml_install_operation_tracker.h"
+#include "components/webapps/common/web_app_id.h"
+
+namespace base {
+class FilePath;
+}  // namespace base
+
+namespace webapps {
+class MlInstallOperationTracker;
+}  // namespace webapps
+namespace web_app {
+
+class WebAppProvider;
+
+// A fake implementation of WebAppUiManager used in unit tests to prevent
+// actually opening browser windows or showing UI dialogs.
+// It allows tests to track UI interactions (like tab reparenting and window
+// launches) and can be configured to automatically accept or reject dialogs
+// (e.g., install dialogs, identity update dialogs).
+class FakeWebAppUiManager : public WebAppUiManager {
+ public:
+  FakeWebAppUiManager();
+  FakeWebAppUiManager(const FakeWebAppUiManager&) = delete;
+  FakeWebAppUiManager& operator=(const FakeWebAppUiManager&) = delete;
+  ~FakeWebAppUiManager() override;
+
+  using OnLaunchWebAppCallback =
+      base::RepeatingCallback<void(apps::AppLaunchParams params,
+                                   LaunchWebAppWindowSetting launch_setting)>;
+
+  void Start() override;
+  void Shutdown() override;
+
+  void SetNumWindowsForApp(const webapps::AppId& app_id,
+                           size_t num_windows_for_app);
+  void SetOnNotifyOnAllAppWindowsClosedCallback(
+      base::RepeatingCallback<void(webapps::AppId)> callback);
+  int num_reparent_tab_calls() const { return num_reparent_tab_calls_; }
+
+  void SetOnLaunchWebAppCallback(OnLaunchWebAppCallback callback);
+
+  // WebAppUiManager:
+  WebAppUiManagerImpl* AsImpl() override;
+  size_t GetNumWindowsForApp(const webapps::AppId& app_id) override;
+  void CloseAppWindows(const webapps::AppId& app_id) override;
+  void NotifyOnAllAppWindowsClosed(const webapps::AppId& app_id,
+                                   base::OnceClosure callback) override;
+  bool CanAddAppToQuickLaunchBar() const override;
+  void AddAppToQuickLaunchBar(const webapps::AppId& app_id) override;
+  bool IsAppInQuickLaunchBar(const webapps::AppId& app_id) const override;
+
+  bool IsAppMigrationSuggested(BrowserWindowInterface* window) const override;
+  bool IsAppMigrationDialogShowing(
+      BrowserWindowInterface* window) const override;
+
+  bool CanReparentAppTabToWindow(
+      const webapps::AppId& app_id,
+      bool shortcut_created,
+      content::WebContents* web_contents) const override;
+  BrowserWindowInterface* ReparentAppTabToWindow(
+      content::WebContents* contents,
+      const webapps::AppId& app_id,
+      bool shortcut_created) override;
+  BrowserWindowInterface* ReparentAppTabToWindow(
+      content::WebContents* contents,
+      const webapps::AppId& app_id,
+      base::OnceCallback<void(content::WebContents*)> completion_callback)
+      override;
+  void ShowWebAppFileLaunchDialog(
+      const std::vector<base::FilePath>& file_paths,
+      const webapps::AppId& app_id,
+      WebAppLaunchAcceptanceCallback launch_callback) override {}
+  void ShowWebAppProtocolLaunchDialog(
+      const GURL& protocol_url,
+      const webapps::AppId& app_id,
+      WebAppLaunchAcceptanceCallback launch_callback) override {}
+  void ShowSubAppsInstallDialog(
+      content::WebContents* initiating_web_contents,
+      const std::vector<std::unique_ptr<WebAppInstallInfo>>& sub_apps,
+      const webapps::AppId& parent_app_id,
+      base::OnceCallback<void(bool)> callback) override;
+  void ShowWebAppSettings(const webapps::AppId& app_id) override {}
+
+  void LaunchWebApp(apps::AppLaunchParams params,
+                    LaunchWebAppWindowSetting launch_setting,
+                    Profile& profile,
+                    LaunchWebAppDebugValueCallback callback,
+                    WithAppResources& lock) override;
+#if BUILDFLAG(IS_CHROMEOS)
+  void MigrateLauncherState(const webapps::AppId& from_app_id,
+                            const webapps::AppId& to_app_id,
+                            base::OnceClosure callback) override;
+
+  void DisplayRunOnOsLoginNotification(
+      const base::flat_map<webapps::AppId,
+                           WebAppUiManager::RoolNotificationBehavior>& apps,
+      base::WeakPtr<Profile> profile) override;
+#endif
+  void NotifyAppRelaunchState(const webapps::AppId& placeholder_app_id,
+                              const webapps::AppId& final_app_id,
+                              const std::u16string& final_app_name,
+                              base::WeakPtr<Profile> profile,
+                              AppRelaunchState relaunch_state) override;
+  content::WebContents* CreateNewTab() override;
+  bool IsWebContentsActiveTabInBrowser(
+      content::WebContents* web_contents) override;
+  void TriggerInstallDialog(content::WebContents* web_contents,
+                            webapps::WebappInstallSource source,
+                            InstallCallback callback) override;
+  void TriggerInstallDialogForManifestInstall(
+      content::WebContents* initiating_web_contents,
+      base::WeakPtr<content::Page> initiating_page,
+      std::unique_ptr<webapps::MlInstallOperationTracker> tracker,
+      blink::mojom::ManifestPtr manifest,
+      const GURL& manifest_url,
+      const GURL& requesting_page_url,
+      InstallCallback callback) override;
+
+  void TriggerLaunchDialogForBackgroundInstall(
+      content::WebContents* initiating_web_contents,
+      const webapps::AppId& app_id,
+      Profile* profile,
+      const std::string& app_name,
+      const SkBitmap& icon,
+      base::OnceCallback<void(bool accepted)> callback) override;
+
+  void PresentUserUninstallDialog(
+      const webapps::AppId& app_id,
+      webapps::WebappUninstallSource uninstall_source,
+      BrowserWindow* parent_window,
+      UninstallCompleteCallback callback) override;
+
+  void PresentUserUninstallDialog(
+      const webapps::AppId& app_id,
+      webapps::WebappUninstallSource uninstall_source,
+      gfx::NativeWindow parent_window,
+      UninstallCompleteCallback callback) override;
+
+  void PresentUserUninstallDialog(
+      const webapps::AppId& app_id,
+      webapps::WebappUninstallSource uninstall_source,
+      gfx::NativeWindow parent_window,
+      UninstallCompleteCallback callback,
+      UninstallScheduledCallback scheduled_callback) override;
+
+  void ShowProfileErrorDialogForCorruptDB() override;
+
+  int num_show_profile_error_dialog_calls() const {
+    return num_show_profile_error_dialog_calls_;
+  }
+
+  void ShowIntentPicker(const GURL& url,
+                        content::WebContents* web_contents,
+                        ShowIntentPickerBubbleCallback callback,
+                        std::optional<webapps::AppId> scoped_app_id) override;
+
+  void LaunchOrFocusIsolatedWebAppInstaller(
+      const base::FilePath& bundle_path) override;
+
+  void MaybeCreateEnableSupportedLinksInfobar(
+      content::WebContents* web_contents,
+      const std::string& launch_name) override;
+
+  void MaybeCreateWebAppBlockedMigrationInfoBar(
+      content::WebContents* web_contents,
+      base::OnceClosure on_dismiss_callback) override;
+
+  void MaybeRemoveWebAppBlockedMigrationInfoBar(
+      content::WebContents* web_contents) override;
+
+  void MaybeShowIPHPromoForAppsLaunchedViaLinkCapturing(
+      BrowserWindowInterface* browser,
+      Profile* profile,
+      const std::string& app_id) override;
+
+  FakeWebAppUiManager* AsFakeWebAppUiManagerForTesting() override;
+
+  void SetCanAddAppToQuickLaunchBar(bool can_add);
+  void SetProvider(WebAppProvider* provider);
+
+  // Sets the InstallResultCode that TriggerInstallDialog passes to its
+  // callback. Defaults to kWebAppProviderNotReady.
+  void SetTriggerInstallDialogResultCode(webapps::InstallResultCode code);
+
+  void UninstallAppSilentlyForMigration(const webapps::AppId& app_id) override;
+
+ private:
+  base::flat_map<webapps::AppId, size_t> app_id_to_num_windows_map_;
+  // Closures waiting to be called when all windows for a given `webapps::AppId`
+  // are closed.
+  base::flat_map<webapps::AppId, std::vector<base::OnceClosure>>
+      windows_closed_requests_map_;
+
+  // Callback that is triggered after `NotifyOnAllAppWindowsClosed` is called.
+  base::RepeatingCallback<void(webapps::AppId)>
+      notify_on_all_app_windows_closed_callback_ = base::DoNothing();
+
+  int num_reparent_tab_calls_ = 0;
+  int num_show_profile_error_dialog_calls_ = 0;
+  OnLaunchWebAppCallback on_launch_web_app_callback_;
+
+  bool can_add_to_quick_launch_bar_ = false;
+  base::flat_set<webapps::AppId> quick_launch_bar_apps_;
+  raw_ptr<WebAppProvider> provider_ = nullptr;
+  webapps::InstallResultCode trigger_install_dialog_result_code_ =
+      webapps::InstallResultCode::kWebAppProviderNotReady;
+};
+
+}  // namespace web_app
+
+#endif  // CHROME_BROWSER_WEB_APPLICATIONS_TEST_FAKE_WEB_APP_UI_MANAGER_H_

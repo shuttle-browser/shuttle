@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<title>Tests the labels shown when partial information is provided.</title>
+<script src="../resources/testharness.js"></script>
+<script src="../resources/testharnessreport.js"></script>
+<script src="media-controls.js"></script>
+<video controls>
+  <track kind="subtitles" src="captions.vtt" srclang="is" label="Icelandic">
+  <track kind="subtitles" src="captions-fast.vtt" srclang="fr" label="">
+  <track kind="subtitles" src="captions-rtl.vtt" srclang="" label="">
+</video>
+<script>
+async_test(function(t) {
+    var video = document.querySelector("video");
+    enableTestMode(video);
+
+    video.oncanplaythrough = t.step_func(function() {
+      clickCaptionButton(video, t.step_func_done(function() {
+        // Get the menu that displays the list of text tracks.
+        var captionsList = mediaControlsElement(internals.shadowRoot(video).firstChild,
+            "-internal-media-controls-text-track-list");
+
+        // The "Caption settings" entry is only present when the
+        // MediaCaptionSettingsButton feature is enabled.
+        var hasCaptionSettings = window.internals &&
+            internals.runtimeFlags.mediaCaptionSettingsButtonEnabled;
+
+        var i = 0;
+        assert_equals(captionsList.children[i++].innerText, "Options");
+        if (hasCaptionSettings) {
+          assert_equals(captionsList.children[i++].innerText, "Caption settings");
+        }
+        assert_equals(captionsList.children[i++].innerText, "Off");
+        assert_equals(captionsList.children[i++].innerText, "Icelandic");
+        assert_equals(captionsList.children[i++].innerText, "fr");
+        assert_equals(captionsList.children[i++].innerText, "Track 3");
+      }));
+    });
+
+    video.src = "content/counting.ogv";
+});
+</script>

@@ -1,0 +1,168 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/tab_search_bubble_host.h"
+
+#include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
+#include "build/build_config.h"
+#include "chrome/browser/themes/test/theme_service_changed_waiter.h"
+#include "chrome/browser/themes/theme_service.h"
+#include "chrome/browser/themes/theme_service_factory.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+#include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
+#include "chrome/browser/ui/test/test_browser_dialog.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/bubble/webui_bubble_manager.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/webui/tab_search/tab_search_prefs.h"
+#include "chrome/browser/ui/webui/top_chrome/webui_contents_preload_manager.h"
+#include "chrome/browser/ui/webui/top_chrome/webui_contents_preload_manager_test_api.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "chrome/test/base/ui_test_utils.h"
+#include "components/prefs/pref_service.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_test.h"
+#include "ui/base/accelerators/accelerator.h"
+#include "ui/gfx/geometry/rect.h"
+#include "ui/views/bubble/bubble_frame_view.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chromeos/ui/frame/multitask_menu/multitask_menu_nudge_controller.h"
+#endif
+
+class TabSearchBubbleHostBrowserTest : public InProcessBrowserTest {
+ public:
+  TabSearchBubbleHostBrowserTest() = default;
+
+  BrowserView* browser_view() {
+    return BrowserView::GetBrowserViewForBrowser(browser());
+  }
+
+  TabSearchBubbleHost* tab_search_bubble_host() {
+    return browser_view()->GetTabSearchBubbleHost();
+  }
+
+  WebUIBubbleManager* bubble_manager() {
+    return tab_search_bubble_host()->webui_bubble_manager_for_testing();
+  }
+
+  void RunUntilBubbleWidgetDestroyed() {
+    ASSERT_NE(nullptr, bubble_manager()->GetBubbleWidget());
+    base::RunLoop run_loop;
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, run_loop.QuitClosure());
+    run_loop.Run();
+    ASSERT_EQ(nullptr, bubble_manager()->GetBubbleWidget());
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(TabSearchBubbleHostBrowserTest,
+                       BubbleShowTimerTriggersCorrectly) {
+  ASSERT_EQ(nullptr, bubble_manager()->GetBubbleWidget());
+  tab_search_bubble_host()->ShowTabSearchBubble();
+
+  // |bubble_created_time_| should be set as soon as the bubble widget is
+  // created.
+  EXPECT_FALSE(bubble_manager()->GetBubbleWidget()->IsVisible());
+  EXPECT_TRUE(tab_search_bubble_host()->bubble_created_time_for_testing());
+
+  bubble_manager()->bubble_view_for_testing()->ShowUI();
+  EXPECT_TRUE(bubble_manager()->GetBubbleWidget()->IsVisible());
+
+  // Closing the bubble should reset the timestamp.
+  tab_search_bubble_host()->CloseTabSearchBubble();
+  EXPECT_FALSE(tab_search_bubble_host()->bubble_created_time_for_testing());
+  RunUntilBubbleWidgetDestroyed();
+}
+
+IN_PROC_BROWSER_TEST_F(TabSearchBubbleHostBrowserTest,
+                       BubbleShowCorrectlyInFullscreen) {
+  ui_test_utils::ToggleFullscreenModeAndWait(browser());
+
+  gfx::Rect rect(20, 4, 0, 0);
+  bubble_manager()->ShowBubble(rect);
+
+  bubble_manager()->bubble_view_for_testing()->ShowUI();
+  EXPECT_TRUE(bubble_manager()->GetBubbleWidget()->IsVisible());
+
+  gfx::Rect bound =
+      bubble_manager()->bubble_view_for_testing()->GetAnchorRect();
+  EXPECT_EQ(bound, rect);
+
+  tab_search_bubble_host()->CloseTabSearchBubble();
+  RunUntilBubbleWidgetDestroyed();
+}
+
+IN_PROC_BROWSER_TEST_F(TabSearchBubbleHostBrowserTest,
+                       BubbleBackgroundColorMatchesBrowserTheme) {
+  // Set up browser theme
+  ThemeService* theme_service =
+      ThemeServiceFactory::GetForProfile(browser()->GetProfile());
+  test::ThemeServiceChangedWaiter waiter(theme_service);
+  theme_service->SetUserColor(SK_ColorGREEN);
+  waiter.WaitForThemeChanged();
+
+  // Force preload Tab Search immediately using the Test API
+  WebUIContentsPreloadManagerTestAPI test_api;
+  test_api.PreloadUrl(browser()->GetProfile(),
+                      GURL(chrome::kChromeUITabSearchURL));
+
+  auto* preload_manager = WebUIContentsPreloadManager::GetInstance();
+  SkColor expected_color =
+      browser_view()->GetColorProvider()->GetColor(ui::kColorBubbleBackground);
+
+  // Verify that the preloaded WebContents gets the correct theme color
+  // in the background *before* the bubble is shown on screen.
+  content::WebContents* preloaded_contents =
+      preload_manager->preloaded_web_contents();
+  ASSERT_TRUE(preloaded_contents);
+  EXPECT_EQ(preloaded_contents->GetColorProvider().GetColor(
+                ui::kColorBubbleBackground),
+            expected_color);
+}
+
+// On macOS, most accelerators are handled by CommandDispatcher.
+#if !BUILDFLAG(IS_MAC)
+IN_PROC_BROWSER_TEST_F(TabSearchBubbleHostBrowserTest,
+                       KeyboardShortcutTriggersBubble) {
+  ASSERT_EQ(nullptr, bubble_manager()->GetBubbleWidget());
+
+  auto accelerator = ui::Accelerator(
+      ui::VKEY_A, ui::EF_SHIFT_DOWN | ui::EF_PLATFORM_ACCELERATOR);
+  browser_view()->AcceleratorPressed(accelerator);
+
+  // Accelerator keys should have created the tab search bubble.
+  ASSERT_NE(nullptr, bubble_manager()->GetBubbleWidget());
+
+  tab_search_bubble_host()->CloseTabSearchBubble();
+  ASSERT_TRUE(bubble_manager()->GetBubbleWidget()->IsClosed());
+
+  RunUntilBubbleWidgetDestroyed();
+}
+#endif
+
+class FullscreenTabSearchBubbleDialogTest : public DialogBrowserTest {
+ public:
+  FullscreenTabSearchBubbleDialogTest() {
+#if BUILDFLAG(IS_CHROMEOS)
+    chromeos::MultitaskMenuNudgeController::SetSuppressNudgeForTesting(true);
+#endif
+  }
+
+  FullscreenTabSearchBubbleDialogTest(
+      const FullscreenTabSearchBubbleDialogTest&) = delete;
+  FullscreenTabSearchBubbleDialogTest& operator=(
+      const FullscreenTabSearchBubbleDialogTest&) = delete;
+
+  void ShowUi(const std::string& name) override {
+    ui_test_utils::ToggleFullscreenModeAndWait(browser());
+    BrowserView* view = BrowserView::GetBrowserViewForBrowser(browser());
+    view->CreateTabSearchBubble();
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(FullscreenTabSearchBubbleDialogTest, InvokeUi_default) {
+  ShowAndVerifyUi();
+}

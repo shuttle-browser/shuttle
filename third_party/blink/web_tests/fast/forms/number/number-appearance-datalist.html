@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<meta name=fuzzy content="maxDifference=0-3; totalPixels=0-100">
+<html>
+<script src="../resources/common.js"></script>
+<body>
+<datalist id="dl1">
+<option>1</option>
+</datalist>
+<input type="number" list="dl1"> <input type="number" list="dl1"> <br>
+<input type="number" list="dl1" disabled> <input type="number" list="dl1" readonly>
+<script>
+document.querySelector('input').focus();
+hoverElementAndFinishAfterPaint(document.querySelectorAll('input')[1]);
+</script>
+</body>
+</html>

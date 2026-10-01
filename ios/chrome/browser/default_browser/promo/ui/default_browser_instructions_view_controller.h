@@ -1,0 +1,31 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_DEFAULT_BROWSER_PROMO_UI_DEFAULT_BROWSER_INSTRUCTIONS_VIEW_CONTROLLER_H_
+#define IOS_CHROME_BROWSER_DEFAULT_BROWSER_PROMO_UI_DEFAULT_BROWSER_INSTRUCTIONS_VIEW_CONTROLLER_H_
+
+#import "ios/chrome/browser/shared/ui/animated_promo/animated_promo_view_controller.h"
+
+// The accessibility identifier of the default browser instructions view
+// animation id.
+extern NSString* const kDefaultBrowserInstructionsViewAnimationViewId;
+
+// The accessibility identifier of the default browser instructions view dark
+// animation id.
+extern NSString* const kDefaultBrowserInstructionsViewDarkAnimationViewId;
+
+// View for the displaying default browser instructions.
+@interface DefaultBrowserInstructionsViewController : AnimatedPromoViewController
+
+// Creates the view with specified `titleText` based on provided parameters.
+// If `titleText` is nil, default title will be used.
+- (instancetype)initWithDismissButton:(BOOL)hasDismissButton
+                     hasRemindMeLater:(BOOL)hasRemindMeLater
+            useDefaultAppsDestination:(BOOL)useDefaultAppsDestination
+                             hasSteps:(BOOL)hasSteps
+                            titleText:(NSString*)titleText;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_DEFAULT_BROWSER_PROMO_UI_DEFAULT_BROWSER_INSTRUCTIONS_VIEW_CONTROLLER_H_

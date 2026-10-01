@@ -1,0 +1,160 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/app_bar/ui/app_bar_container_view.h"
+
+#import "ios/chrome/browser/app_bar/ui/app_bar_constants.h"
+#import "ios/chrome/browser/app_bar/ui/app_bar_container_view_delegate.h"
+#import "ios/chrome/browser/shared/coordinator/scene/state/scene_layout_state.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+
+namespace {
+constexpr CGFloat kDefaultAppBarWidth = 300;
+}
+
+@implementation AppBarContainerView {
+  NSLayoutConstraint* _heightConstraint;
+  NSLayoutConstraint* _appBarVerticalPositioning;
+  NSLayoutConstraint* _appBarWidthConstraint;
+  UIView* _appBar;
+}
+
+- (instancetype)init {
+  self = [super init];
+  if (self) {
+    _heightConstraint = [self.heightAnchor constraintEqualToConstant:0];
+    _heightConstraint.active = YES;
+    [self.widthAnchor constraintEqualToAnchor:self.heightAnchor].active = YES;
+  }
+  return self;
+}
+
+- (void)setAppBar:(UIView*)appBar {
+  if (_appBar == appBar) {
+    return;
+  }
+  if ([_appBar isDescendantOfView:self]) {
+    [_appBar removeFromSuperview];
+    _appBarWidthConstraint.active = NO;
+    _appBarVerticalPositioning.active = NO;
+  }
+
+  _appBar = appBar;
+
+  if (!_appBar) {
+    return;
+  }
+
+  [self addSubview:_appBar];
+  _appBar.translatesAutoresizingMaskIntoConstraints = NO;
+  [_appBar.centerXAnchor constraintEqualToAnchor:self.centerXAnchor].active =
+      YES;
+
+  _appBarVerticalPositioning =
+      [appBar.bottomAnchor constraintEqualToAnchor:self.bottomAnchor];
+  _appBarVerticalPositioning.active = YES;
+
+  _appBarWidthConstraint =
+      [appBar.widthAnchor constraintEqualToConstant:kDefaultAppBarWidth];
+  _appBarWidthConstraint.active = YES;
+  [self updatePositioning];
+}
+
+- (void)setFullscreenProgress:(CGFloat)progress {
+  if (_fullscreenProgress == progress) {
+    return;
+  }
+  _fullscreenProgress = progress;
+  [self updatePositioning];
+}
+
+- (void)setAppBarPosition:(AppBarPosition)appBarPosition {
+  if (_appBarPosition == appBarPosition) {
+    return;
+  }
+  _appBarPosition = appBarPosition;
+  [self updatePositioning];
+}
+
+- (void)setAssistantContainerInvoked:(BOOL)assistantContainerInvoked {
+  if (_assistantContainerInvoked == assistantContainerInvoked) {
+    return;
+  }
+  _assistantContainerInvoked = assistantContainerInvoked;
+  [self updatePositioning];
+}
+
+- (void)windowSizeDidChange {
+  [self updatePositioning];
+}
+
+#pragma mark - UIView
+
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent*)event {
+  // Only receive touches for subviews and let the others go through.
+  for (UIView* subview in self.subviews) {
+    if ([subview pointInside:[self convertPoint:point toView:subview]
+                   withEvent:event]) {
+      return YES;
+    }
+  }
+  return NO;
+}
+
+- (void)didMoveToWindow {
+  [super didMoveToWindow];
+  [self updatePositioning];
+  [self.delegate appBarContainerDidMoveToWindow:self];
+}
+
+#pragma mark - Private
+
+// Updates the position and size of the container view and the app bar.
+- (void)updatePositioning {
+  if (!self.window || !_appBar) {
+    return;
+  }
+  CGSize windowSize = self.window.bounds.size;
+  CGFloat tallSideLength = MAX(windowSize.width, windowSize.height);
+  CGFloat containerLength = tallSideLength * 1.5;
+  _heightConstraint.constant = containerLength;
+
+  CGFloat extraOffset = 0;
+  CGFloat appBarWidth = 0;
+  // This is the "height" of the window when looked in AppBar coordinates (so
+  // with a fixed orientation).
+  CGFloat heightInAppCoordinates = 0;
+  switch (self.appBarPosition) {
+    case AppBarPosition::kBottom: {
+      appBarWidth = windowSize.width;
+      heightInAppCoordinates = windowSize.height;
+      CGFloat minHeight =
+          IsAppBarHiddenInFullscreen() ? 0 : kAppBarHeightFullscreen;
+      CGFloat portraitHeight = self.assistantContainerInvoked
+                                   ? kAppBarHeightFullscreen
+                                   : AppBarHeightPortrait();
+      extraOffset =
+          (1 - self.fullscreenProgress) * (portraitHeight - minHeight);
+      break;
+    }
+
+    case AppBarPosition::kLeft:
+      [[fallthrough]];
+    case AppBarPosition::kRight:
+      appBarWidth = windowSize.height;
+      heightInAppCoordinates = windowSize.width;
+      extraOffset = 0;
+      break;
+    case AppBarPosition::kNone:
+      break;
+  }
+
+  _appBarWidthConstraint.constant = appBarWidth;
+
+  CGFloat offset = (containerLength - heightInAppCoordinates) / 2;
+
+  _appBarVerticalPositioning.constant = -offset + extraOffset;
+}
+
+@end

@@ -1,0 +1,38 @@
+This is a testharness.js-based test.
+Found 17 FAIL, 0 TIMEOUT, 0 NOTRUN.
+[FAIL] [["stylewithcss","true"],["defaultparagraphseparator","p"],["insertparagraph",""]] "<div><b>foo[]bar</b></div>" queryCommandState("stylewithcss") before
+  assert_equals: Wrong result returned expected false but got true
+[FAIL] [["defaultparagraphseparator","div"],["insertparagraph",""]] "<a href=foo>foo[]bar</a>" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<div><a href=\\"foo\\">foo</a></div><div><a href=\\"foo\\">bar</a></div>" but got "<a href=\\"foo\\">foo</a><div><a href=\\"foo\\">bar</a></div>"
+[FAIL] [["defaultparagraphseparator","p"],["insertparagraph",""]] "<a href=foo>foo[]bar</a>" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<p><a href=\\"foo\\">foo</a></p><p><a href=\\"foo\\">bar</a></p>" but got "<a href=\\"foo\\">foo</a><p><a href=\\"foo\\">bar</a></p>"
+[FAIL] [["defaultparagraphseparator","div"],["insertparagraph",""]] "<a href=foo>foo[]bar</a>baz" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<div><a href=\\"foo\\">foo</a></div><div><a href=\\"foo\\">bar</a>baz</div>" but got "<a href=\\"foo\\">foo</a><div><a href=\\"foo\\">bar</a>baz</div>"
+[FAIL] [["defaultparagraphseparator","p"],["insertparagraph",""]] "<a href=foo>foo[]bar</a>baz" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<p><a href=\\"foo\\">foo</a></p><p><a href=\\"foo\\">bar</a>baz</p>" but got "<a href=\\"foo\\">foo</a><p><a href=\\"foo\\">bar</a>baz</p>"
+[FAIL] [["defaultparagraphseparator","div"],["insertparagraph",""]] "<a href=foo>foo[]</a>bar" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<div><a href=\\"foo\\">foo</a></div><div>bar</div>" but got "<a href=\\"foo\\">foo</a><div>bar</div>"
+[FAIL] [["defaultparagraphseparator","p"],["insertparagraph",""]] "<a href=foo>foo[]</a>bar" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<p><a href=\\"foo\\">foo</a></p><p>bar</p>" but got "<a href=\\"foo\\">foo</a><p>bar</p>"
+[FAIL] [["defaultparagraphseparator","div"],["insertparagraph",""]] "foo<a href=foo>[]bar</a>" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<div>foo</div><div><a href=\\"foo\\">bar</a></div>" but got "foo<div><a href=\\"foo\\">bar</a></div>"
+[FAIL] [["defaultparagraphseparator","p"],["insertparagraph",""]] "foo<a href=foo>[]bar</a>" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<p>foo</p><p><a href=\\"foo\\">bar</a></p>" but got "foo<p><a href=\\"foo\\">bar</a></p>"
+[FAIL] [["defaultparagraphseparator","div"],["insertparagraph",""]] "<p><b><a href=foo>foo[]</a></b></p>" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<p><b><a href=\\"foo\\">foo</a></b></p><p><b><br></b></p>" but got "<p><b><a href=\\"foo\\">foo</a></b></p><p><br></p>"
+[FAIL] [["defaultparagraphseparator","p"],["insertparagraph",""]] "<div><b><a href=foo>foo[]</a></b></div>" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<div><b><a href=\\"foo\\">foo</a></b></div><div><b><br></b></div>" but got "<div><b><a href=\\"foo\\">foo</a></b></div><div><br></div>"
+[FAIL] [["defaultparagraphseparator","div"],["insertparagraph",""]] "<p><b><a href=foo>[]foo</a></b></p>" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<p><b><br></b></p><p><b><a href=\\"foo\\">foo</a></b></p>" but got "<p><br></p><p><b><a href=\\"foo\\">foo</a></b></p>"
+[FAIL] [["defaultparagraphseparator","p"],["insertparagraph",""]] "<div><b><a href=foo>[]foo</a></b></div>" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<div><b><br></b></div><div><b><a href=\\"foo\\">foo</a></b></div>" but got "<div><br></div><div><b><a href=\\"foo\\">foo</a></b></div>"
+[FAIL] [["defaultparagraphseparator","div"],["insertparagraph",""]] "<p>foo[]<!--bar-->" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<p>foo</p><p><!--bar--><br></p>" but got "<p>foo<!--bar--></p><p><br></p>"
+[FAIL] [["defaultparagraphseparator","p"],["insertparagraph",""]] "<p>foo[]<!--bar-->" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<p>foo</p><p><!--bar--><br></p>" but got "<p>foo<!--bar--></p><p><br></p>"
+[FAIL] [["defaultparagraphseparator","div"],["insertparagraph",""]] "<p><!--foo-->[]bar" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<p><!--foo--><br></p><p>bar</p>" but got "<p><br></p><p><!--foo-->bar</p>"
+[FAIL] [["defaultparagraphseparator","p"],["insertparagraph",""]] "<p><!--foo-->[]bar" compare innerHTML
+  assert_equals: Unexpected innerHTML (after normalizing inline style) expected "<p><!--foo--><br></p><p>bar</p>" but got "<p><br></p><p><!--foo-->bar</p>"
+Harness: the test ran to completion.
+

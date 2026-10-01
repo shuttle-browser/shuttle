@@ -1,0 +1,377 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.hub;
+
+import static org.chromium.build.NullUtil.assumeNonNull;
+
+import android.app.Activity;
+import android.graphics.Color;
+import android.view.View;
+import android.widget.FrameLayout.LayoutParams;
+
+import androidx.annotation.ColorInt;
+
+import org.chromium.base.ValueChangedCallback;
+import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.base.supplier.NonNullObservableSupplier;
+import org.chromium.base.supplier.NullableObservableSupplier;
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.supplier.OneshotSupplier;
+import org.chromium.base.supplier.SettableNonNullObservableSupplier;
+import org.chromium.base.supplier.SettableNullableObservableSupplier;
+import org.chromium.build.annotations.EnsuresNonNull;
+import org.chromium.build.annotations.MonotonicNonNull;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.back_press.BackPressManager;
+import org.chromium.chrome.browser.hub.HubColorMixer.ColorBlendProgress;
+import org.chromium.chrome.browser.profiles.ProfileProvider;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabId;
+import org.chromium.chrome.browser.toolbar.menu_button.MenuButtonCoordinator;
+import org.chromium.chrome.browser.ui.bottombar.BottomBarConfigUtils;
+import org.chromium.chrome.browser.ui.bottombar.BottomBarHostManager;
+import org.chromium.chrome.browser.ui.edge_to_edge.EdgeToEdgeController;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager.ParentOverrideSlot;
+import org.chromium.chrome.browser.ui.searchactivityutils.SearchActivityClient;
+import org.chromium.chrome.browser.ui.vertical_tabs.VerticalTabUtils;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetObserver;
+import org.chromium.components.browser_ui.widget.MenuOrKeyboardActionController;
+import org.chromium.components.browser_ui.widget.MenuOrKeyboardActionController.MenuOrKeyboardActionHandler;
+import org.chromium.components.browser_ui.widget.gesture.BackPressHandler;
+import org.chromium.components.browser_ui.widget.gesture.BackPressHandler.BackPressResult;
+
+/**
+ * Implementation of {@link HubManager} and {@link HubController}.
+ *
+ * <p>This class holds all the dependencies of {@link HubCoordinator} so that the Hub UI can be
+ * created and torn down as needed when {@link HubLayout} visibility changes.
+ */
+@NullMarked
+public class HubManagerImpl implements HubManager, HubController {
+    private final ValueChangedCallback<Pane> mOnFocusedPaneChanged =
+            new ValueChangedCallback<>(this::onFocusedPaneChanged);
+    private final SettableNonNullObservableSupplier<Boolean> mHubVisibilitySupplier =
+            ObservableSuppliers.createNonNull(false);
+    private final Activity mActivity;
+    private final OneshotSupplier<ProfileProvider> mProfileProviderSupplier;
+    private final PaneManagerImpl mPaneManager;
+    private final HubContainerView mHubContainerView;
+    private final BackPressManager mBackPressManager;
+    private final MenuOrKeyboardActionController mMenuOrKeyboardActionController;
+    private final SnackbarManager mSnackbarManager;
+    private final BottomSheetController mBottomSheetController;
+    private final SettableNonNullObservableSupplier<Integer> mSnackbarMarginSupplier =
+            ObservableSuppliers.createNonNull(0);
+    private final BottomSheetObserver mBottomSheetObserver =
+            new BottomSheetObserver() {
+                @Override
+                public void onSheetOffsetChanged(float heightFraction, float offsetPx) {
+                    mSnackbarMarginSupplier.set(Math.round(offsetPx));
+                }
+            };
+    private final NullableObservableSupplier<Tab> mTabSupplier;
+    private final MenuButtonCoordinator mMenuButtonCoordinator;
+    private final HubShowPaneHelper mHubShowPaneHelper;
+    private final MonotonicObservableSupplier<EdgeToEdgeController> mEdgeToEdgeSupplier;
+    private final SearchActivityClient mSearchActivityClient;
+    private final SettableNullableObservableSupplier<ColorBlendProgress>
+            mSwipeAnimationProgressSupplier = ObservableSuppliers.createNullable();
+    private final HubColorMixer mHubColorMixer;
+    private final @Nullable BottomBarHostManager mBottomBarHostManager;
+    private final NonNullObservableSupplier<Boolean> mXrSpaceModeObservableSupplier;
+    private final @PaneId int mDefaultPaneId;
+
+    // This is effectively NonNull and final once the HubLayout is initialized.
+    private @MonotonicNonNull HubLayoutController mHubLayoutController;
+    private @Nullable HubCoordinator mHubCoordinator;
+    private boolean mHasSnackbarOverride;
+    private int mStatusIndicatorHeight;
+    private int mAppHeaderHeight;
+
+    /** See {@link HubManagerFactory#createHubManager}. */
+    public HubManagerImpl(
+            Activity activity,
+            OneshotSupplier<ProfileProvider> profileProviderSupplier,
+            PaneListBuilder paneListBuilder,
+            BackPressManager backPressManager,
+            MenuOrKeyboardActionController menuOrKeyboardActionController,
+            SnackbarManager snackbarManager,
+            BottomSheetController bottomSheetController,
+            @Nullable BottomBarHostManager bottomBarHostManager,
+            NullableObservableSupplier<Tab> tabSupplier,
+            MenuButtonCoordinator menuButtonCoordinator,
+            HubShowPaneHelper hubShowPaneHelper,
+            MonotonicObservableSupplier<EdgeToEdgeController> edgeToEdgeSupplier,
+            SearchActivityClient searchActivityClient,
+            NonNullObservableSupplier<Boolean> xrSpaceModeObservableSupplier,
+            @PaneId int defaultPaneId) {
+        mActivity = activity;
+        mProfileProviderSupplier = profileProviderSupplier;
+        mPaneManager = new PaneManagerImpl(paneListBuilder, mHubVisibilitySupplier, defaultPaneId);
+        mBackPressManager = backPressManager;
+        mMenuOrKeyboardActionController = menuOrKeyboardActionController;
+        mSnackbarManager = snackbarManager;
+        mBottomSheetController = bottomSheetController;
+        mBottomSheetController.addObserver(mBottomSheetObserver);
+        mBottomBarHostManager = bottomBarHostManager;
+        mTabSupplier = tabSupplier;
+        mMenuButtonCoordinator = menuButtonCoordinator;
+        mHubShowPaneHelper = hubShowPaneHelper;
+        mEdgeToEdgeSupplier = edgeToEdgeSupplier;
+        mSearchActivityClient = searchActivityClient;
+
+        // TODO(crbug.com/40283238): Consider making this a xml file so the entire core UI is
+        // inflated.
+        mHubContainerView = new HubContainerView(mActivity);
+        LayoutParams params =
+                new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
+        mHubContainerView.setLayoutParams(params);
+
+        mPaneManager
+                .getFocusedPaneSupplier()
+                .addSyncObserverAndPostIfNonNull(mOnFocusedPaneChanged);
+        mHubColorMixer =
+                new HubColorMixerImpl(
+                        mActivity,
+                        mHubVisibilitySupplier,
+                        mPaneManager.getFocusedPaneSupplier(),
+                        mSwipeAnimationProgressSupplier);
+        mHubColorMixer.registerBlend(
+                new SingleHubViewColorBlend(
+                        HubAnimationConstants.PANE_COLOR_BLEND_ANIMATION_DURATION_MS,
+                        colorScheme -> {
+                            return VerticalTabUtils.isVerticalTabsEnabled(mActivity)
+                                    ? HubColors.getBackgroundColor(mActivity, colorScheme)
+                                    : Color.TRANSPARENT;
+                        },
+                        mHubContainerView::setBackgroundColor));
+        mXrSpaceModeObservableSupplier = xrSpaceModeObservableSupplier;
+        mDefaultPaneId = defaultPaneId;
+    }
+
+    @Override
+    public void destroy() {
+        mBottomSheetController.removeObserver(mBottomSheetObserver);
+        mHubVisibilitySupplier.set(false);
+        mPaneManager.getFocusedPaneSupplier().removeObserver(mOnFocusedPaneChanged);
+        mPaneManager.destroy();
+        mHubColorMixer.destroy();
+        destroyHubCoordinator();
+    }
+
+    @Override
+    public PaneManager getPaneManager() {
+        return mPaneManager;
+    }
+
+    @Override
+    public HubController getHubController() {
+        return this;
+    }
+
+    @Override
+    public NonNullObservableSupplier<Boolean> getHubVisibilitySupplier() {
+        return mHubVisibilitySupplier;
+    }
+
+    @Override
+    public void selectTabAndHideHub(@TabId int tabId) {
+        if (mHubLayoutController != null) {
+            mHubLayoutController.selectTabAndHideHubLayout(tabId);
+        }
+    }
+
+    @Override
+    public HubShowPaneHelper getHubShowPaneHelper() {
+        return mHubShowPaneHelper;
+    }
+
+    @Override
+    public void setStatusIndicatorHeight(int height) {
+        mStatusIndicatorHeight = height;
+        updateContainerLayoutParams();
+    }
+
+    @Override
+    public void setAppHeaderHeight(int height) {
+        if (mAppHeaderHeight == height) return;
+        mAppHeaderHeight = height;
+        updateContainerLayoutParams();
+    }
+
+    private void updateContainerLayoutParams() {
+        LayoutParams params = (LayoutParams) mHubContainerView.getLayoutParams();
+        assert params != null : "HubContainerView should always have layout params.";
+        boolean isVerticalTabsOn = VerticalTabUtils.isVerticalTabsEnabled(mActivity);
+        params.topMargin = mStatusIndicatorHeight + (isVerticalTabsOn ? 0 : mAppHeaderHeight);
+        mHubContainerView.setLayoutParams(params);
+        mHubContainerView.setPadding(0, isVerticalTabsOn ? mAppHeaderHeight : 0, 0, 0);
+    }
+
+    @Override
+    public NonNullObservableSupplier<Integer> getHubOverviewColorSupplier() {
+        return mHubColorMixer.getOverviewColorSupplier();
+    }
+
+    @Override
+    public void setHubLayoutController(HubLayoutController hubLayoutController) {
+        assert mHubLayoutController == null : "setHubLayoutController should only be called once.";
+        mHubLayoutController = hubLayoutController;
+    }
+
+    @Override
+    public HubContainerView getContainerView() {
+        assert mHubCoordinator != null : "Access of a HubContainerView with no descendants.";
+        return mHubContainerView;
+    }
+
+    @Override
+    public HubContainerView getContainerViewUnchecked() {
+        return mHubContainerView;
+    }
+
+    @Override
+    public @Nullable View getPaneHostView() {
+        assert mHubCoordinator != null : "Access of a Hub pane host view that doesn't exist";
+        return mHubContainerView.findViewById(R.id.hub_pane_host);
+    }
+
+    @Override
+    public @ColorInt int getBackgroundColor(@Nullable Pane pane) {
+        @HubColorScheme int colorScheme = HubColors.getColorSchemeSafe(pane);
+        return HubColors.getBackgroundColor(mActivity, colorScheme);
+    }
+
+    @Override
+    public void onHubLayoutShow() {
+        mHubVisibilitySupplier.set(true);
+        ensureHubCoordinatorIsInitialized();
+
+        if (mBottomBarHostManager != null && BottomBarConfigUtils.shouldShowOnGts()) {
+            mBottomBarHostManager.takeOwnership(
+                    BottomBarHostManager.Host.HUB, mHubCoordinator::attachBottomBarView);
+        }
+    }
+
+    @Override
+    public void onHubLayoutDoneHiding() {
+        if (mBottomBarHostManager != null && BottomBarConfigUtils.shouldShowOnGts()) {
+            mBottomBarHostManager.resetOwnership();
+        }
+
+        // TODO(crbug.com/40283238): Consider deferring this destruction till after a timeout.
+        mHubContainerView.removeAllViews();
+        mHubVisibilitySupplier.set(false);
+        destroyHubCoordinator();
+    }
+
+    @Override
+    public boolean onHubLayoutBackPressed() {
+        if (mHubCoordinator == null) return false;
+
+        switch (mHubCoordinator.handleBackPress()) {
+            case BackPressResult.SUCCESS:
+                return true;
+            case BackPressResult.FAILURE:
+                return false;
+            default:
+                assert false : "Not reached.";
+                return false;
+        }
+    }
+
+    @Override
+    public HubColorMixer getHubColorMixer() {
+        return mHubColorMixer;
+    }
+
+    @EnsuresNonNull("mHubCoordinator")
+    private void ensureHubCoordinatorIsInitialized() {
+        if (mHubCoordinator != null) return;
+
+        assert mHubLayoutController != null
+                : "HubLayoutController should be set before creating HubCoordinator.";
+
+        mHubCoordinator =
+                new HubCoordinator(
+                        mActivity,
+                        mProfileProviderSupplier,
+                        mHubContainerView,
+                        mPaneManager,
+                        mHubLayoutController,
+                        mTabSupplier,
+                        mMenuButtonCoordinator,
+                        mSearchActivityClient,
+                        mEdgeToEdgeSupplier,
+                        mHubColorMixer,
+                        mSwipeAnimationProgressSupplier,
+                        mXrSpaceModeObservableSupplier,
+                        mDefaultPaneId);
+        mBackPressManager.addHandler(mHubCoordinator, BackPressHandler.Type.HUB);
+        Pane pane = mPaneManager.getFocusedPaneSupplier().get();
+        attachPaneDependencies(pane);
+    }
+
+    private void destroyHubCoordinator() {
+        if (mHubCoordinator != null) {
+            Pane pane = mPaneManager.getFocusedPaneSupplier().get();
+            detachPaneDependencies(pane);
+
+            mBackPressManager.removeHandler(mHubCoordinator);
+            mHubCoordinator.destroy();
+            mHubCoordinator = null;
+        }
+    }
+
+    private void onFocusedPaneChanged(Pane newPane, @Nullable Pane oldPane) {
+        detachPaneDependencies(oldPane);
+        if (mHubCoordinator != null) {
+            attachPaneDependencies(newPane);
+        }
+    }
+
+    private void detachPaneDependencies(@Nullable Pane pane) {
+        if (pane == null) return;
+
+        pane.setPaneHubController(null);
+        MenuOrKeyboardActionHandler menuOrKeyboardActionHandler =
+                pane.getMenuOrKeyboardActionHandler();
+        if (menuOrKeyboardActionHandler != null) {
+            mMenuOrKeyboardActionController.unregisterMenuOrKeyboardActionHandler(
+                    menuOrKeyboardActionHandler);
+        }
+        if (mHasSnackbarOverride) {
+            mSnackbarManager.popParentViewOverride(ParentOverrideSlot.HUB);
+            mHasSnackbarOverride = false;
+        }
+    }
+
+    private void attachPaneDependencies(@Nullable Pane pane) {
+        if (pane == null) return;
+        assumeNonNull(mHubCoordinator);
+
+        pane.setPaneHubController(mHubCoordinator);
+        MenuOrKeyboardActionHandler menuOrKeyboardActionHandler =
+                pane.getMenuOrKeyboardActionHandler();
+        if (menuOrKeyboardActionHandler != null) {
+            mMenuOrKeyboardActionController.registerMenuOrKeyboardActionHandler(
+                    menuOrKeyboardActionHandler);
+        }
+        boolean hasBottomToolbar = mHubCoordinator.hasBottomToolbar();
+        mSnackbarMarginSupplier.set(mBottomSheetController.getCurrentOffset());
+        mHasSnackbarOverride = true;
+        mSnackbarManager.pushParentViewOverride(
+                ParentOverrideSlot.HUB,
+                mHubCoordinator.getSnackbarContainer(),
+                hasBottomToolbar ? mSnackbarMarginSupplier : null);
+    }
+
+    public @Nullable HubCoordinator getHubCoordinatorForTesting() {
+        return mHubCoordinator;
+    }
+}

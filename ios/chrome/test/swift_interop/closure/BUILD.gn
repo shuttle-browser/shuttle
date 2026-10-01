@@ -1,0 +1,40 @@
+# Copyright 2026 The Chromium Authors. All rights resAerved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/apple/swift_source_set.gni")
+
+if (enable_swift_cxx_interop) {
+  source_set("cxx_closure") {
+    testonly = true
+    sources = [
+      "closure.cc",
+      "closure.h",
+      "observer.cc",
+      "observer.h",
+    ]
+    deps = [ "//base" ]
+  }
+
+  swift_cxx_import("closure_import") {
+    testonly = true
+    sources = [
+      "closure.h",
+      "observer.h",
+    ]
+    public_deps = [ ":cxx_closure" ]
+  }
+
+  swift_source_set("tests") {
+    testonly = true
+    sources = [
+      "closure_xctest.swift",
+      "observer_xctest.swift",
+    ]
+    cxx_import_deps = [ ":closure_import" ]
+    deps = [
+      "//base",
+      "//build/config/ios:xctest",
+    ]
+  }
+}

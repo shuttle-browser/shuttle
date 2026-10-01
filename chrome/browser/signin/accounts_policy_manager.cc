@@ -1,0 +1,398 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/signin/accounts_policy_manager.h"
+
+#include <string>
+
+#include "base/auto_reset.h"
+#include "base/debug/stack_trace.h"
+#include "base/notreached.h"
+#include "base/strings/string_util.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/task/single_thread_task_runner.h"
+#include "build/build_config.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/profiles/delete_profile_helper.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_attributes_entry.h"
+#include "chrome/browser/profiles/profile_attributes_storage.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/profiles/profiles_state.h"
+#include "chrome/browser/signin/chrome_signin_client.h"
+#include "chrome/browser/signin/chrome_signin_client_factory.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/signin/signin_util.h"
+#include "chrome/browser/ui/browser_window.h"
+#include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
+#include "chrome/browser/ui/simple_message_box.h"
+#include "chrome/browser/ui/startup/startup_types.h"
+#include "chrome/browser/ui/webui/profile_helper.h"
+#include "chrome/browser/ui/webui/signin/signin_ui_error.h"
+#include "chrome/browser/ui/webui/signin/signin_utils_desktop.h"
+#include "chrome/grit/generated_resources.h"
+#include "components/policy/core/common/features.h"
+#include "components/prefs/pref_service.h"
+#include "components/profile_metrics/browser_profile_type.h"
+#include "components/signin/public/base/consent_level.h"
+#include "components/signin/public/base/signin_metrics.h"
+#include "components/signin/public/base/signin_pref_names.h"
+#include "components/signin/public/identity_manager/account_info.h"
+#include "components/signin/public/identity_manager/accounts_mutator.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/signin/public/identity_manager/identity_utils.h"
+#include "components/signin/public/identity_manager/primary_account_mutator.h"
+#include "components/sync/base/features.h"
+#include "google_apis/gaia/gaia_auth_util.h"
+#include "ui/base/l10n/l10n_util.h"
+
+// Manager that presents the profile will be deleted dialog on the first active
+// browser window.
+class AccountsPolicyManager::DeleteProfileDialogManager
+    : public BrowserCollectionObserver {
+ public:
+  DeleteProfileDialogManager(std::string primary_account_email,
+                             AccountsPolicyManager* delegate)
+      : primary_account_email_(primary_account_email), delegate_(delegate) {}
+  ~DeleteProfileDialogManager() override = default;
+
+  DeleteProfileDialogManager(const DeleteProfileDialogManager&) = delete;
+  DeleteProfileDialogManager& operator=(const DeleteProfileDialogManager&) =
+      delete;
+
+  void PresentDialogOnAllBrowserWindows(
+      Profile* profile,
+      bool auto_confirm_profile_deletion_for_testing) {
+    DCHECK(profile);
+    DCHECK(profile_path_.empty());
+    profile_path_ = profile->GetPath();
+
+    if (auto_confirm_profile_deletion_for_testing) {
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE,
+          base::BindOnce(&DeleteProfileDialogManager::
+                             HandleUserConfirmedProfileDeletionAndDie,
+                         weak_factory_.GetWeakPtr()));
+
+      return;
+    }
+    auto* const browser_collection =
+        ProfileBrowserCollection::GetForProfile(profile);
+    browser_collection_observation_.Observe(browser_collection);
+    // Find the last active browser window for the profile.
+    BrowserWindowInterface* const active_browser =
+        ProfileBrowserCollection::GetForProfile(profile)
+            ->GetLastActiveBrowser();
+    if (active_browser) {
+      OnBrowserActivated(active_browser);
+    }
+  }
+
+  void OnBrowserActivated(BrowserWindowInterface* browser) override {
+    DCHECK(!profile_path_.empty());
+    if (profile_path_ != browser->GetProfile()->GetPath()) {
+      return;
+    }
+
+    active_browser_ = browser;
+    browser_did_become_inactive_subscription_ =
+        browser->RegisterDidBecomeInactive(base::BindRepeating(
+            &DeleteProfileDialogManager::OnBrowserDidBecomeInactive,
+            base::Unretained(this)));
+
+    // Display the dialog on the next run loop as otherwise the dialog can block
+    // browser from displaying because the dialog creates a nested run loop.
+    //
+    // This happens because the browser window is not fully created yet when
+    // OnBrowserSetLastActive() is called. To finish the creation, the code
+    // needs to return from OnBrowserSetLastActive().
+    //
+    // However, if we open a warning dialog from OnBrowserSetLastActive()
+    // synchronously, it will create a nested run loop that will not return
+    // from OnBrowserSetLastActive() until the dialog is dismissed. But the user
+    // cannot dismiss the dialog because the browser is not even shown!
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(&DeleteProfileDialogManager::ShowDeleteProfileDialog,
+                       weak_factory_.GetWeakPtr(),
+                       active_browser_->GetWeakPtr()));
+  }
+
+  // Called immediately after active_browser_ becomes inactive.
+  void OnBrowserDidBecomeInactive(BrowserWindowInterface* browser) {
+    active_browser_ = nullptr;
+    browser_did_become_inactive_subscription_ = {};
+  }
+
+  void OnBrowserClosed(BrowserWindowInterface* browser) override {
+    if (active_browser_ == browser) {
+      active_browser_ = nullptr;
+    }
+  }
+
+ private:
+  void ShowDeleteProfileDialog(
+      base::WeakPtr<BrowserWindowInterface> active_browser) {
+    // Block opening dialog from nested task.
+    static bool is_dialog_shown = false;
+    if (is_dialog_shown) {
+      return;
+    }
+    base::AutoReset<bool> auto_reset(&is_dialog_shown, true);
+
+    // Check the |active_browser_| hasn't changed while waiting for the task to
+    // be executed.
+    if (!active_browser_ || active_browser_ != active_browser.get()) {
+      return;
+    }
+
+    // Show the dialog.
+    DCHECK(active_browser_->GetWindow()->GetNativeWindow());
+    chrome::MessageBoxResult result = chrome::ShowWarningMessageBoxSync(
+        active_browser_->GetWindow()->GetNativeWindow(),
+        l10n_util::GetStringUTF16(IDS_PROFILE_WILL_BE_DELETED_DIALOG_TITLE),
+        l10n_util::GetStringFUTF16(
+            IDS_PROFILE_WILL_BE_DELETED_DIALOG_DESCRIPTION,
+            base::ASCIIToUTF16(primary_account_email_),
+            base::ASCIIToUTF16(
+                gaia::ExtractDomainName(primary_account_email_))));
+
+    switch (result) {
+      case chrome::MessageBoxResult::MESSAGE_BOX_RESULT_NO: {
+        // If the warning dialog is automatically dismissed or the user closed
+        // the dialog by clicking on the close "X" button, then re-present the
+        // dialog (the user should not be able to interact with the
+        // `active_browser_` window as the profile must be deleted).
+        base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+            FROM_HERE,
+            base::BindOnce(&DeleteProfileDialogManager::ShowDeleteProfileDialog,
+                           weak_factory_.GetWeakPtr(),
+                           active_browser_->GetWeakPtr()));
+        break;
+      }
+      case chrome::MessageBoxResult::MESSAGE_BOX_RESULT_YES:
+        HandleUserConfirmedProfileDeletionAndDie();
+        break;
+      case chrome::MessageBoxResult::MESSAGE_BOX_RESULT_DEFERRED:
+        NOTREACHED() << "Message box must not return deferred result when run "
+                        "synchronously";
+    }
+  }
+
+  void HandleUserConfirmedProfileDeletionAndDie() {
+    delegate_->OnUserConfirmedProfileDeletion(this, profile_path_);
+    // |this| may be destroyed at this point. Avoid using it.
+  }
+
+  std::string primary_account_email_;
+  raw_ptr<AccountsPolicyManager> delegate_;
+  base::FilePath profile_path_;
+  raw_ptr<BrowserWindowInterface> active_browser_;
+  base::CallbackListSubscription browser_did_become_inactive_subscription_;
+  base::ScopedObservation<ProfileBrowserCollection, BrowserCollectionObserver>
+      browser_collection_observation_{this};
+  base::WeakPtrFactory<DeleteProfileDialogManager> weak_factory_{this};
+};
+
+AccountsPolicyManager::AccountsPolicyManager(Profile* profile)
+    : profile_(profile) {
+  DCHECK(profile_);
+  DCHECK(!profile_->IsOffTheRecord());
+  Initialize();
+}
+
+AccountsPolicyManager::~AccountsPolicyManager() = default;
+
+void AccountsPolicyManager::Initialize() {
+  EnsurePrimaryAccountAllowedForProfile(
+      profile_, signin_metrics::ProfileSignout::kSigninNotAllowedOnProfileInit);
+
+  signin_allowed_.Init(
+      prefs::kSigninAllowed, profile_->GetPrefs(),
+      base::BindRepeating(&AccountsPolicyManager::OnSigninAllowedPrefChanged,
+                          weak_pointer_factory_.GetWeakPtr()));
+
+  local_state_pref_registrar_.Init(g_browser_process->local_state());
+  local_state_pref_registrar_.Add(
+      prefs::kGoogleServicesUsernamePattern,
+      base::BindRepeating(
+          &AccountsPolicyManager::OnGoogleServicesUsernamePatternChanged,
+          weak_pointer_factory_.GetWeakPtr()));
+
+  auto* identity_manager = IdentityManagerFactory::GetForProfile(profile_);
+  identity_manager_observation_.Observe(identity_manager);
+  profile_pref_change_registrar_.Init(profile_->GetPrefs());
+  profile_pref_change_registrar_.Add(
+      prefs::kProfileSeparationDomainExceptionList,
+      base::BindRepeating(&AccountsPolicyManager::RemoveUnallowedAccounts,
+                          weak_pointer_factory_.GetWeakPtr()));
+  if (identity_manager->AreRefreshTokensLoaded()) {
+    OnRefreshTokensLoaded();
+  }
+}
+
+void AccountsPolicyManager::Shutdown() {
+  profile_pref_change_registrar_.RemoveAll();
+  local_state_pref_registrar_.RemoveAll();
+  signin_allowed_.Destroy();
+}
+
+void AccountsPolicyManager::OnGoogleServicesUsernamePatternChanged() {
+  EnsurePrimaryAccountAllowedForProfile(
+      profile_,
+      signin_metrics::ProfileSignout::kGoogleServiceNamePatternChanged);
+}
+
+void AccountsPolicyManager::OnSigninAllowedPrefChanged() {
+  EnsurePrimaryAccountAllowedForProfile(
+      profile_, signin_metrics::ProfileSignout::kPrefChanged);
+}
+
+void AccountsPolicyManager::EnsurePrimaryAccountAllowedForProfile(
+    Profile* profile,
+    signin_metrics::ProfileSignout clear_primary_account_source) {
+  auto* identity_manager = IdentityManagerFactory::GetForProfile(profile);
+  if (!identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
+    return;
+  }
+
+  CoreAccountInfo primary_account =
+      identity_manager->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin);
+
+  SigninUIError signin_ui_error =
+      CanOfferSignin(profile, primary_account.gaia, primary_account.email,
+                     /*allow_account_from_other_profile=*/true);
+  if (signin_ui_error.IsOk()) {
+    return;
+  }
+
+  if (signin_ui_error.type() == SigninUIError::Type::kSigninCookiesDisallowed) {
+    // Ignore cookie errors for profile deletion. Deleting the profile because
+    // cookies are blocked would be very surprising for the user, and is not
+    // absolutely required. Even though new sign-ins are disallowed, existing
+    // sessions can remain.
+    return;
+  }
+
+  if (ChromeSigninClientFactory::GetForProfile(profile)
+          ->IsClearPrimaryAccountAllowed()) {
+    // Force clear the primary account if it is no longer allowed and if sign
+    // out is allowed.
+    auto* primary_account_mutator =
+        identity_manager->GetPrimaryAccountMutator();
+    primary_account_mutator->ClearPrimaryAccount(clear_primary_account_source);
+  } else {
+    // Force remove the profile if sign out is not allowed and if the
+    // primary account is no longer allowed.
+    // This may be called while the profile is initializing, so it must be
+    // scheduled for later to allow the profile initialization to complete.
+    CHECK(profiles::IsMultipleProfilesEnabled());
+
+    if (LOG_IS_ON(WARNING)) {
+      // Extra logging for b/460765618.
+      std::u16string profile_name = u"NameNotFound";
+      ProfileAttributesEntry* profile_attributes =
+          g_browser_process->profile_manager()
+              ->GetProfileAttributesStorage()
+              .GetProfileAttributesWithPath(profile->GetPath());
+      if (profile_attributes) {
+        profile_name = profile_attributes->GetName();
+      }
+      std::string signin_level = "NotSignedIn";
+      if (identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
+        signin_level =
+            identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSync)
+                ? "Syncing"
+                : "SignedIn";
+      }
+      LOG(WARNING)
+          << "Primary account " << primary_account.email
+          << " not allowed for profile " << profile_name
+          << ", SigninUIError::message=" << signin_ui_error.message()
+          << ", SigninUIError::Type="
+          << static_cast<int>(signin_ui_error.type())
+          << ", ProfileSignoutSource="
+          << static_cast<int>(clear_primary_account_source)
+          << ", signin.allowed preference="
+          << profile->GetPrefs()->GetBoolean(prefs::kSigninAllowed)
+          << " (managed="
+          << profile->GetPrefs()->IsManagedPreference(prefs::kSigninAllowed)
+          << "), SigninLevel=" << signin_level << ", ProfileType="
+          << static_cast<int>(profile_metrics::GetBrowserProfileType(profile));
+      LOG(WARNING) << base::debug::StackTrace().ToString();
+    }
+
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(&AccountsPolicyManager::ShowDeleteProfileDialog,
+                       weak_pointer_factory_.GetWeakPtr(), profile,
+                       primary_account.email));
+  }
+}
+
+// Shows the delete profile dialog on the first browser active window.
+void AccountsPolicyManager::ShowDeleteProfileDialog(Profile* profile,
+                                                    const std::string& email) {
+  if (delete_profile_dialog_manager_) {
+    return;
+  }
+
+  delete_profile_dialog_manager_ =
+      std::make_unique<DeleteProfileDialogManager>(email, this);
+  delete_profile_dialog_manager_->PresentDialogOnAllBrowserWindows(
+      profile, hide_ui_for_testing_);
+}
+
+void AccountsPolicyManager::OnUserConfirmedProfileDeletion(
+    DeleteProfileDialogManager* dialog_manager,
+    base::FilePath profile_path) {
+  DCHECK_EQ(delete_profile_dialog_manager_.get(), dialog_manager);
+  delete_profile_dialog_manager_.reset();
+
+  DCHECK(profiles::IsMultipleProfilesEnabled());
+
+  g_browser_process->profile_manager()
+      ->GetDeleteProfileHelper()
+      .MaybeScheduleProfileForDeletion(
+          profile_path,
+          hide_ui_for_testing_
+              ? base::DoNothing()
+              : base::BindOnce(&webui::OpenNewWindowForProfile),
+          ProfileMetrics::DELETE_PROFILE_PRIMARY_ACCOUNT_NOT_ALLOWED);
+}
+
+void AccountsPolicyManager::OnRefreshTokensLoaded() {
+  RemoveUnallowedAccounts();
+  identity_manager_observation_.Reset();
+}
+
+void AccountsPolicyManager::RemoveUnallowedAccounts() {
+  if (!base::FeatureList::IsEnabled(
+          policy::features::kProfileSeparationDomainExceptionListRetroactive)) {
+    return;
+  }
+
+  auto* identity_manager = IdentityManagerFactory::GetForProfile(profile_);
+  if (!identity_manager->AreRefreshTokensLoaded()) {
+    return;
+  }
+  auto primary_account_id =
+      identity_manager->GetPrimaryAccountId(signin::ConsentLevel::kSignin);
+  std::vector<AccountInfo> accounts =
+      identity_manager->GetExtendedAccountInfoForAccountsWithRefreshToken();
+  auto* accounts_mutator = identity_manager->GetAccountsMutator();
+  for (const auto& account : accounts) {
+    if (!signin_util::IsAccountExemptedFromEnterpriseProfileSeparation(
+            profile_, account.GetEmail()) &&
+        account.GetAccountId() != primary_account_id) {
+      accounts_mutator->RemoveAccount(
+          account.GetAccountId(),
+          signin_metrics::SourceForRefreshTokenOperation::
+              kEnterprisePolicy_AccountNotAllowedInContentArea);
+    }
+  }
+}

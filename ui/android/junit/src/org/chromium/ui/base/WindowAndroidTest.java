@@ -1,0 +1,607 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.ui.base;
+
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyFloat;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import android.app.Activity;
+import android.content.ComponentCallbacks;
+import android.content.Context;
+import android.content.res.Configuration;
+import android.graphics.Rect;
+import android.os.Build;
+import android.view.WindowManager;
+import android.view.WindowMetrics;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.Spy;
+import org.robolectric.annotation.Config;
+import org.robolectric.annotation.GraphicsMode;
+import org.robolectric.shadows.ShadowLooper;
+import org.robolectric.shadows.ShadowSystemClock;
+
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.base.test.util.HistogramWatcher;
+import org.chromium.ui.display.DisplayAndroid;
+import org.chromium.ui.display.DisplayUtil;
+import org.chromium.ui.insets.InsetObserver;
+import org.chromium.ui.insets.InsetObserver.WindowInsetObserver;
+
+import java.lang.ref.WeakReference;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+
+@RunWith(BaseRobolectricTestRunner.class)
+@Config(sdk = BaseRobolectricTestRunner.MAX_SDK)
+@EnableFeatures({
+    UiAndroidFeatures.ANDROID_USE_CORRECT_WINDOW_BOUNDS,
+    UiAndroidFeatures.ANDROID_WINDOW_OCCLUSION
+})
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+public class WindowAndroidTest {
+
+    @Mock private final Context mContext = mock(Context.class);
+    @Mock private final WindowManager mWindowManager = mock(WindowManager.class);
+    @Mock private final WindowMetrics mWindowMetrics = mock(WindowMetrics.class);
+    @Mock private final DisplayAndroid mDisplay = mock(DisplayAndroid.class);
+    @Mock private final InsetObserver mInsetObserver = mock(InsetObserver.class);
+
+    @Mock
+    private final WindowAndroid.Natives mWindowAndroidNativeInterface =
+            mock(WindowAndroid.Natives.class);
+
+    private final List<WindowInsetObserver> mWindowInsetObservers = new ArrayList<>();
+    private WindowAndroid mWindowAndroid;
+    @Spy private WindowAndroid mSpyWindowAndroid;
+    private static final Rect INITIAL_WINDOW_BOUNDS = new Rect(10, 20, 1900, 1000);
+    private static final long MOCK_NATIVE_POINTER = 1;
+
+    @Before
+    public void setup() {
+        DisplayUtil.setIsOnDefaultDisplayForTesting(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            doReturn(mWindowManager).when(mContext).getSystemService(WindowManager.class);
+            doReturn(mWindowMetrics).when(mWindowManager).getCurrentWindowMetrics();
+            doReturn(INITIAL_WINDOW_BOUNDS).when(mWindowMetrics).getBounds();
+        }
+
+        doReturn(1.0f).when(mDisplay).getDipScale();
+        DisplayAndroid.setNonMultiDisplayForTesting(mDisplay);
+
+        doAnswer(
+                        invocation -> {
+                            final WindowInsetObserver capturedWindowInsetObserver =
+                                    invocation.getArgument(0);
+                            mWindowInsetObservers.add(capturedWindowInsetObserver);
+                            return true;
+                        })
+                .when(mInsetObserver)
+                .addObserver(any(WindowInsetObserver.class));
+
+        WindowAndroidJni.setInstanceForTesting(mWindowAndroidNativeInterface);
+        mWindowAndroid = new WindowAndroid(mContext, false, null, mInsetObserver, true);
+        mWindowAndroid.setNativePointerForTesting(MOCK_NATIVE_POINTER);
+    }
+
+    @After
+    public void tearDown() {
+        if (!mWindowAndroid.isDestroyed()) {
+            mWindowAndroid.destroy();
+        }
+        WindowAndroid.resetPeriodicMetricsForTesting();
+    }
+
+    @Test
+    @Config(sdk = BaseRobolectricTestRunner.MIN_SDK)
+    public void testGetBoundsInScreenCoordinates_whenApiLowerThanR_returnsNull() {
+        assertNull("Should return null", mWindowAndroid.getBoundsInScreenCoordinates());
+    }
+
+    /** Test case for when the context is null. The function should return null. */
+    @Test
+    public void testGetBoundsInScreenCoordinates_whenContextIsNull_returnsNull() {
+        mSpyWindowAndroid = spy(mWindowAndroid);
+        doReturn(new WeakReference<Context>(null)).when(mSpyWindowAndroid).getContext();
+
+        assertNull(
+                "Should return null if context is null",
+                mSpyWindowAndroid.getBoundsInScreenCoordinates());
+    }
+
+    /**
+     * Test case for the successful path on API level R or higher. The function should return the
+     * screen bounds converted to dp.
+     */
+    @Test
+    public void testGetBoundsInScreenCoordinates_returnsBoundsInDp() {
+        final Rect boundsPx = new Rect(10, 20, 1090, 1940); // left, top, right, bottom
+
+        doReturn(boundsPx).when(mWindowMetrics).getBounds();
+        doReturn(2.0f).when(mDisplay).getDipScale();
+        doReturn(new Rect(0, 0, 540, 960)).when(mDisplay).getBounds();
+
+        final int[] expectedBoundsDp = new int[] {5, 10, 540, 960}; // x, y, width, height
+        final int[] actualBounds = mWindowAndroid.getBoundsInScreenCoordinates();
+
+        assertArrayEquals(
+                "Should return correctly converted DP bounds", expectedBoundsDp, actualBounds);
+    }
+
+    /** Test whether the native part is called in the successful path. */
+    @Test
+    public void testOnWindowPositionChanged_passesToNative() {
+        dispatchInsetsChanged();
+
+        verify(mWindowAndroidNativeInterface).onWindowPositionChanged(anyLong());
+    }
+
+    /**
+     * If the window bounds haven't changed between subsequent inset changes, don't notify the
+     * native part for performance reasons.
+     */
+    @Test
+    public void testOnWindowPositionChanged_doesNothingIfBoundsUnchanged() {
+        dispatchInsetsChanged();
+
+        verify(mWindowAndroidNativeInterface).onWindowPositionChanged(anyLong());
+
+        dispatchInsetsChanged();
+
+        verify(mWindowAndroidNativeInterface).onWindowPositionChanged(anyLong());
+    }
+
+    @Test
+    @Config(sdk = BaseRobolectricTestRunner.MIN_SDK)
+    public void testOnWindowPositionChanged_doesNothingWhenApiLowerThanR() {
+        dispatchInsetsChanged();
+
+        verify(mWindowAndroidNativeInterface, never()).onWindowPositionChanged(anyLong());
+    }
+
+    private void dispatchInsetsChanged() {
+        for (WindowInsetObserver observer : mWindowInsetObservers) {
+            observer.onInsetChanged();
+        }
+    }
+
+    @Test
+    public void testOcclusionDurationMetric() {
+        var histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.Window.OcclusionExperimental.Duration", 5000);
+
+        mWindowAndroid.setOccluded(true, null, null);
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(5));
+        mWindowAndroid.setOccluded(false, null, null);
+
+        histogramWatcher.assertExpected();
+    }
+
+    @Test
+    public void testOccludedCountMetric() {
+        var histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.Window.OcclusionExperimental.OccludedCount", 1);
+
+        mWindowAndroid.setIsOcclusionTracked(true);
+        mWindowAndroid.setOccluded(true, null, null);
+
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+
+        histogramWatcher.assertExpected();
+    }
+
+    @Test
+    public void testOcclusionDurationMetricOnDestroy() {
+        var histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.Window.OcclusionExperimental.Duration", 5000);
+
+        mWindowAndroid.setOccluded(true, null, null);
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(5));
+        mWindowAndroid.destroy();
+
+        histogramWatcher.assertExpected();
+    }
+
+    @Test
+    @EnableFeatures({UiAndroidFeatures.ANDROID_UPDATE_DISPLAY_FOR_CONTEXT})
+    public void testOnConfigurationChangedOnDifferentDisplay_updatesDisplay() {
+        ArgumentCaptor<ComponentCallbacks> captor =
+                ArgumentCaptor.forClass(ComponentCallbacks.class);
+        verify(mContext).registerComponentCallbacks(captor.capture());
+
+        DisplayAndroid newDisplay = mock(DisplayAndroid.class);
+        when(newDisplay.getAdaptiveRefreshRateInfo())
+                .thenReturn(new DisplayAndroid.AdaptiveRefreshRateInfo(false, 0, null));
+        DisplayAndroid.setNonMultiDisplayForTesting(newDisplay);
+
+        captor.getValue().onConfigurationChanged(new Configuration());
+
+        verifyDisplayUpdate(newDisplay);
+    }
+
+    @Test
+    @EnableFeatures({UiAndroidFeatures.ANDROID_UPDATE_DISPLAY_FOR_CONTEXT})
+    public void testOnActivityResumedOnDifferentDisplay_updatesDisplay() {
+        DisplayAndroid newDisplay = mock(DisplayAndroid.class);
+        when(newDisplay.getAdaptiveRefreshRateInfo())
+                .thenReturn(new DisplayAndroid.AdaptiveRefreshRateInfo(false, 0, null));
+        DisplayAndroid.setNonMultiDisplayForTesting(newDisplay);
+
+        mWindowAndroid.onActivityResumed();
+
+        verifyDisplayUpdate(newDisplay);
+    }
+
+    @Test
+    public void testOcclusionOptimizationsEnabled() {
+        UiAndroidFeatureList.sAndroidWindowOcclusionOptimizations.setForTesting(true);
+
+        mWindowAndroid.setOccluded(true, null, null);
+        assertTrue(mWindowAndroid.getOcclusionSupplier().get());
+
+        mWindowAndroid.setOccluded(false, null, null);
+        assertFalse(mWindowAndroid.getOcclusionSupplier().get());
+    }
+
+    @Test
+    public void testOcclusionOptimizationsDisabled() {
+        UiAndroidFeatureList.sAndroidWindowOcclusionOptimizations.setForTesting(false);
+
+        mWindowAndroid.setOccluded(true, null, null);
+        assertFalse(mWindowAndroid.getOcclusionSupplier().get());
+
+        mWindowAndroid.setOccluded(false, null, null);
+        assertFalse(mWindowAndroid.getOcclusionSupplier().get());
+    }
+
+    @Test
+    public void testOcclusionTimePercentMetric() {
+        var histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.Window.OcclusionExperimental.OccludedTimePercent", 40);
+
+        mWindowAndroid.setIsOcclusionTracked(true);
+
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        mWindowAndroid.setOccluded(true, null, null);
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(4));
+        mWindowAndroid.setOccluded(false, null, null);
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(5));
+
+        mWindowAndroid.destroy();
+
+        histogramWatcher.assertExpected();
+    }
+
+    @Test
+    public void testOcclusionTimePercentMetricOcclusionNotTracked() {
+        var histogramWatcher =
+                HistogramWatcher.newBuilder()
+                        .expectNoRecords("Android.Window.OcclusionExperimental.OccludedTimePercent")
+                        .build();
+
+        // Do not call setIsOcclusionTracked().
+
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(1));
+        mWindowAndroid.setOccluded(true, null, null);
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(4));
+        mWindowAndroid.setOccluded(false, null, null);
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(5));
+
+        mWindowAndroid.destroy();
+
+        histogramWatcher.assertExpected();
+    }
+
+    private void verifyDisplayUpdate(DisplayAndroid newDisplay) {
+        verify(mDisplay).removeObserver(mWindowAndroid);
+        verify(newDisplay).addObserver(mWindowAndroid);
+        verify(mWindowAndroidNativeInterface).onUpdateDisplayId(anyLong(), anyInt());
+        verify(mWindowAndroidNativeInterface)
+                .onAdaptiveRefreshRateInfoChanged(
+                        anyLong(), anyBoolean(), anyFloat(), any(), any());
+        verify(mWindowAndroidNativeInterface).onUpdateRefreshRate(anyLong(), anyFloat());
+    }
+
+    @Test
+    public void testSavedRenderingMetric() {
+        var histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.Window.OcclusionExperimental.SavedRenderingPer5Minutes", 300);
+
+        mWindowAndroid.setIsOcclusionTracked(true);
+        mWindowAndroid.setOccluded(true, new Rect(0, 0, 1000, 1000), null); // 1 megapixel
+
+        ShadowSystemClock.advanceBy(Duration.ofMinutes(5));
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+
+        histogramWatcher.assertExpected();
+    }
+
+    @Test
+    public void testSavedRenderingMetric_MultipleWindows() {
+        var histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.Window.OcclusionExperimental.SavedRenderingPer5Minutes", 600);
+
+        WindowAndroid window1 = new WindowAndroid(mContext, false, null, mInsetObserver, true);
+        window1.setIsOcclusionTracked(true);
+
+        WindowAndroid window2 = new WindowAndroid(mContext, false, null, mInsetObserver, true);
+        window2.setIsOcclusionTracked(true);
+
+        // Both windows occluded for 2.5 minutes (150s)
+        window1.setOccluded(true, new Rect(0, 0, 1000, 1000), null); // 1 megapixel
+        window2.setOccluded(true, new Rect(0, 0, 1000, 2000), null); // 2 megapixels
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(150));
+
+        // Only window 1 occluded for the next 2.5 minutes (150s)
+        window2.setOccluded(false, null, null);
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(150));
+
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+
+        histogramWatcher.assertExpected();
+
+        window1.destroy();
+        window2.destroy();
+    }
+
+    @Test
+    public void testSavedRenderingMetric_WindowDestroyedWhileOccluded() {
+        var histogramWatcher =
+                HistogramWatcher.newBuilder()
+                        .expectIntRecord(
+                                "Android.Window.OcclusionExperimental.SavedRenderingPer5Minutes",
+                                150)
+                        .build();
+
+        WindowAndroid window = new WindowAndroid(mContext, false, null, mInsetObserver, true);
+        window.setIsOcclusionTracked(true);
+        window.setOccluded(true, new Rect(0, 0, 1000, 1000), null); // 1 megapixel
+
+        // Window occluded for 2.5 minutes (150s)
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(150));
+
+        window.destroy();
+
+        // Another 2.5 minutes passes, but window was destroyed so shouldn't add to accumulated
+        // value
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(150));
+
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+
+        histogramWatcher.assertExpected();
+    }
+
+    @Test
+    public void testSavedRenderingMetric_NullWindowBounds() {
+        var histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.Window.OcclusionExperimental.SavedRenderingPer5Minutes", 0);
+
+        mWindowAndroid.setIsOcclusionTracked(true);
+        mWindowAndroid.setOccluded(true, null, null);
+
+        ShadowSystemClock.advanceBy(Duration.ofMinutes(5));
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+
+        histogramWatcher.assertExpected();
+    }
+
+    @Test
+    public void testTotalOccludedMegapixelsMetric() {
+        var histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.Window.OcclusionExperimental.TotalOccludedMegapixels", 1);
+
+        WindowAndroid window = new WindowAndroid(mContext, false, null, mInsetObserver, true);
+        window.setIsOcclusionTracked(true);
+        window.setOccluded(true, new Rect(0, 0, 1000, 1000), null); // 1 megapixel
+
+        ShadowSystemClock.advanceBy(Duration.ofMinutes(5));
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+
+        histogramWatcher.assertExpected();
+
+        window.destroy();
+    }
+
+    @Test
+    public void testTotalOccludedMegapixelsMetric_MultipleWindows() {
+        var histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "Android.Window.OcclusionExperimental.TotalOccludedMegapixels", 3);
+
+        // Window 1: 1 megapixel
+        WindowAndroid window = new WindowAndroid(mContext, false, null, mInsetObserver, true);
+        window.setIsOcclusionTracked(true);
+        window.setOccluded(true, new Rect(0, 0, 1000, 1000), null); // 1 megapixel
+
+        // Window 2: 2 megapixels
+        WindowAndroid window2 = new WindowAndroid(mContext, false, null, mInsetObserver, true);
+        window2.setIsOcclusionTracked(true);
+        window2.setOccluded(true, new Rect(0, 0, 1000, 2000), null); // 2 megapixels
+
+        // Both windows occluded
+        ShadowSystemClock.advanceBy(Duration.ofMinutes(5));
+
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+
+        histogramWatcher.assertExpected();
+
+        window.destroy();
+        window2.destroy();
+    }
+
+    @Test
+    public void testTotalOccludedMegapixelsMetric_WindowDestroyedWhileOccluded() {
+        var histogramWatcher =
+                HistogramWatcher.newBuilder()
+                        .expectIntRecord(
+                                "Android.Window.OcclusionExperimental.TotalOccludedMegapixels", 0)
+                        .build();
+
+        WindowAndroid window = new WindowAndroid(mContext, false, null, mInsetObserver, true);
+        window.setIsOcclusionTracked(true);
+        window.setOccluded(true, new Rect(0, 0, 1000, 1000), null); // 1 megapixel
+
+        // Window occluded for 2.5 minutes (150s)
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(150));
+
+        window.destroy();
+
+        // Another 2.5 minutes passes
+        ShadowSystemClock.advanceBy(Duration.ofSeconds(150));
+
+        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+
+        histogramWatcher.assertExpected();
+    }
+
+    @Test
+    @EnableFeatures({UiAndroidFeatures.ANDROID_UPDATE_DISPLAY_FOR_CONTEXT})
+    public void
+            testUpdateDisplayForContext_resetsPreferredDisplayModeId_whenMovingToExternalDisplay() {
+        // Initially, isOnDefaultDisplay is true, so refresh rate changes are allowed.
+        DisplayUtil.setIsOnDefaultDisplayForTesting(true);
+
+        // Build a real Robolectric activity.
+        Activity activity =
+                org.robolectric.Robolectric.buildActivity(Activity.class).create().get();
+
+        // Create a real ActivityWindowAndroid using the real activity.
+        ActivityWindowAndroid windowAndroid =
+                new ActivityWindowAndroid(activity, false, null, mInsetObserver, true);
+        windowAndroid.setNativePointerForTesting(MOCK_NATIVE_POINTER);
+
+        // Get the real window's attributes and set preferredDisplayModeId to a non-zero value.
+        android.view.Window window = activity.getWindow();
+        WindowManager.LayoutParams params = window.getAttributes();
+        params.preferredDisplayModeId = 123;
+        window.setAttributes(params);
+
+        // Mock moving to an external display (isOnDefaultDisplay becomes false).
+        DisplayUtil.setIsOnDefaultDisplayForTesting(false);
+
+        DisplayAndroid newDisplay = mock(DisplayAndroid.class);
+        when(newDisplay.getAdaptiveRefreshRateInfo())
+                .thenReturn(new DisplayAndroid.AdaptiveRefreshRateInfo(false, 0, null));
+        DisplayAndroid.setNonMultiDisplayForTesting(newDisplay);
+
+        // Trigger updateDisplayForContext via onActivityResumed().
+        windowAndroid.onActivityResumed();
+
+        // Verify that the real window layout params.preferredDisplayModeId was reset to 0!
+        assertEquals(
+                "preferredDisplayModeId should be reset to 0 on the real window",
+                0,
+                window.getAttributes().preferredDisplayModeId);
+        windowAndroid.destroy();
+    }
+
+    @Test
+    @EnableFeatures({UiAndroidFeatures.ANDROID_UPDATE_DISPLAY_FOR_CONTEXT})
+    public void
+            testUpdateDisplayForContext_doesNotResetPreferredDisplayModeId_whenRemainingOnDefaultDisplay() {
+        // Initially, isOnDefaultDisplay is true, so refresh rate changes are allowed.
+        DisplayUtil.setIsOnDefaultDisplayForTesting(true);
+
+        // Build a real Robolectric activity.
+        Activity activity =
+                org.robolectric.Robolectric.buildActivity(Activity.class).create().get();
+
+        // Create a real ActivityWindowAndroid using the real activity.
+        ActivityWindowAndroid windowAndroid =
+                new ActivityWindowAndroid(activity, false, null, mInsetObserver, true);
+        windowAndroid.setNativePointerForTesting(MOCK_NATIVE_POINTER);
+
+        // Get the real window's attributes and set preferredDisplayModeId to a non-zero value.
+        android.view.Window window = activity.getWindow();
+        WindowManager.LayoutParams params = window.getAttributes();
+        params.preferredDisplayModeId = 123;
+        window.setAttributes(params);
+
+        // Mock display change but still remaining on default display (isOnDefaultDisplay is true).
+        DisplayUtil.setIsOnDefaultDisplayForTesting(true);
+
+        DisplayAndroid newDisplay = mock(DisplayAndroid.class);
+        when(newDisplay.getAdaptiveRefreshRateInfo())
+                .thenReturn(new DisplayAndroid.AdaptiveRefreshRateInfo(false, 0, null));
+        DisplayAndroid.setNonMultiDisplayForTesting(newDisplay);
+
+        // Trigger updateDisplayForContext via onActivityResumed().
+        windowAndroid.onActivityResumed();
+
+        // Verify that the real window layout params.preferredDisplayModeId remains 123!
+        assertEquals(
+                "preferredDisplayModeId should not be reset on default display",
+                123,
+                window.getAttributes().preferredDisplayModeId);
+        windowAndroid.destroy();
+    }
+
+    @Test
+    public void testConstructor_initializesAllowChangeRefreshRateCorrectly_onDefaultDisplay()
+            throws Exception {
+        DisplayUtil.setIsOnDefaultDisplayForTesting(true);
+        Activity activity =
+                org.robolectric.Robolectric.buildActivity(Activity.class).create().get();
+        ActivityWindowAndroid windowAndroid =
+                new ActivityWindowAndroid(activity, false, null, mInsetObserver, true);
+
+        assertTrue(
+                "mAllowChangeRefreshRate should be true on default display",
+                getAllowChangeRefreshRate(windowAndroid));
+        windowAndroid.destroy();
+    }
+
+    @Test
+    public void testConstructor_initializesAllowChangeRefreshRateCorrectly_onExternalDisplay()
+            throws Exception {
+        DisplayUtil.setIsOnDefaultDisplayForTesting(false);
+        Activity activity =
+                org.robolectric.Robolectric.buildActivity(Activity.class).create().get();
+        ActivityWindowAndroid windowAndroid =
+                new ActivityWindowAndroid(activity, false, null, mInsetObserver, true);
+
+        assertFalse(
+                "mAllowChangeRefreshRate should be false on external display",
+                getAllowChangeRefreshRate(windowAndroid));
+        windowAndroid.destroy();
+    }
+
+    private boolean getAllowChangeRefreshRate(WindowAndroid windowAndroid) throws Exception {
+        java.lang.reflect.Field field =
+                WindowAndroid.class.getDeclaredField("mAllowChangeRefreshRate");
+        field.setAccessible(true);
+        return (boolean) field.get(windowAndroid);
+    }
+}

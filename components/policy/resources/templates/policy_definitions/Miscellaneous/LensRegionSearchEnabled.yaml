@@ -1,0 +1,34 @@
+caption: Allow <ph name="GOOGLE_LENS_PRODUCT_NAME">Google Lens</ph> region search
+  menu item to be shown in context menu if supported.
+deprecated: true
+default: true
+desc: Leaving the policy unset or setting it to Enabled allows users to view and use
+  the <ph name="GOOGLE_LENS_PRODUCT_NAME">Google Lens</ph> region search menu item
+  in the context menu. Setting the policy to Disabled means users will not see the
+  <ph name="GOOGLE_LENS_PRODUCT_NAME">Google Lens</ph> region search menu item in
+  the context menu when <ph name="GOOGLE_LENS_PRODUCT_NAME">Google Lens</ph> region
+  search is supported.
+
+  Starting in <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph> 147, this policy will be deprecated. IT Admins can use <ph name="SEARCH_CONTENT_SHARING_SETTINGS_POLICY_NAME">SearchContentSharingSettings</ph> to control this feature going forward.
+example_value: true
+features:
+  dynamic_refresh: true
+  per_profile: true
+future_on:
+- fuchsia
+items:
+- caption: Enable <ph name="GOOGLE_LENS_PRODUCT_NAME">Google Lens</ph> region search.
+  value: true
+- caption: Disable <ph name="GOOGLE_LENS_PRODUCT_NAME">Google Lens</ph> region search.
+  value: false
+owners:
+- juanmojica@google.com
+- benwgold@google.com
+- lens-chrome@google.com
+schema:
+  type: boolean
+supported_on:
+- chrome.*:94-
+- chrome_os:94-
+tags: []
+type: main

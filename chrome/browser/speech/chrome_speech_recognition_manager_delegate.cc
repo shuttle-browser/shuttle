@@ -1,0 +1,261 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/speech/chrome_speech_recognition_manager_delegate.h"
+
+#include <string>
+
+#include "base/functional/bind.h"
+#include "base/threading/thread_restrictions.h"
+#include "build/build_config.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/common/pref_names.h"
+#include "components/prefs/pref_service.h"
+#include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
+#include "content/public/browser/child_process_host.h"
+#include "content/public/browser/global_routing_id.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/render_process_host.h"
+#include "content/public/browser/speech_recognition_manager.h"
+#include "content/public/browser/speech_recognition_session_context.h"
+#include "content/public/browser/web_contents.h"
+#include "media/mojo/mojom/speech_recognition_error.mojom.h"
+#include "media/mojo/mojom/speech_recognition_result.mojom.h"
+
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+#include "chrome/browser/extensions/extension_service.h"
+#include "extensions/browser/process_map.h"
+#include "extensions/browser/view_type_utils.h"
+#include "extensions/common/mojom/view_type.mojom.h"
+#endif
+
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/services/speech/buildflags/buildflags.h"
+#if BUILDFLAG(ENABLE_SPEECH_SERVICE)
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/speech/speech_recognition_service.h"
+#include "components/soda/soda_installer.h"
+
+#if BUILDFLAG(ENABLE_BROWSER_SPEECH_SERVICE)
+#include "chrome/browser/speech/speech_recognition_service_factory.h"
+#elif BUILDFLAG(IS_CHROMEOS)
+#include "chrome/browser/speech/cros_speech_recognition_service_factory.h"
+#endif  // BUILDFLAG(ENABLE_BROWSER_SPEECH_SERVICE)
+
+#endif  // BUILDFLAG(ENABLE_SPEECH_SERVICE)
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+using content::BrowserThread;
+using content::SpeechRecognitionManager;
+using content::WebContents;
+
+namespace speech {
+
+ChromeSpeechRecognitionManagerDelegate
+::ChromeSpeechRecognitionManagerDelegate() {
+}
+
+ChromeSpeechRecognitionManagerDelegate ::
+    ~ChromeSpeechRecognitionManagerDelegate() = default;
+
+void ChromeSpeechRecognitionManagerDelegate::OnRecognitionStart(
+    int session_id) {
+}
+
+void ChromeSpeechRecognitionManagerDelegate::OnAudioStart(int session_id) {
+}
+
+void ChromeSpeechRecognitionManagerDelegate::OnSoundStart(int session_id) {
+}
+
+void ChromeSpeechRecognitionManagerDelegate::OnSoundEnd(int session_id) {
+}
+
+void ChromeSpeechRecognitionManagerDelegate::OnAudioEnd(int session_id) {
+}
+
+void ChromeSpeechRecognitionManagerDelegate::OnRecognitionResults(
+    int session_id,
+    const std::vector<media::mojom::WebSpeechRecognitionResultPtr>& result) {}
+
+void ChromeSpeechRecognitionManagerDelegate::OnRecognitionError(
+    int session_id,
+    const media::mojom::SpeechRecognitionError& error) {}
+
+void ChromeSpeechRecognitionManagerDelegate::OnAudioLevelsChange(
+    int session_id, float volume, float noise_volume) {
+}
+
+void ChromeSpeechRecognitionManagerDelegate::OnRecognitionEnd(int session_id) {
+}
+
+void ChromeSpeechRecognitionManagerDelegate::CheckRecognitionIsAllowed(
+    int session_id,
+    base::OnceCallback<void(bool ask_user, bool is_allowed)> callback) {
+  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+
+  const content::SpeechRecognitionSessionContext& context =
+      SpeechRecognitionManager::GetInstance()->GetSessionContext(session_id);
+
+  // Make sure that initiators (extensions/web pages) properly set the
+  // |render_process_id| field, which is needed later to retrieve the profile.
+  DCHECK(context.global_id.child_id);
+
+  content::GlobalRenderFrameHostId global_id = context.global_id;
+  if (context.embedder_global_id.child_id) {
+    // If this is a request originated from a guest, we need to re-route the
+    // permission check through the embedder (app).
+    global_id = context.embedder_global_id;
+  }
+
+  // Check that the render frame type is appropriate, and whether or not we
+  // need to request permission from the user.
+  content::GetUIThreadTaskRunner({})->PostTask(
+      FROM_HERE,
+      base::BindOnce(&CheckRenderFrameType, std::move(callback), global_id));
+}
+
+content::SpeechRecognitionEventListener*
+ChromeSpeechRecognitionManagerDelegate::GetEventListener() {
+  return this;
+}
+
+#if !BUILDFLAG(IS_ANDROID)
+void ChromeSpeechRecognitionManagerDelegate::BindSpeechRecognitionContext(
+    mojo::PendingReceiver<media::mojom::SpeechRecognitionContext>
+        recognition_receiver,
+    const std::string& language,
+    const content::GlobalRenderFrameHostId& render_frame_host_id) {
+#if BUILDFLAG(ENABLE_SPEECH_SERVICE)
+  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  content::GetUIThreadTaskRunner({})->PostTask(
+      FROM_HERE,
+      base::BindOnce(
+          [](const content::GlobalRenderFrameHostId& render_frame_host_id,
+             const std::string& language,
+             mojo::PendingReceiver<media::mojom::SpeechRecognitionContext>
+                 receiver) {
+            if (!render_frame_host_id) {
+              return;
+            }
+
+            content::RenderFrameHost* rfh =
+                content::RenderFrameHost::FromID(render_frame_host_id);
+            if (!rfh) {
+              // The frame was destroyed before we could bind. Drop the
+              // request to avoid routing to an incorrect profile.
+              return;
+            }
+
+            Profile* profile =
+                Profile::FromBrowserContext(rfh->GetBrowserContext());
+            if (!profile) {
+              return;
+            }
+
+#if BUILDFLAG(ENABLE_BROWSER_SPEECH_SERVICE)
+            auto* factory =
+                SpeechRecognitionServiceFactory::GetForProfile(profile);
+#elif BUILDFLAG(IS_CHROMEOS)
+            auto* factory =
+                CrosSpeechRecognitionServiceFactory::GetForProfile(profile);
+#else
+#error "No speech recognition service factory on this platform."
+#endif  // BUILDFLAG(ENABLE_BROWSER_SPEECH_SERVICE)
+            if (factory) {
+              factory->BindSpeechRecognitionContext(std::move(receiver));
+            }
+            // Reset the SODA uninstall timer when used by the Web Speech
+            // API.
+            SodaInstaller::GetInstance()->SetUninstallTimer(
+                g_browser_process->local_state(), language);
+          },
+          render_frame_host_id, language, std::move(recognition_receiver)));
+#endif  // BUILDFLAG(ENABLE_SPEECH_SERVICE)
+}
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+// static.
+void ChromeSpeechRecognitionManagerDelegate::CheckRenderFrameType(
+    base::OnceCallback<void(bool ask_user, bool is_allowed)> callback,
+    content::GlobalRenderFrameHostId global_id) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  content::RenderFrameHost* render_frame_host =
+      content::RenderFrameHost::FromID(global_id);
+
+  bool allowed = false;
+  bool check_permission = false;
+
+  if (!render_frame_host) {
+    if (!global_id.child_id) {
+      // This happens for browser-initiated requests (e.g. Chrome OS Dictation).
+      allowed = true;
+    } else {
+      bool is_extension = false;
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+      content::RenderProcessHost* render_process_host =
+          content::RenderProcessHost::FromID(global_id.child_id);
+      if (render_process_host) {
+        is_extension = extensions::ProcessMap::Get(
+                           render_process_host->GetBrowserContext())
+                           ->Contains(global_id.child_id);
+      }
+#endif
+      // Allow if it's a valid extension; otherwise deny (frame destroyed/invalid).
+      allowed = is_extension;
+      if (allowed) {
+        check_permission = true;
+      }
+    }
+    content::GetIOThreadTaskRunner({})->PostTask(
+        FROM_HERE,
+        base::BindOnce(std::move(callback), check_permission, allowed));
+    return;
+  }
+
+  if (render_frame_host->GetLifecycleState() ==
+      content::RenderFrameHost::LifecycleState::kPrerendering) {
+    // It's unclear whether we can reach this function during prerendering.
+    // The Mojo binding for blink.mojom.SpeechRecognizer is deferred until
+    // activation, but it's conceivable that callsites that do not originate
+    // from SpeechRecognizer can call this method.
+    allowed = false;
+    check_permission = false;
+    content::GetIOThreadTaskRunner({})->PostTask(
+        FROM_HERE,
+        base::BindOnce(std::move(callback), check_permission, allowed));
+    return;
+  }
+
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  extensions::mojom::ViewType view_type =
+      extensions::GetViewType(render_frame_host);
+
+  if (view_type == extensions::mojom::ViewType::kTabContents ||
+      view_type == extensions::mojom::ViewType::kAppWindow ||
+      view_type == extensions::mojom::ViewType::kComponent ||
+      view_type == extensions::mojom::ViewType::kExtensionPopup ||
+      view_type == extensions::mojom::ViewType::kExtensionBackgroundPage ||
+      view_type == extensions::mojom::ViewType::kOffscreenDocument ||
+      view_type == extensions::mojom::ViewType::kExtensionSidePanel ||
+      view_type == extensions::mojom::ViewType::kDeveloperTools) {
+    // If it is a tab, we can check for permission. For apps, this means
+    // manifest would be checked for permission.
+    allowed = true;
+    check_permission = true;
+  }
+#else
+  // Otherwise this should be a regular tab contents.
+  allowed = true;
+  check_permission = true;
+#endif
+
+  content::GetIOThreadTaskRunner({})->PostTask(
+      FROM_HERE,
+      base::BindOnce(std::move(callback), check_permission, allowed));
+}
+
+}  // namespace speech

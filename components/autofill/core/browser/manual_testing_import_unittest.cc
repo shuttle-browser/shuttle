@@ -1,0 +1,829 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/autofill/core/browser/manual_testing_import.h"
+
+#include <optional>
+#include <string_view>
+#include <vector>
+
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
+#include "base/files/scoped_temp_dir.h"
+#include "base/json/json_reader.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/test/run_until.h"
+#include "base/test/scoped_command_line.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/task_environment.h"
+#include "base/values.h"
+#include "components/autofill/core/browser/country_type.h"
+#include "components/autofill/core/browser/data_manager/test_personal_data_manager.h"
+#include "components/autofill/core/browser/data_model/addresses/autofill_i18n_api.h"
+#include "components/autofill/core/browser/data_model/addresses/autofill_profile.h"
+#include "components/autofill/core/browser/data_model/autofill_ai/entity_instance.h"
+#include "components/autofill/core/browser/data_model/autofill_ai/entity_type.h"
+#include "components/autofill/core/browser/data_model/autofill_ai/entity_type_names.h"
+#include "components/autofill/core/browser/data_model/payments/credit_card.h"
+#include "components/autofill/core/browser/field_types.h"
+#include "components/autofill/core/browser/test_utils/autofill_test_util.h"
+#include "components/autofill/core/browser/webdata/autofill_webdata_service_test_helper.h"
+#include "components/autofill/core/browser/webdata/payments/payments_autofill_table.h"
+#include "components/autofill/core/common/autofill_features.h"
+#include "components/prefs/testing_pref_service.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace autofill {
+namespace {
+
+using enum AttributeTypeName;
+
+AttributeInstance CreateAttribute(AttributeTypeName name,
+                                  std::string_view value) {
+  AttributeType type = AttributeType(name);
+  AttributeInstance instance = AttributeInstance(type);
+  instance.SetRawInfo(std::nullopt, base::UTF8ToUTF16(value),
+                      VerificationStatus::kObserved);
+  instance.FinalizeInfo();
+  return instance;
+}
+
+// Matches two AutofillProfiles and expects that they `Compare()` equal. This
+// means that their values and verification statuses match for every field type,
+// but their GUID, usage data, etc might differ.
+MATCHER(DataModelsCompareEqual, "") {
+  return std::get<0>(arg).Compare(std::get<1>(arg)) == 0;
+}
+
+class ManualTestingImportTest : public testing::Test {
+  void SetUp() override { ASSERT_TRUE(scoped_temp_dir_.CreateUniqueTempDir()); }
+
+ public:
+  base::FilePath GetFilePath() const {
+    return scoped_temp_dir_.GetPath().Append(
+        FILE_PATH_LITERAL("test_file.json"));
+  }
+  base::ScopedTempDir scoped_temp_dir_;
+  base::test::TaskEnvironment task_environment_;
+  TestPersonalDataManager test_personal_data_manager_;
+};
+
+// Tests that profiles are converted correctly.
+TEST_F(ManualTestingImportTest, LoadCreditCardsFromFile_Valid) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "credit-cards" : [
+      {
+        "CREDIT_CARD_NAME_FULL" : "first1 last1",
+        "CREDIT_CARD_NAME_FIRST" : "first1",
+        "CREDIT_CARD_NAME_LAST" : "last1",
+        "CREDIT_CARD_NUMBER" : "4111111111111111",
+        "CREDIT_CARD_EXP_MONTH" : "10",
+        "CREDIT_CARD_EXP_2_DIGIT_YEAR" : "27",
+        "CREDIT_CARD_VERIFICATION_CODE" : "123"
+      },
+      {
+        "nickname" : "some nickname",
+        "CREDIT_CARD_NAME_FULL" : "first2 last2",
+        "CREDIT_CARD_NAME_FIRST" : "first2",
+        "CREDIT_CARD_NAME_LAST" : "last2",
+        "CREDIT_CARD_NUMBER" : "6011111111111117",
+        "CREDIT_CARD_EXP_MONTH" : "10",
+        "CREDIT_CARD_EXP_2_DIGIT_YEAR" : "27",
+        "CREDIT_CARD_VERIFICATION_CODE" : "321"
+      }
+    ]
+  })");
+
+  CreditCard expected_card1;
+  expected_card1.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_NAME_FULL, u"first1 last1",
+      VerificationStatus::kUserVerified);
+  expected_card1.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_NAME_FIRST, u"first1", VerificationStatus::kUserVerified);
+  expected_card1.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_NAME_LAST, u"last1", VerificationStatus::kUserVerified);
+  expected_card1.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_NUMBER, u"4111111111111111",
+      VerificationStatus::kUserVerified);
+  expected_card1.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_EXP_MONTH, u"10", VerificationStatus::kUserVerified);
+  expected_card1.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_EXP_2_DIGIT_YEAR, u"27", VerificationStatus::kUserVerified);
+  expected_card1.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_VERIFICATION_CODE, u"123", VerificationStatus::kUserVerified);
+
+  CreditCard expected_card2;
+  expected_card2.SetNickname(u"some nickname");
+  expected_card2.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_NAME_FULL, u"first2 last2",
+      VerificationStatus::kUserVerified);
+  expected_card2.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_NAME_FIRST, u"first2", VerificationStatus::kUserVerified);
+  expected_card2.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_NAME_LAST, u"last2", VerificationStatus::kUserVerified);
+  expected_card2.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_NUMBER, u"6011111111111117",
+      VerificationStatus::kUserVerified);
+  expected_card2.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_EXP_MONTH, u"10", VerificationStatus::kUserVerified);
+  expected_card2.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_EXP_2_DIGIT_YEAR, u"27", VerificationStatus::kUserVerified);
+  expected_card2.SetRawInfoWithVerificationStatus(
+      CREDIT_CARD_VERIFICATION_CODE, u"321", VerificationStatus::kUserVerified);
+
+  EXPECT_THAT(LoadCreditCardsFromFile(file_path),
+              testing::Optional(testing::Pointwise(
+                  DataModelsCompareEqual(), {expected_card1, expected_card2})));
+}
+
+// Tests that the conversion fails when a non-CC type is passed for a credit
+// card.
+TEST_F(ManualTestingImportTest, LoadCreditCardsFromFile_Invalid_NoDictionary) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"([
+        "4111111111111111",
+        "10",
+        "27",
+        "street-address"
+    ])");
+  EXPECT_FALSE(LoadCreditCardsFromFile(file_path).has_value());
+}
+
+// Tests that the conversion fails when a non-CC type is passed for a credit
+// card.
+TEST_F(ManualTestingImportTest,
+       LoadCreditCardsFromFile_Invalid_NonRelatedType) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "credit-cards" : [
+      {
+        "CREDIT_CARD_NUMBER" : "4111111111111111",
+        "CREDIT_CARD_EXP_MONTH" : "10",
+        "CREDIT_CARD_EXP_2_DIGIT_YEAR" : "27",
+        "ADDRESS_HOME_STREET_ADDRESS" : "street-address"
+      }
+    ]
+  })");
+
+  EXPECT_FALSE(LoadCreditCardsFromFile(file_path).has_value());
+}
+
+// Tests that the conversion fails when an unrecognized field type is present.
+TEST_F(ManualTestingImportTest,
+       LoadCreditCardsFromFile_Invalid_UnrecognizedType) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "credit-cards" : [
+      {
+        "CREDIT_CARD_NAME_LOST" : "..."
+      }
+    ]
+  })");
+  EXPECT_FALSE(LoadCreditCardsFromFile(file_path).has_value());
+}
+
+// Tests that the conversion fails when an invalid description is provided.
+TEST_F(ManualTestingImportTest, LoadCreditCardsFromFile_NotValid) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "credit-cards" : [
+      {
+        "CREDIT_CARD_NAME_FULL" : "first last"
+      }
+    ]
+  })");
+  EXPECT_FALSE(LoadCreditCardsFromFile(file_path).has_value());
+}
+
+// Tests that entities are converted correctly.
+TEST_F(ManualTestingImportTest, LoadEntitiesFromFile_Valid) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "entities" : [
+      {
+        "entity_type" : "Passport",
+        "attributes" : {
+          "Number" : "123456789",
+          "Name" : "John Doe"
+        }
+      },
+      {
+        "entity_type": "Vehicle",
+        "attributes": {
+          "Make": "Tesla",
+          "Model": "Model 3",
+          "Year": "2023",
+          "Plate number": "CHROME1",
+          "VIN": "1ABCD2EF3GHI45678"
+        }
+      },
+      {
+        "entity_type": "Flight Reservation",
+        "attributes": {
+          "Flight number": "UA 123",
+          "Ticket number": "0161234567890",
+          "Confirmation code": "ABCDEF",
+          "Passenger name": "John Doe",
+          "Departure airport": "SFO",
+          "Arrival airport": "JFK",
+          "Departure date": "2024-12-25"
+        }
+      }
+    ]
+  })");
+
+  // Expected Passport
+  EntityInstance expected_passport(
+      EntityType(EntityTypeName::kPassport),
+      {CreateAttribute(AttributeTypeName::kPassportNumber, "123456789"),
+       CreateAttribute(AttributeTypeName::kPassportName, "John Doe")},
+      EntityInstance::EntityId(base::Uuid::GenerateRandomV4()),
+      /*nickname=*/"", base::Time::Now(), /*use_count=*/0,
+      /*use_date=*/base::Time(), EntityInstance::LocalRecordTypePayload{},
+      EntityInstance::AreAttributesReadOnly(false),
+      /*frecency_override=*/"");
+
+  // Expected Vehicle
+  EntityInstance expected_vehicle(
+      EntityType(EntityTypeName::kVehicle),
+      {CreateAttribute(AttributeTypeName::kVehicleMake, "Tesla"),
+       CreateAttribute(AttributeTypeName::kVehicleModel, "Model 3"),
+       CreateAttribute(AttributeTypeName::kVehicleYear, "2023"),
+       CreateAttribute(AttributeTypeName::kVehiclePlateNumber, "CHROME1"),
+       CreateAttribute(AttributeTypeName::kVehicleVin, "1ABCD2EF3GHI45678")},
+      EntityInstance::EntityId(base::Uuid::GenerateRandomV4()),
+      /*nickname=*/"", base::Time::Now(), /*use_count=*/0,
+      /*use_date=*/base::Time(), EntityInstance::LocalRecordTypePayload{},
+      EntityInstance::AreAttributesReadOnly(false),
+      /*frecency_override=*/"");
+
+  // Expected Flight Reservation
+  EntityInstance expected_flight(
+      EntityType(EntityTypeName::kFlightReservation),
+      {CreateAttribute(AttributeTypeName::kFlightReservationFlightNumber,
+                       "UA 123"),
+       CreateAttribute(AttributeTypeName::kFlightReservationTicketNumber,
+                       "0161234567890"),
+       CreateAttribute(AttributeTypeName::kFlightReservationConfirmationCode,
+                       "ABCDEF"),
+       CreateAttribute(AttributeTypeName::kFlightReservationPassengerName,
+                       "John Doe"),
+       CreateAttribute(AttributeTypeName::kFlightReservationDepartureAirport,
+                       "SFO"),
+       CreateAttribute(AttributeTypeName::kFlightReservationArrivalAirport,
+                       "JFK"),
+       CreateAttribute(AttributeTypeName::kFlightReservationDepartureDate,
+                       "2024-12-25")},
+      EntityInstance::EntityId(base::Uuid::GenerateRandomV4()),
+      /*nickname=*/"", base::Time::Now(), /*use_count=*/0,
+      /*use_date=*/base::Time(), EntityInstance::LocalRecordTypePayload{},
+      EntityInstance::AreAttributesReadOnly(true),
+      /*frecency_override=*/"");
+
+  std::optional<std::vector<EntityInstance>> entities =
+      LoadEntitiesFromFile(file_path);
+  ASSERT_TRUE(entities.has_value());
+  ASSERT_EQ(entities->size(), 3u);
+
+  EXPECT_EQ(entities->at(0).type(), expected_passport.type());
+  EXPECT_EQ(entities->at(0).attributes(), expected_passport.attributes());
+
+  EXPECT_EQ(entities->at(1).type(), expected_vehicle.type());
+  EXPECT_EQ(entities->at(1).attributes(), expected_vehicle.attributes());
+
+  EXPECT_EQ(entities->at(2).type(), expected_flight.type());
+  EXPECT_EQ(entities->at(2).attributes(), expected_flight.attributes());
+}
+
+// Tests that the conversion fails when an entity type is invalid.
+TEST_F(ManualTestingImportTest, LoadEntitiesFromFile_Invalid_EntityType) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "entities" : [
+      {
+        "entity_type" : "UnknownEntity",
+        "attributes" : {
+          "Number" : "123456789"
+        }
+      }
+    ]
+  })");
+  EXPECT_FALSE(LoadEntitiesFromFile(file_path).has_value());
+}
+
+// Tests that the conversion fails when an attribute type is invalid.
+TEST_F(ManualTestingImportTest, LoadEntitiesFromFile_Invalid_AttributeType) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "entities" : [
+      {
+        "entity_type" : "Passport",
+        "attributes" : {
+          "UnknownAttribute" : "123456789"
+        }
+      }
+    ]
+  })");
+  EXPECT_FALSE(LoadEntitiesFromFile(file_path).has_value());
+}
+
+// Tests that entity record_type is parsed correctly.
+TEST_F(ManualTestingImportTest, LoadEntitiesFromFile_RecordType) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "entities" : [
+      {
+        "entity_type" : "Passport",
+        "attributes" : {
+          "Number" : "1"
+        }
+      },
+      {
+        "entity_type" : "Passport",
+        "record_type" : "local",
+        "attributes" : {
+          "Number" : "2"
+        }
+      },
+      {
+        "entity_type" : "Passport",
+        "record_type" : "serverWallet",
+        "attributes" : {
+          "Number" : "3"
+        }
+      },
+      {
+        "entity_type" : "Passport",
+        "record_type" : "personalContext",
+        "attributes" : {
+          "Number" : "4"
+        }
+      }
+    ]
+  })");
+
+  std::optional<std::vector<EntityInstance>> entities =
+      LoadEntitiesFromFile(file_path);
+  ASSERT_TRUE(entities.has_value());
+  ASSERT_EQ(entities->size(), 4u);
+
+  EXPECT_EQ(entities->at(0).record_type(), EntityInstance::RecordType::kLocal);
+  EXPECT_EQ(entities->at(1).record_type(), EntityInstance::RecordType::kLocal);
+  EXPECT_EQ(entities->at(2).record_type(),
+            EntityInstance::RecordType::kServerWallet);
+  EXPECT_EQ(entities->at(3).record_type(),
+            EntityInstance::RecordType::kPersonalContext);
+}
+
+// Tests that personalContext sources are parsed correctly.
+TEST_F(ManualTestingImportTest, LoadEntitiesFromFile_PersonalContext_Sources) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "entities" : [
+      {
+        "entity_type" : "Passport",
+        "record_type" : "personalContext",
+        "sources" : [
+          {
+            "type" : "photos",
+            "url" : "https://photos.google.com/sample"
+          },
+          {
+            "type" : "gmail",
+            "url" : "https://mail.google.com/sample"
+          }
+        ],
+        "attributes" : {
+          "Number" : "12345"
+        }
+      }
+    ]
+  })");
+
+  std::optional<std::vector<EntityInstance>> entities =
+      LoadEntitiesFromFile(file_path);
+  ASSERT_TRUE(entities.has_value());
+  ASSERT_EQ(entities->size(), 1u);
+
+  using Source = EntityInstance::PersonalContextRecordTypePayload::Source;
+  using PersonalContextRecordTypePayload =
+      EntityInstance::PersonalContextRecordTypePayload;
+  const EntityInstance& entity = entities->front();
+  ASSERT_EQ(entity.record_type(), EntityInstance::RecordType::kPersonalContext);
+  const auto* payload =
+      std::get_if<PersonalContextRecordTypePayload>(&entity.record_type_data());
+  ASSERT_TRUE(payload);
+  EXPECT_EQ(*payload, (PersonalContextRecordTypePayload{
+                          .sources = {
+                              {.type = Source::Type::kPhotos,
+                               .url = "https://photos.google.com/sample"},
+                              {.type = Source::Type::kGmail,
+                               .url = "https://mail.google.com/sample"},
+                          }}));
+}
+
+// Tests that invalid entity record_type fails import.
+TEST_F(ManualTestingImportTest, LoadEntitiesFromFile_InvalidRecordType) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "entities" : [
+      {
+        "entity_type" : "Passport",
+        "record_type" : "invalid",
+        "attributes" : {
+          "Number" : "1"
+        }
+      }
+    ]
+  })");
+
+  EXPECT_FALSE(LoadEntitiesFromFile(file_path).has_value());
+}
+
+// Tests that Order and Shipment entities can be imported with all attributes.
+TEST_F(ManualTestingImportTest, LoadEntitiesFromFile_OrderAndShipment) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "entities" : [
+      {
+        "entity_type": "Order",
+        "record_type": "serverWallet",
+        "attributes": {
+          "Id": "12345",
+          "Account": "user@example.com",
+          "Date": "2025-05-12",
+          "Merchant name": "Example Store",
+          "Merchant domain": "example.com",
+          "Product names": "Widget, Gadget"
+        }
+      },
+      {
+        "entity_type": "Shipment",
+        "record_type": "serverWallet",
+        "attributes": {
+          "Tracking number": "TRK123456",
+          "Delivery zip code": "94043",
+          "Carrier name": "Carrier X",
+          "Carrier domain": "carrierx.com",
+          "Shipped date": "2025-05-15",
+          "Merchant name": "Example Store",
+          "Product names": "Widget, Gadget"
+        }
+      }
+    ]
+  })");
+
+  // Expected Order
+  EntityInstance expected_order(
+      EntityType(EntityTypeName::kOrder),
+      {CreateAttribute(AttributeTypeName::kOrderId, "12345"),
+       CreateAttribute(AttributeTypeName::kOrderAccount, "user@example.com"),
+       CreateAttribute(AttributeTypeName::kOrderDate, "2025-05-12"),
+       CreateAttribute(AttributeTypeName::kOrderMerchantName, "Example Store"),
+       CreateAttribute(AttributeTypeName::kOrderMerchantDomain, "example.com"),
+       CreateAttribute(AttributeTypeName::kOrderProductNames,
+                       "Widget, Gadget")},
+      EntityInstance::EntityId(base::Uuid::GenerateRandomV4()),
+      /*nickname=*/"", base::Time::Now(), /*use_count=*/0,
+      /*use_date=*/base::Time(), EntityInstance::WalletRecordTypePayload{},
+      EntityInstance::AreAttributesReadOnly(false),
+      /*frecency_override=*/"");
+
+  // Expected Shipment
+  EntityInstance expected_shipment(
+      EntityType(EntityTypeName::kShipment),
+      {CreateAttribute(AttributeTypeName::kShipmentTrackingNumber, "TRK123456"),
+       CreateAttribute(AttributeTypeName::kShipmentDeliveryZipCode, "94043"),
+       CreateAttribute(AttributeTypeName::kShipmentCarrierName, "Carrier X"),
+       CreateAttribute(AttributeTypeName::kShipmentCarrierDomain,
+                       "carrierx.com"),
+       CreateAttribute(AttributeTypeName::kShipmentShippedDate, "2025-05-15"),
+       CreateAttribute(AttributeTypeName::kShipmentMerchantName,
+                       "Example Store"),
+       CreateAttribute(AttributeTypeName::kShipmentProductNames,
+                       "Widget, Gadget")},
+      EntityInstance::EntityId(base::Uuid::GenerateRandomV4()),
+      /*nickname=*/"", base::Time::Now(), /*use_count=*/0,
+      /*use_date=*/base::Time(), EntityInstance::WalletRecordTypePayload{},
+      EntityInstance::AreAttributesReadOnly(false),
+      /*frecency_override=*/"");
+
+  std::optional<std::vector<EntityInstance>> entities =
+      LoadEntitiesFromFile(file_path);
+  ASSERT_TRUE(entities.has_value());
+  ASSERT_EQ(entities->size(), 2u);
+
+  EXPECT_EQ(entities->at(0).type(), expected_order.type());
+  EXPECT_EQ(entities->at(0).attributes(), expected_order.attributes());
+  EXPECT_EQ(entities->at(0).record_type(), expected_order.record_type());
+
+  EXPECT_EQ(entities->at(1).type(), expected_shipment.type());
+  EXPECT_EQ(entities->at(1).attributes(), expected_shipment.attributes());
+  EXPECT_EQ(entities->at(1).record_type(), expected_shipment.record_type());
+}
+
+// Tests that profiles are converted correctly.
+TEST_F(ManualTestingImportTest, LoadProfilesFromFile_Valid) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "profiles" : [
+      {
+        "NAME_FULL" : "first last",
+        "NAME_FIRST" : "first",
+        "NAME_LAST" : "last",
+        "NAME_LAST_SECOND" : "last"
+      },
+      {
+        "record_type" : "account",
+        "initial_creator_id": 999,
+        "ADDRESS_HOME_STREET_ADDRESS" : "street 123",
+        "ADDRESS_HOME_STREET_NAME" : "street",
+        "ADDRESS_HOME_HOUSE_NUMBER" : "123"
+      }
+    ]
+  })");
+
+  AutofillProfile expected_profile1(
+      AutofillProfile::RecordType::kLocalOrSyncable,
+      i18n_model_definition::kLegacyHierarchyCountryCode);
+  expected_profile1.SetRawInfoWithVerificationStatus(
+      NAME_FULL, u"first last", VerificationStatus::kObserved);
+  expected_profile1.SetRawInfoWithVerificationStatus(
+      NAME_FIRST, u"first", VerificationStatus::kObserved);
+  expected_profile1.SetRawInfoWithVerificationStatus(
+      NAME_LAST, u"last", VerificationStatus::kObserved);
+  expected_profile1.SetRawInfoWithVerificationStatus(
+      NAME_LAST_SECOND, u"last", VerificationStatus::kObserved);
+
+  AutofillProfile expected_profile2(
+      AutofillProfile::RecordType::kAccount,
+      i18n_model_definition::kLegacyHierarchyCountryCode);
+  expected_profile2.set_initial_creator_id(999);
+  expected_profile2.SetRawInfoWithVerificationStatus(
+      ADDRESS_HOME_STREET_ADDRESS, u"street 123",
+      VerificationStatus::kObserved);
+  expected_profile2.SetRawInfoWithVerificationStatus(
+      ADDRESS_HOME_STREET_NAME, u"street", VerificationStatus::kObserved);
+  expected_profile2.SetRawInfoWithVerificationStatus(
+      ADDRESS_HOME_HOUSE_NUMBER, u"123", VerificationStatus::kObserved);
+
+  EXPECT_THAT(
+      LoadProfilesFromFile(file_path),
+      testing::Optional(testing::Pointwise(
+          DataModelsCompareEqual(), {expected_profile1, expected_profile2})));
+}
+
+// Tests that conversion fails when the file doesn't exist
+TEST_F(ManualTestingImportTest,
+       AutofillProfileFromJSON_Invalid_FailedToOpenFile) {
+  EXPECT_FALSE(LoadProfilesFromFile(GetFilePath()).has_value());
+}
+
+// Tests that the conversion fails when the passed JSON file isn't a dictionary
+// at its top level.
+TEST_F(ManualTestingImportTest, LoadProfilesFromFile_Invalid_NotDictionary) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"([
+      "first last"
+    ])");
+  EXPECT_FALSE(LoadProfilesFromFile(file_path).has_value());
+}
+
+// Tests that the conversion fails when the passed JSON file isn't valid.
+TEST_F(ManualTestingImportTest,
+       LoadProfilesFromFile_Invalid_FailedToParseJSON) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"([
+      "first last"
+    })");
+  EXPECT_FALSE(LoadProfilesFromFile(file_path).has_value());
+}
+
+// Tests that the conversion fails when an unrecognized field type is present.
+TEST_F(ManualTestingImportTest, LoadProfilesFromFile_Invalid_UnrecognizedType) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "profiles" : [
+      {
+        "NAME_FULLLLL" : "..."
+      }
+    ]
+  })");
+  EXPECT_FALSE(LoadProfilesFromFile(file_path).has_value());
+}
+
+// Tests that the conversion fails when the "record_type" has an unrecognized
+// value.
+TEST_F(ManualTestingImportTest,
+       LoadProfilesFromFile_Invalid_UnrecognizedRecordType) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "profiles" : [
+      {
+        "record_type" : "invalid"
+      }
+    ]
+  })");
+  EXPECT_FALSE(LoadProfilesFromFile(file_path).has_value());
+}
+
+// Tests that the conversion fails when the "initial_creator_id" has
+// an invalid value.
+TEST_F(ManualTestingImportTest, LoadProfilesFromFile_InvalidInitialCreatorId) {
+  base::FilePath file_path1 =
+      scoped_temp_dir_.GetPath().Append(FILE_PATH_LITERAL("test_file1.json"));
+  base::WriteFile(file_path1, R"({
+    "profiles" : [
+      {
+        "initial_creator_id" : "123"
+      }
+    ]
+  })");
+  EXPECT_FALSE(LoadProfilesFromFile(file_path1).has_value());
+
+  base::FilePath file_path2 =
+      scoped_temp_dir_.GetPath().Append(FILE_PATH_LITERAL("test_file2.json"));
+  base::WriteFile(file_path2, R"({
+    "profiles" : [
+      {
+        "initial_creator_id" : true
+      }
+    ]
+  })");
+  EXPECT_FALSE(LoadProfilesFromFile(file_path2).has_value());
+}
+
+// TODO(crbug.com/40268162): Re-enable this test.
+// Tests that the conversion fails for non-fully structured profiles.
+TEST_F(ManualTestingImportTest,
+       DISABLED_LoadProfilesFromFile_Invalid_NotFullyStructured) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "profiles" : [
+      {
+        "NAME_FIRST" : "first",
+        "NAME_LAST" : "last"
+      }
+    ]
+  })");
+  EXPECT_FALSE(LoadProfilesFromFile(file_path).has_value());
+}
+
+// Regression test for crbug.com/439823380.
+TEST_F(ManualTestingImportTest, LoadProfilesFromFile_PhoneNumberTypes) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "profiles" : [
+      {
+        "PHONE_HOME_CITY_AND_NUMBER" : "123"
+      }
+    ]
+  })");
+  // Expect that the import fails gracefully (rater than crashes).
+  EXPECT_FALSE(LoadProfilesFromFile(file_path).has_value());
+}
+
+class ManualTestingImportTesti18n : public ManualTestingImportTest {
+ private:
+  base::test::ScopedFeatureList features_{features::kAutofillUseINAddressModel};
+};
+
+// Tests that i18n profiles are converted correctly.
+TEST_F(ManualTestingImportTesti18n, Loadi18nProfilesFromFile_Valid) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "profiles" : [
+      {
+        "NAME_FULL" : "first last",
+        "NAME_FIRST" : "first",
+        "NAME_LAST" : "last",
+        "NAME_LAST_SECOND" : "last"
+      },
+      {
+        "ADDRESS_HOME_COUNTRY" : "BR",
+        "ADDRESS_HOME_STREET_ADDRESS" : "street 123",
+        "ADDRESS_HOME_STREET_NAME" : "street",
+        "ADDRESS_HOME_HOUSE_NUMBER" : "123"
+      }
+    ]
+  })");
+
+  AutofillProfile expected_profile1(
+      AutofillProfile::RecordType::kLocalOrSyncable,
+      i18n_model_definition::kLegacyHierarchyCountryCode);
+  expected_profile1.SetRawInfoWithVerificationStatus(
+      NAME_FULL, u"first last", VerificationStatus::kObserved);
+  expected_profile1.SetRawInfoWithVerificationStatus(
+      NAME_FIRST, u"first", VerificationStatus::kObserved);
+  expected_profile1.SetRawInfoWithVerificationStatus(
+      NAME_LAST, u"last", VerificationStatus::kObserved);
+  expected_profile1.SetRawInfoWithVerificationStatus(
+      NAME_LAST_SECOND, u"last", VerificationStatus::kObserved);
+
+  AutofillProfile expected_profile2(
+      AutofillProfile::RecordType::kLocalOrSyncable, AddressCountryCode("BR"));
+  expected_profile2.SetRawInfoWithVerificationStatus(
+      ADDRESS_HOME_STREET_ADDRESS, u"street 123",
+      VerificationStatus::kObserved);
+  expected_profile2.SetRawInfoWithVerificationStatus(
+      ADDRESS_HOME_STREET_NAME, u"street", VerificationStatus::kObserved);
+  expected_profile2.SetRawInfoWithVerificationStatus(
+      ADDRESS_HOME_HOUSE_NUMBER, u"123", VerificationStatus::kObserved);
+  std::optional<std::vector<AutofillProfile>> loaded_profiles =
+      LoadProfilesFromFile(file_path);
+  EXPECT_THAT(loaded_profiles, testing::Optional(testing::Pointwise(
+                                   DataModelsCompareEqual(),
+                                   {expected_profile1, expected_profile2})));
+  EXPECT_TRUE(loaded_profiles.value().at(0).GetAddress().IsLegacyAddress());
+  EXPECT_FALSE(loaded_profiles.value().at(1).GetAddress().IsLegacyAddress());
+}
+
+// This test reproduces crbug.com/512382646 where re-importing the same credit
+// card with a different GUID causes the card to be deleted from the database.
+TEST_F(ManualTestingImportTest, SetCreditCards_PreservesCardOnGuidMismatch) {
+  base::FilePath file_path = GetFilePath();
+  base::WriteFile(file_path, R"({
+    "credit-cards" : [
+      {
+        "CREDIT_CARD_NAME_FULL" : "first1 last1",
+        "CREDIT_CARD_NAME_FIRST" : "first1",
+        "CREDIT_CARD_NAME_LAST" : "last1",
+        "CREDIT_CARD_NUMBER" : "4111111111111111",
+        "CREDIT_CARD_EXP_MONTH" : "10",
+        "CREDIT_CARD_EXP_2_DIGIT_YEAR" : "27",
+        "CREDIT_CARD_VERIFICATION_CODE" : "123"
+      }
+    ]
+  })");
+
+  std::optional<std::vector<CreditCard>> loaded_cards =
+      LoadCreditCardsFromFile(file_path);
+  ASSERT_TRUE(loaded_cards);
+  ASSERT_EQ(1u, loaded_cards->size());
+
+  // This test uses a real in-memory database to verify that asynchronous
+  // operations are executed properly.
+  std::unique_ptr<PrefService> prefs = test::PrefServiceForTesting();
+  AutofillWebDataServiceTestHelper webdata_helper(
+      std::make_unique<PaymentsAutofillTable>());
+
+  // LocalPDM is a variation of the TestPersonalDataManager that uses a real
+  // PaymentsDataManager instead of the TestPaymentsDataManager. Don't call
+  // `test_payments_data_manager()` on it as that would perform an invalid cast.
+  struct LocalPDM : public TestPersonalDataManager {
+    explicit LocalPDM(std::unique_ptr<PaymentsDataManager> payments_pdm) {
+      payments_data_manager_observation_.Reset();
+      payments_data_manager_ = std::move(payments_pdm);
+      payments_data_manager_observation_.Observe(payments_data_manager_.get());
+    }
+
+    PaymentsDataManager* payments_data_manager() {
+      return payments_data_manager_.get();
+    }
+  };
+
+  LocalPDM personal_data_manager(std::make_unique<PaymentsDataManager>(
+      webdata_helper.autofill_webdata_service(),
+      /*account_database=*/nullptr,
+      /*image_fetcher=*/nullptr, prefs.get(),
+      /*sync_service=*/nullptr,
+      /*identity_manager=*/nullptr, GeoIpCountryCode("US"), "en-US",
+      /*autofill_optimization_guide_decider=*/nullptr));
+  PaymentsDataManager* payments_data_manager =
+      personal_data_manager.payments_data_manager();
+
+  // 1. Create a card that's identical to the card that will be loaded from the
+  // file except for it's id.
+  CreditCard card1 = loaded_cards->at(0);
+  card1.set_guid(base::Uuid::GenerateRandomV4().AsLowercaseString());
+  payments_data_manager->AddCreditCard(card1);
+  webdata_helper.WaitUntilIdle();
+
+  // Verify the card lands in the `PaymentsDataManager`.
+  ASSERT_EQ(1u, payments_data_manager->GetCreditCards().size());
+  EXPECT_EQ(card1.guid(), payments_data_manager->GetCreditCards()[0]->guid());
+
+  // 2. Simulate importing cards from a file.
+  // The ScopedCommandLine is defined only here so that spinning up the
+  // PersonalDataManager above does not trigger the importing of profiles and
+  // cards, yet.
+  base::test::ScopedCommandLine command_line;
+  command_line.GetProcessCommandLine()->AppendSwitchPath(
+      kManualFileImportForTestingFlag, file_path);
+  MaybeImportProfilesAndCardsForTesting(personal_data_manager.GetWeakPtr());
+
+  // We expect that at some point in time, the same credit card exists in the
+  // database but with a different guid.
+  EXPECT_TRUE(base::test::RunUntil([&] {
+    std::vector<const CreditCard*> cards =
+        payments_data_manager->GetCreditCards();
+    return cards.size() == 1u && cards[0]->guid() != card1.guid() &&
+           cards[0]->number() == card1.number();
+  }));
+}
+
+}  // namespace
+}  // namespace autofill

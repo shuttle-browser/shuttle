@@ -1,0 +1,48 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//extensions/buildflags/buildflags.gni")
+
+assert(enable_extensions_core,
+       "Cannot depend on extensions because extensions are disabled.")
+
+source_set("webstore_private") {
+  sources = [
+    "extension_install_status.cc",
+    "extension_install_status.h",
+    "webstore_private_api.cc",
+    "webstore_private_api.h",
+    "webstore_private_api_delegate.h",
+  ]
+
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+
+  public_deps = [
+    "//base",
+    "//extensions/browser:browser_sources",
+    "//extensions/browser/api/management",
+    "//extensions/common",
+    "//extensions/common/api",
+  ]
+
+  deps = [
+    "//components/crx_file",
+    "//components/enterprise",
+    "//components/enterprise/browser/promotion:prefs",
+    "//components/keyed_service/content",
+    "//components/policy/core/common",
+    "//components/policy/proto",
+    "//components/prefs",
+    "//components/safe_browsing:buildflags",
+    "//components/safe_browsing/content/browser",
+    "//components/signin/public/identity_manager",
+    "//components/supervised_user/core/common",
+    "//components/user_prefs",
+    "//content/public/browser",
+    "//extensions/browser:webstore_installer",
+    "//extensions/browser/api:extensions_api_client",
+    "//extensions/strings",
+    "//ui/base",
+  ]
+}

@@ -1,0 +1,62 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/performance_controls/memory_saver_bubble_controller.h"
+
+#include <memory>
+
+#include "base/check_op.h"
+#include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/browser_actions.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
+#include "chrome/browser/ui/views/performance_controls/memory_saver_bubble_view.h"
+#include "ui/views/view.h"
+
+namespace memory_saver {
+
+DEFINE_USER_DATA(MemorySaverBubbleController);
+
+// static
+MemorySaverBubbleController* MemorySaverBubbleController::From(
+    BrowserWindowInterface* bwi) {
+  return Get(bwi->GetUnownedUserDataHost());
+}
+
+MemorySaverBubbleController::MemorySaverBubbleController(
+    BrowserWindowInterface* bwi)
+    : scoped_unowned_user_data_(bwi->GetUnownedUserDataHost(), *this) {
+  // Associate the bubble with its ActionItem, to ensure that any future
+  // invocations come from the expected ActionItem.
+  action_item_ = actions::ActionManager::Get().FindAction(
+      kActionShowMemorySaverChip,
+      /*scope=*/BrowserActions::From(bwi)->root_action_item());
+  CHECK(action_item_);
+}
+
+MemorySaverBubbleController::~MemorySaverBubbleController() = default;
+
+void MemorySaverBubbleController::InvokeAction(BrowserWindowInterface* bwi,
+                                               actions::ActionItem* item) {
+  CHECK(item == action_item_);
+
+  // Open the dialog bubble.
+  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(bwi);
+  CHECK_NE(browser_view, nullptr);
+  auto anchor =
+      browser_view->toolbar_button_provider()->GetBubbleAnchor(std::nullopt);
+  bubble_ = MemorySaverBubbleView::ShowBubble(bwi, anchor, this);
+}
+
+void MemorySaverBubbleController::OnBubbleShown() {
+  action_item_->SetIsShowingBubble(true);
+}
+
+void MemorySaverBubbleController::OnBubbleHidden() {
+  action_item_->SetIsShowingBubble(false);
+  bubble_ = nullptr;
+}
+
+}  // namespace memory_saver

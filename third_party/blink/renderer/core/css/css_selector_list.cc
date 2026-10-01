@@ -1,0 +1,202 @@
+/*
+ * Copyright (C) 2008, 2012 Apple Inc. All rights reserved.
+ * Copyright (C) 2009 Google Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY APPLE INC. ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL APPLE INC. OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include "third_party/blink/renderer/core/css/css_selector_list.h"
+
+#include <cstring>
+#include <memory>
+
+#include "base/compiler_specific.h"
+#include "third_party/blink/renderer/core/css/css_selector.h"
+#include "third_party/blink/renderer/platform/heap/persistent.h"
+#include "third_party/blink/renderer/platform/wtf/leak_annotations.h"
+#include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
+#include "third_party/blink/renderer/platform/wtf/thread_specific.h"
+
+namespace blink {
+
+CSSSelectorList* CSSSelectorList::Empty() {
+  DEFINE_THREAD_SAFE_STATIC_LOCAL(ThreadSpecific<Persistent<CSSSelectorList>>,
+                                  empty_list, ());
+  Persistent<CSSSelectorList>& persistent = *empty_list;
+  if (!persistent) [[unlikely]] {
+    persistent =
+        MakeGarbageCollected<CSSSelectorList>(base::PassKey<CSSSelectorList>());
+    new (persistent->first_selector_) CSSSelector();
+    persistent->first_selector_[0].SetMatch(CSSSelector::kInvalidList);
+    DCHECK(persistent->IsInvalidWithoutUnparsed());
+    LEAK_SANITIZER_IGNORE_OBJECT(&persistent);
+  }
+  return persistent.Get();
+}
+
+CSSSelectorList* CSSSelectorList::Copy() const {
+  if (IsInvalidWithoutUnparsed()) {
+    return CSSSelectorList::Empty();
+  }
+
+  unsigned length = ComputeLength();
+  DCHECK(length);
+  CSSSelectorList* list = MakeGarbageCollected<CSSSelectorList>(
+      AdditionalBytes(sizeof(CSSSelector) * (length - 1)),
+      base::PassKey<CSSSelectorList>());
+  for (unsigned i = 0; i < length; ++i) {
+    UNSAFE_BUFFERS(new (&list->first_selector_[i])
+                       CSSSelector(first_selector_[i]));
+  }
+
+  return list;
+}
+
+HeapVector<CSSSelector> CSSSelectorList::Copy(
+    const CSSSelector* selector_list) {
+  HeapVector<CSSSelector> selectors;
+
+  const CSSSelector* selector = selector_list;
+
+  if (!selector || CSSSelectorList::IsInvalidWithoutUnparsed(*selector)) {
+    return selectors;
+  }
+
+  for (; selector; selector = selector->IsLastInSelectorList()
+                                  ? nullptr
+                                  : UNSAFE_BUFFERS(selector + 1)) {
+    selectors.push_back(*selector);
+  }
+  return selectors;
+}
+
+void CSSSelectorList::AdoptSelectorVector(
+    base::span<CSSSelector> selector_vector,
+    CSSSelector* selector_array) {
+  // CSSSelector's move constructor is a memcpy() of the source followed by
+  // a memset() of it (see its definition), so moving a whole range is the
+  // same as one memcpy() and one memset(). Doing it that way is
+  // considerably faster than std::uninitialized_move() element by element
+  // through checked iterators, and this runs once per style rule.
+  const size_t num_bytes = selector_vector.size() * sizeof(CSSSelector);
+  // SAFETY: The caller guarantees that selector_array has room for
+  // selector_vector.size() elements.
+  UNSAFE_BUFFERS({
+    memcpy(static_cast<void*>(selector_array), selector_vector.data(),
+           num_bytes);
+    memset(static_cast<void*>(selector_vector.data()), 0, num_bytes);
+    selector_array[selector_vector.size() - 1].SetLastInSelectorList(true);
+  });
+}
+
+CSSSelectorList* CSSSelectorList::AdoptSelectorVector(
+    base::span<CSSSelector> selector_vector) {
+  if (selector_vector.empty()) {
+    return CSSSelectorList::Empty();
+  }
+
+  CSSSelectorList* list = MakeGarbageCollected<CSSSelectorList>(
+      AdditionalBytes(sizeof(CSSSelector) * (selector_vector.size() - 1)),
+      base::PassKey<CSSSelectorList>());
+  AdoptSelectorVector(selector_vector, list->first_selector_);
+  return list;
+}
+
+unsigned CSSSelectorList::ComputeLength() const {
+  if (IsInvalidWithoutUnparsed()) {
+    return 0;
+  }
+  const CSSSelector* current = FirstIncludingUnparsedInvalid();
+  while (!current->IsLastInSelectorList()) {
+    UNSAFE_BUFFERS(++current);
+  }
+  return SelectorIndex(*current) + 1;
+}
+
+unsigned CSSSelectorList::MaximumSpecificity() const {
+  unsigned specificity = 0;
+
+  for (const CSSSelector* s = First(); s; s = Next(*s)) {
+    specificity = std::max(specificity, s->Specificity());
+  }
+
+  return specificity;
+}
+
+bool CSSSelectorList::Renest(const CSSSelector* selector_list,
+                             StyleRule* new_parent,
+                             HeapVector<CSSSelector>& result) {
+  bool renested_any = false;
+  for (const CSSSelector* current = selector_list; current;
+       current = current->IsLastInSelectorList() ? nullptr
+                                                 : UNSAFE_BUFFERS(++current)) {
+    std::optional<CSSSelector> renested = current->Renest(new_parent);
+    renested_any |= renested.has_value();
+    result.push_back(renested.value_or(*current));
+  }
+  return renested_any;
+}
+
+CSSSelectorList* CSSSelectorList::Renest(StyleRule* new_parent) {
+  HeapVector<CSSSelector> selectors;
+  if (IsValid() && Renest(First(), new_parent, selectors)) {
+    return AdoptSelectorVector(selectors);
+  }
+  return this;
+}
+
+const CSSSelectorList* CSSSelectorList::Renest(StyleRule* new_parent) const {
+  HeapVector<CSSSelector> selectors;
+  if (IsValid() && Renest(First(), new_parent, selectors)) {
+    return AdoptSelectorVector(selectors);
+  }
+  return this;
+}
+
+String CSSSelectorList::SelectorsText(const CSSSelector* first) {
+  StringBuilder result;
+
+  for (const CSSSelector* s = first; s; s = NextIncludingUnparsedInvalid(*s)) {
+    if (s != first) {
+      result.Append(", ");
+    }
+    result.Append(s->SelectorText());
+  }
+
+  return result.ReleaseString();
+}
+
+void CSSSelectorList::Trace(Visitor* visitor) const {
+  if (IsInvalidWithoutUnparsed()) {
+    return;
+  }
+
+  for (int i = 0;; ++i) {
+    visitor->Trace(UNSAFE_BUFFERS(first_selector_[i]));
+    if (UNSAFE_BUFFERS(first_selector_[i].IsLastInSelectorList())) {
+      break;
+    }
+  }
+}
+
+}  // namespace blink

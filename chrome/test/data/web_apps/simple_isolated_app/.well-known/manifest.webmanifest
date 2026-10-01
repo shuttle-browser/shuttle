@@ -1,0 +1,26 @@
+{
+  "name": "Simple Isolated App",
+  "version": "1.0.0",
+  "id": "/",
+  "scope": "/",
+  "start_url": "/index.html",
+  "update_manifest_url": "https://otterly-awesome-iwa.com/update_manifest.json",
+  "permissions_policy": {
+    "clipboard-read": [ "*" ],
+    "clipboard-write": [ "*" ],
+    "controlled-frame": [ "*" ],
+    "cross-origin-isolated": [ "*" ],
+    "direct-sockets": [ "*" ],
+    "fullscreen": [ "*" ],
+    "usb": [ "*" ],
+    "web-printing": [ "*" ],
+    "window-management": [ "*" ]
+  },
+  "icons": [
+    {
+      "src": "/256x256-green.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    }
+  ]
+}

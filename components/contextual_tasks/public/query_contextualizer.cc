@@ -1,0 +1,812 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/contextual_tasks/public/query_contextualizer.h"
+
+#include "base/barrier_closure.h"
+#include "base/containers/flat_set.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
+#include "base/no_destructor.h"
+#include "base/strings/string_util.h"
+#include "base/task/sequenced_task_runner.h"
+#include "components/contextual_search/contextual_search_context_controller.h"
+#include "components/contextual_search/contextual_search_session_handle.h"
+#include "components/contextual_search/contextual_search_types.h"
+#include "components/contextual_tasks/public/context_decoration_params.h"
+#include "components/contextual_tasks/public/contextual_task_context.h"
+#include "components/contextual_tasks/public/contextual_tasks_service.h"
+#include "components/contextual_tasks/public/features.h"
+#include "components/contextual_tasks/public/utils.h"
+#include "components/lens/lens_features.h"
+#include "components/url_deduplication/url_deduplication_helper.h"
+#include "third_party/re2/src/re2/re2.h"
+#include "ui/gfx/skia_util.h"
+#include "url/gurl.h"
+
+namespace contextual_tasks {
+
+namespace {
+// The amount of change in bytes that is considered a significant change and
+// should trigger a page content update request. This provides tolerance in
+// case there is slight variation in the retrieved bytes in between calls.
+constexpr float kByteChangeTolerancePercent = 0.01;
+}  // namespace
+
+// Helper class to track the upload status of multiple contexts (tabs and URLs).
+// This class registers itself as an observer to the
+// ContextualSearchContextController to listen for upload status changes. When
+// all tracked uploads have reached a terminal state (e.g., successful or
+// failed), it executes the provided callback. By inheriting from
+// base::RefCounted, its lifetime is safely managed across asynchronous upload
+// tracking and multiple callbacks.
+class UploadTracker
+    : public base::RefCounted<UploadTracker>,
+      public contextual_search::ContextualSearchContextController::
+          ContextUploadStatusObserver {
+ public:
+  REQUIRE_ADOPTION_FOR_REFCOUNTED_TYPE();
+
+  explicit UploadTracker(
+      contextual_search::ContextualSearchContextController* controller)
+      : controller_(controller ? controller->AsWeakPtr() : nullptr) {
+    if (controller_) {
+      controller_->AddObserver(this);
+    }
+  }
+
+  void AddToken(base::UnguessableToken token) { pending_tokens_.insert(token); }
+
+  void NotifyUploadsStarted(
+      QueryContextualizer::ContextualizedCallback callback,
+      base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
+          session_handle,
+      QueryContextualizer::ContextualizedCallback on_uploads_started_callback =
+          base::NullCallback()) {
+    callback_ = std::move(callback);
+    session_handle_ = session_handle;
+    uploads_started_ = true;
+    if (!pending_tokens_.empty()) {
+      self_ref_ = base::WrapRefCounted(this);
+    }
+    if (on_uploads_started_callback) {
+      std::move(on_uploads_started_callback).Run(session_handle_);
+    }
+    CheckCompletion();
+  }
+
+  void OnContextUploadStatusChanged(
+      const base::UnguessableToken& context_token,
+      lens::MimeType mime_type,
+      contextual_search::ContextUploadStatus status,
+      const std::optional<contextual_search::ContextUploadErrorType>&
+          error_type) override {
+    if (contextual_search::IsTerminalContextStatus(status)) {
+      pending_tokens_.erase(context_token);
+      CheckCompletion();
+    }
+  }
+
+  void OnControllerDestroyed() override {
+    controller_ = nullptr;
+    // Treat pending uploads as cancelled and finalize the process.
+    pending_tokens_.clear();
+    CheckCompletion();
+  }
+
+ private:
+  friend class base::RefCounted<UploadTracker>;
+
+  ~UploadTracker() override {
+    if (controller_) {
+      controller_->RemoveObserver(this);
+    }
+  }
+
+  void CheckCompletion() {
+    if (uploads_started_ && pending_tokens_.empty()) {
+      if (controller_) {
+        controller_->RemoveObserver(this);
+        controller_ = nullptr;
+      }
+
+      // Delay destruction of `this` until after the current task (e.g. observer
+      // notification loop) completes, to prevent crashes in production. We do
+      // this by posting a task that captures a reference to `UploadTracker`.
+      base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE, base::DoNothingWithBoundArgs(base::WrapRefCounted(this)));
+
+      if (callback_) {
+        std::move(callback_).Run(session_handle_);
+      }
+      self_ref_.reset();
+    }
+  }
+
+  base::WeakPtr<contextual_search::ContextualSearchContextController>
+      controller_;
+  QueryContextualizer::ContextualizedCallback callback_;
+  base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
+      session_handle_;
+  std::set<base::UnguessableToken> pending_tokens_;
+  bool uploads_started_ = false;
+  scoped_refptr<UploadTracker> self_ref_;
+};
+
+ThreadTurn::ThreadTurn() = default;
+ThreadTurn::~ThreadTurn() = default;
+ThreadTurn::ThreadTurn(const ThreadTurn&) = default;
+ThreadTurn& ThreadTurn::operator=(const ThreadTurn&) = default;
+
+ConversationThread::ConversationThread() = default;
+ConversationThread::~ConversationThread() = default;
+ConversationThread::ConversationThread(const ConversationThread&) = default;
+ConversationThread& ConversationThread::operator=(const ConversationThread&) =
+    default;
+
+QueryContextualizer::ContextualizeParams::ContextualizeParams()
+    : on_ineligible_callback(base::DoNothing()),
+      on_processed_callback(base::DoNothing()) {}
+QueryContextualizer::ContextualizeParams::~ContextualizeParams() = default;
+QueryContextualizer::ContextualizeParams::ContextualizeParams(
+    ContextualizeParams&&) = default;
+QueryContextualizer::ContextualizeParams&
+QueryContextualizer::ContextualizeParams::operator=(ContextualizeParams&&) =
+    default;
+
+QueryContextualizer::QueryContextualizer(ContextualTasksService* service,
+                                         Delegate* delegate)
+    : service_(service), delegate_(delegate) {
+  DCHECK(delegate_);
+}
+
+QueryContextualizer::~QueryContextualizer() = default;
+
+// static
+std::vector<std::string> QueryContextualizer::ExtractUrlsFromQuery(
+    const std::string& query_text) {
+  re2::StringPiece input(query_text);
+  std::string url_str;
+  // Regex to extract URLs.
+  // Matches http://, https://, ftp://, or www. followed by valid URL
+  // characters. Explicitly lists allowed characters instead of using ranges
+  // like #-; for readability. Allowed characters: alphanumeric, -, ., ~, :,
+  // /, ?, #, [, ], @, !, $, &, ', (, ), *, +, ,, ;, =, %
+  static const base::NoDestructor<re2::RE2> url_regex(
+      R"((?i)((?:(?:https?|ftp)://|www\.)[\w#$&%'()*+,\-./:;!=?@\[\]_`{|}~]+))");
+
+  // Use a GURL set to deduplicate URLs, but keep the URLs stored as strings to
+  // prevent them from being modified by URL canonicalization.
+  std::vector<std::string> extracted_urls;
+  base::flat_set<GURL> seen_urls;
+
+  while (RE2::FindAndConsume(&input, *url_regex, &url_str)) {
+    std::string original_match = url_str;
+
+    auto make_full_url = [](const std::string& str) {
+      if (base::StartsWith(str, "www.", base::CompareCase::INSENSITIVE_ASCII)) {
+        return "http://" + str;
+      }
+      return str;
+    };
+
+    auto is_gurl_valid_and_has_clean_host = [](const GURL& g) {
+      if (!g.is_valid()) {
+        return false;
+      }
+      std::string_view host = g.host();
+      // DNS hostnames must not contain these punctuation marks, which are
+      // commonly sentence/list separators.
+      const char kInvalidHostChars[] = ",;:?!";
+      if (host.find_first_of(kInvalidHostChars) != std::string_view::npos) {
+        return false;
+      }
+      // A trailing dot in hostname (absolute DNS root) is technically valid
+      // but in query text it is almost always a sentence period.
+      if (!host.empty() && host.back() == '.') {
+        return false;
+      }
+      return true;
+    };
+
+    std::optional<std::string> best_url;
+
+    // 1. Check the original match
+    std::string full_url = make_full_url(original_match);
+    GURL gurl(full_url);
+    if (is_gurl_valid_and_has_clean_host(gurl)) {
+      best_url = full_url;
+    } else {
+      // 2. If original is not valid, try trimming
+      const char kTrimChars[] = ",.;:?!";
+      std::string trimmed_match = original_match;
+      size_t last_good_pos = trimmed_match.find_last_not_of(kTrimChars);
+
+      if (last_good_pos != std::string::npos) {
+        trimmed_match.resize(last_good_pos + 1);
+
+        if (trimmed_match != original_match) {
+          std::string full_trimmed_url = make_full_url(trimmed_match);
+          GURL trimmed_gurl(full_trimmed_url);
+          if (is_gurl_valid_and_has_clean_host(trimmed_gurl)) {
+            best_url = full_trimmed_url;
+          }
+        }
+      }
+    }
+
+    if (best_url) {
+      GURL final_gurl(*best_url);
+      if (seen_urls.insert(final_gurl).second) {
+        extracted_urls.push_back(*best_url);
+      }
+    }
+  }
+  return extracted_urls;
+}
+
+void QueryContextualizer::Contextualize(ContextualizeParams params) {
+  DCHECK(!params.complete_callback.is_null() ||
+         !params.on_uploads_started_callback.is_null());
+  auto context_decoration_params = std::make_unique<ContextDecorationParams>();
+  base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
+      session_handle;
+
+  // If there are tabs to contextualize, or a task id is provided, get or create
+  // the session handle.
+  if (params.task_id.has_value() || !params.tabs_to_recontextualize.empty() ||
+      !params.auto_suggested_chip_tabs.empty() ||
+      !params.tabs_for_contextual_searchbox_first_turn.empty() ||
+      params.enable_smart_tab_selection) {
+    auto* handle = delegate_->GetOrCreateSessionHandleForQueryContextualizer();
+    if (handle) {
+      session_handle = handle->AsWeakPtr();
+      context_decoration_params->contextual_search_session_handle =
+          session_handle;
+    }
+  }
+
+  // TODO(crbug.com/502639860): Actually using this in
+  // contextual_searchbox_handler, setting enable_smart_tab_selection to true,
+  // and removing legacy logic will happen in a followup CL.
+  if (params.enable_smart_tab_selection) {
+    std::vector<GURL> attached_context_urls;
+    if (session_handle && session_handle->GetController()) {
+      const auto& file_info_list =
+          session_handle->GetController()->GetFileInfoList();
+      for (const auto& file_info : file_info_list) {
+        if (file_info->tab_url.has_value() && !file_info->is_superceded) {
+          attached_context_urls.push_back(file_info->tab_url.value());
+        }
+      }
+    }
+    for (TabId id : params.tabs_to_recontextualize) {
+      attached_context_urls.push_back(delegate_->GetTabUrl(id));
+    }
+    for (TabId id : params.auto_suggested_chip_tabs) {
+      attached_context_urls.push_back(delegate_->GetTabUrl(id));
+    }
+    for (TabId id : params.tabs_for_contextual_searchbox_first_turn) {
+      attached_context_urls.push_back(delegate_->GetTabUrl(id));
+    }
+
+    std::string query_text = params.query_text;
+    delegate_->GetRelevantTabsForQuery(
+        query_text, attached_context_urls,
+        base::BindOnce(&QueryContextualizer::OnRelevantTabsFetched,
+                       weak_factory_.GetWeakPtr(), std::move(params),
+                       session_handle));
+    return;
+  }
+
+  if (!params.task_id.has_value() || !service_) {
+    OnContextRetrieved(std::move(params),
+                       /*smart_tabs_to_contextualize=*/{}, session_handle,
+                       /*context=*/nullptr);
+    return;
+  }
+
+  auto task_id = params.task_id.value();
+  service_->GetContextForTask(
+      task_id, {ContextualTaskContextSource::kSubmittedContextDecorator},
+      std::move(context_decoration_params),
+      base::BindOnce(&QueryContextualizer::OnContextRetrieved,
+                     weak_factory_.GetWeakPtr(), std::move(params),
+                     /*smart_tabs_to_contextualize=*/std::vector<TabId>(),
+                     session_handle));
+}
+
+void QueryContextualizer::OnRelevantTabsFetched(
+    ContextualizeParams params,
+    base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
+        session_handle,
+    std::vector<TabId> smart_tabs) {
+  auto context_decoration_params = std::make_unique<ContextDecorationParams>();
+  if (session_handle) {
+    context_decoration_params->contextual_search_session_handle =
+        session_handle;
+  }
+
+  if (!params.task_id.has_value() || !service_) {
+    OnContextRetrieved(std::move(params), smart_tabs, session_handle,
+                       /*context=*/nullptr);
+    return;
+  }
+
+  auto task_id = params.task_id.value();
+  service_->GetContextForTask(
+      task_id, {ContextualTaskContextSource::kSubmittedContextDecorator},
+      std::move(context_decoration_params),
+      base::BindOnce(&QueryContextualizer::OnContextRetrieved,
+                     weak_factory_.GetWeakPtr(), std::move(params), smart_tabs,
+                     session_handle));
+}
+
+void QueryContextualizer::OnContextRetrieved(
+    ContextualizeParams params,
+    const std::vector<TabId>& smart_tabs_to_contextualize,
+    base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
+        session_handle,
+    std::unique_ptr<ContextualTaskContext> context) {
+  // Fail early if the task id was specified but there was no context for the
+  // task. This indicates that the task was not available (i.e. was deleted)
+  // and no further action is needed.
+  if (params.task_id.has_value() && !context) {
+    if (params.on_uploads_started_callback) {
+      std::move(params.on_uploads_started_callback).Run(session_handle);
+    }
+    if (params.complete_callback) {
+      std::move(params.complete_callback).Run(session_handle);
+    }
+    return;
+  }
+
+  // If the session handle already exists, track uploads on its query
+  // controller.
+  scoped_refptr<UploadTracker> upload_tracker;
+  if (session_handle && session_handle->GetController()) {
+    upload_tracker =
+        base::MakeRefCounted<UploadTracker>(session_handle->GetController());
+  }
+
+  // Extract URLs from the query text and start upload flows for them.
+  if (lens::features::IsLensSendUrlsInComposeboxesEnabled()) {
+    std::vector<std::string> extracted_urls =
+        ExtractUrlsFromQuery(params.query_text);
+
+    // Create the session handle if it did not already exist and there are URLs
+    // to upload.
+    if (!extracted_urls.empty() && !session_handle) {
+      auto* created_handle =
+          delegate_->GetOrCreateSessionHandleForQueryContextualizer();
+      if (created_handle) {
+        session_handle = created_handle->AsWeakPtr();
+        if (session_handle->GetController()) {
+          upload_tracker = base::MakeRefCounted<UploadTracker>(
+              session_handle->GetController());
+        }
+        created_handle->NotifySessionStarted();
+      }
+    }
+
+    if (session_handle) {
+      for (const std::string& url : extracted_urls) {
+        auto context_token = session_handle->CreateContextToken();
+        if (upload_tracker) {
+          upload_tracker->AddToken(context_token);
+        }
+        session_handle->StartUrlContextUploadFlow(context_token, url);
+      }
+    }
+  }
+
+  std::vector<TabUpdate> tabs_to_update =
+      GetTabsToUpdate(context.get(), params.tabs_to_recontextualize,
+                      params.auto_suggested_chip_tabs,
+                      params.tabs_for_contextual_searchbox_first_turn,
+                      smart_tabs_to_contextualize);
+
+  if (tabs_to_update.empty()) {
+    if (params.on_uploads_started_callback) {
+      std::move(params.on_uploads_started_callback).Run(session_handle);
+    }
+    if (upload_tracker) {
+      upload_tracker->NotifyUploadsStarted(std::move(params.complete_callback),
+                                           session_handle);
+    } else if (params.complete_callback) {
+      std::move(params.complete_callback).Run(session_handle);
+    }
+    return;
+  }
+
+  base::OnceClosure on_all_tabs_fetched;
+  if (upload_tracker) {
+    on_all_tabs_fetched =
+        base::BindOnce(&UploadTracker::NotifyUploadsStarted, upload_tracker,
+                       std::move(params.complete_callback), session_handle,
+                       std::move(params.on_uploads_started_callback));
+  } else {
+    on_all_tabs_fetched = base::BindOnce(
+        [](QueryContextualizer::ContextualizedCallback on_started,
+           QueryContextualizer::ContextualizedCallback on_complete,
+           base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
+               handle) {
+          if (on_started) {
+            std::move(on_started).Run(handle);
+          }
+          if (on_complete) {
+            std::move(on_complete).Run(handle);
+          }
+        },
+        std::move(params.on_uploads_started_callback),
+        std::move(params.complete_callback), session_handle);
+  }
+
+  base::RepeatingClosure barrier_closure = base::BarrierClosure(
+      tabs_to_update.size(), std::move(on_all_tabs_fetched));
+
+  for (const TabUpdate& update : tabs_to_update) {
+    delegate_->GetPageContext(
+        update.id,
+        base::BindOnce(
+            &QueryContextualizer::OnTabContextualizationFetched,
+            weak_factory_.GetWeakPtr(), params.task_id,
+            context ? std::make_unique<ContextualTaskContext>(*context)
+                    : nullptr,
+            barrier_closure, update, session_handle, upload_tracker,
+            params.on_ineligible_callback, params.on_processed_callback));
+  }
+}
+
+void QueryContextualizer::FinishTabProcessing(
+    const TabProcessedCallback& on_processed_callback,
+    TabId tab_id,
+    base::RepeatingClosure barrier_closure) {
+  if (on_processed_callback) {
+    on_processed_callback.Run(tab_id);
+  }
+  barrier_closure.Run();
+}
+
+void QueryContextualizer::OnTabContextualizationFetched(
+    const std::optional<base::Uuid>& task_id,
+    std::unique_ptr<ContextualTaskContext> context,
+    base::RepeatingClosure barrier_closure,
+    TabUpdate tab_update,
+    base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
+        session_handle,
+    scoped_refptr<UploadTracker> upload_tracker,
+    PageContextIneligibleCallback on_ineligible_callback,
+    TabProcessedCallback on_processed_callback,
+    std::unique_ptr<lens::ContextualInputData> page_content_data) {
+  if (!page_content_data) {
+    FinishTabProcessing(on_processed_callback, tab_update.id, barrier_closure);
+    return;
+  }
+
+  page_content_data->is_implicit_upload =
+      tab_update.is_recontextualization || tab_update.is_auto_suggested ||
+      tab_update.is_contextual_searchbox_first_turn;
+  page_content_data->was_smart_tab_selection = tab_update.is_smart_selection;
+
+  if (tab_update.is_auto_suggested) {
+    page_content_data->upload_type =
+        lens::LensOverlayContextualInputUploadType::
+            CONTEXTUAL_INPUT_UPLOAD_TYPE_AUTO_TAB_CHIP;
+  } else if (tab_update.is_smart_selection) {
+    page_content_data->upload_type =
+        lens::LensOverlayContextualInputUploadType::
+            CONTEXTUAL_INPUT_UPLOAD_TYPE_SMART_TAB_SELECTION;
+  } else if (tab_update.is_recontextualization) {
+    page_content_data->upload_type =
+        lens::LensOverlayContextualInputUploadType::
+            CONTEXTUAL_INPUT_UPLOAD_TYPE_RECONTEXTUALIZATION;
+  } else if (tab_update.is_contextual_searchbox_first_turn) {
+    page_content_data->upload_type =
+        lens::LensOverlayContextualInputUploadType::
+            CONTEXTUAL_INPUT_UPLOAD_TYPE_CONTEXTUAL_SEARCHBOX_INITIAL_QUERY;
+  }
+
+  if (GetIsProtectedPageErrorEnabled() &&
+      !page_content_data->is_page_context_eligible.value_or(false)) {
+    if (on_ineligible_callback) {
+      on_ineligible_callback.Run();
+    }
+    FinishTabProcessing(on_processed_callback, tab_update.id, barrier_closure);
+    return;
+  }
+
+  std::optional<int64_t> maybe_context_id = std::nullopt;
+  if (context && page_content_data->tab_session_id.has_value()) {
+    maybe_context_id =
+        GetContextIdForTab(*context, *page_content_data, session_handle);
+  }
+
+  if (CheckIfContextChangedAndPrepareUploadData(
+          maybe_context_id, *page_content_data, session_handle)) {
+    FinishTabProcessing(on_processed_callback, tab_update.id, barrier_closure);
+    return;
+  }
+
+  if (!session_handle) {
+    FinishTabProcessing(on_processed_callback, tab_update.id, barrier_closure);
+    return;
+  }
+
+  if (!delegate_->IsTabValid(tab_update.id)) {
+    FinishTabProcessing(on_processed_callback, tab_update.id, barrier_closure);
+    return;
+  }
+
+  auto context_token = session_handle->CreateContextToken();
+  if (maybe_context_id.has_value()) {
+    page_content_data->context_id = maybe_context_id.value();
+  }
+  if (upload_tracker) {
+    upload_tracker->AddToken(context_token);
+  }
+  session_handle->StartTabContextUploadFlow(
+      context_token, std::move(page_content_data),
+      delegate_->GetTabViewportEncodingOptionsForQueryContextualizer());
+
+  FinishTabProcessing(on_processed_callback, tab_update.id, barrier_closure);
+}
+
+std::vector<QueryContextualizer::TabUpdate>
+QueryContextualizer::GetTabsToUpdate(
+    const ContextualTaskContext* context,
+    const std::vector<TabId>& tabs_to_recontextualize,
+    const std::vector<TabId>& auto_suggested_chip_tabs,
+    const std::vector<TabId>& tabs_for_contextual_searchbox_first_turn,
+    const std::vector<TabId>& smart_tabs_to_contextualize) {
+  std::vector<TabUpdate> tabs_to_update;
+  std::set<TabId> added_tabs;
+
+  for (TabId id : auto_suggested_chip_tabs) {
+    if (!added_tabs.contains(id)) {
+      tabs_to_update.push_back({id, /*is_recontextualization=*/false,
+                                /*is_smart_selection=*/false,
+                                /*is_auto_suggested=*/true,
+                                /*is_contextual_searchbox_first_turn=*/false});
+      added_tabs.insert(id);
+    }
+  }
+
+  for (TabId id : tabs_for_contextual_searchbox_first_turn) {
+    if (!added_tabs.contains(id)) {
+      tabs_to_update.push_back({id, /*is_recontextualization=*/false,
+                                /*is_smart_selection=*/false,
+                                /*is_auto_suggested=*/false,
+                                /*is_contextual_searchbox_first_turn=*/true});
+      added_tabs.insert(id);
+    }
+  }
+
+  if (context) {
+    for (TabId id : tabs_to_recontextualize) {
+      if (added_tabs.contains(id)) {
+        continue;
+      }
+
+      GURL url = delegate_->GetTabUrl(id);
+      SessionID session_id = delegate_->GetTabSessionId(id);
+
+      if (GetMatchingAttachment(*context, url, session_id)) {
+        tabs_to_update.push_back(
+            {id, /*is_recontextualization=*/true,
+             /*is_smart_selection=*/false,
+             /*is_auto_suggested=*/false,
+             /*is_contextual_searchbox_first_turn=*/false});
+        added_tabs.insert(id);
+      }
+    }
+  }
+
+  for (TabId id : smart_tabs_to_contextualize) {
+    if (!added_tabs.contains(id)) {
+      tabs_to_update.push_back({id, /*is_recontextualization=*/false,
+                                /*is_smart_selection=*/true,
+                                /*is_auto_suggested=*/false,
+                                /*is_contextual_searchbox_first_turn=*/false});
+      added_tabs.insert(id);
+    }
+  }
+
+  return tabs_to_update;
+}
+
+std::optional<int64_t> QueryContextualizer::GetContextIdForTab(
+    const ContextualTaskContext& context,
+    const lens::ContextualInputData& page_content_data,
+    base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
+        session_handle) {
+  if (!page_content_data.tab_session_id.has_value()) {
+    return std::nullopt;
+  }
+  SessionID tab_session_id = page_content_data.tab_session_id.value();
+
+  if (!page_content_data.page_url.has_value()) {
+    return std::nullopt;
+  }
+
+  if (GetMatchingAttachment(context, page_content_data.page_url.value(),
+                            tab_session_id)) {
+    auto* search_context_controller =
+        session_handle ? session_handle->GetController() : nullptr;
+    if (search_context_controller) {
+      const auto& file_info_list = search_context_controller->GetFileInfoList();
+      for (const auto& file_info : file_info_list) {
+        if (file_info->tab_session_id == tab_session_id &&
+            !file_info->is_superceded) {
+          return file_info->GetContextId();
+        }
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+bool QueryContextualizer::CheckIfContextChangedAndPrepareUploadData(
+    std::optional<int64_t> context_id,
+    lens::ContextualInputData& page_content_data,
+    base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
+        session_handle) {
+  if (!context_id.has_value()) {
+    return false;
+  }
+
+  if (!page_content_data.tab_session_id.has_value()) {
+    return false;
+  }
+  SessionID tab_session_id = page_content_data.tab_session_id.value();
+
+  auto* search_context_controller =
+      session_handle ? session_handle->GetController() : nullptr;
+  if (!search_context_controller) {
+    return false;
+  }
+
+  const auto& file_info_list = search_context_controller->GetFileInfoList();
+  const contextual_search::FileInfo* matching_file_info = nullptr;
+  for (const auto& file_info : file_info_list) {
+    if (file_info->tab_session_id == tab_session_id &&
+        !file_info->is_superceded) {
+      matching_file_info = file_info;
+      break;
+    }
+  }
+
+  if (!matching_file_info) {
+    return false;
+  }
+
+  if (matching_file_info->upload_status ==
+      contextual_search::ContextUploadStatus::kUploadExpired) {
+    return false;
+  }
+
+  if (!matching_file_info->input_data) {
+    return false;
+  }
+
+  const auto& old_data = *matching_file_info->input_data;
+  const auto& new_data = page_content_data;
+
+  bool page_content_changed = false;
+  bool viewport_changed = false;
+
+  if (old_data.primary_content_type != new_data.primary_content_type) {
+    page_content_changed = true;
+  } else if (new_data.primary_content_type.has_value()) {
+    const std::vector<lens::ContextualInput>& old_inputs =
+        old_data.context_input.has_value()
+            ? *old_data.context_input
+            : std::vector<lens::ContextualInput>();
+    const std::vector<lens::ContextualInput>& new_inputs =
+        new_data.context_input.has_value()
+            ? *new_data.context_input
+            : std::vector<lens::ContextualInput>();
+    auto old_it = std::ranges::find_if(old_inputs, [&](const auto& input) {
+      return input.content_type_ == new_data.primary_content_type.value();
+    });
+    auto new_it = std::ranges::find_if(new_inputs, [&](const auto& input) {
+      return input.content_type_ == new_data.primary_content_type.value();
+    });
+
+    if (old_it != old_inputs.end() && new_it != new_inputs.end()) {
+      const float old_size = old_it->bytes_.size();
+      const float new_size = new_it->bytes_.size();
+      if (old_size > 0) {
+        const float percent_changed = abs((new_size - old_size) / old_size);
+        if (percent_changed >= kByteChangeTolerancePercent) {
+          page_content_changed = true;
+        }
+      } else if (new_size > 0) {
+        page_content_changed = true;
+      }
+    } else if (old_it != old_inputs.end() || new_it != new_inputs.end()) {
+      page_content_changed = true;
+    }
+  }
+
+  // Check if viewport screenshot changed.
+  // TODO(crbug.com/471960792): Add support for only recontextualizing the
+  // screenshot when the viewport has changed but the page contents are the
+  // same.
+
+  // The screenshot may be in either the byte array or bitmap members of
+  // ContextualInputData. Both should be checked for changes.
+  bool old_has_screenshot = old_data.viewport_screenshot_bytes.has_value() &&
+                            !old_data.viewport_screenshot_bytes->empty();
+  bool new_has_screenshot = new_data.viewport_screenshot_bytes.has_value() &&
+                            !new_data.viewport_screenshot_bytes->empty();
+
+  if (old_has_screenshot != new_has_screenshot) {
+    viewport_changed = true;
+  } else if (old_has_screenshot) {
+    const auto& old_bytes = old_data.viewport_screenshot_bytes.value();
+    const auto& new_bytes = new_data.viewport_screenshot_bytes.value();
+    if (old_bytes.size() != new_bytes.size()) {
+      viewport_changed = true;
+    } else if (old_bytes != new_bytes) {
+      // Exact byte comparison for screenshot.
+      viewport_changed = true;
+    }
+  }
+
+  bool old_has_bitmap = old_data.viewport_screenshot.has_value();
+  bool new_has_bitmap = new_data.viewport_screenshot.has_value();
+
+  if (old_has_bitmap != new_has_bitmap) {
+    viewport_changed = true;
+  } else if (old_has_bitmap) {
+    const auto& old_bitmap = old_data.viewport_screenshot.value();
+    const auto& new_bitmap = new_data.viewport_screenshot.value();
+    if (!new_bitmap.drawsNothing() &&
+        (old_bitmap.drawsNothing() ||
+         !gfx::BitmapsAreEqual(old_bitmap, new_bitmap))) {
+      viewport_changed = true;
+    }
+  }
+
+  if (new_data.primary_content_type == lens::MimeType::kPdf) {
+    page_content_changed = false;
+  }
+
+  bool context_changed = viewport_changed;
+  if (GetIsWebpageApcComparisonEnabled() &&
+      new_data.primary_content_type != lens::MimeType::kPdf) {
+    context_changed |= page_content_changed;
+  }
+
+  if (!context_changed) {
+    return true;
+  }
+
+  if (!page_content_changed) {
+    page_content_data.context_input = std::nullopt;
+  }
+
+  return false;
+}
+
+const UrlAttachment* QueryContextualizer::GetMatchingAttachment(
+    const ContextualTaskContext& context,
+    const GURL& url,
+    SessionID session_id) {
+  std::unique_ptr<url_deduplication::URLDeduplicationHelper>
+      url_duplication_helper = CreateURLDeduplicationHelperForContextualTask();
+  std::vector<const UrlAttachment*> matching_attachments =
+      context.GetMatchingUrlAttachments(url, url_duplication_helper.get());
+
+  for (const auto* attachment : matching_attachments) {
+    if (attachment->GetTabSessionId() == session_id) {
+      return attachment;
+    }
+  }
+  return nullptr;
+}
+
+}  // namespace contextual_tasks

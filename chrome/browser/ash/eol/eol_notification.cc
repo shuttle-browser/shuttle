@@ -1,0 +1,241 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ash/eol/eol_notification.h"
+
+#include "ash/constants/ash_features.h"
+#include "ash/constants/ash_pref_names.h"
+#include "ash/constants/ash_switches.h"
+#include "ash/constants/notifier_catalogs.h"
+#include "ash/constants/url_constants.h"
+#include "ash/public/cpp/new_window_delegate.h"
+#include "ash/public/cpp/resources/grit/ash_public_unscaled_resources.h"
+#include "ash/public/cpp/style/dark_light_mode_controller.h"
+#include "ash/public/cpp/system_notification_builder.h"
+#include "ash/resources/vector_icons/vector_icons.h"
+#include "ash/style/dark_light_mode_controller_impl.h"
+#include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/i18n/time_formatting.h"
+#include "base/time/default_clock.h"
+#include "base/time/time.h"
+#include "chrome/app/vector_icons/vector_icons.h"
+#include "chrome/browser/ash/extended_updates/extended_updates_controller.h"
+#include "chrome/browser/ui/ash/system/system_tray_client_impl.h"
+#include "chrome/grit/generated_resources.h"
+#include "chromeos/ash/components/browser_context_helper/browser_context_helper.h"
+#include "chromeos/ash/components/dbus/update_engine/update_engine_client.h"
+#include "chromeos/ash/components/install_attributes/install_attributes.h"
+#include "components/prefs/pref_service.h"
+#include "components/strings/grit/components_strings.h"
+#include "components/user_manager/user.h"
+#include "components/vector_icons/vector_icons.h"
+#include "content/public/browser/browser_context.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/base/resource/resource_bundle.h"
+#include "ui/base/ui_base_features.h"
+#include "ui/chromeos/devicetype_utils.h"
+#include "ui/gfx/color_palette.h"
+#include "ui/gfx/image/image.h"
+#include "ui/gfx/image/image_skia_operations.h"
+#include "ui/gfx/paint_vector_icon.h"
+#include "ui/message_center/message_center.h"
+
+namespace ash {
+namespace {
+
+using ::l10n_util::GetStringUTF16;
+
+const char kEolNotificationId[] = "chrome://product_eol";
+
+constexpr int kSecondWarningDaysInAdvance = 90;
+
+base::Time SecondWarningDate(const base::Time& eol_date) {
+  return eol_date - base::Days(kSecondWarningDaysInAdvance);
+}
+
+}  // namespace
+
+// static
+bool EolNotification::ShouldShowEolNotification() {
+  // Do not show end of life notification if this device is managed by
+  // enterprise user.
+  if (InstallAttributes::Get()->IsEnterpriseManaged()) {
+    return false;
+  }
+
+  return true;
+}
+
+EolNotification::EolNotification(user_manager::User* user)
+    : clock_(base::DefaultClock::GetInstance()), user_(user) {
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kEolResetDismissedPrefs)) {
+    ResetDismissedPrefs();
+  }
+}
+
+EolNotification::~EolNotification() = default;
+
+void EolNotification::CheckEolInfo() {
+  // Request the Eol Info.
+  UpdateEngineClient::Get()->GetEolInfo(base::BindOnce(
+      &EolNotification::OnEolInfo, weak_ptr_factory_.GetWeakPtr()));
+}
+
+void EolNotification::OnEolInfo(UpdateEngineClient::EolInfo eol_info) {
+  MaybeShowEolNotification(eol_info.eol_date);
+
+  auto* context = BrowserContextHelper::Get()->GetBrowserContextByUser(user_);
+  ExtendedUpdatesController::Get()->OnEolInfo(context, eol_info);
+}
+
+void EolNotification::MaybeShowEolNotification(base::Time eol_date) {
+  // Do not show warning Eol notification if invalid |eol_date|.
+  if (eol_date.is_null()) {
+    return;
+  }
+
+  const base::Time now = clock_->Now();
+  auto* prefs = user_->GetProfilePrefs();
+  const base::Time prev_eol_date = prefs->GetTime(ash::prefs::kEndOfLifeDate);
+
+  prefs->SetTime(ash::prefs::kEndOfLifeDate, eol_date);
+
+  if (!now.is_null() && eol_date != prev_eol_date && now < eol_date) {
+    // Reset showed warning prefs if the Eol date changed.
+    ResetDismissedPrefs();
+  }
+
+  if (eol_date <= now) {
+    dismiss_pref_ = ash::prefs::kEolNotificationDismissed;
+  } else if (SecondWarningDate(eol_date) <= now) {
+    dismiss_pref_ = ash::prefs::kSecondEolWarningDismissed;
+  } else {
+    dismiss_pref_ = std::nullopt;
+    return;
+  }
+
+  // Do not show if notification has already been dismissed or is out of range.
+  if (!dismiss_pref_ || prefs->GetBoolean(*dismiss_pref_)) {
+    return;
+  }
+
+  CreateNotification(eol_date, now);
+}
+
+void EolNotification::CreateNotification(base::Time eol_date, base::Time now) {
+  CHECK(!eol_date.is_null());
+  CHECK(!now.is_null());
+
+  message_center::RichNotificationData data;
+  ash::SystemNotificationBuilder notification_builder;
+
+  DCHECK_EQ(BUTTON_MORE_INFO, data.buttons.size());
+  data.buttons.emplace_back(GetStringUTF16(IDS_LEARN_MORE));
+
+  NotificationCatalogName catalog_name = NotificationCatalogName::kNone;
+
+  if (now < eol_date) {
+    // Notifies user that updates will stop occurring at a month and year.
+    notification_builder
+        .SetTitleWithArgs(IDS_PENDING_EOL_NOTIFICATION_TITLE,
+                          {TimeFormatMonthAndYearForTimeZone(
+                              eol_date, icu::TimeZone::getGMT())})
+        .SetMessageWithArgs(IDS_PENDING_EOL_NOTIFICATION_MESSAGE,
+                            {ui::GetChromeOSDeviceName()})
+        .SetSmallImage(::features::IsRoundedIconsEnabled()
+                           ? vector_icons::kDomainIcon
+                           : vector_icons::kBusinessOldIcon);
+    catalog_name = NotificationCatalogName::kPendingEOL;
+  } else {
+    DCHECK_EQ(BUTTON_DISMISS, data.buttons.size());
+    data.buttons.emplace_back(GetStringUTF16(IDS_EOL_DISMISS_BUTTON));
+
+    // Notifies user that updates will no longer occur after this final update.
+    notification_builder.SetTitleId(IDS_EOL_NOTIFICATION_TITLE)
+        .SetMessageWithArgs(IDS_EOL_NOTIFICATION_EOL,
+                            {ui::GetChromeOSDeviceName()})
+        .SetSmallImage(ash::kNotificationEndOfSupportIcon);
+    catalog_name = NotificationCatalogName::kEOL;
+  }
+
+  message_center::NotifierId notifier_id(
+      message_center::NotifierType::SYSTEM_COMPONENT, kEolNotificationId,
+      catalog_name);
+  notifier_id.profile_id = user_->GetAccountId().GetUserEmail();
+
+  message_center::MessageCenter::Get()->AddNotification(
+      notification_builder.SetId(kEolNotificationId)
+          .SetOriginUrl(GURL(kEolNotificationId))
+          .SetNotifierId(notifier_id)
+          .SetOptionalFields(data)
+          .SetDelegate(
+              base::MakeRefCounted<message_center::ThunkNotificationDelegate>(
+                  weak_ptr_factory_.GetWeakPtr()))
+          .BuildPtr(false));
+}
+
+void EolNotification::Close(bool by_user) {
+  // Only the final Eol notification has an explicit dismiss button, and
+  // is only dismissible by that button.  The first and second warning
+  // buttons do not have an explicit dismiss button.
+  if (!by_user || !dismiss_pref_ ||
+      dismiss_pref_ == ash::prefs::kEolNotificationDismissed) {
+    return;
+  }
+  user_->GetProfilePrefs()->SetBoolean(*dismiss_pref_, true);
+}
+
+void EolNotification::Click(const std::optional<int>& button_index,
+                            const std::optional<std::u16string>& reply) {
+  if (!button_index) {
+    return;
+  }
+
+    switch (*button_index) {
+      case BUTTON_MORE_INFO: {
+        const GURL url(dismiss_pref_ == ash::prefs::kEolNotificationDismissed
+                           ? ash::external_urls::kEolNotificationURL
+                           : ash::external_urls::kAutoUpdatePolicyURL);
+        // Show eol link.
+        NewWindowDelegate::GetInstance()->OpenUrl(
+            url, NewWindowDelegate::OpenUrlFrom::kUserInteraction,
+            NewWindowDelegate::Disposition::kNewForegroundTab);
+        break;
+      }
+      case BUTTON_DISMISS:
+        CHECK(dismiss_pref_);
+        // Set dismiss pref.
+        user_->GetProfilePrefs()->SetBoolean(*dismiss_pref_, true);
+        break;
+  }
+
+  if (dismiss_pref_ &&
+      (*dismiss_pref_ != ash::prefs::kEolNotificationDismissed)) {
+    user_->GetProfilePrefs()->SetBoolean(*dismiss_pref_, true);
+  }
+
+  // Pass `by_user=false` to avoid triggering the Close() callback, since the
+  // user's interaction has already been handled above.
+  message_center::MessageCenter::Get()->RemoveNotification(kEolNotificationId,
+                                                           /*by_user=*/false);
+}
+
+void EolNotification::OverrideClockForTesting(base::Clock* clock) {
+  if (!clock) {
+    clock_ = base::DefaultClock::GetInstance();
+  } else {
+    clock_ = clock;
+  }
+}
+
+void EolNotification::ResetDismissedPrefs() {
+  auto* prefs = user_->GetProfilePrefs();
+  prefs->SetBoolean(ash::prefs::kFirstEolWarningDismissed, false);
+  prefs->SetBoolean(ash::prefs::kSecondEolWarningDismissed, false);
+  prefs->SetBoolean(ash::prefs::kEolNotificationDismissed, false);
+}
+
+}  // namespace ash

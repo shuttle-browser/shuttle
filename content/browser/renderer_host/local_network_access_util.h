@@ -1,0 +1,102 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+//
+#ifndef CONTENT_BROWSER_RENDERER_HOST_LOCAL_NETWORK_ACCESS_UTIL_H_
+#define CONTENT_BROWSER_RENDERER_HOST_LOCAL_NETWORK_ACCESS_UTIL_H_
+
+#include "content/common/content_export.h"
+#include "content/public/browser/content_browser_client.h"
+#include "services/network/public/mojom/client_security_state.mojom-forward.h"
+#include "services/network/public/mojom/ip_address_space.mojom-forward.h"
+#include "services/network/public/mojom/url_response_head.mojom-forward.h"
+#include "url/gurl.h"
+
+namespace content {
+
+class ContentBrowserClient;
+struct PolicyContainerPolicies;
+
+enum class LocalNetworkAccessRequestContext {
+  kSubresource,  // Subresource fetches initiated by documents.
+  kWorker,  // Worker script fetches/updates or fetches within worker scripts.
+  kMainFrameNavigation,    // Main frame navigation fetches.
+  kSubframeNavigation,     // Subframe navigation fetches (e.g., iframe).
+  kFencedFrameNavigation,  // Navigation of a fenced frame.
+};
+
+// Returns the policy to use for local network access requests fetched by a
+// client with the given context properties.
+//
+// `ip_address_space` identifies the IP address space of the request client.
+// `is_web_secure_context` specifies whether the request client is a secure
+// context or not.
+// `local_network_request_context` specifies what this
+// request is about. For example, requests made from workers can have different
+// policies from normal subresource requests.
+network::mojom::LocalNetworkAccessRequestPolicy CONTENT_EXPORT
+DeriveLocalNetworkAccessRequestPolicy(
+    network::mojom::IPAddressSpace ip_address_space,
+    bool is_web_secure_context,
+    LocalNetworkAccessRequestContext local_network_request_context);
+
+// Convenience overload to directly compute this from the client's `policies`.
+network::mojom::LocalNetworkAccessRequestPolicy CONTENT_EXPORT
+DeriveLocalNetworkAccessRequestPolicy(
+    const PolicyContainerPolicies& policies,
+    LocalNetworkAccessRequestContext local_network_request_context);
+
+network::mojom::ClientSecurityStatePtr CONTENT_EXPORT DeriveClientSecurityState(
+    const PolicyContainerPolicies& policies,
+    LocalNetworkAccessRequestContext local_network_request_context);
+
+// Used to create a ClientSecurityState for renderer-initiated navigations.
+// Browser initiated navigations do not have a ClientSecurityState as we do not
+// need to check web security policies during them (since they originate from
+// the browser).
+// `initiator_policies` are the policies of the initiator of the navigation,
+// which we will use for enforcement during the navigation Fetch. Note that
+// the initiator policies should always be passed, even if they might not be
+// inherited by the navigation. Passing only inheritable policies might create
+// an LNA bypass, which is why initiator policies should be passed for all
+// renderer-initiated navigations.
+network::mojom::ClientSecurityStatePtr CONTENT_EXPORT
+DeriveClientSecurityStateForRendererInitiatedNavigation(
+    const PolicyContainerPolicies& initiator_policies,
+    LocalNetworkAccessRequestContext local_network_request_context);
+
+// Determines the IP address space that should be associated to execution
+// contexts instantiated from a resource loaded from this `url` and the given
+// response.
+//
+// This differs from `network::CalculateClientAddressSpace()` in that it takes
+// into account special schemes that are only known to the embedder, for which
+// the embedder decides the IP address space.
+//
+// `url` the response URL.
+// `response_head` identifies the response headers received which may be
+// nullptr. `client` exposes the embedder API which may be nullptr.
+network::mojom::IPAddressSpace CalculateIPAddressSpace(
+    const GURL& url,
+    network::mojom::URLResponseHead* response_head,
+    ContentBrowserClient* client);
+
+network::mojom::LocalNetworkAccessRequestPolicy OverrideToBlockInsteadOfWarn(
+    network::mojom::LocalNetworkAccessRequestPolicy);
+
+network::mojom::LocalNetworkAccessRequestPolicy OverrideToWarnInsteadOfBlock(
+    network::mojom::LocalNetworkAccessRequestPolicy);
+
+// TODO(crbug.com/452389539): make this logic part of
+// DeriveClientSecurityState/DeriveLocalNetworkAccessRequestPolicy to reduce
+// errors where the policy is computed but ContentBrowserClient overrides are
+// not taken into account.
+network::mojom::LocalNetworkAccessRequestPolicy
+OverrideLocalNetworkAccessPolicy(
+    network::mojom::LocalNetworkAccessRequestPolicy policy,
+    ContentBrowserClient::LocalNetworkAccessRequestPolicyOverride
+        policy_override);
+
+}  // namespace content
+
+#endif  // CONTENT_BROWSER_RENDERER_HOST_LOCAL_NETWORK_ACCESS_UTIL_H_

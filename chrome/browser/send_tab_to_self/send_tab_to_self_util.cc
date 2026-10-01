@@ -1,0 +1,142 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/send_tab_to_self/send_tab_to_self_util.h"
+
+#include <iterator>
+#include <optional>
+#include <ostream>
+
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "build/build_config.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/send_tab_to_self/send_tab_to_self_scroll_observer.h"
+#include "chrome/browser/sync/send_tab_to_self_sync_service_factory.h"
+#include "components/autofill/content/browser/content_autofill_client.h"
+#include "components/autofill/content/browser/content_autofill_driver.h"
+#include "components/send_tab_to_self/features.h"
+#include "components/send_tab_to_self/metrics_util.h"
+#include "components/send_tab_to_self/outgoing_tab_form_field_extractor.h"
+#include "components/send_tab_to_self/page_context.h"
+#include "components/send_tab_to_self/received_tab_forms_filler.h"
+#include "components/send_tab_to_self/send_tab_to_self_entry.h"
+#include "components/send_tab_to_self/send_tab_to_self_model.h"
+#include "components/send_tab_to_self/send_tab_to_self_sync_service.h"
+#include "components/shared_highlighting/core/common/text_fragment.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/web_contents.h"
+#include "url/gurl.h"
+#include "url/origin.h"
+
+namespace send_tab_to_self {
+
+namespace {
+
+using ExtractorCallback = base::RepeatingCallback<
+    PageContext::FormFieldInfo(autofill::AutofillManager&, const url::Origin&)>;
+
+PageContext::FormFieldInfo ExtractFormFieldsFromWebContentsInternal(
+    content::WebContents* web_contents,
+    ExtractorCallback extractor) {
+  if (!web_contents) {
+    return PageContext::FormFieldInfo();
+  }
+
+  const url::Origin main_origin =
+      web_contents->GetPrimaryMainFrame()->GetLastCommittedOrigin();
+
+  PageContext::FormFieldInfo form_field_info;
+
+  web_contents->ForEachRenderFrameHost([&](content::RenderFrameHost* rfh) {
+    autofill::ContentAutofillDriver* driver =
+        autofill::ContentAutofillDriver::GetForRenderFrameHost(rfh);
+    if (!driver) {
+      return;
+    }
+
+    PageContext::FormFieldInfo frame_info =
+        extractor.Run(driver->GetAutofillManager(), main_origin);
+    form_field_info.fields.insert(
+        form_field_info.fields.end(),
+        std::make_move_iterator(frame_info.fields.begin()),
+        std::make_move_iterator(frame_info.fields.end()));
+  });
+
+  return form_field_info;
+}
+
+}  // namespace
+
+std::optional<EntryPointDisplayReason> GetEntryPointDisplayReason(
+    content::WebContents* web_contents,
+    const std::optional<GURL>& url) {
+  if (!web_contents) {
+    return std::nullopt;
+  }
+
+  send_tab_to_self::SendTabToSelfSyncService* service =
+      SendTabToSelfSyncServiceFactory::GetForProfile(
+          Profile::FromBrowserContext(web_contents->GetBrowserContext()));
+  const GURL& url_to_check = url.value_or(web_contents->GetLastCommittedURL());
+  return service ? service->GetEntryPointDisplayReason(url_to_check)
+                 : std::nullopt;
+}
+
+bool ShouldDisplayEntryPoint(content::WebContents* web_contents,
+                             const std::optional<GURL>& url) {
+  return GetEntryPointDisplayReason(web_contents, url).has_value();
+}
+
+PageContext::FormFieldInfo ExtractFormFieldsFromWebContents(
+    content::WebContents* web_contents) {
+  return ExtractFormFieldsFromWebContentsInternal(
+      web_contents, base::BindRepeating(&ExtractOutgoingTabFormFields));
+}
+
+PageContext::FormFieldInfo
+ExtractFormFieldsFromWebContentsForTesting(  // IN-TEST
+    content::WebContents* web_contents,
+    std::ostream& os) {
+  return ExtractFormFieldsFromWebContentsInternal(
+      web_contents,
+      base::BindRepeating(
+          [](std::ostream* os, autofill::AutofillManager& manager,
+             const url::Origin& origin) {
+            return ExtractOutgoingTabFormFieldsForTesting(  // IN-TEST
+                manager, origin, *os);
+          },
+          &os));
+}
+
+void FillWebContents(content::WebContents* web_contents,
+                     const url::Origin& origin,
+                     const PageContext& page_context) {
+  if (!web_contents || page_context.form_field_info.fields.empty()) {
+    return;
+  }
+
+  autofill::ContentAutofillClient* autofill_client =
+      autofill::ContentAutofillClient::FromWebContents(web_contents);
+  if (autofill_client) {
+    ReceivedTabFormsFiller::Start(*autofill_client, origin,
+                                  page_context.form_field_info);
+  }
+}
+
+std::optional<std::string> GetScrollPositionAsTextFragment(
+    const SendTabToSelfEntry* entry) {
+  if (!base::FeatureList::IsEnabled(kSendTabToSelfPropagateScrollPosition) ||
+      !entry || entry->GetPageContext().scroll_position.IsEmpty()) {
+    return std::nullopt;
+  }
+
+  shared_highlighting::TextFragment tf =
+      entry->GetPageContext()
+          .scroll_position.text_fragment.ToSharedHighlightingTextFragment();
+  return tf.ToEscapedString(shared_highlighting::TextFragment::
+                                EscapedStringFormat::kWithoutTextDirective);
+}
+
+}  // namespace send_tab_to_self

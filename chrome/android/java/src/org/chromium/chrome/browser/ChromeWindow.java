@@ -1,0 +1,104 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser;
+
+import android.app.Activity;
+import android.view.View;
+
+import androidx.annotation.VisibleForTesting;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.compositor.CompositorViewHolder;
+import org.chromium.chrome.browser.keyboard_accessory.ManualFillingComponent;
+import org.chromium.chrome.browser.ui.browser_window.ChromeAndroidTaskTrackerFactory;
+import org.chromium.ui.base.ActivityWindowAndroid;
+import org.chromium.ui.base.IntentRequestTracker;
+import org.chromium.ui.insets.InsetObserver;
+import org.chromium.ui.modaldialog.ModalDialogManager;
+
+import java.lang.ref.WeakReference;
+import java.util.function.Supplier;
+
+/**
+ * The window that has access to the main activity and is able to create and receive intents, and
+ * show error messages.
+ */
+@NullMarked
+public class ChromeWindow extends ActivityWindowAndroid {
+    /** Interface allowing to inject a different keyboard delegate for testing. */
+    @VisibleForTesting
+    public interface KeyboardVisibilityDelegateFactory {
+        ChromeKeyboardVisibilityDelegate create(
+                WeakReference<Activity> activity,
+                Supplier<@Nullable ManualFillingComponent> manualFillingComponentSupplier);
+    }
+
+    private static KeyboardVisibilityDelegateFactory sKeyboardVisibilityDelegateFactory =
+            ChromeKeyboardVisibilityDelegate::new;
+
+    private final Supplier<@Nullable CompositorViewHolder> mCompositorViewHolderSupplier;
+    private final Supplier<@Nullable ModalDialogManager> mModalDialogManagerSupplier;
+
+    /**
+     * Creates Chrome specific ActivityWindowAndroid.
+     *
+     * @param activity The activity that owns the ChromeWindow.
+     * @param compositorViewHolderSupplier Supplies the {@link CompositorViewHolder}.
+     * @param modalDialogManagerSupplier Supplies the {@link ModalDialogManager}.
+     * @param manualFillingComponentSupplier Supplies the {@link ManualFillingComponent}.
+     * @param intentRequestTracker The {@link IntentRequestTracker} of the current activity.
+     * @param insetObserver Observes window insets to track keyboard and layout changes.
+     */
+    public ChromeWindow(
+            Activity activity,
+            Supplier<@Nullable CompositorViewHolder> compositorViewHolderSupplier,
+            Supplier<@Nullable ModalDialogManager> modalDialogManagerSupplier,
+            Supplier<@Nullable ManualFillingComponent> manualFillingComponentSupplier,
+            IntentRequestTracker intentRequestTracker,
+            InsetObserver insetObserver) {
+        super(
+                activity,
+                /* listenToActivityState= */ true,
+                sKeyboardVisibilityDelegateFactory.create(
+                        new WeakReference<>(activity), manualFillingComponentSupplier),
+                /* activityTopResumedSupported= */ true,
+                intentRequestTracker,
+                insetObserver,
+                /* occlusionTrackingAllowed= */ true);
+        assert insetObserver != null;
+        mCompositorViewHolderSupplier = compositorViewHolderSupplier;
+        mModalDialogManagerSupplier = modalDialogManagerSupplier;
+    }
+
+    @Override
+    public void destroy() {
+        ChromeAndroidTaskTrackerFactory.getInstance().onActivityWindowAndroidDestroy(this);
+
+        super.destroy();
+    }
+
+    @Override
+    public @Nullable View getReadbackView() {
+        var holder = mCompositorViewHolderSupplier.get();
+        return holder == null ? null : holder.getActiveSurfaceView();
+    }
+
+    @Override
+    public @Nullable ModalDialogManager getModalDialogManager() {
+        return mModalDialogManagerSupplier.get();
+    }
+
+    @VisibleForTesting
+    public static void setKeyboardVisibilityDelegateFactory(
+            KeyboardVisibilityDelegateFactory factory) {
+        sKeyboardVisibilityDelegateFactory = factory;
+    }
+
+    @VisibleForTesting
+    public static void resetKeyboardVisibilityDelegateFactory() {
+        setKeyboardVisibilityDelegateFactory(ChromeKeyboardVisibilityDelegate::new);
+    }
+}

@@ -1,0 +1,79 @@
+/* Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=//resources/cr_elements/cr_icons_lit.css.js
+ * #scheme=relative
+ * #css_wrapper_metadata_end */
+
+#errorScrim {
+  align-items: center;
+  background-color: var(--color-composebox-error-scrim-background, rgba(255, 255, 255, 0.9));
+  border-radius: inherit;
+  color: var(--color-composebox-error-scrim-foreground, rgba(31, 31, 31, 1));
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  font-weight: 500;
+  gap: 18px;
+  justify-content: center;
+  height: 100%;
+  position: absolute;
+  width: 100%;
+  z-index: 101;
+  pointer-events: auto;
+}
+
+:host([compact-mode]) #errorScrim {
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+#errorScrim > p {
+  margin: 0;
+}
+
+:host([compact-mode]) #errorScrim > p {
+  margin: 24px;
+}
+
+#dismissErrorButton {
+  --cr-button-background-color:
+      var(--color-composebox-error-scrim-button-background, rgba(11, 87, 208, 1));
+  --cr-button-border-color:
+      var(--color-composebox-error-scrim-foreground, rgba(31, 31, 31, 1));
+  --cr-button-text-color:
+      var(--color-composebox-error-scrim-button-text, rgba(255, 255, 255, 1));
+  --cr-icon-button-hover-background-color:
+      var(--color-composebox-error-scrim-button-background-hover, rgba(11, 87, 208, 0.08));
+  border: none;
+  font-size: 13px;
+  gap: 4px;
+  height: 36px;
+  width: 79px;
+}
+
+:host([compact-mode]) #dismissErrorButton {
+  margin-right: 10px;
+}
+
+/* TODO(crbug.com/511064262) Remove these hard-coded colors. */
+@media (prefers-color-scheme: dark) {
+  #errorScrim {
+    background-color: var(--color-composebox-error-scrim-background, rgba(0, 0, 0, 0.9));
+    color: var(--color-composebox-error-scrim-foreground, rgba(227, 227, 227, 1));
+  }
+
+  #dismissErrorButton {
+    --cr-button-background-color:
+        var(--color-composebox-error-scrim-button-background, rgba(168, 199, 250, 1));
+    --cr-button-border-color:
+        var(--color-composebox-error-scrim-foreground, rgba(227, 227, 227, 1));
+    --cr-button-text-color:
+        var(--color-composebox-error-scrim-button-text, rgba(0, 74, 173, 1));
+    --cr-icon-button-hover-background-color:
+        var(--color-composebox-error-scrim-button-background-hover, rgba(168, 199, 250, 0.08));
+  }
+}

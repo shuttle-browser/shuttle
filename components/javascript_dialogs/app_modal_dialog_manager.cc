@@ -1,0 +1,288 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/javascript_dialogs/app_modal_dialog_manager.h"
+
+#include <algorithm>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "base/functional/bind.h"
+#include "base/memory/weak_ptr.h"
+#include "base/no_destructor.h"
+#include "base/strings/utf_string_conversions.h"
+#include "build/build_config.h"
+#include "components/javascript_dialogs/app_modal_dialog_manager_delegate.h"
+#include "components/javascript_dialogs/app_modal_dialog_queue.h"
+#include "components/javascript_dialogs/app_modal_dialog_view.h"
+#include "components/javascript_dialogs/core/dialog_util.h"
+#include "components/javascript_dialogs/extensions_client.h"
+#include "components/strings/grit/components_strings.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/common/javascript_dialog_type.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/gfx/font_list.h"
+
+class GURL;
+
+namespace javascript_dialogs {
+
+namespace {
+
+class DefaultExtensionsClient : public ExtensionsClient {
+ public:
+  DefaultExtensionsClient() = default;
+
+  DefaultExtensionsClient(const DefaultExtensionsClient&) = delete;
+  DefaultExtensionsClient& operator=(const DefaultExtensionsClient&) = delete;
+
+  ~DefaultExtensionsClient() override = default;
+
+ private:
+  // ExtensionsClient:
+  void OnDialogOpened(content::WebContents* web_contents) override {}
+  void OnDialogClosed(content::WebContents* web_contents) override {}
+};
+
+bool ShouldDisplaySuppressCheckbox(
+    ChromeJavaScriptDialogExtraData* extra_data) {
+  return extra_data->has_already_shown_a_dialog_;
+}
+
+}  // namespace
+
+// static
+AppModalDialogManager* AppModalDialogManager::GetInstance() {
+  static base::NoDestructor<AppModalDialogManager> instance;
+  return instance.get();
+}
+
+void AppModalDialogManager::SetNativeDialogFactory(
+    AppModalViewFactory factory) {
+  view_factory_ = std::move(factory);
+}
+
+void AppModalDialogManager::SetExtensionsClient(
+    std::unique_ptr<ExtensionsClient> extensions_client) {
+  extensions_client_ = std::move(extensions_client);
+}
+
+void AppModalDialogManager::SetDelegate(
+    std::unique_ptr<AppModalDialogManagerDelegate> delegate) {
+  delegate_ = std::move(delegate);
+}
+
+AppModalDialogManager::AppModalDialogManager()
+    : extensions_client_(new DefaultExtensionsClient) {}
+
+AppModalDialogManager::~AppModalDialogManager() = default;
+
+std::u16string AppModalDialogManager::GetTitle(
+    content::WebContents* web_contents,
+    const url::Origin& alerting_frame_origin) {
+  if (delegate_) {
+    return delegate_->GetTitle(web_contents, alerting_frame_origin);
+  }
+
+  // Otherwise, return the formatted URL.
+  return GetSiteFrameTitle(
+      web_contents->GetPrimaryMainFrame()->GetLastCommittedURL(),
+      web_contents->GetPrimaryMainFrame()->GetLastCommittedOrigin(),
+      alerting_frame_origin);
+}
+
+// static
+std::u16string AppModalDialogManager::GetSiteFrameTitle(
+    const GURL& main_frame_url,
+    const url::Origin& main_frame_origin,
+    const url::Origin& alerting_frame_origin) {
+  return util::DialogTitle(main_frame_url, main_frame_origin,
+                           alerting_frame_origin);
+}
+
+void AppModalDialogManager::RunJavaScriptDialog(
+    content::WebContents* web_contents,
+    content::RenderFrameHost* render_frame_host,
+    content::JavaScriptDialogType dialog_type,
+    const std::u16string& message_text,
+    const std::u16string& default_prompt_text,
+    DialogClosedCallback callback,
+    bool* did_suppress_message) {
+  *did_suppress_message = false;
+
+  ChromeJavaScriptDialogExtraData* extra_data =
+      &javascript_dialog_extra_data_[web_contents];
+
+  if (extra_data->suppress_javascript_messages_) {
+    *did_suppress_message = true;
+    return;
+  }
+
+  std::u16string dialog_title =
+      GetTitle(web_contents, render_frame_host->GetLastCommittedOrigin());
+
+  extensions_client_->OnDialogOpened(web_contents);
+
+  AppModalDialogQueue::GetInstance()->AddDialog(
+      std::make_unique<AppModalDialogController>(
+          web_contents, &javascript_dialog_extra_data_, dialog_title,
+          dialog_type, message_text, default_prompt_text,
+          ShouldDisplaySuppressCheckbox(extra_data),
+          /*is_before_unload_dialog=*/false,
+          /*is_reload=*/false,
+          base::BindOnce(&AppModalDialogManager::OnDialogClosed,
+                         base::Unretained(this), web_contents,
+                         std::move(callback))));
+}
+
+void AppModalDialogManager::RunBeforeUnloadDialog(
+    content::WebContents* web_contents,
+    content::RenderFrameHost* render_frame_host,
+    bool is_reload,
+    DialogClosedCallback callback) {
+  RunBeforeUnloadDialogWithOptions(web_contents, render_frame_host, is_reload,
+                                   false, std::move(callback));
+}
+
+void AppModalDialogManager::RunBeforeUnloadDialogWithOptions(
+    content::WebContents* web_contents,
+    content::RenderFrameHost* render_frame_host,
+    bool is_reload,
+    bool is_app,
+    DialogClosedCallback callback) {
+  ChromeJavaScriptDialogExtraData* extra_data =
+      &javascript_dialog_extra_data_[web_contents];
+
+  if (extra_data->suppress_javascript_messages_) {
+    // If a site harassed the user enough for them to put it on mute, then it
+    // lost its privilege to deny unloading.
+    std::move(callback).Run(true, std::u16string());
+    return;
+  }
+
+  // Build the dialog message. We explicitly do _not_ allow the webpage to
+  // specify the contents of this dialog, as per the current spec
+  //
+  // https://html.spec.whatwg.org/#unloading-documents, step 8:
+  //
+  // "The message shown to the user is not customizable, but instead
+  // determined by the user agent. In particular, the actual value of the
+  // returnValue attribute is ignored."
+  //
+  // This message used to be customizable, but it was frequently abused by
+  // scam websites so the specification was changed.
+
+  std::u16string title;
+  if (is_app) {
+    title = l10n_util::GetStringUTF16(
+        is_reload ? IDS_BEFORERELOAD_APP_MESSAGEBOX_TITLE
+                  : IDS_BEFOREUNLOAD_APP_MESSAGEBOX_TITLE);
+  } else {
+    title = l10n_util::GetStringUTF16(is_reload
+                                          ? IDS_BEFORERELOAD_MESSAGEBOX_TITLE
+                                          : IDS_BEFOREUNLOAD_MESSAGEBOX_TITLE);
+  }
+  const std::u16string message =
+      l10n_util::GetStringUTF16(IDS_BEFOREUNLOAD_MESSAGEBOX_MESSAGE);
+
+  extensions_client_->OnDialogOpened(web_contents);
+
+  AppModalDialogQueue::GetInstance()->AddDialog(
+      std::make_unique<AppModalDialogController>(
+          web_contents, &javascript_dialog_extra_data_, title,
+          content::JAVASCRIPT_DIALOG_TYPE_CONFIRM, message,
+          /*default_prompt_text=*/std::u16string(),
+          ShouldDisplaySuppressCheckbox(extra_data),
+          /*is_before_unload_dialog=*/true, is_reload,
+          base::BindOnce(&AppModalDialogManager::OnDialogClosed,
+                         base::Unretained(this), web_contents,
+                         std::move(callback))));
+}
+
+bool AppModalDialogManager::HandleJavaScriptDialog(
+    content::WebContents* web_contents,
+    bool accept,
+    const std::u16string* prompt_override) {
+  AppModalDialogQueue* dialog_queue = AppModalDialogQueue::GetInstance();
+  if (!dialog_queue->HasActiveDialog() ||
+      dialog_queue->active_dialog()->web_contents() != web_contents) {
+    return false;
+  }
+
+  AppModalDialogController* dialog =
+      static_cast<AppModalDialogController*>(dialog_queue->active_dialog());
+
+  if (dialog->javascript_dialog_type() ==
+      content::JavaScriptDialogType::JAVASCRIPT_DIALOG_TYPE_ALERT) {
+    // Alert dialogs only have one button: OK. Any "handling" of this dialog has
+    // to be a click on the OK button.
+    accept = true;
+  }
+
+  if (accept) {
+    if (prompt_override) {
+      dialog->SetOverridePromptText(*prompt_override);
+    }
+    dialog->view()->AcceptAppModalDialog();
+  } else {
+    dialog->view()->CancelAppModalDialog();
+  }
+  return true;
+}
+
+void AppModalDialogManager::CancelDialogs(content::WebContents* web_contents,
+                                          bool reset_state) {
+  AppModalDialogQueue* queue = AppModalDialogQueue::GetInstance();
+
+  // `AppModalDialogController::Invalidate()` runs the dialog's closed callback,
+  // which can synchronously re-enter this method and the dialog queue. That
+  // re-entrancy can both mutate `queue` (invalidating the iterators used here)
+  // and destroy the queued dialogs, since
+  // `AppModalDialogQueue::GetNextDialog()` deletes invalidated dialogs as it
+  // drains the queue. So collect weak pointers to the dialogs to cancel up
+  // front, and re-check each one before using it.
+  // See https://crbug.com/560439699.
+  std::vector<base::WeakPtr<AppModalDialogController>> dialogs_to_cancel;
+  for (auto& dialog : *queue) {
+    if (dialog->web_contents() == web_contents) {
+      dialogs_to_cancel.push_back(dialog->GetWeakPtr());
+    }
+  }
+  for (base::WeakPtr<AppModalDialogController>& dialog : dialogs_to_cancel) {
+    // `dialog` is null if it was already destroyed by the re-entrant cancelling
+    // triggered by an earlier dialog in this loop.
+    if (dialog) {
+      dialog->Invalidate();
+    }
+  }
+
+  // The active dialog is deliberately looked up after the loop above: closing
+  // the queued dialogs can have shown a different dialog in the meantime.
+  // `Invalidate()` may destroy `active_dialog` (it closes its view, which owns
+  // it), so nothing may be done with the pointer afterwards.
+  AppModalDialogController* active_dialog = queue->active_dialog();
+  if (active_dialog && active_dialog->web_contents() == web_contents) {
+    active_dialog->Invalidate();
+  }
+
+  // Note: no weak pointer is needed for `this`: `AppModalDialogManager` is a
+  // `base::NoDestructor` singleton, so it outlives any re-entrant call above.
+  if (reset_state) {
+    javascript_dialog_extra_data_.erase(web_contents);
+  }
+}
+
+void AppModalDialogManager::OnDialogClosed(content::WebContents* web_contents,
+                                           DialogClosedCallback callback,
+                                           bool success,
+                                           const std::u16string& user_input) {
+  // If an extension opened this dialog then the extension may shut down its
+  // lazy background page after the dialog closes. (Dialogs are closed before
+  // their WebContents is destroyed so |web_contents| is still valid here.)
+  extensions_client_->OnDialogClosed(web_contents);
+  std::move(callback).Run(success, user_input);
+}
+
+}  // namespace javascript_dialogs

@@ -1,0 +1,480 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/ash/input_method/candidate_window_view.h"
+
+#include <stddef.h>
+
+#include <string>
+
+#include "base/compiler_specific.h"
+#include "base/memory/raw_ptr.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/utf_string_conversions.h"
+#include "chrome/browser/ui/ash/input_method/candidate_view.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/views/accessibility/ax_update_notifier.h"
+#include "ui/views/test/ax_event_counter.h"
+#include "ui/views/test/views_test_base.h"
+#include "ui/views/widget/widget.h"
+
+namespace ui {
+namespace ime {
+
+namespace {
+const char16_t* kSampleCandidate[] = {
+    u"Sample Candidate 1", u"Sample Candidate 2", u"Sample Candidate 3"};
+const char16_t* kSampleAnnotation[] = {
+    u"Sample Annotation 1", u"Sample Annotation 2", u"Sample Annotation 3"};
+const char16_t* kSampleDescriptionTitle[] = {
+    u"Sample Description Title 1",
+    u"Sample Description Title 2",
+    u"Sample Description Title 3",
+};
+const char16_t* kSampleDescriptionBody[] = {
+    u"Sample Description Body 1",
+    u"Sample Description Body 2",
+    u"Sample Description Body 3",
+};
+
+void InitCandidateWindow(size_t page_size,
+                         ui::CandidateWindow* candidate_window) {
+  candidate_window->set_cursor_position(0);
+  candidate_window->set_page_size(page_size);
+  candidate_window->mutable_candidates()->clear();
+  candidate_window->set_orientation(ui::CandidateWindow::VERTICAL);
+}
+
+void InitCandidateWindowWithCandidatesFilled(
+    size_t page_size,
+    ui::CandidateWindow* candidate_window) {
+  InitCandidateWindow(page_size, candidate_window);
+  for (size_t i = 0; i < page_size; ++i) {
+    ui::CandidateWindow::Entry entry;
+    entry.value = u"value " + base::NumberToString16(i);
+    entry.label = base::NumberToString16(i);
+    candidate_window->mutable_candidates()->push_back(entry);
+  }
+}
+
+}  // namespace
+
+class CandidateWindowViewTest : public views::ViewsTestBase {
+ public:
+  CandidateWindowViewTest() = default;
+
+  CandidateWindowViewTest(const CandidateWindowViewTest&) = delete;
+  CandidateWindowViewTest& operator=(const CandidateWindowViewTest&) = delete;
+
+  ~CandidateWindowViewTest() override = default;
+
+ protected:
+  void SetUp() override {
+    views::ViewsTestBase::SetUp();
+    candidate_window_view_ = new CandidateWindowView(GetContext());
+    widget_ = candidate_window_view_->InitWidget();
+  }
+
+  void TearDown() override {
+    widget_.reset();
+    views::ViewsTestBase::TearDown();
+  }
+
+  CandidateWindowView* candidate_window_view() {
+    return candidate_window_view_;
+  }
+
+  int selected_candidate_index_in_page() {
+    return candidate_window_view_->selected_candidate_index_in_page_;
+  }
+
+  size_t GetCandidatesSize() const {
+    return candidate_window_view_->candidate_views_.size();
+  }
+
+  CandidateView* GetCandidateAt(size_t i) {
+    return candidate_window_view_->candidate_views_[i];
+  }
+
+  void SelectCandidateAt(int index_in_page) {
+    candidate_window_view_->SelectCandidateAt(index_in_page);
+  }
+
+  void MaybeInitializeCandidateViews(
+      const ui::CandidateWindow& candidate_window) {
+    candidate_window_view_->MaybeInitializeCandidateViews(candidate_window);
+  }
+
+  void ExpectLabels(const std::u16string& shortcut,
+                    const std::u16string& candidate,
+                    const std::u16string& annotation,
+                    const CandidateView* row) {
+    EXPECT_EQ(shortcut, row->shortcut_label_->GetText());
+    EXPECT_EQ(candidate, row->candidate_label_->GetText());
+    EXPECT_EQ(annotation, row->annotation_label_->GetText());
+  }
+
+ private:
+  raw_ptr<CandidateWindowView, DanglingUntriaged>
+      candidate_window_view_;  // Owned by widget_.
+  std::unique_ptr<views::Widget> widget_;
+};
+
+TEST_F(CandidateWindowViewTest, UpdateCandidatesTest_CursorVisibility) {
+  // Visible (by default) cursor.
+  ui::CandidateWindow candidate_window;
+  const int candidate_window_size = 9;
+  InitCandidateWindowWithCandidatesFilled(candidate_window_size,
+                                          &candidate_window);
+  candidate_window_view()->UpdateCandidates(candidate_window);
+  EXPECT_EQ(0, selected_candidate_index_in_page());
+
+  // Invisible cursor.
+  candidate_window.set_is_cursor_visible(false);
+  candidate_window_view()->UpdateCandidates(candidate_window);
+  EXPECT_EQ(-1, selected_candidate_index_in_page());
+
+  // Move the cursor to the end.
+  candidate_window.set_cursor_position(candidate_window_size - 1);
+  candidate_window_view()->UpdateCandidates(candidate_window);
+  EXPECT_EQ(-1, selected_candidate_index_in_page());
+
+  // Change the cursor to visible.  The cursor must be at the end.
+  candidate_window.set_is_cursor_visible(true);
+  candidate_window_view()->UpdateCandidates(candidate_window);
+  EXPECT_EQ(candidate_window_size - 1, selected_candidate_index_in_page());
+}
+
+TEST_F(CandidateWindowViewTest, UpdateCandidatesSendsA11yEvents) {
+  views::test::AXEventCounter event_counter(views::AXUpdateNotifier::Get());
+
+  // User is not selecting. (Simulates a state showing suggestions)
+  ui::CandidateWindow candidate_window;
+  const int candidate_window_size = 9;
+  InitCandidateWindowWithCandidatesFilled(candidate_window_size,
+                                          &candidate_window);
+  candidate_window.set_is_user_selecting(false);
+  SelectCandidateAt(0);
+  candidate_window_view()->UpdateCandidates(candidate_window);
+  EXPECT_EQ(0, event_counter.GetCount(ax::mojom::Event::kSelection));
+
+  // User starts selecting.
+  // InitCandidateWindowWithCandidatesFilled sets 0-th item selected.
+  candidate_window.set_is_user_selecting(true);
+  candidate_window_view()->UpdateCandidates(candidate_window);
+  EXPECT_EQ(1, event_counter.GetCount(ax::mojom::Event::kSelection,
+                                      GetCandidateAt(0)));
+
+  // Change the selection.
+  candidate_window.set_cursor_position(1);
+  candidate_window_view()->UpdateCandidates(candidate_window);
+  EXPECT_EQ(1, event_counter.GetCount(ax::mojom::Event::kSelection,
+                                      GetCandidateAt(1)));
+}
+
+TEST_F(CandidateWindowViewTest, SelectCandidateAtTest) {
+  // Set 9 candidates.
+  ui::CandidateWindow candidate_window_large;
+  const int candidate_window_large_size = 9;
+  InitCandidateWindowWithCandidatesFilled(candidate_window_large_size,
+                                          &candidate_window_large);
+  candidate_window_large.set_cursor_position(candidate_window_large_size - 1);
+  candidate_window_view()->UpdateCandidates(candidate_window_large);
+
+  // Select the last candidate.
+  SelectCandidateAt(candidate_window_large_size - 1);
+
+  // Reduce the number of candidates to 3.
+  ui::CandidateWindow candidate_window_small;
+  const int candidate_window_small_size = 3;
+  InitCandidateWindowWithCandidatesFilled(candidate_window_small_size,
+                                          &candidate_window_small);
+  candidate_window_small.set_cursor_position(candidate_window_small_size - 1);
+  // Make sure the test doesn't crash if the candidate window reduced
+  // its size. (crbug.com/40300928)
+  candidate_window_view()->UpdateCandidates(candidate_window_small);
+  SelectCandidateAt(candidate_window_small_size - 1);
+}
+
+TEST_F(CandidateWindowViewTest, ShortcutSettingTest) {
+  const char16_t* kEmptyLabel = u"";
+  const char16_t* kCustomizedLabel[] = {u"a", u"s", u"d"};
+  const char16_t* kExpectedHorizontalCustomizedLabel[] = {u"a.", u"s.", u"d."};
+
+  {
+    SCOPED_TRACE("candidate_views allocation test");
+    const size_t kMaxPageSize = 16;
+    for (size_t i = 1; i < kMaxPageSize; ++i) {
+      ui::CandidateWindow candidate_window;
+      InitCandidateWindow(i, &candidate_window);
+      candidate_window_view()->UpdateCandidates(candidate_window);
+      EXPECT_EQ(i, GetCandidatesSize());
+    }
+  }
+  {
+    SCOPED_TRACE("Empty string for each labels expects empty labels(vertical)");
+    const size_t kPageSize = 3;
+    ui::CandidateWindow candidate_window;
+    InitCandidateWindow(kPageSize, &candidate_window);
+
+    candidate_window.set_orientation(ui::CandidateWindow::VERTICAL);
+    for (size_t i = 0; i < kPageSize; ++i) {
+      ui::CandidateWindow::Entry entry;
+      entry.value = UNSAFE_TODO(kSampleCandidate[i]);
+      entry.annotation = UNSAFE_TODO(kSampleAnnotation[i]);
+      entry.description_title = UNSAFE_TODO(kSampleDescriptionTitle[i]);
+      entry.description_body = UNSAFE_TODO(kSampleDescriptionBody[i]);
+      entry.label = kEmptyLabel;
+      candidate_window.mutable_candidates()->push_back(entry);
+    }
+
+    candidate_window_view()->UpdateCandidates(candidate_window);
+
+    ASSERT_EQ(kPageSize, GetCandidatesSize());
+    for (size_t i = 0; i < kPageSize; ++i) {
+      ExpectLabels(kEmptyLabel, UNSAFE_TODO(kSampleCandidate[i]),
+                   UNSAFE_TODO(kSampleAnnotation[i]), GetCandidateAt(i));
+    }
+  }
+  {
+    SCOPED_TRACE(
+        "Empty string for each labels expect empty labels(horizontal)");
+    const size_t kPageSize = 3;
+    ui::CandidateWindow candidate_window;
+    InitCandidateWindow(kPageSize, &candidate_window);
+
+    candidate_window.set_orientation(ui::CandidateWindow::HORIZONTAL);
+    for (size_t i = 0; i < kPageSize; ++i) {
+      ui::CandidateWindow::Entry entry;
+      entry.value = UNSAFE_TODO(kSampleCandidate[i]);
+      entry.annotation = UNSAFE_TODO(kSampleAnnotation[i]);
+      entry.description_title = UNSAFE_TODO(kSampleDescriptionTitle[i]);
+      entry.description_body = UNSAFE_TODO(kSampleDescriptionBody[i]);
+      entry.label = kEmptyLabel;
+      candidate_window.mutable_candidates()->push_back(entry);
+    }
+
+    candidate_window_view()->UpdateCandidates(candidate_window);
+
+    ASSERT_EQ(kPageSize, GetCandidatesSize());
+    // Confirm actual labels not containing ".".
+    for (size_t i = 0; i < kPageSize; ++i) {
+      ExpectLabels(kEmptyLabel, UNSAFE_TODO(kSampleCandidate[i]),
+                   UNSAFE_TODO(kSampleAnnotation[i]), GetCandidateAt(i));
+    }
+  }
+  {
+    SCOPED_TRACE("Vertical customized label case");
+    const size_t kPageSize = 3;
+    ui::CandidateWindow candidate_window;
+    InitCandidateWindow(kPageSize, &candidate_window);
+
+    candidate_window.set_orientation(ui::CandidateWindow::VERTICAL);
+    for (size_t i = 0; i < kPageSize; ++i) {
+      ui::CandidateWindow::Entry entry;
+      entry.value = UNSAFE_TODO(kSampleCandidate[i]);
+      entry.annotation = UNSAFE_TODO(kSampleAnnotation[i]);
+      entry.description_title = UNSAFE_TODO(kSampleDescriptionTitle[i]);
+      entry.description_body = UNSAFE_TODO(kSampleDescriptionBody[i]);
+      entry.label = UNSAFE_TODO(kCustomizedLabel[i]);
+      candidate_window.mutable_candidates()->push_back(entry);
+    }
+
+    candidate_window_view()->UpdateCandidates(candidate_window);
+
+    ASSERT_EQ(kPageSize, GetCandidatesSize());
+    // Confirm actual labels not containing ".".
+    for (size_t i = 0; i < kPageSize; ++i) {
+      ExpectLabels(UNSAFE_TODO(kCustomizedLabel[i]),
+                   UNSAFE_TODO(kSampleCandidate[i]),
+                   UNSAFE_TODO(kSampleAnnotation[i]), GetCandidateAt(i));
+    }
+  }
+  {
+    SCOPED_TRACE("Horizontal customized label case");
+    const size_t kPageSize = 3;
+    ui::CandidateWindow candidate_window;
+    InitCandidateWindow(kPageSize, &candidate_window);
+
+    candidate_window.set_orientation(ui::CandidateWindow::HORIZONTAL);
+    for (size_t i = 0; i < kPageSize; ++i) {
+      ui::CandidateWindow::Entry entry;
+      entry.value = UNSAFE_TODO(kSampleCandidate[i]);
+      entry.annotation = UNSAFE_TODO(kSampleAnnotation[i]);
+      entry.description_title = UNSAFE_TODO(kSampleDescriptionTitle[i]);
+      entry.description_body = UNSAFE_TODO(kSampleDescriptionBody[i]);
+      entry.label = UNSAFE_TODO(kCustomizedLabel[i]);
+      candidate_window.mutable_candidates()->push_back(entry);
+    }
+
+    candidate_window_view()->UpdateCandidates(candidate_window);
+
+    ASSERT_EQ(kPageSize, GetCandidatesSize());
+    // Confirm actual labels not containing ".".
+    for (size_t i = 0; i < kPageSize; ++i) {
+      ExpectLabels(UNSAFE_TODO(kExpectedHorizontalCustomizedLabel[i]),
+                   UNSAFE_TODO(kSampleCandidate[i]),
+                   UNSAFE_TODO(kSampleAnnotation[i]), GetCandidateAt(i));
+    }
+  }
+}
+
+TEST_F(CandidateWindowViewTest, DoNotChangeRowHeightWithLabelSwitchTest) {
+  const size_t kPageSize = 10;
+  ui::CandidateWindow candidate_window;
+  ui::CandidateWindow no_shortcut_candidate_window;
+
+  const std::u16string kSampleCandidate1 = u"Sample String 1";
+  const std::u16string kSampleCandidate2 = u"あ";  // multi byte string.
+  const std::u16string kSampleCandidate3 = u".....";
+
+  const std::u16string kSampleShortcut1 = u"1";
+  const std::u16string kSampleShortcut2 = u"b";
+  const std::u16string kSampleShortcut3 = u"C";
+
+  const std::u16string kSampleAnnotation1 = u"Sample Annotation 1";
+  const std::u16string kSampleAnnotation2 = u"あ";  // multi byte string.
+  const std::u16string kSampleAnnotation3 = u"......";
+
+  // Create CandidateWindow object.
+  InitCandidateWindow(kPageSize, &candidate_window);
+
+  candidate_window.set_cursor_position(0);
+  candidate_window.set_page_size(3);
+  candidate_window.mutable_candidates()->clear();
+  candidate_window.set_orientation(ui::CandidateWindow::VERTICAL);
+  no_shortcut_candidate_window.CopyFrom(candidate_window);
+
+  ui::CandidateWindow::Entry entry;
+  entry.value = kSampleCandidate1;
+  entry.annotation = kSampleAnnotation1;
+  candidate_window.mutable_candidates()->push_back(entry);
+  entry.label = kSampleShortcut1;
+  no_shortcut_candidate_window.mutable_candidates()->push_back(entry);
+
+  entry.value = kSampleCandidate2;
+  entry.annotation = kSampleAnnotation2;
+  candidate_window.mutable_candidates()->push_back(entry);
+  entry.label = kSampleShortcut2;
+  no_shortcut_candidate_window.mutable_candidates()->push_back(entry);
+
+  entry.value = kSampleCandidate3;
+  entry.annotation = kSampleAnnotation3;
+  candidate_window.mutable_candidates()->push_back(entry);
+  entry.label = kSampleShortcut3;
+  no_shortcut_candidate_window.mutable_candidates()->push_back(entry);
+
+  int before_height = 0;
+
+  // Test for shortcut mode to no-shortcut mode.
+  // Initialize with a shortcut mode candidate window.
+  MaybeInitializeCandidateViews(candidate_window);
+  ASSERT_EQ(3UL, GetCandidatesSize());
+  // Check the selected index is invalidated.
+  EXPECT_EQ(-1, selected_candidate_index_in_page());
+  before_height = GetCandidateAt(0)->GetContentsBounds().height();
+  // Checks all entry have same row height.
+  for (size_t i = 1; i < GetCandidatesSize(); ++i) {
+    EXPECT_EQ(before_height, GetCandidateAt(i)->GetContentsBounds().height());
+  }
+
+  // Initialize with a no shortcut mode candidate window.
+  MaybeInitializeCandidateViews(no_shortcut_candidate_window);
+  ASSERT_EQ(3UL, GetCandidatesSize());
+  // Check the selected index is invalidated.
+  EXPECT_EQ(-1, selected_candidate_index_in_page());
+  EXPECT_EQ(before_height, GetCandidateAt(0)->GetContentsBounds().height());
+  // Checks all entry have same row height.
+  for (size_t i = 1; i < GetCandidatesSize(); ++i) {
+    EXPECT_EQ(before_height, GetCandidateAt(i)->GetContentsBounds().height());
+  }
+
+  // Test for no-shortcut mode to shortcut mode.
+  // Initialize with a no shortcut mode candidate window.
+  MaybeInitializeCandidateViews(no_shortcut_candidate_window);
+  ASSERT_EQ(3UL, GetCandidatesSize());
+  // Check the selected index is invalidated.
+  EXPECT_EQ(-1, selected_candidate_index_in_page());
+  before_height = GetCandidateAt(0)->GetContentsBounds().height();
+  // Checks all entry have same row height.
+  for (size_t i = 1; i < GetCandidatesSize(); ++i) {
+    EXPECT_EQ(before_height, GetCandidateAt(i)->GetContentsBounds().height());
+  }
+
+  // Initialize with a shortcut mode candidate window.
+  MaybeInitializeCandidateViews(candidate_window);
+  ASSERT_EQ(3UL, GetCandidatesSize());
+  // Check the selected index is invalidated.
+  EXPECT_EQ(-1, selected_candidate_index_in_page());
+  EXPECT_EQ(before_height, GetCandidateAt(0)->GetContentsBounds().height());
+  // Checks all entry have same row height.
+  for (size_t i = 1; i < GetCandidatesSize(); ++i) {
+    EXPECT_EQ(before_height, GetCandidateAt(i)->GetContentsBounds().height());
+  }
+}
+
+TEST_F(CandidateWindowViewTest, CandidateWidthTest) {
+  const size_t kPageSize = 3;
+  ui::CandidateWindow vertical_window;
+  ui::CandidateWindow horizontal_window;
+
+  // Create candidate windows with different length candidates.
+  InitCandidateWindow(kPageSize, &vertical_window);
+  InitCandidateWindow(kPageSize, &horizontal_window);
+
+  vertical_window.set_orientation(ui::CandidateWindow::VERTICAL);
+  horizontal_window.set_orientation(ui::CandidateWindow::HORIZONTAL);
+
+  // Add candidates with varying lengths.
+  ui::CandidateWindow::Entry entry1;
+  entry1.value = u"A";  // Short candidate
+  entry1.label = u"1";
+  vertical_window.mutable_candidates()->push_back(entry1);
+  horizontal_window.mutable_candidates()->push_back(entry1);
+
+  ui::CandidateWindow::Entry entry2;
+  entry2.value = u"Very Long Candidate Text";  // Long candidate
+  entry2.label = u"2";
+  vertical_window.mutable_candidates()->push_back(entry2);
+  horizontal_window.mutable_candidates()->push_back(entry2);
+
+  ui::CandidateWindow::Entry entry3;
+  entry3.value = u"Medium";  // Medium candidate
+  entry3.label = u"3";
+  vertical_window.mutable_candidates()->push_back(entry3);
+  horizontal_window.mutable_candidates()->push_back(entry3);
+
+  // Test vertical orientation - all candidates should have the same width.
+  candidate_window_view()->UpdateCandidates(vertical_window);
+  ASSERT_EQ(kPageSize, GetCandidatesSize());
+
+  // Get the width of the first candidate.
+  int first_shortcut_width = GetCandidateAt(0)->shortcut_width();
+  int first_candidate_width = GetCandidateAt(0)->candidate_width();
+
+  // All candidates should have the same width in vertical mode.
+  for (size_t i = 1; i < GetCandidatesSize(); ++i) {
+    EXPECT_EQ(first_shortcut_width, GetCandidateAt(i)->shortcut_width())
+        << "Shortcut width mismatch at index " << i
+        << " in vertical orientation";
+    EXPECT_EQ(first_candidate_width, GetCandidateAt(i)->candidate_width())
+        << "Candidate width mismatch at index " << i
+        << " in vertical orientation";
+  }
+
+  // Test horizontal orientation - candidates can have different widths.
+  candidate_window_view()->UpdateCandidates(horizontal_window);
+  ASSERT_EQ(kPageSize, GetCandidatesSize());
+
+  // In horizontal mode, widths can vary, but we should still verify they are
+  // set to reasonable values (> 0 for candidates with content).
+  for (size_t i = 0; i < GetCandidatesSize(); ++i) {
+    EXPECT_GT(GetCandidateAt(i)->candidate_width(), 0)
+        << "Candidate width should be positive at index " << i
+        << " in horizontal orientation";
+  }
+}
+
+}  // namespace ime
+}  // namespace ui

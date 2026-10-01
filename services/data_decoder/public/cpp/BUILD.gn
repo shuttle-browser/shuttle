@@ -1,0 +1,125 @@
+# Copyright 2016 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/features.gni")
+import("//build/rust/rust_static_library.gni")
+import("//mojo/public/tools/bindings/mojom.gni")
+
+# This should be merged into the ":cpp" target below once that target is
+# converted to a component target. A component target is necessary for
+# ServiceProvider because it exposes global storage.
+component("service_provider") {
+  public = [ "service_provider.h" ]
+
+  sources = [ "service_provider.cc" ]
+
+  public_deps = [
+    "//base",
+    "//mojo/public/cpp/bindings",
+    "//services/data_decoder/public/mojom",
+  ]
+
+  defines = [ "IS_DATA_DECODER_PUBLIC_IMPL" ]
+}
+
+source_set("cpp") {
+  public = [ "data_decoder.h" ]
+
+  sources = [ "data_decoder.cc" ]
+
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+
+  public_deps = [
+    ":safe_xml_parser",
+    ":service_provider",
+    ":xml_dom",
+    "//base",
+    "//net",
+    "//services/data_decoder/public/mojom",
+  ]
+  deps = [ "//build:blink_buildflags" ]
+
+  if (!use_blink) {
+    # NOTE: We depend on this target here for iOS only, to support in-process
+    # use of the service. Non-test targets in this directory should otherwise
+    # NEVER depend on this target.
+    deps += [ "//services/data_decoder:lib" ]
+  } else {
+    public += [
+      "decode_image.h",
+      "safe_web_bundle_parser.h",
+    ]
+    sources += [
+      "decode_image.cc",
+      "safe_web_bundle_parser.cc",
+    ]
+    deps += [ "//skia" ]
+  }
+
+  defines = [ "IS_DATA_DECODER_PUBLIC_IMPL" ]
+}
+
+source_set("safe_xml_parser") {
+  public = [ "safe_xml_parser.h" ]
+
+  sources = [ "safe_xml_parser.cc" ]
+
+  public_deps = [ "//base" ]
+  deps = [ "//services/data_decoder/public/mojom:mojom_xml_parser" ]
+}
+
+# This is split up into two targets to workaround some dependency issues. The
+# Rust FFI bindings depends on parts of xml_dom.h, since the Rust portion of
+# the parser builds up the C++ structures via builder-style callbacks. But the
+# C++ entrypoint to the parser also depends on the Rust FFI bindings, which
+# would be a circular dependency.
+#
+# xml_dom.h, which is part of the `xml_dom_core` target, declares the parser
+# entrypoints, but they are implemented in a separate `xml_dom` target, which
+# depends on both the Rust FFI bindings and `xml_dom_core`. In the future,
+# `xml_dom` is intended to the publicly-exposed target for consumers of the
+# Rust-based parser.
+source_set("xml_dom_core") {
+  public = [ "xml_dom.h" ]
+  visibility = [
+    ":*",
+    "//services/data_decoder/xml:*",
+  ]
+
+  sources = [ "xml_dom.cc" ]
+
+  public_deps = [ "//base" ]
+  deps = [
+    "//services/data_decoder/public/mojom:mojom_xml_parser",
+    "//third_party/abseil-cpp:absl",
+  ]
+}
+
+source_set("xml_dom") {
+  visibility = [ ":*" ]
+
+  public_deps = [ ":xml_dom_core" ]
+  sources = [ "xml_dom_parser.cc" ]
+  deps = [ "//services/data_decoder/xml:xml_parser_rs" ]
+}
+
+source_set("test_support") {
+  testonly = true
+  sources = [
+    "test_support/fake_data_decoder_service.cc",
+    "test_support/fake_data_decoder_service.h",
+    "test_support/in_process_data_decoder.cc",
+    "test_support/in_process_data_decoder.h",
+  ]
+
+  public_deps = [
+    ":cpp",
+    "//base",
+    "//mojo/public/cpp/bindings",
+    "//services/data_decoder:lib",
+    "//services/data_decoder/public/mojom",
+  ]
+
+  deps = [ "//testing/gtest" ]
+}

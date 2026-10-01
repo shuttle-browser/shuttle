@@ -1,0 +1,107 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_LENS_CONTEXTUAL_INPUT_H_
+#define COMPONENTS_LENS_CONTEXTUAL_INPUT_H_
+
+#include <optional>
+#include <vector>
+
+#include "base/memory/raw_ref.h"
+#include "base/memory/raw_span.h"
+#include "components/lens/lens_overlay_mime_type.h"
+#include "components/sessions/core/session_id.h"
+#include "third_party/lens_server_proto/modality_chip_props.pb.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "url/gurl.h"
+
+namespace lens {
+
+enum LensOverlayContextualInputUploadType : int;
+
+// Data struct representing context input data bytes.
+// Moved from lens::PageContent
+struct ContextualInput {
+  ContextualInput();
+  ContextualInput(std::vector<uint8_t> bytes, lens::MimeType content_type);
+  ContextualInput(const ContextualInput& other);
+  ~ContextualInput();
+
+ public:
+  std::vector<uint8_t> bytes_;
+  lens::MimeType content_type_;
+};
+
+// Data struct for all the contextual information.
+struct ContextualInputData {
+  ContextualInputData();
+  ~ContextualInputData();
+
+  ContextualInputData(const ContextualInputData&);
+  ContextualInputData& operator=(const ContextualInputData&) = default;
+
+  // A wrapper for the ContextualInput this ContextualInputData contains.
+  std::optional<std::vector<ContextualInput>> context_input;
+  // The mime type of this content.
+  std::optional<lens::MimeType> primary_content_type;
+  // The mime type string of this content, if the file was uploaded manually.
+  std::optional<std::string> mime_type_string;
+  // If the context is a webpage or pdf document, this is the canonicalized URL.
+  // Note: For unresolved URL uploads (where the raw URL is parsed from a
+  // composebox query), this field must be left empty, and `parsed_url` must be
+  // set instead to preserve exact raw formatting.
+  std::optional<GURL> page_url;
+  // The raw parsed URL string of an unresolved URL upload (e.g., extracted from
+  // a query box query). Keeping this as a raw string avoids GURL
+  // canonicalization which adds trailing slashes to host-only URLs.
+  // Note: `page_url` and `parsed_url` are mutually exclusive.
+  std::optional<std::string> parsed_url;
+  // If the context is a webpage or pdf, this is the title of it.
+  std::optional<std::string> page_title;
+  // If the context is a file, this is the file name.
+  std::optional<std::string> file_name;
+  // If the context is a pdf, this is the current viewed page.
+  std::optional<uint32_t> pdf_current_page;
+  // TODO(crbug.com/462520491): Set the tab handle from the contextual
+  // searchbox handler.
+  // If populated, the session id corresponding to the tab.
+  std::optional<SessionID> tab_session_id;
+  // If the context is a webpage or pdf, this is the viewport screenshot.
+  std::optional<std::vector<uint8_t>> viewport_screenshot_bytes;
+  // If the context is a webpage or pdf, and viewport_screenshot_bytes is null,
+  // this is the viewport screenshot.
+  std::optional<SkBitmap> viewport_screenshot;
+  // If the context originated from a Google Drive file, this is its drive ID.
+  std::optional<std::string> drive_id;
+  // If the context originated from a Google Drive file, this is its resource
+  // key.
+  std::optional<std::string> resource_key;
+  // Whether or not webpage or pdf context is eligible.
+  std::optional<bool> is_page_context_eligible;
+  // If set, the context id to use for referring to this context in the server.
+  // Followup uploads for an existing document should re-use the same context
+  // id.
+  std::optional<int64_t> context_id;
+  // If set, the modality chip props for the context. This should be mutually
+  // exclusive with the other fields in this struct, as it corresponds to an
+  // input that is received from the server, instead of originating from the
+  // client.
+  std::optional<lens::ModalityChipProps> modality_chip_props;
+  // Whether or not the contextual input data is for a context upload with
+  // strong user Lens usage intent. This is usually true, but can be false for
+  // the LensOverlay zero-state initial context upload.
+  bool has_lens_usage_intent = true;
+  // Whether or not the request is for an implicit context upload.
+  // e.g. a viewport screenshot from the Lens overlay contextual searchbox.
+  bool is_implicit_upload = false;
+  // Whether or not the tab was added exclusively by the smart tab selection
+  // mechanism.
+  bool was_smart_tab_selection = false;
+  // The upload type associated with the contextual input.
+  std::optional<lens::LensOverlayContextualInputUploadType> upload_type;
+};
+
+}  // namespace lens
+
+#endif  // COMPONENTS_LENS_CONTEXTUAL_INPUT_H_

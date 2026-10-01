@@ -1,0 +1,521 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/autofill/core/browser/manual_testing_import.h"
+
+#include <string>
+#include <string_view>
+
+#include "base/check.h"
+#include "base/command_line.h"
+#include "base/containers/fixed_flat_map.h"
+#include "base/containers/map_util.h"
+#include "base/containers/to_vector.h"
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/json/json_reader.h"
+#include "base/location.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/task/task_traits.h"
+#include "base/task/thread_pool.h"
+#include "base/values.h"
+#include "components/autofill/core/browser/autofill_type.h"
+#include "components/autofill/core/browser/data_manager/addresses/address_data_manager.h"
+#include "components/autofill/core/browser/data_manager/autofill_ai/entity_data_manager.h"
+#include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
+#include "components/autofill/core/browser/data_model/addresses/autofill_profile.h"
+#include "components/autofill/core/browser/data_model/addresses/autofill_structured_address_component.h"
+#include "components/autofill/core/browser/data_model/autofill_ai/entity_instance.h"
+#include "components/autofill/core/browser/data_model/autofill_ai/entity_type.h"
+#include "components/autofill/core/browser/field_type_util.h"
+#include "components/autofill/core/browser/field_types.h"
+#include "components/autofill/core/browser/network/autofill_ai/autofill_ai_personal_context_access_manager_impl.h"
+
+namespace autofill {
+
+namespace {
+
+// Util struct for storing the list of profiles, credit cards and entities to be
+// imported. If any of `profiles`, `credit_cards` or `entities` are
+// std::nullopt, then the data used for import is malformed, and this will cause
+// an error to be logged. When any of `profiles`, `credit_cards` or `entities`
+// is empty, it means that the JSON file used for import did not include the
+// corresponding key. It'll be treated as valid but won't be imported so that
+// existing data in the data managers isn't cleared without replacement.
+struct AutofillImportData {
+  std::optional<std::vector<AutofillProfile>> profiles;
+  std::optional<std::vector<CreditCard>> credit_cards;
+  std::optional<std::vector<EntityInstance>> entities;
+};
+
+constexpr std::string_view kKeyProfiles = "profiles";
+constexpr std::string_view kKeyCreditCards = "credit-cards";
+constexpr std::string_view kKeyEntities = "entities";
+constexpr std::string_view kKeyRecordType = "record_type";
+constexpr std::string_view kKeyNickname = "nickname";
+constexpr std::string_view kKeyEntityType = "entity_type";
+constexpr std::string_view kKeyAttributes = "attributes";
+constexpr std::string_view kKeySources = "sources";
+constexpr std::string_view kKeySourceType = "type";
+constexpr std::string_view kKeySourceUrl = "url";
+constexpr std::string_view kKeyInitialCreatorId = "initial_creator_id";
+constexpr auto kRecordTypeMapping =
+    base::MakeFixedFlatMap<std::string_view, AutofillProfile::RecordType>(
+        {{"account", AutofillProfile::RecordType::kAccount},
+         {"accountHome", AutofillProfile::RecordType::kAccountHome},
+         {"accountWork", AutofillProfile::RecordType::kAccountWork},
+         {"localOrSyncable", AutofillProfile::RecordType::kLocalOrSyncable},
+         {"accountNameEmail", AutofillProfile::RecordType::kAccountNameEmail}});
+constexpr auto kEntityRecordTypeMapping =
+    base::MakeFixedFlatMap<std::string_view, EntityInstance::RecordType>(
+        {{"local", EntityInstance::RecordType::kLocal},
+         {"serverWallet", EntityInstance::RecordType::kServerWallet},
+         {"personalContext", EntityInstance::RecordType::kPersonalContext}});
+constexpr auto kEntityPayloadSourceTypeMapping = base::MakeFixedFlatMap<
+    std::string_view,
+    EntityInstance::PersonalContextRecordTypePayload::Source::Type>(
+    {{"gmail",
+      EntityInstance::PersonalContextRecordTypePayload::Source::Type::kGmail},
+     {"photos", EntityInstance::PersonalContextRecordTypePayload::Source::Type::
+                    kPhotos}});
+
+// Checks if the `profile` is changed by `FinalizeAfterImport()`. See
+// documentation of `AutofillProfilesFromJSON()` for a rationale.
+// The return value of `FinalizeAfterImport()` doesn't suffice to check that,
+// since structured address and name components are updated separately.
+bool IsFullyStructuredProfile(const AutofillProfile& profile) {
+  AutofillProfile finalized_profile = profile;
+  finalized_profile.FinalizeAfterImport();
+  // TODO(crbug.com/40268162): Re-enable this check.
+  // return profile == finalized_profile;
+  return true;
+}
+
+// Extracts the `kKeyRecordType` value of the `dict` and translates it into an
+// AutofillProfile::RecordType. If no value is present,
+// RecordType::kLocalOrSyncable is returned. If a record type with invalid value
+// is specified, an error message is logged and std::nullopt is returned.
+std::optional<AutofillProfile::RecordType> GetRecordTypeFromDict(
+    const base::DictValue& dict) {
+  if (!dict.contains(kKeyRecordType)) {
+    return AutofillProfile::RecordType::kLocalOrSyncable;
+  }
+  if (const std::string* record_type_value = dict.FindString(kKeyRecordType)) {
+    if (auto it = kRecordTypeMapping.find(*record_type_value);
+        it != kRecordTypeMapping.end()) {
+      return it->second;
+    }
+  }
+  LOG(ERROR) << "Invalid " << kKeyRecordType << " value.";
+  return std::nullopt;
+}
+
+std::optional<EntityInstance::RecordType> GetEntityRecordTypeFromDict(
+    const base::DictValue& dict) {
+  if (!dict.contains(kKeyRecordType)) {
+    return EntityInstance::RecordType::kLocal;
+  }
+  if (const std::string* record_type_value = dict.FindString(kKeyRecordType)) {
+    if (auto it = kEntityRecordTypeMapping.find(*record_type_value);
+        it != kEntityRecordTypeMapping.end()) {
+      return it->second;
+    }
+  }
+  LOG(ERROR) << "Invalid " << kKeyRecordType << " value for entity.";
+  return std::nullopt;
+}
+
+// Given a `dict` of "field-type" : "value" mappings, constructs an
+// AutofillProfile where each "field-type"  is set to the provided "value".
+// All verification statuses are set to `kObserved`. Setting them to
+// `kUserVerified` is problematic, since the data model expects that only root
+// level (= setting-visible) nodes are user verified.
+// If a field type cannot be mapped, or if the resulting profile is not
+// `IsFullyStructuredProfile()`, std::nullopt is returned.
+std::optional<AutofillProfile> MakeProfile(const base::DictValue& dict) {
+  std::optional<AutofillProfile::RecordType> record_type =
+      GetRecordTypeFromDict(dict);
+  if (!record_type.has_value()) {
+    return std::nullopt;
+  }
+  const std::string* country_code =
+      dict.FindString(FieldTypeToStringView(ADDRESS_HOME_COUNTRY));
+  AddressCountryCode address_country_code =
+      country_code ? AddressCountryCode(*country_code) : AddressCountryCode("");
+
+  AutofillProfile profile(*record_type, address_country_code);
+  // `dict` is a dictionary of std::string -> base::Value.
+  for (const auto [key, value] : dict) {
+    if (key == kKeyRecordType) {
+      continue;
+    }
+    if (key == kKeyInitialCreatorId) {
+      if (const std::optional<int> creator_id = dict.FindInt(key)) {
+        profile.set_initial_creator_id(*creator_id);
+        continue;
+      } else {
+        LOG(ERROR) << "Incorrect value for " << key << ".";
+        return std::nullopt;
+      }
+    }
+    const FieldType type = TypeNameToFieldType(key);
+    // For phone numbers, only the PHONE_HOME_WHOLE_NUMBER is stored internally
+    // and as a result, setting partial phone number is prohibited.
+    if (!IsAddressType(type) ||
+        (GroupTypeOfFieldType(type) == FieldTypeGroup::kPhone &&
+         type != PHONE_HOME_WHOLE_NUMBER)) {
+      LOG(ERROR) << "Invalid address type " << key << ".";
+      return std::nullopt;
+    }
+    profile.SetRawInfoWithVerificationStatus(
+        type, base::UTF8ToUTF16(value.GetString()),
+        VerificationStatus::kObserved);
+  }
+  if (!IsFullyStructuredProfile(profile)) {
+    LOG(ERROR) << "Some profile is not fully structured.";
+    return std::nullopt;
+  }
+  return profile;
+}
+
+std::optional<CreditCard> MakeCard(const base::DictValue& dict) {
+  CreditCard card;
+  // `dict` is a dictionary of std::string -> base::Value.
+  for (const auto [key, value] : dict) {
+    if (key == kKeyNickname) {
+      card.SetNickname(base::UTF8ToUTF16(value.GetString()));
+      continue;
+    }
+    const FieldType type = TypeNameToFieldType(key);
+    if (GroupTypeOfFieldType(type) != FieldTypeGroup::kCreditCard) {
+      LOG(ERROR) << "Non-credit card type " << key << ".";
+      return std::nullopt;
+    }
+    card.SetRawInfo(type, base::UTF8ToUTF16(value.GetString()));
+  }
+  if (!card.IsValid()) {
+    LOG(ERROR) << "Some credit card is not valid.";
+    return std::nullopt;
+  }
+  return card;
+}
+
+std::vector<EntityInstance::PersonalContextRecordTypePayload::Source>
+GetPersonalContextSourcesFromDict(const base::DictValue& dict) {
+  using Source = EntityInstance::PersonalContextRecordTypePayload::Source;
+  const base::ListValue* sources_list = dict.FindList(kKeySources);
+  if (!sources_list) {
+    return {};
+  }
+
+  std::vector<Source> sources;
+  sources.reserve(sources_list->size());
+  for (const base::Value& item : *sources_list) {
+    if (!item.is_dict()) {
+      LOG(ERROR) << "Source entry is not a dictionary.";
+      continue;
+    }
+    const base::DictValue& src_dict = item.GetDict();
+    const std::string* type_str = src_dict.FindString(kKeySourceType);
+    const std::string* url_str = src_dict.FindString(kKeySourceUrl);
+    if (!type_str || !url_str) {
+      LOG(ERROR) << "Source entry missing 'type' or 'url'.";
+      continue;
+    }
+    const Source::Type* type =
+        base::FindOrNull(kEntityPayloadSourceTypeMapping, *type_str);
+    if (!type) {
+      LOG(ERROR) << "Invalid source type: " << *type_str << ".";
+      continue;
+    }
+    sources.push_back({.type = *type, .url = *url_str});
+  }
+  return sources;
+}
+
+std::optional<EntityInstance> MakeEntity(const base::DictValue& dict) {
+  const std::string* entity_type_str = dict.FindString(kKeyEntityType);
+  if (!entity_type_str) {
+    LOG(ERROR) << "Missing " << kKeyEntityType << ".";
+    return std::nullopt;
+  }
+  std::optional<EntityType> entity_type = StringToEntityType(*entity_type_str);
+  if (!entity_type) {
+    LOG(ERROR) << "Invalid entity type: " << *entity_type_str << ".";
+    return std::nullopt;
+  }
+
+  const base::DictValue* attributes_dict = dict.FindDict(kKeyAttributes);
+  if (!attributes_dict) {
+    LOG(ERROR) << "Missing " << kKeyAttributes << ".";
+    return std::nullopt;
+  }
+
+  base::flat_set<AttributeInstance, AttributeInstance::CompareByType>
+      attributes;
+  for (const auto [attr_name, attr_value] : *attributes_dict) {
+    std::optional<AttributeType> attribute_type =
+        StringToAttributeType(*entity_type, attr_name);
+    if (!attribute_type) {
+      LOG(ERROR) << "Invalid attribute type: " << attr_name << " for entity "
+                 << *entity_type_str << ".";
+      return std::nullopt;
+    }
+    AttributeInstance attribute(*attribute_type);
+    attribute.SetRawInfo(std::nullopt,
+                         base::UTF8ToUTF16(attr_value.GetString()),
+                         VerificationStatus::kObserved);
+    attribute.FinalizeInfo();
+    attributes.insert(std::move(attribute));
+  }
+
+  if (attributes.empty()) {
+    LOG(ERROR) << "Entity has no attributes.";
+    return std::nullopt;
+  }
+
+  std::optional<EntityInstance::RecordType> record_type =
+      GetEntityRecordTypeFromDict(dict);
+  if (!record_type.has_value()) {
+    return std::nullopt;
+  }
+
+  auto record_type_data = [&] -> EntityInstance::RecordTypeData {
+    switch (*record_type) {
+      case EntityInstance::RecordType::kLocal:
+        return EntityInstance::LocalRecordTypePayload{};
+      case EntityInstance::RecordType::kServerWallet:
+        return EntityInstance::WalletRecordTypePayload{};
+      case EntityInstance::RecordType::kPersonalContext:
+        return EntityInstance::PersonalContextRecordTypePayload{
+            .sources = GetPersonalContextSourcesFromDict(dict)};
+    }
+    NOTREACHED();
+  }();
+  return EntityInstance(
+      *entity_type, std::move(attributes),
+      EntityInstance::EntityId(base::Uuid::GenerateRandomV4()),
+      /*nickname=*/"", base::Time::Now(), /*use_count=*/0,
+      /*use_date=*/base::Time(), std::move(record_type_data),
+      EntityInstance::AreAttributesReadOnly(false),
+      /*frecency_override=*/"");
+}
+
+// Removes all AutofillProfiles from the `adm`. Since `ADM::RemoveProfile()`
+// invalidates the pointers returned by `ADM::GetProfiles()`, this is done by
+// collecting all GUIDs to remove first.
+void RemoveAllExistingProfiles(AddressDataManager& adm) {
+  std::vector<std::string> existing_guids =
+      base::ToVector(adm.GetProfiles(), &AutofillProfile::guid);
+  for (const std::string& guid : existing_guids) {
+    adm.RemoveProfile(guid);
+  }
+}
+
+// Sets all of the `pdm`'s profiles or credit cards to `profiles` or
+// `credit_cards`, if the `pdm` still exists.
+void SetDataForPDM(base::WeakPtr<PersonalDataManager> pdm,
+                   std::optional<AutofillImportData> import_data) {
+  if (!import_data.has_value() || !import_data->profiles.has_value() ||
+      !import_data->credit_cards.has_value()) {
+    return;
+  }
+  if (pdm == nullptr) {
+    return;
+  }
+  // If a list in `import_data` is empty, do not trigger the PDM
+  // because this will clear all corresponding existing data.
+  if (!import_data->profiles->empty()) {
+    RemoveAllExistingProfiles(pdm->address_data_manager());
+    for (const AutofillProfile& profile : *import_data->profiles) {
+      pdm->address_data_manager().AddProfile(profile);
+    }
+  }
+  if (!import_data->credit_cards->empty()) {
+    pdm->payments_data_manager().DeleteAllLocalCreditCards();
+    // Adding `AddCreditCard` cannot immediately follow
+    // `DeleteAllLocalCreditCards` because the latter keeps the in-memory
+    // cache of credit cards alive and triggers an asynchronous `Refresh`
+    // operation. `AddCreditCard` discards cards that are duplicates of existing
+    // cards and uses the stale cache for this operation. The following
+    // workaround ensures that the `Refresh` operation terminates before trying
+    // to add new cards. Addresses are not affected because all operations are
+    // added to a queue for serial execution. Entities are not affected because
+    // deduplication happens only based on the guid, which are randomly
+    // generated on each import.
+    pdm->payments_data_manager().AddCallbackAfterRefreshCompleted(
+        base::BindOnce(
+            [](base::WeakPtr<PaymentsDataManager> payments_data_manager,
+               std::vector<CreditCard> cards) {
+              if (!payments_data_manager) {
+                return;
+              }
+              for (const CreditCard& card : cards) {
+                payments_data_manager->AddCreditCard(card);
+              }
+            },
+            pdm->payments_data_manager().GetWeakPtr(),
+            std::move(*import_data->credit_cards)));
+  }
+}
+
+// Sets all of the `edm`'s entities if the `edm` still exists.
+void SetDataForEDM(base::WeakPtr<EntityDataManager> edm,
+                   std::optional<AutofillImportData> import_data) {
+  if (!import_data.has_value() || !import_data->entities.has_value()) {
+    return;
+  }
+  if (edm == nullptr) {
+    return;
+  }
+  if (!import_data->entities->empty()) {
+    std::vector<EntityInstance> personal_context_entities;
+    for (const EntityInstance& entity : *import_data->entities) {
+      switch (entity.record_type()) {
+        case EntityInstance::RecordType::kLocal:
+        case EntityInstance::RecordType::kServerWallet:
+          edm->AddOrUpdateEntityInstance(entity);
+          break;
+        case EntityInstance::RecordType::kPersonalContext:
+          personal_context_entities.emplace_back(entity);
+          break;
+      }
+    }
+    edm->SetPersonalContextEntitiesForTesting(
+        std::move(personal_context_entities));
+  }
+}
+
+// Converts all `entries of `json_array` to a vector of Ts using
+// `to_data_model`. In case any conversion fails, nullopt is returned.
+template <class T>
+std::optional<std::vector<T>> DataModelsFromJSON(
+    const base::ListValue* const json_array,
+    base::RepeatingCallback<std::optional<T>(const base::DictValue&)>
+        to_data_model) {
+  if (!json_array) {
+    return std::vector<T>{};
+  }
+  std::vector<T> data_models;
+  for (const base::Value& json : *json_array) {
+    if (!json.is_dict()) {
+      LOG(ERROR) << "Description is not a dictionary.";
+      return std::nullopt;
+    }
+    std::optional<T> data_model = to_data_model.Run(json.GetDict());
+    if (!data_model.has_value()) {
+      return std::nullopt;
+    }
+    data_models.push_back(std::move(*data_model));
+  }
+  // Move due to implicit type conversion.
+  return std::move(data_models);
+}
+
+// Parses Autofill data from the JSON `content` string.
+// If parsing fails the error is logged and std::nullopt is returned.
+std::optional<AutofillImportData> LoadDataFromJSONContent(
+    const std::string& file_content) {
+  std::optional<base::DictValue> json = base::JSONReader::ReadDict(
+      file_content, base::JSON_PARSE_CHROMIUM_EXTENSIONS);
+  if (!json) {
+    LOG(ERROR) << "Failed to parse JSON file.";
+    return std::nullopt;
+  }
+  const base::ListValue* const profiles_json = json->FindList(kKeyProfiles);
+  const base::ListValue* const cards_json = json->FindList(kKeyCreditCards);
+  const base::ListValue* const entities_json = json->FindList(kKeyEntities);
+  if (!cards_json && !profiles_json && !entities_json) {
+    LOG(ERROR) << "JSON has no " << kKeyProfiles << ", " << kKeyCreditCards
+               << " or " << kKeyEntities << " keys.";
+    return std::nullopt;
+  }
+  return AutofillImportData{.profiles = AutofillProfilesFromJSON(profiles_json),
+                            .credit_cards = CreditCardsFromJSON(cards_json),
+                            .entities = EntitiesFromJSON(entities_json)};
+}
+
+std::optional<AutofillImportData> LoadDataFromFile(base::FilePath file) {
+  std::string file_content;
+  if (!base::ReadFileToString(file, &file_content)) {
+    LOG(ERROR) << "Failed to read file " << file.MaybeAsASCII() << ".";
+    return std::nullopt;
+  }
+  return LoadDataFromJSONContent(file_content);
+}
+
+}  // namespace
+
+std::optional<std::vector<AutofillProfile>> LoadProfilesFromFile(
+    base::FilePath file) {
+  if (std::optional<AutofillImportData> import_data = LoadDataFromFile(file)) {
+    return import_data->profiles;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::vector<CreditCard>> LoadCreditCardsFromFile(
+    base::FilePath file) {
+  if (std::optional<AutofillImportData> import_data = LoadDataFromFile(file)) {
+    return import_data->credit_cards;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::vector<EntityInstance>> LoadEntitiesFromFile(
+    base::FilePath file) {
+  if (std::optional<AutofillImportData> import_data = LoadDataFromFile(file)) {
+    return import_data->entities;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::vector<AutofillProfile>> AutofillProfilesFromJSON(
+    const base::ListValue* const profiles_json) {
+  return DataModelsFromJSON(profiles_json, base::BindRepeating(&MakeProfile));
+}
+
+std::optional<std::vector<CreditCard>> CreditCardsFromJSON(
+    const base::ListValue* const cards_json) {
+  return DataModelsFromJSON(cards_json, base::BindRepeating(&MakeCard));
+}
+
+std::optional<std::vector<EntityInstance>> EntitiesFromJSON(
+    const base::ListValue* const entities_json) {
+  return DataModelsFromJSON(entities_json, base::BindRepeating(&MakeEntity));
+}
+
+void MaybeImportProfilesAndCardsForTesting(
+    base::WeakPtr<PersonalDataManager> pdm) {
+  const auto* kCommandLine = base::CommandLine::ForCurrentProcess();
+  if (kCommandLine->HasSwitch(kManualFileImportForTestingFlag)) {
+    base::ThreadPool::PostTaskAndReplyWithResult(
+        FROM_HERE, {base::TaskPriority::BEST_EFFORT, base::MayBlock()},
+        base::BindOnce(&LoadDataFromFile, kCommandLine->GetSwitchValuePath(
+                                              kManualFileImportForTestingFlag)),
+        base::BindOnce(&SetDataForPDM, pdm));
+  } else if (kCommandLine->HasSwitch(kManualContentImportForTestingFlag)) {
+    SetDataForPDM(pdm,
+                  LoadDataFromJSONContent(kCommandLine->GetSwitchValueASCII(
+                      kManualContentImportForTestingFlag)));
+  }
+}
+
+void MaybeImportEntitiesForTesting(base::WeakPtr<EntityDataManager> edm) {
+  const auto* kCommandLine = base::CommandLine::ForCurrentProcess();
+  if (kCommandLine->HasSwitch(kManualFileImportForTestingFlag)) {
+    base::ThreadPool::PostTaskAndReplyWithResult(
+        FROM_HERE, {base::TaskPriority::BEST_EFFORT, base::MayBlock()},
+        base::BindOnce(&LoadDataFromFile, kCommandLine->GetSwitchValuePath(
+                                              kManualFileImportForTestingFlag)),
+        base::BindOnce(&SetDataForEDM, edm));
+  } else if (kCommandLine->HasSwitch(kManualContentImportForTestingFlag)) {
+    SetDataForEDM(edm,
+                  LoadDataFromJSONContent(kCommandLine->GetSwitchValueASCII(
+                      kManualContentImportForTestingFlag)));
+  }
+}
+
+}  // namespace autofill

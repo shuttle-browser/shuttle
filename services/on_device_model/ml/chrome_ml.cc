@@ -1,0 +1,247 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "services/on_device_model/ml/chrome_ml.h"
+
+#include <memory>
+#include <optional>
+#include <string_view>
+
+#include "base/check.h"
+#include "base/compiler_specific.h"
+#include "base/debug/crash_logging.h"
+#include "base/debug/dump_without_crashing.h"
+#include "base/logging.h"
+#include "base/memory/ptr_util.h"
+#include "base/memory/ref_counted.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/native_library.h"
+#include "base/no_destructor.h"
+#include "base/notreached.h"
+#include "base/process/process.h"
+#include "build/build_config.h"
+#include "services/on_device_model/ml/chrome_ml_api.h"
+#include "services/on_device_model/ml/chrome_ml_holder.h"
+#include "third_party/dawn/include/dawn/dawn_proc.h"
+#include "third_party/dawn/include/dawn/native/DawnNative.h"
+#include "third_party/dawn/include/dawn/webgpu_cpp.h"
+#include "third_party/rust/chromium_crates_io/vendor/llguidance-v1/llguidance.h"
+
+#if !BUILDFLAG(IS_IOS)
+#include "gpu/config/gpu_info_collector.h"
+#include "gpu/config/gpu_util.h"
+#endif
+
+namespace ml {
+
+namespace {
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class GpuErrorReason {
+  kOther = 0,
+  kDxgiErrorDeviceHung = 1,
+  kDeviceRemoved = 2,
+  kDeviceCreationFailed = 3,
+  kOutOfMemory = 4,
+  kDawnProcTableInitFailed = 5,
+  kMaxValue = kDawnProcTableInitFailed,
+};
+
+void FatalGpuErrorFn(const char* msg) {
+  SCOPED_CRASH_KEY_STRING1024("ChromeML(GPU)", "error_msg", msg);
+  std::string_view msg_str = msg;
+  std::string_view msg_continued;
+  constexpr size_t kCrashStringSize = 1024;
+  // The error message may be long as it potentially includes the shader,
+  // collect another 3k if needed.
+  if (msg_str.size() > kCrashStringSize) {
+    msg_continued = msg_str.substr(kCrashStringSize);
+  }
+  SCOPED_CRASH_KEY_STRING1024("ChromeML(GPU)", "error_msg2", msg_continued);
+  msg_continued =
+      msg_continued.substr(std::min(kCrashStringSize, msg_continued.size()));
+  SCOPED_CRASH_KEY_STRING1024("ChromeML(GPU)", "error_msg3", msg_continued);
+  msg_continued =
+      msg_continued.substr(std::min(kCrashStringSize, msg_continued.size()));
+  SCOPED_CRASH_KEY_STRING1024("ChromeML(GPU)", "error_msg4", msg_continued);
+  msg_continued =
+      msg_continued.substr(std::min(kCrashStringSize, msg_continued.size()));
+  SCOPED_CRASH_KEY_STRING1024("ChromeML(GPU)", "error_msg5", msg_continued);
+  msg_continued =
+      msg_continued.substr(std::min(kCrashStringSize, msg_continued.size()));
+  SCOPED_CRASH_KEY_STRING1024("ChromeML(GPU)", "error_msg6", msg_continued);
+
+  GpuErrorReason error_reason = GpuErrorReason::kOther;
+  if (msg_str.find("DXGI_ERROR_DEVICE_HUNG") != std::string::npos) {
+    error_reason = GpuErrorReason::kDxgiErrorDeviceHung;
+  } else if (msg_str.find("DXGI_ERROR_DEVICE_REMOVED") != std::string::npos ||
+             msg_str.find("VK_ERROR_DEVICE_LOST") != std::string::npos) {
+    error_reason = GpuErrorReason::kDeviceRemoved;
+  } else if (msg_str.find("Failed to create device") != std::string::npos) {
+    error_reason = GpuErrorReason::kDeviceCreationFailed;
+  } else if (msg_str.find("VK_ERROR_OUT_OF_DEVICE_MEMORY") !=
+                 std::string::npos ||
+             msg_str.find("E_OUTOFMEMORY") != std::string::npos ||
+             msg_str.find("VirtualAlloc 1455") != std::string::npos ||
+             msg_str.find("Out of memory") != std::string::npos) {
+    error_reason = GpuErrorReason::kOutOfMemory;
+  } else if (msg_str.find("Dawn's proc tables") != std::string::npos) {
+    error_reason = GpuErrorReason::kDawnProcTableInitFailed;
+  }
+  base::UmaHistogramEnumeration("OnDeviceModel.GpuErrorReason", error_reason);
+  if (error_reason == GpuErrorReason::kOther) {
+    // Collect crash reports on unknown errors.
+    NOTREACHED() << "ChromeML(GPU) Error: " << msg;
+  } else if (error_reason == GpuErrorReason::kDawnProcTableInitFailed) {
+    LOG(ERROR) << "Failed to initialize Dawn's proc tables.";
+    base::debug::DumpWithoutCrashing();
+  } else {
+    LOG(ERROR) << "Terminating On-Device Model Service: " << msg_str;
+    base::Process::TerminateCurrentProcessImmediately(0);
+  }
+}
+
+void FatalErrorFn(const char* msg) {
+  SCOPED_CRASH_KEY_STRING1024("ChromeML", "error_msg", msg);
+  NOTREACHED() << "ChromeML Error: " << msg;
+}
+
+// Helpers to disabiguate overloads in base.
+void RecordExactLinearHistogram(const char* name,
+                                int sample,
+                                int exclusive_max) {
+  base::UmaHistogramExactLinear(name, sample, exclusive_max);
+}
+
+void RecordCustomCountsHistogram(const char* name,
+                                 int sample,
+                                 int min,
+                                 int exclusive_max,
+                                 size_t buckets) {
+  base::UmaHistogramCustomCounts(name, sample, min, exclusive_max, buckets);
+}
+
+void RecordMediumTimesHistogram(const char* name, int64_t milliseconds) {
+  base::UmaHistogramMediumTimes(name, base::Milliseconds(milliseconds));
+}
+
+}  // namespace
+
+ChromeML::ChromeML(std::unique_ptr<ChromeMLHolder> holder)
+    : holder_(std::move(holder)), api_(&holder_->api()) {}
+ChromeML::ChromeML(const ChromeMLAPI* api) : holder_(nullptr), api_(api) {}
+ChromeML::~ChromeML() = default;
+
+// static
+ChromeML* ChromeML::Get() {
+  static base::NoDestructor<std::unique_ptr<ChromeML>> chrome_ml{
+      Create(std::nullopt)};
+  return chrome_ml->get();
+}
+
+// static
+std::unique_ptr<ChromeML> ChromeML::CreateForTesting(
+    const std::optional<std::string>& library_name) {
+  return Create(library_name);
+}
+
+// static
+std::unique_ptr<ChromeML> ChromeML::CreateForTesting(const ChromeMLAPI* api) {
+  return base::WrapUnique(new ChromeML(api));
+}
+
+#if defined(ENABLE_ON_DEVICE_CONSTRAINTS)
+void ConstraintDelete(ChromeMLConstraint constraint) {
+  llg_free_constraint(reinterpret_cast<LlgConstraint*>(constraint));
+}
+
+bool ConstraintComputeMask(ChromeMLConstraint constraint,
+                           ChromeMLConstraintMask& mask) {
+  LlgMaskResult res;
+  if (llg_compute_mask(reinterpret_cast<LlgConstraint*>(constraint), &res) !=
+      0) {
+    return false;
+  }
+  mask.sample_mask = res.sample_mask;
+  mask.is_stop = res.is_stop;
+  return true;
+}
+
+bool ConstraintCommitToken(ChromeMLConstraint constraint, uint32_t token) {
+  LlgCommitResult result;
+  return llg_commit_token(reinterpret_cast<LlgConstraint*>(constraint), token,
+                          &result) >= 0;
+}
+
+bool ConstraintIsStopped(ChromeMLConstraint constraint) {
+  return llg_is_stopped(reinterpret_cast<LlgConstraint*>(constraint));
+}
+
+const char* ConstraintGetError(ChromeMLConstraint constraint) {
+  return llg_get_error(reinterpret_cast<LlgConstraint*>(constraint));
+}
+
+ChromeMLConstraint ConstraintClone(ChromeMLConstraint constraint) {
+  return reinterpret_cast<ChromeMLConstraint>(
+      llg_clone_constraint(reinterpret_cast<LlgConstraint*>(constraint)));
+}
+#endif
+
+// static
+std::unique_ptr<ChromeML> ChromeML::Create(
+    const std::optional<std::string>& library_name) {
+#if !BUILDFLAG(IS_IOS)
+  // Log GPU info for crash reports.
+  gpu::GPUInfo gpu_info;
+  gpu::CollectBasicGraphicsInfo(&gpu_info);
+  gpu::SetKeysForCrashLogging(gpu_info);
+#endif
+
+  std::unique_ptr<ChromeMLHolder> holder = ChromeMLHolder::Create(library_name);
+  if (!holder) {
+    return nullptr;
+  }
+
+  std::unique_ptr<ChromeML> chrome_ml =
+      base::WrapUnique(new ChromeML(std::move(holder)));
+
+  dawnProcSetProcs(&dawn::native::GetProcs());
+  if (!chrome_ml->TryInitDawnProcs(dawn::native::GetProcs())) {
+    FatalGpuErrorFn("Failed to initialize Dawn's proc tables.");
+    return nullptr;
+  }
+  chrome_ml->SetFatalErrorFn(&FatalGpuErrorFn);
+
+  const ChromeMLMetricsFns metrics_fns{
+      .RecordExactLinearHistogram = &RecordExactLinearHistogram,
+      .RecordCustomCountsHistogram = &RecordCustomCountsHistogram,
+      .RecordMediumTimesHistogram = &RecordMediumTimesHistogram,
+  };
+  chrome_ml->SetMetricsFns(&metrics_fns);
+
+  chrome_ml->SetConstraintFns(GetConstraintFns());
+
+  chrome_ml->SetFatalErrorNonGpuFn(&FatalErrorFn);
+
+  return chrome_ml;
+}
+
+const ChromeMLConstraintFns* GetConstraintFns() {
+#if defined(ENABLE_ON_DEVICE_CONSTRAINTS)
+  static constexpr ChromeMLConstraintFns kConstraintFns = {
+      .Delete = &ConstraintDelete,
+      .ComputeMask = &ConstraintComputeMask,
+      .CommitToken = &ConstraintCommitToken,
+      .IsStopped = &ConstraintIsStopped,
+      .GetError = &ConstraintGetError,
+      .Clone = &ConstraintClone,
+  };
+#else
+  static constexpr ChromeMLConstraintFns kConstraintFns = {};
+#endif
+  return &kConstraintFns;
+}
+
+}  // namespace ml

@@ -1,0 +1,764 @@
+/*
+ * Copyright (C) 2012 Google Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *     * Neither the name of Google Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include "third_party/blink/renderer/core/dom/layout_tree_builder_traversal.h"
+
+#include <algorithm>
+
+#include "base/containers/adapters.h"
+#include "third_party/blink/renderer/core/css/style_engine.h"
+#include "third_party/blink/renderer/core/dom/column_pseudo_element.h"
+#include "third_party/blink/renderer/core/dom/element.h"
+#include "third_party/blink/renderer/core/dom/flat_tree_traversal.h"
+#include "third_party/blink/renderer/core/dom/indexed_pseudo_element.h"
+#include "third_party/blink/renderer/core/dom/node-inl.h"
+#include "third_party/blink/renderer/core/dom/pseudo_element.h"
+#include "third_party/blink/renderer/core/html_names.h"
+#include "third_party/blink/renderer/core/layout/layout_object.h"
+#include "third_party/blink/renderer/core/layout/layout_view.h"
+#include "third_party/blink/renderer/core/overscroll/overscroll_area_tracker.h"
+#include "third_party/blink/renderer/core/style/computed_style_constants.h"
+#include "third_party/blink/renderer/core/view_transition/view_transition_pseudo_element_base.h"
+
+namespace blink {
+
+inline static bool HasDisplayContentsStyle(const Node& node) {
+  auto* element = DynamicTo<Element>(node);
+  return element && element->HasDisplayContentsStyle();
+}
+
+ContainerNode* LayoutTreeBuilderTraversal::Parent(const Node& node) {
+  // TODO(hayato): Uncomment this once we can be sure
+  // LayoutTreeBuilderTraversal::parent() is used only for a node which is
+  // connected.
+  // DCHECK(node.isConnected());
+  if (IsA<PseudoElement>(node)) {
+    DCHECK(node.parentNode());
+    return node.parentNode();
+  }
+  return FlatTreeTraversal::Parent(node);
+}
+
+bool LayoutTreeBuilderTraversal::IsLayoutParent(const Node& node) {
+  return !HasDisplayContentsStyle(node) && !node.IsColumnPseudoElement();
+}
+
+ContainerNode* LayoutTreeBuilderTraversal::LayoutParent(const Node& node) {
+  // TODO(crbug.com/332396355): consider to check for ::scroll-marker-group
+  // from all call sites of this function, or move the check here.
+  ContainerNode* parent = LayoutTreeBuilderTraversal::Parent(node);
+
+  while (parent && !IsLayoutParent(*parent)) {
+    parent = LayoutTreeBuilderTraversal::Parent(*parent);
+  }
+
+  return parent;
+}
+
+LayoutObject* LayoutTreeBuilderTraversal::ParentLayoutObject(const Node& node) {
+  if (node.GetPseudoId() == kPseudoIdViewTransition) {
+    Element* scope = node.parentElement();
+    if (scope->IsDocumentElement()) {
+      // For a document transition, the LayoutObject for the ::view-transition
+      // pseudo-element is wrapped by the anonymous LayoutViewTransitionRoot,
+      // which represents the snapshot containing block.
+      //
+      // The LayoutViewTransitionRoot is a child of the LayoutView, and will be
+      // injected by LayoutView::AddChild.
+      return node.GetDocument().GetLayoutView();
+    }
+    // For a scoped transition, the LayoutObject for the ::view-transition
+    // pseudo-element is a child of the LayoutObject for the scope element.
+    return scope->GetLayoutObject();
+  }
+  const Node* search_start_node = &node;
+  // Parent of ::scroll-marker-group and ::scroll-button() should be layout
+  // parent of its originating element.
+  if (node.IsScrollMarkerGroupPseudoElement() ||
+      node.IsScrollButtonPseudoElement()) {
+    search_start_node = node.parentNode();
+  }
+  ContainerNode* parent =
+      LayoutTreeBuilderTraversal::LayoutParent(*search_start_node);
+  return parent ? parent->GetLayoutObject() : nullptr;
+}
+
+Node* LayoutTreeBuilderTraversal::NextSibling(const Node& node) {
+  PseudoId pseudo_id = node.GetPseudoId();
+  Element* parent_element;
+  if (pseudo_id != kPseudoIdNone) {
+    parent_element = DynamicTo<Element>(*node.parentNode());
+    DCHECK(parent_element);
+  } else {
+    if (Node* next = FlatTreeTraversal::NextSibling(node)) {
+      return next;
+    }
+    parent_element = DynamicTo<Element>(FlatTreeTraversal::Parent(node));
+    if (!parent_element) {
+      return nullptr;
+    }
+  }
+
+  if (!parent_element->HasPseudoElements()) {
+    return nullptr;
+  }
+
+  if (pseudo_id == kPseudoIdColumn) {
+    // kPseudoIdColumn is an array of indexed pseudo-elements.  If this node
+    // is one of them (and not the last), find the next one in the array.
+    auto* column = To<ColumnPseudoElement>(&node);
+    const ColumnPseudoElementsVector* columns =
+        parent_element->GetColumnPseudoElements();
+    if (column->Index() + 1u < columns->size()) {
+      return columns->at(column->Index() + 1u);
+    }
+  }
+  auto pseudo_iter =
+      std::ranges::find(Node::kElementChildPseudoOrder, pseudo_id);
+  if (pseudo_iter != Node::kElementChildPseudoOrder.end()) {
+    while (++pseudo_iter != Node::kElementChildPseudoOrder.end()) {
+      switch (*pseudo_iter) {
+        case kPseudoIdColumn:
+          // kPseudoIdColumn is an array of indexed pseudo-elements.  If this
+          // node is before it and the array is present, return its first
+          // item.
+          if (const ColumnPseudoElementsVector* columns =
+                  parent_element->GetColumnPseudoElements();
+              columns && !columns->empty()) {
+            return columns->front();
+          }
+          break;
+        case kPseudoIdNone:
+          if (Node* next = FlatTreeTraversal::FirstChild(*parent_element)) {
+            return next;
+          }
+          break;
+        case kPseudoIdViewTransition:
+          // If parent is the document element, its ::view-transition is placed
+          // under the LayoutViewTransitionRoot instead of the normal location.
+          if (parent_element->IsDocumentElement()) {
+            break;
+          }
+          [[fallthrough]];
+        default:
+          if (Node* next = parent_element->GetPseudoElement(*pseudo_iter)) {
+            return next;
+          }
+          break;
+      }
+    }
+    return nullptr;
+  }
+
+  switch (pseudo_id) {
+    case kPseudoIdViewTransitionGroup: {
+      auto* parent_pseudo =
+          DynamicTo<ViewTransitionPseudoElementBase>(parent_element);
+      DCHECK(parent_pseudo);
+
+      auto* pseudo_element = DynamicTo<ViewTransitionPseudoElementBase>(node);
+      DCHECK(pseudo_element);
+
+      // Iterate the list of IDs until we hit the entry for |node's| ID. The
+      // sibling is the next ID in the list which generates a pseudo-element.
+      bool found = false;
+      for (const auto& transition_name :
+           parent_pseudo->GetContainedViewTransitionNames()) {
+        if (!found) {
+          if (transition_name == pseudo_element->view_transition_name()) {
+            found = true;
+          }
+          continue;
+        }
+
+        if (auto* sibling = parent_element->GetPseudoElement(
+                kPseudoIdViewTransitionGroup, transition_name)) {
+          return sibling;
+        }
+      }
+      return nullptr;
+    }
+    case kPseudoIdViewTransitionImagePair: {
+      auto* pseudo_element = DynamicTo<ViewTransitionPseudoElementBase>(node);
+      DCHECK(pseudo_element);
+      if (auto* sibling = parent_element->GetPseudoElement(
+              kPseudoIdViewTransitionGroupChildren,
+              pseudo_element->view_transition_name())) {
+        return sibling;
+      }
+      return nullptr;
+    }
+    case kPseudoIdViewTransitionGroupChildren:
+    case kPseudoIdViewTransitionOld: {
+      auto* pseudo_element = DynamicTo<ViewTransitionPseudoElementBase>(node);
+      DCHECK(pseudo_element);
+      if (auto* sibling = parent_element->GetPseudoElement(
+              kPseudoIdViewTransitionNew,
+              pseudo_element->view_transition_name())) {
+        return sibling;
+      }
+      return nullptr;
+    }
+    case kPseudoIdViewTransitionNew:
+      return nullptr;
+    default:
+      NOTREACHED();
+  }
+}
+
+Node* LayoutTreeBuilderTraversal::PreviousSibling(const Node& node) {
+  PseudoId pseudo_id = node.GetPseudoId();
+  Element* parent_element;
+  if (pseudo_id != kPseudoIdNone) {
+    parent_element = DynamicTo<Element>(*node.parentNode());
+    DCHECK(parent_element);
+  } else {
+    if (Node* previous = FlatTreeTraversal::PreviousSibling(node)) {
+      return previous;
+    }
+    parent_element = DynamicTo<Element>(FlatTreeTraversal::Parent(node));
+    if (!parent_element) {
+      return nullptr;
+    }
+  }
+
+  if (!parent_element->HasPseudoElements()) {
+    return nullptr;
+  }
+
+  if (pseudo_id == kPseudoIdColumn) {
+    // kPseudoIdColumn is an array of indexed pseudo-elements.  If this node
+    // is one of them (and not the first), find the previous one in the array.
+    auto* column = To<ColumnPseudoElement>(&node);
+    if (column->Index() > 0) {
+      return parent_element->GetColumnPseudoElements()->at(column->Index() -
+                                                           1u);
+    }
+  }
+
+  auto pseudo_iter =
+      std::ranges::find(Node::kElementChildPseudoOrder, pseudo_id);
+  if (pseudo_iter != Node::kElementChildPseudoOrder.end()) {
+    while (pseudo_iter != Node::kElementChildPseudoOrder.begin()) {
+      --pseudo_iter;
+      switch (*pseudo_iter) {
+        case kPseudoIdColumn:
+          // kPseudoIdColumn is an array of indexed pseudo-elements.  If this
+          // node is after it and the array is present, return its last item.
+          if (const ColumnPseudoElementsVector* columns =
+                  parent_element->GetColumnPseudoElements();
+              columns && !columns->empty()) {
+            return columns->back();
+          }
+          break;
+        case kPseudoIdNone:
+          if (Node* previous = FlatTreeTraversal::LastChild(*parent_element)) {
+            return previous;
+          }
+          break;
+        case kPseudoIdViewTransition:
+          // We don't need code like NextSibling has because the
+          // view-transition pseudo-element never has a next sibling.
+          NOTREACHED();
+        default:
+          if (Node* previous = parent_element->GetPseudoElement(*pseudo_iter)) {
+            return previous;
+          }
+          break;
+      }
+    }
+    return nullptr;
+  }
+
+  NOTREACHED();
+}
+
+Node* LayoutTreeBuilderTraversal::LastChild(const Node& node) {
+  const auto* current_element = DynamicTo<Element>(node);
+  if (!current_element || !current_element->HasPseudoElements()) {
+    return FlatTreeTraversal::LastChild(node);
+  }
+
+  for (PseudoId pseudo_id : base::Reversed(Node::kElementChildPseudoOrder)) {
+    switch (pseudo_id) {
+      case kPseudoIdColumn:
+        // kPseudoIdColumn is an array of indexed pseudo-elements.  Return its
+        // last item if the array is present.
+        if (const ColumnPseudoElementsVector* columns =
+                current_element->GetColumnPseudoElements();
+            columns && !columns->empty()) {
+          if (Node* last = columns->back()) {
+            return last;
+          }
+        }
+        break;
+      case kPseudoIdNone:
+        if (Node* last = FlatTreeTraversal::LastChild(*current_element)) {
+          return last;
+        }
+        break;
+      case kPseudoIdViewTransition:
+        // If parent is the document element, its ::view-transition is placed
+        // under the LayoutViewTransitionRoot instead of the normal location.
+        if (current_element->IsDocumentElement()) {
+          break;
+        }
+        [[fallthrough]];
+      default:
+        if (Node* last = current_element->GetPseudoElement(pseudo_id)) {
+          return last;
+        }
+        break;
+    }
+  }
+  return nullptr;
+}
+
+Node* LayoutTreeBuilderTraversal::Previous(const Node& node,
+                                           const Node* stay_within) {
+  if (node == stay_within) {
+    return nullptr;
+  }
+
+  if (Node* previous_node = PreviousSibling(node)) {
+    while (Node* previous_last_child = LastChild(*previous_node)) {
+      previous_node = previous_last_child;
+    }
+    return previous_node;
+  }
+  return Parent(node);
+}
+
+Node* LayoutTreeBuilderTraversal::FirstChild(const Node& node) {
+  const auto* current_element = DynamicTo<Element>(node);
+  if (!current_element || !current_element->HasPseudoElements()) {
+    return FlatTreeTraversal::FirstChild(node);
+  }
+
+  for (PseudoId pseudo_id : Node::kElementChildPseudoOrder) {
+    switch (pseudo_id) {
+      case kPseudoIdColumn:
+        // kPseudoIdColumn is an array of indexed pseudo-elements.  Return its
+        // first item if the array is present.
+        if (const ColumnPseudoElementsVector* columns =
+                current_element->GetColumnPseudoElements();
+            columns && !columns->empty()) {
+          if (Node* first = columns->front()) {
+            return first;
+          }
+        }
+        break;
+      case kPseudoIdNone:
+        if (Node* first = FlatTreeTraversal::FirstChild(node)) {
+          return first;
+        }
+        break;
+      case kPseudoIdViewTransition:
+        // If parent is the document element, its ::view-transition is placed
+        // under the LayoutViewTransitionRoot instead of the normal location.
+        if (current_element->IsDocumentElement()) {
+          break;
+        }
+        [[fallthrough]];
+      default:
+        if (Node* first = current_element->GetPseudoElement(pseudo_id)) {
+          return first;
+        }
+        break;
+    }
+  }
+  return nullptr;
+}
+
+static Node* NextAncestorSibling(const Node& node, const Node* stay_within) {
+  DCHECK(!LayoutTreeBuilderTraversal::NextSibling(node));
+  DCHECK_NE(node, stay_within);
+  for (Node* parent_node = LayoutTreeBuilderTraversal::Parent(node);
+       parent_node;
+       parent_node = LayoutTreeBuilderTraversal::Parent(*parent_node)) {
+    if (parent_node == stay_within) {
+      return nullptr;
+    }
+    if (Node* next_node =
+            LayoutTreeBuilderTraversal::NextSibling(*parent_node)) {
+      return next_node;
+    }
+  }
+  return nullptr;
+}
+
+Node* LayoutTreeBuilderTraversal::NextSkippingChildren(
+    const Node& node,
+    const Node* stay_within) {
+  if (node == stay_within) {
+    return nullptr;
+  }
+  if (Node* next_node = NextSibling(node)) {
+    return next_node;
+  }
+  return NextAncestorSibling(node, stay_within);
+}
+
+Node* LayoutTreeBuilderTraversal::Next(const Node& node,
+                                       const Node* stay_within) {
+  if (Node* child = FirstChild(node)) {
+    return child;
+  }
+  return NextSkippingChildren(node, stay_within);
+}
+
+// Checks if current or (next/prev) sibling is either ::scroll-marker-group
+// or element with scroll-marker-group property set,
+// or ::scroll-button(), or element with scroll-button.
+static inline bool AreBoxTreeOrderSiblings(const Node& current, Node* sibling) {
+  if (current.IsScrollMarkerGroupPseudoElement()) {
+    return false;
+  }
+  if (const auto* element = DynamicTo<Element>(current)) {
+    const ComputedStyle* style = element->GetComputedStyle();
+    if (style && !style->ScrollMarkerGroupNone()) {
+      return false;
+    }
+    if (element->HasScrollButtonOrMarkerGroupPseudos()) {
+      return false;
+    }
+  }
+  if (Element* sibling_element = DynamicTo<Element>(sibling)) {
+    if (sibling_element->IsScrollMarkerGroupPseudoElement()) {
+      return false;
+    }
+    const ComputedStyle* sibling_style = sibling_element->GetComputedStyle();
+    if (sibling_style && !sibling_style->ScrollMarkerGroupNone()) {
+      return false;
+    }
+  }
+  if (current.IsScrollButtonPseudoElement()) {
+    return false;
+  }
+  if (Element* sibling_element = DynamicTo<Element>(sibling)) {
+    if (sibling_element->IsScrollButtonPseudoElement()) {
+      return false;
+    }
+    if (sibling_element->GetPseudoElement(kPseudoIdScrollButtonBlockStart)) {
+      return false;
+    }
+    if (sibling_element->GetPseudoElement(kPseudoIdScrollButtonInlineStart)) {
+      return false;
+    }
+    if (sibling_element->GetPseudoElement(kPseudoIdScrollButtonInlineEnd)) {
+      return false;
+    }
+    if (sibling_element->GetPseudoElement(kPseudoIdScrollButtonBlockEnd)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// This function correctly performs one move from `node` to next
+// layout sibling. We can't just use NextSibling, as ::scroll-marker-group
+// layout object is either previous or next sibling of its originating element,
+// but still a node child of it, as a pseudo-element.
+// Layout tree:
+//        (PS) (SMGB) (OE) (SB) (SMGA) (NS)
+//                  (B)  (A)
+// OE - originating element
+// PS - previous sibling of OE
+// NS - next sibling of OE
+// SB - scroll buttons
+// SMGB - ::scroll-marker-group of OE with scroll-marker-group: before
+// SMGA - ::scroll-marker-group of OE with scroll-marker-group: after
+// B - ::before of OE
+// A - ::after of OE
+// Node tree:
+//          (PS) (OE) (NS)
+// (SMGB) (SB) (B)  (A) (SMGA)
+// Node tree is input (`node`), return output based on layout tree.
+static Node* NextLayoutSiblingInBoxTreeOrder(const Node& node) {
+  Node* next = LayoutTreeBuilderTraversal::NextSibling(node);
+  if (AreBoxTreeOrderSiblings(node, next)) {
+    return next;
+  }
+  // From PS to OE with SMGB, return SMGB.
+  Element* next_element = DynamicTo<Element>(next);
+  if (next_element && next_element->GetComputedStyle() &&
+      next_element->GetComputedStyle()->HasScrollMarkerGroupBefore()) {
+    if (Element* pseudo =
+            next_element->GetPseudoElement(kPseudoIdScrollMarkerGroupBefore)) {
+      return pseudo;
+    }
+  }
+  // From some pseudo to any SMG, just skip SMG.
+  if (next_element && next_element->IsScrollMarkerGroupPseudoElement()) {
+    return LayoutTreeBuilderTraversal::NextSibling(*next_element);
+  }
+  // Unified traversal logic using sibling sequence order:
+  const Element* element = DynamicTo<Element>(&node);
+  if (!element) {
+    return next;
+  }
+
+  const Element* originating =
+      element->IsPseudoElement() ? element->parentElement() : element;
+  if (!originating) {
+    return next;
+  }
+
+  static constexpr std::array kBoxTreeOrder{
+      kPseudoIdScrollMarkerGroupBefore, kPseudoIdNone,
+      kPseudoIdScrollButtonBlockStart,  kPseudoIdScrollButtonInlineStart,
+      kPseudoIdScrollButtonInlineEnd,   kPseudoIdScrollButtonBlockEnd,
+      kPseudoIdScrollMarkerGroupAfter,
+  };
+
+  PseudoId current_id =
+      element->IsPseudoElement() ? element->GetPseudoId() : kPseudoIdNone;
+
+  auto it = std::find(kBoxTreeOrder.begin(), kBoxTreeOrder.end(), current_id);
+  if (it == kBoxTreeOrder.end()) {
+    return next;
+  }
+
+  // If we matched kPseudoIdNone, ensure we are actually the originating element
+  // (meaning we have scroll-buttons or scroll-marker-groups generated).
+  if (current_id == kPseudoIdNone &&
+      !originating->HasScrollButtonOrMarkerGroupPseudos()) {
+    return next;
+  }
+
+  for (auto next_it = std::next(it); next_it != kBoxTreeOrder.end();
+       ++next_it) {
+    PseudoId pseudo_id = *next_it;
+    if (pseudo_id == kPseudoIdNone) {
+      return const_cast<Element*>(originating);
+    }
+    if (Element* pseudo = originating->GetPseudoElement(pseudo_id)) {
+      return pseudo;
+    }
+  }
+
+  // Fallthrough: traverse to originating's next sibling (checking for SMGB)
+  Node* originating_next =
+      LayoutTreeBuilderTraversal::NextSibling(*originating);
+  if (Element* next_el = DynamicTo<Element>(originating_next)) {
+    if (next_el->GetComputedStyle() &&
+        next_el->GetComputedStyle()->HasScrollMarkerGroupBefore()) {
+      if (Element* pseudo =
+              next_el->GetPseudoElement(kPseudoIdScrollMarkerGroupBefore)) {
+        return pseudo;
+      }
+    }
+  }
+  return originating_next;
+}
+
+static Node* NextLayoutSiblingInternal(Node* node) {
+  for (Node* sibling = node; sibling;
+       sibling = NextLayoutSiblingInBoxTreeOrder(*sibling)) {
+    if (!HasDisplayContentsStyle(*sibling)) {
+      return sibling;
+    }
+
+    if (Node* inner = NextLayoutSiblingInternal(
+            LayoutTreeBuilderTraversal::FirstChild(*sibling))) {
+      return inner;
+    }
+  }
+
+  return nullptr;
+}
+
+Node* LayoutTreeBuilderTraversal::NextLayoutSibling(const Node& node) {
+  if (Node* sibling =
+          NextLayoutSiblingInternal(NextLayoutSiblingInBoxTreeOrder(node))) {
+    return sibling;
+  }
+
+  Node* parent = LayoutTreeBuilderTraversal::Parent(node);
+  while (parent && HasDisplayContentsStyle(*parent)) {
+    if (Node* sibling = NextLayoutSiblingInternal(
+            NextLayoutSiblingInBoxTreeOrder(*parent))) {
+      return sibling;
+    }
+    parent = LayoutTreeBuilderTraversal::Parent(*parent);
+  }
+
+  return nullptr;
+}
+
+Node* LayoutTreeBuilderTraversal::FirstLayoutChild(const Node& node) {
+  return NextLayoutSiblingInternal(FirstChild(node));
+}
+
+namespace {
+
+bool IsLayoutObjectReparented(const LayoutObject* layout_object) {
+  return layout_object->IsInTopOrViewTransitionLayer() ||
+         layout_object->StyleRef().IsInternalOverscrollPositionAuto();
+}
+
+LayoutObject* NextSiblingLayoutObjectInternal(const Node& node) {
+  for (Node* sibling = LayoutTreeBuilderTraversal::NextLayoutSibling(node);
+       sibling;
+       sibling = LayoutTreeBuilderTraversal::NextLayoutSibling(*sibling)) {
+    LayoutObject* layout_object = sibling->GetLayoutObject();
+    if (layout_object && !IsLayoutObjectReparented(layout_object)) {
+      return layout_object;
+    }
+  }
+  return nullptr;
+}
+
+bool IsAnonymousInline(const LayoutObject* object) {
+  return object && object->IsAnonymous() && object->IsInline();
+}
+
+}  // namespace
+
+LayoutObject* LayoutTreeBuilderTraversal::NextSiblingLayoutObject(
+    const Node& node) {
+  LayoutObject* next = NextSiblingLayoutObjectInternal(node);
+  // If a text node is wrapped in an anonymous inline for display:contents (see
+  // CreateInlineWrapperForDisplayContents()), use the wrapper as the next
+  // layout object. Otherwise we would need to add code to various AddChild()
+  // implementations to walk up the tree to find the correct layout tree
+  // parent/siblings.
+  if (!next || !next->IsText()) {
+    return next;
+  }
+
+  auto* const parent = next->Parent();
+  if (!IsAnonymousInline(parent)) {
+    return next;
+  }
+  // Should return a normal result for display:ruby though it can be an
+  // anonymous inline.
+  if (parent->IsInlineRuby()) [[unlikely]] {
+    return next;
+  }
+  if (!parent->IsLayoutTextCombine()) [[unlikely]] {
+    return parent;
+  }
+  auto* const text_combine_parent = parent->Parent();
+  if (IsAnonymousInline(text_combine_parent)) {
+    return text_combine_parent;
+  }
+  return parent;
+}
+
+LayoutObject* LayoutTreeBuilderTraversal::NextInTopLayer(
+    const Element& element) {
+  CHECK(element.ComputedStyleRef().IsRenderedInTopLayer(element))
+      << "This method should only be called with an element that is rendered in"
+         " the top layer";
+  const HeapVector<Member<Element>>& top_layer_elements =
+      element.GetDocument().TopLayerElements();
+  wtf_size_t position = top_layer_elements.Find(&element);
+  DCHECK_NE(position, kNotFound);
+  for (wtf_size_t i = position + 1; i < top_layer_elements.size(); ++i) {
+    LayoutObject* layout_object = top_layer_elements[i]->GetLayoutObject();
+    // If top_layer_elements[i] is not a LayoutView child, its LayoutObject is
+    // not re-attached and not in the top layer yet, thus we can not use it as a
+    // sibling LayoutObject.
+    if (layout_object &&
+        layout_object->StyleRef().IsRenderedInTopLayer(
+            *top_layer_elements[i]) &&
+        IsA<LayoutView>(layout_object->Parent())) {
+      return layout_object;
+    }
+  }
+  return nullptr;
+}
+
+int LayoutTreeBuilderTraversal::ComparePreorderTreePosition(const Node& node1,
+                                                            const Node& node2) {
+  if (node1 == node2) {
+    return 0;
+  }
+  const Node* anc1 = &node1;
+  const Node* anc2 = &node2;
+  if (Parent(*anc1) != Parent(*anc2)) {
+    wtf_size_t depth1 = 0u;
+    for (; anc1; anc1 = Parent(*anc1)) {
+      if (anc1 == anc2) {
+        // if node2 is ancestor of node1, return 1.
+        return 1;
+      }
+      ++depth1;
+    }
+    wtf_size_t depth2 = 0u;
+    for (; anc2; anc2 = Parent(*anc2)) {
+      if (anc2 == anc1) {
+        // if node1 is ancestor of node2, return -1.
+        return -1;
+      }
+      ++depth2;
+    }
+    // Find LCA.
+    anc1 = &node1;
+    anc2 = &node2;
+    while (depth1 < depth2) {
+      anc2 = Parent(*anc2);
+      --depth2;
+    }
+    while (depth1 > depth2) {
+      anc1 = Parent(*anc1);
+      --depth1;
+    }
+    while (anc1 && anc2) {
+      const Node* parent1 = Parent(*anc1);
+      const Node* parent2 = Parent(*anc2);
+      if (parent1 == parent2) {
+        break;
+      }
+      anc1 = parent1;
+      anc2 = parent2;
+    }
+  }
+  // Do some quick checks.
+  const Node* parent = Parent(*anc1);
+  DCHECK(parent);
+  if (NextSibling(*anc2) == anc1 || FirstChild(*parent) == anc2) {
+    return 1;
+  }
+  if (FirstChild(*parent) == anc1 || LastChild(*parent) == anc2) {
+    return -1;
+  }
+  // Compare the children of the first common ancestor and the current top-most
+  // ancestors of the nodes.
+  // Note: starting with anc1 here, as in most use cases of this function we
+  // want to compare two elements that are close to each other with anc1 usually
+  // being previously in pre-order.
+  DCHECK(anc1 && anc2);
+  for (const Node* child = anc1; child; child = NextSibling(*child)) {
+    if (child == anc2) {
+      return -1;
+    }
+  }
+  return 1;
+}
+
+}  // namespace blink

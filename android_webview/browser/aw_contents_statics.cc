@@ -1,0 +1,175 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "android_webview/browser/aw_contents_statics.h"
+
+#include <set>
+#include <string>
+#include <vector>
+
+#include "android_webview/browser/aw_browser_process.h"
+#include "android_webview/browser/aw_content_browser_client.h"
+#include "android_webview/browser/aw_contents.h"
+#include "android_webview/browser/aw_contents_io_thread_client.h"
+#include "android_webview/browser/aw_crash_keys.h"
+#include "android_webview/browser/safe_browsing/aw_safe_browsing_allowlist_manager.h"
+#include "base/android/jni_string.h"
+#include "base/android/scoped_java_ref.h"
+#include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "components/google/core/common/google_util.h"
+#include "components/security_interstitials/core/urls.h"
+#include "components/variations/variations_ids_provider.h"
+#include "components/version_info/version_info.h"
+#include "components/webui/flags/flags_ui_metrics.h"
+#include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
+#include "content/public/browser/render_process_host.h"
+#include "content/public/browser/storage_partition.h"
+#include "content/public/common/url_constants.h"
+#include "net/cert/cert_database.h"
+#include "third_party/jni_zero/default_conversions.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "android_webview/browser_jni_headers/AwContentsStatics_jni.h"
+
+using base::android::AttachCurrentThread;
+using base::android::JavaRef;
+using base::android::ScopedJavaGlobalRef;
+using base::android::ScopedJavaLocalRef;
+using content::BrowserThread;
+
+namespace android_webview {
+
+namespace {
+
+void ClientCertificatesCleared(const JavaRef<jobject>& callback) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  JNIEnv* env = AttachCurrentThread();
+  Java_AwContentsStatics_clientCertificatesCleared(env, callback);
+}
+
+void NotifyClientCertificatesChanged() {
+  DCHECK_CURRENTLY_ON(BrowserThread::IO);
+  net::CertDatabase::GetInstance()->NotifyObserversClientCertStoreChanged();
+}
+
+void SafeBrowsingAllowlistAssigned(const JavaRef<jobject>& callback,
+                                   bool success) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  JNIEnv* env = AttachCurrentThread();
+  Java_AwContentsStatics_safeBrowsingAllowlistAssigned(env, callback, success);
+}
+
+}  // namespace
+
+net::SocketTag GetDefaultSocketTag() {
+  JNIEnv* env = AttachCurrentThread();
+  uid_t uid = Java_AwContentsStatics_getDefaultTrafficStatsUid(env);
+  int32_t tag = Java_AwContentsStatics_getDefaultTrafficStatsTag(env);
+  return net::SocketTag(uid, tag);
+}
+
+// static
+static std::string JNI_AwContentsStatics_GetSafeBrowsingPrivacyPolicyUrl() {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  GURL privacy_policy_url(
+      security_interstitials::kSafeBrowsingPrivacyPolicyUrl);
+  std::string locale =
+      AwBrowserProcess::GetInstance()->GetSafeBrowsingUIManager()->app_locale();
+  privacy_policy_url =
+      google_util::AppendGoogleLocaleParam(privacy_policy_url, locale);
+  return privacy_policy_url.spec();
+}
+
+// static
+static void JNI_AwContentsStatics_ClearClientCertPreferences(
+    JNIEnv* env,
+    const JavaRef<jobject>& callback) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  content::GetIOThreadTaskRunner({})->PostTaskAndReply(
+      FROM_HERE, base::BindOnce(&NotifyClientCertificatesChanged),
+      base::BindOnce(&ClientCertificatesCleared,
+                     ScopedJavaGlobalRef<jobject>(env, callback)));
+}
+
+// static
+static std::string JNI_AwContentsStatics_GetUnreachableWebDataUrl() {
+  return content::kUnreachableWebDataURL;
+}
+
+// static
+static std::string JNI_AwContentsStatics_GetProductVersion() {
+  return std::string(version_info::GetVersionNumber());
+}
+
+// static
+static void JNI_AwContentsStatics_SetSafeBrowsingAllowlist(
+    JNIEnv* env,
+    std::vector<std::string> rules,
+    const JavaRef<jobject>& callback) {
+  AwSafeBrowsingAllowlistManager* allowlist_manager =
+      AwBrowserProcess::GetInstance()->GetSafeBrowsingAllowlistManager();
+  allowlist_manager->SetAllowlistOnUIThread(
+      std::move(rules),
+      base::BindOnce(&SafeBrowsingAllowlistAssigned,
+                     ScopedJavaGlobalRef<jobject>(env, callback)));
+}
+
+// static
+static void JNI_AwContentsStatics_SetCheckClearTextPermitted(bool permitted) {
+  AwContentBrowserClient::set_check_cleartext_permitted(permitted);
+}
+
+// static
+static void JNI_AwContentsStatics_LogCommandLineForDebugging() {
+  // Note: this should only be called for debugging purposes, since this is
+  // *very* spammy.
+  const base::CommandLine& command_line =
+      *base::CommandLine::ForCurrentProcess();
+  for (const auto& pair : command_line.GetSwitches()) {
+    const std::string& key = pair.first;
+    const base::CommandLine::StringType& value = pair.second;
+    LOG(INFO) << "WebViewCommandLine '" << key << "': '" << value << "'";
+  }
+}
+
+// static
+static void JNI_AwContentsStatics_LogFlagMetrics(
+    const std::set<std::string>& switches,
+    const std::set<std::string>& features) {
+  flags_ui::ReportAboutFlagsHistogram("Launch.FlagsAtStartup", switches,
+                                      features);
+  SetCrashKeysFromFeaturesAndSwitches(switches, features);
+}
+
+// static
+static bool JNI_AwContentsStatics_IsMultiProcessEnabled() {
+  return !content::RenderProcessHost::run_renderer_in_process();
+}
+
+// static
+static std::string JNI_AwContentsStatics_GetVariationsHeader() {
+  const bool is_signed_in = false;
+  auto headers =
+      variations::VariationsIdsProvider::GetInstance()->GetClientDataHeaders(
+          is_signed_in);
+  if (!headers)
+    return "";
+  return headers->headers_map.at(variations::mojom::GoogleWebVisibility::ANY);
+}
+
+// static
+static void JNI_AwContentsStatics_ForceVariationIdsForTesting(  // IN-TEST
+    const std::vector<std::string>& variationIds,
+    const std::string& commandLineVariationIds) {
+  variations::VariationsIdsProvider::GetInstance()
+      ->ForceVariationIdsForTesting(  // IN-TEST
+          variationIds, commandLineVariationIds);
+}
+
+}  // namespace android_webview
+
+DEFINE_JNI(AwContentsStatics)

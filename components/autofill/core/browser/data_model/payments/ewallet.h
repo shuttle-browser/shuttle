@@ -1,0 +1,133 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_AUTOFILL_CORE_BROWSER_DATA_MODEL_PAYMENTS_EWALLET_H_
+#define COMPONENTS_AUTOFILL_CORE_BROWSER_DATA_MODEL_PAYMENTS_EWALLET_H_
+
+#include <stdint.h>
+
+#include <compare>
+#include <string>
+#include <string_view>
+
+#include "base/containers/flat_set.h"
+#include "build/buildflag.h"
+#include "components/autofill/core/browser/data_model/payments/payment_instrument.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "base/android/jni_string.h"
+#include "base/android/scoped_java_ref.h"
+#endif
+
+class GURL;
+
+namespace autofill {
+
+// An ewallet is a form of payment that facilitates a push payment to the
+// merchant rather than a pull payment from the merchant. In the case of a pull
+// payment, the merchant collects payment information from the user and
+// initiates the payment with the issuer. Example: credit cards. For a push
+// payment, the payment is initiated from the issuer side, to a payment target
+// indicating the recipient merchant. Ewallets fall into that category. Ewallets
+// are typically already linked to a user's bank account. This class consists of
+// the details for a user's ewallet, and this data is synced from the Google
+// Payments server.
+//
+// Note: This class is reused to represent two distinct states:
+// 1. **Linked Account**: An already linked user account containing valid
+// details
+//    (possessing a non-zero server `instrument_id` and `account_display_name`).
+// 2. **Unlinked Creation Option**: An eligible provider that the user can link
+// to
+//    (where `instrument_id` is `0`, and fields like `account_display_name` and
+//    `nickname` are empty placeholder defaults).
+class Ewallet {
+ public:
+  Ewallet(int64_t instrument_id,
+          std::u16string nickname,
+          GURL display_icon_url,
+          std::u16string ewallet_name,
+          std::u16string account_display_name,
+          base::flat_set<std::u16string> supported_payment_link_uris,
+          bool is_fido_enrolled);
+  Ewallet(const Ewallet& other);
+  Ewallet& operator=(const Ewallet& other);
+  ~Ewallet();
+
+  friend std::strong_ordering operator<=>(const Ewallet&, const Ewallet&);
+  friend bool operator==(const Ewallet&, const Ewallet&);
+
+  const std::u16string& ewallet_name() const { return ewallet_name_; }
+
+  const std::u16string& account_display_name() const {
+    return account_display_name_;
+  }
+
+  const base::flat_set<std::u16string>& supported_payment_link_uris() const {
+    return supported_payment_link_uris_;
+  }
+
+  const PaymentInstrument& payment_instrument() const {
+    return payment_instrument_;
+  }
+
+  // Checks if the ewallet supports the given payment link by supported payment
+  // link URI regexes match.
+  bool SupportsPaymentLink(std::string_view payment_link) const;
+
+ private:
+  // Name of the eWallet provider. For unlinked creation options, this
+  // represents the issuer's display name (e.g., "ShopeePay").
+  std::u16string ewallet_name_;
+
+  // Display name of the eWallet account. Empty/ignored for unlinked creation
+  // options.
+  std::u16string account_display_name_;
+
+  // Chrome matches the payment links on web pages against the list of payment
+  // link URI regexes. The regex matching approach makes it possible to launch
+  // new payment methods without requiring any client side changes. More details
+  // on payment links can be found at
+  // https://github.com/aneeshali/paymentlink/blob/main/docs/explainer.md.
+  base::flat_set<std::u16string> supported_payment_link_uris_;
+
+  // Fields common for all types of payment instruments. If the contained
+  // `payment_instrument_.instrument_id()` is `0`, this instance represents an
+  // unlinked creation option rather than a linked account.
+  PaymentInstrument payment_instrument_;
+};
+
+#if BUILDFLAG(IS_ANDROID)
+base::android::ScopedJavaLocalRef<jobject> CreateJavaEwalletFromNative(
+    JNIEnv* env,
+    const Ewallet& ewallet);
+
+Ewallet CreateNativeEwalletFromJava(
+    JNIEnv* env,
+    const base::android::JavaRef<jobject>& jewallet);
+#endif
+
+}  // namespace autofill
+
+#if BUILDFLAG(IS_ANDROID)
+namespace jni_zero {
+
+template <>
+inline ScopedJavaLocalRef<jobject> ToJniType<autofill::Ewallet>(
+    JNIEnv* env,
+    const autofill::Ewallet& input) {
+  return autofill::CreateJavaEwalletFromNative(env, input);
+}
+
+template <>
+inline autofill::Ewallet FromJniType<autofill::Ewallet>(
+    JNIEnv* env,
+    const JavaRef<jobject>& input) {
+  return autofill::CreateNativeEwalletFromJava(env, input);
+}
+
+}  // namespace jni_zero
+#endif
+
+#endif  // COMPONENTS_AUTOFILL_CORE_BROWSER_DATA_MODEL_PAYMENTS_EWALLET_H_

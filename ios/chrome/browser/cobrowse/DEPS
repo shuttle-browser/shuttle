@@ -1,0 +1,12 @@
+include_rules = [
+  # keep-sorted start
+  "+ios/chrome/browser/assistant/coordinator",
+  "+ios/chrome/browser/assistant/ui",
+  "+ios/chrome/browser/composebox/coordinator",
+  "+ios/chrome/browser/composebox/public",
+  "+ios/chrome/browser/composebox/ui",
+  "+ios/chrome/browser/lens_overlay/model",
+  "+ios/chrome/browser/tabs/model",
+  "+third_party/lens_server_proto",
+  # keep-sorted end
+]

@@ -1,0 +1,25 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_chromeos)
+
+static_library("test_support") {
+  testonly = true
+
+  sources = [
+    "fake_mahi_web_contents_manager.cc",
+    "fake_mahi_web_contents_manager.h",
+    "mock_mahi_web_contents_manager.cc",
+    "mock_mahi_web_contents_manager.h",
+  ]
+
+  deps = [
+    "//base",
+    "//chrome/browser/ash/mahi/web_contents",
+    "//chromeos/components/mahi/public/cpp",
+    "//testing/gmock",
+    "//ui/gfx",
+    "//ui/gfx:test_support",
+  ]
+}

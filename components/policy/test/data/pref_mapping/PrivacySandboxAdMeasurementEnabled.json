@@ -1,0 +1,37 @@
+[
+  {
+    "os": [
+      "win",
+      "linux",
+      "mac",
+      "chromeos",
+      "fuchsia",
+      "android"
+    ],
+    "policy_pref_mapping_tests": [
+      {
+        "policies": {
+          "PrivacySandboxAdMeasurementEnabled": false
+        },
+        "prefs": {
+          "privacy_sandbox.m1.ad_measurement_enabled": {
+            "location": "user_profile",
+            "value": false
+          }
+        }
+      },
+      {
+        "policies": {
+          "PrivacySandboxAdMeasurementEnabled": true
+        },
+        "prefs": {
+          "privacy_sandbox.m1.ad_measurement_enabled": {
+            "default_value": false,
+            "location": "user_profile",
+            "note": "True values are not applied to the prefs."
+          }
+        }
+      }
+    ]
+  }
+]

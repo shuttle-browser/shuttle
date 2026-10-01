@@ -1,0 +1,364 @@
+Verify that navigation queries are reported properly.
+matched rule: {
+    navigations : [
+    ]
+    origin : regular
+    ruleTypes : [
+    ]
+    selectorList : {
+        selectors : [
+            [0] : {
+                range : {
+                    endColumn : 11
+                    endLine : 20
+                    startColumn : 6
+                    startLine : 20
+                }
+                specificity : {
+                    a : 1
+                    b : 0
+                    c : 0
+                    components : [
+                        [0] : {
+                            a : 1
+                            b : 0
+                            c : 0
+                            text : #test
+                        }
+                    ]
+                }
+                text : #test
+            }
+        ]
+        text : #test
+    }
+    style : {
+        cssProperties : [
+            [0] : {
+                disabled : false
+                implicit : false
+                name : background-color
+                range : {
+                    endColumn : 32
+                    endLine : 21
+                    startColumn : 8
+                    startLine : 21
+                }
+                text : background-color: black;
+                value : black
+            }
+            [1] : {
+                disabled : false
+                implicit : false
+                name : --actual-color
+                range : {
+                    endColumn : 29
+                    endLine : 25
+                    startColumn : 8
+                    startLine : 25
+                }
+                text : --actual-color: blue;
+                value : blue
+            }
+            [2] : {
+                disabled : false
+                implicit : false
+                name : color
+                range : {
+                    endColumn : 50
+                    endLine : 26
+                    startColumn : 8
+                    startLine : 26
+                }
+                text : color: var(--actual-color, --get-color());
+                value : var(--actual-color, --get-color())
+            }
+            [3] : {
+                name : background-color
+                value : black
+            }
+            [4] : {
+                name : --actual-color
+                value : blue
+            }
+            [5] : {
+                name : color
+                value : var(--actual-color, --get-color())
+            }
+        ]
+        cssText :          background-color: black;         /* TODO(b/431374376): Actually calling a function with a navigation         query is currently not implemented. If that is fixed we can just         call --get-color() here. */         --actual-color: blue;         color: var(--actual-color, --get-color());       
+        range : {
+            endColumn : 6
+            endLine : 27
+            startColumn : 13
+            startLine : 20
+        }
+        shorthandEntries : [
+        ]
+        styleSheetId : <string 0>
+    }
+}
+matched rule: {
+    navigations : [
+        [0] : {
+            active : true
+            range : {
+                endColumn : 35
+                endLine : 29
+                startColumn : 18
+                startLine : 29
+            }
+            styleSheetId : <string 0>
+            text : (at: --this-page)
+        }
+    ]
+    origin : regular
+    ruleTypes : [
+        [0] : NavigationRule
+    ]
+    selectorList : {
+        selectors : [
+            [0] : {
+                range : {
+                    endColumn : 13
+                    endLine : 30
+                    startColumn : 8
+                    startLine : 30
+                }
+                specificity : {
+                    a : 1
+                    b : 0
+                    c : 0
+                    components : [
+                        [0] : {
+                            a : 1
+                            b : 0
+                            c : 0
+                            text : #test
+                        }
+                    ]
+                }
+                text : #test
+            }
+        ]
+        text : #test
+    }
+    style : {
+        cssProperties : [
+            [0] : {
+                disabled : false
+                implicit : false
+                name : background-color
+                range : {
+                    endColumn : 35
+                    endLine : 31
+                    startColumn : 10
+                    startLine : 31
+                }
+                text : background-color: yellow;
+                value : yellow
+            }
+            [1] : {
+                name : background-color
+                value : yellow
+            }
+        ]
+        cssText :            background-color: yellow;         
+        range : {
+            endColumn : 8
+            endLine : 32
+            startColumn : 15
+            startLine : 30
+        }
+        shorthandEntries : [
+        ]
+        styleSheetId : <string 0>
+    }
+}
+function rule: {
+    children : [
+        [0] : {
+            style : {
+                cssProperties : [
+                    [0] : {
+                        disabled : false
+                        implicit : false
+                        name : --color
+                        range : {
+                            endColumn : 21
+                            endLine : 10
+                            startColumn : 8
+                            startLine : 10
+                        }
+                        text : --color: red;
+                        value : red
+                    }
+                    [1] : {
+                        name : --color
+                        value : red
+                    }
+                ]
+                cssText : --color: red;
+                range : {
+                    endColumn : 21
+                    endLine : 10
+                    startColumn : 8
+                    startLine : 10
+                }
+                shorthandEntries : [
+                ]
+                styleSheetId : <string 0>
+            }
+        }
+        [1] : {
+            condition : {
+                children : [
+                    [0] : {
+                        style : {
+                            cssProperties : [
+                                [0] : {
+                                    disabled : false
+                                    implicit : false
+                                    name : --color
+                                    range : {
+                                        endColumn : 24
+                                        endLine : 12
+                                        startColumn : 10
+                                        startLine : 12
+                                    }
+                                    text : --color: blue;
+                                    value : blue
+                                }
+                                [1] : {
+                                    name : --color
+                                    value : blue
+                                }
+                            ]
+                            cssText : --color: blue;
+                            range : {
+                                endColumn : 24
+                                endLine : 12
+                                startColumn : 10
+                                startLine : 12
+                            }
+                            shorthandEntries : [
+                            ]
+                            styleSheetId : <string 0>
+                        }
+                    }
+                ]
+                conditionText : (at: --this-page)
+                navigation : {
+                    active : true
+                    range : {
+                        endColumn : 37
+                        endLine : 11
+                        startColumn : 20
+                        startLine : 11
+                    }
+                    styleSheetId : <string 0>
+                    text : (at: --this-page)
+                }
+            }
+        }
+        [2] : {
+            condition : {
+                children : [
+                    [0] : {
+                        style : {
+                            cssProperties : [
+                                [0] : {
+                                    disabled : false
+                                    implicit : false
+                                    name : --color
+                                    range : {
+                                        endColumn : 25
+                                        endLine : 15
+                                        startColumn : 10
+                                        startLine : 15
+                                    }
+                                    text : --color: green;
+                                    value : green
+                                }
+                                [1] : {
+                                    name : --color
+                                    value : green
+                                }
+                            ]
+                            cssText : --color: green;
+                            range : {
+                                endColumn : 25
+                                endLine : 15
+                                startColumn : 10
+                                startLine : 15
+                            }
+                            shorthandEntries : [
+                            ]
+                            styleSheetId : <string 0>
+                        }
+                    }
+                ]
+                conditionText : (at: --not-this-page)
+                navigation : {
+                    active : false
+                    range : {
+                        endColumn : 41
+                        endLine : 14
+                        startColumn : 20
+                        startLine : 14
+                    }
+                    styleSheetId : <string 0>
+                    text : (at: --not-this-page)
+                }
+            }
+        }
+        [3] : {
+            style : {
+                cssProperties : [
+                    [0] : {
+                        disabled : false
+                        implicit : false
+                        name : result
+                        range : {
+                            endColumn : 29
+                            endLine : 17
+                            startColumn : 8
+                            startLine : 17
+                        }
+                        text : result: var(--color);
+                        value : var(--color)
+                    }
+                    [1] : {
+                        name : result
+                        value : var(--color)
+                    }
+                ]
+                cssText : result: var(--color);
+                range : {
+                    endColumn : 29
+                    endLine : 17
+                    startColumn : 8
+                    startLine : 17
+                }
+                shorthandEntries : [
+                ]
+                styleSheetId : <string 0>
+            }
+        }
+    ]
+    name : {
+        range : {
+            endColumn : 29
+            endLine : 9
+            startColumn : 16
+            startLine : 9
+        }
+        text : --get-color
+    }
+    origin : regular
+    originTreeScopeNodeId : <number 1>
+    parameters : [
+    ]
+    styleSheetId : <string 0>
+}
+

@@ -1,0 +1,14 @@
+[
+  {
+    "os": [
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "reporting.report_website_telemetry_collection_rate_ms",
+      "default_value": 900000,
+      "values_to_test": [
+        300000
+      ]
+    }
+  }
+]

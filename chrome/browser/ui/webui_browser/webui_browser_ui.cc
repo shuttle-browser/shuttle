@@ -1,0 +1,353 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webui_browser/webui_browser_ui.h"
+
+#include "base/notimplemented.h"
+#include "chrome/browser/bookmarks/bookmark_model_factory.h"
+#include "chrome/browser/contextual_search/contextual_search_service_factory.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/bookmarks/bookmark_bar_controller.h"
+#include "chrome/browser/ui/bookmarks/bookmarks_service_feature.h"
+#include "chrome/browser/ui/browser_element_identifiers.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/interaction/browser_elements.h"
+#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
+#include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
+#include "chrome/browser/ui/tabs/tab_drag_api/tab_drag_service_feature.h"
+#include "chrome/browser/ui/tabs/tab_strip_api/controllers/tab_strip_ui_controller_impl.h"
+#include "chrome/browser/ui/tabs/tab_strip_api/tab_strip_service_feature.h"
+#include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.h"
+#include "chrome/browser/ui/webui/favicon_source.h"
+#include "chrome/browser/ui/webui/searchbox/realbox_handler.h"
+#include "chrome/browser/ui/webui/webui_toolbar/webui_toolbar_extensions_container.h"
+#include "chrome/browser/ui/webui_browser/bookmark_bar_page_handler.h"
+#include "chrome/browser/ui/webui_browser/webui_browser.h"
+#include "chrome/browser/ui/webui_browser/webui_browser_page_handler.h"
+#include "chrome/browser/ui/webui_browser/webui_browser_side_panel_ui.h"
+#include "chrome/browser/ui/webui_browser/webui_browser_window.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chrome/grit/branded_strings.h"
+#include "chrome/grit/generated_resources.h"
+#include "chrome/grit/tab_strip_api_resources_map.h"
+#include "chrome/grit/webui_browser_resources.h"
+#include "chrome/grit/webui_browser_resources_map.h"
+#include "chrome/grit/webui_toolbar_shared_resources.h"
+#include "chrome/grit/webui_toolbar_shared_resources_map.h"
+#include "components/contextual_search/contextual_search_service.h"
+#include "components/contextual_search/contextual_search_session_handle.h"
+#include "components/favicon_base/favicon_url_parser.h"
+#include "components/guest_contents/browser/guest_contents_host_impl.h"
+#include "components/surface_embed/common/features.h"
+#include "content/public/browser/browser_context.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_ui.h"
+#include "content/public/browser/web_ui_data_source.h"
+#include "services/network/public/mojom/content_security_policy.mojom.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/views/interaction/element_tracker_views.h"
+#include "ui/webui/tracked_element/tracked_element_handler.h"
+#include "ui/webui/tracked_element/tracked_element_handler_document_singleton.h"
+#include "ui/webui/webui_util.h"
+
+namespace {
+
+std::string SidePanelEntryIdToTitle(SidePanelEntryId id) {
+  // TODO(webium): Ideally, the titles should be added to SIDE_PANEL_ENTRY_IDS
+  // macros in chrome/browser/ui/side_panel/side_panel_entry_id.h, and
+  // then this conversion function would be written in that same file,
+  // analogously to the other functions it contains. But it appears that some
+  // of the entry  ids there are stale and no longer have a matching generated
+  // IDS_*_TITLE string that we can include.
+  //
+  // Since we are currently only explicitly supporting three side panel types,
+  // we do the id to title conversion here manually to minimize modification to
+  // existing code.
+  switch (id) {
+    case SidePanelEntryId::kCustomizeChrome:
+      return l10n_util::GetStringUTF8(IDS_SIDE_PANEL_CUSTOMIZE_CHROME_TITLE);
+    case SidePanelEntryId::kReadingList:
+      return l10n_util::GetStringUTF8(IDS_READ_LATER_TITLE);
+    case SidePanelEntryId::kBookmarks:
+      return l10n_util::GetStringUTF8(IDS_BOOKMARK_MANAGER_TITLE);
+    default:
+      NOTREACHED();
+  }
+}
+
+}  // namespace
+
+WebUIBrowserUIConfig::WebUIBrowserUIConfig()
+    : DefaultWebUIConfig(content::kChromeUIScheme,
+                         chrome::kChromeUIWebuiBrowserHost) {}
+
+bool WebUIBrowserUIConfig::IsWebUIEnabled(
+    content::BrowserContext* browser_context) {
+  return webui_browser::IsWebUIBrowserEnabled();
+}
+
+// realbox uses ui/webui/resources/js/metrics_reporter, which in turn uses
+// chrome.timeTicks.nowInMicroseconds(). In order to provide it we pass
+// enable_chrome_send to MojoWebUIController constructor, since they're
+// a package deal via BindingsPolicyValue::kWebUi.
+WebUIBrowserUI::WebUIBrowserUI(content::WebUI* web_ui)
+    : ui::MojoWebUIController(web_ui,
+                              /*enable_chrome_send=*/true,
+                              /*enable_chrome_histograms=*/true) {
+  WebUIBrowserWindow* webui_browser_window =
+      WebUIBrowserWindow::FromWebShellWebContents(web_ui->GetWebContents());
+  Profile* profile = Profile::FromWebUI(web_ui);
+  browser_ = webui_browser_window->browser();
+
+  webui::SetBrowserWindowInterface(web_ui->GetWebContents(), browser_);
+
+  // Set up the chrome://webui-browser source.
+  content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
+      web_ui->GetWebContents()->GetBrowserContext(),
+      chrome::kChromeUIWebuiBrowserHost);
+
+  // Add required resources.
+  webui::SetupWebUIDataSource(source, kWebuiBrowserResources,
+                              IDR_WEBUI_BROWSER_WEBUI_BROWSER_HTML);
+  source->AddResourcePaths(kTabStripApiResources);
+  source->AddResourcePaths(kWebuiToolbarSharedResources);
+
+  static constexpr webui::LocalizedString kStrings[] = {
+      // Localized strings (alphabetical order).
+      {"appMenuTooltip", IDS_APPMENU_TOOLTIP},
+      {"tooltipExtensionsButton", IDS_TOOLTIP_EXTENSIONS_BUTTON},
+      {"tooltipNewTab", IDS_TOOLTIP_NEW_TAB},
+      {"tooltipReload", IDS_TOOLTIP_RELOAD},
+      {"tooltipStop", IDS_TOOLTIP_STOP},
+  };
+  source->AddLocalizedStrings(kStrings);
+
+  source->AddLocalizedStrings(
+      SearchboxHandler::GetWebUIDataSourceDict(profile));
+
+  source->AddInteger("tabStripInset",
+                     WebUIBrowserPageHandler::GetTabStripInsetWidth());
+
+  source->AddBoolean(
+      "enableSurfaceEmbed",
+      base::FeatureList::IsEnabled(surface_embed::features::kSurfaceEmbed));
+  if (base::FeatureList::IsEnabled(surface_embed::features::kSurfaceEmbed)) {
+    // Allow <embed> elements for the surface embed plugin. Using 'self'
+    // is the most restrictive policy that works since the embed has no src.
+    source->OverrideContentSecurityPolicy(
+        network::mojom::CSPDirectiveName::ObjectSrc, "object-src 'self';");
+  }
+
+  // TODO(crbug.com/445510209): Uncomment after installing WebUIOmniboxHandler.
+  // source->AddBoolean("reportMetrics", true);
+  // source->AddString("charTypedToPaintMetricName",
+  //                   "Omnibox.WebUI.CharTypedToRepaintLatency.ToPaint");
+  // source->AddString(
+  //     "resultChangedToPaintMetricName",
+  //     "Omnibox.Popup.WebUI.ResultChangedToRepaintLatency.ToPaint");
+
+  content::URLDataSource::Add(
+      profile, std::make_unique<FaviconSource>(
+                   profile, chrome::FaviconUrlFormat::kFavicon2));
+
+  if (browser_) {
+    // This use of unretained is safe because the
+    // TrackedElementHandlerDocumentSingleton only stores the callback for at
+    // most the lifetime of the WebContents, which is always shorter than the
+    // Browser.
+    ui::TrackedElementHandlerDocumentSingleton::Register(
+        this, GetKnownElementIdentifiers(),
+        base::BindRepeating(
+            [](BrowserWindowInterface* browser) {
+              return BrowserElements::From(browser)->GetContext();
+            },
+            base::Unretained(browser_)));
+  }
+}
+
+WebUIBrowserUI::~WebUIBrowserUI() = default;
+
+void WebUIBrowserUI::BindInterface(
+    mojo::PendingReceiver<webui_browser::mojom::PageHandlerFactory> receiver) {
+  page_factory_receiver_.reset();
+  page_factory_receiver_.Bind(std::move(receiver));
+}
+
+void WebUIBrowserUI::BindInterface(
+    mojo::PendingReceiver<bookmark_bar::mojom::PageHandlerFactory> receiver) {
+  bookmark_bar_page_factory_receiver_.reset();
+  bookmark_bar_page_factory_receiver_.Bind(std::move(receiver));
+}
+
+void WebUIBrowserUI::BindInterface(
+    mojo::PendingReceiver<extensions_bar::mojom::PageHandlerFactory> receiver) {
+  extensions_bar_page_factory_receiver_.reset();
+  extensions_bar_page_factory_receiver_.Bind(std::move(receiver));
+}
+
+void WebUIBrowserUI::BindInterface(
+    mojo::PendingReceiver<searchbox::mojom::PageHandlerFactory>
+        receiver) {
+  searchbox_page_factory_receiver_.reset();
+  searchbox_page_factory_receiver_.Bind(std::move(receiver));
+}
+
+void WebUIBrowserUI::CreatePageHandler(
+    mojo::PendingRemote<searchbox::mojom::Page> page,
+    mojo::PendingReceiver<searchbox::mojom::PageHandler> pending_page_handler) {
+  content::WebContents* web_contents = web_ui()->GetWebContents();
+  // TODO(crbug.com/445510209): Pass `metrics_reporter_` after installing a
+  // WebUIOmniboxHandler.
+  realbox_handler_ = std::make_unique<RealboxHandler>(
+      std::move(pending_page_handler), std::move(page),
+      Profile::FromWebUI(web_ui()), web_contents,
+      base::BindRepeating(&WebUIBrowserUI::GetOrCreateContextualSessionHandle,
+                          base::Unretained(this)));
+}
+
+void WebUIBrowserUI::BindInterface(
+    mojo::PendingReceiver<bookmarks_api::mojom::BookmarksService> receiver) {
+  WebUIBrowserWindow* window =
+      WebUIBrowserWindow::FromWebShellWebContents(web_ui()->GetWebContents());
+  if (window) {
+    BrowserWindowInterface* browser_window = window->browser();
+    if (browser_window) {
+      auto* feature = BookmarksServiceFeature::From(browser_window);
+      if (feature) {
+        feature->Accept(std::move(receiver));
+      }
+    }
+  }
+}
+
+void WebUIBrowserUI::BindInterface(
+    mojo::PendingReceiver<guest_contents::mojom::GuestContentsHost> receiver) {
+  guest_contents::GuestContentsHostImpl::Create(web_ui()->GetWebContents(),
+                                                std::move(receiver));
+}
+
+void WebUIBrowserUI::BindInterface(
+    mojo::PendingReceiver<tabs_api::mojom::TabStripService> receiver) {
+  auto* tab_strip_service_feature = TabStripServiceFeature::From(browser_);
+  CHECK(tab_strip_service_feature) << "Browser missing TabStripService";
+  tab_strip_service_feature->Accept(std::move(receiver));
+}
+
+void WebUIBrowserUI::BindInterface(
+    mojo::PendingReceiver<tabs_api::mojom::TabStripExperimentService>
+        receiver) {
+  auto* tab_strip_service_feature = TabStripServiceFeature::From(browser_);
+  CHECK(tab_strip_service_feature) << "Browser missing TabStripService";
+  tab_strip_service_feature->AcceptExperimental(std::move(receiver));
+}
+
+void WebUIBrowserUI::BindInterface(
+    mojo::PendingReceiver<tabs_api::mojom::TabDragService> receiver) {
+  auto* tab_drag_service_feature = TabDragServiceFeature::From(browser_);
+  CHECK(tab_drag_service_feature) << "Browser missing TabDragService";
+  tab_drag_service_feature->AcceptDragService(
+      std::move(receiver), web_ui()->GetWebContents()->GetNativeView());
+}
+
+void WebUIBrowserUI::BindInterface(
+    mojo::PendingReceiver<tabs_api::mojom::TabStripUIController> receiver) {
+  auto* ui_controller = tabs_api::TabStripUIControllerImpl::From(browser_);
+  CHECK(ui_controller) << "Browser missing TabStripUIController";
+  ui_controller->Bind(std::move(receiver));
+}
+
+base::WeakPtr<WebUIBrowserUI> WebUIBrowserUI::GetWeakPtr() {
+  return weak_factory_.GetWeakPtr();
+}
+
+void WebUIBrowserUI::CreatePageHandler(
+    mojo::PendingRemote<webui_browser::mojom::Page> page,
+    mojo::PendingReceiver<webui_browser::mojom::PageHandler> receiver) {
+  page_.reset();
+  page_.Bind(std::move(page));
+  auto* render_frame_host = web_ui()->GetRenderFrameHost();
+  WebUIBrowserPageHandler::CreateForRenderFrameHost(*render_frame_host,
+                                                    std::move(receiver), this);
+  page_->OnPaintAsActiveChanged(
+      browser_window()->widget()->ShouldPaintAsActive());
+}
+
+void WebUIBrowserUI::CreatePageHandler(
+    mojo::PendingRemote<bookmark_bar::mojom::Page> page,
+    mojo::PendingReceiver<bookmark_bar::mojom::PageHandler> receiver) {
+  bookmark_bar_page_handler_ =
+      std::make_unique<WebUIBrowserBookmarkBarPageHandler>(
+          std::move(receiver), std::move(page), web_ui(), browser_);
+}
+
+void WebUIBrowserUI::CreatePageHandler(
+    mojo::PendingRemote<extensions_bar::mojom::Page> page,
+    mojo::PendingReceiver<extensions_bar::mojom::PageHandler> receiver) {
+  static_cast<WebUIToolbarExtensionsContainer*>(
+      ExtensionsContainer::From(*browser()))
+      ->Bind(std::move(page), std::move(receiver));
+}
+
+const std::vector<ui::ElementIdentifier>&
+WebUIBrowserUI::GetKnownElementIdentifiers() const {
+  static const std::vector<ui::ElementIdentifier> kKnownElementIdentifiers{
+      kContentsContainerViewElementId, kExtensionsMenuButtonElementId,
+      kToolbarActionViewElementId,     kLocationBarElementId,
+      kLocationIconElementId,          kToolbarAppMenuButtonElementId,
+      kToolbarAvatarButtonElementId,   kToolbarBackButtonElementId,
+      kToolbarForwardButtonElementId};
+  return kKnownElementIdentifiers;
+}
+
+void WebUIBrowserUI::BookmarkBarStateChanged(
+    BookmarkBar::AnimateChangeType change_type) {
+  if (bookmark_bar_page_handler_) {
+    bookmark_bar_page_handler_->SetBookmarkBarState(
+        BookmarkBarController::From(browser_)->bookmark_bar_state(),
+        change_type);
+  }
+}
+
+void WebUIBrowserUI::ShowSidePanel(SidePanelEntryKey side_panel_entry_key) {
+  // Create guest contents.
+  WebUIBrowserSidePanelUI* side_panel_ui =
+      browser_window()->GetWebUIBrowserSidePanelUI();
+  content::WebContents* web_contents =
+      side_panel_ui->GetWebContentsForId(side_panel_entry_key.id());
+  web_contents->SetColorProviderSource(browser_window());
+  CHECK(web_contents);
+  auto* guest_handle =
+      guest_contents::GuestContentsHandle::CreateForWebContents(web_contents);
+
+  // Notify JS.
+  page_->ShowSidePanel(guest_handle->id(),
+                       SidePanelEntryIdToTitle(side_panel_entry_key.id()));
+}
+
+void WebUIBrowserUI::CloseSidePanel() {
+  page_->CloseSidePanel();
+}
+
+contextual_search::ContextualSearchSessionHandle*
+WebUIBrowserUI::GetOrCreateContextualSessionHandle() {
+  if (!session_handle_) {
+    auto* service = ContextualSearchServiceFactory::GetForProfile(
+        Profile::FromWebUI(web_ui()));
+    if (service) {
+      // TODO(crbug.com/445510209): Use appropriate config and source
+      session_handle_ = service->CreateSession(
+          omnibox::CreateQueryControllerConfigParams(),
+          contextual_search::ContextualSearchSource::kOmnibox,
+          lens::LensOverlayInvocationSource::kOmniboxContextualQuery);
+      // TODO(crbug.com/469877646): Determine what to do with the return value
+      // of this call, or move this call to a different location.
+      session_handle_->CheckSearchContentSharingSettings(
+          Profile::FromWebUI(web_ui())->GetPrefs());
+    }
+  }
+  return session_handle_.get();
+}
+
+WEB_UI_CONTROLLER_TYPE_IMPL(WebUIBrowserUI)

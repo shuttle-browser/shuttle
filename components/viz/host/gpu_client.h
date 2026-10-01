@@ -1,0 +1,150 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_VIZ_HOST_GPU_CLIENT_H_
+#define COMPONENTS_VIZ_HOST_GPU_CLIENT_H_
+
+#include <memory>
+
+#include "base/functional/callback_forward.h"
+#include "base/memory/weak_ptr.h"
+#include "base/process/process_handle.h"
+#include "base/task/single_thread_task_runner.h"
+#include "components/viz/host/gpu_client_delegate.h"
+#include "components/viz/host/gpu_host_impl.h"
+#include "components/viz/host/viz_host_export.h"
+#include "gpu/ipc/common/gpu_disk_cache_type.h"
+#include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "mojo/public/cpp/bindings/receiver_set.h"
+#include "services/viz/public/mojom/gpu.mojom.h"
+#include "services/webnn/public/mojom/webnn_context_provider.mojom.h"
+
+namespace viz {
+
+class VIZ_HOST_EXPORT GpuClient : public mojom::Gpu {
+ public:
+  using ConnectionErrorHandlerClosure =
+      base::OnceCallback<void(GpuClient* client)>;
+
+  // GpuClient must be destroyed on the thread associated with |task_runner|.
+  GpuClient(std::unique_ptr<GpuClientDelegate> delegate,
+            int client_id,
+            uint64_t client_tracing_id,
+            bool enable_extra_handles_validation,
+            scoped_refptr<base::SingleThreadTaskRunner> task_runner);
+
+  GpuClient(const GpuClient&) = delete;
+  GpuClient& operator=(const GpuClient&) = delete;
+
+  ~GpuClient() override;
+
+  int client_id() const { return client_id_; }
+
+  // This needs to be run on the thread associated with |task_runner_|.
+  void Add(mojo::PendingReceiver<mojom::Gpu> receiver);
+
+  // Called when a new renderer process is launched. Initializes a GPU channel
+  // and passes the pipe via Mojo invitation.
+  void InitializeGpuChannelForNewRenderer(
+      mojo::ScopedMessagePipeHandle invitation_pipe);
+
+  // Sets the PID of the client that will use this channel once the PID is
+  // known.
+  void SetClientPid(base::ProcessId client_pid);
+
+  // Sets/removes disk cache handle(s) that can be used by this channel.
+  void SetDiskCacheHandle(const gpu::GpuDiskCacheHandle& handle);
+  void RemoveDiskCacheHandles();
+
+  base::WeakPtr<GpuClient> GetWeakPtr();
+  void BindWebNNContextProvider(
+      mojo::PendingReceiver<webnn::mojom::WebNNContextProvider> receiver,
+      bool is_incognito);
+
+  void EstablishGpuChannel(EstablishGpuChannelCallback callback) override;
+
+  void SetEstablishGpuChannelCallbackForTesting(
+      base::OnceCallback<void(bool)> callback);
+
+#if BUILDFLAG(IS_CHROMEOS)
+  void CreateJpegDecodeAccelerator(
+      mojo::PendingReceiver<chromeos_camera::mojom::MjpegDecodeAccelerator>
+          jda_receiver) override;
+#endif  // BUILDFLAG(IS_CHROMEOS)
+  void CreateVideoEncodeAcceleratorProvider(
+      mojo::PendingReceiver<media::mojom::VideoEncodeAcceleratorProvider>
+          vea_provider_receiver) override;
+
+ private:
+  enum class ErrorReason {
+    // OnError() is being called from the destructor.
+    kInDestructor,
+    // OnError() is being called because the connection was lost.
+    kConnectionLost
+  };
+  void OnError(ErrorReason reason);
+
+  enum class EstablishChannelReason {
+    // A regular channel request triggered by a client.
+    kRegular,
+    // Channel establishment for a new renderer process, using the standard
+    // connection instead of a mojo invitation. This is a fallback.
+    kInitNoInvitation,
+    // Channel establishment for a new renderer process, where the client pipe
+    // is sent via a mojo invitation.
+    kInitWithInvitation,
+  };
+  void EstablishGpuChannelWithReason(EstablishGpuChannelCallback callback,
+                                     EstablishChannelReason reason);
+
+  void OnEstablishGpuChannel(
+      EstablishChannelReason reason,
+      base::TimeTicks start_time,
+      mojo::ScopedMessagePipeHandle channel_handle,
+      const gpu::GPUInfo& gpu_info,
+      const gpu::GpuFeatureInfo& gpu_feature_info,
+      const gpu::SharedImageCapabilities& shared_image_capabilities,
+      GpuHostImpl::EstablishChannelStatus status);
+  void EstablishGpuChannelInternal(EstablishChannelReason reason,
+                                   GpuHostImpl* gpu_host,
+                                   mojo::ScopedMessagePipeHandle service_handle,
+                                   mojo::ScopedMessagePipeHandle client_handle,
+                                   base::TimeTicks start_time);
+  void ClearCallback();
+
+  std::unique_ptr<GpuClientDelegate> delegate_;
+  const int client_id_;
+  const uint64_t client_tracing_id_;
+  const bool enable_extra_handles_validation_;
+
+  mojo::ReceiverSet<mojom::Gpu> gpu_receivers_;
+  // Whether a channel request that intends to set `channel_handle_` is
+  // in-flight (triggered by `EstablishGpuChannel()`). Either this or
+  // `init_with_invitation_pending_` must be false at any time, as only one
+  // GPU channel request can be pending at a time.
+  bool channel_handle_pending_ = false;
+
+  // Whether a channel request where the client handle is already sent via
+  // renderer mojo invitation is in-flight (triggered by
+  // `InitializeGpuChannelForNewRenderer()`). Either this or
+  // `init_with_invitation_pending_` must be false at any time, as only one
+  // GPU channel request can be pending at a time.
+  bool init_with_invitation_pending_ = false;
+
+  EstablishGpuChannelCallback callback_;
+  base::OnceCallback<void(bool)> callback_for_testing_;
+  mojo::ScopedMessagePipeHandle channel_handle_;
+  gpu::GPUInfo gpu_info_;
+  gpu::GpuFeatureInfo gpu_feature_info_;
+  gpu::SharedImageCapabilities shared_image_capabilities_;
+  // |task_runner_| is associated with the thread |gpu_bindings_| is bound
+  // on. GpuClient instance is bound to this thread, and must be destroyed on
+  // this thread.
+  scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
+  base::WeakPtrFactory<GpuClient> weak_factory_{this};
+};
+
+}  // namespace viz
+
+#endif  // COMPONENTS_VIZ_HOST_GPU_CLIENT_H_

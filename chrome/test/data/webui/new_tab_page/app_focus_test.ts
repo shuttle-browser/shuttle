@@ -1,0 +1,127 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import 'chrome://new-tab-page/new_tab_page.js';
+
+import type {Module} from 'chrome://new-tab-page/lazy_load.js';
+import {ComposeboxProxyImpl, ModuleRegistry} from 'chrome://new-tab-page/lazy_load.js';
+import {CustomizeButtonsDocumentCallbackRouter, CustomizeButtonsHandlerRemote} from 'chrome://new-tab-page/new_tab_page.js';
+import type {AppElement, NtpSearchboxElement} from 'chrome://new-tab-page/new_tab_page.js';
+import {$$, BackgroundManager, CustomizeButtonsProxy, NewTabPageProxy, SearchboxBrowserProxy, WindowProxy} from 'chrome://new-tab-page/new_tab_page.js';
+import type {PageRemote} from 'chrome://new-tab-page/new_tab_page.js';
+import {PageCallbackRouter, PageHandlerRemote} from 'chrome://new-tab-page/new_tab_page.js';
+import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
+import {PromiseResolver} from 'chrome://resources/js/promise_resolver.js';
+import {PageHandlerRemote as SearchboxPageHandlerRemote} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
+import {assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import {fakeMetricsPrivate} from 'chrome://webui-test/metrics_test_support.js';
+import type {TestMock} from 'chrome://webui-test/test_mock.js';
+import {microtasksFinished} from 'chrome://webui-test/test_util.js';
+
+import {assertStyle, createTheme, installMock} from './test_support.js';
+
+suite('NewTabPageAppFocusTest', () => {
+  let app: AppElement;
+  let windowProxy: TestMock<WindowProxy>;
+  let handler: TestMock<PageHandlerRemote>;
+  let moduleRegistry: TestMock<ModuleRegistry>;
+  let moduleResolver: PromiseResolver<Module[]>;
+  let backgroundManager: TestMock<BackgroundManager>;
+  let callbackRouterRemote: PageRemote;
+  let searchboxHandler: TestMock<SearchboxPageHandlerRemote>;
+
+  const url: URL = new URL(location.href);
+  const backgroundImageLoadTime: number = 123;
+
+  suiteSetup(() => {
+    loadTimeData.overrideValues({
+      searchboxShowComposeEntrypoint: true,
+      searchboxShowComposebox: true,
+      ntpRealboxNextEnabled: true,
+    });
+  });
+
+  setup(async () => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+
+    windowProxy = installMock(WindowProxy);
+    windowProxy.setResultMapperFor('matchMedia', () => ({
+                                                   addListener() {},
+                                                   addEventListener() {},
+                                                   removeListener() {},
+                                                   removeEventListener() {},
+                                                 }));
+    windowProxy.setPromiseResolveFor('waitForLazyRender');
+    windowProxy.setResultFor('createIframeSrc', '');
+    windowProxy.setResultFor('url', url);
+    fakeMetricsPrivate();
+    backgroundManager = installMock(BackgroundManager);
+    backgroundManager.setPromiseResolveFor(
+        'getBackgroundImageLoadTime', backgroundImageLoadTime);
+    handler = installMock(
+        PageHandlerRemote,
+        mock => NewTabPageProxy.setInstance(mock, new PageCallbackRouter()));
+    handler.setPromiseResolveFor('getMostVisitedSettings', {
+      customLinksEnabled: false,
+      shortcutsVisible: false,
+    });
+    handler.setPromiseResolveFor('getDoodle', {
+      doodle: null,
+    });
+    handler.setPromiseResolveFor('getModulesIdNames', {data: []});
+    handler.setPromiseResolveFor(
+        'canShowRealboxContextMenuAnimation', {canShow: false});
+    installMock(
+        CustomizeButtonsHandlerRemote,
+        mock => CustomizeButtonsProxy.setInstance(
+            mock, new CustomizeButtonsDocumentCallbackRouter()));
+    CustomizeButtonsProxy.getInstance()
+        .callbackRouter.$.bindNewPipeAndPassRemote();
+    callbackRouterRemote = NewTabPageProxy.getInstance()
+                               .callbackRouter.$.bindNewPipeAndPassRemote();
+    moduleRegistry = installMock(ModuleRegistry);
+    moduleResolver = new PromiseResolver();
+    moduleRegistry.setResultFor('initializeModules', moduleResolver.promise);
+    searchboxHandler = installMock(SearchboxPageHandlerRemote, mock => {
+      ComposeboxProxyImpl.getInstance().searchboxHandler = mock;
+      SearchboxBrowserProxy.getInstance().handler = mock;
+    });
+    searchboxHandler.setPromiseResolveFor('getRecentTabs', {tabs: []});
+
+    app = document.createElement('ntp-app');
+    document.body.appendChild(app);
+    await microtasksFinished();
+  });
+
+
+  function getScrim(): HTMLElement|null {
+    return app.shadowRoot.querySelector<HTMLElement>('#scrim');
+  }
+
+  test('A scrim is applied when the focus is on searchbox input', async () => {
+    // Arrange.
+    callbackRouterRemote.setTheme(createTheme());
+    await callbackRouterRemote.$.flushForTesting();
+
+    const scrim = getScrim();
+    assertTrue(!!scrim);
+    assertTrue(scrim.hidden);
+    const searchbox = $$<NtpSearchboxElement>(app, '#searchbox');
+    assertTrue(!!searchbox);
+    await microtasksFinished();
+    assertStyle($$(app, '#searchbox')!, 'visibility', 'visible');
+
+    const inputWrapper = searchbox.shadowRoot.getElementById('input');
+    assertTrue(!!inputWrapper);
+    const input = inputWrapper.shadowRoot!.getElementById('input');
+    assertTrue(!!input);
+    input.focus();
+    await microtasksFinished();
+    assertFalse(scrim.hidden);
+
+    input.blur();
+    await microtasksFinished();
+    assertTrue(scrim.hidden);
+  });
+});

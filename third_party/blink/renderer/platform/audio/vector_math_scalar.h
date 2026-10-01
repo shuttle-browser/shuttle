@@ -1,0 +1,429 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_AUDIO_VECTOR_MATH_SCALAR_H_
+#define THIRD_PARTY_BLINK_RENDERER_PLATFORM_AUDIO_VECTOR_MATH_SCALAR_H_
+
+#include <algorithm>
+#include <cmath>
+
+#include "base/check_op.h"
+#include "base/containers/span.h"
+#include "third_party/blink/renderer/platform/audio/audio_array.h"
+#include "third_party/blink/renderer/platform/wtf/math_extras.h"
+
+namespace blink {
+namespace vector_math {
+namespace scalar {
+
+ALWAYS_INLINE static void Conv(base::span<const float> source,
+                               const float* filter_p,
+                               base::span<float> dest,
+                               size_t frames_to_process,
+                               size_t filter_size,
+                               const AudioFloatArray* /*prepared_filter*/) {
+  const float* source_p = source.data();
+  float* dest_p = dest.data();
+  // Only contiguous convolution is implemented. Correlation (positive
+  // |filter_stride|) and support for non-contiguous vectors are not
+  // implemented.
+
+  size_t i = 0;
+
+// FIXME: The macro can be further optimized to avoid pipeline stalls. One
+// possibility is to maintain 4 separate sums and change the macro to
+// CONVOLVE_FOUR_SAMPLES.
+#define CONVOLVE_ONE_SAMPLE                                \
+  do {                                                     \
+    sum += UNSAFE_TODO(source_p[i + j] * *(filter_p - j)); \
+    j++;                                                   \
+  } while (0)
+
+  while (i < frames_to_process) {
+    size_t j = 0;
+    float sum = 0;
+
+    if (filter_size == 32) {
+      CONVOLVE_ONE_SAMPLE;  // 1
+      CONVOLVE_ONE_SAMPLE;  // 2
+      CONVOLVE_ONE_SAMPLE;  // 3
+      CONVOLVE_ONE_SAMPLE;  // 4
+      CONVOLVE_ONE_SAMPLE;  // 5
+      CONVOLVE_ONE_SAMPLE;  // 6
+      CONVOLVE_ONE_SAMPLE;  // 7
+      CONVOLVE_ONE_SAMPLE;  // 8
+      CONVOLVE_ONE_SAMPLE;  // 9
+      CONVOLVE_ONE_SAMPLE;  // 10
+
+      CONVOLVE_ONE_SAMPLE;  // 11
+      CONVOLVE_ONE_SAMPLE;  // 12
+      CONVOLVE_ONE_SAMPLE;  // 13
+      CONVOLVE_ONE_SAMPLE;  // 14
+      CONVOLVE_ONE_SAMPLE;  // 15
+      CONVOLVE_ONE_SAMPLE;  // 16
+      CONVOLVE_ONE_SAMPLE;  // 17
+      CONVOLVE_ONE_SAMPLE;  // 18
+      CONVOLVE_ONE_SAMPLE;  // 19
+      CONVOLVE_ONE_SAMPLE;  // 20
+
+      CONVOLVE_ONE_SAMPLE;  // 21
+      CONVOLVE_ONE_SAMPLE;  // 22
+      CONVOLVE_ONE_SAMPLE;  // 23
+      CONVOLVE_ONE_SAMPLE;  // 24
+      CONVOLVE_ONE_SAMPLE;  // 25
+      CONVOLVE_ONE_SAMPLE;  // 26
+      CONVOLVE_ONE_SAMPLE;  // 27
+      CONVOLVE_ONE_SAMPLE;  // 28
+      CONVOLVE_ONE_SAMPLE;  // 29
+      CONVOLVE_ONE_SAMPLE;  // 30
+
+      CONVOLVE_ONE_SAMPLE;  // 31
+      CONVOLVE_ONE_SAMPLE;  // 32
+
+    } else if (filter_size == 64) {
+      CONVOLVE_ONE_SAMPLE;  // 1
+      CONVOLVE_ONE_SAMPLE;  // 2
+      CONVOLVE_ONE_SAMPLE;  // 3
+      CONVOLVE_ONE_SAMPLE;  // 4
+      CONVOLVE_ONE_SAMPLE;  // 5
+      CONVOLVE_ONE_SAMPLE;  // 6
+      CONVOLVE_ONE_SAMPLE;  // 7
+      CONVOLVE_ONE_SAMPLE;  // 8
+      CONVOLVE_ONE_SAMPLE;  // 9
+      CONVOLVE_ONE_SAMPLE;  // 10
+
+      CONVOLVE_ONE_SAMPLE;  // 11
+      CONVOLVE_ONE_SAMPLE;  // 12
+      CONVOLVE_ONE_SAMPLE;  // 13
+      CONVOLVE_ONE_SAMPLE;  // 14
+      CONVOLVE_ONE_SAMPLE;  // 15
+      CONVOLVE_ONE_SAMPLE;  // 16
+      CONVOLVE_ONE_SAMPLE;  // 17
+      CONVOLVE_ONE_SAMPLE;  // 18
+      CONVOLVE_ONE_SAMPLE;  // 19
+      CONVOLVE_ONE_SAMPLE;  // 20
+
+      CONVOLVE_ONE_SAMPLE;  // 21
+      CONVOLVE_ONE_SAMPLE;  // 22
+      CONVOLVE_ONE_SAMPLE;  // 23
+      CONVOLVE_ONE_SAMPLE;  // 24
+      CONVOLVE_ONE_SAMPLE;  // 25
+      CONVOLVE_ONE_SAMPLE;  // 26
+      CONVOLVE_ONE_SAMPLE;  // 27
+      CONVOLVE_ONE_SAMPLE;  // 28
+      CONVOLVE_ONE_SAMPLE;  // 29
+      CONVOLVE_ONE_SAMPLE;  // 30
+
+      CONVOLVE_ONE_SAMPLE;  // 31
+      CONVOLVE_ONE_SAMPLE;  // 32
+      CONVOLVE_ONE_SAMPLE;  // 33
+      CONVOLVE_ONE_SAMPLE;  // 34
+      CONVOLVE_ONE_SAMPLE;  // 35
+      CONVOLVE_ONE_SAMPLE;  // 36
+      CONVOLVE_ONE_SAMPLE;  // 37
+      CONVOLVE_ONE_SAMPLE;  // 38
+      CONVOLVE_ONE_SAMPLE;  // 39
+      CONVOLVE_ONE_SAMPLE;  // 40
+
+      CONVOLVE_ONE_SAMPLE;  // 41
+      CONVOLVE_ONE_SAMPLE;  // 42
+      CONVOLVE_ONE_SAMPLE;  // 43
+      CONVOLVE_ONE_SAMPLE;  // 44
+      CONVOLVE_ONE_SAMPLE;  // 45
+      CONVOLVE_ONE_SAMPLE;  // 46
+      CONVOLVE_ONE_SAMPLE;  // 47
+      CONVOLVE_ONE_SAMPLE;  // 48
+      CONVOLVE_ONE_SAMPLE;  // 49
+      CONVOLVE_ONE_SAMPLE;  // 50
+
+      CONVOLVE_ONE_SAMPLE;  // 51
+      CONVOLVE_ONE_SAMPLE;  // 52
+      CONVOLVE_ONE_SAMPLE;  // 53
+      CONVOLVE_ONE_SAMPLE;  // 54
+      CONVOLVE_ONE_SAMPLE;  // 55
+      CONVOLVE_ONE_SAMPLE;  // 56
+      CONVOLVE_ONE_SAMPLE;  // 57
+      CONVOLVE_ONE_SAMPLE;  // 58
+      CONVOLVE_ONE_SAMPLE;  // 59
+      CONVOLVE_ONE_SAMPLE;  // 60
+
+      CONVOLVE_ONE_SAMPLE;  // 61
+      CONVOLVE_ONE_SAMPLE;  // 62
+      CONVOLVE_ONE_SAMPLE;  // 63
+      CONVOLVE_ONE_SAMPLE;  // 64
+
+    } else if (filter_size == 128) {
+      CONVOLVE_ONE_SAMPLE;  // 1
+      CONVOLVE_ONE_SAMPLE;  // 2
+      CONVOLVE_ONE_SAMPLE;  // 3
+      CONVOLVE_ONE_SAMPLE;  // 4
+      CONVOLVE_ONE_SAMPLE;  // 5
+      CONVOLVE_ONE_SAMPLE;  // 6
+      CONVOLVE_ONE_SAMPLE;  // 7
+      CONVOLVE_ONE_SAMPLE;  // 8
+      CONVOLVE_ONE_SAMPLE;  // 9
+      CONVOLVE_ONE_SAMPLE;  // 10
+
+      CONVOLVE_ONE_SAMPLE;  // 11
+      CONVOLVE_ONE_SAMPLE;  // 12
+      CONVOLVE_ONE_SAMPLE;  // 13
+      CONVOLVE_ONE_SAMPLE;  // 14
+      CONVOLVE_ONE_SAMPLE;  // 15
+      CONVOLVE_ONE_SAMPLE;  // 16
+      CONVOLVE_ONE_SAMPLE;  // 17
+      CONVOLVE_ONE_SAMPLE;  // 18
+      CONVOLVE_ONE_SAMPLE;  // 19
+      CONVOLVE_ONE_SAMPLE;  // 20
+
+      CONVOLVE_ONE_SAMPLE;  // 21
+      CONVOLVE_ONE_SAMPLE;  // 22
+      CONVOLVE_ONE_SAMPLE;  // 23
+      CONVOLVE_ONE_SAMPLE;  // 24
+      CONVOLVE_ONE_SAMPLE;  // 25
+      CONVOLVE_ONE_SAMPLE;  // 26
+      CONVOLVE_ONE_SAMPLE;  // 27
+      CONVOLVE_ONE_SAMPLE;  // 28
+      CONVOLVE_ONE_SAMPLE;  // 29
+      CONVOLVE_ONE_SAMPLE;  // 30
+
+      CONVOLVE_ONE_SAMPLE;  // 31
+      CONVOLVE_ONE_SAMPLE;  // 32
+      CONVOLVE_ONE_SAMPLE;  // 33
+      CONVOLVE_ONE_SAMPLE;  // 34
+      CONVOLVE_ONE_SAMPLE;  // 35
+      CONVOLVE_ONE_SAMPLE;  // 36
+      CONVOLVE_ONE_SAMPLE;  // 37
+      CONVOLVE_ONE_SAMPLE;  // 38
+      CONVOLVE_ONE_SAMPLE;  // 39
+      CONVOLVE_ONE_SAMPLE;  // 40
+
+      CONVOLVE_ONE_SAMPLE;  // 41
+      CONVOLVE_ONE_SAMPLE;  // 42
+      CONVOLVE_ONE_SAMPLE;  // 43
+      CONVOLVE_ONE_SAMPLE;  // 44
+      CONVOLVE_ONE_SAMPLE;  // 45
+      CONVOLVE_ONE_SAMPLE;  // 46
+      CONVOLVE_ONE_SAMPLE;  // 47
+      CONVOLVE_ONE_SAMPLE;  // 48
+      CONVOLVE_ONE_SAMPLE;  // 49
+      CONVOLVE_ONE_SAMPLE;  // 50
+
+      CONVOLVE_ONE_SAMPLE;  // 51
+      CONVOLVE_ONE_SAMPLE;  // 52
+      CONVOLVE_ONE_SAMPLE;  // 53
+      CONVOLVE_ONE_SAMPLE;  // 54
+      CONVOLVE_ONE_SAMPLE;  // 55
+      CONVOLVE_ONE_SAMPLE;  // 56
+      CONVOLVE_ONE_SAMPLE;  // 57
+      CONVOLVE_ONE_SAMPLE;  // 58
+      CONVOLVE_ONE_SAMPLE;  // 59
+      CONVOLVE_ONE_SAMPLE;  // 60
+
+      CONVOLVE_ONE_SAMPLE;  // 61
+      CONVOLVE_ONE_SAMPLE;  // 62
+      CONVOLVE_ONE_SAMPLE;  // 63
+      CONVOLVE_ONE_SAMPLE;  // 64
+      CONVOLVE_ONE_SAMPLE;  // 65
+      CONVOLVE_ONE_SAMPLE;  // 66
+      CONVOLVE_ONE_SAMPLE;  // 67
+      CONVOLVE_ONE_SAMPLE;  // 68
+      CONVOLVE_ONE_SAMPLE;  // 69
+      CONVOLVE_ONE_SAMPLE;  // 70
+
+      CONVOLVE_ONE_SAMPLE;  // 71
+      CONVOLVE_ONE_SAMPLE;  // 72
+      CONVOLVE_ONE_SAMPLE;  // 73
+      CONVOLVE_ONE_SAMPLE;  // 74
+      CONVOLVE_ONE_SAMPLE;  // 75
+      CONVOLVE_ONE_SAMPLE;  // 76
+      CONVOLVE_ONE_SAMPLE;  // 77
+      CONVOLVE_ONE_SAMPLE;  // 78
+      CONVOLVE_ONE_SAMPLE;  // 79
+      CONVOLVE_ONE_SAMPLE;  // 80
+
+      CONVOLVE_ONE_SAMPLE;  // 81
+      CONVOLVE_ONE_SAMPLE;  // 82
+      CONVOLVE_ONE_SAMPLE;  // 83
+      CONVOLVE_ONE_SAMPLE;  // 84
+      CONVOLVE_ONE_SAMPLE;  // 85
+      CONVOLVE_ONE_SAMPLE;  // 86
+      CONVOLVE_ONE_SAMPLE;  // 87
+      CONVOLVE_ONE_SAMPLE;  // 88
+      CONVOLVE_ONE_SAMPLE;  // 89
+      CONVOLVE_ONE_SAMPLE;  // 90
+
+      CONVOLVE_ONE_SAMPLE;  // 91
+      CONVOLVE_ONE_SAMPLE;  // 92
+      CONVOLVE_ONE_SAMPLE;  // 93
+      CONVOLVE_ONE_SAMPLE;  // 94
+      CONVOLVE_ONE_SAMPLE;  // 95
+      CONVOLVE_ONE_SAMPLE;  // 96
+      CONVOLVE_ONE_SAMPLE;  // 97
+      CONVOLVE_ONE_SAMPLE;  // 98
+      CONVOLVE_ONE_SAMPLE;  // 99
+      CONVOLVE_ONE_SAMPLE;  // 100
+
+      CONVOLVE_ONE_SAMPLE;  // 101
+      CONVOLVE_ONE_SAMPLE;  // 102
+      CONVOLVE_ONE_SAMPLE;  // 103
+      CONVOLVE_ONE_SAMPLE;  // 104
+      CONVOLVE_ONE_SAMPLE;  // 105
+      CONVOLVE_ONE_SAMPLE;  // 106
+      CONVOLVE_ONE_SAMPLE;  // 107
+      CONVOLVE_ONE_SAMPLE;  // 108
+      CONVOLVE_ONE_SAMPLE;  // 109
+      CONVOLVE_ONE_SAMPLE;  // 110
+
+      CONVOLVE_ONE_SAMPLE;  // 111
+      CONVOLVE_ONE_SAMPLE;  // 112
+      CONVOLVE_ONE_SAMPLE;  // 113
+      CONVOLVE_ONE_SAMPLE;  // 114
+      CONVOLVE_ONE_SAMPLE;  // 115
+      CONVOLVE_ONE_SAMPLE;  // 116
+      CONVOLVE_ONE_SAMPLE;  // 117
+      CONVOLVE_ONE_SAMPLE;  // 118
+      CONVOLVE_ONE_SAMPLE;  // 119
+      CONVOLVE_ONE_SAMPLE;  // 120
+
+      CONVOLVE_ONE_SAMPLE;  // 121
+      CONVOLVE_ONE_SAMPLE;  // 122
+      CONVOLVE_ONE_SAMPLE;  // 123
+      CONVOLVE_ONE_SAMPLE;  // 124
+      CONVOLVE_ONE_SAMPLE;  // 125
+      CONVOLVE_ONE_SAMPLE;  // 126
+      CONVOLVE_ONE_SAMPLE;  // 127
+      CONVOLVE_ONE_SAMPLE;  // 128
+    } else {
+      while (j < filter_size) {
+        // Non-optimized using actual while loop.
+        CONVOLVE_ONE_SAMPLE;
+      }
+    }
+    UNSAFE_TODO(dest_p[i++] = sum);
+  }
+#undef CONVOLVE_ONE_SAMPLE
+}
+
+ALWAYS_INLINE static void Vadd(base::span<const float> source1,
+                               base::span<const float> source2,
+                               base::span<float> dest) {
+  // CHECK allows the compiler to elide bounds checks (docs/unsafe_buffers.md).
+  CHECK_EQ(source1.size(), dest.size());
+  CHECK_EQ(source2.size(), dest.size());
+  for (size_t i = 0; i < dest.size(); ++i) {
+    dest[i] = source1[i] + source2[i];
+  }
+}
+
+ALWAYS_INLINE static void Vsub(base::span<const float> source1,
+                               base::span<const float> source2,
+                               base::span<float> dest) {
+  // CHECK allows the compiler to elide bounds checks (docs/unsafe_buffers.md).
+  CHECK_EQ(source1.size(), dest.size());
+  CHECK_EQ(source2.size(), dest.size());
+  for (size_t i = 0; i < dest.size(); ++i) {
+    dest[i] = source1[i] - source2[i];
+  }
+}
+
+ALWAYS_INLINE static void Vclip(base::span<const float> source,
+                                float low_threshold,
+                                float high_threshold,
+                                base::span<float> dest) {
+  // CHECK allows the compiler to elide bounds checks (docs/unsafe_buffers.md).
+  CHECK_EQ(source.size(), dest.size());
+  for (size_t i = 0; i < dest.size(); ++i) {
+    dest[i] = ClampTo(source[i], low_threshold, high_threshold);
+  }
+}
+
+ALWAYS_INLINE static void Vmaxmgv(const float* source_p,
+                                  int source_stride,
+                                  float* max_p,
+                                  size_t frames_to_process) {
+  while (frames_to_process > 0u) {
+    *max_p = std::max(*max_p, std::abs(*source_p));
+    UNSAFE_TODO(source_p += source_stride);
+    --frames_to_process;
+  }
+}
+
+ALWAYS_INLINE static void Vmul(base::span<const float> source1,
+                               base::span<const float> source2,
+                               base::span<float> dest) {
+  // CHECK allows the compiler to elide bounds checks (docs/unsafe_buffers.md).
+  CHECK_EQ(source1.size(), dest.size());
+  CHECK_EQ(source2.size(), dest.size());
+  for (size_t i = 0; i < dest.size(); ++i) {
+    dest[i] = source1[i] * source2[i];
+  }
+}
+
+ALWAYS_INLINE static void Vsma(base::span<const float> source,
+                               float scale,
+                               base::span<float> dest) {
+  // CHECK allows the compiler to elide bounds checks (docs/unsafe_buffers.md).
+  CHECK_EQ(source.size(), dest.size());
+  for (size_t i = 0; i < dest.size(); ++i) {
+    dest[i] += scale * source[i];
+  }
+}
+
+ALWAYS_INLINE static void Vsmul(base::span<const float> source,
+                                float scale,
+                                base::span<float> dest) {
+  // CHECK allows the compiler to elide bounds checks (docs/unsafe_buffers.md).
+  CHECK_EQ(source.size(), dest.size());
+  for (size_t i = 0; i < dest.size(); ++i) {
+    dest[i] = scale * source[i];
+  }
+}
+
+ALWAYS_INLINE static void Vsadd(base::span<const float> source,
+                                float addend,
+                                base::span<float> dest) {
+  // CHECK allows the compiler to elide bounds checks (docs/unsafe_buffers.md).
+  CHECK_EQ(source.size(), dest.size());
+  for (size_t i = 0; i < dest.size(); ++i) {
+    dest[i] = source[i] + addend;
+  }
+}
+
+ALWAYS_INLINE static void Vsvesq(const float* source_p,
+                                 int source_stride,
+                                 float* sum_p,
+                                 size_t frames_to_process) {
+  while (frames_to_process > 0u) {
+    const float sample = *source_p;
+    *sum_p += sample * sample;
+    UNSAFE_TODO(source_p += source_stride);
+    --frames_to_process;
+  }
+}
+
+ALWAYS_INLINE static void Zvmul(const float* real1p,
+                                const float* imag1p,
+                                const float* real2p,
+                                const float* imag2p,
+                                float* real_dest_p,
+                                float* imag_dest_p,
+                                size_t frames_to_process) {
+  for (size_t i = 0u; i < frames_to_process; ++i) {
+    // Read and compute result before storing them, in case the
+    // destination is the same as one of the sources.
+    float real_result =
+        UNSAFE_TODO(real1p[i] * real2p[i] - imag1p[i] * imag2p[i]);
+    float imag_result =
+        UNSAFE_TODO(real1p[i] * imag2p[i] + imag1p[i] * real2p[i]);
+
+    UNSAFE_TODO(real_dest_p[i] = real_result);
+    UNSAFE_TODO(imag_dest_p[i] = imag_result);
+  }
+}
+
+}  // namespace scalar
+}  // namespace vector_math
+}  // namespace blink
+
+#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_AUDIO_VECTOR_MATH_SCALAR_H_

@@ -1,0 +1,86 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+let error;
+
+function testCharacteristicProperties() {
+  if (error !== undefined) {
+    chrome.test.sendMessage('fail');
+    chrome.test.fail(error);
+  }
+  chrome.test.assertEq(requestCount, characteristics.length);
+
+  for (let i = 0; i < requestCount; i++) {
+    compareProperties(expectedProperties[i], characteristics[i].properties);
+  }
+
+  chrome.test.succeed();
+}
+
+const charId = 'char_id0';
+const requestCount = 12;
+const characteristics = [];
+const expectedProperties = [
+  [],
+  ['broadcast'],
+  ['read'],
+  ['writeWithoutResponse'],
+  ['write'],
+  ['notify'],
+  ['indicate'],
+  ['authenticatedSignedWrites'],
+  ['extendedProperties'],
+  ['reliableWrite'],
+  ['writableAuxiliaries'],
+  [
+    'broadcast',
+    'read',
+    'writeWithoutResponse',
+    'write',
+    'notify',
+    'indicate',
+    'authenticatedSignedWrites',
+    'extendedProperties',
+    'reliableWrite',
+    'writableAuxiliaries',
+  ],
+];
+
+function compareProperties(a, b) {
+  chrome.test.assertEq(a.length, b.length);
+  a.sort();
+  b.sort();
+
+  for (let i = 0; i < a.length; i++) {
+    chrome.test.assertEq(a[i], b[i]);
+  }
+}
+
+function failOnError() {
+  if (error !== undefined) {
+    return true;
+  }
+
+  if (chrome.runtime.lastError) {
+    error = 'Unexpected error: ' + chrome.runtime.lastError.message;
+    chrome.test.runTests([testCharacteristicProperties]);
+  }
+  return false;
+}
+
+for (let i = 0; i < requestCount; i++) {
+  chrome.bluetoothLowEnergy.getCharacteristic(charId, function(result) {
+    if (failOnError()) {
+      return;
+    }
+
+    characteristics.push(result);
+
+    if (characteristics.length === requestCount) {
+      chrome.test.sendMessage('ready', function(message) {
+        chrome.test.runTests([testCharacteristicProperties]);
+      });
+    }
+  });
+}

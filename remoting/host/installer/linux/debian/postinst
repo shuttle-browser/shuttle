@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# Copyright 2012 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+set -e
+
+LOGOUT_MSG="
+Name: Please log out to update
+Priority: Medium
+OnlyAdminUsers: False
+DontShowAfterReboot: true
+DisplayIf: /opt/google/chrome-remote-desktop/is-remoting-session
+Description: Chrome Remote Desktop has been updated. Please save your work and log out in order to apply this update. Your virtual desktop will be restarted automatically.
+"
+
+NOTIFIER_DIR="/var/lib/update-notifier/user.d"
+VAR_DIR="/var/lib/chrome-remote-desktop"
+HASHES_FILE="$VAR_DIR/hashes"
+INSTALL_DIR="/opt/google/chrome-remote-desktop"
+HOST_PATH="$INSTALL_DIR/chrome-remote-desktop-host"
+# Per Debian policy 9.2.1, system usernames should all start with an underscore.
+CRD_NETWORK_USER="_crd_network"
+CRD_PEER_CONNECTION_USER="_crd_peer_connection"
+CRD_CRASHPAD_USER="_crd_crashpad"
+
+kill_processes() {
+  # Kill CRD processes except for the service script process. The script process
+  # command line conveniently starts with /usr/bin/python3, so the pkill pattern
+  # won't kill it. SIGUSR2 is tried first to allow host processes to shut down
+  # cleanly after notifying clients. SIGKILL is used as a fallback if they are
+  # deadlocked or fail to exit.
+  # For the multi-process host, this kills the daemon process and all its
+  # children, then the systemd service will relaunch the daemon
+  # process, which will recover GDM remote displays created by the previous
+  # incarnation.
+  # TODO: crbug.com/496325766 - Improve the upgrade experience.
+  echo "Killing Chrome Remote Desktop processes so that they can be reloaded (sessions will be unaffected)..."
+  pkill -USR2 -f "^$INSTALL_DIR" || true
+  # Wait up to 5 seconds for the host processes to shut down cleanly.
+  for i in {1..10}; do
+    if ! pgrep -f "^$INSTALL_DIR" > /dev/null; then
+      return
+    fi
+    sleep 0.5
+  done
+  echo "Clean shutdown failed, killing processes..."
+  pkill -KILL -f "^$INSTALL_DIR" || true
+}
+
+case "$1" in
+  "configure")
+    echo "Adding users $CRD_NETWORK_USER, $CRD_PEER_CONNECTION_USER, and $CRD_CRASHPAD_USER to allow"
+    echo 'Chrome Remote Desktop processes to be run in sandboxed environments.'
+    # On Debian 11 or older, usernames with a leading underscore are not allowed
+    # unless --allow-bad-names or --force-badname is set. --allow-bad-names is
+    # only available in newer versions (>= 3.134) of adduser.
+    ADDUSER_OPTS="--system"
+    ADDUSER_VERSION=$(dpkg-query -W -f='${Version}' adduser)
+    if dpkg --compare-versions "$ADDUSER_VERSION" ge "3.134"; then
+      ADDUSER_OPTS="$ADDUSER_OPTS --allow-bad-names"
+    else
+      ADDUSER_OPTS="$ADDUSER_OPTS --force-badname"
+    fi
+    adduser $ADDUSER_OPTS "$CRD_NETWORK_USER"
+    adduser $ADDUSER_OPTS "$CRD_PEER_CONNECTION_USER"
+    adduser $ADDUSER_OPTS "$CRD_CRASHPAD_USER"
+
+    # Clean up legacy per-process Crashpad database directories.
+    # Note: The new unified crashpad database directory is created and managed
+    # by the daemon process when setting up crashpad.
+    rm -rf "$VAR_DIR"/crashpad.{daemon,network,peer_connection}
+
+    kill_processes
+
+    # If any files have changed that require the user to restart their virtual
+    # desktops (eg, the wrapper script itself) then notify them but don't do
+    # anything that would result in them losing state.
+    if [ -f "$HASHES_FILE" ]; then
+      if [ -d "$NOTIFIER_DIR" ]; then
+        if ! md5sum --status -c "$HASHES_FILE" 2>/dev/null; then
+          echo "Sending logout notification messages to virtual desktops."
+          echo "$LOGOUT_MSG" > "$NOTIFIER_DIR/chrome-remote-desktop-logout"
+        fi
+      fi
+      rm "$HASHES_FILE"
+      rmdir --ignore-fail-on-non-empty "$VAR_DIR"
+    fi
+    ;;
+
+  "triggered")
+    echo "Responding to dpkg trigger."
+    kill_processes
+    ;;
+esac
+
+# Run the cron job immediately to perform repository configuration.
+nohup sh /etc/cron.daily/chrome-remote-desktop > /dev/null 2>&1 &
+
+#DEBHELPER#

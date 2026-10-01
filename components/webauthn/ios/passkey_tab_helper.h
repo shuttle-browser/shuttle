@@ -1,0 +1,372 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_WEBAUTHN_IOS_PASSKEY_TAB_HELPER_H_
+#define COMPONENTS_WEBAUTHN_IOS_PASSKEY_TAB_HELPER_H_
+
+#import <optional>
+#import <string_view>
+#import <variant>
+
+#import "base/memory/weak_ptr.h"
+#import "base/scoped_observation.h"
+#import "base/time/time.h"
+#import "components/password_manager/core/browser/password_store/password_store_consumer.h"
+#import "components/password_manager/core/browser/password_store/password_store_interface.h"
+#import "components/webauthn/core/browser/passkey_model.h"
+#import "components/webauthn/core/browser/remote_validation.h"
+#import "components/webauthn/ios/ios_passkey_client.h"
+#import "components/webauthn/ios/passkey_request_params.h"
+#import "components/webauthn/ios/passkey_types.h"
+#import "ios/web/public/js_messaging/web_frames_manager.h"
+#import "ios/web/public/web_state_observer.h"
+#import "ios/web/public/web_state_user_data.h"
+#import "third_party/abseil-cpp/absl/container/flat_hash_map.h"
+
+namespace sync_pb {
+class WebauthnCredentialSpecifics;
+}  // namespace sync_pb
+
+namespace web {
+class WebFrame;
+}  // namespace web
+
+@protocol IOSPasskeyClientCommands;
+
+namespace webauthn {
+
+class IOSWebAuthnCredentialsDelegate;
+
+// Handles script messages received from PasskeyJavaScriptFeature related to
+// interactions with WebAuthn credentials and for now logs appropriate metrics.
+class PasskeyTabHelper : public web::WebStateObserver,
+                         public web::WebStateUserData<PasskeyTabHelper>,
+                         public web::WebFramesManager::Observer,
+                         public password_manager::PasswordStoreConsumer,
+                         public PasskeyModel::Observer {
+ public:
+  // These values are logged to UMA. Entries should not be renumbered and
+  // numeric values should never be reused.
+  //
+  // LINT.IfChange
+  enum class WebAuthenticationIOSContentAreaEvent {
+    kGetRequested,
+    kCreateRequested,
+    kGetResolvedGpm,
+    kGetResolvedNonGpm,
+    kCreateResolvedGpm,
+    kCreateResolvedNonGpm,
+    kIncognitoInterstitialShown,
+    kCancelRequested,
+    kSignalUnknownCredentialRequested,
+    kSignalCurrentUserDetailsRequested,
+    kSignalAllAcceptedCredentialsRequested,
+    kMaxValue = kSignalAllAcceptedCredentialsRequested,
+  };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/webauthn/enums.xml)
+
+  PasskeyTabHelper(const PasskeyTabHelper&) = delete;
+  PasskeyTabHelper& operator=(const PasskeyTabHelper&) = delete;
+
+  ~PasskeyTabHelper() override;
+
+  // Logs metric indicating that an event of the given type occurred.
+  void LogEvent(WebAuthenticationIOSContentAreaEvent event_type);
+
+  // Handles passkey cancellation requests triggered by an AbortSignal.
+  void HandleCancelRequestEvent(
+      webauthn::IOSPasskeyClient::RequestInfo request_info);
+
+  // Handles passkey assertion requests. Yields if the request ID is missing.
+  void HandleGetRequestedEvent(AssertionRequestParams params);
+
+  // Handles passkey registration requests. Yields if the request ID is missing.
+  void HandleCreateRequestedEvent(RegistrationRequestParams params);
+
+  // Handles PublicKeyCredential.signal* requests. Validates whether the
+  // `origin` is allowed to make requests for `params.rp_id`. If yes, invokes
+  // the corresponding private continuation. Otherwise, returns.
+  void HandleSignalUnknownCredentialEvent(const url::Origin& origin,
+                                          SignalUnknownCredentialParams params);
+  void HandleSignalCurrentUserDetailsEvent(
+      const url::Origin& origin,
+      SignalCurrentUserDetailsParams params);
+  void HandleSignalAllAcceptedCredentialsEvent(
+      const url::Origin& origin,
+      SignalAllAcceptedCredentialsParams params);
+
+  // Returns whether the tab helper's passkey model contains a passkey matching
+  // the provided rp id and credential id.
+  bool HasCredential(const std::string& rp_id,
+                     const std::string& credential_id) const;
+
+  // Requests a passkey to be created given the provided request ID. Fetches the
+  // shared keys list and calls the CompletePasskeyCreation callback.
+  // TODO(crbug.com/460485333): Test passkey creation flow.
+  void StartPasskeyCreation(std::string request_id, bool did_complete_uv);
+
+  // Requests that the passkey matching the provided credential ID be used for
+  // passkey assertion given the provided request ID. Fetches the shared keys
+  // list and calls the CompletePasskeyAssertion callback.
+  // TODO(crbug.com/460485333): Test passkey assertion flow.
+  void StartPasskeyAssertion(std::string request_id,
+                             std::string credential_id,
+                             bool did_complete_uv);
+
+  // Utility function to defer the passkey request back to the renderer.
+  void DeferToRenderer(IOSPasskeyClient::RequestInfo request_info,
+                       PasskeyRequestParams::RequestType request_type) const;
+
+  // Utility function to reject a pending passkey.
+  void RejectPendingRequest(const std::string& request_id);
+
+  // Utility function to defer a pending passkey request back to the renderer.
+  void DeferPendingRequestToRenderer(const std::string& request_id);
+
+  // Returns the username associated with the current request ID or an empty
+  // string if the request is not found. Note that only registration requests
+  // have a username.
+  std::string UsernameForRequest(const std::string& request_id);
+
+  // Returns the relying party identifier associated with the current request ID
+  // or an empty string if the request is not found.
+  std::string RelyingPartyIdForRequest(const std::string& request_id);
+
+  // Sets the passkey command handler.
+  void SetIOSPasskeyClientCommandsHandler(id<IOSPasskeyClientCommands> handler);
+
+  // Returns whether user verification should be performed for `request_id`.
+  // It returns std::nullopt if the request is unknown.
+  std::optional<bool> ShouldPerformUserVerification(
+      const std::string& request_id) const;
+
+  // Returns whether there is a pending remote validation for testing.
+  bool HasPendingValidationForTesting() const;
+
+ private:
+  friend class web::WebStateUserData<PasskeyTabHelper>;
+  friend class PasskeyTabHelperTest;
+
+  // Pending requests keyed by frame ID when a WebFrame isn't yet available.
+  using PendingRequest =
+      std::variant<AssertionRequestParams, RegistrationRequestParams>;
+
+  // Information about the frame hierarchy.
+  struct FrameHierarchy {
+    url::Origin top_origin;
+    bool is_cross_origin_iframe;
+  };
+
+  explicit PasskeyTabHelper(
+      web::WebState* web_state,
+      PasskeyModel* passkey_model,
+      scoped_refptr<password_manager::PasswordStoreInterface> password_store,
+      std::unique_ptr<IOSPasskeyClient> client);
+
+  // Handles passkey assertion requests. Defers if the rp ID is invalid.
+  void HandleGetRequestedEvent(web::WebFrame* web_frame,
+                               AssertionRequestParams params);
+
+  // Handles passkey registration requests. Defers if the rp ID is invalid.
+  void HandleCreateRequestedEvent(web::WebFrame* web_frame,
+                                  RegistrationRequestParams params);
+
+  // Handles continuation of the Signal API events after the remote RP ID
+  // validation has been completed.
+  void HandleSignalUnknownCredential(const url::Origin& origin,
+                                     SignalUnknownCredentialParams params);
+  void HandleSignalCurrentUserDetails(const url::Origin& origin,
+                                      SignalCurrentUserDetailsParams params);
+  void HandleSignalAllAcceptedCredentials(
+      const url::Origin& origin,
+      SignalAllAcceptedCredentialsParams params);
+
+  // Returns whether the passkey model contains a passkey from the
+  // exclude credentials list from the provided parameters.
+  bool HasExcludedPasskey(const RegistrationRequestParams& params) const;
+
+  // Returns the list of passkeys filtered by the allowed credentials list.
+  std::vector<sync_pb::WebauthnCredentialSpecifics> GetFilteredPasskeys(
+      const AssertionRequestParams& params) const;
+
+  // Callback which creates a passkey given the provided shared keys list and
+  // params. The newly created passkey is added to the passkey model and the
+  // parameters required to resolve the PublicKeyCredential request are sent to
+  // PasskeyJavaScriptFeature.
+  void CompletePasskeyCreation(RegistrationRequestParams params,
+                               std::string client_data_json,
+                               SharedKeyList shared_key_list,
+                               bool did_complete_uv);
+
+  // Callback which uses the provided passkey for assertion given the provided
+  // shared keys list and params. The parameters required to resolve the
+  // PublicKeyCredential request are sent to PasskeyJavaScriptFeature.
+  void CompletePasskeyAssertion(AssertionRequestParams params,
+                                sync_pb::WebauthnCredentialSpecifics passkey,
+                                std::string client_data_json,
+                                SharedKeyList shared_key_list,
+                                bool did_complete_uv);
+
+  // Starts remote validation for the given origin and RP ID. If validation
+  // starts successfully, the loader is stored in `loaders_` with
+  // `passkey_request_id` as the key. Returns true if validation started, false
+  // otherwise.
+  bool PerformRemoteRpIdValidation(
+      const url::Origin& origin,
+      const std::string& rp_id,
+      const std::string& passkey_request_id,
+      base::OnceCallback<void(ValidationStatus)> callback);
+
+  // Performs remote RP ID validation for WebAuthn Signal requests. Generates a
+  // temporary request ID, tracks it, and runs `success_callback` on success.
+  void PerformRemoteSignalRpIdValidation(const url::Origin& origin,
+                                         const std::string& rp_id,
+                                         base::OnceClosure success_callback);
+
+  // Callback for processing remote validation result for a pending request.
+  // Cleans up the loader for `request_id` and runs `success_callback` on
+  // successful `status`. Otherwise, runs `failure_callback`, if provided.
+  void OnRemoteRpIdValidationCompleted(std::string request_id,
+                                       base::OnceClosure success_callback,
+                                       base::OnceClosure failure_callback,
+                                       ValidationStatus status);
+
+  // Handles passkey assertion request after it passes validation.
+  void HandleAssertion(AssertionRequestParams params);
+
+  // Callback invoked when the WebAuthn credentials delegate is resolved for an
+  // assertion request.
+  void OnWebAuthnCredentialsDelegateResolved(
+      AssertionRequestParams params,
+      IOSWebAuthnCredentialsDelegate* delegate);
+
+  // Whether automatic passkey upgrade is allowed.
+  bool CanPerformAutomaticPasskeyUpgrade(
+      const RegistrationRequestParams& params,
+      const std::vector<password_manager::StoredCredential>& logins) const;
+
+  // Handles passkey registration requests after it passes validation.
+  void HandleRegistration(RegistrationRequestParams params);
+
+  // Initiates the passkey registration flow, showing the incognito warning
+  // interstitial first if the browser state is off-the-record.
+  void MaybeShowInterstitialAndRegister(RegistrationRequestParams params);
+
+  // Callback handling the user's decision from the interstitial.
+  void OnInterstitialDecision(RegistrationRequestParams params, bool proceed);
+
+  // Callback handling the user's decision from the interstitial for a
+  // conditional create request.
+  void OnConditionalCreateInterstitialDecision(const std::string& request_id,
+                                               bool proceed);
+
+  // Adds a passkey to the passkey model while enabling the passkey creation
+  // infobar to be displayed if possible.
+  void AddNewPasskey(sync_pb::WebauthnCredentialSpecifics& passkey);
+
+  PasskeyUserVerificationStatus DetermineUserVerificationStatus(
+      const PasskeyRequestParams& params,
+      bool did_complete_uv) const;
+
+  // Returns information (Frame ID and Request Type) for a request identified by
+  // `request_id`. Returns std::nullopt if the request is not found.
+  std::optional<std::pair<std::string, PasskeyRequestParams::RequestType>>
+  ExtractRequestInfo(const std::string& request_id);
+
+  // Utility function to reject a passkey request.
+  void RejectPasskeyRequest(web::WebFrame* web_frame,
+                            const std::string& request_id,
+                            WebAuthnError error);
+
+  // Utility function to defer the passkey request back to the renderer.
+  void DeferToRendererForFrame(
+      web::WebFrame* web_frame,
+      const std::string& request_id,
+      PasskeyRequestParams::RequestType request_type) const;
+
+  // If `request_id` exists in the `assertion_requests_` map, this function will
+  // remove the parameters from the `assertion_requests_` map and return them.
+  // Returns std::nullopt otherwise.
+  std::optional<AssertionRequestParams> ExtractParamsFromAssertionRequestsMap(
+      std::string request_id);
+
+  // If `request_id` exists in the `registration_requests_` map, this function
+  // will remove the parameters from the `registration_requests_` map and return
+  // them. Returns std::nullopt otherwise.
+  std::optional<RegistrationRequestParams>
+  ExtractParamsFromRegistrationRequestsMap(std::string request_id);
+
+  // Determines the frame hierarchy for the given `web_frame`. Returns the top
+  // origin and whether the frame is a cross-origin iframe relative to the main
+  // frame.
+  FrameHierarchy GetFrameHierarchy(web::WebFrame* web_frame) const;
+
+  // Returns a web frame from a web frame id. May return null.
+  web::WebFrame* GetWebFrame(const std::string& frame_id) const;
+
+  // WebStateObserver:
+  void WebStateDestroyed(web::WebState* web_state) override;
+
+  // WebFramesManager::Observer:
+  void WebFrameBecameAvailable(web::WebFramesManager* web_frames_manager,
+                               web::WebFrame* web_frame) override;
+
+  // PasswordStoreConsumer:
+  void OnGetPasswordStoreResultsOrErrorFrom(
+      password_manager::PasswordStoreInterface* store,
+      password_manager::LoginsResultOrError results_or_error) override;
+
+  // PasskeyModel::Observer:
+  void OnPasskeysChanged(
+      const std::vector<PasskeyModelChange>& changes) override;
+  void OnPasskeyModelShuttingDown() override;
+  void OnPasskeyModelIsReady(bool is_ready) override;
+
+  // Gets a weak pointer to this object.
+  base::WeakPtr<PasskeyTabHelper> AsWeakPtr();
+
+  // Provides access to stored WebAuthn credentials.
+  const raw_ref<PasskeyModel> passkey_model_;
+
+  // Provides access to the account password store.
+  scoped_refptr<password_manager::PasswordStoreInterface> password_store_;
+
+  // The WebState with which this object is associated.
+  base::WeakPtr<web::WebState> web_state_;
+
+  // The client used to perform user facing tasks for the PasskeyTabHelper.
+  std::unique_ptr<IOSPasskeyClient> client_;
+
+  // A map of request IDs (as std::string) to assertion request parameters.
+  absl::flat_hash_map<std::string, AssertionRequestParams> assertion_requests_;
+
+  // A map of request IDs (as std::string) to registration request parameters.
+  absl::flat_hash_map<std::string, RegistrationRequestParams>
+      registration_requests_;
+
+  // Requests that are waiting for the passkey model to be ready.
+  std::vector<PendingRequest> requests_waiting_for_passkey_model_;
+
+  // Requests that are waiting for the web frame to be available.
+  absl::flat_hash_map<std::string, std::vector<PendingRequest>>
+      requests_waiting_for_web_frame_;
+
+  // Map of request IDs to their ongoing remote validation loaders.
+  absl::flat_hash_map<std::string, std::unique_ptr<RemoteValidation>> loaders_;
+
+  // Manages the observation of the passkey model.
+  base::ScopedObservation<PasskeyModel, PasskeyModel::Observer>
+      passkey_model_observation_{this};
+
+  // Flag to avoid duplicate queries to the password store.
+  bool is_querying_password_store_ = false;
+
+  // This is necessary because this object could be deleted during any callback,
+  // and we don't want to risk a UAF if that happens.
+  base::WeakPtrFactory<PasskeyTabHelper> weak_factory_{this};
+};
+
+}  // namespace webauthn
+
+#endif  // COMPONENTS_WEBAUTHN_IOS_PASSKEY_TAB_HELPER_H_

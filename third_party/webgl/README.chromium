@@ -1,0 +1,14 @@
+Name: Public Khronos WebGL Conformance Tests repository
+Short Name: webgl
+URL: https://github.com/KhronosGroup/WebGL.git
+Version: N/A
+Revision: 216b10fafd3f6a900c715a8c758a4c7f9883b030
+Update Mechanism: Manual (https://crbug.com/424013460)
+Security Critical: No
+Shipped: No
+License: MIT
+License File: src/LICENSE.txt
+
+Description:
+This is a snapshot of the public webgl conformance tests directory on the
+Github server.

@@ -1,0 +1,208 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.tabmodel;
+
+import org.chromium.base.Token;
+import org.chromium.build.annotations.EnsuresNonNull;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabId;
+import org.chromium.chrome.browser.tab.TabLaunchType;
+import org.chromium.chrome.browser.tab.TabState;
+import org.chromium.chrome.browser.tab.TabStateStorageFlagHelper;
+import org.chromium.content_public.browser.LoadUrlParams;
+import org.chromium.content_public.browser.WebContents;
+import org.chromium.url.GURL;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
+/**
+ * A {@link TabCreator} that delegates to another {@link TabCreator} while recording the properties
+ * of tabs it creates. This replaces the need for using the live {@link TabModel} when diffing tab
+ * state stores.
+ */
+@NullMarked
+public class RecordingTabCreator implements TabCreator {
+    /** A data class that holds the properties of a tab that has been created. */
+    public static class TabCreationData {
+        public final int id;
+        public final @Nullable String url;
+        public final long timestampMillis;
+        public final boolean isPinned;
+        public final @Nullable Token tabGroupId;
+
+        /**
+         * @param id The ID of the tab (if frozen, otherwise Tab.INVALID_TAB_ID).
+         * @param url The URL spec of the tab.
+         * @param timestampMillis The timestamp of the tab in milliseconds (if frozen, otherwise 0).
+         * @param isPinned Whether the tab is pinned.
+         * @param tabGroupId The group ID of the tab if in a group.
+         */
+        public TabCreationData(
+                int id,
+                @Nullable String url,
+                long timestampMillis,
+                boolean isPinned,
+                @Nullable Token tabGroupId) {
+            this.id = id;
+            this.url = url;
+            this.timestampMillis = timestampMillis;
+            this.isPinned = isPinned;
+            this.tabGroupId = tabGroupId;
+        }
+    }
+
+    private final List<TabCreationData> mFrozenTabCreationData = new ArrayList<>();
+    private final List<TabCreationData> mNewTabCreationData = new ArrayList<>();
+    private final Map<@TabId Integer, String> mRegularFallbackTabs = new HashMap<>();
+    private @Nullable TabCreator mDelegate;
+    private int mTabCount;
+    private boolean mIsRecording = true;
+
+    @Override
+    public @Nullable Tab createNewTab(
+            LoadUrlParams loadUrlParams, @TabLaunchType int type, @Nullable Tab parent) {
+        assertInitialized();
+        recordNewTab(loadUrlParams.getUrl());
+        return mDelegate.createNewTab(loadUrlParams, type, parent);
+    }
+
+    @Override
+    public @Nullable Tab createNewTab(
+            LoadUrlParams loadUrlParams,
+            @TabLaunchType int type,
+            @Nullable Tab parent,
+            int position) {
+        assertInitialized();
+        recordNewTab(loadUrlParams.getUrl());
+        return mDelegate.createNewTab(loadUrlParams, type, parent, position);
+    }
+
+    @Override
+    public @Nullable Tab createNewTab(
+            LoadUrlParams loadUrlParams,
+            String title,
+            @TabLaunchType int type,
+            @Nullable Tab parent,
+            int position) {
+        assertInitialized();
+        recordNewTab(loadUrlParams.getUrl());
+        return mDelegate.createNewTab(loadUrlParams, title, type, parent, position);
+    }
+
+    @Override
+    public @Nullable Tab createFrozenTab(TabState state, int id, int index) {
+        assertInitialized();
+        if (mIsRecording && TabStateStorageFlagHelper.isTabStorageEnabled()) {
+            mTabCount++;
+            String urlSpec = state.url != null ? state.url.getSpec() : null;
+            mFrozenTabCreationData.add(
+                    new TabCreationData(
+                            id, urlSpec, state.timestampMillis, state.isPinned, state.tabGroupId));
+        }
+        return mDelegate.createFrozenTab(state, id, index);
+    }
+
+    @Override
+    public @Nullable Tab launchUrl(String url, @TabLaunchType int type) {
+        assertInitialized();
+        recordNewTab(url);
+        return mDelegate.launchUrl(url, type);
+    }
+
+    @Override
+    public @Nullable Tab createTabWithWebContents(
+            @Nullable Tab parent,
+            boolean shouldPin,
+            WebContents webContents,
+            @TabLaunchType int type,
+            GURL url,
+            int index,
+            CompletableFuture<Boolean> addTabToModel) {
+        assertInitialized();
+        recordNewTab(url.getSpec());
+        return mDelegate.createTabWithWebContents(
+                parent, shouldPin, webContents, type, url, index, addTabToModel);
+    }
+
+    @Override
+    public @Nullable Tab createTabWithHistory(Tab parent, @TabLaunchType int type) {
+        assertInitialized();
+        recordNewTab(parent.getUrl() != null ? parent.getUrl().getSpec() : null);
+        return mDelegate.createTabWithHistory(parent, type);
+    }
+
+    @Override
+    public void launchNtp(@TabLaunchType int type) {
+        assertInitialized();
+        recordNewTab(null);
+        mDelegate.launchNtp(type);
+    }
+
+    /** Returns the total number of tabs created. */
+    public int getTabCount() {
+        return mTabCount;
+    }
+
+    /** Returns the list of frozen tab creation data. */
+    public List<TabCreationData> getFrozenTabCreationData() {
+        return mFrozenTabCreationData;
+    }
+
+    /** Returns the list of new tab creation data. */
+    public List<TabCreationData> getNewTabCreationData() {
+        return mNewTabCreationData;
+    }
+
+    /** Returns the map of regular fallback tab IDs to URLs. */
+    public Map<@TabId Integer, String> getRegularFallbackTabs() {
+        return mRegularFallbackTabs;
+    }
+
+    /**
+     * Records a fallback tab created with the given ID and URL.
+     *
+     * @param id The ID of the fallback tab.
+     * @param url The URL string of the fallback tab.
+     */
+    public void recordFallbackTab(@TabId int id, String url) {
+        if (mIsRecording) {
+            mRegularFallbackTabs.put(id, url);
+        }
+    }
+
+    /** Sets the delegate {@link TabCreator} to use. */
+    public void setDelegate(TabCreator delegate) {
+        mDelegate = delegate;
+    }
+
+    /** Stops the tab creator from recording any more data. */
+    public void stopRecording() {
+        mIsRecording = false;
+    }
+
+    @EnsuresNonNull({"mDelegate"})
+    private void assertInitialized() {
+        assert mDelegate != null;
+    }
+
+    private void recordNewTab(@Nullable String urlSpec) {
+        if (mIsRecording && TabStateStorageFlagHelper.isTabStorageEnabled()) {
+            mTabCount++;
+            mNewTabCreationData.add(
+                    new TabCreationData(
+                            Tab.INVALID_TAB_ID,
+                            urlSpec,
+                            /* timestampMillis= */ 0,
+                            /* isPinned= */ false,
+                            /* tabGroupId= */ null));
+        }
+    }
+}

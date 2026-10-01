@@ -1,0 +1,45 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef MEDIA_GPU_H264_BUILDER_H_
+#define MEDIA_GPU_H264_BUILDER_H_
+
+#include <optional>
+
+#include "media/gpu/media_gpu_export.h"
+#include "media/parsers/h264_parser.h"
+
+namespace media {
+
+class H26xAnnexBBitstreamBuilder;
+
+// Build the packed bitstream of H264SPS into |bitstream_builder|.
+MEDIA_GPU_EXPORT void BuildPackedH264SPS(
+    H26xAnnexBBitstreamBuilder& bitstream_builder,
+    const H264SPS& sps);
+// Build the packed bitstream of H264PPS into |bitstream_builder|.
+MEDIA_GPU_EXPORT void BuildPackedH264PPS(
+    H26xAnnexBBitstreamBuilder& bitstream_builder,
+    const H264SPS& sps,
+    const H264PPS& pps);
+
+// Build an SEI NALU carrying the HDR static metadata messages, i.e. the
+// mastering display colour volume (payload type 137) and content light level
+// information (payload type 144). Only the messages that are present are
+// emitted; if both are absent, nothing is appended.
+MEDIA_GPU_EXPORT void BuildPackedH264SEI(
+    H26xAnnexBBitstreamBuilder& bitstream_builder,
+    const std::optional<H26xSEIMasteringDisplayInfo>& mastering_display,
+    const std::optional<H26xSEIContentLightLevelInfo>& content_light_level);
+
+// Returns the H264 Prefix NALU bitstream for temporal layer encoding with
+// the arguments.
+MEDIA_GPU_EXPORT std::vector<uint8_t> BuildPrefixNALU(
+    int nal_ref_idc,
+    H264NALU::Type associated_nalu_type,
+    uint8_t temporal_id);
+
+}  // namespace media
+
+#endif  // MEDIA_GPU_H264_BUILDER_H_

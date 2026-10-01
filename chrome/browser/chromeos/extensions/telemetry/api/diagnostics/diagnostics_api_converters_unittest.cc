@@ -1,0 +1,516 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/chromeos/extensions/telemetry/api/diagnostics/diagnostics_api_converters.h"
+
+#include "base/time/time.h"
+#include "chrome/common/chromeos/extensions/api/diagnostics.h"
+#include "chromeos/ash/services/cros_healthd/public/mojom/cros_healthd_diagnostics.mojom-shared.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace chromeos::converters::diagnostics {
+
+namespace {
+
+namespace cx_diag = ::chromeos::api::os_diagnostics;
+
+}  // namespace
+
+// Tests that ConvertMojoRoutineTest() correctly converts the supported Mojo
+// routine type values to the API's routine type values. For the unsupported
+// type values, the call should fail (ConvertMojoRoutineTest() returns false);
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertMojoRoutineTest) {
+  // Tests for supported routines.
+  {
+    cx_diag::RoutineType out;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kAcPower, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kAcPower);
+  }
+  {
+    cx_diag::RoutineType out;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kBatteryCapacity,
+        &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kBatteryCapacity);
+  }
+  {
+    cx_diag::RoutineType out;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kBatteryCharge, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kBatteryCharge);
+  }
+  {
+    cx_diag::RoutineType out;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kBatteryDischarge,
+        &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kBatteryDischarge);
+  }
+  {
+    cx_diag::RoutineType out;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kBatteryHealth, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kBatteryHealth);
+  }
+  {
+    cx_diag::RoutineType out;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kCpuCache, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kCpuCache);
+  }
+  {
+    cx_diag::RoutineType out;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kFloatingPointAccuracy,
+        &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kCpuFloatingPointAccuracy);
+  }
+  {
+    cx_diag::RoutineType out;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kPrimeSearch, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kCpuPrimeSearch);
+  }
+  {
+    cx_diag::RoutineType out;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kCpuStress, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kCpuStress);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kDiskRead, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kDiskRead);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kDnsResolution, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kDnsResolution);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kDnsResolverPresent,
+        &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kDnsResolverPresent);
+  }
+  {
+    cx_diag::RoutineType out;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kMemory, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kMemory);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kNvmeSelfTest, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kNvmeSelfTest);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kSignalStrength,
+        &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kSignalStrength);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kGatewayCanBePinged,
+        &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kGatewayCanBePinged);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kSensitiveSensor,
+        &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kSensitiveSensor);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_TRUE(
+        ConvertMojoRoutine(ash::cros_healthd::mojom::DiagnosticRoutineEnum::
+                               kSmartctlCheckWithPercentageUsed,
+                           &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kSmartctlCheckWithPercentageUsed);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kSmartctlCheck, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kSmartctlCheck);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kFingerprintAlive,
+        &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kFingerprintAlive);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kPowerButton, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kPowerButton);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kAudioDriver, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kAudioDriver);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_TRUE(ConvertMojoRoutine(
+        ash::cros_healthd::mojom::DiagnosticRoutineEnum::kFan, &out));
+    EXPECT_EQ(out, cx_diag::RoutineType::kFan);
+  }
+  {
+    cx_diag::RoutineType out = cx_diag::RoutineType::kNone;
+    EXPECT_FALSE(
+        ConvertMojoRoutine(ash::cros_healthd::mojom::DiagnosticRoutineEnum::
+                               DEPRECATED_kNvmeWearLevel,
+                           &out));
+  }
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest, ConvertRoutineStatus) {
+  EXPECT_EQ(ConvertRoutineStatus(
+                ash::cros_healthd::mojom::DiagnosticRoutineStatusEnum::kReady),
+            cx_diag::RoutineStatus::kReady);
+  EXPECT_EQ(
+      ConvertRoutineStatus(
+          ash::cros_healthd::mojom::DiagnosticRoutineStatusEnum::kRunning),
+      cx_diag::RoutineStatus::kRunning);
+  EXPECT_EQ(
+      ConvertRoutineStatus(
+          ash::cros_healthd::mojom::DiagnosticRoutineStatusEnum::kWaiting),
+      cx_diag::RoutineStatus::kWaitingUserAction);
+  EXPECT_EQ(ConvertRoutineStatus(
+                ash::cros_healthd::mojom::DiagnosticRoutineStatusEnum::kPassed),
+            cx_diag::RoutineStatus::kPassed);
+  EXPECT_EQ(ConvertRoutineStatus(
+                ash::cros_healthd::mojom::DiagnosticRoutineStatusEnum::kFailed),
+            cx_diag::RoutineStatus::kFailed);
+  EXPECT_EQ(ConvertRoutineStatus(
+                ash::cros_healthd::mojom::DiagnosticRoutineStatusEnum::kError),
+            cx_diag::RoutineStatus::kError);
+  EXPECT_EQ(
+      ConvertRoutineStatus(
+          ash::cros_healthd::mojom::DiagnosticRoutineStatusEnum::kCancelled),
+      cx_diag::RoutineStatus::kCancelled);
+  EXPECT_EQ(
+      ConvertRoutineStatus(ash::cros_healthd::mojom::
+                               DiagnosticRoutineStatusEnum::kFailedToStart),
+      cx_diag::RoutineStatus::kFailedToStart);
+  EXPECT_EQ(
+      ConvertRoutineStatus(
+          ash::cros_healthd::mojom::DiagnosticRoutineStatusEnum::kRemoved),
+      cx_diag::RoutineStatus::kRemoved);
+  EXPECT_EQ(
+      ConvertRoutineStatus(
+          ash::cros_healthd::mojom::DiagnosticRoutineStatusEnum::kCancelling),
+      cx_diag::RoutineStatus::kCancelling);
+  EXPECT_EQ(
+      ConvertRoutineStatus(
+          ash::cros_healthd::mojom::DiagnosticRoutineStatusEnum::kUnsupported),
+      cx_diag::RoutineStatus::kUnsupported);
+  EXPECT_EQ(ConvertRoutineStatus(
+                ash::cros_healthd::mojom::DiagnosticRoutineStatusEnum::kNotRun),
+            cx_diag::RoutineStatus::kNotRun);
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineCommand) {
+  EXPECT_EQ(ConvertRoutineCommand(cx_diag::RoutineCommandType::kCancel),
+            ash::cros_healthd::mojom::DiagnosticRoutineCommandEnum::kCancel);
+  EXPECT_EQ(ConvertRoutineCommand(cx_diag::RoutineCommandType::kRemove),
+            ash::cros_healthd::mojom::DiagnosticRoutineCommandEnum::kRemove);
+  EXPECT_EQ(ConvertRoutineCommand(cx_diag::RoutineCommandType::kResume),
+            ash::cros_healthd::mojom::DiagnosticRoutineCommandEnum::kContinue);
+  EXPECT_EQ(ConvertRoutineCommand(cx_diag::RoutineCommandType::kStatus),
+            ash::cros_healthd::mojom::DiagnosticRoutineCommandEnum::kGetStatus);
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineUserMessage) {
+  EXPECT_EQ(ConvertRoutineUserMessage(
+                ash::cros_healthd::mojom::DiagnosticRoutineUserMessageEnum::
+                    kUnplugACPower),
+            cx_diag::UserMessageType::kUnplugAcPower);
+  EXPECT_EQ(ConvertRoutineUserMessage(
+                ash::cros_healthd::mojom::DiagnosticRoutineUserMessageEnum::
+                    kPlugInACPower),
+            cx_diag::UserMessageType::kPlugInAcPower);
+  EXPECT_EQ(ConvertRoutineUserMessage(
+                ash::cros_healthd::mojom::DiagnosticRoutineUserMessageEnum::
+                    kPressPowerButton),
+            cx_diag::UserMessageType::kPressPowerButton);
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertDiskReadRoutineType) {
+  EXPECT_EQ(ConvertDiskReadRoutineType(cx_diag::DiskReadRoutineType::kLinear),
+            ash::cros_healthd::mojom::DiskReadRoutineTypeEnum::kLinearRead);
+  EXPECT_EQ(ConvertDiskReadRoutineType(cx_diag::DiskReadRoutineType::kRandom),
+            ash::cros_healthd::mojom::DiskReadRoutineTypeEnum::kRandomRead);
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertAcPowerStatusRoutineType) {
+  EXPECT_EQ(ConvertAcPowerStatusRoutineType(cx_diag::AcPowerStatus::kConnected),
+            ash::cros_healthd::mojom::AcPowerStatusEnum::kConnected);
+  EXPECT_EQ(
+      ConvertAcPowerStatusRoutineType(cx_diag::AcPowerStatus::kDisconnected),
+      ash::cros_healthd::mojom::AcPowerStatusEnum::kDisconnected);
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertNvmeSelfTestRoutineType) {
+  cx_diag::RunNvmeSelfTestRequest input_short;
+  input_short.test_type = cx_diag::NvmeSelfTestType::kShortTest;
+  EXPECT_EQ(ConvertNvmeSelfTestRoutineType(std::move(input_short)),
+            ash::cros_healthd::mojom::NvmeSelfTestTypeEnum::kShortSelfTest);
+
+  cx_diag::RunNvmeSelfTestRequest input_long;
+  input_long.test_type = cx_diag::NvmeSelfTestType::kLongTest;
+  EXPECT_EQ(ConvertNvmeSelfTestRoutineType(std::move(input_long)),
+            ash::cros_healthd::mojom::NvmeSelfTestTypeEnum::kLongSelfTest);
+
+  cx_diag::RunNvmeSelfTestRequest input_unknown;
+  input_unknown.test_type = cx_diag::NvmeSelfTestType::kNone;
+  EXPECT_EQ(ConvertNvmeSelfTestRoutineType(std::move(input_unknown)),
+            ash::cros_healthd::mojom::NvmeSelfTestTypeEnum::kUnknown);
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertVolumeButtonRoutineButtonType) {
+  EXPECT_EQ(
+      ConvertVolumeButtonRoutineButtonType(cx_diag::VolumeButtonType::kNone),
+      ash::cros_healthd::mojom::VolumeButtonRoutineArgument::ButtonType::
+          kUnmappedEnumField);
+
+  EXPECT_EQ(ConvertVolumeButtonRoutineButtonType(
+                cx_diag::VolumeButtonType::kVolumeUp),
+            ash::cros_healthd::mojom::VolumeButtonRoutineArgument::ButtonType::
+                kVolumeUp);
+
+  EXPECT_EQ(ConvertVolumeButtonRoutineButtonType(
+                cx_diag::VolumeButtonType::kVolumeDown),
+            ash::cros_healthd::mojom::VolumeButtonRoutineArgument::ButtonType::
+                kVolumeDown);
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest, ConvertLedName) {
+  EXPECT_EQ(ConvertLedName(cx_diag::LedName::kNone),
+            ash::cros_healthd::mojom::LedName::kUnmappedEnumField);
+  EXPECT_EQ(ConvertLedName(cx_diag::LedName::kBattery),
+            ash::cros_healthd::mojom::LedName::kBattery);
+  EXPECT_EQ(ConvertLedName(cx_diag::LedName::kPower),
+            ash::cros_healthd::mojom::LedName::kPower);
+  EXPECT_EQ(ConvertLedName(cx_diag::LedName::kAdapter),
+            ash::cros_healthd::mojom::LedName::kAdapter);
+  EXPECT_EQ(ConvertLedName(cx_diag::LedName::kLeft),
+            ash::cros_healthd::mojom::LedName::kLeft);
+  EXPECT_EQ(ConvertLedName(cx_diag::LedName::kRight),
+            ash::cros_healthd::mojom::LedName::kRight);
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest, ConvertLedColor) {
+  EXPECT_EQ(ConvertLedColor(cx_diag::LedColor::kNone),
+            ash::cros_healthd::mojom::LedColor::kUnmappedEnumField);
+  EXPECT_EQ(ConvertLedColor(cx_diag::LedColor::kRed),
+            ash::cros_healthd::mojom::LedColor::kRed);
+  EXPECT_EQ(ConvertLedColor(cx_diag::LedColor::kGreen),
+            ash::cros_healthd::mojom::LedColor::kGreen);
+  EXPECT_EQ(ConvertLedColor(cx_diag::LedColor::kBlue),
+            ash::cros_healthd::mojom::LedColor::kBlue);
+  EXPECT_EQ(ConvertLedColor(cx_diag::LedColor::kYellow),
+            ash::cros_healthd::mojom::LedColor::kYellow);
+  EXPECT_EQ(ConvertLedColor(cx_diag::LedColor::kWhite),
+            ash::cros_healthd::mojom::LedColor::kWhite);
+  EXPECT_EQ(ConvertLedColor(cx_diag::LedColor::kAmber),
+            ash::cros_healthd::mojom::LedColor::kAmber);
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest, ConvertLedLitUpState) {
+  EXPECT_EQ(ConvertLedLitUpState(cx_diag::LedLitUpState::kNone),
+            ash::cros_healthd::mojom::CheckLedLitUpStateReply::State::
+                kUnmappedEnumField);
+  EXPECT_EQ(
+      ConvertLedLitUpState(cx_diag::LedLitUpState::kCorrectColor),
+      ash::cros_healthd::mojom::CheckLedLitUpStateReply::State::kCorrectColor);
+  EXPECT_EQ(
+      ConvertLedLitUpState(cx_diag::LedLitUpState::kNotLitUp),
+      ash::cros_healthd::mojom::CheckLedLitUpStateReply::State::kNotLitUp);
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertKeyboardBacklightState) {
+  EXPECT_EQ(
+      ConvertKeyboardBacklightState(cx_diag::KeyboardBacklightState::kNone),
+      ash::cros_healthd::mojom::CheckKeyboardBacklightStateReply::State::
+          kUnmappedEnumField);
+  EXPECT_EQ(
+      ConvertKeyboardBacklightState(cx_diag::KeyboardBacklightState::kOk),
+      ash::cros_healthd::mojom::CheckKeyboardBacklightStateReply::State::kOk);
+  EXPECT_EQ(ConvertKeyboardBacklightState(
+                cx_diag::KeyboardBacklightState::kAnyNotLitUp),
+            ash::cros_healthd::mojom::CheckKeyboardBacklightStateReply::State::
+                kAnyNotLitUp);
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineArgumentsUnionErrorWithMultipleNonnullFields) {
+  auto args_union = cx_diag::CreateRoutineArgumentsUnion();
+  args_union.memory = cx_diag::CreateMemoryRoutineArguments();
+  args_union.fan = cx_diag::CreateFanRoutineArguments();
+  auto result = ConvertRoutineArgumentsUnion(std::move(args_union));
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineArgumentsUnionSuccessWithAllFieldsAreNull) {
+  auto result =
+      ConvertRoutineArgumentsUnion(cx_diag::CreateRoutineArgumentsUnion());
+  ASSERT_TRUE(result.has_value());
+  ASSERT_FALSE(result.value().is_null());
+  EXPECT_TRUE(result.value()->is_unrecognizedArgument());
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineArgumentsUnionSuccessWithMemoryArgs) {
+  auto args = cx_diag::CreateMemoryRoutineArguments();
+  args.max_testing_mem_kib = 42;
+  auto args_union = cx_diag::CreateRoutineArgumentsUnion();
+  args_union.memory = std::move(args);
+  auto result = ConvertRoutineArgumentsUnion(std::move(args_union));
+  ASSERT_TRUE(result.has_value());
+  ASSERT_FALSE(result.value().is_null());
+  ASSERT_TRUE(result.value()->is_memory());
+  EXPECT_EQ(result.value()->get_memory()->max_testing_mem_kib, 42);
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineArgumentsUnionErrorWithInvalidMemoryArgs) {
+  auto args = cx_diag::CreateMemoryRoutineArguments();
+  args.max_testing_mem_kib = -1;
+  auto args_union = cx_diag::CreateRoutineArgumentsUnion();
+  args_union.memory = std::move(args);
+  auto result = ConvertRoutineArgumentsUnion(std::move(args_union));
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineArgumentsUnionSuccessWithVolumeButtonArgs) {
+  auto args = cx_diag::CreateVolumeButtonRoutineArguments();
+  args.timeout_seconds = 42;
+  args.button_type = cx_diag::VolumeButtonType::kVolumeUp;
+  auto args_union = cx_diag::CreateRoutineArgumentsUnion();
+  args_union.volume_button = std::move(args);
+  auto result = ConvertRoutineArgumentsUnion(std::move(args_union));
+  ASSERT_TRUE(result.has_value());
+  ASSERT_FALSE(result.value().is_null());
+  ASSERT_TRUE(result.value()->is_volume_button());
+  EXPECT_EQ(result.value()->get_volume_button()->type,
+            ash::cros_healthd::mojom::VolumeButtonRoutineArgument::ButtonType::
+                kVolumeUp);
+  EXPECT_EQ(result.value()->get_volume_button()->timeout, base::Seconds(42));
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineArgumentsUnionErrorWithInvalidVolumeButtonArgs) {
+  auto args = cx_diag::CreateVolumeButtonRoutineArguments();
+  args.timeout_seconds = -1;
+  args.button_type = cx_diag::VolumeButtonType::kNone;
+  auto args_union = cx_diag::CreateRoutineArgumentsUnion();
+  args_union.volume_button = std::move(args);
+  auto result = ConvertRoutineArgumentsUnion(std::move(args_union));
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineArgumentsUnionSuccessWithFanArgs) {
+  auto args_union = cx_diag::CreateRoutineArgumentsUnion();
+  args_union.fan = cx_diag::CreateFanRoutineArguments();
+  auto result = ConvertRoutineArgumentsUnion(std::move(args_union));
+  ASSERT_TRUE(result.has_value());
+  ASSERT_FALSE(result.value().is_null());
+  EXPECT_TRUE(result.value()->is_fan());
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineArgumentsUnionSuccessWithLedLitUpArgs) {
+  auto args = cx_diag::CreateLedLitUpRoutineArguments();
+  args.name = cx_diag::LedName::kBattery;
+  args.color = cx_diag::LedColor::kRed;
+  auto args_union = cx_diag::CreateRoutineArgumentsUnion();
+  args_union.led_lit_up = std::move(args);
+  auto result = ConvertRoutineArgumentsUnion(std::move(args_union));
+  ASSERT_TRUE(result.has_value());
+  ASSERT_FALSE(result.value().is_null());
+  ASSERT_TRUE(result.value()->is_led_lit_up());
+  EXPECT_EQ(result.value()->get_led_lit_up()->name,
+            ash::cros_healthd::mojom::LedName::kBattery);
+  EXPECT_EQ(result.value()->get_led_lit_up()->color,
+            ash::cros_healthd::mojom::LedColor::kRed);
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineArgumentsUnionSuccessWithKeyboardBacklightArgs) {
+  auto args_union = cx_diag::CreateRoutineArgumentsUnion();
+  args_union.keyboard_backlight =
+      cx_diag::CreateKeyboardBacklightRoutineArguments();
+  auto result = ConvertRoutineArgumentsUnion(std::move(args_union));
+  ASSERT_TRUE(result.has_value());
+  ASSERT_FALSE(result.value().is_null());
+  EXPECT_TRUE(result.value()->is_keyboard_backlight());
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineInquiryReplyUnionErrorWithMultipleNonnullFields) {
+  auto reply_union = cx_diag::RoutineInquiryReplyUnion();
+  reply_union.check_led_lit_up_state = cx_diag::CheckLedLitUpStateReply();
+  reply_union.check_keyboard_backlight_state =
+      cx_diag::CheckKeyboardBacklightStateReply();
+  auto result = ConvertRoutineInquiryReplyUnion(std::move(reply_union));
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineInquiryReplyUnionAllFieldsAreNull) {
+  auto result =
+      ConvertRoutineInquiryReplyUnion(cx_diag::RoutineInquiryReplyUnion());
+  ASSERT_TRUE(result.has_value());
+  ASSERT_FALSE(result.value().is_null());
+  EXPECT_TRUE(result.value()->is_unrecognizedReply());
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineInquiryReplyUnionSuccessWithCheckLedLitUpState) {
+  auto reply_union = cx_diag::RoutineInquiryReplyUnion();
+  reply_union.check_led_lit_up_state = cx_diag::CheckLedLitUpStateReply();
+  auto result = ConvertRoutineInquiryReplyUnion(std::move(reply_union));
+  ASSERT_TRUE(result.has_value());
+  ASSERT_FALSE(result.value().is_null());
+  EXPECT_TRUE(result.value()->is_check_led_lit_up_state());
+}
+
+TEST(TelemetryExtensionDiagnosticsApiConvertersUnitTest,
+     ConvertRoutineInquiryReplyUnionSuccessWithCheckKeyboardBacklightState) {
+  auto reply_union = cx_diag::RoutineInquiryReplyUnion();
+  reply_union.check_keyboard_backlight_state =
+      cx_diag::CheckKeyboardBacklightStateReply();
+  auto result = ConvertRoutineInquiryReplyUnion(std::move(reply_union));
+  ASSERT_TRUE(result.has_value());
+  ASSERT_FALSE(result.value().is_null());
+  EXPECT_TRUE(result.value()->is_check_keyboard_backlight_state());
+}
+
+}  // namespace chromeos::converters::diagnostics

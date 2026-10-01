@@ -1,0 +1,83 @@
+# Copyright 2023 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//ios/public/provider/chrome/browser/build_config.gni")
+
+source_set("utils") {
+  sources = [
+    "sync_error_infobar_delegate.h",
+    "sync_error_infobar_delegate.mm",
+    "sync_util.h",
+    "sync_util.mm",
+  ]
+  deps = [
+    ":identity_error_util",
+    "//base",
+    "//components/infobars/core",
+    "//components/strings",
+    "//components/sync/service",
+    "//ios/chrome/app/strings",
+    "//ios/chrome/browser/infobars/model",
+    "//ios/chrome/browser/infobars/model:public",
+    "//ios/chrome/browser/shared/model/browser",
+    "//ios/chrome/browser/shared/model/prefs:pref_names",
+    "//ios/chrome/browser/shared/model/profile",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/shared/ui/symbols",
+    "//ios/chrome/browser/signin/model",
+    "//ios/chrome/browser/signin/model:authentication_service",
+    "//ios/chrome/browser/signin/model:authentication_service_factory",
+    "//ios/chrome/browser/sync/model",
+    "//ui/base",
+  ]
+  frameworks = [ "Foundation.framework" ]
+}
+
+source_set("identity_error_util") {
+  sources = [
+    "account_error_ui_info.h",
+    "account_error_ui_info.mm",
+    "identity_error_util.h",
+    "identity_error_util.mm",
+  ]
+  deps = [
+    "//base",
+    "//components/sync/base",
+    "//components/sync/service",
+    "//ios/chrome/app/strings",
+    "//ios/chrome/browser/shared/public/features",
+    "//ui/base",
+  ]
+  frameworks = [ "Foundation.framework" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "sync_error_infobar_delegate_unittest.mm" ]
+  deps = [
+    "//base/test:test_support",
+    "//components/sync:test_support",
+    "//components/sync/service",
+    "//ios/chrome/browser/infobars/model",
+    "//ios/chrome/browser/settings/model/sync/utils",
+    "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/profile/test",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/shared/public/features",
+    "//ios/chrome/browser/shared/ui/symbols",
+    "//ios/chrome/browser/signin/model:authentication_service",
+    "//ios/chrome/browser/signin/model:authentication_service_factory",
+    "//ios/chrome/browser/signin/model:fake_system_identity",
+    "//ios/chrome/browser/signin/model:fake_system_identity_manager",
+    "//ios/chrome/browser/signin/model:test_support",
+    "//ios/chrome/browser/sync/model",
+    "//ios/chrome/browser/sync/model:test_support",
+    "//ios/chrome/common/ui/colors",
+    "//ios/chrome/test:test_support",
+    "//ios/web/public/test",
+    "//testing/gtest",
+    "//third_party/ocmock",
+    "//ui/base",
+  ]
+}

@@ -1,0 +1,109 @@
+# Copyright 2022 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//mojo/public/tools/bindings/mojom.gni")
+
+mojom("mojo_bindings") {
+  sources = [ "user_education.mojom" ]
+  public_deps = [ "//mojo/public/mojom/base" ]
+  webui_module_path = "chrome://resources/mojo/components/user_education/webui"
+}
+
+source_set("webui") {
+  sources = [
+    "help_bubble_handler.cc",
+    "help_bubble_handler.h",
+    "help_bubble_webui.cc",
+    "help_bubble_webui.h",
+  ]
+  if (!is_android) {
+    sources += [
+      "floating_webui_help_bubble_factory.cc",
+      "floating_webui_help_bubble_factory.h",
+      "whats_new_registry.cc",
+      "whats_new_registry.h",
+      "whats_new_storage_service.h",
+    ]
+  }
+
+  deps = [
+    "//base",
+    "//components/user_education/common",
+    "//components/user_education/common:events",
+    "//components/vector_icons",
+    "//content/public/browser",
+    "//skia",
+    "//third_party/abseil-cpp:absl",
+    "//ui/accessibility",
+    "//ui/base/interaction",
+    "//ui/webui/resources/cr_components/help_bubble:mojo_bindings",
+    "//ui/webui/resources/js/tracked_element:mojo_bindings",
+    "//ui/webui/tracked_element",
+  ]
+  if (!is_android) {
+    deps += [
+      "//components/user_education/views",
+      "//ui/views",
+      "//ui/views/controls/webview",
+      "//ui/webui/resources/js/browser_command:mojo_bindings",
+    ]
+  }
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  sources = [ "help_bubble_handler_unittest.cc" ]
+  if (!is_android) {
+    sources += [
+      "whats_new_registry_feature_param_unittest.cc",
+      "whats_new_registry_unittest.cc",
+    ]
+  }
+
+  deps = [
+    ":webui",
+    "//base",
+    "//base/test:test_support",
+    "//components/feature_engagement/public",
+    "//components/strings",
+    "//components/user_education/common",
+    "//components/user_education/test",
+    "//components/variations",
+    "//components/vector_icons",
+    "//content/public/browser",
+    "//content/test:test_support",
+    "//skia",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//third_party/abseil-cpp:absl",
+    "//ui/accessibility",
+    "//ui/base/interaction:test_support",
+    "//ui/webui/resources/cr_components/help_bubble:mojo_bindings",
+    "//ui/webui/tracked_element",
+  ]
+  if (!is_android) {
+    deps += [
+      ":test_support",
+      "//ui/webui/resources/js/browser_command:mojo_bindings",
+    ]
+  }
+}
+
+if (!is_android) {
+  source_set("test_support") {
+    testonly = true
+
+    sources = [
+      "mock_whats_new_storage_service.cc",
+      "mock_whats_new_storage_service.h",
+    ]
+
+    deps = [
+      ":webui",
+      "//base",
+      "//testing/gmock",
+    ]
+  }
+}

@@ -1,0 +1,765 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webid/identity_dialog_controller.h"
+
+#include <memory>
+#include <utility>
+
+#include "base/functional/bind.h"
+#include "base/metrics/histogram_functions.h"
+#include "build/build_config.h"
+#include "chrome/browser/actor/actor_keyed_service.h"
+#include "chrome/browser/actor/actor_task.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/segmentation_platform/segmentation_platform_service_factory.h"
+#include "chrome/browser/ui/webid/account_selection_view.h"
+#include "chrome/browser/webid/identity_provider_permission_request.h"
+#include "components/favicon/content/content_favicon_driver.h"
+#include "components/favicon/core/favicon_driver.h"
+#include "components/permissions/permission_request_manager.h"
+#include "components/segmentation_platform/public/constants.h"
+#include "components/segmentation_platform/public/features.h"
+#include "components/segmentation_platform/public/result.h"
+#include "components/segmentation_platform/public/segmentation_platform_service.h"
+#include "content/public/browser/page.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/browser/webid/federated_embedder_login_request.h"
+#include "content/public/browser/webid/identity_credential_source.h"
+#include "third_party/blink/public/mojom/webid/federated_request.mojom-shared.h"
+#include "third_party/blink/public/mojom/webid/federated_request.mojom.h"
+#include "url/origin.h"
+
+// We add nognchecks on these includes so that Android bots do not fail
+// dependency checks.
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"  // nogncheck
+#include "chrome/browser/ui/views/webid/fedcm_account_selection_view_desktop.h"  // nogncheck
+#include "components/tabs/public/tab_interface.h"  // nogncheck
+#endif
+
+using content::webid::FederatedLoginResult;
+
+IdentityDialogController::IdentityDialogController(
+    content::WebContents* rp_web_contents,
+    segmentation_platform::SegmentationPlatformService* service,
+    optimization_guide::OptimizationGuideDecider* decider)
+    : rp_web_contents_(rp_web_contents),
+      segmentation_platform_service_(service),
+      optimization_guide_decider_(decider) {
+  Profile* profile = Profile::FromBrowserContext(
+      rp_web_contents_->GetPrimaryMainFrame()->GetBrowserContext());
+  actor::ActorKeyedService* actor_service =
+      actor::ActorKeyedService::Get(profile);
+  if (actor_service) {
+    actor_task_state_subscription_ = actor_service->AddTaskStateChangedCallback(
+        base::BindRepeating(&IdentityDialogController::OnActorTaskStateChanged,
+                            weak_ptr_factory_.GetWeakPtr()));
+    const actor::ActorTask* acting_task =
+        actor_service->GetActingActorTaskForWebContents(rp_web_contents_);
+    if (acting_task) {
+      acting_task_id_ = acting_task->id();
+    }
+  }
+
+  if (!base::FeatureList::IsEnabled(
+          segmentation_platform::features::kSegmentationPlatformFedCmUser)) {
+    passive_dialog_volume_ = PassiveDialogVolume::kDefault;
+    return;
+  }
+  if (profile->IsOffTheRecord()) {
+    passive_dialog_volume_ = PassiveDialogVolume::kDefault;
+    return;
+  }
+
+  if (!segmentation_platform_service_) {
+    segmentation_platform_service_ = segmentation_platform::
+        SegmentationPlatformServiceFactory::GetForProfile(profile);
+  }
+
+  if (!optimization_guide_decider_) {
+    optimization_guide_decider_ =
+        OptimizationGuideKeyedServiceFactory::GetForProfile(profile);
+  }
+  if (optimization_guide_decider_) {
+    optimization_guide_decider_->RegisterOptimizationTypes(
+        {optimization_guide::proto::OptimizationType::FEDCM_CLICKTHROUGH_RATE});
+  }
+
+  if (segmentation_platform_service_) {
+    RequestUiVolumeRecommendation(
+        base::BindOnce(&IdentityDialogController::
+                           OnRequestUiVolumeRecommendationResultReceived,
+                       weak_ptr_factory_.GetWeakPtr()));
+  } else {
+    passive_dialog_volume_ = PassiveDialogVolume::kDefault;
+  }
+}
+
+IdentityDialogController::~IdentityDialogController() = default;
+
+void IdentityDialogController::OnActorTaskStateChanged(actor::ActorTask& task) {
+  const actor::TaskId task_id = task.id();
+  const actor::ActorTask::State state = task.GetState();
+
+  actor::ActorKeyedService* actor_service =
+      actor::ActorKeyedService::Get(rp_web_contents_->GetBrowserContext());
+  CHECK(actor_service);
+  // TODO(b:472336281): this can be simplified once the bug is fixed, but for
+  // not a completed task does not know which tabs it was acting on.
+  if (acting_task_id_ == task_id && actor::ActorTask::IsCompletedState(state)) {
+    UpdateTaskId(actor::TaskId());
+    return;
+  }
+
+  tabs::TabInterface* tab =
+      tabs::TabInterface::MaybeGetFromContents(rp_web_contents_);
+  if (!tab || !task.IsActingOnTab(tab->GetHandle())) {
+    if (acting_task_id_ == task_id) {
+      // The task we thought was acting on this tab is no longer active, so we
+      // clear the task ID.
+      UpdateTaskId(actor::TaskId());
+    }
+    return;
+  }
+  UpdateTaskId(task.IsUnderActorControl() ? task_id : actor::TaskId());
+}
+
+void IdentityDialogController::UpdateTaskId(actor::TaskId task_id) {
+  acting_task_id_ = task_id;
+  if (account_view_) {
+    account_view_->SetCanShowUi(acting_task_id_.is_null());
+    if (acting_task_id_.is_null() && did_invoke_show_ui_) {
+      did_show_ui_ = true;
+    }
+  }
+  // If there is no longer an active task (e.g. user takes over the task) and we
+  // previously invoked active mode UI, dismiss the current API call.
+  if (acting_task_id_.is_null() && rp_mode_ == blink::mojom::RpMode::kActive &&
+      on_dismiss_) {
+    std::move(on_dismiss_).Run(DismissReason::kOther);
+  }
+}
+
+int IdentityDialogController::GetBrandIconMinimumSize(
+    blink::mojom::RpMode rp_mode) {
+  return AccountSelectionView::GetBrandIconMinimumSize(rp_mode);
+}
+
+int IdentityDialogController::GetBrandIconIdealSize(
+    blink::mojom::RpMode rp_mode) {
+  return AccountSelectionView::GetBrandIconIdealSize(rp_mode);
+}
+
+void IdentityDialogController::GetPassiveDialogVolume(
+    GetPassiveDialogVolumeCallback cb) {
+  if (passive_dialog_volume_.has_value()) {
+    std::move(cb).Run(*passive_dialog_volume_);
+    return;
+  }
+  CHECK(!passive_dialog_volume_callback_);
+  passive_dialog_volume_callback_ = std::move(cb);
+}
+
+content::IdentityRequestDialogController::PassiveDialogVolume
+IdentityDialogController::GetPassiveDialogVolume() const {
+  return passive_dialog_volume_.value_or(PassiveDialogVolume::kDefault);
+}
+
+bool IdentityDialogController::ShowAccountsDialog(
+    content::RelyingPartyData rp_data,
+    const std::vector<IdentityProviderDataPtr>& identity_provider_data,
+    const std::vector<IdentityRequestAccountPtr>& accounts,
+    const std::vector<IdentityRequestAccountPtr>& filtered_accounts,
+    blink::mojom::RpMode rp_mode,
+    AccountSelectionCallback on_selected,
+    LoginToIdPCallback on_add_account,
+    DismissCallback dismiss_callback,
+    AccountsDisplayedCallback accounts_displayed_callback) {
+  on_account_selection_ = std::move(on_selected);
+  on_login_ = std::move(on_add_account);
+  on_dismiss_ = std::move(dismiss_callback);
+  on_accounts_displayed_ = std::move(accounts_displayed_callback);
+  rp_mode_ = rp_mode;
+
+  // If there is an actor login request, we will not show the accounts
+  // dialog. Pretend that we did for the caller and automatically select the
+  // account.
+  content::webid::FederatedEmbedderLoginRequest* embedder_login_request =
+      content::webid::FederatedEmbedderLoginRequest::Get(rp_web_contents_);
+  if (embedder_login_request) {
+    url::Origin idp_origin = embedder_login_request->idp_origin();
+    std::string account_id = embedder_login_request->account_id();
+    for (const auto& account : accounts) {
+      if (account->id != account_id ||
+          url::Origin::Create(
+              account->identity_provider->idp_metadata.config_url) !=
+              idp_origin) {
+        continue;
+      }
+      bool is_sign_in = account->idp_claimed_login_state.value_or(
+                            account->browser_trusted_login_state) ==
+                        content::IdentityRequestAccount::LoginState::kSignIn;
+      if (is_sign_in) {
+        std::move(on_account_selection_)
+            .Run(account->identity_provider->idp_metadata.config_url,
+                 account_id, /*is_sign_in=*/true);
+        return true;
+      } else {
+        // It is possible that the account is a sign up even though the actor
+        // explicitly requested an account to be automatically selected. This
+        // could happen if the account was revoked between being shown to the
+        // user and the actor login request being sent.
+        NotifyEmbedderOfResult(FederatedLoginResult::kAccountIsSignUp);
+        return false;
+      }
+    }
+
+    // If the account is not available in the accounts list, check the
+    // filtered_accounts list. The current FedCM flow could have filtered out
+    // the account despite it being displayed in the initial account chooser
+    // from the actor.
+    for (const auto& account : filtered_accounts) {
+      if (account->id == account_id &&
+          url::Origin::Create(
+              account->identity_provider->idp_metadata.config_url) ==
+              idp_origin) {
+        NotifyEmbedderOfResult(FederatedLoginResult::kAccountNotAvailable);
+        return false;
+      }
+    }
+
+    // The selected account was not found in the list of accounts fetched from
+    // the IdP.
+    NotifyEmbedderOfResult(FederatedLoginResult::kAccountNotLoggedIn);
+    return false;
+  }
+  // If the dialog is triggered in active mode and the FedCM UI should not be
+  // shown but there was no embedder request, we consider the flow to failed
+  // without trying to show any UI and reject the FedCM API call accordingly.
+  // Note that actor initiated login is already handled in the above if
+  // statement. This is a case where the user has not yet selected an account so
+  // account autoselection is not possible, but somehow the API call is
+  // triggered. Since we cannot autoselect an account nor show UI, reject.
+  if (rp_mode_ == blink::mojom::RpMode::kActive && !ShouldShowFedCmUi()) {
+    return false;
+  }
+
+  if (!TrySetAccountView()) {
+    NotifyEmbedderOfResult(FederatedLoginResult::kFrameNotActive);
+    return false;
+  }
+  favicon::FaviconDriver* favicon_driver =
+      favicon::ContentFaviconDriver::FromWebContents(rp_web_contents_);
+  // Currently, FaviconIsValid() is never true on Android, and GetFavicon()
+  // returns the default favicon, so we will not use this result and instead
+  // obtain the favicon from the Java code.
+  if (favicon_driver && favicon_driver->FaviconIsValid()) {
+    rp_data.rp_icon = favicon_driver->GetFavicon();
+  }
+
+  std::vector<IdentityRequestAccountPtr> new_accounts;
+  for (const auto& account : accounts) {
+    if (account->display_priority ==
+        content::IdentityRequestAccount::DisplayPriority::kNew) {
+      new_accounts.push_back(account);
+    }
+  }
+  // Do not modify any member variables if the accounts dialog is not shown
+  // because the caller may have destroyed this object.
+  if (account_view_->Show(rp_data, identity_provider_data, accounts, rp_mode,
+                          new_accounts)) {
+    DidInvokeShowUi();
+    return true;
+  }
+  return false;
+}
+
+bool IdentityDialogController::ShowFailureDialog(
+    const content::RelyingPartyData& rp_data,
+    const std::string& idp_for_display,
+    blink::mojom::RpContext rp_context,
+    blink::mojom::RpMode rp_mode,
+    const content::IdentityProviderMetadata& idp_metadata,
+    const std::vector<IdentityRequestAccountPtr>& filtered_accounts,
+    DismissCallback dismiss_callback,
+    LoginToIdPCallback login_callback) {
+  const GURL rp_url = rp_web_contents_->GetLastCommittedURL();
+  on_dismiss_ = std::move(dismiss_callback);
+  on_login_ = std::move(login_callback);
+  rp_mode_ = rp_mode;
+
+  // If there is an actor login request, check if the account is filtered.
+  content::webid::FederatedEmbedderLoginRequest* embedder_login_request =
+      content::webid::FederatedEmbedderLoginRequest::Get(rp_web_contents_);
+  if (embedder_login_request) {
+    url::Origin idp_origin = embedder_login_request->idp_origin();
+    std::string account_id = embedder_login_request->account_id();
+    // There were no available accounts, but the selected account may have been
+    // filtered out, in which case we want to send the correct message to the
+    // actor.
+    for (const auto& account : filtered_accounts) {
+      if (account->id == account_id &&
+          url::Origin::Create(
+              account->identity_provider->idp_metadata.config_url) ==
+              idp_origin) {
+        NotifyEmbedderOfResult(FederatedLoginResult::kAccountNotAvailable);
+        return false;
+      }
+    }
+  }
+
+  if (!TrySetAccountView()) {
+    NotifyEmbedderOfResult(FederatedLoginResult::kFrameNotActive);
+    return false;
+  }
+  // Else:
+  //   TODO: If the failure dialog is already being shown, notify user that
+  //   sign-in attempt failed.
+
+  // Do not modify any member variables if the failure dialog is not shown
+  // because the caller may have destroyed this object.
+  if (account_view_->ShowFailureDialog(rp_data, idp_for_display, rp_context,
+                                       rp_mode, idp_metadata)) {
+    DidInvokeShowUi();
+    NotifyEmbedderOfResult(FederatedLoginResult::kAccountNotLoggedIn);
+    return true;
+  }
+  return false;
+}
+
+bool IdentityDialogController::ShowErrorDialog(
+    const content::RelyingPartyData& rp_data,
+    const std::string& idp_for_display,
+    blink::mojom::RpContext rp_context,
+    blink::mojom::RpMode rp_mode,
+    const content::IdentityProviderMetadata& idp_metadata,
+    const std::optional<TokenError>& error,
+    DismissCallback dismiss_callback,
+    MoreDetailsCallback more_details_callback) {
+  on_dismiss_ = std::move(dismiss_callback);
+  on_more_details_ = std::move(more_details_callback);
+  rp_mode_ = rp_mode;
+
+  if (rp_mode == blink::mojom::RpMode::kActive && !ShouldShowFedCmUi()) {
+    NotifyEmbedderOfResult(FederatedLoginResult::kIdpReturnedError);
+    return false;
+  }
+
+  if (!TrySetAccountView()) {
+    NotifyEmbedderOfResult(FederatedLoginResult::kFrameNotActive);
+    return false;
+  }
+
+  // Do not modify any member variables if the error dialog is not shown
+  // because the caller may have destroyed this object.
+  if (account_view_->ShowErrorDialog(rp_data, idp_for_display, rp_context,
+                                     rp_mode, idp_metadata, error)) {
+    DidInvokeShowUi();
+    NotifyEmbedderOfResult(FederatedLoginResult::kIdpReturnedError);
+    return true;
+  }
+  return false;
+}
+
+bool IdentityDialogController::ShowLoadingDialog(
+    const content::RelyingPartyData& rp_data,
+    const std::string& idp_for_display,
+    blink::mojom::RpContext rp_context,
+    blink::mojom::RpMode rp_mode,
+    DismissCallback dismiss_callback) {
+  on_dismiss_ = std::move(dismiss_callback);
+  rp_mode_ = rp_mode;
+
+  // If the dialog is triggered in active mode and the FedCM UI should not be
+  // shown, early return as if successful so the flow continues.
+  if (rp_mode == blink::mojom::RpMode::kActive && !ShouldShowFedCmUi()) {
+    return true;
+  }
+
+  if (!TrySetAccountView()) {
+    NotifyEmbedderOfResult(FederatedLoginResult::kFrameNotActive);
+    return false;
+  }
+  // Because the loading dialog is not interactable, we do not count it for
+  // did_show_ui_, as it is not useful for IDPs in calculating a click-through
+  // rate.
+  return account_view_->ShowLoadingDialog(rp_data, idp_for_display, rp_context,
+                                          rp_mode);
+}
+
+bool IdentityDialogController::ShowVerifyingDialog(
+    const content::RelyingPartyData& rp_data,
+    const IdentityProviderDataPtr& idp_data,
+    const IdentityRequestAccountPtr& account,
+    Account::SignInMode sign_in_mode,
+    blink::mojom::RpMode rp_mode,
+    AccountsDisplayedCallback accounts_displayed_callback) {
+  on_accounts_displayed_ = std::move(accounts_displayed_callback);
+  rp_mode_ = rp_mode;
+
+  // If the dialog is triggered in active mode and the FedCM UI should not be
+  // shown, early return as if successful so the flow continues.
+  if (rp_mode == blink::mojom::RpMode::kActive && !ShouldShowFedCmUi()) {
+    return true;
+  }
+
+  if (!TrySetAccountView()) {
+    NotifyEmbedderOfResult(FederatedLoginResult::kFrameNotActive);
+    return false;
+  }
+  // Do not modify any member variables if the verifying dialog is not shown
+  // because the caller may have destroyed this object.
+  if (account_view_->ShowVerifyingDialog(rp_data, idp_data, account,
+                                         sign_in_mode, rp_mode)) {
+    DidInvokeShowUi();
+    return true;
+  }
+  return false;
+}
+
+void IdentityDialogController::OnLoginToIdP(const GURL& idp_config_url,
+                                            const GURL& idp_login_url) {
+  CHECK(on_login_);
+  on_login_.Run(idp_config_url, idp_login_url);
+}
+
+void IdentityDialogController::OnMoreDetails() {
+  CHECK(on_more_details_);
+  std::move(on_more_details_).Run();
+}
+
+void IdentityDialogController::OnAccountsDisplayed() {
+  CHECK(on_accounts_displayed_);
+  std::move(on_accounts_displayed_).Run();
+}
+
+void IdentityDialogController::OnNativeAppResult(const std::string& token) {
+  on_dismiss_.Reset();
+  if (on_native_result_) {
+    std::move(on_native_result_)
+        .Run(content::IdentityRequestDialogController::NativeAppResult{
+            content::IdentityRequestDialogController::NativeAppResult::Type::
+                kToken,
+            token});
+  }
+}
+
+void IdentityDialogController::OnNativeAppLoginFinished() {
+  on_dismiss_.Reset();
+  if (on_native_result_) {
+    std::move(on_native_result_)
+        .Run(content::IdentityRequestDialogController::NativeAppResult{
+            content::IdentityRequestDialogController::NativeAppResult::Type::
+                kLoginFinished,
+            ""});
+  }
+}
+
+void IdentityDialogController::OnAccountSelected(
+    const GURL& idp_config_url,
+    const std::string& account_id,
+    const content::IdentityRequestAccount::LoginState& login_state) {
+  // Do nothing if |OnAccountSelected| is called after |OnDismiss|, which sets
+  // the callback to null.
+  if (!on_dismiss_) {
+    return;
+  }
+  CHECK(on_account_selection_);
+
+  CollectTrainingData(UserAction::kSuccess);
+
+  // We only allow dismiss after account selection on active modes and not on
+  // passive mode.
+  // TODO(crbug.com/335886093): Figure out whether users can cancel after
+  // selecting an account on active mode modal.
+  if (rp_mode_ == blink::mojom::RpMode::kPassive) {
+    on_dismiss_.Reset();
+  }
+
+  std::move(on_account_selection_)
+      .Run(idp_config_url, account_id,
+           login_state == content::IdentityRequestAccount::LoginState::kSignIn);
+}
+
+void IdentityDialogController::OnDismiss(DismissReason dismiss_reason) {
+  // |OnDismiss| can be called after |OnAccountSelected| which sets the callback
+  // to null.
+  if (!on_dismiss_) {
+    return;
+  }
+
+  if (did_show_ui_) {
+    if (dismiss_reason == DismissReason::kCloseButton ||
+        dismiss_reason == DismissReason::kSwipe) {
+      CollectTrainingData(UserAction::kClosed);
+    } else {
+      CollectTrainingData(UserAction::kIgnored);
+    }
+  }
+
+  on_account_selection_.Reset();
+  on_native_result_.Reset();
+  std::move(on_dismiss_).Run(dismiss_reason);
+
+  // Do not access member variables from this point onwards because
+  // |on_dismiss_| may have destroyed this object.
+}
+
+std::string IdentityDialogController::GetTitle() const {
+  return account_view_->GetTitle();
+}
+
+std::optional<std::string> IdentityDialogController::GetSubtitle() const {
+  return account_view_->GetSubtitle();
+}
+
+gfx::NativeView IdentityDialogController::GetNativeView() {
+  return rp_web_contents_->GetNativeView();
+}
+
+content::WebContents* IdentityDialogController::GetWebContents() {
+  return rp_web_contents_;
+}
+
+void IdentityDialogController::ShowUrl(LinkType type, const GURL& url) {
+  if (!account_view_) {
+    return;
+  }
+  // Cannot be invoked if FedCM UI is being shown.
+  DCHECK(ShouldShowFedCmUi());
+  account_view_->ShowUrl(type, url);
+}
+
+content::WebContents* IdentityDialogController::ShowModalDialog(
+    const GURL& url,
+    blink::mojom::RpMode rp_mode,
+    DismissCallback dismiss_callback,
+    content::IdentityRequestDialogController::ShownModalAsyncCallback
+        on_shown_async,
+    NativeAppResultCallback native_result_callback) {
+  on_dismiss_ = std::move(dismiss_callback);
+  on_native_result_ = std::move(native_result_callback);
+  rp_mode_ = rp_mode;
+  if (!TrySetAccountView()) {
+    NotifyEmbedderOfResult(FederatedLoginResult::kFrameNotActive);
+    return nullptr;
+  }
+
+  did_invoke_show_ui_ = true;
+  did_show_ui_ = true;
+  NotifyEmbedderOfResult(FederatedLoginResult::kContinuation);
+  // Show the modal dialog even if FedCM UI is not being shown.
+  return account_view_->ShowModalDialog(url, rp_mode,
+                                        std::move(on_shown_async));
+}
+
+void IdentityDialogController::CloseModalDialog() {
+#if BUILDFLAG(IS_ANDROID)
+  // On Android, this method is invoked on the modal dialog controller,
+  // which means we may need to initialize the |account_view|.
+  if (!account_view_) {
+    account_view_ = AccountSelectionView::Create(this);
+  }
+#endif  // BUILDFLAG(IS_ANDROID)
+  CHECK(account_view_);
+  account_view_->CloseModalDialog();
+}
+
+content::WebContents* IdentityDialogController::GetRpWebContents() {
+#if BUILDFLAG(IS_ANDROID)
+  // On Android, this method is invoked on the modal dialog controller,
+  // which means we may need to initialize the |account_view|.
+  if (!account_view_) {
+    account_view_ = AccountSelectionView::Create(this);
+  }
+#endif  // BUILDFLAG(IS_ANDROID)
+  CHECK(account_view_);
+  return account_view_->GetRpWebContents();
+}
+
+void IdentityDialogController::RequestIdPRegistrationPermision(
+    const url::Origin& origin,
+    base::OnceCallback<void(bool accepted)> callback) {
+  permissions::PermissionRequestManager* permission_request_manager =
+      permissions::PermissionRequestManager::FromWebContents(rp_web_contents_);
+
+  permission_request_manager->AddRequest(
+      rp_web_contents_->GetPrimaryMainFrame(),
+      std::make_unique<IdentityProviderPermissionRequest>(origin,
+                                                          std::move(callback)));
+}
+
+void IdentityDialogController::SetAccountSelectionViewForTesting(
+    std::unique_ptr<AccountSelectionView> account_view) {
+  account_view_ = std::move(account_view);
+}
+
+void IdentityDialogController::SetActingTaskIdForTesting(
+    actor::TaskId task_id) {
+  UpdateTaskId(task_id);
+}
+
+bool IdentityDialogController::TrySetAccountView() {
+  if (account_view_) {
+    return true;
+  }
+#if BUILDFLAG(IS_ANDROID)
+  account_view_ = AccountSelectionView::Create(this);
+#else
+  tabs::TabInterface* tab =
+      tabs::TabInterface::MaybeGetFromContents(rp_web_contents_);
+  // FedCM is supported in general web content, but not in chrome UI. Of the
+  // BrowserWindow types, devtools show Chrome UI and the rest show general web
+  // content.
+  if (!tab || tab->GetBrowserWindowInterface()->GetType() ==
+                  BrowserWindowInterface::Type::TYPE_DEVTOOLS) {
+    return false;
+  }
+  account_view_ = std::make_unique<webid::FedCmAccountSelectionView>(this, tab);
+#endif
+  account_view_->SetCanShowUi(ShouldShowFedCmUi());
+  return true;
+}
+
+void IdentityDialogController::RequestUiVolumeRecommendation(
+    segmentation_platform::ClassificationResultCallback callback) {
+  if (!segmentation_platform_service_) {
+    segmentation_platform::ClassificationResult result(
+        segmentation_platform::PredictionStatus::kFailed);
+    std::move(callback).Run(result);
+    return;
+  }
+
+  segmentation_platform::PredictionOptions prediction_options;
+  prediction_options.on_demand_execution = true;
+  scoped_refptr<segmentation_platform::InputContext> input_context =
+      base::MakeRefCounted<segmentation_platform::InputContext>();
+  webid::FedCmClickthroughRateMetadata metadata =
+      GetFedCmClickthroughRateMetadata();
+  input_context->metadata_args.emplace(
+      segmentation_platform::kFedCmHost,
+      segmentation_platform::processing::ProcessedValue(
+          rp_web_contents_->GetLastCommittedURL().GetHost()));
+  input_context->metadata_args.emplace(
+      segmentation_platform::kFedCmUrl,
+      segmentation_platform::processing::ProcessedValue(
+          rp_web_contents_->GetLastCommittedURL()));
+  input_context->metadata_args.emplace(
+      segmentation_platform::kFedCmPerPageLoadClickthroughRate,
+      segmentation_platform::processing::ProcessedValue(
+          metadata.per_page_load_clickthrough_rate()));
+  input_context->metadata_args.emplace(
+      segmentation_platform::kFedCmPerClientClickthroughRate,
+      segmentation_platform::processing::ProcessedValue(
+          metadata.per_client_clickthrough_rate()));
+  input_context->metadata_args.emplace(
+      segmentation_platform::kFedCmPerImpressionClickthroughRate,
+      segmentation_platform::processing::ProcessedValue(
+          metadata.per_impression_clickthrough_rate()));
+  input_context->metadata_args.emplace(
+      segmentation_platform::kFedCmLikelyToSignin,
+      segmentation_platform::processing::ProcessedValue(
+          metadata.likely_to_signin()));
+  input_context->metadata_args.emplace(
+      segmentation_platform::kFedCmLikelyInsufficientData,
+      segmentation_platform::processing::ProcessedValue(
+          metadata.likely_insufficient_data()));
+  segmentation_platform_service_->GetClassificationResult(
+      segmentation_platform::kFedCmUserKey, prediction_options, input_context,
+      std::move(callback));
+}
+
+void IdentityDialogController::OnRequestUiVolumeRecommendationResultReceived(
+    const segmentation_platform::ClassificationResult&
+        ui_volume_recommendation) {
+  training_request_id_ = ui_volume_recommendation.request_id;
+
+  // Default to showing loud UI if the prediction fails for any reason.
+  if (ui_volume_recommendation.status !=
+          segmentation_platform::PredictionStatus::kSucceeded ||
+      ui_volume_recommendation.ordered_labels.empty() ||
+      ui_volume_recommendation.ordered_labels[0] == "FedCmUserLoud") {
+    passive_dialog_volume_ = PassiveDialogVolume::kDefault;
+  } else {
+    passive_dialog_volume_ = PassiveDialogVolume::kAmbient;
+  }
+
+  if (passive_dialog_volume_callback_) {
+    std::move(passive_dialog_volume_callback_).Run(*passive_dialog_volume_);
+  }
+}
+
+void IdentityDialogController::CollectTrainingData(UserAction user_action) {
+  if (!training_request_id_.has_value() || !segmentation_platform_service_) {
+    return;
+  }
+
+  ukm::SourceId source_id =
+      (rp_web_contents_ && rp_web_contents_->GetPrimaryMainFrame())
+          ? rp_web_contents_->GetPrimaryMainFrame()->GetPageUkmSourceId()
+          : ukm::kInvalidSourceId;
+
+  segmentation_platform::TrainingLabels training_labels;
+  base::UmaHistogramEnumeration("Blink.FedCm.SegmentationPlatform.UserAction",
+                                user_action);
+  training_labels.output_metric =
+      std::make_pair("Blink.FedCm.SegmentationPlatform.UserAction",
+                     static_cast<base::HistogramBase::Sample32>(user_action));
+
+  segmentation_platform_service_->CollectTrainingData(
+      segmentation_platform::proto::SegmentId::
+          OPTIMIZATION_TARGET_SEGMENTATION_FEDCM_USER,
+      *training_request_id_, source_id, training_labels, base::DoNothing());
+  training_request_id_ = std::nullopt;
+  segmentation_platform_service_ = nullptr;
+}
+
+webid::FedCmClickthroughRateMetadata
+IdentityDialogController::GetFedCmClickthroughRateMetadata() {
+  if (!optimization_guide_decider_) {
+    return webid::FedCmClickthroughRateMetadata();
+  }
+
+  optimization_guide::OptimizationMetadata opt_guide_metadata;
+  auto opt_guide_has_hint = optimization_guide_decider_->CanApplyOptimization(
+      rp_web_contents_->GetPrimaryMainFrame()->GetLastCommittedURL(),
+      optimization_guide::proto::OptimizationType::FEDCM_CLICKTHROUGH_RATE,
+      &opt_guide_metadata);
+  if (opt_guide_has_hint !=
+          optimization_guide::OptimizationGuideDecision::kTrue ||
+      !opt_guide_metadata.any_metadata().has_value()) {
+    return webid::FedCmClickthroughRateMetadata();
+  }
+
+  std::optional<webid::FedCmClickthroughRateMetadata> parsed_metadata =
+      optimization_guide::ParsedAnyMetadata<
+          webid::FedCmClickthroughRateMetadata>(
+          opt_guide_metadata.any_metadata().value());
+  if (!parsed_metadata.has_value()) {
+    return webid::FedCmClickthroughRateMetadata();
+  }
+  return parsed_metadata.value();
+}
+
+
+bool IdentityDialogController::ShouldShowFedCmUi() {
+  return acting_task_id_.is_null();
+}
+
+void IdentityDialogController::DidInvokeShowUi() {
+  did_invoke_show_ui_ = true;
+  did_show_ui_ |= ShouldShowFedCmUi();
+}
+
+void IdentityDialogController::NotifyEmbedderOfResult(
+    FederatedLoginResult result) {
+  content::webid::FederatedEmbedderLoginRequest* embedder_login_request =
+      content::webid::FederatedEmbedderLoginRequest::Get(rp_web_contents_);
+  if (embedder_login_request) {
+    embedder_login_request->OnFederatedResultReceived(result);
+  }
+}

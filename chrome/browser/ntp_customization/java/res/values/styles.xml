@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2025 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools">
+  <style name="RoundedImageCornerOverlay" parent="">
+    <item name="cornerFamily">rounded</item>
+    <item name="cornerSize">@dimen/ntp_customization_theme_collections_icon_outer_radius</item>
+  </style>
+  <style name="TopRoundedCorners" parent="">
+    <item name="cornerFamily">rounded</item>
+    <item name="cornerSizeTopLeft">@dimen/ntp_customization_list_item_background_large_radius</item>
+    <item name="cornerSizeTopRight">@dimen/ntp_customization_list_item_background_large_radius</item>
+  </style>
+  <style name="CircleShapeOverlay" parent="">
+    <item name="cornerFamily">rounded</item>
+    <item name="cornerSize">50%</item>
+  </style>
+  <style name="TextAppearance.PreviewDialogText"
+    parent="TextAppearance.TextMediumThick">
+    <item name="android:textColor">@color/ntp_upload_image_preview_dialog_color_list</item>
+  </style>
+  <style name="TextButton.PreviewDialogCancelButton" parent="TextButton.OnAccent1">
+    <item name="buttonTextColor">@color/ntp_upload_image_preview_dialog_color_list</item>
+  </style>
+  <style name="ThemeSyncBadgeImage" parent="" tools:ignore="UnusedResources">
+    <item name="cornerSize">50%</item>
+  </style>
+</resources>

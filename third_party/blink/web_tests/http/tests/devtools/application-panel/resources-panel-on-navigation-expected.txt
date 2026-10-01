@@ -1,0 +1,86 @@
+Tests Application Panel response to a main frame navigation.
+
+Initial state:
+Application
+  Manifest
+    Identity
+    Presentation
+    Protocol Handlers
+    Icons
+    Window Controls Overlay
+  Service workers
+  Storage
+Storage
+  Local storage
+    http://127.0.0.1:8000
+  Session storage
+    http://127.0.0.1:8000
+  Extension storage
+  IndexedDB
+    Database1
+  Cookies
+    http://127.0.0.1:8000
+  Private state tokens
+  Cache storage
+  Storage buckets
+Background services
+  Back/forward cache
+  Background fetch
+  Background sync
+  Bounce tracking mitigations
+  Notifications
+  Payment handler
+  Periodic background sync
+  Speculative loads
+    Rules
+    Speculations
+  Push messaging
+  Reporting API
+    Crash Report Context
+Frames
+  top
+    inspected-page.html
+Visible view is a query view: false
+Page reloaded.
+After navigation:
+Application
+  Manifest
+    Identity
+    Presentation
+    Protocol Handlers
+    Icons
+    Window Controls Overlay
+  Service workers
+  Storage
+Storage
+  Local storage
+    http://127.0.0.1:8000
+  Session storage
+    http://127.0.0.1:8000
+  Extension storage
+  IndexedDB
+    Database1
+  Cookies
+    http://127.0.0.1:8000
+  Private state tokens
+  Cache storage
+  Storage buckets
+Background services
+  Back/forward cache
+  Background fetch
+  Background sync
+  Bounce tracking mitigations
+  Notifications
+  Payment handler
+  Periodic background sync
+  Speculative loads
+    Rules
+    Speculations
+  Push messaging
+  Reporting API
+    Crash Report Context
+Frames
+  top
+    inspected-page.html
+Visible view is a query view: false
+

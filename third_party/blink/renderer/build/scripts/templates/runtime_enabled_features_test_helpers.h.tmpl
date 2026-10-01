@@ -1,0 +1,77 @@
+{% from 'templates/macros.tmpl' import license, source_files_for_generated_file %}
+{{license()}}
+
+{{source_files_for_generated_file(template_file, input_files)}}
+
+#ifndef {{header_guard}}
+#define {{header_guard}}
+
+#include <cstddef>
+
+#include "base/check_op.h"
+#include "base/memory/protected_memory.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+
+namespace blink {
+
+// Don't use this class directly. Use Scoped*ForTest instead.
+class RuntimeEnabledFeaturesTestHelpers {
+ public:
+  // Takes the flag's index rather than a `bool&` template parameter bound to
+  // `RuntimeEnabledFeaturesBase::feature_states_[index]`, which trips a clang
+  // frontend crash when the destructor is instantiated.
+  // TODO(https://github.com/llvm/llvm-project/pull/215900): Take the flag by
+  // reference once the clang fix has rolled.
+  template <size_t index>
+  class [[nodiscard]] ScopedRuntimeEnabledFeature {
+   public:
+    ScopedRuntimeEnabledFeature(bool enabled)
+        : enabled_(enabled),
+          original_(RuntimeEnabledFeaturesBase::feature_states_[index]) {
+      RuntimeEnabledFeaturesBase::feature_states_[index] = enabled;
+    }
+    ~ScopedRuntimeEnabledFeature() {
+      CHECK_EQ(enabled_, RuntimeEnabledFeaturesBase::feature_states_[index]);
+      RuntimeEnabledFeaturesBase::feature_states_[index] = original_;
+    }
+   private:
+    bool enabled_;
+    bool original_;
+  };
+
+  template <base::ProtectedMemory<bool>& data_member>
+  class [[nodiscard]] ScopedRuntimeEnabledProtectedFeature {
+   public:
+    ScopedRuntimeEnabledProtectedFeature(bool enabled)
+        : enabled_(enabled), original_(*data_member) {
+      base::AutoWritableMemory data_member_writer(data_member);
+      data_member_writer.GetProtectedData() = enabled;
+    }
+    ~ScopedRuntimeEnabledProtectedFeature() {
+      CHECK_EQ(enabled_, *data_member);
+      base::AutoWritableMemory data_member_writer(data_member);
+      data_member_writer.GetProtectedData() = original_;
+    }
+   private:
+    bool enabled_;
+    bool original_;
+  };
+
+  {% for feature in features %}
+  {% if feature.is_protected_feature %}
+  using Scoped{{feature.name}} = ScopedRuntimeEnabledProtectedFeature<
+    RuntimeEnabledFeaturesBase::{{feature.data_member_name}}>;
+  {% else %}
+  using Scoped{{feature.name}} = ScopedRuntimeEnabledFeature<
+      RuntimeEnabledFeaturesBase::k{{feature.name}}FlagIndex>;
+  {% endif %}
+  {% endfor %}
+};
+
+{% for feature in features %}
+using Scoped{{feature.name}}ForTest =
+    RuntimeEnabledFeaturesTestHelpers::Scoped{{feature.name}};
+{% endfor %}
+}  // namespace blink
+
+#endif  // {{header_guard}}

@@ -1,0 +1,623 @@
+# Copyright 2021 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+"""Definitions of builders in the tryserver.chromium.win builder group."""
+
+load("@chromium-luci//branches.star", "branches")
+load("@chromium-luci//builder_config.star", "builder_config")
+load("@chromium-luci//builders.star", "os")
+load("@chromium-luci//consoles.star", "consoles")
+load("@chromium-luci//gn_args.star", "gn_args")
+load("@chromium-luci//gpu.star", shared_gpu = "gpu")
+load("@chromium-luci//targets.star", "targets")
+load("@chromium-luci//try.star", "try_")
+load("//lib/gpu.star", "gpu")
+load("//lib/siso.star", "siso")
+load("//lib/try_constants.star", "try_constants")
+load("//project.star", "settings")
+
+try_.defaults.set(
+    executable = try_constants.DEFAULT_EXECUTABLE,
+    builder_group = "tryserver.chromium.win",
+    pool = try_constants.DEFAULT_POOL,
+    builderless = True,
+    cores = 8,
+    os = os.WINDOWS_DEFAULT,
+    compilator_cores = 16,
+    execution_timeout = try_constants.DEFAULT_EXECUTION_TIMEOUT,
+    experiments = {
+        "chromium_tests.resultdb_module": 100,
+    },
+    orchestrator_cores = "2|4",
+    orchestrator_siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
+    service_account = try_constants.DEFAULT_SERVICE_ACCOUNT,
+    siso_keep_going = siso.KEEP_GOING,
+    # Downloading with "minimum" strategy doesn't work
+    # well for the win builder because some steps are missing inputs.
+    # e.g. mini_installer.exe
+    siso_output_local_strategy = "greedy",
+    siso_project = siso.project.DEFAULT_UNTRUSTED,
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+    siso_remote_linking = True,
+)
+
+targets.builder_defaults.set(
+    mixins = [
+        "chromium-tester-service-account",
+    ],
+)
+
+consoles.list_view(
+    name = "tryserver.chromium.win",
+    branch_selector = branches.selector.WINDOWS_BRANCHES,
+)
+
+try_.builder(
+    name = "linux-win-cross-rel",
+    mirrors = ["ci/linux-win-cross-rel"],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/linux-win-cross-rel",
+            "dcheck_always_on",
+            "no_symbols",
+        ],
+    ),
+    os = os.LINUX_DEFAULT,
+    contact_team_email = "chrome-build-team@google.com",
+)
+
+try_.builder(
+    name = "win-annotator-rel",
+    description_html = "Runs tests for the Network Traffic Annotation Auditor on Windows, mirroring win-annotator-rel.",
+    mirrors = ["ci/win-annotator-rel"],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/win-annotator-rel",
+            "try_builder",
+            "no_symbols",
+        ],
+    ),
+    contact_team_email = "cbe-compliance@google.com",
+)
+
+try_.builder(
+    name = "win-arm64-clobber-rel",
+    mirrors = [
+        "ci/win-arm64-archive-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/win-arm64-archive-rel",
+            "no_symbols",
+            "dcheck_always_on",
+        ],
+    ),
+    contact_team_email = "chrome-desktop-engprod@google.com",
+    properties = {
+        # The format of these properties is defined at archive/properties.proto
+        "$build/archive": {
+            "source_side_spec_path": [
+                "src",
+                "infra",
+                "archive_config",
+                "win-arm64-archive-rel.json",
+            ],
+            "verify_paths_only": True,
+        },
+    },
+)
+
+try_.builder(
+    name = "win-asan",
+    mirrors = [
+        "ci/win-asan",
+    ],
+    gn_args = "ci/win-asan",
+    cores = 16,
+    ssd = True,
+    execution_timeout = 9 * time.hour,
+    siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "win-clobber-rel",
+    mirrors = [
+        "ci/win-archive-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/win-archive-rel",
+            "no_symbols",
+            "dcheck_always_on",
+        ],
+    ),
+    contact_team_email = "chrome-desktop-engprod@google.com",
+    properties = {
+        # The format of these properties is defined at archive/properties.proto
+        "$build/archive": {
+            "source_side_spec_path": [
+                "src",
+                "infra",
+                "archive_config",
+                "win-archive-rel.json",
+            ],
+            "verify_paths_only": True,
+        },
+    },
+)
+
+try_.builder(
+    name = "win-libfuzzer-asan-rel",
+    branch_selector = branches.selector.WINDOWS_BRANCHES,
+    executable = "recipe:chromium/fuzz",
+    mirrors = ["ci/Libfuzzer Upload Windows ASan"],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Libfuzzer Upload Windows ASan",
+            "dcheck_always_on",
+            "no_symbols",
+            "skip_generate_fuzzer_owners",
+        ],
+    ),
+    builderless = False,
+    os = os.WINDOWS_ANY,
+    cq_settings = try_.cq_settings(
+        on_default_cq = True,
+    ),
+    experiments = {
+        # crbug/940930
+        "chromium.enable_cleandead": 100,
+        # go/rts-project-proposal
+        "chromium_rts.filter_file_analysis": 100,
+    },
+    main_list_view = "try",
+    siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "win-no-safe-browsing-rel",
+    mirrors = ["ci/win-no-safe-browsing-rel"],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/win-no-safe-browsing-rel",
+            "dcheck_always_on",
+            "no_symbols",
+        ],
+    ),
+    contact_team_email = "chrome-counter-abuse-core@google.com",
+)
+
+try_.orchestrator_builder(
+    name = "win-rel",
+    branch_selector = branches.selector.WINDOWS_BRANCHES,
+    mirrors = [
+        "ci/Win x64 Builder",
+        "ci/Win10 Tests x64",
+        "ci/GPU Win x64 Builder",
+        "ci/Win10 x64 Release (NVIDIA)",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Win x64 Builder",
+            "release_try_builder",
+            "no_resource_allowlisting",
+            "use_clang_coverage",
+            "partial_code_coverage_instrumentation",
+            "enable_dangling_raw_ptr_feature_flag",
+            "enable_rust_clippy",
+        ],
+    ),
+    compilator = "win-rel-compilator",
+    coverage_test_types = ["unit", "overall"],
+    # TODO (crbug.com/1372179): Use orchestrator pool once overloaded test pools
+    # are addressed
+    #use_orchestrator_pool = True,
+    cq_settings = try_.cq_settings(
+        on_default_cq = True,
+    ),
+    experiments = {
+        # go/nplus1shardsproposal
+        "chromium.add_one_test_shard": 5,
+        # crbug/940930
+        "chromium.enable_cleandead": 100,
+        # go/rts-project-proposal
+        "chromium_rts.filter_file_analysis": 100,
+        "luci.buildbucket.run_in_turboci": 100,
+    },
+    main_list_view = "try",
+    use_clang_coverage = True,
+)
+
+try_.compilator_builder(
+    name = "win-rel-compilator",
+    branch_selector = branches.selector.WINDOWS_BRANCHES,
+    cores = 32 if settings.is_main else 16,
+    # TODO (crbug.com/1245171): Revert when root issue is fixed
+    grace_period = 4 * time.minute,
+    main_list_view = "try",
+)
+
+try_.builder(
+    name = "win32-clobber-rel",
+    mirrors = [
+        "ci/win32-archive-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/win32-archive-rel",
+            "release_try_builder",
+        ],
+    ),
+    contact_team_email = "chrome-desktop-engprod@google.com",
+    properties = {
+        # The format of these properties is defined at archive/properties.proto
+        "$build/archive": {
+            "source_side_spec_path": [
+                "src",
+                "infra",
+                "archive_config",
+                "win32-archive-rel.json",
+            ],
+            "verify_paths_only": True,
+        },
+    },
+)
+
+try_.builder(
+    name = "win_chromium_compile_dbg_ng",
+    branch_selector = branches.selector.WINDOWS_BRANCHES,
+    mirrors = [
+        "ci/Win Builder (dbg)",
+    ],
+    builder_config_settings = builder_config.try_settings(
+        include_all_triggered_testers = True,
+        is_compile_only = True,
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Win Builder (dbg)",
+        ],
+    ),
+    builderless = False,
+    cores = 16,
+    os = os.WINDOWS_ANY,
+    ssd = True,
+    cq_settings = try_.cq_settings(
+        # TODO(crbug.com/40847153) Remove once cancelling doesn't wipe
+        # out builder cache
+        cancel_stale = False,
+        on_default_cq = True,
+    ),
+    experiments = {
+        "luci.buildbucket.run_in_turboci": 100,
+    },
+    main_list_view = "try",
+    siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "win_chromium_compile_rel_ng",
+    branch_selector = branches.selector.WINDOWS_BRANCHES,
+    mirrors = [
+        "ci/Win Builder",
+    ],
+    builder_config_settings = builder_config.try_settings(
+        include_all_triggered_testers = True,
+        is_compile_only = True,
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Win Builder",
+            "release_try_builder",
+            "resource_allowlisting",
+        ],
+    ),
+)
+
+try_.builder(
+    name = "win_chromium_x64_rel_ng",
+    mirrors = [
+        "ci/Win x64 Builder",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Win x64 Builder",
+            "release_try_builder",
+        ],
+    ),
+)
+
+try_.builder(
+    name = "win_upload_clang",
+    executable = "recipe:chromium_toolchain/package_clang",
+    builderless = False,
+    cores = 32,
+    os = os.WINDOWS_ANY,
+    execution_timeout = 6 * time.hour,
+    siso_project = None,
+)
+
+try_.builder(
+    name = "win_upload_rust",
+    executable = "recipe:chromium_toolchain/package_rust",
+    builderless = False,
+    cores = 32,
+    os = os.WINDOWS_ANY,
+    execution_timeout = 6 * time.hour,
+    siso_project = None,
+)
+
+try_.builder(
+    name = "win10-dbg",
+    mirrors = [
+        "ci/Win x64 Builder (dbg)",
+        "ci/Win10 Tests x64 (dbg)",
+    ],
+    gn_args = "ci/Win x64 Builder (dbg)",
+    cores = 16,
+    os = os.WINDOWS_10,
+    ssd = True,
+)
+
+try_.builder(
+    name = "win11-rel",
+    description_html = "This builder run tests for Windows 11 release build.",
+    mirrors = [
+        "ci/Win x64 Builder",
+        "ci/Win11 Tests x64",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Win x64 Builder",
+            "release_try_builder",
+            "no_resource_allowlisting",
+            "use_clang_coverage",
+            "partial_code_coverage_instrumentation",
+            "enable_dangling_raw_ptr_feature_flag",
+        ],
+    ),
+    builderless = True,
+    os = os.WINDOWS_10,
+    contact_team_email = "chrome-desktop-engprod@google.com",
+    coverage_test_types = ["unit", "overall"],
+    cq_settings = try_.cq_settings(
+        location_filters = [
+            "sandbox/win/.+",
+            "sandbox/policy/win/.+",
+        ],
+    ),
+    # The size of the testing pool is limited.
+    max_concurrent_builds = 3,
+    use_clang_coverage = True,
+)
+
+try_.builder(
+    name = "win-arm64-rel",
+    branch_selector = branches.selector.WINDOWS_BRANCHES,
+    description_html = (
+        "This builder run tests for Windows ARM64 release build."
+    ),
+    mirrors = [
+        "ci/win-arm64-rel",
+        "ci/win11-arm64-rel-tests",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/win-arm64-rel",
+            "release_try_builder",
+            "no_resource_allowlisting",
+            "enable_dangling_raw_ptr_feature_flag",
+        ],
+    ),
+    builderless = True,
+    os = os.WINDOWS_10,
+    contact_team_email = "chrome-desktop-engprod@google.com",
+    # TODO (crbug.com/1372179): Use orchestrator pool once overloaded test pools
+    # are addressed
+    #use_orchestrator_pool = True,
+    cq_settings = try_.cq_settings(
+        location_filters = [
+            "sandbox/win/.+",
+            "sandbox/policy/win/.+",
+        ],
+    ),
+    main_list_view = "try",
+    # The size of the testing pool is limited.
+    max_concurrent_builds = 4,
+    siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "win-arm64-compile-dbg",
+    branch_selector = branches.selector.WINDOWS_BRANCHES,
+    description_html = "Compile only builder for Windows ARM64 debug.",
+    mirrors = [
+        "ci/win-arm64-dbg",
+    ],
+    builder_config_settings = builder_config.try_settings(
+        include_all_triggered_testers = True,
+        is_compile_only = True,
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "ci/win-arm64-dbg",
+            "no_symbols",
+        ],
+    ),
+    builderless = False,
+    cores = None,
+    os = os.WINDOWS_ANY,
+    contact_team_email = "chrome-desktop-engprod@google.com",
+    cq_settings = try_.cq_settings(
+        # TODO(crbug.com/40847153) Remove once cancelling doesn't wipe
+        # out builder cache
+        cancel_stale = False,
+        on_default_cq = True,
+    ),
+    experiments = {
+        "luci.buildbucket.run_in_turboci": 100,
+    },
+    main_list_view = "try",
+    siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "win-arm64-dbg",
+    description_html = "This builder run tests for Windows ARM64 debug build.",
+    mirrors = [
+        "ci/win-arm64-dbg",
+        "ci/win11-arm64-dbg-tests",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/win-arm64-dbg",
+        ],
+    ),
+    builderless = True,
+    cores = 16,
+    os = os.WINDOWS_10,
+    ssd = True,
+    contact_team_email = "chrome-desktop-engprod@google.com",
+    # The size of the testing pool is limited.
+    max_concurrent_builds = 2,
+    # Enable when stable.
+    # main_list_view = "try",
+    siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "win-fieldtrial-rel",
+    mirrors = ["ci/win-fieldtrial-rel"],
+    gn_args = "ci/win-fieldtrial-rel",
+    os = os.WINDOWS_DEFAULT,
+)
+
+try_.builder(
+    name = "win-perfetto-rel",
+    mirrors = [
+        "ci/win-perfetto-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/win-perfetto-rel",
+            "try_builder",
+            "no_symbols",
+        ],
+    ),
+)
+
+try_.builder(
+    name = "win10-code-coverage",
+    mirrors = ["ci/win10-code-coverage"],
+    gn_args = "ci/win10-code-coverage",
+    execution_timeout = 10 * time.hour,
+)
+
+try_.builder(
+    name = "win-treesinviz-disabled-rel",
+    mirrors = [
+        "ci/win-treesinviz-disabled-rel",
+    ],
+    gn_args = "ci/win-treesinviz-disabled-rel",
+    contact_team_email = "chrome-gpu-team@google.com",
+)
+
+try_.builder(
+    name = "windows-no-initial-webui-rel",
+    mirrors = [
+        "ci/Win x64 Builder",
+        "ci/windows-no-initial-webui-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Win x64 Builder",
+            "release_try_builder",
+        ],
+    ),
+    contact_team_email = "chrome-webium-product-eng@google.com",
+)
+
+shared_gpu.try_.win_optional_builder(
+    name = "win_optional_gpu_tests_rel",
+    branch_selector = branches.selector.WINDOWS_BRANCHES,
+    description_html = ("Runs GPU tests on Windows 10 machines with NVIDIA GTX 1660 and Intel UHD 630 GPUs. " +
+                        "Only automatically added to CLs that touch GPU-related files."),
+    mirrors = [
+        "ci/GPU FYI Win x64 Builder",
+        "ci/Win10 FYI x64 Release (Intel)",
+        "ci/Win10 FYI x64 Release (NVIDIA)",
+    ],
+    builder_config_settings = builder_config.try_settings(
+        retry_failed_shards = False,
+    ),
+    gn_args = "ci/GPU FYI Win x64 Builder",
+    targets_settings = targets.settings(
+        browser_config = targets.browser_config.RELEASE_X64,
+        os_type = targets.os_type.WINDOWS,
+    ),
+    alerts_enabled = False,
+    contact_team_email = "chrome-gpu-infra@google.com",
+    cq_settings = try_.cq_settings(
+        location_filters = gpu.try_.optional_trybot_location_filters.WINDOWS,
+    ),
+    # default is 6 for GPU optional builders.
+    execution_timeout = 5 * time.hour,
+    main_list_view = "try",
+    # This is higher than the default of 7 for optional GPU builders
+    # because Windows builds take longer than other platforms even
+    # when using SSDs. Increasing the max concurrent builds a bit
+    # allows us to avoid long pending times without risk of
+    # overloading the testing hardware.
+    max_concurrent_builds = 9,
+    service_account = gpu.try_.SERVICE_ACCOUNT,
+    siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
+)
+
+shared_gpu.try_.win_optional_builder(
+    name = "gpu-fyi-cq-win-arm64",
+    branch_selector = branches.selector.WINDOWS_BRANCHES,
+    description_html = "Runs GPU tests on Windows/ARM64 configs. Only automatically added to CLs that touch GPU-related files.",
+    mirrors = [
+        "ci/GPU FYI Win arm64 Builder",
+        "ci/Win11 FYI arm64 Release (Qualcomm Snapdragon X Elite)",
+    ],
+    builder_config_settings = builder_config.try_settings(
+        retry_failed_shards = False,
+    ),
+    gn_args = "ci/GPU FYI Win arm64 Builder",
+    alerts_enabled = False,
+    contact_team_email = "chrome-gpu-infra@google.com",
+    cq_settings = try_.cq_settings(
+        location_filters = gpu.try_.optional_trybot_location_filters.WINDOWS,
+    ),
+    # default is 6 for GPU optional builders.
+    execution_timeout = 5 * time.hour,
+    main_list_view = "try",
+    # This is higher than the default of 7 for optional GPU builders
+    # because Windows builds take longer than other platforms even
+    # when using SSDs. Increasing the max concurrent builds a bit
+    # allows us to avoid long pending times without risk of
+    # overloading the testing hardware.
+    max_concurrent_builds = 9,
+    service_account = gpu.try_.SERVICE_ACCOUNT,
+    siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "win-separate-renderer-rel",
+    description_html = "Runs separate renderer tests on Windows, mirroring win-separate-renderer-fyi-rel.",
+    mirrors = [
+        "ci/win-separate-renderer-fyi-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/win-separate-renderer-fyi-rel",
+            "release_try_builder",
+            "dcheck_always_on",
+        ],
+    ),
+    contact_team_email = "toyoshim@chromium.org",
+    cq_settings = try_.cq_settings(
+        includable_only = True,
+    ),
+)

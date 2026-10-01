@@ -1,0 +1,26 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("bundle_operations") {
+  defines = [ "IS_ISOLATED_WEB_APPS_IMPL" ]
+  visibility = [ "//components/webapps/isolated_web_apps/*" ]
+  sources = [
+    "bundle_operations.cc",
+    "bundle_operations.h",
+  ]
+
+  deps = [
+    "//base",
+    "//components/webapps/isolated_web_apps:iwa_client",
+    "//components/webapps/isolated_web_apps/error",
+    "//components/webapps/isolated_web_apps/reading",
+    "//components/webapps/isolated_web_apps/types",
+    "//content/public/browser",
+  ]
+
+  public_deps = [
+    "//base",
+    "//components/web_package",
+  ]
+}

@@ -1,0 +1,415 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/ui.gni")
+
+assert(!is_android)
+
+source_set("shadow") {
+  public = [ "shadow_frame_view.h" ]
+
+  sources = [ "shadow_frame_view.cc" ]
+
+  deps = [
+    "//base",
+    "//chrome/browser/ui/animation",
+    "//chrome/browser/ui/color:color_headers",
+    "//ui/compositor_extra",
+    "//ui/gfx:color_utils",
+    "//ui/views",
+  ]
+}
+
+# immersive_mode_tester is only built on ChromeOS, matching the platforms
+# where its immersive-fullscreen consumers compile it.
+if (is_chromeos) {
+  source_set("immersive_mode_tester") {
+    testonly = true
+
+    sources = [
+      "immersive_mode_tester.cc",
+      "immersive_mode_tester.h",
+    ]
+
+    public_deps = [
+      "//base",
+      "//base/test:test_support",
+      "//chrome/browser/ui:ui_features",
+      "//chrome/browser/ui/immersive:immersive_mode_controller",
+      "//testing/gtest",
+      "//ui/base",
+    ]
+
+    deps = [
+      "//chrome/browser/ui",
+      "//chrome/browser/ui/browser_window",
+      "//chrome/browser/ui/tabs:tab_strip",
+      "//chrome/browser/ui/views",
+    ]
+  }
+}
+
+static_library("test_support") {
+  testonly = true
+
+  sources = [
+    "mock_immersive_mode_controller.cc",
+    "mock_immersive_mode_controller.h",
+  ]
+  deps = [
+    "//base",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/immersive:immersive_mode_controller",
+    "//testing/gmock",
+  ]
+}
+
+source_set("toolbar_button_provider") {
+  public = [ "toolbar_button_provider.h" ]
+
+  sources = [ "toolbar_button_provider.cc" ]
+
+  public_deps = [
+    "//chrome/browser/ui/page_action:icon_type",
+    "//ui/actions:actions_headers",
+    "//ui/base/unowned_user_data",
+    "//ui/views",
+  ]
+
+  deps = [ "//chrome/browser/ui/browser_window" ]
+}
+
+source_set("frame") {
+  sources = [
+    "browser_root_view.h",
+    "tab_strip_region_view.cc",
+    "tab_strip_region_view.h",
+  ]
+
+  deps = [
+    "//base",
+    "//chrome/browser/ui/tabs",
+    "//chrome/browser/ui/views",
+    "//components/tab_groups",
+    "//ui/base",
+    "//ui/views",
+  ]
+}
+
+source_set("app_menu_button_observer") {
+  sources = [ "app_menu_button_observer.h" ]
+}
+
+source_set("top_controls_slide_controller") {
+  sources = [ "top_controls_slide_controller.h" ]
+}
+
+source_set("glass_frame_service") {
+  public = [ "glass_frame_service.h" ]
+  sources = [ "glass_frame_service.cc" ]
+  deps = [
+    "//base",
+    "//chrome/browser:browser_process",
+    "//chrome/browser:global_features",
+    "//chrome/browser/performance_manager/public/user_tuning",
+    "//chrome/browser/themes",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/exclusive_access",
+    "//chrome/common:constants",
+    "//components/prefs",
+    "//ui/base/unowned_user_data",
+  ]
+}
+
+source_set("caption_button_placeholder_container") {
+  public = [ "caption_button_placeholder_container.h" ]
+  sources = [ "caption_button_placeholder_container.cc" ]
+  public_deps = [
+    "//ui/base/metadata",
+    "//ui/views",
+  ]
+}
+
+source_set("contents_container_outline") {
+  public = [ "contents_container_outline.h" ]
+  sources = [ "contents_container_outline.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/color:color_headers",
+    "//ui/views",
+  ]
+  deps = [
+    "//base:i18n",
+    "//skia",
+    "//ui/base/metadata",
+    "//ui/color:color_headers",
+    "//ui/compositor",
+    "//ui/gfx",
+    "//ui/gfx/geometry",
+  ]
+}
+
+source_set("contents_separator") {
+  public = [ "contents_separator.h" ]
+  sources = [ "contents_separator.cc" ]
+  public_deps = [ "//ui/views" ]
+  deps = [
+    "//base",
+    "//chrome/browser/ui/color:color_headers",
+    "//ui/base/metadata",
+  ]
+}
+
+source_set("scrim_view") {
+  public = [ "scrim_view.h" ]
+  sources = [ "scrim_view.cc" ]
+  public_deps = [
+    "//ui/color:color_headers",
+    "//ui/views",
+  ]
+  deps = [
+    "//ui/base/metadata",
+    "//ui/compositor",
+    "//ui/gfx/geometry",
+  ]
+}
+
+source_set("windows_icon_painter") {
+  public = [ "windows_icon_painter.h" ]
+  sources = [ "windows_icon_painter.cc" ]
+  public_deps = [
+    "//base",
+    "//ui/gfx",
+  ]
+  deps = [
+    "//chrome/browser/ui/color:color_headers",
+    "//skia",
+    "//ui/gfx/geometry",
+  ]
+}
+
+source_set("browser_view_layout_params") {
+  public = [ "layout/browser_view_layout_params.h" ]
+  sources = [ "layout/browser_view_layout_params.cc" ]
+  public_deps = [
+    "//base",
+    "//ui/gfx/geometry",
+  ]
+}
+
+source_set("opaque_browser_frame_view_layout_delegate") {
+  public = [ "opaque_browser_frame_view_layout_delegate.h" ]
+  sources = [ "opaque_browser_frame_view_layout_delegate.cc" ]
+  public_deps = [ "//ui/base" ]
+}
+
+source_set("immersive_mode_controller_stub") {
+  public = [ "immersive_mode_controller_stub.h" ]
+  sources = [ "immersive_mode_controller_stub.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/immersive:immersive_mode_controller",
+  ]
+}
+
+source_set("web_contents_close_handler_delegate") {
+  public = [ "web_contents_close_handler_delegate.h" ]
+}
+
+source_set("web_contents_close_handler") {
+  public = [ "web_contents_close_handler.h" ]
+  sources = [ "web_contents_close_handler.cc" ]
+  public_deps = [
+    ":web_contents_close_handler_delegate",
+    "//base",
+  ]
+}
+
+source_set("browser_native_widget") {
+  public = [ "browser_native_widget.h" ]
+  public_deps = [
+    "//build:buildflag_header_h",
+    "//content/public/browser",
+    "//ui/base:types",
+    "//ui/base/mojom:ui_base_types",
+    "//ui/gfx/geometry",
+    "//ui/views",
+  ]
+}
+
+source_set("browser_desktop_window_tree_host") {
+  public = [ "browser_desktop_window_tree_host.h" ]
+}
+
+source_set("browser_view_layout_delegate") {
+  public = [ "layout/browser_view_layout_delegate.h" ]
+  public_deps = [
+    ":browser_view_layout_params",
+    "//base",
+    "//ui/gfx",
+    "//ui/views",
+  ]
+}
+
+if (is_win) {
+  source_set("minimize_button_metrics_win") {
+    public = [ "minimize_button_metrics_win.h" ]
+    sources = [ "minimize_button_metrics_win.cc" ]
+    deps = [
+      "//base",
+      "//ui/display",
+      "//ui/gfx/geometry",
+    ]
+  }
+
+  source_set("system_menu_insertion_delegate_win") {
+    public = [ "system_menu_insertion_delegate_win.h" ]
+    sources = [ "system_menu_insertion_delegate_win.cc" ]
+    public_deps = [ "//ui/views" ]
+  }
+}
+
+source_set("browser_native_widget_factory") {
+  public = [ "browser_native_widget_factory.h" ]
+  sources = [ "browser_native_widget_factory.cc" ]
+  public_deps = [
+    ":browser_native_widget",
+    "//build:buildflag_header_h",
+  ]
+}
+
+source_set("contents_web_view") {
+  public = [ "contents_web_view.h" ]
+  sources = [ "contents_web_view.cc" ]
+  public_deps = [
+    ":web_contents_close_handler_delegate",
+    "//base",
+    "//build:buildflag_header_h",
+    "//chrome/browser/ui:ui_features",
+    "//chrome/common:buildflags",
+    "//ui/base/interaction",
+    "//ui/base/metadata",
+    "//ui/gfx/geometry",
+    "//ui/views",
+    "//ui/views/controls/webview",
+  ]
+  deps = [
+    ":web_contents_close_handler",
+    "//chrome/browser/ui/color:color_headers",
+    "//chrome/browser/ui/views:status_bubble",
+    "//components/tabs:public",
+    "//components/web_modal",
+    "//content/public/browser",
+    "//skia:skia_core_public_headers",
+    "//third_party/blink/public/common:headers",
+    "//ui/color:color_headers",
+    "//ui/compositor",
+    "//ui/views",
+  ]
+  if (use_aura) {
+    deps += [
+      "//ui/aura",
+      "//ui/wm",
+    ]
+  }
+}
+
+source_set("multi_contents_drop_target_view") {
+  public = [ "multi_contents_drop_target_view.h" ]
+  sources = [ "multi_contents_drop_target_view.cc" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/views/tabs/dragging",
+    "//ui/base/interaction",
+    "//ui/base/metadata",
+    "//ui/gfx/animation",
+    "//ui/views",
+  ]
+  deps = [
+    "//chrome/app:generated_resources",
+    "//chrome/app/vector_icons",
+    "//ui/base",
+    "//ui/base:features",
+    "//ui/compositor",
+    "//ui/gfx",
+    "//ui/gfx/geometry",
+  ]
+}
+
+source_set("multi_contents_view_drop_target_controller") {
+  public = [ "multi_contents_view_drop_target_controller.h" ]
+  sources = [ "multi_contents_view_drop_target_controller.cc" ]
+  public_deps = [
+    ":multi_contents_drop_target_view",
+    "//base",
+    "//chrome/browser/ui/tabs:tab_strip",
+    "//chrome/browser/ui/tabs:tab_strip_model_observer",
+    "//chrome/browser/ui/views/tabs/dragging:tab_drag_target",
+    "//components/prefs",
+    "//ui/base/interaction",
+    "//ui/views",
+  ]
+  deps = [
+    "//base:i18n",
+    "//chrome/browser/ui:ui_features",
+    "//chrome/browser/ui/tabs",
+    "//chrome/browser/ui/tabs:features",
+    "//chrome/browser/ui/views/tabs/dragging",
+    "//chrome/common:constants",
+    "//content/public/common",
+    "//ui/base",
+    "//ui/base/dragdrop:types",
+    "//ui/compositor",
+  ]
+}
+
+source_set("multi_contents_view_delegate") {
+  public = [ "multi_contents_view_delegate.h" ]
+  sources = [ "multi_contents_view_delegate.cc" ]
+  public_deps = [
+    ":multi_contents_drop_target_view",
+    ":multi_contents_view_drop_target_controller",
+    "//base",
+    "//chrome/browser/ui/views/tabs/dragging:tab_drag_target",
+  ]
+  deps = [
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/sessions",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/navigator",
+    "//chrome/browser/ui/tabs",
+    "//chrome/browser/ui/tabs:tab_enums",
+    "//chrome/browser/ui/tabs:tab_strip",
+    "//components/split_tabs",
+    "//components/tabs:public",
+    "//content/public/browser",
+    "//content/public/common",
+    "//ui/base",
+    "//url",
+  ]
+}
+
+source_set("system_menu_model_delegate") {
+  public = [ "system_menu_model_delegate.h" ]
+  public_deps = [
+    "//base",
+    "//ui/base",
+    "//ui/menus",
+  ]
+}
+
+source_set("tab_modal_dialog_host") {
+  public = [ "tab_modal_dialog_host.h" ]
+  public_deps = [
+    "//base",
+    "//components/web_modal",
+    "//ui/views",
+  ]
+}
+
+source_set("contents_border_controller") {
+  public = [ "contents_border_controller.h" ]
+  public_deps = [ "//base" ]
+}

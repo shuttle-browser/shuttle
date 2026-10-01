@@ -1,0 +1,45 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("data_saver") {
+  sources = [
+    "data_saver.cc",
+    "data_saver.h",
+  ]
+
+  deps = [ "//base" ]
+
+  if (is_android) {
+    deps += [ "//chrome/android:chrome_jni_headers" ]
+  }
+}
+
+if (!is_android) {
+  source_set("browser_tests") {
+    testonly = true
+
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+    sources = [
+      "data_saver_browsertest.cc",
+      "data_saver_webapis_browsertest.cc",
+    ]
+
+    deps = [
+      ":data_saver",
+      "//base",
+      "//chrome/browser:browser_process",
+      "//chrome/browser/profiles:profile",
+      "//chrome/browser/ui",
+      "//chrome/test:test_support",
+      "//chrome/test:test_support_ui",
+      "//components/prefs",
+      "//content/public/common",
+      "//content/test:test_support",
+      "//net:test_support",
+      "//services/network/public/cpp",
+      "//testing/gtest",
+    ]
+  }
+}

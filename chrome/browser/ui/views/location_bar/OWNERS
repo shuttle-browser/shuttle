@@ -1,0 +1,9 @@
+olesiamarukhno@google.com
+alsan@chromium.org
+koretadaniel@chromium.org
+file://components/omnibox/OWNERS
+
+per-file intent_chip_button_browsertest.cc=file://chrome/browser/web_applications/OWNERS
+
+# WebUI related files
+per-file *webui*=file://chrome/browser/ui/waap/OWNERS

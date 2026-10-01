@@ -1,0 +1,20 @@
+Name: WorkManager Runtime
+Short Name: work-runtime
+URL: https://androidx.dev/snapshots/builds/16217986/artifacts/repository/androidx/work/work-runtime/2.13.0-SNAPSHOT/work-runtime-2.13.0-20260831.073015-1.aar
+Version: 2.13.0-SNAPSHOT
+Update Mechanism: Autoroll
+License: Apache-2.0
+License File: LICENSE
+CPEPrefix: unknown
+Security Critical: yes
+Shipped: yes
+License Android Compatible: yes
+
+Description:
+Android WorkManager runtime library
+
+See also: https://developer.android.com/jetpack/androidx/releases/work#2.13.0-SNAPSHOT
+
+
+Local Modifications:
+No modifications.

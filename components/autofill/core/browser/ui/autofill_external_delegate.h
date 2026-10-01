@@ -1,0 +1,279 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_AUTOFILL_CORE_BROWSER_UI_AUTOFILL_EXTERNAL_DELEGATE_H_
+#define COMPONENTS_AUTOFILL_CORE_BROWSER_UI_AUTOFILL_EXTERNAL_DELEGATE_H_
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "base/check.h"
+#include "base/containers/span.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ref.h"
+#include "base/memory/weak_ptr.h"
+#include "base/types/expected.h"
+#include "base/types/optional_ref.h"
+#include "components/autofill/core/browser/autofill_trigger_source.h"
+#include "components/autofill/core/browser/data_model/autofill_ai/entity_instance.h"
+#include "components/autofill/core/browser/field_types.h"
+#include "components/autofill/core/browser/filling/autofill_ai/autofill_ai_access_manager.h"
+#include "components/autofill/core/browser/filling/form_filler.h"
+#include "components/autofill/core/browser/foundations/autofill_client.h"
+#include "components/autofill/core/browser/metrics/suggestions_list_metrics.h"
+#include "components/autofill/core/browser/suggestions/suggestion.h"
+#include "components/autofill/core/browser/suggestions/suggestion_hiding_reason.h"
+#include "components/autofill/core/browser/suggestions/suggestion_type.h"
+#include "components/autofill/core/browser/ui/autofill_suggestion_delegate.h"
+#include "components/autofill/core/browser/ui/tabbed_pane_enums.h"
+#include "components/autofill/core/common/aliases.h"
+#include "components/autofill/core/common/form_data.h"
+#include "components/autofill/core/common/form_field_data.h"
+#include "components/autofill/core/common/mojom/autofill_types.mojom-shared.h"
+#include "components/autofill/core/common/unique_ids.h"
+#include "components/device_reauth/device_authenticator.h"
+
+namespace gfx {
+class Rect;
+}  // namespace gfx
+
+namespace autofill {
+
+class AddressDataManager;
+class AutofillDriver;
+class BrowserAutofillManager;
+class FormStructure;
+
+// Retrieves a copy of the profile that the `payload` refers to.
+std::optional<AutofillProfile> GetProfileFromPayload(
+    const AddressDataManager& adm,
+    const Suggestion::AutofillProfilePayload& payload);
+
+// Delegate for in-browser Autocomplete and Autofill display and selection.
+class AutofillExternalDelegate : public AutofillSuggestionDelegate {
+ public:
+  using UpdateSuggestionsCallback =
+      base::RepeatingCallback<void(std::vector<Suggestion>,
+                                   AutofillSuggestionTriggerSource)>;
+
+  // Creates an AutofillExternalDelegate for the specified
+  // BrowserAutofillManager and AutofillDriver.
+  explicit AutofillExternalDelegate(BrowserAutofillManager* manager);
+
+  AutofillExternalDelegate(const AutofillExternalDelegate&) = delete;
+  AutofillExternalDelegate& operator=(const AutofillExternalDelegate&) = delete;
+
+  ~AutofillExternalDelegate() override;
+
+  // Returns true if `item_id` identifies a suggestion which can appear on the
+  // first layer of the Autofill popup and can fill form fields.
+  static bool IsAutofillAndFirstLayerSuggestionId(SuggestionType item_id);
+
+  // AutofillSuggestionDelegate implementation.
+  std::variant<AutofillDriver*, password_manager::PasswordManagerDriver*>
+  GetDriver_DoNotUse() override;
+  void OnSuggestionsShown(base::span<const Suggestion> suggestions,
+                          base::optional_ref<const SuggestionMetadata>
+                              parent_suggestion_metadata) override;
+  void OnSuggestionsHidden(SuggestionHidingReason reason) override;
+  bool OnFilterChanged(const std::u16string& filter) override;
+  bool OnSearchSubmitted(const std::u16string& filter) override;
+  bool IsSearching() const override;
+  void DidSelectSuggestion(const Suggestion& suggestion) override;
+  void DidAcceptSuggestion(const Suggestion& suggestion,
+                           const SuggestionMetadata& metadata) override;
+  bool RemoveSuggestion(const Suggestion& suggestion) override;
+  void ClearPreviewedForm() override;
+
+  // Returns FillingProduct::kNone for all popups prior to
+  // `OnSuggestionsReturned`. Returns the filling product of the first
+  // suggestion that has a filling product that is not none.
+  FillingProduct GetMainFillingProduct() const override;
+
+  void OnTabSelected(TabbedPaneTabType tab_type) override;
+
+  FieldGlobalId GetQueriedFieldId() const override;
+
+  // Called when the renderer posts an Autofill query to the browser. We might
+  // not want to display the warning if a website has disabled Autocomplete
+  // because they have their own popup, and showing our popup on to of theirs
+  // would be a poor user experience.
+  // `caret_bounds` represents the position of the focused field caret. This is
+  // used as bounds to anchor the Autofill popup on. Today this is only used by
+  // compose suggestions.
+  //
+  // TODO(crbug.com/40144964): Storing `form` and `field` in member variables
+  // breaks the cache.
+  virtual void OnQuery(const FormData& form,
+                       const FormFieldData& field,
+                       const gfx::Rect& caret_bounds,
+                       AutofillSuggestionTriggerSource trigger_source);
+
+  // Records query results and correctly formats them before sending them off
+  // to be displayed. Called when an Autofill query result is available.
+  virtual void OnSuggestionsReturned(
+      const FormFieldData& trigger_field,
+      const std::vector<Suggestion>& input_suggestions,
+      std::u16string prefilled_query);
+
+  // Returns true if there is a screen reader installed on the machine.
+  virtual bool HasActiveScreenReader() const;
+
+  // Indicates on focus changed if autofill/autocomplete is available or
+  // unavailable, so `suggestion_availability` can be announced by screen
+  // readers.
+  virtual void OnAutofillAvailabilityEvent(
+      mojom::AutofillSuggestionAvailability suggestion_availability);
+
+  // Informs the delegate that the text field editing has ended. This is
+  // used to help record the metrics of when a new popup is shown.
+  void DidEndTextFieldEditing();
+
+  void AttemptToDisplayAutofillSuggestionsForTest(
+      std::vector<Suggestion> suggestions,
+      AutofillSuggestionTriggerSource trigger_source,
+      base::optional_ref<const FormFieldData> trigger_field) {
+    AttemptToDisplayAutofillSuggestions(
+        std::move(suggestions), trigger_source, trigger_field,
+        AutofillSuggestionsIgnoreFocusLoss(false));
+  }
+  base::WeakPtr<AutofillExternalDelegate> GetWeakPtrForTest() {
+    return GetWeakPtr();
+  }
+
+ private:
+  // Returns the `AutofillProfile` that an address suggestion contains as
+  // payload or `std::nullopt` if the profile cannot be found. Assumes that
+  // `suggestion` has an `AutofillProfilePayload`.
+  std::optional<AutofillProfile> GetProfileFromAddressSuggestion(
+      const Suggestion& suggestion) const;
+
+  // Returns the `EntityInstance` that an Autofill AI suggestion contains as
+  // payload or `std::nullopt` if it cannot be found. Assumes that `suggestion`
+  // has an `AutofillAiPayload`.
+  base::optional_ref<const EntityInstance> GetEntityInstance(
+      const Suggestion& suggestion) const;
+
+  // Tries to display `suggestions` in the suggestions UI.
+  // If `trigger_field` is `std::nullopt`, the delegate attempts to update the
+  // the existing suggestion UI instead of showing new UI. This means:
+  // - The last non-null provided trigger field is used.
+  // - The existing `UiSessionId` continues to be used.
+  // - If no suggestions are currently showing or the new suggestions have a
+  //   different `FillingProduct`, no UI is shown.
+  void AttemptToDisplayAutofillSuggestions(
+      std::vector<Suggestion> suggestions,
+      AutofillSuggestionTriggerSource trigger_source,
+      base::optional_ref<const FormFieldData> trigger_field,
+      AutofillSuggestionsIgnoreFocusLoss ignore_focus_loss,
+      std::u16string prefilled_query = {});
+
+  // Returns a callback that, when run, attempts to update the currently shown
+  // suggestions. If the `SuggestionUiSessionId` of the currently showing UI
+  // surface has changed between when this callback is created and when it is
+  // run, running it is a no-op. The callback is also safe to call even if
+  // `this` is no longer alive.
+  base::RepeatingCallback<void(std::vector<Suggestion>,
+                               AutofillSuggestionTriggerSource)>
+  CreateUpdateSuggestionsCallback();
+
+  // Private handler for DidAcceptSuggestions for address related suggestions.
+  void DidAcceptAddressSuggestion(const Suggestion& suggestion,
+                                  const SuggestionMetadata& metadata);
+
+  // Private handler for DidAcceptSuggestions for payments related suggestions.
+  void DidAcceptPaymentsSuggestion(const Suggestion& suggestion,
+                                   const SuggestionMetadata& metadata);
+
+  // Returns the last Autofill triggering field. Derived from the `form` and
+  // `field` parameters of `OnQuery(). Returns nullptr if called before
+  // `OnQuery()` or if the `form` becomes outdated, see crbug.com/1117028.
+  const AutofillField* GetQueriedField() const;
+
+  // Returns the last Autofill triggering field and its form.
+  std::pair<const FormStructure*, const AutofillField*> GetQueriedFormAndField()
+      const;
+
+  AutofillTriggerSource GetTriggerSource() const;
+
+  // Fills the form with the Autofill data corresponding to `guid`.
+  // If `is_preview` is true then this is just a preview to show the user what
+  // would be selected and if `is_preview` is false then the user has selected
+  // this data.
+  void AutofillForm(SuggestionType type,
+                    const Suggestion::Payload& payload,
+                    std::optional<SuggestionMetadata> metadata,
+                    bool is_preview,
+                    AutofillTriggerSource trigger_source);
+
+  // Previews the value from `profile` specified in the `suggestion`.
+  void PreviewAddressFieldByFieldFillingSuggestion(
+      const AutofillProfile& profile,
+      const Suggestion& suggestion);
+
+  // Fills the value from `profile` specified in the `suggestion`. Emits
+  // necessary metrics based on the
+  // `suggestion.field_by_field_filling_type_used`.
+  void FillAddressFieldByFieldFillingSuggestion(
+      const AutofillProfile& profile,
+      const Suggestion& suggestion,
+      const SuggestionMetadata& metadata);
+
+  // Handle applying any Autofill option listings to the Autofill popup.
+  // This function should only get called when there is at least one
+  // multi-field suggestion in the list of suggestions.
+  // |is_all_server_suggestions| should be true if |suggestions| are empty or
+  // all |suggestions| come from Google Payments.
+  void ApplyAutofillOptions(std::vector<Suggestion>* suggestions,
+                            bool is_all_server_suggestions);
+
+  // Inserts the data list values at the start of the given list, including
+  // any required separators. Will also go through `suggestions` and remove
+  // duplicate autocomplete (not Autofill) suggestions, keeping their datalist
+  // version.
+  void InsertDataListValues(base::span<const SelectOption> datalist_options,
+                            std::vector<Suggestion>& suggestions) const;
+
+  // Returns the text (i.e. |Suggestion| value) for Chrome autofill options.
+  std::u16string GetSettingsSuggestionValue() const;
+
+  // Returns if the Pay Now Pay Later tabs should be shown.
+  virtual bool ShouldShowPayNowPayLaterTabs();
+
+  base::WeakPtr<AutofillExternalDelegate> GetWeakPtr();
+
+  const raw_ref<BrowserAutofillManager> manager_;
+
+  // Holds information about the last autofill query made.
+  struct LastQueryInfo {
+    FormGlobalId form_id;
+    FieldGlobalId field_id;
+    std::vector<SelectOption> field_datalist_options;
+  } last_query_;
+
+  // The method how suggestions were triggered on the current form.
+  AutofillSuggestionTriggerSource trigger_source_ =
+      AutofillSuggestionTriggerSource::kUnspecified;
+
+  std::vector<SuggestionType> shown_suggestion_types_;
+
+  // The current data list values.
+  std::vector<SelectOption> datalist_;
+
+  // The caret position of the focused field.
+  gfx::Rect caret_bounds_;
+
+  // Used to re-authenticate the user before filling.
+  std::unique_ptr<device_reauth::DeviceAuthenticator> authenticator_;
+
+  base::WeakPtrFactory<AutofillExternalDelegate> weak_ptr_factory_{this};
+};
+
+}  // namespace autofill
+
+#endif  // COMPONENTS_AUTOFILL_CORE_BROWSER_UI_AUTOFILL_EXTERNAL_DELEGATE_H_

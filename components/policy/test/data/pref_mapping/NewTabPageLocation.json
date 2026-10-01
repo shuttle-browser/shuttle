@@ -1,0 +1,20 @@
+[
+  {
+    "os": [
+      "win",
+      "linux",
+      "mac",
+      "chromeos",
+      "android",
+      "fuchsia"
+    ],
+    "can_be_recommended": true,
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "newtab_page_location_override",
+      "default_value": "",
+      "values_to_test": [
+        "http://.org"
+      ]
+    }
+  }
+]

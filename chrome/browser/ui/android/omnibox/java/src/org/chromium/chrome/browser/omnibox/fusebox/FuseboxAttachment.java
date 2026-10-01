@@ -1,0 +1,279 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.omnibox.fusebox;
+
+import static org.chromium.build.NullUtil.assertNonNull;
+import static org.chromium.build.NullUtil.assumeNonNull;
+
+import android.content.res.Resources;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
+import android.os.SystemClock;
+import android.text.TextUtils;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.omnibox.fusebox.FuseboxAttachmentRecyclerViewAdapter.FuseboxAttachmentType;
+import org.chromium.chrome.browser.omnibox.fusebox.FuseboxMetrics.FuseboxAttachmentButtonType;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.ui.modelutil.MVCListAdapter.ListItem;
+import org.chromium.ui.modelutil.PropertyModel;
+
+/** A complete fusebox attachment with all data and metadata. */
+@NullMarked
+public final class FuseboxAttachment extends ListItem {
+    public final @Nullable Drawable thumbnail;
+    public final String title;
+    public final String mimeType;
+    public final byte[] data;
+    public final @Nullable Tab tab;
+    public final boolean bypassTabCache;
+    public final @Nullable Integer tabId;
+    public final long startTime;
+    public final @FuseboxAttachmentButtonType int buttonType;
+    public final boolean isSuggestedTab;
+
+    private boolean mIsUploadComplete;
+    private boolean mIsFetchingTabDataFromCache;
+    private @Nullable String mToken;
+
+    private FuseboxAttachment(
+            @FuseboxAttachmentType int itemType,
+            @Nullable Drawable thumbnail,
+            String title,
+            String mimeType,
+            byte[] data,
+            @Nullable Tab tab,
+            boolean bypassTabCache,
+            @Nullable Long optionalStartTime,
+            @FuseboxAttachmentButtonType int buttonType,
+            boolean isSuggestedTab) {
+        super(itemType, new PropertyModel(FuseboxAttachmentProperties.ALL_KEYS));
+        this.thumbnail = thumbnail;
+        this.title = title;
+        this.mimeType = mimeType;
+        this.data = data;
+        if (tab != null && tab.getId() != Tab.INVALID_TAB_ID) {
+            this.tab = tab;
+            this.bypassTabCache = bypassTabCache;
+            this.tabId = tab.getId();
+        } else {
+            this.tab = null;
+            this.bypassTabCache = false;
+            this.tabId = null;
+        }
+        mIsUploadComplete = false;
+        mToken = null;
+        startTime = optionalStartTime == null ? SystemClock.elapsedRealtime() : optionalStartTime;
+        this.buttonType = buttonType;
+        this.isSuggestedTab = isSuggestedTab;
+
+        // Set the ATTACHMENT property to this instance after construction.
+        model.set(FuseboxAttachmentProperties.ATTACHMENT, this);
+    }
+
+    /** Creates a FuseboxAttachment for an image from various sources. */
+    public static FuseboxAttachment forImage(
+            @Nullable Drawable thumbnail,
+            String title,
+            String mimeType,
+            byte[] data,
+            long startTime,
+            @FuseboxAttachmentButtonType int buttonType) {
+        return new FuseboxAttachment(
+                FuseboxAttachmentType.ATTACHMENT_IMAGE,
+                thumbnail,
+                title,
+                mimeType,
+                data,
+                /* tab= */ null,
+                /* bypassTabCache= */ false,
+                startTime,
+                buttonType,
+                /* isSuggestedTab= */ false);
+    }
+
+    /** Creates a FuseboxAttachment for an image without a thumbnail. */
+    public static FuseboxAttachment forImageNoThumbnail(
+            String title,
+            String mimeType,
+            byte[] data,
+            long startTime,
+            @FuseboxAttachmentButtonType int buttonType) {
+        return new FuseboxAttachment(
+                FuseboxAttachmentType.ATTACHMENT_IMAGE_NO_THUMBNAIL,
+                /* thumbnail= */ null,
+                title,
+                mimeType,
+                data,
+                /* tab= */ null,
+                /* bypassTabCache= */ false,
+                startTime,
+                buttonType,
+                /* isSuggestedTab= */ false);
+    }
+
+    /** Creates a FuseboxAttachment for a file. */
+    public static FuseboxAttachment forFile(
+            @Nullable Drawable thumbnail,
+            String title,
+            String mimeType,
+            byte[] data,
+            long startTime,
+            @FuseboxAttachmentButtonType int buttonType) {
+        return new FuseboxAttachment(
+                FuseboxAttachmentType.ATTACHMENT_FILE,
+                thumbnail,
+                title,
+                mimeType,
+                data,
+                /* tab= */ null,
+                /* bypassTabCache= */ false,
+                startTime,
+                buttonType,
+                /* isSuggestedTab= */ false);
+    }
+
+    /** Creates a FuseboxAttachment for a PDF. */
+    public static FuseboxAttachment forPdf(
+            @Nullable Drawable thumbnail,
+            String title,
+            String mimeType,
+            byte[] data,
+            long startTime,
+            @FuseboxAttachmentButtonType int buttonType) {
+        return new FuseboxAttachment(
+                FuseboxAttachmentType.ATTACHMENT_PDF,
+                thumbnail,
+                title,
+                mimeType,
+                data,
+                /* tab= */ null,
+                /* bypassTabCache= */ false,
+                startTime,
+                buttonType,
+                /* isSuggestedTab= */ false);
+    }
+
+    /** Creates a FuseboxAttachment for a tab. */
+    public static FuseboxAttachment forTab(
+            Tab tab,
+            boolean bypassTabCache,
+            Resources res,
+            @FuseboxAttachmentButtonType int buttonType,
+            boolean isSuggestedTab) {
+        return new FuseboxAttachment(
+                FuseboxAttachmentType.ATTACHMENT_TAB,
+                new BitmapDrawable(res, OmniboxResourceProvider.getFaviconBitmapForTab(tab)),
+                tab.getTitle(),
+                "",
+                new byte[0],
+                tab,
+                bypassTabCache,
+                /* optionalStartTime= */ null,
+                buttonType,
+                isSuggestedTab);
+    }
+
+    /**
+     * Uploads this attachment using the provided bridge and sets its token.
+     *
+     * @param bridge The bridge to use for uploading
+     * @param bypassTabCacheThisTime Whether to bypass the tab cache.
+     * @return true if upload succeeded, false otherwise
+     */
+    /* package */ boolean uploadToBackend(
+            ComposeboxQueryControllerBridge bridge, boolean bypassTabCacheThisTime) {
+        assert !hasToken() || bypassTabCacheThisTime
+                : "Attachment should not have a token when uploaded except for tab data retries";
+
+        if (type == FuseboxAttachmentType.ATTACHMENT_TAB) {
+            mIsFetchingTabDataFromCache = false;
+            // We must fetch fresh tab content for the active tab, incognito tabs (not in cache), or
+            // if it is forced.
+            boolean mustFetchFreshTabContent =
+                    (bypassTabCache
+                            || assumeNonNull(tab).isIncognitoBranded()
+                            || bypassTabCacheThisTime);
+
+            // We can fetch fresh tab content for active tabs.
+            boolean canFetchFreshTabContent = FuseboxTabUtils.isTabActive(tab);
+
+            if (mustFetchFreshTabContent && canFetchFreshTabContent) {
+                mToken = bridge.addTabContext(assumeNonNull(tab), isSuggestedTab);
+            } else if (mustFetchFreshTabContent && !canFetchFreshTabContent) {
+                // We must do a fresh fetch and cannot rely on the cache, but it is not possible to
+                // perform a fresh fetch. The upload will fail.
+                return false;
+            } else {
+                // Try the cache first.
+                mIsFetchingTabDataFromCache = true;
+                mToken = bridge.addTabContextFromCache(getTabId(), isSuggestedTab);
+
+                // If cache fetch fails, try to fetch fresh data if possible.
+                if (TextUtils.isEmpty(mToken) && canFetchFreshTabContent) {
+                    // We are not trying to fetch from the cache anymore we are doing a fresh fetch
+                    // instead.
+                    mIsFetchingTabDataFromCache = false;
+
+                    mToken = bridge.addTabContext(assumeNonNull(tab), isSuggestedTab);
+                }
+            }
+        } else {
+            mToken = bridge.addFile(title, mimeType, data);
+        }
+
+        return !TextUtils.isEmpty(mToken);
+    }
+
+    /**
+     * Removes this attachment from the backend using the provided bridge.
+     *
+     * @param bridge The bridge to use for removal
+     */
+    public void removeFromBackend(ComposeboxQueryControllerBridge bridge) {
+        if (hasToken()) {
+            bridge.removeAttachment(getToken());
+        }
+    }
+
+    /** Sets the ON_REMOVE callback for this attachment. */
+    /* package */ void setOnRemoveCallback(Runnable onRemove) {
+        model.set(FuseboxAttachmentProperties.ON_REMOVE, onRemove);
+    }
+
+    /** Checks if this attachment has a token. */
+    public boolean hasToken() {
+        return !TextUtils.isEmpty(mToken);
+    }
+
+    /** Gets the token for this attachment. */
+    public String getToken() {
+        return assertNonNull(mToken);
+    }
+
+    public boolean isUploadComplete() {
+        return mIsUploadComplete;
+    }
+
+    public void setUploadIsComplete() {
+        mIsUploadComplete = true;
+    }
+
+    /** Returns the ID of the associated tab, or Tab.INVALID_TAB_ID if no tab is associated. */
+    public int getTabId() {
+        return tabId != null ? tabId : Tab.INVALID_TAB_ID;
+    }
+
+    public boolean retryUpload(ComposeboxQueryControllerBridge composeBoxQueryControllerBridge) {
+        if (type == FuseboxAttachmentType.ATTACHMENT_TAB && mIsFetchingTabDataFromCache) {
+            return uploadToBackend(
+                    assumeNonNull(composeBoxQueryControllerBridge),
+                    /* bypassTabCacheThisTime= */ true);
+        }
+        return false;
+    }
+}

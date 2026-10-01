@@ -1,0 +1,326 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//ios/web/public/js_messaging/compile_ts.gni")
+import("//ios/web/public/js_messaging/optimize_ts.gni")
+
+compile_ts("page_content_types_ts") {
+  sources = [ "resources/page_content_types.ts" ]
+}
+
+compile_ts("common_ts") {
+  sources = [ "resources/common.ts" ]
+  deps = [ "//components/autofill/ios/form_util:child_frame_registration_ts" ]
+}
+
+compile_ts("dom_node_ids_ts") {
+  sources = [ "resources/dom_node_ids.ts" ]
+}
+
+optimize_ts("dom_node_ids_test_ts") {
+  testonly = true
+  sources = [ "resources/dom_node_ids_test.ts" ]
+  output_name = "dom_node_ids_test"
+  deps = [
+    ":dom_node_ids_ts",
+    "//ios/web/public/js_messaging:gcrweb",
+  ]
+}
+
+compile_ts("annotated_page_content_extraction_ts") {
+  sources = [ "resources/annotated_page_content_extraction.ts" ]
+
+  # TODO(crbug.com/491073038): Look into removing the dependency
+  # on autofill components.
+  deps = [
+    ":common_ts",
+    ":dom_node_ids_ts",
+    ":page_content_types_ts",
+    "//components/autofill/ios/form_util:fill_js_constants",
+    "//ios/web/public/js_messaging:gcrweb",
+  ]
+}
+
+optimize_ts("page_context_extractor_js") {
+  visibility = [ ":page_context_extractor_feature" ]
+  sources = [ "resources/page_context_extractor.ts" ]
+  deps = [
+    ":annotated_page_content_extraction_ts",
+    ":common_ts",
+    ":page_content_types_ts",
+    "//components/autofill/ios/form_util:child_frame_registration_ts",
+    "//ios/web/public/js_messaging:gcrweb",
+  ]
+}
+
+optimize_ts("page_context_wrapper_test_js") {
+  testonly = true
+  visibility = [
+    ":page_context_wrapper_test_feature",
+    ":unit_tests",
+  ]
+  sources = [ "resources/page_context_wrapper_test.ts" ]
+  deps = [
+    "//components/autofill/ios/form_util:child_frame_registration_test_ts",
+    "//components/autofill/ios/form_util:child_frame_registration_ts",
+    "//ios/web/public/js_messaging:gcrweb",
+  ]
+}
+
+source_set("page_context_wrapper_test_feature") {
+  testonly = true
+  sources = [
+    "page_context_wrapper_test_java_script_feature.h",
+    "page_context_wrapper_test_java_script_feature.mm",
+  ]
+  deps = [
+    ":page_context_wrapper_test_js",
+    "//base",
+    "//ios/web/public/js_messaging",
+  ]
+}
+
+source_set("page_context_extractor_feature") {
+  sources = [
+    "page_context_extractor_java_script_feature.h",
+    "page_context_extractor_java_script_feature.mm",
+  ]
+  deps = [
+    ":page_context_extractor_js",
+    "//base",
+    "//components/autofill/ios/form_util:frame_registration_feature",
+    "//ios/chrome/browser/intelligence/features",
+    "//ios/public/provider/chrome/browser/bwg:gemini_api",
+    "//ios/web/public/js_messaging",
+  ]
+}
+
+source_set("autofill_data_extraction_utils") {
+  sources = [
+    "autofill_data_extraction_utils.h",
+    "autofill_data_extraction_utils.mm",
+  ]
+  deps = [
+    "//base",
+    "//components/autofill/core/browser",
+    "//components/autofill/core/common",
+    "//components/autofill/ios/browser",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//ios/chrome/browser/intelligence/features",
+  ]
+}
+
+source_set("proto_wrappers") {
+  sources = [
+    "annotated_page_content_extraction_utils.h",
+    "annotated_page_content_extraction_utils.mm",
+    "frame_grafter.h",
+    "frame_grafter.mm",
+    "page_context_wrapper.h",
+    "page_context_wrapper.mm",
+    "page_context_wrapper_config.h",
+    "page_context_wrapper_config.mm",
+  ]
+
+  deps = [
+    ":autofill_data_extraction_utils",
+    ":metrics_constants",
+    ":page_context_extractor_feature",
+    ":page_context_metrics",
+    ":utils",
+    "//base",
+    "//components/autofill/core/browser",
+    "//components/autofill/core/common",
+    "//components/autofill/ios/browser",
+    "//components/autofill/ios/browser:util",
+    "//components/autofill/ios/form_util:child_frame_registrar",
+    "//components/optimization_guide:optimization_guide_buildflags",
+    "//components/optimization_guide/core:features",
+    "//components/optimization_guide/core:page_content",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//components/security_state/core",
+    "//components/security_state/ios",
+    "//ios/chrome/browser/intelligence/features",
+    "//ios/chrome/browser/shared/model/web_state_list",
+    "//ios/chrome/browser/snapshots/model",
+    "//ios/public/provider/chrome/browser/bwg:gemini_api",
+    "//ios/web/find_in_page",
+    "//ios/web/public",
+    "//ios/web/public/js_messaging",
+    "//net",
+    "//url",
+  ]
+}
+
+source_set("ios_smart_tab_grouping_proto_wrapper") {
+  sources = [
+    "ios_smart_tab_grouping_request_wrapper.h",
+    "ios_smart_tab_grouping_request_wrapper.mm",
+  ]
+
+  deps = [
+    ":proto_wrappers",
+    "//base",
+    "//components/optimization_guide/proto:optimization_guide_proto_gen",
+    "//ios/chrome/browser/intelligence/features",
+    "//ios/chrome/browser/intelligence/persist_tab_context/model",
+    "//ios/chrome/browser/shared/model/web_state_list",
+    "//ios/web/public",
+  ]
+}
+
+source_set("page_context_metrics") {
+  sources = [
+    "page_context_wrapper_metrics.h",
+    "page_context_wrapper_metrics.mm",
+  ]
+  deps = [
+    ":metrics_constants",
+    "//base",
+  ]
+}
+
+source_set("utils") {
+  sources = [
+    "page_context_utils.h",
+    "page_context_utils.mm",
+  ]
+  deps = [
+    "//base",
+    "//components/autofill/core/common",
+    "//components/autofill/ios/browser:util",
+    "//ios/chrome/browser/intelligence/features",
+    "//ios/web/public",
+    "//url",
+  ]
+}
+
+source_set("page_context_wrapper_test_utils") {
+  testonly = true
+  sources = [
+    "page_context_wrapper_test_utils.h",
+    "page_context_wrapper_test_utils.mm",
+  ]
+  deps = [
+    "//base",
+    "//net:test_support",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "annotated_page_content_extraction_utils_unittest.mm",
+    "autofill_data_extraction_utils_unittest.mm",
+    "dom_node_ids_js_unittest.mm",
+    "frame_grafter_unittest.mm",
+    "ios_smart_tab_grouping_request_wrapper_unittest.mm",
+    "page_context_extractor_java_script_feature_unittest.mm",
+    "page_context_utils_unittest.mm",
+    "page_context_wrapper_config_unittest.mm",
+    "page_context_wrapper_metrics_unittest.mm",
+    "page_context_wrapper_unittest.mm",
+  ]
+  deps = [
+    ":autofill_data_extraction_utils",
+    ":dom_node_ids_test_ts",
+    ":ios_smart_tab_grouping_proto_wrapper",
+    ":metrics_constants",
+    ":page_context_extractor_feature",
+    ":page_context_metrics",
+    ":page_context_wrapper_test_feature",
+    ":page_context_wrapper_test_utils",
+    ":proto_wrappers",
+    ":utils",
+    "//base/test:test_support",
+    "//components/autofill/core/browser:test_support",
+    "//components/autofill/core/common",
+    "//components/autofill/ios/browser",
+    "//components/autofill/ios/browser:test_support",
+    "//components/autofill/ios/browser:util",
+    "//components/autofill/ios/common",
+    "//components/autofill/ios/form_util:autofill_form_features",
+    "//components/autofill/ios/form_util:child_frame_registrar",
+    "//components/autofill/ios/form_util:form_handler_feature",
+    "//components/autofill/ios/form_util:frame_registration_feature",
+    "//components/autofill/ios/form_util:test_support",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//components/prefs:test_support",
+    "//components/safe_browsing/ios/browser:allow_list",
+    "//components/security_state/core",
+    "//ios/chrome/browser/intelligence/features",
+    "//ios/chrome/browser/intelligence/persist_tab_context/model",
+    "//ios/chrome/browser/shared/model/browser/test:test_support",
+    "//ios/chrome/browser/shared/model/paths",
+    "//ios/chrome/browser/shared/model/profile/test",
+    "//ios/chrome/browser/shared/model/web_state_list",
+    "//ios/chrome/browser/snapshots/model",
+    "//ios/chrome/browser/snapshots/model:model_swift",
+    "//ios/chrome/browser/snapshots/model:snapshot_source",
+    "//ios/chrome/browser/snapshots/model:test_utils",
+    "//ios/chrome/test:test_support",
+    "//ios/testing:embedded_test_server_support",
+    "//ios/web/common:features",
+    "//ios/web/find_in_page",
+    "//ios/web/js_messaging:java_script_feature_manager_header",
+    "//ios/web/public/js_messaging",
+    "//ios/web/public/test",
+    "//ios/web/public/test:javascript_test",
+    "//ios/web/public/test/fakes",
+    "//net:test_support",
+    "//testing/gtest",
+    "//url",
+  ]
+}
+
+source_set("metrics_constants") {
+  sources = [
+    "metrics_constants.h",
+    "metrics_constants.mm",
+  ]
+}
+
+source_set("eg_app_support+eg2") {
+  configs += [ "//build/config/ios:xctest_config" ]
+  testonly = true
+  sources = [
+    "page_context_app_interface.h",
+    "page_context_app_interface.mm",
+  ]
+  deps = [
+    "//base",
+    "//base/test:test_support",
+    "//ios/chrome/browser/intelligence/features",
+    "//ios/chrome/browser/intelligence/proto_wrappers",
+    "//ios/chrome/test/app:test_support",
+    "//ios/web/public",
+  ]
+}
+
+source_set("eg_test_support+eg2") {
+  configs += [ "//build/config/ios:xctest_config" ]
+  testonly = true
+  sources = [
+    "page_context_app_interface.h",
+    "page_context_app_interface_stub.mm",
+  ]
+  deps = [
+    "//ios/chrome/test/earl_grey:eg_test_support+eg2",
+    "//ios/testing/earl_grey:eg_test_support+eg2",
+  ]
+}
+
+source_set("eg2_tests") {
+  configs += [ "//build/config/ios:xctest_config" ]
+  testonly = true
+  sources = [ "page_context_egtest.mm" ]
+  deps = [
+    ":eg_test_support+eg2",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//ios/chrome/browser/intelligence/features",
+    "//ios/chrome/test/earl_grey:eg_test_support+eg2",
+    "//ios/testing/earl_grey:eg_test_support+eg2",
+    "//net:test_support",
+  ]
+}

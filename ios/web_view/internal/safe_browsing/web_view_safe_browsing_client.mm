@@ -1,0 +1,89 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/web_view/internal/safe_browsing/web_view_safe_browsing_client.h"
+
+#import "base/check.h"
+#import "base/memory/weak_ptr.h"
+#import "components/safe_browsing/core/browser/db/v5_get_hash_protocol_manager.h"
+#import "ios/components/security_interstitials/safe_browsing/safe_browsing_service.h"
+#import "ios/web/public/web_state.h"
+#import "ios/web_view/internal/app/application_context.h"
+
+WebViewSafeBrowsingClient::WebViewSafeBrowsingClient(
+    PrefService* prefs,
+    safe_browsing::V5GetHashProtocolManager* v5_get_hash_protocol_manager)
+    : prefs_(prefs),
+      v5_get_hash_protocol_manager_(v5_get_hash_protocol_manager) {
+  DCHECK(prefs_);
+}
+
+WebViewSafeBrowsingClient::~WebViewSafeBrowsingClient() = default;
+
+base::WeakPtr<SafeBrowsingClient> WebViewSafeBrowsingClient::AsWeakPtr() {
+  return weak_factory_.GetWeakPtr();
+}
+
+PrefService* WebViewSafeBrowsingClient::GetPrefs() {
+  return prefs_;
+}
+
+SafeBrowsingService* WebViewSafeBrowsingClient::GetSafeBrowsingService() {
+  return ios_web_view::ApplicationContext::GetInstance()
+      ->GetSafeBrowsingService();
+}
+
+safe_browsing::RealTimeUrlLookupServiceBase*
+WebViewSafeBrowsingClient::GetRealTimeUrlLookupService() {
+  // ios/web_view does not support real time lookups, for now.
+  return nullptr;
+}
+
+safe_browsing::HashRealTimeService*
+WebViewSafeBrowsingClient::GetHashRealTimeService() {
+  // ios/web_view does not support hash-real-time lookups.
+  return nullptr;
+}
+
+safe_browsing::V5GetHashProtocolManager*
+WebViewSafeBrowsingClient::GetV5GetHashProtocolManager() {
+  return v5_get_hash_protocol_manager_;
+}
+
+variations::VariationsService*
+WebViewSafeBrowsingClient::GetVariationsService() {
+  // ios/web_view does not support variations.
+  return nullptr;
+}
+
+bool WebViewSafeBrowsingClient::ShouldBlockUnsafeResource(
+    const security_interstitials::UnsafeResource& resource) const {
+  return false;
+}
+
+bool WebViewSafeBrowsingClient::OnMainFrameUrlQueryCancellationDecided(
+    web::WebState* web_state,
+    const GURL& url) {
+  // ios/web_view does not support OnMainFrameUrlQueryCancellationDecided.
+  return true;
+}
+
+bool WebViewSafeBrowsingClient::ShouldForceSyncRealTimeUrlChecks() const {
+  // This setting only applies if real time lookups are supported. ios/web_view
+  // does not support real time lookups, for now.
+  return false;
+}
+
+void WebViewSafeBrowsingClient::OnSecurityInterstitialShown(
+    web::WebState* web_state,
+    const security_interstitials::UnsafeResource& resource) {
+  // ios/web_view does not support enterprise reporting.
+}
+
+std::unique_ptr<safe_browsing::ClientSideDetectionHostBase>
+WebViewSafeBrowsingClient::CreateClientSideDetectionHost(
+    web::WebState* web_state) {
+  // ios/web_view does not support client side detection.
+  return nullptr;
+}

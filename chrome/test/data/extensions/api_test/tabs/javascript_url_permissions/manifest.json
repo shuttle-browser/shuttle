@@ -1,0 +1,15 @@
+{
+  "name": "javascript url permissions test",
+  "version": "0.1",
+  "manifest_version": 3,
+  "description": "Tests that navigating a tab to a javascript URLs only works if the extension has access to that tabs host.",
+  "background": {
+    "service_worker": "test.js"
+  },
+  "permissions": [
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://b.com/"
+  ]
+}

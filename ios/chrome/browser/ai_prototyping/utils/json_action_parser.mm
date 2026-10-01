@@ -1,0 +1,417 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/ai_prototyping/utils/json_action_parser.h"
+
+#import <string>
+
+#import "base/logging.h"
+#import "base/strings/string_number_conversions.h"
+
+namespace ai_prototyping {
+
+namespace {
+
+// Based on available Actions in
+// components/optimization_guide/proto/features/actions_data.proto.
+enum class ActionType {
+  kUnknown,
+  kNavigate,
+  kClick,
+  kHistoryBack,
+  kHistoryForward,
+  kType,
+  kWait,
+  kScroll,
+  kScrollTo,
+  kSelect,
+  kAttemptLogin,
+  kAttemptFormFilling,
+  kCreateTab,
+  kCloseTab,
+  kActivateTab,
+};
+
+// Based on the field names in
+// components/optimization_guide/proto/features/actions_data.proto.
+ActionType GetActionType(const std::string& key) {
+  if (key == "navigate") {
+    return ActionType::kNavigate;
+  }
+  if (key == "click") {
+    return ActionType::kClick;
+  }
+  if (key == "back") {
+    return ActionType::kHistoryBack;
+  }
+  if (key == "forward") {
+    return ActionType::kHistoryForward;
+  }
+  if (key == "type") {
+    return ActionType::kType;
+  }
+  if (key == "wait") {
+    return ActionType::kWait;
+  }
+  if (key == "scroll") {
+    return ActionType::kScroll;
+  }
+  if (key == "scroll_to") {
+    return ActionType::kScrollTo;
+  }
+  if (key == "select") {
+    return ActionType::kSelect;
+  }
+  if (key == "attempt_login") {
+    return ActionType::kAttemptLogin;
+  }
+  if (key == "attempt_form_filling") {
+    return ActionType::kAttemptFormFilling;
+  }
+  if (key == "create_tab") {
+    return ActionType::kCreateTab;
+  }
+  if (key == "close_tab") {
+    return ActionType::kCloseTab;
+  }
+  if (key == "activate_tab") {
+    return ActionType::kActivateTab;
+  }
+  return ActionType::kUnknown;
+}
+
+bool MapNavigateAction(const base::DictValue& dict,
+                       optimization_guide::proto::Action* action) {
+  auto* navigate = action->mutable_navigate();
+  if (const std::string* url = dict.FindString("url")) {
+    navigate->set_url(*url);
+  }
+  if (std::optional<int> tab_id = dict.FindInt("tab_id")) {
+    navigate->set_tab_id(*tab_id);
+  }
+  return navigate->ByteSizeLong() > 0;
+}
+
+bool MapHistoryBackAction(const base::DictValue& dict,
+                          optimization_guide::proto::Action* action) {
+  auto* history_back = action->mutable_back();
+  if (std::optional<int> tab_id = dict.FindInt("tab_id")) {
+    history_back->set_tab_id(*tab_id);
+  }
+  return history_back->ByteSizeLong() > 0;
+}
+
+bool MapHistoryForwardAction(const base::DictValue& dict,
+                             optimization_guide::proto::Action* action) {
+  auto* history_forward = action->mutable_forward();
+  if (std::optional<int> tab_id = dict.FindInt("tab_id")) {
+    history_forward->set_tab_id(*tab_id);
+  }
+  return history_forward->ByteSizeLong() > 0;
+}
+
+// Helper method that retrieves the coordinates for point-based actions like
+// click.
+void MapCoordinate(const base::DictValue& dict,
+                   optimization_guide::proto::Coordinate* coordinate) {
+  if (std::optional<int> x = dict.FindInt("x")) {
+    coordinate->set_x(*x);
+  }
+  if (std::optional<int> y = dict.FindInt("y")) {
+    coordinate->set_y(*y);
+  }
+}
+
+// Helper method that retrieves the target element for point-based actions like
+// click.
+void MapActionTarget(const base::DictValue& dict,
+                     optimization_guide::proto::ActionTarget* target) {
+  if (const base::DictValue* coordinate = dict.FindDict("coordinate")) {
+    MapCoordinate(*coordinate, target->mutable_coordinate());
+    return;
+  }
+  if (std::optional<int> content_node_id = dict.FindInt("content_node_id")) {
+    target->set_content_node_id(*content_node_id);
+  }
+  if (const std::string* document_identifier =
+          dict.FindString("document_identifier")) {
+    target->mutable_document_identifier()->set_serialized_token(
+        *document_identifier);
+  }
+}
+
+bool MapClickAction(const base::DictValue& dict,
+                    optimization_guide::proto::Action* action) {
+  auto* click = action->mutable_click();
+  if (std::optional<int> tab_id = dict.FindInt("tab_id")) {
+    click->set_tab_id(*tab_id);
+  }
+  if (const base::DictValue* target = dict.FindDict("target")) {
+    MapActionTarget(*target, click->mutable_target());
+  }
+  if (std::optional<int> click_type = dict.FindInt("click_type")) {
+    if (optimization_guide::proto::ClickAction_ClickType_IsValid(*click_type)) {
+      click->set_click_type(
+          static_cast<optimization_guide::proto::ClickAction_ClickType>(
+              *click_type));
+    }
+  }
+  if (std::optional<int> click_count = dict.FindInt("click_count")) {
+    if (optimization_guide::proto::ClickAction_ClickCount_IsValid(
+            *click_count)) {
+      click->set_click_count(
+          static_cast<optimization_guide::proto::ClickAction_ClickCount>(
+              *click_count));
+    }
+  }
+  return click->ByteSizeLong() > 0;
+}
+
+bool MapTypeAction(const base::DictValue& dict,
+                   optimization_guide::proto::Action* action) {
+  auto* type = action->mutable_type();
+  if (std::optional<int> tab_id = dict.FindInt("tab_id")) {
+    type->set_tab_id(*tab_id);
+  }
+  if (const base::DictValue* target = dict.FindDict("target")) {
+    MapActionTarget(*target, type->mutable_target());
+  }
+  if (const std::string* text = dict.FindString("text")) {
+    type->set_text(*text);
+  }
+  if (std::optional<int> mode = dict.FindInt("mode")) {
+    if (optimization_guide::proto::TypeAction_TypeMode_IsValid(*mode)) {
+      type->set_mode(
+          static_cast<optimization_guide::proto::TypeAction_TypeMode>(*mode));
+    }
+  }
+  if (std::optional<bool> follow_by_enter = dict.FindBool("follow_by_enter")) {
+    type->set_follow_by_enter(*follow_by_enter);
+  }
+  return type->ByteSizeLong() > 0;
+}
+
+bool MapWaitAction(const base::DictValue& dict,
+                   optimization_guide::proto::Action* action) {
+  auto* wait = action->mutable_wait();
+  if (std::optional<int> wait_time_ms = dict.FindInt("wait_time_ms")) {
+    wait->set_wait_time_ms(*wait_time_ms);
+  }
+  if (std::optional<int> observe_tab_id = dict.FindInt("observe_tab_id")) {
+    wait->set_observe_tab_id(*observe_tab_id);
+  }
+  return wait->ByteSizeLong() > 0;
+}
+
+bool MapScrollAction(const base::DictValue& dict,
+                     optimization_guide::proto::Action* action) {
+  auto* scroll = action->mutable_scroll();
+  if (std::optional<int> tab_id = dict.FindInt("tab_id")) {
+    scroll->set_tab_id(*tab_id);
+  }
+  if (const base::DictValue* target = dict.FindDict("target")) {
+    MapActionTarget(*target, scroll->mutable_target());
+  }
+  if (std::optional<int> direction = dict.FindInt("direction")) {
+    if (optimization_guide::proto::ScrollAction_ScrollDirection_IsValid(
+            *direction)) {
+      scroll->set_direction(
+          static_cast<optimization_guide::proto::ScrollAction_ScrollDirection>(
+              *direction));
+    }
+  }
+  if (const std::string* distance = dict.FindString("distance")) {
+    double distance_value;
+    base::StringToDouble(*distance, &distance_value);
+    scroll->set_distance(distance_value);
+  }
+  return scroll->ByteSizeLong() > 0;
+}
+
+bool MapScrollToAction(const base::DictValue& dict,
+                       optimization_guide::proto::Action* action) {
+  auto* scroll = action->mutable_scroll_to();
+  if (std::optional<int> tab_id = dict.FindInt("tab_id")) {
+    scroll->set_tab_id(*tab_id);
+  }
+  if (const base::DictValue* target = dict.FindDict("target")) {
+    MapActionTarget(*target, scroll->mutable_target());
+  }
+  return scroll->ByteSizeLong() > 0;
+}
+
+bool MapSelectAction(const base::DictValue& dict,
+                     optimization_guide::proto::Action* action) {
+  auto* select = action->mutable_select();
+  if (std::optional<int> tab_id = dict.FindInt("tab_id")) {
+    select->set_tab_id(*tab_id);
+  }
+  if (const base::DictValue* target = dict.FindDict("target")) {
+    MapActionTarget(*target, select->mutable_target());
+  }
+  if (const std::string* value = dict.FindString("value")) {
+    select->set_value(*value);
+  }
+  return select->ByteSizeLong() > 0;
+}
+
+bool MapAttemptLoginAction(const base::DictValue& dict,
+                           optimization_guide::proto::Action* action) {
+  auto* attempt_login = action->mutable_attempt_login();
+  if (std::optional<int> tab_id = dict.FindInt("tab_id")) {
+    attempt_login->set_tab_id(*tab_id);
+  }
+  if (const base::ListValue* login_targets = dict.FindList("login_targets")) {
+    for (const base::Value& login_target_val : *login_targets) {
+      if (!login_target_val.is_dict()) {
+        continue;
+      }
+      const base::DictValue& login_target_dict = login_target_val.GetDict();
+      auto* login_target = attempt_login->add_login_targets();
+      if (std::optional<int> login_type =
+              login_target_dict.FindInt("login_type")) {
+        if (optimization_guide::proto::
+                AttemptLoginAction_LoginTarget_LoginType_IsValid(*login_type)) {
+          login_target->set_login_type(
+              static_cast<optimization_guide::proto::
+                              AttemptLoginAction_LoginTarget_LoginType>(
+                  *login_type));
+        }
+      }
+      if (const base::DictValue* target =
+              login_target_dict.FindDict("target")) {
+        MapActionTarget(*target, login_target->mutable_target());
+      }
+    }
+  }
+  return attempt_login->ByteSizeLong() > 0;
+}
+
+bool MapAttemptFormFillingAction(const base::DictValue& dict,
+                                 optimization_guide::proto::Action* action) {
+  auto* attempt_form_filling = action->mutable_attempt_form_filling();
+  if (std::optional<int> tab_id = dict.FindInt("tab_id")) {
+    attempt_form_filling->set_tab_id(*tab_id);
+  }
+  if (const base::ListValue* form_filling_requests =
+          dict.FindList("form_filling_requests")) {
+    for (const base::Value& request_val : *form_filling_requests) {
+      if (!request_val.is_dict()) {
+        continue;
+      }
+      const base::DictValue& request_dict = request_val.GetDict();
+      auto* form_filling_request =
+          attempt_form_filling->add_form_filling_requests();
+      if (std::optional<int> requested_data =
+              request_dict.FindInt("requested_data")) {
+        if (optimization_guide::proto::FormFillingRequest_RequestedData_IsValid(
+                *requested_data)) {
+          form_filling_request->set_requested_data(
+              static_cast<
+                  optimization_guide::proto::FormFillingRequest_RequestedData>(
+                  *requested_data));
+        }
+      }
+      if (const std::string* section_label =
+              request_dict.FindString("section_label")) {
+        form_filling_request->set_section_label(*section_label);
+      }
+      if (const base::ListValue* trigger_fields =
+              request_dict.FindList("trigger_fields")) {
+        for (const base::Value& target_val : *trigger_fields) {
+          if (!target_val.is_dict()) {
+            continue;
+          }
+          MapActionTarget(target_val.GetDict(),
+                          form_filling_request->add_trigger_fields());
+        }
+      }
+    }
+  }
+  return attempt_form_filling->ByteSizeLong() > 0;
+}
+
+bool MapCreateTabAction(const base::DictValue& dict,
+                        optimization_guide::proto::Action* action) {
+  auto* create_tab = action->mutable_create_tab();
+  if (std::optional<int> window_id = dict.FindInt("window_id")) {
+    create_tab->set_window_id(*window_id);
+  }
+  if (std::optional<bool> foreground = dict.FindBool("foreground")) {
+    create_tab->set_foreground(*foreground);
+  }
+  return create_tab->ByteSizeLong() > 0;
+}
+
+bool MapCloseTabAction(const base::DictValue& dict,
+                       optimization_guide::proto::Action* action) {
+  auto* close_tab = action->mutable_close_tab();
+  if (std::optional<int> tab_id = dict.FindInt("tab_id")) {
+    close_tab->set_tab_id(*tab_id);
+  }
+  return close_tab->ByteSizeLong() > 0;
+}
+
+bool MapActivateTabAction(const base::DictValue& dict,
+                          optimization_guide::proto::Action* action) {
+  optimization_guide::proto::ActivateTabAction* activate_tab =
+      action->mutable_activate_tab();
+  if (std::optional<int> tab_id = dict.FindInt("tab_id")) {
+    activate_tab->set_tab_id(*tab_id);
+  }
+  return activate_tab->ByteSizeLong() > 0;
+}
+
+}  // namespace
+
+bool ParseActionFromDict(const base::DictValue& dict,
+                         optimization_guide::proto::Action* action) {
+  if (dict.empty()) {
+    return false;
+  }
+
+  // Get the first entry in the dictionary.
+  const auto it = dict.begin();
+  const std::string& key = it->first;
+  const base::Value& value = it->second;
+
+  if (!value.is_dict()) {
+    return false;
+  }
+
+  switch (GetActionType(key)) {
+    case ActionType::kNavigate:
+      return MapNavigateAction(value.GetDict(), action);
+    case ActionType::kClick:
+      return MapClickAction(value.GetDict(), action);
+    case ActionType::kHistoryBack:
+      return MapHistoryBackAction(value.GetDict(), action);
+    case ActionType::kHistoryForward:
+      return MapHistoryForwardAction(value.GetDict(), action);
+    case ActionType::kType:
+      return MapTypeAction(value.GetDict(), action);
+    case ActionType::kWait:
+      return MapWaitAction(value.GetDict(), action);
+    case ActionType::kScroll:
+      return MapScrollAction(value.GetDict(), action);
+    case ActionType::kScrollTo:
+      return MapScrollToAction(value.GetDict(), action);
+    case ActionType::kSelect:
+      return MapSelectAction(value.GetDict(), action);
+    case ActionType::kAttemptLogin:
+      return MapAttemptLoginAction(value.GetDict(), action);
+    case ActionType::kAttemptFormFilling:
+      return MapAttemptFormFillingAction(value.GetDict(), action);
+    case ActionType::kCreateTab:
+      return MapCreateTabAction(value.GetDict(), action);
+    case ActionType::kCloseTab:
+      return MapCloseTabAction(value.GetDict(), action);
+    case ActionType::kActivateTab:
+      return MapActivateTabAction(value.GetDict(), action);
+    case ActionType::kUnknown:
+      return false;
+  }
+}
+
+}  // namespace ai_prototyping

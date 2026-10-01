@@ -1,0 +1,108 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROMEOS_ASH_EXPERIENCES_ARC_TEST_CONNECTION_HOLDER_UTIL_H_
+#define CHROMEOS_ASH_EXPERIENCES_ARC_TEST_CONNECTION_HOLDER_UTIL_H_
+
+#include <utility>
+
+#include "base/functional/callback_helpers.h"
+#include "base/memory/raw_ptr.h"
+#include "base/run_loop.h"
+#include "base/scoped_observation.h"
+#include "chromeos/ash/experiences/arc/session/connection_holder.h"
+
+namespace arc {
+
+namespace internal {
+
+// An observer that runs a closure when the connection is ready.
+template <typename InstanceType, typename HostType>
+class ReadinessObserver
+    : public ConnectionHolder<InstanceType, HostType>::Observer {
+ public:
+  ReadinessObserver(ConnectionHolder<InstanceType, HostType>* holder,
+                    base::OnceClosure closure)
+      : holder_(holder), closure_(std::move(closure)) {
+    observation_.Observe(holder_);
+  }
+
+  ReadinessObserver(const ReadinessObserver&) = delete;
+  ReadinessObserver& operator=(const ReadinessObserver&) = delete;
+
+  ~ReadinessObserver() override = default;
+
+ private:
+  void OnConnectionReady() override {
+    if (!closure_) {
+      return;
+    }
+    std::move(closure_).Run();
+  }
+
+  const raw_ptr<ConnectionHolder<InstanceType, HostType>>
+      holder_;  // Owned by caller
+  base::OnceClosure closure_;
+  base::ScopedObservation<
+      ConnectionHolder<InstanceType, HostType>,
+      typename ConnectionHolder<InstanceType, HostType>::Observer>
+      observation_{this};
+};
+
+}  // namespace internal
+
+// Waiter for tests that need to trigger an instance close after registering for
+// the close notification.
+template <typename InstanceType, typename HostType>
+class InstanceClosedWaiter
+    : public ConnectionHolder<InstanceType, HostType>::Observer {
+ public:
+  explicit InstanceClosedWaiter(
+      ConnectionHolder<InstanceType, HostType>* holder)
+      : holder_(holder) {
+    if (holder_->IsConnected()) {
+      observation_.Observe(holder_);
+    }
+  }
+
+  InstanceClosedWaiter(const InstanceClosedWaiter&) = delete;
+  InstanceClosedWaiter& operator=(const InstanceClosedWaiter&) = delete;
+
+  ~InstanceClosedWaiter() override = default;
+
+  void Wait() {
+    if (!holder_->IsConnected()) {
+      return;
+    }
+    run_loop_.Run();
+  }
+
+ private:
+  void OnConnectionClosed() override { run_loop_.Quit(); }
+
+  const raw_ptr<ConnectionHolder<InstanceType, HostType>>
+      holder_;  // Owned by caller
+  base::RunLoop run_loop_;
+  base::ScopedObservation<
+      ConnectionHolder<InstanceType, HostType>,
+      typename ConnectionHolder<InstanceType, HostType>::Observer>
+      observation_{this};
+};
+
+// Waits for the instance to be ready.
+template <typename InstanceType, typename HostType>
+void WaitForInstanceReady(ConnectionHolder<InstanceType, HostType>* holder) {
+  if (holder->IsConnected()) {
+    return;
+  }
+
+  base::RunLoop run_loop;
+  internal::ReadinessObserver<InstanceType, HostType> readiness_observer(
+      holder, run_loop.QuitClosure());
+  run_loop.Run();
+}
+
+}  // namespace arc
+
+#endif  // CHROMEOS_ASH_EXPERIENCES_ARC_TEST_CONNECTION_HOLDER_UTIL_H_

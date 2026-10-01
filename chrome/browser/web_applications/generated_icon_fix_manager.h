@@ -1,0 +1,126 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_WEB_APPLICATIONS_GENERATED_ICON_FIX_MANAGER_H_
+#define CHROME_BROWSER_WEB_APPLICATIONS_GENERATED_ICON_FIX_MANAGER_H_
+
+#include <optional>
+
+#include "base/auto_reset.h"
+#include "base/containers/flat_set.h"
+#include "base/containers/span.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
+#include "base/scoped_observation.h"
+#include "base/time/time.h"
+#include "base/types/pass_key.h"
+#include "base/values.h"
+#include "chrome/browser/web_applications/scheduler/generated_icon_fix_result.h"
+#include "chrome/browser/web_applications/web_app_registrar_observer.h"
+#include "components/webapps/common/web_app_id.h"
+#include "services/network/public/cpp/network_connection_tracker.h"
+
+namespace web_app {
+
+class AllAppsLock;
+class AppLock;
+class WebApp;
+class WebAppProvider;
+class WebAppRegistrar;
+class WithAppResources;
+
+// Used by metrics.
+enum class GeneratedIconFixScheduleDecision {
+  kNotSynced = 0,
+  kTimeWindowExpired = 1,
+  kNotRequired = 2,
+  kAttemptLimitReached = 3,
+  kAlreadyScheduled = 4,
+  kSchedule = 5,
+
+  kMaxValue = kSchedule,
+};
+
+class GeneratedIconFixManager
+    : public WebAppRegistrarObserver,
+      public network::NetworkConnectionTracker::NetworkConnectionObserver {
+ public:
+  // Disable the logic that schedules generated icon fixes. Only intended for
+  // use in tests that need to check the app state before these operations are
+  // done.
+  static base::AutoReset<bool> DisableGeneratedIconFixesForTesting();
+  static base::AutoReset<bool> DisableAutoRetryForTesting();
+
+  GeneratedIconFixManager();
+  ~GeneratedIconFixManager() override;
+
+  void SetProvider(base::PassKey<WebAppProvider>, WebAppProvider& provider);
+  void Start();
+
+  void InvalidateWeakPtrsForTesting();
+
+  base::flat_set<webapps::AppId>& scheduled_fixes_for_testing() {
+    return scheduled_fixes_;
+  }
+
+  base::OnceCallback<void(const webapps::AppId&,
+                          GeneratedIconFixScheduleDecision)>&
+  maybe_schedule_callback_for_testing() {
+    return maybe_schedule_callback_for_testing_;
+  }
+
+  base::OnceCallback<void(const webapps::AppId&, GeneratedIconFixResult)>&
+  fix_completed_callback_for_testing() {
+    return fix_completed_callback_for_testing_;
+  }
+
+ private:
+  void ScheduleFixes(AllAppsLock& all_apps_lock, base::DictValue& debug_value);
+  void ScheduleAllFixes();
+  void ScheduleFixAfterSyncInstall(const webapps::AppId& app_id);
+
+  void OnWebAppsWillBeUpdatedFromSync(
+      base::span<const WebApp* const> new_apps_state) override;
+  void OnAppRegistrarDestroyed() override;
+  void OnConnectionChanged(
+      net::NetworkChangeNotifier::ConnectionType type) override;
+
+  // Returns whether a fix was newly scheduled for `app_id`.
+  bool MaybeScheduleFix(const webapps::AppId& app_id,
+                        WithAppResources& resources,
+                        base::DictValue& debug_value);
+  // Separate method that simply calls the above one, required due to
+  // templating.
+  void MaybeScheduleFixAppLock(const webapps::AppId& app_id,
+                               AppLock& app_lock,
+                               base::DictValue& debug_value);
+
+  GeneratedIconFixScheduleDecision MakeScheduleDecision(const WebApp* app);
+  void StartFix(const webapps::AppId& app_id);
+  void FixCompleted(const webapps::AppId& app_id,
+                    GeneratedIconFixResult result);
+
+  raw_ptr<WebAppProvider> provider_ = nullptr;
+  base::ScopedObservation<WebAppRegistrar, WebAppRegistrarObserver>
+      registrar_observation_{this};
+  base::ScopedObservation<
+      network::NetworkConnectionTracker,
+      network::NetworkConnectionTracker::NetworkConnectionObserver>
+      network_observation_{this};
+
+  base::flat_set<webapps::AppId> scheduled_fixes_;
+
+  base::OnceCallback<void(const webapps::AppId&,
+                          GeneratedIconFixScheduleDecision)>
+      maybe_schedule_callback_for_testing_;
+  base::OnceCallback<void(const webapps::AppId&, GeneratedIconFixResult)>
+      fix_completed_callback_for_testing_;
+
+  base::WeakPtrFactory<GeneratedIconFixManager> weak_ptr_factory_{this};
+};
+
+}  // namespace web_app
+
+#endif  // CHROME_BROWSER_WEB_APPLICATIONS_GENERATED_ICON_FIX_MANAGER_H_

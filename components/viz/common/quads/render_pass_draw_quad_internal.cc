@@ -1,0 +1,41 @@
+// Copyright 2011 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/viz/common/quads/render_pass_draw_quad_internal.h"
+
+#include "base/trace_event/traced_value.h"
+#include "base/values.h"
+#include "cc/base/math_util.h"
+#include "components/viz/common/traced_value.h"
+#include "third_party/skia/include/core/SkImageFilter.h"
+
+namespace viz {
+
+void RenderPassDrawQuadInternal::SetFilters(const gfx::Vector2dF& scale,
+                                            const gfx::PointF& origin,
+                                            const float backdrop_quality) {
+  this->filters_scale = scale;
+  this->filters_origin = origin;
+  this->backdrop_filter_quality = backdrop_quality;
+}
+
+RenderPassDrawQuadInternal::RenderPassDrawQuadInternal() = default;
+
+RenderPassDrawQuadInternal::RenderPassDrawQuadInternal(
+    const RenderPassDrawQuadInternal& other) = default;
+
+RenderPassDrawQuadInternal::~RenderPassDrawQuadInternal() = default;
+
+void RenderPassDrawQuadInternal::ExtendValue(
+    base::trace_event::TracedValue* value) const {
+  cc::MathUtil::AddToTracedValue("mask_uv_rect", mask_uv_rect, value);
+  cc::MathUtil::AddToTracedValue("mask_texture_size", mask_texture_size, value);
+  cc::MathUtil::AddToTracedValue("filters_scale", filters_scale, value);
+  cc::MathUtil::AddToTracedValue("filters_origin", filters_origin, value);
+  value->SetDouble("backdrop_filter_quality", backdrop_filter_quality);
+  value->SetBoolean("force_anti_aliasing_off", force_anti_aliasing_off);
+  value->SetBoolean("intersects_damage_under", intersects_damage_under);
+}
+
+}  // namespace viz

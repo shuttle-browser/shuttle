@@ -1,0 +1,33 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_READING_LIST_UI_BUNDLED_READING_LIST_LIST_ITEM_H_
+#define IOS_CHROME_BROWSER_READING_LIST_UI_BUNDLED_READING_LIST_LIST_ITEM_H_
+
+#import <Foundation/Foundation.h>
+
+class GURL;
+@class FaviconAttributes;
+@class ReadingListListItemCustomActionFactory;
+
+// Protocol used to supply reading list data to list items.
+@protocol ReadingListListItem <NSObject>
+
+// The title to display.
+@property(nonatomic, copy) NSString* title;
+// The URL of the Reading List entry.
+@property(nonatomic, assign) GURL entryURL;
+// The URL of the page presenting the favicon to display.
+@property(nonatomic, assign) GURL faviconPageURL;
+// Whether the cloud slash icon should be shown.
+@property(nonatomic, assign) BOOL showCloudSlashIcon;
+// The custom action factory.
+@property(nonatomic, weak)
+    ReadingListListItemCustomActionFactory* customActionFactory;
+// Attributes for favicon.
+@property(nonatomic, strong) FaviconAttributes* attributes;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_READING_LIST_UI_BUNDLED_READING_LIST_LIST_ITEM_H_

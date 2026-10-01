@@ -1,0 +1,35 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt_prefs.h"
+
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/default_browser/default_browser_features.h"
+#include "chrome/common/pref_names.h"
+#include "components/prefs/pref_service.h"
+
+void chrome::startup::default_prompt::ResetPromptPrefs(Profile* profile) {
+  PrefService* local_state = g_browser_process->local_state();
+  local_state->ClearPref(prefs::kDefaultBrowserInfobarLastDeclinedTime);
+  local_state->ClearPref(prefs::kDefaultBrowserInfobarDeclinedCount);
+
+  local_state->ClearPref(prefs::kDefaultBrowserDeclinedCount);
+  local_state->ClearPref(prefs::kDefaultBrowserLastDeclinedTime);
+}
+
+void chrome::startup::default_prompt::UpdatePrefsForDismissedPrompt(
+    Profile* profile) {
+  base::Time now = base::Time::Now();
+
+  PrefService* local_state = g_browser_process->local_state();
+  local_state->SetTime(prefs::kDefaultBrowserInfobarLastDeclinedTime, now);
+  local_state->SetInteger(
+      prefs::kDefaultBrowserInfobarDeclinedCount,
+      local_state->GetInteger(prefs::kDefaultBrowserInfobarDeclinedCount) + 1);
+
+  local_state->SetTime(prefs::kDefaultBrowserLastDeclinedTime, now);
+  local_state->SetInteger(
+      prefs::kDefaultBrowserDeclinedCount,
+      local_state->GetInteger(prefs::kDefaultBrowserInfobarDeclinedCount) + 1);
+}

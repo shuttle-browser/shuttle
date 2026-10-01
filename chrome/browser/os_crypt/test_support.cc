@@ -1,0 +1,59 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/os_crypt/test_support.h"
+
+#include "chrome/elevation_service/elevator.h"
+#include "chrome/install_static/buildflags.h"
+#include "chrome/install_static/install_constants.h"
+#include "chrome/install_static/install_modes.h"
+
+namespace os_crypt {
+
+FakeInstallDetails::FakeInstallDetails(bool use_old_elevator_interface)
+    : constants_(install_static::kInstallModes[0]) {
+  // AppGuid determines registry locations, so use a test one.
+#if BUILDFLAG(USE_GOOGLE_UPDATE_INTEGRATION)
+  constants_.app_guid = L"testguid";
+#endif
+
+  // This is the CLSID of the test interface, used if
+  // kElevatorClsIdForTestingSwitch is supplied on the command line of the
+  // elevation service.
+  constants_.elevator_clsid = {elevation_service::kTestElevatorClsid};
+
+  if (use_old_elevator_interface) {
+    // This is the IID of the non-channel specific IElevator Interface. See
+    // chrome/elevation_service/elevation_service_idl.idl.
+    // {A949CB4E-C4F9-44C4-B213-6BF8AA9AC69C}
+    constants_.elevator_iid = {0xA949CB4E,
+                               0xC4F9,
+                               0x44C4,
+                               {0xB2, 0x13, 0x6B, 0xF8, 0xAA, 0x9A, 0xC6,
+                                0x9C}};  // IElevator IID and TypeLib
+  } else {
+    // This is the IID of the non-channel specific IElevator2 Interface. See
+    // chrome/elevation_service/elevation_service_idl.idl.
+    // {8F7B6792-784D-4047-845D-1782EFBEF205}
+    constants_.elevator_iid = {0x8F7B6792,
+                               0x784D,
+                               0x4047,
+                               {0x84, 0x5D, 0x17, 0x82, 0xEF, 0xBE, 0xF2,
+                                0x05}};  // IElevator2 IID and TypeLib
+  }
+  // These are used to generate the name of the service, so keep them
+  // different from any real installs.
+  constants_.base_app_name = L"testapp";
+  constants_.base_app_id = L"testapp";
+
+  // This is needed for shell_integration::GetDefaultBrowser which runs on
+  // startup.
+  constants_.browser_prog_id_prefix = L"TestHTM";
+  constants_.pdf_prog_id_prefix = L"TestPDF";
+
+  set_mode(&constants_);
+  set_system_level(true);
+}
+
+}  // namespace os_crypt

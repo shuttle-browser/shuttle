@@ -1,0 +1,64 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_ANDROID_AUTOFILL_BROWSER_ANDROID_AUTOFILL_PROVIDER_TEST_API_H_
+#define COMPONENTS_ANDROID_AUTOFILL_BROWSER_ANDROID_AUTOFILL_PROVIDER_TEST_API_H_
+
+#include "components/android_autofill/browser/android_autofill_provider.h"
+
+namespace autofill {
+
+class AndroidAutofillProviderTestApi {
+ public:
+  explicit AndroidAutofillProviderTestApi(AndroidAutofillProvider* provider)
+      : provider_(*provider) {}
+
+  void StartNewSession(AndroidAutofillManager* manager,
+                       const FormData& form,
+                       const FormFieldData& field) {
+    provider_->StartNewSession(manager, form, field);
+  }
+
+  const FormDataAndroid* form() && {
+    return provider_->session_state_ ? provider_->session_state_->form.get()
+                                     : nullptr;
+  }
+  const FieldGlobalId last_focused_field_id() && {
+    return provider_->session_state_
+               ? provider_->session_state_->current_field.id
+               : FieldGlobalId{};
+  }
+  const url::Origin last_focused_field_origin() && {
+    return provider_->session_state_
+               ? provider_->session_state_->current_field.origin
+               : url::Origin{};
+  }
+  const content::GlobalRenderFrameHostId last_queried_field_rfh_id() && {
+    return provider_->session_state_
+               ? provider_->session_state_->last_queried_field_rfh_id
+               : content::GlobalRenderFrameHostId{};
+  }
+  bool is_credman_sheet_showing() && {
+    return provider_->credman_sheet_status_ ==
+           AndroidAutofillProvider::CredManBottomSheetLifecycle::kIsShowing;
+  }
+
+  TouchToFillKeyboardSuppressor& keyboard_suppressor() {
+    return *provider_->keyboard_suppressor_;
+  }
+
+  void OnTriggerPasskeyRequest() { provider_->OnTriggerPasskeyRequest(); }
+
+ private:
+  const raw_ref<AndroidAutofillProvider> provider_;
+};
+
+inline AndroidAutofillProviderTestApi test_api(
+    AndroidAutofillProvider& provider) {
+  return AndroidAutofillProviderTestApi(&provider);
+}
+
+}  // namespace autofill
+
+#endif  // COMPONENTS_ANDROID_AUTOFILL_BROWSER_ANDROID_AUTOFILL_PROVIDER_TEST_API_H_

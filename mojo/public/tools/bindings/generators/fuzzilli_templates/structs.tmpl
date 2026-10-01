@@ -1,0 +1,47 @@
+{%- import "macros.tmpl" as macros -%}
+
+extension ILType {
+{%- for struct in structs %}
+    fileprivate static let {{struct|format_il_type}}: ILType = .object(
+        ofGroup: "{{struct|fully_qualified_name}}",
+        withProperties: [
+        {%- for field in struct.fields %}
+            "{{field.name}}",
+        {%- endfor %}
+        ])
+    fileprivate static let {{struct|format_il_type}}Constructor: ILType = .constructor([
+    {%- for field in struct.fields %}
+        {{ macros.to_fuzzilli_parameter(field) }}
+    {%- endfor %}
+    ] => .{{struct|format_il_type}})
+{%- endfor %}
+
+{%- for struct in response_structs %}
+    fileprivate static let {{struct|format_il_type}}: ILType = .object(
+        ofGroup: "{{struct|fully_qualified_name}}",
+        withProperties: [
+        {%- for field in struct.fields %}
+            "{{field.name}}",
+        {%- endfor %}
+        ])
+{%- endfor %}
+}
+
+extension ObjectGroup {
+{%- for struct in structs + response_structs %}
+    fileprivate static let {{struct|format_unique_name|to_camel(True)}} = ObjectGroup(
+        name: "{{struct|fully_qualified_name}}",
+        instanceType: .{{struct|format_il_type}},
+        {%- if struct.fields %}
+        properties: [
+            {%- for field in struct.fields %}
+            "{{field.name}}": .{{field.kind|format_il_type}},
+            {%- endfor %}
+        ],
+        {%- else %}
+        properties: [:],
+        {%- endif %}
+        methods: [:]
+    )
+{%- endfor %}
+}

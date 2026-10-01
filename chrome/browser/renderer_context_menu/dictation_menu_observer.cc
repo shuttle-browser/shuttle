@@ -1,0 +1,80 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/renderer_context_menu/dictation_menu_observer.h"
+
+#include "base/feature_list.h"
+#include "chrome/app/chrome_command_ids.h"
+#include "chrome/browser/dictation/dictation_keyed_service.h"
+#include "chrome/browser/dictation/features.h"
+#include "chrome/browser/user_education/user_education_service.h"
+#include "chrome/grit/branded_strings.h"
+#include "chrome/grit/generated_resources.h"
+#include "components/renderer_context_menu/render_view_context_menu_proxy.h"
+#include "content/public/browser/browser_context.h"
+#include "content/public/browser/context_menu_params.h"
+#include "content/public/browser/global_dom_node_id.h"
+#include "content/public/browser/render_frame_host.h"
+#include "third_party/blink/public/common/context_menu_data/edit_flags.h"
+#include "third_party/blink/public/common/dom/dom_node_id.h"
+#include "ui/base/l10n/l10n_util.h"
+
+namespace dictation {
+
+DictationMenuObserver::DictationMenuObserver(RenderViewContextMenuProxy* proxy)
+    : proxy_(*proxy) {}
+
+DictationMenuObserver::~DictationMenuObserver() = default;
+
+void DictationMenuObserver::InitMenu(const content::ContextMenuParams& params) {
+  // Note that `field_renderer_id` is `DOMNodeIdType` within blink. Its value
+  // is only meaningful within the renderer that generated it.
+  target_details_.target_id = params.form_field_dom_node_id;
+  target_details_.richly_editable =
+      params.edit_flags & blink::ContextMenuDataEditFlags::kCanEditRichly;
+
+  DictationKeyedService* service = GetDictationService();
+  if (service && service->ShouldShowContextMenuItem()) {
+    CHECK(base::FeatureList::IsEnabled(kDictation));
+    proxy_->AddMenuItem(
+        IDC_CONTENT_CONTEXT_DICTATION,
+        l10n_util::GetStringUTF16(IDS_DICTATION_CONTEXT_MENU_STRING));
+  }
+}
+
+bool DictationMenuObserver::IsCommandIdSupported(int command_id) {
+  return command_id == IDC_CONTENT_CONTEXT_DICTATION;
+}
+
+bool DictationMenuObserver::IsCommandIdEnabled(int command_id) {
+  CHECK_EQ(command_id, IDC_CONTENT_CONTEXT_DICTATION);
+  return true;
+}
+
+void DictationMenuObserver::ExecuteCommand(int command_id) {
+  CHECK_EQ(command_id, IDC_CONTENT_CONTEXT_DICTATION);
+  content::RenderFrameHost* rfh = proxy_->GetRenderFrameHost();
+  if (!rfh) {
+    return;
+  }
+
+  UserEducationService::MaybeNotifyNewBadgeFeatureUsed(
+      proxy_->GetBrowserContext(), kDictation);
+
+  DictationKeyedService* service = GetDictationService();
+  if (service) {
+    service->ContextMenuHandler(target_details_);
+  }
+}
+
+DictationKeyedService* DictationMenuObserver::GetDictationService() {
+  content::BrowserContext* context = proxy_->GetBrowserContext();
+  if (!context) {
+    return nullptr;
+  }
+
+  return DictationKeyedService::Get(context);
+}
+
+}  // namespace dictation

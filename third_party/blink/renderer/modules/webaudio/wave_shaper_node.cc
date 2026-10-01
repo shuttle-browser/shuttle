@@ -1,0 +1,156 @@
+/*
+ * Copyright (C) 2011, Google Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1.  Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2.  Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+ * DAMAGE.
+ */
+
+#include "third_party/blink/renderer/modules/webaudio/wave_shaper_node.h"
+
+#include "base/compiler_specific.h"
+#include "base/containers/span.h"
+#include "third_party/blink/renderer/bindings/modules/v8/v8_wave_shaper_options.h"
+#include "third_party/blink/renderer/modules/webaudio/audio_graph_tracer.h"
+#include "third_party/blink/renderer/modules/webaudio/base_audio_context.h"
+#include "third_party/blink/renderer/platform/bindings/exception_messages.h"
+#include "third_party/blink/renderer/platform/bindings/exception_state.h"
+
+namespace blink {
+
+WaveShaperNode::WaveShaperNode(BaseAudioContext& context) : AudioNode(context) {
+  SetHandler(WaveShaperHandler::Create(*this, context.sampleRate()));
+}
+
+WaveShaperNode* WaveShaperNode::Create(BaseAudioContext& context,
+                                       ExceptionState& exception_state) {
+  CHECK(IsMainThread());
+
+  return MakeGarbageCollected<WaveShaperNode>(context);
+}
+
+WaveShaperNode* WaveShaperNode::Create(BaseAudioContext* context,
+                                       const WaveShaperOptions* options,
+                                       ExceptionState& exception_state) {
+  WaveShaperNode* node = Create(*context, exception_state);
+
+  if (!node) {
+    return nullptr;
+  }
+
+  node->HandleChannelOptions(options, exception_state);
+
+  if (options->hasCurve()) {
+    node->setCurve(options->curve(), exception_state);
+  }
+
+  node->setOversample(options->oversample());
+
+  return node;
+}
+WaveShaperHandler& WaveShaperNode::GetWaveShaperHandler() const {
+  return static_cast<WaveShaperHandler&>(Handler());
+}
+
+void WaveShaperNode::SetCurveImpl(base::span<const float> curve,
+                                  ExceptionState& exception_state) {
+  CHECK(IsMainThread());
+
+  unsigned length = static_cast<unsigned>(curve.size());
+
+  if (!curve.empty()) {
+    if (!base::CheckedNumeric<unsigned>(curve.size()).AssignIfValid(&length)) {
+      exception_state.ThrowDOMException(
+          DOMExceptionCode::kNotSupportedError,
+          "The curve length exceeds the maximum supported length");
+      return;
+    }
+    if (curve.size() < 2) {
+      exception_state.ThrowDOMException(
+          DOMExceptionCode::kInvalidAccessError,
+          ExceptionMessages::IndexExceedsMinimumBound<unsigned>("curve length",
+                                                                length, 2));
+      return;
+    }
+  }
+
+  // This is to synchronize with the changes made in
+  // AudioBasicProcessorNode::CheckNumberOfChannelsForInput() where we can
+  // Initialize() and Uninitialize(), changing the number of kernels.
+  DeferredTaskHandler::GraphAutoLocker locker(
+      context()->GetDeferredTaskHandler());
+
+  GetWaveShaperHandler().SetCurve(curve);
+}
+
+void WaveShaperNode::setCurve(NotShared<DOMFloat32Array> curve,
+                              ExceptionState& exception_state) {
+  CHECK(IsMainThread());
+
+  if (curve) {
+    SetCurveImpl(curve->AsSpan(), exception_state);
+  } else {
+    SetCurveImpl(base::span<const float>(), exception_state);
+  }
+}
+
+void WaveShaperNode::setCurve(const Vector<float>& curve,
+                              ExceptionState& exception_state) {
+  CHECK(IsMainThread());
+
+  SetCurveImpl(base::span<const float>(curve), exception_state);
+}
+
+NotShared<DOMFloat32Array> WaveShaperNode::curve() const {
+  const Vector<float>* curve = GetWaveShaperHandler().Curve();
+  if (!curve) {
+    return NotShared<DOMFloat32Array>(nullptr);
+  }
+
+  NotShared<DOMFloat32Array> result(DOMFloat32Array::Create(curve->size()));
+  result->AsSpan().copy_from(*curve);
+
+  return result;
+}
+
+void WaveShaperNode::setOversample(const V8OverSampleType& type) {
+  CHECK(IsMainThread());
+
+  // This is to synchronize with the changes made in
+  // AudioBasicProcessorNode::checkNumberOfChannelsForInput() where we can
+  // initialize() and uninitialize().
+  DeferredTaskHandler::GraphAutoLocker locker(
+      context()->GetDeferredTaskHandler());
+  GetWaveShaperHandler().SetOversample(type.AsEnum());
+}
+
+V8OverSampleType WaveShaperNode::oversample() const {
+  return V8OverSampleType(GetWaveShaperHandler().Oversample());
+}
+
+void WaveShaperNode::ReportDidCreate() {
+  GraphTracer().DidCreateAudioNode(this);
+}
+
+void WaveShaperNode::ReportWillBeDestroyed() {
+  GraphTracer().WillDestroyAudioNode(this);
+}
+
+}  // namespace blink

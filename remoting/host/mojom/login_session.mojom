@@ -1,0 +1,15 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module remoting.mojom;
+
+// An interface for the remote session info process to get information about its
+// systemd login session. The remote of this interface is owned by the UNTRUSTED
+// remote session info process that is run as the login user, while the receiver
+// is owned by the TRUSTED daemon process.
+interface LoginSessionService {
+  // Returns whether the session info process is running in a session that is
+  // managed by Chrome Remote Desktop.
+  IsRunningInCrdSession() => (bool is_crd_session);
+};

@@ -1,0 +1,184 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/contextual_panel/coordinator/contextual_sheet_coordinator.h"
+
+#import "base/memory/raw_ptr.h"
+#import "ios/chrome/browser/contextual_panel/coordinator/contextual_sheet_presenter.h"
+#import "ios/chrome/browser/contextual_panel/coordinator/panel_content_coordinator.h"
+#import "ios/chrome/browser/contextual_panel/ui/contextual_sheet_view_controller.h"
+#import "ios/chrome/browser/contextual_panel/ui/trait_collection_change_delegate.h"
+#import "ios/chrome/browser/fullscreen/ui_bundled/animated_scoped_fullscreen_disabler.h"
+#import "ios/chrome/browser/fullscreen/ui_bundled/fullscreen_controller.h"
+#import "ios/chrome/browser/fullscreen/ui_bundled/scoped_fullscreen_disabler.h"
+#import "ios/chrome/browser/shared/coordinator/scene/state/browser_layout_state.h"
+#import "ios/chrome/browser/shared/model/browser/browser.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/contextual_sheet_commands.h"
+#import "ios/chrome/browser/shared/public/commands/fullscreen_commands.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/common/ui/util/ui_util.h"
+
+@interface ContextualSheetCoordinator () <BrowserLayoutStateObserver,
+                                          TraitCollectionChangeDelegate>
+
+@end
+
+@implementation ContextualSheetCoordinator {
+  ContextualSheetViewController* _viewController;
+
+  PanelContentCoordinator* _panelContentCoordinator;
+
+  // The AnimatedFullscreenDisabler to disable fullscreen when the bottom
+  // omnibox + contextual sheet are open.
+  std::unique_ptr<ScopedFullscreenDisabler> _fullscreenDisabler;
+  std::unique_ptr<AnimatedScopedFullscreenDisabler>
+      _legacyAnimatedFullscreenDisabler;
+
+  // The BrowserLayoutState observed by this coordinator.
+  __weak BrowserLayoutState* _browserLayoutState;
+}
+
+- (void)start {
+  _browserLayoutState = self.browser->GetBrowserLayoutState();
+  [_browserLayoutState addObserver:self];
+
+  // On iPad, let the panel coordinator present directly using iOS's built-in
+  // UISheetController.
+  if (IsRegularXRegularSizeClass(self.baseViewController)) {
+    [self createPanelCoordinatorWithBaseViewController:self.baseViewController];
+  } else {
+    // On iPhone/iPad multiwindow, use the custom sheet this coordinator
+    // provides.
+    __weak __typeof(self) weakSelf = self;
+    [self addViewControllerToBaseViewControllerAnimated:YES
+                                     panelAdditionBlock:^{
+                                       [weakSelf
+                                           createPanelCoordinatorAtStartBlock];
+                                     }];
+  }
+}
+
+- (void)stop {
+  [_panelContentCoordinator stop];
+  _panelContentCoordinator = nil;
+
+  if (_viewController) {
+    [self removeViewControllerFromBaseViewController];
+  }
+
+  _fullscreenDisabler = nullptr;
+  _legacyAnimatedFullscreenDisabler = nullptr;
+  [_browserLayoutState removeObserver:self];
+  _browserLayoutState = nil;
+}
+
+- (void)traitCollectionDidChangeForViewController:
+    (UIViewController*)viewController {
+  // Use existence of `_viewController` as a signal for whether the new layout
+  // has been prepared.
+  if (IsRegularXRegularSizeClass(self.baseViewController) && _viewController) {
+    [self removeViewControllerFromBaseViewController];
+    [_panelContentCoordinator
+        presentFromNewBaseViewController:self.baseViewController];
+  } else if (!IsRegularXRegularSizeClass(self.baseViewController) &&
+             !_viewController) {
+    __weak __typeof(self) weakSelf = self;
+    [self addViewControllerToBaseViewControllerAnimated:NO
+                                     panelAdditionBlock:^{
+                                       [weakSelf embedPanelCoordinator];
+                                     }];
+  }
+}
+
+// Helper block for creating the panel coordinator in a block from -start.
+- (void)createPanelCoordinatorAtStartBlock {
+  [self createPanelCoordinatorWithBaseViewController:_viewController];
+}
+
+// Creates the panel coordinator using the given base view controller for the
+// new coordinator.
+- (void)createPanelCoordinatorWithBaseViewController:
+    (UIViewController*)baseViewController {
+  _panelContentCoordinator = [[PanelContentCoordinator alloc]
+      initWithBaseViewController:baseViewController
+                         browser:self.browser];
+  _panelContentCoordinator.traitCollectionDelegate = self;
+  [_panelContentCoordinator start];
+}
+
+// Embeds the panel coordinator into the right parent view controller.
+- (void)embedPanelCoordinator {
+  [_panelContentCoordinator embedInParentViewController:_viewController];
+}
+
+// Removes this coordinator' view controller from the base.
+- (void)removeViewControllerFromBaseViewController {
+  [_viewController willMoveToParentViewController:nil];
+  [_viewController.view removeFromSuperview];
+  [_viewController removeFromParentViewController];
+
+  _viewController = nil;
+}
+
+// Adds this coordinator's view controller to the base view controller.
+// `additionBlock` is the block that actually adds the panel's content into this
+// coordinator's view controller.
+- (void)addViewControllerToBaseViewControllerAnimated:(BOOL)animated
+                                   panelAdditionBlock:
+                                       (void (^)(void))additionBlock {
+  _viewController = [[ContextualSheetViewController alloc] init];
+  _viewController.contextualSheetHandler = HandlerForProtocol(
+      self.browser->GetCommandDispatcher(), ContextualSheetCommands);
+  _viewController.traitCollectionDelegate = self;
+
+  [self.baseViewController addChildViewController:_viewController];
+
+  [self.presenter insertContextualSheet:_viewController.view];
+
+  [_viewController didMoveToParentViewController:self.baseViewController];
+
+  if (_browserLayoutState.toolbarPosition == ToolbarPosition::kBottom) {
+    [self disableFullscreen];
+  }
+
+  if (additionBlock) {
+    additionBlock();
+  }
+
+  if (animated) {
+    [_viewController animateAppearance];
+  }
+}
+
+- (void)disableFullscreen {
+  if (IsFullscreenRefactoringEnabled()) {
+    id<FullscreenCommands> handler = HandlerForProtocol(
+        self.browser->GetCommandDispatcher(), FullscreenCommands);
+    _fullscreenDisabler = std::make_unique<ScopedFullscreenDisabler>(handler);
+  } else {
+    _legacyAnimatedFullscreenDisabler =
+        std::make_unique<AnimatedScopedFullscreenDisabler>(
+            FullscreenController::FromBrowser(self.browser));
+    _legacyAnimatedFullscreenDisabler->StartAnimation();
+  }
+}
+
+- (void)enableFullscreen {
+  _fullscreenDisabler = nullptr;
+  _legacyAnimatedFullscreenDisabler = nullptr;
+}
+
+#pragma mark - BrowserLayoutStateObserver
+
+- (void)browserLayoutState:(BrowserLayoutState*)layoutState
+    didChangeToolbarPosition:(ToolbarPosition)toolbarPosition {
+  if (toolbarPosition == ToolbarPosition::kBottom) {
+    [self disableFullscreen];
+  } else {
+    [self enableFullscreen];
+  }
+}
+
+@end

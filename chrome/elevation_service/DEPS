@@ -1,0 +1,7 @@
+include_rules = [
+  "+chrome/install_static",
+  "+chrome/installer/util",
+  "+chrome/windows_services/service_program",
+  "+components/crx_file",
+  "+third_party/zlib",
+]

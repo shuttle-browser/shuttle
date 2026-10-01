@@ -1,0 +1,76 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CONTENT_BROWSER_PRELOADING_PRERENDER_PRERENDER_HANDLE_IMPL_H_
+#define CONTENT_BROWSER_PRELOADING_PRERENDER_PRERENDER_HANDLE_IMPL_H_
+
+#include "base/memory/weak_ptr.h"
+#include "base/observer_list.h"
+#include "base/scoped_observation.h"
+#include "content/browser/preloading/prerender/prerender_host.h"
+#include "content/common/content_export.h"
+#include "content/public/browser/preloading.h"
+#include "content/public/browser/prerender_handle.h"
+
+class GURL;
+
+namespace content {
+
+class PrerenderHostRegistry;
+
+class CONTENT_EXPORT PrerenderHandleImpl final
+    : public PrerenderHandle,
+      public PrerenderHost::Observer {
+ public:
+  PrerenderHandleImpl(
+      base::WeakPtr<PrerenderHostRegistry> prerender_host_registry,
+      PrerenderHostId prerender_host_id,
+      const GURL& url,
+      std::optional<net::HttpNoVarySearchData> no_vary_search_hint);
+  ~PrerenderHandleImpl() override;
+
+  // PrerenderHandle:
+  PrerenderHostId GetPrerenderHostId() const override;
+  const GURL& GetInitialPrerenderingUrl() const override;
+  const std::optional<net::HttpNoVarySearchData>& GetNoVarySearchHint()
+      const override;
+  base::WeakPtr<PrerenderHandle> GetWeakPtr() override;
+  void SetPreloadingAttemptFailureReason(
+      PreloadingFailureReason reason) override;
+  void AddObserver(PrerenderHandle::Observer* observer) override;
+  void RemoveObserver(PrerenderHandle::Observer* observer) override;
+  bool IsValid() const override;
+  bool IsWaitingForResponseHeaders() const override;
+
+  // PrerenderHost::Observer:
+  void OnActivated() override;
+  void OnFailed(PrerenderFinalStatus status) override;
+  void OnHostDestroyed(PrerenderFinalStatus status) override;
+  void OnHeadersReceived(NavigationHandle& navigation_handle) override;
+
+  PrerenderHostId prerender_host_id_for_testing() const {
+    return prerender_host_id_;
+  }
+
+ private:
+  const PrerenderHostId prerender_host_id_;
+
+  base::WeakPtr<PrerenderHostRegistry> prerender_host_registry_;
+
+  const GURL prerendering_url_;
+  const std::optional<net::HttpNoVarySearchData> no_vary_search_hint_;
+
+  enum class State { kLoading, kReady, kActivated, kCanceled };
+  State state_ = State::kLoading;
+
+  base::ObserverList<PrerenderHandle::Observer> observers_;
+
+  base::ScopedObservation<PrerenderHost, PrerenderHandleImpl> obs_{this};
+
+  base::WeakPtrFactory<PrerenderHandle> weak_factory_{this};
+};
+
+}  // namespace content
+
+#endif  // CONTENT_BROWSER_PRELOADING_PRERENDER_PRERENDER_HANDLE_IMPL_H_

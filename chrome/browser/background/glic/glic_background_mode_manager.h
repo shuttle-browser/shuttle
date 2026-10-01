@@ -1,0 +1,163 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_BACKGROUND_GLIC_GLIC_BACKGROUND_MODE_MANAGER_H_
+#define CHROME_BROWSER_BACKGROUND_GLIC_GLIC_BACKGROUND_MODE_MANAGER_H_
+
+#include <map>
+#include <memory>
+
+#include "base/callback_list.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
+#include "base/scoped_observation.h"
+#include "chrome/browser/background/glic/glic_launcher_configuration.h"
+#include "chrome/browser/glic/host/glic.mojom.h"
+#include "chrome/browser/profiles/profile_manager_observer.h"
+#include "chrome/browser/profiles/profile_observer.h"
+
+#if BUILDFLAG(IS_WIN)
+#include "chrome/browser/startup/startup_launch_manager.h"
+#endif
+
+class ScopedKeepAlive;
+class ScopedProfileKeepAlive;
+class StatusTray;
+
+namespace ui {
+class Accelerator;
+}
+
+namespace glic {
+
+class GlicStatusIcon;
+
+// Delegate interface for GlicStatusIcon to trigger background mode actions
+// without tightly coupling to the manager.
+class GlicBackgroundDelegate {
+ public:
+  virtual ~GlicBackgroundDelegate() = default;
+  virtual void ToggleUI(bool prevent_close, mojom::InvocationSource source) = 0;
+};
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(HotkeyUsage)
+enum class HotkeyUsage {
+  kDefault = 0,
+  kCustom = 1,
+  kMaxValue = kCustom,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicHotkeyUsage)
+
+// This is a global feature in the browser process that manages the
+// enabling/disabling of glic background mode. When background mode is enabled,
+// chrome is set to keep alive the browser process, so that this class can
+// listen to a global hotkey, and provide a status icon for triggering the UI.
+class GlicBackgroundModeManager : public GlicLauncherConfiguration::Observer,
+                                  public ProfileManagerObserver,
+                                  public ProfileObserver,
+                                  public GlicBackgroundDelegate {
+ public:
+  explicit GlicBackgroundModeManager(StatusTray* status_tray);
+  ~GlicBackgroundModeManager() override;
+
+  // GlicBackgroundDelegate:
+  void ToggleUI(bool prevent_close, mojom::InvocationSource source) override;
+
+  static GlicBackgroundModeManager* GetInstance();
+
+  // GlicConfiguration::Observer
+  void OnEnabledChanged(bool enabled) override;
+  void OnGlobalHotkeyChanged() override;
+
+  // ProfileManagerObserver:
+  void OnProfileAdded(Profile* profile) override;
+
+  // ProfileObserver:
+  void OnProfileWillBeDestroyed(Profile* profile) override;
+
+  void HandleHotkey(const ui::Accelerator& accelerator);
+
+  void Shutdown();
+
+  enum class HotkeyIndex : uint8_t {
+    kPanelKey,
+  };
+
+  const std::vector<ui::Accelerator>& RegisteredHotkeyForTesting() {
+    return actual_registered_hotkeys_;
+  }
+
+  bool IsInBackgroundModeForTesting() {
+    return keep_alive_ != nullptr;
+  }
+
+  GlicStatusIcon* GetStatusIconForTesting() { return status_icon_.get(); }
+
+  void EnterBackgroundMode(bool show_status_icon);
+  void ExitBackgroundMode();
+
+ private:
+  class AcceleratorRegistrar;
+
+  void RegisterHotkeys(const std::vector<ui::Accelerator>& updated_hotkeys);
+  void UnregisterHotkey();
+  void UpdateState();
+
+  bool ShouldRegisterGlobalHotkey() const;
+  bool IsEnabledInAnyLoadedProfile();
+  bool UpdateExpectedHotkeys();
+  ui::Accelerator GetHotkeyToShow() const;
+
+  // A helper class for observing pref changes.
+  std::unique_ptr<GlicLauncherConfiguration> configuration_;
+
+  std::unique_ptr<ScopedKeepAlive> keep_alive_;
+  std::unique_ptr<ScopedProfileKeepAlive> profile_keep_alive_;
+
+  // TODO(https://crbug.com/378139555): Figure out how to not dangle this
+  // pointer (and other instances of StatusTray).
+  raw_ptr<StatusTray, DanglingUntriaged> status_tray_;
+  // Class that represents the glic status icon. Only exists when the background
+  // mode is enabled.
+  std::unique_ptr<GlicStatusIcon> status_icon_;
+
+#if BUILDFLAG(IS_WIN)
+  // Handles interactions with StartupLaunchManager
+  StartupLaunchManager::Client startup_launch_client_{
+      StartupLaunchReason::kGlic};
+#endif
+
+  // The current state of the launcher_enabled pref. Note that the pref is a
+  // local state and is thus per-installation. Each profile also has a
+  // "settings_policy" pref which can be used to disable the feature for a
+  // profile. Background mode is entered only if `enabled_pref` is true AND at
+  // least one loaded profile is enabled by policy.
+  bool enabled_pref_ = false;
+
+  // The actual registered hotkey may be different from the expected hotkey
+  // because the Glic launcher may be disabled or registration fails which
+  // results in no hotkey being registered and is represented with an empty
+  // accelerator.
+  std::vector<ui::Accelerator> expected_registered_hotkeys_;
+  std::vector<ui::Accelerator> actual_registered_hotkeys_;
+
+  // Accelerator subclass to control accelerator registration between different
+  // platform.
+  std::unique_ptr<AcceleratorRegistrar> accelerator_registrar_;
+
+  // Listens to changes to IsEnabled() for profiles.
+  std::map<Profile*, base::CallbackListSubscription>
+      profile_enabled_subscriptions_;
+  std::map<Profile*, base::CallbackListSubscription>
+      profile_consent_subscriptions_;
+  using ScopedProfileObserver =
+      base::ScopedObservation<Profile, ProfileObserver>;
+  std::map<Profile*, ScopedProfileObserver> profile_observers_;
+  base::WeakPtrFactory<GlicBackgroundModeManager> weak_ptr_factory_{this};
+};
+}  // namespace glic
+
+#endif  // CHROME_BROWSER_BACKGROUND_GLIC_GLIC_BACKGROUND_MODE_MANAGER_H_

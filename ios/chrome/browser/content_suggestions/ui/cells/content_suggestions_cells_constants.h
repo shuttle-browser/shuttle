@@ -1,0 +1,28 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_CONTENT_SUGGESTIONS_UI_CELLS_CONTENT_SUGGESTIONS_CELLS_CONSTANTS_H_
+#define IOS_CHROME_BROWSER_CONTENT_SUGGESTIONS_UI_CELLS_CONTENT_SUGGESTIONS_CELLS_CONSTANTS_H_
+
+#import <UIKit/UIKit.h>
+
+// Returns the default height of Return To Recent Tab tile depending on flags.
+CGFloat ReturnToRecentTabHeight();
+
+// Default size of the Return To Recent Tab tile.
+extern const CGSize kReturnToRecentTabSize;
+
+// Accessibility Identifier for QuerySuggestionView.
+extern NSString* const kQuerySuggestionViewA11yIdentifierPrefix;
+
+// Image container width when kMagicStack is enabled.
+extern const CGFloat kMagicStackImageContainerWidth;
+
+// The corner radius to give the MVT image background rounded square corners.
+extern const CGFloat kMostVisitedTileImageContainerSquareCornerRadius;
+
+// Size of the favicon or icon in a most visited tile.
+extern const CGFloat kMostVisitedTileIconSize;
+
+#endif  // IOS_CHROME_BROWSER_CONTENT_SUGGESTIONS_UI_CELLS_CONTENT_SUGGESTIONS_CELLS_CONSTANTS_H_

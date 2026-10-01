@@ -1,0 +1,365 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/bookmarks/bookmark_bar_controller.h"
+
+#include "base/feature_list.h"
+#include "base/types/to_address.h"
+#include "chrome/browser/bookmarks/bookmark_model_factory.h"
+#include "chrome/browser/defaults.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/search/search.h"
+#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
+#include "chrome/browser/ui/bookmarks/bookmark_utils.h"
+#include "chrome/browser/ui/browser_window.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/fullscreen/browser_window_fullscreen_controller.h"
+#include "chrome/browser/ui/sad_tab.h"
+#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
+#include "chrome/browser/ui/webui/new_tab_page/new_tab_page_ui.h"
+#include "chrome/browser/ui/webui/new_tab_page_third_party/new_tab_page_third_party_ui.h"
+#include "chrome/browser/ui/webui/ntp/new_tab_ui.h"
+#include "chrome/common/pref_names.h"
+#include "chrome/common/url_constants.h"
+#include "components/bookmarks/browser/bookmark_model.h"
+#include "components/bookmarks/common/bookmark_bar_visibility_state.h"
+#include "components/bookmarks/common/bookmark_pref_names.h"
+#include "components/feature_engagement/public/feature_constants.h"
+#include "components/prefs/pref_service.h"
+#include "components/saved_tab_groups/public/tab_group_sync_service.h"
+#include "components/search/ntp_features.h"
+#include "components/tabs/public/split_tab_data.h"
+#include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
+#include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/web_contents.h"
+
+namespace {
+
+// TODO(crbug.com/382494946): Similar bespoke checks are used throughout the
+// codebase. This should be factored out as a common util and other callsites
+// converted to use this.
+bool IsShowingNTP(content::WebContents* web_contents) {
+  if (SadTab::ShouldShow(web_contents->GetCrashedStatus())) {
+    return false;
+  }
+
+  // Use the committed entry (or the visible entry, if the committed entry is
+  // the initial NavigationEntry) so the bookmarks bar disappears at the same
+  // time the page does.
+  content::NavigationEntry* entry =
+      web_contents->GetController().GetLastCommittedEntry();
+  if (entry->IsInitialEntry()) {
+    entry = web_contents->GetController().GetVisibleEntry();
+  }
+  const GURL& url = entry->GetURL();
+  return NewTabUI::IsNewTab(url) || NewTabPageUI::IsNewTabPageOrigin(url) ||
+         NewTabPageThirdPartyUI::IsNewTabPageOrigin(url) ||
+         search::NavEntryIsInstantNTP(web_contents, entry);
+}
+
+}  // namespace
+
+DEFINE_USER_DATA(BookmarkBarController);
+
+BookmarkBarController::BookmarkBarController(BrowserWindowInterface& browser,
+                                             TabStripModel& tab_strip_model)
+    : browser_(browser),
+      tab_strip_model_(tab_strip_model),
+      scoped_data_holder_(browser.GetUnownedUserDataHost(), *this) {
+  tab_strip_model_->AddObserver(this);
+
+  // Set up preference observer for bookmark bar visibility.
+  Profile* profile = browser_->GetProfile();
+  PrefService* prefs = profile->GetPrefs();
+  pref_change_registrar_.Init(prefs);
+  pref_change_registrar_.Add(
+      bookmarks::prefs::kShowBookmarkBar,
+      base::BindRepeating(&BookmarkBarController::UpdateBookmarkBarState,
+                          base::Unretained(this),
+                          StateChangeReason::kPrefChange));
+  pref_change_registrar_.Add(
+      bookmarks::prefs::kShowTabGroupsInBookmarkBar,
+      base::BindRepeating(&BookmarkBarController::UpdateBookmarkBarState,
+                          base::Unretained(this),
+                          StateChangeReason::kPrefChange));
+
+  // If the `kNtpSimplificationBookmarkBar` feature is enabled update
+  // `kBookmarkBarVisibilityState` when `kShowBookmarkBar` is true to respect
+  // user choice of always showing the bookmark bar.
+  if (base::FeatureList::IsEnabled(
+          ntp_features::kNtpSimplificationBookmarkBar)) {
+    const PrefService::Preference* state_pref =
+        prefs->FindPreference(bookmarks::prefs::kBookmarkBarVisibilityState);
+    const PrefService::Preference* show_pref =
+        prefs->FindPreference(bookmarks::prefs::kShowBookmarkBar);
+
+    if (state_pref && state_pref->IsDefaultValue() && show_pref &&
+        show_pref->IsUserControlled() && show_pref->GetValue()->GetBool()) {
+      prefs->SetInteger(
+          bookmarks::prefs::kBookmarkBarVisibilityState,
+          static_cast<int>(bookmarks::BookmarkBarVisibilityState::kAlwaysShow));
+    }
+
+    // To test the auto-hiding locally all prefs must be cleared.
+    if (base::FeatureList::IsEnabled(
+            ntp_features::kBookmarkBarUpdatesForTesting)) {
+      prefs->ClearPref(bookmarks::prefs::kBookmarkBarVisibilityState);
+      prefs->ClearPref(prefs::kBookmarkBarPreviousInitialRenderOnNtpTime);
+      prefs->ClearPref(prefs::kBookmarkBarRenderedOnNtpCount);
+    }
+
+    pref_change_registrar_.Add(
+        bookmarks::prefs::kBookmarkBarVisibilityState,
+        base::BindRepeating(
+            &BookmarkBarController::OnBookmarkBarVisibilityStateChanged,
+            base::Unretained(this)));
+
+    // Synchronize kShowBookmarkBar with kBookmarkBarVisibilityState at startup.
+    OnBookmarkBarVisibilityStateChanged();
+  }
+
+  // Initialize the bookmark bar state.
+  UpdateBookmarkBarState(StateChangeReason::kInit);
+}
+
+// Handles changes to `kBookmarkBarVisibilityState` when the NTP Simplification
+// experiment is active.
+//
+// TODO(crbug.com/490504998): Currently, many legacy call sites still rely on
+// `kShowBookmarkBar` directly. To prevent regressions, we automatically keep
+// `kShowBookmarkBar` synchronized with `kBookmarkBarVisibilityState`.
+// Once `kNtpSimplificationBookmarkBar` fully launches, `kShowBookmarkBar`
+// should be deprecated and removed entirely.
+void BookmarkBarController::OnBookmarkBarVisibilityStateChanged() {
+  Profile* profile = browser_->GetProfile();
+  PrefService* prefs = profile->GetPrefs();
+  const PrefService::Preference* state_pref =
+      prefs->FindPreference(bookmarks::prefs::kBookmarkBarVisibilityState);
+  if (state_pref && state_pref->IsUserControlled()) {
+    bool always_show =
+        prefs->GetInteger(bookmarks::prefs::kBookmarkBarVisibilityState) ==
+        static_cast<int>(bookmarks::BookmarkBarVisibilityState::kAlwaysShow);
+    prefs->SetBoolean(bookmarks::prefs::kShowBookmarkBar, always_show);
+  }
+
+  UpdateBookmarkBarState(StateChangeReason::kPrefChange);
+}
+
+BookmarkBarController::~BookmarkBarController() = default;
+
+BookmarkBarController* BookmarkBarController::From(
+    BrowserWindowInterface* browser_window_interface) {
+  return ui::ScopedUnownedUserData<BookmarkBarController>::Get(
+      browser_window_interface->GetUnownedUserDataHost());
+}
+
+const BookmarkBarController* BookmarkBarController::From(
+    const BrowserWindowInterface* browser_window_interface) {
+  return ui::ScopedUnownedUserData<BookmarkBarController>::Get(
+      browser_window_interface->GetUnownedUserDataHost());
+}
+
+void BookmarkBarController::SetDelegate(Delegate* delegate) {
+  delegate_ = delegate;
+}
+
+void BookmarkBarController::FocusBookmarksToolbar() {
+  if (delegate_) {
+    delegate_->OnFocusBookmarksToolbar();
+  }
+}
+
+void BookmarkBarController::SetForceShowBookmarkBarFlag(ForceShowFlag flag) {
+  force_show_bookmark_bar_flags_ |= flag;
+  UpdateBookmarkBarState(StateChangeReason::kForceShow);
+}
+
+void BookmarkBarController::ClearForceShowBookmarkBarFlag(ForceShowFlag flag) {
+  force_show_bookmark_bar_flags_ &= ~flag;
+  UpdateBookmarkBarState(StateChangeReason::kForceShow);
+}
+
+void BookmarkBarController::UpdateBookmarkBarState(StateChangeReason reason) {
+  BookmarkBar::State state =
+      ShouldShowBookmarkBar() ? BookmarkBar::SHOW : BookmarkBar::HIDDEN;
+
+  if (state == bookmark_bar_state_) {
+    return;
+  }
+
+  bookmark_bar_state_ = state;
+
+  if (reason == StateChangeReason::kTabSwitch) {
+    // Don't notify BrowserWindow on a tab switch as at the time this is invoked
+    // BrowserWindow hasn't yet switched tabs. The BrowserWindow implementations
+    // end up querying state once they process the tab switch.
+    return;
+  }
+
+  bool should_animate = reason == StateChangeReason::kPrefChange ||
+                        reason == StateChangeReason::kForceShow;
+  BookmarkBar::AnimateChangeType change_type =
+      should_animate ? BookmarkBar::ANIMATE_STATE_CHANGE
+                     : BookmarkBar::DONT_ANIMATE_STATE_CHANGE;
+  if (delegate_) {
+    delegate_->OnBookmarkBarStateChanged(change_type);
+  }
+}
+
+void BookmarkBarController::OnSplitTabChanged(const SplitTabChange& change) {
+  if (change.type == SplitTabChange::Type::kAdded ||
+      change.type == SplitTabChange::Type::kRemoved) {
+    UpdateBookmarkBarState(StateChangeReason::kSplitTabChange);
+  }
+}
+
+bool BookmarkBarController::ShouldShowBookmarkBar() const {
+  Profile* profile = browser_->GetProfile();
+  if (profile->IsGuestSession()) {
+    return false;
+  }
+
+  PrefService* prefs = profile->GetPrefs();
+  bool should_show_bar =
+      base::FeatureList::IsEnabled(ntp_features::kNtpSimplificationBookmarkBar)
+          ? static_cast<bookmarks::BookmarkBarVisibilityState>(
+                prefs->GetInteger(
+                    bookmarks::prefs::kBookmarkBarVisibilityState)) ==
+                bookmarks::BookmarkBarVisibilityState::kAlwaysShow
+          : prefs->GetBoolean(bookmarks::prefs::kShowBookmarkBar);
+
+  if (browser_defaults::bookmarks_enabled && should_show_bar &&
+      !BrowserWindowFullscreenController::From(base::to_address(browser_))
+           ->ShouldHideUIForFullscreen()) {
+    return true;
+  }
+
+  if (force_show_bookmark_bar_flags_ != ForceShowFlag::kNone) {
+    return true;
+  }
+
+  if (!browser_defaults::bookmarks_enabled) {
+    return false;
+  }
+
+  if (base::FeatureList::IsEnabled(
+          ntp_features::kNtpSimplificationBookmarkBar)) {
+    if (prefs->GetInteger(bookmarks::prefs::kBookmarkBarVisibilityState) ==
+        static_cast<int>(bookmarks::BookmarkBarVisibilityState::kAlwaysHide)) {
+      return false;
+    }
+  } else {
+    if (prefs->IsManagedPreference(bookmarks::prefs::kShowBookmarkBar) &&
+        !prefs->GetBoolean(bookmarks::prefs::kShowBookmarkBar)) {
+      return false;
+    }
+  }
+
+  std::vector<tabs::TabInterface*> tabs = tab_strip_model_->GetForegroundTabs();
+  if (tabs.empty()) {
+    return false;
+  }
+
+  bookmarks::BookmarkModel* bookmark_model =
+      BookmarkModelFactory::GetForBrowserContext(profile);
+  const bool has_bookmarks = bookmark_model && bookmark_model->HasBookmarks();
+
+  tab_groups::TabGroupSyncService* tab_group_service =
+      tab_groups::TabGroupSyncServiceFactory::GetForProfile(profile);
+  const bool has_saved_tab_groups =
+      tab_group_service && !tab_group_service->GetAllGroups().empty() &&
+      chrome::ShouldShowTabGroupsInBookmarkBar(profile);
+
+  // The bookmark bar is only shown if the user has added something to it.
+  if (!has_bookmarks && !has_saved_tab_groups) {
+    return false;
+  }
+
+  // Prevent the bookmark bar from showing itself when entering fullscreen if
+  // fullscreen is entered through webview (TAB). This creates a consistent
+  // experience for split view fullscreen and the rest of the UI.
+  const tabs::TabInterface* active_tab = tab_strip_model_->GetActiveTab();
+  if (active_tab->GetContents()->IsFullscreen()) {
+    return false;
+  }
+
+  return std::any_of(
+      tabs.begin(), tabs.end(), [](const tabs::TabInterface* tab) {
+        return tab->GetContents() && IsShowingNTP(tab->GetContents());
+      });
+}
+
+void BookmarkBarController::OnTabStripModelChanged(
+    TabStripModel* tab_strip_model,
+    const TabStripModelChange& change,
+    const TabStripSelectionChange& selection) {
+  if (selection.active_tab_changed()) {
+    if (web_contents()) {
+      content::WebContentsObserver::Observe(nullptr);
+    }
+    if (selection.new_contents) {
+      content::WebContentsObserver::Observe(selection.new_contents);
+    }
+
+    // Intentionally not updating the state to kTabSwitch. It is already updated
+    // in Browser::OnActiveTabChanged(), since the BrowserWindow may query the
+    // bookmark state there.
+  }
+}
+
+void BookmarkBarController::DidFinishNavigation(
+    content::NavigationHandle* navigation_handle) {
+  if (navigation_handle->IsInPrimaryMainFrame() &&
+      navigation_handle->HasCommitted()) {
+    CHECK_EQ(web_contents(), tab_strip_model_->GetActiveWebContents());
+    UpdateBookmarkBarState(StateChangeReason::kTabState);
+    MaybeUpdateAutoRemovalPrefs();
+  }
+}
+
+void BookmarkBarController::MaybeUpdateAutoRemovalPrefs() {
+  if (!base::FeatureList::IsEnabled(
+          ntp_features::kNtpSimplificationBookmarkBar)) {
+    return;
+  }
+
+  Profile* profile = browser_->GetProfile();
+  PrefService* prefs = profile->GetPrefs();
+  const PrefService::Preference* state_pref =
+      prefs->FindPreference(bookmarks::prefs::kBookmarkBarVisibilityState);
+  if (!state_pref || !state_pref->IsDefaultValue() ||
+      bookmark_bar_state_ != BookmarkBar::SHOW ||
+      !IsShowingNTP(web_contents())) {
+    return;
+  }
+
+  base::Time last_shown_time =
+      prefs->GetTime(prefs::kBookmarkBarPreviousInitialRenderOnNtpTime);
+  if (base::Time::Now() - last_shown_time >
+      ntp_features::GetBookmarkBarMinStalenessTimeInterval()) {
+    prefs->SetTime(prefs::kBookmarkBarPreviousInitialRenderOnNtpTime,
+                   base::Time::Now());
+    prefs->SetInteger(
+        prefs::kBookmarkBarRenderedOnNtpCount,
+        prefs->GetInteger(prefs::kBookmarkBarRenderedOnNtpCount) + 1);
+  }
+  if (prefs->GetInteger(prefs::kBookmarkBarRenderedOnNtpCount) >
+      ntp_features::GetBookmarkBarCountThreshold()) {
+    prefs->SetInteger(
+        bookmarks::prefs::kBookmarkBarVisibilityState,
+        static_cast<int>(bookmarks::BookmarkBarVisibilityState::kAlwaysHide));
+    // Show the custom action promo (undo toast) when the bookmark bar is
+    // auto-hidden due to inactivity.
+    if (auto* user_education =
+            BrowserUserEducationInterface::From(base::to_address(browser_))) {
+      user_education->MaybeShowFeaturePromo(
+          feature_engagement::kIPHBookmarkBarSimplifiedFeature);
+    }
+  }
+}

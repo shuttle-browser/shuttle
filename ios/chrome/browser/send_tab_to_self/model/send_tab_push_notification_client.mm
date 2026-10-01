@@ -1,0 +1,191 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/send_tab_to_self/model/send_tab_push_notification_client.h"
+
+#import "base/apple/foundation_util.h"
+#import "base/check.h"
+#import "base/metrics/histogram_functions.h"
+#import "base/metrics/user_metrics.h"
+#import "base/strings/sys_string_conversions.h"
+#import "components/prefs/pref_service.h"
+#import "components/send_tab_to_self/features.h"
+#import "components/send_tab_to_self/metrics_util.h"
+#import "components/send_tab_to_self/send_tab_to_self_entry.h"
+#import "components/send_tab_to_self/send_tab_to_self_model.h"
+#import "components/send_tab_to_self/send_tab_to_self_sync_service.h"
+#import "ios/chrome/browser/push_notification/model/constants.h"
+#import "ios/chrome/browser/push_notification/model/push_notification_client.h"
+#import "ios/chrome/browser/push_notification/model/push_notification_client_id.h"
+#import "ios/chrome/browser/push_notification/model/push_notification_prefs.h"
+#import "ios/chrome/browser/push_notification/model/push_notification_service.h"
+#import "ios/chrome/browser/push_notification/model/push_notification_settings_util.h"
+#import "ios/chrome/browser/push_notification/model/push_notification_util.h"
+#import "ios/chrome/browser/send_tab_to_self/model/send_tab_to_self_browser_agent.h"
+#import "ios/chrome/browser/send_tab_to_self/model/send_tab_to_self_util.h"
+#import "ios/chrome/browser/shared/model/application_context/application_context.h"
+#import "ios/chrome/browser/shared/model/browser/browser.h"
+#import "ios/chrome/browser/shared/model/profile/features.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/open_new_tab_command.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/signin/model/authentication_service.h"
+#import "ios/chrome/browser/signin/model/authentication_service_factory.h"
+#import "ios/chrome/browser/sync/model/send_tab_to_self_sync_service_factory.h"
+#import "url/gurl.h"
+
+namespace {
+
+// Key for the sent url in the notification payload.
+NSString* const kUrlKey = @"url";
+
+// Key for the unique identifier of the associated SendTabEntry.
+NSString* const kIdentifierKey = @"SendTabGuid";
+
+}  // namespace
+
+SendTabPushNotificationClient::SendTabPushNotificationClient(
+    ProfileIOS* profile)
+    : PushNotificationClient(PushNotificationClientId::kSendTab, profile) {
+  CHECK(IsMultiProfilePushNotificationHandlingEnabled());
+}
+
+SendTabPushNotificationClient::SendTabPushNotificationClient()
+    : PushNotificationClient(PushNotificationClientId::kSendTab,
+                             PushNotificationClientScope::kPerProfile) {
+  CHECK(!IsMultiProfilePushNotificationHandlingEnabled());
+}
+
+SendTabPushNotificationClient::~SendTabPushNotificationClient() = default;
+
+std::optional<NotificationType>
+SendTabPushNotificationClient::GetNotificationType(
+    UNNotification* notification) {
+  if (CanHandleNotification(notification)) {
+    return NotificationType::kSendTab;
+  }
+  return std::nullopt;
+}
+
+bool SendTabPushNotificationClient::CanHandleNotification(
+    UNNotification* notification) {
+  NSDictionary* user_info = notification.request.content.userInfo;
+  return [user_info[kPushNotificationClientIdKey] intValue] ==
+         static_cast<int>(PushNotificationClientId::kSendTab);
+}
+
+bool SendTabPushNotificationClient::HandleNotificationInteraction(
+    UNNotificationResponse* response) {
+  NSDictionary* user_info = response.notification.request.content.userInfo;
+  CHECK(user_info);
+
+  if (!CanHandleNotification(response.notification)) {
+    return false;
+  }
+
+  // Load URL in a new tab and mark the corresponding SendTabToSelfEntry as
+  // opened.
+  GURL url = GURL(base::SysNSStringToUTF8(user_info[kUrlKey]));
+  std::string identifier = base::SysNSStringToUTF8(
+      response.notification.request.content.userInfo[kIdentifierKey]);
+  if (base::CallbackListSubscription subscription =
+          ExecuteActionWhenBrowserReady(base::BindOnce(
+              &SendTabPushNotificationClient::LoadSendTabUrlInNewTab,
+              weak_ptr_factory_.GetWeakPtr(), std::move(url),
+              std::move(identifier)))) {
+    delayed_actions_.push_back(std::move(subscription));
+  }
+
+  if (IsNotificationCollisionManagementEnabled()) {
+    GetApplicationContext()->GetLocalState()->SetTime(
+        push_notification_prefs::kSendTabLastOpenTimestamp, base::Time::Now());
+  }
+
+  base::RecordAction(
+      base::UserMetricsAction("IOS.Notifications.SendTab.Interaction"));
+
+  return true;
+}
+
+std::optional<UIBackgroundFetchResult>
+SendTabPushNotificationClient::HandleNotificationReception(
+    NSDictionary<NSString*, id>* notification) {
+  UNAuthorizationStatus authStatus =
+      [PushNotificationUtil getSavedPermissionSettings];
+  push_notification::SettingsAuthorizationStatus settingsAuthStatus =
+      [PushNotificationUtil getNotificationSettingsStatusFrom:authStatus];
+  base::UmaHistogramEnumeration("IOS.Notifications.SendTab.Received",
+                                settingsAuthStatus);
+  return UIBackgroundFetchResultNoData;
+}
+
+NSArray<UNNotificationCategory*>*
+SendTabPushNotificationClient::RegisterActionableNotifications() {
+  return @[];
+}
+
+void SendTabPushNotificationClient::LoadSendTabUrlInNewTab(
+    const GURL& url,
+    std::string_view identifier,
+    Browser* browser) {
+  send_tab_to_self::SendTabToSelfSyncService* sync_service =
+      SendTabToSelfSyncServiceFactory::GetForProfile(browser->GetProfile());
+  if (!sync_service) {
+    return;
+  }
+  send_tab_to_self::SendTabToSelfModel* send_tab_model =
+      sync_service->GetSendTabToSelfModel();
+
+  const send_tab_to_self::SendTabToSelfEntry* entry =
+      send_tab_model->GetEntryByGUID(identifier);
+
+  OpenNewTabCommand* command = nil;
+  if (entry) {
+    command = send_tab_to_self::CreateOpenNewTabCommand(entry);
+  } else {
+    command = [OpenNewTabCommand commandWithURLFromChrome:url];
+    if (!identifier.empty()) {
+      // Attach the entry GUID even if the entry is not in the model yet so that
+      // navigation tracking attributes the tab to the Send Tab to Self entry.
+      command.sendTabToSelfEntryGUID = base::SysUTF8ToNSString(identifier);
+    }
+  }
+
+  id<SceneCommands> handler =
+      HandlerForProtocol(browser->GetCommandDispatcher(), SceneCommands);
+  [handler openURLInNewTab:command];
+
+  if (!identifier.empty()) {
+    // Mark the entry opened and activated even if `entry` is null (not yet in
+    // the model). The underlying bridge buffers these IDs in
+    // `unknown_opened_entries_` / `unknown_activated_entries_`, preventing the
+    // auto-open logic from opening a duplicate tab when sync later finishes
+    // receiving the entry.
+    send_tab_model->MarkEntryOpened(identifier);
+    send_tab_model->MarkEntryActivated(
+        identifier,
+        send_tab_to_self::ShareActivatedEntryPoint::kMobileNotification);
+  }
+
+  send_tab_to_self::RecordAutoOpenOutcome(
+      send_tab_to_self::AutoOpenOutcome::kTabOpenedViaNotification);
+
+  AuthenticationService* auth_service =
+      AuthenticationServiceFactory::GetForProfile(browser->GetProfile());
+  id<SystemIdentity> identity =
+      auth_service ? auth_service->GetPrimaryIdentity() : nil;
+  if (!identity) {
+    return;
+  }
+
+  if (!push_notification_settings::
+          GetMobileNotificationPermissionStatusForClient(
+              PushNotificationClientId::kSendTab, identity.gaiaId)) {
+    PushNotificationService* service =
+        GetApplicationContext()->GetPushNotificationService();
+    service->SetPreference(identity.gaiaId, PushNotificationClientId::kSendTab,
+                           true);
+  }
+}

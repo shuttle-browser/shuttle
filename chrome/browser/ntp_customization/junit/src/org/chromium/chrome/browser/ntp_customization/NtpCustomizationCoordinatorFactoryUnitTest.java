@@ -1,0 +1,199 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.ntp_customization;
+
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import android.content.Context;
+
+import androidx.test.core.app.ApplicationProvider;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.chrome.browser.feed.FeedServiceBridge;
+import org.chromium.chrome.browser.feed.FeedServiceBridgeJni;
+import org.chromium.chrome.browser.magic_stack.ModuleRegistry;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
+import org.chromium.components.prefs.PrefService;
+import org.chromium.components.search_engines.TemplateUrlService;
+import org.chromium.components.user_prefs.UserPrefs;
+import org.chromium.ui.base.WindowAndroid;
+
+/** Unit tests for {@link NtpCustomizationCoordinatorFactory}. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class NtpCustomizationCoordinatorFactoryUnitTest {
+
+    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Mock private BottomSheetController mMockBottomSheetController;
+    @Mock private Profile mMockProfile;
+    @Mock private TemplateUrlService mMockTemplateUrlService;
+    @Mock private PrefService mMockPrefService;
+    @Mock private FeedServiceBridge.Natives mMockFeedServiceBridgeJni;
+    @Mock private WindowAndroid mWindowAndroid;
+    @Mock private ModuleRegistry mModuleRegistry;
+    @Mock private SnackbarManager mSnackbarManager;
+
+    private Context mContext;
+    private NtpCustomizationCoordinatorFactory mFactory;
+
+    private final SettableMonotonicObservableSupplier<Profile> mProfileSupplier =
+            ObservableSuppliers.createMonotonic();
+
+    @Before
+    public void setUp() {
+        mContext = ApplicationProvider.getApplicationContext();
+        mProfileSupplier.set(mMockProfile);
+        when(mMockProfile.getOriginalProfile()).thenReturn(mMockProfile);
+        TemplateUrlServiceFactory.setInstanceForTesting(mMockTemplateUrlService);
+        UserPrefs.setPrefServiceForTesting(mMockPrefService);
+        FeedServiceBridgeJni.setInstanceForTesting(mMockFeedServiceBridgeJni);
+        when(mMockFeedServiceBridgeJni.isEnabled()).thenReturn(true);
+        mFactory = new NtpCustomizationCoordinatorFactory();
+        NtpCustomizationCoordinatorFactory.setInstanceForTesting(mFactory);
+    }
+
+    @Test
+    public void testGetInstance_returnsSameInstance() {
+        NtpCustomizationCoordinatorFactory instance1 =
+                NtpCustomizationCoordinatorFactory.getInstance();
+        NtpCustomizationCoordinatorFactory instance2 =
+                NtpCustomizationCoordinatorFactory.getInstance();
+
+        assertNotNull("Factory instance should not be null", instance1);
+        assertSame(
+                "getInstance() should always return the same singleton instance",
+                instance1,
+                instance2);
+    }
+
+    @Test
+    public void testCreate_noExistingCoordinator_createsAndStoresNewCoordinator() {
+        // Verifies the initial state of mCoordinator.
+        assertNull(
+                "Factory should have no coordinator initially",
+                mFactory.getCoordinatorForTesting());
+
+        // Creates the first coordinator.
+        NtpCustomizationCoordinator coordinator =
+                mFactory.create(
+                        mContext,
+                        mMockBottomSheetController,
+                        mProfileSupplier,
+                        NtpCustomizationCoordinator.BottomSheetType.MAIN,
+                        mWindowAndroid,
+                        mModuleRegistry,
+                        mSnackbarManager);
+
+        // Verifies it was created and is now stored.
+        assertNotNull("create() should return a non-null coordinator", coordinator);
+        assertSame(
+                "Factory should store the newly created coordinator",
+                coordinator,
+                mFactory.getCoordinatorForTesting());
+    }
+
+    @Test
+    public void testCreate_withExistingCoordinator_dismissesOldAndCreatesNew() {
+        NtpCustomizationCoordinator coordinator = mock(NtpCustomizationCoordinator.class);
+        mFactory.setCoordinatorForTesting(coordinator);
+        mFactory.create(
+                mContext,
+                mMockBottomSheetController,
+                mProfileSupplier,
+                NtpCustomizationCoordinator.BottomSheetType.MAIN,
+                mWindowAndroid,
+                mModuleRegistry,
+                mSnackbarManager);
+
+        verify(coordinator).dismissBottomSheet();
+        assertNotSame(
+                "A new coordinator instance should have been created",
+                coordinator,
+                mFactory.getCoordinatorForTesting());
+    }
+
+    @Test
+    public void testDestroy_withMatchingCoordinator_clearsReference() {
+        // Creates a coordinator and verifies it's stored.
+        NtpCustomizationCoordinator coordinator =
+                mFactory.create(
+                        mContext,
+                        mMockBottomSheetController,
+                        mProfileSupplier,
+                        NtpCustomizationCoordinator.BottomSheetType.MAIN,
+                        mWindowAndroid,
+                        mModuleRegistry,
+                        mSnackbarManager);
+        assertNotNull(
+                "Coordinator should be active in the factory", mFactory.getCoordinatorForTesting());
+
+        mFactory.onNtpCustomizationCoordinatorDestroyed(coordinator);
+
+        // Verifies the factory's reference is now cleared.
+        assertNull(
+                "Factory should have no active coordinator after destruction",
+                mFactory.getCoordinatorForTesting());
+    }
+
+    @Test
+    public void testDestroy_withStaleCoordinator_doesNotClearReference() {
+        // Creates the first coordinator. This one will become "stale".
+        NtpCustomizationCoordinator coordinator1 =
+                mFactory.create(
+                        mContext,
+                        mMockBottomSheetController,
+                        mProfileSupplier,
+                        NtpCustomizationCoordinator.BottomSheetType.MAIN,
+                        mWindowAndroid,
+                        mModuleRegistry,
+                        mSnackbarManager);
+
+        // Creates a second coordinator, making the first one stale.
+        NtpCustomizationCoordinator coordinator2 =
+                mFactory.create(
+                        mContext,
+                        mMockBottomSheetController,
+                        mProfileSupplier,
+                        NtpCustomizationCoordinator.BottomSheetType.MAIN,
+                        mWindowAndroid,
+                        mModuleRegistry,
+                        mSnackbarManager);
+
+        assertSame(
+                "Factory should hold the latest coordinator",
+                coordinator2,
+                mFactory.getCoordinatorForTesting());
+
+        mFactory.onNtpCustomizationCoordinatorDestroyed(coordinator1);
+
+        // Verifies that the factory should ignore the stale request and keep its current reference.
+        assertNotNull(
+                "Factory should still have an active coordinator",
+                mFactory.getCoordinatorForTesting());
+        assertSame(
+                "Factory should not have cleared its reference to the active coordinator",
+                coordinator2,
+                mFactory.getCoordinatorForTesting());
+    }
+}

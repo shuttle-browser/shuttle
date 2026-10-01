@@ -1,0 +1,218 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/shutdown_signal_handlers_posix.h"
+
+#include <limits.h>
+#include <signal.h>
+#include <string.h>
+#include <unistd.h>
+
+#include <utility>
+
+#include "base/compiler_specific.h"
+#include "base/debug/leak_annotations.h"
+#include "base/functional/callback.h"
+#include "base/logging.h"
+#include "base/posix/eintr_wrapper.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/threading/platform_thread.h"
+#include "build/build_config.h"
+
+#if BUILDFLAG(IS_MAC)
+#include "chrome/browser/shutdown_watchdog_mac.h"
+#endif
+
+namespace {
+
+// The OSX fork() implementation can crash in the child process before
+// fork() returns.  In that case, the shutdown pipe will still be
+// shared with the parent process.  To prevent child crashes from
+// causing parent shutdowns, |g_pipe_pid| is the pid for the process
+// which registered |g_shutdown_pipe_write_fd|.
+// See <http://crbug.com/40301529>.
+pid_t g_pipe_pid = -1;
+int g_shutdown_pipe_write_fd = -1;
+int g_shutdown_pipe_read_fd = -1;
+
+// Common code between SIG{HUP, INT, TERM}Handler.
+void GracefulShutdownHandler(int signal) {
+  // Reinstall the default handler.  We had one shot at graceful shutdown.
+  struct sigaction action = {};
+  action.sa_handler = SIG_DFL;
+  RAW_CHECK(sigaction(signal, &action, nullptr) == 0);
+
+  RAW_CHECK(g_pipe_pid != -1);
+  RAW_CHECK(g_shutdown_pipe_write_fd != -1);
+  RAW_CHECK(g_shutdown_pipe_read_fd != -1);
+  RAW_CHECK(g_pipe_pid == getpid());
+  size_t bytes_written = 0;
+  do {
+    int rv = UNSAFE_TODO(HANDLE_EINTR(
+        write(g_shutdown_pipe_write_fd,
+              reinterpret_cast<const char*>(&signal) + bytes_written,
+              sizeof(signal) - bytes_written)));
+    RAW_CHECK(rv >= 0);
+    bytes_written += rv;
+  } while (bytes_written < sizeof(signal));
+}
+
+void SIGHUPHandler(int signal) {
+  RAW_CHECK(signal == SIGHUP);
+  GracefulShutdownHandler(signal);
+}
+
+void SIGINTHandler(int signal) {
+  RAW_CHECK(signal == SIGINT);
+  GracefulShutdownHandler(signal);
+}
+
+void SIGTERMHandler(int signal) {
+  RAW_CHECK(signal == SIGTERM);
+  GracefulShutdownHandler(signal);
+}
+
+// Runs a thread that invokes a callback when a termination signal handler
+// is invoked. Uses a pipe to wait for the signal handler to run.
+class ShutdownDetector : public base::PlatformThread::Delegate {
+ public:
+  ShutdownDetector(
+      int shutdown_fd,
+      base::OnceCallback<void(int)> shutdown_callback,
+      const scoped_refptr<base::SingleThreadTaskRunner>& task_runner);
+
+  ShutdownDetector(const ShutdownDetector&) = delete;
+  ShutdownDetector& operator=(const ShutdownDetector&) = delete;
+
+  ~ShutdownDetector() override;
+
+  // base::PlatformThread::Delegate:
+  void ThreadMain() override;
+
+ private:
+  const int shutdown_fd_;
+  base::OnceCallback<void(int)> shutdown_callback_;
+  const scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
+};
+
+ShutdownDetector::ShutdownDetector(
+    int shutdown_fd,
+    base::OnceCallback<void(int)> shutdown_callback,
+    const scoped_refptr<base::SingleThreadTaskRunner>& task_runner)
+    : shutdown_fd_(shutdown_fd),
+      shutdown_callback_(std::move(shutdown_callback)),
+      task_runner_(task_runner) {
+  CHECK_NE(shutdown_fd_, -1);
+  CHECK(!shutdown_callback_.is_null());
+  CHECK(task_runner_);
+}
+
+ShutdownDetector::~ShutdownDetector() = default;
+
+NOINLINE void ExitPosted(int signal) {
+  // Ensure function isn't optimized away.
+  asm("");
+#if BUILDFLAG(IS_MAC)
+  if (signal == SIGTERM) {
+    // Bounds SIGTERM-initiated shutdowns (OS shutdown/reboot/update).
+    // Returns only when inapplicable or once shutdown completed in time.
+    shutdown_watchdog::BlockOnSigtermShutdown();
+  }
+#endif
+  sleep(UINT_MAX);
+}
+
+void ShutdownDetector::ThreadMain() {
+  base::PlatformThread::SetName("CrShutdownDetector");
+
+  int signal;
+  size_t bytes_read = 0;
+  ssize_t ret;
+  do {
+    ret = UNSAFE_TODO(HANDLE_EINTR(
+        read(shutdown_fd_, reinterpret_cast<char*>(&signal) + bytes_read,
+             sizeof(signal) - bytes_read)));
+    if (ret < 0) {
+      NOTREACHED() << "Unexpected error: " << strerror(errno);
+    } else if (ret == 0) {
+      NOTREACHED() << "Unexpected closure of shutdown pipe.";
+    }
+    bytes_read += ret;
+  } while (bytes_read < sizeof(signal));
+  VLOG(1) << "Handling shutdown for signal " << signal << ".";
+
+  if (!task_runner_->PostTask(
+          FROM_HERE, base::BindOnce(std::move(shutdown_callback_), signal))) {
+    // Without a valid task runner to post the exit task to, there aren't many
+    // options. Raise the signal again. The default handler will pick it up
+    // and cause an ungraceful exit.
+    RAW_LOG(WARNING, "No valid task runner, exiting ungracefully.");
+    ReraiseSignalAndExit(signal);
+  }
+  ExitPosted(signal);
+}
+
+}  // namespace
+
+void ReraiseSignalAndExit(int signal) {
+  struct sigaction action = {};
+  action.sa_handler = SIG_DFL;
+  sigaction(signal, &action, nullptr);
+
+  sigset_t to_unblock;
+  sigemptyset(&to_unblock);
+  sigaddset(&to_unblock, signal);
+  pthread_sigmask(SIG_UNBLOCK, &to_unblock, nullptr);
+
+  // With SIG_DFL and the signal unblocked, raise() delivers to this thread
+  // before returning; for a fatal-by-default signal this does not return.
+  raise(signal);
+
+  RAW_LOG(WARNING, "Re-raised signal did not terminate; exiting ungracefully.");
+  _exit(signal | (1 << 7));
+}
+
+void InstallShutdownSignalHandlers(
+    base::OnceCallback<void(int)> shutdown_callback,
+    const scoped_refptr<base::SingleThreadTaskRunner>& task_runner) {
+  int pipefd[2];
+  int ret = pipe(pipefd);
+  if (ret < 0) {
+    PLOG(DFATAL) << "Failed to create pipe";
+    return;
+  }
+  g_pipe_pid = getpid();
+  g_shutdown_pipe_read_fd = pipefd[0];
+  g_shutdown_pipe_write_fd = pipefd[1];
+  ShutdownDetector* detector = new ShutdownDetector(
+      g_shutdown_pipe_read_fd, std::move(shutdown_callback), task_runner);
+  // PlatformThread does not delete its delegate.
+  ANNOTATE_LEAKING_OBJECT_PTR(detector);
+  if (!base::PlatformThread::CreateNonJoinable(0, detector)) {
+    LOG(DFATAL) << "Failed to create shutdown detector task.";
+  }
+
+  // Setup signal handlers for shutdown AFTER shutdown pipe is setup because
+  // it may be called right away after handler is set.
+
+  // If adding to this list of signal handlers, note the new signal probably
+  // needs to be reset in child processes. See
+  // base/process_util_posix.cc:LaunchProcess.
+
+  // We need to handle SIGTERM, because that is how many POSIX-based distros
+  // ask processes to quit gracefully at shutdown time.
+  struct sigaction action = {};
+  action.sa_handler = SIGTERMHandler;
+  CHECK_EQ(0, sigaction(SIGTERM, &action, nullptr));
+
+  // Also handle SIGINT - when the user terminates the browser via Ctrl+C. If
+  // the browser process is being debugged, GDB will catch the SIGINT first.
+  action.sa_handler = SIGINTHandler;
+  CHECK_EQ(0, sigaction(SIGINT, &action, nullptr));
+
+  // And SIGHUP, for when the terminal disappears. On shutdown, many Linux
+  // distros send SIGHUP, SIGTERM, and then SIGKILL.
+  action.sa_handler = SIGHUPHandler;
+  CHECK_EQ(0, sigaction(SIGHUP, &action, nullptr));
+}

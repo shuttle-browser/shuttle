@@ -1,0 +1,299 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/update_client/net/url_loader_post_interceptor.h"
+
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "base/check_op.h"
+#include "base/containers/flat_map.h"
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/run_loop.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/test/bind.h"
+#include "net/base/net_errors.h"
+#include "net/http/http_response_headers.h"
+#include "net/http/http_status_code.h"
+#include "net/test/embedded_test_server/embedded_test_server.h"
+#include "net/test/embedded_test_server/http_request.h"
+#include "net/test/embedded_test_server/http_response.h"
+#include "services/network/public/cpp/resource_request.h"
+#include "services/network/public/cpp/url_loader_completion_status.h"
+#include "services/network/public/mojom/url_response_head.mojom-forward.h"
+#include "services/network/test/test_url_loader_factory.h"
+#include "services/network/test/test_utils.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/strings/str_format.h"
+#include "url/gurl.h"
+
+namespace update_client {
+
+URLLoaderPostInterceptor::URLLoaderPostInterceptor(
+    network::TestURLLoaderFactory* url_loader_factory)
+    : url_loader_factory_(url_loader_factory) {
+  InitializeWithInterceptor();
+}
+
+URLLoaderPostInterceptor::URLLoaderPostInterceptor(
+    std::vector<GURL> supported_urls,
+    network::TestURLLoaderFactory* url_loader_factory)
+    : url_loader_factory_(url_loader_factory) {
+  CHECK_LT(0u, supported_urls.size());
+  filtered_urls_.swap(supported_urls);
+  InitializeWithInterceptor();
+}
+
+URLLoaderPostInterceptor::URLLoaderPostInterceptor(
+    std::vector<GURL> supported_urls,
+    net::test_server::EmbeddedTestServer* embedded_test_server)
+    : embedded_test_server_(embedded_test_server) {
+  CHECK_LT(0u, supported_urls.size());
+  filtered_urls_.swap(supported_urls);
+  InitializeWithRequestHandler();
+}
+
+URLLoaderPostInterceptor::~URLLoaderPostInterceptor() = default;
+
+bool URLLoaderPostInterceptor::ExpectRequest(
+    std::unique_ptr<RequestMatcher> request_matcher,
+    const base::flat_map<std::string, std::string>& extra_headers) {
+  return ExpectRequest(std::move(request_matcher), net::HTTP_OK, extra_headers);
+}
+
+bool URLLoaderPostInterceptor::ExpectRequest(
+    std::unique_ptr<RequestMatcher> request_matcher,
+    net::HttpStatusCode response_code,
+    const base::flat_map<std::string, std::string>& extra_headers) {
+  expectations_.emplace(std::move(request_matcher),
+                        ExpectationResponse(response_code, "", extra_headers));
+  return true;
+}
+
+bool URLLoaderPostInterceptor::ExpectRequest(
+    std::unique_ptr<RequestMatcher> request_matcher,
+    const base::FilePath& filepath,
+    const base::flat_map<std::string, std::string>& extra_headers) {
+  std::string response;
+  if (filepath.empty() || !base::ReadFileToString(filepath, &response)) {
+    return false;
+  }
+  expectations_.emplace(
+      std::move(request_matcher),
+      ExpectationResponse(net::HTTP_OK, response, extra_headers));
+  return true;
+}
+
+// Returns how many requests have been intercepted and matched by
+// an expectation. One expectation can only be matched by one request.
+int URLLoaderPostInterceptor::GetHitCount() const {
+  return hit_count_;
+}
+
+// Returns how many requests in total have been captured by the interceptor.
+int URLLoaderPostInterceptor::GetCount() const {
+  return static_cast<int>(requests_.size());
+}
+
+// Returns all requests that have been intercepted, matched or not.
+std::vector<URLLoaderPostInterceptor::InterceptedRequest>
+URLLoaderPostInterceptor::GetRequests() const {
+  return requests_;
+}
+
+// Return the body of the n-th request, zero-based.
+std::string URLLoaderPostInterceptor::GetRequestBody(size_t n) const {
+  return std::get<0>(requests_[n]);
+}
+
+// Returns the joined bodies of all requests for debugging purposes.
+std::string URLLoaderPostInterceptor::GetRequestsAsString() const {
+  std::string s = "Requests are:";
+  for (int i = 0; const InterceptedRequest& request : GetRequests()) {
+    absl::StrAppendFormat(&s, "\n  [%d]: %s", ++i, std::get<0>(request));
+  }
+  return s;
+}
+
+// Resets the state of the interceptor so that new expectations can be set.
+void URLLoaderPostInterceptor::Reset() {
+  hit_count_ = 0;
+  requests_.clear();
+  base::queue<Expectation>().swap(expectations_);
+}
+
+void URLLoaderPostInterceptor::Pause() {
+  is_paused_ = true;
+}
+
+void URLLoaderPostInterceptor::Resume() {
+  is_paused_ = false;
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindLambdaForTesting([&] {
+        if (pending_expectations_.empty()) {
+          return;
+        }
+        const auto& [url, response] = pending_expectations_.front();
+        network::mojom::URLResponseHeadPtr head =
+            network::CreateURLResponseHead(response.response_code);
+        for (const auto& [key, value] : response.extra_headers) {
+          head->headers->AddHeader(key, value);
+        }
+        url_loader_factory_->AddResponse(
+            url, std::move(head), response.response_body,
+            network::URLLoaderCompletionStatus(net::OK));
+        pending_expectations_.pop();
+      }));
+}
+
+void URLLoaderPostInterceptor::url_job_request_ready_callback(
+    base::OnceClosure url_job_request_ready_callback) {
+  url_job_request_ready_callback_ = std::move(url_job_request_ready_callback);
+}
+
+int URLLoaderPostInterceptor::GetHitCountForURL(const GURL& url) {
+  int hit_count = 0;
+  for (const InterceptedRequest& request : GetRequests()) {
+    GURL url_no_query = std::get<2>(request);
+    if (url_no_query.has_query()) {
+      GURL::Replacements replacements;
+      replacements.ClearQuery();
+      url_no_query = url_no_query.ReplaceComponents(replacements);
+    }
+    if (url_no_query == url) {
+      hit_count++;
+    }
+  }
+  return hit_count;
+}
+
+void URLLoaderPostInterceptor::InitializeWithInterceptor() {
+  CHECK(url_loader_factory_);
+  url_loader_factory_->SetInterceptor(
+      base::BindLambdaForTesting([&](const network::ResourceRequest& request) {
+        GURL url = request.url;
+        if (url.has_query()) {
+          GURL::Replacements replacements;
+          replacements.ClearQuery();
+          url = url.ReplaceComponents(replacements);
+        }
+        if (!std::ranges::contains(filtered_urls_, url)) {
+          return;
+        }
+
+        std::string request_body = network::GetUploadData(request);
+        requests_.emplace_back(request_body, request.headers, request.url);
+        if (expectations_.empty()) {
+          return;
+        }
+        const auto& [matcher, response] = expectations_.front();
+        if (matcher->Match(request_body)) {
+          const net::HttpStatusCode response_code(response.response_code);
+          const std::string response_body(response.response_body);
+
+          if (url_job_request_ready_callback_) {
+            base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+                FROM_HERE, std::move(url_job_request_ready_callback_));
+          }
+
+          if (!is_paused_) {
+            network::mojom::URLResponseHeadPtr head =
+                network::CreateURLResponseHead(response_code);
+            for (const auto& [key, value] : response.extra_headers) {
+              head->headers->AddHeader(key, value);
+            }
+            url_loader_factory_->AddResponse(
+                request.url, std::move(head), response_body,
+                network::URLLoaderCompletionStatus(net::OK));
+          } else {
+            pending_expectations_.emplace(request.url, response);
+          }
+          expectations_.pop();
+          ++hit_count_;
+        }
+      }));
+}
+
+void URLLoaderPostInterceptor::InitializeWithRequestHandler() {
+  CHECK(embedded_test_server_);
+  CHECK(!url_loader_factory_);
+  embedded_test_server_->RegisterRequestHandler(base::BindRepeating(
+      &URLLoaderPostInterceptor::RequestHandler, base::Unretained(this)));
+}
+
+std::unique_ptr<net::test_server::HttpResponse>
+URLLoaderPostInterceptor::RequestHandler(
+    const net::test_server::HttpRequest& request) {
+  // Only intercepts POST.
+  if (request.method != net::test_server::METHOD_POST) {
+    return nullptr;
+  }
+
+  GURL url = request.GetURL();
+  if (url.has_query()) {
+    GURL::Replacements replacements;
+    replacements.ClearQuery();
+    url = url.ReplaceComponents(replacements);
+  }
+  if (!std::ranges::contains(filtered_urls_, url)) {
+    return nullptr;
+  }
+
+  std::string request_body = request.content;
+  net::HttpRequestHeaders headers;
+  for (const auto& [name, value] : request.headers) {
+    headers.SetHeader(name, value);
+  }
+  requests_.emplace_back(request_body, headers, url);
+  if (expectations_.empty()) {
+    return nullptr;
+  }
+
+  const auto& [matcher, response] = expectations_.front();
+  if (matcher->Match(request_body)) {
+    ++hit_count_;
+
+    std::unique_ptr<net::test_server::BasicHttpResponse> http_response =
+        std::make_unique<net::test_server::BasicHttpResponse>();
+    http_response->set_code(response.response_code);
+    http_response->set_content(response.response_body);
+    for (const auto& [key, value] : response.extra_headers) {
+      http_response->AddCustomHeader(key, value);
+    }
+    expectations_.pop();
+    return http_response;
+  }
+
+  return nullptr;
+}
+
+URLLoaderPostInterceptor::ExpectationResponse::ExpectationResponse(
+    net::HttpStatusCode code,
+    const std::string& body,
+    const base::flat_map<std::string, std::string>& extra_headers)
+    : response_code(code), response_body(body), extra_headers(extra_headers) {}
+
+URLLoaderPostInterceptor::ExpectationResponse::ExpectationResponse(
+    const ExpectationResponse&) = default;
+
+URLLoaderPostInterceptor::ExpectationResponse&
+URLLoaderPostInterceptor::ExpectationResponse::operator=(
+    const ExpectationResponse&) = default;
+
+URLLoaderPostInterceptor::ExpectationResponse::~ExpectationResponse() = default;
+
+bool PartialMatch::Match(const std::string& actual) const {
+  return actual.find(expected_) != std::string::npos;
+}
+
+bool AnyMatch::Match(const std::string& actual) const {
+  return true;
+}
+
+}  // namespace update_client

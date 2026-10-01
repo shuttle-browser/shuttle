@@ -1,0 +1,446 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.omnibox.suggestions.base;
+
+import android.content.Context;
+import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.Drawable.ConstantState;
+import android.graphics.drawable.LayerDrawable;
+import android.text.Spannable;
+import android.text.TextUtils;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
+import android.view.Gravity;
+
+import androidx.annotation.CallSuper;
+import androidx.annotation.ColorInt;
+import androidx.annotation.DrawableRes;
+import androidx.annotation.VisibleForTesting;
+
+import org.chromium.base.metrics.RecordUserAction;
+import org.chromium.base.metrics.TimingMetric;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.omnibox.MatchClassificationStyle;
+import org.chromium.chrome.browser.omnibox.OmniboxMetrics;
+import org.chromium.chrome.browser.omnibox.R;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxDrawableState;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxImageSupplier;
+import org.chromium.chrome.browser.omnibox.suggestions.AutocompleteUIContext;
+import org.chromium.chrome.browser.omnibox.suggestions.SuggestionHost;
+import org.chromium.chrome.browser.omnibox.suggestions.SuggestionProcessor;
+import org.chromium.chrome.browser.omnibox.suggestions.base.BaseSuggestionViewProperties.Action;
+import org.chromium.components.omnibox.AutocompleteInput;
+import org.chromium.components.omnibox.AutocompleteMatch;
+import org.chromium.components.omnibox.AutocompleteMatch.MatchClassification;
+import org.chromium.components.omnibox.OmniboxCapabilities;
+import org.chromium.components.omnibox.OmniboxFeatures;
+import org.chromium.components.omnibox.PageClassificationUtils;
+import org.chromium.components.omnibox.action.ActionPresentationMode;
+import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.url.GURL;
+
+import java.util.List;
+
+/** A class that handles base properties and model for most suggestions. */
+@NullMarked
+public abstract class BaseSuggestionViewProcessor implements SuggestionProcessor {
+    protected final AutocompleteUIContext mUiContext;
+    protected final Context mContext;
+    protected final SuggestionHost mSuggestionHost;
+    private final ActionChipsProcessor mActionChipsProcessor;
+    private final @Nullable OmniboxImageSupplier mImageSupplier;
+    private final int mDesiredFaviconWidthPx;
+    private final int mDecorationImageSizePx;
+    private final int mSuggestionSizePx;
+    private final boolean mShouldShowRemoveButton;
+    private @Nullable ConstantState mRemoveButtonDrawableState;
+
+    /**
+     * @param uiContext Context object containing common UI dependencies.
+     */
+    public BaseSuggestionViewProcessor(AutocompleteUIContext uiContext) {
+        mUiContext = uiContext;
+        mContext = uiContext.context;
+        mSuggestionHost = uiContext.host;
+        mImageSupplier = uiContext.imageSupplier;
+        mDesiredFaviconWidthPx =
+                uiContext.resourceProvider.getDimen(R.dimen.omnibox_suggestion_favicon_size);
+        mDecorationImageSizePx =
+                uiContext.resourceProvider.getDimen(
+                        R.dimen.omnibox_suggestion_decoration_image_size);
+        mSuggestionSizePx =
+                uiContext.resourceProvider.getDimen(R.dimen.omnibox_suggestion_content_height);
+        mActionChipsProcessor = new ActionChipsProcessor(uiContext.host, uiContext.actionDelegate);
+
+        mShouldShowRemoveButton = OmniboxCapabilities.hasPrecisionPointerExperience(mContext);
+    }
+
+    /**
+     * @return The desired size of Omnibox suggestion favicon.
+     */
+    protected int getDesiredFaviconSize() {
+        return mDesiredFaviconWidthPx;
+    }
+
+    /**
+     * @return The size of suggestion decoration images in pixels.
+     */
+    protected int getDecorationImageSize() {
+        return mDecorationImageSizePx;
+    }
+
+    /** Return whether this suggestion can host OmniboxAction chips. */
+    protected boolean allowOmniboxActions() {
+        return true;
+    }
+
+    @Override
+    public int getMinimumViewHeight() {
+        return mSuggestionSizePx;
+    }
+
+    /**
+     * Retrieve fallback icon for a given suggestion. Must be completed synchromously.
+     *
+     * @param match AutocompleteMatch instance to retrieve fallback icon for
+     * @return OmniboxDrawableState that can be immediately applied to suggestion view
+     */
+    protected OmniboxDrawableState getFallbackIcon(AutocompleteMatch match) {
+        int icon =
+                match.isSearchSuggestion()
+                        ? R.drawable.ic_suggestion_magnifier
+                        : R.drawable.ic_globe_24dp;
+        return OmniboxDrawableState.forSmallIcon(mUiContext.resourceProvider, icon, true);
+    }
+
+    /**
+     * Specify OmniboxDrawableState for suggestion decoration.
+     *
+     * @param model the PropertyModel to apply the decoration to
+     * @param decoration the OmniboxDrawableState to apply
+     */
+    protected void setOmniboxDrawableState(
+            PropertyModel model, @Nullable OmniboxDrawableState decoration) {
+        model.set(BaseSuggestionViewProperties.ICON, decoration);
+    }
+
+    /**
+     * Specify OmniboxDrawableState for action button.
+     *
+     * @param model Property model to update.
+     * @param actions List of actions for the suggestion.
+     */
+    protected void setActionButtons(PropertyModel model, @Nullable List<Action> actions) {
+        model.set(BaseSuggestionViewProperties.ACTION_BUTTONS, actions);
+    }
+
+    /**
+     * Setup action icon as query build arrow.
+     *
+     * @param model Property model to update.
+     * @param input The input to produce this suggestion.
+     * @param suggestion Suggestion associated with the action button.
+     * @param position The position of the button in the list.
+     */
+    @VisibleForTesting(otherwise = VisibleForTesting.PROTECTED)
+    public void setRemoveOrRefineAction(
+            PropertyModel model,
+            AutocompleteInput input,
+            AutocompleteMatch suggestion,
+            int position) {
+        // Suppress remove and refine actions in Hub and Tab Search overlay contexts.
+        if (PageClassificationUtils.isHubOrTabSearch(input.getPageClassification())) {
+            return;
+        }
+
+        if (mShouldShowRemoveButton) {
+            if (suggestion.isDeletable()) {
+                setActionButtons(
+                        model,
+                        List.of(
+                                new Action(
+                                        getRemoveButtonIconState(),
+                                        mUiContext.resourceProvider.getString(
+                                                R.string.accessibility_omnibox_remove_suggestion),
+                                        null,
+                                        /* showOnlyOnFocus= */ true,
+                                        () -> {
+                                            RecordUserAction.record(
+                                                    "MobileOmniboxRemoveSuggestion.Button");
+                                            mSuggestionHost.deleteMatch(suggestion);
+                                        })));
+            }
+            return;
+        }
+
+        if (!suggestion.isRefineable()) return;
+
+        String iconString =
+                mUiContext.resourceProvider.getString(
+                        R.string.accessibility_omnibox_btn_refine, suggestion.getFillIntoEdit());
+        @DrawableRes int icon = R.drawable.btn_suggestion_refine_up;
+
+        Runnable action =
+                () -> {
+                    if (suggestion.isSearchSuggestion()) {
+                        RecordUserAction.record("MobileOmniboxRefineSuggestion.Search");
+                    } else {
+                        RecordUserAction.record("MobileOmniboxRefineSuggestion.Url");
+                    }
+                    mSuggestionHost.onRefineSuggestion(suggestion);
+                };
+        setActionButtons(
+                model,
+                List.of(
+                        new Action(
+                                OmniboxDrawableState.forSmallIcon(
+                                        mUiContext.resourceProvider, icon, true),
+                                iconString,
+                                action)));
+    }
+
+    /**
+     * Returns the icon state for the remove suggestion button. Wraps the standard close button icon
+     * in a LayerDrawable to scale it as needed while keeping it centered within the button view.
+     */
+    private OmniboxDrawableState getRemoveButtonIconState() {
+        Drawable layerDrawable;
+        if (mRemoveButtonDrawableState == null) {
+            int sizePx =
+                    mUiContext.resourceProvider.getDimen(
+                            R.dimen.omnibox_suggestion_remove_button_icon_size);
+            Drawable baseIcon = mUiContext.resourceProvider.getDrawable(R.drawable.btn_close);
+            LayerDrawable drawable = new LayerDrawable(new Drawable[] {baseIcon});
+            drawable.setLayerGravity(0, Gravity.CENTER);
+            drawable.setLayerWidth(0, sizePx);
+            drawable.setLayerHeight(0, sizePx);
+            mRemoveButtonDrawableState = drawable.getConstantState();
+            layerDrawable = drawable;
+        } else {
+            layerDrawable = mRemoveButtonDrawableState.newDrawable();
+        }
+        return new OmniboxDrawableState(
+                layerDrawable,
+                /* useRoundedCorners= */ false,
+                /* isLarge= */ false,
+                /* allowTint= */ true);
+    }
+
+    /**
+     * Process the click event.
+     *
+     * @param suggestion Selected suggestion.
+     * @param position Position of the suggestion on the list.
+     * @param modifiers The modifier keys pressed during click/activation (metaState).
+     */
+    protected void onSuggestionClicked(AutocompleteMatch suggestion, int position, int modifiers) {
+        mSuggestionHost.onSuggestionClicked(suggestion, position, suggestion.getUrl(), modifiers);
+    }
+
+    /**
+     * Process the long-click event.
+     *
+     * @param suggestion Selected suggestion.
+     */
+    protected void onSuggestionLongClicked(AutocompleteMatch suggestion) {
+        mSuggestionHost.confirmDeleteMatch(suggestion, suggestion.getDisplayText());
+    }
+
+    /**
+     * Process the touch down event. Only handles search suggestions.
+     *
+     * @param suggestion Selected suggestion.
+     * @param position Position of the suggesiton on the list.
+     * @param eventTime Uptime of the touch down event in milliseconds.
+     */
+    protected void onSuggestionTouchDownEvent(
+            AutocompleteMatch suggestion, int position, long eventTime) {
+        try (TimingMetric metric = OmniboxMetrics.recordTouchDownProcessTime()) {
+            mSuggestionHost.onSuggestionTouchDown(suggestion, position, eventTime);
+        }
+    }
+
+    @Override
+    public void populateModel(
+            AutocompleteInput input,
+            AutocompleteMatch suggestion,
+            PropertyModel model,
+            int position) {
+        model.set(
+                BaseSuggestionViewProperties.ON_ACTIVATE,
+                (modifiers) -> onSuggestionClicked(suggestion, position, modifiers));
+        model.set(
+                BaseSuggestionViewProperties.ON_LONG_CLICK,
+                () -> onSuggestionLongClicked(suggestion));
+        model.set(
+                BaseSuggestionViewProperties.ON_FOCUS_VIA_SELECTION,
+                () -> mSuggestionHost.onSuggestionFocused(suggestion));
+        setActionButtons(model, null);
+
+        model.set(BaseSuggestionViewProperties.USE_LARGE_DECORATION, false);
+        model.set(BaseSuggestionViewProperties.SHOW_DECORATION, true);
+        model.set(
+                BaseSuggestionViewProperties.ACTION_CHIP_LEAD_IN_SPACING,
+                mUiContext.resourceProvider.getSuggestionDecorationIconSizeWidth());
+        model.set(BaseSuggestionViewProperties.TOP_PADDING, 0);
+
+        if (OmniboxFeatures.isTouchDownTriggerForPrefetchEnabled()
+                && !OmniboxCapabilities.isLowMemoryDevice()
+                && suggestion.isSearchSuggestion()) {
+            model.set(
+                    BaseSuggestionViewProperties.ON_TOUCH_DOWN_EVENT,
+                    (eventTime) -> onSuggestionTouchDownEvent(suggestion, position, eventTime));
+        }
+
+        // Action chips should not be provided in the hub or tab search overlay.
+        if (!PageClassificationUtils.isHubOrTabSearch(input.getPageClassification())
+                && allowOmniboxActions()) {
+            mActionChipsProcessor.populateModel(suggestion, model, position);
+        }
+
+        var icon = getFallbackIcon(suggestion);
+        assert icon != null;
+        setOmniboxDrawableState(model, icon);
+        if (suggestion.isSearchSuggestion()) {
+            fetchImage(model, suggestion.getImageUrl());
+        }
+
+        // Action button should not be provided in the hub or tab search overlay.
+        if (!PageClassificationUtils.isHubOrTabSearch(input.getPageClassification())) {
+            addActionButtonIfAvailable(suggestion, model, position);
+        }
+    }
+
+    private void addActionButtonIfAvailable(
+            AutocompleteMatch suggestion, PropertyModel model, int position) {
+        for (var action : suggestion.getActions()) {
+            if (action.presentationMode != ActionPresentationMode.BUTTON) {
+                continue;
+            }
+            boolean isIncognito = mUiContext.resourceProvider.isIncognito();
+            int iconRes =
+                    isIncognito && action.icon.incognitoButtonIconRes != 0
+                            ? action.icon.incognitoButtonIconRes
+                            : action.icon.buttonIconRes;
+            setActionButtons(
+                    model,
+                    List.of(
+                            new Action(
+                                    OmniboxDrawableState.forSmallIcon(
+                                            mUiContext.resourceProvider,
+                                            iconRes,
+                                            action.icon.tintWithTextColor),
+                                    action.accessibilityHint,
+                                    null,
+                                    () -> {
+                                        mSuggestionHost.onOmniboxActionClicked(action, position);
+                                    })));
+            // Only one action button is supported.
+            return;
+        }
+    }
+
+    @Override
+    @CallSuper
+    public void onOmniboxSessionStateChange(boolean activated) {}
+
+    @Override
+    @CallSuper
+    public void onSuggestionsReceived() {}
+
+    /**
+     * Apply In-Place highlight to matching sections of Suggestion text.
+     *
+     * @param text Suggestion text to apply highlight to.
+     * @param classifications Classifications describing how to format text.
+     * @return true, if at least one highlighted match section was found.
+     */
+    protected static boolean applyHighlightToMatchRegions(
+            Spannable text, List<MatchClassification> classifications) {
+        if (text == null || classifications == null) return false;
+
+        boolean hasAtLeastOneMatch = false;
+        for (int i = 0; i < classifications.size(); i++) {
+            MatchClassification classification = classifications.get(i);
+            if ((classification.style & MatchClassificationStyle.MATCH)
+                    == MatchClassificationStyle.MATCH) {
+                int matchStartIndex = classification.offset;
+                int matchEndIndex;
+                if (i == classifications.size() - 1) {
+                    matchEndIndex = text.length();
+                } else {
+                    matchEndIndex = classifications.get(i + 1).offset;
+                }
+                matchStartIndex = Math.min(matchStartIndex, text.length());
+                matchEndIndex = Math.min(matchEndIndex, text.length());
+
+                hasAtLeastOneMatch = true;
+                // Bold the part of the URL that matches the user query.
+                text.setSpan(
+                        new StyleSpan(Typeface.BOLD),
+                        matchStartIndex,
+                        matchEndIndex,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+        }
+        return hasAtLeastOneMatch;
+    }
+
+    /**
+     * Fetch suggestion favicon, if one is available. Updates icon decoration in supplied |model| if
+     * |url| is not null and points to an already visited website.
+     *
+     * @param model Model representing current suggestion.
+     * @param url Target URL the suggestion points to.
+     */
+    protected void fetchSuggestionFavicon(PropertyModel model, GURL url) {
+        if (mImageSupplier != null) {
+            mImageSupplier.fetchFavicon(
+                    url,
+                    icon -> {
+                        if (icon != null) {
+                            setOmniboxDrawableState(model, OmniboxDrawableState.forFavIcon(icon));
+                        }
+                    });
+        }
+    }
+
+    /**
+     * Fetch suggestion image. Updates icon decoration in supplied |model| if |imageUrl| is valid,
+     * points to an image, and was successfully retrieved and decompressed.
+     *
+     * @param model the PropertyModel to update with retrieved image
+     * @param imageUrl the URL of the image to retrieve and decode
+     */
+    protected void fetchImage(PropertyModel model, GURL imageUrl) {
+        if (mImageSupplier != null) {
+            mImageSupplier.fetchImage(
+                    imageUrl,
+                    drawable -> {
+                        if (drawable != null) {
+                            setOmniboxDrawableState(model, OmniboxDrawableState.forImage(drawable));
+                        }
+                    });
+        }
+    }
+
+    /**
+     * Applies text color to a target spannable string.
+     *
+     * @param text Target spannable string to apply color to.
+     * @param color Target color integer.
+     */
+    protected static void applyTextColor(@Nullable Spannable text, @ColorInt int color) {
+        if (TextUtils.isEmpty(text)) return;
+
+        text.setSpan(
+                new ForegroundColorSpan(color),
+                /* start= */ 0,
+                /* end= */ text.length(),
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+    }
+}

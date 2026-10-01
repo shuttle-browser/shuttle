@@ -1,0 +1,166 @@
+/* Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #scheme=relative
+ * #css_wrapper_metadata_end */
+
+#toolEnabledButton:not(.clank) {
+  align-items: center;
+  animation: var(--cr-composebox-tool-chip-animation, none);
+  background-color:
+    var(--color-composebox-tool-chip-background);
+  border: none;
+  color: var(--color-searchbox-results-foreground);
+  display: flex;
+  font-size: 13px;
+  gap: 2px;
+  height: var(--cr-composebox-tool-chip-height, 36px);
+  justify-content: center;
+  padding-bottom: 6px;
+  padding-inline: 8px 12px;
+  padding-top: 6px;
+}
+
+:host-context([energy-effect-enabled_]) #toolEnabledButton {
+  --cr-button-ripple-color: transparent;
+}
+
+:host-context([energy-effect-enabled_]) #toolEnabledButton:not(.clank) {
+  gap: 4px;
+  padding: 8px;
+  padding-inline-start: 12px;
+}
+
+#toolEnabledButton:focus {
+  outline-offset: -2px;
+}
+
+#toolEnabledButton .icon-container {
+  align-items: center;
+  display: flex;
+  height: 24px;
+  justify-content: center;
+  position: relative;
+  width: 24px;
+}
+
+#toolEnabledButton .tool-icon,
+#toolEnabledButton #leftCloseIcon {
+  height: 16px;
+  position: absolute;
+  transition: opacity 150ms;
+  width: 16px;
+}
+
+#toolEnabledButton #leftCloseIcon {
+  opacity: 0;
+}
+
+#toolEnabledButton:hover #leftCloseIcon,
+#toolEnabledButton:focus #leftCloseIcon {
+  opacity: 1;
+}
+
+#toolEnabledButton:hover .tool-icon,
+#toolEnabledButton:focus .tool-icon {
+  opacity: 0;
+}
+
+:host-context([energy-effect-enabled_]) #toolEnabledButton:hover .tool-icon,
+:host-context([energy-effect-enabled_]) #toolEnabledButton:focus .tool-icon {
+  opacity: 1;
+}
+
+#leftCloseIcon {
+  display: block;
+}
+
+#rightCloseIcon {
+  color: var(--cr-composebox-tool-chip-right-close-icon-color);
+  display: none;
+  height: 10px;
+  padding: 7px;
+  width: 10px;
+}
+
+:host-context([webui-rounded-icons]) #rightCloseIcon {
+  height: 24px;
+  padding: 0;
+  width: 24px;
+}
+
+:host-context([energy-effect-enabled_]) #leftCloseIcon {
+  display: none;
+}
+
+:host-context([energy-effect-enabled_]) #rightCloseIcon {
+  display: block;
+}
+
+:host-context([energy-effect-enabled_]) .tool-label {
+  font-size: 14px;
+  line-height: 18px;
+}
+
+:host-context([energy-effect-enabled_]) #toolEnabledButton .tool-icon,
+:host-context([energy-effect-enabled_]) #toolEnabledButton .icon-container {
+  height: 20px;
+  width: 20px;
+}
+
+#toolEnabledButton.clank {
+  --cr-hover-background-color: transparent;
+  animation: var(--cr-composebox-tool-chip-animation, none);
+  border: none;
+  color: var(--color-searchbox-results-foreground);
+  height: 48px;
+  min-width: 0;
+  padding: 0;
+}
+
+#toolEnabledButton.clank .chip-content {
+  align-items: center;
+  background-color: var(--color-composebox-tool-chip-background, #F0F4F9);
+  border-radius: 32px;
+  box-sizing: border-box;
+  display: flex;
+  height: 36px;
+  padding: 6px 8px;
+}
+
+#toolEnabledButton.clank .chip-leading-icon {
+  flex-shrink: 0;
+  height: 18px;
+  width: 18px;
+}
+
+#toolEnabledButton.clank.image-gen .chip-leading-icon {
+  height: 24px;
+  width: 24px;
+}
+
+#toolEnabledButton.clank .chip-label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  padding: 0 8px;
+}
+
+#toolEnabledButton.clank .chip-close-icon {
+  flex-shrink: 0;
+  height: 18px;
+  width: 18px;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-in {
+  from { transform: translateX(-20px); }
+  to { transform: translateX(0); }
+}

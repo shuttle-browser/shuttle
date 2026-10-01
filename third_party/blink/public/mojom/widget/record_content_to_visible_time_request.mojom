@@ -1,0 +1,44 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module blink.mojom;
+
+import "mojo/public/mojom/base/time.mojom";
+
+// The state of the destination tab at the start of a tab switch.
+struct VisibleTimeTabSwitchReason {
+  // Indicates if the destination tab is loaded when initiating the tab switch.
+  bool destination_is_loaded;
+  bool had_saved_frame_at_start;
+  // True if the destination tab's page lifecycle was frozen when the switch
+  // started.
+  bool destination_is_frozen;
+};
+
+// Any event that can start a RecordContentToVisibleTimeRequest. The member that's set
+// indicates the reason for which the web contents are visible.
+union VisibleTimeEventReason {
+  // Indicates that web contents has become visible because of tab switching.
+  // The value contains the state of the destination tab.
+  VisibleTimeTabSwitchReason tab_switch;
+  // Indicates that web contents has become visible because of restoring a page
+  // from bfcache. The value is a placeholder that's ignored.
+  bool bfcache_restore;
+};
+
+// Keeps track of parameters for recording metrics for content to visible time
+// duration for a single event.
+struct VisibleTimeEvent {
+  // The time at which web contents become visible.
+  mojo_base.mojom.TimeTicks event_start_time;
+  // The event that caused the web contents to become visible.
+  VisibleTimeEventReason reason;
+};
+
+// Keeps track of parameters for recording metrics for content to visible time
+// duration for different events. Here event indicates the reason for which the
+// web contents are visible. Events are added with VisibleTimeRequestTrigger::UpdateRequest.
+struct RecordContentToVisibleTimeRequest {
+  array<VisibleTimeEvent> events;
+};

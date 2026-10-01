@@ -1,0 +1,39 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+edition = "2024";
+
+option optimize_for = LITE_RUNTIME;
+
+package lens;
+
+import "added_inputs.proto";
+import "aim_icon.proto";
+
+message ModalityChipProps {
+  // Displayed text on the modality chip.
+  string title = 1;
+
+  // Thumbnail of the chip.
+  oneof thumbnail {
+    // Thumbnail - can be a data URL or URI.
+    string thumbnail_src = 2;
+
+    // Thumbnail - in a bitmap format.
+    bytes thumbnail_bitmap = 13;
+
+    // Icon identifier for the chip.
+    AimIconType icon_id = 16;
+  }
+
+  AddedInput added_input = 10;
+
+  // True if this modality chip can be submitted without additional user input.
+  bool is_unimodal = 4;
+
+  // Optional consumer-provided ID used for de-duplication.
+  string id = 11;
+
+  reserved 3, 5 to 9, 12;
+}

@@ -1,0 +1,58 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//chrome/common/features.gni")
+
+source_set("client") {
+  public = [ "chrome_actor_login_delegate_client.h" ]
+  sources = [ "chrome_actor_login_delegate_client.cc" ]
+
+  public_deps = [
+    "//components/password_manager/core/browser/actor_login/internal:delegate",
+  ]
+
+  deps = [
+    ":factories",
+    "//base",
+    "//chrome/browser/actor",
+    "//chrome/browser/glic",
+    "//chrome/browser/password_manager/actor_login/internal",
+    "//chrome/browser/password_manager/factories",
+    "//chrome/browser/translate",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/webid",
+    "//chrome/common:buildflags",
+    "//components/password_manager/content/browser",
+    "//components/password_manager/core/browser",
+    "//components/password_manager/core/browser/actor_login:common",
+    "//components/password_manager/core/browser/actor_login/internal:permission_cleaner",
+    "//components/password_manager/core/browser/features:password_features",
+    "//components/tabs:public",
+    "//components/url_formatter",
+    "//content/public/browser",
+    "//content/public/common",
+    "//services/metrics/public/cpp:ukm_builders",
+    "//third_party/re2",
+  ]
+}
+
+source_set("factories") {
+  sources = [
+    "actor_login_permission_cleaning_service_factory.cc",
+    "actor_login_permission_cleaning_service_factory.h",
+    "actor_login_permission_service_factory.cc",
+    "actor_login_permission_service_factory.h",
+  ]
+
+  deps = [
+    "//base",
+    "//chrome/browser/password_manager/factories",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/signin",
+    "//components/password_manager/core/browser/actor_login:common",
+    "//components/password_manager/core/browser/actor_login/internal:permission_cleaner",
+    "//components/password_manager/core/browser/actor_login/internal:permission_service_impl",
+    "//components/signin/public/identity_manager",
+  ]
+}

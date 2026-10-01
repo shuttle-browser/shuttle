@@ -1,0 +1,52 @@
+include_rules = [
+  # Existing dependencies within //chrome. There is an active effort to
+  # refactor //chrome/browser/ash to break these dependencies; see b/332804822.
+  # Whenever possible, avoid adding new //chrome dependencies to this list.
+  #
+  # Files residing in certain directories (e.g., //chrome/browser) are listed
+  # individually. Other dependencies within //chrome are listed on a per-
+  # directory basis. See //tools/chromeos/gen_deps.sh for details.
+  "+chrome/browser/apps/app_preload_service",
+  "+chrome/browser/apps/app_service",
+  "+chrome/browser/ash/accessibility",
+  "+chrome/browser/ash/app_list/arc",
+  "+chrome/browser/ash/guest_os",
+  "+chrome/browser/ash/input_method",
+  "+chrome/browser/ash/login/demo_mode",
+  "+chrome/browser/ash/login/users",
+  "+chrome/browser/ash/policy/core",
+  "+chrome/browser/ash/profiles",
+  "+chrome/browser/ash/settings",
+  "+chrome/browser/browser_process.h",
+  "+chrome/browser/extensions/api/input_ime",
+  "+chrome/browser/extensions/chrome_app_icon.h",
+  "+chrome/browser/extensions/extension_service.h",
+  "+chrome/browser/extensions/external_loader.h",
+  "+chrome/browser/extensions/external_provider_impl.h",
+  "+chrome/browser/extensions/install_tracker_factory.h",
+  "+chrome/browser/extensions/mock_crx_installer.h",
+  "+chrome/browser/extensions/updater",
+  "+chrome/browser/policy",
+  "+chrome/browser/profiles",
+  "+chrome/browser/spellchecker",
+  "+chrome/browser/ui/ash",
+  "+chrome/browser/ui/browser_window/public/browser_window_interface.h",
+  "+chrome/browser/ui/tabs",
+  "+chrome/browser/web_applications/policy/app_service_web_app_policy.h",
+  "+chrome/common/chrome_paths.h",
+  "+chrome/common/extensions",
+  "+chrome/grit",
+]
+
+specific_include_rules = {
+  ".*test(_chromeos)?\\.(h|cc)": [
+    "+chrome/browser/ui/browser.h",
+    "+chrome/browser/ui/browser_window.h",
+    "+chrome/browser/extensions/extension_apitest.h",
+    "+chrome/browser/extensions/extension_service_test_base.h",
+    "+chrome/test/base",
+    "+chrome/browser/ash/login/lock/screen_locker_tester.h",
+    "+chrome/browser/ash/login/test/device_state_mixin.h",
+    "+chrome/browser/ash/login/test/login_manager_mixin.h",
+  ],
+}

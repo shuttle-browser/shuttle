@@ -1,0 +1,105 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// This features file defines Chrome Apps APIs implemented under src/chrome.
+// See chrome/common/extensions/api/_features.md to understand this file, as
+// well as feature.h, simple_feature.h, and feature_provider.h.
+
+{
+  "arcAppsPrivate": {
+    "channel": "stable",
+    "extension_types": ["platform_app"],
+    "allowlist": [
+      "46578A13607D38F1DC8E280C4F499FB0A2F9565C", // http://crbug.com/40565964
+      "898FB5A39687D210766B8998BA4530B99C9E6586", // http://crbug.com/40565964
+      "82F30B65397BC3E4ADE627BBD857AB8A58210648", // http://crbug.com/40565964
+      "C74B2AF138F9EDECD04D0965AB36CA66C8290466"  // http://crbug.com/40625183
+    ]
+  },
+  "browser": {
+    "channel": "stable",
+    "extension_types": ["platform_app"],
+    "platforms": ["chromeos"]
+  },
+  "enterprise.remoteApps": [{
+    "channel": "stable",
+    "extension_types": ["platform_app"],
+    "location": "policy",
+    "platforms": ["chromeos"]
+  }, {
+    "channel": "stable",
+    "dependencies": ["behavior:imprivata_extension"],
+    "extension_types": ["extension"],
+    "location": "policy",
+    "platforms": ["chromeos"]
+  }, {
+    "channel": "stable",
+    "extension_types": ["extension"],
+    "location": "policy",
+    "platforms": ["chromeos"],
+    "allowlist": [
+      // TODO(crbug.com/473998985): Clean up this allowlist once all V-Launcher
+      // customers have migrated to the final allowlisted extensions.
+      "0962FDCCF4987E36619F5BDA0A8ED4CE78E6AC34",  // Mercury V-Launcher
+      // Codimite V-Launcher
+      "24E3AE98CC15530D49F8E4D996673D01C8206063",  // Self-Hosted Prod
+      "EA6971BE428F16A26DD9F77C280F81AE46BA79E7",  // Self-Hosted QA
+      "BBF6833D2D2A33F0DCB166D8769EEA9441D52AA7",  // Self-Hosted Dev
+      "39928C72163259D1BA823AEA998A42EBDDF1A0CC",  // Region H Prod
+      "250B43A9A135DA2E9F5F8DCF8DBDEF6323C16D5D",  // Region H QA
+      "89B67AA6D43A6D5DDF4718375C325217E38EC60F",  // Final Prod
+      "21A31B0290A456FF27425090BDC4E4903234AEB3",  // Final QA
+      // https://crbug.com/433867146
+      "4B7E9789426EBD1BB3F99D72690DAE303FC042DF",  // AuthX Secure for ChromeOS
+      // https://crbug.com/485245112
+      "36F5326E7683E204CE9CE1532093D8BB9CD5D280"   // AuthX in-session extension
+    ]
+  }],
+  "firstRunPrivate": {
+    "channel": "stable",
+    "extension_types": ["platform_app"],
+    "location": "component",
+    "platforms": ["chromeos"]
+  },
+  "mediaGalleries": {
+    "channel": "stable",
+    "extension_types": [ "platform_app" ],
+    "platforms": ["chromeos"]
+  },
+  // TODO(devlin): These all specify the same permissions. There's no need for
+  // child features.
+  "mediaGalleries.allAutoDetected": {
+    "channel": "stable",
+    "extension_types": [ "platform_app" ],
+    "platforms": ["chromeos"]
+  },
+  "mediaGalleries.scan": {
+    "channel": "dev",
+    "extension_types": [ "platform_app" ],
+    "platforms": ["chromeos"]
+  },
+  "mediaGalleries.read": {
+    "channel": "stable",
+    "extension_types": [ "platform_app" ],
+    "platforms": ["chromeos"]
+  },
+  "mediaGalleries.copyTo": {
+    "channel": "stable",
+    "extension_types": [ "platform_app" ],
+    "platforms": ["chromeos"]
+  },
+  "mediaGalleries.delete": {
+    "channel": "stable",
+    "extension_types": [ "platform_app" ],
+    "platforms": ["chromeos"]
+  },
+  "pointerLock": {
+    "channel": "stable",
+    "extension_types": ["platform_app"]
+  },
+  "syncFileSystem": {
+    "channel": "stable",
+    "extension_types": ["platform_app"]
+  }
+}

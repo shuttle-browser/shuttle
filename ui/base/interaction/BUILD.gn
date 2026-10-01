@@ -1,0 +1,128 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/ui.gni")
+import("//testing/test.gni")
+
+component("interaction") {
+  output_name = "ui_base_interaction"
+  defines = [ "IS_UI_BASE_INTERACTION_IMPL" ]
+
+  public = [
+    "element_events.h",
+    "element_highlighter.h",
+    "element_identifier.h",
+    "element_specifier.h",
+    "element_tracker.h",
+    "implementation_list.h",
+    "interaction_sequence.h",
+    "safe_castable.h",
+  ]
+
+  public_deps = [ "//ui/base/identifier" ]
+
+  deps = [
+    "//base",
+    "//ui/gfx:native_ui_types",
+    "//ui/gfx/geometry",
+  ]
+
+  sources = [
+    "element_events.cc",
+    "element_highlighter.cc",
+    "element_identifier.cc",
+    "element_specifier.cc",
+    "element_tracker.cc",
+    "interaction_sequence.cc",
+    "safe_castable.cc",
+  ]
+
+  if (is_mac) {
+    public += [ "element_tracker_mac.h" ]
+    sources += [ "element_tracker_mac.mm" ]
+    frameworks = [ "Foundation.framework" ]
+  }
+}
+
+static_library("test_support") {
+  testonly = true
+
+  sources = [
+    "element_state_observers.cc",
+    "element_state_observers.h",
+    "element_test_util.cc",
+    "element_test_util.h",
+    "expect_call_in_scope.h",
+    "interaction_sequence_test_util.h",
+    "interaction_test_util.cc",
+    "interaction_test_util.h",
+    "interactive_test.cc",
+    "interactive_test.h",
+    "interactive_test_definitions.h",
+    "interactive_test_internal.cc",
+    "interactive_test_internal.h",
+    "interactive_test_temporary.cc",
+    "interactive_test_temporary.h",
+    "polling_state_observer.h",
+    "state_observer.h",
+  ]
+
+  if (is_mac) {
+    sources += [
+      "interaction_test_util_mac.h",
+      "interaction_test_util_mac.mm",
+    ]
+  }
+
+  public_deps = [
+    ":interaction",
+    "//base/test:test_support",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//ui/base/identifier",
+  ]
+
+  deps = [
+    "//base",
+    "//ui/base",
+    "//ui/menus",
+  ]
+
+  if (use_aura) {
+    deps += [ "//ui/aura" ]
+  }
+
+  if (is_android) {
+    deps += [ "//ui/android" ]
+  }
+
+  if (!is_ios) {
+    deps += [ "//ui/native_window_tracker" ]
+  }
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  sources = [
+    "element_highlighter_unittest.cc",
+    "element_tracker_unittest.cc",
+    "implementation_list_unittest.cc",
+    "interaction_sequence_unittest.cc",
+    "interaction_test_util_unittest.cc",
+    "interactive_test_unittest.cc",
+    "safe_castable_unittest.cc",
+  ]
+
+  if (is_mac) {
+    sources += [ "element_tracker_mac_unittest.mm" ]
+    frameworks = [ "Foundation.framework" ]
+  }
+
+  deps = [
+    ":interaction",
+    ":test_support",
+    "//ui/base",
+  ]
+}

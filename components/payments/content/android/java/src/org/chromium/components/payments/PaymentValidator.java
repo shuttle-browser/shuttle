@@ -1,0 +1,62 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.components.payments;
+
+import org.jni_zero.JNINamespace;
+import org.jni_zero.JniType;
+import org.jni_zero.NativeMethods;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.payments.mojom.PaymentDetails;
+import org.chromium.payments.mojom.PaymentValidationErrors;
+import org.chromium.payments.mojom.SecurePaymentConfirmationRequest;
+import org.chromium.url.Origin;
+
+import java.nio.ByteBuffer;
+
+/** Static class to represent a JNI interface to a C++ validation library. */
+@JNINamespace("payments")
+@NullMarked
+public class PaymentValidator {
+    public static boolean validatePaymentDetails(PaymentDetails details) {
+        if (details == null) {
+            return false;
+        }
+        return PaymentValidatorJni.get().validatePaymentDetailsAndroid(details.serialize());
+    }
+
+    public static boolean validatePaymentValidationErrors(PaymentValidationErrors errors) {
+        if (errors == null) {
+            return false;
+        }
+        return PaymentValidatorJni.get().validatePaymentValidationErrorsAndroid(errors.serialize());
+    }
+
+    public static @SecurePaymentConfirmationRequestValidationError int
+            validateSecurePaymentConfirmationRequest(
+                    SecurePaymentConfirmationRequest request,
+                    Origin initiatorOrigin,
+                    String applicationLocale) {
+        if (request == null || initiatorOrigin == null) {
+            return SecurePaymentConfirmationRequestValidationError.INTERNAL_ERROR;
+        }
+        return PaymentValidatorJni.get()
+                .validateSecurePaymentConfirmationRequestAndroid(
+                        request.serialize(), initiatorOrigin, applicationLocale);
+    }
+
+    @NativeMethods
+    interface Natives {
+        boolean validatePaymentDetailsAndroid(ByteBuffer buffer);
+
+        boolean validatePaymentValidationErrorsAndroid(ByteBuffer buffer);
+
+        @SecurePaymentConfirmationRequestValidationError
+        int validateSecurePaymentConfirmationRequestAndroid(
+                ByteBuffer buffer,
+                @JniType("url::Origin") Origin initiatorOrigin,
+                @JniType("std::string") String applicationLocale);
+    }
+}

@@ -1,0 +1,34 @@
+<!--
+@MAC-ALLOW:AXRoleDescription
+@MAC-ALLOW:AXARIALive
+@MAC-ALLOW:AXARIABusy
+@WIN-ALLOW:xml-roles*
+@WIN-ALLOW:*live*
+@WIN-ALLOW:*busy*
+@WIN-ALLOW:*atomic*
+@WIN-ALLOW:*relevant*
+@AURALINUX-ALLOW:xml-roles*
+-->
+<!DOCTYPE HTML>
+<html>
+<body>
+  <!-- HTML snippet based on W3C ARIA Alert Dialog Pattern -->
+  <!--https://www.w3.org/WAI/ARIA/apg/patterns/alertdialog/examples/alertdialog/-->
+  <div>
+    <div id="alertdialog"
+         role="alertdialog"
+         aria-modal="true"
+         aria-labelledby="dialog_label"
+         aria-describedby="dialog_desc">
+      <h2 id="dialog_label">
+        Confirmation
+      </h2>
+      <div id="dialog_desc">
+        <p>
+          Are you sure you want to discard all of your notes?
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

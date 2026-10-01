@@ -1,0 +1,157 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.util;
+
+import android.content.Context;
+import android.view.KeyEvent;
+
+import androidx.annotation.IntDef;
+
+import org.chromium.base.Log;
+import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.base.metrics.RecordUserAction;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.ui.base.DeviceFormFactor;
+import org.chromium.ui.mojom.WindowOpenDisposition;
+
+/** Deals with multiple parts of browser UI code calls. */
+@NullMarked
+public class BrowserUiUtils {
+    /**
+     * ModuleTypeOnStartAndNTP defined in tools/metrics/histograms/enums.xml.
+     *
+     * <p>Do not reorder or remove items, only add new items before NUM_ENTRIES.
+     */
+    @IntDef({
+        ModuleTypeOnStartAndNtp.MOST_VISITED_TILES,
+        ModuleTypeOnStartAndNtp.OMNIBOX,
+        ModuleTypeOnStartAndNtp.SINGLE_TAB_CARD,
+        ModuleTypeOnStartAndNtp.FEED,
+        ModuleTypeOnStartAndNtp.TAB_SWITCHER_BUTTON,
+        ModuleTypeOnStartAndNtp.HOME_BUTTON,
+        ModuleTypeOnStartAndNtp.PROFILE_BUTTON,
+        ModuleTypeOnStartAndNtp.DOODLE,
+        ModuleTypeOnStartAndNtp.MENU_BUTTON,
+        ModuleTypeOnStartAndNtp.MAGIC_STACK,
+        ModuleTypeOnStartAndNtp.COMPOSEPLATE_BUTTON,
+        ModuleTypeOnStartAndNtp.COMPOSEPLATE_VIEW_INCOGNITO_BUTTON,
+        ModuleTypeOnStartAndNtp.COMPOSEPLATE_VIEW_VOICE_SEARCH_BUTTON,
+        ModuleTypeOnStartAndNtp.COMPOSEPLATE_VIEW_LENS_BUTTON,
+        ModuleTypeOnStartAndNtp.NUM_ENTRIES
+    })
+    public @interface ModuleTypeOnStartAndNtp {
+        int MOST_VISITED_TILES = 0;
+        int OMNIBOX = 1;
+        int SINGLE_TAB_CARD = 2;
+        int FEED = 3;
+        int TAB_SWITCHER_BUTTON = 4;
+        int HOME_BUTTON = 5;
+        int PROFILE_BUTTON = 6;
+        int DOODLE = 7;
+        int MENU_BUTTON = 8;
+        int MAGIC_STACK = 9;
+        int COMPOSEPLATE_BUTTON = 10;
+        int COMPOSEPLATE_VIEW_INCOGNITO_BUTTON = 11;
+        int COMPOSEPLATE_VIEW_VOICE_SEARCH_BUTTON = 12;
+        int COMPOSEPLATE_VIEW_LENS_BUTTON = 13;
+
+        // Be sure to also update enums.xml when updating these values.
+        int NUM_ENTRIES = 14;
+    }
+
+    private static final String TAG = "BrowserUiUtils";
+    private static final String STARTUP_UMA_PREFIX = "Startup.Android.";
+    private static final String MODULE_CLICK_METRICS_PREFIX = "NewTabPage.Module.Click";
+    private static final String MODULE_LONG_CLICK_METRICS_PREFIX = "NewTabPage.Module.LongClick";
+
+    /**
+     * Records user clicking on different modules in New tab page.
+     *
+     * @param sample Sample to be recorded in the enumerated histogram.
+     */
+    public static void recordModuleClickHistogram(@ModuleTypeOnStartAndNtp int sample) {
+        RecordHistogram.recordEnumeratedHistogram(
+                MODULE_CLICK_METRICS_PREFIX, sample, ModuleTypeOnStartAndNtp.NUM_ENTRIES);
+    }
+
+    /**
+     * Records user perform long clicking on different modules in New tab page.
+     *
+     * @param sample Sample to be recorded in the enumerated histogram.
+     */
+    public static void recordModuleLongClickHistogram(@ModuleTypeOnStartAndNtp int sample) {
+        RecordHistogram.recordEnumeratedHistogram(
+                MODULE_LONG_CLICK_METRICS_PREFIX, sample, ModuleTypeOnStartAndNtp.NUM_ENTRIES);
+    }
+
+    /**
+     * Records user clicking on the profile icon in New tab page.
+     *
+     * @param isTabNtp Whether the current tab is a new tab page.
+     */
+    public static void recordIdentityDiscClicked(boolean isTabNtp) {
+        if (isTabNtp) {
+            recordModuleClickHistogram(ModuleTypeOnStartAndNtp.PROFILE_BUTTON);
+        }
+    }
+
+    /**
+     * Records metrics when the tab switcher button is clicked.
+     *
+     * @param isExit Whether the click is exiting the tab switcher.
+     * @param isCurrentTabRegularNtp Whether the current tab is a regular new tab page.
+     */
+    public static void recordTabSwitcherButtonClicked(
+            boolean isExit, boolean isCurrentTabRegularNtp) {
+        if (isExit) {
+            RecordUserAction.record("MobileHubExitViaButton");
+        } else {
+            if (isCurrentTabRegularNtp) {
+                recordModuleClickHistogram(ModuleTypeOnStartAndNtp.TAB_SWITCHER_BUTTON);
+            }
+        }
+    }
+
+    /**
+     * Records histograms of showing the home surface. Nothing will be recorded if timeDurationMs
+     * isn't valid.
+     */
+    public static void recordHistogram(String name, long timeDurationMs) {
+        if (timeDurationMs < 0) return;
+
+        String histogramName = STARTUP_UMA_PREFIX + name;
+        Log.i(TAG, "Recorded %s = %d ms", histogramName, timeDurationMs);
+        RecordHistogram.recordTimesHistogram(histogramName, timeDurationMs);
+    }
+
+    /**
+     * Determines the WindowOpenDisposition based on the meta state of a key/touch event.
+     *
+     * @param metaState The meta state from the event (e.g. event.getMetaState()).
+     * @return The appropriate WindowOpenDisposition.
+     */
+    public static int getDispositionFromMetaState(int metaState) {
+        boolean isCtrlOn = (metaState & KeyEvent.META_CTRL_ON) != 0;
+        boolean isShiftOn = (metaState & KeyEvent.META_SHIFT_ON) != 0;
+        if (isCtrlOn) {
+            return isShiftOn
+                    ? WindowOpenDisposition.NEW_FOREGROUND_TAB
+                    : WindowOpenDisposition.NEW_BACKGROUND_TAB;
+        } else if (isShiftOn) {
+            return WindowOpenDisposition.NEW_WINDOW;
+        }
+        return WindowOpenDisposition.CURRENT_TAB;
+    }
+
+    /**
+     * @param context The current context (should be the activity context when possible).
+     * @return Whether the page info item should be moved to the app menu.
+     */
+    public static boolean isPageInfoMovedToAppMenu(Context context) {
+        return ChromeFeatureList.sAndroidPageInfoAsAppMenuItem.isEnabled()
+                && !DeviceFormFactor.isNonMultiDisplayContextOnTablet(context);
+    }
+}

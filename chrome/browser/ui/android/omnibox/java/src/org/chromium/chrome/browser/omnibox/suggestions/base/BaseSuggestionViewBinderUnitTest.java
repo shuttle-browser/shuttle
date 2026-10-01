@@ -1,0 +1,587 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.omnibox.suggestions.base;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+
+import android.content.Context;
+import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
+import android.view.ContextThemeWrapper;
+import android.view.View;
+import android.view.ViewGroup.MarginLayoutParams;
+import android.widget.ImageView;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.robolectric.RuntimeEnvironment;
+import org.robolectric.annotation.Config;
+
+import org.chromium.base.CallbackUtils;
+import org.chromium.base.ContextUtils;
+import org.chromium.base.ResettersForTesting;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.chrome.browser.omnibox.R;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxDrawableState;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
+import org.chromium.chrome.browser.omnibox.suggestions.SuggestionCommonProperties;
+import org.chromium.chrome.browser.omnibox.suggestions.SuggestionCommonProperties.PositionalMode;
+import org.chromium.chrome.browser.omnibox.suggestions.SuggestionCommonProperties.RoundSides;
+import org.chromium.chrome.browser.omnibox.suggestions.base.BaseSuggestionViewProperties.Action;
+import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
+import org.chromium.components.browser_ui.widget.RoundedCornerOutlineProvider;
+import org.chromium.components.omnibox.OmniboxCapabilities;
+import org.chromium.ui.modelutil.PropertyKey;
+import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.ui.modelutil.PropertyModelChangeProcessor;
+import org.chromium.ui.modelutil.PropertyModelChangeProcessor.ViewBinder;
+
+import java.util.Arrays;
+import java.util.List;
+
+/** Tests for {@link BaseSuggestionViewBinder}. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class BaseSuggestionViewBinderUnitTest {
+    @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
+    @Mock private Runnable mRunnable;
+    @Mock private View mView;
+    @Captor private ArgumentCaptor<Drawable> mBackgroundCaptor;
+    private Context mBareContext;
+    private Context mContext;
+    private Resources mResources;
+    private PropertyModel mModel;
+    private BaseSuggestionView<View> mBaseView;
+    private BaseSuggestionViewBinder<View> mBinder;
+    private OmniboxResourceProvider mResourceProvider;
+    private ImageView mIconView;
+
+    @Before
+    public void setUp() {
+        // This context has no themes, no resources, no images, no backgrounds etc.
+        mBareContext = ContextUtils.getApplicationContext();
+        mContext = new ContextThemeWrapper(mBareContext, R.style.Theme_BrowserUI_DayNight);
+        mResources = mContext.getResources();
+
+        mBaseView = spy(new BaseSuggestionView<>(new ImageView(mContext)));
+        mIconView = mBaseView.decorationIcon;
+
+        mModel = new PropertyModel(BaseSuggestionViewProperties.ALL_KEYS);
+        mResourceProvider = new OmniboxResourceProvider(mContext, BrandedColorScheme.APP_DEFAULT);
+        mModel.set(SuggestionCommonProperties.RESOURCE_PROVIDER, mResourceProvider);
+        mBinder =
+                new TestBaseSuggestionViewBinder<>(
+                        (m, v, p) -> {
+                            assertEquals(mBaseView.contentView, v);
+                        });
+
+        PropertyModelChangeProcessor.create(mModel, mBaseView, mBinder);
+
+        ResettersForTesting.register(() -> BaseSuggestionViewBinder.sFocusableDrawableState = null);
+    }
+
+    @Test
+    public void decorIcon_showSquareIcon() {
+        OmniboxDrawableState state =
+                new OmniboxDrawableState(
+                        new ColorDrawable(0),
+                        /* useRoundedCorners= */ false,
+                        /* isLarge= */ false,
+                        /* allowTint= */ false);
+        mModel.set(BaseSuggestionViewProperties.ICON, state);
+
+        assertFalse(mIconView.getClipToOutline());
+        assertEquals(View.VISIBLE, mIconView.getVisibility());
+        assertEquals(state.drawable, mIconView.getDrawable());
+    }
+
+    @Test
+    public void decorIcon_showRoundedIcon() {
+        OmniboxDrawableState state = OmniboxDrawableState.forColor(0);
+        mModel.set(BaseSuggestionViewProperties.ICON, state);
+
+        assertTrue(mIconView.getClipToOutline());
+        assertEquals(View.VISIBLE, mIconView.getVisibility());
+        assertEquals(state.drawable, mIconView.getDrawable());
+    }
+
+    @Test
+    public void decorIcon_hideIcon() {
+        OmniboxDrawableState state = OmniboxDrawableState.forColor(0);
+        mModel.set(BaseSuggestionViewProperties.ICON, state);
+        assertEquals(View.VISIBLE, mIconView.getVisibility());
+        assertEquals(state.drawable, mIconView.getDrawable());
+
+        mModel.set(BaseSuggestionViewProperties.ICON, null);
+        assertEquals(View.GONE, mIconView.getVisibility());
+        // Ensure we're releasing drawable to free memory.
+        assertNull(mIconView.getDrawable());
+    }
+
+    @Test
+    public void actionIcon_showIcon() {
+        List<Action> list =
+                Arrays.asList(
+                        new Action(
+                                mContext,
+                                OmniboxDrawableState.forColor(0),
+                                R.string.accessibility_omnibox_btn_refine,
+                                mRunnable));
+        mModel.set(BaseSuggestionViewProperties.ACTION_BUTTONS, list);
+
+        List<ActionButtonView> actionButtons = mBaseView.getActionButtons();
+        assertEquals(1, actionButtons.size());
+        assertEquals(View.VISIBLE, actionButtons.get(0).getVisibility());
+        assertEquals(list.get(0).icon.drawable, actionButtons.get(0).getDrawable());
+        assertNull(actionButtons.get(0).getBackground());
+        verify(mBaseView, times(1)).addView(actionButtons.get(0));
+
+        assertTrue(actionButtons.get(0).performClick());
+        assertTrue(actionButtons.get(0).performClick());
+        assertTrue(actionButtons.get(0).performClick());
+        verify(mRunnable, times(3)).run();
+    }
+
+    @Test
+    public void actionIcon_showMultipleIcons() {
+        Runnable call1 = mock(Runnable.class);
+        Runnable call2 = mock(Runnable.class);
+        Runnable call3 = mock(Runnable.class);
+
+        List<Action> list =
+                Arrays.asList(
+                        new Action(
+                                mContext,
+                                OmniboxDrawableState.forColor(0),
+                                R.string.accessibility_omnibox_btn_refine,
+                                call1),
+                        new Action(
+                                mContext,
+                                OmniboxDrawableState.forColor(0),
+                                R.string.accessibility_omnibox_btn_refine,
+                                call2),
+                        new Action(
+                                mContext,
+                                OmniboxDrawableState.forColor(0),
+                                R.string.accessibility_omnibox_btn_refine,
+                                call3));
+        mModel.set(BaseSuggestionViewProperties.ACTION_BUTTONS, list);
+
+        List<ActionButtonView> actionButtons = mBaseView.getActionButtons();
+        assertEquals(3, actionButtons.size());
+        assertEquals(View.VISIBLE, actionButtons.get(0).getVisibility());
+        assertEquals(View.VISIBLE, actionButtons.get(1).getVisibility());
+        assertEquals(View.VISIBLE, actionButtons.get(2).getVisibility());
+
+        verify(mBaseView, times(1)).addView(actionButtons.get(0));
+        verify(mBaseView, times(1)).addView(actionButtons.get(1));
+        verify(mBaseView, times(1)).addView(actionButtons.get(2));
+
+        assertEquals(list.get(0).icon.drawable, actionButtons.get(0).getDrawable());
+        assertEquals(list.get(1).icon.drawable, actionButtons.get(1).getDrawable());
+        assertEquals(list.get(2).icon.drawable, actionButtons.get(2).getDrawable());
+
+        assertTrue(actionButtons.get(0).performClick());
+        verify(call1, times(1)).run();
+        assertTrue(actionButtons.get(1).performClick());
+        verify(call2, times(1)).run();
+        assertTrue(actionButtons.get(2).performClick());
+        verify(call3, times(1)).run();
+    }
+
+    @Test
+    public void actionIcon_hideIcons() {
+        final List<Action> list =
+                Arrays.asList(
+                        new Action(
+                                mContext,
+                                OmniboxDrawableState.forColor(0),
+                                R.string.accessibility_omnibox_btn_refine,
+                                CallbackUtils.emptyRunnable()),
+                        new Action(
+                                mContext,
+                                OmniboxDrawableState.forColor(0),
+                                R.string.accessibility_omnibox_btn_refine,
+                                CallbackUtils.emptyRunnable()),
+                        new Action(
+                                mContext,
+                                OmniboxDrawableState.forColor(0),
+                                R.string.accessibility_omnibox_btn_refine,
+                                CallbackUtils.emptyRunnable()));
+
+        final List<ActionButtonView> actionButtons = mBaseView.getActionButtons();
+        mModel.set(BaseSuggestionViewProperties.ACTION_BUTTONS, list);
+        assertEquals(3, actionButtons.size());
+        final View actionButton1 = actionButtons.get(0);
+        final View actionButton2 = actionButtons.get(1);
+        final View actionButton3 = actionButtons.get(2);
+        verify(mBaseView, times(1)).addView(actionButton1);
+        verify(mBaseView, times(1)).addView(actionButton2);
+        verify(mBaseView, times(1)).addView(actionButton3);
+
+        mModel.set(BaseSuggestionViewProperties.ACTION_BUTTONS, list.subList(0, 2));
+        assertEquals(2, actionButtons.size());
+        verify(mBaseView, times(1)).removeView(actionButton3);
+
+        mModel.set(BaseSuggestionViewProperties.ACTION_BUTTONS, list.subList(0, 1));
+        assertEquals(1, actionButtons.size());
+        verify(mBaseView, times(1)).removeView(actionButton2);
+
+        mModel.set(BaseSuggestionViewProperties.ACTION_BUTTONS, null);
+        assertEquals(0, actionButtons.size());
+        verify(mBaseView, times(1)).removeView(actionButton1);
+    }
+
+    @Test
+    public void actionIcon_dontCrashWhenRecycling() {
+        // Force a dirty/recycled view that would have a button view, when the model does not carry
+        // any aciton.
+        assertNull(mModel.get(BaseSuggestionViewProperties.ACTION_BUTTONS));
+        mBaseView.setActionButtonsCount(1);
+        // Change in color scheme happening ahead of setting action could cause a crash.
+        mModel.set(SuggestionCommonProperties.COLOR_SCHEME, BrandedColorScheme.LIGHT_BRANDED_THEME);
+    }
+
+    @Test
+    public void partialSuggestionRounding() {
+        mModel.set(SuggestionCommonProperties.BG_ROUND_SIDES, RoundSides.TOP_AND_BOTTOM);
+        mModel.set(SuggestionCommonProperties.BG_POSITIONAL_MODE, PositionalMode.TOP);
+
+        assertTrue(mBaseView.getClipToOutline());
+        // Expect the RoundedCornerOutlineProvider. Fail if it's anything else.
+        var provider = (RoundedCornerOutlineProvider) mBaseView.getOutlineProvider();
+        assertTrue(provider.isTopEdgeRounded());
+        assertFalse(provider.isBottomEdgeRounded());
+    }
+
+    @Test
+    public void fullSuggestionRounding() {
+        mModel.set(SuggestionCommonProperties.BG_ROUND_SIDES, RoundSides.TOP_AND_BOTTOM);
+        mModel.set(SuggestionCommonProperties.BG_POSITIONAL_MODE, PositionalMode.SINGLE);
+
+        assertTrue(mBaseView.getClipToOutline());
+        // Expect the RoundedCornerOutlineProvider. Fail if it's anything else.
+        var provider = (RoundedCornerOutlineProvider) mBaseView.getOutlineProvider();
+        assertTrue(provider.isTopEdgeRounded());
+        assertTrue(provider.isBottomEdgeRounded());
+    }
+
+    @Test
+    public void noSuggestionRounding() {
+        mModel.set(SuggestionCommonProperties.BG_ROUND_SIDES, RoundSides.TOP_AND_BOTTOM);
+        mModel.set(SuggestionCommonProperties.BG_POSITIONAL_MODE, PositionalMode.MIDDLE);
+
+        assertFalse(mBaseView.getClipToOutline());
+    }
+
+    @Test
+    public void roundSidesNone_noRounding() {
+        mModel.set(SuggestionCommonProperties.BG_ROUND_SIDES, RoundSides.NONE);
+        mModel.set(SuggestionCommonProperties.BG_POSITIONAL_MODE, PositionalMode.SINGLE);
+
+        assertFalse(mBaseView.getClipToOutline());
+    }
+
+    @Test
+    public void roundSidesBottomOnly_singlePositionalMode() {
+        mModel.set(SuggestionCommonProperties.BG_ROUND_SIDES, RoundSides.BOTTOM_ONLY);
+        mModel.set(SuggestionCommonProperties.BG_POSITIONAL_MODE, PositionalMode.SINGLE);
+
+        assertTrue(mBaseView.getClipToOutline());
+        var provider = (RoundedCornerOutlineProvider) mBaseView.getOutlineProvider();
+        assertFalse(provider.isTopEdgeRounded());
+        assertTrue(provider.isBottomEdgeRounded());
+    }
+
+    @Test
+    public void roundSidesBottomOnly_topPositionalMode() {
+        mModel.set(SuggestionCommonProperties.BG_ROUND_SIDES, RoundSides.BOTTOM_ONLY);
+        mModel.set(SuggestionCommonProperties.BG_POSITIONAL_MODE, PositionalMode.TOP);
+
+        assertFalse(mBaseView.getClipToOutline());
+    }
+
+    @Test
+    public void roundSidesBottomOnly_bottomPositionalMode() {
+        mModel.set(SuggestionCommonProperties.BG_ROUND_SIDES, RoundSides.BOTTOM_ONLY);
+        mModel.set(SuggestionCommonProperties.BG_POSITIONAL_MODE, PositionalMode.BOTTOM);
+
+        assertTrue(mBaseView.getClipToOutline());
+        var provider = (RoundedCornerOutlineProvider) mBaseView.getOutlineProvider();
+        assertFalse(provider.isTopEdgeRounded());
+        assertTrue(provider.isBottomEdgeRounded());
+    }
+
+    @Test
+    public void applySelectableBackground_incognito() {
+        // This is a whitebox test. It currently assumes that the Suggestion background is a
+        // LayerDrawable, whose bottom element represents the color.
+        var defaultDrawable = BaseSuggestionViewBinder.sFocusableDrawableState;
+
+        setColorScheme(BrandedColorScheme.INCOGNITO);
+        var lightModeDrawable = BaseSuggestionViewBinder.sFocusableDrawableState;
+        assertNotSame(defaultDrawable, lightModeDrawable);
+
+        // Trigger "no update", the drawable should not be recreated.
+        mModel.set(SuggestionCommonProperties.COLOR_SCHEME, BrandedColorScheme.INCOGNITO);
+        assertSame(lightModeDrawable, BaseSuggestionViewBinder.sFocusableDrawableState);
+        mBinder.bind(mModel, mBaseView, SuggestionCommonProperties.COLOR_SCHEME);
+        assertSame(lightModeDrawable, BaseSuggestionViewBinder.sFocusableDrawableState);
+
+        // Lastly, observe change when changing the color scheme to something else.
+        setColorScheme(BrandedColorScheme.APP_DEFAULT);
+        assertNotSame(lightModeDrawable, BaseSuggestionViewBinder.sFocusableDrawableState);
+    }
+
+    @Test
+    public void applySelectableBackground_nonIncognito() {
+        // This is a whitebox test. It currently assumes that the Suggestion background is a
+        // LayerDrawable, whose bottom element represents the color.
+        var defaultDrawable = BaseSuggestionViewBinder.sFocusableDrawableState;
+
+        setColorScheme(BrandedColorScheme.LIGHT_BRANDED_THEME);
+        var lightModeDrawable = BaseSuggestionViewBinder.sFocusableDrawableState;
+        assertNotSame(defaultDrawable, lightModeDrawable);
+
+        // Trigger "no update", the drawable should not be recreated.
+        mModel.set(SuggestionCommonProperties.COLOR_SCHEME, BrandedColorScheme.LIGHT_BRANDED_THEME);
+        assertSame(lightModeDrawable, BaseSuggestionViewBinder.sFocusableDrawableState);
+        mBinder.bind(mModel, mBaseView, SuggestionCommonProperties.COLOR_SCHEME);
+        assertSame(lightModeDrawable, BaseSuggestionViewBinder.sFocusableDrawableState);
+
+        // Lastly, observe change when changing the color scheme to something else.
+        setColorScheme(BrandedColorScheme.APP_DEFAULT);
+        assertNotSame(lightModeDrawable, BaseSuggestionViewBinder.sFocusableDrawableState);
+    }
+
+    @Test
+    public void applySelectableBackground_reuseConstantState() {
+        // This is a whitebox test. It currently assumes that the Suggestion background is a
+        // known Drawable supplied by the Test. Use simple drawable to aid testing logic.
+        BaseSuggestionViewBinder.sFocusableDrawableState =
+                new ColorDrawable(Color.MAGENTA).getConstantState();
+
+        BaseSuggestionViewBinder.applySelectableBackground(mModel, mView, mResourceProvider);
+        verify(mView).setBackground(mBackgroundCaptor.capture());
+
+        var color = ((ColorDrawable) mBackgroundCaptor.getValue()).getColor();
+
+        assertEquals(Color.MAGENTA, color);
+    }
+
+    @Test
+    public void applySelectableBackground_clearConstantStateWhenSystemColorSchemeChanges() {
+        // This is a whitebox test. It currently assumes that the Suggestion background is a
+        // LayerDrawable, whose bottom element represents the color.
+
+        // First call should instantiate incognito color.
+        mModel.set(SuggestionCommonProperties.COLOR_SCHEME, BrandedColorScheme.APP_DEFAULT);
+        assertNotNull(BaseSuggestionViewBinder.getFocusableDrawableStateForTesting());
+
+        // Check that we're not resetting the state if neither Client nor System properties change.
+        BaseSuggestionViewBinder.maybeResetCachedFocusableDrawableState(mModel, mBaseView);
+        assertNotNull(BaseSuggestionViewBinder.getFocusableDrawableStateForTesting());
+
+        // Second call should instantiate regular color.
+        // Configuration change refreshes all of Chrome.
+        // https://robolectric.org/device-configuration
+        RuntimeEnvironment.setQualifiers("+night");
+
+        // We've enabled night theme. Confirm that the cached state is invalidated.
+        BaseSuggestionViewBinder.maybeResetCachedFocusableDrawableState(mModel, mBaseView);
+        assertNull(BaseSuggestionViewBinder.getFocusableDrawableStateForTesting());
+    }
+
+    @Test
+    public void applySelectableBackground_reuseConstantStateAcrossViews() {
+        // This test validates, that we don't drop the cached StateDrawable whenever we create a new
+        // view that declares all the same set of properties (including COLOR_SCHEME) from scratch.
+        // In the event the newly created PropertyModel declares the same COLOR_SCHEME as ones
+        // already built, we want to continue using the cached ConstantState.
+
+        // First call should cache the ConstantState for the background.
+        mModel.set(SuggestionCommonProperties.COLOR_SCHEME, BrandedColorScheme.LIGHT_BRANDED_THEME);
+        var state1 = BaseSuggestionViewBinder.getFocusableDrawableStateForTesting();
+
+        // Create a second MVP setup. Use Bare context that has no theme data.
+        var newModel = new PropertyModel(BaseSuggestionViewProperties.ALL_KEYS);
+        var viewWithNoContext = spy(new BaseSuggestionView<>(new ImageView(mBareContext)));
+        OmniboxResourceProvider bareResourceProvider =
+                new OmniboxResourceProvider(mBareContext, BrandedColorScheme.APP_DEFAULT);
+        newModel.set(SuggestionCommonProperties.RESOURCE_PROVIDER, bareResourceProvider);
+        PropertyModelChangeProcessor.create(
+                newModel,
+                viewWithNoContext,
+                new TestBaseSuggestionViewBinder<>((m, v, p) -> {}));
+
+        // Apply the same color scheme to the new model.
+        // Observe that we don't crash.
+        newModel.set(
+                SuggestionCommonProperties.COLOR_SCHEME, BrandedColorScheme.LIGHT_BRANDED_THEME);
+        var state2 = BaseSuggestionViewBinder.getFocusableDrawableStateForTesting();
+
+        assertEquals(state1, state2);
+    }
+
+    @Test
+    @Config(qualifiers = "ldltr")
+    public void iconPadding_ltr() {
+        runDecorationIconPaddingTest();
+    }
+
+    @Test
+    @Config(qualifiers = "ldrtl")
+    public void iconPadding_rtl() {
+        runDecorationIconPaddingTest();
+    }
+
+    @Test
+    @Config(qualifiers = "ldltr")
+    public void iconStartPadding_ltr() {
+        runDecorationIconPaddingTest();
+    }
+
+    @Test
+    @Config(qualifiers = "ldrtl")
+    public void iconStartPadding_rtl() {
+        runDecorationIconPaddingTest();
+    }
+
+    @Test
+    @Config(qualifiers = "ldltr-sw600dp")
+    public void iconStartPadding_tablet_ltr() {
+        runDecorationIconPaddingTest();
+    }
+
+    @Test
+    @Config(qualifiers = "ldrtl-sw600dp")
+    public void iconStartPadding_tablet_rtl() {
+        runDecorationIconPaddingTest();
+    }
+
+    private void runDecorationIconPaddingTest() {
+        int smallRoundingRadius =
+                mResources.getDimensionPixelSize(R.dimen.omnibox_small_icon_rounding_radius);
+        int largeRoundingRadius =
+                mResources.getDimensionPixelSize(R.dimen.omnibox_large_icon_rounding_radius);
+        int smallEdgeSize =
+                mResources.getDimensionPixelSize(R.dimen.omnibox_suggestion_24dp_icon_size);
+        int largeEdgeSize =
+                mResources.getDimensionPixelSize(R.dimen.omnibox_suggestion_36dp_icon_size);
+
+        // Variant 1: Small, wide, short icon.
+        // Width bound by the edge edge size, height wrapping content.
+        var b = Bitmap.createBitmap(/* width= */ 2, /* height= */ 1, Bitmap.Config.ALPHA_8);
+
+        OmniboxDrawableState state =
+                OmniboxDrawableState.forFavIcon(new BitmapDrawable(mContext.getResources(), b));
+        mModel.set(BaseSuggestionViewProperties.ICON, state);
+        assertEquals(MarginLayoutParams.WRAP_CONTENT, mIconView.getLayoutParams().height);
+        assertEquals(smallEdgeSize, mIconView.getLayoutParams().width);
+        assertEquals(smallRoundingRadius, mBaseView.decorationIconOutline.getRadiusForTesting());
+
+        // Variant 2: Large, wide, short icon.
+        // Width bound by the edge edge size, height wrapping content.
+        state = OmniboxDrawableState.forImage(new BitmapDrawable(mContext.getResources(), b));
+        mModel.set(BaseSuggestionViewProperties.ICON, state);
+        assertEquals(MarginLayoutParams.WRAP_CONTENT, mIconView.getLayoutParams().height);
+        assertEquals(largeEdgeSize, mIconView.getLayoutParams().width);
+        assertEquals(largeRoundingRadius, mBaseView.decorationIconOutline.getRadiusForTesting());
+
+        // Variant 3: Small, narrow, tall icon.
+        // Height bound by the edge edge size, width wrapping content.
+        b = Bitmap.createBitmap(/* width= */ 1, /* height= */ 2, Bitmap.Config.ALPHA_8);
+
+        state = OmniboxDrawableState.forFavIcon(new BitmapDrawable(mContext.getResources(), b));
+        mModel.set(BaseSuggestionViewProperties.ICON, state);
+        assertEquals(MarginLayoutParams.WRAP_CONTENT, mIconView.getLayoutParams().width);
+        assertEquals(smallEdgeSize, mIconView.getLayoutParams().height);
+        assertEquals(smallRoundingRadius, mBaseView.decorationIconOutline.getRadiusForTesting());
+
+        // Variant 4: Large, narrow, tall icon.
+        // Height bound by the edge edge size, width wrapping content.
+        state = OmniboxDrawableState.forImage(new BitmapDrawable(mContext.getResources(), b));
+        mModel.set(BaseSuggestionViewProperties.ICON, state);
+        assertEquals(MarginLayoutParams.WRAP_CONTENT, mIconView.getLayoutParams().width);
+        assertEquals(largeEdgeSize, mIconView.getLayoutParams().height);
+        assertEquals(largeRoundingRadius, mBaseView.decorationIconOutline.getRadiusForTesting());
+    }
+
+    @Test
+    public void decorIcon_desktopDevice() {
+        OmniboxCapabilities.setIsDesktopPlatformForTesting(true);
+        BaseSuggestionViewBinder.resetCachedResources();
+
+        int smallDesktopEdge =
+                mResources.getDimensionPixelSize(
+                        R.dimen.omnibox_desktop_small_decoration_icon_size);
+        int largeDesktopEdge =
+                mResources.getDimensionPixelSize(
+                        R.dimen.omnibox_desktop_large_decoration_icon_size);
+
+        Bitmap b = Bitmap.createBitmap(/* width= */ 2, /* height= */ 1, Bitmap.Config.ALPHA_8);
+
+        OmniboxDrawableState state =
+                OmniboxDrawableState.forFavIcon(new BitmapDrawable(mContext.getResources(), b));
+        mModel.set(BaseSuggestionViewProperties.ICON, state);
+        assertEquals(MarginLayoutParams.WRAP_CONTENT, mIconView.getLayoutParams().height);
+        assertEquals(smallDesktopEdge, mIconView.getLayoutParams().width);
+
+        state = OmniboxDrawableState.forImage(new BitmapDrawable(mContext.getResources(), b));
+        mModel.set(BaseSuggestionViewProperties.ICON, state);
+        assertEquals(MarginLayoutParams.WRAP_CONTENT, mIconView.getLayoutParams().height);
+        assertEquals(largeDesktopEdge, mIconView.getLayoutParams().width);
+
+        OmniboxCapabilities.setIsDesktopPlatformForTesting(false);
+        BaseSuggestionViewBinder.resetCachedResources();
+    }
+
+    @Test
+    public void topPadding() {
+        mModel.set(BaseSuggestionViewProperties.TOP_PADDING, 13);
+        assertEquals(13, mBaseView.getPaddingTop());
+    }
+
+    private void setColorScheme(@BrandedColorScheme int scheme) {
+        mResourceProvider.setBrandedColorScheme(scheme);
+        mModel.set(SuggestionCommonProperties.COLOR_SCHEME, scheme);
+    }
+
+    private static class TestBaseSuggestionViewBinder<T extends View>
+            extends BaseSuggestionViewBinder<T> {
+        private final ViewBinder<PropertyModel, T, PropertyKey> mContentBinder;
+
+        public TestBaseSuggestionViewBinder(
+                ViewBinder<PropertyModel, T, PropertyKey> contentBinder) {
+            super();
+            mContentBinder = contentBinder;
+        }
+
+        @Override
+        protected void bindContent(PropertyModel model, T contentView, PropertyKey propertyKey) {
+            mContentBinder.bind(model, contentView, propertyKey);
+        }
+    }
+}

@@ -1,0 +1,5 @@
+# App-y stuff
+per-file hosted_app_*=file://chrome/browser/web_applications/UI_OWNERS
+
+# Extension-y stuff
+file://extensions/UI_OWNERS

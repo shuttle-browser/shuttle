@@ -1,0 +1,15 @@
+[
+  {
+    "os": [
+      "android"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "virtual_keyboard_resizes_layout_by_default",
+      "default_value": false,
+      "values_to_test": [
+        true,
+        false
+      ]
+    }
+  }
+]

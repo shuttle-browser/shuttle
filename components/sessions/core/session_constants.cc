@@ -1,0 +1,28 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/sessions/core/session_constants.h"
+
+namespace sessions {
+
+const base::FilePath::StringViewType kSessionsDirectory =
+    FILE_PATH_LITERAL("Sessions");
+
+const base::FilePath::StringViewType kEncryptedSessionsDirectory =
+    FILE_PATH_LITERAL("Sessions_Encrypted");
+
+const base::FilePath::CharType kTabSessionFileNamePrefix[] =
+    FILE_PATH_LITERAL("Tabs");
+
+const base::FilePath::CharType kSessionFileNamePrefix[] =
+    FILE_PATH_LITERAL("Session");
+
+const base::FilePath::CharType kAppSessionFileNamePrefix[] =
+    FILE_PATH_LITERAL("Apps");
+
+const base::FilePath::CharType kTimestampSeparator[] = FILE_PATH_LITERAL("_");
+
+const int gMaxPersistNavigationCount = 6;
+
+}  // namespace sessions

@@ -1,0 +1,51 @@
+# Copyright 2022 The Chromium Authors
+# Use of this source code is governed by a BSD - style license that can be
+# found in the LICENSE file.
+
+import("//extensions/buildflags/buildflags.gni")
+
+assert(enable_extensions,
+       "Cannot depend on extensions because enable_extensions=false.")
+
+assert(is_chromeos)
+
+source_set("wm") {
+  sources = [
+    "wm_desks_private_api.cc",
+    "wm_desks_private_api.h",
+    "wm_desks_private_events.cc",
+    "wm_desks_private_events.h",
+    "wm_desks_private_feature.h",
+    "wm_desks_private_feature_ash.cc",
+    "wm_desks_private_feature_ash.h",
+  ]
+
+  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+
+  deps = [
+    "//ash",
+    "//base",
+    "//chrome/browser/profiles:profile",
+    "//chrome/common/extensions/api",
+    "//components/keyed_service/content",
+    "//content/public/browser",
+    "//extensions/browser",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "wm_desks_private_events_unittest.cc" ]
+  deps = [
+    ":wm",
+    "//base",
+    "//chrome/common/extensions/api",
+    "//chrome/test:test_support",
+    "//components/crx_file",
+    "//content/public/browser",
+    "//content/test:test_support",
+    "//extensions/browser",
+    "//extensions/browser:test_support",
+    "//testing/gtest",
+  ]
+}

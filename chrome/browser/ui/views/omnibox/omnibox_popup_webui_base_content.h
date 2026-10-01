@@ -1,0 +1,216 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_POPUP_WEBUI_BASE_CONTENT_H_
+#define CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_POPUP_WEBUI_BASE_CONTENT_H_
+
+#include <string_view>
+#include <utility>
+
+#include "base/memory/raw_ptr.h"
+#include "base/timer/timer.h"
+#include "chrome/browser/ui/location_bar/location_bar.h"
+#include "chrome/browser/ui/webui/top_chrome/webui_contents_wrapper.h"
+#include "extensions/browser/view_type_utils.h"
+#include "ui/base/metadata/metadata_header_macros.h"
+#include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/rounded_corners_f.h"
+#include "ui/gfx/geometry/size.h"
+#include "ui/views/controls/webview/unhandled_keyboard_event_handler.h"
+#include "ui/views/controls/webview/webview.h"
+#include "ui/views/metadata/view_factory.h"
+#include "ui/views/view_observer.h"
+
+class OmniboxContextMenu;
+class OmniboxController;
+class OmniboxPopupPresenterBase;
+class OmniboxPopupDeactivationBlocker;
+class OmniboxPopupTabSelectionListener;
+class OmniboxPopupUI;
+
+namespace content {
+class WebContents;
+}  // namespace content
+
+namespace ui {
+class MenuModel;
+}  // namespace ui
+
+// The content WebView for the popup of a WebUI Omnibox.
+class OmniboxPopupWebUIBaseContent : public views::WebView,
+                                     public LocationBar::Observer,
+                                     public WebUIContentsWrapper::Host {
+  METADATA_HEADER(OmniboxPopupWebUIBaseContent, views::WebView)
+
+ public:
+  OmniboxPopupWebUIBaseContent() = delete;
+  OmniboxPopupWebUIBaseContent(OmniboxPopupPresenterBase* presenter,
+                               LocationBar* location_bar,
+                               OmniboxController* controller,
+                               bool top_rounded_corners);
+  OmniboxPopupWebUIBaseContent(const OmniboxPopupWebUIBaseContent&) = delete;
+  OmniboxPopupWebUIBaseContent& operator=(const OmniboxPopupWebUIBaseContent&) =
+      delete;
+  ~OmniboxPopupWebUIBaseContent() override;
+
+  WebUIContentsWrapperT<OmniboxPopupUI>* contents_wrapper() {
+    return const_cast<WebUIContentsWrapperT<OmniboxPopupUI>*>(
+        std::as_const(*this).contents_wrapper());
+  }
+  const WebUIContentsWrapperT<OmniboxPopupUI>* contents_wrapper() const {
+    return contents_wrapper_.get();
+  }
+
+  // views::View:
+  void AddedToWidget() override;
+
+  // LocationBar::Observer:
+  void OnLocationBarBoundsChanged() override;
+
+  // WebUIContentsWrapper::Host:
+  void CloseUI() override;
+  void ShowUI() override;
+  void OnPreHandleEscapeKey() override;
+  void ShowCustomContextMenu(
+      gfx::Point point,
+      std::unique_ptr<ui::MenuModel> menu_model) override;
+  void ResizeDueToAutoResize(content::WebContents* source,
+                             const gfx::Size& new_size) override;
+  bool HandleKeyboardEvent(content::WebContents* source,
+                           const input::NativeWebKeyboardEvent& event) override;
+  void RequestMediaAccessPermission(
+      content::WebContents* web_contents,
+      const content::MediaStreamRequest& request,
+      content::MediaResponseCallback callback) override;
+  void RunFileChooser(content::RenderFrameHost* render_frame_host,
+                      scoped_refptr<content::FileSelectListener> listener,
+                      const blink::mojom::FileChooserParams& params) override;
+
+  // Notifies the page the widget was hidden and performs cleanup.
+  virtual void Clear() = 0;
+
+  // Returns the WebContents from within the wrapper. Don't use
+  // GetWebContents() since that may be nullptr if the popup isn't visible.
+  content::WebContents* GetWrappedWebContents();
+
+  // content::WebContentsObserver:
+  void PrimaryMainFrameRenderProcessGone(
+      base::TerminationStatus status) override;
+
+  bool top_rounded_corners() const { return top_rounded_corners_; }
+
+  // Returns the corner radii of this WebUI content view to match the popup
+  // frame.
+  gfx::RoundedCornersF GetRoundedCornerRadii() const;
+
+  virtual bool EscClosesUI() const;
+
+  bool ShouldApplyHeightWorkarounds() const;
+  bool ShouldSizeWebViewToPreferredHeight() const;
+
+  bool IsShown() { return is_shown_; }
+  void set_is_shown(bool is_shown) { is_shown_ = is_shown; }
+
+ protected:
+  // Callback for cleaning up the `context_menu_` field.
+  void OnMenuClosed();
+
+  virtual void OnContextMenuClosed() = 0;
+
+  // Set up the WebUI content page and hook up the Omnibox handlers.
+  void SetContentURL(std::string_view url);
+
+  virtual std::string_view GetMetricPrefix() const = 0;
+
+  OmniboxController* controller() {
+    return const_cast<OmniboxController*>(std::as_const(*this).controller());
+  }
+  const OmniboxController* controller() const { return controller_.get(); }
+
+  LocationBar* location_bar() {
+    return const_cast<LocationBar*>(std::as_const(*this).location_bar());
+  }
+  const LocationBar* location_bar() const { return location_bar_.get(); }
+
+  // Returns the presenter associated with this popup content.
+  OmniboxPopupPresenterBase* popup_presenter() {
+    return const_cast<OmniboxPopupPresenterBase*>(
+        std::as_const(*this).popup_presenter());
+  }
+  const OmniboxPopupPresenterBase* popup_presenter() const {
+    return popup_presenter_;
+  }
+
+  // Detaches the WebContents and cleans up.
+  void Detach();
+
+ private:
+  // Loads the WebUI content using the cached `content_url`. Creates a new
+  // content wrapper (also destroying previous one if it exists) and initializes
+  // the renderer.
+  void LoadContent();
+
+#if BUILDFLAG(IS_MAC)
+  void UpdateAutoFill();
+#endif
+
+  raw_ptr<OmniboxPopupPresenterBase> popup_presenter_ = nullptr;
+  raw_ptr<LocationBar> location_bar_ = nullptr;
+  // The controller for the Omnibox.
+  raw_ptr<OmniboxController> controller_ = nullptr;
+
+  // Whether or not the top of the view has rounded corners.
+  bool top_rounded_corners_ = true;
+
+  std::unique_ptr<WebUIContentsWrapperT<OmniboxPopupUI>> contents_wrapper_;
+  std::unique_ptr<OmniboxContextMenu> context_menu_;
+
+  std::unique_ptr<OmniboxPopupTabSelectionListener> tab_selection_listener_;
+
+  // The URL used to load the WebUI. Cached here so the content can be reloaded
+  // if the renderer crashes.
+  GURL content_url_;
+
+  // Tracks the visible state of the WebUI. This is distinct from the
+  // View's visibility (GetVisible()) to handle lifecycle timing differences.
+  bool is_shown_ = false;
+
+  // A handler to handle unhandled keyboard messages coming back from the
+  // renderer process.
+  views::UnhandledKeyboardEventHandler unhandled_keyboard_event_handler_;
+
+  // Debounces the resize events to avoid flickering.
+  base::OneShotTimer debounce_resize_timer_;
+
+  // True if a bounds synchronization task is already posted and pending.
+  // Used to avoid overwriting a user resize task with the lower priority task
+  // of updating popup bounds to match location bar bounds change.
+  bool has_pending_synchronize_ = false;
+
+  // The last known width of the location bar. Used to detect width changes,
+  // and if there are width changes, it implies the browser window has resized.
+  int last_location_bar_width_ = 0;
+
+  // If the browser window is currently being resized. If so, ignore bouncer for
+  // delay.
+  bool is_window_resizing_ = false;
+
+  friend class OmniboxAimPopupBrowserTest;
+
+  void OnFileChooserClosed();
+
+  std::unique_ptr<OmniboxPopupDeactivationBlocker>
+      file_chooser_deactivation_blocker_;
+
+  base::WeakPtrFactory<OmniboxPopupWebUIBaseContent> weak_factory_{this};
+};
+
+BEGIN_VIEW_BUILDER(/* no export */,
+                   OmniboxPopupWebUIBaseContent,
+                   views::WebView)
+END_VIEW_BUILDER
+
+DEFINE_VIEW_BUILDER(/* no export */, OmniboxPopupWebUIBaseContent)
+
+#endif  // CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_POPUP_WEBUI_BASE_CONTENT_H_

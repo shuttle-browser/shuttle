@@ -1,0 +1,39 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_TABS_UI_BUNDLED_FOREGROUND_TAB_ANIMATION_VIEW_H_
+#define IOS_CHROME_BROWSER_TABS_UI_BUNDLED_FOREGROUND_TAB_ANIMATION_VIEW_H_
+
+#import <UIKit/UIKit.h>
+
+enum class AppBarPosition;
+
+// View used to contain an animation of a new tab opening in the foreground.
+// A content subview animates to fill the view while the background fades to
+// black.
+@interface ForegroundTabAnimationView : UIView
+
+// The content view (typically the new tab's view) to animate.
+@property(nonatomic, strong) UIView* contentView;
+
+// Snapshot view of the background content (the previous tab) to be displayed
+// behind the animation.
+@property(nonatomic, strong) UIView* backgroundView;
+
+// If DeviceCornerRadius should be applied to the contentView, ideally only when
+// the contentView takes the full screen. Default is NO.
+@property(nonatomic, assign) BOOL useDeviceCornerRadius;
+
+// Indicates the position of the App Bar, to apply the correct corner radius.
+@property(nonatomic, assign) AppBarPosition appBarPosition;
+
+// Starts a New Tab animation in `parentView`, from `originPoint` with
+// a `completion` block. The new tab will scale up and move from the direction
+// if `originPoint` to the center of the receiver. `originPoint` must be in
+// UIWindow coordinates.
+- (void)animateFrom:(CGPoint)originPoint withCompletion:(void (^)())completion;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_TABS_UI_BUNDLED_FOREGROUND_TAB_ANIMATION_VIEW_H_

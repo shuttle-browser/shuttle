@@ -1,0 +1,19 @@
+[
+  {
+    "os": [
+      "win",
+      "linux",
+      "mac",
+      "chromeos",
+      "fuchsia",
+      "android"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "policy.safe_sites_filter_behavior",
+      "default_value": 0,
+      "values_to_test": [
+        1
+      ]
+    }
+  }
+]

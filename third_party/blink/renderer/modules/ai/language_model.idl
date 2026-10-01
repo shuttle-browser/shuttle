@@ -1,0 +1,169 @@
+// Copyright 2024 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// https://github.com/webmachinelearning/prompt-api
+
+dictionary LanguageModelCloneOptions {
+  AbortSignal signal;
+};
+
+dictionary LanguageModelPromptOptions {
+  object responseConstraint;
+  boolean omitResponseConstraintInput = false;
+  AbortSignal signal;
+};
+
+dictionary LanguageModelAppendOptions {
+  AbortSignal signal;
+};
+
+[
+  Exposed(Window AIPromptAPI, Worker AIPromptAPIForWorkers),
+  RuntimeEnabled=AIPromptAPI,
+  SecureContext
+]
+interface LanguageModel : EventTarget {
+  [
+    MeasureAs=LanguageModel_Create,
+    CallWith=ScriptState,
+    RaisesException
+  ]
+  static Promise<LanguageModel> create(
+    optional LanguageModelCreateOptions options = {}
+  );
+  [
+    MeasureAs=LanguageModel_Availability,
+    CallWith=ScriptState,
+    RaisesException
+  ]
+  static Promise<Availability> availability(
+    optional LanguageModelCreateCoreOptions options = {}
+  );
+
+  // **EXPERIMENTAL**: Only available in extension and experimental contexts.
+  [
+    MeasureAs=LanguageModel_Params,
+    RuntimeEnabled=AIPromptAPILegacyParams,
+    CallWith=ScriptState,
+    RaisesException
+  ]
+  static Promise<LanguageModelParams?> params();
+
+  [
+    MeasureAs=LanguageModel_Prompt,
+    CallWith=ScriptState,
+    RaisesException
+  ]
+  // When this object was created with LanguageModelToolDeclaration and
+  // expectedOutputs includes {type:"tool-call"}, this now yields a
+  // LanguageModelMessageContent sequence.
+  Promise<LanguageModelPromptResult> prompt(
+    LanguageModelPrompt input,
+    optional LanguageModelPromptOptions options = {}
+  );
+
+  [
+    MeasureAs=LanguageModel_PromptStreaming,
+    CallWith=ScriptState,
+    RaisesException
+  ]
+  // When this object was created with LanguageModelToolDeclaration and
+  // expectedOutputs includes {type:"tool-call"}, this now yields a
+  // LanguageModelMessageContent dictionary sequence in chunks.
+  ReadableStream promptStreaming(
+    LanguageModelPrompt input,
+    optional LanguageModelPromptOptions options = {}
+  );
+
+  [
+    MeasureAs=LanguageModel_Append,
+    CallWith=ScriptState,
+    RaisesException
+  ]
+  Promise<undefined> append(
+    LanguageModelPrompt input,
+    optional LanguageModelAppendOptions options = {}
+  );
+
+  [
+    MeasureAs=LanguageModel_MeasureContextUsage,
+    CallWith=ScriptState,
+    RaisesException
+  ]
+  Promise<double> measureContextUsage(
+    LanguageModelPrompt input,
+    optional LanguageModelPromptOptions options = {}
+  );
+
+  // **DEPRECATED**: This legacy alias for measureContextUsage will be removed.
+  [
+    RuntimeEnabled=AIPromptAPILegacyIdentifiers,
+    DeprecateAs=LanguageModel_MeasureInputUsage,
+    CallWith=ScriptState,
+    RaisesException
+  ]
+  Promise<double> measureInputUsage(
+    LanguageModelPrompt input,
+    optional LanguageModelPromptOptions options = {}
+  );
+
+  [MeasureAs=LanguageModel_ContextUsage]
+  readonly attribute double contextUsage;
+  [MeasureAs=LanguageModel_ContextWindow]
+  readonly attribute unrestricted double contextWindow;
+
+  // **DEPRECATED**: This legacy alias for contextUsage will be removed.
+  [
+    RuntimeEnabled=AIPromptAPILegacyIdentifiers,
+    DeprecateAs=LanguageModel_InputUsage
+  ]
+  readonly attribute double inputUsage;
+
+  // **DEPRECATED**: This legacy alias for contextWindow will be removed.
+  [
+    RuntimeEnabled=AIPromptAPILegacyIdentifiers,
+    DeprecateAs=LanguageModel_InputQuota
+  ]
+  readonly attribute unrestricted double inputQuota;
+
+  // **EXPERIMENTAL**: Only available in extension and experimental contexts.
+  [
+    RuntimeEnabled=AIPromptAPILegacyParams,
+    MeasureAs=LanguageModel_TopK
+  ]
+  readonly attribute unsigned long topK;
+
+  // **EXPERIMENTAL**: Only available in extension and experimental contexts.
+  [
+    RuntimeEnabled=AIPromptAPILegacyParams,
+    MeasureAs=LanguageModel_Temperature
+  ]
+  readonly attribute float temperature;
+
+  [RuntimeEnabled=AIPromptAPIParams]
+  readonly attribute LanguageModelSamplingMode? samplingMode;
+
+  // **DEPRECATED**: This legacy alias for oncontextoverflow will be removed.
+  [
+    RuntimeEnabled=AIPromptAPILegacyIdentifiers,
+    DeprecateAs=LanguageModel_OnQuotaOverflow
+  ]
+  attribute EventHandler onquotaoverflow;
+
+  [MeasureAs=LanguageModel_OnContextOverflow]
+  attribute EventHandler oncontextoverflow;
+
+  [
+    MeasureAs=LanguageModel_Clone,
+    CallWith=ScriptState,
+    RaisesException
+  ]
+  Promise<LanguageModel> clone(optional LanguageModelCloneOptions options = {});
+  [
+    MeasureAs=LanguageModel_Destroy,
+    CallWith=ScriptState,
+    RaisesException
+  ]
+  undefined destroy();
+};

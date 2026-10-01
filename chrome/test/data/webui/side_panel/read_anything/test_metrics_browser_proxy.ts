@@ -1,0 +1,171 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import type {MetricsBrowserProxy, ReadAloudSettingsChange, ReadAnythingSettingsAction, ReadAnythingSettingsChange, ReadAnythingSpeechError, ReadAnythingVoiceType} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+import {TestBrowserProxy} from 'chrome-untrusted://webui-test/test_browser_proxy.js';
+
+// Test version of the BrowserProxy used in connecting Reading Mode to
+// chrome.metricsPrivate or chrome.readingMode for logging purposes.
+export class TestMetricsBrowserProxy extends TestBrowserProxy implements
+    MetricsBrowserProxy {
+  constructor() {
+    super([
+      'incrementMetricCount',
+      'recordEmptyState',
+      'recordExtensionState',
+      'recordHighlightOff',
+      'recordHighlightOn',
+      'recordHighlightGranularity',
+      'recordLanguage',
+      'recordLineFocusSession',
+      'recordLineFocusToggled',
+      'recordNewPage',
+      'recordNewPageWithSpeech',
+      'recordSpeechError',
+      'recordSpeechPlaybackLength',
+      'recordSpeechPlaybackLengthLegacy',
+      'recordSpeechSettingsChange',
+      'recordSpeechStopSource',
+      'recordSettingsAction',
+      'recordTextSettingsChange',
+      'recordTime',
+      'recordVoiceSpeed',
+      'recordVoiceType',
+      'recordVoiceLanguageChange',
+      'recordCount',
+      'recordBoolean',
+      'updateWordsSeen',
+      'updateWordsHeard',
+      'startLineFocusSession',
+      'incrementLineFocusKeyboardLines',
+      'incrementLineFocusSpeechLines',
+      'addLineFocusScrollDistance',
+      'addLineFocusMouseDistance',
+    ]);
+  }
+
+  incrementMetricCount(umaName: string) {
+    this.methodCalled('incrementMetricCount', umaName);
+  }
+
+  recordEmptyState() {
+    this.methodCalled('recordEmptyState');
+  }
+
+  recordLineFocusSession() {
+    this.methodCalled('recordLineFocusSession');
+  }
+
+  recordLineFocusToggled(enabled: boolean) {
+    this.methodCalled('recordLineFocusToggled', enabled);
+  }
+
+  recordNewPage() {
+    this.methodCalled('recordNewPage');
+  }
+
+  recordNewPageWithSpeech() {
+    this.methodCalled('recordNewPageWithSpeech');
+  }
+
+  recordHighlightOn() {
+    this.methodCalled('recordHighlightOn');
+  }
+
+  recordHighlightOff() {
+    this.methodCalled('recordHighlightOff');
+  }
+
+  recordHighlightGranularity(highlight: number) {
+    this.methodCalled('recordHighlightGranularity', highlight);
+  }
+
+  recordVoiceType(voiceType: ReadAnythingVoiceType) {
+    this.methodCalled('recordVoiceType', voiceType);
+  }
+
+  recordVoiceLanguageChange() {
+    this.methodCalled('recordVoiceLanguageChange');
+  }
+
+  recordLanguage(lang: string) {
+    this.methodCalled('recordLanguage', lang);
+  }
+
+  recordSettingsAction(settingsAction: ReadAnythingSettingsAction) {
+    this.methodCalled('recordSettingsAction', settingsAction);
+  }
+
+  recordTextSettingsChange(settingsChange: ReadAnythingSettingsChange) {
+    this.methodCalled('recordTextSettingsChange', settingsChange);
+  }
+
+  recordSpeechSettingsChange(settingsChange: ReadAloudSettingsChange) {
+    this.methodCalled('recordSpeechSettingsChange', settingsChange);
+  }
+
+  recordSpeechStopSource(source: number) {
+    this.methodCalled('recordSpeechStopSource', source);
+  }
+
+  recordVoiceSpeed(index: number) {
+    this.methodCalled('recordVoiceSpeed', index);
+  }
+
+  recordSpeechError(error: ReadAnythingSpeechError) {
+    this.methodCalled('recordSpeechError', error);
+  }
+
+  recordTime(umaName: string, time: number) {
+    this.methodCalled('recordTime', umaName, time);
+  }
+
+  recordSpeechPlaybackLength(umaName: string, time: number) {
+    this.methodCalled('recordSpeechPlaybackLength', umaName, time);
+  }
+
+  recordSpeechPlaybackLengthLegacy(time: number) {
+    this.methodCalled('recordSpeechPlaybackLengthLegacy', time);
+  }
+
+  recordExtensionState() {
+    this.methodCalled('recordExtensionState');
+  }
+
+  recordCount(umaName: string, count: number) {
+    this.methodCalled('recordCount', umaName, count);
+  }
+
+  recordBoolean(umaName: string, value: boolean) {
+    this.methodCalled('recordBoolean', umaName, value);
+  }
+
+  updateWordsSeen(wordsSeen: number): void {
+    this.methodCalled('updateWordsSeen', wordsSeen);
+  }
+
+  updateWordsHeard(wordsHeard: number): void {
+    this.methodCalled('updateWordsHeard', wordsHeard);
+  }
+
+  startLineFocusSession(): void {
+    this.methodCalled('startLineFocusSession');
+  }
+
+  incrementLineFocusKeyboardLines(): void {
+    this.methodCalled('incrementLineFocusKeyboardLines');
+  }
+
+  incrementLineFocusSpeechLines(): void {
+    this.methodCalled('incrementLineFocusSpeechLines');
+  }
+
+  addLineFocusScrollDistance(distance: number): void {
+    this.methodCalled('addLineFocusScrollDistance', distance);
+  }
+
+  addLineFocusMouseDistance(distance: number): void {
+    this.methodCalled('addLineFocusMouseDistance', distance);
+  }
+}

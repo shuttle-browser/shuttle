@@ -1,0 +1,17 @@
+[
+  {
+    "os": [
+      "linux",
+      "android"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "net.out_of_process_system_dns_resolution_enabled",
+      "pref_location": "local_state",
+      "default_value": true,
+      "values_to_test": [
+        true,
+        false
+      ]
+    }
+  }
+]

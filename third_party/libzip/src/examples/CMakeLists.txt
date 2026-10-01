@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.14)
+
+foreach(PROGRAM add-compressed-data autoclose-archive in-memory)
+    add_executable(${PROGRAM} ${PROGRAM}.c)
+    target_link_libraries(${PROGRAM} zip)
+    target_include_directories(${PROGRAM} PRIVATE BEFORE ${PROJECT_SOURCE_DIR}/lib ${PROJECT_BINARY_DIR})
+endforeach()

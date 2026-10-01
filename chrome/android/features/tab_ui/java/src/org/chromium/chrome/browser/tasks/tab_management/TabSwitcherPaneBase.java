@@ -1,0 +1,808 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.tasks.tab_management;
+
+import static org.chromium.build.NullUtil.assumeNonNull;
+import static org.chromium.chrome.browser.hub.HubAnimationConstants.HUB_LAYOUT_FADE_DURATION_MS;
+import static org.chromium.chrome.browser.hub.HubAnimationConstants.HUB_LAYOUT_SHRINK_EXPAND_DURATION_MS;
+import static org.chromium.chrome.browser.hub.HubAnimationConstants.HUB_LAYOUT_TAB_LIST_FADE_DURATION_MS;
+import static org.chromium.chrome.browser.tasks.tab_management.TabSwitcherConstants.DESTROY_COORDINATOR_DELAY_MS;
+import static org.chromium.chrome.browser.tasks.tab_management.TabSwitcherConstants.HARD_CLEANUP_DELAY_MS;
+import static org.chromium.chrome.browser.tasks.tab_management.TabSwitcherConstants.SOFT_CLEANUP_DELAY_MS;
+
+import android.content.Context;
+import android.content.res.Resources;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.os.Handler;
+import android.os.SystemClock;
+import android.view.View;
+import android.view.View.OnClickListener;
+
+import androidx.annotation.ColorInt;
+import androidx.annotation.VisibleForTesting;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import org.chromium.base.Callback;
+import org.chromium.base.Log;
+import org.chromium.base.ResettersForTesting;
+import org.chromium.base.SysUtils;
+import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.base.metrics.RecordUserAction;
+import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.base.supplier.NonNullObservableSupplier;
+import org.chromium.base.supplier.NullableObservableSupplier;
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
+import org.chromium.base.supplier.SettableNonNullObservableSupplier;
+import org.chromium.base.supplier.SettableNullableObservableSupplier;
+import org.chromium.base.supplier.SyncOneshotSupplier;
+import org.chromium.base.supplier.SyncOneshotSupplierImpl;
+import org.chromium.build.BuildConfig;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.compositor.CompositorViewHolder;
+import org.chromium.chrome.browser.hub.FadeHubLayoutAnimationFactory;
+import org.chromium.chrome.browser.hub.HubContainerView;
+import org.chromium.chrome.browser.hub.HubLayoutAnimationListener;
+import org.chromium.chrome.browser.hub.HubLayoutAnimatorProvider;
+import org.chromium.chrome.browser.hub.HubUtils;
+import org.chromium.chrome.browser.hub.LoadHint;
+import org.chromium.chrome.browser.hub.Pane;
+import org.chromium.chrome.browser.hub.PaneBase;
+import org.chromium.chrome.browser.hub.PaneHubController;
+import org.chromium.chrome.browser.hub.PaneId;
+import org.chromium.chrome.browser.hub.ShrinkExpandAnimationData;
+import org.chromium.chrome.browser.hub.ShrinkExpandHubLayoutAnimationFactory;
+import org.chromium.chrome.browser.hub.TabListHubLayoutAnimationFactory;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab_ui.RecyclerViewPosition;
+import org.chromium.chrome.browser.tab_ui.TabListMode;
+import org.chromium.chrome.browser.tab_ui.TabSwitcher;
+import org.chromium.chrome.browser.tab_ui.TabSwitcherCustomViewManager;
+import org.chromium.chrome.browser.toolbar.ToolbarPositionController;
+import org.chromium.chrome.browser.ui.actions.button.FullButtonData;
+import org.chromium.chrome.browser.ui.bottombar.BottomBarConfigUtils;
+import org.chromium.chrome.browser.ui.bottombar.BottomBarUtils;
+import org.chromium.chrome.browser.ui.edge_to_edge.EdgeToEdgeController;
+import org.chromium.chrome.browser.ui.theme.ChromeSemanticColorUtils;
+import org.chromium.chrome.browser.user_education.UserEducationHelper;
+import org.chromium.chrome.tab_ui.R;
+import org.chromium.components.browser_ui.styles.ChromeColors;
+import org.chromium.components.feature_engagement.Tracker;
+import org.chromium.ui.base.DeviceFormFactor;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.DoubleConsumer;
+import java.util.function.Supplier;
+
+/**
+ * An abstract {@link Pane} representing a tab switcher for shared logic between the normal and
+ * incognito modes.
+ */
+@NullMarked
+public abstract class TabSwitcherPaneBase extends PaneBase
+        implements TabSwitcher, TabSwitcherResetHandler {
+    private static final String TAG = "TabSwitcherPaneBase";
+    private static final int ON_SHOWN_IPH_DELAY = 700;
+
+    private static boolean sShowIphForTesting;
+
+    private final MonotonicObservableSupplier<FullButtonData> mEmptyActionButtonDataSupplier =
+            ObservableSuppliers.alwaysNull();
+    protected final SettableMonotonicObservableSupplier<FullButtonData> mNewTabButtonDataSupplier =
+            ObservableSuppliers.createMonotonic();
+
+    protected final UserEducationHelper mUserEducationHelper;
+    protected final MonotonicObservableSupplier<EdgeToEdgeController> mEdgeToEdgeSupplier;
+    protected final MonotonicObservableSupplier<CompositorViewHolder> mCompositorViewHolderSupplier;
+    protected final SettableNonNullObservableSupplier<Boolean> mIsVisibleSupplier =
+            ObservableSuppliers.createNonNull(false);
+    protected final SettableNonNullObservableSupplier<Boolean> mIsAnimatingSupplier =
+            ObservableSuppliers.createNonNull(false);
+    private final OnClickListener mNewTabButtonClickListener;
+    private final SettableNullableObservableSupplier<View> mOverlayViewSupplier =
+            ObservableSuppliers.createNullable();
+    private final Callback<Boolean> mVisibilityObserver = this::onVisibilityChanged;
+    private final Handler mHandler = new Handler();
+    private final Runnable mSoftCleanupRunnable = this::softCleanupInternal;
+    private final Runnable mHardCleanupRunnable = this::hardCleanupInternal;
+    private final Runnable mDestroyCoordinatorRunnable = this::destroyTabSwitcherPaneCoordinator;
+    private final Runnable mOnShownIphRunnerRunnable = this::onShownIphRunner;
+    private final TabSwitcherCustomViewManager mTabSwitcherCustomViewManager =
+            new TabSwitcherCustomViewManager();
+
+    protected final SettableNullableObservableSupplier<TabSwitcherPaneCoordinator>
+            mTabSwitcherPaneCoordinatorSupplier = ObservableSuppliers.createNullable();
+
+    private final NonNullObservableSupplier<Boolean> mHandleBackPressChangedSupplier =
+            mTabSwitcherPaneCoordinatorSupplier.createTransitiveNonNull(
+                    false, TabSwitcherPaneCoordinator::getHandleBackPressChangedSupplier);
+
+    private final TabSwitcherPaneCoordinatorFactory mFactory;
+    private final boolean mIsIncognito;
+    private final TabGroupCreationUiDelegate mUiFlow;
+    private final HubLayoutAnimationListener mAnimationListener =
+            new HubLayoutAnimationListener() {
+                @Override
+                public void beforeStart() {
+                    mIsAnimatingSupplier.set(true);
+                    if (mPaneHubController != null) {
+                        mPaneHubController.setSearchBoxBackgroundProperties(/* shouldShow= */ true);
+                    }
+                }
+
+                @Override
+                public void afterEnd() {
+                    if (mPaneHubController != null) {
+                        mPaneHubController.setSearchBoxBackgroundProperties(
+                                /* shouldShow= */ false);
+                    }
+                    mIsAnimatingSupplier.set(false);
+                }
+            };
+
+    private final NonNullObservableSupplier<Boolean> mXrSpaceModeObservableSupplier;
+    private final boolean mIsBottomBarEnabledOnGts;
+    private final int mBottomBarHeight;
+
+    protected @Nullable Tracker mTracker;
+    private @Nullable PaneHubController mPaneHubController;
+    private @Nullable Long mWaitForTabStateInitializedStartTimeMs;
+    private boolean mNativeInitialized;
+
+    /**
+     * @param context The activity context.
+     * @param factory The factory used to construct {@link TabSwitcherPaneCoordinator}s.
+     * @param isIncognito Whether the pane is incognito.
+     * @param onToolbarAlphaChange Observer to notify when alpha changes during animations.
+     * @param userEducationHelper Used for showing IPHs.
+     * @param edgeToEdgeSupplier Supplier to the {@link EdgeToEdgeController} instance.
+     * @param compositorViewHolderSupplier Supplier to the {@link CompositorViewHolder} instance.
+     * @param tabGroupCreationUiDelegate Orchestrates the tab group creation UI flow.
+     * @param xrSpaceModeObservableSupplier Supplies current XR space mode status. True for XR full
+     *     space mode, false otherwise.
+     */
+    TabSwitcherPaneBase(
+            @PaneId int paneId,
+            Context context,
+            TabSwitcherPaneCoordinatorFactory factory,
+            boolean isIncognito,
+            DoubleConsumer onToolbarAlphaChange,
+            UserEducationHelper userEducationHelper,
+            MonotonicObservableSupplier<EdgeToEdgeController> edgeToEdgeSupplier,
+            MonotonicObservableSupplier<CompositorViewHolder> compositorViewHolderSupplier,
+            TabGroupCreationUiDelegate tabGroupCreationUiDelegate,
+            NonNullObservableSupplier<Boolean> xrSpaceModeObservableSupplier,
+            OnClickListener newTabButtonClickListener) {
+        super(paneId, context, onToolbarAlphaChange);
+        mMenuButtonVisible = shouldShowMenuButton(context);
+        mFactory = factory;
+        mIsIncognito = isIncognito;
+        mIsVisibleSupplier.addSyncObserverAndPostIfNonNull(mVisibilityObserver);
+        mUserEducationHelper = userEducationHelper;
+        mEdgeToEdgeSupplier = edgeToEdgeSupplier;
+        mCompositorViewHolderSupplier = compositorViewHolderSupplier;
+        mUiFlow = tabGroupCreationUiDelegate;
+        mXrSpaceModeObservableSupplier = xrSpaceModeObservableSupplier;
+        mNewTabButtonClickListener = newTabButtonClickListener;
+        mIsBottomBarEnabledOnGts =
+                BottomBarConfigUtils.isBottomBarEnabled(context)
+                        && BottomBarConfigUtils.shouldShowOnGts();
+        mBottomBarHeight = BottomBarUtils.getBottomBarHeight(context);
+
+        mMenuOrKeyboardActionHandler =
+                (int id, boolean _) -> {
+                    if (id == R.id.menu_select_tabs) {
+                        @Nullable TabSwitcherPaneCoordinator coordinator =
+                                mTabSwitcherPaneCoordinatorSupplier.get();
+                        if (coordinator == null) return false;
+
+                        coordinator.showTabListEditor();
+                        RecordUserAction.record("MobileMenuSelectTabs");
+                        return true;
+                    } else if (id == R.id.new_tab_group_menu_id) {
+                        mUiFlow.newTabGroupFlow();
+                        RecordUserAction.record("MobileMenuNewTabGroup");
+                        if (mTracker != null) {
+                            mTracker.notifyEvent("tab_switcher_add_to_group_clicked");
+                        }
+                        return true;
+                    }
+                    return false;
+                };
+
+        mManualSearchBoxAnimationSupplier =
+                mTabSwitcherPaneCoordinatorSupplier.createTransitiveNonNull(
+                        false, TabSwitcherPaneCoordinator::getManualSearchBoxAnimationSupplier);
+        mSearchBoxVisibilityFractionSupplier =
+                mTabSwitcherPaneCoordinatorSupplier.createTransitiveNonNull(
+                        0.0f, TabSwitcherPaneCoordinator::getSearchBoxVisibilityFractionSupplier);
+    }
+
+    @Override
+    public boolean createNewTab() {
+        if (mNewTabButtonClickListener != null) {
+            mNewTabButtonClickListener.onClick(null);
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public void destroy() {
+        removeDelayedCallbacks();
+        mHandler.removeCallbacks(mOnShownIphRunnerRunnable);
+        mIsVisibleSupplier.removeObserver(mVisibilityObserver);
+        destroyTabSwitcherPaneCoordinator();
+    }
+
+    @Override
+    public void setPaneHubController(@Nullable PaneHubController paneHubController) {
+        mPaneHubController = paneHubController;
+
+        if (isFocused()) {
+            int screenWidthDp =
+                    mRootView.getContext().getResources().getConfiguration().screenWidthDp;
+            mHubSearchBoxVisibilitySupplier.set(!HubUtils.isScreenWidthTablet(screenWidthDp));
+        }
+    }
+
+    @Override
+    public void notifyLoadHint(@LoadHint int loadHint) {
+        boolean isVisible = loadHint == LoadHint.HOT;
+        mIsVisibleSupplier.set(isVisible);
+        removeDelayedCallbacks();
+
+        if (isVisible) {
+            createTabSwitcherPaneCoordinator();
+            showAllTabs();
+            setInitialScrollIndexOffset();
+            // TODO(crbug.com/40942549): This should only happen when the Pane becomes user visible
+            // which might only happen after the Hub animation finishes. Figure out how to handle
+            // that since the load hint for hot will come before the animation is started. Panes
+            // likely need to know an animation is going to play and when it is finished (possibly
+            // using the isAnimatingSupplier?).
+            requestAccessibilityFocusOnCurrentTab();
+        } else {
+            cancelWaitForTabStateInitializedTimer();
+        }
+
+        if (loadHint == LoadHint.WARM) {
+            TabSwitcherPaneCoordinator coordinator = mTabSwitcherPaneCoordinatorSupplier.get();
+            if (coordinator != null) {
+                mHandler.postDelayed(mSoftCleanupRunnable, SOFT_CLEANUP_DELAY_MS);
+            } else if (shouldEagerlyCreateCoordinator()) {
+                createTabSwitcherPaneCoordinator();
+            }
+        }
+
+        if (loadHint == LoadHint.COLD) {
+            TabSwitcherPaneCoordinator coordinator = mTabSwitcherPaneCoordinatorSupplier.get();
+            if (coordinator != null) {
+                mHandler.postDelayed(mSoftCleanupRunnable, SOFT_CLEANUP_DELAY_MS);
+                mHandler.postDelayed(mHardCleanupRunnable, HARD_CLEANUP_DELAY_MS);
+                mHandler.postDelayed(mDestroyCoordinatorRunnable, DESTROY_COORDINATOR_DELAY_MS);
+            }
+        }
+    }
+
+    @Override
+    public MonotonicObservableSupplier<FullButtonData> getActionButtonDataSupplier() {
+        if (BottomBarConfigUtils.isBottomBarEnabled(mContext)
+                && BottomBarConfigUtils.shouldShowOnGts()) {
+            return mEmptyActionButtonDataSupplier;
+        }
+        return mNewTabButtonDataSupplier;
+    }
+
+    @Override
+    public NullableObservableSupplier<View> getHubOverlayViewSupplier() {
+        return mOverlayViewSupplier;
+    }
+
+    @Override
+    public HubLayoutAnimationListener getHubLayoutAnimationListener() {
+        return mAnimationListener;
+    }
+
+    @Override
+    public HubLayoutAnimatorProvider createShowHubLayoutAnimatorProvider(
+            HubContainerView hubContainerView) {
+        Context context = hubContainerView.getContext();
+        boolean isFullSpaceModeOnAndroidXr = mXrSpaceModeObservableSupplier.get();
+
+        assert !DeviceFormFactor.isNonMultiDisplayContextOnTablet(context)
+                || isFullSpaceModeOnAndroidXr;
+
+        @Nullable Tab tab = getCurrentTab();
+        if (tab == null || SysUtils.isLowEndDevice()) {
+            return FadeHubLayoutAnimationFactory.createFadeInAnimatorProvider(
+                    hubContainerView, HUB_LAYOUT_FADE_DURATION_MS, mOnToolbarAlphaChange);
+        } else if (isFullSpaceModeOnAndroidXr && getTabListMode() == TabListMode.GRID) {
+            SyncOneshotSupplier<List<View>> animationDataSupplier =
+                    requestTabListAnimationData(hubContainerView);
+            return TabListHubLayoutAnimationFactory.createFadeInTabListAnimatorProvider(
+                    hubContainerView,
+                    animationDataSupplier,
+                    HUB_LAYOUT_TAB_LIST_FADE_DURATION_MS,
+                    mOnToolbarAlphaChange);
+        }
+
+        @ColorInt int backgroundColor = getAnimationBackgroundColor();
+        SyncOneshotSupplier<ShrinkExpandAnimationData> animationDataSupplier =
+                requestAnimationData(hubContainerView, /* isShrink= */ true, tab);
+        return ShrinkExpandHubLayoutAnimationFactory.createShrinkTabAnimatorProvider(
+                hubContainerView,
+                animationDataSupplier,
+                backgroundColor,
+                HUB_LAYOUT_SHRINK_EXPAND_DURATION_MS,
+                mOnToolbarAlphaChange,
+                mIsIncognito);
+    }
+
+    @Override
+    public HubLayoutAnimatorProvider createHideHubLayoutAnimatorProvider(
+            HubContainerView hubContainerView) {
+        assert !DeviceFormFactor.isNonMultiDisplayContextOnTablet(hubContainerView.getContext());
+        Tab tab = getCurrentTab();
+        if (tab == null || SysUtils.isLowEndDevice()) {
+            return FadeHubLayoutAnimationFactory.createFadeOutAnimatorProvider(
+                    hubContainerView, HUB_LAYOUT_FADE_DURATION_MS, mOnToolbarAlphaChange);
+        }
+
+        @ColorInt int backgroundColor = getAnimationBackgroundColor();
+        SyncOneshotSupplier<ShrinkExpandAnimationData> animationDataSupplier =
+                requestAnimationData(hubContainerView, /* isShrink= */ false, tab);
+        return ShrinkExpandHubLayoutAnimationFactory.createExpandTabAnimatorProvider(
+                hubContainerView,
+                animationDataSupplier,
+                backgroundColor,
+                HUB_LAYOUT_SHRINK_EXPAND_DURATION_MS,
+                mOnToolbarAlphaChange,
+                mIsIncognito);
+    }
+
+    @Override
+    public NonNullObservableSupplier<Boolean> getManualSearchBoxAnimationSupplier() {
+        return mManualSearchBoxAnimationSupplier;
+    }
+
+    @Override
+    public NonNullObservableSupplier<Float> getSearchBoxVisibilityFractionSupplier() {
+        return mSearchBoxVisibilityFractionSupplier;
+    }
+
+    private @ColorInt int getAnimationBackgroundColor() {
+        if (mIsIncognito) {
+            return ChromeColors.getPrimaryBackgroundColor(mRootView.getContext(), mIsIncognito);
+        } else {
+            // TODO(crbug.com/40948541): Consider not getting the color from home surface.
+            return ChromeSemanticColorUtils.getHomeSurfaceBackgroundColor(mRootView.getContext());
+        }
+    }
+
+    private SyncOneshotSupplier<List<View>> requestTabListAnimationData(
+            HubContainerView hubContainerView) {
+        assert getTabListMode() == TabListMode.GRID;
+        SyncOneshotSupplierImpl<List<View>> animationDataSupplier = new SyncOneshotSupplierImpl<>();
+        hubContainerView.runOnNextLayout(
+                () -> {
+                    final RecyclerView tabListRecyclerView =
+                            hubContainerView.findViewById(R.id.tab_list_recycler_view);
+                    if (tabListRecyclerView == null) return;
+
+                    GridLayoutManager lm =
+                            (GridLayoutManager) tabListRecyclerView.getLayoutManager();
+                    assumeNonNull(lm);
+                    int first = lm.findFirstVisibleItemPosition();
+                    int last = lm.findLastVisibleItemPosition();
+
+                    List<View> views = new ArrayList<>();
+                    for (int index = first; index <= last; index++) {
+                        View view = lm.findViewByPosition(index);
+                        if (view != null) views.add(view);
+                    }
+                    if (!views.isEmpty()) animationDataSupplier.set(views);
+                });
+        return animationDataSupplier;
+    }
+
+    private SyncOneshotSupplier<ShrinkExpandAnimationData> requestAnimationData(
+            HubContainerView hubContainerView, boolean isShrink, Tab tab) {
+        SyncOneshotSupplierImpl<ShrinkExpandAnimationData> animationDataSupplier =
+                new SyncOneshotSupplierImpl<>();
+        @Nullable TabSwitcherPaneCoordinator coordinator = getTabSwitcherPaneCoordinator();
+        assert coordinator != null;
+
+        Context context = hubContainerView.getContext();
+        Resources res = context.getResources();
+        int thumbnailRadiusTop =
+                res.getDimensionPixelSize(R.dimen.tab_grid_card_thumbnail_corner_radius_top);
+        int thumbnailRadiusBottom =
+                res.getDimensionPixelSize(R.dimen.tab_grid_card_thumbnail_corner_radius_bottom);
+
+        int initialTopCornerRadius;
+        int finalTopCornerRadius;
+        int initialBottomCornerRadius;
+        int finalBottomCornerRadius;
+        if (isShrink) {
+            initialTopCornerRadius = 0;
+            finalTopCornerRadius = thumbnailRadiusTop;
+            initialBottomCornerRadius = 0;
+            finalBottomCornerRadius = thumbnailRadiusBottom;
+        } else {
+            initialTopCornerRadius = thumbnailRadiusTop;
+            finalTopCornerRadius = 0;
+            initialBottomCornerRadius = thumbnailRadiusBottom;
+            finalBottomCornerRadius = 0;
+        }
+
+        int tabId = tab.getId();
+        boolean isTopToolbar = ToolbarPositionController.shouldShowToolbarOnTop(tab);
+
+        Runnable provideAnimationData =
+                () -> {
+                    Rect hubRect = new Rect();
+                    hubContainerView.getGlobalVisibleRect(hubRect);
+                    Rect initialRect;
+                    Rect finalRect;
+                    Rect viewportRect = new Rect();
+
+                    CompositorViewHolder viewHolder =
+                            assumeNonNull(mCompositorViewHolderSupplier.get());
+                    RectF viewportRectf = new RectF();
+                    viewHolder.getVisibleViewport(viewportRectf);
+                    viewportRectf.round(viewportRect);
+                    // When the bottom bar is enabled, we have an animation to fake the bottom
+                    // controls stack translating in and out. This animation no longer requires
+                    // adjustments to the viewport as the bottom controls portion is now covered
+                    // during the animation.
+                    if (!isTopToolbar && !BottomBarConfigUtils.isBottomBarEnabled(context)) {
+                        // TODO(crbug.com/390714662): This is a temporary fix and should be removed
+                        // once the fade-in and fade-out behavior of the bottom toolbar is
+                        // implemented.
+                        // When the bottom toolbar is visible, the tab's view must extend all the
+                        // way to the bottom to prevent the tab switcher from being visible behind
+                        // it during animations.
+                        RectF windowViewportRectf = new RectF();
+                        Rect windowViewportRect = new Rect();
+                        viewHolder.getWindowViewport(windowViewportRectf);
+                        windowViewportRectf.round(windowViewportRect);
+                        viewportRect.bottom = windowViewportRect.bottom;
+                    }
+
+                    int initialLeftOffset;
+                    int finalLeftOffset;
+                    int initialTopOffset = 0;
+                    int finalTopOffset = 0;
+                    if (isShrink) {
+                        initialRect = viewportRect;
+                        finalRect = coordinator.getTabThumbnailRect(tabId);
+                        initialLeftOffset = initialRect.left;
+                        finalLeftOffset = hubRect.left;
+                        finalTopOffset = hubRect.top;
+                    } else {
+                        initialRect = coordinator.getTabThumbnailRect(tabId);
+                        finalRect = viewportRect;
+                        initialLeftOffset = hubRect.left;
+                        finalLeftOffset = finalRect.left;
+                        initialTopOffset = hubRect.top;
+                    }
+
+                    boolean useFallbackAnimation = false;
+                    if (initialRect.isEmpty() || finalRect.isEmpty()) {
+                        Log.d(TAG, "Geometry not ready using fallback animation.");
+                        useFallbackAnimation = true;
+                    }
+                    // Ignore left offset and just ensure the width is correct. See
+                    // crbug.com/40942799.
+                    initialRect.offset(-initialLeftOffset, -initialTopOffset);
+                    finalRect.offset(-finalLeftOffset, -finalTopOffset);
+
+                    int bottomMargin = 0;
+                    if (mIsBottomBarEnabledOnGts) {
+                        EdgeToEdgeController edgeToEdgeController = mEdgeToEdgeSupplier.get();
+                        if (edgeToEdgeController != null) {
+                            bottomMargin += edgeToEdgeController.getSystemBottomInsetPx();
+                        }
+                        bottomMargin += mBottomBarHeight;
+                    }
+
+                    animationDataSupplier.set(
+                            ShrinkExpandAnimationData.createHubShrinkExpandAnimationData(
+                                    initialRect,
+                                    finalRect,
+                                    initialTopCornerRadius,
+                                    initialBottomCornerRadius,
+                                    finalTopCornerRadius,
+                                    finalBottomCornerRadius,
+                                    coordinator.getThumbnailSize(),
+                                    isTopToolbar,
+                                    useFallbackAnimation,
+                                    bottomMargin));
+                };
+        coordinator.waitForLayoutWithTab(tabId, provideAnimationData);
+        return animationDataSupplier;
+    }
+
+    @Override
+    public @BackPressResult int handleBackPress() {
+        @Nullable TabSwitcherPaneCoordinator coordinator =
+                mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator == null) return BackPressResult.FAILURE;
+        return coordinator.handleBackPress();
+    }
+
+    @Override
+    public NonNullObservableSupplier<Boolean> getHandleBackPressChangedSupplier() {
+        return mHandleBackPressChangedSupplier;
+    }
+
+    @Override
+    public void initWithNative() {
+        if (mNativeInitialized) return;
+
+        mNativeInitialized = true;
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator != null) {
+            coordinator.initWithNative();
+        }
+    }
+
+    /** Returns a {@link Supplier} that provides dialog visibility information. */
+    @Override
+    public @Nullable Supplier<Boolean> getTabGridDialogVisibilitySupplier() {
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator == null) return null;
+        return coordinator.getTabGridDialogVisibilitySupplier();
+    }
+
+    /** Returns a {@link TabSwitcherCustomViewManager} for supplying custom views. */
+    @Override
+    public @Nullable TabSwitcherCustomViewManager getTabSwitcherCustomViewManager() {
+        return mTabSwitcherCustomViewManager;
+    }
+
+    /** Returns the number of elements in the tab switcher's tab list model. */
+    @Override
+    public int getTabSwitcherTabListModelSize() {
+        @Nullable TabSwitcherPaneCoordinator coordinator =
+                mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator == null) return 0;
+        return coordinator.getTabSwitcherTabListModelSize();
+    }
+
+    /** Set the tab switcher's RecyclerViewPosition. */
+    @Override
+    public void setTabSwitcherRecyclerViewPosition(RecyclerViewPosition position) {
+        @Nullable TabSwitcherPaneCoordinator coordinator =
+                mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator == null) return;
+        coordinator.setTabSwitcherRecyclerViewPosition(position);
+    }
+
+    /** Show the Quick Delete animation on the tab list . */
+    @Override
+    public void showQuickDeleteAnimation(Runnable onAnimationEnd, List<Tab> tabs) {
+        @Nullable TabSwitcherPaneCoordinator coordinator =
+                mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator == null || getTabListMode() != TabListMode.GRID) {
+            onAnimationEnd.run();
+            return;
+        }
+        coordinator.showQuickDeleteAnimation(onAnimationEnd, tabs);
+    }
+
+    @Override
+    public boolean requestOpenTabGroupDialog(int tabId) {
+        @Nullable TabSwitcherPaneCoordinator coordinator =
+                mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator != null) {
+            coordinator.requestOpenTabGroupDialog(tabId);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Delegates touch point hit testing to {@link TabSwitcherPaneCoordinator}. Ensures touches on
+     * interactive elements (such as tab cards in the RecyclerView) are preserved for tab
+     * interactions (like swipe-to-close) rather than intercepted as Hub pane swipes.
+     */
+    @Override
+    public boolean isTouchOnInteractiveElement(float x, float y) {
+        @Nullable TabSwitcherPaneCoordinator coordinator =
+                mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator == null) return false;
+        return coordinator.isTouchOnInteractiveElement(x, y);
+    }
+
+    /**
+     * Request to show all the tabs in the pane. Subclasses should override this method to invoke
+     * {@link TabSwitcherResetHandler#resetWithListOfTabs} with their available tabs.
+     */
+    protected abstract void showAllTabs();
+
+    /** Returns the current selected tab. */
+    protected abstract @Nullable Tab getCurrentTab();
+
+    /** Returns whether to eagerly create the coordinator in the {@link LoadHint.WARM} state. */
+    protected abstract boolean shouldEagerlyCreateCoordinator();
+
+    /** A runnable that will be invoked when delegate UI creates a tab group. */
+    protected abstract @Nullable Runnable getOnTabGroupCreationRunnable();
+
+    /** Called when the pane is shown to indicate IPH should maybe be shown. */
+    protected abstract void tryToTriggerOnShownIphs();
+
+    /** Requests accessibility focus on the currently selected tab in the tab switcher. */
+    protected void requestAccessibilityFocusOnCurrentTab() {
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator == null) return;
+        coordinator.requestAccessibilityFocusOnCurrentTab();
+    }
+
+    /** Returns the {@link TabListMode} of the {@link TabListCoordinator} that the pane hosts. */
+    protected @TabListMode int getTabListMode() {
+        return mFactory.getTabListMode();
+    }
+
+    /** Returns whether the pane is focused. */
+    protected boolean isFocused() {
+        return mPaneHubController != null;
+    }
+
+    /** Returns the PaneHubController if one exists or null otherwise. */
+    protected @Nullable PaneHubController getPaneHubController() {
+        return mPaneHubController;
+    }
+
+    /** Returns the current {@link TabSwitcherPaneCoordinator} or null if one doesn't exist. */
+    @VisibleForTesting(otherwise = VisibleForTesting.PROTECTED)
+    @Nullable TabSwitcherPaneCoordinator getTabSwitcherPaneCoordinator() {
+        return mTabSwitcherPaneCoordinatorSupplier.get();
+    }
+
+    /** Creates a {@link TabSwitcherCoordinator}. */
+    @VisibleForTesting(otherwise = VisibleForTesting.PROTECTED)
+    void createTabSwitcherPaneCoordinator() {
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator != null) return;
+        coordinator =
+                mFactory.create(
+                        mRootView,
+                        /* resetHandler= */ this,
+                        mIsVisibleSupplier,
+                        mIsAnimatingSupplier,
+                        this::onTabClick,
+                        mIsIncognito,
+                        getOnTabGroupCreationRunnable(),
+                        mEdgeToEdgeSupplier,
+                        mOverlayViewSupplier::set,
+                        mHubSearchBoxVisibilitySupplier);
+        mTabSwitcherPaneCoordinatorSupplier.set(coordinator);
+        mTabSwitcherCustomViewManager.setDelegate(
+                coordinator.getTabSwitcherCustomViewManagerDelegate());
+        if (mNativeInitialized) {
+            coordinator.initWithNative();
+        }
+    }
+
+    /**
+     * Destroys the current {@link TabSwitcherCoordinator}. It is safe to call this even if a
+     * coordinator does not exist.
+     */
+    @VisibleForTesting(otherwise = VisibleForTesting.PROTECTED)
+    void destroyTabSwitcherPaneCoordinator() {
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator == null) return;
+        mTabSwitcherPaneCoordinatorSupplier.set(null);
+        mRootView.removeAllViews();
+        mTabSwitcherCustomViewManager.setDelegate(null);
+        coordinator.destroy();
+    }
+
+    protected void startWaitForTabStateInitializedTimer() {
+        if (mWaitForTabStateInitializedStartTimeMs != null) return;
+
+        mWaitForTabStateInitializedStartTimeMs = SystemClock.elapsedRealtime();
+    }
+
+    protected void finishWaitForTabStateInitializedTimer() {
+        if (mWaitForTabStateInitializedStartTimeMs != null) {
+            RecordHistogram.recordTimesHistogram(
+                    "Android.GridTabSwitcher.TimeToTabStateInitializedFromShown",
+                    SystemClock.elapsedRealtime() - mWaitForTabStateInitializedStartTimeMs);
+            mWaitForTabStateInitializedStartTimeMs = null;
+        }
+    }
+
+    protected void cancelWaitForTabStateInitializedTimer() {
+        mWaitForTabStateInitializedStartTimeMs = null;
+    }
+
+    private void onTabClick(int tabId) {
+        if (mPaneHubController == null) return;
+
+        // TODO(crbug.com/41489932): Consider using INVALID_TAB_ID if already selected to prevent a
+        // repeat selection. For now this is required to ensure the tab gets marked as shown when
+        // exiting the Hub. See if this can be updated/changed.
+        mPaneHubController.selectTabAndHideHub(tabId);
+    }
+
+    private void setInitialScrollIndexOffset() {
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator == null) return;
+        coordinator.setInitialScrollIndexOffset();
+    }
+
+    private void softCleanupInternal() {
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator == null) return;
+        coordinator.softCleanup();
+    }
+
+    private void hardCleanupInternal() {
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPaneCoordinatorSupplier.get();
+        if (coordinator == null) return;
+        coordinator.hardCleanup();
+    }
+
+    private void removeDelayedCallbacks() {
+        mHandler.removeCallbacks(mSoftCleanupRunnable);
+        mHandler.removeCallbacks(mHardCleanupRunnable);
+        mHandler.removeCallbacks(mDestroyCoordinatorRunnable);
+    }
+
+    private void onVisibilityChanged(boolean visible) {
+        if (visible) {
+            postOnShownIphRunner();
+        }
+    }
+
+    private void postOnShownIphRunner() {
+        // TODO(crbug.com/346356139): Figure out a more elegant way of observing entering the hub as
+        // well as switching between panes. Knowing when these animations complete turns out to be
+        // fairly difficult, especially knowing when we're about to enter a transition.
+        mHandler.postDelayed(mOnShownIphRunnerRunnable, ON_SHOWN_IPH_DELAY);
+    }
+
+    private void onShownIphRunner() {
+        if (BuildConfig.IS_FOR_TEST && !sShowIphForTesting) return;
+
+        // The IPH system will ensure we don't show everything at once.
+        tryToTriggerOnShownIphs();
+    }
+
+    void softCleanupForTesting() {
+        mSoftCleanupRunnable.run();
+    }
+
+    void hardCleanupForTesting() {
+        mHardCleanupRunnable.run();
+    }
+
+    void destroyCoordinatorForTesting() {
+        mDestroyCoordinatorRunnable.run();
+    }
+
+    private static boolean shouldShowMenuButton(Context context) {
+        // If the bottom bar is enabled and the app menu button is included in the bottom bar, then
+        // we should not show the menu button in the toolbar.
+        return !(BottomBarConfigUtils.isBottomBarEnabled(context)
+                && BottomBarConfigUtils.shouldShowOnGts()
+                && BottomBarConfigUtils.shouldIncludeAppMenuButton());
+    }
+
+    static void setShowIphForTesting(boolean showIphForTesting) {
+        boolean oldValue = sShowIphForTesting;
+        sShowIphForTesting = showIphForTesting;
+        ResettersForTesting.register(() -> sShowIphForTesting = oldValue);
+    }
+}

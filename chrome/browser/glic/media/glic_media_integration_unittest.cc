@@ -1,0 +1,583 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/glic/media/glic_media_integration.h"
+
+#include "base/command_line.h"
+#include "base/strings/string_util.h"
+#include "base/test/mock_callback.h"
+#include "base/test/scoped_feature_list.h"
+#include "build/build_config.h"
+#include "chrome/browser/accessibility/live_caption/live_caption_controller_factory.h"
+#include "chrome/browser/glic/glic_pref_names.h"
+#include "chrome/browser/glic/media/glic_media_context.h"
+#include "chrome/browser/glic/public/glic_keyed_service.h"
+#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
+#include "chrome/browser/glic/test_support/glic_test_environment.h"
+#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
+#include "chrome/browser/prefs/browser_prefs.h"
+#include "chrome/test/base/chrome_render_view_host_test_harness.h"
+#include "chrome/test/base/testing_browser_process.h"
+#include "chrome/test/base/testing_profile_manager.h"
+#include "components/live_caption/live_caption_controller.h"
+#include "components/live_caption/pref_names.h"
+#include "components/optimization_guide/content/browser/media_transcript_provider.h"
+#include "components/soda/mock_soda_installer.h"
+#include "components/soda/soda_installer.h"
+#include "components/sync_preferences/testing_pref_service_syncable.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_test_utils.h"
+#include "content/public/test/navigation_simulator.h"
+#include "content/public/test/web_contents_tester.h"
+#include "media/base/media_switches.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "ash/constants/ash_features.h"
+#include "chrome/browser/ash/test/glic_user_session_test_helper.h"
+#include "chromeos/ash/components/browser_context_helper/browser_context_helper.h"
+#include "components/user_manager/test_helper.h"
+#endif
+
+using content::WebContents;
+
+namespace glic {
+
+// Glic media integration requires SODA which is currently not supported on
+// non-x86 Linux.
+#if !BUILDFLAG(IS_LINUX) || defined(ARCH_CPU_X86_FAMILY)
+
+class GlicMediaIntegrationTest : public ChromeRenderViewHostTestHarness {
+ public:
+  void SetUp() override {
+    // This must occur before base class SetUp() to ensure that the
+    // TestingProfileManager is available when the profile is created,
+    // allowing GlicKeyedServiceFactory to find it.
+    profile_manager_ =
+        TestingBrowserProcess::GetGlobal()->SetUpGlobalFeaturesForTesting(
+            /*profile_manager=*/true);
+#if BUILDFLAG(IS_CHROMEOS)
+    glic_user_session_test_helper_.PreProfileSetUp(
+        profile_manager_->profile_manager());
+#endif
+    ChromeRenderViewHostTestHarness::SetUp();
+    glic_test_env_.SetupProfile(profile());
+  }
+
+  void TearDown() override {
+    live_caption_controller_ = nullptr;
+    pref_registry_ = nullptr;
+    ChromeRenderViewHostTestHarness::TearDown();
+    profile_manager_ = nullptr;
+    TestingBrowserProcess::GetGlobal()->TearDownGlobalFeaturesForTesting();
+#if BUILDFLAG(IS_CHROMEOS)
+    glic_user_session_test_helper_.PostProfileTearDown();
+#endif
+  }
+
+  // ChromeRenderViewHostTestHarness
+  std::unique_ptr<TestingProfile> CreateTestingProfile() override {
+    auto pref_service =
+        std::make_unique<sync_preferences::TestingPrefServiceSyncable>();
+    pref_registry_ = pref_service->registry();
+    RegisterUserProfilePrefs(pref_registry_);
+    speech::SodaInstaller::RegisterLocalStatePrefs(pref_registry_);
+
+    TestingProfile::Builder builder;
+    builder.SetPrefService(std::move(pref_service));
+    builder.AddTestingFactories(GetTestingFactories());
+
+#if BUILDFLAG(IS_CHROMEOS)
+    // This is hacky, but appears to be the only way to get the necessary
+    // profile state setup correctly on ChromeOS.
+    // TODO(b/501476411): Find a cleaner way to do this.
+    const AccountId account_id(AccountId::FromUserEmailGaiaId(
+        TestingProfile::kDefaultProfileUserName, GaiaId("1234567890")));
+    std::string hash =
+        user_manager::TestHelper::GetFakeUsernameHash(account_id);
+    // Construct the absolute directory path to match BrowserContextHelper
+    // expectations.
+    base::FilePath path =
+        profile_manager_->profiles_dir().AppendASCII("u-" + hash);
+    builder.SetPath(path);
+#endif
+
+    auto profile = builder.Build();
+
+    // Set up soda Installer
+    soda_installer_.NeverDownloadSodaForTesting();
+    ON_CALL(soda_installer_, Init).WillByDefault(testing::Return());
+
+    return profile;
+  }
+
+  // Get the MediaIntegration instance, after doing some work to register prefs
+  GlicMediaIntegration* GetIntegration() {
+    SetFreCompleted();
+    return GetIntegrationWithoutFreConsent();
+  }
+
+  GlicMediaIntegration* GetIntegrationWithoutFreConsent() {
+    EnableHeadlessCaptionFeature();
+    // Make sure that we have installed our LiveCaptionController before this,
+    // because the integration will try to fetch it.  The test might have done
+    // this earlier, however, which is also fine.
+    /*void*/ live_caption_controller();
+    // Make sure there's a keyed service, else the FRE profile checks break.
+    return GlicMediaIntegration::GetFor(web_contents());
+  }
+
+  void EnableHeadlessCaptionFeature() {
+    // Should only happen once.
+    ASSERT_FALSE(scoped_feature_list_);
+    std::vector<base::test::FeatureRef> enabled_features{
+        media::kHeadlessLiveCaption};
+#if BUILDFLAG(IS_CHROMEOS)
+    enabled_features.push_back(ash::features::kOnDeviceSpeechRecognition);
+#endif
+    scoped_feature_list_.emplace();
+    scoped_feature_list_->InitWithFeatures(enabled_features, {});
+  }
+
+  optimization_guide::MediaTranscriptProvider* GetMediaTranscriptProvider() {
+    return optimization_guide::MediaTranscriptProvider::GetFor(web_contents());
+  }
+
+  GlicMediaContext* GetContext() {
+    return GlicMediaContext::GetForCurrentDocument(
+        web_contents()->GetPrimaryMainFrame());
+  }
+
+  captions::LiveCaptionController* live_caption_controller() {
+    if (live_caption_controller_) {
+      return live_caption_controller_;
+    }
+
+    // Return a mock Live Caption controller.
+    auto controller = CreateLiveCaptionController();
+    live_caption_controller_ = controller.get();
+    captions::LiveCaptionControllerFactory::GetInstance()->SetTestingFactory(
+        web_contents()->GetBrowserContext(),
+        base::BindOnce(
+            [](std::unique_ptr<captions::LiveCaptionController> controller,
+               content::BrowserContext* context)
+                -> std::unique_ptr<KeyedService> {
+              return std::move(controller);
+            },
+            std::move(controller)));
+    return live_caption_controller_;
+  }
+
+  Profile* profile() {
+    return Profile::FromBrowserContext(web_contents()->GetBrowserContext());
+  }
+
+  PrefService* pref_service() { return profile()->GetPrefs(); }
+
+  bool get_headless_pref() {
+    return pref_service()->GetBoolean(::prefs::kHeadlessCaptionEnabled);
+  }
+
+  std::unique_ptr<captions::LiveCaptionController>
+  CreateLiveCaptionController() {
+    return std::make_unique<captions::LiveCaptionController>(
+        pref_service(), pref_service(), "application_locale", browser_context(),
+        /*delegate=*/nullptr);
+  }
+
+  content::RenderFrameHost* rfh() {
+    return web_contents()->GetPrimaryMainFrame();
+  }
+
+  void SetCommittedOriginOnAllFrames(const url::Origin& excluded_origin) {
+    web_contents()->GetPrimaryMainFrame()->ForEachRenderFrameHost(
+        [&excluded_origin](content::RenderFrameHost* rfh) {
+          content::OverrideLastCommittedOrigin(rfh, excluded_origin);
+        });
+  }
+
+  void SetFreCompleted() {
+    glic::GlicKeyedService::Get(profile())->enabling().SetCompletedFre(
+        glic::prefs::FreStatus::kCompleted);
+  }
+
+ private:
+  GlicUnitTestEnvironment glic_test_env_;
+  raw_ptr<TestingProfileManager> profile_manager_ = nullptr;
+  std::optional<base::test::ScopedFeatureList> scoped_feature_list_;
+#if BUILDFLAG(IS_CHROMEOS)
+  ash::GlicUserSessionTestHelper glic_user_session_test_helper_;
+#endif
+  base::test::ScopedFeatureList feature_list_;
+  raw_ptr<captions::LiveCaptionController> live_caption_controller_ = nullptr;
+  raw_ptr<user_prefs::PrefRegistrySyncable> pref_registry_ = nullptr;
+  speech::MockSodaInstaller soda_installer_;
+};
+
+TEST_F(GlicMediaIntegrationTest, GetWithNullReturnsNull) {
+  // Make sure this doesn't crash.
+  EXPECT_EQ(
+      GlicMediaIntegration::GetFor(static_cast<content::WebContents*>(nullptr)),
+      nullptr);
+  EXPECT_EQ(GetMediaTranscriptProvider(), nullptr);
+}
+
+TEST_F(GlicMediaIntegrationTest, GetReturnsNullIfSwitchIsOff) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(media::kHeadlessLiveCaption);
+
+  EXPECT_EQ(GlicMediaIntegration::GetFor(web_contents()), nullptr);
+  EXPECT_EQ(GetMediaTranscriptProvider(), nullptr);
+}
+
+TEST_F(GlicMediaIntegrationTest, GetReturnsNonNullIfSwitchIsOn) {
+  // This does not exist if integration is not created yet.
+  EXPECT_EQ(GetMediaTranscriptProvider(), nullptr);
+  // Right now, this doesn't depend on the headless pref, but likely it should.
+  EXPECT_NE(GetIntegration(), nullptr);
+  EXPECT_NE(GetMediaTranscriptProvider(), nullptr);
+}
+
+TEST_F(GlicMediaIntegrationTest, ContextContainsTranscript) {
+  auto* integration = GetIntegration();
+
+  // Send the string in pieces, mixing final and non-final ones.
+  // It would be nice if we could set the max content size for testing.
+  const std::string test_cap_1("ABC");
+  const std::string test_cap_2("DEF");
+  const std::string test_cap_3("XYZ");  // Should be ignored in all cases.
+  const std::string test_cap_4("GHIJ");
+  live_caption_controller()->DispatchTranscription(
+      rfh(), nullptr,
+      media::SpeechRecognitionResult(test_cap_1, /*is_final=*/true));
+  live_caption_controller()->DispatchTranscription(
+      rfh(), nullptr,
+      media::SpeechRecognitionResult(test_cap_2, /*is_final=*/true));
+  // Non-final captions should be ignored.
+  live_caption_controller()->DispatchTranscription(
+      rfh(), nullptr,
+      media::SpeechRecognitionResult(test_cap_3, /*is_final=*/false));
+  // nullptr `rfh` should be ignored.
+  live_caption_controller()->DispatchTranscription(
+      /*rfh=*/nullptr, nullptr,
+      media::SpeechRecognitionResult(test_cap_3, /*is_final=*/true));
+  live_caption_controller()->DispatchTranscription(
+      rfh(), nullptr,
+      media::SpeechRecognitionResult(test_cap_4, /*is_final=*/true));
+
+  {
+    // Expect a leaf node with the entire context.
+    optimization_guide::proto::ContentNode root_node;
+    integration->AppendContextForFrame(rfh(), &root_node);
+    EXPECT_EQ(root_node.children_nodes_size(), 0);
+    EXPECT_TRUE(root_node.has_content_attributes());
+    EXPECT_EQ(root_node.content_attributes().text_data().text_content(),
+              "ABCDEFGHIJ");
+  }
+
+  {
+    // AppendContext is a legacy path and no longer contains transcripts when
+    // kAnnotatedPageContentWithMediaData is enabled.
+    optimization_guide::proto::ContentNode root_node;
+    integration->AppendContext(web_contents(), &root_node);
+    EXPECT_EQ(root_node.children_nodes_size(), 0);
+    if (base::FeatureList::IsEnabled(
+            optimization_guide::features::kAnnotatedPageContentWithMediaData)) {
+      EXPECT_FALSE(root_node.has_content_attributes());
+    } else {
+      EXPECT_TRUE(root_node.has_content_attributes());
+      EXPECT_EQ(root_node.content_attributes().text_data().text_content(),
+                "ABCDEFGHIJ");
+    }
+  }
+}
+
+TEST_F(GlicMediaIntegrationTest, ContextContainsNoTranscript) {
+  auto* integration = GetIntegration();
+
+  // Send no strings.
+
+  // Expect no content attributes when there is no transcript.
+  optimization_guide::proto::ContentNode root_node;
+  integration->AppendContextForFrame(rfh(), &root_node);
+  EXPECT_EQ(root_node.children_nodes_size(), 0);
+  EXPECT_FALSE(root_node.has_content_attributes());
+}
+
+TEST_F(GlicMediaIntegrationTest, ContextTruncatesUTF8Correctly) {
+  auto* integration = GetIntegration();
+
+  // Create a 20002-byte string: one 4-byte character + 19998 'A's.
+  // max_size_bytes_ is 20000. 20002 - 20000 = 2.
+  // The truncation index falls in the middle of the 4-byte character.
+  std::string test_cap = "𐍈";
+  test_cap.append(19998, 'A');
+
+  live_caption_controller()->DispatchTranscription(
+      rfh(), nullptr,
+      media::SpeechRecognitionResult(test_cap, /*is_final=*/true));
+
+  optimization_guide::proto::ContentNode root_node;
+  integration->AppendContextForFrame(rfh(), &root_node);
+
+  EXPECT_EQ(root_node.children_nodes_size(), 0);
+  EXPECT_TRUE(root_node.has_content_attributes());
+
+  // The 4-byte character should be entirely removed to avoid invalid UTF-8.
+  std::string result_text =
+      root_node.content_attributes().text_data().text_content();
+  EXPECT_TRUE(base::IsStringUTF8(result_text));
+  EXPECT_EQ(result_text, std::string(19998, 'A'));
+}
+
+TEST_F(GlicMediaIntegrationTest, HeadlessPrefTurnsOnAndOff) {
+  // Verify that the headless pref turns on with the integration, and turns
+  // back off the next time Live Caption starts.  This is temporary behavior.
+  EXPECT_FALSE(get_headless_pref());
+  GetIntegration();
+  EXPECT_TRUE(get_headless_pref());
+  auto controller = CreateLiveCaptionController();
+  EXPECT_FALSE(get_headless_pref());
+}
+
+TEST_F(GlicMediaIntegrationTest, NullWebContentsIsOkay) {
+  // Make sure that cases where no WebContents is provided don't crash.  This
+  // includes cases where there is no media context for the given contents.
+  optimization_guide::proto::ContentNode root_node;
+  GetIntegration()->AppendContext(/*web_contents=*/nullptr, &root_node);
+  // As long as nothing bad happens, it's good.
+}
+
+TEST_F(GlicMediaIntegrationTest, NullRenderFrameHostIsOkay) {
+  // Make sure that cases where no RFH is provided don't crash.  This
+  // includes cases where there is no media context for the given contents.
+  optimization_guide::proto::ContentNode root_node;
+  GetIntegration()->AppendContextForFrame(/*rfh=*/nullptr, &root_node);
+  // As long as nothing bad happens, it's good.
+}
+
+TEST_F(GlicMediaIntegrationTest, PeerConnectionPreventsTranscription) {
+  auto* integration = GetIntegration();
+
+  // This should prevent the transcription from being recorded.
+  integration->OnPeerConnectionAddedForTesting(rfh());
+
+  auto* context = GetContext();
+  EXPECT_TRUE(context->is_excluded_from_transcript_for_testing());
+}
+
+TEST_F(GlicMediaIntegrationTest, PeerConnectionExcludesAllSubframes) {
+  auto* integration = GetIntegration();
+  auto* main_frame = rfh();
+  content::WebContentsTester::For(web_contents())
+      ->NavigateAndCommit(GURL("https://www.example.com/"));
+  const GURL subframe_url("https://www.subframe.com/");
+  content::RenderFrameHost* subframe =
+      content::NavigationSimulator::NavigateAndCommitFromDocument(
+          subframe_url, content::RenderFrameHostTester::For(main_frame)
+                            ->AppendChild("subframe"));
+
+  // Create contexts for both frames.
+  auto* main_context =
+      GlicMediaContext::GetOrCreateForCurrentDocument(main_frame);
+  auto* subframe_context =
+      GlicMediaContext::GetOrCreateForCurrentDocument(subframe);
+
+  // Add a peer connection to the main frame.
+  integration->OnPeerConnectionAddedForTesting(main_frame);
+
+  // Verify both frames are excluded.
+  EXPECT_TRUE(main_context->is_excluded_from_transcript_for_testing());
+  EXPECT_TRUE(subframe_context->is_excluded_from_transcript_for_testing());
+
+  // Remove the peer connection.
+  integration->OnPeerConnectionRemovedForTesting(main_frame);
+
+  // Verify both frames are no longer excluded.
+  EXPECT_FALSE(main_context->is_excluded_from_transcript_for_testing());
+  EXPECT_FALSE(subframe_context->is_excluded_from_transcript_for_testing());
+}
+
+TEST_F(GlicMediaIntegrationTest,
+       PeerConnectionInDocumentPiPPreventsTranscription) {
+  auto* integration = GetIntegration();
+  auto* main_context = GlicMediaContext::GetOrCreateForCurrentDocument(rfh());
+
+  // Create a document pip window.
+  std::unique_ptr<content::WebContents> pip_web_contents =
+      content::WebContentsTester::CreateTestWebContents(
+          web_contents()->GetBrowserContext(), nullptr);
+  auto* pip_window_manager = PictureInPictureWindowManager::GetInstance();
+  pip_window_manager->EnterDocumentPictureInPicture(web_contents(),
+                                                    pip_web_contents.get());
+
+  // Add a peer connection to the pip window.
+  integration->OnPeerConnectionAddedForTesting(
+      pip_web_contents->GetPrimaryMainFrame());
+  EXPECT_TRUE(main_context->is_excluded_from_transcript_for_testing());
+
+  // Remove the peer connection.
+  integration->OnPeerConnectionRemovedForTesting(
+      pip_web_contents->GetPrimaryMainFrame());
+  EXPECT_FALSE(main_context->is_excluded_from_transcript_for_testing());
+}
+
+TEST_F(GlicMediaIntegrationTest, ExcludedOriginsStopTranscription) {
+  // Sending a transcript to an excluded origin should request that
+  // transcription stops.
+  auto* integration = GetIntegration();
+  const url::Origin excluded_origin =
+      url::Origin::Create(GURL("https://excluded.com"));
+  SetCommittedOriginOnAllFrames(excluded_origin);
+
+  // Verify that transcriptions are allowed initially.
+  EXPECT_TRUE(live_caption_controller()->DispatchTranscription(
+      web_contents()->GetPrimaryMainFrame(), nullptr,
+      media::SpeechRecognitionResult("some transcript", /*is_final=*/true)));
+
+  // Setting the excluded origin list to include our origin should cause them to
+  // start being ignored.
+  integration->SetExcludedOrigins({excluded_origin});
+  EXPECT_FALSE(live_caption_controller()->DispatchTranscription(
+      web_contents()->GetPrimaryMainFrame(), nullptr,
+      media::SpeechRecognitionResult("some other transcript",
+                                     /*is_final=*/true)));
+}
+
+TEST_F(GlicMediaIntegrationTest, ExcludedOriginsDontReturnTranscriptions) {
+  // Asking for context from an excluded origin should return nothing.
+  auto* integration = GetIntegration();
+  const url::Origin excluded_origin =
+      url::Origin::Create(GURL("https://excluded.com"));
+  SetCommittedOriginOnAllFrames(excluded_origin);
+  ASSERT_TRUE(live_caption_controller()->DispatchTranscription(
+      web_contents()->GetPrimaryMainFrame(), nullptr,
+      media::SpeechRecognitionResult("some transcript", /*is_final=*/true)));
+
+  // Exclude the origin after adding the transcript.
+  integration->SetExcludedOrigins({excluded_origin});
+
+  // Expect no content attributes when the origin is excluded.
+  optimization_guide::proto::ContentNode root_node;
+  integration->AppendContextForFrame(rfh(), &root_node);
+  EXPECT_EQ(root_node.children_nodes_size(), 0);
+  EXPECT_FALSE(root_node.has_content_attributes());
+}
+
+TEST_F(GlicMediaIntegrationTest, DefaultExcludedOriginsStopTranscription) {
+  // Get the integration, which will set the default excluded origins.
+  auto* integration = GetIntegration();
+  ASSERT_NE(integration, nullptr);
+
+  // Set the origin to youtube.
+  const url::Origin youtube_origin =
+      url::Origin::Create(GURL("https://www.youtube.com"));
+  SetCommittedOriginOnAllFrames(youtube_origin);
+
+  // Dispatching a transcription should be stopped.
+  EXPECT_FALSE(live_caption_controller()->DispatchTranscription(
+      web_contents()->GetPrimaryMainFrame(), nullptr,
+      media::SpeechRecognitionResult("some transcript", /*is_final=*/true)));
+}
+
+TEST_F(GlicMediaIntegrationTest, DefaultExcludedHttpOriginsStopTranscription) {
+  // Get the integration, which will set the default excluded origins.
+  auto* integration = GetIntegration();
+  ASSERT_NE(integration, nullptr);
+
+  // Set the origin to youtube.
+  const url::Origin youtube_origin =
+      url::Origin::Create(GURL("http://www.youtube.com"));
+  SetCommittedOriginOnAllFrames(youtube_origin);
+
+  // Dispatching a transcription should be stopped.
+  EXPECT_FALSE(live_caption_controller()->DispatchTranscription(
+      web_contents()->GetPrimaryMainFrame(), nullptr,
+      media::SpeechRecognitionResult("some transcript", /*is_final=*/true)));
+}
+
+TEST_F(GlicMediaIntegrationTest, NonExcludedOriginAllowsTranscription) {
+  auto* integration = GetIntegration();
+  ASSERT_NE(integration, nullptr);
+
+  const url::Origin other_origin =
+      url::Origin::Create(GURL("https://example.com"));
+  SetCommittedOriginOnAllFrames(other_origin);
+
+  EXPECT_TRUE(live_caption_controller()->DispatchTranscription(
+      web_contents()->GetPrimaryMainFrame(), nullptr,
+      media::SpeechRecognitionResult("some transcript", /*is_final=*/true)));
+}
+
+TEST_F(GlicMediaIntegrationTest,
+       DefaultExcludedOriginsDontReturnTranscriptions) {
+  // Asking for context from a default excluded origin should return nothing.
+  auto* integration = GetIntegration();
+  ASSERT_NE(integration, nullptr);
+
+  // Set the origin to youtube.
+  const url::Origin youtube_origin =
+      url::Origin::Create(GURL("https://www.youtube.com"));
+  SetCommittedOriginOnAllFrames(youtube_origin);
+
+  // This transcription should be ignored.
+  live_caption_controller()->DispatchTranscription(
+      web_contents()->GetPrimaryMainFrame(), nullptr,
+      media::SpeechRecognitionResult("some transcript", /*is_final=*/true));
+
+  // Expect an empty transcript.
+  optimization_guide::proto::ContentNode root_node;
+  integration->AppendContextForFrame(rfh(), &root_node);
+  EXPECT_EQ(root_node.children_nodes_size(), 0);
+  EXPECT_FALSE(root_node.has_content_attributes());
+}
+
+TEST_F(GlicMediaIntegrationTest, PrefToggleAddsAndRemovesListener) {
+  // Ensure the pref is enabled initially.
+  pref_service()->SetBoolean(glic::prefs::kGlicMediaUnderstandingEnabled, true);
+
+  auto* integration = GetIntegration();
+  ASSERT_NE(integration, nullptr);
+
+  const url::Origin other_origin =
+      url::Origin::Create(GURL("https://example.com"));
+  SetCommittedOriginOnAllFrames(other_origin);
+
+  // 1. With pref enabled, dispatching transcription should succeed.
+  EXPECT_TRUE(live_caption_controller()->DispatchTranscription(
+      rfh(), nullptr,
+      media::SpeechRecognitionResult("transcript 1", /*is_final=*/true)));
+  EXPECT_EQ(GetContext()->GetTranscriptChunks().size(), 1u);
+
+  // 2. Disable the pref.
+  pref_service()->SetBoolean(glic::prefs::kGlicMediaUnderstandingEnabled,
+                             false);
+
+  // Wait for the asynchronous removal to process.
+  task_environment()->RunUntilIdle();
+
+  // 3. Now the listener should be removed, so DispatchTranscription returns
+  // false.
+  EXPECT_FALSE(live_caption_controller()->DispatchTranscription(
+      rfh(), nullptr,
+      media::SpeechRecognitionResult("transcript 2", /*is_final=*/true)));
+
+  // 4. Disabling the pref should have cleared the transcripts.
+  ASSERT_NE(GetContext(), nullptr);
+  EXPECT_FALSE(GetContext()->HasTranscriptChunks());
+  EXPECT_EQ(GetContext()->GetTranscriptChunks().size(), 0u);
+
+  // 5. Enable the pref again.
+  pref_service()->SetBoolean(glic::prefs::kGlicMediaUnderstandingEnabled, true);
+
+  // The listener is added back synchronously.
+  EXPECT_TRUE(live_caption_controller()->DispatchTranscription(
+      rfh(), nullptr,
+      media::SpeechRecognitionResult("transcript 3", /*is_final=*/true)));
+  EXPECT_EQ(GetContext()->GetTranscriptChunks().size(), 1u);
+}
+
+#endif  // !BUILDFLAG(IS_LINUX) || defined(ARCH_CPU_X86_FAMILY)
+
+}  // namespace glic

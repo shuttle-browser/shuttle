@@ -1,0 +1,106 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.feedback;
+
+import android.app.Activity;
+
+import androidx.annotation.StringRes;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+
+import java.util.Map;
+
+/** Interface for launching a help and feedback page. */
+@NullMarked
+public interface HelpAndFeedbackLauncher {
+    /**
+     * Starts an activity showing a help page for the specified context ID.
+     *
+     * @param activity The activity to use for starting the help activity and to take a screenshot
+     *     of.
+     * @param helpContext One of the CONTEXT_* constants. This should describe the user's current
+     *     context and will be used to show a more relevant help page.
+     * @param url the current URL. May be null.
+     */
+    void show(Activity activity, String helpContext, @Nullable String url);
+
+    /**
+     * Starts an activity showing a help page for the specified URL and records a user action.
+     *
+     * @param activity The activity to use for starting the help activity.
+     * @param url The current URL.
+     * @param recordAction The user action to record.
+     */
+    void showHelpAndFeedbackForUrl(Activity activity, String url, String recordAction);
+
+    /**
+     * Starts an activity prompting the user to enter feedback.
+     *
+     * <p>Note: Please check the isUserFeedbackAllowed policy (via {@link
+     * FeedbackPolicyManager#isUserFeedbackAllowed()}) when adding a UI entry to send feedback. See
+     * crbug.com/467060116 for more details.
+     *
+     * @param activity The activity to use for starting the feedback activity and to take a
+     *     screenshot of.
+     * @param url the current URL. May be null.
+     * @param categoryTag The category that this feedback report falls under. Before making any
+     *     changes to categories or adding a new category tag to feedback collection, please ensure
+     *     the teams that operationalize feedback are aware and supportive. Contact: chrome-gtech@.
+     * @param screenshotMode The kind of screenshot to include with the feedback.
+     * @param feedbackContext The context that describes the current feature being used.
+     */
+    void showFeedback(
+            Activity activity,
+            @Nullable String url,
+            @Nullable String categoryTag,
+            int screenshotMode,
+            @Nullable String feedbackContext);
+
+    /**
+     * Starts an activity prompting the user to enter feedback.
+     *
+     * <p>Note: Please check the isUserFeedbackAllowed policy (via {@link
+     * FeedbackPolicyManager#isUserFeedbackAllowed()}) when adding a UI entry to send feedback. See
+     * crbug.com/467060116 for more details.
+     *
+     * @param activity The activity to use for starting the feedback activity and to take a
+     *     screenshot of.
+     * @param url the current URL. May be null.
+     * @param categoryTag The category that this feedback report falls under. Before making any
+     *     changes to categories or adding a new category tag to feedback collection, please ensure
+     *     the teams that operationalize feedback are aware and supportive. Contact: chrome-gtech@.
+     */
+    void showFeedback(Activity activity, @Nullable String url, @Nullable String categoryTag);
+
+    /**
+     * Starts an activity prompting the user to enter feedback for the interest feed.
+     *
+     * <p>Note: Please check the isUserFeedbackAllowed policy (via {@link
+     * FeedbackPolicyManager#isUserFeedbackAllowed()}) when adding a UI entry to send feedback. See
+     * crbug.com/467060116 for more details.
+     *
+     * @param activity The activity to use for starting the feedback activity and to take a
+     *     screenshot of.
+     * @param categoryTag The category that this feedback report falls under. Before making any
+     *     changes to categories or adding a new category tag to feedback collection, please ensure
+     *     the teams that operationalize feedback are aware and supportive. Contact: chrome-gtech@.
+     * @param feedContext Feed specific parameters (url, title, etc) to include with feedback.
+     */
+    void showFeedback(
+            Activity activity,
+            @Nullable String url,
+            @Nullable String categoryTag,
+            @Nullable Map<String, String> feedContext);
+
+    /**
+     * @return The resource ID of the help string that is valid for the current policy.
+     */
+    static @StringRes int getHelpMenuStringRes() {
+        return FeedbackPolicyManager.getInstance().isUserFeedbackAllowed()
+                ? R.string.menu_help
+                : R.string.menu_help_no_feedback;
+    }
+}

@@ -1,0 +1,286 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ash/policy/handlers/lock_to_single_user_manager.h"
+
+#include <memory>
+
+#include "base/command_line.h"
+#include "base/memory/ptr_util.h"
+#include "base/memory/raw_ptr.h"
+#include "base/test/scoped_feature_list.h"
+#include "build/build_config.h"
+#include "chrome/browser/ash/app_list/arc/arc_app_test.h"
+#include "chrome/browser/ash/arc/session/arc_session_manager.h"
+#include "chrome/browser/ash/arc/test/test_arc_session_manager.h"
+#include "chrome/test/base/browser_with_test_window_test.h"
+#include "chrome/test/base/testing_browser_process.h"
+#include "chromeos/ash/components/dbus/anomaly_detector/anomaly_detector_client.h"
+#include "chromeos/ash/components/dbus/chunneld/chunneld_client.h"
+#include "chromeos/ash/components/dbus/cicerone/cicerone_client.h"
+#include "chromeos/ash/components/dbus/concierge/concierge_client.h"
+#include "chromeos/ash/components/dbus/concierge/fake_concierge_client.h"
+#include "chromeos/ash/components/dbus/debug_daemon/debug_daemon_client.h"
+#include "chromeos/ash/components/dbus/dlcservice/dlcservice_client.h"
+#include "chromeos/ash/components/dbus/seneschal/seneschal_client.h"
+#include "chromeos/ash/components/dbus/session_manager/session_manager_client.h"
+#include "chromeos/ash/components/dbus/userdataauth/fake_cryptohome_misc_client.h"
+#include "chromeos/ash/components/login/session/session_termination_manager.h"
+#include "chromeos/ash/components/settings/cros_settings_names.h"
+#include "chromeos/ash/experiences/arc/dlc_installer/arc_dlc_installer.h"
+#include "chromeos/ash/experiences/arc/metrics/arc_metrics_service.h"
+#include "chromeos/ash/experiences/arc/metrics/stability_metrics_manager.h"
+#include "chromeos/ash/experiences/arc/session/arc_service_manager.h"
+#include "chromeos/ash/experiences/arc/test/arc_util_test_support.h"
+#include "chromeos/ash/experiences/arc/test/fake_arc_session.h"
+#include "components/account_id/account_id.h"
+#include "components/policy/proto/chrome_device_policy.pb.h"
+#include "components/session_manager/core/session_manager.h"
+#include "components/user_manager/test_helper.h"
+#include "components/user_manager/user_manager.h"
+#include "google_apis/gaia/gaia_id.h"
+
+namespace policy {
+
+class LockToSingleUserManagerTest : public BrowserWithTestWindowTest {
+ public:
+  LockToSingleUserManagerTest() = default;
+
+  LockToSingleUserManagerTest(const LockToSingleUserManagerTest&) = delete;
+  LockToSingleUserManagerTest& operator=(const LockToSingleUserManagerTest&) =
+      delete;
+
+  ~LockToSingleUserManagerTest() override = default;
+
+  void SetUp() override {
+    // This is required for GuestOsStabilityMonitor.
+    ash::ChunneldClient::InitializeFake();
+    ash::CiceroneClient::InitializeFake();
+    ash::ConciergeClient::InitializeFake();
+    ash::DebugDaemonClient::InitializeFake();
+    ash::DlcserviceClient::InitializeFake();
+    ash::SeneschalClient::InitializeFake();
+    ash::SessionManagerClient::InitializeFakeInMemory();
+
+    arc::SetArcAvailableCommandLineForTesting(
+        base::CommandLine::ForCurrentProcess());
+    ash::AnomalyDetectorClient::InitializeFake();
+    ash::CryptohomeMiscClient::InitializeFake();
+    arc::StabilityMetricsManager::Initialize(
+        TestingBrowserProcess::GetGlobal()->local_state());
+
+    BrowserWithTestWindowTest::SetUp();
+    lock_to_single_user_manager_ = std::make_unique<LockToSingleUserManager>();
+
+    settings_helper_.ReplaceDeviceSettingsProviderWithStub();
+    arc::ArcSessionManager::SetUiEnabledForTesting(false);
+    arc_service_manager_ = std::make_unique<arc::ArcServiceManager>();
+    arc_dlc_installer_ = std::make_unique<arc::ArcDlcInstaller>();
+    arc_session_manager_ = arc::CreateTestArcSessionManager(
+        std::make_unique<arc::ArcSessionRunner>(
+            base::BindRepeating(arc::FakeArcSession::Create)),
+        arc_dlc_installer_.get());
+  }
+
+  void TearDown() override {
+    arc::StabilityMetricsManager::Shutdown();
+    // lock_to_single_user_manager has to be cleaned up first due to implicit
+    // dependency on ArcSessionManager.
+    lock_to_single_user_manager_.reset();
+
+    arc_session_manager_->Shutdown();
+    arc_session_manager_.reset();
+
+    arc_dlc_installer_.reset();
+
+    // Must reset browser context reference before profile destruction.
+    arc_service_manager_->set_browser_context(nullptr);
+
+    // Destruction order matters here.
+    //
+    // This line destroys profile, thus indirectly destroys
+    // ArcMetricsService, since profile owns keyed services, like
+    // ArcMetricsService. DTor of ArcMetricsService calls things in
+    // ArcBridgeService, which is owned by ArcServiceManager. Thus
+    // ArcServiceManager must still be alive at this line.
+    BrowserWithTestWindowTest::TearDown();
+
+    arc_service_manager_.reset();
+    ash::CryptohomeMiscClient::Shutdown();
+    ash::AnomalyDetectorClient::Shutdown();
+    ash::SessionManagerClient::Shutdown();
+    ash::SeneschalClient::Shutdown();
+    ash::DlcserviceClient::Shutdown();
+    ash::DebugDaemonClient::Shutdown();
+    ash::ConciergeClient::Shutdown();
+    ash::CiceroneClient::Shutdown();
+    ash::ChunneldClient::Shutdown();
+  }
+
+  // BrowserWithTestWindowTest:
+  // Override to do nothing to inject this test's specific behavior.
+  // TODO(b/40286020): Consider migrating into BrowserWithTestWindowTest
+  // in better way. Current test implementation is different from
+  // what we're seeing in production.
+  void LogIn(std::string_view email, const GaiaId& gaia_id) override {
+    NOTREACHED();
+  }
+
+  std::optional<std::string> GetDefaultProfileName() override {
+    // Disable default log-in.
+    return std::nullopt;
+  }
+
+  void LogInUser(bool is_affiliated) {
+    base::RunLoop run_loop;
+
+    const AccountId account_id(
+        AccountId::FromUserEmailGaiaId("test@test", GaiaId("1234567890")));
+    user_manager()->AddGaiaUser(account_id, user_manager::UserType::kRegular);
+    session_manager::SessionManager::Get()->CreateSession(
+        account_id, user_manager::TestHelper::GetFakeUsernameHash(account_id),
+        /*new_user=*/false,
+        /*has_active_session=*/false);
+    user_manager::UserManager::Get()->SetUserPolicyStatus(
+        account_id,
+        /*is_managed=*/is_affiliated, /*is_affiliated=*/is_affiliated);
+
+    auto* profile = CreateProfile(account_id.GetUserEmail());
+
+    ash::LoginState::Get()->SetLoggedInState(
+        ash::LoginState::LOGGED_IN_ACTIVE,
+        ash::LoginState::LOGGED_IN_USER_REGULAR);
+
+    arc_service_manager_->set_browser_context(profile);
+    arc::ArcMetricsService::GetForBrowserContextForTesting(profile);
+
+    arc_session_manager_->SetProfile(profile);
+    arc_session_manager_->Initialize();
+
+    run_loop.RunUntilIdle();
+  }
+
+  void SetPolicyValue(int value) {
+    settings_helper_.SetInteger(ash::kDeviceRebootOnUserSignout, value);
+  }
+
+  void StartArc() {
+    base::RunLoop run_loop;
+    arc_session_manager_->StartArcForTesting();
+    run_loop.RunUntilIdle();
+  }
+
+  void StartConciergeVm() {
+    base::RunLoop run_loop;
+    vm_tools::concierge::VmStartedSignal signal;
+    ash::FakeConciergeClient::Get()->NotifyVmStarted(signal);
+    run_loop.RunUntilIdle();
+  }
+
+  void StartDbusVm() {
+    base::RunLoop run_loop;
+    lock_to_single_user_manager_->DbusNotifyVmStarting();
+    run_loop.RunUntilIdle();
+  }
+
+  void CheckIsDeviceLocked(bool should_be_locked) {
+    EXPECT_EQ(
+        ash::FakeCryptohomeMiscClient::Get()->is_device_locked_to_single_user(),
+        should_be_locked);
+    EXPECT_EQ(ash::SessionTerminationManager::Get()->IsLockedToSingleUser(),
+              should_be_locked);
+  }
+
+ private:
+  ash::ScopedCrosSettingsTestHelper settings_helper_{
+      /* create_settings_service= */ false};
+  std::unique_ptr<arc::ArcServiceManager> arc_service_manager_;
+  std::unique_ptr<arc::ArcDlcInstaller> arc_dlc_installer_;
+  std::unique_ptr<arc::ArcSessionManager> arc_session_manager_;
+  // Required for initialization.
+  ash::SessionTerminationManager termination_manager_;
+  std::unique_ptr<LockToSingleUserManager> lock_to_single_user_manager_;
+};
+
+TEST_F(LockToSingleUserManagerTest, ArcSessionLockTest) {
+  SetPolicyValue(
+      enterprise_management::DeviceRebootOnUserSignoutProto::ARC_SESSION);
+  LogInUser(false /* is_affiliated */);
+  CheckIsDeviceLocked(false);
+  StartConciergeVm();
+  StartDbusVm();
+  CheckIsDeviceLocked(false);
+  StartArc();
+  CheckIsDeviceLocked(true);
+}
+
+TEST_F(LockToSingleUserManagerTest, ConciergeStartLockTest) {
+  SetPolicyValue(enterprise_management::DeviceRebootOnUserSignoutProto::
+                     VM_STARTED_OR_ARC_SESSION);
+  LogInUser(false /* is_affiliated */);
+  CheckIsDeviceLocked(false);
+  StartConciergeVm();
+  CheckIsDeviceLocked(true);
+}
+
+TEST_F(LockToSingleUserManagerTest, DbusVmStartLockTest) {
+  SetPolicyValue(enterprise_management::DeviceRebootOnUserSignoutProto::
+                     VM_STARTED_OR_ARC_SESSION);
+  LogInUser(false /* is_affiliated */);
+  CheckIsDeviceLocked(false);
+  StartDbusVm();
+  CheckIsDeviceLocked(true);
+  StartConciergeVm();
+  CheckIsDeviceLocked(true);
+}
+
+TEST_F(LockToSingleUserManagerTest, ArcSessionOrVmLockTest) {
+  SetPolicyValue(enterprise_management::DeviceRebootOnUserSignoutProto::
+                     VM_STARTED_OR_ARC_SESSION);
+  LogInUser(false /* is_affiliated */);
+  CheckIsDeviceLocked(false);
+  StartArc();
+  CheckIsDeviceLocked(true);
+}
+
+TEST_F(LockToSingleUserManagerTest, AlwaysLockTest) {
+  SetPolicyValue(enterprise_management::DeviceRebootOnUserSignoutProto::ALWAYS);
+  // The device should not be locked at this point because of async affiliation
+  // loading.
+  CheckIsDeviceLocked(false);
+  LogInUser(false /* is_affiliated */);
+  CheckIsDeviceLocked(true);
+}
+
+TEST_F(LockToSingleUserManagerTest, NeverLockTest) {
+  SetPolicyValue(enterprise_management::DeviceRebootOnUserSignoutProto::NEVER);
+  LogInUser(false /* is_affiliated */);
+  StartConciergeVm();
+  StartArc();
+  StartDbusVm();
+  CheckIsDeviceLocked(false);
+}
+
+TEST_F(LockToSingleUserManagerTest, DbusCallErrorTest) {
+  ash::FakeCryptohomeMiscClient::Get()->set_cryptohome_error(
+      ::user_data_auth::CryptohomeErrorCode::CRYPTOHOME_ERROR_KEY_NOT_FOUND);
+  SetPolicyValue(enterprise_management::DeviceRebootOnUserSignoutProto::ALWAYS);
+  LogInUser(false /* is_affiliated */);
+  CheckIsDeviceLocked(false);
+}
+
+TEST_F(LockToSingleUserManagerTest, DoesNotAffectAffiliatedUsersTest) {
+  SetPolicyValue(enterprise_management::DeviceRebootOnUserSignoutProto::ALWAYS);
+  LogInUser(true /* is_affiliated */);
+  CheckIsDeviceLocked(false);
+}
+
+TEST_F(LockToSingleUserManagerTest, FutureTest) {
+  // Unknown values should be the same as ALWAYS
+  SetPolicyValue(100);
+  LogInUser(false /* is_affiliated */);
+  CheckIsDeviceLocked(true);
+}
+
+}  // namespace policy

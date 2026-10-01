@@ -1,0 +1,16 @@
+[
+  {
+    "os": [
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "quick_unlock_timeout",
+      "default_value": 2,
+      "values_to_test": [
+        0,
+        1,
+        2
+      ]
+    }
+  }
+]

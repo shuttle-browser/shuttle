@@ -1,0 +1,111 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ui/gfx/hdr_metadata_mac.h"
+
+#include <simd/simd.h>
+
+#include "base/apple/scoped_cftyperef.h"
+#include "ui/gfx/hdr_metadata.h"
+
+namespace gfx {
+
+base::apple::ScopedCFTypeRef<CFDataRef> GenerateContentLightLevelInfo(
+    const gfx::HDRMetadata& hdr_metadata) {
+  if (!hdr_metadata.HasCLLI() || hdr_metadata.GetCLLI().fMaxCLL == 0.f ||
+      hdr_metadata.GetCLLI().fMaxFALL == 0.f) {
+    return base::apple::ScopedCFTypeRef<CFDataRef>();
+  }
+
+  // This is a SMPTEST2086 Content Light Level Information box.
+  struct ContentLightLevelInfoSEI {
+    uint16_t max_content_light_level;
+    uint16_t max_frame_average_light_level;
+  } __attribute__((packed, aligned(2)));
+  static_assert(sizeof(ContentLightLevelInfoSEI) == 4, "Must be 4 bytes");
+
+  // Values are stored in big-endian...
+  ContentLightLevelInfoSEI sei;
+  sei.max_content_light_level =
+      __builtin_bswap16(hdr_metadata.GetCLLI().getUint16MaxCLL());
+  sei.max_frame_average_light_level =
+      __builtin_bswap16(hdr_metadata.GetCLLI().getUint16MaxFALL());
+
+  return base::apple::ScopedCFTypeRef<CFDataRef>(
+      CFDataCreate(nullptr, reinterpret_cast<const UInt8*>(&sei), sizeof(sei)));
+}
+
+base::apple::ScopedCFTypeRef<CFDataRef> GenerateMasteringDisplayColorVolume(
+    const gfx::HDRMetadata& hdr_metadata) {
+  // This is a SMPTEST2086 Mastering Display Color Volume box.
+  struct MasteringDisplayColorVolumeSEI {
+    vector_ushort2 primaries[3];  // GBR
+    vector_ushort2 white_point;
+    uint32_t luminance_max;
+    uint32_t luminance_min;
+  } __attribute__((packed, aligned(4)));
+  static_assert(sizeof(MasteringDisplayColorVolumeSEI) == 24,
+                "Must be 24 bytes");
+
+  // Make a copy with all values populated, and which we can manipulate.
+  auto md =
+      HDRMetadata::PopulateUnspecifiedWithDefaults(hdr_metadata).GetMDCV();
+
+  constexpr float kColorCoordinateUpperBound = 50000.0f;
+  constexpr float kUnitOfMasteringLuminance = 10000.0f;
+  md.fMaximumDisplayMasteringLuminance *= kUnitOfMasteringLuminance;
+  md.fMinimumDisplayMasteringLuminance *= kUnitOfMasteringLuminance;
+
+  // Values are stored in big-endian...
+  MasteringDisplayColorVolumeSEI sei;
+  const auto& primaries = md.fDisplayPrimaries;
+  sei.primaries[0].x =
+      __builtin_bswap16(primaries.fGX * kColorCoordinateUpperBound + 0.5f);
+  sei.primaries[0].y =
+      __builtin_bswap16(primaries.fGY * kColorCoordinateUpperBound + 0.5f);
+  sei.primaries[1].x =
+      __builtin_bswap16(primaries.fBX * kColorCoordinateUpperBound + 0.5f);
+  sei.primaries[1].y =
+      __builtin_bswap16(primaries.fBY * kColorCoordinateUpperBound + 0.5f);
+  sei.primaries[2].x =
+      __builtin_bswap16(primaries.fRX * kColorCoordinateUpperBound + 0.5f);
+  sei.primaries[2].y =
+      __builtin_bswap16(primaries.fRY * kColorCoordinateUpperBound + 0.5f);
+  sei.white_point.x =
+      __builtin_bswap16(primaries.fWX * kColorCoordinateUpperBound + 0.5f);
+  sei.white_point.y =
+      __builtin_bswap16(primaries.fWY * kColorCoordinateUpperBound + 0.5f);
+  sei.luminance_max =
+      __builtin_bswap32(md.fMaximumDisplayMasteringLuminance + 0.5f);
+  sei.luminance_min =
+      __builtin_bswap32(md.fMinimumDisplayMasteringLuminance + 0.5f);
+
+  return base::apple::ScopedCFTypeRef<CFDataRef>(
+      CFDataCreate(nullptr, reinterpret_cast<const UInt8*>(&sei), sizeof(sei)));
+}
+
+base::apple::ScopedCFTypeRef<CFDataRef> GenerateAmbientViewingEnvironment() {
+  // The AMVE box is documented in Technical Note 3145.
+  // https://developer.apple.com/documentation/technotes/tn3145-hdr-video-metadata
+  struct AmveSEI {
+    uint32_t ambient_illuminance;
+    uint16_t ambient_light_x;
+    uint16_t ambient_light_y;
+  } __attribute__((packed, aligned(2)));
+  static_assert(sizeof(AmveSEI) == 8, "Must be 8 bytes");
+
+  // The actual values specified in the AMVE box have no effect on rendering. In
+  // fact, the full box does not even need to be specified (just an single byte
+  // set to 0 will have the same effect). Use the default values set by iPhone
+  // HDR videos (314 nits, just to be safe.
+  AmveSEI sei;
+  sei.ambient_illuminance = __builtin_bswap32(0x2fe9a0);  // 314 nits
+  sei.ambient_light_x = __builtin_bswap16(0x3d13);        // 0.3127
+  sei.ambient_light_y = __builtin_bswap16(0x4042);        // 0.329
+
+  return base::apple::ScopedCFTypeRef<CFDataRef>(
+      CFDataCreate(nullptr, reinterpret_cast<const UInt8*>(&sei), sizeof(sei)));
+}
+
+}  // namespace gfx

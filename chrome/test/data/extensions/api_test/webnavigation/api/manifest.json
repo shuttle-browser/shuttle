@@ -1,0 +1,10 @@
+{
+  "name": "webNavigation",
+  "version": "1.0",
+  "manifest_version": 3,
+  "description": "Tests the webNavigation API events - api.",
+  "background": {
+    "service_worker": "test_api.js"
+  },
+  "permissions": ["webNavigation", "tabs"]
+}

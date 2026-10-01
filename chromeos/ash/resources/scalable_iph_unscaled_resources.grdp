@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<grit-part>
+  <!-- Resources for Scalable IPH. -->
+  <include name="IDR_SCALABLE_IPH_GOOGLE_PLAY_ICON_120_PNG" file="../../assistant/internal/resources/scalable_iph/google_play_icon_120.png" type="BINDATA" />
+  <include name="IDR_SCALABLE_IPH_GOOGLE_DOCS_ICON_120_PNG" file="../../assistant/internal/resources/scalable_iph/google_docs_icon_120.png" type="BINDATA" />
+  <include name="IDR_SCALABLE_IPH_YOUTUBE_ICON_120_PNG" file="../../assistant/internal/resources/scalable_iph/youtube_icon_120.png" type="BINDATA" />
+</grit-part>

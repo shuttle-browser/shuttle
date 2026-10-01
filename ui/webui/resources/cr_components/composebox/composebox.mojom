@@ -1,0 +1,66 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module composebox.mojom;
+
+import "components/omnibox/browser/searchbox.mojom";
+import "url/mojom/url.mojom";
+
+// Used by the WebUI page to bootstrap bidirectional communication.
+interface PageHandlerFactory {
+  // The component calls this method when it is first initialized.
+  CreatePageHandler(
+      pending_receiver<PageHandler> handler,
+      pending_remote<searchbox.mojom.Page> searchbox_page,
+      pending_receiver<searchbox.mojom.PageHandler> searchbox_handler);
+};
+
+enum LensOverlayDismissalSource {
+  kContextualTasksImageUploadsDisabled,
+};
+
+// Browser-side handler for requests from NTP Composebox UI.
+interface PageHandler {
+  // Called when the user enters/loses focus into the composebox.
+  FocusChanged(bool focused);
+
+  // Starts the host platform's native voice recognition system.
+  StartPlatformVoiceRecognition();
+
+  // Called when the Lens button is clicked in the composebox.
+  HandleLensButtonClick();
+
+  // Called when a file upload button is clicked in the composebox
+  // triggering the file upload dialog.
+  HandleFileUpload(bool is_image);
+
+  // Called when a link within the composebox UI needs to be navigated
+  // in the main browser window (e.g., the "Details" link in an error message).
+  NavigateUrl(url.mojom.Url url);
+
+  // Called to close the Lens overlay.
+  CloseLensOverlayFromWebUI(LensOverlayDismissalSource dismissal_source);
+
+  // Called to enable or disable Smart Tab Sharing for subsequent queries.
+  SetSmartTabSharingActive(bool active);
+
+  // Called to retrieve the current Smart Tab Sharing state.
+  GetSmartTabSharingActive() => (bool active);
+
+  // Called when the context menu is opened in the composebox.
+  OnContextMenuOpened();
+
+  // Notifies the feature engagement tracker that a composebox query with
+  // tool/context attached was submitted.
+  NotifyComposeboxQuerySubmittedWithContext();
+
+  // Returns whether the nextbox zero-state page load animation can be shown
+  // under impression limit caps.
+  CanShowNextboxAnimation() => (bool can_show);
+
+  // Records that the nextbox zero-state page load animation was shown or
+  // blocked.
+  RecordNextboxAnimationImpression(bool shown);
+};
+

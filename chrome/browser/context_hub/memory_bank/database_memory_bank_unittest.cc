@@ -1,0 +1,178 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/context_hub/memory_bank/database_memory_bank.h"
+
+#include <vector>
+
+#include "base/files/scoped_temp_dir.h"
+#include "base/test/task_environment.h"
+#include "base/test/test_future.h"
+#include "chrome/browser/context_hub/storage/context_hub_backend_impl.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "url/gurl.h"
+
+namespace context_hub {
+
+class DatabaseMemoryBankTest : public testing::Test {
+ protected:
+  void SetUp() override {
+    ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
+    base::FilePath db_path =
+        temp_dir_.GetPath().Append(FILE_PATH_LITERAL("ContextHub.db"));
+    backend_ = std::make_unique<ContextHubBackendImpl>(db_path);
+    memory_bank_ = std::make_unique<DatabaseMemoryBank>(*backend_);
+  }
+
+  base::test::TaskEnvironment task_environment_;
+  base::ScopedTempDir temp_dir_;
+  std::unique_ptr<ContextHubBackendImpl> backend_;
+  std::unique_ptr<DatabaseMemoryBank> memory_bank_;
+};
+
+TEST_F(DatabaseMemoryBankTest, SaveMemoryBankEntryAndRetrieve) {
+  base::test::TestFuture<bool> save_future;
+  memory_bank_->SaveMemoryBankEntry(
+      MemoryBankEntry(MemoryBankType::kTab, GURL("https://example.com"),
+                      "Example", "Page content"),
+      save_future.GetCallback());
+  ASSERT_TRUE(save_future.Get());
+
+  base::test::TestFuture<std::vector<MemoryBankEntry>> get_future;
+  memory_bank_->GetAllEntries(get_future.GetCallback());
+  auto entries = get_future.Get();
+  ASSERT_EQ(1u, entries.size());
+  EXPECT_EQ(MemoryBankType::kTab, entries[0].type);
+  EXPECT_EQ(GURL("https://example.com"), entries[0].url);
+  EXPECT_EQ("Example", entries[0].tab_title);
+  ASSERT_TRUE(entries[0].selected_text.has_value());
+  EXPECT_EQ("Page content", entries[0].selected_text.value());
+}
+
+TEST_F(DatabaseMemoryBankTest, UpdateEntryAnnotations) {
+  base::test::TestFuture<bool> save_future;
+  memory_bank_->SaveMemoryBankEntry(
+      MemoryBankEntry(MemoryBankType::kTab, GURL("https://example.com"),
+                      "Example", "Page content"),
+      save_future.GetCallback());
+  ASSERT_TRUE(save_future.Get());
+
+  base::test::TestFuture<std::vector<MemoryBankEntry>> get_future;
+  memory_bank_->GetAllEntries(get_future.GetCallback());
+  auto entries = get_future.Get();
+  ASSERT_EQ(1u, entries.size());
+  int64_t id = entries[0].id;
+
+  base::test::TestFuture<bool> update_future;
+  memory_bank_->UpdateEntryAnnotations(id, {"tag1"}, "Updated Note",
+                                       "Updated Collection",
+                                       update_future.GetCallback());
+  EXPECT_TRUE(update_future.Get());
+
+  base::test::TestFuture<std::vector<MemoryBankEntry>> get_updated_future;
+  memory_bank_->GetAllEntries(get_updated_future.GetCallback());
+  auto updated_entries = get_updated_future.Get();
+  ASSERT_EQ(1u, updated_entries.size());
+  EXPECT_EQ(updated_entries[0].tab_title, "Example");
+  EXPECT_EQ(updated_entries[0].note, "Updated Note");
+  EXPECT_EQ(updated_entries[0].collection, "Updated Collection");
+  EXPECT_THAT(updated_entries[0].tags, testing::ElementsAre("tag1"));
+}
+
+TEST_F(DatabaseMemoryBankTest, SaveMemoryBankEntryAndDelete) {
+  base::test::TestFuture<bool> save_future;
+  memory_bank_->SaveMemoryBankEntry(
+      MemoryBankEntry(MemoryBankType::kTextSelection,
+                      GURL("https://google.com"), "Google", "Search text"),
+      save_future.GetCallback());
+  ASSERT_TRUE(save_future.Get());
+
+  base::test::TestFuture<std::vector<MemoryBankEntry>> get_future;
+  memory_bank_->GetAllEntries(get_future.GetCallback());
+  auto entries = get_future.Get();
+  ASSERT_EQ(1u, entries.size());
+  EXPECT_EQ(MemoryBankType::kTextSelection, entries[0].type);
+
+  base::test::TestFuture<bool> delete_future;
+  std::vector<int64_t> ids = {entries[0].id};
+  memory_bank_->DeleteEntries(ids, delete_future.GetCallback());
+  ASSERT_TRUE(delete_future.Get());
+
+  base::test::TestFuture<std::vector<MemoryBankEntry>> empty_future;
+  memory_bank_->GetAllEntries(empty_future.GetCallback());
+  EXPECT_TRUE(empty_future.Get().empty());
+}
+
+TEST_F(DatabaseMemoryBankTest, GetEntriesByIds) {
+  base::test::TestFuture<bool> save_future1;
+  memory_bank_->SaveMemoryBankEntry(
+      MemoryBankEntry(MemoryBankType::kTab, GURL("https://example.com/1"),
+                      "Tab 1", "Content 1"),
+      save_future1.GetCallback());
+  ASSERT_TRUE(save_future1.Get());
+
+  base::test::TestFuture<bool> save_future2;
+  memory_bank_->SaveMemoryBankEntry(
+      MemoryBankEntry(MemoryBankType::kTab, GURL("https://example.com/2"),
+                      "Tab 2", "Content 2"),
+      save_future2.GetCallback());
+  ASSERT_TRUE(save_future2.Get());
+
+  base::test::TestFuture<std::vector<MemoryBankEntry>> all_future;
+  memory_bank_->GetAllEntries(all_future.GetCallback());
+  auto all_entries = all_future.Get();
+  ASSERT_EQ(2u, all_entries.size());
+
+  base::test::TestFuture<std::vector<MemoryBankEntry>> by_ids_future;
+  memory_bank_->GetEntriesByIds({all_entries[0].id},
+                                by_ids_future.GetCallback());
+  auto selected_entries = by_ids_future.Get();
+  ASSERT_EQ(1u, selected_entries.size());
+  EXPECT_EQ(all_entries[0].id, selected_entries[0].id);
+  EXPECT_EQ(all_entries[0].tab_title, selected_entries[0].tab_title);
+}
+
+TEST_F(DatabaseMemoryBankTest, GetAllTags) {
+  MemoryBankEntry entry1(MemoryBankType::kTab, GURL("https://example.com/1"),
+                         "Tab 1", "Content 1");
+  entry1.tags = {"tag1", "tag2"};
+  base::test::TestFuture<bool> save_future1;
+  memory_bank_->SaveMemoryBankEntry(entry1, save_future1.GetCallback());
+  ASSERT_TRUE(save_future1.Get());
+
+  MemoryBankEntry entry2(MemoryBankType::kTab, GURL("https://example.com/2"),
+                         "Tab 2", "Content 2");
+  entry2.tags = {"tag2", "tag3"};
+  base::test::TestFuture<bool> save_future2;
+  memory_bank_->SaveMemoryBankEntry(entry2, save_future2.GetCallback());
+  ASSERT_TRUE(save_future2.Get());
+
+  base::test::TestFuture<const std::vector<std::string>&> tags_future;
+  memory_bank_->GetAllTags(tags_future.GetCallback());
+  EXPECT_THAT(tags_future.Get(),
+              testing::UnorderedElementsAre("tag1", "tag2", "tag3"));
+}
+
+TEST_F(DatabaseMemoryBankTest, GetAllCollections) {
+  MemoryBankEntry entry1(MemoryBankType::kTab, GURL("https://example.com/1"),
+                         "Tab 1", "Content 1");
+  entry1.collection = "Research";
+  base::test::TestFuture<bool> save_future1;
+  memory_bank_->SaveMemoryBankEntry(entry1, save_future1.GetCallback());
+  ASSERT_TRUE(save_future1.Get());
+
+  MemoryBankEntry entry2(MemoryBankType::kTab, GURL("https://example.com/2"),
+                         "Tab 2", "Content 2");
+  entry2.collection = "Recipes";
+  base::test::TestFuture<bool> save_future2;
+  memory_bank_->SaveMemoryBankEntry(entry2, save_future2.GetCallback());
+  ASSERT_TRUE(save_future2.Get());
+
+  base::test::TestFuture<const std::vector<std::string>&> coll_future;
+  memory_bank_->GetAllCollections(coll_future.GetCallback());
+  EXPECT_THAT(coll_future.Get(), testing::ElementsAre("Recipes", "Research"));
+}
+
+}  // namespace context_hub

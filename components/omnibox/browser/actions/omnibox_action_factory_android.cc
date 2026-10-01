@@ -1,0 +1,101 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/omnibox/browser/actions/omnibox_action_factory_android.h"
+
+#include <vector>
+
+#include "base/android/jni_android.h"
+#include "base/android/jni_array.h"
+#include "base/android/jni_string.h"
+#include "base/lazy_instance.h"
+#include "omnibox_action.h"
+#include "url/android/gurl_android.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "components/omnibox/browser/jni_headers/OmniboxActionFactory_jni.h"
+
+base::android::ScopedJavaGlobalRef<jobject> BuildCrossDeviceTabAction(
+    JNIEnv* env,
+    intptr_t instance,
+    const std::u16string& hint,
+    const std::u16string& accessibility_hint) {
+  return base::android::ScopedJavaGlobalRef<jobject>(
+      Java_OmniboxActionFactory_buildCrossDeviceTabAction(
+          env, instance, base::android::ConvertUTF16ToJavaString(env, hint),
+          base::android::ConvertUTF16ToJavaString(env, accessibility_hint)));
+}
+
+base::android::ScopedJavaGlobalRef<jobject> BuildOmniboxPedal(
+    JNIEnv* env,
+    intptr_t instance,
+    const std::u16string& hint,
+    const std::u16string& accessibility_hint,
+    OmniboxPedalId pedal_id) {
+  return base::android::ScopedJavaGlobalRef<jobject>(
+      Java_OmniboxActionFactory_buildOmniboxPedal(
+          env, instance, base::android::ConvertUTF16ToJavaString(env, hint),
+          base::android::ConvertUTF16ToJavaString(env, accessibility_hint),
+          static_cast<int32_t>(pedal_id)));
+}
+
+base::android::ScopedJavaGlobalRef<jobject> BuildSiteSearchAction(
+    JNIEnv* env,
+    intptr_t instance,
+    const std::u16string& hint,
+    const std::u16string& accessibility_hint,
+    const std::u16string& keyword,
+    int starter_pack_id) {
+  return base::android::ScopedJavaGlobalRef<jobject>(
+      Java_OmniboxActionFactory_buildSiteSearchAction(
+          env, instance, hint, accessibility_hint, keyword, starter_pack_id));
+}
+
+base::android::ScopedJavaGlobalRef<jobject> BuildOmniboxActionInSuggest(
+    JNIEnv* env,
+    intptr_t instance,
+    const std::u16string& hint,
+    const std::u16string& accessibility_hint,
+    int action_type,
+    const std::string& action_uri,
+    int tab_id,
+    ActionPresentationMode presentation_mode) {
+  return base::android::ScopedJavaGlobalRef<jobject>(
+      Java_OmniboxActionFactory_buildActionInSuggest(
+          env, instance, base::android::ConvertUTF16ToJavaString(env, hint),
+          base::android::ConvertUTF16ToJavaString(env, accessibility_hint),
+          action_type, base::android::ConvertUTF8ToJavaString(env, action_uri),
+          tab_id, static_cast<int>(presentation_mode)));
+}
+
+base::android::ScopedJavaGlobalRef<jobject> BuildOmniboxLensOverlayAction(
+    JNIEnv* env,
+    intptr_t instance,
+    const std::u16string& hint,
+    const std::u16string& accessibility_hint) {
+  return base::android::ScopedJavaGlobalRef<jobject>(
+      Java_OmniboxActionFactory_buildOmniboxLensOverlayAction(
+          env, instance, base::android::ConvertUTF16ToJavaString(env, hint),
+          base::android::ConvertUTF16ToJavaString(env, accessibility_hint)));
+}
+
+// Convert a vector of OmniboxActions to Java counterpart.
+std::vector<jni_zero::ScopedJavaLocalRef<jobject>> ToJavaOmniboxActionsList(
+    JNIEnv* env,
+    const std::vector<scoped_refptr<OmniboxAction>>& actions) {
+  std::vector<base::android::ScopedJavaLocalRef<jobject>> ret;
+
+  for (const auto& action : actions) {
+    auto jobj = action->GetOrCreateJavaObject(env);
+    if (jobj) {
+      ret.emplace_back(std::move(jobj));
+    }
+  }
+
+  // Return only after all actions are created to capture cases where some
+  // actions were found, but none was applicable to Android.
+  return ret;
+}
+
+DEFINE_JNI(OmniboxActionFactory)

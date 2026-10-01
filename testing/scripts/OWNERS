@@ -1,0 +1,15 @@
+# This is reserved for people that are comfortably with buildbot recipes
+# and understand the implications of changing these files.
+
+bsheedy@chromium.org
+kbr@chromium.org
+
+per-file check_static_initializers.py=thakis@chromium.org
+per-file check_static_initializers.py=thomasanderson@chromium.org
+
+per-file run_performance_tests*=faridzad@google.com
+per-file run_performance_tests*=johnchen@chromium.org
+per-file run_performance_tests*=wenbinzhang@google.com
+
+per-file run_chromedriver_tests.py=file://chrome/test/chromedriver/OWNERS
+

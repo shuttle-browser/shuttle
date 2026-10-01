@@ -1,0 +1,170 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_WEBUI_SEARCHBOX_WEBUI_OMNIBOX_HANDLER_H_
+#define CHROME_BROWSER_UI_WEBUI_SEARCHBOX_WEBUI_OMNIBOX_HANDLER_H_
+
+#include "base/memory/weak_ptr.h"
+#include "base/scoped_observation.h"
+#include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
+#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
+#include "chrome/browser/ui/webui/cr_components/searchbox/contextual_searchbox_handler.h"
+#include "chrome/browser/ui/webui/top_chrome/top_chrome_web_ui_controller.h"
+#include "components/omnibox/browser/autocomplete_input.h"
+#include "components/omnibox/browser/omnibox_popup_selection.h"
+#include "components/omnibox/browser/omnibox_prefs.h"
+#include "components/omnibox/browser/searchbox.mojom.h"
+#include "components/prefs/pref_change_registrar.h"
+#include "content/public/browser/web_contents_observer.h"
+#include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "ui/base/window_open_disposition.h"
+
+class MetricsReporter;
+class OmniboxController;
+
+struct AiModeButtonUiConfig;
+
+namespace content {
+class WebUI;
+}  // namespace content
+
+// Handles bidirectional communication between NTP realbox JS and the browser.
+class WebuiOmniboxHandler : public ContextualSearchboxHandler,
+                            OmniboxEditModel::Observer {
+ public:
+  WebuiOmniboxHandler(
+      mojo::PendingReceiver<searchbox::mojom::PageHandler> pending_page_handler,
+      mojo::PendingRemote<searchbox::mojom::Page> pending_page,
+      MetricsReporter* metrics_reporter,
+      OmniboxController* omnibox_controller,
+      content::WebUI* web_ui,
+      GetSessionHandleCallback get_session_callback);
+
+  WebuiOmniboxHandler(const WebuiOmniboxHandler&) = delete;
+  WebuiOmniboxHandler& operator=(const WebuiOmniboxHandler&) = delete;
+
+  ~WebuiOmniboxHandler() override;
+
+  // searchbox::mojom::PageHandler:
+  void ActivateKeyword(uint8_t line,
+                       const GURL& url,
+                       base::TimeTicks match_selection_timestamp,
+                       bool is_mouse_event) override;
+  void OnThumbnailRemoved() override {}
+  void OpenLensSearch() override;
+  void AddTabContext(int32_t tab_id,
+                     bool delay_upload,
+                     searchbox::mojom::TabAttachmentSource source,
+                     AddTabContextCallback) override;
+  // Queries autocomplete matches from the browser:
+  // - When the WebUI Omnibox full popup is enabled:
+  //   - If targeting the active tab (or if `tab_id` is nullopt), triggers
+  //     autocomplete and syncs the active native view text/caret.
+  //   - If targeting a background tab (e.g., an in-flight IPC arriving after a
+  //     tab switch), updates that background tab's saved draft state via
+  //     `SetUserTextForTab` without running autocomplete or mutating the active
+  //     view.
+  // - When the full popup is disabled, requires `!tab_id.has_value()` and
+  //   forwards directly to `SearchboxHandler::QueryAutocomplete`.
+  void QueryAutocomplete(int32_t query_id,
+                         std::optional<int32_t> tab_id,
+                         const std::u16string& input,
+                         bool prevent_inline_autocomplete,
+                         uint32_t cursor_position,
+                         omnibox::SuggestInventory suggest_inventory,
+                         bool is_on_focus,
+                         const std::string& keyword,
+                         searchbox::mojom::InputMethod input_method) override;
+
+  void StepSelection(OmniboxPopupSelection::Direction direction,
+                     OmniboxPopupSelection::Step step);
+  void OpenCurrentSelection(WindowOpenDisposition disposition);
+  void SetAimButtonVisible(bool visible) override;
+
+  // SearchboxHandler:
+  WindowOpenDisposition ComputeWindowOpenDisposition(
+      uint8_t mouse_button,
+      bool alt_key,
+      bool ctrl_key,
+      bool meta_key,
+      bool shift_key,
+      bool via_keyboard) override;
+  bool ShouldShowFirstContextualDescription() const override;
+  bool SupportsKeywordMode() const override;
+  void OverrideIconPaths(
+      const AutocompleteMatch& match,
+      searchbox::mojom::AutocompleteMatch* mojom_match) const override;
+  void OnFocusChanged(bool focused) override;
+
+  // AutocompleteController::Observer:
+  void OnStart(AutocompleteController* controller,
+               const AutocompleteInput& input) override;
+  void OnResultChanged(AutocompleteController* controller,
+                       bool default_match_changed) override;
+
+  // OmniboxEditModel::Observer:
+  void OnSelectionChanged(OmniboxPopupSelection old_selection,
+                          OmniboxPopupSelection selection) override;
+  void OnCharTyped(base::TimeTicks timestamp) override;
+  void OnMatchIconUpdated(size_t index) override {}
+  void OnContentsChanged() override {}
+
+  // TabListInterfaceObserver:
+  void OnActiveTabChanged(TabListInterface& tab_list,
+                          tabs::TabInterface* tab) override;
+
+ private:
+  // When the omnibox is hosted in a tab, e.g. for debug, it must remain
+  // connected with the host window's OmniboxController. These methods
+  // support disconnect and reconnect as the window changes to avoid UAF.
+  void OnTabWillDetach(tabs::TabInterface* tab,
+                       tabs::TabInterface::DetachReason reason);
+  void OnTabDidInsert(tabs::TabInterface* tab);
+
+  void UpdateAimButtonVisibility();
+
+  // Delegate to observe WebContents.
+  // Managed as a separate class to prevent member naming conflicts
+  // of `web_contents_` with a member of the same name in `SearchboxHandler`.
+  class WebContentsObserver : public content::WebContentsObserver {
+   public:
+    explicit WebContentsObserver(WebuiOmniboxHandler* handler,
+                                 content::WebContents* web_contents);
+
+    void ScopedObserve(content::WebContents* web_contents);
+
+    void DidFinishNavigation(content::NavigationHandle* handle) override;
+
+   private:
+    raw_ptr<WebuiOmniboxHandler> handler_;
+  };
+
+  // ContextualSearchboxHandler:
+  int GetContextMenuMaxTabSuggestions() override;
+
+  void OnContentSharingPolicyChanged();
+  void OnAimPopupEligibilityChanged();
+  void OnAiModeButtonConfigChanged(const AiModeButtonUiConfig* config);
+  void OnNavigationFinished(content::NavigationHandle* navigation_handle);
+
+  WebContentsObserver web_contents_observer_;
+
+  // Observe `OmniboxEditModel` for updates that require updating the views.
+  base::ScopedObservation<OmniboxEditModel, OmniboxEditModel::Observer>
+      edit_model_observation_{this};
+
+  PrefChangeRegistrar pref_change_registrar_;
+  base::CallbackListSubscription aim_eligibility_subscription_;
+  base::CallbackListSubscription ai_mode_config_subscription_;
+  base::CallbackListSubscription tab_will_detach_subscription_;
+  base::CallbackListSubscription tab_did_insert_subscription_;
+
+  raw_ptr<MetricsReporter> metrics_reporter_;
+
+  base::WeakPtrFactory<WebuiOmniboxHandler> weak_ptr_factory_{this};
+};
+
+#endif  // CHROME_BROWSER_UI_WEBUI_SEARCHBOX_WEBUI_OMNIBOX_HANDLER_H_

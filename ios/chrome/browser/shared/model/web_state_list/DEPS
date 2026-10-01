@@ -1,0 +1,9 @@
+include_rules = [
+  # keep-sorted start
+  "+ios/chrome/browser/snapshots/model",
+  # keep-sorted end
+]
+
+specific_include_rules = {
+  "tab_group.mm": [ "+ios/chrome/browser/saved_tab_groups/ui" ]
+}

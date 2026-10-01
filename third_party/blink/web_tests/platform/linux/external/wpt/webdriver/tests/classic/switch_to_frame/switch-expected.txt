@@ -1,0 +1,7 @@
+This is a wdspec test.
+[FAIL] test_no_browsing_context[0]
+  AssertionError
+[FAIL] test_no_browsing_context[id2]
+  AssertionError
+Harness: the test ran to completion.
+

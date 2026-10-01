@@ -1,0 +1,77 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+syntax = "proto3";
+
+package google.internal.chrome.passwords.onetimetoken.v1;
+
+option optimize_for = LITE_RUNTIME;
+
+// Additional details for errors thrown from FetchEmailOneTimeToken.
+message FetchEmailOneTimeTokenErrorDetails {
+  // An enum indicating the reason for the error.
+  enum ReasonCode {
+    // Unspecified error code - the default value.
+    REASON_CODE_UNSPECIFIED = 0;
+
+    // Indicates that the user has to provide the 'smart features in Gmail'
+    // consent for the feature to work.
+    // Canonical code: PERMISSION_DENIED
+    SMART_FEATURES_IN_GMAIL_CONSENT_IS_REQUIRED = 1;
+
+    // Indicates that the user has to provide the 'smart features in other
+    // Google products' consent for the feature to work.
+    // Canonical code: PERMISSION_DENIED
+    SMART_FEATURES_IN_OTHER_GOOGLE_PRODUCTS_CONSENT_IS_REQUIRED = 2;
+
+    // Indicates that the user has to provide DMA-related data sharing consent.
+    // Canonical code: PERMISSION_DENIED
+    DMA_CROSS_PRODUCT_SHARING_CONSENT_IS_REQUIRED = 3;
+
+    // Indicates that the server was not able to decrypt/parse the message
+    // reference.
+    // Canonical code: INVALID_ARGUMENT
+    BAD_MESSAGE_REFERENCE = 4;
+
+    // Indicates that no email was found by the Gmail message ID supplied in the
+    // encrypted_message_reference.
+    // Canonical code: NOT_FOUND
+    MESSAGE_ID_NOT_FOUND = 5;
+
+    // Indicates that the token type supplied in the encrypted_message_reference
+    // does not correspond to the token type stored in Gmail. This is never
+    // expected, and indicates a bug either in encrypted_message_reference
+    // delivery, or in one time token fetching from Gmail.
+    // Canonical code: NOT_FOUND
+    WRONG_TOKEN_TYPE_REQUESTED = 6;
+
+    // Indicates that too much time has passed between token receival and a
+    // subsequent request by clients.
+    // Canonical code: NOT_FOUND
+    ONE_TIME_TOKEN_EXPIRED = 7;
+
+    // Indicates that the message was found, but the specific attribute
+    // containing the OTP was not present on the message.
+    // Canonical code: NOT_FOUND
+    OTP_ATTRIBUTE_NOT_FOUND = 8;
+  }
+
+  // A set of reasons for RPC failure.
+  repeated ReasonCode reason_code = 1;
+}
+
+// A copy of google.protobuf.Any for LITE_RUNTIME.
+// Like in https://crsrc.org/c/components/manta/proto/common.proto.
+message Proto3Any {
+  string type_url = 1;
+  bytes value = 2;
+}
+
+// A copy of google.rpc.Status for LITE_RUNTIME.
+// Like in https://crsrc.org/c/components/manta/proto/rpc_status.proto.
+message RpcStatus {
+  int32 code = 1;
+  string message = 2;
+  repeated Proto3Any details = 3;
+}

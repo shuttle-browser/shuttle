@@ -1,0 +1,79 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_TEST_EARL_GREY_CHROME_COORDINATOR_APP_INTERFACE_H_
+#define IOS_CHROME_TEST_EARL_GREY_CHROME_COORDINATOR_APP_INTERFACE_H_
+
+#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+
+#import "base/ios/block_types.h"
+
+@class ChromeCoordinator;
+@class CommandDispatcher;
+
+// An app interface to allow starting and stopping coordinators in isolation
+// from the rest of the app UI.
+@interface ChromeCoordinatorAppInterface : NSObject
+
+// The isolated dispatcher used when starting coordinators from this app
+// interface.
+@property(class, readonly) CommandDispatcher* dispatcher;
+
+// The coordinator that was started, if any.
+@property(class, readonly) ChromeCoordinator* coordinator;
+
+// The last URL loaded with the URLLoadingBrowserAgent. Blank if none have been
+// loaded.
+@property(class, readonly) NSURL* lastURLLoaded;
+
+// YES if the last URL loaded was in incognito.
+@property(class, readonly) BOOL lastURLLoadedInIncognito;
+
+// Returns YES if the selector was previously dispatched and recorded.
++ (BOOL)selectorWasDispatched:(NSString*)selectorString;
+
+// Dispatches a selector. Must be a method that does not require params.
++ (void)dispatchSelector:(NSString*)selectorString;
+
+// Calls the block if the given selector is dispatched.
++ (void)setAction:(ProceduralBlock)block forSelector:(NSString*)selectorString;
+
+// Ensures the browser is created. Used to initialize browser dependencies before
+// starting the tested coordinator.
++ (void)startBrowser;
+
+// Methods to start coordinators.
+// keep-sorted start
++ (void)startBookmarksCoordinator;
++ (void)startComposeboxCoordinator;
++ (void)startEnhancedSafeBrowsingPromoCoordinator;
++ (void)startHistoryCoordinator;
++ (void)startLensPromoCoordinator;
++ (void)startNewTabPageCoordinator;
++ (void)startOmniboxCoordinator;
++ (void)startPasswordSuggestionCoordinator;
++ (void)startPopupMenuCoordinator;
++ (void)startPrivacySafeBrowsingCoordinator;
++ (void)startQRScannerLegacyCoordinator;
++ (void)startReadingListCoordinator;
++ (void)startSearchWhatYouSeePromoCoordinator;
++ (void)startSnackbarCoordinator;
+// keep-sorted end
+
+// Stops the currently started coordinator.
++ (void)stopCoordinator;
+
+// Resets the isolated dispatcher and dismisses the blank rootViewController.
+// Calls `completion` after the rootViewController is dismissed. Should pass a
+// `completion` callback when the same coordinator is started twice in the same
+// test.
++ (void)resetWithCompletion:(ProceduralBlock)completion;
+
+// `-resetWithCompletion` with no completion callback.
++ (void)reset;
+
+@end
+
+#endif  // IOS_CHROME_TEST_EARL_GREY_CHROME_COORDINATOR_APP_INTERFACE_H_

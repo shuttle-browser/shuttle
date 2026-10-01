@@ -1,0 +1,126 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/settings/autofill/autofill_and_passwords/coordinator/travel_info_coordinator.h"
+
+#import "base/test/ios/wait_util.h"
+#import "base/test/metrics/user_action_tester.h"
+#import "base/test/scoped_feature_list.h"
+#import "components/autofill/core/browser/data_manager/autofill_ai/entity_data_manager.h"
+#import "components/autofill/core/browser/data_model/autofill_ai/entity_instance.h"
+#import "components/autofill/core/browser/test_utils/entity_data_test_util.h"
+#import "components/autofill/core/common/autofill_features.h"
+#import "components/sync/test/test_sync_service.h"
+#import "components/test/ios/test_utils.h"
+#import "ios/chrome/browser/autofill/model/ios_autofill_entity_data_manager_factory.h"
+#import "ios/chrome/browser/settings/autofill/autofill_and_passwords/coordinator/autofill_ai_base_mediator.h"
+#import "ios/chrome/browser/settings/autofill/autofill_and_passwords/ui/travel_info_table_view_controller.h"
+#import "ios/chrome/browser/settings/autofill/suggestions_from_gemini/coordinator/suggestions_from_gemini_coordinator.h"
+#import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
+#import "ios/chrome/browser/sync/model/test_sync_service_utils.h"
+#import "ios/chrome/browser/webdata_services/model/web_data_service_factory.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "testing/gtest/include/gtest/gtest.h"
+#import "testing/platform_test.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+
+class TravelInfoCoordinatorTest : public PlatformTest {
+ protected:
+  void SetUp() override {
+    PlatformTest::SetUp();
+
+    TestProfileIOS::Builder builder;
+    builder.AddTestingFactory(ios::WebDataServiceFactory::GetInstance(),
+                              ios::WebDataServiceFactory::GetDefaultFactory());
+    builder.AddTestingFactory(SyncServiceFactory::GetInstance(),
+                              base::BindRepeating(&CreateTestSyncService));
+
+    profile_ = std::move(builder).Build();
+    browser_ = std::make_unique<TestBrowser>(profile_.get());
+
+    mock_scene_commands_ = OCMStrictProtocolMock(@protocol(SceneCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:mock_scene_commands_
+                     forProtocol:@protocol(SceneCommands)];
+
+    navigation_controller_ = [[UINavigationController alloc] init];
+
+    coordinator_ = [[TravelInfoCoordinator alloc]
+        initWithBaseNavigationController:navigation_controller_
+                                 browser:browser_.get()];
+  }
+
+  void TearDown() override {
+    [coordinator_ stop];
+    coordinator_ = nil;
+    navigation_controller_ = nil;
+    PlatformTest::TearDown();
+  }
+
+  web::WebTaskEnvironment task_environment_;
+  base::test::ScopedFeatureList scoped_feature_list_{
+      autofill::features::kAutofillAiWithDataSchema};
+  std::unique_ptr<TestProfileIOS> profile_;
+  std::unique_ptr<TestBrowser> browser_;
+  id<SceneCommands> mock_scene_commands_;
+  UINavigationController* navigation_controller_;
+  TravelInfoCoordinator* coordinator_;
+};
+
+// Tests that start and stop don't crash.
+TEST_F(TravelInfoCoordinatorTest, StartAndStop) {
+  [coordinator_ start];
+  [coordinator_ stop];
+}
+
+// Tests that requesting to open an entity launches the entity edit coordinator
+// without crashing.
+TEST_F(TravelInfoCoordinatorTest, StartsEntityEditCoordinator) {
+  [coordinator_ start];
+
+  autofill::EntityInstance instance =
+      autofill::test::GetKnownTravelerNumberInstance();
+  autofill::EntityInstance::EntityId entity_id = instance.guid();
+  autofill::EntityDataManager* entity_data_manager =
+      IOSAutofillEntityDataManagerFactory::GetForProfile(profile_.get());
+  entity_data_manager->AddOrUpdateEntityInstance(instance);
+
+  ASSERT_TRUE(base::test::ios::WaitUntilConditionOrTimeout(
+      base::test::ios::kWaitForActionTimeout, true, ^{
+        return entity_data_manager->GetEntityInstance(entity_id).has_value();
+      }));
+
+  NSUInteger initialCount = navigation_controller_.viewControllers.count;
+
+  id<AutofillAIBaseMediatorDelegate> delegate =
+      static_cast<id<AutofillAIBaseMediatorDelegate>>(coordinator_);
+  [delegate autofillAIBaseMediator:nil didRequestToOpenEntityWithID:entity_id];
+  EXPECT_GT(navigation_controller_.viewControllers.count, initialCount);
+
+  [coordinator_ stop];
+}
+
+// Tests that selecting Suggestions from Gemini registers the user action.
+TEST_F(TravelInfoCoordinatorTest, SuggestionsFromGeminiActionRecorded) {
+  [coordinator_ start];
+
+  base::UserActionTester user_action_tester;
+
+  TravelInfoTableViewController* viewController =
+      static_cast<TravelInfoTableViewController*>(
+          navigation_controller_.topViewController);
+  ASSERT_NE(nil, viewController);
+
+  id<TravelInfoTableViewControllerDelegate> delegate =
+      static_cast<id<TravelInfoTableViewControllerDelegate>>(coordinator_);
+  [delegate travelInfoTableViewControllerDidSelectSuggestionsFromGemini:
+                viewController];
+
+  EXPECT_EQ(1, user_action_tester.GetActionCount(
+                   "PersonalContext.Settings.EntryPoint.TravelSettings"));
+}

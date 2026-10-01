@@ -1,0 +1,565 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import 'chrome://contextual-tasks/strings.m.js';
+
+import type {TabFaviconElement} from 'chrome://resources/cr_components/composebox/composebox_tab_favicon.js';
+import {ComposeboxFileThumbnailElement} from 'chrome://resources/cr_components/composebox/file_thumbnail.js';
+import type {CrIconElement} from 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
+import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
+import {ContextUploadStatus} from 'chrome://resources/mojo/components/omnibox/composebox/composebox_query.mojom-webui.js';
+import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import {eventToPromise, microtasksFinished} from 'chrome://webui-test/test_util.js';
+
+import {createFile} from './composebox_test_utils.js';
+
+suite('ComposeboxFileThumbnailTest', () => {
+  let fileThumbnailElement: ComposeboxFileThumbnailElement;
+
+  setup(() => {
+    // overrideValues() mutates a singleton; reset before each test.
+    loadTimeData.overrideValues({
+      isAndroid: false,
+      tabFaviconChipsToCoinsEnabled: false,
+    });
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    document.body.appendChild(fileThumbnailElement);
+  });
+
+  test('display document file (flag disabled)', async () => {
+    loadTimeData.overrideValues({lensSendRawFileMediaTypesEnabled: false});
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    document.body.appendChild(fileThumbnailElement);
+
+    // Arrange.
+    fileThumbnailElement.file = createFile(0);
+    await microtasksFinished();
+
+    // Assert one document file.
+    const title =
+        fileThumbnailElement.shadowRoot.querySelector('#documentTitle');
+    assertTrue(!!title);
+    assertEquals(title.tagName, 'P');
+    assertEquals(title.textContent, fileThumbnailElement.file.name);
+
+    // Assert pdf icon is shown.
+    const icon = fileThumbnailElement.shadowRoot.querySelector<CrIconElement>(
+        '.pdf-icon');
+    assertTrue(!!icon);
+    assertEquals(icon.icon, 'thumbnail:drive-pdf');
+  });
+
+  test('display document file (flag enabled) for non-pdf', async () => {
+    loadTimeData.overrideValues({lensSendRawFileMediaTypesEnabled: true});
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    document.body.appendChild(fileThumbnailElement);
+
+    // Arrange.
+    fileThumbnailElement.file = createFile(0, {type: 'text/plain'});
+    await microtasksFinished();
+
+    // Assert one document file.
+    const title =
+        fileThumbnailElement.shadowRoot.querySelector('#documentTitle');
+    assertTrue(!!title);
+    assertEquals(title.tagName, 'P');
+    assertEquals(title.textContent, fileThumbnailElement.file.name);
+
+    // Assert document icon is shown.
+    const icon = fileThumbnailElement.shadowRoot.querySelector<CrIconElement>(
+        '.document-icon');
+    assertTrue(!!icon);
+    assertEquals(icon.icon, 'thumbnail:attach-file');
+  });
+
+  test('display pdf file (flag enabled)', async () => {
+    loadTimeData.overrideValues({lensSendRawFileMediaTypesEnabled: true});
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    document.body.appendChild(fileThumbnailElement);
+
+    // Arrange.
+    fileThumbnailElement.file = createFile(0, {type: 'application/pdf'});
+    await microtasksFinished();
+
+    // Assert one document file.
+    const title =
+        fileThumbnailElement.shadowRoot.querySelector('#documentTitle');
+    assertTrue(!!title);
+    assertEquals(title.tagName, 'P');
+    assertEquals(title.textContent, fileThumbnailElement.file.name);
+
+    // Assert pdf icon is shown.
+    const icon = fileThumbnailElement.shadowRoot.querySelector<CrIconElement>(
+        '.pdf-icon');
+    assertTrue(!!icon);
+    assertEquals(icon.icon, 'thumbnail:drive-pdf');
+    assertTrue(!!fileThumbnailElement.shadowRoot.querySelector(
+        '#documentThumbnail[part="thumbnail"]'));
+  });
+
+  test('display document file (flag enabled) for google doc', async () => {
+    loadTimeData.overrideValues({lensSendRawFileMediaTypesEnabled: true});
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    document.body.appendChild(fileThumbnailElement);
+
+    // Arrange.
+    const iconUrl =
+        'https://drive-thirdparty.googleusercontent.com/32/type/application/vnd.google-apps.document';
+    fileThumbnailElement.file = createFile(0, {
+      type: 'application/vnd.google-apps.document',
+      iconUrl: iconUrl,
+    });
+    await microtasksFinished();
+
+    // Assert one document file.
+    const title =
+        fileThumbnailElement.shadowRoot.querySelector('#documentTitle');
+    assertTrue(!!title);
+    assertEquals(title.tagName, 'P');
+    assertEquals(title.textContent, fileThumbnailElement.file.name);
+
+    // Assert auto-src image icon is shown.
+    const icon =
+        fileThumbnailElement.shadowRoot.querySelector('.document-icon');
+    assertTrue(!!icon);
+    assertEquals(icon.tagName, 'IMG');
+    assertEquals(icon.getAttribute('auto-src'), iconUrl);
+  });
+
+  test('display tab file', async () => {
+    // Arrange.
+    fileThumbnailElement.file = createFile(2, {
+      url: 'https://example.com/some/path',
+      name: 'some tab',
+    });
+    await microtasksFinished();
+
+    // Assert.
+    const thumbnail = fileThumbnailElement.shadowRoot.querySelector('#tabChip');
+    assertTrue(!!thumbnail);
+    const title =
+        fileThumbnailElement.shadowRoot.querySelector<HTMLElement>('.title');
+    assertTrue(!!title);
+    assertEquals(title.innerText, 'some tab');
+    const favicon =
+        fileThumbnailElement.shadowRoot.querySelector<TabFaviconElement>(
+            'cr-composebox-tab-favicon')!;
+    assertTrue(!!favicon);
+    assertEquals(favicon.url, 'https://example.com/some/path');
+  });
+
+  test('android renders clank chip structure', async () => {
+    loadTimeData.overrideValues({isAndroid: true});
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    document.body.appendChild(fileThumbnailElement);
+
+    // Image.
+    fileThumbnailElement.file =
+        createFile(1, {type: 'image/jpeg', objectUrl: 'data:foo'});
+    await microtasksFinished();
+    assertTrue(fileThumbnailElement.hasAttribute('is-android'));
+    assertTrue(
+        !!fileThumbnailElement.shadowRoot.querySelector('#imgChipLeadingSlot'));
+    assertEquals(
+        'imgChipStateLayer',
+        fileThumbnailElement.$.removeImgButton.parentElement!.id);
+    assertEquals(
+        null, fileThumbnailElement.shadowRoot.querySelector('.img-overlay'));
+
+    // Document.
+    fileThumbnailElement.file = createFile(
+        0, {name: 'a_very_long_filename_example_for_bug_report.pdf'});
+    await microtasksFinished();
+    const documentThumbnail =
+        fileThumbnailElement.shadowRoot.querySelector('#documentThumbnail');
+    assertTrue(!!documentThumbnail);
+    assertFalse(documentThumbnail.hasAttribute('part'));
+    assertEquals(
+        'documentChipContent',
+        fileThumbnailElement.$.removeDocumentButton.parentElement!.id);
+    const documentTitle =
+        fileThumbnailElement.shadowRoot.querySelector('#documentTitle');
+    assertTrue(!!documentTitle);
+    assertEquals(
+        'a_very_long_filename_example_for_bug_report.pdf',
+        documentTitle.textContent);
+
+    // Tab.
+    fileThumbnailElement.file =
+        createFile(2, {url: 'https://example.com/some/path', name: 'some tab'});
+    await microtasksFinished();
+    assertEquals(null, fileThumbnailElement.shadowRoot.querySelector('.url'));
+    assertEquals(
+        'tabChipContent',
+        fileThumbnailElement.$.removeTabButton.parentElement!.id);
+  });
+
+  test('shows animation for entering attachment', async () => {
+    // Arrange.
+    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    document.body.appendChild(fileThumbnailElement);
+
+    const animation = new Animation();
+    fileThumbnailElement.getAnimations = () => {
+      return [animation];
+    };
+
+    fileThumbnailElement.file =
+        createFile(1, {type: 'image/jpeg', objectUrl: 'data:foo'});
+    await microtasksFinished();
+
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    assertTrue(fileThumbnailElement.classList.contains('entering'));
+
+    // Simulate all animations finishing.
+    animation.finish();
+    await microtasksFinished();
+
+    assertFalse(fileThumbnailElement.classList.contains('entering'));
+  });
+
+  test('shows animation for exiting attachment', async () => {
+    fileThumbnailElement.file =
+        createFile(1, {type: 'image/jpeg', objectUrl: 'data:foo'});
+    await microtasksFinished();
+    // Ensure the entering is completed before setting up the exiting mock.
+    await new Promise(resolve => requestAnimationFrame(resolve));
+
+    const animation = new Animation();
+    fileThumbnailElement.getAnimations = () => {
+      return [animation];
+    };
+
+    let eventFired = false;
+    fileThumbnailElement.addEventListener('delete-file', () => {
+      eventFired = true;
+    });
+
+    fileThumbnailElement.$.removeImgButton.click();
+
+    assertTrue(fileThumbnailElement.classList.contains('exiting'));
+    assertFalse(eventFired);
+
+    // Simulate all animations finishing.
+    animation.finish();
+    await microtasksFinished();
+
+    assertTrue(eventFired);
+    assertFalse(fileThumbnailElement.classList.contains('exiting'));
+  });
+
+  test('ignores delete button clicks while already exiting', async () => {
+    fileThumbnailElement.file =
+        createFile(1, {type: 'image/jpeg', objectUrl: 'data:foo'});
+    await microtasksFinished();
+    // Ensure the entering is completed before setting up the exiting mock.
+    await new Promise(resolve => requestAnimationFrame(resolve));
+
+    const animation = new Animation();
+    fileThumbnailElement.getAnimations = () => {
+      return [animation];
+    };
+
+    let eventCount = 0;
+    fileThumbnailElement.addEventListener('delete-file', () => {
+      eventCount++;
+    });
+
+    // First click initiates exiting animation.
+    fileThumbnailElement.$.removeImgButton.click();
+    assertTrue(fileThumbnailElement.classList.contains('exiting'));
+
+    // Second click should be ignored by the early return.
+    fileThumbnailElement.$.removeImgButton.click();
+
+    // Complete the animation.
+    animation.finish();
+    await microtasksFinished();
+
+    // Only one delete-file event should have been fired.
+    assertEquals(1, eventCount);
+  });
+
+  interface FilenameTruncationTestCase {
+    testName: string;
+    filename: string;
+    expected: string;
+  }
+
+  const truncationTestCases: FilenameTruncationTestCase[] = [
+    {
+      testName: 'truncates long filenames preserving extension',
+      filename: 'a_very_long_filename_example_for_bug_report.pdf',
+      expected: 'a_very...eport.pdf',
+    },
+    {
+      testName: 'does not truncate long filenames with long extension',
+      filename: 'my_really_long_project_file.gitignore',
+      expected: 'my_really_long_project_file.gitignore',
+    },
+    {
+      testName: 'does not truncate long filenames without extension',
+      filename: 'my_super_long_filename_without_any_extension',
+      expected: 'my_super_long_filename_without_any_extension',
+    },
+    {
+      testName: 'does not truncate long filenames with super long extension',
+      filename: 'my_super_long_test_file.myveryverylongcustomextensionstring',
+      expected: 'my_super_long_test_file.myveryverylongcustomextensionstring',
+    },
+    {
+      testName:
+          'does not apply truncation when base is short and extension is long',
+      filename: 'a.myveryverylongcustomextensionstring',
+      expected: 'a.myveryverylongcustomextensionstring',
+    },
+  ];
+
+  truncationTestCases.forEach((testCase: FilenameTruncationTestCase) => {
+    test(testCase.testName, async () => {
+      fileThumbnailElement.file = createFile(1, {
+        name: testCase.filename,
+        type: 'text/plain',
+      });
+      await microtasksFinished();
+
+      const title =
+          fileThumbnailElement.shadowRoot.querySelector('#documentTitle');
+      assertTrue(!!title);
+      assertEquals(testCase.expected, title.textContent.trim());
+    });
+  });
+});
+
+function createThumbnailElement(isAndroid: boolean):
+    ComposeboxFileThumbnailElement {
+  loadTimeData.overrideValues({
+    isAndroid,
+    tabFaviconChipsToCoinsEnabled: false,
+  });
+  document.body.innerHTML = window.trustedTypes!.emptyHTML;
+  const element = new ComposeboxFileThumbnailElement();
+  document.body.appendChild(element);
+  return element;
+}
+
+[false, true].forEach(isAndroid => {
+  suite(`ComposeboxFileThumbnailTest isAndroid=${isAndroid}`, () => {
+    let fileThumbnailElement: ComposeboxFileThumbnailElement;
+
+    setup(() => {
+      fileThumbnailElement = createThumbnailElement(isAndroid);
+    });
+
+    test('display loading spinner', async () => {
+      // Arrange.
+      fileThumbnailElement.file = createFile(1, {
+        type: 'image/jpeg',
+        objectUrl: 'data:foo',
+        status: ContextUploadStatus.kUploadStarted,
+      });
+      await microtasksFinished();
+
+      // Assert.
+      const spinner = fileThumbnailElement.shadowRoot.querySelector('.spinner');
+      assertTrue(!!spinner);
+    });
+
+    test('display image file', async () => {
+      // Arrange.
+      fileThumbnailElement.file =
+          createFile(1, {type: 'image/jpeg', objectUrl: 'data:foo'});
+      await microtasksFinished();
+
+      // Assert one image file.
+      const thumbnail =
+          fileThumbnailElement.shadowRoot.querySelector('.img-thumbnail');
+      assertTrue(!!thumbnail);
+      assertEquals(thumbnail.tagName, 'IMG');
+      assertEquals(
+          (thumbnail as HTMLImageElement).src,
+          fileThumbnailElement.file.objectUrl);
+      if (!isAndroid) {
+        assertTrue(!!fileThumbnailElement.shadowRoot.querySelector(
+            '#imgChip.img-chip'));
+      }
+    });
+
+    test('display image file from dataUrl', async () => {
+      // Arrange.
+      fileThumbnailElement.file =
+          createFile(1, {type: 'image/jpeg', dataUrl: 'data:foo'});
+      await microtasksFinished();
+
+      // Assert one image file.
+      const thumbnail =
+          fileThumbnailElement.shadowRoot.querySelector('.img-thumbnail');
+      assertTrue(!!thumbnail);
+      assertEquals(thumbnail.tagName, 'IMG');
+      assertEquals(
+          (thumbnail as HTMLImageElement).src,
+          fileThumbnailElement.file.dataUrl);
+    });
+
+    test('display video file', async () => {
+      // Arrange.
+      fileThumbnailElement.file = createFile(1, {
+        name: 'video.mp4',
+        type: 'video/mp4',
+        objectUrl: 'data:foo',
+      });
+      await microtasksFinished();
+
+      // Assert one video file.
+      const thumbnail =
+          fileThumbnailElement.shadowRoot.querySelector<HTMLVideoElement>(
+              '.img-thumbnail');
+      assertTrue(!!thumbnail);
+      assertEquals(thumbnail.tagName, 'VIDEO');
+      assertEquals(
+          thumbnail.getAttribute('src'),
+          `${fileThumbnailElement.file.objectUrl}#t=0.001`);
+      assertEquals(thumbnail.getAttribute('preload'), 'metadata');
+      assertTrue(thumbnail.hasAttribute('muted'));
+      assertTrue(thumbnail.hasAttribute('playsinline'));
+      assertTrue(thumbnail.hasAttribute('disablepictureinpicture'));
+      assertTrue(thumbnail.hasAttribute('disableremoteplayback'));
+      assertEquals(
+          thumbnail.getAttribute('aria-label'), fileThumbnailElement.file.name);
+    });
+
+    test('clicking image delete button sends event', async () => {
+      // Arrange.
+      fileThumbnailElement.file =
+          createFile(1, {type: 'image/jpeg', objectUrl: 'data:foo'});
+      await microtasksFinished();
+
+      // Act.
+      const deleteEventPromise = eventToPromise<CustomEvent<{uuid: string}>>(
+          'delete-file', fileThumbnailElement);
+      assertTrue(!!fileThumbnailElement.$.removeImgButton);
+      fileThumbnailElement.$.removeImgButton.click();
+
+      // Assert.
+      const deleteEvent = await deleteEventPromise;
+      assertEquals(deleteEvent.detail.uuid, fileThumbnailElement.file.uuid);
+    });
+
+    test('hides image delete button when not deletable', async () => {
+      // Arrange.
+      fileThumbnailElement.file = createFile(1, {
+        type: 'image/jpeg',
+        objectUrl: 'data:foo',
+        isDeletable: false,
+      });
+      await microtasksFinished();
+
+      // Assert.
+      const removeButton =
+          fileThumbnailElement.shadowRoot.querySelector('#removeImgButton');
+      assertEquals(null, removeButton);
+    });
+
+    test('clicking video delete button sends event', async () => {
+      // Arrange.
+      fileThumbnailElement.file = createFile(1, {
+        type: 'video/mp4',
+        objectUrl: 'data:foo',
+      });
+      await microtasksFinished();
+
+      // Act.
+      const deleteEventPromise = eventToPromise<CustomEvent<{uuid: string}>>(
+          'delete-file', fileThumbnailElement);
+      assertTrue(!!fileThumbnailElement.$.removeImgButton);
+      fileThumbnailElement.$.removeImgButton.click();
+
+      // Assert.
+      const deleteEvent = await deleteEventPromise;
+      assertEquals(deleteEvent.detail.uuid, fileThumbnailElement.file.uuid);
+    });
+
+    test('hides video delete button when not deletable', async () => {
+      // Arrange.
+      fileThumbnailElement.file = createFile(1, {
+        type: 'video/mp4',
+        objectUrl: 'data:foo',
+        isDeletable: false,
+      });
+      await microtasksFinished();
+
+      // Assert.
+      const removeButton =
+          fileThumbnailElement.shadowRoot.querySelector('#removeImgButton');
+      assertEquals(null, removeButton);
+    });
+
+    test('clicking document delete button sends event', async () => {
+      // Arrange.
+      fileThumbnailElement.file = createFile(0);
+      await microtasksFinished();
+
+      // Act.
+      const deleteEventPromise = eventToPromise<CustomEvent<{uuid: string}>>(
+          'delete-file', fileThumbnailElement);
+      assertTrue(!!fileThumbnailElement.$.removeDocumentButton);
+      fileThumbnailElement.$.removeDocumentButton.click();
+
+      // Assert.
+      const deleteEvent = await deleteEventPromise;
+      assertEquals(deleteEvent.detail.uuid, fileThumbnailElement.file.uuid);
+    });
+
+    test('hides document delete button when not deletable', async () => {
+      // Arrange.
+      fileThumbnailElement.file = createFile(0, {isDeletable: false});
+      await microtasksFinished();
+
+      // Assert.
+      const removeButton = fileThumbnailElement.shadowRoot.querySelector(
+          '#removeDocumentButton');
+      assertEquals(null, removeButton);
+    });
+
+    test('clicking tab delete button sends event', async () => {
+      // Arrange.
+      fileThumbnailElement.file = createFile(2, {
+        url: 'https://example.com/some/path',
+        name: 'some tab',
+      });
+      await microtasksFinished();
+
+      // Act.
+      const deleteEventPromise = eventToPromise<CustomEvent<{uuid: string}>>(
+          'delete-file', fileThumbnailElement);
+      assertTrue(!!fileThumbnailElement.$.removeTabButton);
+      fileThumbnailElement.$.removeTabButton.click();
+
+      // Assert.
+      const deleteEvent = await deleteEventPromise;
+      assertEquals(deleteEvent.detail.uuid, fileThumbnailElement.file.uuid);
+    });
+
+    test('hides tab delete button when not deletable', async () => {
+      // Arrange.
+      fileThumbnailElement.file = createFile(2, {
+        url: 'https://example.com/some/path',
+        name: 'some tab',
+        isDeletable: false,
+      });
+      await microtasksFinished();
+
+      // Assert.
+      const removeButton =
+          fileThumbnailElement.shadowRoot.querySelector('#removeTabButton');
+      assertEquals(null, removeButton);
+    });
+  });
+});

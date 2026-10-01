@@ -1,0 +1,101 @@
+# Copyright 2015 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("common") {
+  sources = [
+    "input_state.cc",
+    "input_state.h",
+    "logger.cc",
+    "logger.h",
+    "omnibox_feature_configs.cc",
+    "omnibox_feature_configs.h",
+    "omnibox_features.cc",
+    "omnibox_features.h",
+    "omnibox_focus_state.h",
+    "omnibox_metrics_utils.cc",
+    "omnibox_metrics_utils.h",
+    "string_cleaning.cc",
+    "string_cleaning.h",
+    "zero_suggest_cache_service_interface.cc",
+    "zero_suggest_cache_service_interface.h",
+  ]
+  deps = [
+    "//base",
+    "//base:i18n",
+    "//build:android_buildflags",
+    "//components/url_formatter",
+    "//ui/base:features",
+    "//url",
+  ]
+
+  public_deps = [ "//third_party/omnibox_proto" ]
+
+  if (is_android) {
+    deps += [ ":jni_headers" ]
+  }
+}
+
+if (is_android) {
+  import("//build/config/android/config.gni")
+  import("//build/config/android/rules.gni")
+  import("//third_party/jni_zero/jni_zero.gni")
+
+  generate_jni("jni_headers") {
+    sources = [
+      "android/java/src/org/chromium/components/omnibox/OmniboxFeatureMap.java",
+    ]
+  }
+
+  java_cpp_features("java_features_srcjar") {
+    visibility = [ ":*" ]
+    sources = [ "//components/omnibox/common/omnibox_features.cc" ]
+    class_name = "org.chromium.components.omnibox.OmniboxFeatureList"
+  }
+
+  android_library("features_java") {
+    sources = [
+      "android/java/src/org/chromium/components/omnibox/OmniboxCapabilities.java",
+      "android/java/src/org/chromium/components/omnibox/OmniboxFeatureMap.java",
+      "android/java/src/org/chromium/components/omnibox/OmniboxFeatures.java",
+    ]
+    srcjar_deps = [
+      ":java_features_srcjar",
+      ":jni_headers",
+    ]
+    deps = [
+      "$google_play_services_package:google_play_services_location_java",
+      "//base:base_java",
+      "//chrome/browser/feedback/android:java",
+      "//components/cached_flags:java",
+      "//third_party/androidx:androidx_annotation_annotation_java",
+      "//third_party/jni_zero:jni_zero_java",
+      "//third_party/omnibox_proto:omnibox_proto_java",
+      "//ui/android:ui_java",
+    ]
+  }
+}
+
+source_set("features") {
+  sources = [
+    "composebox_features.cc",
+    "composebox_features.h",
+  ]
+  deps = [ "//base" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "logger_unittest.cc",
+    "string_cleaning_unittest.cc",
+  ]
+  deps = [
+    ":common",
+    "//base/test:test_support",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//third_party/lens_server_proto:lens_overlay_proto",
+    "//url",
+  ]
+}

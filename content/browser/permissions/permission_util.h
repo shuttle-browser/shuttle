@@ -1,0 +1,72 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CONTENT_BROWSER_PERMISSIONS_PERMISSION_UTIL_H_
+#define CONTENT_BROWSER_PERMISSIONS_PERMISSION_UTIL_H_
+
+#include "components/content_settings/core/common/content_settings.h"
+#include "content/common/content_export.h"
+#include "content/public/browser/permission_result.h"
+#include "third_party/blink/public/common/permissions/permission_utils.h"
+#include "third_party/blink/public/mojom/permissions/permission.mojom.h"
+#include "third_party/blink/public/mojom/permissions/permission_status.mojom-forward.h"
+#include "url/origin.h"
+
+class GURL;
+
+namespace content {
+class RenderFrameHost;
+
+class PermissionUtil {
+ public:
+  // Converts a PemissionStatus to a PermissionOption.
+  CONTENT_EXPORT static PermissionOption ToPermissionOption(
+      blink::mojom::PermissionStatus permission_status);
+
+  // Converts a PermissionResult to a PermissionStatusWithDetails.
+  CONTENT_EXPORT static blink::mojom::PermissionStatusWithDetailsPtr
+  ToPermissionStatusWithDetails(blink::mojom::PermissionName permission_name,
+                                PermissionResult result);
+
+  // Returns the authoritative `embedding origin`, as a GURL, to be used for
+  // permission decisions in `render_frame_host`.
+  // TODO(crbug.com/40226169): Remove this method when possible.
+  CONTENT_EXPORT static GURL GetLastCommittedOriginAsURL(
+      content::RenderFrameHost* render_frame_host);
+
+  // Determines whether the passed-in descriptor indicates a domain override is
+  // being used. The override mechanism is currently only used by one permission
+  // type, specifically storage access requests on behalf of another domain.
+  CONTENT_EXPORT static bool IsDomainOverride(
+      const blink::mojom::PermissionDescriptorPtr& descriptor);
+
+  // For a descriptor that indicates a domain override is used, retrieve it as
+  // an origin. The override mechanism is currently only used by one permission
+  // type, specifically storage access requests on behalf of another domain.
+  CONTENT_EXPORT static const url::Origin& ExtractDomainOverride(
+      const blink::mojom::PermissionDescriptorPtr& descriptor);
+
+  // For a domain override, determines whether it is valid. The override
+  // mechanism is currently only used by one permission type, specifically
+  // storage access requests on behalf of another domain.
+  CONTENT_EXPORT static bool ValidateDomainOverride(
+      const std::vector<blink::mojom::PermissionDescriptorPtr>& types,
+      RenderFrameHost* rfh,
+      const blink::mojom::PermissionDescriptorPtr& descriptor);
+
+  // Returns true if the given descriptor is a capability that combines the
+  // browser's permission status with a device-level status (and, therefore,
+  // can be retrieved through `GetCombinedPermissionAndDeviceStatus(...)`).
+  CONTENT_EXPORT static bool IsDevicePermission(
+      const blink::mojom::PermissionDescriptorPtr&);
+
+  // Returns true if the given descriptor is a capability that can be accessed
+  // through an embedded permission element.
+  CONTENT_EXPORT static bool IsEmbeddablePermission(
+      const blink::mojom::PermissionDescriptorPtr&);
+};
+
+}  // namespace content
+
+#endif  // CONTENT_BROWSER_PERMISSIONS_PERMISSION_UTIL_H_

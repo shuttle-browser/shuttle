@@ -1,0 +1,33 @@
+/* Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=//resources/cr_elements/cr_shared_vars.css.js
+ * #scheme=relative
+ * #css_wrapper_metadata_end */
+
+cr-icon-button {
+  --cr-icon-button-icon-size: 16px;
+  --cr-icon-button-size: 24px;
+  --cr-icon-button-fill-color: var(--cr-icon-button-fill-color-default);
+  margin: 4px;
+}
+
+cr-icon-button.active {
+  background-color: var(--cr-active-background-color);
+}
+
+cr-toggle {
+  --cr-toggle-width: 26px;
+  --cr-toggle-bar-height: 16px;
+  --cr-toggle-knob-diameter: 12px;
+  --cr-toggle-ripple-diameter: 12px;
+}
+
+.toolbar-button {
+  /* Ensure buttons stay above the line focus scrim. */
+  position: relative;
+  z-index: 9998;
+}

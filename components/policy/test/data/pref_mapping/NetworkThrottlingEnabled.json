@@ -1,0 +1,19 @@
+[
+  {
+    "os": [
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "net.throttling_enabled",
+      "pref_location": "local_state",
+      "default_value": {},
+      "values_to_test": [
+        {
+          "download_rate_kbits": "5600",
+          "enabled": "true",
+          "upload_rate_kbits": "5600"
+        }
+      ]
+    }
+  }
+]

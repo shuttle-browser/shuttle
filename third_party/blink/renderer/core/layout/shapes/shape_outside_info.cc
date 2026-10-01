@@ -1,0 +1,335 @@
+/*
+ * Copyright (C) 2012 Adobe Systems Incorporated. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1. Redistributions of source code must retain the above
+ *    copyright notice, this list of conditions and the following
+ *    disclaimer.
+ * 2. Redistributions in binary form must reproduce the above
+ *    copyright notice, this list of conditions and the following
+ *    disclaimer in the documentation and/or other materials
+ *    provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDER "AS IS" AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY,
+ * OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+ * TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
+ * THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ */
+
+#include "third_party/blink/renderer/core/layout/shapes/shape_outside_info.h"
+
+#include <memory>
+
+#include "base/auto_reset.h"
+#include "third_party/blink/renderer/core/frame/web_feature.h"
+#include "third_party/blink/renderer/core/layout/geometry/logical_rect.h"
+#include "third_party/blink/renderer/core/layout/geometry/writing_mode_converter.h"
+#include "third_party/blink/renderer/core/layout/layout_block_flow.h"
+#include "third_party/blink/renderer/core/layout/layout_box.h"
+#include "third_party/blink/renderer/core/layout/layout_image.h"
+#include "third_party/blink/renderer/core/paint/contoured_border_geometry.h"
+#include "third_party/blink/renderer/platform/geometry/contoured_rect.h"
+#include "third_party/blink/renderer/platform/geometry/length_functions.h"
+#include "third_party/blink/renderer/platform/heap/disallow_new_wrapper.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
+
+namespace blink {
+
+namespace {
+
+gfx::Rect ToPixelSnappedLogicalRect(const LogicalRect& rect) {
+  return gfx::Rect(
+      rect.offset.inline_offset.Round(), rect.offset.block_offset.Round(),
+      SnapSizeToPixel(rect.size.inline_size, rect.offset.inline_offset),
+      SnapSizeToPixel(rect.size.block_size, rect.offset.block_offset));
+}
+
+}  // namespace
+
+void ShapeOutsideInfo::SetReferenceBoxLogicalSize(
+    LogicalSize new_reference_box_logical_size,
+    LogicalSize margin_size) {
+  Document& document = layout_box_->GetDocument();
+  const WritingDirectionMode writing_direction =
+      layout_box_->ContainingBlock()->StyleRef().GetWritingDirection();
+
+  LogicalSize margin_box_for_use_counter = new_reference_box_logical_size;
+  margin_box_for_use_counter.Expand(margin_size.inline_size,
+                                    margin_size.block_size);
+
+  const ShapeValue& shape_value = *layout_box_->StyleRef().ShapeOutside();
+  switch (shape_value.CssBox()) {
+    case ShapeBox::kMarginBox:
+      UseCounter::Count(document, WebFeature::kShapeOutsideMarginBox);
+      new_reference_box_logical_size.Expand(margin_size.inline_size,
+                                            margin_size.block_size);
+      break;
+    case ShapeBox::kBorderBox:
+      UseCounter::Count(document, WebFeature::kShapeOutsideBorderBox);
+      break;
+    case ShapeBox::kPaddingBox:
+      UseCounter::Count(document, WebFeature::kShapeOutsidePaddingBox);
+      new_reference_box_logical_size -=
+          layout_box_->BorderOutsets().ConvertToLogical(writing_direction);
+
+      if (new_reference_box_logical_size != margin_box_for_use_counter) {
+        UseCounter::Count(
+            document,
+            WebFeature::kShapeOutsidePaddingBoxDifferentFromMarginBox);
+      }
+      break;
+    case ShapeBox::kContentBox: {
+      const bool is_shape_image = shape_value.GetType() == ShapeValue::kImage;
+      if (!is_shape_image) {
+        UseCounter::Count(document, WebFeature::kShapeOutsideContentBox);
+      }
+
+      new_reference_box_logical_size -=
+          (layout_box_->BorderOutsets() + layout_box_->PaddingOutsets())
+              .ConvertToLogical(writing_direction);
+
+      if (!is_shape_image &&
+          new_reference_box_logical_size != margin_box_for_use_counter) {
+        UseCounter::Count(
+            document,
+            WebFeature::kShapeOutsideContentBoxDifferentFromMarginBox);
+      }
+      break;
+    }
+  }
+
+  new_reference_box_logical_size.ClampNegativeToZero();
+
+  if (reference_box_logical_size_ == new_reference_box_logical_size)
+    return;
+  MarkShapeAsDirty();
+  reference_box_logical_size_ = new_reference_box_logical_size;
+}
+
+void ShapeOutsideInfo::SetPercentageResolutionInlineSize(
+    LayoutUnit percentage_resolution_inline_size) {
+  if (percentage_resolution_inline_size_ == percentage_resolution_inline_size)
+    return;
+
+  MarkShapeAsDirty();
+  percentage_resolution_inline_size_ = percentage_resolution_inline_size;
+}
+
+static PhysicalRect GetShapeImagePhysicalMarginRect(
+    const LayoutBox& layout_box,
+    const PhysicalSize& reference_physical_size) {
+  PhysicalBoxStrut margin_border_padding = layout_box.MarginOutsets() +
+                                           layout_box.BorderOutsets() +
+                                           layout_box.PaddingOutsets();
+  return PhysicalRect(
+      -margin_border_padding.left, -margin_border_padding.top,
+      margin_border_padding.HorizontalSum() + reference_physical_size.width,
+      margin_border_padding.VerticalSum() + reference_physical_size.height);
+}
+
+PhysicalSize ShapeOutsideInfo::ReferenceBoxPhysicalSize() const {
+  return ToPhysicalSize(
+      reference_box_logical_size_,
+      layout_box_->ContainingBlock()->StyleRef().GetWritingMode());
+}
+
+std::unique_ptr<Shape> ShapeOutsideInfo::CreateShapeForImage(
+    StyleImage* style_image,
+    float shape_image_threshold,
+    WritingMode writing_mode,
+    float margin) const {
+  DCHECK(!style_image->IsPendingImage());
+
+  PhysicalSize reference_physical_size = ReferenceBoxPhysicalSize();
+  RespectImageOrientationEnum respect_orientation =
+      style_image->ForceOrientationIfNecessary(
+          layout_box_->StyleRef().ImageOrientation());
+
+  const gfx::SizeF image_size = style_image->ImageSize(
+      layout_box_->StyleRef().EffectiveZoom(),
+      gfx::SizeF(reference_physical_size), respect_orientation);
+
+  WritingModeConverter converter({writing_mode, TextDirection::kLtr},
+                                 reference_physical_size);
+  LogicalRect margin_rect = converter.ToLogical(
+      GetShapeImagePhysicalMarginRect(*layout_box_, reference_physical_size));
+  margin_rect.size.inline_size =
+      margin_rect.size.inline_size.ClampNegativeToZero();
+  margin_rect.size.block_size =
+      margin_rect.size.block_size.ClampNegativeToZero();
+
+  const PhysicalRect image_physical_rect =
+      layout_box_->IsLayoutImage()
+          ? To<LayoutImage>(layout_box_.Get())->ReplacedContentRect()
+          : PhysicalRect({}, PhysicalSize::FromSizeFRound(image_size));
+  gfx::Rect image_rect =
+      ToPixelSnappedLogicalRect(converter.ToLogical(image_physical_rect));
+
+  const Node* node = layout_box_->GetNode();
+  if (!node) {
+    node = &layout_box_->GetDocument();
+  }
+  scoped_refptr<Image> image = style_image->GetImage(
+      *layout_box_, *node, layout_box_->StyleRef(), image_size);
+
+  return Shape::CreateRasterShape(
+      image.get(), shape_image_threshold,
+      reference_box_logical_size_.block_size.Floor(), image_rect,
+      ToPixelSnappedLogicalRect(margin_rect), writing_mode, margin,
+      respect_orientation);
+}
+
+const Shape& ShapeOutsideInfo::ComputedShape() const {
+  if (Shape* shape = shape_.get())
+    return *shape;
+
+  base::AutoReset<bool> is_in_computing_shape(&is_computing_shape_, true);
+
+  const ComputedStyle& style = layout_box_->StyleRef();
+  DCHECK(layout_box_->ContainingBlock());
+  const LayoutBlock& containing_block = *layout_box_->ContainingBlock();
+  const ComputedStyle& containing_block_style = containing_block.StyleRef();
+
+  WritingMode writing_mode = containing_block_style.GetWritingMode();
+  float margin =
+      FloatValueForLength(layout_box_->StyleRef().ShapeMargin(),
+                          percentage_resolution_inline_size_.ToFloat());
+
+  float shape_image_threshold = style.ShapeImageThreshold();
+  DCHECK(style.ShapeOutside());
+  const ShapeValue& shape_value = *style.ShapeOutside();
+
+  switch (shape_value.GetType()) {
+    case ShapeValue::kShape:
+      shape_ =
+          Shape::CreateShape(shape_value.Shape(), reference_box_logical_size_,
+                             writing_mode, margin, style.EffectiveZoom());
+      break;
+    case ShapeValue::kImage:
+      DCHECK(shape_value.GetImage());
+      DCHECK(shape_value.GetImage()->IsLoaded());
+      DCHECK(shape_value.GetImage()->CanRender());
+      shape_ = CreateShapeForImage(shape_value.GetImage(),
+                                   shape_image_threshold, writing_mode, margin);
+      break;
+    case ShapeValue::kBox: {
+      shape_ = Shape::CreateLayoutBoxShape(
+          ContouredBorderGeometry::ContouredBorder(
+              style,
+              PhysicalRect(PhysicalOffset(), ReferenceBoxPhysicalSize())),
+          writing_mode, margin);
+      break;
+    }
+  }
+
+  DCHECK(shape_);
+  return *shape_;
+}
+
+LogicalOffset ShapeOutsideInfo::LogicalStartOffset() const {
+  const PhysicalBoxStrut outsets = ([&] {
+    switch (layout_box_->StyleRef().ShapeOutside()->CssBox()) {
+      case ShapeBox::kMarginBox:
+        return -layout_box_->MarginOutsets();
+      case ShapeBox::kBorderBox:
+        return PhysicalBoxStrut();
+      case ShapeBox::kPaddingBox:
+        return layout_box_->BorderOutsets();
+      case ShapeBox::kContentBox:
+        return layout_box_->BorderOutsets() + layout_box_->PaddingOutsets();
+    }
+  })();
+  const ComputedStyle& container_style =
+      layout_box_->ContainingBlock()->StyleRef();
+  return outsets.ConvertToLogical(container_style.GetWritingDirection())
+      .StartOffset();
+}
+
+bool ShapeOutsideInfo::IsEnabledFor(const LayoutBox& box) {
+  ShapeValue* shape_value = box.StyleRef().ShapeOutside();
+  if (!box.IsFloating() || !shape_value)
+    return false;
+
+  switch (shape_value->GetType()) {
+    case ShapeValue::kImage: {
+      const StyleImage* image = shape_value->GetImage();
+      CHECK(image);
+      const bool image_is_usable = image->IsLoaded() && image->CanRender();
+      // If the image is cross-origin, we must not use it for shape-outside.
+      if (image_is_usable && !image->IsCorsSameOrigin()) {
+        return false;
+      }
+      return image_is_usable;
+    }
+    case ShapeValue::kShape:
+    case ShapeValue::kBox:
+      return true;
+  }
+  NOTREACHED();
+}
+
+PhysicalRect ShapeOutsideInfo::ComputedShapePhysicalBoundingBox() const {
+  LogicalRect logical_box = ComputedShape().ShapeMarginLogicalBoundingBox();
+  // TODO(crbug.com/1463823): The logic of this function looks incorrect.
+  PhysicalRect physical_bounding_box(
+      logical_box.offset.inline_offset, logical_box.offset.block_offset,
+      logical_box.size.inline_size, logical_box.size.block_size);
+  LogicalOffset logical_shape_offset = LogicalStartOffset();
+  physical_bounding_box.offset.left += logical_shape_offset.inline_offset;
+
+  if (layout_box_->StyleRef().IsFlippedBlocksWritingMode()) {
+    physical_bounding_box.offset.top =
+        layout_box_->LogicalHeight() - physical_bounding_box.Bottom();
+  } else {
+    physical_bounding_box.offset.top += logical_shape_offset.block_offset;
+  }
+
+  if (!layout_box_->StyleRef().IsHorizontalWritingMode()) {
+    physical_bounding_box = PhysicalRect(
+        physical_bounding_box.offset.top, physical_bounding_box.offset.left,
+        physical_bounding_box.size.height, physical_bounding_box.size.width);
+  } else {
+    physical_bounding_box.offset.top += logical_shape_offset.block_offset;
+  }
+
+  return physical_bounding_box;
+}
+
+gfx::PointF ShapeOutsideInfo::ShapeToLayoutObjectPoint(
+    gfx::PointF point) const {
+  LogicalOffset logical_shape_offset = LogicalStartOffset();
+  gfx::PointF result =
+      point + gfx::Vector2dF(logical_shape_offset.inline_offset,
+                             logical_shape_offset.block_offset);
+  if (layout_box_->StyleRef().IsFlippedBlocksWritingMode())
+    result.set_y(layout_box_->LogicalHeight() - result.y());
+  if (!layout_box_->StyleRef().IsHorizontalWritingMode())
+    result.Transpose();
+  return result;
+}
+
+// static
+ShapeOutsideInfo::InfoMap& ShapeOutsideInfo::GetInfoMap() {
+  using InfoMapHolder = DisallowNewWrapper<InfoMap>;
+  DEFINE_STATIC_LOCAL(Persistent<InfoMapHolder>, holder,
+                      (MakeGarbageCollected<InfoMapHolder>()));
+  return holder->Value();
+}
+
+void ShapeOutsideInfo::Trace(Visitor* visitor) const {
+  visitor->Trace(layout_box_);
+}
+
+}  // namespace blink

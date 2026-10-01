@@ -1,0 +1,13 @@
+include_rules = [
+  "+google/protobuf",
+  "+gpu/config/gpu_driver_bug_workarounds.h",
+  "+gpu/config/gpu_preferences.h",
+  "+media/base",
+  "+media/gpu",
+  "+media/video",
+  "+remoting/protocol",
+  "+remoting/signaling",
+  "+remoting/test/frame_generator",
+  "+ui/gfx/geometry",
+  "+third_party/webrtc",
+]

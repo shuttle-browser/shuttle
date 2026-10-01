@@ -1,0 +1,49 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_ENTERPRISE_PROFILE_MANAGEMENT_OIDC_AUTH_RESPONSE_CAPTURE_NAVIGATION_THROTTLE_H_
+#define CHROME_BROWSER_ENTERPRISE_PROFILE_MANAGEMENT_OIDC_AUTH_RESPONSE_CAPTURE_NAVIGATION_THROTTLE_H_
+
+#include "base/memory/weak_ptr.h"
+#include "content/public/browser/navigation_throttle.h"
+
+namespace profile_management {
+
+// This throttle looks for redirection from Oidc authentications to the hard
+// coded host `chromeprofiletoken`. It will capture the redirection and try to
+// create or switch to a managed profile using the tokens from the auth
+// response. The workflow is currently experimental and not productionized.
+class OidcAuthResponseCaptureNavigationThrottle
+    : public content::NavigationThrottle {
+ public:
+  // Create a navigation throttle for the given navigation if Oidc
+  // authentication based enrollment is enabled. Returns nullptr if no
+  // throttling should be done.
+  static void MaybeCreateAndAdd(content::NavigationThrottleRegistry& registry);
+
+  explicit OidcAuthResponseCaptureNavigationThrottle(
+      content::NavigationThrottleRegistry& registry);
+
+  OidcAuthResponseCaptureNavigationThrottle(
+      const OidcAuthResponseCaptureNavigationThrottle&) = delete;
+  OidcAuthResponseCaptureNavigationThrottle& operator=(
+      const OidcAuthResponseCaptureNavigationThrottle&) = delete;
+  ~OidcAuthResponseCaptureNavigationThrottle() override;
+
+  // content::NavigationThrottle implementation:
+  ThrottleCheckResult WillProcessResponse() override;
+
+  const char* GetNameForLogging() override;
+
+ private:
+  ThrottleCheckResult AttemptToTriggerHeaderInterception();
+
+  bool interception_triggered_ = false;
+  base::WeakPtrFactory<OidcAuthResponseCaptureNavigationThrottle>
+      weak_ptr_factory_{this};
+};
+
+}  // namespace profile_management
+
+#endif  // CHROME_BROWSER_ENTERPRISE_PROFILE_MANAGEMENT_OIDC_AUTH_RESPONSE_CAPTURE_NAVIGATION_THROTTLE_H_

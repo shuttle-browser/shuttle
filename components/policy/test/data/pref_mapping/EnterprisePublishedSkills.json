@@ -1,0 +1,28 @@
+[
+  {
+    "os": ["win", "linux", "mac"],
+    "policy_pref_mapping_tests": [
+      {
+        "policies": {
+          "EnterprisePublishedSkills": [
+            {
+              "url": "https://example.com/skill.json",
+              "hash": "abc123hash"
+            }
+          ]
+        },
+        "prefs": {
+          "skills.enterprise_published_skills": {
+            "value": [
+              {
+                "url": "https://example.com/skill.json",
+                "hash": "abc123hash"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+]
+

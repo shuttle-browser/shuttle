@@ -1,0 +1,402 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/glic/test_support/glic_test_util.h"
+
+#include "base/strings/strcat.h"
+#include "base/task/current_thread.h"
+#include "build/android_buildflags.h"
+#include "build/build_config.h"
+#include "chrome/browser/glic/common/local_hotkey_manager.h"
+#include "chrome/browser/glic/glic_pref_names.h"
+#include "chrome/browser/glic/host/glic.mojom-shared.h"
+#include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/glic/public/glic_keyed_service.h"
+#include "chrome/browser/glic/service/glic_instance_coordinator_impl.h"
+#include "chrome/browser/glic/service/glic_instance_impl.h"
+#include "chrome/browser/glic/test_support/test_result.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/tab_list/tab_list_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "chrome/browser/ui/browser_window/public/create_browser_window.h"
+#include "components/prefs/pref_service.h"
+#include "components/signin/public/base/signin_switches.h"
+#include "components/signin/public/identity_manager/account_capabilities_test_mutator.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/signin/public/identity_manager/identity_test_utils.h"
+#include "components/sync/base/features.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/base_window.h"
+#include "ui/base/interaction/element_identifier.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/side_panel/android/android_side_panel_enabled_fn.h"
+#else
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#endif
+
+namespace glic {
+namespace {
+
+#if !BUILDFLAG(IS_ANDROID)
+GlicInstanceCoordinatorImpl& GetInstanceCoordinator(GlicKeyedService& service) {
+  return static_cast<GlicInstanceCoordinatorImpl&>(
+      service.instance_coordinator());
+}
+#endif
+
+}  // namespace
+
+#if !BUILDFLAG(IS_ANDROID)
+GlicInstanceTracker::GlicInstanceTracker(Profile* profile) {
+  SetProfile(profile);
+}
+GlicInstanceTracker::~GlicInstanceTracker() = default;
+
+void GlicInstanceTracker::SetProfile(Profile* profile) {
+  profile_ = profile ? profile->GetWeakPtr() : nullptr;
+}
+
+Host* GlicInstanceTracker::GetHost() {
+  auto* instance = GetGlicInstance();
+  if (!instance) {
+    return nullptr;
+  }
+  return &static_cast<GlicInstanceImpl*>(instance)->host();
+}
+
+GlicInstance* GlicInstanceTracker::GetGlicInstance() {
+  if (!profile_) {
+    if (profile_.WasInvalidated()) {
+      LOG(ERROR) << "GlicInstanceTracker: Profile invalidated,"
+                 << " returning no instance.";
+    }
+    return nullptr;
+  }
+  auto* service = GlicKeyedService::Get(profile_.get());
+  if (!service) {
+    return nullptr;
+  }
+  if (tracked_instance_id_) {
+    return GetInstanceById(profile_.get(), *tracked_instance_id_);
+  }
+  if (track_only_glic_instance_) {
+    return GetOnlyGlicInstance(profile_.get());
+  }
+
+  if (base::FeatureList::IsEnabled(features::kGlicMultiInstance)) {
+    if (track_floating_glic_instance_) {
+      return GetInstanceCoordinator(*service).GetInstanceWithFloaty();
+    }
+    if (glic_instance_tab_handle_) {
+      if (glic_instance_tab_handle_->Get()) {
+        return service->GetInstanceForTab(glic_instance_tab_handle_->Get());
+      }
+      return nullptr;
+    }
+    if (glic_instance_tab_index_ != std::nullopt) {
+      return service->GetInstanceForTab(
+          GetBrowser()->GetTabStripModel()->GetTabAtIndex(
+              *glic_instance_tab_index_));
+    }
+    return service->GetInstanceForTab(
+        GetBrowser()->GetTabStripModel()->GetTabAtIndex(0));
+  }
+  return service->GetInstanceForActiveTab(GetBrowser());
+}
+
+BrowserWindowInterface* GlicInstanceTracker::GetBrowser() {
+  BrowserWindowInterface* found = nullptr;
+  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+      [this, &found](BrowserWindowInterface* browser) {
+        if (browser->GetProfile() == profile_.get()) {
+          found = browser;
+        }
+        return !found;
+      });
+  return found;
+}
+
+std::string GlicInstanceTracker::DescribeGlicTracking() {
+  if (tracked_instance_id_) {
+    return base::StrCat(
+        {"Tracking glic instance with id ", tracked_instance_id_->value()});
+  } else if (glic_instance_tab_index_) {
+    return base::StrCat({"Tracking glic instance at tab index ",
+                         base::NumberToString(*glic_instance_tab_index_)});
+
+  } else if (glic_instance_tab_handle_) {
+    if (!glic_instance_tab_handle_->Get()) {
+      return "Tracking glic instance with INVALID tab handle";
+    }
+    return "Tracking glic instance with tab handle";
+  } else if (track_floating_glic_instance_) {
+    return "Tracking floating glic instance";
+  }
+  NOTREACHED();
+}
+
+void GlicInstanceTracker::Clear() {
+  tracked_instance_id_ = std::nullopt;
+  glic_instance_tab_index_ = std::nullopt;
+  glic_instance_tab_handle_ = std::nullopt;
+  track_floating_glic_instance_ = false;
+}
+
+[[nodiscard]] bool GlicInstanceTracker::WaitForPanelState(
+    mojom::PanelStateKind state) {
+  // TODO(harringtond): Use observers instead of polling.
+  return base::test::RunUntil([&]() {
+    auto* instance = GetGlicInstance();
+    if (!instance) {
+      return false;
+    }
+    return instance->GetPanelState().kind == state;
+  });
+}
+
+[[nodiscard]] bool GlicInstanceTracker::WaitForShow() {
+  // TODO(harringtond): Use observers instead of polling.
+  return base::test::RunUntil([&]() {
+    auto* instance = GetGlicInstance();
+    if (!instance) {
+      return false;
+    }
+    return instance->IsShowing();
+  });
+}
+
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+GlicInstance* GetOnlyGlicInstance(Profile* profile) {
+  if (!profile) {
+    LOG(ERROR) << "GetOnlyGlicInstance: Profile is null";
+    return nullptr;
+  }
+  auto* service = GlicKeyedService::Get(profile);
+  if (!service) {
+    return nullptr;
+  }
+  auto& coordinator = static_cast<GlicInstanceCoordinatorImpl&>(
+      service->instance_coordinator());
+  auto instances = coordinator.GetInstances();
+  CHECK_LT(instances.size(), 2u);
+  return instances.empty() ? nullptr : instances[0];
+}
+
+GlicInstance* GetInstanceForTab(Profile* profile, tabs::TabInterface* tab) {
+  if (!profile) {
+    LOG(ERROR) << "GetInstanceForTab: Profile is null";
+    return nullptr;
+  }
+  auto* service = GlicKeyedService::Get(profile);
+  if (!service) {
+    return nullptr;
+  }
+  return service->GetInstanceForTab(tab);
+}
+
+GlicInstance* GetInstanceById(Profile* profile, InstanceId id) {
+  if (!profile) {
+    LOG(ERROR) << "GetInstanceById: Profile is null";
+    return nullptr;
+  }
+  auto* service = GlicKeyedService::Get(profile);
+  if (!service) {
+    return nullptr;
+  }
+  auto& coordinator = static_cast<GlicInstanceCoordinatorImpl&>(
+      service->instance_coordinator());
+  for (GlicInstanceImpl* instance : coordinator.GetInstances()) {
+    if (instance->id() == id) {
+      return instance;
+    }
+  }
+  return nullptr;
+}
+
+void ForceSigninAndGlicCapability(Profile* profile,
+                                  std::string_view hosted_domain) {
+  SetFRECompletion(profile, prefs::FreStatus::kCompleted);
+  SigninWithPrimaryAccount(profile, hosted_domain);
+  SetGlicCapability(profile, true);
+}
+
+void SigninWithPrimaryAccount(Profile* profile,
+                              std::string_view hosted_domain) {
+  // Sign-in and enable account capability.
+  auto* const identity_manager = IdentityManagerFactory::GetForProfile(profile);
+  AccountInfo::Builder builder(signin::MakePrimaryAccountAvailable(
+      identity_manager, "glic-test@example.com",
+      signin::ConsentLevel::kSignin));
+  builder.SetFullName("Glic Testing").SetGivenName("Glic");
+  if (!hosted_domain.empty()) {
+    builder.SetHostedDomain(hosted_domain);
+  }
+  signin::UpdateAccountInfoForAccount(identity_manager, builder.Build());
+}
+
+void SetGlicCapability(Profile* profile, bool enabled) {
+  auto* const identity_manager = IdentityManagerFactory::GetForProfile(profile);
+  AccountInfo primary_account =
+      identity_manager->FindExtendedAccountInfoByAccountId(
+          identity_manager->GetPrimaryAccountId(signin::ConsentLevel::kSignin));
+  ASSERT_FALSE(primary_account.IsEmpty());
+
+  AccountCapabilitiesTestMutator mutator(&primary_account);
+  SetGlicCapability(mutator, enabled);
+
+  signin::UpdateAccountInfoForAccount(identity_manager, primary_account);
+}
+
+void SetGlicCapability(AccountCapabilitiesTestMutator& mutator, bool enabled) {
+  if (base::FeatureList::IsEnabled(
+          switches::kGlicEligibilitySeparateAccountCapability)) {
+    mutator.set_can_use_gemini_in_chrome(enabled);
+  }
+  mutator.set_can_use_model_execution_features(enabled);
+}
+
+ScopedGlicCapability::ScopedGlicCapability(Profile* profile, bool enabled)
+    : profile_(profile) {
+  auto* const identity_manager = IdentityManagerFactory::GetForProfile(profile);
+  AccountInfo primary_account =
+      identity_manager->FindExtendedAccountInfoByAccountId(
+          identity_manager->GetPrimaryAccountId(signin::ConsentLevel::kSignin));
+
+  if (base::FeatureList::IsEnabled(
+          switches::kGlicEligibilitySeparateAccountCapability)) {
+    original_enabled_ =
+        primary_account.GetAccountCapabilities().can_use_gemini_in_chrome() ==
+        signin::Tribool::kTrue;
+  } else {
+    original_enabled_ =
+        glic::GlicEnabling::CanUseAdultFeatures(
+            primary_account.GetAccountCapabilities());
+  }
+
+  SetGlicCapability(profile_, enabled);
+}
+
+ScopedGlicCapability::~ScopedGlicCapability() {
+  SetGlicCapability(profile_, original_enabled_);
+}
+
+void SetFRECompletion(Profile* profile, prefs::FreStatus fre_status) {
+  glic::GlicKeyedService::Get(profile)->enabling().SetCompletedFre(fre_status);
+}
+
+void InvalidateAccount(Profile* profile) {
+  auto* const identity_manager = IdentityManagerFactory::GetForProfile(profile);
+  signin::UpdatePersistentErrorOfRefreshTokenForAccount(
+      identity_manager,
+      identity_manager->GetPrimaryAccountId(signin::ConsentLevel::kSignin),
+      GoogleServiceAuthError::FromInvalidGaiaCredentialsReason(
+          GoogleServiceAuthError::InvalidGaiaCredentialsReason::UNKNOWN));
+
+  ASSERT_TRUE(
+      identity_manager->HasAccountWithRefreshTokenInPersistentErrorState(
+          identity_manager->GetPrimaryAccountId(
+              signin::ConsentLevel::kSignin)));
+  if (!syncer::IsReplaceSyncPromosWithSignInPromosEnabled()) {
+    ASSERT_FALSE(
+        identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSync));
+  }
+  ASSERT_TRUE(
+      identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSignin));
+}
+
+void ReauthAccount(Profile* profile) {
+  auto* const identity_manager = IdentityManagerFactory::GetForProfile(profile);
+  signin::UpdatePersistentErrorOfRefreshTokenForAccount(
+      identity_manager,
+      identity_manager->GetPrimaryAccountId(signin::ConsentLevel::kSignin),
+      GoogleServiceAuthError::AuthErrorNone());
+}
+
+class GlicClientConnectionObserverImpl : public Host::Observer {
+ public:
+  explicit GlicClientConnectionObserverImpl(
+      GlicClientConnectionObserver* parent,
+      Host* host)
+      : parent_(parent), host_(host) {
+    host->AddObserver(this);
+    // A typical use-case is to create the observer after creating the glic
+    // instance. To make this usage not flaky, we check if the client is
+    // already connected, and notify if so.
+    if (host->IsWebClientConnected()) {
+      parent_->Notify(true);
+    }
+  }
+  ~GlicClientConnectionObserverImpl() override { host_->RemoveObserver(this); }
+
+  void WebClientConnected() override { parent_->Notify(true); }
+  void WebClientDisconnected() override { parent_->Notify(false); }
+
+ private:
+  raw_ptr<GlicClientConnectionObserver> parent_;
+  raw_ptr<Host> host_;
+};
+
+GlicClientConnectionObserver::GlicClientConnectionObserver(
+    GlicInstance* instance) {
+  auto* instance_impl = static_cast<GlicInstanceImpl*>(instance);
+  impl_ = std::make_unique<GlicClientConnectionObserverImpl>(
+      this, &instance_impl->host());
+}
+
+GlicClientConnectionObserver::~GlicClientConnectionObserver() = default;
+
+[[nodiscard]] TestResult<> GlicClientConnectionObserver::WaitForConnected() {
+  return waiter_.WaitUntilEqual(true);
+}
+
+[[nodiscard]] TestResult<> GlicClientConnectionObserver::WaitForDisconnected() {
+  return waiter_.WaitUntilEqual(false);
+}
+
+void GlicClientConnectionObserver::Notify(bool is_connected) {
+  waiter_.AddEvent(is_connected);
+}
+
+void GlicClientConnectionObserver::Clear() {
+  waiter_.Clear();
+}
+
+bool IsSidePanelEnabled() {
+#if defined(TOOLKIT_VIEWS)
+  return true;
+#elif BUILDFLAG(IS_DESKTOP_ANDROID)
+  // Note:
+  //
+  // (1) GLiC tests only enable `kEnableAndroidSidePanel` on desktop Android.
+  // See the constructor of `GlicBrowserTestMixin`.
+  //
+  // (2) The side panel flag is a cached flag in Java, so we need to call into
+  // Java to check the flag value. This is the same as
+  // `SidePanelAndroidBrowserTestBase` so please see the detailed explanations
+  // there.
+  return AndroidSidePanelEnabledFn::IsEnabled();
+#else
+  return false;
+#endif
+}
+
+BrowserWindowInterface* CreateBrowserWindow(Profile* profile) {
+  base::test::TestFuture<BrowserWindowInterface*> future;
+  CreateBrowserWindow(
+      BrowserWindowCreateParams(*profile, /*from_user_gesture=*/false),
+      future.GetCallback());
+  BrowserWindowInterface* window = future.Get();
+  CHECK(window);
+  return window;
+}
+
+DEFINE_ELEMENT_IDENTIFIER_VALUE(kGlicHostElementId);
+DEFINE_ELEMENT_IDENTIFIER_VALUE(kGlicContentsElementId);
+
+}  // namespace glic

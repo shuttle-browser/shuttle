@@ -1,0 +1,2940 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/modules/manifest/manifest_parser.h"
+
+#include <unicode/uchar.h>
+
+#include <cstddef>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "base/check.h"
+#include "base/compiler_specific.h"
+#include "base/feature_list.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/notreached.h"
+#include "base/strings/string_util.h"
+#include "net/base/mime_util.h"
+#include "net/base/registry_controlled_domains/registry_controlled_domain.h"
+#include "services/device/public/mojom/screen_orientation_lock_types.mojom-blink.h"
+#include "services/network/public/cpp/permissions_policy/origin_with_possible_wildcards.h"
+#include "services/network/public/cpp/permissions_policy/permissions_policy_declaration.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
+#include "third_party/blink/public/common/manifest/manifest_util.h"
+#include "third_party/blink/public/common/safe_url_pattern.h"
+#include "third_party/blink/public/common/security/protocol_handler_security_level.h"
+#include "third_party/blink/public/mojom/manifest/display_mode.mojom-blink.h"
+#include "third_party/blink/public/mojom/manifest/manifest.mojom-blink.h"
+#include "third_party/blink/public/mojom/manifest/manifest_launch_handler.mojom-blink.h"
+#include "third_party/blink/public/mojom/manifest/manifest_migration_behavior.mojom-blink.h"
+#include "third_party/blink/public/platform/url_conversion.h"
+#include "third_party/blink/public/platform/web_icon_sizes_parser.h"
+#include "third_party/blink/public/platform/web_string.h"
+#include "third_party/blink/renderer/core/css/media_list.h"
+#include "third_party/blink/renderer/core/css/parser/css_parser.h"
+#include "third_party/blink/renderer/core/frame/web_feature.h"
+#include "third_party/blink/renderer/core/permissions_policy/permissions_policy_parser.h"
+#include "third_party/blink/renderer/core/permissions_policy/policy_helper.h"
+#include "third_party/blink/renderer/modules/navigatorcontentutils/navigator_content_utils.h"
+#include "third_party/blink/renderer/platform/graphics/color.h"
+#include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
+#include "third_party/blink/renderer/platform/json/json_parser.h"
+#include "third_party/blink/renderer/platform/json/json_values.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/weborigin/kurl.h"
+#include "third_party/blink/renderer/platform/weborigin/security_origin.h"
+#include "third_party/blink/renderer/platform/wtf/hash_map.h"
+#include "third_party/blink/renderer/platform/wtf/text/code_point_iterator.h"
+#include "third_party/blink/renderer/platform/wtf/text/strcat.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_impl.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_utf8_adaptor.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_view.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_uchar.h"
+#include "third_party/blink/renderer/platform/wtf/wtf_size_t.h"
+#include "third_party/icu/source/common/unicode/locid.h"
+#include "third_party/liburlpattern/parse.h"
+#include "third_party/liburlpattern/part.h"
+#include "third_party/liburlpattern/pattern.h"
+#include "third_party/liburlpattern/utils.h"
+#include "url/url_constants.h"
+#include "url/url_util.h"
+
+namespace blink {
+
+namespace {
+static constexpr char kScopeExtensionsMissingKeysErrorMessage[] =
+    "scope_extensions entry ignored, required properties 'type' and 'origin' "
+    "are missing.";
+static constexpr char kScopeExtensionsTypeKey[] = "type";
+static constexpr char kScopeExtensionsOriginKey[] = "origin";
+static constexpr char kOriginWildcardPrefix[] = "%2A.";
+// Keep in sync with web_app_origin_association_task.cc.
+static wtf_size_t kMaxScopeExtensionsSize = 10;
+static wtf_size_t kMaxShortcutsSize = 10;
+static wtf_size_t kMaxOriginLength = 2000;
+
+// The max number of file extensions an app can handle via the File Handling
+// API.
+const int kFileHandlerExtensionLimit = 300;
+int g_file_handler_extension_limit_for_testing = 0;
+
+bool IsValidMimeType(const String& mime_type) {
+  if (mime_type.starts_with('.')) {
+    return true;
+  }
+  return net::ParseMimeTypeWithoutParameter(mime_type.Utf8(), nullptr, nullptr);
+}
+
+bool VerifyFiles(const Vector<mojom::blink::ManifestFileFilterPtr>& files) {
+  for (const auto& file : files) {
+    for (const auto& accept_type : file->accept) {
+      if (!IsValidMimeType(accept_type.ToAsciiLower())) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Determines whether |url| is within scope of |scope|.
+bool URLIsWithinScope(const KURL& url, const KURL& scope) {
+  return SecurityOrigin::AreSameOrigin(url, scope) &&
+         url.GetPath().starts_with(scope.GetPath());
+}
+
+bool IsHostValidForScopeExtension(String host) {
+  if (url::HostIsIPAddress(host.Utf8())) {
+    return true;
+  }
+
+  const std::optional<size_t> registry_length =
+      net::registry_controlled_domains::PermissiveGetHostRegistry(
+          host.Utf8(),
+          // Reject unknown registries (registries that don't have any matches
+          // in effective TLD names).
+          net::registry_controlled_domains::EXCLUDE_UNKNOWN_REGISTRIES,
+          // Skip matching private registries that allow external users to
+          // specify sub-domains, e.g. glitch.me, as this is allowed.
+          net::registry_controlled_domains::EXCLUDE_PRIVATE_REGISTRIES)
+          .transform(&std::string_view::size);
+
+  // Host cannot be a TLD or invalid.
+  if (!registry_length || *registry_length == 0 ||
+      *registry_length >= host.length()) {
+    return false;
+  }
+
+  return true;
+}
+
+static bool IsCrLfOrTabChar(UChar c) {
+  return c == '\n' || c == '\r' || c == '\t';
+}
+
+std::optional<mojom::blink::ManifestFileHandler::LaunchType>
+FileHandlerLaunchTypeFromString(const std::string& launch_type) {
+  if (EqualIgnoringAsciiCase(String(launch_type), "single-client")) {
+    return mojom::blink::ManifestFileHandler::LaunchType::kSingleClient;
+  }
+  if (EqualIgnoringAsciiCase(String(launch_type), "multiple-clients")) {
+    return mojom::blink::ManifestFileHandler::LaunchType::kMultipleClients;
+  }
+  return std::nullopt;
+}
+
+bool IsDefaultManifest(const mojom::blink::Manifest& manifest,
+                       const KURL& document_url) {
+  if (manifest.has_custom_id || manifest.has_valid_specified_start_url) {
+    return false;
+  }
+  auto default_manifest = mojom::blink::Manifest::New();
+  default_manifest->start_url = document_url;
+  KURL default_id = document_url;
+  default_id.RemoveFragmentIdentifier();
+  default_manifest->id = default_id;
+  default_manifest->scope = KURL(document_url.BaseAsString().ToString());
+  return manifest == *default_manifest;
+}
+
+static const char kUMAIdParseResult[] = "Manifest.ParseIdResult";
+
+// Record that the Manifest was successfully parsed. If it is a default
+// Manifest, it will recorded as so and nothing will happen. Otherwise, the
+// presence of each properties will be recorded.
+void ParseSucceeded(const mojom::blink::ManifestPtr& manifest,
+                    const KURL& document_url) {
+  if (IsDefaultManifest(*manifest, document_url)) {
+    return;
+  }
+
+  base::UmaHistogramBoolean("Manifest.HasProperty.name",
+                            !manifest->name.empty());
+  base::UmaHistogramBoolean("Manifest.HasProperty.short_name",
+                            !manifest->short_name.empty());
+  base::UmaHistogramBoolean("Manifest.HasProperty.description",
+                            !manifest->description.empty());
+  base::UmaHistogramBoolean("Manifest.HasProperty.start_url",
+                            !manifest->start_url.IsEmpty());
+  base::UmaHistogramBoolean(
+      "Manifest.HasProperty.display",
+      manifest->display != blink::mojom::DisplayMode::kUndefined);
+  base::UmaHistogramBoolean(
+      "Manifest.HasProperty.orientation",
+      manifest->orientation !=
+          device::mojom::blink::ScreenOrientationLockType::DEFAULT);
+  base::UmaHistogramBoolean("Manifest.HasProperty.icons",
+                            !manifest->icons.empty());
+  base::UmaHistogramBoolean("Manifest.HasProperty.screenshots",
+                            !manifest->screenshots.empty());
+  base::UmaHistogramBoolean("Manifest.HasProperty.share_target",
+                            manifest->share_target.get());
+  base::UmaHistogramBoolean("Manifest.HasProperty.protocol_handlers",
+                            !manifest->protocol_handlers.empty());
+  base::UmaHistogramBoolean("Manifest.HasProperty.gcm_sender_id",
+                            !manifest->gcm_sender_id.empty());
+}
+
+// Returns a liburlpattern::Part list obtained from running
+// liburlpattern::Parse on a UrlPatternInit field. The list will be empty if the
+// field is empty. Returns std::nullopt if the field should be rejected or the
+// parse failed, e.g. if it contains custom (or ill-formed) regex.
+std::optional<std::vector<liburlpattern::Part>> ParsePatternInitField(
+    const std::optional<String>& field,
+    const String default_field_value) {
+  const String value = field.has_value() ? field.value() : default_field_value;
+  if (value.empty()) {
+    return std::vector<liburlpattern::Part>();
+  }
+
+  StringUtf8Adaptor utf8(value);
+  auto parse_result = liburlpattern::Parse(
+      utf8.AsStringView(),
+      [](std::string_view input) { return std::string(input); });
+
+  if (parse_result.has_value()) {
+    std::vector<liburlpattern::Part> part_list;
+    for (auto& part : parse_result.value().PartList()) {
+      // We don't allow custom regex for security reasons as this will be
+      // used in the browser process.
+      if (part.type == liburlpattern::PartType::kRegex) {
+        return std::nullopt;
+      }
+
+      part_list.push_back(std::move(part));
+    }
+    return part_list;
+  }
+  return std::nullopt;
+}
+
+String EscapePatternString(const StringView& input) {
+  std::string result;
+  result.reserve(input.length());
+  StringUtf8Adaptor utf8(input);
+  liburlpattern::EscapePatternStringAndAppend(utf8.AsStringView(), result);
+  return String(result);
+}
+
+// Utility function to determine if a pathname is absolute or not. We do some
+// additional checking for escaped or grouped slashes.
+//
+// Note: This is partially copied from
+// third_party/blink/renderer/core/url_pattern/url_pattern.cc
+bool IsAbsolutePathname(String pathname) {
+  if (pathname.empty()) {
+    return false;
+  }
+
+  if (pathname[0] == '/') {
+    return true;
+  }
+
+  if (pathname.length() < 2) {
+    return false;
+  }
+
+  // Patterns treat escaped slashes and slashes within an explicit grouping as
+  // valid leading slashes.  For example, "\/foo" or "{/foo}".  Patterns do
+  // not consider slashes within a custom regexp group as valid for the leading
+  // pathname slash for now.  To support that we would need to be able to
+  // detect things like ":name_123(/foo)" as a valid leading group in a pattern,
+  // but that is considered too complex for now.
+  if ((pathname[0] == '\\' || pathname[0] == '{') && pathname[1] == '/') {
+    return true;
+  }
+
+  return false;
+}
+
+String ResolveRelativePathnamePattern(const KURL& base_url, String pathname) {
+  if (base_url.IsStandard() && !IsAbsolutePathname(pathname)) {
+    String base_path = EscapePatternString(base_url.GetPath());
+    auto slash_index = base_path.rfind('/');
+    if (slash_index != kNotFound) {
+      // Extract the base_url path up to and including the last slash. Append
+      // the relative pathname to it.
+      return StrCat({StringView(base_path, 0, slash_index + 1), pathname});
+    }
+  }
+  return pathname;
+}
+
+std::optional<mojom::blink::ManifestMigrationBehavior>
+MigrationBehaviorFromString(const std::string& behavior) {
+  if (EqualIgnoringAsciiCase(String(behavior), "suggest")) {
+    return mojom::blink::ManifestMigrationBehavior::kSuggest;
+  }
+  if (EqualIgnoringAsciiCase(String(behavior), "force")) {
+    return mojom::blink::ManifestMigrationBehavior::kForce;
+  }
+  return std::nullopt;
+}
+
+template <typename T>
+std::vector<T> ToStdVector(const Vector<T>& blink_vector) {
+  std::vector<T> std_vector;
+  std_vector.reserve(blink_vector.size());
+  for (const auto& p : blink_vector) {
+    std_vector.push_back(p);
+  }
+  return std_vector;
+}
+
+template <typename T>
+Vector<T> ToBlinkVector(const std::vector<T>& std_vector) {
+  Vector<T> blink_vector;
+  blink_vector.reserve(base::checked_cast<wtf_size_t>(std_vector.size()));
+  for (const auto& p : std_vector) {
+    blink_vector.push_back(p);
+  }
+  return blink_vector;
+}
+
+}  // anonymous namespace
+
+ManifestParser::ManifestParser(const String& data,
+                               const KURL& manifest_url,
+                               const KURL& document_url,
+                               ExecutionContext* execution_context)
+    : data_(data),
+      manifest_url_(manifest_url),
+      document_url_(document_url),
+      execution_context_(execution_context),
+      failed_(false) {}
+
+ManifestParser::~ManifestParser() = default;
+
+// static
+void ManifestParser::SetFileHandlerExtensionLimitForTesting(int limit) {
+  g_file_handler_extension_limit_for_testing = limit;
+}
+
+bool ManifestParser::Parse() {
+  DCHECK(!manifest_);
+
+  // TODO(crbug.com/1264024): Deprecate JSON comments here, if possible.
+  JSONParseError error;
+
+  bool has_comments = false;
+  std::unique_ptr<JSONValue> root =
+      ParseJSONWithCommentsDeprecated(data_, &error, &has_comments);
+  manifest_ = mojom::blink::Manifest::New();
+  if (!root) {
+    AddErrorInfo(error.message, true, error.line, error.column);
+    failed_ = true;
+    return false;
+  }
+
+  std::unique_ptr<JSONObject> root_object = JSONObject::From(std::move(root));
+  if (!root_object) {
+    AddErrorInfo("root element must be a valid JSON object.", true);
+    failed_ = true;
+    return false;
+  }
+
+  manifest_->manifest_url = manifest_url_;
+  manifest_->dir = ParseDir(root_object.get());
+  manifest_->name = ParseName(root_object.get());
+  manifest_->short_name = ParseShortName(root_object.get());
+  manifest_->description = ParseDescription(root_object.get());
+  const auto& [start_url, start_url_parse_result] =
+      ParseStartURL(root_object.get(), document_url_);
+  manifest_->start_url = start_url;
+  manifest_->has_valid_specified_start_url =
+      start_url_parse_result == ParseStartUrlResult::kParsedFromJson;
+
+  const auto& [id, id_parse_result] =
+      ParseId(root_object.get(), manifest_->start_url);
+  manifest_->id = id;
+  manifest_->has_custom_id = id_parse_result == ParseIdResultType::kSucceed;
+  manifest_->scope = ParseScope(root_object.get(), manifest_->start_url);
+  manifest_->display = ParseDisplay(root_object.get());
+  if (manifest_->display != mojom::blink::DisplayMode::kUndefined) {
+    UseCounter::Count(execution_context_, WebFeature::kWebAppManifestDisplay);
+    switch (manifest_->display) {
+      case blink::mojom::DisplayMode::kBrowser:
+        UseCounter::Count(execution_context_,
+                          WebFeature::kWebAppManifestDisplayBrowser);
+        break;
+      case blink::mojom::DisplayMode::kMinimalUi:
+        UseCounter::Count(execution_context_,
+                          WebFeature::kWebAppManifestDisplayMinimalUI);
+        break;
+      case blink::mojom::DisplayMode::kFullscreen:
+        UseCounter::Count(execution_context_,
+                          WebFeature::kWebAppManifestDisplayFullscreen);
+        break;
+      case blink::mojom::DisplayMode::kStandalone:
+        UseCounter::Count(execution_context_,
+                          WebFeature::kWebAppManifestDisplayStandalone);
+        break;
+      default:
+        break;
+    }
+  }
+
+  Vector<blink::Manifest::DisplayOverride> display_override =
+      ParseDisplayOverride(root_object.get());
+  for (const auto& item : display_override) {
+    manifest_->display_override.push_back(
+        mojom::blink::DisplayOverrideItem::New(
+            item.display(), ToBlinkVector(item.url_patterns())));
+
+    switch (item.display()) {
+      case mojom::blink::DisplayMode::kWindowControlsOverlay:
+        UseCounter::Count(execution_context_,
+                          WebFeature::kWebAppWindowControlsOverlay);
+        break;
+      case mojom::blink::DisplayMode::kUnframed:
+        UseCounter::Count(execution_context_, WebFeature::kUnframedIwa);
+        break;
+      case mojom::blink::DisplayMode::kTabbed:
+        UseCounter::Count(execution_context_, WebFeature::kWebAppTabbed);
+        break;
+      default:
+        break;
+    }
+  }
+
+  manifest_->orientation = ParseOrientation(root_object.get());
+  manifest_->icons = ParseIcons(root_object.get());
+  if (!manifest_->icons.empty()) {
+    UseCounter::Count(execution_context_, WebFeature::kWebAppManifestIcons);
+  }
+  auto icons_localized = ParseIconsLocalized(root_object.get());
+  if (!icons_localized.empty()) {
+    manifest_->icons_localized = std::move(icons_localized);
+  }
+  manifest_->screenshots = ParseScreenshots(root_object.get());
+  if (!manifest_->screenshots.empty()) {
+    UseCounter::Count(execution_context_,
+                      WebFeature::kWebAppManifestScreenshots);
+  }
+
+  auto share_target = ParseShareTarget(root_object.get());
+  if (share_target.has_value()) {
+    manifest_->share_target = std::move(*share_target);
+    UseCounter::CountWebDXFeature(execution_context_,
+                                  WebDXFeature::kAppShareTargets);
+  }
+
+  manifest_->file_handlers = ParseFileHandlers(root_object.get());
+  manifest_->protocol_handlers = ParseProtocolHandlers(root_object.get());
+  if (!manifest_->protocol_handlers.empty()) {
+    UseCounter::Count(execution_context_,
+                      WebFeature::kWebAppManifestProtocolHandlers);
+  }
+
+  bool is_iwa = execution_context_ && execution_context_->IsIsolatedContext();
+  if (!is_iwa ||
+      base::FeatureList::IsEnabled(
+          blink::features::kWebAppEnableScopeExtensionsForIsolatedWebApps)) {
+    manifest_->scope_extensions = ParseScopeExtensions(root_object.get());
+    if (!manifest_->scope_extensions.empty()) {
+      UseCounter::Count(execution_context_,
+                        WebFeature::kWebAppManifestScopeExtensions);
+    }
+  }
+  manifest_->lock_screen = ParseLockScreen(root_object.get());
+  if (!manifest_->lock_screen.is_null()) {
+    UseCounter::Count(execution_context_,
+                      WebFeature::kWebAppManifestLockScreen);
+  }
+  manifest_->note_taking = ParseNoteTaking(root_object.get());
+  if (!manifest_->note_taking.is_null()) {
+    UseCounter::Count(execution_context_,
+                      WebFeature::kWebAppManifestNoteTaking);
+  }
+  manifest_->related_applications = ParseRelatedApplications(root_object.get());
+  if (!manifest_->related_applications.empty()) {
+    UseCounter::Count(execution_context_,
+                      WebFeature::kWebAppManifestRelated_Applications);
+  }
+  manifest_->prefer_related_applications =
+      ParsePreferRelatedApplications(root_object.get());
+  if (manifest_->prefer_related_applications) {
+    UseCounter::Count(execution_context_,
+                      WebFeature::kWebAppManifestPrefer_Related_Applications);
+  }
+  if (base::FeatureList::IsEnabled(blink::features::kWebAppMigrationApi)) {
+    manifest_->migrate_from = ParseMigrateFrom(root_object.get());
+    manifest_->migrate_to = ParseMigrateTo(root_object.get());
+    if (!manifest_->migrate_from.empty()) {
+      UseCounter::Count(execution_context_,
+                        WebFeature::kWebAppManifestMigrateFrom);
+    }
+    if (manifest_->migrate_to) {
+      UseCounter::Count(execution_context_,
+                        WebFeature::kWebAppManifestMigrateTo);
+    }
+    if (!manifest_->migrate_from.empty() || manifest_->migrate_to) {
+      UseCounter::CountWebDXFeature(execution_context_,
+                                    WebDXFeature::kAppMigration);
+    }
+  }
+
+  manifest_->theme_color = ParseThemeColor(root_object.get());
+  if (manifest_->theme_color.has_value()) {
+    UseCounter::Count(execution_context_,
+                      WebFeature::kWebAppManifestThemeColor);
+  }
+
+  manifest_->background_color = ParseBackgroundColor(root_object.get());
+  if (manifest_->background_color.has_value()) {
+    UseCounter::Count(execution_context_,
+                      WebFeature::kWebAppManifestBackgroundColor);
+  }
+
+  manifest_->gcm_sender_id = ParseGCMSenderID(root_object.get());
+  manifest_->shortcuts = ParseShortcuts(root_object.get());
+  if (!manifest_->shortcuts.empty()) {
+    UseCounter::CountWebDXFeature(execution_context_,
+                                  WebDXFeature::kAppShortcuts);
+  }
+
+  CheckIsolatedAppPermissions(root_object.get());
+
+  manifest_->update_manifest_url =
+      ParseIsolatedAppUpdateManifestUrl(root_object.get());
+
+  manifest_->launch_handler = ParseLaunchHandler(root_object.get());
+  if (!manifest_->launch_handler.is_null()) {
+    UseCounter::Count(execution_context_,
+                      WebFeature::kWebAppManifestLaunchHandler);
+  }
+
+  if (RuntimeEnabledFeatures::WebAppTranslationsEnabled(execution_context_)) {
+    manifest_->translations = ParseTranslations(root_object.get());
+    if (!manifest_->translations.empty()) {
+      UseCounter::Count(execution_context_,
+                        WebFeature::kWebAppManifestTranslations);
+    }
+  }
+
+  if (RuntimeEnabledFeatures::WebAppTabStripCustomizationsEnabled(
+          execution_context_)) {
+    manifest_->tab_strip = ParseTabStrip(root_object.get());
+    if (!manifest_->tab_strip.is_null()) {
+      UseCounter::Count(execution_context_,
+                        WebFeature::kWebAppManifestTabStrip);
+    }
+  }
+
+  manifest_->version = ParseVersion(root_object.get());
+  if (!manifest_->version.empty()) {
+    UseCounter::Count(execution_context_, WebFeature::kWebAppManifestVersion);
+  }
+
+  auto name_localized = ParseNameLocalized(root_object.get());
+  if (!name_localized.empty()) {
+    manifest_->name_localized = std::move(name_localized);
+  }
+
+  auto short_name_localized = ParseShortNameLocalized(root_object.get());
+  if (!short_name_localized.empty()) {
+    manifest_->short_name_localized = std::move(short_name_localized);
+  }
+
+  auto description_localized = ParseDescriptionLocalized(root_object.get());
+  if (!description_localized.empty()) {
+    manifest_->description_localized = std::move(description_localized);
+  }
+
+  ParseSucceeded(manifest_, document_url_);
+  base::UmaHistogramEnumeration(kUMAIdParseResult, id_parse_result);
+
+  return has_comments;
+}
+
+mojom::blink::ManifestPtr ManifestParser::TakeManifest() {
+  return std::move(manifest_);
+}
+
+void ManifestParser::TakeErrors(
+    Vector<mojom::blink::ManifestErrorPtr>* errors) {
+  errors->clear();
+  errors->swap(errors_);
+}
+
+bool ManifestParser::failed() const {
+  return failed_;
+}
+
+ManifestParser::PatternInit::PatternInit(std::optional<String> protocol,
+                                         std::optional<String> username,
+                                         std::optional<String> password,
+                                         std::optional<String> hostname,
+                                         std::optional<String> port,
+                                         std::optional<String> pathname,
+                                         std::optional<String> search,
+                                         std::optional<String> hash,
+                                         KURL base_url)
+    : protocol(std::move(protocol)),
+      username(std::move(username)),
+      password(std::move(password)),
+      hostname(std::move(hostname)),
+      port(std::move(port)),
+      pathname(std::move(pathname)),
+      search(std::move(search)),
+      hash(std::move(hash)),
+      base_url(base_url) {}
+ManifestParser::PatternInit::~PatternInit() = default;
+ManifestParser::PatternInit::PatternInit(PatternInit&&) = default;
+ManifestParser::PatternInit& ManifestParser::PatternInit::operator=(
+    PatternInit&&) = default;
+
+bool ManifestParser::PatternInit::IsAbsolute() const {
+  return protocol.has_value() || hostname.has_value() || port.has_value();
+}
+
+bool ManifestParser::ParseBoolean(const JSONObject* object,
+                                  const String& key,
+                                  bool default_value) {
+  JSONValue* json_value = object->Get(key);
+  if (!json_value) {
+    return default_value;
+  }
+
+  bool value;
+  if (!json_value->AsBoolean(&value)) {
+    AddErrorInfo(
+        StrCat({"property '", key, "' ignored, type boolean expected."}));
+    return default_value;
+  }
+
+  return value;
+}
+
+std::optional<String> ManifestParser::ParseString(const JSONObject* object,
+                                                  const String& key,
+                                                  Trim trim) {
+  JSONValue* json_value = object->Get(key);
+  if (!json_value) {
+    return std::nullopt;
+  }
+
+  String value;
+  if (!json_value->AsString(&value) || value.IsNull()) {
+    AddErrorInfo(
+        StrCat({"property '", key, "' ignored, type string expected."}));
+    return std::nullopt;
+  }
+
+  if (trim) {
+    value = value.StripWhiteSpace();
+  }
+  return value;
+}
+
+std::optional<String> ManifestParser::ParseStringForMember(
+    const JSONObject* object,
+    const String& member_name,
+    const String& key,
+    bool required,
+    Trim trim) {
+  JSONValue* json_value = object->Get(key);
+  if (!json_value) {
+    if (required) {
+      AddErrorInfo(
+          StrCat({"property '", key, "' of '", member_name, "' not present."}));
+    }
+
+    return std::nullopt;
+  }
+
+  String value;
+  if (!json_value->AsString(&value)) {
+    AddErrorInfo(StrCat({"property '", key, "' of '", member_name,
+                         "' ignored, type string expected."}));
+    return std::nullopt;
+  }
+  if (trim) {
+    value = value.StripWhiteSpace();
+  }
+
+  if (value == "") {
+    AddErrorInfo(StrCat(
+        {"property '", key, "' of '", member_name, "' is an empty string."}));
+    if (required) {
+      return std::nullopt;
+    }
+  }
+
+  return value;
+}
+
+std::optional<RGBA32> ManifestParser::ParseColor(const JSONObject* object,
+                                                 const String& key) {
+  std::optional<String> parsed_color = ParseString(object, key, Trim(true));
+  if (!parsed_color.has_value()) {
+    return std::nullopt;
+  }
+
+  Color color;
+  if (!CSSParser::ParseColor(color, *parsed_color)) {
+    AddErrorInfo(StrCat({"property '", key, "' ignored, '", *parsed_color,
+                         "' is not a valid color."}));
+    return std::nullopt;
+  }
+
+  return color.Rgb();
+}
+
+std::optional<icu::Locale> ManifestParser::ParseLocaleKey(
+    const String& locale_str) {
+  UErrorCode status = U_ZERO_ERROR;
+  StringUtf8Adaptor locale_utf8(locale_str);
+  icu::Locale locale =
+      icu::Locale::forLanguageTag(locale_utf8.AsStringView(), status);
+  if (U_FAILURE(status) || locale.isBogus() ||
+      locale == icu::Locale::getRoot()) {
+    return std::nullopt;
+  }
+  return locale;
+}
+
+KURL ManifestParser::ParseURL(const JSONObject* object,
+                              const String& key,
+                              const KURL& base_url,
+                              ParseURLRestrictions origin_restriction,
+                              bool ignore_empty_string) {
+  std::optional<String> url_str = ParseString(object, key, Trim(false));
+  if (!url_str.has_value()) {
+    return KURL();
+  }
+
+  if (ignore_empty_string && url_str.value() == "") {
+    return KURL();
+  }
+
+  // When the manifest is embedded via a data: URL, relative URLs cannot be
+  // resolved against it (data URLs have opaque origins). In this case, fall
+  // back to using the document URL as the base for resolution. This matches
+  // the intent that relative URLs in an embedded manifest should work relative
+  // to the document that embeds it.
+  const KURL& effective_base_url =
+      base_url.ProtocolIsData() ? document_url_ : base_url;
+  KURL resolved = KURL(effective_base_url, *url_str);
+  if (!resolved.IsValid()) {
+    AddErrorInfo(StrCat({"property '", key, "' ignored, URL is invalid."}));
+    return KURL();
+  }
+
+  switch (origin_restriction) {
+    case ParseURLRestrictions::kNoRestrictions:
+      return resolved;
+    case ParseURLRestrictions::kSameOriginOnly:
+      if (!SecurityOrigin::AreSameOrigin(resolved, document_url_)) {
+        AddErrorInfo(StrCat({"property '", key,
+                             "' ignored, should be same origin as document."}));
+        return KURL();
+      }
+      return resolved;
+    case ParseURLRestrictions::kSameSiteOnly:
+      if (!SecurityOrigin::Create(resolved)->IsSameSiteWith(
+              SecurityOrigin::Create(document_url_).get())) {
+        AddErrorInfo(StrCat({"property '", key,
+                             "' ignored, should be same site as document."}));
+        return KURL();
+      }
+      return resolved;
+    case ParseURLRestrictions::kWithinScope:
+      if (!URLIsWithinScope(resolved, manifest_->scope)) {
+        AddErrorInfo(
+            StrCat({"property '", key,
+                    "' ignored, should be within scope of the manifest."}));
+        return KURL();
+      }
+
+      // Within scope implies same origin as document URL.
+      DCHECK(SecurityOrigin::AreSameOrigin(resolved, document_url_));
+
+      return resolved;
+  }
+
+  NOTREACHED();
+}
+
+template <typename Enum>
+Enum ManifestParser::ParseFirstValidEnum(const JSONObject* object,
+                                         const String& key,
+                                         Enum (*parse_enum)(const std::string&),
+                                         Enum invalid_value) {
+  const JSONValue* value = object->Get(key);
+  if (!value) {
+    return invalid_value;
+  }
+
+  String string_value;
+  if (value->AsString(&string_value)) {
+    Enum enum_value = parse_enum(string_value.Utf8());
+    if (enum_value == invalid_value) {
+      AddErrorInfo(
+          StrCat({key, " value '", string_value, "' ignored, unknown value."}));
+    }
+    return enum_value;
+  }
+
+  const JSONArray* list = JSONArray::Cast(value);
+  if (!list) {
+    AddErrorInfo(
+        StrCat({"property '", key,
+                "' ignored, type string or array of strings expected."}));
+    return invalid_value;
+  }
+
+  for (const JSONValue& entry : *list) {
+    if (!entry.AsString(&string_value)) {
+      AddErrorInfo(StrCat({key, " value '", entry.ToJSONString(),
+                           "' ignored, string expected."}));
+      continue;
+    }
+
+    Enum enum_value = parse_enum(string_value.Utf8());
+    if (enum_value != invalid_value) {
+      return enum_value;
+    }
+
+    AddErrorInfo(
+        StrCat({key, " value '", string_value, "' ignored, unknown value."}));
+  }
+
+  return invalid_value;
+}
+
+mojom::blink::Manifest::TextDirection ManifestParser::ParseDir(
+    const JSONObject* object) {
+  using TextDirection = mojom::blink::Manifest::TextDirection;
+
+  std::optional<String> dir = ParseString(object, "dir", Trim(true));
+  if (!dir.has_value()) {
+    return TextDirection::kAuto;
+  }
+
+  std::optional<TextDirection> textDirection =
+      TextDirectionFromString(dir->Utf8());
+  if (!textDirection.has_value()) {
+    AddErrorInfo("unknown 'dir' value ignored.");
+    return TextDirection::kAuto;
+  }
+
+  return *textDirection;
+}
+
+String ManifestParser::ParseName(const JSONObject* object) {
+  std::optional<String> name = ParseString(object, "name", Trim(true));
+  if (name.has_value()) {
+    name = name->RemoveCharacters(IsCrLfOrTabChar);
+    if (name->length() == 0) {
+      name = std::nullopt;
+    }
+  }
+  return name.has_value() ? *name : String();
+}
+
+String ManifestParser::ParseShortName(const JSONObject* object) {
+  std::optional<String> short_name =
+      ParseString(object, "short_name", Trim(true));
+  if (short_name.has_value()) {
+    short_name = short_name->RemoveCharacters(IsCrLfOrTabChar);
+    if (short_name->length() == 0) {
+      short_name = std::nullopt;
+    }
+  }
+  return short_name.has_value() ? *short_name : String();
+}
+
+String ManifestParser::ParseDescription(const JSONObject* object) {
+  std::optional<String> description =
+      ParseString(object, "description", Trim(true));
+  return description.has_value() ? *description : String();
+}
+
+std::pair<KURL, ManifestParser::ParseIdResultType> ManifestParser::ParseId(
+    const JSONObject* object,
+    const KURL& start_url) {
+  if (!start_url.IsValid()) {
+    return {KURL(), ParseIdResultType::kInvalidStartUrl};
+  }
+  KURL start_url_origin = KURL(SecurityOrigin::Create(start_url)->ToString());
+
+  KURL id = ParseURL(object, "id", start_url_origin,
+                     ParseURLRestrictions::kSameOriginOnly,
+                     /*ignore_empty_string=*/true);
+  ParseIdResultType parse_result;
+  if (id.IsValid()) {
+    parse_result = ParseIdResultType::kSucceed;
+    UseCounter::Count(execution_context_, WebFeature::kWebAppManifestIdField);
+  } else {
+    // If id is not specified, sets to start_url
+    parse_result = ParseIdResultType::kDefaultToStartUrl;
+    id = start_url;
+  }
+  id.RemoveFragmentIdentifier();
+  return {id, parse_result};
+}
+
+std::pair<KURL, ManifestParser::ParseStartUrlResult>
+ManifestParser::ParseStartURL(const JSONObject* object,
+                              const KURL& document_url) {
+  KURL start_url = ParseURL(object, "start_url", manifest_url_,
+                            ParseURLRestrictions::kSameOriginOnly);
+  if (start_url.IsEmpty()) {
+    return std::make_pair(document_url,
+                          ParseStartUrlResult::kDefaultDocumentUrl);
+  }
+  UseCounter::Count(execution_context_, WebFeature::kWebAppManifestStartUrl);
+  return std::make_pair(start_url, ParseStartUrlResult::kParsedFromJson);
+}
+
+KURL ManifestParser::ParseScope(const JSONObject* object,
+                                const KURL& start_url) {
+  KURL scope = ParseURL(object, "scope", manifest_url_,
+                        ParseURLRestrictions::kNoRestrictions);
+  const KURL& default_value = start_url;
+  DCHECK(default_value.IsValid());
+
+  if (scope.IsEmpty()) {
+    return KURL(default_value.BaseAsString().ToString());
+  }
+
+  if (!URLIsWithinScope(default_value, scope)) {
+    AddErrorInfo(
+        "property 'scope' ignored. Start url should be within scope "
+        "of scope URL.");
+    return KURL(default_value.BaseAsString().ToString());
+  }
+
+  scope.RemoveFragmentIdentifier();
+  scope.SetQuery(String());
+
+  DCHECK(scope.IsValid());
+  DCHECK(SecurityOrigin::AreSameOrigin(scope, document_url_));
+  UseCounter::Count(execution_context_, WebFeature::kWebAppManifestScope);
+  return scope;
+}
+
+blink::mojom::DisplayMode ManifestParser::ParseDisplay(
+    const JSONObject* object) {
+  std::optional<String> display = ParseString(object, "display", Trim(true));
+  if (!display.has_value()) {
+    return blink::mojom::DisplayMode::kUndefined;
+  }
+
+  blink::mojom::DisplayMode display_enum =
+      DisplayModeFromString(display->Utf8());
+
+  if (display_enum == mojom::blink::DisplayMode::kUndefined) {
+    AddErrorInfo("unknown 'display' value ignored.");
+    return display_enum;
+  }
+
+  // Ignore "enhanced" display modes.
+  if (!IsBasicDisplayMode(display_enum)) {
+    display_enum = mojom::blink::DisplayMode::kUndefined;
+    AddErrorInfo("inapplicable 'display' value ignored.");
+  }
+
+  return display_enum;
+}
+
+Vector<blink::Manifest::DisplayOverride> ManifestParser::ParseDisplayOverride(
+    const JSONObject* object) {
+  Vector<blink::Manifest::DisplayOverride> display_override;
+
+  JSONValue* json_value = object->Get("display_override");
+  if (!json_value) {
+    return display_override;
+  }
+
+  JSONArray* display_override_list = object->GetArray("display_override");
+  if (!display_override_list) {
+    AddErrorInfo("property 'display_override' ignored, type array expected.");
+    return display_override;
+  }
+
+  for (const JSONValue& value : *display_override_list) {
+    String display_enum_string;
+
+    // If a type error occurs, `GetString` and `AsString` do not modify
+    // `display_enum_string`, so `DisplayModeFromString` returns `kUndefined`
+    // and this entry is ignored.
+    const auto* display_override_object = JSONObject::Cast(&value);
+    if (display_override_object) {
+      display_override_object->GetString("display", &display_enum_string);
+    } else {
+      value.AsString(&display_enum_string);
+    }
+
+    display_enum_string = display_enum_string.StripWhiteSpace();
+    mojom::blink::DisplayMode display_enum =
+        DisplayModeFromString(display_enum_string.Utf8());
+
+    if (!RuntimeEnabledFeatures::WebAppTabStripEnabled(execution_context_) &&
+        display_enum == mojom::blink::DisplayMode::kTabbed) {
+      display_enum = mojom::blink::DisplayMode::kUndefined;
+    }
+
+    if (!base::FeatureList::IsEnabled(blink::features::kUnframedIwa) &&
+        display_enum == mojom::blink::DisplayMode::kUnframed) {
+      display_enum = mojom::blink::DisplayMode::kUndefined;
+    }
+
+    if (display_enum != mojom::blink::DisplayMode::kUndefined) {
+      std::vector<SafeUrlPattern> url_patterns;
+      if (display_override_object) {
+        url_patterns = ToStdVector(
+            ParseUrlPatterns(display_override_object, "url_patterns"));
+      }
+      if (display_enum == mojom::blink::DisplayMode::kUnframed) {
+        display_override.push_back(
+            blink::Manifest::DisplayOverride::CreateUnframed(
+                std::move(url_patterns)));
+      } else if (url_patterns.empty()) {
+        display_override.push_back(
+            blink::Manifest::DisplayOverride::Create(display_enum));
+      } else {
+        AddErrorInfo(StrCat({"display override '", display_enum_string,
+                             "' ignored, url_patterns are not allowed."}));
+      }
+    }
+  }
+
+  return display_override;
+}
+
+device::mojom::blink::ScreenOrientationLockType
+ManifestParser::ParseOrientation(const JSONObject* object) {
+  std::optional<String> orientation =
+      ParseString(object, "orientation", Trim(true));
+
+  if (!orientation.has_value()) {
+    return device::mojom::blink::ScreenOrientationLockType::DEFAULT;
+  }
+
+  device::mojom::blink::ScreenOrientationLockType orientation_enum =
+      WebScreenOrientationLockTypeFromString(orientation->Utf8());
+  if (orientation_enum ==
+      device::mojom::blink::ScreenOrientationLockType::DEFAULT) {
+    AddErrorInfo("unknown 'orientation' value ignored.");
+  }
+  return orientation_enum;
+}
+
+KURL ManifestParser::ParseIconSrc(const JSONObject* icon) {
+  return ParseURL(icon, "src", manifest_url_,
+                  ParseURLRestrictions::kNoRestrictions);
+}
+
+String ManifestParser::ParseIconType(const JSONObject* icon) {
+  std::optional<String> type = ParseString(icon, "type", Trim(true));
+  return type.value_or(g_empty_string);
+}
+
+Vector<gfx::Size> ManifestParser::ParseIconSizes(const JSONObject* icon) {
+  std::optional<String> sizes_str = ParseString(icon, "sizes", Trim(false));
+  if (!sizes_str.has_value()) {
+    return Vector<gfx::Size>();
+  }
+
+  std::vector<gfx::Size> web_sizes =
+      WebIconSizesParser::ParseIconSizes(WebString(*sizes_str));
+  Vector<gfx::Size> sizes;
+  for (auto& size : web_sizes) {
+    sizes.push_back(size);
+  }
+
+  if (sizes.empty()) {
+    AddErrorInfo("found icon with no valid size.");
+  }
+  return sizes;
+}
+
+std::optional<Vector<mojom::blink::ManifestImageResource::Purpose>>
+ManifestParser::ParseIconPurpose(const JSONObject* icon) {
+  std::optional<String> purpose_str = ParseString(icon, "purpose", Trim(false));
+  Vector<mojom::blink::ManifestImageResource::Purpose> purposes;
+
+  if (!purpose_str.has_value()) {
+    purposes.push_back(mojom::blink::ManifestImageResource::Purpose::ANY);
+    return purposes;
+  }
+
+  Vector<StringView> keywords =
+      StringView(purpose_str.value()).SplitSkippingEmpty(' ');
+
+  // "any" is the default if there are no other keywords.
+  if (keywords.empty()) {
+    purposes.push_back(mojom::blink::ManifestImageResource::Purpose::ANY);
+    return purposes;
+  }
+
+  bool unrecognised_purpose = false;
+  for (auto keyword : keywords) {
+    keyword = keyword.StripWhiteSpace();
+    if (keyword.empty()) {
+      continue;
+    }
+
+    if (EqualIgnoringAsciiCase(keyword, "any")) {
+      purposes.push_back(mojom::blink::ManifestImageResource::Purpose::ANY);
+    } else if (EqualIgnoringAsciiCase(keyword, "monochrome")) {
+      purposes.push_back(
+          mojom::blink::ManifestImageResource::Purpose::MONOCHROME);
+    } else if (EqualIgnoringAsciiCase(keyword, "maskable")) {
+      purposes.push_back(
+          mojom::blink::ManifestImageResource::Purpose::MASKABLE);
+    } else {
+      unrecognised_purpose = true;
+    }
+  }
+
+  // This implies there was at least one purpose given, but none recognised.
+  // Instead of defaulting to "any" (which would not be future proof),
+  // invalidate the whole icon.
+  if (purposes.empty()) {
+    AddErrorInfo("found icon with no valid purpose; ignoring it.");
+    return std::nullopt;
+  }
+
+  if (unrecognised_purpose) {
+    AddErrorInfo(
+        "found icon with one or more invalid purposes; those purposes are "
+        "ignored.");
+  }
+
+  return purposes;
+}
+
+mojom::blink::ManifestScreenshot::FormFactor
+ManifestParser::ParseScreenshotFormFactor(const JSONObject* screenshot) {
+  std::optional<String> form_factor_str =
+      ParseString(screenshot, "form_factor", Trim(false));
+
+  if (!form_factor_str.has_value()) {
+    return mojom::blink::ManifestScreenshot::FormFactor::kUnknown;
+  }
+
+  String form_factor = form_factor_str.value();
+
+  if (EqualIgnoringAsciiCase(form_factor, "wide")) {
+    return mojom::blink::ManifestScreenshot::FormFactor::kWide;
+  } else if (EqualIgnoringAsciiCase(form_factor, "narrow")) {
+    return mojom::blink::ManifestScreenshot::FormFactor::kNarrow;
+  }
+
+  AddErrorInfo(
+      "property 'form_factor' on screenshots has an invalid value, ignoring "
+      "it.");
+
+  return mojom::blink::ManifestScreenshot::FormFactor::kUnknown;
+}
+
+String ManifestParser::ParseScreenshotLabel(const JSONObject* object) {
+  std::optional<String> label = ParseString(object, "label", Trim(true));
+  return label.has_value() ? *label : String();
+}
+
+Vector<mojom::blink::ManifestImageResourcePtr> ManifestParser::ParseIcons(
+    const JSONObject* object) {
+  return ParseImageResourceArray("icons", object);
+}
+
+HashMap<icu::Locale, Vector<mojom::blink::ManifestImageResourcePtr>>
+ManifestParser::ParseIconsLocalized(const JSONObject* object) {
+  HashMap<icu::Locale, Vector<mojom::blink::ManifestImageResourcePtr>>
+      localized_icons;
+  JSONValue* json_value = object->Get("icons_localized");
+  if (!json_value) {
+    return localized_icons;
+  }
+
+  const JSONObject* icons_localized_object = JSONObject::Cast(json_value);
+  if (!icons_localized_object) {
+    AddErrorInfo("property 'icons_localized' ignored, type object expected.");
+    return localized_icons;
+  }
+
+  for (wtf_size_t i = 0; i < icons_localized_object->size(); ++i) {
+    const JSONObject::Entry& entry = icons_localized_object->at(i);
+    const String& locale_str = entry.first;
+
+    std::optional<icu::Locale> locale = ParseLocaleKey(locale_str);
+    if (!locale.has_value()) {
+      AddErrorInfo(StrCat({"property 'icons_localized' entry for '", locale_str,
+                           "' ignored, invalid locale key."}));
+      continue;
+    }
+
+    Vector<mojom::blink::ManifestImageResourcePtr> icons =
+        ParseImageResourceArray(locale_str, icons_localized_object);
+
+    if (!icons.empty()) {
+      localized_icons.Set(*locale, std::move(icons));
+    }
+  }
+
+  if (!localized_icons.empty()) {
+    UseCounter::CountWebDXFeature(execution_context_,
+                                  WebDXFeature::kManifestLocalization);
+  }
+  return localized_icons;
+}
+
+Vector<mojom::blink::ManifestScreenshotPtr> ManifestParser::ParseScreenshots(
+    const JSONObject* object) {
+  Vector<mojom::blink::ManifestScreenshotPtr> screenshots;
+  JSONValue* json_value = object->Get("screenshots");
+  if (!json_value) {
+    return screenshots;
+  }
+
+  JSONArray* screenshots_list = object->GetArray("screenshots");
+  if (!screenshots_list) {
+    AddErrorInfo("property 'screenshots' ignored, type array expected.");
+    return screenshots;
+  }
+
+  for (const JSONValue& value : *screenshots_list) {
+    auto* screenshot_object = JSONObject::Cast(&value);
+    if (!screenshot_object) {
+      continue;
+    }
+
+    auto screenshot = mojom::blink::ManifestScreenshot::New();
+    auto image = ParseImageResource(screenshot_object);
+    if (!image.has_value()) {
+      continue;
+    }
+
+    screenshot->image = std::move(*image);
+    screenshot->form_factor = ParseScreenshotFormFactor(screenshot_object);
+    screenshot->label = ParseScreenshotLabel(screenshot_object);
+
+    screenshots.push_back(std::move(screenshot));
+  }
+
+  return screenshots;
+}
+
+Vector<mojom::blink::ManifestImageResourcePtr>
+ManifestParser::ParseImageResourceArray(const String& key,
+                                        const JSONObject* object) {
+  Vector<mojom::blink::ManifestImageResourcePtr> icons;
+  JSONValue* json_value = object->Get(key);
+  if (!json_value) {
+    return icons;
+  }
+
+  JSONArray* icons_list = object->GetArray(key);
+  if (!icons_list) {
+    AddErrorInfo(
+        StrCat({"property '", key, "' ignored, type array expected."}));
+    return icons;
+  }
+
+  for (const JSONValue& value : *icons_list) {
+    auto icon = ParseImageResource(&value);
+    if (icon.has_value()) {
+      icons.push_back(std::move(*icon));
+    }
+  }
+
+  return icons;
+}
+
+std::optional<mojom::blink::ManifestImageResourcePtr>
+ManifestParser::ParseImageResource(const JSONValue* object) {
+  const JSONObject* icon_object = JSONObject::Cast(object);
+  if (!icon_object) {
+    return std::nullopt;
+  }
+
+  auto icon = mojom::blink::ManifestImageResource::New();
+  icon->src = ParseIconSrc(icon_object);
+  // An icon MUST have a valid src. If it does not, it MUST be ignored.
+  if (!icon->src.IsValid()) {
+    return std::nullopt;
+  }
+
+  if (!icon->src.ProtocolIsInHttpFamily() && !icon->src.ProtocolIsData() &&
+      icon->src.Protocol() != document_url_.Protocol()) {
+    AddErrorInfo("property 'src' of 'icon' ignored, invalid scheme.");
+    return std::nullopt;
+  }
+
+  icon->type = ParseIconType(icon_object);
+  icon->sizes = ParseIconSizes(icon_object);
+  auto purpose = ParseIconPurpose(icon_object);
+  if (!purpose) {
+    return std::nullopt;
+  }
+
+  icon->purpose = std::move(*purpose);
+  return icon;
+}
+
+String ManifestParser::ParseShortcutName(const JSONObject* shortcut) {
+  std::optional<String> name =
+      ParseStringForMember(shortcut, "shortcut", "name", true, Trim(true));
+  return name.has_value() ? *name : String();
+}
+
+String ManifestParser::ParseShortcutShortName(const JSONObject* shortcut) {
+  std::optional<String> short_name = ParseStringForMember(
+      shortcut, "shortcut", "short_name", false, Trim(true));
+  return short_name.has_value() ? *short_name : String();
+}
+
+String ManifestParser::ParseShortcutDescription(const JSONObject* shortcut) {
+  std::optional<String> description = ParseStringForMember(
+      shortcut, "shortcut", "description", false, Trim(true));
+  return description.has_value() ? *description : String();
+}
+
+KURL ManifestParser::ParseShortcutUrl(const JSONObject* shortcut) {
+  KURL shortcut_url = ParseURL(shortcut, "url", manifest_url_,
+                               ParseURLRestrictions::kWithinScope);
+  if (shortcut_url.IsNull()) {
+    AddErrorInfo("property 'url' of 'shortcut' not present.");
+  }
+
+  return shortcut_url;
+}
+
+Vector<mojom::blink::ManifestShortcutItemPtr> ManifestParser::ParseShortcuts(
+    const JSONObject* object) {
+  Vector<mojom::blink::ManifestShortcutItemPtr> shortcuts;
+  JSONValue* json_value = object->Get("shortcuts");
+  if (!json_value) {
+    return shortcuts;
+  }
+
+  JSONArray* shortcuts_list = object->GetArray("shortcuts");
+  if (!shortcuts_list) {
+    AddErrorInfo("property 'shortcuts' ignored, type array expected.");
+    return shortcuts;
+  }
+
+  for (wtf_size_t i = 0; i < shortcuts_list->size(); ++i) {
+    if (i == kMaxShortcutsSize) {
+      AddErrorInfo(StrCat({"property 'shortcuts' contains more than ",
+                           String::Number(kMaxShortcutsSize),
+                           " valid elements, only the first ",
+                           String::Number(kMaxShortcutsSize), " are parsed."}));
+      break;
+    }
+
+    JSONObject* shortcut_object = JSONObject::Cast(shortcuts_list->at(i));
+    if (!shortcut_object) {
+      continue;
+    }
+
+    auto shortcut = mojom::blink::ManifestShortcutItem::New();
+    shortcut->url = ParseShortcutUrl(shortcut_object);
+    // A shortcut MUST have a valid url. If it does not, it MUST be ignored.
+    if (!shortcut->url.IsValid()) {
+      continue;
+    }
+
+    // A shortcut MUST have a valid name. If it does not, it MUST be ignored.
+    shortcut->name = ParseShortcutName(shortcut_object);
+    if (shortcut->name == String()) {
+      continue;
+    }
+
+    shortcut->short_name = ParseShortcutShortName(shortcut_object);
+    shortcut->description = ParseShortcutDescription(shortcut_object);
+
+    // Parse localized text fields
+    auto name_localized = ParseNameLocalized(shortcut_object);
+    if (!name_localized.empty()) {
+      shortcut->name_localized = std::move(name_localized);
+    }
+    auto short_name_localized = ParseShortNameLocalized(shortcut_object);
+    if (!short_name_localized.empty()) {
+      shortcut->short_name_localized = std::move(short_name_localized);
+    }
+    auto description_localized = ParseDescriptionLocalized(shortcut_object);
+    if (!description_localized.empty()) {
+      shortcut->description_localized = std::move(description_localized);
+    }
+
+    auto icons = ParseIcons(shortcut_object);
+    if (!icons.empty()) {
+      shortcut->icons = std::move(icons);
+    }
+
+    auto icons_localized = ParseIconsLocalized(shortcut_object);
+    if (!icons_localized.empty()) {
+      shortcut->icons_localized = std::move(icons_localized);
+    }
+
+    shortcuts.push_back(std::move(shortcut));
+  }
+
+  return shortcuts;
+}
+
+String ManifestParser::ParseFileFilterName(const JSONObject* file) {
+  if (!file->Get("name")) {
+    AddErrorInfo("property 'name' missing.");
+    return g_empty_string;
+  }
+
+  String value;
+  if (!file->GetString("name", &value)) {
+    AddErrorInfo("property 'name' ignored, type string expected.");
+    return g_empty_string;
+  }
+  return value;
+}
+
+Vector<String> ManifestParser::ParseFileFilterAccept(const JSONObject* object) {
+  Vector<String> accept_types;
+  if (!object->Get("accept")) {
+    return accept_types;
+  }
+
+  String accept_str;
+  if (object->GetString("accept", &accept_str)) {
+    accept_types.push_back(accept_str);
+    return accept_types;
+  }
+
+  JSONArray* accept_list = object->GetArray("accept");
+  if (!accept_list) {
+    // 'accept' property is the wrong type. Returning an empty vector here
+    // causes the 'files' entry to be discarded.
+    AddErrorInfo("property 'accept' ignored, type array or string expected.");
+    return accept_types;
+  }
+
+  for (const JSONValue& accept_value : *accept_list) {
+    String accept_string;
+    if (!accept_value.AsString(&accept_string)) {
+      // A particular 'accept' entry is invalid - just drop that one entry.
+      AddErrorInfo("'accept' entry ignored, expected to be of type string.");
+      continue;
+    }
+    accept_types.push_back(accept_string);
+  }
+
+  return accept_types;
+}
+
+Vector<mojom::blink::ManifestFileFilterPtr> ManifestParser::ParseTargetFiles(
+    const String& key,
+    const JSONObject* from) {
+  Vector<mojom::blink::ManifestFileFilterPtr> files;
+  if (!from->Get(key)) {
+    return files;
+  }
+
+  JSONArray* file_list = from->GetArray(key);
+  if (!file_list) {
+    // https://wicg.github.io/web-share-target/level-2/#share_target-member
+    // step 5 indicates that the 'files' attribute is allowed to be a single
+    // (non-array) FileFilter.
+    const JSONObject* file_object = from->GetJSONObject(key);
+    if (!file_object) {
+      AddErrorInfo(
+          "property 'files' ignored, type array or FileFilter expected.");
+      return files;
+    }
+
+    ParseFileFilter(file_object, &files);
+    return files;
+  }
+  for (const JSONValue& value : *file_list) {
+    auto* file_object = JSONObject::Cast(&value);
+    if (!file_object) {
+      AddErrorInfo("files must be a sequence of non-empty file entries.");
+      continue;
+    }
+
+    ParseFileFilter(file_object, &files);
+  }
+
+  return files;
+}
+
+void ManifestParser::ParseFileFilter(
+    const JSONObject* file_object,
+    Vector<mojom::blink::ManifestFileFilterPtr>* files) {
+  auto file = mojom::blink::ManifestFileFilter::New();
+  file->name = ParseFileFilterName(file_object);
+  if (file->name.empty()) {
+    // https://wicg.github.io/web-share-target/level-2/#share_target-member
+    // step 7.1 requires that we invalidate this FileFilter if 'name' is an
+    // empty string. We also invalidate if 'name' is undefined or not a
+    // string.
+    return;
+  }
+
+  file->accept = ParseFileFilterAccept(file_object);
+  if (file->accept.empty()) {
+    return;
+  }
+
+  files->push_back(std::move(file));
+}
+
+std::optional<mojom::blink::ManifestShareTarget::Method>
+ManifestParser::ParseShareTargetMethod(const JSONObject* share_target_object) {
+  if (!share_target_object->Get("method")) {
+    AddErrorInfo(
+        "Method should be set to either GET or POST. It currently defaults to "
+        "GET.");
+    return mojom::blink::ManifestShareTarget::Method::kGet;
+  }
+
+  String value;
+  if (!share_target_object->GetString("method", &value)) {
+    return std::nullopt;
+  }
+
+  String method = value.ToAsciiUpper();
+  if (method == "GET") {
+    return mojom::blink::ManifestShareTarget::Method::kGet;
+  }
+  if (method == "POST") {
+    return mojom::blink::ManifestShareTarget::Method::kPost;
+  }
+
+  return std::nullopt;
+}
+
+std::optional<mojom::blink::ManifestShareTarget::Enctype>
+ManifestParser::ParseShareTargetEnctype(const JSONObject* share_target_object) {
+  if (!share_target_object->Get("enctype")) {
+    AddErrorInfo(
+        "Enctype should be set to either application/x-www-form-urlencoded or "
+        "multipart/form-data. It currently defaults to "
+        "application/x-www-form-urlencoded");
+    return mojom::blink::ManifestShareTarget::Enctype::kFormUrlEncoded;
+  }
+
+  String value;
+  if (!share_target_object->GetString("enctype", &value)) {
+    return std::nullopt;
+  }
+
+  String enctype = value.ToAsciiLower();
+  if (enctype == "application/x-www-form-urlencoded") {
+    return mojom::blink::ManifestShareTarget::Enctype::kFormUrlEncoded;
+  }
+
+  if (enctype == "multipart/form-data") {
+    return mojom::blink::ManifestShareTarget::Enctype::kMultipartFormData;
+  }
+
+  return std::nullopt;
+}
+
+mojom::blink::ManifestShareTargetParamsPtr
+ManifestParser::ParseShareTargetParams(const JSONObject* share_target_params) {
+  auto params = mojom::blink::ManifestShareTargetParams::New();
+
+  // NOTE: These are key names for query parameters, which are filled with share
+  // data. As such, |params.url| is just a string.
+  std::optional<String> text =
+      ParseString(share_target_params, "text", Trim(true));
+  params->text = text.has_value() ? *text : String();
+  std::optional<String> title =
+      ParseString(share_target_params, "title", Trim(true));
+  params->title = title.has_value() ? *title : String();
+  std::optional<String> url =
+      ParseString(share_target_params, "url", Trim(true));
+  params->url = url.has_value() ? *url : String();
+
+  auto files = ParseTargetFiles("files", share_target_params);
+  if (!files.empty()) {
+    params->files = std::move(files);
+  }
+  return params;
+}
+
+std::optional<mojom::blink::ManifestShareTargetPtr>
+ManifestParser::ParseShareTarget(const JSONObject* object) {
+  const JSONObject* share_target_object = object->GetJSONObject("share_target");
+  if (!share_target_object) {
+    return std::nullopt;
+  }
+
+  auto share_target = mojom::blink::ManifestShareTarget::New();
+  share_target->action = ParseURL(share_target_object, "action", manifest_url_,
+                                  ParseURLRestrictions::kWithinScope);
+  if (!share_target->action.IsValid()) {
+    AddErrorInfo(
+        "property 'share_target' ignored. Property 'action' is "
+        "invalid.");
+    return std::nullopt;
+  }
+
+  auto method = ParseShareTargetMethod(share_target_object);
+  auto enctype = ParseShareTargetEnctype(share_target_object);
+
+  const JSONObject* share_target_params_object =
+      share_target_object->GetJSONObject("params");
+  if (!share_target_params_object) {
+    AddErrorInfo(
+        "property 'share_target' ignored. Property 'params' type "
+        "dictionary expected.");
+    return std::nullopt;
+  }
+
+  share_target->params = ParseShareTargetParams(share_target_params_object);
+  if (!method.has_value()) {
+    AddErrorInfo(
+        "invalid method. Allowed methods are:"
+        "GET and POST.");
+    return std::nullopt;
+  }
+  share_target->method = method.value();
+
+  if (!enctype.has_value()) {
+    AddErrorInfo(
+        "invalid enctype. Allowed enctypes are:"
+        "application/x-www-form-urlencoded and multipart/form-data.");
+    return std::nullopt;
+  }
+  share_target->enctype = enctype.value();
+
+  if (share_target->method == mojom::blink::ManifestShareTarget::Method::kGet) {
+    if (share_target->enctype ==
+        mojom::blink::ManifestShareTarget::Enctype::kMultipartFormData) {
+      AddErrorInfo(
+          "invalid enctype for GET method. Only "
+          "application/x-www-form-urlencoded is allowed.");
+      return std::nullopt;
+    }
+  }
+
+  if (share_target->params->files.has_value()) {
+    if (share_target->method !=
+            mojom::blink::ManifestShareTarget::Method::kPost ||
+        share_target->enctype !=
+            mojom::blink::ManifestShareTarget::Enctype::kMultipartFormData) {
+      AddErrorInfo("files are only supported with multipart/form-data POST.");
+      return std::nullopt;
+    }
+  }
+
+  if (share_target->params->files.has_value() &&
+      !VerifyFiles(*share_target->params->files)) {
+    AddErrorInfo("invalid mime type inside files.");
+    return std::nullopt;
+  }
+
+  return share_target;
+}
+
+Vector<mojom::blink::ManifestFileHandlerPtr> ManifestParser::ParseFileHandlers(
+    const JSONObject* object) {
+  if (!object->Get("file_handlers")) {
+    return {};
+  }
+
+  JSONArray* entry_array = object->GetArray("file_handlers");
+  if (!entry_array) {
+    AddErrorInfo("property 'file_handlers' ignored, type array expected.");
+    return {};
+  }
+
+  Vector<mojom::blink::ManifestFileHandlerPtr> result;
+  for (const JSONValue& value : *entry_array) {
+    auto* json_entry = JSONObject::Cast(&value);
+    if (!json_entry) {
+      AddErrorInfo("FileHandler ignored, type object expected.");
+      continue;
+    }
+
+    std::optional<mojom::blink::ManifestFileHandlerPtr> entry =
+        ParseFileHandler(json_entry);
+    if (!entry) {
+      continue;
+    }
+
+    result.push_back(std::move(entry.value()));
+  }
+
+  return result;
+}
+
+std::optional<mojom::blink::ManifestFileHandlerPtr>
+ManifestParser::ParseFileHandler(const JSONObject* file_handler) {
+  mojom::blink::ManifestFileHandlerPtr entry =
+      mojom::blink::ManifestFileHandler::New();
+  entry->action = ParseURL(file_handler, "action", manifest_url_,
+                           ParseURLRestrictions::kWithinScope);
+  if (!entry->action.IsValid()) {
+    AddErrorInfo("FileHandler ignored. Property 'action' is invalid.");
+    return std::nullopt;
+  }
+
+  entry->name = ParseString(file_handler, "name", Trim(true)).value_or("");
+  entry->accept = ParseFileHandlerAccept(file_handler->GetJSONObject("accept"));
+  if (entry->accept.empty()) {
+    AddErrorInfo("FileHandler ignored. Property 'accept' is invalid.");
+    return std::nullopt;
+  }
+
+  entry->launch_type =
+      ParseFirstValidEnum<
+          std::optional<mojom::blink::ManifestFileHandler::LaunchType>>(
+          file_handler, "launch_type", &FileHandlerLaunchTypeFromString,
+          /*invalid_value=*/std::nullopt)
+          .value_or(
+              mojom::blink::ManifestFileHandler::LaunchType::kSingleClient);
+
+  return entry;
+}
+
+HashMap<String, Vector<String>> ManifestParser::ParseFileHandlerAccept(
+    const JSONObject* accept) {
+  HashMap<String, Vector<String>> result;
+  if (!accept) {
+    return result;
+  }
+
+  const int kExtensionLimit = g_file_handler_extension_limit_for_testing > 0
+                                  ? g_file_handler_extension_limit_for_testing
+                                  : kFileHandlerExtensionLimit;
+  if (total_file_handler_extension_count_ > kExtensionLimit) {
+    return result;
+  }
+
+  for (wtf_size_t i = 0; i < accept->size(); ++i) {
+    JSONObject::Entry entry = accept->at(i);
+
+    // Validate the MIME type.
+    String& mimetype = entry.first;
+    std::string top_level_mime_type;
+    if (!net::ParseMimeTypeWithoutParameter(mimetype.Utf8(),
+                                            &top_level_mime_type, nullptr) ||
+        !net::IsValidTopLevelMimeType(top_level_mime_type)) {
+      AddErrorInfo(StrCat({"invalid MIME type: ", mimetype}));
+      continue;
+    }
+
+    Vector<String> extensions;
+    String extension;
+    JSONArray* extensions_array = JSONArray::Cast(entry.second);
+    if (extensions_array) {
+      for (const JSONValue& value : *extensions_array) {
+        if (!value.AsString(&extension)) {
+          AddErrorInfo(
+              "property 'accept' file extension ignored, type string "
+              "expected.");
+          continue;
+        }
+
+        if (!ParseFileHandlerAcceptExtension(&value, &extension)) {
+          // Errors are added by ParseFileHandlerAcceptExtension.
+          continue;
+        }
+
+        extensions.push_back(extension);
+      }
+    } else if (ParseFileHandlerAcceptExtension(entry.second, &extension)) {
+      extensions.push_back(extension);
+    } else {
+      // Parsing errors will already have been added.
+      continue;
+    }
+
+    total_file_handler_extension_count_ += extensions.size();
+    if (total_file_handler_extension_count_ > kExtensionLimit) {
+      const wtf_size_t overflow_count =
+          total_file_handler_extension_count_ - kExtensionLimit;
+      const wtf_size_t overflow_index = extensions.size() - overflow_count;
+      AddErrorInfo(
+          StrCat({"property 'accept': too many total file extensions, ignoring "
+                  "extensions starting from \"",
+                  extensions[overflow_index], "\""}));
+      extensions.EraseAt(overflow_index, overflow_count);
+    }
+
+    if (!extensions.empty()) {
+      result.Set(mimetype, std::move(extensions));
+    }
+
+    if (total_file_handler_extension_count_ > kExtensionLimit) {
+      break;
+    }
+  }
+
+  return result;
+}
+
+bool ManifestParser::ParseFileHandlerAcceptExtension(const JSONValue* extension,
+                                                     String* output) {
+  if (!extension->AsString(output)) {
+    AddErrorInfo(
+        "property 'accept' type ignored. File extensions must be type array or "
+        "type string.");
+    return false;
+  }
+
+  if (!output->starts_with('.')) {
+    AddErrorInfo(
+        "property 'accept' file extension ignored, must start with a '.'.");
+    return false;
+  }
+
+  // TODO(crbug.com/530303003): This check for control and format characters is
+  // duplicated across manifest parsing, IPC validation, and PWA display.
+  // Consider consolidating it into a shared helper in
+  // //base/strings/string_util.h.
+  for (UChar32 c : *output) {
+    if (base::IsUnicodeControl(c) || u_charType(c) == U_FORMAT_CHAR) {
+      AddErrorInfo(
+          "property 'accept' file extension ignored, contains invalid "
+          "control or format characters.");
+      return false;
+    }
+  }
+
+  return true;
+}
+
+Vector<mojom::blink::ManifestProtocolHandlerPtr>
+ManifestParser::ParseProtocolHandlers(const JSONObject* from) {
+  Vector<mojom::blink::ManifestProtocolHandlerPtr> protocols;
+
+  if (!from->Get("protocol_handlers")) {
+    return protocols;
+  }
+
+  JSONArray* protocol_list = from->GetArray("protocol_handlers");
+  if (!protocol_list) {
+    AddErrorInfo("property 'protocol_handlers' ignored, type array expected.");
+    return protocols;
+  }
+
+  for (const JSONValue& value : *protocol_list) {
+    auto* protocol_object = JSONObject::Cast(&value);
+    if (!protocol_object) {
+      AddErrorInfo("protocol_handlers entry ignored, type object expected.");
+      continue;
+    }
+
+    std::optional<mojom::blink::ManifestProtocolHandlerPtr> protocol =
+        ParseProtocolHandler(protocol_object);
+    if (!protocol) {
+      continue;
+    }
+
+    protocols.push_back(std::move(protocol.value()));
+  }
+
+  return protocols;
+}
+
+std::optional<mojom::blink::ManifestProtocolHandlerPtr>
+ManifestParser::ParseProtocolHandler(const JSONObject* object) {
+  if (!object->Get("protocol")) {
+    AddErrorInfo(
+        "protocol_handlers entry ignored, required property 'protocol' is "
+        "missing.");
+    return std::nullopt;
+  }
+
+  auto protocol_handler = mojom::blink::ManifestProtocolHandler::New();
+  std::optional<String> protocol = ParseString(object, "protocol", Trim(true));
+  String error_message;
+  bool is_valid_protocol = protocol.has_value();
+
+  ProtocolHandlerSecurityLevel security_level =
+      execution_context_->IsIsolatedContext()
+          ? ProtocolHandlerSecurityLevel::kIsolatedAppFeatures
+          : ProtocolHandlerSecurityLevel::kStrict;
+  if (is_valid_protocol &&
+      !VerifyCustomHandlerScheme(protocol.value(), error_message,
+                                 security_level)) {
+    AddErrorInfo(error_message);
+    is_valid_protocol = false;
+  }
+
+  if (!is_valid_protocol) {
+    AddErrorInfo(
+        "protocol_handlers entry ignored, required property 'protocol' is "
+        "invalid.");
+    return std::nullopt;
+  }
+  protocol_handler->protocol = protocol.value();
+
+  if (!object->Get("url")) {
+    AddErrorInfo(
+        "protocol_handlers entry ignored, required property 'url' is missing.");
+    return std::nullopt;
+  }
+  protocol_handler->url = ParseURL(object, "url", manifest_url_,
+                                   ParseURLRestrictions::kWithinScope);
+  bool is_valid_url = protocol_handler->url.IsValid();
+  if (is_valid_url) {
+    const char kToken[] = "%s";
+    String user_url = protocol_handler->url.GetString();
+    String tokenless_url = protocol_handler->url.GetString();
+    wtf_size_t token_position = user_url.find(kToken);
+    if (token_position != String::npos) {
+      tokenless_url.erase(token_position, std::size(kToken) - 1);
+    }
+    KURL full_url(manifest_url_, tokenless_url);
+
+    if (!VerifyCustomHandlerURLSyntax(full_url, manifest_url_, user_url,
+                                      security_level, error_message)) {
+      AddErrorInfo(error_message);
+      is_valid_url = false;
+    }
+  }
+
+  if (!is_valid_url) {
+    AddErrorInfo(
+        "protocol_handlers entry ignored, required property 'url' is invalid.");
+    return std::nullopt;
+  }
+
+  return std::move(protocol_handler);
+}
+
+Vector<mojom::blink::ManifestScopeExtensionPtr>
+ManifestParser::ParseScopeExtensions(const JSONObject* from) {
+  Vector<mojom::blink::ManifestScopeExtensionPtr> scope_extensions;
+  if (!from->Get("scope_extensions")) {
+    return scope_extensions;
+  }
+
+  JSONArray* extensions_list = from->GetArray("scope_extensions");
+  if (!extensions_list) {
+    AddErrorInfo("property 'scope_extensions' ignored, type array expected.");
+    return scope_extensions;
+  }
+
+  for (wtf_size_t i = 0; i < extensions_list->size(); ++i) {
+    if (i == kMaxScopeExtensionsSize) {
+      AddErrorInfo(
+          StrCat({"property 'scope_extensions' contains more than ",
+                  String::Number(kMaxScopeExtensionsSize),
+                  " valid elements, only the first ",
+                  String::Number(kMaxScopeExtensionsSize), " are parsed."}));
+      break;
+    }
+
+    const JSONValue* extensions_entry = extensions_list->at(i);
+    if (!extensions_entry) {
+      AddErrorInfo("scope_extensions entry ignored, entry is null.");
+      continue;
+    }
+
+    JSONValue::ValueType entry_type = extensions_entry->GetType();
+    if (entry_type != JSONValue::kTypeObject) {
+      AddErrorInfo("scope_extensions entry ignored, type object expected.");
+      continue;
+    }
+
+    std::optional<mojom::blink::ManifestScopeExtensionPtr> scope_extension =
+        std::nullopt;
+    const JSONObject* extension_object = JSONObject::Cast(extensions_entry);
+    if (!extension_object) {
+      AddErrorInfo("scope_extensions entry ignored, type object expected.");
+      continue;
+    }
+    scope_extension = ParseScopeExtension(extension_object);
+
+    if (!scope_extension) {
+      continue;
+    }
+    scope_extensions.push_back(std::move(scope_extension.value()));
+  }
+  return scope_extensions;
+}
+
+std::optional<mojom::blink::ManifestScopeExtensionPtr>
+ManifestParser::ParseScopeExtension(const JSONObject* object) {
+  if (!object->Get(kScopeExtensionsTypeKey) ||
+      !object->Get(kScopeExtensionsOriginKey)) {
+    AddErrorInfo(kScopeExtensionsMissingKeysErrorMessage);
+    return std::nullopt;
+  }
+  const std::optional<String> scope_extension_type =
+      ParseString(object, kScopeExtensionsTypeKey, Trim(true));
+  if (!scope_extension_type.has_value()) {
+    AddErrorInfo("Scope extension 'type' invalid.");
+    return std::nullopt;
+  }
+  if (scope_extension_type.value() ==
+      ScopeExtensionTypeMap[static_cast<int>(ScopeExtensionType::kOrigin)]) {
+    const std::optional<String> origin_string =
+        ParseString(object, kScopeExtensionsOriginKey, Trim(true));
+    if (!origin_string.has_value()) {
+      AddErrorInfo("Scope extension 'origin' invalid.");
+      return std::nullopt;
+    }
+    return ParseScopeExtensionOrigin(*origin_string);
+  } else {
+    AddErrorInfo("Scope extension 'type' invalid.");
+    return std::nullopt;
+  }
+}
+
+std::optional<mojom::blink::ManifestScopeExtensionPtr>
+ManifestParser::ParseScopeExtensionOrigin(const String& origin_string) {
+  // TODO(crbug.com/1250011): pre-process for input without scheme.
+  // (eg. example.com instead of https://example.com) because we can always
+  // assume the use of https for scope extensions. Remove this TODO if we decide
+  // to require fully specified https scheme in this origin input.
+
+  if (origin_string.length() > kMaxOriginLength) {
+    AddErrorInfo(
+        StrCat({"scope_extensions entry ignored, 'origin' exceeds maximum "
+                "character length of ",
+                String::Number(kMaxOriginLength), " ."}));
+    return std::nullopt;
+  }
+
+  auto origin = SecurityOrigin::CreateFromString(origin_string);
+  if (!origin || origin->IsOpaque()) {
+    AddErrorInfo(
+        "scope_extensions entry ignored, required property 'origin' is "
+        "invalid.");
+    return std::nullopt;
+  }
+  if (origin->Protocol() != url::kHttpsScheme) {
+    AddErrorInfo(
+        "scope_extensions entry ignored, required property 'origin' must use "
+        "the https scheme.");
+    return std::nullopt;
+  }
+
+  String host = origin->Host();
+  auto scope_extension = mojom::blink::ManifestScopeExtension::New();
+  // Check for wildcard *.
+  if (base::FeatureList::IsEnabled(
+          blink::features::kWebAppEnableScopeExtensionsBySite) &&
+      host.starts_with(kOriginWildcardPrefix)) {
+    scope_extension->has_origin_wildcard = true;
+    // Trim the wildcard prefix to get the effective host. Minus one to exclude
+    // the length of the null terminator.
+    host = host.substr(sizeof(kOriginWildcardPrefix) - 1);
+  } else {
+    scope_extension->has_origin_wildcard = false;
+  }
+
+  bool host_valid = IsHostValidForScopeExtension(host);
+  if (!host_valid) {
+    AddErrorInfo(
+        "scope_extensions entry ignored, domain of required property 'origin' "
+        "is invalid.");
+    return std::nullopt;
+  }
+
+  if (scope_extension->has_origin_wildcard) {
+    origin = SecurityOrigin::CreateFromValidTuple(origin->Protocol(), host,
+                                                  origin->Port());
+    if (!origin) {
+      AddErrorInfo(
+          "scope_extensions entry ignored, required property 'origin' is "
+          "invalid.");
+      return std::nullopt;
+    }
+  }
+
+  scope_extension->origin = origin;
+  return std::move(scope_extension);
+}
+
+KURL ManifestParser::ParseLockScreenStartUrl(const JSONObject* lock_screen) {
+  if (!lock_screen->Get("start_url")) {
+    return KURL();
+  }
+  KURL start_url = ParseURL(lock_screen, "start_url", manifest_url_,
+                            ParseURLRestrictions::kWithinScope);
+  if (!start_url.IsValid()) {
+    // Error already reported by ParseURL.
+    return KURL();
+  }
+
+  return start_url;
+}
+
+mojom::blink::ManifestLockScreenPtr ManifestParser::ParseLockScreen(
+    const JSONObject* manifest) {
+  if (!manifest->Get("lock_screen")) {
+    return nullptr;
+  }
+
+  const JSONObject* lock_screen_object = manifest->GetJSONObject("lock_screen");
+  if (!lock_screen_object) {
+    AddErrorInfo("property 'lock_screen' ignored, type object expected.");
+    return nullptr;
+  }
+  auto lock_screen = mojom::blink::ManifestLockScreen::New();
+  lock_screen->start_url = ParseLockScreenStartUrl(lock_screen_object);
+
+  return lock_screen;
+}
+
+KURL ManifestParser::ParseNoteTakingNewNoteUrl(const JSONObject* note_taking) {
+  if (!note_taking->Get("new_note_url")) {
+    return KURL();
+  }
+  KURL new_note_url = ParseURL(note_taking, "new_note_url", manifest_url_,
+                               ParseURLRestrictions::kWithinScope);
+  if (!new_note_url.IsValid()) {
+    // Error already reported by ParseURL.
+    return KURL();
+  }
+
+  return new_note_url;
+}
+
+mojom::blink::ManifestNoteTakingPtr ManifestParser::ParseNoteTaking(
+    const JSONObject* manifest) {
+  if (!manifest->Get("note_taking")) {
+    return nullptr;
+  }
+
+  const JSONObject* note_taking_object = manifest->GetJSONObject("note_taking");
+  if (!note_taking_object) {
+    AddErrorInfo("property 'note_taking' ignored, type object expected.");
+    return nullptr;
+  }
+  auto note_taking = mojom::blink::ManifestNoteTaking::New();
+  note_taking->new_note_url = ParseNoteTakingNewNoteUrl(note_taking_object);
+
+  return note_taking;
+}
+
+String ManifestParser::ParseRelatedApplicationPlatform(
+    const JSONObject* application) {
+  std::optional<String> platform =
+      ParseString(application, "platform", Trim(true));
+  return platform.has_value() ? *platform : String();
+}
+
+std::optional<KURL> ManifestParser::ParseRelatedApplicationURL(
+    const JSONObject* application) {
+  return ParseURL(application, "url", manifest_url_,
+                  ParseURLRestrictions::kNoRestrictions);
+}
+
+String ManifestParser::ParseRelatedApplicationId(
+    const JSONObject* application) {
+  std::optional<String> id = ParseString(application, "id", Trim(true));
+  return id.has_value() ? *id : String();
+}
+
+Vector<mojom::blink::ManifestRelatedApplicationPtr>
+ManifestParser::ParseRelatedApplications(const JSONObject* object) {
+  Vector<mojom::blink::ManifestRelatedApplicationPtr> applications;
+
+  JSONValue* value = object->Get("related_applications");
+  if (!value) {
+    return applications;
+  }
+
+  JSONArray* applications_list = object->GetArray("related_applications");
+  if (!applications_list) {
+    AddErrorInfo(
+        "property 'related_applications' ignored,"
+        " type array expected.");
+    return applications;
+  }
+
+  for (const JSONValue& entry : *applications_list) {
+    auto* application_object = JSONObject::Cast(&entry);
+    if (!application_object) {
+      continue;
+    }
+
+    auto application = mojom::blink::ManifestRelatedApplication::New();
+    application->platform = ParseRelatedApplicationPlatform(application_object);
+    // "If platform is undefined, move onto the next item if any are left."
+    if (application->platform.empty()) {
+      AddErrorInfo(
+          "'platform' is a required field, related application"
+          " ignored.");
+      continue;
+    }
+
+    application->id = ParseRelatedApplicationId(application_object);
+    application->url = ParseRelatedApplicationURL(application_object);
+    // "If both id and url are undefined, move onto the next item if any are
+    // left."
+    if ((!application->url.has_value() || !application->url->IsValid()) &&
+        application->id.empty()) {
+      AddErrorInfo(
+          "one of 'url' or 'id' is required, related application"
+          " ignored.");
+      continue;
+    }
+
+    applications.push_back(std::move(application));
+  }
+
+  return applications;
+}
+
+bool ManifestParser::ParsePreferRelatedApplications(const JSONObject* object) {
+  return ParseBoolean(object, "prefer_related_applications", false);
+}
+
+Vector<mojom::blink::ManifestMigrateFromPtr> ManifestParser::ParseMigrateFrom(
+    const JSONObject* object) {
+  Vector<mojom::blink::ManifestMigrateFromPtr> migrate_from_list;
+
+  JSONValue* value = object->Get("migrate_from");
+  if (!value) {
+    return migrate_from_list;
+  }
+
+  if (!manifest_->has_custom_id) {
+    AddErrorInfo(
+        "property 'migrate_from' ignored, manifest must specify an 'id' "
+        "property in order to receive a migration.");
+    return migrate_from_list;
+  }
+
+  JSONArray* migrate_from_array = object->GetArray("migrate_from");
+  if (!migrate_from_array) {
+    AddErrorInfo(
+        "property 'migrate_from' ignored,"
+        " type array expected.");
+    return migrate_from_list;
+  }
+
+  for (const JSONValue& entry : *migrate_from_array) {
+    // migrate_from can be a string (the manifest ID) or an object.
+    if (entry.GetType() == JSONValue::kTypeString) {
+      String manifest_id_str;
+      entry.AsString(&manifest_id_str);
+      KURL manifest_id = KURL(manifest_url_, manifest_id_str);
+      if (!manifest_id.IsValid()) {
+        AddErrorInfo("migrate_from entry ignored, string is not a valid URL.");
+        continue;
+      }
+      // Check same site for string type entry.
+      if (!SecurityOrigin::Create(manifest_id)->IsSameSiteWith(
+              SecurityOrigin::Create(document_url_).get())) {
+        AddErrorInfo(
+            "migrate_from entry ignored, id should be same site as document.");
+        continue;
+      }
+      auto migrate_from_entry = mojom::blink::ManifestMigrateFrom::New();
+      migrate_from_entry->id = manifest_id;
+      migrate_from_list.push_back(std::move(migrate_from_entry));
+      continue;
+    }
+
+    const JSONObject* entry_object = JSONObject::Cast(&entry);
+    if (!entry_object) {
+      AddErrorInfo(
+          "migrate_from entry ignored, type string or object expected.");
+      continue;
+    }
+
+    // Use kSameSiteOnly when parsing migration related URLs, as these
+    // must be from the same site as the document.
+    auto migrate_from_entry = mojom::blink::ManifestMigrateFrom::New();
+    KURL id = ParseURL(entry_object, "id", manifest_url_,
+                       ParseURLRestrictions::kSameSiteOnly,
+                       /*ignore_empty_string=*/true);
+    if (!id.IsValid()) {
+      AddErrorInfo(
+          "migrate_from entry ignored, 'id' is missing, not a valid URL, or "
+          "should be same site as document.");
+      continue;
+    }
+    migrate_from_entry->id = id;
+
+    // install_url is optional, but if present must be a valid URL and same
+    // origin as id.
+    KURL install_url = ParseURL(entry_object, "install_url", manifest_url_,
+                                ParseURLRestrictions::kNoRestrictions);
+    if (install_url.IsValid()) {
+      if (!SecurityOrigin::AreSameOrigin(id, install_url)) {
+        AddErrorInfo(
+            "migrate_from entry ignored, 'install_url' must be same origin as "
+            "'id'.");
+        continue;
+      }
+      migrate_from_entry->install_url = install_url;
+    }
+
+    using ManifestMigrationBehavior = mojom::blink::ManifestMigrationBehavior;
+    migrate_from_entry->behavior =
+        ParseFirstValidEnum<std::optional<ManifestMigrationBehavior>>(
+            entry_object, "behavior", &MigrationBehaviorFromString,
+            /*invalid_value=*/std::nullopt)
+            .value_or(ManifestMigrationBehavior::kSuggest);
+
+    migrate_from_list.push_back(std::move(migrate_from_entry));
+  }
+
+  return migrate_from_list;
+}
+
+mojom::blink::ManifestMigrateToPtr ManifestParser::ParseMigrateTo(
+    const JSONObject* object) {
+  JSONValue* value = object->Get("migrate_to");
+  if (!value) {
+    return nullptr;
+  }
+
+  const JSONObject* migrate_to_object = object->GetJSONObject("migrate_to");
+  if (!migrate_to_object) {
+    AddErrorInfo("property 'migrate_to' ignored, type object expected.");
+    return nullptr;
+  }
+
+  // Use kSameSiteOnly when parsing migration related URLs, as these
+  // must be same-site with the document.
+  KURL id = ParseURL(migrate_to_object, "id", manifest_url_,
+                     ParseURLRestrictions::kSameSiteOnly,
+                     /*ignore_empty_string=*/true);
+  if (!id.IsValid()) {
+    AddErrorInfo(
+        "property 'migrate_to' ignored, 'id' is missing, not a valid URL, or "
+        "should be same site as document.");
+    return nullptr;
+  }
+
+  KURL install_url = ParseURL(migrate_to_object, "install_url", manifest_url_,
+                              ParseURLRestrictions::kNoRestrictions);
+  if (!install_url.IsValid()) {
+    AddErrorInfo(
+        "property 'migrate_to' ignored, 'install_url' is missing or invalid.");
+    return nullptr;
+  }
+
+  if (!SecurityOrigin::AreSameOrigin(id, install_url)) {
+    AddErrorInfo(
+        "property 'migrate_to' ignored, 'install_url' must be same origin as "
+        "'id'.");
+    return nullptr;
+  }
+
+  auto migrate_to = mojom::blink::ManifestMigrateTo::New();
+  migrate_to->id = id;
+  migrate_to->install_url = install_url;
+
+  return migrate_to;
+}
+
+std::optional<RGBA32> ManifestParser::ParseThemeColor(
+    const JSONObject* object) {
+  return ParseColor(object, "theme_color");
+}
+
+std::optional<RGBA32> ManifestParser::ParseBackgroundColor(
+    const JSONObject* object) {
+  return ParseColor(object, "background_color");
+}
+
+String ManifestParser::ParseGCMSenderID(const JSONObject* object) {
+  std::optional<String> gcm_sender_id =
+      ParseString(object, "gcm_sender_id", Trim(true));
+  return gcm_sender_id.has_value() ? *gcm_sender_id : String();
+}
+
+// Errors here fail the whole manifest parsing because an IWA with manlformed
+// permissions_policy entry wouldn't be able to launch anyway. Hence, it's best
+// to fail early, during installation.
+void ManifestParser::CheckIsolatedAppPermissions(const JSONObject* object) {
+  JSONValue* json_value = object->Get("permissions_policy");
+  if (!json_value) {
+    return;
+  }
+
+  JSONObject* permissions_dict = JSONObject::Cast(json_value);
+  if (!permissions_dict) {
+    AddErrorInfo(
+        StrCat(
+            {"property 'permissions_policy' invalid: object expected, found: ",
+             json_value->ToJSONString()}),
+        /*critical=*/true);
+    failed_ = true;
+    return;
+  }
+
+  for (wtf_size_t i = 0; i < permissions_dict->size(); ++i) {
+    const JSONObject::Entry& entry = permissions_dict->at(i);
+    String feature(entry.first);
+
+    JSONArray* origin_allowlist = JSONArray::Cast(entry.second);
+    if (!origin_allowlist) {
+      AddErrorInfo(
+          StrCat({"property 'permissions_policy' invalid: allowlist for '",
+                  feature,
+                  "': array expected, found: ", entry.second->ToJSONString()}),
+          /*critical=*/true);
+      failed_ = true;
+      return;
+    }
+
+    for (const JSONValue& origin_value : *origin_allowlist) {
+      String origin_string;
+      if (!origin_value.AsString(&origin_string)) {
+        AddErrorInfo(
+            StrCat({"property 'permissions_policy' invalid: allowlist for '",
+                    feature, "': invalid element: string expected, found: ",
+                    origin_value.ToJSONString()}),
+            /*critical=*/true);
+        failed_ = true;
+        return;
+      }
+    }
+  }
+
+  UseCounter::Count(execution_context_,
+                    WebFeature::kWebAppManifestPermissionsPolicy);
+}
+
+std::optional<KURL> ManifestParser::ParseIsolatedAppUpdateManifestUrl(
+    const JSONObject* object) {
+  KURL url = ParseURL(object, "update_manifest_url", /*base_url=*/NullUrl(),
+                      ParseURLRestrictions::kNoRestrictions);
+  if (!url.IsValid()) {
+    return std::nullopt;
+  }
+
+  return url;
+}
+
+mojom::blink::ManifestLaunchHandlerPtr ManifestParser::ParseLaunchHandler(
+    const JSONObject* object) {
+  const JSONValue* launch_handler_value = object->Get("launch_handler");
+  if (!launch_handler_value) {
+    return nullptr;
+  }
+
+  const JSONObject* launch_handler_object =
+      JSONObject::Cast(launch_handler_value);
+  if (!launch_handler_object) {
+    AddErrorInfo("launch_handler value ignored, object expected.");
+    return nullptr;
+  }
+
+  using ClientMode = mojom::blink::ManifestLaunchHandler::ClientMode;
+  return mojom::blink::ManifestLaunchHandler::New(
+      ParseFirstValidEnum<std::optional<ClientMode>>(
+          launch_handler_object, "client_mode", &ClientModeFromString,
+          /*invalid_value=*/std::nullopt));
+}
+
+HashMap<String, mojom::blink::ManifestTranslationItemPtr>
+ManifestParser::ParseTranslations(const JSONObject* object) {
+  HashMap<String, mojom::blink::ManifestTranslationItemPtr> result;
+
+  if (!object->Get("translations")) {
+    return result;
+  }
+
+  JSONObject* translations_map = object->GetJSONObject("translations");
+  if (!translations_map) {
+    AddErrorInfo("property 'translations' ignored, object expected.");
+    return result;
+  }
+
+  for (wtf_size_t i = 0; i < translations_map->size(); ++i) {
+    JSONObject::Entry entry = translations_map->at(i);
+    String locale = entry.first;
+    if (locale == "") {
+      AddErrorInfo("skipping translation, non-empty locale string expected.");
+      continue;
+    }
+    JSONObject* translation = JSONObject::Cast(entry.second);
+    if (!translation) {
+      AddErrorInfo("skipping translation, object expected.");
+      continue;
+    }
+
+    auto translation_item = mojom::blink::ManifestTranslationItem::New();
+
+    std::optional<String> name = ParseStringForMember(
+        translation, "translations", "name", false, Trim(true));
+    translation_item->name =
+        name.has_value() && name->length() != 0 ? *name : String();
+
+    std::optional<String> short_name = ParseStringForMember(
+        translation, "translations", "short_name", false, Trim(true));
+    translation_item->short_name =
+        short_name.has_value() && short_name->length() != 0 ? *short_name
+                                                            : String();
+
+    std::optional<String> description = ParseStringForMember(
+        translation, "translations", "description", false, Trim(true));
+    translation_item->description =
+        description.has_value() && description->length() != 0 ? *description
+                                                              : String();
+
+    // A translation may be specified for any combination of translatable fields
+    // in the manifest. If no translations are supplied, we skip this item.
+    if (!translation_item->name && !translation_item->short_name &&
+        !translation_item->description) {
+      continue;
+    }
+
+    result.Set(locale, std::move(translation_item));
+  }
+  return result;
+}
+
+mojom::blink::ManifestTabStripPtr ManifestParser::ParseTabStrip(
+    const JSONObject* object) {
+  if (!object->Get("tab_strip")) {
+    return nullptr;
+  }
+
+  JSONObject* tab_strip_object = object->GetJSONObject("tab_strip");
+  if (!tab_strip_object) {
+    AddErrorInfo("property 'tab_strip' ignored, object expected.");
+    return nullptr;
+  }
+
+  auto result = mojom::blink::ManifestTabStrip::New();
+
+  JSONValue* home_tab_value = tab_strip_object->Get("home_tab");
+  if (home_tab_value && home_tab_value->GetType() == JSONValue::kTypeObject) {
+    JSONObject* home_tab_object = tab_strip_object->GetJSONObject("home_tab");
+    auto home_tab_params = mojom::blink::HomeTabParams::New();
+
+    JSONValue* home_tab_icons = home_tab_object->Get("icons");
+    String string_value;
+    if (home_tab_icons && !(home_tab_icons->AsString(&string_value) &&
+                            EqualIgnoringAsciiCase(string_value, "auto"))) {
+      home_tab_params->icons = ParseIcons(home_tab_object);
+    }
+
+    home_tab_params->scope_patterns =
+        ParseUrlPatterns(home_tab_object, "scope_patterns");
+
+    result->home_tab =
+        mojom::blink::HomeTabUnion::NewParams(std::move(home_tab_params));
+  } else {
+    result->home_tab = mojom::blink::HomeTabUnion::NewVisibility(
+        ParseTabStripMemberVisibility(home_tab_value));
+  }
+
+  auto new_tab_button_params = mojom::blink::NewTabButtonParams::New();
+
+  JSONObject* new_tab_button_object =
+      tab_strip_object->GetJSONObject("new_tab_button");
+  if (new_tab_button_object) {
+    JSONValue* new_tab_button_url = new_tab_button_object->Get("url");
+
+    String string_value;
+    if (new_tab_button_url && !(new_tab_button_url->AsString(&string_value) &&
+                                EqualIgnoringAsciiCase(string_value, "auto"))) {
+      KURL url = ParseURL(new_tab_button_object, "url", manifest_url_,
+                          ParseURLRestrictions::kWithinScope);
+      if (!url.IsNull()) {
+        new_tab_button_params->url = url;
+      }
+    }
+  }
+  result->new_tab_button = std::move(new_tab_button_params);
+
+  return result;
+}
+
+mojom::blink::TabStripMemberVisibility
+ManifestParser::ParseTabStripMemberVisibility(const JSONValue* json_value) {
+  if (!json_value) {
+    return mojom::blink::TabStripMemberVisibility::kAuto;
+  }
+
+  String string_value;
+  if (json_value->AsString(&string_value) &&
+      EqualIgnoringAsciiCase(string_value, "absent")) {
+    return mojom::blink::TabStripMemberVisibility::kAbsent;
+  }
+
+  return mojom::blink::TabStripMemberVisibility::kAuto;
+}
+
+Vector<SafeUrlPattern> ManifestParser::ParseUrlPatterns(
+    const JSONObject* object,
+    const String& field_name) {
+  Vector<SafeUrlPattern> result;
+
+  auto* url_patterns = object->GetArray(field_name);
+  if (!url_patterns) {
+    return result;
+  }
+
+  for (const JSONValue& entry : *url_patterns) {
+    // TODO(b/330640840): allow strings to be passed through here and parsed via
+    // liburlpattern::ConstructorStringParser. The result of the parse can then
+    // be used to create a PatternInit object for the rest of the process.
+    auto* pattern_object = JSONObject::Cast(&entry);
+    if (!pattern_object) {
+      continue;
+    }
+
+    std::optional<PatternInit> init = MaybeCreatePatternInit(pattern_object);
+    if (init.has_value()) {
+      auto base_url = init->base_url.IsValid() ? init->base_url : manifest_url_;
+      std::optional<SafeUrlPattern> pattern =
+          ParseUrlPattern(field_name, init.value(), base_url);
+      if (pattern.has_value()) {
+        result.push_back(std::move(pattern.value()));
+      }
+    }
+  }
+
+  return result;
+}
+
+std::optional<SafeUrlPattern> ManifestParser::ParseUrlPattern(
+    const String& field_name,
+    const PatternInit& init,
+    const KURL& base_url) {
+  auto url_pattern = std::make_optional<SafeUrlPattern>();
+
+  {
+    // https://urlpattern.spec.whatwg.org/#process-a-urlpatterninit
+    // Always fall back to baseURL protocol if init does not contain protocol.
+    std::optional<std::vector<liburlpattern::Part>> part_list =
+        ParsePatternInitField(init.protocol, base_url.Protocol());
+    if (!part_list.has_value()) {
+      AddErrorInfo(
+          StrCat({"property 'protocol' in '", field_name,
+                  "' pattern could not be parsed or contains banned regex."}));
+      return std::nullopt;
+    }
+    url_pattern->protocol = std::move(part_list.value());
+  }
+
+  {
+    // https://urlpattern.spec.whatwg.org/#process-a-urlpatterninit
+    // Only fall back to baseURL username if init does not contain any of
+    // protocol, hostname, or port.
+    String default_username;
+    if (!init.IsAbsolute()) {
+      default_username = base_url.User().ToString();
+    }
+    std::optional<std::vector<liburlpattern::Part>> part_list =
+        ParsePatternInitField(init.username, default_username);
+    if (!part_list.has_value()) {
+      AddErrorInfo(
+          StrCat({"property 'username' in '", field_name,
+                  "' pattern could not be parsed or contains banned regex."}));
+      return std::nullopt;
+    }
+    url_pattern->username = std::move(part_list.value());
+  }
+
+  {
+    // https://urlpattern.spec.whatwg.org/#process-a-urlpatterninit
+    // Only fall back to baseURL password if init does not contain any of
+    // protocol, hostname, port, or username.
+    String default_password;
+    if (!init.IsAbsolute() && !init.username.has_value()) {
+      default_password = base_url.Pass().ToString();
+    }
+    std::optional<std::vector<liburlpattern::Part>> part_list =
+        ParsePatternInitField(init.password, default_password);
+    if (!part_list.has_value()) {
+      AddErrorInfo(
+          StrCat({"property 'password' in '", field_name,
+                  "' pattern could not be parsed or contains banned regex."}));
+      return std::nullopt;
+    }
+    url_pattern->password = std::move(part_list.value());
+  }
+
+  {
+    // https://urlpattern.spec.whatwg.org/#process-a-urlpatterninit
+    // Only fall back to baseURL hostname if init does not contain protocol.
+    String default_hostname;
+    if (!init.protocol.has_value()) {
+      default_hostname = base_url.Host().ToString();
+    }
+    std::optional<std::vector<liburlpattern::Part>> part_list =
+        ParsePatternInitField(init.hostname, default_hostname);
+    if (!part_list.has_value()) {
+      AddErrorInfo(
+          StrCat({"property 'hostname' in '", field_name,
+                  "' pattern could not be parsed or contains banned regex."}));
+      return std::nullopt;
+    }
+    url_pattern->hostname = std::move(part_list.value());
+  }
+
+  {
+    // https://urlpattern.spec.whatwg.org/#process-a-urlpatterninit
+    // Only fall back to baseURL port if init does not contain any of
+    // protocol, hostname, or port, and the baseURL port exists.
+    String default_port;
+    if (!init.IsAbsolute() && base_url.HasPort()) {
+      default_port = String::Number(base_url.Port());
+    }
+    std::optional<std::vector<liburlpattern::Part>> part_list =
+        ParsePatternInitField(init.port, default_port);
+    if (!part_list.has_value()) {
+      AddErrorInfo(
+          StrCat({"property 'port' in '", field_name,
+                  "' pattern could not be parsed or contains banned regex."}));
+      return std::nullopt;
+    }
+    url_pattern->port = std::move(part_list.value());
+  }
+
+  {
+    String default_path;
+    if (init.pathname.has_value()) {
+      // A possibly-relative path is given; resolve it against base URL's path.
+      default_path =
+          ResolveRelativePathnamePattern(base_url, init.pathname.value());
+    } else if (!init.IsAbsolute()) {
+      // No path, protocol, host or port is given; use the base URL's path.
+      default_path = EscapePatternString(base_url.GetPath());
+    }
+    // else: no path, but a protocol, host or port was given, making this
+    // pattern absolute, so treat the path as empty.
+
+    std::optional<std::vector<liburlpattern::Part>> part_list =
+        ParsePatternInitField(std::nullopt, default_path);
+    if (!part_list.has_value()) {
+      AddErrorInfo(
+          StrCat({"property 'pathname' in '", field_name,
+                  "' pattern could not be parsed or contains banned regex."}));
+      return std::nullopt;
+    }
+    url_pattern->pathname = std::move(part_list.value());
+  }
+
+  {
+    // https://urlpattern.spec.whatwg.org/#process-a-urlpatterninit
+    // Only fall back to baseURL search if init does not contain any of
+    // protocol, hostname, port, or pathname.
+    String default_search;
+    if (!init.IsAbsolute() && !init.pathname.has_value()) {
+      default_search = base_url.Query().ToString();
+    }
+    std::optional<std::vector<liburlpattern::Part>> part_list =
+        ParsePatternInitField(init.search, default_search);
+    if (!part_list.has_value()) {
+      AddErrorInfo(
+          StrCat({"property 'search' in '", field_name,
+                  "' pattern could not be parsed or contains banned regex."}));
+      return std::nullopt;
+    }
+    url_pattern->search = std::move(part_list.value());
+  }
+
+  {
+    // https://urlpattern.spec.whatwg.org/#process-a-urlpatterninit
+    // Only fall back to baseURL hash if init does not contain any of
+    // protocol, hostname, port, pathname, or search.
+    String default_hash;
+    if (!init.IsAbsolute() && !init.pathname.has_value() &&
+        !init.search.has_value()) {
+      default_hash = base_url.FragmentIdentifier().ToString();
+    }
+    std::optional<std::vector<liburlpattern::Part>> part_list =
+        ParsePatternInitField(init.hash, default_hash);
+    if (!part_list.has_value()) {
+      AddErrorInfo(
+          StrCat({"property 'hash' in '", field_name,
+                  "' pattern could not be parsed or contains banned regex."}));
+      return std::nullopt;
+    }
+    url_pattern->hash = std::move(part_list.value());
+  }
+
+  return url_pattern;
+}
+
+std::optional<ManifestParser::PatternInit>
+ManifestParser::MaybeCreatePatternInit(const JSONObject* pattern_object) {
+  std::optional<String> protocol = ParseStringForMember(
+      pattern_object, "scope_patterns", "protocol", false, Trim(true));
+  std::optional<String> username = ParseStringForMember(
+      pattern_object, "scope_patterns", "username", false, Trim(true));
+  std::optional<String> password = ParseStringForMember(
+      pattern_object, "scope_patterns", "password", false, Trim(true));
+  std::optional<String> hostname = ParseStringForMember(
+      pattern_object, "scope_patterns", "hostname", false, Trim(true));
+  std::optional<String> port = ParseStringForMember(
+      pattern_object, "scope_patterns", "port", false, Trim(true));
+  std::optional<String> pathname = ParseStringForMember(
+      pattern_object, "scope_patterns", "pathname", false, Trim(true));
+  std::optional<String> search = ParseStringForMember(
+      pattern_object, "scope_patterns", "search", false, Trim(true));
+  std::optional<String> hash = ParseStringForMember(
+      pattern_object, "scope_patterns", "hash", false, Trim(true));
+
+  KURL base_url;
+
+  if (pattern_object->Get("baseURL")) {
+    base_url = ParseURL(pattern_object, "baseURL", NullUrl(),
+                        ParseURLRestrictions::kNoRestrictions);
+    if (!base_url.IsValid()) {
+      return std::nullopt;
+    }
+  }
+
+  return std::make_optional<PatternInit>(
+      std::move(protocol), std::move(username), std::move(password),
+      std::move(hostname), std::move(port), std::move(pathname),
+      std::move(search), std::move(hash), base_url);
+}
+
+String ManifestParser::ParseVersion(const JSONObject* object) {
+  return ParseString(object, "version", Trim(false)).value_or(String());
+}
+
+void ManifestParser::AddErrorInfo(const String& error_msg,
+                                  bool critical,
+                                  int error_line,
+                                  int error_column) {
+  mojom::blink::ManifestErrorPtr error = mojom::blink::ManifestError::New(
+      error_msg, critical, error_line, error_column);
+  errors_.push_back(std::move(error));
+}
+
+HashMap<icu::Locale, mojom::blink::ManifestLocalizedTextObjectPtr>
+ManifestParser::ParseLocalizedField(const JSONObject* object,
+                                    const String& field_name) {
+  JSONObject* localized_value = object->GetJSONObject(field_name);
+  HashMap<icu::Locale, mojom::blink::ManifestLocalizedTextObjectPtr> result;
+  if (!localized_value) {
+    return result;
+  }
+
+  for (wtf_size_t i = 0; i < localized_value->size(); ++i) {
+    const JSONObject::Entry& entry = localized_value->at(i);
+    const String& key = entry.first;
+    const JSONValue* json_value = entry.second;
+
+    // Parse individual localized text object
+    if (!json_value) {
+      continue;
+    }
+
+    std::optional<icu::Locale> locale = ParseLocaleKey(key);
+    if (!locale.has_value()) {
+      AddErrorInfo(StrCat({"property '", field_name, "' entry for '", key,
+                           "' ignored, invalid locale key."}));
+      continue;
+    }
+
+    String value;
+    String lang;
+    // Default direction is "auto"
+    mojom::blink::Manifest::TextDirection dir =
+        mojom::blink::Manifest::TextDirection::kAuto;
+
+    if (json_value->AsString(&value)) {
+      value = value.StripWhiteSpace();
+    } else if (const JSONObject* obj = JSONObject::Cast(json_value)) {
+      // value (required)
+      if (obj->Get("value")) {
+        auto maybe = ParseStringForMember(obj, field_name, "value",
+                                          /*required=*/true, Trim(true));
+        if (maybe.has_value()) {
+          value = std::move(*maybe);
+        }
+      }
+      // lang (optional)
+      if (obj->Get("lang")) {
+        auto maybe = ParseStringForMember(obj, field_name, "lang",
+                                          /*required=*/false, Trim(true));
+        if (maybe.has_value()) {
+          lang = std::move(*maybe);
+        }
+      }
+      // dir (optional)
+      if (obj->Get("dir")) {
+        dir = ParseDir(obj);
+      }
+    }
+
+    // We must have a non-empty value.
+    if (value.empty()) {
+      continue;
+    }
+
+    // If no lang tag was specified for this entry, fall back to manifest-level
+    // lang.
+    std::optional<String> manifest_lang_opt =
+        ParseString(object, "lang", Trim(true));
+    String manifest_lang = manifest_lang_opt.value_or(String());
+    if (lang.empty() && !manifest_lang.empty()) {
+      lang = manifest_lang;
+    }
+
+    // Validate the language tag if present.
+    if (!lang.empty()) {
+      UErrorCode status = U_ZERO_ERROR;
+      StringUtf8Adaptor lang_utf8(lang);
+      icu::Locale::forLanguageTag(lang_utf8.AsStringView(), status);
+      if (U_FAILURE(status)) {
+        AddErrorInfo(StrCat({"property '", field_name, "' entry for '", key,
+                             "' ignored, invalid language tag '", lang, "'."}));
+        continue;
+      }
+    }
+
+    // Build and add the localized text object.
+    auto localized_text = mojom::blink::ManifestLocalizedTextObject::New();
+    localized_text->value = std::move(value);
+    localized_text->lang = std::move(lang);
+    localized_text->dir = dir;
+    result.Set(*locale, std::move(localized_text));
+  }
+  if (!result.empty()) {
+    UseCounter::CountWebDXFeature(execution_context_,
+                                  WebDXFeature::kManifestLocalization);
+  }
+  return result;
+}
+
+HashMap<icu::Locale, mojom::blink::ManifestLocalizedTextObjectPtr>
+ManifestParser::ParseNameLocalized(const JSONObject* object) {
+  return ParseLocalizedField(object, "name_localized");
+}
+
+HashMap<icu::Locale, mojom::blink::ManifestLocalizedTextObjectPtr>
+ManifestParser::ParseShortNameLocalized(const JSONObject* object) {
+  return ParseLocalizedField(object, "short_name_localized");
+}
+
+HashMap<icu::Locale, mojom::blink::ManifestLocalizedTextObjectPtr>
+ManifestParser::ParseDescriptionLocalized(const JSONObject* object) {
+  return ParseLocalizedField(object, "description_localized");
+}
+
+}  // namespace blink

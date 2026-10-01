@@ -1,0 +1,102 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/features.gni")
+import("//mojo/public/tools/bindings/mojom.gni")
+
+component("pending_file_set") {
+  public = [ "pending_file_set.h" ]
+
+  sources = [ "pending_file_set.cc" ]
+
+  public_deps = [ "//base" ]
+
+  defines = [ "IS_PENDING_FILE_SET_IMPL" ]
+}
+
+component("sqlite_vfs") {
+  # Cross-process file locks are not available on Fuchsia.
+  if (!is_fuchsia) {
+    public = [
+      "client.h",
+      "constants.h",
+      "file_set_error.h",
+      "file_type.h",
+      "lock_state.h",
+      "sandboxed_file.h",
+      "sqlite_database_vfs_file_set.h",
+      "sqlite_sandboxed_vfs.h",
+      "vfs_utils.h",
+    ]
+
+    sources = [
+      "constants.h",
+      "file_system_id.cc",
+      "file_system_id.h",
+      "lock_state.h",
+      "metrics_util.cc",
+      "metrics_util.h",
+      "sandboxed_file.cc",
+      "sandboxed_file.h",
+      "shared_locks.cc",
+      "shared_locks.h",
+      "sqlite_database_vfs_file_set.cc",
+      "sqlite_sandboxed_vfs.cc",
+      "vfs_utils.cc",
+    ]
+
+    deps = [ "//third_party/sqlite" ]
+
+    public_deps = [
+      ":pending_file_set",
+      "//base",
+      "//sql",
+    ]
+
+    friend = [ ":unit_tests" ]
+  }
+
+  defines = [ "IS_SQLITE_VFS_IMPL" ]
+}
+
+if (use_blink && !is_android) {
+  mojom("test_mojom") {
+    testonly = true
+    sources = [ "multiprocess_test.test-mojom" ]
+    public_deps = [ "//components/sqlite_vfs/mojom" ]
+  }
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  # Cross-process file locks are not available on Fuchsia.
+  if (!is_fuchsia) {
+    sources = [
+      "file_system_id_unittest.cc",
+      "sandboxed_file_unittest.cc",
+      "shared_locks_unittest.cc",
+      "sqlite_database_vfs_file_set_unittest.cc",
+      "sqlite_sandboxed_vfs_unittest.cc",
+      "vfs_utils_unittest.cc",
+    ]
+
+    deps = [
+      ":sqlite_vfs",
+      "//base",
+      "//base/test:test_support",
+      "//components/sqlite_vfs/mojom:unit_tests",
+      "//sql",
+      "//sql:test_support",
+      "//testing/gmock",
+      "//testing/gtest",
+      "//third_party/sqlite",
+    ]
+
+    if (use_blink && !is_android) {
+      sources += [ "multiprocess_unittest.cc" ]
+      deps += [ ":test_mojom" ]
+    }
+  }
+}

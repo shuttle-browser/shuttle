@@ -1,0 +1,163 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/tab_switcher/ui_bundled/tab_grid/toolbars/tab_grid_new_tab_button.h"
+
+#import "base/check.h"
+#import "base/notreached.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/shared/ui/symbols/symbols.h"
+#import "ios/chrome/browser/tab_switcher/ui_bundled/tab_grid/tab_grid_constants.h"
+#import "ios/chrome/common/ui/colors/semantic_color_names.h"
+#import "ios/chrome/common/ui/util/constraints_ui_util.h"
+#import "ios/chrome/common/ui/util/pointer_interaction_util.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "ui/base/device_form_factor.h"
+#import "ui/base/l10n/l10n_util.h"
+
+namespace {
+
+// The size of the small symbol image.
+constexpr CGFloat kSmallSymbolSize = 24;
+// Size of the button when using a large symbol.
+constexpr CGFloat kSmallSize = 38;
+// The size of the large symbol image.
+constexpr CGFloat kLargeSymbolSize = 28;
+// Size of the button when using a large symbol.
+constexpr CGFloat kLargeSize = 44;
+// The size of the large symbol image.
+constexpr CGFloat kLargeSymbolSizeIPad = 34;
+// Size of the button when using a large symbol.
+constexpr CGFloat kLargeSizeIPad = 52;
+// The corner radius to display the button in a square container.
+constexpr CGFloat kSquareCornerRadius = 10;
+// The duration of the animation for changes to the button's appearance.
+constexpr CGFloat kAnimationDuration = 0.15;
+
+// Returns a configuration update handler that animates changes to the button's
+// appearance.
+UIButtonConfigurationUpdateHandler ConfigurationUpdateHandler() {
+  return ^(UIButton* button) {
+    TabGridNewTabButton* newTabButton =
+        static_cast<TabGridNewTabButton*>(button);
+    UIButtonConfiguration* config = button.configuration;
+
+    switch (newTabButton.page) {
+      case TabGridPageIncognitoTabs:
+        config.background.backgroundColor = UIColor.whiteColor;
+        config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+        break;
+      case TabGridPageRegularTabs:
+        config.background.backgroundColor = newTabButton.buttonColor;
+        config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+        break;
+      case TabGridPageTabGroups:
+        config.background.backgroundColor = newTabButton.buttonColor;
+        config.cornerStyle = UIButtonConfigurationCornerStyleFixed;
+        config.background.cornerRadius = kSquareCornerRadius;
+        break;
+    }
+
+    [UIView animateWithDuration:kAnimationDuration
+                     animations:^{
+                       button.configuration = config;
+                     }];
+  };
+}
+
+}  // namespace
+
+@implementation TabGridNewTabButton {
+  // The symbol for this button.
+  UIImage* _symbol;
+  // The image container, centered with the button. Not using the image of the
+  // button to avoid alignment issues.
+  UIImageView* _imageContainer;
+}
+
+- (instancetype)initWithLargeSize:(BOOL)largeSize {
+  self = [super initWithFrame:CGRectZero];
+  if (self) {
+    _buttonColor = [UIColor colorNamed:kStaticBlue400Color];
+    CGFloat symbolSize;
+    CGFloat buttonSize;
+    if (largeSize) {
+      if (ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET) {
+        symbolSize = kLargeSymbolSizeIPad;
+        buttonSize = kLargeSizeIPad;
+      } else {
+        symbolSize = kLargeSymbolSize;
+        buttonSize = kLargeSize;
+      }
+    } else {
+      symbolSize = kSmallSymbolSize;
+      buttonSize = kSmallSize;
+    }
+
+    self.configuration = [UIButtonConfiguration filledButtonConfiguration];
+    _symbol = SymbolWithPointSize(SymbolPlus, symbolSize);
+    self.tintColor = UIColor.blackColor;
+    if (@available(iOS 26, *)) {
+      self.configuration = [UIButtonConfiguration glassButtonConfiguration];
+    }
+    self.configurationUpdateHandler = ConfigurationUpdateHandler();
+
+    _imageContainer = [[UIImageView alloc] initWithImage:_symbol];
+    _imageContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    [self addSubview:_imageContainer];
+
+    AddSameCenterConstraints(self, _imageContainer);
+
+    [NSLayoutConstraint activateConstraints:@[
+      [self.heightAnchor constraintEqualToConstant:buttonSize],
+      [self.widthAnchor constraintEqualToAnchor:self.heightAnchor],
+    ]];
+    self.pointerInteractionEnabled = YES;
+    self.pointerStyleProvider = CreateLiftEffectCirclePointerStyleProvider();
+  }
+  return self;
+}
+
+- (void)setEnabled:(BOOL)enabled {
+  [super setEnabled:enabled];
+  [self setSymbolPage:self.page];
+}
+
+#pragma mark - Public
+
+- (void)setPage:(TabGridPage)page {
+  [self setSymbolPage:page];
+}
+
+- (void)setButtonColor:(UIColor*)buttonColor {
+  if (_buttonColor == buttonColor) {
+    return;
+  }
+  _buttonColor = buttonColor;
+  [self setSymbolPage:self.page];
+}
+
+#pragma mark - Private
+
+// Sets page using a symbol image.
+- (void)setSymbolPage:(TabGridPage)page {
+  switch (page) {
+    case TabGridPageIncognitoTabs:
+      self.accessibilityLabel =
+          l10n_util::GetNSString(IDS_IOS_TAB_GRID_CREATE_NEW_INCOGNITO_TAB);
+      break;
+    case TabGridPageRegularTabs:
+      self.accessibilityLabel =
+          l10n_util::GetNSString(IDS_IOS_TAB_GRID_CREATE_NEW_TAB);
+      break;
+    case TabGridPageTabGroups:
+      self.accessibilityLabel =
+          l10n_util::GetNSString(IDS_IOS_TAB_GRID_CREATE_NEW_TAB_GROUP);
+      break;
+  }
+  _page = page;
+  [self setNeedsUpdateConfiguration];
+}
+
+@end

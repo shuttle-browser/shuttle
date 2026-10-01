@@ -1,0 +1,1033 @@
+# Copyright 2021 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+"""Definitions of builders in the tryserver.chromium.mac builder group."""
+
+load("@chromium-luci//branches.star", "branches")
+load("@chromium-luci//builder_config.star", "builder_config")
+load("@chromium-luci//builders.star", "cpu", "os")
+load("@chromium-luci//consoles.star", "consoles")
+load("@chromium-luci//gn_args.star", "gn_args")
+load("@chromium-luci//gpu.star", shared_gpu = "gpu")
+load("@chromium-luci//html.star", "linkify_builder")
+load("@chromium-luci//targets.star", "targets")
+load("@chromium-luci//try.star", "try_")
+load("//lib/gpu.star", "gpu")
+load("//lib/siso.star", "siso")
+load("//lib/try_constants.star", "try_constants")
+load("//lib/xcode.star", "xcode")
+
+try_.defaults.set(
+    executable = try_constants.DEFAULT_EXECUTABLE,
+    builder_group = "tryserver.chromium.mac",
+    pool = try_constants.DEFAULT_POOL,
+    builderless = True,
+    os = os.MAC_DEFAULT,
+    ssd = True,
+    execution_timeout = try_constants.DEFAULT_EXECUTION_TIMEOUT,
+    experiments = {
+        "chromium_tests.resultdb_module": 100,
+    },
+    orchestrator_cores = "2|4",
+    orchestrator_siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
+    service_account = try_constants.DEFAULT_SERVICE_ACCOUNT,
+    siso_keep_going = siso.KEEP_GOING,
+    siso_project = siso.project.DEFAULT_UNTRUSTED,
+)
+
+def ios_builder(*, name, **kwargs):
+    kwargs.setdefault("builderless", False)
+    kwargs.setdefault("os", os.MAC_DEFAULT)
+    kwargs.setdefault("ssd", None)
+    kwargs.setdefault("xcode", xcode.xcode_default)
+    return try_.builder(name = name, **kwargs)
+
+targets.builder_defaults.set(
+    mixins = [
+        "chromium-tester-service-account",
+    ],
+)
+
+consoles.list_view(
+    name = "tryserver.chromium.mac",
+    branch_selector = [
+        branches.selector.MAC_BRANCHES,
+        branches.selector.IOS_BRANCHES,
+    ],
+)
+
+try_.builder(
+    name = "mac-arm64-clobber-rel",
+    mirrors = [
+        "ci/mac-arm64-archive-rel",
+    ],
+    gn_args = "ci/mac-arm64-archive-rel",
+    cpu = cpu.ARM64,
+    properties = {
+        # The format of these properties is defined at archive/properties.proto
+        "$build/archive": {
+            "source_side_spec_path": [
+                "src",
+                "infra",
+                "archive_config",
+                "mac-arm64-archive-rel.json",
+            ],
+            "verify_paths_only": True,
+        },
+    },
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "mac-arm64-on-arm64-rel",
+    mirrors = [
+        "ci/mac-arm64-on-arm64-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/mac-arm64-on-arm64-rel",
+            "release_try_builder",
+        ],
+    ),
+    builderless = False,
+    cpu = cpu.ARM64,
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "mac-clobber-rel",
+    mirrors = [
+        "ci/mac-archive-rel",
+    ],
+    gn_args = "ci/mac-archive-rel",
+    cpu = cpu.ARM64,
+    properties = {
+        # The format of these properties is defined at archive/properties.proto
+        "$build/archive": {
+            "source_side_spec_path": [
+                "src",
+                "infra",
+                "archive_config",
+                "mac-archive-rel.json",
+            ],
+            "verify_paths_only": True,
+        },
+    },
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "mac-intel-on-arm64-rel",
+    mirrors = [
+        "ci/mac-intel-on-arm64-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/mac-intel-on-arm64-rel",
+            "release_try_builder",
+        ],
+    ),
+    builderless = False,
+    cpu = cpu.ARM64,
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "mac-fieldtrial-tester",
+    mirrors = [
+        "ci/mac-arm64-rel",
+        "ci/mac-fieldtrial-tester",
+    ],
+    gn_args = "ci/mac-arm64-rel",
+    cpu = cpu.ARM64,
+    execution_timeout = 6 * time.hour,
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "mac-builder-next",
+    mirrors = ["ci/Mac Builder Next"],
+    gn_args = "ci/Mac Builder Next",
+    builderless = False,
+    os = os.MAC_BETA,
+    cpu = cpu.ARM64,
+    siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "mac-perfetto-rel",
+    mirrors = [
+        "ci/mac-perfetto-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/mac-perfetto-rel",
+            "try_builder",
+            "no_symbols",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+try_.orchestrator_builder(
+    name = "mac-rel",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    mirrors = [
+        "ci/mac-arm64-rel",
+        "ci/mac26-arm64-rel-tests",
+        "ci/GPU Mac arm64 Builder",
+        "ci/Mac Retina Release (Apple M2)",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "gpu_tests",
+            "release_try_builder",
+            "remoteexec",
+            "no_symbols",
+            "use_clang_coverage",
+            "partial_code_coverage_instrumentation",
+            "enable_dangling_raw_ptr_feature_flag",
+            "enable_backup_ref_ptr_feature_flag",
+            "enable_rust_clippy",
+            "mac",
+            "arm64",
+        ],
+    ),
+    compilator = "mac-rel-compilator",
+    coverage_test_types = ["overall", "unit"],
+    cq_settings = try_.cq_settings(
+        on_default_cq = True,
+    ),
+    experiments = {
+        # go/nplus1shardsproposal
+        "chromium.add_one_test_shard": 10,
+        # crbug/940930
+        "chromium.enable_cleandead": 100,
+        # go/rts-project-proposal
+        "chromium_rts.filter_file_analysis": 100,
+        "luci.buildbucket.run_in_turboci": 100,
+    },
+    main_list_view = "try",
+    use_clang_coverage = True,
+    # TODO (crbug.com/1372179): Use orchestrator pool once overloaded test pools
+    # are addressed
+    #use_orchestrator_pool = True,
+)
+
+try_.compilator_builder(
+    name = "mac-rel-compilator",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    cpu = cpu.ARM64,
+    main_list_view = "try",
+)
+
+try_.orchestrator_builder(
+    name = "mac-gpu-rel",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    mirrors = [
+        "ci/GPU Mac Builder",
+        "ci/Mac Release (Intel)",
+        "ci/Mac Retina Release (AMD)",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "gpu_tests",
+            "release_try_builder",
+            "remoteexec",
+            "no_symbols",
+            "use_clang_coverage",
+            "partial_code_coverage_instrumentation",
+            "enable_dangling_raw_ptr_feature_flag",
+            "enable_backup_ref_ptr_feature_flag",
+            "mac",
+            "x64",
+        ],
+    ),
+    compilator = "mac-gpu-rel-compilator",
+    contact_team_email = "chrome-gpu-infra@google.com",
+    coverage_test_types = ["overall", "unit"],
+    cq_settings = try_.cq_settings(
+        on_default_cq = True,
+    ),
+    experiments = {
+        # go/nplus1shardsproposal
+        "chromium.add_one_test_shard": 10,
+        # crbug.com/940930
+        "chromium.enable_cleandead": 100,
+        # go/rts-project-proposal
+        "chromium_rts.filter_file_analysis": 100,
+        "luci.buildbucket.run_in_turboci": 2,
+    },
+    main_list_view = "try",
+    use_clang_coverage = True,
+)
+
+try_.compilator_builder(
+    name = "mac-gpu-rel-compilator",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "compilator for mac-gpu-rel.",
+    cpu = cpu.ARM64,
+    contact_team_email = "chrome-gpu-infra@google.com",
+    main_list_view = "try",
+)
+
+try_.builder(
+    name = "mac-libfuzzer-asan-rel",
+    # TODO(crbug.com/41492669): Can delete this description when it's
+    # automatically generated.
+    description_html = "Trybot of {}.".format(linkify_builder("ci", "Libfuzzer Upload Mac ASan")),
+    executable = "recipe:chromium/fuzz",
+    mirrors = ["ci/Libfuzzer Upload Mac ASan"],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Libfuzzer Upload Mac ASan",
+            "dcheck_always_on",
+            "no_symbols",
+            "skip_generate_fuzzer_owners",
+        ],
+    ),
+    # TODO(crbug.com/543006750): Revert to MAC_DEFAULT after arm migration.
+    os = os.MAC_15,
+    contact_team_email = "chrome-fuzzing-core@google.com",
+)
+
+try_.builder(
+    name = "mac-lsan-fyi-rel",
+    mirrors = [
+        "ci/mac-lsan-fyi-rel",
+    ],
+    gn_args = "ci/mac-lsan-fyi-rel",
+    cpu = cpu.ARM64,
+)
+
+try_.builder(
+    name = "mac-ubsan-fyi-rel",
+    mirrors = [
+        "ci/mac-ubsan-fyi-rel",
+    ],
+    gn_args = "ci/mac-ubsan-fyi-rel",
+    # TODO(crbug.com/543006750): Revert to MAC_DEFAULT after arm migration.
+    os = os.MAC_15,
+)
+
+try_.builder(
+    name = "mac-vm",
+    mirrors = ["ci/mac-vm"],
+    gn_args = "ci/mac-vm",
+    builderless = True,
+    cpu = cpu.ARM64,
+    contact_team_email = "bling-engprod@google.com",
+)
+
+try_.builder(
+    name = "mac13-arm64-rel",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    mirrors = [
+        "ci/mac-arm64-rel",
+        "ci/mac13-arm64-rel-tests",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "arm64",
+            "gpu_tests",
+            "release_try_builder",
+            "remoteexec",
+            "no_symbols",
+            "mac",
+        ],
+    ),
+    builderless = True,
+    cores = None,
+    cpu = cpu.ARM64,
+    main_list_view = "try",
+)
+
+try_.builder(
+    name = "mac14-arm64-rel",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "Compiles and runs MacOS 14 tests on ARM machines",
+    mirrors = [
+        "ci/mac-arm64-rel",
+        "ci/mac14-arm64-rel-tests",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "arm64",
+            "gpu_tests",
+            "release_try_builder",
+            "remoteexec",
+            "no_symbols",
+            "mac",
+        ],
+    ),
+    builderless = True,
+    cores = None,
+    cpu = cpu.ARM64,
+    contact_team_email = "bling-engprod@google.com",
+    main_list_view = "try",
+)
+
+try_.builder(
+    name = "mac15-arm64-rel",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "Compiles and runs MacOS 15 tests on ARM machines",
+    mirrors = [
+        "ci/mac-arm64-rel",
+        "ci/mac15-arm64-rel-tests",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "arm64",
+            "gpu_tests",
+            "release_try_builder",
+            "remoteexec",
+            "no_symbols",
+            "mac",
+        ],
+    ),
+    builderless = True,
+    cores = None,
+    cpu = cpu.ARM64,
+    contact_team_email = "bling-engprod@google.com",
+    main_list_view = "try",
+)
+
+try_.builder(
+    name = "mac26-arm64-rel",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    mirrors = [
+        "ci/mac-arm64-rel",
+        "ci/mac26-arm64-rel-tests",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "arm64",
+            "gpu_tests",
+            "release_try_builder",
+            "remoteexec",
+            "no_symbols",
+            "mac",
+        ],
+    ),
+    builderless = True,
+    cores = None,
+    cpu = cpu.ARM64,
+    contact_team_email = "bling-engprod@google.com",
+    main_list_view = "try",
+)
+
+try_.builder(
+    name = "mac13-tests",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    mirrors = [
+        "ci/Mac Builder",
+        "ci/Mac13 Tests",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Mac Builder",
+            "release_try_builder",
+            "remoteexec",
+            "x64",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    properties = {
+        "$build/test_utils": {
+            "min_failed_suites_to_skip_retry": 10,
+        },
+    },
+)
+
+try_.builder(
+    name = "mac14-tests",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "Runs default MacOS 14 tests on try.",
+    mirrors = [
+        "ci/Mac Builder",
+        "ci/mac14-tests",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Mac Builder",
+            "release_try_builder",
+            "remoteexec",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    contact_team_email = "bling-engprod@google.com",
+)
+
+try_.builder(
+    name = "mac15-x64-rel-tests",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "Runs default MacOS 15 tests on try.",
+    mirrors = [
+        "ci/Mac Builder",
+        "ci/mac15-x64-rel-tests",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Mac Builder",
+            "release_try_builder",
+            "remoteexec",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    contact_team_email = "bling-engprod@google.com",
+)
+
+try_.builder(
+    name = "mac26-x64-rel-tests",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "Runs default MacOS 26 tests on try.",
+    mirrors = [
+        "ci/Mac Builder",
+        "ci/mac26-x64-rel-tests",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Mac Builder",
+            "release_try_builder",
+            "remoteexec",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    contact_team_email = "bling-engprod@google.com",
+)
+
+try_.builder(
+    name = "mac-no-initial-webui-rel",
+    description_html = "Mirror of Mac No Initial WebUI CI builder",
+    mirrors = [
+        "ci/mac-arm64-rel",
+        "ci/mac-no-initial-webui-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/mac-arm64-rel",
+            "release_try_builder",
+            "remoteexec",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    contact_team_email = "chrome-webium-product-eng@google.com",
+)
+
+try_.builder(
+    name = "mac_chromium_asan_rel_ng",
+    mirrors = [
+        "ci/Mac ASan 64 Builder",
+        "ci/Mac ASan 64 Tests (1)",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "asan",
+            "dcheck_always_on",
+            "release_builder",
+            "remoteexec",
+            "mac",
+            "x64",
+        ],
+    ),
+    # TODO(crbug.com/543006750): Revert to MAC_DEFAULT after arm migration.
+    os = os.MAC_15,
+    siso_remote_jobs = siso.remote_jobs.HIGH_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "mac_chromium_compile_dbg_ng",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    mirrors = [
+        "ci/mac-arm64-dbg",
+    ],
+    builder_config_settings = builder_config.try_settings(
+        include_all_triggered_testers = True,
+        is_compile_only = True,
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "ci/mac-arm64-dbg",
+        ],
+    ),
+    cores = None,
+    cpu = cpu.ARM64,
+    cq_settings = try_.cq_settings(
+        on_default_cq = True,
+    ),
+    experiments = {
+        # crbug.com/940930
+        "chromium.enable_cleandead": 100,
+    },
+    main_list_view = "try",
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "mac-x64-compile-dbg",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    mirrors = [
+        "ci/Mac Builder (dbg)",
+    ],
+    builder_config_settings = builder_config.try_settings(
+        include_all_triggered_testers = True,
+        is_compile_only = True,
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Mac Builder (dbg)",
+        ],
+    ),
+    cores = None,
+    cpu = cpu.ARM64,
+    contact_team_email = "bling-engprod@google.com",
+    experiments = {
+        # crbug.com/940930
+        "chromium.enable_cleandead": 100,
+    },
+    main_list_view = "try",
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "mac_chromium_compile_rel_ng",
+    mirrors = [
+        "ci/Mac Builder",
+    ],
+    builder_config_settings = builder_config.try_settings(
+        include_all_triggered_testers = True,
+        is_compile_only = True,
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "gpu_tests",
+            "release_try_builder",
+            "remoteexec",
+            "mac",
+            "x64",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "mac_chromium_dbg_ng",
+    mirrors = [
+        "ci/mac-arm64-dbg",
+        "ci/mac26-tests-dbg",
+    ],
+    gn_args = "ci/mac-arm64-dbg",
+    cpu = cpu.ARM64,
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+try_.builder(
+    name = "mac_upload_clang",
+    executable = "recipe:chromium_toolchain/package_clang",
+    builderless = False,
+    # Mac 15 is the last mac version widely supported on x64.
+    os = os.MAC_15,
+    execution_timeout = 8 * time.hour,
+)
+
+try_.builder(
+    name = "mac_upload_clang_arm",
+    executable = "recipe:chromium_toolchain/package_clang",
+    builderless = False,
+    cpu = cpu.ARM64,
+    execution_timeout = 8 * time.hour,
+)
+
+try_.builder(
+    name = "mac_upload_rust",
+    executable = "recipe:chromium_toolchain/package_rust",
+    builderless = False,
+    # Mac 15 is the last mac version widely supported on x64.
+    os = os.MAC_15,
+    execution_timeout = 8 * time.hour,
+)
+
+try_.builder(
+    name = "mac_upload_rust_arm",
+    executable = "recipe:chromium_toolchain/package_rust",
+    builderless = False,
+    cpu = cpu.ARM64,
+    execution_timeout = 6 * time.hour,
+)
+
+try_.builder(
+    name = "mac-code-coverage",
+    mirrors = ["ci/mac-code-coverage"],
+    gn_args = "ci/mac-code-coverage",
+    cpu = cpu.ARM64,
+    execution_timeout = 10 * time.hour,
+)
+
+try_.builder(
+    name = "mac-treesinviz-disabled-rel",
+    mirrors = [
+        "ci/mac-treesinviz-disabled-rel",
+    ],
+    gn_args = "ci/mac-treesinviz-disabled-rel",
+    # TODO(crbug.com/543006750): Revert to MAC_DEFAULT after arm migration.
+    os = os.MAC_15,
+    contact_team_email = "chrome-gpu-team@google.com",
+)
+
+ios_builder(
+    name = "ios-asan",
+    mirrors = [
+        "ci/ios-asan",
+    ],
+    gn_args = "ci/ios-asan",
+    cpu = cpu.ARM64,
+)
+
+ios_builder(
+    name = "ios-blink-rel-fyi",
+    mirrors = [
+        "ci/ios-blink-rel-fyi",
+    ],
+    builder_config_settings = builder_config.try_settings(
+        retry_without_patch = False,
+    ),
+    gn_args = "ci/ios-blink-rel-fyi",
+    builderless = True,
+    cpu = cpu.ARM64,
+    execution_timeout = 4 * time.hour,
+)
+
+ios_builder(
+    name = "ios-catalyst",
+    mirrors = [
+        "ci/ios-catalyst",
+    ],
+    gn_args = "ci/ios-catalyst",
+    builderless = True,
+    cpu = cpu.ARM64,
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+ios_builder(
+    name = "ios-device",
+    mirrors = [
+        "ci/ios-device",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/ios-device",
+            "ios_disable_code_signing",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+ios_builder(
+    name = "ios-fieldtrial-rel",
+    mirrors = ["ci/ios-fieldtrial-rel"],
+    gn_args = "ci/ios-fieldtrial-rel",
+    builderless = True,
+    cpu = cpu.ARM64,
+)
+
+try_.orchestrator_builder(
+    name = "ios-simulator",
+    branch_selector = branches.selector.IOS_BRANCHES,
+    mirrors = [
+        "ci/ios-simulator",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/ios-simulator",
+            "use_clang_coverage",
+            "partial_code_coverage_instrumentation",
+        ],
+    ),
+    # TODO (crbug.com/1372179): Move back to orchestrator bots once they can be
+    # properly rate limited
+    # use_orchestrator_pool = True,
+    os = os.LINUX_DEFAULT,
+    compilator = "ios-simulator-compilator",
+    coverage_exclude_sources = "ios_test_files_and_test_utils",
+    coverage_test_types = ["overall", "unit"],
+    cq_settings = try_.cq_settings(
+        on_default_cq = True,
+    ),
+    experiments = {
+        # go/nplus1shardsproposal
+        "chromium.add_one_test_shard": 10,
+        # go/rts-project-proposal
+        "chromium_rts.filter_file_analysis": 100,
+        "luci.buildbucket.run_in_turboci": 2,
+    },
+    main_list_view = "try",
+    use_clang_coverage = True,
+    xcode = xcode.xcode_default,
+)
+
+try_.compilator_builder(
+    name = "ios-simulator-compilator",
+    branch_selector = branches.selector.IOS_BRANCHES,
+    # Set builderless to False so that branch builders use builderful bots
+    builderless = False,
+    cpu = cpu.ARM64,
+    ssd = None,
+    main_list_view = "try",
+)
+
+ios_builder(
+    name = "ios-simulator-exp",
+    description_html = "Experimental " + linkify_builder("try", "ios-simulator", "chromium") + " builder to test new features and changes.",
+    mirrors = builder_config.copy_from("try/ios-simulator"),
+    builder_config_settings = builder_config.try_settings(
+        is_compile_only = True,
+    ),
+    gn_args = "try/ios-simulator",
+    cpu = cpu.ARM64,
+    contact_team_email = "chrome-build-team@google.com",
+    coverage_exclude_sources = "ios_test_files_and_test_utils",
+    coverage_test_types = ["overall", "unit"],
+    # TODO: crbug.com/336382863 - Comment out 'cq_settings' to not keep this bot running.
+    cq_settings = try_.cq_settings(
+        experiment_percentage = 5,
+        on_default_cq = True,
+    ),
+    experiments = {
+        # go/nplus1shardsproposal
+        "chromium.add_one_test_shard": 10,
+        # crbug/940930
+        "chromium.enable_cleandead": 100,
+    },
+    main_list_view = "try",
+    use_clang_coverage = True,
+)
+
+ios_builder(
+    name = "ios-simulator-full-configs",
+    branch_selector = branches.selector.IOS_BRANCHES,
+    mirrors = [
+        "ci/ios-simulator-full-configs",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/ios-simulator-full-configs",
+            "use_clang_coverage",
+            "partial_code_coverage_instrumentation",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    coverage_exclude_sources = "ios_test_files_and_test_utils",
+    coverage_test_types = ["overall", "unit"],
+    cq_settings = try_.cq_settings(
+        location_filters = [
+            "ios/.+",
+        ],
+    ),
+    main_list_view = "try",
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+    use_clang_coverage = True,
+)
+
+ios_builder(
+    name = "ios-simulator-noncq",
+    mirrors = [
+        "ci/ios-simulator-noncq",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/ios-simulator-noncq",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    cq_settings = try_.cq_settings(
+        location_filters = [
+            "third_party/crashpad/crashpad/.+",
+        ],
+    ),
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+ios_builder(
+    name = "ios-wpt-fyi-rel",
+    mirrors = [
+        "ci/ios-wpt-fyi-rel",
+    ],
+    gn_args = "ci/ios-wpt-fyi-rel",
+    builderless = True,
+    cpu = cpu.ARM64,
+    contact_team_email = "chrome-product-engprod@google.com",
+)
+
+ios_builder(
+    name = "tvos-rel-fyi",
+    mirrors = ["ci/tvos-rel-fyi"],
+    builder_config_settings = builder_config.try_settings(
+        retry_without_patch = False,
+    ),
+    gn_args = "ci/tvos-rel-fyi",
+    builderless = True,
+    cpu = cpu.ARM64,
+    contact_team_email = "cobalt-appletv@google.com",
+    xcode = xcode.xcode_default,
+)
+
+ios_builder(
+    name = "ios-vm",
+    mirrors = ["ci/ios-vm"],
+    gn_args = "ci/ios-vm",
+    builderless = True,
+    cpu = cpu.ARM64,
+    contact_team_email = "bling-engprod@google.com",
+)
+
+ios_builder(
+    name = "ios26-beta-simulator",
+    mirrors = [
+        "ci/ios26-beta-simulator",
+    ],
+    gn_args = "ci/ios26-beta-simulator",
+    cpu = cpu.ARM64,
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+ios_builder(
+    name = "ios27-beta-simulator",
+    mirrors = ["ci/ios27-beta-simulator"],
+    gn_args = "ci/ios27-beta-simulator",
+    cpu = cpu.ARM64,
+)
+
+ios_builder(
+    name = "ios26-sdk-simulator",
+    mirrors = [
+        "ci/ios26-sdk-simulator",
+    ],
+    gn_args = "ci/ios26-sdk-simulator",
+    cpu = cpu.ARM64,
+    xcode = xcode.xcode_beta,
+)
+
+ios_builder(
+    name = "ios27-sdk-simulator",
+    mirrors = ["ci/ios27-sdk-simulator"],
+    gn_args = "ci/ios27-sdk-simulator",
+    cpu = cpu.ARM64,
+    xcode = xcode.xcode_beta,
+)
+
+ios_builder(
+    name = "ios-simulator-code-coverage",
+    mirrors = ["ci/ios-simulator-code-coverage"],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/ios-simulator-code-coverage",
+        ],
+    ),
+    builderless = True,
+    cpu = cpu.ARM64,
+    execution_timeout = 10 * time.hour,
+)
+
+shared_gpu.try_.mac_optional_builder(
+    name = "mac_optional_gpu_tests_rel",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = ("Runs GPU tests on Mac Minis with Intel UHD 630 GPUs and Macbook Pros with AMD GPUs. " +
+                        "Only automatically added to CLs that touch GPU-related files."),
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_arch = builder_config.target_arch.INTEL,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "gpu_fyi_tests",
+            "release_builder",
+            "remoteexec",
+            "minimal_symbols",
+            "dcheck_always_on",
+            "mac",
+            "x64",
+        ],
+    ),
+    targets = targets.bundle(
+        targets = [
+            "mac_optional_gpu_tests_rel_gtests",
+            "mac_optional_gpu_tests_rel_gpu_telemetry_tests",
+        ],
+    ),
+    targets_settings = targets.settings(
+        browser_config = targets.browser_config.RELEASE,
+        os_type = targets.os_type.MAC,
+    ),
+    alerts_enabled = False,
+    contact_team_email = "chrome-gpu-infra@google.com",
+    cq_settings = try_.cq_settings(
+        location_filters = gpu.try_.optional_trybot_location_filters.MAC,
+    ),
+    experiments = {
+        "luci.buildbucket.run_in_turboci": 100,
+    },
+    main_list_view = "try",
+    max_concurrent_builds = 7,
+    service_account = gpu.try_.SERVICE_ACCOUNT,
+)
+
+shared_gpu.try_.mac_optional_builder(
+    name = "gpu-fyi-cq-mac-arm64",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = ("Runs GPU tests on M2 Macbook Pros. Only automatically added to CLs that " +
+                        "touch GPU-related files"),
+    mirrors = [
+        "ci/GPU FYI Mac arm64 Builder",
+        "ci/Mac FYI Retina Release (Apple M2)",
+    ],
+    builder_config_settings = builder_config.try_settings(
+        retry_failed_shards = False,
+    ),
+    gn_args = "ci/GPU FYI Mac arm64 Builder",
+    alerts_enabled = False,
+    contact_team_email = "chrome-gpu-infra@google.com",
+    cq_settings = try_.cq_settings(
+        location_filters = gpu.try_.optional_trybot_location_filters.MAC,
+    ),
+    experiments = {
+        "luci.buildbucket.run_in_turboci": 100,
+    },
+    main_list_view = "try",
+    max_concurrent_builds = 7,
+    service_account = gpu.try_.SERVICE_ACCOUNT,
+)
+
+try_.builder(
+    name = "mac-separate-renderer-rel",
+    description_html = "Runs separate renderer tests on Mac, mirroring mac-separate-renderer-fyi-rel.",
+    mirrors = [
+        "ci/mac-separate-renderer-fyi-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/mac-separate-renderer-fyi-rel",
+            "release_try_builder",
+            "dcheck_always_on",
+        ],
+    ),
+    # TODO(crbug.com/543006750): Revert to MAC_DEFAULT after arm migration.
+    os = os.MAC_15,
+    contact_team_email = "toyoshim@chromium.org",
+    cq_settings = try_.cq_settings(
+        includable_only = True,
+    ),
+)

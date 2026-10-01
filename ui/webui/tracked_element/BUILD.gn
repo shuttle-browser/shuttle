@@ -1,0 +1,80 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("tracked_element") {
+  sources = [
+    "element_highlighter_webui.cc",
+    "element_highlighter_webui.h",
+    "tracked_element_handler.cc",
+    "tracked_element_handler.h",
+    "tracked_element_handler_document_singleton.cc",
+    "tracked_element_handler_document_singleton.h",
+    "tracked_element_web_ui.cc",
+    "tracked_element_web_ui.h",
+  ]
+
+  public_deps = [
+    "//content/public/browser",
+    "//ui/base/interaction",
+    "//ui/webui/resources/js/tracked_element:mojo_bindings",
+  ]
+
+  deps = [
+    "//base",
+    "//ui/gfx",
+    "//ui/gfx/geometry",
+  ]
+
+  if (!is_android) {
+    deps += [
+      "//ui/views",
+      "//ui/views/controls/webview",
+    ]
+  }
+}
+
+source_set("test_support") {
+  testonly = true
+  sources = [
+    "interaction_test_util_web_ui.cc",
+    "interaction_test_util_web_ui.h",
+  ]
+  deps = []
+  if (!is_android) {
+    deps += [ "//ui/views/controls/webview" ]
+  }
+  public_deps = [
+    ":tracked_element",
+    "//ui/base:test_support",
+    "//ui/base/interaction:test_support",
+  ]
+}
+
+# These tests are included in unit_tests (//chrome/test:unit_tests) so that they
+# can depend on //content. They should not be included in ui_unittests.
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "interaction_test_util_web_ui_unittest.cc",
+    "tracked_element_handler_unittest.cc",
+  ]
+  deps = [
+    ":test_support",
+    ":tracked_element",
+    "//base/test:test_support",
+    "//content/test:test_support",
+    "//mojo/public/cpp/bindings",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//ui/base:test_support",
+    "//ui/base/interaction:test_support",
+  ]
+  if (!is_android) {
+    deps += [
+      "//ui/views",
+      "//ui/views:test_support",
+      "//ui/views/controls/webview",
+    ]
+  }
+}

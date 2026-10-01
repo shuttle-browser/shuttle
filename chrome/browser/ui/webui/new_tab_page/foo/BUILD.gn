@@ -1,0 +1,24 @@
+# Copyright 2020 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//mojo/public/tools/bindings/mojom.gni")
+
+assert(!is_official_build)
+
+mojom("mojo_bindings") {
+  sources = [ "foo.mojom" ]
+  webui_module_path = "/"
+}
+
+source_set("foo_handler") {
+  sources = [ "foo_handler.cc" ]
+  public = [ "foo_handler.h" ]
+
+  public_deps = [
+    ":mojo_bindings",
+    "//mojo/public/cpp/bindings",
+  ]
+
+  deps = [ "//base" ]
+}

@@ -1,0 +1,1 @@
+table.accessibilityColumns=ERROR:FAILED_TO_PARSE

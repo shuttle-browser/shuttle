@@ -1,0 +1,196 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/webapps/installable/installed_webapp_geolocation_bridge.h"
+
+#include <utility>
+
+#include "base/android/jni_android.h"
+#include "base/android/jni_string.h"
+#include "base/check.h"
+#include "base/functional/bind.h"
+#include "base/logging.h"
+#include "base/metrics/histogram_functions.h"
+#include "chrome/browser/webapps/installable/installed_webapp_geolocation_context.h"
+#include "services/device/public/cpp/geolocation/geoposition.h"
+#include "url/android/gurl_android.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "chrome/android/chrome_jni_headers/InstalledWebappGeolocationBridge_jni.h"
+
+InstalledWebappGeolocationBridge::InstalledWebappGeolocationBridge(
+    mojo::PendingReceiver<Geolocation> receiver,
+    const url::Origin& origin,
+    InstalledWebappGeolocationContext* context)
+    : context_(context),
+      origin_(origin),
+      high_accuracy_(false),
+      receiver_(this, std::move(receiver)) {
+  DCHECK(context_);
+  receiver_.set_disconnect_handler(
+      base::BindOnce(&InstalledWebappGeolocationBridge::OnConnectionError,
+                     base::Unretained(this)));
+}
+
+InstalledWebappGeolocationBridge::~InstalledWebappGeolocationBridge() {
+  StopUpdates();
+}
+
+void InstalledWebappGeolocationBridge::StartListeningForUpdates() {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  if (java_ref_.is_null()) {
+    java_ref_.Reset(InstalledWebappGeolocationBridgeJni::create(
+        env, reinterpret_cast<intptr_t>(this),
+        url::GURLAndroid::FromNativeGURL(env, origin_.GetURL())));
+  }
+  java_ref_->start(env, high_accuracy_);
+}
+
+void InstalledWebappGeolocationBridge::StopUpdates() {
+  if (!java_ref_.is_null()) {
+    JNIEnv* env = base::android::AttachCurrentThread();
+    java_ref_->stopAndDestroy(env);
+    java_ref_.Reset();
+  }
+}
+
+void InstalledWebappGeolocationBridge::SetHighAccuracyHint(bool high_accuracy) {
+  high_accuracy_ = high_accuracy;
+
+  if (position_override_ && position_override_->is_position() &&
+      device::ValidateGeoposition(*position_override_->get_position())) {
+    OnLocationUpdate(position_override_.Clone());
+    return;
+  }
+
+  StartListeningForUpdates();
+}
+
+void InstalledWebappGeolocationBridge::QueryNextPosition(
+    QueryNextPositionCallback callback) {
+  if (!position_callback_.is_null()) {
+    DVLOG(1) << "Overlapped call to QueryNextPosition!";
+    OnConnectionError();  // Simulate a connection error.
+    return;
+  }
+
+  position_callback_ = std::move(callback);
+
+  if (current_position_) {
+    ReportCurrentPosition();
+  }
+}
+
+// QueryCachedPosition is not supported by this provider since it is not
+// needed by Trusted Web Activities.
+void InstalledWebappGeolocationBridge::QueryCachedPosition(
+    QueryCachedPositionCallback callback) {
+  std::move(callback).Run(device::mojom::GeopositionResult::NewError(
+      device::mojom::GeopositionError::New(
+          device::mojom::GeopositionErrorCode::kPositionUnavailable, "", "")));
+}
+
+void InstalledWebappGeolocationBridge::SetOverride(
+    device::mojom::GeopositionResultPtr result) {
+  CHECK(result);
+  if (current_position_ && !position_callback_.is_null()) {
+    ReportCurrentPosition();
+  }
+
+  position_override_ = std::move(result);
+  StopUpdates();
+
+  OnLocationUpdate(position_override_.Clone());
+}
+
+void InstalledWebappGeolocationBridge::ClearOverride() {
+  position_override_.reset();
+  StartListeningForUpdates();
+}
+
+void InstalledWebappGeolocationBridge::OnPermissionRevoked() {
+  if (!position_callback_.is_null()) {
+    std::move(position_callback_)
+        .Run(device::mojom::GeopositionResult::NewError(
+            device::mojom::GeopositionError::New(
+                device::mojom::GeopositionErrorCode::kPermissionDenied,
+                /*error_message=*/"User denied Geolocation",
+                /*error_technical=*/"")));
+  }
+  position_callback_.Reset();
+}
+
+void InstalledWebappGeolocationBridge::OnConnectionError() {
+  context_->OnConnectionError(this);
+
+  // The above call deleted this instance, so the only safe thing to do is
+  // return.
+}
+
+void InstalledWebappGeolocationBridge::OnLocationUpdate(
+    device::mojom::GeopositionResultPtr result) {
+  DCHECK(context_);
+  CHECK(result);
+
+  current_position_ = std::move(result);
+
+  if (!position_callback_.is_null())
+    ReportCurrentPosition();
+}
+
+void InstalledWebappGeolocationBridge::ReportCurrentPosition() {
+  DCHECK(position_callback_);
+  CHECK(current_position_);
+  std::move(position_callback_).Run(std::move(current_position_));
+}
+
+void InstalledWebappGeolocationBridge::OnNewLocationAvailable(JNIEnv* env,
+                                                              double latitude,
+                                                              double longitude,
+                                                              double time_stamp,
+                                                              bool has_altitude,
+                                                              double altitude,
+                                                              bool has_accuracy,
+                                                              double accuracy,
+                                                              bool has_heading,
+                                                              double heading,
+                                                              bool has_speed,
+                                                              double speed) {
+  auto position = device::mojom::Geoposition::New();
+  position->latitude = latitude;
+  position->longitude = longitude;
+  position->timestamp = base::Time::FromSecondsSinceUnixEpoch(time_stamp);
+  if (has_altitude)
+    position->altitude = altitude;
+  if (has_accuracy)
+    position->accuracy = accuracy;
+  if (has_heading)
+    position->heading = heading;
+  if (has_speed)
+    position->speed = speed;
+
+  // If position is invalid, mark it as unavailable.
+  device::mojom::GeopositionResultPtr result;
+  if (device::ValidateGeoposition(*position)) {
+    result = device::mojom::GeopositionResult::NewPosition(std::move(position));
+  } else {
+    result = device::mojom::GeopositionResult::NewError(
+        device::mojom::GeopositionError::New(
+            device::mojom::GeopositionErrorCode::kPositionUnavailable,
+            /*error_message=*/"", /*error_technical=*/""));
+  }
+
+  OnLocationUpdate(std::move(result));
+}
+
+void InstalledWebappGeolocationBridge::OnNewErrorAvailable(
+    JNIEnv* env,
+    const std::string& message) {
+  OnLocationUpdate(device::mojom::GeopositionResult::NewError(
+      device::mojom::GeopositionError::New(
+          device::mojom::GeopositionErrorCode::kPositionUnavailable, message,
+          /*error_technical=*/"")));
+}
+
+DEFINE_JNI(InstalledWebappGeolocationBridge)

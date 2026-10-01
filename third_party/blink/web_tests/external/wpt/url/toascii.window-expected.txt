@@ -1,0 +1,94 @@
+This is a testharness.js-based test.
+Found 45 FAIL, 0 TIMEOUT, 0 NOTRUN.
+[FAIL] ≮ (using URL)
+  Failed to construct 'URL': Invalid URL
+[FAIL] ≮ (using URL.host)
+  assert_equals: expected "xn--gdh" but got "x"
+[FAIL] ≮ (using URL.hostname)
+  assert_equals: expected "xn--gdh" but got "x"
+[FAIL] ≮ (using <a>)
+  Failed to construct 'URL': Invalid URL
+[FAIL] ≮ (using <a>.host)
+  assert_equals: expected "xn--gdh" but got "x"
+[FAIL] ≮ (using <a>.hostname)
+  assert_equals: expected "xn--gdh" but got "x"
+[FAIL] ≮ (using <area>)
+  Failed to construct 'URL': Invalid URL
+[FAIL] ≮ (using <area>.host)
+  assert_equals: expected "xn--gdh" but got "x"
+[FAIL] ≮ (using <area>.hostname)
+  assert_equals: expected "xn--gdh" but got "x"
+[FAIL] ≯ (using URL)
+  Failed to construct 'URL': Invalid URL
+[FAIL] ≯ (using URL.host)
+  assert_equals: expected "xn--hdh" but got "x"
+[FAIL] ≯ (using URL.hostname)
+  assert_equals: expected "xn--hdh" but got "x"
+[FAIL] ≯ (using <a>)
+  Failed to construct 'URL': Invalid URL
+[FAIL] ≯ (using <a>.host)
+  assert_equals: expected "xn--hdh" but got "x"
+[FAIL] ≯ (using <a>.hostname)
+  assert_equals: expected "xn--hdh" but got "x"
+[FAIL] ≯ (using <area>)
+  Failed to construct 'URL': Invalid URL
+[FAIL] ≯ (using <area>.host)
+  assert_equals: expected "xn--hdh" but got "x"
+[FAIL] ≯ (using <area>.hostname)
+  assert_equals: expected "xn--hdh" but got "x"
+[FAIL] <­̸ (using URL)
+  Failed to construct 'URL': Invalid URL
+[FAIL] <­̸ (using URL.host)
+  assert_equals: expected "xn--gdh" but got "x"
+[FAIL] <­̸ (using URL.hostname)
+  assert_equals: expected "xn--gdh" but got "x"
+[FAIL] <­̸ (using <a>)
+  Failed to construct 'URL': Invalid URL
+[FAIL] <­̸ (using <a>.host)
+  assert_equals: expected "xn--gdh" but got "x"
+[FAIL] <­̸ (using <a>.hostname)
+  assert_equals: expected "xn--gdh" but got "x"
+[FAIL] <­̸ (using <area>)
+  Failed to construct 'URL': Invalid URL
+[FAIL] <­̸ (using <area>.host)
+  assert_equals: expected "xn--gdh" but got "x"
+[FAIL] <­̸ (using <area>.hostname)
+  assert_equals: expected "xn--gdh" but got "x"
+[FAIL] >­̸ (using URL)
+  Failed to construct 'URL': Invalid URL
+[FAIL] >­̸ (using URL.host)
+  assert_equals: expected "xn--hdh" but got "x"
+[FAIL] >­̸ (using URL.hostname)
+  assert_equals: expected "xn--hdh" but got "x"
+[FAIL] >­̸ (using <a>)
+  Failed to construct 'URL': Invalid URL
+[FAIL] >­̸ (using <a>.host)
+  assert_equals: expected "xn--hdh" but got "x"
+[FAIL] >­̸ (using <a>.hostname)
+  assert_equals: expected "xn--hdh" but got "x"
+[FAIL] >­̸ (using <area>)
+  Failed to construct 'URL': Invalid URL
+[FAIL] >­̸ (using <area>.host)
+  assert_equals: expected "xn--hdh" but got "x"
+[FAIL] >­̸ (using <area>.hostname)
+  assert_equals: expected "xn--hdh" but got "x"
+[FAIL] www .lookout.net (using URL)
+  assert_throws_js: function "() => makeURL("url", hostTest.input)" did not throw
+[FAIL] www .lookout.net (using URL.host)
+  assert_equals: expected "x" but got "www%20.lookout.net"
+[FAIL] www .lookout.net (using URL.hostname)
+  assert_equals: expected "x" but got "www%20.lookout.net"
+[FAIL] www .lookout.net (using <a>)
+  assert_equals: expected "" but got "www%20.lookout.net"
+[FAIL] www .lookout.net (using <a>.host)
+  assert_equals: expected "x" but got "www%20.lookout.net"
+[FAIL] www .lookout.net (using <a>.hostname)
+  assert_equals: expected "x" but got "www%20.lookout.net"
+[FAIL] www .lookout.net (using <area>)
+  assert_equals: expected "" but got "www%20.lookout.net"
+[FAIL] www .lookout.net (using <area>.host)
+  assert_equals: expected "x" but got "www%20.lookout.net"
+[FAIL] www .lookout.net (using <area>.hostname)
+  assert_equals: expected "x" but got "www%20.lookout.net"
+Harness: the test ran to completion.
+

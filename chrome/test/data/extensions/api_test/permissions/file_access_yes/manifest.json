@@ -1,0 +1,9 @@
+{
+  "name": "file_access_yes",
+  "version": "1",
+  "manifest_version": 3,
+  "optional_host_permissions": ["file:///*"],
+  "background": {
+    "service_worker": "background.js"
+  }
+}

@@ -1,0 +1,21 @@
+[
+  {
+    "os": [
+      "win",
+      "linux",
+      "mac",
+      "chromeos",
+      "fuchsia"
+    ],
+    "can_be_recommended": true,
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "session.startup_urls",
+      "default_value": [],
+      "values_to_test": [
+        [
+          "chromium.org"
+        ]
+      ]
+    }
+  }
+]

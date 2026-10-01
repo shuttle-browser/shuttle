@@ -1,0 +1,451 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "remoting/host/daemon_process.h"
+
+#include <stdint.h>
+
+#include <memory>
+
+#include "base/command_line.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/location.h"
+#include "base/memory/ptr_util.h"
+#include "base/memory/ref_counted.h"
+#include "base/process/process.h"
+#include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/run_until.h"
+#include "base/test/scoped_command_line.h"
+#include "base/test/task_environment.h"
+#include "base/test/test_future.h"
+#include "build/build_config.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "mojo/public/cpp/system/message_pipe.h"
+#include "remoting/base/auto_thread_task_runner.h"
+#include "remoting/base/errors.h"
+#include "remoting/base/source_location.h"
+#include "remoting/host/base/host_exit_codes.h"
+#include "remoting/host/base/switches.h"
+#include "remoting/host/desktop_session.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+using testing::_;
+using testing::AnyNumber;
+using testing::InSequence;
+using testing::Invoke;
+
+namespace remoting {
+
+namespace {
+
+// Provides a public constructor allowing the test to create instances of
+// DesktopSession directly.
+class FakeDesktopSession : public DesktopSession {
+ public:
+  FakeDesktopSession(DaemonProcess* daemon_process, int id);
+
+  FakeDesktopSession(const FakeDesktopSession&) = delete;
+  FakeDesktopSession& operator=(const FakeDesktopSession&) = delete;
+
+  ~FakeDesktopSession() override;
+
+  void SetScreenResolution(const ScreenResolution& resolution) override {}
+  void ReconnectNetworkChannel(
+      const mojom::DesktopSessionOptions& options) override {}
+};
+
+class MockDaemonProcess : public DaemonProcess {
+ public:
+  MockDaemonProcess(scoped_refptr<AutoThreadTaskRunner> caller_task_runner,
+                    scoped_refptr<AutoThreadTaskRunner> io_task_runner,
+                    StoppedCallback stopped_callback);
+
+  MockDaemonProcess(const MockDaemonProcess&) = delete;
+  MockDaemonProcess& operator=(const MockDaemonProcess&) = delete;
+
+  ~MockDaemonProcess() override;
+
+  std::unique_ptr<DesktopSession> DoCreateDesktopSession(
+      int terminal_id,
+      const mojom::DesktopSessionOptions& options) override;
+
+  MOCK_METHOD(bool,
+              OnDesktopSessionAgentAttached,
+              (int, mojo::ScopedMessagePipeHandle),
+              (override));
+
+  MOCK_METHOD(DesktopSession*, DoCreateDesktopSessionPtr, (int));
+  MOCK_METHOD(void, DoCrashNetworkProcess, (const base::Location&), (override));
+  MOCK_METHOD(void, LaunchNetworkProcess, (), (override));
+  MOCK_METHOD(void,
+              SendHostConfigToNetworkProcess,
+              (const std::string&),
+              (override));
+  MOCK_METHOD(void,
+              SendTerminalDisconnected,
+              (int terminal_id,
+               ErrorCode error_code,
+               const std::string& error_details,
+               const SourceLocation& error_location),
+              (override));
+
+  // mojom::ChromotingHostServices implementation.
+  MOCK_METHOD(void,
+              BindSessionServices,
+              (mojo::PendingReceiver<mojom::ChromotingSessionServices>),
+              (override));
+
+  MOCK_METHOD(std::unique_ptr<WorkerProcessLauncher::Delegate>,
+              CreatePeerConnectionProcessLauncherDelegate,
+              (),
+              (override));
+};
+
+FakeDesktopSession::FakeDesktopSession(DaemonProcess* daemon_process, int id)
+    : DesktopSession(daemon_process, id) {}
+
+FakeDesktopSession::~FakeDesktopSession() = default;
+
+MockDaemonProcess::MockDaemonProcess(
+    scoped_refptr<AutoThreadTaskRunner> caller_task_runner,
+    scoped_refptr<AutoThreadTaskRunner> io_task_runner,
+    StoppedCallback stopped_callback)
+    : DaemonProcess(caller_task_runner,
+                    io_task_runner,
+                    std::move(stopped_callback)) {}
+
+MockDaemonProcess::~MockDaemonProcess() = default;
+
+std::unique_ptr<DesktopSession> MockDaemonProcess::DoCreateDesktopSession(
+    int terminal_id,
+    const mojom::DesktopSessionOptions& options) {
+  return base::WrapUnique(DoCreateDesktopSessionPtr(terminal_id));
+}
+
+mojom::DesktopSessionOptionsPtr CreateSessionOptions() {
+  auto options = mojom::DesktopSessionOptions::New();
+  options->screen_resolution = ScreenResolution();
+  options->is_curtained = false;
+  return options;
+}
+
+}  // namespace
+
+class DaemonProcessTest : public testing::Test {
+ public:
+  DaemonProcessTest();
+  ~DaemonProcessTest() override;
+
+  void SetUp() override;
+  void TearDown() override;
+
+  // DaemonProcess mocks
+  DesktopSession* DoCreateDesktopSession(int terminal_id);
+  void LaunchNetworkProcess();
+
+  // Deletes |daemon_process_|.
+  void DeleteDaemonProcess(int exit_code);
+
+  // Quits |message_loop_|.
+  void QuitMessageLoop();
+
+  void StartDaemonProcess();
+
+  const DaemonProcess::DesktopSessionMap& desktop_sessions() const {
+    return daemon_process_->desktop_sessions();
+  }
+
+ protected:
+  base::test::TaskEnvironment task_environment_{
+      base::test::TaskEnvironment::MainThreadType::IO};
+
+  std::unique_ptr<MockDaemonProcess> daemon_process_;
+  int terminal_id_ = 0;
+  base::RunLoop run_loop_;
+};
+
+DaemonProcessTest::DaemonProcessTest() = default;
+
+DaemonProcessTest::~DaemonProcessTest() = default;
+
+void DaemonProcessTest::SetUp() {
+  scoped_refptr<AutoThreadTaskRunner> task_runner = new AutoThreadTaskRunner(
+      task_environment_.GetMainThreadTaskRunner(),
+      base::BindOnce(&DaemonProcessTest::QuitMessageLoop,
+                     base::Unretained(this)));
+  daemon_process_ = std::make_unique<MockDaemonProcess>(
+      task_runner, task_runner,
+      base::BindOnce(&DaemonProcessTest::DeleteDaemonProcess,
+                     base::Unretained(this)));
+
+  // Set up daemon process mocks.
+  EXPECT_CALL(*daemon_process_, DoCreateDesktopSessionPtr(_))
+      .Times(AnyNumber())
+      .WillRepeatedly(Invoke(this, &DaemonProcessTest::DoCreateDesktopSession));
+  EXPECT_CALL(*daemon_process_, DoCrashNetworkProcess(_)).Times(AnyNumber());
+  EXPECT_CALL(*daemon_process_, LaunchNetworkProcess())
+      .Times(AnyNumber())
+      .WillRepeatedly(Invoke(this, &DaemonProcessTest::LaunchNetworkProcess));
+}
+
+void DaemonProcessTest::TearDown() {
+  daemon_process_->Stop(kSuccessExitCode);
+  run_loop_.Run();
+}
+
+DesktopSession* DaemonProcessTest::DoCreateDesktopSession(int terminal_id) {
+  return new FakeDesktopSession(daemon_process_.get(), terminal_id);
+}
+
+void DaemonProcessTest::LaunchNetworkProcess() {
+  terminal_id_ = 0;
+  daemon_process_->OnChannelConnected(0);
+}
+
+void DaemonProcessTest::DeleteDaemonProcess(int exit_code) {
+  daemon_process_.reset();
+}
+
+void DaemonProcessTest::QuitMessageLoop() {
+  task_environment_.GetMainThreadTaskRunner()->PostTask(
+      FROM_HERE, run_loop_.QuitWhenIdleClosure());
+}
+
+void DaemonProcessTest::StartDaemonProcess() {
+  // DaemonProcess::Initialize() sets up the config watcher that this test does
+  // not support. Launch the process directly.
+  daemon_process_->LaunchNetworkProcess();
+}
+
+MATCHER_P(Message, type, "") {
+  return arg.type() == static_cast<uint32_t>(type);
+}
+
+TEST_F(DaemonProcessTest, OpenClose) {
+  InSequence s;
+  EXPECT_CALL(*daemon_process_, SendHostConfigToNetworkProcess(_));
+  EXPECT_CALL(*daemon_process_, SendTerminalDisconnected(_, _, _, _));
+
+  StartDaemonProcess();
+
+  int id = terminal_id_++;
+  daemon_process_->CreateDesktopSession(
+      id, mojo::NullReceiver(), mojo::NullRemote(), CreateSessionOptions());
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+  EXPECT_EQ(id, desktop_sessions().begin()->second->id());
+
+  daemon_process_->CloseDesktopSession(id);
+  EXPECT_TRUE(desktop_sessions().empty());
+}
+
+TEST_F(DaemonProcessTest, CallCloseDesktopSession) {
+  InSequence s;
+  EXPECT_CALL(*daemon_process_, SendHostConfigToNetworkProcess(_));
+  EXPECT_CALL(*daemon_process_, SendTerminalDisconnected(_, _, _, _));
+
+  StartDaemonProcess();
+
+  int id = terminal_id_++;
+  daemon_process_->CreateDesktopSession(
+      id, mojo::NullReceiver(), mojo::NullRemote(), CreateSessionOptions());
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+  EXPECT_EQ(id, desktop_sessions().begin()->second->id());
+
+  daemon_process_->CloseDesktopSession(id);
+  EXPECT_TRUE(desktop_sessions().empty());
+}
+
+// Sends two CloseDesktopSession messages and expects the second one to be
+// ignored.
+TEST_F(DaemonProcessTest, DoubleDisconnectTerminal) {
+  InSequence s;
+  EXPECT_CALL(*daemon_process_, SendHostConfigToNetworkProcess(_));
+  EXPECT_CALL(*daemon_process_, SendTerminalDisconnected(_, _, _, _));
+
+  StartDaemonProcess();
+
+  int id = terminal_id_++;
+  daemon_process_->CreateDesktopSession(
+      id, mojo::NullReceiver(), mojo::NullRemote(), CreateSessionOptions());
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+  EXPECT_EQ(id, desktop_sessions().begin()->second->id());
+
+  daemon_process_->CloseDesktopSession(id);
+  EXPECT_TRUE(desktop_sessions().empty());
+
+  daemon_process_->CloseDesktopSession(id);
+  EXPECT_TRUE(desktop_sessions().empty());
+}
+
+// Tries to close an invalid terminal ID and expects the network process to be
+// restarted.
+TEST_F(DaemonProcessTest, InvalidDisconnectTerminal) {
+  InSequence s;
+  EXPECT_CALL(*daemon_process_, SendHostConfigToNetworkProcess(_));
+  EXPECT_CALL(*daemon_process_, DoCrashNetworkProcess(_))
+      .WillOnce(
+          InvokeWithoutArgs(this, &DaemonProcessTest::LaunchNetworkProcess));
+  EXPECT_CALL(*daemon_process_, SendHostConfigToNetworkProcess(_));
+
+  StartDaemonProcess();
+
+  int id = terminal_id_++;
+
+  daemon_process_->CloseDesktopSession(id);
+  EXPECT_TRUE(desktop_sessions().empty());
+  EXPECT_EQ(terminal_id_, 0);
+}
+
+// Tries to open an invalid terminal ID and expects the network process to be
+// restarted.
+TEST_F(DaemonProcessTest, InvalidConnectTerminal) {
+  InSequence s;
+  EXPECT_CALL(*daemon_process_, SendHostConfigToNetworkProcess(_));
+  EXPECT_CALL(*daemon_process_, DoCrashNetworkProcess(_))
+      .WillOnce(
+          InvokeWithoutArgs(this, &DaemonProcessTest::LaunchNetworkProcess));
+  EXPECT_CALL(*daemon_process_, SendHostConfigToNetworkProcess(_));
+
+  StartDaemonProcess();
+
+  int id = terminal_id_++;
+  daemon_process_->CreateDesktopSession(
+      id, mojo::NullReceiver(), mojo::NullRemote(), CreateSessionOptions());
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+  EXPECT_EQ(id, desktop_sessions().begin()->second->id());
+
+  daemon_process_->CreateDesktopSession(
+      id, mojo::NullReceiver(), mojo::NullRemote(), CreateSessionOptions());
+  // The first valid desktop session is retained across the network process
+  // crash.
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+  EXPECT_EQ(id, desktop_sessions().begin()->second->id());
+}
+
+TEST_F(DaemonProcessTest, LaunchPeerConnectionProcess) {
+  InSequence s;
+  EXPECT_CALL(*daemon_process_, SendHostConfigToNetworkProcess(_));
+  EXPECT_CALL(*daemon_process_, CreatePeerConnectionProcessLauncherDelegate())
+      .WillOnce(testing::ReturnNull());
+
+  StartDaemonProcess();
+
+  mojo::PendingRemote<mojom::PeerSession> peer_session_remote;
+  daemon_process_->LaunchPeerSession(
+      peer_session_remote.InitWithNewPipeAndPassReceiver());
+}
+
+TEST_F(DaemonProcessTest, GetDesktopSessionCreatesNewSession) {
+  InSequence s;
+  EXPECT_CALL(*daemon_process_, SendHostConfigToNetworkProcess(_));
+
+  StartDaemonProcess();
+
+  auto options1 = CreateSessionOptions();
+  options1->client_id = "user@domain.com";
+  daemon_process_->GetDesktopSession(mojo::NullReceiver(), mojo::NullRemote(),
+                                     std::move(options1));
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+  EXPECT_EQ(0, desktop_sessions().begin()->second->id());
+
+  auto options2 = CreateSessionOptions();
+  options2->client_id = "user@domain.com";
+  daemon_process_->GetDesktopSession(mojo::NullReceiver(), mojo::NullRemote(),
+                                     std::move(options2));
+#if BUILDFLAG(IS_LINUX)
+  // On Linux, persistent sessions are reused.
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+  EXPECT_EQ(0, desktop_sessions().begin()->second->id());
+#else
+  // On other platforms, persistent sessions are not supported; a new session is
+  // created.
+  EXPECT_EQ(desktop_sessions().size(), 2u);
+#endif
+}
+
+TEST_F(DaemonProcessTest, DesktopSessionClosesOnReceiverDisconnect) {
+  InSequence s;
+  EXPECT_CALL(*daemon_process_, SendHostConfigToNetworkProcess(_));
+#if !BUILDFLAG(IS_LINUX)
+  EXPECT_CALL(*daemon_process_, SendTerminalDisconnected(_, _, _, _));
+#endif
+
+  StartDaemonProcess();
+
+  mojo::Remote<mojom::DesktopSession> desktop_session_remote;
+  daemon_process_->GetDesktopSession(
+      desktop_session_remote.BindNewPipeAndPassReceiver(), mojo::NullRemote(),
+      CreateSessionOptions());
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+
+  desktop_session_remote.reset();
+
+#if BUILDFLAG(IS_LINUX)
+  // Wait for the Mojo disconnect notification to be dispatched and processed.
+  base::test::TestFuture<void> disconnect_processed;
+  task_environment_.GetMainThreadTaskRunner()->PostTask(
+      FROM_HERE, disconnect_processed.GetCallback());
+  EXPECT_TRUE(disconnect_processed.Wait());
+
+  // On Linux, the session persists across pipe disconnections.
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+#else
+  // On other platforms, disconnecting the receiver immediately closes the
+  // session.
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return desktop_sessions().empty(); }));
+#endif
+}
+
+TEST_F(DaemonProcessTest, DesktopSessionsPersistAcrossNetworkProcessRestart) {
+  InSequence s;
+  EXPECT_CALL(*daemon_process_, SendHostConfigToNetworkProcess(_));
+  EXPECT_CALL(*daemon_process_, SendHostConfigToNetworkProcess(_));
+
+  StartDaemonProcess();
+
+  int id = terminal_id_++;
+  daemon_process_->CreateDesktopSession(
+      id, mojo::NullReceiver(), mojo::NullRemote(), CreateSessionOptions());
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+  EXPECT_EQ(id, desktop_sessions().begin()->second->id());
+
+  // Simulate network process stopped/killed.
+  daemon_process_->OnWorkerProcessStopped();
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+
+  // Simulate network process restart and channel re-connection.
+  daemon_process_->OnChannelConnected(12345);
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+  EXPECT_EQ(id, desktop_sessions().begin()->second->id());
+
+  // Verify next terminal ID allocation does not collide.
+  auto options = CreateSessionOptions();
+  options->client_id = "another_user@domain.com";
+  daemon_process_->GetDesktopSession(mojo::NullReceiver(), mojo::NullRemote(),
+                                     std::move(options));
+  EXPECT_EQ(desktop_sessions().size(), 2u);
+}
+
+TEST_F(DaemonProcessTest, DesktopSessionsPersistAcrossCrashNetworkProcess) {
+  InSequence s;
+  EXPECT_CALL(*daemon_process_, SendHostConfigToNetworkProcess(_));
+  EXPECT_CALL(*daemon_process_, DoCrashNetworkProcess(_));
+
+  StartDaemonProcess();
+
+  int id = terminal_id_++;
+  daemon_process_->CreateDesktopSession(
+      id, mojo::NullReceiver(), mojo::NullRemote(), CreateSessionOptions());
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+
+  daemon_process_->CrashNetworkProcess(FROM_HERE);
+  EXPECT_EQ(desktop_sessions().size(), 1u);
+  EXPECT_EQ(id, desktop_sessions().begin()->second->id());
+}
+
+}  // namespace remoting

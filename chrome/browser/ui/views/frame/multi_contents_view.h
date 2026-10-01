@@ -1,0 +1,362 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_MULTI_CONTENTS_VIEW_H_
+#define CHROME_BROWSER_UI_VIEWS_FRAME_MULTI_CONTENTS_VIEW_H_
+
+#include <memory>
+#include <optional>
+
+#include "base/callback_list.h"
+#include "base/functional/callback_forward.h"
+#include "base/gtest_prod_util.h"
+#include "base/memory/raw_ptr.h"
+#include "chrome/browser/ui/tabs/split_tab_highlight_controller.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/frame/contents_container_view.h"
+#include "components/prefs/pref_change_registrar.h"
+#include "components/split_tabs/split_tab_visual_data.h"
+#include "ui/base/interaction/element_identifier.h"
+#include "ui/base/metadata/metadata_header_macros.h"
+#include "ui/gfx/geometry/rounded_corners_f.h"
+#include "ui/views/controls/resize_area_delegate.h"
+#include "ui/views/layout/proposed_layout.h"
+#include "ui/views/view.h"
+
+class BrowserView;
+class ContentsWebView;
+class CustomFloatingCorner;
+class MultiContentsBackgroundView;
+class MultiContentsDropTargetView;
+class MultiContentsResizeArea;
+class MultiContentsViewDelegate;
+class MultiContentsViewDropTargetController;
+class MultiContentsViewMiniToolbar;
+
+namespace content {
+class WebContents;
+}  // namespace content
+
+namespace gfx {
+class RoundedCornersF;
+}  // namespace gfx
+
+namespace views {
+class WebView;
+}  // namespace views
+
+// MultiContentsView shows up to two contents web views side by side, and
+// manages their layout relative to each other.
+class MultiContentsView
+    : public views::View,
+      public views::ResizeAreaDelegate,
+      public views::LayoutDelegate,
+      public split_tabs::SplitTabHighlightController::Delegate {
+  METADATA_HEADER(MultiContentsView, views::View)
+
+ public:
+  using FocusableViewMap = base::flat_map<std::string, views::View*>;
+
+  struct ViewSizes {
+    int start = 0;
+    int resize = 0;
+    int end = 0;
+  };
+
+  static constexpr int kSplitViewContentInset = 8;
+  static constexpr float kSplitViewContentCornerRadius = 6;
+  static constexpr gfx::RoundedCornersF kSplitViewContentRoundedCorners{
+      kSplitViewContentCornerRadius};
+
+  MultiContentsView(BrowserView* browser_view,
+                    std::unique_ptr<MultiContentsViewDelegate> delegate);
+  MultiContentsView(const MultiContentsView&) = delete;
+  MultiContentsView& operator=(const MultiContentsView&) = delete;
+  ~MultiContentsView() override;
+
+  ContentsContainerView* GetActiveContentsContainerView() const;
+  ContentsContainerView* GetInactiveContentsContainerView() const;
+  ContentsContainerView* GetContentsContainerViewFor(
+      content::WebContents* web_contents) const;
+
+  // Returns the currently active ContentsWebView.
+  ContentsWebView* GetActiveContentsView() const;
+
+  // Returns the currently inactive ContentsWebView.
+  ContentsWebView* GetInactiveContentsView() const;
+
+  // These are the rounded corner radii to render on the multi-contents view and
+  // (if necessary) the contents views themselves. The radii should already be
+  // adjusted for RtL (so e.g. `radii.upper_left()` is actually the corner that
+  // displays on the upper left regardless of text direction).
+  void SetBackgroundRadii(const gfx::RoundedCornersF& radii);
+  const gfx::RoundedCornersF& GetBackgroundRadii() const;
+
+  // Returns true if more than one WebContents is displayed.
+  bool IsInSplitView() const;
+
+  // Show the split view without set any WebContents and update the size and
+  // layout of contents views based on `visual_data`, this is used to prepare
+  // the layout and prevent a re-layout of WebContents.
+  void ShowSplitView(split_tabs::SplitTabVisualData visual_data);
+
+  // Preserves the active WebContents and hides the second ContentsContainerView
+  // and resize handle.
+  void CloseSplitView();
+
+  // Visually swaps the two contents of the active split view by doing an
+  // in-place swap of contents_container_views_, while also reordering the view
+  // hierarchy and updating active_index_.
+  void SwapContentsInSplitView();
+
+  // Assigns the given |web_contents| to the ContentsContainerView's
+  // ContentsWebView at |index| in contents_container_views_. |index| must be
+  // either 0 or 1 as we currently only support two contents. If |index| is 1
+  // and we are not currently in a split view, displays the split views.
+  void SetWebContentsAtIndex(content::WebContents* web_contents, int index);
+
+  // Sets the index of the active contents view within contents_views_.
+  void SetActiveIndex(int index);
+  int GetActiveIndex() const { return active_index_; }
+
+  // Updates the size and layout of the contents views based on |visual_data|.
+  void UpdateSplitVisualData(const split_tabs::SplitTabVisualData& visual_data);
+
+  split_tabs::SplitTabLayout GetSplitLayout() const {
+    return visual_data_.split_layout();
+  }
+  double GetSplitRatio() const { return visual_data_.split_ratio(); }
+
+  // SplitTabHighlightController::Delegate:
+  void SetHighlightActiveContentsView(bool needs_attention) override;
+
+  // Helper method to execute an arbitrary callback on each visible contents
+  // view. Will execute the callback on the active contents view first.
+  void ExecuteOnEachVisibleContentsView(
+      base::RepeatingCallback<void(ContentsWebView*)> callback);
+
+  // If in a split view, swaps the positions of the two active tabs.
+  void OnSwap();
+
+  // If non-null, specifies an increase in target size so that web contents
+  // maintain their maximum extents during browser animations to prevent
+  // issues with reflow on some platforms.
+  //
+  // This is the "actual" total area the MultiContentsView should occupy (in
+  // local bounds); the size assigned to the contents views will depend on
+  // layout.
+  struct TargetContentBounds {
+    TargetContentBounds() = default;
+    TargetContentBounds(const TargetContentBounds&) = default;
+    TargetContentBounds(const gfx::Size& actual_size_,
+                        const gfx::Insets& clipped_area_)
+        : actual_size(actual_size_), clipped_area(clipped_area_) {}
+    TargetContentBounds& operator=(const TargetContentBounds&) = default;
+    ~TargetContentBounds() = default;
+
+    gfx::Size actual_size;
+    gfx::Insets clipped_area;
+
+    bool operator==(const TargetContentBounds&) const = default;
+  };
+  void SetTargetContentBounds(
+      std::optional<TargetContentBounds> target_content_bounds);
+
+  void SetIsAnimatingContent(bool is_animating);
+
+  // Returns accessible panes to be used in BrowserView to create the order of
+  // pane traversal.
+  std::vector<views::View*> GetAccessiblePanes();
+
+  // views::ResizeAreaDelegate:
+  void OnResize(int resize_amount, bool done_resizing) override;
+
+  // views::View:
+  void OnThemeChanged() override;
+
+  const std::vector<raw_ptr<ContentsContainerView, DanglingUntriaged>>&
+  contents_container_views() const {
+    return contents_container_views_;
+  }
+
+  MultiContentsViewDropTargetController& drop_target_controller() const;
+
+  bool IsDragAndDropEnabled() const;
+  void OnDragAndDropPrefStateChange();
+
+  void SetShouldShowTopSeparator(bool should_show);
+  void SetSplitViewInsets(const gfx::Insets& insets);
+  const gfx::Insets& split_view_insets_for_testing() const {
+    return split_view_insets_;
+  }
+
+  void set_min_contents_size_for_testing(int size) {
+    min_contents_size_for_testing_ = std::make_optional(size);
+  }
+
+  ContentsWebView* start_contents_view_for_testing() const {
+    return contents_container_views_[0]->contents_view();
+  }
+
+  MultiContentsResizeArea* resize_area_for_testing() const {
+    return resize_area_;
+  }
+
+  ContentsWebView* end_contents_view_for_testing() const {
+    return contents_container_views_[1]->contents_view();
+  }
+
+  MultiContentsViewMiniToolbar* mini_toolbar_for_testing(int index) const {
+    return contents_container_views_[index]->mini_toolbar();
+  }
+
+  MultiContentsBackgroundView* background_view_for_testing() const {
+    return background_view_;
+  }
+
+  MultiContentsViewDelegate* delegate_for_testing() { return delegate_.get(); }
+
+  const FocusableViewMap* GetFocusableViewsMapFor(
+      const ContentsContainerView* container) const;
+
+ private:
+  FRIEND_TEST_ALL_PREFIXES(MultiContentsViewBrowserTest, DropTargetLayout);
+  FRIEND_TEST_ALL_PREFIXES(MultiContentsViewBrowserTest,
+                           LeadingSeparatorLayout);
+  FRIEND_TEST_ALL_PREFIXES(MultiContentsViewBrowserTest,
+                           TrailingSeparatorLayout);
+
+  // Encapsulates the views required to draw a separator around contents.
+  struct ContentsSeparators {
+    void Reset();
+
+    raw_ptr<views::View> top_separator = nullptr;
+    raw_ptr<views::View> leading_separator = nullptr;
+    raw_ptr<views::View> trailing_separator = nullptr;
+    raw_ptr<CustomFloatingCorner> corner_separator = nullptr;
+
+    bool should_show_top = false;
+  };
+
+  static constexpr int kMinWebContentsSize = 200;
+  static constexpr int kConstrainedMinWebContentsSize = 50;
+  static constexpr double kMinWebContentsSizePercentage = 0.1;
+
+  // LayoutDelegate:
+  views::ProposedLayout CalculateProposedLayout(
+      const views::SizeBounds& size_bounds) const override;
+  void BeforeApplyLayout(const views::ProposedLayout& layout) override;
+
+  // Adds the drop target layout to the given list and return the remaining
+  // available space after the layout.
+  gfx::Rect CalculateDropTargetLayout(
+      const gfx::Rect& available_space,
+      std::vector<views::ChildLayout>& child_layouts) const;
+
+  // Adds separator layouts to the given list and returns the remaining
+  // space after the layout.
+  gfx::Rect CalculateSeparatorLayouts(
+      const gfx::Rect& available_space,
+      std::vector<views::ChildLayout>& child_layouts) const;
+
+  int GetInactiveIndex() const;
+
+  void OnWebContentsFocused(views::WebView*);
+  void OnNtpFooterFocused(views::WebView*);
+  void OnActorOverlayFocused(views::WebView*);
+  void OnReadAnythingOverlayFocused(ContentsContainerView* container,
+                                    views::WebView* web_view);
+
+  ViewSizes GetViewSizes(gfx::Rect available_space) const;
+
+  // Clamps to the minimum of kMinWebContentsSize or
+  // kMinWebContentsSizePercentage multiplied by the available width. This
+  // allows for some flexibility when it comes to particularly narrow windows.
+  ViewSizes ClampToMinSize(gfx::Rect available_space, ViewSizes sizes) const;
+
+  // Returns the minimum size along the resize axis for a single view within the
+  // `MultiContentsView`. Returns 0 if not in a split view.
+  int GetMinViewSize(gfx::Rect available_space) const;
+
+  void UpdateContentsBorderAndOverlay();
+
+  double CalculateRatioWithSnapPoints(double start_size,
+                                      double total_size) const;
+
+  // Helper function that gets the component of |size| along the resize axis.
+  int GetResizeAxisComponent(const gfx::Size& size) const;
+
+  raw_ptr<BrowserView> browser_view_;
+  std::unique_ptr<MultiContentsViewDelegate> delegate_;
+
+  raw_ptr<MultiContentsBackgroundView> background_view_;
+
+  // Holds ContentsContainerViews, when not in a split view the second
+  // ContentsContainerView is not visible.
+  std::vector<raw_ptr<ContentsContainerView, DanglingUntriaged>>
+      contents_container_views_;
+
+  ContentsSeparators contents_separators_;
+
+  // The view that contains the Lens overlay. The Lens Overlay is a UI overlay
+  // that is shown on top of the web contents. It therefore must always have the
+  // same bounds as the contents_web_view_, but also be above the
+  // contents_web_view_.
+  raw_ptr<views::View> lens_overlay_view_ = nullptr;
+
+  // The handle responsible for resizing the two contents views as relative to
+  // each other.
+  raw_ptr<MultiContentsResizeArea> resize_area_ = nullptr;
+
+  // The views that are shown for entering split view. E.g., this is shown when
+  // the user drags a link to the edge of the contents view.
+  raw_ptr<MultiContentsDropTargetView> drop_target_view_ = nullptr;
+
+  // Holds subscriptions for when the attached contents to ContentsContainerView
+  // are focused.
+  std::vector<base::CallbackListSubscription> contents_focused_subscriptions_;
+
+  // Handles incoming drag events to show/hide the drop target for entering
+  // split view.
+  std::unique_ptr<MultiContentsViewDropTargetController>
+      drop_target_controller_;
+
+  // The index in contents_views_ of the active contents view.
+  int active_index_ = 0;
+
+  // Current ratio of |contents_views_|'s first ContentsContainerView's width /
+  // overall contents view width.
+  split_tabs::SplitTabVisualData visual_data_;
+
+  // See `SetTargetContentBounds()`.
+  std::optional<TargetContentBounds> target_content_bounds_;
+
+  // Initial size of `start_contents_.contents_view_` along the resize axis when
+  // a resize action began. Nullopt if not currently resizing.
+  std::optional<int> initial_start_size_on_resize_;
+
+  // Insets of the start and end contents view when in split view.
+  gfx::Insets split_view_insets_;
+
+  bool active_contents_view_highlighted_ = false;
+
+  std::optional<int> min_contents_size_for_testing_;
+
+  // Width ratios that a split view will snap to when resize is within a
+  // snap distance (kSnapDistance).
+  std::vector<double> snap_points_ = {0.5};
+
+  // Tracks and handles drag and drop settings change.
+  PrefChangeRegistrar pref_change_registrar_;
+  bool is_drag_drop_pref_enabled_ = false;
+
+  // Maps a container to its current focusable children. This is needed since
+  // for split tabs, some of these webviews are part of the focus helper for the
+  // tab and need to be set as the focused view. This is used by
+  // `BrowserView::MaybeUpdateStoredFocusForWebContents`
+  base::flat_map<ContentsContainerView*, FocusableViewMap>
+      container_focusable_map_;
+};
+
+#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_MULTI_CONTENTS_VIEW_H_

@@ -1,0 +1,50 @@
+<!doctype html>
+<meta name="timeout" content="long">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/html/canvas/resources/canvas-promise-test.js"></script>
+<script src="./2d-context-lost-utils.js"></script>
+<script>
+assert_true(!!window.chrome && !!chrome.gpuBenchmarking,
+  'This test requires chrome.gpuBenchmarking.');
+
+/**
+ * Validates setting an invalid canvas size while the GPU context is lost.
+ */
+canvasPromiseTest(async (canvas, {test}) => {
+  const ctx = get2dContext(canvas);
+
+  // Make sure the canvas is fully initialized.
+  drawAndReadBack(ctx, 'red');
+
+  // Lose the GPU context.
+  terminateGpuProcess(test);
+  await waitForContextLost(ctx);
+  assert_true(ctx.isContextLost(),
+              'Context should be lost after the GPU process was terminated.');
+
+  // Set invalid size on the canvas. This will disable automatic context restore
+  // until a valid size is specified.
+  canvas.width = 100000000;
+
+  // Check that the context isn't automatically restored. That would normally
+  // occur after 500ms, wait a whole second to be sure.
+  for (let i = 0; i < 10; ++i) {
+    await resolvedWithoutContextEvent(
+        new Promise(resolve => setTimeout(resolve, 100)), ctx);
+  }
+
+  // Specifying a valid canvas size will restore the context.
+  canvas.width = 200;
+  await waitForContextRestored(ctx);
+  assert_false(ctx.isContextLost(), 'Context should be restored.');
+  assert_array_equals(drawAndReadBack(ctx, 'lime'), [0, 255, 0, 255],
+                      `The canvas should be usable after it's restored.`);
+
+}, 'Canvas can be given an invalid size while the GPU context is lost.',
+   // Exclude WORKER because chrome.gpuBenchmarking isn't available on workers.
+   // Use PLACEHOLDER because OFFSCREEN uses a Canvas2DBitmapProvider
+   // in CPU compositing mode, which cannot lose context.
+   {testTypes: [CanvasTestType.HTML, CanvasTestType.PLACEHOLDER]});
+
+</script>

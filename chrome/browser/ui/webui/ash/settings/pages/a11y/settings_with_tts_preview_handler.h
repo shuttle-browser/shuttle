@@ -1,0 +1,55 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_WEBUI_ASH_SETTINGS_PAGES_A11Y_SETTINGS_WITH_TTS_PREVIEW_HANDLER_H_
+#define CHROME_BROWSER_UI_WEBUI_ASH_SETTINGS_PAGES_A11Y_SETTINGS_WITH_TTS_PREVIEW_HANDLER_H_
+
+#include "base/memory/weak_ptr.h"
+#include "base/scoped_observation.h"
+#include "content/public/browser/tts_controller.h"
+#include "content/public/browser/web_ui_message_handler.h"
+
+namespace content {
+class TtsController;
+}  // namespace content
+
+namespace ash::settings {
+
+// Parent Chrome OS TTS-related settings page handler.
+class SettingsWithTtsPreviewHandler : public content::WebUIMessageHandler,
+                                      public content::VoicesChangedDelegate {
+ public:
+  SettingsWithTtsPreviewHandler();
+
+  SettingsWithTtsPreviewHandler(const SettingsWithTtsPreviewHandler&) = delete;
+  SettingsWithTtsPreviewHandler& operator=(
+      const SettingsWithTtsPreviewHandler&) = delete;
+
+  ~SettingsWithTtsPreviewHandler() override;
+
+  void FireTtsPreviewEvent();
+
+  void HandleGetAllTtsVoiceData(const base::ListValue& args);
+  void HandlePreviewTtsVoice(const base::ListValue& args);
+
+  // content::WebUIMessageHandler implementation.
+  void RegisterMessages() override;
+  void OnJavascriptAllowed() override;
+  void OnJavascriptDisallowed() override;
+
+  virtual GURL GetSourceURL() const = 0;
+
+ private:
+  void RefreshTtsVoices(const base::ListValue& args);
+
+  base::ScopedObservation<content::TtsController,
+                          content::VoicesChangedDelegate>
+      tts_observation_{this};
+
+  base::WeakPtrFactory<SettingsWithTtsPreviewHandler> weak_factory_{this};
+};
+
+}  // namespace ash::settings
+
+#endif  // CHROME_BROWSER_UI_WEBUI_ASH_SETTINGS_PAGES_A11Y_SETTINGS_WITH_TTS_PREVIEW_HANDLER_H_

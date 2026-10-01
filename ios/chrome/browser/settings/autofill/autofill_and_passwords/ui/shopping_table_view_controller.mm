@@ -1,0 +1,387 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/settings/autofill/autofill_and_passwords/ui/shopping_table_view_controller.h"
+
+#import "base/apple/foundation_util.h"
+#import "base/check.h"
+#import "base/metrics/user_metrics.h"
+#import "base/metrics/user_metrics_action.h"
+#import "components/strings/grit/components_strings.h"
+#import "ios/chrome/browser/net/model/crurl.h"
+#import "ios/chrome/browser/settings/autofill/autofill_and_passwords/ui/autofill_ai_base_item_type.h"
+#import "ios/chrome/browser/settings/autofill/autofill_and_passwords/ui/shopping_mutator.h"
+#import "ios/chrome/browser/settings/ui_bundled/autofill/autofill_settings_constants.h"
+#import "ios/chrome/browser/settings/ui_bundled/elements/enterprise_info_popover_view_controller.h"
+#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_header_footer_item.h"
+#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_info_button_item.h"
+#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_link_header_footer_item.h"
+#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_multi_detail_text_item.h"
+#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_switch_item.h"
+#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_text_header_footer_item.h"
+#import "ios/chrome/browser/shared/ui/table_view/table_view_utils.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "ui/base/l10n/l10n_util_mac.h"
+
+namespace {
+
+// Section identifiers in the "Shopping" page table view.
+enum class SectionIdentifier {
+  kToggleSection = kSectionIdentifierEnumZero,
+  kSuggestionsFromGeminiSection,
+  kOrderSection,
+  kShipmentSection,
+};
+
+// Item types in the "Shopping" page.
+enum class ItemType {
+  kToggleItem = kAutofillAIBaseItemTypeEntity + 1,
+  kFooterItem,
+  kSuggestionsFromGeminiItem,
+  kSuggestionsFromGeminiFooterItem,
+};
+
+}  // namespace
+
+@interface ShoppingTableViewController () <PopoverLabelViewControllerDelegate>
+@end
+
+@implementation ShoppingTableViewController {
+  NSArray<TableViewItem*>* _orders;
+  NSArray<TableViewItem*>* _shipments;
+  BOOL _settingsAreDismissed;
+  BOOL _shoppingEnabled;
+  BOOL _shoppingToggleEnabled;
+  BOOL _shoppingToggleManaged;
+  BOOL _shouldShowSuggestionsFromGemini;
+  BOOL _suggestionsFromGeminiEnabled;
+}
+
+- (instancetype)init {
+  self = [super initWithStyle:ChromeTableViewStyle()];
+  if (self) {
+    _shoppingToggleEnabled = YES;
+    _shoppingToggleManaged = NO;
+  }
+  return self;
+}
+
+- (void)viewDidLoad {
+  [super viewDidLoad];
+  self.title = l10n_util::GetNSString(IDS_AUTOFILL_SHOPPING_TITLE);
+  [self loadModel];
+}
+
+- (void)didMoveToParentViewController:(UIViewController*)parent {
+  [super didMoveToParentViewController:parent];
+  if (!parent) {
+    [self.delegate shoppingTableViewControllerDidRemove:self];
+  }
+}
+
+- (void)loadModel {
+  [super loadModel];
+
+  [self loadToggleSection];
+  [self loadSuggestionsFromGeminiSection];
+  [self populateSectionWithIdentifier:SectionIdentifier::kOrderSection
+                              titleID:IDS_AUTOFILL_AI_ORDERS_TITLE
+                                items:_orders];
+  [self populateSectionWithIdentifier:SectionIdentifier::kShipmentSection
+                              titleID:IDS_AUTOFILL_AI_SHIPMENTS_TITLE
+                                items:_shipments];
+}
+
+#pragma mark - ShoppingConsumer
+
+- (void)setShouldShowSuggestionsFromGemini:(BOOL)shouldShow
+                                   enabled:(BOOL)enabled {
+  BOOL reload = NO;
+  if (_shouldShowSuggestionsFromGemini != shouldShow) {
+    _shouldShowSuggestionsFromGemini = shouldShow;
+    reload = YES;
+  }
+
+  BOOL suggestionsFromGeminiEnabledChanged =
+      (_suggestionsFromGeminiEnabled != enabled);
+  _suggestionsFromGeminiEnabled = enabled;
+
+  if (reload) {
+    if (self.isViewLoaded) {
+      [self reloadData];
+    }
+  } else if (suggestionsFromGeminiEnabledChanged && self.isViewLoaded &&
+             _shouldShowSuggestionsFromGemini) {
+    TableViewModel* model = self.tableViewModel;
+    NSIndexPath* suggestionsFromGeminiPath =
+        [model indexPathForItemType:static_cast<NSInteger>(
+                                        ItemType::kSuggestionsFromGeminiItem)
+                  sectionIdentifier:
+                      static_cast<NSInteger>(
+                          SectionIdentifier::kSuggestionsFromGeminiSection)];
+    if (suggestionsFromGeminiPath) {
+      TableViewMultiDetailTextItem* suggestionsFromGeminiItem =
+          base::apple::ObjCCastStrict<TableViewMultiDetailTextItem>(
+              [model itemAtIndexPath:suggestionsFromGeminiPath]);
+      suggestionsFromGeminiItem.trailingDetailText = l10n_util::GetNSString(
+          enabled ? IDS_IOS_SETTING_ON : IDS_IOS_SETTING_OFF);
+      [self reconfigureCellsForItems:@[ suggestionsFromGeminiItem ]];
+    }
+  }
+}
+
+- (void)setShoppingWithOrders:(NSArray<TableViewItem*>*)orders
+                    shipments:(NSArray<TableViewItem*>*)shipments {
+  _orders = orders;
+  _shipments = shipments;
+  if (self.isViewLoaded) {
+    [self reloadData];
+  }
+}
+
+- (void)setShoppingToggleState:(BOOL)on
+                       enabled:(BOOL)enabled
+                       managed:(BOOL)managed {
+  if (_shoppingEnabled == on && _shoppingToggleEnabled == enabled &&
+      _shoppingToggleManaged == managed) {
+    return;
+  }
+
+  CHECK(enabled || !on);
+  BOOL modelNeedsRebuild = (_shoppingToggleManaged != managed);
+  _shoppingEnabled = on;
+  _shoppingToggleEnabled = enabled;
+  _shoppingToggleManaged = managed;
+
+  if (self.isViewLoaded) {
+    if (modelNeedsRebuild) {
+      [self reloadData];
+    } else {
+      TableViewModel* model = self.tableViewModel;
+      NSIndexPath* togglePath = [model
+          indexPathForItemType:static_cast<NSInteger>(ItemType::kToggleItem)
+             sectionIdentifier:static_cast<NSInteger>(
+                                   SectionIdentifier::kToggleSection)];
+      if (togglePath) {
+        if (managed) {
+          TableViewInfoButtonItem* managedItem =
+              base::apple::ObjCCastStrict<TableViewInfoButtonItem>(
+                  [model itemAtIndexPath:togglePath]);
+          [self reconfigureCellsForItems:@[ managedItem ]];
+        } else {
+          TableViewSwitchItem* switchItem =
+              base::apple::ObjCCastStrict<TableViewSwitchItem>(
+                  [model itemAtIndexPath:togglePath]);
+          switchItem.enabled = enabled;
+          switchItem.on = enabled ? on : NO;
+          [self reconfigureCellsForItems:@[ switchItem ]];
+        }
+      }
+    }
+  }
+}
+
+- (void)shoppingToggleChanged:(UISwitch*)switchView {
+  BOOL switchOn = [switchView isOn];
+  _shoppingEnabled = switchOn;
+
+  TableViewModel* model = self.tableViewModel;
+  NSIndexPath* switchPath =
+      [model indexPathForItemType:static_cast<NSInteger>(ItemType::kToggleItem)
+                sectionIdentifier:static_cast<NSInteger>(
+                                      SectionIdentifier::kToggleSection)];
+  if (switchPath) {
+    TableViewSwitchItem* switchItem =
+        base::apple::ObjCCastStrict<TableViewSwitchItem>(
+            [model itemAtIndexPath:switchPath]);
+    switchItem.on = switchOn;
+  }
+
+  [self.mutator didToggleShopping:switchOn];
+}
+
+#pragma mark - SettingsRootTableViewController
+
+- (BOOL)shouldHideToolbar {
+  return YES;
+}
+
+#pragma mark - UITableViewDelegate
+
+- (void)tableView:(UITableView*)tableView
+    didSelectRowAtIndexPath:(NSIndexPath*)indexPath {
+  [super tableView:tableView didSelectRowAtIndexPath:indexPath];
+
+  TableViewItem* item = [self.tableViewModel itemAtIndexPath:indexPath];
+  if (item.type ==
+      static_cast<NSInteger>(ItemType::kSuggestionsFromGeminiItem)) {
+    [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
+    [self.delegate
+        shoppingTableViewControllerDidSelectSuggestionsFromGemini:self];
+    return;
+  }
+  [self.mutator didSelectEntityItem:item];
+  [self.tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
+
+#pragma mark - Private
+
+// Loads the toggle section and its footer into the table model.
+- (void)loadToggleSection {
+  TableViewModel* model = self.tableViewModel;
+  NSInteger sectionIdentifier =
+      static_cast<NSInteger>(SectionIdentifier::kToggleSection);
+
+  [model addSectionWithIdentifier:sectionIdentifier];
+  [model addItem:[self toggleItem] toSectionWithIdentifier:sectionIdentifier];
+  [model setFooter:[self toggleSectionFooter]
+      forSectionWithIdentifier:sectionIdentifier];
+}
+
+// Returns the toggle item based on whether the setting is enterprise-managed.
+- (TableViewItem*)toggleItem {
+  if (_shoppingToggleManaged) {
+    TableViewInfoButtonItem* managedItem = [[TableViewInfoButtonItem alloc]
+        initWithType:static_cast<NSInteger>(ItemType::kToggleItem)];
+    managedItem.text =
+        l10n_util::GetNSString(IDS_AUTOFILL_SHOPPING_OPT_IN_TOGGLE_LABEL);
+    // The status can only be off when the pref is managed.
+    managedItem.statusText = l10n_util::GetNSString(IDS_IOS_SETTING_OFF);
+    managedItem.accessibilityHint = l10n_util::GetNSString(
+        IDS_IOS_TOGGLE_SETTING_MANAGED_ACCESSIBILITY_HINT);
+    managedItem.target = self;
+    managedItem.selector = @selector(didTapManagedUIInfoButton:);
+    return managedItem;
+  }
+
+  TableViewSwitchItem* switchItem = [[TableViewSwitchItem alloc]
+      initWithType:static_cast<NSInteger>(ItemType::kToggleItem)];
+  switchItem.text =
+      l10n_util::GetNSString(IDS_AUTOFILL_SHOPPING_OPT_IN_TOGGLE_LABEL);
+  switchItem.on = _shoppingToggleEnabled && _shoppingEnabled;
+  switchItem.enabled = _shoppingToggleEnabled;
+  switchItem.target = self;
+  switchItem.selector = @selector(shoppingToggleChanged:);
+  return switchItem;
+}
+
+// Returns the footer item for the toggle section.
+- (TableViewHeaderFooterItem*)toggleSectionFooter {
+  TableViewTextHeaderFooterItem* footer = [[TableViewTextHeaderFooterItem alloc]
+      initWithType:static_cast<NSInteger>(ItemType::kFooterItem)];
+  footer.subtitle =
+      l10n_util::GetNSString(IDS_AUTOFILL_SHOPPING_OPT_IN_TOGGLE_SUB_LABEL);
+  return footer;
+}
+
+// Populates a section with a header and `items` if non-empty.
+- (void)populateSectionWithIdentifier:(SectionIdentifier)sectionIdentifier
+                              titleID:(int)titleID
+                                items:(NSArray<TableViewItem*>*)items {
+  if (items.count == 0) {
+    return;
+  }
+
+  TableViewModel* model = self.tableViewModel;
+  NSInteger section = static_cast<NSInteger>(sectionIdentifier);
+
+  [model addSectionWithIdentifier:section];
+
+  TableViewTextHeaderFooterItem* header = [[TableViewTextHeaderFooterItem alloc]
+      initWithType:kAutofillAIBaseItemTypeHeader];
+  header.text = l10n_util::GetNSString(titleID);
+  [model setHeader:header forSectionWithIdentifier:section];
+
+  for (TableViewItem* item in items) {
+    [model addItem:item toSectionWithIdentifier:section];
+  }
+}
+
+// Called when the user clicks on the information button of the managed
+// setting's UI. Shows a textual bubble with the information of the enterprise.
+- (void)didTapManagedUIInfoButton:(UIButton*)buttonView {
+  if (_settingsAreDismissed) {
+    return;
+  }
+
+  EnterpriseInfoPopoverViewController* bubbleViewController =
+      [[EnterpriseInfoPopoverViewController alloc] initWithEnterpriseName:nil];
+  bubbleViewController.delegate = self;
+
+  // Set the anchor and arrow direction of the bubble.
+  bubbleViewController.popoverPresentationController.sourceView = buttonView;
+  bubbleViewController.popoverPresentationController.sourceRect =
+      buttonView.bounds;
+  bubbleViewController.popoverPresentationController.permittedArrowDirections =
+      UIPopoverArrowDirectionAny;
+
+  [self presentViewController:bubbleViewController animated:YES completion:nil];
+}
+
+// Loads the Suggestions from Gemini section into the table model.
+- (void)loadSuggestionsFromGeminiSection {
+  if (!_shouldShowSuggestionsFromGemini) {
+    return;
+  }
+
+  TableViewModel* model = self.tableViewModel;
+  NSInteger sectionIdentifier =
+      static_cast<NSInteger>(SectionIdentifier::kSuggestionsFromGeminiSection);
+
+  [model addSectionWithIdentifier:sectionIdentifier];
+  [model addItem:[self suggestionsFromGeminiItem]
+      toSectionWithIdentifier:sectionIdentifier];
+  [model setFooter:[self suggestionsFromGeminiFooter]
+      forSectionWithIdentifier:sectionIdentifier];
+}
+
+// Returns the table view item for the Suggestions from Gemini section.
+- (TableViewItem*)suggestionsFromGeminiItem {
+  TableViewMultiDetailTextItem* suggestionsFromGeminiItem =
+      [[TableViewMultiDetailTextItem alloc]
+          initWithType:static_cast<NSInteger>(
+                           ItemType::kSuggestionsFromGeminiItem)];
+  suggestionsFromGeminiItem.text =
+      l10n_util::GetNSString(IDS_IOS_PERSONAL_CONTEXT_AUTOFILL_SETTINGS_TITLE);
+  suggestionsFromGeminiItem.trailingDetailText = l10n_util::GetNSString(
+      _suggestionsFromGeminiEnabled ? IDS_IOS_SETTING_ON : IDS_IOS_SETTING_OFF);
+  suggestionsFromGeminiItem.accessoryType =
+      UITableViewCellAccessoryDisclosureIndicator;
+  suggestionsFromGeminiItem.accessibilityTraits |= UIAccessibilityTraitButton;
+  suggestionsFromGeminiItem.accessibilityIdentifier =
+      kSuggestionsFromGeminiTableViewId;
+  return suggestionsFromGeminiItem;
+}
+
+// Returns the footer for the Suggestions from Gemini section.
+- (TableViewHeaderFooterItem*)suggestionsFromGeminiFooter {
+  TableViewLinkHeaderFooterItem* footer = [[TableViewLinkHeaderFooterItem alloc]
+      initWithType:static_cast<NSInteger>(
+                       ItemType::kSuggestionsFromGeminiFooterItem)];
+  footer.text = l10n_util::GetNSString(
+      IDS_IOS_PERSONAL_CONTEXT_AUTOFILL_SETTINGS_SUBPAGE_SUMMARY);
+  return footer;
+}
+
+#pragma mark - SettingsControllerProtocol
+
+- (void)reportDismissalUserAction {
+  // no-op: This metric is not recorded for shopping entities.
+}
+
+- (void)reportBackUserAction {
+  // no-op: This metric is not recorded for shopping entities.
+}
+
+- (void)settingsWillBeDismissed {
+  _settingsAreDismissed = YES;
+}
+
+#pragma mark - PopoverLabelViewControllerDelegate
+
+- (void)didTapLinkURL:(NSURL*)URL {
+  [self view:nil didTapLinkURL:[[CrURL alloc] initWithNSURL:URL]];
+}
+
+@end

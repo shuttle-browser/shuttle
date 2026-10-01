@@ -1,0 +1,42 @@
+include_rules = [
+  "+components/ukm",
+  "+components/viz/common/gpu/context_provider.h",
+  "+components/viz/common/resources/shared_image_format.h",
+  "+device/base/features.h",
+  "+device/gamepad/public/cpp/gamepads.h",
+  "+gpu/command_buffer/client/gles2_interface.h",
+  "+gpu/command_buffer/common/constants.h",
+  "+gpu/command_buffer/common/sync_token.h",
+  "+gpu/ipc/common/surface_handle.h",
+  "+device/vr/jni_headers",
+  "+services/device/public",
+  "+services/metrics/public/cpp/ukm_builders.h",
+  "+skia/public/mojom",
+  "+third_party/blink/public/common/features_generated.h",
+  "+third_party/gvr-android-sdk/src",
+  "+third_party/skia/include/core/SkColor.h",
+  "+third_party/skia/include/gpu/ganesh/GrTypes.h",
+  "+ui/display",
+  "+ui/gfx",
+  "+ui/gl",
+  # The third_party version of openxr_platform depends on certain platform
+  # headers being included before it, so we disallow direct dependency on it.
+  # Places needing to take a dependency on code in openxr_platform.h should
+  # include "device/vr/openxr/openxr_platform.h", which ensures that these
+  # platform dependencies are included without forcing modifications on all
+  # other files that would like to include it.
+  "-third_party/openxr/src/include/openxr/openxr_platform.h"
+]
+
+specific_include_rules = {
+  # Override the earlier restriction on third_party openxr_platform for the
+  # wrapper class.
+  "device/vr/openxr/openxr_platform\\.h" : [
+    "+third_party/openxr/src/include/openxr/openxr_platform.h"
+  ],
+  # The Linux Vulkan context routes its Vulkan calls through the GPU
+  # component's shared function-pointer table instead of binding its own.
+  "openxr_vulkan_context\\.cc" : [
+    "+gpu/vulkan/vulkan_function_pointers.h"
+  ]
+}

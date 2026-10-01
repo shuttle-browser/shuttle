@@ -1,0 +1,163 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.hub;
+
+import static org.chromium.build.NullUtil.assumeNonNull;
+
+import com.google.common.collect.ImmutableMap;
+
+import org.chromium.base.Callback;
+import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.base.supplier.LazyOneshotSupplier;
+import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.base.supplier.NonNullObservableSupplier;
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** Implementation of {@link PaneManager} for managing {@link Pane}s. */
+@NullMarked
+public class PaneManagerImpl implements PaneManager {
+    private final SettableMonotonicObservableSupplier<Pane> mCurrentPaneSupplierImpl =
+            ObservableSuppliers.createMonotonic();
+    private final ImmutableMap<Integer, LazyOneshotSupplier<Pane>> mPanes;
+    private final NonNullObservableSupplier<Boolean> mHubVisibilitySupplier;
+    private final Callback<Boolean> mHubVisibilityObserver;
+    private final PaneTransitionHelper mPaneTransitionHelper;
+    private final PaneOrderController mPaneOrderController;
+    private final @PaneId int mDefaultPaneId;
+
+    /**
+     * Create a {@link PaneManagerImpl}.
+     *
+     * @param paneListBuilder The {@link PaneListBuilder} consumed to build the list of {@link
+     *     Pane}s to manage.
+     * @param hubVisibilitySupplier The supplier for visibility of the Hub.
+     * @param defaultPaneId The default pane's Id.
+     */
+    public PaneManagerImpl(
+            PaneListBuilder paneListBuilder,
+            NonNullObservableSupplier<Boolean> hubVisibilitySupplier,
+            @PaneId int defaultPaneId) {
+        mPanes = paneListBuilder.build();
+        mHubVisibilitySupplier = hubVisibilitySupplier;
+        mHubVisibilityObserver = this::onHubVisibilityChanged;
+        mHubVisibilitySupplier.addSyncObserverAndPostIfNonNull(mHubVisibilityObserver);
+        mPaneTransitionHelper = new PaneTransitionHelper(this);
+        mPaneOrderController = paneListBuilder.getPaneOrderController();
+        mDefaultPaneId = defaultPaneId;
+    }
+
+    /** Destroys the {@link PaneManager}. */
+    public void destroy() {
+        mHubVisibilitySupplier.removeObserver(mHubVisibilityObserver);
+        mPaneTransitionHelper.destroy();
+        for (LazyOneshotSupplier<Pane> paneSupplier : mPanes.values()) {
+            if (paneSupplier == null || !paneSupplier.hasValue()) continue;
+
+            Pane pane = paneSupplier.get();
+            if (pane != null) pane.destroy();
+        }
+    }
+
+    @Override
+    public PaneOrderController getPaneOrderController() {
+        return mPaneOrderController;
+    }
+
+    @Override
+    public List<Integer> getActivePaneOrder() {
+        List<Integer> activePaneIds = new ArrayList<>();
+        for (int id : mPaneOrderController.getPaneOrder()) {
+            Pane pane = getPaneForId(id);
+            if (pane != null && pane.getReferenceButtonDataSupplier().get() != null) {
+                activePaneIds.add(id);
+            }
+        }
+        return activePaneIds;
+    }
+
+    @Override
+    public MonotonicObservableSupplier<Pane> getFocusedPaneSupplier() {
+        return mCurrentPaneSupplierImpl;
+    }
+
+    @Override
+    public boolean focusPane(@PaneId int paneId) {
+        Pane nextPane = getPaneForId(paneId);
+        if (nextPane == null || nextPane.getReferenceButtonDataSupplier().get() == null) {
+            return false;
+        }
+
+        Pane previousPane = mCurrentPaneSupplierImpl.get();
+        if (nextPane == previousPane) return true;
+
+        RecordHistogram.recordEnumeratedHistogram("Android.Hub.PaneFocused", paneId, PaneId.COUNT);
+
+        mCurrentPaneSupplierImpl.set(nextPane);
+        if (mHubVisibilitySupplier.get()) {
+            mPaneTransitionHelper.processTransition(nextPane.getPaneId(), LoadHint.HOT);
+        }
+
+        if (previousPane != null && mHubVisibilitySupplier.get()) {
+            mPaneTransitionHelper.queueTransition(previousPane.getPaneId(), LoadHint.WARM);
+        }
+        return true;
+    }
+
+    @Override
+    public @Nullable Pane getPaneForId(@PaneId int paneId) {
+        LazyOneshotSupplier<Pane> paneSupplier = mPanes.get(paneId);
+        if (paneSupplier == null) return null;
+
+        Pane pane = paneSupplier.get();
+        if (pane == null) return null;
+
+        assert pane.getPaneId() == paneId
+                : "Pane#getPaneId() "
+                        + pane.getPaneId()
+                        + " does not match the paneId it was registered with "
+                        + paneId;
+        return pane;
+    }
+
+    @Override
+    public @Nullable Pane getDefaultPane() {
+        return getPaneForId(getDefaultPaneId());
+    }
+
+    @Override
+    public @PaneId int getDefaultPaneId() {
+        return mDefaultPaneId;
+    }
+
+    private void onHubVisibilityChanged(boolean isVisible) {
+        @LoadHint int loadHint = isVisible ? LoadHint.WARM : LoadHint.COLD;
+
+        Pane currentPane = mCurrentPaneSupplierImpl.get();
+        boolean hasCurrentPane = currentPane != null;
+        if (hasCurrentPane) {
+            mPaneTransitionHelper.processTransition(
+                    assumeNonNull(currentPane).getPaneId(),
+                    isVisible ? LoadHint.HOT : LoadHint.WARM);
+        }
+
+        for (int paneId : mPanes.keySet()) {
+            if (hasCurrentPane && assumeNonNull(currentPane).getPaneId() == paneId) continue;
+
+            mPaneTransitionHelper.queueTransition(paneId, loadHint);
+        }
+
+        // Queue this as the last transition in case the user quickly returns.
+        if (hasCurrentPane && !isVisible) {
+            mPaneTransitionHelper.queueTransition(
+                    assumeNonNull(currentPane).getPaneId(), LoadHint.COLD);
+        }
+    }
+}

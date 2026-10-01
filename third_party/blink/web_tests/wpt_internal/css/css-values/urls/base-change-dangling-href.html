@@ -1,0 +1,22 @@
+<!doctype html>
+<title>CSS Values Test: Relative url() with HTML base with dangling href removed</title>
+<link rel="help" href="https://crbug.com/1276384">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<base id="base_elm" href='test/">
+<'>
+<div id="target"></div>
+<script>
+  test(() => {
+    target.style.listStyleImage = "url(img.gif)";
+    base_elm.remove();
+    // The base element had a dangling markup href (containing newline and '<').
+    // Because potentially_dangling_markup is set, the raw relative URL is
+    // preserved through MakeComputed() to prevent laundering the dangling
+    // markup flag during serialization/re-parse cycles (e.g. commitStyles()).
+    // This is a deliberate deviation from CSS Values §4.5.1 (which says
+    // computed url() should be absolute) for this security edge case.
+    assert_equals(getComputedStyle(target).listStyleImage, 'url("img.gif")',
+                  "The dangling-markup url preserves the relative form");
+  }, "Removing the base element should not crash.");
+</script>

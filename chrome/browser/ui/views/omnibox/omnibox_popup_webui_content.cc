@@ -1,0 +1,85 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/omnibox/omnibox_popup_webui_content.h"
+
+#include <string_view>
+
+#include "chrome/browser/lifetime/browser_shutdown.h"
+#include "chrome/browser/ui/omnibox/omnibox_controller.h"
+#include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
+#include "chrome/browser/ui/views/location_bar/location_bar_view.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_popup_closer.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter.h"
+#include "chrome/browser/ui/views/omnibox/rounded_omnibox_results_frame.h"
+#include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_handler.h"
+#include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
+#include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_web_contents_helper.h"
+#include "chrome/common/webui_url_constants.h"
+#include "components/omnibox/browser/omnibox_client.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
+
+OmniboxPopupWebUIContent::OmniboxPopupWebUIContent(
+    OmniboxPopupPresenterBase* presenter,
+    LocationBar* location_bar,
+    OmniboxController* controller,
+    bool include_location_bar_cutout,
+    bool wants_focus)
+    : OmniboxPopupWebUIBaseContent(
+          presenter,
+          location_bar,
+          controller,
+          /*top_rounded_corners=*/!include_location_bar_cutout),
+      wants_focus_(wants_focus) {
+  SetContentURL(chrome::kChromeUIOmniboxPopupURL);
+}
+
+OmniboxPopupWebUIContent::~OmniboxPopupWebUIContent() = default;
+
+void OmniboxPopupWebUIContent::Clear() {
+  Detach();
+}
+
+void OmniboxPopupWebUIContent::OnContextMenuClosed() {
+  if (auto* handler = popup_handler()) {
+    handler->OnContextMenuClosed();
+  }
+}
+
+void OmniboxPopupWebUIContent::ShowUI() {
+  OmniboxPopupWebUIBaseContent::ShowUI();
+
+  if (auto* handler = popup_handler()) {
+    handler->OnShow();
+  }
+}
+
+OmniboxPopupHandler* OmniboxPopupWebUIContent::popup_handler() {
+  auto* webui_controller = contents_wrapper()->GetWebUIController();
+  if (!webui_controller) {
+    return nullptr;
+  }
+  return webui_controller->popup_handler();
+}
+
+void OmniboxPopupWebUIContent::PrimaryMainFrameRenderProcessGone(
+    base::TerminationStatus status) {
+  OmniboxPopupWebUIBaseContent::PrimaryMainFrameRenderProcessGone(status);
+  if (browser_shutdown::HasShutdownStarted()) {
+    return;
+  }
+
+  // Close the popup if the render process is gone. This will allow for the
+  // crash recovery flow in `ShowUI` to run and restore the popup.
+  if (auto* popup_closer = controller()->client()->GetOmniboxPopupCloser()) {
+    popup_closer->CloseWithReason(omnibox::PopupCloseReason::kCrash);
+  }
+}
+
+std::string_view OmniboxPopupWebUIContent::GetMetricPrefix() const {
+  return "Omnibox.Popup.WebUI";
+}
+
+BEGIN_METADATA(OmniboxPopupWebUIContent)
+END_METADATA

@@ -1,0 +1,11 @@
+include_rules = [
+  # keep-sorted start
+  "+ios/chrome/browser/lens/ui_bundled",
+  # keep-sorted end
+]
+
+specific_include_rules = {
+  "^omnibox_keyboard_accessory_view.mm": [
+    "+ios/chrome/browser/bubble/ui_bundled/bubble_presenter.h",
+  ],
+}

@@ -1,0 +1,139 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/rust/rust_static_library.gni")
+
+source_set("internal") {
+  visibility = [
+    ":*",
+    "//chrome/browser/policy:*",
+    "//chrome/browser/skills:*",
+    "//chrome/browser/skills:browser_tests",
+    "//chrome/browser/skills:interactive_ui_tests",
+    "//chrome/browser/ui/webui/skills:interactive_ui_tests",
+    "//chrome/test:interactive_ui_tests",
+    "//components/skills/content",
+  ]
+
+  sources = [
+    "enterprise_skills_provider.cc",
+    "enterprise_skills_provider.h",
+    "skills_service_impl.cc",
+    "skills_service_impl.h",
+    "skills_sync_bridge.cc",
+    "skills_sync_bridge.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//components/skills/public",
+  ]
+
+  deps = [
+    ":downloader",
+    ":skill_parser_rust",
+    "//components/optimization_guide/core",
+    "//components/policy/core/browser",
+    "//components/policy/core/common",
+    "//components/skills:features",
+    "//components/skills/proto",
+    "//components/strings:components_strings",
+    "//components/sync/model",
+    "//components/sync/protocol",
+    "//crypto",
+    "//net",
+    "//services/network/public/cpp",
+  ]
+
+  if (is_win || is_mac || is_linux) {
+    sources += [
+      "enterprise_published_skills_policy_handler.cc",
+      "enterprise_published_skills_policy_handler.h",
+    ]
+  }
+}
+
+rust_static_library("skill_parser_rust") {
+  crate_root = "skill_parser.rs"
+  sources = [ "skill_parser.rs" ]
+  cxx_bindings = [ "skill_parser.rs" ]
+
+  # Required for cxx::bridge to generate C-ABI FFI bindings under the hood.
+  # The parser itself contains zero manual unsafe blocks.
+  allow_unsafe = true
+}
+
+source_set("downloader") {
+  sources = [
+    "skills_downloader.cc",
+    "skills_downloader.h",
+  ]
+
+  if (!is_android) {
+    sources += [
+      "skills_fetcher.cc",
+      "skills_fetcher.h",
+    ]
+  }
+
+  deps = [
+    "//base",
+    "//components/endpoint_fetcher",
+    "//components/signin/public/base",
+    "//components/signin/public/identity_manager",
+    "//components/skills:features",
+    "//components/skills/proto",
+    "//components/skills/public:metrics",
+    "//components/skills/public:types",
+    "//net",
+    "//services/network/public/cpp",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  sources = [
+    "enterprise_skills_provider_unittest.cc",
+    "skills_downloader_unittest.cc",
+    "skills_service_impl_unittest.cc",
+    "skills_sync_bridge_unittest.cc",
+  ]
+
+  if (!is_android) {
+    sources += [ "skills_fetcher_unittest.cc" ]
+  }
+
+  if (is_win || is_mac || is_linux) {
+    sources += [ "enterprise_published_skills_policy_handler_unittest.cc" ]
+  }
+
+  deps = [
+    ":downloader",
+    ":internal",
+    "//base",
+    "//base/test:test_support",
+    "//components/optimization_guide/core",
+    "//components/optimization_guide/core:test_support",
+    "//components/policy/core/browser:test_support",
+    "//components/policy/core/common",
+    "//components/prefs:test_support",
+    "//components/signin/public/identity_manager:test_support",
+    "//components/skills:features",
+    "//components/skills/mocks",
+    "//components/skills/proto",
+    "//components/skills/public",
+    "//components/sync:test_support",
+    "//components/sync/base",
+    "//components/sync/model",
+    "//components/sync/protocol",
+    "//crypto",
+    "//net:test_support",
+    "//services/network:network_service",
+    "//services/network:test_support",
+    "//testing/gtest",
+  ]
+
+  visibility = [ "//components/skills:unit_tests" ]
+}

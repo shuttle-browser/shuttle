@@ -1,0 +1,122 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.omnibox.fusebox;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import android.content.res.Resources;
+import android.graphics.Rect;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.chrome.browser.omnibox.R;
+import org.chromium.chrome.browser.omnibox.fusebox.FuseboxCoordinator.PopupState;
+import org.chromium.ui.widget.RectProvider;
+
+/** Unit tests for {@link DynamicRectProvider}. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class DynamicRectProviderUnitTest {
+    @Rule public final MockitoRule mockitoRule = MockitoJUnit.rule();
+
+    @Mock private RectProvider mFloatingDelegate;
+    @Mock private RectProvider mBottomDelegate;
+    @Mock private RectProvider.Observer mObserver;
+    @Mock private Resources mResources;
+    private DynamicRectProvider mDynamicRectProvider;
+
+    @Before
+    public void setUp() {
+        mDynamicRectProvider = new DynamicRectProvider(mFloatingDelegate, mBottomDelegate);
+    }
+
+    @Test
+    public void testSetPopupState_notObserved_doesNotProxy() {
+        mDynamicRectProvider.setPopupState(PopupState.FLOATING);
+        verify(mFloatingDelegate, never()).startObserving(any());
+    }
+
+    @Test
+    public void testStartObserving_proxiesToCurrentDelegate() {
+        mDynamicRectProvider.setPopupState(PopupState.FLOATING);
+        mDynamicRectProvider.startObserving(mObserver);
+        verify(mFloatingDelegate).startObserving(any());
+    }
+
+    @Test
+    public void testSetPopupState_observed_switchesDelegates() {
+        mDynamicRectProvider.startObserving(mObserver);
+        mDynamicRectProvider.setPopupState(PopupState.FLOATING);
+        mDynamicRectProvider.setPopupState(PopupState.BOTTOM);
+        verify(mFloatingDelegate).stopObserving();
+        verify(mBottomDelegate).startObserving(any());
+    }
+
+    @Test
+    public void testStopObserving_stopsProxying() {
+        mDynamicRectProvider.setPopupState(PopupState.FLOATING);
+        mDynamicRectProvider.startObserving(mObserver);
+        mDynamicRectProvider.stopObserving();
+        verify(mFloatingDelegate).stopObserving();
+    }
+
+    @Test
+    public void testStartObserving_redundant_doesNotChurn() {
+        mDynamicRectProvider.setPopupState(PopupState.FLOATING);
+        mDynamicRectProvider.startObserving(mObserver);
+        mDynamicRectProvider.startObserving(mObserver);
+        verify(mFloatingDelegate, times(1)).startObserving(any());
+    }
+
+    @Test
+    public void testSetPopupState_redundant_doesNotChurn() {
+        mDynamicRectProvider.startObserving(mObserver);
+        mDynamicRectProvider.setPopupState(PopupState.FLOATING);
+        mDynamicRectProvider.setPopupState(PopupState.FLOATING);
+        verify(mFloatingDelegate, times(1)).startObserving(any());
+    }
+
+    @Test
+    public void testStopObserving_redundant_doesNotChurn() {
+        mDynamicRectProvider.setPopupState(PopupState.FLOATING);
+        mDynamicRectProvider.startObserving(mObserver);
+        mDynamicRectProvider.stopObserving();
+        mDynamicRectProvider.stopObserving();
+        verify(mFloatingDelegate, times(1)).stopObserving();
+    }
+
+    @Test
+    public void testGetPopupWidth_floating() {
+        when(mResources.getDimensionPixelSize(R.dimen.fusebox_popup_width)).thenReturn(500);
+        int width = mDynamicRectProvider.getPopupWidth(PopupState.FLOATING, mResources);
+        assertEquals(500, width);
+    }
+
+    @Test
+    public void testGetPopupWidth_bottom() {
+        Rect rect = new Rect(0, 0, 300, 0);
+        when(mBottomDelegate.getRect()).thenReturn(rect);
+        int width = mDynamicRectProvider.getPopupWidth(PopupState.BOTTOM, mResources);
+        assertEquals(300, width);
+    }
+
+    @Test
+    public void testGetRect_nullDelegate_returnsEmptyRect() {
+        Rect rect = mDynamicRectProvider.getRect();
+        assertTrue(rect.isEmpty());
+    }
+}

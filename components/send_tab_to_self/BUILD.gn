@@ -1,0 +1,153 @@
+# Copyright 2018 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+if (is_android) {
+  import("//build/config/android/rules.gni")
+}
+
+static_library("send_tab_to_self") {
+  sources = [
+    "entry_point_display_reason.cc",
+    "entry_point_display_reason.h",
+    "metrics_util.cc",
+    "metrics_util.h",
+    "outgoing_tab_form_field_extractor.cc",
+    "outgoing_tab_form_field_extractor.h",
+    "page_context.cc",
+    "page_context.h",
+    "pref_names.cc",
+    "pref_names.h",
+    "proto_conversions.cc",
+    "proto_conversions.h",
+    "received_tab_forms_filler.cc",
+    "received_tab_forms_filler.h",
+    "receiving_ui_handler.h",
+    "send_tab_to_self_bridge.cc",
+    "send_tab_to_self_bridge.h",
+    "send_tab_to_self_commit_tracker.cc",
+    "send_tab_to_self_commit_tracker.h",
+    "send_tab_to_self_data_type_controller.cc",
+    "send_tab_to_self_data_type_controller.h",
+    "send_tab_to_self_entry.cc",
+    "send_tab_to_self_entry.h",
+    "send_tab_to_self_model.cc",
+    "send_tab_to_self_model.h",
+    "send_tab_to_self_model_observer.h",
+    "send_tab_to_self_sync_service.cc",
+    "send_tab_to_self_sync_service.h",
+    "target_device_info.cc",
+    "target_device_info.h",
+    "target_device_list_waiter.cc",
+    "target_device_list_waiter.h",
+  ]
+  deps = [
+    "//base",
+    "//components/autofill/core/browser",
+    "//components/autofill/core/common",
+    "//components/history/core/browser",
+    "//components/keyed_service/core",
+    "//components/prefs",
+    "//components/send_tab_to_self/proto:send_tab_to_self_proto",
+    "//components/sessions",
+    "//components/shared_highlighting/core/common",
+    "//components/signin/public/base",
+    "//components/signin/public/identity_manager",
+    "//components/strings",
+    "//components/sync",
+    "//components/sync_device_info",
+    "//components/sync_sessions",
+    "//components/version_info",
+    "//google_apis",
+    "//ui/base",
+    "//url",
+  ]
+  public_deps = [
+    ":features",
+    "//components/send_tab_to_self/proto:send_tab_to_self_proto",
+  ]
+}
+
+source_set("features") {
+  sources = [
+    "features.cc",
+    "features.h",
+  ]
+  deps = [
+    "//base",
+    "//build:buildflag_header_h",
+  ]
+}
+
+if (is_android) {
+  java_cpp_enum("java_enum_srcjar") {
+    visibility = [ ":*" ]
+    sources = [
+      "entry_point_display_reason.h",
+      "metrics_util.h",
+      "send_tab_to_self_model.h",
+    ]
+  }
+
+  android_library("send_tab_to_self_java") {
+    srcjar_deps = [ ":java_enum_srcjar" ]
+
+    # Important: the generated enum uses the @IntDef annotation provided by
+    # this dependency.
+    deps = [ "//third_party/androidx:androidx_annotation_annotation_java" ]
+  }
+}
+source_set("test_support") {
+  testonly = true
+  sources = [
+    "fake_send_tab_to_self_model.cc",
+    "fake_send_tab_to_self_model.h",
+    "stub_send_tab_to_self_sync_service.cc",
+    "stub_send_tab_to_self_sync_service.h",
+    "test_matchers.cc",
+    "test_matchers.h",
+  ]
+  deps = [
+    ":send_tab_to_self",
+    "//base",
+    "//components/autofill/core/common",
+    "//components/sync:test_support",
+    "//components/sync_device_info",
+    "//testing/gmock",
+    "//url",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "entry_point_display_reason_unittest.cc",
+    "metrics_util_unittest.cc",
+    "outgoing_tab_form_field_extractor_unittest.cc",
+    "proto_conversions_unittest.cc",
+    "received_tab_forms_filler_unittest.cc",
+    "send_tab_to_self_bridge_unittest.cc",
+    "send_tab_to_self_commit_tracker_unittest.cc",
+    "send_tab_to_self_entry_unittest.cc",
+    "target_device_info_unittest.cc",
+    "target_device_list_waiter_unittest.cc",
+  ]
+  deps = [
+    ":send_tab_to_self",
+    ":test_support",
+    "//base",
+    "//base/test:test_support",
+    "//components/autofill/core/browser:test_support",
+    "//components/autofill/core/common",
+    "//components/history/core/browser",
+    "//components/prefs:test_support",
+    "//components/send_tab_to_self/proto:send_tab_to_self_proto",
+    "//components/strings",
+    "//components/sync:test_support",
+    "//components/sync_device_info:test_support",
+    "//components/sync_preferences:test_support",
+    "//components/sync_sessions:test_support",
+    "//testing/gtest",
+    "//url",
+  ]
+}

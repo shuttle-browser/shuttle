@@ -1,0 +1,78 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//extensions/buildflags/buildflags.gni")
+
+source_set("omnibox") {
+  sources = [
+    "autocomplete_controller_emitter_factory.cc",
+    "autocomplete_controller_emitter_factory.h",
+    "geolocation_header_service_factory.cc",
+    "geolocation_header_service_factory.h",
+    "geolocation_navigation_throttle.cc",
+    "geolocation_navigation_throttle.h",
+  ]
+
+  # Matches the build check used for the objects constructed by these factories.
+  if (enable_extensions_core) {
+    sources += [
+      "omnibox_input_watcher_factory.cc",
+      "omnibox_input_watcher_factory.h",
+      "omnibox_suggestions_watcher_factory.cc",
+      "omnibox_suggestions_watcher_factory.h",
+    ]
+  }
+  deps = [
+    "//base",
+    "//chrome/browser/content_settings:content_settings_factory",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/search_engines",
+    "//components/content_settings/browser",
+    "//components/keyed_service/content",
+    "//components/omnibox/browser",
+    "//components/omnibox/common",
+    "//content/public/browser",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "geolocation_navigation_throttle_unittest.cc" ]
+  deps = [
+    ":omnibox",
+    "//base/test:test_support",
+    "//chrome/browser/content_settings:content_settings_factory",
+    "//chrome/browser/search_engines",
+    "//chrome/test:test_support",
+    "//components/omnibox/browser:test_support",
+    "//components/search_engines",
+    "//content/test:test_support",
+    "//testing/gtest",
+  ]
+}
+
+if (!is_android) {
+  source_set("browser_tests") {
+    testonly = true
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+    sources = [ "geolocation_header_browsertest.cc" ]
+    deps = [
+      ":omnibox",
+      "//base/test:test_support",
+      "//chrome/browser/content_settings:content_settings_factory",
+      "//chrome/browser/profiles:profile",
+      "//chrome/browser/search_engines",
+      "//chrome/test:test_support",
+      "//components/content_settings/core/browser",
+      "//components/omnibox/browser",
+      "//components/omnibox/common",
+      "//components/search_engines",
+      "//content/test:test_support",
+      "//net:test_support",
+      "//services/device/public/cpp:test_support",
+      "//testing/gtest",
+      "//url",
+    ]
+  }
+}

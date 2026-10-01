@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<link rel="help" href="https://drafts.csswg.org/css-scroll-snap-1" />
+<link rel="stylesheet" href="resources/simple-snap.css">
+<script src="../../resources/testharness.js"></script>
+<script src="../../resources/testharnessreport.js"></script>
+<script src="../../resources/gesture-util.js"></script>
+
+<div id='scroller'>
+  <div id="space"></div>
+  <div class="snap left top" id="top-left"></div>
+  <div class="snap right top" id="top-right"></div>
+  <div class="snap left bottom" id="bottom-left"></div>
+</div>
+
+<script>
+var scroller = document.getElementById("scroller");
+var topLeft = document.getElementById("top-left");
+var topRight = document.getElementById("top-right");
+
+window.onload = async () => {
+  await waitForCompositorCommit();
+  await mouseClickOn(10, 10);
+
+  promise_test (async () => {
+    await waitForScrollReset(scroller);
+    await keyboardScroll("ArrowDown", scroller);
+    assert_approx_equals(scroller.scrollTop, 400, 1);
+  }, "Snaps to bottom-left after pressing ArrowDown");
+
+  promise_test (async () => {
+    await waitForScrollReset(scroller, /*x=*/0, /*y=*/400);
+    await keyboardScroll("ArrowUp", scroller);
+    assert_approx_equals(scroller.scrollTop, 0, 1);
+  }, "Snaps to top-left after pressing ArrowUp");
+
+  promise_test (async () => {
+    await waitForScrollReset(scroller);
+    await keyboardScroll("ArrowRight", scroller);
+    assert_approx_equals(scroller.scrollLeft, 400, 1);
+  }, "Snaps to top-right after pressing ArrowRight");
+
+  promise_test (async () => {
+    await waitForScrollReset(scroller, /*x=*/400, /*y=*/0);
+    await keyboardScroll("ArrowLeft", scroller);
+    assert_approx_equals(scroller.scrollLeft, 0, 1);
+  }, "Snaps to top-left after pressing ArrowLeft");
+};
+
+</script>
+

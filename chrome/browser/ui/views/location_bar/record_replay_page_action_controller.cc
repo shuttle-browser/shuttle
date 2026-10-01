@@ -1,0 +1,191 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/location_bar/record_replay_page_action_controller.h"
+
+#include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/page_action/page_action_controller.h"
+#include "chrome/browser/ui/record_replay/save_recording_bubble_controller_impl.h"
+#include "chrome/browser/ui/tabs/public/tab_features.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
+#include "chrome/browser/ui/views/location_bar/location_bar_view.h"
+#include "chrome/browser/ui/views/page_action/page_action_container_view.h"
+#include "chrome/browser/ui/views/record_replay/replay_recording_bubble_view.h"
+#include "chrome/browser/ui/views/record_replay/save_recording_bubble_view.h"
+#include "components/record_replay/core/browser/record_replay_client.h"
+#include "components/record_replay/core/browser/record_replay_manager.h"
+#include "components/tabs/public/tab_interface.h"
+#include "components/vector_icons/vector_icons.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include "ui/actions/actions.h"
+#include "ui/base/models/image_model.h"
+#include "ui/base/ui_base_features.h"
+#include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
+
+using State = record_replay::RecordReplayManager::State;
+
+DEFINE_USER_DATA(RecordReplayPageActionController);
+
+namespace {
+
+views::BubbleAnchor GetAnchorForBubble(tabs::TabInterface& tab) {
+  BrowserWindowInterface* bwi = tab.GetBrowserWindowInterface();
+  if (!bwi) {
+    return views::BubbleAnchor();
+  }
+  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(bwi);
+  if (!browser_view) {
+    return views::BubbleAnchor();
+  }
+  return browser_view->toolbar_button_provider()->GetPageActionBubbleAnchor(
+      kActionRecordReplay);
+}
+
+}  // namespace
+
+RecordReplayPageActionController::RecordReplayPageActionController(
+    tabs::TabInterface& tab,
+    page_actions::PageActionController& page_action_controller)
+    : tab_(tab), page_action_controller_(page_action_controller) {
+  timer_.Start(
+      FROM_HERE, base::Seconds(1),
+      base::BindRepeating(&RecordReplayPageActionController::UpdateState,
+                          weak_ptr_factory_.GetWeakPtr()));
+  UpdateState();
+}
+
+RecordReplayPageActionController::~RecordReplayPageActionController() = default;
+
+void RecordReplayPageActionController::ExecuteAction(
+    actions::ActionItem* item) {
+  record_replay::RecordReplayClient* client =
+      tab_->GetTabFeatures()->record_replay_client();
+  if (!client) {
+    return;
+  }
+  record_replay::RecordReplayManager& manager = client->GetManager();
+  switch (manager.state()) {
+    case State::kIdle:
+      if (!recent_recordings_.empty()) {
+        views::BubbleAnchor anchor = GetAnchorForBubble(*tab_);
+        if (anchor.IsNull()) {
+          break;
+        }
+
+        // TODO(crbug.com/507035858): Remove (UT) when strings are
+        // internationalized.
+        bubble_widget_ = record_replay::ReplayRecordingBubbleView::Show(
+            anchor, tab_->GetContents(), recent_recordings_,
+            manager.GetWeakPtr());
+      } else {
+        manager.StartRecording();
+      }
+      break;
+    case State::kRecording: {
+      std::optional<record_replay::Recording> recording =
+          manager.StopRecording();
+      if (!recording) {
+        break;
+      }
+
+      views::BubbleAnchor anchor = GetAnchorForBubble(*tab_);
+
+      // anchor can be null if the page action is not visible.
+      if (anchor.IsNull()) {
+        break;
+      }
+
+      auto* store = client->GetTaskStore();
+      if (!store) {
+        break;
+      }
+
+      record_replay::SaveRecordingBubbleView::Show(
+          anchor, tab_->GetContents(),
+          std::make_unique<record_replay::SaveRecordingBubbleControllerImpl>(
+              std::move(*recording), store,
+              base::BindOnce(&record_replay::RecordReplayManager::ReportToUser,
+                             manager.GetWeakPtr()),
+              base::BindOnce(&RecordReplayPageActionController::UpdateState,
+                             weak_ptr_factory_.GetWeakPtr())));
+      break;
+    }
+    case State::kReplaying:
+      manager.StopReplay();
+      break;
+  }
+  UpdateState();
+}
+
+void RecordReplayPageActionController::UpdateState() {
+  record_replay::RecordReplayClient* client =
+      tab_->GetTabFeatures()->record_replay_client();
+  if (!client) {
+    page_action_controller_->Hide(kActionRecordReplay);
+    return;
+  }
+  page_action_controller_->Show(kActionRecordReplay);
+
+  client->GetManager().GetMatchingRecordings(base::BindOnce(
+      &RecordReplayPageActionController::OnRetrieveRecordingsComplete,
+      weak_ptr_factory_.GetWeakPtr()));
+}
+
+void RecordReplayPageActionController::OnRetrieveRecordingsComplete(
+    std::vector<record_replay::Recording> recordings) {
+  recent_recordings_ = std::move(recordings);
+
+  record_replay::RecordReplayClient* client =
+      tab_->GetTabFeatures()->record_replay_client();
+  if (!client) {
+    return;
+  }
+
+  std::u16string tooltip_text;
+  const gfx::VectorIcon* icon =
+      &(features::IsRoundedIconsEnabled() ? vector_icons::kScreenRecordIcon
+                                          : vector_icons::kScreenRecordOldIcon);
+  SkColor color = {};
+
+  switch (client->GetManager().state()) {
+    case State::kIdle:
+      if (!recent_recordings_.empty()) {
+        tooltip_text = u"Replay (UT)";
+        icon = &(features::IsRoundedIconsEnabled()
+                     ? vector_icons::kPlayArrowFilledFlippableIcon
+                     : vector_icons::kPlayArrowOldIcon);
+        color = gfx::kGoogleGreen600;
+      } else {
+        tooltip_text = u"Record (UT)";
+        icon = &(features::IsRoundedIconsEnabled()
+                     ? vector_icons::kScreenRecordIcon
+                     : vector_icons::kScreenRecordOldIcon);
+        color = gfx::kGoogleRed600;
+      }
+      break;
+    case State::kRecording:
+      tooltip_text = u"Stop recording (UT)";
+      icon = &(features::IsRoundedIconsEnabled()
+                   ? vector_icons::kStopCircleIcon
+                   : vector_icons::kStopCircleOldIcon);
+      color = gfx::kGoogleRed600;
+      break;
+    case State::kReplaying:
+      tooltip_text = u"Stop replay (UT)";
+      icon = &(features::IsRoundedIconsEnabled()
+                   ? vector_icons::kStopCircleIcon
+                   : vector_icons::kStopCircleOldIcon);
+      color = gfx::kGoogleGreen600;
+      break;
+  }
+
+  page_action_controller_->OverrideTooltip(kActionRecordReplay, tooltip_text);
+  page_action_controller_->OverrideAccessibleName(kActionRecordReplay,
+                                                  tooltip_text);
+  page_action_controller_->OverrideImage(
+      kActionRecordReplay, ui::ImageModel::FromVectorIcon(*icon, color, 16),
+      page_actions::PageActionColorSource::kForeground);
+}

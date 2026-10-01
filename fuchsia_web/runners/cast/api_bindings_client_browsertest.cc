@@ -1,0 +1,156 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "fuchsia_web/runners/cast/api_bindings_client.h"
+
+#include <fuchsia/web/cpp/fidl.h>
+#include <lib/fidl/cpp/binding.h>
+
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "base/fuchsia/mem_buffer_util.h"
+#include "base/path_service.h"
+#include "base/test/bind.h"
+#include "base/test/test_future.h"
+#include "base/threading/thread_restrictions.h"
+#include "chromecast/bindings/bindings_manager_fuchsia.h"
+#include "components/cast/message_port/fuchsia/create_web_message.h"
+#include "components/cast/message_port/fuchsia/message_port_fuchsia.h"
+#include "components/cast/message_port/test_message_port_receiver.h"
+#include "content/public/test/browser_test.h"
+#include "fuchsia_web/common/test/fit_adapter.h"
+#include "fuchsia_web/common/test/frame_for_test.h"
+#include "fuchsia_web/common/test/frame_test_util.h"
+#include "fuchsia_web/common/test/test_navigation_listener.h"
+#include "fuchsia_web/runners/cast/named_message_port_connector_fuchsia.h"
+#include "fuchsia_web/runners/cast/test/scoped_port_handler.h"
+#include "fuchsia_web/webengine/test/web_engine_browser_test.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace {
+
+class ApiBindingsClientTest : public WebEngineBrowserTest {
+ public:
+  ApiBindingsClientTest() : api_service_binding_(&api_service_) {
+    set_test_server_root(base::FilePath("fuchsia_web/runners/cast/testdata"));
+  }
+
+  ~ApiBindingsClientTest() override = default;
+
+  ApiBindingsClientTest(const ApiBindingsClientTest&) = delete;
+  ApiBindingsClientTest& operator=(const ApiBindingsClientTest&) = delete;
+
+  void SetUp() override { WebEngineBrowserTest::SetUp(); }
+
+ protected:
+  void StartClient(bool disconnect_before_attach,
+                   base::OnceClosure on_error_closure) {
+    base::ScopedAllowBlockingForTesting allow_blocking;
+
+    // Get the bindings from |api_service_|.
+    base::test::TestFuture<void> bindings_future;
+    client_ = std::make_unique<ApiBindingsClient>(
+        api_service_binding_.NewBinding(), bindings_future.GetCallback());
+    ASSERT_FALSE(client_->HasBindings());
+    EXPECT_TRUE(bindings_future.Wait());
+    ASSERT_TRUE(client_->HasBindings());
+
+    frame_ = FrameForTest::Create(context(), fuchsia::web::CreateFrameParams());
+    connector_ =
+        std::make_unique<NamedMessagePortConnectorFuchsia>(frame_.get());
+
+    if (disconnect_before_attach)
+      api_service_binding_.Unbind();
+
+    base::RunLoop().RunUntilIdle();
+
+    client_->AttachToFrame(frame_.get(), connector_.get(),
+                           std::move(on_error_closure));
+  }
+
+  void SetUpOnMainThread() override {
+    WebEngineBrowserTest::SetUpOnMainThread();
+    ASSERT_TRUE(embedded_test_server()->Start());
+  }
+
+  void TearDownOnMainThread() override {
+    // Destroy |client_| before the MessageLoop is destroyed.
+    client_ = nullptr;
+
+    // Destroy the NamedMessagePortConnector before the Frame.
+    connector_ = nullptr;
+
+    // Destroy the Frame before the test terminates
+    frame_ = {};
+
+    WebEngineBrowserTest::TearDownOnMainThread();
+  }
+
+  FrameForTest frame_;
+  std::unique_ptr<NamedMessagePortConnectorFuchsia> connector_;
+  chromecast::bindings::BindingsManagerFuchsia api_service_;
+  fidl::Binding<chromium::cast::ApiBindings> api_service_binding_;
+  std::unique_ptr<ApiBindingsClient> client_;
+};
+
+// Tests API registration, injection, and message IPC.
+// Registers a port that echoes messages received over a MessagePort back to the
+// sender.
+IN_PROC_BROWSER_TEST_F(ApiBindingsClientTest, EndToEnd) {
+  // Define the injected bindings.
+  api_service_.AddBinding(
+      "echoService",
+      "window.echo = cast.__platform__.PortConnector.bind('echoService');");
+
+  ScopedPortHandler echo_port_handler(api_service_, "echoService");
+
+  StartClient(false, base::MakeExpectedNotRunClosure(FROM_HERE));
+
+  // Navigate to a test page that makes use of the injected bindings.
+  const GURL test_url = embedded_test_server()->GetURL("/echo.html");
+  EXPECT_TRUE(LoadUrlAndExpectResponse(frame_.GetNavigationController(),
+                                       fuchsia::web::LoadUrlParams(),
+                                       test_url.spec()));
+  frame_.navigation_listener().RunUntilUrlEquals(test_url);
+
+  std::string connect_message;
+  std::unique_ptr<cast_api_bindings::MessagePort> connect_port;
+  connector_->GetConnectMessage(&connect_message, &connect_port);
+  base::test::TestFuture<fuchsia::web::Frame_PostMessage_Result>
+      post_frame_message_future;
+  frame_->PostMessage(
+      "*", CreateWebMessage(connect_message, std::move(connect_port)),
+      CallbackToFitFunction(post_frame_message_future.GetCallback()));
+
+  // Wait for the connected port.
+  std::unique_ptr<cast_api_bindings::MessagePort> echo_port =
+      echo_port_handler.RunUntilPortConnected();
+  ASSERT_TRUE(echo_port);
+
+  cast_api_bindings::TestMessagePortReceiver receiver;
+  echo_port->SetReceiver(&receiver);
+  echo_port->PostMessage("ping");
+
+  receiver.RunUntilMessageCountEqual(1);
+  EXPECT_EQ(receiver.buffer()[0].first, "ack ping");
+
+  // Ensure that we've received ack for the handshake post message.
+  EXPECT_TRUE(post_frame_message_future.Get().is_response());
+}
+
+IN_PROC_BROWSER_TEST_F(ApiBindingsClientTest,
+                       ClientDisconnectsBeforeFrameAttached) {
+  bool error_signaled = false;
+  StartClient(true, base::BindLambdaForTesting(
+                        [&error_signaled]() { error_signaled = true; }));
+
+  // Verify that the error is signalled asynchronously.
+  EXPECT_FALSE(error_signaled);
+  base::RunLoop().RunUntilIdle();
+  EXPECT_TRUE(error_signaled);
+}
+
+}  // namespace

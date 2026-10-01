@@ -1,0 +1,20 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// https://dom.spec.whatwg.org/#interface-abstractrange
+//
+// Per https://github.com/whatwg/dom/pull/1470 the container attributes move
+// from AbstractRange to a new NodeRange interface. The legacy shape (containers
+// on AbstractRange) is kept behind LegacyAbstractRange, the inverse of
+// OpaqueRange.
+
+[
+    Exposed=Window
+] interface AbstractRange {
+    [RuntimeEnabled=LegacyAbstractRange] readonly attribute Node startContainer;
+    [RuntimeEnabled=LegacyAbstractRange] readonly attribute Node endContainer;
+    readonly attribute unsigned long startOffset;
+    readonly attribute unsigned long endOffset;
+    readonly attribute boolean collapsed;
+};

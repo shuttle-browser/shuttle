@@ -1,0 +1,114 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <optional>
+
+#include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/autofill/chrome_autofill_client.h"
+#include "chrome/browser/ui/test/test_browser_ui.h"
+#include "chrome/browser/ui/views/page_action/test_support/page_action_test_accessor.h"
+#include "chrome/test/base/ui_test_utils.h"
+#include "components/autofill/core/browser/data_model/payments/autofill_offer_data.h"
+#include "components/autofill/core/browser/payments/offer_notification_options.h"
+#include "components/autofill/core/browser/payments/payments_autofill_client.h"
+#include "components/commerce/core/test_utils.h"
+#include "components/strings/grit/components_strings.h"
+#include "content/public/test/browser_test.h"
+#include "ui/base/l10n/l10n_util.h"
+
+namespace autofill {
+namespace {
+
+constexpr char kTestURL[] = "https://www.example.com";
+constexpr char kTestPromoCode[] = "FREEFALL1234";
+
+struct UiTestData {
+  std::string name;
+};
+
+std::string GetTestName(const ::testing::TestParamInfo<UiTestData>& info) {
+  return info.param.name;
+}
+
+AutofillOfferData CreateTestOffer(const std::vector<GURL>& merchant_origins,
+                                  const std::string& promo_code) {
+  int64_t offer_id = 2468;
+  base::Time expiry = base::Time::Now() + base::Days(2);
+  DisplayStrings display_strings;
+  display_strings.value_prop_text = "5% off on shoes. Up to $50";
+  display_strings.see_details_text = "See details";
+  display_strings.usage_instructions_text =
+      "Click the promo code field at checkout to autofill it.";
+  return AutofillOfferData::GPayPromoCodeOffer(
+      offer_id, expiry, merchant_origins, /*offer_details_url=*/GURL(),
+      display_strings, promo_code);
+}
+
+class OfferNotificationIconViewBrowserTest
+    : public UiBrowserTest,
+      public testing::WithParamInterface<UiTestData> {
+ public:
+  OfferNotificationIconViewBrowserTest() = default;
+
+  // UiBrowserTest:
+  void ShowUi(const std::string& name) override {
+    ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), GURL("about:blank")));
+
+    AutofillOfferData offer = CreateTestOffer(
+        /*merchant_origins=*/{GURL(kTestURL)}, kTestPromoCode);
+    auto* autofill_client =
+        ChromeAutofillClient::FromWebContentsForTesting(GetWebContents());
+
+    if (name.find("show_offer_notification_icon_only") != std::string::npos) {
+      autofill_client->GetPaymentsAutofillClient()->UpdateOfferNotification(
+          offer, {});
+    }
+  }
+
+  bool VerifyUi() override {
+    page_actions::PageActionTestAccessor accessor(
+        browser(), kActionOffersAndRewardsForPage);
+    if (!accessor.GetVisible()) {
+      return false;
+    }
+
+    EXPECT_EQ(l10n_util::GetStringUTF16(
+                  IDS_AUTOFILL_OFFERS_REMINDER_ICON_TOOLTIP_TEXT),
+              accessor.GetAccessibleName());
+
+    std::string test_name =
+        testing::UnitTest::GetInstance()->current_test_info()->name();
+
+    if (test_name.find("InvokeUi_show_offer_notification_icon_only") !=
+        std::string::npos) {
+      EXPECT_FALSE(accessor.IsChipVisible());
+    }
+
+    return true;
+  }
+
+  void WaitForUserDismissal() override {
+    // Consider closing the browser to be dismissal. This is useful when using
+    // the test-launcher-interactive option.
+    ui_test_utils::BrowserDestroyedObserver().Wait();
+  }
+
+ protected:
+  content::WebContents* GetWebContents() {
+    return browser()->GetTabStripModel()->GetActiveWebContents();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         OfferNotificationIconViewBrowserTest,
+                         testing::Values(UiTestData{"Default"}),
+                         GetTestName);
+
+IN_PROC_BROWSER_TEST_P(OfferNotificationIconViewBrowserTest,
+                       InvokeUi_show_offer_notification_icon_only) {
+  ShowAndVerifyUi();
+}
+
+}  // namespace
+}  // namespace autofill

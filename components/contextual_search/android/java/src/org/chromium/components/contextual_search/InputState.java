@@ -1,0 +1,444 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.components.contextual_search;
+
+import com.google.protobuf.InvalidProtocolBufferException;
+
+import org.jni_zero.CalledByNative;
+import org.jni_zero.JNINamespace;
+import org.jni_zero.JniType;
+
+import org.chromium.base.Log;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.components.omnibox.InputTypeConfigProto.InputTypeConfig;
+import org.chromium.components.omnibox.ModelConfigProto.ModelConfig;
+import org.chromium.components.omnibox.OmniboxFeatures;
+import org.chromium.components.omnibox.SectionConfigProto.SectionConfig;
+import org.chromium.components.omnibox.ToolConfigProto.ToolConfig;
+import org.chromium.components.omnibox.ToolModeProto.ToolMode;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * A Java side copy of the same named object in C++. Separated from the model object, this is a
+ * constant snapshot of state, and is to be replaced and not updated. Represents allowed, disabled,
+ * and active tools, models, and inputs. Allows a data driven approach for the UI to dynamically
+ * update instead of locally hard coded rules.
+ */
+@JNINamespace("contextual_search")
+@NullMarked
+public class InputState {
+    private static final String TAG = "InputState";
+
+    public final String hintText;
+    public final List<Integer> allowedInputTypes;
+    public final List<Integer> disabledInputTypes;
+    public final int maxTotalInputs;
+    public final Map<Integer, Integer> maxInputsByType;
+    public final int activeTool;
+    public final List<Integer> allowedTools;
+    public final List<Integer> disabledTools;
+    public final boolean imageGenUploadActive;
+    public final int activeModel;
+    public final int defaultModel;
+    public final List<Integer> allowedModels;
+    public final List<Integer> disabledModels;
+
+    // Raw buffers and parsed lazy fields must be kept mutually exclusive.
+    private byte @Nullable [][] mRawInputTypeConfigs;
+    private byte @Nullable [][] mRawToolConfigs;
+    private byte @Nullable [] mRawToolsSectionConfig;
+    private byte @Nullable [][] mRawModelConfigs;
+    private byte @Nullable [] mRawModelSectionConfig;
+
+    private @Nullable List<InputTypeConfig> mLazyInputTypeConfigs;
+    private @Nullable List<ToolConfig> mLazyToolConfigs;
+    private @Nullable SectionConfig mLazyToolsSectionConfig;
+    private @Nullable List<ModelConfig> mLazyModelConfigs;
+    private @Nullable SectionConfig mLazyModelSectionConfig;
+
+    // Use the inner Builder class to construct instances of InputState.
+    @CalledByNative
+    InputState(
+            @JniType("std::string") String hintText,
+            @JniType("std::vector<omnibox::InputType>") int[] allowedInputTypes,
+            @JniType("std::vector<omnibox::InputType>") int[] disabledInputTypes,
+            int maxTotalInputs,
+            @JniType("std::map<omnibox::InputType, int>") Map<Integer, Integer> maxInputsByType,
+            byte @Nullable [][] inputTypeConfigs,
+            @JniType("omnibox::ToolMode") int activeTool,
+            @JniType("std::vector<omnibox::ToolMode>") int[] allowedTools,
+            @JniType("std::vector<omnibox::ToolMode>") int[] disabledTools,
+            boolean imageGenUploadActive,
+            byte @Nullable [][] toolConfigs,
+            @JniType("std::vector<uint8_t>") byte @Nullable [] toolsSectionConfig,
+            @JniType("omnibox::ModelMode") int activeModel,
+            @JniType("omnibox::ModelMode") int defaultModel,
+            @JniType("std::vector<omnibox::ModelMode>") int[] allowedModels,
+            @JniType("std::vector<omnibox::ModelMode>") int[] disabledModels,
+            byte @Nullable [][] modelConfigs,
+            @JniType("std::vector<uint8_t>") byte @Nullable [] modelSectionConfig) {
+        this.hintText = hintText;
+
+        this.allowedInputTypes = toList(allowedInputTypes);
+        this.disabledInputTypes = toList(disabledInputTypes);
+        this.maxTotalInputs = maxTotalInputs;
+        this.maxInputsByType = Collections.unmodifiableMap(maxInputsByType);
+        this.mRawInputTypeConfigs = inputTypeConfigs;
+
+        this.activeTool = activeTool;
+        this.allowedTools = toList(allowedTools);
+        this.disabledTools = toList(disabledTools);
+        this.imageGenUploadActive = imageGenUploadActive;
+        this.mRawToolConfigs = toolConfigs;
+        this.mRawToolsSectionConfig = toolsSectionConfig;
+
+        this.activeModel = activeModel;
+        this.defaultModel = defaultModel;
+        this.allowedModels = toList(allowedModels);
+        this.disabledModels = toList(disabledModels);
+        this.mRawModelConfigs = modelConfigs;
+        this.mRawModelSectionConfig = modelSectionConfig;
+
+        if (!OmniboxFeatures.sModelPickerOptimizations.getValue()) {
+            getInputTypeConfigs();
+            getToolConfigs();
+            getToolsSectionConfig();
+            getModelConfigs();
+            getModelSectionConfig();
+        }
+    }
+
+    public List<InputTypeConfig> getInputTypeConfigs() {
+        if (mLazyInputTypeConfigs == null) {
+            mLazyInputTypeConfigs = parseInputTypeConfigs(mRawInputTypeConfigs);
+            mRawInputTypeConfigs = null;
+        }
+        return mLazyInputTypeConfigs;
+    }
+
+    public List<ToolConfig> getToolConfigs() {
+        if (mLazyToolConfigs == null) {
+            mLazyToolConfigs = parseToolConfigs(mRawToolConfigs);
+            mRawToolConfigs = null;
+        }
+        return mLazyToolConfigs;
+    }
+
+    public SectionConfig getToolsSectionConfig() {
+        if (mLazyToolsSectionConfig == null) {
+            mLazyToolsSectionConfig = parseSectionConfig(mRawToolsSectionConfig);
+            mRawToolsSectionConfig = null;
+        }
+        return mLazyToolsSectionConfig;
+    }
+
+    public List<ModelConfig> getModelConfigs() {
+        if (mLazyModelConfigs == null) {
+            mLazyModelConfigs = parseModelConfigs(mRawModelConfigs);
+            mRawModelConfigs = null;
+        }
+        return mLazyModelConfigs;
+    }
+
+    public SectionConfig getModelSectionConfig() {
+        if (mLazyModelSectionConfig == null) {
+            mLazyModelSectionConfig = parseSectionConfig(mRawModelSectionConfig);
+            mRawModelSectionConfig = null;
+        }
+        return mLazyModelSectionConfig;
+    }
+
+    @Override
+    public boolean equals(@Nullable Object o) {
+        if (this == o) return true;
+        if (!(o instanceof InputState)) return false;
+        InputState that = (InputState) o;
+        return Objects.equals(hintText, that.hintText)
+                && maxTotalInputs == that.maxTotalInputs
+                && Objects.equals(allowedInputTypes, that.allowedInputTypes)
+                && Objects.equals(disabledInputTypes, that.disabledInputTypes)
+                && Objects.equals(maxInputsByType, that.maxInputsByType)
+                && Objects.equals(getInputTypeConfigs(), that.getInputTypeConfigs())
+                && activeTool == that.activeTool
+                && Objects.equals(allowedTools, that.allowedTools)
+                && Objects.equals(disabledTools, that.disabledTools)
+                && imageGenUploadActive == that.imageGenUploadActive
+                && Objects.equals(getToolConfigs(), that.getToolConfigs())
+                && Objects.equals(getToolsSectionConfig(), that.getToolsSectionConfig())
+                && activeModel == that.activeModel
+                && defaultModel == that.defaultModel
+                && Objects.equals(allowedModels, that.allowedModels)
+                && Objects.equals(disabledModels, that.disabledModels)
+                && Objects.equals(getModelConfigs(), that.getModelConfigs())
+                && Objects.equals(getModelSectionConfig(), that.getModelSectionConfig());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(
+                hintText,
+                maxTotalInputs,
+                allowedInputTypes,
+                disabledInputTypes,
+                maxInputsByType,
+                getInputTypeConfigs(),
+                activeTool,
+                allowedTools,
+                disabledTools,
+                imageGenUploadActive,
+                getToolConfigs(),
+                getToolsSectionConfig(),
+                activeModel,
+                defaultModel,
+                allowedModels,
+                disabledModels,
+                getModelConfigs(),
+                getModelSectionConfig());
+    }
+
+    /**
+     * @param toolMode The tool mode to check.
+     * @return Whether the tool should be visible in the UI.
+     */
+    public boolean isToolVisible(int toolMode) {
+        return activeTool == toolMode || allowedTools.contains(toolMode);
+    }
+
+    /**
+     * @param toolMode The tool mode to check.
+     * @return Whether the tool should be enabled in the UI.
+     */
+    public boolean isToolEnabled(int toolMode) {
+        return activeTool == toolMode
+                || (allowedTools.contains(toolMode) && !disabledTools.contains(toolMode));
+    }
+
+    /** Returns whether the image gen tool should be visible, by checking both tool modes. */
+    public boolean isImageGenToolVisible() {
+        return isToolVisible(ToolMode.TOOL_MODE_IMAGE_GEN_VALUE)
+                || isToolVisible(ToolMode.TOOL_MODE_IMAGE_GEN_UPLOAD_VALUE);
+    }
+
+    /** Returns whether the image gen tool should be enabled, by checking both tool modes. */
+    public boolean isImageGenToolEnabled() {
+        return isToolEnabled(ToolMode.TOOL_MODE_IMAGE_GEN_VALUE)
+                || isToolEnabled(ToolMode.TOOL_MODE_IMAGE_GEN_UPLOAD_VALUE);
+    }
+
+    /**
+     * @param modelMode The model mode to check.
+     * @return Whether the model should be visible in the UI.
+     */
+    public boolean isModelVisible(int modelMode) {
+        return activeModel == modelMode || allowedModels.contains(modelMode);
+    }
+
+    /**
+     * @param modelMode The model mode to check.
+     * @return Whether the model should be enabled in the UI.
+     */
+    public boolean isModelEnabled(int modelMode) {
+        return activeModel == modelMode
+                || (allowedModels.contains(modelMode) && !disabledModels.contains(modelMode));
+    }
+
+    private static List<Integer> toList(int @Nullable [] array) {
+        if (array == null) return Collections.emptyList();
+        List<Integer> list = new ArrayList<>(array.length);
+        for (int v : array) list.add(v);
+        return Collections.unmodifiableList(list);
+    }
+
+    private static List<InputTypeConfig> parseInputTypeConfigs(byte @Nullable [][] configs) {
+        if (configs == null) return Collections.emptyList();
+        List<InputTypeConfig> result = new ArrayList<>(configs.length);
+        for (byte[] config : configs) {
+            if (config == null) continue;
+            try {
+                result.add(InputTypeConfig.parseFrom(config));
+            } catch (InvalidProtocolBufferException e) {
+                Log.e(TAG, "Failed to parse InputTypeConfig", e);
+            }
+        }
+        return Collections.unmodifiableList(result);
+    }
+
+    private static List<ToolConfig> parseToolConfigs(byte @Nullable [][] configs) {
+        if (configs == null) return Collections.emptyList();
+        List<ToolConfig> result = new ArrayList<>(configs.length);
+        for (byte[] config : configs) {
+            if (config == null) continue;
+            try {
+                result.add(ToolConfig.parseFrom(config));
+            } catch (InvalidProtocolBufferException e) {
+                Log.e(TAG, "Failed to parse ToolConfig", e);
+            }
+        }
+        return Collections.unmodifiableList(result);
+    }
+
+    private static List<ModelConfig> parseModelConfigs(byte @Nullable [][] configs) {
+        if (configs == null) return Collections.emptyList();
+        List<ModelConfig> result = new ArrayList<>(configs.length);
+        for (byte[] config : configs) {
+            if (config == null) continue;
+            try {
+                result.add(ModelConfig.parseFrom(config));
+            } catch (InvalidProtocolBufferException e) {
+                Log.e(TAG, "Failed to parse ModelConfig", e);
+            }
+        }
+        return Collections.unmodifiableList(result);
+    }
+
+    private static SectionConfig parseSectionConfig(byte @Nullable [] config) {
+        if (config == null) return SectionConfig.getDefaultInstance();
+        try {
+            return SectionConfig.parseFrom(config);
+        } catch (InvalidProtocolBufferException e) {
+            Log.e(TAG, "Failed to parse SectionConfig", e);
+            return SectionConfig.getDefaultInstance();
+        }
+    }
+
+    public static class Builder {
+        private String mHintText = "";
+        private int[] mAllowedInputTypes = new int[0];
+        private int[] mDisabledInputTypes = new int[0];
+        private int mMaxTotalInputs;
+        private Map<Integer, Integer> mMaxInputsByType = Collections.emptyMap();
+        private byte @Nullable [][] mInputTypeConfigs;
+        private int mActiveTool;
+        private int[] mAllowedTools = new int[0];
+        private int[] mDisabledTools = new int[0];
+        private boolean mImageGenUploadActive;
+        private byte @Nullable [][] mToolConfigs;
+        private byte @Nullable [] mToolsSectionConfig;
+        private int mActiveModel;
+        private int mDefaultModel;
+        private int[] mAllowedModels = new int[0];
+        private int[] mDisabledModels = new int[0];
+        private byte @Nullable [][] mModelConfigs;
+        private byte @Nullable [] mModelSectionConfig;
+
+        public Builder withHintText(String hintText) {
+            mHintText = hintText;
+            return this;
+        }
+
+        public Builder withAllowedInputTypes(int... allowedInputTypes) {
+            mAllowedInputTypes = allowedInputTypes;
+            return this;
+        }
+
+        public Builder withDisabledInputTypes(int... disabledInputTypes) {
+            mDisabledInputTypes = disabledInputTypes;
+            return this;
+        }
+
+        public Builder withMaxTotalInputs(int maxTotalInputs) {
+            mMaxTotalInputs = maxTotalInputs;
+            return this;
+        }
+
+        public Builder withMaxInputsByType(Map<Integer, Integer> maxInputsByType) {
+            mMaxInputsByType = maxInputsByType;
+            return this;
+        }
+
+        public Builder withInputTypeConfigs(byte[][] inputTypeConfigs) {
+            mInputTypeConfigs = inputTypeConfigs;
+            return this;
+        }
+
+        public Builder withActiveTool(int activeTool) {
+            mActiveTool = activeTool;
+            return this;
+        }
+
+        public Builder withAllowedTools(int... allowedTools) {
+            mAllowedTools = allowedTools;
+            return this;
+        }
+
+        public Builder withDisabledTools(int... disabledTools) {
+            mDisabledTools = disabledTools;
+            return this;
+        }
+
+        public Builder withImageGenUploadActive(boolean imageGenUploadActive) {
+            mImageGenUploadActive = imageGenUploadActive;
+            return this;
+        }
+
+        public Builder withToolConfigs(byte[][] toolConfigs) {
+            mToolConfigs = toolConfigs;
+            return this;
+        }
+
+        public Builder withToolsSectionConfig(byte[] toolsSectionConfig) {
+            mToolsSectionConfig = toolsSectionConfig;
+            return this;
+        }
+
+        public Builder withActiveModel(int activeModel) {
+            mActiveModel = activeModel;
+            return this;
+        }
+
+        public Builder withDefaultModel(int defaultModel) {
+            mDefaultModel = defaultModel;
+            return this;
+        }
+
+        public Builder withAllowedModels(int... allowedModels) {
+            mAllowedModels = allowedModels;
+            return this;
+        }
+
+        public Builder withDisabledModels(int... disabledModels) {
+            mDisabledModels = disabledModels;
+            return this;
+        }
+
+        public Builder withModelConfigs(byte[][] modelConfigs) {
+            mModelConfigs = modelConfigs;
+            return this;
+        }
+
+        public Builder withModelSectionConfig(byte[] modelSectionConfig) {
+            mModelSectionConfig = modelSectionConfig;
+            return this;
+        }
+
+        public InputState build() {
+            return new InputState(
+                    mHintText,
+                    mAllowedInputTypes,
+                    mDisabledInputTypes,
+                    mMaxTotalInputs,
+                    mMaxInputsByType,
+                    mInputTypeConfigs,
+                    mActiveTool,
+                    mAllowedTools,
+                    mDisabledTools,
+                    mImageGenUploadActive,
+                    mToolConfigs,
+                    mToolsSectionConfig,
+                    mActiveModel,
+                    mDefaultModel,
+                    mAllowedModels,
+                    mDisabledModels,
+                    mModelConfigs,
+                    mModelSectionConfig);
+        }
+    }
+}

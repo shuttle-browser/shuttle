@@ -1,0 +1,260 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webui/whats_new/whats_new_fetcher.h"
+
+#include <optional>
+#include <string>
+
+#include "base/check.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
+#include "base/task/sequenced_task_runner.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/global_features.h"
+#include "chrome/browser/net/system_network_context_manager.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser_tabstrip.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/webui/whats_new/whats_new_util.h"
+#include "chrome/common/chrome_version.h"
+#include "components/user_education/webui/whats_new_registry.h"
+#include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
+#include "content/public/browser/reduce_accept_language_controller_delegate.h"
+#include "net/base/url_util.h"
+#include "net/http/http_util.h"
+#include "services/network/public/cpp/resource_request.h"
+#include "services/network/public/cpp/simple_url_loader.h"
+#include "services/network/public/mojom/url_response_head.mojom.h"
+#include "url/gurl.h"
+
+namespace whats_new {
+const char kChromeWhatsNewURL[] = "https://www.google.com/chrome/whats-new/";
+const char kChromeWhatsNewStagingURL[] =
+    "https://chrome-staging.corp.google.com/chrome/whats-new/";
+
+const int64_t kMaxDownloadBytes = 1024 * 1024;
+
+GURL AddVersionParameter(const WhatsNewRegistry& whats_new_registry,
+                         const GURL& base_url) {
+  return net::AppendQueryParameter(
+      base_url, "version",
+      base::NumberToString(whats_new_registry.version_override().value_or(
+          CHROME_VERSION_MAJOR)));
+}
+
+GURL GetServerURL(const WhatsNewRegistry& whats_new_registry, bool is_staging) {
+  const bool use_staging = is_staging || UseStagingOverrideEnabled();
+
+  const GURL base_url =
+      use_staging ? GURL(kChromeWhatsNewStagingURL) : GURL(kChromeWhatsNewURL);
+  return AddVersionParameter(whats_new_registry, base_url);
+}
+
+GURL GetServerURLForRender(const WhatsNewRegistry& whats_new_registry,
+                           bool is_staging) {
+  GURL url = GetServerURL(whats_new_registry, is_staging);
+  const auto active_features = whats_new_registry.GetActiveFeatureNames();
+  if (!active_features.empty()) {
+    url = net::AppendQueryParameter(url, "enabled",
+                                    base::JoinString(active_features, ","));
+  }
+
+  const auto rolled_features = whats_new_registry.GetRolledFeatureNames();
+  if (!rolled_features.empty()) {
+    url = net::AppendQueryParameter(url, "rolled",
+                                    base::JoinString(rolled_features, ","));
+  }
+
+  const auto customizations = whats_new_registry.GetCustomizations();
+  if (!customizations.empty()) {
+    url = net::AppendQueryParameter(url, "customization",
+                                    base::JoinString(customizations, ","));
+  }
+
+  return net::AppendQueryParameter(url, "internal", "true");
+}
+
+namespace {
+
+// TODO(crbug.com/417823694): Migrate this to BrowserWindowFeatures and refactor
+// it such that it is not self-owned.
+class WhatsNewFetcher {
+ public:
+  explicit WhatsNewFetcher(BrowserWindowInterface* browser)
+      : browser_(browser) {
+    browser_did_close_subscription_ =
+        browser_->RegisterBrowserDidClose(base::BindRepeating(
+            &WhatsNewFetcher::OnBrowserClosed, base::Unretained(this)));
+
+    const WhatsNewRegistry* whats_new_registry =
+        g_browser_process->GetFeatures()->whats_new_registry();
+    GURL server_url = GetServerURL(*whats_new_registry);
+    startup_url_ = GetWebUIStartupURL();
+
+    if (IsRemoteContentDisabled()) {
+      // Don't fetch network content if this is the case, just pretend the tab
+      // was retrieved successfully. Do so asynchronously to simulate the
+      // production code better.
+      base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE, base::BindOnce(&WhatsNewFetcher::OpenWhatsNewTabForTest,
+                                    base::Unretained(this)));
+      return;
+    }
+
+    LogLoadEvent(LoadEvent::kLoadStart);
+    auto traffic_annotation =
+        net::DefineNetworkTrafficAnnotation("whats_new_fetcher", R"(
+          semantics {
+            sender: "What's New Page"
+            description: "Attempts to fetch the content for the What's New "
+              "page to ensure it loads successfully."
+            trigger:
+              "Restarting Chrome after an update. Desktop only."
+            data:
+              "No data sent, other than URL of What's New. "
+              "Data does not contain PII."
+            destination: GOOGLE_OWNED_SERVICE
+            internal {
+              contacts {
+                email: "frizzle-team@google.com"
+              }
+            }
+            user_data {
+              type: NONE
+            }
+            last_reviewed: "2024-05-22"
+          }
+          policy {
+            cookies_allowed: NO
+            setting:
+              "None"
+            chrome_policy {
+              PromotionalTabsEnabled {
+                PromotionalTabsEnabled: false
+              }
+            }
+          })");
+    network::mojom::URLLoaderFactory* loader_factory =
+        g_browser_process->system_network_context_manager()
+            ->GetURLLoaderFactory();
+    auto request = std::make_unique<network::ResourceRequest>();
+
+    // Inform the server of the top browser language via the
+    // Accept-Language header.
+    if (auto* profile = browser->GetProfile()) {
+      if (auto* delegate =
+              profile->GetReduceAcceptLanguageControllerDelegate()) {
+        auto languages = delegate->GetUserAcceptLanguages();
+        if (!languages.empty()) {
+          request->headers.SetHeader(request->headers.kAcceptLanguage,
+                                     languages.front());
+        }
+      }
+    }
+
+    // Don't allow redirects when checking if the page is valid for the current
+    // milestone.
+    request->url = server_url;
+    simple_loader_ = network::SimpleURLLoader::Create(std::move(request),
+                                                      traffic_annotation);
+    // base::Unretained is safe here because only OnResponseLoaded deletes
+    // |this|.
+    simple_loader_->DownloadToString(
+        loader_factory,
+        base::BindOnce(&WhatsNewFetcher::OnResponseLoaded,
+                       base::Unretained(this)),
+        kMaxDownloadBytes);
+  }
+
+  ~WhatsNewFetcher() = default;
+
+  void OnBrowserClosed(BrowserWindowInterface* browser) {
+    CHECK_EQ(browser_, browser);
+    // If the browser was closed while What's New was loading record the outcome
+    // and delete the dialog to avoid leaking memory.
+    LogLoadEvent(LoadEvent::kLoadAbort);
+    delete this;
+  }
+
+ private:
+  void AddWhatsNewTab(BrowserWindowInterface* browser) {
+    chrome::AddTabAt(browser, startup_url_, 0, true);
+    browser->GetTabStripModel()->ActivateTabAt(
+        browser->GetTabStripModel()->IndexOfFirstNonPinnedTab());
+  }
+
+  static void LogLoadEvent(LoadEvent event) {
+    base::UmaHistogramEnumeration("WhatsNew.LoadEvent", event);
+  }
+
+  void OpenWhatsNewTabForTest() {
+    if (!browser_->IsActive()) {
+      return;
+    }
+
+    AddWhatsNewTab(browser_);
+    delete this;
+  }
+
+  void OnResponseLoaded(std::optional<std::string> body) {
+    DCHECK(browser_);
+
+    int error_or_response_code = simple_loader_->NetError();
+    const auto& headers = simple_loader_->ResponseInfo()
+                              ? simple_loader_->ResponseInfo()->headers
+                              : nullptr;
+    bool success = error_or_response_code == net::OK && headers;
+    if (headers) {
+      error_or_response_code =
+          net::HttpUtil::MapStatusCodeForHistogram(headers->response_code());
+    }
+
+    base::UmaHistogramSparse("WhatsNew.LoadResponseCode",
+                             error_or_response_code);
+
+    // The server may respond with a 302 to indicate the requested
+    // page version does not exist but a suitable page has been found.
+    // This should not result in an error since the auto-opened page
+    // can still access a relevant resource.
+    success = success && error_or_response_code >= 200 &&
+              error_or_response_code <= 302 && body;
+
+    if (!browser_->IsActive()) {
+      // If the browser was moved to the background while What's New was loading
+      // log the appropriate event and immediately destroy the dialog to avoid
+      // leaking memory.
+      LogLoadEvent(LoadEvent::kLoadAbort);
+    } else {
+      LogLoadEvent(success ? LoadEvent::kLoadSuccess
+                           : LoadEvent::kLoadFailAndDoNotShow);
+
+      if (success) {
+        AddWhatsNewTab(browser_);
+      }
+    }
+    delete this;
+  }
+
+  std::unique_ptr<network::SimpleURLLoader> simple_loader_;
+  raw_ptr<BrowserWindowInterface> browser_;
+  GURL startup_url_;
+  base::CallbackListSubscription browser_did_close_subscription_;
+};
+
+}  // namespace
+
+void StartWhatsNewFetch(BrowserWindowInterface* browser) {
+  new WhatsNewFetcher(browser);
+}
+
+}  // namespace whats_new

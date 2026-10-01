@@ -1,0 +1,21 @@
+include_rules = [
+  "+components/browser_ui/share/android",
+  "+components/webapps/isolated_web_apps",
+  "+components/webui/user_actions",
+  "+extensions/strings/grit/extensions_strings.h",
+  "+third_party/boringssl/src/include/openssl",
+]
+
+specific_include_rules = {
+  "contextual_searchbox_(handler|screenshare_controller)\\.(cc|h)": [
+    "+chrome/browser/media/webrtc/desktop_media_list.h",
+    "+chrome/browser/media/webrtc/desktop_media_picker.h",
+    "+chrome/browser/media/webrtc/desktop_media_picker_controller.h",
+    "+chrome/browser/media/webrtc/desktop_media_picker_factory.h",
+    "+chrome/browser/media/webrtc/desktop_media_picker_factory_impl.h",
+    "+third_party/webrtc/modules/desktop_capture/desktop_capturer.h",
+  ],
+  "inspect_ui\\.cc": [
+    "+chrome/browser/ui/views/chrome_browser_main_extra_parts_views.h",
+  ],
+}

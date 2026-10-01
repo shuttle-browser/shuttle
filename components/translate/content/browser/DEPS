@@ -1,0 +1,23 @@
+include_rules = [
+  "+components/pdf/browser",
+  "+content/public/browser",
+  "+content/public/test",
+  "+components/touch_to_search/core/browser",
+  "+components/google/core/common",
+  "+components/keyed_service/core",
+  "+components/optimization_guide",
+  "+components/optimization_guide/content",
+  "+components/ukm",
+  "+components/user_prefs",
+  "+pdf/mojom",
+  "+pdf/buildflags.h",
+  "+services/metrics/public/cpp",
+  "+services/network/public/cpp",
+  "+services/network/test",
+]
+
+specific_include_rules = {
+  "content_translate_driver_unittest\\.cc": [
+    "+pdf/buildflags.h",
+  ],
+}

@@ -1,0 +1,10 @@
+{
+  "name": "webNavigation",
+  "version": "1.0",
+  "manifest_version": 3,
+  "description": "Tests the webNavigation API events - targetBlank.",
+  "background": {
+    "service_worker": "test_targetBlank.js"
+  },
+  "permissions": ["webNavigation", "tabs"]
+}

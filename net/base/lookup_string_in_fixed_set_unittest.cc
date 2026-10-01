@@ -1,0 +1,222 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "net/base/lookup_string_in_fixed_set.h"
+
+#include <cstdint>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "base/containers/span.h"
+#include "base/strings/string_number_conversions.h"
+#include "net/base/registry_controlled_domains/effective_tld_names_unittest1-inc.cc"
+#include "net/base/registry_controlled_domains/effective_tld_names_unittest3-inc.cc"
+#include "net/base/registry_controlled_domains/effective_tld_names_unittest4-inc.cc"
+#include "net/base/registry_controlled_domains/effective_tld_names_unittest5-inc.cc"
+#include "net/base/registry_controlled_domains/effective_tld_names_unittest6-inc.cc"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace net {
+namespace {
+
+struct Expectation {
+  std::string_view key;
+  std::optional<int> value;
+};
+
+void PrintTo(const Expectation& expectation, std::ostream* os) {
+  *os << "{\"" << expectation.key << "\", "
+      << (expectation.value ? base::NumberToString(expectation.value.value())
+                            : "std::nullopt")
+      << "}";
+}
+
+class LookupStringInFixedSetTest : public testing::TestWithParam<Expectation> {
+ protected:
+  std::optional<int> LookupInGraph(base::span<const uint8_t> graph,
+                                   std::string_view key) {
+    return LookupStringInFixedSet(graph, key);
+  }
+};
+
+class Dafsa1Test : public LookupStringInFixedSetTest {};
+
+TEST_P(Dafsa1Test, BasicTest) {
+  const Expectation& param = GetParam();
+  EXPECT_EQ(param.value, LookupInGraph(test1::kDafsa, param.key));
+}
+
+const Expectation kBasicTestCases[] = {
+    {"", std::nullopt},
+    {"j", std::nullopt},
+    {"jp", 0},
+    {"jjp", std::nullopt},
+    {"jpp", std::nullopt},
+    {"bar.jp", 2},
+    {"pref.bar.jp", 1},
+    {"c", 2},
+    {"b.c", 1},
+    {"priv.no", 4},
+};
+
+INSTANTIATE_TEST_SUITE_P(LookupStringInFixedSetTest,
+                         Dafsa1Test,
+                         ::testing::ValuesIn(kBasicTestCases));
+
+class Dafsa3Test : public LookupStringInFixedSetTest {};
+
+// This DAFSA is constructed so that labels begin and end with unique
+// characters, which makes it impossible to merge labels. Each inner node
+// is about 100 bytes and a one byte offset can at most add 64 bytes to
+// previous offset. Thus the paths must go over two byte offsets.
+TEST_P(Dafsa3Test, TestDafsaTwoByteOffsets) {
+  const Expectation& param = GetParam();
+  EXPECT_EQ(param.value, LookupInGraph(test3::kDafsa, param.key));
+}
+
+const Expectation kTwoByteOffsetTestCases[] = {
+    {"0________________________________________________________________________"
+     "____________________________0",
+     0},
+    {"7________________________________________________________________________"
+     "____________________________7",
+     4},
+    {"a________________________________________________________________________"
+     "____________________________8",
+     std::nullopt},
+};
+
+INSTANTIATE_TEST_SUITE_P(LookupStringInFixedSetTest,
+                         Dafsa3Test,
+                         ::testing::ValuesIn(kTwoByteOffsetTestCases));
+
+class Dafsa4Test : public LookupStringInFixedSetTest {};
+
+// This DAFSA is constructed so that labels begin and end with unique
+// characters, which makes it impossible to merge labels. The byte array
+// has a size of ~54k. A two byte offset can add at most add 8k to the
+// previous offset. Since we can skip only forward in memory, the nodes
+// representing the return values must be located near the end of the byte
+// array. The probability that we can reach from an arbitrary inner node to
+// a return value without using a three byte offset is small (but not zero).
+// The test is repeated with some different keys and with a reasonable
+// probability at least one of the tested paths has go over a three byte
+// offset.
+TEST_P(Dafsa4Test, TestDafsaThreeByteOffsets) {
+  const Expectation& param = GetParam();
+  EXPECT_EQ(param.value, LookupInGraph(test4::kDafsa, param.key));
+}
+
+const Expectation kThreeByteOffsetTestCases[] = {
+    {"Z6_______________________________________________________________________"
+     "_____________________________Z6",
+     0},
+    {"Z7_______________________________________________________________________"
+     "_____________________________Z7",
+     4},
+    {"Za_______________________________________________________________________"
+     "_____________________________Z8",
+     std::nullopt},
+};
+
+INSTANTIATE_TEST_SUITE_P(LookupStringInFixedSetTest,
+                         Dafsa4Test,
+                         ::testing::ValuesIn(kThreeByteOffsetTestCases));
+
+class Dafsa5Test : public LookupStringInFixedSetTest {};
+
+// This DAFSA is constructed from words with similar prefixes but distinct
+// suffixes. The DAFSA will then form a trie with the implicit source node
+// as root.
+TEST_P(Dafsa5Test, TestDafsaJoinedPrefixes) {
+  const Expectation& param = GetParam();
+  EXPECT_EQ(param.value, LookupInGraph(test5::kDafsa, param.key));
+}
+
+const Expectation kJoinedPrefixesTestCases[] = {
+    {"ai", 0},
+    {"bj", 4},
+    {"aak", 0},
+    {"bbl", 4},
+    {"aaa", std::nullopt},
+    {"bbb", std::nullopt},
+    {"aaaam", 0},
+    {"bbbbn", 0},
+};
+
+INSTANTIATE_TEST_SUITE_P(LookupStringInFixedSetTest,
+                         Dafsa5Test,
+                         ::testing::ValuesIn(kJoinedPrefixesTestCases));
+
+class Dafsa6Test : public LookupStringInFixedSetTest {};
+
+// This DAFSA is constructed from words with similar suffixes but distinct
+// prefixes. The DAFSA will then form a trie with the implicit sink node as
+// root.
+TEST_P(Dafsa6Test, TestDafsaJoinedSuffixes) {
+  const Expectation& param = GetParam();
+  EXPECT_EQ(param.value, LookupInGraph(test6::kDafsa, param.key));
+}
+
+const Expectation kJoinedSuffixesTestCases[] = {
+    {"ia", 0},
+    {"jb", 4},
+    {"kaa", 0},
+    {"lbb", 4},
+    {"aaa", std::nullopt},
+    {"bbb", std::nullopt},
+    {"maaaa", 0},
+    {"nbbbb", 0},
+};
+
+INSTANTIATE_TEST_SUITE_P(LookupStringInFixedSetTest,
+                         Dafsa6Test,
+                         ::testing::ValuesIn(kJoinedSuffixesTestCases));
+
+// Validates that the generated DAFSA contains exactly the same information as
+// effective_tld_names_unittest1.gperf.
+TEST(LookupStringInFixedSetTest, Dafsa1EnumerateLanguage) {
+  auto language = EnumerateDafsaLanguageForTesting(test1::kDafsa);
+
+  // These are the lines of effective_tld_names_unittest1.gperf, in sorted
+  // order.
+  std::vector<std::string> expected_language = {
+      "ac.jp, 0",      "b.c, 1",         "bar.baz.com, 0", "bar.jp, 2",
+      "baz.bar.jp, 2", "c, 2",           "er, 2",          "jp, 0",
+      "no, 0",         "pref.bar.jp, 1", "priv.no, 4",     "private, 4",
+      "xn--fiqs8s, 0",
+  };
+
+  EXPECT_EQ(expected_language, language);
+}
+
+// Validates that the generated DAFSA contains exactly the same information as
+// effective_tld_names_unittest5.gperf.
+TEST(LookupStringInFixedSetTest, Dafsa5EnumerateLanguage) {
+  auto language = EnumerateDafsaLanguageForTesting(test5::kDafsa);
+
+  std::vector<std::string> expected_language = {
+      "aaaam, 0", "aak, 0", "ai, 0", "bbbbn, 0", "bbl, 4", "bj, 4",
+  };
+
+  EXPECT_EQ(expected_language, language);
+}
+
+// Validates that the generated DAFSA contains exactly the same information as
+// effective_tld_names_unittest6.gperf.
+TEST(LookupStringInFixedSetTest, Dafsa6EnumerateLanguage) {
+  auto language = EnumerateDafsaLanguageForTesting(test6::kDafsa);
+
+  std::vector<std::string> expected_language = {
+      "ia, 0", "jb, 4", "kaa, 0", "lbb, 4", "maaaa, 0", "nbbbb, 0",
+  };
+
+  EXPECT_EQ(expected_language, language);
+}
+
+}  // namespace
+}  // namespace net

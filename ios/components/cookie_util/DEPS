@@ -1,0 +1,13 @@
+include_rules = [
+  # keep-sorted start
+  "+components/prefs/pref_registry_simple.h",
+  "+components/prefs/pref_service.h",
+  "+components/prefs/testing_pref_service.h",
+  "+ios/web/common",
+  "+net/cookies",
+  "+net/extras/sqlite",
+  "+net/log",
+  "+net/url_request",
+  # keep-sorted end
+]
+

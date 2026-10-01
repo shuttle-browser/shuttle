@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2025 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="@dimen/extensions_menu_horizontal_padding"
+    android:paddingEnd="@dimen/extensions_menu_horizontal_padding"
+    android:paddingTop="@dimen/extensions_menu_header_vertical_padding"
+    android:paddingBottom="0dp"
+    tools:ignore="UnusedResources">
+
+    <TextView
+        android:id="@+id/extensions_menu_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="@string/extensions_menu_title"
+        android:textAppearance="@style/TextAppearance.Headline2Thick.Primary"/>
+
+    <ImageButton
+        android:id="@+id/extensions_menu_close_button"
+        android:layout_width="@dimen/extensions_menu_header_button_size"
+        android:layout_height="@dimen/extensions_menu_header_button_size"
+        android:src="@drawable/ic_close"
+        android:background="@drawable/default_icon_background_selector"
+        android:contentDescription="@string/close"
+        android:scaleType="center"
+        android:layout_gravity="top"/>
+
+</LinearLayout>

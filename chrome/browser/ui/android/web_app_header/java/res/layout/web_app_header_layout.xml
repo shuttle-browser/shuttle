@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2025 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<org.chromium.chrome.browser.ui.web_app_header.WebAppHeaderLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/web_app_header_layout"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@macro/default_bg_color"
+    android:minHeight="@dimen/web_app_header_min_height"
+    android:elevation="1dp"
+    android:outlineProvider="none" >
+
+    <RelativeLayout
+        android:id="@+id/web_app_header_relative"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/webAppHeaderHeight"
+        android:minHeight="@dimen/web_app_header_min_height">
+
+        <org.chromium.ui.widget.ChromeImageButton
+            android:id="@+id/back_button"
+            style="@style/HeaderButton"
+            android:src="@drawable/btn_back"
+            android:contentDescription="@string/accessibility_toolbar_btn_back"
+            android:tooltipText="@string/accessibility_toolbar_btn_back"
+            android:visibility="gone"
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            app:tint="@color/default_icon_color_tint_list" />
+
+        <org.chromium.ui.widget.ChromeImageButton
+            android:id="@+id/refresh_button"
+            style="@style/HeaderButton"
+            android:src="@drawable/btn_reload_stop"
+            android:contentDescription="@string/accessibility_btn_refresh"
+            android:tooltipText="@string/accessibility_btn_refresh"
+            android:visibility="gone"
+            android:layout_toEndOf="@id/back_button"
+            android:layout_centerVertical="true"
+            app:tint="@color/default_icon_color_tint_list" />
+
+        <LinearLayout
+            android:id="@+id/right_aligned_wrapper"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:layout_marginStart="@dimen/header_button_padding">
+            <!-- The origin of the web app, displayed for security purposes. -->
+            <TextView
+                android:id="@+id/origin"
+                android:layout_width="wrap_content"
+                android:layout_height="?attr/webAppHeaderButtonSize"
+                android:ellipsize="end"
+                android:scaleType="center"
+                android:gravity="center_vertical"
+                android:maxLines="1"
+                android:visibility="gone"
+                android:accessibilityLiveRegion="polite"
+                app:tint="@color/default_text_color_list" />
+
+            <org.chromium.ui.widget.ChromeImageButton
+                android:id="@+id/wco_toggle_button"
+                style="@style/HeaderButton"
+                android:src="@drawable/window_controls_overlay_toggle"
+                android:contentDescription="@string/web_app_enable_window_controls_overlay_tooltip"
+                android:visibility="gone"
+                app:tint="@color/default_icon_color_tint_list" />
+
+            <ViewStub
+                android:id="@+id/extensions_toolbar_container_stub"
+                android:inflatedId="@+id/extensions_toolbar_container"
+                android:layout_width="wrap_content"
+                android:layout_height="?attr/toolbarButtonHeight"
+                android:layout_marginVertical="0dp"/>
+
+            <FrameLayout
+                android:id="@+id/web_app_menu_button_wrapper"
+                android:layout_width="?attr/webAppHeaderButtonSize"
+                android:layout_height="?attr/webAppHeaderButtonSize"
+                android:visibility="gone">
+                <include
+                    layout="@layout/menu_button" />
+            </FrameLayout>
+        </LinearLayout>
+    </RelativeLayout>
+</org.chromium.chrome.browser.ui.web_app_header.WebAppHeaderLayout>

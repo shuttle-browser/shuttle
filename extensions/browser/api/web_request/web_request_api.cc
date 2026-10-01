@@ -1,0 +1,1674 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "extensions/browser/api/web_request/web_request_api.h"
+
+#include <stddef.h>
+
+#include <algorithm>
+#include <limits>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "base/containers/fixed_flat_set.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/json/json_writer.h"
+#include "base/lazy_instance.h"
+#include "base/memory/raw_ptr.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
+#include "base/types/expected.h"
+#include "base/types/optional_util.h"
+#include "base/values.h"
+#include "components/guest_view/buildflags/buildflags.h"
+#include "components/safe_browsing/core/common/features.h"
+#include "content/public/browser/browser_context.h"
+#include "content/public/browser/browser_thread.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/render_process_host.h"
+#include "content/public/browser/render_view_host.h"
+#include "content/public/browser/service_worker_context.h"
+#include "content/public/browser/storage_partition.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/common/child_process_id.h"
+#include "content/public/common/url_constants.h"
+#include "extensions/browser/api/declarative_net_request/utils.h"
+#include "extensions/browser/api/web_request/extension_web_request_event_router.h"
+#include "extensions/browser/api/web_request/web_request_api_constants.h"
+#include "extensions/browser/api/web_request/web_request_api_helpers.h"
+#include "extensions/browser/api/web_request/web_request_proxying_url_loader_factory.h"
+#include "extensions/browser/api/web_request/web_request_proxying_websocket.h"
+#include "extensions/browser/api/web_request/web_request_proxying_webtransport.h"
+#include "extensions/browser/bad_message.h"
+#include "extensions/browser/browser_frame_context_data.h"
+#include "extensions/browser/browser_process_context_data.h"
+#include "extensions/browser/event_router.h"
+#include "extensions/browser/extension_navigation_ui_data.h"
+#include "extensions/browser/extension_prefs.h"
+#include "extensions/browser/extension_registry.h"
+#include "extensions/browser/extension_system.h"
+#include "extensions/browser/extension_util.h"
+#include "extensions/browser/extensions_browser_client.h"
+#include "extensions/browser/install_prefs_helper.h"
+#include "extensions/browser/process_manager.h"
+#include "extensions/browser/process_map.h"
+#include "extensions/browser/warning_service.h"
+#include "extensions/browser/warning_set.h"
+#include "extensions/buildflags/buildflags.h"
+#include "extensions/common/api/web_request.h"
+#include "extensions/common/constants.h"
+#include "extensions/common/extension.h"
+#include "extensions/common/extension_api.h"
+#include "extensions/common/extension_features.h"
+#include "extensions/common/features/feature.h"
+#include "extensions/common/features/feature_provider.h"
+#include "extensions/common/mojom/context_type.mojom.h"
+#include "extensions/common/permissions/permissions_data.h"
+#include "extensions/common/url_pattern.h"
+#include "ipc/constants.mojom.h"
+#include "mojo/public/cpp/bindings/pending_remote.h"
+#include "net/base/auth.h"
+#include "net/cookies/site_for_cookies.h"
+#include "net/http/http_util.h"
+#include "services/metrics/public/cpp/ukm_source_id.h"
+#include "services/network/public/mojom/web_transport.mojom.h"
+#include "third_party/blink/public/common/features_generated.h"
+#include "third_party/blink/public/mojom/devtools/console_message.mojom.h"
+#include "url/gurl.h"
+
+#if BUILDFLAG(ENABLE_GUEST_VIEW)
+#include "extensions/browser/guest_view/web_view/web_view_guest.h"
+#endif
+
+static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
+
+using content::BrowserThread;
+using extension_web_request_api_helpers::ExtraInfoSpec;
+using extensions::mojom::APIPermissionID;
+
+namespace helpers = extension_web_request_api_helpers;
+namespace keys = extension_web_request_api_constants;
+using URLLoaderFactoryType =
+    content::ContentBrowserClient::URLLoaderFactoryType;
+
+namespace extensions {
+
+namespace web_request = api::web_request;
+
+namespace {
+
+WebRequestAPI::TestObserver* g_test_observer = nullptr;
+
+constexpr char kExtraInfoKey[] = "_options.extraInfo";
+constexpr char kWebViewInstanceIdKey[] = "_options.webViewInstanceId";
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+//
+// LINT.IfChange(ProxyDecisionDetailsForExtension)
+enum class ProxyDecisionDetailsForExtension {
+  // Proxy will be used only for WebRequest* permissions.
+  kOnlyForWebRequest = 0,
+  // Proxy will be used only for Declarative{Web|Net}Request* permissions.
+  kOnlyForDeclarativeRequest = 1,
+  // Proxy will be used only for WebView permissions.
+  kOnlyForWebView = 2,
+  // Proxy will be used only for multiple kinds of permissions.
+  kForMixedReasons = 3,
+
+  kMaxValue = kForMixedReasons,
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/extensions/enums.xml:WebRequestProxyDecisionDetailsForExtension)
+
+// Converts an HttpHeaders dictionary to a |name|, |value| pair. Returns
+// true if successful.
+bool FromHeaderDictionary(const base::DictValue& header_value,
+                          std::string* name,
+                          std::string* out_value) {
+  const std::string* name_ptr = header_value.FindString(keys::kHeaderNameKey);
+  if (!name) {
+    return false;
+  }
+  *name = *name_ptr;
+
+  const base::Value* value = header_value.Find(keys::kHeaderValueKey);
+  const base::Value* binary_value =
+      header_value.Find(keys::kHeaderBinaryValueKey);
+  // We require either a "value" or a "binaryValue" entry, but not both.
+  if ((value == nullptr && binary_value == nullptr) ||
+      (value != nullptr && binary_value != nullptr)) {
+    return false;
+  }
+
+  if (value) {
+    if (!value->is_string()) {
+      return false;
+    }
+    *out_value = value->GetString();
+  } else if (!binary_value->is_list() ||
+             !helpers::CharListToString(binary_value->GetList(), out_value)) {
+    return false;
+  }
+  return true;
+}
+
+template <size_t N>
+bool DoesExtensionHasAnyOfPermission(
+    const Extension& extension,
+    const base::fixed_flat_set<APIPermissionID, N>& permissions) {
+  const PermissionsData* permissions_data = extension.permissions_data();
+  return std::ranges::any_of(permissions, [&permissions_data](auto permission) {
+    return permissions_data->HasAPIPermission(permission);
+  });
+}
+
+// Checks whether the extension has WebRequest* permissions.
+bool HasAnyWebRequestPermissions(const Extension& extension) {
+  static constexpr auto kPermissions = base::MakeFixedFlatSet<APIPermissionID>({
+      APIPermissionID::kWebRequest,
+      APIPermissionID::kWebRequestBlocking,
+  });
+
+  return DoesExtensionHasAnyOfPermission(extension, kPermissions);
+}
+
+// Checks whether the extension has Declarative{Web|Net}Request* permissions.
+bool HasAnyDeclarativeWebRequestPermissions(const Extension& extension) {
+  static constexpr auto kPermissions = base::MakeFixedFlatSet<APIPermissionID>({
+      APIPermissionID::kDeclarativeWebRequest,
+      APIPermissionID::kDeclarativeNetRequest,
+      APIPermissionID::kDeclarativeNetRequestWithHostAccess,
+  });
+
+  return DoesExtensionHasAnyOfPermission(extension, kPermissions);
+}
+
+// Checks whether the extension has WebView permission.
+bool HasWebViewPermission(const Extension& extension) {
+  const PermissionsData* permissions = extension.permissions_data();
+  return permissions->HasAPIPermission(APIPermissionID::kWebView);
+}
+
+// Logs a console message for an extension's webRequest event listener. This is
+// used to report errors with a listener's registration.
+void AddMessageToConsoleForListener(const EventListenerInfo& details,
+                                    blink::mojom::ConsoleMessageLevel level,
+                                    const std::string& message) {
+  // For service worker-based extensions, the message is routed to the service
+  // worker's console. For other contexts, it's sent to the console of each of
+  // the extension's primary main frames.
+  if (details.service_worker_version_id !=
+      blink::mojom::kInvalidServiceWorkerVersionId) {
+    content::StoragePartition* storage_partition =
+        util::GetStoragePartitionForExtensionId(details.extension_id,
+                                                details.browser_context,
+                                                /*can_create=*/false);
+    if (storage_partition && storage_partition->GetServiceWorkerContext()) {
+      storage_partition->GetServiceWorkerContext()->AddMessageToConsole(
+          details.service_worker_version_id, level, message);
+    }
+    return;
+  }
+
+  auto* process = content::RenderProcessHost::FromID(details.render_process_id);
+  if (process) {
+    process->ForEachRenderFrameHost([&](content::RenderFrameHost* rfh) {
+      if (rfh->IsInPrimaryMainFrame() &&
+          rfh->GetLastCommittedURL().host() == details.extension_id) {
+        rfh->AddMessageToConsole(level, message);
+      }
+    });
+  }
+}
+
+// The parsed identity of a webRequest listener registration.
+struct ParsedListenerRegistration {
+  WebRequestEventRouter::RequestFilter filter;
+  int extra_info_spec = 0;
+  int web_view_instance_id = 0;
+};
+
+// Parses a listener registration's RequestFilter, `extraInfoSpec`, and
+// `web_view_instance_id` from `details.filter`. Failure + an empty error
+// string means a fatal error.
+base::expected<ParsedListenerRegistration, std::string>
+ParseListenerRegistration(const EventListenerInfo& details) {
+  ParsedListenerRegistration result;
+
+  std::string error;
+  if (!details.filter ||
+      !result.filter.InitFromValue(*details.filter, &error)) {
+    return base::unexpected(std::move(error));
+  }
+
+  if (auto* extra_info = details.filter->FindListByDottedPath(kExtraInfoKey)) {
+    if (!ExtraInfoSpec::InitFromValue(base::Value(extra_info->Clone()),
+                                      &result.extra_info_spec)) {
+      return base::unexpected("Invalid extraInfo spec.");
+    }
+  }
+
+  result.web_view_instance_id =
+      details.filter->FindIntByDottedPath(kWebViewInstanceIdKey).value_or(0);
+  return result;
+}
+
+// Validates that `details.event_name` matches the session's registration
+// protocol: parent event names for per-context dispatch, sub-event names for
+// legacy dispatch. A mismatch can only come from a misbehaving renderer;
+// reports a bad message and returns false.
+bool ValidateListenerProtocol(const EventListenerInfo& details,
+                              bool per_context_dispatch) {
+  if (EventRouter::IsSubEventName(details.event_name) == per_context_dispatch) {
+    bad_message::ReceivedBadMessage(
+        details.render_process_id.GetUnsafeValue(),
+        bad_message::WRA_INVALID_LISTENER_REGISTRATION);
+    return false;
+  }
+  return true;
+}
+
+// Mirrors the histogram enum of the same name. DO NOT REORDER THESE VALUES OR
+// CHANGE THEIR MEANING.
+enum class WebRequestEventListenerFlag {
+  kTotal,
+  kNone,
+  kRequestHeaders,
+  kResponseHeaders,
+  kBlocking,
+  kAsyncBlocking,
+  kRequestBody,
+  kExtraHeaders,
+  kMaxValue = kExtraHeaders,
+};
+
+}  // namespace
+
+void WebRequestAPI::Proxy::HandleAuthRequest(
+    const net::AuthChallengeInfo& auth_info,
+    scoped_refptr<net::HttpResponseHeaders> response_headers,
+    int32_t request_id,
+    AuthRequestCallback callback) {
+  // Default implementation cancels the request.
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(std::move(callback), std::nullopt,
+                                /*should_cancel=*/false));
+}
+
+WebRequestAPI::ProxySet::ProxySet() {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+}
+
+WebRequestAPI::ProxySet::~ProxySet() {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+}
+
+void WebRequestAPI::ProxySet::AddProxy(std::unique_ptr<Proxy> proxy) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+
+  proxies_.insert(std::move(proxy));
+}
+
+void WebRequestAPI::ProxySet::RemoveProxy(Proxy* proxy) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+
+  auto requests_it = proxy_to_request_id_map_.find(proxy);
+  if (requests_it != proxy_to_request_id_map_.end()) {
+    for (const auto& id : requests_it->second) {
+      request_id_to_proxy_map_.erase(id);
+    }
+    proxy_to_request_id_map_.erase(requests_it);
+  }
+
+  auto proxy_it = proxies_.find(proxy);
+  CHECK(proxy_it != proxies_.end());
+  proxies_.erase(proxy_it);
+}
+
+void WebRequestAPI::ProxySet::AssociateProxyWithRequestId(
+    Proxy* proxy,
+    const content::GlobalRequestID& id) {
+  DCHECK(proxy);
+  DCHECK(proxies_.count(proxy));
+  DCHECK(id.request_id);
+  auto result = request_id_to_proxy_map_.emplace(id, proxy);
+  DCHECK(result.second) << "Unexpected request ID collision.";
+  proxy_to_request_id_map_[proxy].insert(id);
+}
+
+void WebRequestAPI::ProxySet::DisassociateProxyWithRequestId(
+    Proxy* proxy,
+    const content::GlobalRequestID& id) {
+  DCHECK(proxy);
+  DCHECK(proxies_.count(proxy));
+  DCHECK(id.request_id);
+  size_t count = request_id_to_proxy_map_.erase(id);
+  DCHECK_GT(count, 0u);
+  count = proxy_to_request_id_map_[proxy].erase(id);
+  DCHECK_GT(count, 0u);
+}
+
+WebRequestAPI::Proxy* WebRequestAPI::ProxySet::GetProxyFromRequestId(
+    const content::GlobalRequestID& id) {
+  auto it = request_id_to_proxy_map_.find(id);
+  return it == request_id_to_proxy_map_.end() ? nullptr : it->second;
+}
+
+void WebRequestAPI::ProxySet::MaybeProxyAuthRequest(
+    const net::AuthChallengeInfo& auth_info,
+    scoped_refptr<net::HttpResponseHeaders> response_headers,
+    const content::GlobalRequestID& request_id,
+    AuthRequestCallback callback) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  Proxy* proxy = GetProxyFromRequestId(request_id);
+  if (!proxy) {
+    // Run the |callback| which will display a dialog for the user to enter
+    // their auth credentials.
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback), std::nullopt,
+                                  /*should_cancel=*/false));
+    return;
+  }
+
+  proxy->HandleAuthRequest(auth_info, std::move(response_headers),
+                           request_id.request_id, std::move(callback));
+}
+
+void WebRequestAPI::ProxySet::OnDNRExtensionUnloaded(
+    const Extension* extension) {
+  for (const auto& proxy : proxies_) {
+    proxy->OnDNRExtensionUnloaded(extension);
+  }
+}
+
+WebRequestAPI::RequestIDGenerator::RequestIDGenerator() = default;
+WebRequestAPI::RequestIDGenerator::~RequestIDGenerator() = default;
+
+uint64_t WebRequestAPI::RequestIDGenerator::Generate(
+    int32_t routing_id,
+    int32_t request_id_from_client) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  auto it = saved_id_map_.find({routing_id, request_id_from_client});
+  if (it != saved_id_map_.end()) {
+    uint64_t id = it->second;
+    saved_id_map_.erase(it);
+    return id;
+  }
+  return ++id_;
+}
+
+void WebRequestAPI::RequestIDGenerator::SaveID(int32_t routing_id,
+                                               int32_t request_id_from_client,
+                                               uint64_t request_id) {
+  // If `request_id_from_client` is 0, we cannot reliably match the generated
+  // ID to a restarted request, so ignore it.
+  if (request_id_from_client != 0) {
+    saved_id_map_.insert({{routing_id, request_id_from_client}, request_id});
+  }
+}
+
+int32_t WebRequestAPI::RequestIDGenerator::GenerateNetworkRequestId() {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  if (network_request_id_ == std::numeric_limits<int32_t>::max()) {
+    network_request_id_ = 0;
+  }
+  return ++network_request_id_;
+}
+
+WebRequestAPI::WebRequestAPI(content::BrowserContext* context)
+    : browser_context_(context),
+      proxies_(std::make_unique<ProxySet>()),
+      may_have_proxies_(MayHaveProxies()) {
+  EventRouter* event_router = EventRouter::Get(browser_context_);
+  // TODO(crbug.com/40393861): Once ExtensionWebRequestEventRouter is a per-
+  // BrowserContext instance, it can observe these events itself. That's a
+  // bit tricky right now because the singleton instance would need to
+  // observe the EventRouter for each BrowserContext that has webRequest
+  // API event listeners.
+  // Observe related events in the EventRouter for the WebRequestEventRouter.
+  for (const std::string& event_name : WebRequestEventRouter::GetEventNames()) {
+    event_router->RegisterObserver(this, event_name);
+  }
+  extensions::ExtensionRegistry::Get(browser_context_)->AddObserver(this);
+}
+
+WebRequestAPI::~WebRequestAPI() = default;
+
+void WebRequestAPI::Shutdown() {
+  proxies_.reset();
+  EventRouter::Get(browser_context_)->UnregisterObserver(this);
+  extensions::ExtensionRegistry::Get(browser_context_)->RemoveObserver(this);
+  // TODO(crbug.com/40264286): Remove this once WebRequestEventRouter
+  // implements `KeyedService::Shutdown` correctly.
+  WebRequestEventRouter::Get(browser_context_)
+      ->OnBrowserContextShutdown(browser_context_);
+}
+
+static base::LazyInstance<
+    BrowserContextKeyedAPIFactory<WebRequestAPI>>::DestructorAtExit g_factory =
+    LAZY_INSTANCE_INITIALIZER;
+
+// static
+BrowserContextKeyedAPIFactory<WebRequestAPI>*
+WebRequestAPI::GetFactoryInstance() {
+  return g_factory.Pointer();
+}
+
+// static
+void WebRequestAPI::SetObserverForTest(TestObserver* observer) {
+  g_test_observer = observer;
+}
+
+WebRequestAPI::TestObserver::TestObserver() = default;
+
+WebRequestAPI::TestObserver::~TestObserver() = default;
+
+void WebRequestAPI::OnListenerAdded(const EventListenerInfo& details) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+
+  const bool per_context_dispatch = base::FeatureList::IsEnabled(
+      extensions_features::kWebRequestPerContextEventDispatch);
+  if (!ValidateListenerProtocol(details, per_context_dispatch)) {
+    return;
+  }
+
+  auto registration = ParseListenerRegistration(details);
+  if (!registration.has_value()) {
+    // TODO(crbug.com/494684626): the renderer does not validate URL patterns,
+    // so a parse failure can come from a legitimate extension. Report an error,
+    // not a bad message. Validate URL patterns at addListener time once the
+    // legacy path is gone.
+    // TODO(crbug.com/477654111): this validation should happen at the
+    // EventRouter layer. Currently, it's possible for an invalid listener to be
+    // added at the EventRouter layer, and for the validation to then fail here.
+    if (!registration.error().empty()) {
+      AddMessageToConsoleForListener(details,
+                                     blink::mojom::ConsoleMessageLevel::kError,
+                                     registration.error());
+    }
+    return;
+  }
+  WebRequestEventRouter::RequestFilter filter = std::move(registration->filter);
+  int extra_info_spec = registration->extra_info_spec;
+  int web_view_instance_id = registration->web_view_instance_id;
+
+  const Extension* extension = nullptr;
+  if (!details.extension_id.empty()) {
+    extension = ExtensionRegistry::Get(details.browser_context)
+                    ->enabled_extensions()
+                    .GetByID(details.extension_id);
+    // If the extension ID was provided, the extension should always be
+    // available. Otherwise, we should never have added the listener.
+    CHECK(extension);
+  }
+  std::string extension_name = extension ? extension->name() : std::string();
+  std::string event_name = EventRouter::GetBaseEventName(details.event_name);
+  std::string sub_event_name = details.event_name;
+  auto* process = content::RenderProcessHost::FromID(details.render_process_id);
+
+  // Active webRequest listeners owned by an extension must only be registered
+  // by processes authorized to host that extension.
+  // `AddFilteredListenerForMainThread` also accepts registrations from web
+  // processes that have executed content or user scripts for the extension, so
+  // enforce the stronger `ProcessMap` check here. Lazy listeners are exempt
+  // since they are not bound to a specific process. See crbug.com/513321171.
+  if (extension && !details.is_lazy && process &&
+      !ProcessMap::Get(details.browser_context)
+           ->Contains(extension->id(), process->GetID())) {
+    bad_message::ReceivedBadMessage(
+        process, bad_message::WRA_INVALID_EXTENSION_ID_FOR_PROCESS);
+    return;
+  }
+
+  if (extra_info_spec & ExtraInfoSpec::SECURITY_INFO) {
+    // Security info should not be available in Chrome Apps and
+    // non-controlled frame, non-extension contexts.
+    if ((extension && extension->is_platform_app()) ||
+        (!extension &&
+         !BrowserProcessContextData(process).HasControlledFrameCapability())) {
+      AddMessageToConsoleForListener(details,
+                                     blink::mojom::ConsoleMessageLevel::kError,
+                                     keys::kSecurityInfoAPINotAvailable);
+      return;
+    }
+
+    // Select the appropriate feature flag and error key based on the context.
+    const auto& feature =
+        extension ? extensions_features::kWebRequestSecurityInfo
+                  : blink::features::kControlledFrameWebRequestSecurityInfo;
+    const char* error_key =
+        extension ? keys::kSecurityInfoFlagAbsentInExtensions
+                  : keys::kSecurityInfoFlagAbsentInControlledFrame;
+    if (!base::FeatureList::IsEnabled(feature)) {
+      AddMessageToConsoleForListener(
+          details, blink::mojom::ConsoleMessageLevel::kError, error_key);
+      return;
+    }
+  }
+
+  if (web_view_instance_id) {
+    // If a web view ID has been supplied and the call is from an extension
+    // (i.e. not from WebUI), we require the extension to have the webview
+    // permission.
+    if (extension && !extension->permissions_data()->HasAPIPermission(
+                         mojom::APIPermissionID::kWebView)) {
+      AddMessageToConsoleForListener(details,
+                                     blink::mojom::ConsoleMessageLevel::kError,
+                                     "Missing webview permission.");
+      return;
+    }
+
+    if (!event_name.starts_with("webViewInternal.")) {
+      AddMessageToConsoleForListener(details,
+                                     blink::mojom::ConsoleMessageLevel::kError,
+                                     "Invalid event name for webview.");
+      return;
+    }
+  } else {
+    auto has_blocking_permission = [&extension, &event_name]() {
+      DCHECK(extension);
+      if (extension->permissions_data()->HasAPIPermission(
+              APIPermissionID::kWebRequestBlocking)) {
+        return true;
+      }
+
+      return event_name == keys::kOnAuthRequiredEvent &&
+             extension->permissions_data()->HasAPIPermission(
+                 APIPermissionID::kWebRequestAuthProvider);
+    };
+
+    // We check automatically whether the extension has the 'webRequest'
+    // permission. For blocking calls we require the additional permission
+    // 'webRequestBlocking' or 'webRequestAuthProvider'.
+    bool is_blocking = extra_info_spec & (ExtraInfoSpec::BLOCKING |
+                                          ExtraInfoSpec::ASYNC_BLOCKING);
+    if (is_blocking && !has_blocking_permission()) {
+      AddMessageToConsoleForListener(details,
+                                     blink::mojom::ConsoleMessageLevel::kError,
+                                     keys::kBlockingPermissionRequired);
+      return;
+    }
+
+    // We allow to subscribe to patterns that are broader than the host
+    // permissions. E.g., we could subscribe to http://www.example.com/*
+    // while having host permissions for http://www.example.com/foo/* and
+    // http://www.example.com/bar/*.
+    // For this reason we do only a coarse check here to warn the extension
+    // developer if they do something obviously wrong.
+    if (extension &&
+        extension->permissions_data()
+            ->GetEffectiveHostPermissions()
+            .is_empty() &&
+        extension->permissions_data()
+            ->withheld_permissions()
+            .explicit_hosts()
+            .is_empty()) {
+      AddMessageToConsoleForListener(details,
+                                     blink::mojom::ConsoleMessageLevel::kError,
+                                     keys::kHostPermissionsRequired);
+      return;
+    }
+  }
+
+  // TODO(crbug.com/379869738) Remove GetUnsafeValue.
+  if (!WebRequestEventRouter::Get(details.browser_context)
+           ->AddEventListener(
+               details.browser_context, details.extension_id, extension_name,
+               event_name, sub_event_name, std::move(filter), extra_info_spec,
+               details.render_process_id.GetUnsafeValue(), web_view_instance_id,
+               details.worker_thread_id, details.service_worker_version_id,
+               details.is_lazy)) {
+    AddMessageToConsoleForListener(details,
+                                   blink::mojom::ConsoleMessageLevel::kError,
+                                   "Failed to add listener.");
+    return;
+  }
+
+  if (!details.is_lazy) {
+    helpers::ClearCacheOnNavigation();
+  }
+}
+
+void WebRequestAPI::OnListenerRemoved(const EventListenerInfo& details) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+
+  // TODO(fsamuel): <webview> events will not be removed through this code path.
+  // <webview> events will be removed in RemoveWebViewEventListeners. Ideally,
+  // this code should be decoupled from extensions, we should use the host ID
+  // instead, and not have two different code paths. This is a huge undertaking
+  // unfortunately, so we'll resort to two code paths for now.
+
+  // Note that details.event_name includes the sub-event details (e.g. "/123").
+  const std::string& sub_event_name = details.event_name;
+
+  const bool per_context_dispatch = base::FeatureList::IsEnabled(
+      extensions_features::kWebRequestPerContextEventDispatch);
+  if (!ValidateListenerProtocol(details, per_context_dispatch)) {
+    return;
+  }
+
+  // Per-context registrations use the parent event name, shared by all
+  // of the extension's listeners for that event, so the registration's
+  // (filter, extraInfo) pair (and, for webview listeners, the
+  // `web_view_instance_id`) is needed to narrow the removal to the right one.
+  std::optional<WebRequestEventRouter::RequestFilter> filter;
+  std::optional<int> extra_info_spec;
+  std::optional<int> web_view_instance_id;
+  if (per_context_dispatch) {
+    auto registration = ParseListenerRegistration(details);
+    if (!registration.has_value()) {
+      // TODO(crbug.com/494684626): the addition was rejected the same way (see
+      // `OnListenerAdded()`), so there is no listener to remove. Once URL
+      // patterns are validated at addListener time, a parse failure here can
+      // only come from a misbehaving renderer; treat it as a bad message.
+      return;
+    }
+    filter = std::move(registration->filter);
+    extra_info_spec = registration->extra_info_spec;
+    web_view_instance_id = registration->web_view_instance_id;
+  }
+
+  // The way we handle the listener removal depends on whether this was a
+  // lazy listener registration (indicated by a null browser context on
+  // `details`).
+  base::OnceClosure remove_listener;
+
+  if (details.is_lazy) {
+    // This is a removed lazy listener. This happens when an extension uses
+    // removeListener() in its lazy context to forcibly remove a listener
+    // registration (as opposed to when the context is torn down, in which case
+    // it's the active listener registration that's removed).
+    // Due to https://crbug.com/1347597, we only have a single lazy listener
+    // registration shared for both the on- and off-the-record contexts, so we
+    // use the original context (associated with this KeyedService) to remove
+    // the listener from both contexts.
+    // Note that we unwrap the raw_ptr BrowserContext instance using
+    // raw_ptr::get() so we truly have a raw pointer to bind into the callback.
+    remove_listener = base::BindOnce(
+        &WebRequestAPI::RemoveLazyListener, weak_factory_.GetWeakPtr(),
+        browser_context_.get(), details.extension_id, sub_event_name,
+        std::move(filter), extra_info_spec);
+  } else {
+    // This was an active listener registration.
+    auto update_type = WebRequestEventRouter::ListenerUpdateType::kRemove;
+    if (details.service_worker_version_id !=
+        blink::mojom::kInvalidServiceWorkerVersionId) {
+      // This was a listener removed for a service worker, but it wasn't the
+      // lazy listener registration. In this case, we only deactivate the
+      // listener (rather than removing it).
+      update_type = WebRequestEventRouter::ListenerUpdateType::kDeactivate;
+    }
+
+    // Note that we unwrap the raw_ptr BrowserContext instance using
+    // raw_ptr::get() so we truly have a raw pointer to bind into the callback.
+    remove_listener = base::BindOnce(
+        &WebRequestAPI::UpdateActiveListener, weak_factory_.GetWeakPtr(),
+        base::UnsafeDanglingUntriaged(details.browser_context.get()),
+        update_type, details.extension_id, sub_event_name,
+        details.render_process_id, details.worker_thread_id,
+        details.service_worker_version_id, std::move(filter), extra_info_spec,
+        web_view_instance_id);
+  }
+
+  if (per_context_dispatch) {
+    // Remove synchronously, not via `PostTask` like the legacy branch below.
+    //
+    // NOTE: Deferring would be wrong here. A parent named registration has no
+    // unique name, so if the extension re-added an identical listener before a
+    // deferred removal task ran, the task could not tell the two apart and
+    // would delete the new listener. A legacy removal names a unique sub-event,
+    // so it can never delete a re-added listener by mistake.
+    //
+    // SUBTLE: Deferring is also not needed here. When a handler removes its own
+    // listener and then returns a blocking response (or settles an async
+    // handler), both individual responses and the final resolution signal
+    // operate directly on the request's per-target state, not on the
+    // EventListener record. Even when those signals arrive after
+    // `removeListener()` has executed synchronously, the EventListener record
+    // does not need to outlive the removal.
+    std::move(remove_listener).Run();
+  } else if (ExtensionRegistry::Get(details.browser_context)
+                 ->enabled_extensions()
+                 .GetByID(details.extension_id)) {
+    // The extension is still enabled, so this listener removal was likely
+    // initiated by a call from the extension itself. If the listener removal is
+    // performed synchronously, the listener will be removed before the
+    // handler's result can be processed. This `PostTask` is necessary, even
+    // though we are already on the UI thread, to defer the removal until after
+    // the event handling is complete.
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, std::move(remove_listener));
+  } else {
+    // The extension has been unloaded or disabled, so this removal is part of
+    // the teardown process. In this case, there are no running handlers to
+    // worry about, so we can remove the listener synchronously for immediate
+    // cleanup.
+    std::move(remove_listener).Run();
+  }
+}
+
+void WebRequestAPI::OnListenerUpdated(const EventListenerInfo& details) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  // Only lazy listeners can be updated. See `EventListenerMap::UpdateFilter()`.
+  CHECK(details.is_lazy);
+
+  std::string event_name = EventRouter::GetBaseEventName(details.event_name);
+  auto* event_router = WebRequestEventRouter::Get(details.browser_context);
+
+  // A sub-event-named listener was re-registered with a different filter. This
+  // is neither an add nor a remove: firing `OnListenerRemoved()` here would
+  // post an async `RemoveLazyListener()` keyed only by sub-event name, which
+  // would tear down the just-registered replacement. Route through the add path
+  // instead: for a lazy listener `WebRequestEventRouter::AddEventListener()`
+  // replaces any inactive listener for the same sub-event name with the new
+  // filter, which is exactly the update we want.
+  const size_t inactive_count_before = event_router->GetInactiveListenerCount(
+      details.browser_context, event_name);
+  OnListenerAdded(details);
+  const size_t inactive_count_after = event_router->GetInactiveListenerCount(
+      details.browser_context, event_name);
+  // Ensure no listeners were added.
+  CHECK_EQ(inactive_count_before, inactive_count_after);
+}
+
+bool WebRequestAPI::MaybeProxyURLLoaderFactory(
+    content::BrowserContext* browser_context,
+    content::RenderFrameHost* frame,
+    int render_process_id,
+    URLLoaderFactoryType type,
+    std::optional<int64_t> navigation_id,
+    ukm::SourceIdObj ukm_source_id,
+    network::URLLoaderFactoryBuilder& factory_builder,
+    mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>*
+        header_client,
+    scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner,
+    const url::Origin& request_initiator) {
+  const ProxyDecision decision = MaybeProxyURLLoaderFactoryInternal(
+      browser_context, frame, render_process_id, type, navigation_id,
+      ukm_source_id, factory_builder, header_client,
+      std::move(navigation_response_task_runner), request_initiator);
+  base::UmaHistogramEnumeration("Extensions.WebRequest.ProxyDecision2",
+                                decision);
+  const size_t kMaxCount = 10u;
+  base::UmaHistogramExactLinear(
+      "Extensions.WebRequest.WebRequestDependentExtensionCount",
+      web_request_extension_count_, kMaxCount);
+  base::UmaHistogramExactLinear(
+      "Extensions.WebRequest.DeclarativeRequestDependentExtensionCount",
+      declarative_request_extension_count_, kMaxCount);
+  base::UmaHistogramExactLinear(
+      "Extensions.WebRequest.WebViewDependentExtensionCount",
+      web_view_extension_ids_.size(), kMaxCount);
+
+  if (decision == ProxyDecision::kWillProxyForExtension &&
+      !base::FeatureList::IsEnabled(
+          extensions_features::kForceWebRequestProxyForTest)) {
+    // Check if kWillProxyForExtension is decided only for one type of
+    // permissions, or mixed reasons.
+    ProxyDecisionDetailsForExtension details =
+        ProxyDecisionDetailsForExtension::kForMixedReasons;
+    if (web_request_extension_count_ == 0 &&
+        declarative_request_extension_count_ == 0) {
+      CHECK_NE(web_view_extension_ids_.size(), 0u);
+      details = ProxyDecisionDetailsForExtension::kOnlyForWebView;
+    } else if (web_view_extension_ids_.size() == 0 &&
+               declarative_request_extension_count_ == 0) {
+      CHECK_NE(web_request_extension_count_, 0);
+      details = ProxyDecisionDetailsForExtension::kOnlyForWebRequest;
+    } else if (web_request_extension_count_ == 0 &&
+               web_view_extension_ids_.size() == 0) {
+      CHECK_NE(declarative_request_extension_count_, 0);
+      details = ProxyDecisionDetailsForExtension::kOnlyForDeclarativeRequest;
+    }
+    base::UmaHistogramEnumeration(
+        "Extensions.WebRequest.ProxyDecisionDetailsForExtension", details);
+  }
+  return decision != ProxyDecision::kWillNotProxy;
+}
+
+WebRequestAPI::ProxyDecision WebRequestAPI::MaybeProxyURLLoaderFactoryInternal(
+    content::BrowserContext* browser_context,
+    content::RenderFrameHost* frame,
+    int render_process_id,
+    URLLoaderFactoryType type,
+    std::optional<int64_t> navigation_id,
+    ukm::SourceIdObj ukm_source_id,
+    network::URLLoaderFactoryBuilder& factory_builder,
+    mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>*
+        header_client,
+    scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner,
+    const url::Origin& request_initiator) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+
+  ProxyDecision decision = ProxyDecision::kWillNotProxy;
+  if (base::FeatureList::IsEnabled(
+          extensions_features::kOptimizeWebRequestProxy)) {
+    if (HasWebRequestOrDeclarativeWebRequestExtension()) {
+      decision = ProxyDecision::kWillProxyForExtension;
+    } else if (IsAvailableToWebViewEmbedderWebUIFrame(frame)) {
+      // There are a few internal WebUIs that use WebView tag that are
+      // allowlisted for webRequest.
+      decision = ProxyDecision::kWillProxyForWebUI;
+    } else if (IsAvailableToWebViewEmbedderWebPageFrame(frame)) {
+      decision = ProxyDecision::kWillProxyForEmbedderWebView;
+    } else if (IsAvailableToWebViewEmbedderExtensionFrame(frame)) {
+      decision = ProxyDecision::kWillProxyForEmbedderWebView;
+    } else {
+      return decision;
+    }
+  } else {
+    if (MayHaveProxies()) {
+      decision = ProxyDecision::kWillProxyForExtension;
+    } else if (IsAvailableToWebViewEmbedderWebUIFrame(frame)) {
+      // There are a few internal WebUIs that use WebView tag that are
+      // allowlisted for webRequest.
+      decision = ProxyDecision::kWillProxyForWebUI;
+    } else if (IsAvailableToWebViewEmbedderWebPageFrame(frame)) {
+      decision = ProxyDecision::kWillProxyForEmbedderWebView;
+    } else {
+      return decision;
+    }
+  }
+
+  std::unique_ptr<ExtensionNavigationUIData> navigation_ui_data;
+  const bool is_navigation = (type == URLLoaderFactoryType::kNavigation);
+  if (is_navigation) {
+    DCHECK(frame);
+    DCHECK(navigation_id);
+    int tab_id;
+    int window_id;
+    ExtensionsBrowserClient::Get()->GetTabAndWindowIdForWebContents(
+        content::WebContents::FromRenderFrameHost(frame), &tab_id, &window_id);
+    navigation_ui_data =
+        std::make_unique<ExtensionNavigationUIData>(frame, tab_id, window_id);
+  }
+
+  mojo::PendingReceiver<network::mojom::TrustedURLLoaderHeaderClient>
+      header_client_receiver;
+  if (header_client) {
+    header_client_receiver = header_client->InitWithNewPipeAndPassReceiver();
+  }
+
+  // NOTE: This request may be proxied on behalf of an incognito frame, but
+  // |this| will always be bound to a regular profile (see
+  // |BrowserContextKeyedAPI::kServiceRedirectedInIncognito|).
+  DCHECK(browser_context == browser_context_ ||
+         (browser_context->IsOffTheRecord() &&
+          ExtensionsBrowserClient::Get()->GetOriginalContext(browser_context) ==
+              browser_context_));
+  WebRequestProxyingURLLoaderFactory::StartProxying(
+      browser_context, is_navigation ? -1 : render_process_id,
+      frame ? frame->GetRoutingID() : IPC::mojom::kRoutingIdNone,
+      frame ? frame->GetRenderViewHost()->GetRoutingID()
+            : IPC::mojom::kRoutingIdNone,
+      &request_id_generator_, std::move(navigation_ui_data),
+      std::move(navigation_id), ukm_source_id, factory_builder,
+      std::move(header_client_receiver), proxies_.get(), type,
+      std::move(navigation_response_task_runner));
+  return decision;
+}
+
+bool WebRequestAPI::MaybeProxyAuthRequest(
+    content::BrowserContext* browser_context,
+    const net::AuthChallengeInfo& auth_info,
+    scoped_refptr<net::HttpResponseHeaders> response_headers,
+    const content::GlobalRequestID& request_id,
+    bool is_request_for_navigation,
+    AuthRequestCallback callback,
+    WebViewGuest* web_view_guest) {
+#if BUILDFLAG(ENABLE_GUEST_VIEW)
+  if (!MayHaveProxiesForFrame(
+          web_view_guest ? web_view_guest->GetGuestMainFrame() : nullptr)) {
+    return false;
+  }
+#else   // BUILDFLAG(ENABLE_GUEST_VIEW)
+  if (!MayHaveProxies()) {
+    return false;
+  }
+#endif  //  BUILDFLAG(ENABLE_GUEST_VIEW)
+
+  content::GlobalRequestID proxied_request_id = request_id;
+  // In MaybeProxyURLLoaderFactory, we use an invalid render_process_id for
+  // navigation requests. Applying the same logic here so that we can correctly
+  // identify the request.
+  if (is_request_for_navigation) {
+    proxied_request_id.child_id = network::OriginatingProcessId();
+  }
+
+  // NOTE: This request may be proxied on behalf of an incognito frame, but
+  // |this| will always be bound to a regular profile (see
+  // |BrowserContextKeyedAPI::kServiceRedirectedInIncognito|).
+  DCHECK(browser_context == browser_context_ ||
+         (browser_context->IsOffTheRecord() &&
+          ExtensionsBrowserClient::Get()->GetOriginalContext(browser_context) ==
+              browser_context_));
+  proxies_->MaybeProxyAuthRequest(auth_info, std::move(response_headers),
+                                  proxied_request_id, std::move(callback));
+  return true;
+}
+
+void WebRequestAPI::ProxyWebSocket(
+    content::RenderFrameHost* frame,
+    content::ContentBrowserClient::WebSocketFactory factory,
+    const GURL& url,
+    const net::SiteForCookies& site_for_cookies,
+    const std::optional<std::string>& user_agent,
+    mojo::PendingRemote<network::mojom::WebSocketHandshakeClient>
+        handshake_client,
+    mojo::PendingRemote<network::mojom::TrustedHeaderClient> header_client) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  DCHECK(MayHaveProxiesForFrame(frame));
+
+  content::BrowserContext* browser_context =
+      frame->GetProcess()->GetBrowserContext();
+  const bool has_extra_headers =
+      WebRequestEventRouter::Get(browser_context)
+          ->HasAnyExtraHeadersListener(browser_context);
+  const bool has_security_info =
+      WebRequestEventRouter::Get(browser_context)
+          ->HasAnySecurityInfoListener(browser_context);
+
+  WebRequestProxyingWebSocket::StartProxying(
+      std::move(factory), url, site_for_cookies, user_agent,
+      std::move(handshake_client), has_extra_headers, has_security_info,
+      std::move(header_client), frame->GetProcess()->GetDeprecatedID(),
+      frame->GetRoutingID(), &request_id_generator_,
+      frame->GetLastCommittedOrigin(), frame->GetProcess()->GetBrowserContext(),
+      proxies_.get());
+}
+
+void WebRequestAPI::ProxyWebTransport(
+    content::RenderProcessHost& render_process_host,
+    int frame_routing_id,
+    const GURL& url,
+    const url::Origin& initiator_origin,
+    mojo::PendingRemote<network::mojom::WebTransportHandshakeClient>
+        handshake_client,
+    content::ContentBrowserClient::WillCreateWebTransportCallback callback) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  if (!MayHaveProxiesForFrame(content::RenderFrameHost::FromID(
+          render_process_host.GetDeprecatedID(), frame_routing_id))) {
+    std::move(callback).Run(std::move(handshake_client), std::nullopt);
+    return;
+  }
+  DCHECK(proxies_);
+  StartWebRequestProxyingWebTransport(
+      render_process_host, frame_routing_id, url, initiator_origin,
+      std::move(handshake_client),
+      request_id_generator_.Generate(IPC::mojom::kRoutingIdNone, 0),
+      *proxies_.get(), std::move(callback));
+}
+
+void WebRequestAPI::ForceProxyForTesting() {
+  ++web_request_extension_count_;
+  UpdateMayHaveProxies();
+}
+
+bool WebRequestAPI::MayHaveProxies() const {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  if (base::FeatureList::IsEnabled(
+          extensions_features::kForceWebRequestProxyForTest)) {
+    return true;
+  }
+
+  return (web_request_extension_count_ > 0) ||
+         (declarative_request_extension_count_ > 0) ||
+         (web_view_extension_ids_.size() > 0);
+}
+
+bool WebRequestAPI::MayHaveProxiesForFrame(
+    content::RenderFrameHost* render_frame_host) const {
+  if (base::FeatureList::IsEnabled(
+          extensions_features::kOptimizeWebRequestProxy)) {
+    return HasWebRequestOrDeclarativeWebRequestExtension() ||
+           IsAvailableToWebViewEmbedderWebPageFrame(render_frame_host) ||
+           IsAvailableToWebViewEmbedderWebUIFrame(render_frame_host) ||
+           IsAvailableToWebViewEmbedderExtensionFrame(render_frame_host);
+  } else {
+    return MayHaveProxies() ||
+           IsAvailableToWebViewEmbedderWebPageFrame(render_frame_host) ||
+           IsAvailableToWebViewEmbedderWebUIFrame(render_frame_host);
+  }
+}
+
+bool WebRequestAPI::HasWebRequestOrDeclarativeWebRequestExtension() const {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  if (base::FeatureList::IsEnabled(
+          extensions_features::kForceWebRequestProxyForTest)) {
+    return true;
+  }
+
+  return (web_request_extension_count_ > 0) ||
+         (declarative_request_extension_count_ > 0);
+}
+
+bool WebRequestAPI::HasWebRequestExtension() const {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  if (base::FeatureList::IsEnabled(
+          extensions_features::kForceWebRequestProxyForTest)) {
+    return true;
+  }
+
+  return web_request_extension_count_ > 0;
+}
+
+bool WebRequestAPI::IsAvailableToWebViewEmbedderWebUIFrame(
+    content::RenderFrameHost* render_frame_host) const {
+#if BUILDFLAG(ENABLE_GUEST_VIEW)
+  if (!render_frame_host ||
+      !WebViewGuest::FromRenderFrameHost(render_frame_host)) {
+    return false;
+  }
+  content::BrowserContext* browser_context =
+      render_frame_host->GetBrowserContext();
+  content::RenderFrameHost* embedder_frame =
+      render_frame_host->GetOutermostMainFrameOrEmbedder();
+  const GURL& embedder_url =
+      util::GetURLForExtensionPermissionCheck(embedder_frame);
+  // TODO(crbug.com/40288053): Remove the scheme check once we're sure
+  // that WebUIs with WebView run in real WebUI processes and check the
+  // context type using |IsAvailableToWebViewEmbedderWebPageFrame()| below.
+  if (!embedder_url.SchemeIs(content::kChromeUIScheme)) {
+    return false;
+  }
+  auto* feature = FeatureProvider::GetAPIFeature("webRequestInternal");
+  return feature
+      ->IsAvailableToContext(nullptr, mojom::ContextType::kWebUi, embedder_url,
+                             util::GetBrowserContextId(browser_context),
+                             BrowserFrameContextData(render_frame_host))
+      .is_available();
+#else
+  return false;
+#endif
+}
+
+bool WebRequestAPI::IsAvailableToWebViewEmbedderExtensionFrame(
+    content::RenderFrameHost* render_frame_host) const {
+#if BUILDFLAG(ENABLE_GUEST_VIEW)
+  if (!render_frame_host ||
+      !WebViewGuest::FromRenderFrameHost(render_frame_host)) {
+    return false;
+  }
+  content::BrowserContext* browser_context =
+      render_frame_host->GetBrowserContext();
+  content::RenderFrameHost* embedder_frame =
+      render_frame_host->GetOutermostMainFrameOrEmbedder();
+  const Extension* extension =
+      ProcessManager::Get(browser_context)
+          ->GetExtensionForRenderFrameHost(embedder_frame);
+  return extension && web_view_extension_ids_.contains(extension->id());
+#else
+  return false;
+#endif
+}
+
+bool WebRequestAPI::IsAvailableToWebViewEmbedderWebPageFrame(
+    content::RenderFrameHost* render_frame_host) const {
+#if BUILDFLAG(ENABLE_GUEST_VIEW)
+  if (!render_frame_host ||
+      !WebViewGuest::FromRenderFrameHost(render_frame_host)) {
+    return false;
+  }
+
+  content::BrowserContext* browser_context =
+      render_frame_host->GetBrowserContext();
+  content::RenderFrameHost* embedder_frame =
+      render_frame_host->GetOutermostMainFrameOrEmbedder();
+
+  if (!ProcessMap::Get(browser_context)
+           ->CanProcessHostContextType(/*extension=*/nullptr,
+                                       *embedder_frame->GetProcess(),
+                                       mojom::ContextType::kWebPage)) {
+    return false;
+  }
+
+  Feature::Availability availability =
+      ExtensionAPI::GetSharedInstance()->IsAvailable(
+          "webRequestInternal", /*extension=*/nullptr,
+          mojom::ContextType::kWebPage,
+          util::GetURLForExtensionPermissionCheck(embedder_frame),
+          CheckAliasStatus::ALLOWED, util::GetBrowserContextId(browser_context),
+          BrowserFrameContextData(embedder_frame));
+  return availability.is_available();
+#else
+  return false;
+#endif
+}
+
+bool WebRequestAPI::HasExtraHeadersListenerForTesting() {
+  return WebRequestEventRouter::Get(browser_context_)
+      ->HasAnyExtraHeadersListener(browser_context_);
+}
+
+void WebRequestAPI::ResetURLLoaderFactories() {
+  browser_context_->GetDefaultStoragePartition()->ResetURLLoaderFactories();
+  if (g_test_observer) {
+    g_test_observer->OnDidResetURLLoaderFactories();
+  }
+}
+
+void WebRequestAPI::UpdateMayHaveProxies() {
+  bool may_have_proxies = MayHaveProxies();
+  if (may_have_proxies_ != may_have_proxies) {
+    ResetURLLoaderFactories();
+  }
+  may_have_proxies_ = may_have_proxies;
+}
+
+void WebRequestAPI::OnExtensionLoaded(content::BrowserContext* browser_context,
+                                      const Extension* extension) {
+  CHECK(extension);
+  bool update_may_have_proxies = false;
+  if (HasAnyWebRequestPermissions(*extension)) {
+    ++web_request_extension_count_;
+    update_may_have_proxies = true;
+  }
+  if (HasAnyDeclarativeWebRequestPermissions(*extension)) {
+    ++declarative_request_extension_count_;
+    update_may_have_proxies = true;
+  }
+  if (HasWebViewPermission(*extension)) {
+    CHECK(web_view_extension_ids_.insert(extension->id()).second);
+    update_may_have_proxies = true;
+  }
+  if (update_may_have_proxies) {
+    UpdateMayHaveProxies();
+  }
+}
+
+void WebRequestAPI::OnExtensionUnloaded(
+    content::BrowserContext* browser_context,
+    const Extension* extension,
+    UnloadedExtensionReason reason) {
+  CHECK(extension);
+  bool update_may_have_proxies = false;
+  if (HasAnyWebRequestPermissions(*extension)) {
+    --web_request_extension_count_;
+    update_may_have_proxies = true;
+  }
+  if (HasAnyDeclarativeWebRequestPermissions(*extension)) {
+    --declarative_request_extension_count_;
+    update_may_have_proxies = true;
+  }
+  if (HasWebViewPermission(*extension)) {
+    CHECK_EQ(web_view_extension_ids_.erase(extension->id()), 1u);
+    update_may_have_proxies = true;
+  }
+  if (update_may_have_proxies) {
+    UpdateMayHaveProxies();
+  }
+
+  if (declarative_net_request::HasAnyDNRPermission(*extension)) {
+    proxies_->OnDNRExtensionUnloaded(extension);
+  }
+}
+
+void WebRequestAPI::UpdateActiveListener(
+    void* browser_context_id,
+    WebRequestEventRouter::ListenerUpdateType update_type,
+    const ExtensionId& extension_id,
+    const std::string& sub_event_name,
+    content::ChildProcessId render_process_id,
+    int worker_thread_id,
+    int64_t service_worker_version_id,
+    const std::optional<WebRequestEventRouter::RequestFilter>& filter,
+    std::optional<int> extra_info_spec,
+    std::optional<int> web_view_instance_id) {
+  if (!ExtensionsBrowserClient::Get()->IsValidContext(browser_context_id)) {
+    return;
+  }
+
+  content::BrowserContext* browser_context =
+      reinterpret_cast<content::BrowserContext*>(browser_context_id);
+  WebRequestEventRouter::Get(browser_context)
+      ->UpdateActiveListener(
+          browser_context, update_type, extension_id, sub_event_name,
+          render_process_id, worker_thread_id, service_worker_version_id,
+          base::OptionalToPtr(filter), extra_info_spec, web_view_instance_id);
+}
+
+void WebRequestAPI::RemoveLazyListener(
+    content::BrowserContext* browser_context,
+    const ExtensionId& extension_id,
+    const std::string& sub_event_name,
+    const std::optional<WebRequestEventRouter::RequestFilter>& filter,
+    std::optional<int> extra_info_spec) {
+  if (!ExtensionsBrowserClient::Get()->IsValidContext(browser_context)) {
+    return;
+  }
+  WebRequestEventRouter::Get(browser_context)
+      ->RemoveLazyListener(browser_context, extension_id, sub_event_name,
+                           base::OptionalToPtr(filter), extra_info_spec);
+}
+
+// Special QuotaLimitHeuristic for WebRequestHandlerBehaviorChangedFunction.
+//
+// Each call of webRequest.handlerBehaviorChanged() clears the in-memory cache
+// of WebKit at the time of the next page load (top level navigation event).
+// This quota heuristic is intended to limit the number of times the cache is
+// cleared by an extension.
+//
+// As we want to account for the number of times the cache is really cleared
+// (opposed to the number of times webRequest.handlerBehaviorChanged() is
+// called), we cannot decide whether a call of
+// webRequest.handlerBehaviorChanged() should trigger a quota violation at the
+// time it is called. Instead we only decrement the bucket counter at the time
+// when the cache is cleared (when page loads happen).
+class ClearCacheQuotaHeuristic : public QuotaLimitHeuristic {
+ public:
+  ClearCacheQuotaHeuristic(const Config& config,
+                           std::unique_ptr<BucketMapper> map)
+      : QuotaLimitHeuristic(
+            config,
+            std::move(map),
+            "MAX_HANDLER_BEHAVIOR_CHANGED_CALLS_PER_10_MINUTES"),
+        callback_registered_(false) {}
+
+  ClearCacheQuotaHeuristic(const ClearCacheQuotaHeuristic&) = delete;
+  ClearCacheQuotaHeuristic& operator=(const ClearCacheQuotaHeuristic&) = delete;
+
+  ~ClearCacheQuotaHeuristic() override {}
+  bool Apply(Bucket* bucket, const base::TimeTicks& event_time) override;
+
+ private:
+  // Callback that is triggered by the WebRequestEventRouter on a page load.
+  //
+  // We don't need to take care of the life time of |bucket|: It is owned by the
+  // BucketMapper of our base class in |QuotaLimitHeuristic::bucket_mapper_|. As
+  // long as |this| exists, the respective BucketMapper and its bucket will
+  // exist as well.
+  void OnPageLoad(Bucket* bucket);
+
+  // Flag to prevent that we register more than one call back in-between
+  // clearing the cache.
+  bool callback_registered_;
+
+  base::WeakPtrFactory<ClearCacheQuotaHeuristic> weak_ptr_factory_{this};
+};
+
+bool ClearCacheQuotaHeuristic::Apply(Bucket* bucket,
+                                     const base::TimeTicks& event_time) {
+  if (event_time > bucket->expiration()) {
+    bucket->Reset(config(), event_time);
+  }
+
+  // Call bucket->DeductToken() on a new page load, this is when
+  // webRequest.handlerBehaviorChanged() clears the cache.
+  if (!callback_registered_) {
+    WebRequestEventRouter::AddCallbackForPageLoad(
+        base::BindOnce(&ClearCacheQuotaHeuristic::OnPageLoad,
+                       weak_ptr_factory_.GetWeakPtr(), bucket));
+    callback_registered_ = true;
+  }
+
+  // We only check whether tokens are left here. Deducting a token happens in
+  // OnPageLoad().
+  return bucket->has_tokens();
+}
+
+void ClearCacheQuotaHeuristic::OnPageLoad(Bucket* bucket) {
+  callback_registered_ = false;
+  bucket->DeductToken();
+}
+
+ExtensionFunction::ResponseAction
+WebRequestInternalAddEventListenerFunction::Run() {
+  EXTENSION_FUNCTION_VALIDATE(args().size() == 6);
+
+  // Argument 0 is the callback, which we don't use here.
+  WebRequestEventRouter::RequestFilter filter;
+  EXTENSION_FUNCTION_VALIDATE(args()[1].is_dict());
+  // Failure + an empty error string means a fatal error.
+  std::string error;
+  EXTENSION_FUNCTION_VALIDATE(
+      filter.InitFromValue(args()[1].GetDict(), &error) || !error.empty());
+  if (!error.empty()) {
+    return RespondNow(Error(std::move(error)));
+  }
+
+  int extra_info_spec = 0;
+  if (HasOptionalArgument(2)) {
+    EXTENSION_FUNCTION_VALIDATE(
+        ExtraInfoSpec::InitFromValue(args()[2], &extra_info_spec));
+  }
+
+  const auto& event_name_value = args()[3];
+  const auto& sub_event_name_value = args()[4];
+  const auto& web_view_instance_id_value = args()[5];
+  EXTENSION_FUNCTION_VALIDATE(event_name_value.is_string());
+  EXTENSION_FUNCTION_VALIDATE(sub_event_name_value.is_string());
+  EXTENSION_FUNCTION_VALIDATE(web_view_instance_id_value.is_int());
+  std::string event_name = event_name_value.GetString();
+  std::string sub_event_name = sub_event_name_value.GetString();
+  int web_view_instance_id = web_view_instance_id_value.GetInt();
+
+  int render_process_id = source_process_id();
+
+  const Extension* extension = ExtensionRegistry::Get(browser_context())
+                                   ->enabled_extensions()
+                                   .GetByID(extension_id_safe());
+  std::string extension_name =
+      extension ? extension->name() : extension_id_safe();
+
+  if (extra_info_spec & ExtraInfoSpec::SECURITY_INFO) {
+    if (extension && extension->is_platform_app()) {
+      // The security info should not be available in Chrome Apps.
+      return RespondNow(Error(keys::kSecurityInfoAPINotAvailable));
+    }
+
+    if (extension) {
+      if (!base::FeatureList::IsEnabled(
+              extensions_features::kWebRequestSecurityInfo)) {
+        return RespondNow(Error(keys::kSecurityInfoFlagAbsentInExtensions));
+      }
+    } else {
+      if (!GetContextData()->HasControlledFrameCapability()) {
+        // Available only in extensions and Controlled Frame.
+        return RespondNow(Error(keys::kSecurityInfoAPINotAvailable));
+      }
+
+      if (!base::FeatureList::IsEnabled(
+              blink::features::kControlledFrameWebRequestSecurityInfo)) {
+        return RespondNow(
+            Error(keys::kSecurityInfoFlagAbsentInControlledFrame));
+      }
+    }
+  }
+
+  if (web_view_instance_id) {
+    // If a web view ID has been supplied and the call is from an extension
+    // (i.e. not from WebUI), we require the extension to have the webview
+    // permission.
+    if (extension && !extension->permissions_data()->HasAPIPermission(
+                         mojom::APIPermissionID::kWebView)) {
+      return RespondNow(Error("Missing webview permission."));
+    }
+
+    if (!event_name.starts_with("webViewInternal.")) {
+      return RespondNow(Error("Invalid event name for webview."));
+    }
+  } else {
+    auto has_blocking_permission = [&extension, &event_name]() {
+      if (extension->permissions_data()->HasAPIPermission(
+              APIPermissionID::kWebRequestBlocking)) {
+        return true;
+      }
+
+      return event_name == keys::kOnAuthRequiredEvent &&
+             extension->permissions_data()->HasAPIPermission(
+                 APIPermissionID::kWebRequestAuthProvider);
+    };
+
+    // We check automatically whether the extension has the 'webRequest'
+    // permission. For blocking calls we require the additional permission
+    // 'webRequestBlocking' or 'webRequestAuthProvider'.
+    bool is_blocking = extra_info_spec & (ExtraInfoSpec::BLOCKING |
+                                          ExtraInfoSpec::ASYNC_BLOCKING);
+    if (is_blocking && !has_blocking_permission()) {
+      return RespondNow(Error(keys::kBlockingPermissionRequired));
+    }
+
+    // We allow to subscribe to patterns that are broader than the host
+    // permissions. E.g., we could subscribe to http://www.example.com/*
+    // while having host permissions for http://www.example.com/foo/* and
+    // http://www.example.com/bar/*.
+    // For this reason we do only a coarse check here to warn the extension
+    // developer if they do something obviously wrong.
+    if (extension->permissions_data()
+            ->GetEffectiveHostPermissions()
+            .is_empty() &&
+        extension->permissions_data()
+            ->withheld_permissions()
+            .explicit_hosts()
+            .is_empty()) {
+      return RespondNow(Error(keys::kHostPermissionsRequired));
+    }
+  }
+
+  bool success =
+      WebRequestEventRouter::Get(browser_context())
+          ->AddEventListener(
+              browser_context(), extension_id_safe(), extension_name,
+              event_name, sub_event_name, std::move(filter), extra_info_spec,
+              render_process_id, web_view_instance_id, worker_thread_id(),
+              service_worker_version_id(), /*is_lazy=*/false);
+  EXTENSION_FUNCTION_VALIDATE(success);
+
+  helpers::ClearCacheOnNavigation();
+
+  return RespondNow(NoArguments());
+}
+
+void WebRequestInternalEventHandledFunction::RouteEventResponse(
+    const std::string& event_name,
+    const std::string& sub_event_name,
+    uint64_t request_id,
+    int render_process_id,
+    int web_view_instance_id,
+    int extra_info_spec,
+    std::unique_ptr<WebRequestEventRouter::EventResponse> response) {
+  WebRequestEventRouter* router = WebRequestEventRouter::Get(browser_context());
+  if (base::FeatureList::IsEnabled(
+          extensions_features::kWebRequestPerContextEventDispatch)) {
+    // Per-context dispatch: the renderer sends the parent event name.
+    // Append this listener's response to the pending dispatch target without
+    // resolving it; the target is resolved by a separate completion signal
+    // (`WebRequestHost.EventHandlingDone`).
+    // TODO(crbug.com/379869738): Remove FromUnsafeValue.
+    router->OnEventHandledForTarget(
+        browser_context(), extension_id_safe(), event_name, request_id,
+        content::ChildProcessId::FromUnsafeValue(render_process_id),
+        web_view_instance_id, worker_thread_id(), service_worker_version_id(),
+        extra_info_spec, std::move(response));
+    return;
+  }
+
+  // Legacy per-listener dispatch: the sub-event name identifies the single
+  // responding listener.
+  router->OnEventHandled(browser_context(), extension_id_safe(), event_name,
+                         sub_event_name, request_id, render_process_id,
+                         web_view_instance_id, worker_thread_id(),
+                         service_worker_version_id(), std::move(response));
+}
+
+ExtensionFunction::ResponseAction
+WebRequestInternalEventHandledFunction::Run() {
+  EXTENSION_FUNCTION_VALIDATE(args().size() >= 5);
+  const auto& event_name_value = args()[0];
+  const auto& sub_event_name_value = args()[1];
+  const auto& request_id_str_value = args()[2];
+  const auto& web_view_instance_id_value = args()[3];
+  EXTENSION_FUNCTION_VALIDATE(event_name_value.is_string());
+  EXTENSION_FUNCTION_VALIDATE(sub_event_name_value.is_string());
+  EXTENSION_FUNCTION_VALIDATE(request_id_str_value.is_string());
+  EXTENSION_FUNCTION_VALIDATE(web_view_instance_id_value.is_int());
+  std::string event_name = event_name_value.GetString();
+  std::string sub_event_name = sub_event_name_value.GetString();
+  std::string request_id_str = request_id_str_value.GetString();
+  int web_view_instance_id = web_view_instance_id_value.GetInt();
+
+  bool per_context_dispatch = base::FeatureList::IsEnabled(
+      extensions_features::kWebRequestPerContextEventDispatch);
+  EXTENSION_FUNCTION_VALIDATE(EventRouter::IsSubEventName(sub_event_name) !=
+                              per_context_dispatch);
+
+  uint64_t request_id;
+  EXTENSION_FUNCTION_VALIDATE(
+      base::StringToUint64(request_id_str, &request_id));
+
+  int render_process_id = source_process_id();
+
+  // For per-context dispatch the renderer also sends the responding
+  // listener's `extraInfoSpec` as an optional argument: the response
+  // delta must be computed with the listener's own spec.
+  // Legacy callers omit it (the sub-event name identifies the listener,
+  // for which we can use the registered spec).
+  int extra_info_spec = 0;
+  if (HasOptionalArgument(5)) {
+    EXTENSION_FUNCTION_VALIDATE(
+        ExtraInfoSpec::InitFromValue(args()[5], &extra_info_spec));
+  }
+
+  std::unique_ptr<WebRequestEventRouter::EventResponse> response;
+  if (HasOptionalArgument(4)) {
+    EXTENSION_FUNCTION_VALIDATE(args()[4].is_dict());
+    const base::DictValue& dict_value = args()[4].GetDict();
+
+    if (!dict_value.empty()) {
+      base::Time install_time = GetLastUpdateTime(
+          ExtensionPrefs::Get(browser_context()), extension_id_safe());
+      response = std::make_unique<WebRequestEventRouter::EventResponse>(
+          extension_id_safe(), install_time);
+    }
+
+    const base::Value* redirect_url_value = dict_value.Find("redirectUrl");
+    const base::Value* auth_credentials_value =
+        dict_value.Find(keys::kAuthCredentialsKey);
+    const base::Value* request_headers_value =
+        dict_value.Find("requestHeaders");
+    const base::Value* response_headers_value =
+        dict_value.Find("responseHeaders");
+
+    const base::Value* cancel_value = dict_value.Find("cancel");
+    if (cancel_value) {
+      // Don't allow cancel mixed with other keys.
+      if (dict_value.size() != 1) {
+        RouteEventResponse(event_name, sub_event_name, request_id,
+                           render_process_id, web_view_instance_id,
+                           extra_info_spec, std::move(response));
+        return RespondNow(Error(keys::kInvalidBlockingResponse));
+      }
+
+      EXTENSION_FUNCTION_VALIDATE(cancel_value->is_bool());
+      response->cancel = cancel_value->GetBool();
+    }
+
+    if (redirect_url_value) {
+      EXTENSION_FUNCTION_VALIDATE(redirect_url_value->is_string());
+      std::string new_url_str = redirect_url_value->GetString();
+      response->new_url = GURL(new_url_str);
+      if (!response->new_url.is_valid()) {
+        RouteEventResponse(event_name, sub_event_name, request_id,
+                           render_process_id, web_view_instance_id,
+                           extra_info_spec, std::move(response));
+        return RespondNow(Error(keys::kInvalidRedirectUrl, new_url_str));
+      }
+    }
+
+    const bool has_request_headers = request_headers_value != nullptr;
+    const bool has_response_headers = response_headers_value != nullptr;
+    if (has_request_headers || has_response_headers) {
+      if (has_request_headers && has_response_headers) {
+        // Allow only one of the keys, not both.
+        RouteEventResponse(event_name, sub_event_name, request_id,
+                           render_process_id, web_view_instance_id,
+                           extra_info_spec, std::move(response));
+        return RespondNow(Error(keys::kInvalidHeaderKeyCombination));
+      }
+
+      const base::ListValue* headers_value = nullptr;
+      std::unique_ptr<net::HttpRequestHeaders> request_headers;
+      std::unique_ptr<helpers::ResponseHeaders> response_headers;
+      if (has_request_headers) {
+        request_headers = std::make_unique<net::HttpRequestHeaders>();
+        headers_value = dict_value.FindList(keys::kRequestHeadersKey);
+      } else {
+        response_headers = std::make_unique<helpers::ResponseHeaders>();
+        headers_value = dict_value.FindList(keys::kResponseHeadersKey);
+      }
+      EXTENSION_FUNCTION_VALIDATE(headers_value);
+
+      for (const base::Value& elem : *headers_value) {
+        EXTENSION_FUNCTION_VALIDATE(elem.is_dict());
+        const base::DictValue& header_value = elem.GetDict();
+        std::string name;
+        std::string value;
+        if (!FromHeaderDictionary(header_value, &name, &value)) {
+          std::string serialized_header =
+              base::WriteJson(header_value).value_or("");
+          RouteEventResponse(event_name, sub_event_name, request_id,
+                             render_process_id, web_view_instance_id,
+                             extra_info_spec, std::move(response));
+          return RespondNow(Error(keys::kInvalidHeader, serialized_header));
+        }
+        if (!net::HttpUtil::IsValidHeaderName(name)) {
+          RouteEventResponse(event_name, sub_event_name, request_id,
+                             render_process_id, web_view_instance_id,
+                             extra_info_spec, std::move(response));
+          return RespondNow(Error(keys::kInvalidHeaderName));
+        }
+        if (!net::HttpUtil::IsValidHeaderValue(value)) {
+          RouteEventResponse(event_name, sub_event_name, request_id,
+                             render_process_id, web_view_instance_id,
+                             extra_info_spec, std::move(response));
+          return RespondNow(Error(keys::kInvalidHeaderValue, name));
+        }
+        if (has_request_headers) {
+          request_headers->SetHeader(name, value);
+        } else {
+          response_headers->push_back(helpers::ResponseHeader(name, value));
+        }
+      }
+      if (has_request_headers) {
+        response->request_headers = std::move(request_headers);
+      } else {
+        response->response_headers = std::move(response_headers);
+      }
+    }
+
+    if (auth_credentials_value) {
+      const base::DictValue* credentials_value =
+          auth_credentials_value->GetIfDict();
+      EXTENSION_FUNCTION_VALIDATE(credentials_value);
+      const std::string* username =
+          credentials_value->FindString(keys::kUsernameKey);
+      const std::string* password =
+          credentials_value->FindString(keys::kPasswordKey);
+      EXTENSION_FUNCTION_VALIDATE(username);
+      EXTENSION_FUNCTION_VALIDATE(password);
+      response->auth_credentials = net::AuthCredentials(
+          base::UTF8ToUTF16(*username), base::UTF8ToUTF16(*password));
+    }
+  }
+
+  RouteEventResponse(event_name, sub_event_name, request_id, render_process_id,
+                     web_view_instance_id, extra_info_spec,
+                     std::move(response));
+  return RespondNow(NoArguments());
+}
+
+void WebRequestHandlerBehaviorChangedFunction::GetQuotaLimitHeuristics(
+    QuotaLimitHeuristics* heuristics) const {
+  QuotaLimitHeuristic::Config config = {
+      // See web_request.json for current value.
+      web_request::MAX_HANDLER_BEHAVIOR_CHANGED_CALLS_PER_10_MINUTES,
+      base::Minutes(10)};
+  heuristics->push_back(std::make_unique<ClearCacheQuotaHeuristic>(
+      config, std::make_unique<QuotaLimitHeuristic::SingletonBucketMapper>()));
+}
+
+void WebRequestHandlerBehaviorChangedFunction::OnQuotaExceeded(
+    std::string violation_error) {
+  // Post warning message.
+  WarningSet warnings;
+  warnings.insert(
+      Warning::CreateRepeatedCacheFlushesWarning(extension_id_safe()));
+  WarningService::NotifyWarningsOnUI(browser_context(), warnings);
+
+  // Continue gracefully.
+  RunWithValidation().Execute();
+}
+
+ExtensionFunction::ResponseAction
+WebRequestHandlerBehaviorChangedFunction::Run() {
+  helpers::ClearCacheOnNavigation();
+  return RespondNow(NoArguments());
+}
+
+}  // namespace extensions

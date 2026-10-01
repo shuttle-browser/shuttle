@@ -1,0 +1,68 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "storage/browser/test/mock_bytes_provider.h"
+
+#include "base/compiler_specific.h"
+#include "base/containers/span.h"
+#include "base/threading/thread_restrictions.h"
+#include "mojo/public/cpp/system/data_pipe_utils.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace storage {
+
+MockBytesProvider::MockBytesProvider(
+    std::vector<uint8_t> data,
+    size_t* reply_request_count,
+    size_t* stream_request_count,
+    size_t* file_request_count,
+    std::optional<base::Time> file_modification_time)
+    : data_(std::move(data)),
+      reply_request_count_(reply_request_count),
+      stream_request_count_(stream_request_count),
+      file_request_count_(file_request_count),
+      file_modification_time_(file_modification_time) {}
+
+MockBytesProvider::~MockBytesProvider() = default;
+
+void MockBytesProvider::RequestAsReply(RequestAsReplyCallback callback) {
+  if (reply_request_count_)
+    ++*reply_request_count_;
+  std::move(callback).Run(data_);
+}
+
+void MockBytesProvider::RequestAsStream(
+    mojo::ScopedDataPipeProducerHandle pipe) {
+  if (stream_request_count_)
+    ++*stream_request_count_;
+  base::ScopedAllowBaseSyncPrimitivesForTesting allow_base_sync_primitives;
+  mojo::BlockingCopyFromString(
+      std::string(reinterpret_cast<const char*>(data_.data()), data_.size()),
+      pipe);
+}
+
+void MockBytesProvider::RequestAsFile(uint64_t source_offset,
+                                      uint64_t source_size,
+                                      base::File file,
+                                      uint64_t file_offset,
+                                      RequestAsFileCallback callback) {
+  if (file_request_count_)
+    ++*file_request_count_;
+  EXPECT_EQ(source_size,
+            static_cast<uint64_t>(
+                file.Write(file_offset, base::span(data_).subspan(
+                                            static_cast<size_t>(source_offset),
+                                            static_cast<size_t>(source_size)))
+                    .value_or(0)));
+  EXPECT_TRUE(file.Flush());
+  if (!file_modification_time_) {
+    std::move(callback).Run(std::nullopt);
+    return;
+  }
+  base::File::Info info;
+  EXPECT_TRUE(file.GetInfo(&info));
+  std::move(callback).Run(info.last_modified);
+}
+
+}  // namespace storage

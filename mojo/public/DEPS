@@ -1,0 +1,15 @@
+include_rules = [
+  "+base",
+  "+build",
+  "+testing",
+  "+third_party/ipcz/include",
+  "+third_party/rust/cxx",
+
+  "-mojo",
+  "+mojo/public",
+  "+mojo/buildflags.h",
+
+  # Temporary until mojom [Native] is gone.
+  "+ipc/param_traits.h",
+  "+third_party/perfetto/protos/perfetto/trace/track_event",
+]

@@ -1,0 +1,21 @@
+[
+  {
+    "os": [
+      "android",
+      "win",
+      "linux",
+      "mac",
+      "chromeos",
+      "fuchsia"
+    ],
+    "can_be_recommended": true,
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "browser.show_home_button",
+      "default_value": false,
+      "values_to_test": [
+        true,
+        false
+      ]
+    }
+  }
+]

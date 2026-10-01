@@ -1,0 +1,31 @@
+# Copyright 2023 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("common") {
+  sources = [
+    "constants.h",
+    "features.h",
+    "features.mm",
+    "field_data_manager_factory_ios.h",
+    "field_data_manager_factory_ios.mm",
+    "javascript_feature_util.h",
+    "javascript_feature_util.mm",
+  ]
+  deps = [
+    "//base",
+    "//components/autofill/core/common",
+    "//ios/web/public/js_messaging",
+    "//ios/web/public/js_messaging:content_world_header",
+  ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+}
+
+source_set("autofill_optimization_features") {
+  sources = [
+    "autofill_optimization_features.cc",
+    "autofill_optimization_features.h",
+  ]
+  deps = [ "//base" ]
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+}

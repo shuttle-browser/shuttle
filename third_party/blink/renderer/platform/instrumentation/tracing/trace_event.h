@@ -1,0 +1,41 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_INSTRUMENTATION_TRACING_TRACE_EVENT_H_
+#define THIRD_PARTY_BLINK_RENDERER_PLATFORM_INSTRUMENTATION_TRACING_TRACE_EVENT_H_
+
+#include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
+#include "base/trace_event/trace_session_observer.h"
+#include "third_party/blink/renderer/platform/platform_export.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+
+namespace blink {
+namespace trace_event {
+
+inline base::TimeTicks ToTraceTimestamp(double seconds) {
+  return base::TimeTicks() + base::Seconds(seconds);
+}
+
+// This is to avoid error of passing a chromium time internal value.
+void ToTraceTimestamp(int64_t);
+
+PLATFORM_EXPORT void EnableTracingForTesting(const String& category_filter);
+PLATFORM_EXPORT void DisableTracingForTesting();
+
+using TraceSessionObserver = base::trace_event::TraceSessionObserver;
+template <typename T>
+void AddTraceSessionObserver(T* observer) {
+  base::trace_event::TraceSessionObserverList::AddObserver(observer);
+}
+
+template <typename T>
+void RemoveTraceSessionObserver(T* observer) {
+  base::trace_event::TraceSessionObserverList::RemoveObserver(observer);
+}
+
+}  // namespace trace_event
+}  // namespace blink
+
+#endif  // THIRD_PARTY_BLINK_RENDERER_PLATFORM_INSTRUMENTATION_TRACING_TRACE_EVENT_H_

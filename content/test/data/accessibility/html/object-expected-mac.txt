@@ -1,0 +1,3 @@
+AXWebArea
+++AXGroup AXSubrole=AXEmptyGroup
+++++AXGroup AXSubrole=AXEmptyGroup

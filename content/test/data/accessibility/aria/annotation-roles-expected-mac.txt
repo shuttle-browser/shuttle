@@ -1,0 +1,8 @@
+AXWebArea AXRoleDescription='HTML content'
+++AXGroup AXSubrole=AXEmptyGroup AXDescription='comment' AXRoleDescription='comment' AXTitle='comment'
+++AXGroup AXSubrole=AXEmptyGroup AXDescription='suggestion' AXRoleDescription='suggestion' AXTitle='suggestion'
+++AXGroup AXRoleDescription='group'
+++++AXStaticText AXRoleDescription='text' AXValue='This is '
+++++AXGroup AXRoleDescription='highlight'
+++++++AXStaticText AXRoleDescription='text' AXValue='highlighted'
+++++AXStaticText AXRoleDescription='text' AXValue='.'

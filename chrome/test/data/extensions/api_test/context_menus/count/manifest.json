@@ -1,0 +1,10 @@
+{
+  "name": "chrome.contextMenus",
+  "version": "0.1",
+  "manifest_version": 3,
+  "description": "Test count of menu items created.",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["contextMenus"]
+}

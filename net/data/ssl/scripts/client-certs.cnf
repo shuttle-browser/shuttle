@@ -1,0 +1,25 @@
+CA_DIR=out
+
+[req]
+default_bits       = 2048
+default_md         = sha256
+string_mask        = utf8only
+prompt             = no
+encrypt_key        = no
+distinguished_name = req_env_dn
+
+[user_cert]
+# Extensions to add when signing a request for an EE cert
+basicConstraints = critical, CA:false
+extendedKeyUsage = serverAuth,clientAuth
+
+[san_user_cert]
+subjectAltName = email:santest@example.com,otherName:msUPN;UTF8:santest@ad.corp.example.com
+
+[ca_cert]
+# Extensions to add when signing a request for an intermediate/CA cert
+basicConstraints = critical, CA:true
+keyUsage         = critical, keyCertSign, cRLSign
+
+[req_env_dn]
+CN = ${ENV::COMMON_NAME}

@@ -1,0 +1,12 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+include_rules = [
+  # keep-sorted start
+  "+ios/chrome/browser/commerce/ui_bundled/price_card",
+  "+ios/chrome/browser/drag_and_drop/model/drag_item_util.h",
+  "+ios/chrome/browser/menu/ui_bundled",
+  "+ios/chrome/browser/tab_switcher/tab_grid/base_grid/coordinator",
+  # keep-sorted end
+]

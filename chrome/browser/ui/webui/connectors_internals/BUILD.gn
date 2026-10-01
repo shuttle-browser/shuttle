@@ -1,0 +1,77 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//components/enterprise/buildflags/buildflags.gni")
+
+source_set("connectors_internals") {
+  sources = [
+    "connectors_internals_page_handler.cc",
+    "connectors_internals_page_handler.h",
+    "connectors_internals_ui.cc",
+    "connectors_internals_ui.h",
+    "device_trust_utils.cc",
+    "device_trust_utils.h",
+  ]
+  public_deps = [
+    "//chrome/common",
+    "//content/public/browser",
+  ]
+  deps = [
+    "//base",
+    "//chrome/browser:browser_process",
+    "//chrome/browser/enterprise",
+    "//chrome/browser/policy",
+    "//chrome/browser/profiles:profile",
+    "//components/device_signals/core/browser",
+    "//components/enterprise",
+    "//components/enterprise/buildflags",
+    "//components/enterprise/connectors:mojom",
+    "//components/enterprise/connectors/core",
+    "//components/enterprise/connectors/resources",
+    "//components/enterprise/device_trust/core:device_trust_service",
+    "//components/enterprise/device_trust/core:metrics",
+    "//components/policy/proto",
+    "//crypto",
+    "//mojo/public/cpp/bindings",
+    "//net",
+    "//services/network/public/mojom",
+    "//ui/webui",
+  ]
+  if (enterprise_proxy) {
+    deps += [ "//components/enterprise/net" ]
+  }
+  if (enterprise_client_certificates) {
+    deps += [ "//components/enterprise/client_certificates/core" ]
+  }
+  if (is_mac) {
+    deps += [ "//chrome/browser/enterprise/connectors/device_trust/key_management/core/mac" ]
+  }
+  if (is_linux || is_win || is_mac || is_chromeos) {
+    deps += [ "//components/enterprise/device_trust/core:device_trust_connector_service" ]
+  }
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "connectors_internals_page_handler_unittest.cc" ]
+  deps = [
+    ":connectors_internals",
+    "//base",
+    "//base/test:test_support",
+    "//chrome/test:test_support",
+    "//components/enterprise/buildflags",
+    "//components/enterprise/connectors:mojom",
+    "//content/test:test_support",
+    "//mojo/public/cpp/bindings",
+    "//testing/gmock",
+    "//testing/gtest",
+  ]
+  if (enterprise_proxy) {
+    deps += [
+      "//chrome/browser/enterprise/net",
+      "//components/enterprise/net",
+      "//components/enterprise/net/core:test_support",
+    ]
+  }
+}

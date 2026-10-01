@@ -1,0 +1,83 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_VIEWS_TOOLBAR_PINNED_TOOLBAR_ACTIONS_H_
+#define CHROME_BROWSER_UI_VIEWS_TOOLBAR_PINNED_TOOLBAR_ACTIONS_H_
+
+#include "base/functional/callback.h"
+#include "base/types/expected.h"
+#include "chrome/browser/ui/views/toolbar/toolbar_controller.h"
+#include "ui/actions/action_id.h"
+#include "ui/base/interaction/element_identifier.h"
+#include "ui/views/bubble/bubble_dialog_delegate_view.h"
+
+class PinnedActionToolbarButton;
+
+// Reasons GetBubbleAnchorAsync() failed to return an anchor. The particular
+// reason a particular call to GetBubbleAnchorAsync() failed is passed to
+// the callback instead of an anchor.
+enum class GetAnchorFailureReason {
+  // The anchor did not appear after a reasonable amount of time.
+  kTimeout,
+  // The anchor corresponding to the ActionId was not found and not expected to
+  // be found. This can happen if the action's button is not pinned or
+  // popped-out.
+  kAnchorNotFound,
+};
+
+using BubbleAnchorResult =
+    base::expected<views::BubbleAnchor, GetAnchorFailureReason>;
+
+// The PinnedToolbarActions class is a virtual interface, defining access to the
+// window's pinned toolbar actions component.  This class exists so that
+// cross-platform components like the browser command system can talk to the
+// platform specific implementations of the pinned toolbar actions control.  It
+// also allows the pinned toolbar actions to be mocked for testing.
+class PinnedToolbarActions : public ToolbarController::PinnedActionsDelegate {
+ public:
+  // TODO(https://crbug.com/363743077): This method is almost but not quite
+  // identical to ShowActionEphemerallyInToolbar(). This doesn't make sense and
+  // one should be removed.
+  virtual void UpdateActionState(actions::ActionId id, bool is_active) = 0;
+  // Updates whether the button is shown ephemerally in the toolbar (in the
+  // popped out region unless also pinned) regardless of whether it is active.
+  virtual void ShowActionEphemerallyInToolbar(actions::ActionId id,
+                                              bool show) = 0;
+  virtual bool IsActionPinned(actions::ActionId id) = 0;
+  virtual bool IsActionPoppedOut(actions::ActionId id) = 0;
+  virtual bool IsActionPinnedOrPoppedOut(actions::ActionId id) = 0;
+
+  // Queues an action to take place after the current animation completes.
+  virtual void PostOrQueueActionAfterAnimation(base::OnceClosure action) = 0;
+
+  // Gets a pointer to the download button.
+  // TODO(https://crbug.com/474063115): Change this to a non-Views return type.
+  virtual ToolbarButton* GetDownloadButton() = 0;
+
+  // Returns BubbleAnchor for the action.
+  virtual views::BubbleAnchor GetBubbleAnchor(actions::ActionId action_id) = 0;
+
+  // Asynchronous version of GetBubbleAnchor(). The anchor, or reason for
+  // failing to find the anchor, is passed to `callback`.
+  virtual void GetBubbleAnchorAsync(
+      actions::ActionId action_id,
+      base::OnceCallback<void(BubbleAnchorResult)> callback) = 0;
+
+  // Returns the ChromeLabs button, or nullptr if ChromeLabs is not supported by
+  // the PinnedToolbarActions implementation being used.
+  virtual PinnedActionToolbarButton* GetChromeLabsButton() = 0;
+
+  // Set |id|'s pinned state to |pin| and announce it.
+  virtual void UpdatePinnedStateAndAnnounce(actions::ActionId id, bool pin) = 0;
+
+  // Move the pinned action for |action_id| to |target_index|.
+  virtual void MovePinnedAction(actions::ActionId action_id,
+                                int target_index) = 0;
+
+  // Move the pinned action for |action_id| by |delta| (-1 for left/previous, +1
+  // for right/next).
+  virtual void MovePinnedActionBy(actions::ActionId action_id, int delta) = 0;
+};
+
+#endif  // CHROME_BROWSER_UI_VIEWS_TOOLBAR_PINNED_TOOLBAR_ACTIONS_H_

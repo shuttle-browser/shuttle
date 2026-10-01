@@ -1,0 +1,54 @@
+# Copyright 2019 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+component("cpp") {
+  output_name = "storage_service_public"
+
+  public = [
+    "big_io_buffer.h",
+    "compression.h",
+    "constants.h",
+    "inactivity_timer.h",
+    "quota_client_callback_wrapper.h",
+    "quota_error_or.h",
+  ]
+
+  sources = [
+    "big_io_buffer.cc",
+    "compression.cc",
+    "constants.cc",
+    "inactivity_timer.cc",
+    "quota_client_callback_wrapper.cc",
+  ]
+
+  public_deps = [
+    "//base",
+    "//components/services/storage:storage_features",
+    "//components/services/storage/public/cpp/buckets",
+    "//components/services/storage/public/cpp/filesystem",
+    "//components/services/storage/public/mojom",
+    "//net",
+    "//third_party/snappy",
+    "//third_party/zstd:decompress",
+  ]
+
+  if (!is_android && !is_fuchsia) {
+    public_deps += [ "//third_party/zstd:compress" ]
+  }
+
+  defines = [ "IS_STORAGE_SERVICE_PUBLIC_IMPL" ]
+}
+
+source_set("tests") {
+  testonly = true
+  sources = [
+    "compression_unittest.cc",
+    "inactivity_timer_unittest.cc",
+  ]
+  deps = [
+    ":cpp",
+    "//base/test:test_support",
+    "//testing/gtest",
+  ]
+}

@@ -1,0 +1,63 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.ui.listmenu;
+
+import static org.chromium.ui.listmenu.ListMenuItemProperties.CLICK_LISTENER;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.CONTENT_DESCRIPTION;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.ENABLED;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.GENERIC_MOTION_LISTENER;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.HOVER_LISTENER;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.ICON_TINT_COLOR_STATE_LIST_ID;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.IS_HIGHLIGHTED;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.IS_TEXT_ELLIPSIZED_AT_END;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.KEY_LISTENER;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.LONG_CLICK_LISTENER;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.MENU_ITEM_ID;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.ORDER;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.START_ICON_BITMAP;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.TEXT_APPEARANCE_ID;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.TITLE;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.TOOLTIP;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.TOUCH_LISTENER;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.ui.modelutil.MVCListAdapter.ListItem;
+import org.chromium.ui.modelutil.PropertyKey;
+import org.chromium.ui.modelutil.PropertyModel.WritableBooleanPropertyKey;
+import org.chromium.ui.modelutil.PropertyModel.WritableObjectPropertyKey;
+
+import java.util.List;
+import java.util.function.Supplier;
+
+/** The properties controlling submenu-type items in context menus. */
+@NullMarked
+public class ListMenuSubmenuItemProperties {
+    public static final WritableObjectPropertyKey<Supplier<List<ListItem>>> SUBMENU_PROVIDER =
+            new WritableObjectPropertyKey<>();
+
+    public static final WritableBooleanPropertyKey IS_EXPANDED = new WritableBooleanPropertyKey();
+
+    public static final PropertyKey[] ALL_KEYS = {
+        TITLE,
+        CONTENT_DESCRIPTION,
+        TOOLTIP,
+        START_ICON_BITMAP,
+        CLICK_LISTENER,
+        HOVER_LISTENER,
+        IS_HIGHLIGHTED,
+        ENABLED,
+        SUBMENU_PROVIDER,
+        IS_EXPANDED,
+        IS_TEXT_ELLIPSIZED_AT_END,
+        KEY_LISTENER,
+        TOUCH_LISTENER,
+        GENERIC_MOTION_LISTENER,
+        LONG_CLICK_LISTENER,
+        TEXT_APPEARANCE_ID,
+        ICON_TINT_COLOR_STATE_LIST_ID,
+        MENU_ITEM_ID,
+        ORDER
+    };
+}

@@ -1,0 +1,74 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_INTELLIGENCE_PAGE_ACTION_MENU_COORDINATOR_PAGE_ACTION_MENU_MEDIATOR_H_
+#define IOS_CHROME_BROWSER_INTELLIGENCE_PAGE_ACTION_MENU_COORDINATOR_PAGE_ACTION_MENU_MEDIATOR_H_
+
+#import <Foundation/Foundation.h>
+
+#import "ios/chrome/browser/intelligence/page_action_menu/ui/page_action_menu_consumer.h"
+#import "ios/chrome/browser/intelligence/page_action_menu/ui/page_action_menu_mutator.h"
+
+class AuthenticationService;
+class GeminiService;
+class GeminiTabHelper;
+class PrefService;
+class ReaderModeBrowserAgent;
+class ReaderModeTabHelper;
+class TemplateURLService;
+class HostContentSettingsMap;
+
+@protocol PageActionMenuCommands;
+@protocol ContextualSheetCommands;
+
+namespace web {
+class WebState;
+}
+
+// The mediator for the page action menu.
+@interface PageActionMenuMediator : NSObject <PageActionMenuMutator>
+
+// Designated initializer for the mediator.
+- (instancetype)initWithWebState:(web::WebState*)webState
+           authenticationService:(AuthenticationService*)authenticationService
+              profilePrefService:(PrefService*)profilePrefs
+              templateURLService:(TemplateURLService*)templateURLService
+                   geminiService:(GeminiService*)geminiService
+                 geminiTabHelper:(GeminiTabHelper*)geminiTabHelper
+             readerModeTabHelper:(ReaderModeTabHelper*)readerModeTabHelper
+          readerModeBrowserAgent:(ReaderModeBrowserAgent*)readerModeBrowserAgent
+          hostContentSettingsMap:(HostContentSettingsMap*)hostContentSettingsMap
+    NS_DESIGNATED_INITIALIZER;
+
+- (instancetype)init NS_UNAVAILABLE;
+
+// Disconnects the mediator.
+- (void)disconnect;
+
+// Returns whether the Lens overlay is available for the profile. It may still
+// be unavailable for the current web state.
+- (BOOL)isLensAvailableForProfile;
+
+// Consumer for the Page Action Menu mediator.
+@property(nonatomic, weak) id<PageActionMenuConsumer> consumer;
+
+// The handler for sending page action menu commands.
+@property(nonatomic, weak) id<PageActionMenuCommands> pageActionMenuHandler;
+
+// Command handler for contextual sheet commands.
+@property(nonatomic, weak) id<ContextualSheetCommands> contextualSheetHandler;
+
+// Returns YES if the workspace policy check has not yet completed.
+- (BOOL)isGeminiEligibilityLoading;
+
+// Returns YES if the signed-in user's Gemini ineligibility can be resolved
+// by switching accounts (workspace restriction on personal account).
+- (BOOL)isIneligibleGeminiAccountSwitchable;
+
+// Returns YES if the signed-in user has a managed (enterprise) account.
+- (BOOL)isManagedAccount;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_INTELLIGENCE_PAGE_ACTION_MENU_COORDINATOR_PAGE_ACTION_MENU_MEDIATOR_H_

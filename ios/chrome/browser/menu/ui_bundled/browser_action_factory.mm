@@ -1,0 +1,554 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/menu/ui_bundled/browser_action_factory.h"
+
+#import "base/strings/sys_string_conversions.h"
+#import "components/open_from_clipboard/clipboard_recent_content.h"
+#import "components/prefs/pref_service.h"
+#import "components/search_engines/template_url_service.h"
+#import "ios/chrome/browser/intelligence/bwg/utils/gemini_constants.h"
+#import "ios/chrome/browser/intelligence/features/features.h"
+#import "ios/chrome/browser/menu/ui_bundled/action_factory+protected.h"
+#import "ios/chrome/browser/policy/model/policy_util.h"
+#import "ios/chrome/browser/search_engines/model/template_url_service_factory.h"
+#import "ios/chrome/browser/shared/model/prefs/pref_names.h"
+#import "ios/chrome/browser/shared/model/profile/profile_ios.h"
+#import "ios/chrome/browser/shared/public/commands/browser_coordinator_commands.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/gemini_commands.h"
+#import "ios/chrome/browser/shared/public/commands/lens_commands.h"
+#import "ios/chrome/browser/shared/public/commands/open_lens_input_selection_command.h"
+#import "ios/chrome/browser/shared/public/commands/open_new_tab_command.h"
+#import "ios/chrome/browser/shared/public/commands/qr_scanner_commands.h"
+#import "ios/chrome/browser/shared/public/commands/save_image_to_photos_command.h"
+#import "ios/chrome/browser/shared/public/commands/save_to_photos_commands.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/shared/public/commands/search_image_with_lens_command.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/shared/ui/symbols/symbols.h"
+#import "ios/chrome/browser/shared/ui/util/pasteboard_util.h"
+#import "ios/chrome/browser/url_loading/model/image_search_param_generator.h"
+#import "ios/chrome/browser/url_loading/model/url_loading_browser_agent.h"
+#import "ios/chrome/browser/url_loading/model/url_loading_params.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "ios/web/public/ui/context_menu_params.h"
+#import "ui/base/l10n/l10n_util_mac.h"
+#import "url/gurl.h"
+
+@interface BrowserActionFactory ()
+
+// Current browser instance.
+@property(nonatomic, assign) Browser* browser;
+
+@end
+
+@implementation BrowserActionFactory
+
+- (instancetype)initWithBrowser:(Browser*)browser
+                       scenario:(MenuScenarioHistogram)scenario {
+  DCHECK(browser);
+  if ((self = [super initWithScenario:scenario])) {
+    _browser = browser;
+  }
+  return self;
+}
+
+- (UIAction*)actionToOpenInNewTabWithURL:(const GURL&)URL
+                              completion:(ProceduralBlock)completion {
+  UrlLoadParams params = UrlLoadParams::InNewTab(URL);
+  base::WeakPtr<Browser> weakBrowser = self.browser->AsWeakPtr();
+  return [self actionToOpenInNewTabWithBlock:^{
+    if (!weakBrowser) {
+      return;
+    }
+    UrlLoadingBrowserAgent::FromBrowser(weakBrowser.get())->Load(params);
+    if (completion) {
+      completion();
+    }
+  }];
+}
+
+- (UIAction*)actionToOpenInNewIncognitoTabWithURL:(const GURL&)URL
+                                       completion:(ProceduralBlock)completion {
+  if (!_browser) {
+    return nil;
+  }
+
+  UrlLoadParams params = UrlLoadParams::InNewTab(URL);
+  params.in_incognito = YES;
+  base::WeakPtr<Browser> weakBrowser = self.browser->AsWeakPtr();
+  return [self actionToOpenInNewIncognitoTabWithBlock:^{
+    if (!weakBrowser) {
+      return;
+    }
+    UrlLoadingBrowserAgent::FromBrowser(weakBrowser.get())->Load(params);
+    if (completion) {
+      completion();
+    }
+  }];
+}
+
+- (UIAction*)actionToOpenInNewIncognitoTabWithBlock:(ProceduralBlock)block {
+  UIImage* image = SymbolWithPointSize(SymbolIncognito, kSymbolActionPointSize);
+  ProceduralBlock completionBlock =
+      [self recordMobileWebContextMenuOpenTabActionWithBlock:block];
+
+  return [self actionWithTitle:l10n_util::GetNSString(
+                                   IDS_IOS_OPEN_IN_INCOGNITO_ACTION_TITLE)
+                         image:image
+                          type:MenuActionType::OpenInNewIncognitoTab
+                         block:completionBlock];
+}
+
+- (UIAction*)actionToOpenInNewWindowWithURL:(const GURL&)URL
+                             activityOrigin:
+                                 (WindowActivityOrigin)activityOrigin {
+  id<SceneCommands> windowOpener =
+      HandlerForProtocol(self.browser->GetCommandDispatcher(), SceneCommands);
+
+  UIImage* image =
+      SymbolWithPointSize(SymbolNewWindowAction, kSymbolActionPointSize);
+  NSUserActivity* activity = ActivityToLoadURL(activityOrigin, URL);
+  return [self actionWithTitle:l10n_util::GetNSString(
+                                   IDS_IOS_CONTENT_CONTEXT_OPENINNEWWINDOW)
+                         image:image
+                          type:MenuActionType::OpenInNewWindow
+                         block:^{
+                           [windowOpener openNewWindowWithActivity:activity];
+                         }];
+}
+
+- (UIAction*)actionToOpenInNewWindowWithActivity:(NSUserActivity*)activity {
+  id<SceneCommands> windowOpener =
+      HandlerForProtocol(self.browser->GetCommandDispatcher(), SceneCommands);
+
+  UIImage* image =
+      SymbolWithPointSize(SymbolNewWindowAction, kSymbolActionPointSize);
+  return [self actionWithTitle:l10n_util::GetNSString(
+                                   IDS_IOS_CONTENT_CONTEXT_OPENINNEWWINDOW)
+                         image:image
+                          type:MenuActionType::OpenInNewWindow
+                         block:^{
+                           [windowOpener openNewWindowWithActivity:activity];
+                         }];
+}
+
+- (UIAction*)actionOpenImageWithURL:(const GURL&)URL
+                         completion:(ProceduralBlock)completion {
+  UrlLoadParams params = UrlLoadParams::InCurrentTab(URL);
+  base::WeakPtr<Browser> weakBrowser = self.browser->AsWeakPtr();
+  UIImage* image =
+      SymbolWithPointSize(SymbolOpenImageAction, kSymbolActionPointSize);
+  UIAction* action = [self
+      actionWithTitle:l10n_util::GetNSString(IDS_IOS_CONTENT_CONTEXT_OPENIMAGE)
+                image:image
+                 type:MenuActionType::OpenImageInCurrentTab
+                block:^{
+                  if (!weakBrowser) {
+                    return;
+                  }
+                  UrlLoadingBrowserAgent::FromBrowser(weakBrowser.get())
+                      ->Load(params);
+                  if (completion) {
+                    completion();
+                  }
+                }];
+  return action;
+}
+
+- (UIAction*)actionOpenImageInNewTabWithUrlLoadParams:(UrlLoadParams)params
+                                           completion:
+                                               (ProceduralBlock)completion {
+  base::WeakPtr<Browser> weakBrowser = self.browser->AsWeakPtr();
+  UIImage* image =
+      SymbolWithPointSize(SymbolPhotoBadgePlus, kSymbolActionPointSize);
+  UIAction* action =
+      [self actionWithTitle:l10n_util::GetNSString(
+                                IDS_IOS_CONTENT_CONTEXT_OPENIMAGENEWTAB)
+                      image:image
+                       type:MenuActionType::OpenImageInNewTab
+                      block:^{
+                        if (!weakBrowser) {
+                          return;
+                        }
+                        UrlLoadingBrowserAgent::FromBrowser(weakBrowser.get())
+                            ->Load(params);
+                        if (completion) {
+                          completion();
+                        }
+                      }];
+  return action;
+}
+
+- (UIAction*)actionToOpenNewTabWithBlock:(ProceduralBlock)block {
+  UIAction* action =
+      [self actionWithTitle:l10n_util::GetNSString(IDS_IOS_TOOLS_MENU_NEW_TAB)
+                      image:SymbolWithPointSize(SymbolNewTabAction,
+                                                kSymbolActionPointSize)
+                       type:MenuActionType::OpenNewTab
+                      block:block];
+  if (IsIncognitoModeForced(self.browser->GetProfile()->GetPrefs())) {
+    action.attributes = UIMenuElementAttributesDisabled;
+  }
+  return action;
+}
+
+- (UIAction*)actionToOpenNewIncognitoTabWithBlock:(ProceduralBlock)block {
+  UIAction* action =
+      [self actionWithTitle:l10n_util::GetNSString(
+                                IDS_IOS_TOOLS_MENU_NEW_INCOGNITO_TAB)
+                      image:SymbolWithPointSize(SymbolIncognito,
+                                                kSymbolActionPointSize)
+                       type:MenuActionType::OpenNewIncognitoTab
+                      block:block];
+  if (IsIncognitoModeDisabled(self.browser->GetProfile()->GetPrefs())) {
+    action.attributes = UIMenuElementAttributesDisabled;
+  }
+  return action;
+}
+
+- (UIAction*)actionToOpenNewTab {
+  id<SceneCommands> handler =
+      HandlerForProtocol(self.browser->GetCommandDispatcher(), SceneCommands);
+  return [self actionToOpenNewTabWithBlock:^{
+    [handler openURLInNewTab:[OpenNewTabCommand commandWithIncognito:NO]];
+  }];
+}
+
+- (UIAction*)actionToOpenNewIncognitoTab {
+  id<SceneCommands> handler =
+      HandlerForProtocol(self.browser->GetCommandDispatcher(), SceneCommands);
+  return [self actionToOpenNewIncognitoTabWithBlock:^{
+    [handler openURLInNewTab:[OpenNewTabCommand commandWithIncognito:YES]];
+  }];
+}
+
+- (UIAction*)actionToCloseCurrentTab {
+  __weak id<BrowserCoordinatorCommands> handler = HandlerForProtocol(
+      self.browser->GetCommandDispatcher(), BrowserCoordinatorCommands);
+  UIAction* action = [self
+      actionWithTitle:l10n_util::GetNSString(IDS_IOS_TOOLS_MENU_CLOSE_TAB)
+                image:SymbolWithPointSize(SymbolXMark, kSymbolActionPointSize)
+                 type:MenuActionType::CloseCurrentTabs
+                block:^{
+                  [handler closeCurrentTab];
+                }];
+  action.attributes = UIMenuElementAttributesDestructive;
+  return action;
+}
+
+- (UIAction*)actionToShowQRScanner {
+  id<QRScannerCommands> handler = HandlerForProtocol(
+      self.browser->GetCommandDispatcher(), QRScannerCommands);
+  return [self
+      actionWithTitle:l10n_util::GetNSString(IDS_IOS_TOOLS_MENU_QR_SCANNER)
+                image:SymbolWithPointSize(SymbolQRCodeFinderAction,
+                                          kSymbolActionPointSize)
+                 type:MenuActionType::ShowQRScanner
+                block:^{
+                  [handler showQRScanner];
+                }];
+}
+
+- (UIAction*)actionToSearchWithLensWithEntryPoint:(LensEntrypoint)entryPoint {
+  id<LensCommands> handler =
+      HandlerForProtocol(self.browser->GetCommandDispatcher(), LensCommands);
+  return
+      [self actionWithTitle:l10n_util::GetNSString(
+                                IDS_IOS_TOOLS_MENU_LENS_CAMERA_SEARCH)
+                      image:SymbolWithPointSize(SymbolCameraLens,
+                                                kSymbolActionPointSize)
+                       type:MenuActionType::LensCameraSearch
+                      block:^{
+                        OpenLensInputSelectionCommand* command =
+                            [[OpenLensInputSelectionCommand alloc]
+                                    initWithEntryPoint:entryPoint
+                                     presentationStyle:
+                                         LensInputSelectionPresentationStyle::
+                                             SlideFromRight
+                                presentationCompletion:nil];
+                        [handler openLensInputSelection:command];
+                      }];
+}
+
+- (UIAction*)actionToSaveToPhotosWithImageURL:(const GURL&)imageURL
+                                     referrer:(const web::Referrer&)referrer
+                                     webState:(web::WebState*)webState
+                                       params:
+                                           (const web::ContextMenuParams&)params
+                                        block:(ProceduralBlock)block {
+  __weak id<SaveToPhotosCommands> handler = HandlerForProtocol(
+      self.browser->GetCommandDispatcher(), SaveToPhotosCommands);
+  SaveImageToPhotosCommand* command = [[SaveImageToPhotosCommand alloc]
+      initWithImageURL:imageURL
+              referrer:referrer
+              webState:webState
+               frameID:params.frame_id
+           frameOrigin:params.frame_security_origin];
+
+#if BUILDFLAG(IOS_USE_BRANDED_ASSETS)
+  UIImage* image =
+      SymbolWithPointSize(SymbolGooglePhotos, kSymbolActionPointSize);
+#else
+  UIImage* image =
+      SymbolWithPointSize(SymbolSaveImageAction, kSymbolActionPointSize);
+#endif
+
+  return [self actionWithTitle:l10n_util::GetNSString(
+                                   IDS_IOS_TOOLS_MENU_SAVE_IMAGE_TO_PHOTOS)
+                         image:image
+                          type:MenuActionType::SaveImageToGooglePhotos
+                         block:^{
+                           if (block) {
+                             block();
+                           }
+                           [handler saveImageToPhotos:command];
+                         }];
+}
+
+- (UIAction*)actionToStartVoiceSearch {
+  id<BrowserCoordinatorCommands> handler = HandlerForProtocol(
+      self.browser->GetCommandDispatcher(), BrowserCoordinatorCommands);
+  return [self
+      actionWithTitle:l10n_util::GetNSString(IDS_IOS_TOOLS_MENU_VOICE_SEARCH)
+                image:SymbolWithPointSize(SymbolMicrophone,
+                                          kSymbolActionPointSize)
+                 type:MenuActionType::StartVoiceSearch
+                block:^{
+                  [handler startVoiceSearch];
+                }];
+}
+
+- (UIAction*)actionToStartNewSearch {
+  id<SceneCommands> handler =
+      HandlerForProtocol(self.browser->GetCommandDispatcher(), SceneCommands);
+  UIAction* action = [self
+      actionWithTitle:l10n_util::GetNSString(IDS_IOS_TOOLS_MENU_NEW_SEARCH)
+                image:SymbolWithPointSize(SymbolSearch, kSymbolActionPointSize)
+                 type:MenuActionType::StartNewSearch
+                block:^{
+                  OpenNewTabCommand* command =
+                      [OpenNewTabCommand commandWithIncognito:NO];
+                  command.shouldFocusOmnibox = YES;
+                  [UIView performWithoutAnimation:^{
+              [handler openURLInNewTab:command];
+                  }];
+                }];
+
+  if (IsIncognitoModeForced(self.browser->GetProfile()->GetPrefs())) {
+    action.attributes = UIMenuElementAttributesDisabled;
+  }
+
+  return action;
+}
+
+- (UIAction*)actionToStartNewIncognitoSearch {
+  id<SceneCommands> handler =
+      HandlerForProtocol(self.browser->GetCommandDispatcher(), SceneCommands);
+  UIAction* action =
+      [self actionWithTitle:l10n_util::GetNSString(
+                                IDS_IOS_TOOLS_MENU_NEW_INCOGNITO_SEARCH)
+                      image:SymbolWithPointSize(SymbolIncognito,
+                                                kSymbolActionPointSize)
+                       type:MenuActionType::StartNewIncognitoSearch
+                      block:^{
+                        OpenNewTabCommand* command =
+                            [OpenNewTabCommand commandWithIncognito:YES];
+                        command.shouldFocusOmnibox = YES;
+                        [UIView performWithoutAnimation:^{
+                  [handler openURLInNewTab:command];
+                        }];
+                      }];
+
+  if (IsIncognitoModeDisabled(self.browser->GetProfile()->GetPrefs())) {
+    action.attributes = UIMenuElementAttributesDisabled;
+  }
+
+  return action;
+}
+
+- (UIAction*)actionToLensCopiedImage {
+  __weak id<LensCommands> handler =
+      HandlerForProtocol(self.browser->GetCommandDispatcher(), LensCommands);
+  void (^clipboardAction)(std::optional<gfx::Image>) =
+      ^(std::optional<gfx::Image> optionalImage) {
+        if (!optionalImage || !handler) {
+          return;
+        }
+
+        // TODO(b/541315801): C2PA: Clipboard images could have C2PA metadata;
+        // candidate to pass raw bytes.
+        UIImage* image = [optionalImage.value().ToUIImage() copy];
+        SearchImageWithLensCommand* command =
+            [[SearchImageWithLensCommand alloc]
+                initWithImage:image
+                   entryPoint:LensEntrypoint::PlusButton];
+        [handler searchImageWithLens:command];
+      };
+
+  return
+      [self actionWithTitle:l10n_util::GetNSString(
+                                IDS_IOS_SEARCH_COPIED_IMAGE_WITH_LENS)
+                      image:SymbolWithPointSize(SymbolClipboardAction,
+                                                kSymbolActionPointSize)
+                       type:MenuActionType::SearchCopiedImage
+                      block:^{
+                        ClipboardRecentContent::GetInstance()
+                            ->GetRecentImageFromClipboard(
+                                base::BindOnce(clipboardAction));
+                      }];
+}
+
+- (UIAction*)actionToSearchCopiedImage {
+  __weak __typeof(self) weakSelf = self;
+
+  void (^clipboardAction)(std::optional<gfx::Image>) =
+      ^(std::optional<gfx::Image> optionalImage) {
+        if (!optionalImage || !weakSelf) {
+          return;
+        }
+
+        UIImage* image = [optionalImage.value().ToUIImage() copy];
+
+        ImageSearchParamGenerator::PrepareImageDataAsync(
+            image, base::BindOnce(^(NSData* imageData) {
+              [weakSelf loadWithImageData:imageData];
+            }));
+      };
+
+  return
+      [self actionWithTitle:l10n_util::GetNSString(
+                                IDS_IOS_TOOLS_MENU_SEARCH_COPIED_IMAGE)
+                      image:SymbolWithPointSize(SymbolClipboardAction,
+                                                kSymbolActionPointSize)
+                       type:MenuActionType::SearchCopiedImage
+                      block:^{
+                        ClipboardRecentContent::GetInstance()
+                            ->GetRecentImageFromClipboard(
+                                base::BindOnce(clipboardAction));
+                      }];
+}
+
+- (UIAction*)actionToSearchCopiedURL {
+  base::WeakPtr<Browser> weakBrowser = self.browser->AsWeakPtr();
+
+  void (^clipboardAction)(std::optional<GURL>) =
+      ^(std::optional<GURL> optionalURL) {
+        if (!optionalURL) {
+          return;
+        }
+        NSString* URL = base::SysUTF8ToNSString(optionalURL.value().spec());
+        dispatch_async(dispatch_get_main_queue(), ^{
+          if (!weakBrowser) {
+            return;
+          }
+          UrlLoadingBrowserAgent* loadingAgent =
+              UrlLoadingBrowserAgent::FromBrowser(weakBrowser.get());
+          if (loadingAgent) {
+            loadingAgent->LoadURLForQuery(URL);
+          }
+        });
+      };
+
+  return
+      [self actionWithTitle:l10n_util::GetNSString(
+                                IDS_IOS_TOOLS_MENU_VISIT_COPIED_LINK)
+                      image:SymbolWithPointSize(SymbolClipboardAction,
+                                                kSymbolActionPointSize)
+                       type:MenuActionType::VisitCopiedLink
+                      block:^{
+                        ClipboardRecentContent::GetInstance()
+                            ->GetRecentURLFromClipboard(
+                                base::BindOnce(clipboardAction));
+                      }];
+}
+
+- (UIAction*)actionToSearchCopiedText {
+  base::WeakPtr<Browser> weakBrowser = self.browser->AsWeakPtr();
+
+  void (^clipboardAction)(std::optional<std::u16string>) =
+      ^(std::optional<std::u16string> optionalText) {
+        if (!optionalText) {
+          return;
+        }
+        NSString* query = base::SysUTF16ToNSString(optionalText.value());
+        dispatch_async(dispatch_get_main_queue(), ^{
+          if (!weakBrowser) {
+            return;
+          }
+          UrlLoadingBrowserAgent* loadingAgent =
+              UrlLoadingBrowserAgent::FromBrowser(weakBrowser.get());
+          if (loadingAgent) {
+            loadingAgent->LoadURLForQuery(query);
+          }
+        });
+      };
+
+  return
+      [self actionWithTitle:l10n_util::GetNSString(
+                                IDS_IOS_TOOLS_MENU_SEARCH_COPIED_TEXT)
+                      image:SymbolWithPointSize(SymbolClipboardAction,
+                                                kSymbolActionPointSize)
+                       type:MenuActionType::SearchCopiedText
+                      block:^{
+                        ClipboardRecentContent::GetInstance()
+                            ->GetRecentTextFromClipboard(
+                                base::BindOnce(clipboardAction));
+                      }];
+}
+
+- (UIAction*)actionToOpenAIMenu {
+  id<SceneCommands> handler =
+      HandlerForProtocol(self.browser->GetCommandDispatcher(), SceneCommands);
+  return [self actionWithTitle:@"Open AI menu"
+                         image:SymbolWithPointSize(SymbolMagicStack,
+                                                   kSymbolActionPointSize)
+                          type:MenuActionType::AIPrototyping
+                         block:^{
+                           [handler openAIMenu];
+                         }];
+}
+
+#pragma mark - ActionFactory
+
+- (UIAction*)actionWithTitle:(NSString*)title
+                       image:(UIImage*)image
+                        type:(MenuActionType)type
+                       block:(ProceduralBlock)block {
+  __weak __typeof(self) weakSelf = self;
+  return [super actionWithTitle:title
+                          image:image
+                           type:type
+                          block:^{
+                            [weakSelf hideGeminiFloatyIfInvoked];
+                            if (block) {
+                              block();
+                            }
+                          }];
+}
+
+#pragma mark - Private
+
+// Helper method for completion block to hide Gemini Floaty. Ensures that the
+// floaty is hidden before the view invoked from an UIAction is presented.
+- (void)hideGeminiFloatyIfInvoked {
+  id<GeminiCommands> geminiHandler =
+      HandlerForProtocol(self.browser->GetCommandDispatcher(), GeminiCommands);
+  [geminiHandler
+      hideFloatyIfInvokedAnimated:YES
+                       fromSource:gemini::FloatyUpdateSource::ContextMenu];
+}
+
+- (void)loadWithImageData:(NSData*)imageData {
+  TemplateURLService* service =
+      ios::TemplateURLServiceFactory::GetForProfile(self.browser->GetProfile());
+  web::NavigationManager::WebLoadParams webParams =
+      ImageSearchParamGenerator::LoadParamsForResizedImageData(imageData,
+                                                               GURL(), service);
+  UrlLoadParams params = UrlLoadParams::InCurrentTab(webParams);
+  UrlLoadingBrowserAgent::FromBrowser(self.browser)->Load(params);
+}
+
+@end

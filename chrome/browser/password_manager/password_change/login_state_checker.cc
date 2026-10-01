@@ -1,0 +1,325 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/password_manager/password_change/login_state_checker.h"
+
+#include "base/check_deref.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/task/single_thread_task_runner.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
+#include "chrome/browser/password_manager/password_change/annotated_page_content_capturer.h"
+#include "chrome/browser/password_manager/password_change/features.h"
+#include "chrome/browser/password_manager/password_change/password_change_logging_util.h"
+#include "chrome/browser/profiles/profile.h"
+#include "components/autofill/core/browser/logging/log_manager.h"
+#include "components/autofill/core/common/save_password_progress_logger.h"
+#include "components/optimization_guide/content/browser/page_content_proto_provider.h"
+#include "components/optimization_guide/core/model_quality/model_execution_logging_wrappers.h"
+#include "components/optimization_guide/proto/features/password_change_submission.pb.h"
+#include "components/password_manager/core/browser/browser_save_password_progress_logger.h"
+#include "components/password_manager/core/browser/features/password_features.h"
+#include "components/password_manager/core/browser/password_manager_client.h"
+#include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/web_contents.h"
+
+namespace {
+
+using Logger = password_manager::BrowserSavePasswordProgressLogger;
+using SavePasswordProgressLogger = autofill::SavePasswordProgressLogger;
+using password_change::LogBoolean;
+using password_change::LogMessage;
+using password_change::LogNumber;
+using password_change::LogResponse;
+
+constexpr optimization_guide::proto::PasswordChangeRequest::FlowStep
+    kLoginCheckStep = optimization_guide::proto::PasswordChangeRequest::
+        FlowStep::PasswordChangeRequest_FlowStep_IS_LOGGED_IN_STEP;
+
+constexpr optimization_guide::proto::IsLoggedInResponseData::ErrorCase
+    kNoError = optimization_guide::proto::IsLoggedInResponseData::ErrorCase::
+        IsLoggedInResponseData_ErrorCase_NO_ERROR;
+
+blink::mojom::AIPageContentOptionsPtr GetAIPageContentOptions() {
+  auto options = optimization_guide::DefaultAIPageContentOptions(
+      /* on_critical_path =*/false);
+  options->include_same_site_only = true;
+  return options;
+}
+
+void RecordLoginCheckAttempts(int count) {
+  base::UmaHistogramExactLinear(
+      "PasswordManager.PasswordChange.LoginCheckAttempts", count,
+      LoginStateChecker::kMaxLoginChecks + 1);
+}
+
+void RecordLoginCheckResult(LoginCheckResult::Status result) {
+  base::UmaHistogramEnumeration(
+      "PasswordManager.PasswordChange.LoginCheckResult", result);
+}
+
+void RecordLoginCheckError(LoginCheckResult::LoginCheckError error) {
+  base::UmaHistogramEnumeration(
+      "PasswordManager.PasswordChange.LoginCheckError", error);
+}
+
+void RecordLoginCheckDuration(base::TimeDelta duration) {
+  base::UmaHistogramMediumTimes(
+      "PasswordManager.PasswordChange.LoginCheckDuration", duration);
+}
+
+LoginCheckResult::LoginCheckError ExtractLoginCheckErrorType(
+    ::optimization_guide::proto::IsLoggedInResponseData_ErrorCase error_case) {
+  LoginCheckResult::LoginCheckError error =
+      LoginCheckResult::LoginCheckError::kUnknown;
+  switch (error_case) {
+    case optimization_guide::proto::
+        IsLoggedInResponseData_ErrorCase_LOGIN_FAILED:
+      error = LoginCheckResult::LoginCheckError::kLoginFailed;
+      break;
+    case optimization_guide::proto::
+        IsLoggedInResponseData_ErrorCase_FORGOT_PASSWORD_PAGE:
+      error = LoginCheckResult::LoginCheckError::kForgotPasswordPage;
+      break;
+    default:
+      error = LoginCheckResult::LoginCheckError::kUnknown;
+      break;
+  }
+  return error;
+}
+
+LoginCheckResult RecordMetrics(LoginCheckResult result) {
+  // Login check might still be retried, do not record metrics yet.
+  if (result.status == LoginCheckResult::Status::kLoggedOut &&
+      result.state_checks_count < LoginStateChecker::kMaxLoginChecks) {
+    return result;
+  }
+
+  RecordLoginCheckAttempts(result.state_checks_count);
+  RecordLoginCheckResult(result.status);
+  RecordLoginCheckDuration(result.duration);
+  if (result.error.has_value()) {
+    RecordLoginCheckError(result.error.value());
+  }
+
+  return result;
+}
+
+}  // namespace
+
+LoginCheckResult::LoginCheckResult() = default;
+
+LoginCheckResult::LoginCheckResult(
+    LoginCheckResult::Status status,
+    int state_checks_count,
+    base::TimeDelta duration,
+    std::unique_ptr<
+        optimization_guide::proto::PasswordChangeSubmissionLoggingData>
+        logging_data,
+    std::optional<LoginCheckError> error)
+    : status(status),
+      state_checks_count(state_checks_count),
+      duration(duration),
+      logging_data(std::move(logging_data)),
+      error(error) {}
+
+LoginCheckResult::~LoginCheckResult() = default;
+
+LoginCheckResult::LoginCheckResult(LoginCheckResult&&) = default;
+
+LoginCheckResult& LoginCheckResult::operator=(LoginCheckResult&&) = default;
+
+LoginStateChecker::LoginStateChecker(
+    content::WebContents* web_contents,
+    password_manager::PasswordManagerClient* client,
+    optimization_guide::ModelExecutionServiceType service_type,
+    LoginStateResultCallback callback)
+    : content::WebContentsObserver(web_contents),
+      creation_time_(base::Time::Now()),
+      service_type_(service_type),
+      client_(client),
+      result_check_callback_(
+          base::BindRepeating(&RecordMetrics).Then(std::move(callback))) {
+  StartTimeoutTimer();
+  CheckLoginState(/*ignore_attempts_limit=*/false);
+}
+
+LoginStateChecker::~LoginStateChecker() = default;
+
+bool LoginStateChecker::ReachedAttemptsLimit() const {
+  return state_checks_count_ >= kMaxLoginChecks;
+}
+
+void LoginStateChecker::RetryLoginCheck() {
+  capturer_.reset();
+  CheckLoginState(/*ignore_attempts_limit=*/true);
+}
+
+void LoginStateChecker::DidFinishNavigation(
+    content::NavigationHandle* navigation_handle) {
+  if (navigation_handle && (!navigation_handle->IsInPrimaryMainFrame() ||
+                            !navigation_handle->HasCommitted())) {
+    return;
+  }
+  capturer_.reset();
+  CheckLoginState(/*ignore_attempts_limit=*/false);
+}
+
+void LoginStateChecker::StartTimeoutTimer() {
+  if (service_type_ ==
+      optimization_guide::ModelExecutionServiceType::kPrivateAi) {
+    timer_.Start(FROM_HERE, kLoginCheckTimeout,
+                 base::BindOnce(&LoginStateChecker::TerminateLoginChecks,
+                                base::Unretained(this),
+                                LoginCheckResult::LoginCheckError::kTimeout,
+                                /*logging_data=*/nullptr));
+  }
+}
+
+void LoginStateChecker::TerminateLoginChecks(
+    LoginCheckResult::LoginCheckError error,
+    std::unique_ptr<
+        optimization_guide::proto::PasswordChangeSubmissionLoggingData>
+        logging_data) {
+  timer_.Stop();
+  // Reset content::WebContentsObserver.
+  Observe(nullptr);
+  capturer_.reset();
+  cached_page_content_ = std::nullopt;
+
+  result_check_callback_.Run(LoginCheckResult(
+      LoginCheckResult::Status::kError, state_checks_count_,
+      base::Time::Now() - creation_time_, std::move(logging_data), error));
+}
+
+void LoginStateChecker::CheckLoginState(bool ignore_attempts_limit) {
+  LogMessage(client_,
+             SavePasswordProgressLogger::STRING_LOGIN_STATE_CHECK_STARTED);
+  // Avoid checking further if maximum number of attempts has been reached.
+  if (!ignore_attempts_limit && ReachedAttemptsLimit()) {
+    LogMessage(client_, SavePasswordProgressLogger::
+                            STRING_LOGIN_STATE_CHECK_MAX_ATTEMPTS_REACHED);
+    return;
+  }
+
+  // Clear previously captured page content.
+  cached_page_content_ = std::nullopt;
+
+  capturer_ = AnnotatedPageContentCapturer::Create(
+      web_contents(), client_, GetAIPageContentOptions(),
+      base::BindRepeating(&LoginStateChecker::OnPageContentReceived,
+                          weak_ptr_factory_.GetWeakPtr()));
+}
+
+OptimizationGuideKeyedService* LoginStateChecker::GetOptimizationService() {
+  Profile* profile =
+      Profile::FromBrowserContext(web_contents()->GetBrowserContext());
+  return OptimizationGuideKeyedServiceFactory::GetForProfile(profile);
+}
+
+void LoginStateChecker::OnPageContentReceived(
+    optimization_guide::AIPageContentResultOrError content) {
+  capturer_.reset();
+  if (!content.has_value()) {
+    LogPageContentCaptureFailure(password_manager::metrics_util::
+                                     PasswordChangeFlowStep::kLoginCheckStep);
+    return;
+  }
+
+  if (is_request_in_flight_) {
+    cached_page_content_.emplace(std::move(content.value()));
+    return;
+  }
+
+  is_request_in_flight_ = true;
+  optimization_guide::proto::PasswordChangeRequest request;
+  request.set_step(kLoginCheckStep);
+  *request.mutable_page_context()->mutable_annotated_page_content() =
+      std::move(content->proto);
+
+  LogMessage(client_,
+             SavePasswordProgressLogger::STRING_LOGIN_STATE_CHECK_REQUEST_SENT);
+  optimization_guide::ExecuteModelWithLogging(
+      GetOptimizationService(),
+      optimization_guide::ModelBasedCapabilityKey::kPasswordChangeSubmission,
+      request, /*execution_timeout=*/std::nullopt,
+      base::BindOnce(&LoginStateChecker::OnExecutionResponseCallback,
+                     weak_ptr_factory_.GetWeakPtr()),
+      service_type_);
+}
+
+void LoginStateChecker::OnExecutionResponseCallback(
+    optimization_guide::OptimizationGuideModelExecutionResult execution_result,
+    std::unique_ptr<
+        optimization_guide::proto::PasswordChangeSubmissionLoggingData>
+        logging_data) {
+  is_request_in_flight_ = false;
+  // Increase the count of login checks.
+  state_checks_count_++;
+
+  LogMessage(
+      client_,
+      SavePasswordProgressLogger::STRING_LOGIN_STATE_CHECK_RESPONSE_RECEIVED);
+
+  if (!execution_result.response.has_value()) {
+    LogNumber(client_,
+              SavePasswordProgressLogger::STRING_LOGIN_STATE_CHECK_SERVER_ERROR,
+              static_cast<int>(execution_result.response.error().error()));
+    TerminateLoginChecks(LoginCheckResult::LoginCheckError::kServerError,
+                         std::move(logging_data));
+    return;
+  }
+
+  std::optional<optimization_guide::proto::PasswordChangeResponse> response =
+      optimization_guide::ParsedAnyMetadata<
+          optimization_guide::proto::PasswordChangeResponse>(
+          execution_result.response.value());
+
+  if (response) {
+    LogResponse(client_, autofill::SavePasswordProgressLogger::STRING_MESSAGE,
+                *response);
+  } else {
+    LogMessage(client_,
+               SavePasswordProgressLogger::STRING_LOGIN_STATE_CHECK_FAILURE);
+    TerminateLoginChecks(
+        LoginCheckResult::LoginCheckError::kFailedToParseResponse,
+        std::move(logging_data));
+    return;
+  }
+
+  // Terminate the flow immediately in case of an error.
+  if (response->is_logged_in_data().error_case() != kNoError) {
+    TerminateLoginChecks(
+        ExtractLoginCheckErrorType(response->is_logged_in_data().error_case()),
+        std::move(logging_data));
+    return;
+  }
+
+  bool is_logged_in = response->is_logged_in_data().is_logged_in();
+  if (is_logged_in) {
+    timer_.Stop();
+  }
+
+  LogBoolean(client_,
+             SavePasswordProgressLogger::STRING_LOGIN_STATE_CHECK_RESULT,
+             is_logged_in);
+
+  if (cached_page_content_.has_value() && !is_logged_in &&
+      !ReachedAttemptsLimit()) {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(&LoginStateChecker::OnPageContentReceived,
+                                  weak_ptr_factory_.GetWeakPtr(),
+                                  std::move(cached_page_content_.value())));
+    // Clear the page content to ensure that this check doesn't pass next time,
+    // which would lead to a request with empty page content.
+    cached_page_content_ = std::nullopt;
+  }
+
+  result_check_callback_.Run(
+      LoginCheckResult(is_logged_in ? LoginCheckResult::Status::kLoggedIn
+                                    : LoginCheckResult::Status::kLoggedOut,
+                       state_checks_count_, base::Time::Now() - creation_time_,
+                       std::move(logging_data)));
+}

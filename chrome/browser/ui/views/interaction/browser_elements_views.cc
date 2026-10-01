@@ -1,0 +1,69 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/interaction/browser_elements_views.h"
+
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "ui/base/interaction/element_identifier.h"
+#include "ui/base/interaction/safe_castable.h"
+#include "ui/views/interaction/element_tracker_views.h"
+
+DEFINE_TYPED_IDENTIFIER_VALUE(ui::ElementIdentifier,
+                              views::WebView,
+                              kActiveContentsWebViewRetrievalId);
+
+DEFINE_SAFE_CAST_TARGET(BrowserElementsViews)
+
+BrowserElementsViews::BrowserElementsViews(BrowserWindowInterface& browser)
+    : BrowserElements(browser) {}
+
+BrowserElementsViews::~BrowserElementsViews() = default;
+
+views::Widget* BrowserElementsViews::GetPrimaryWindowWidget() {
+  const auto context = GetContext();
+  return context
+             ? views::ElementTrackerViews::GetInstance()->GetWidgetForContext(
+                   context)
+             : nullptr;
+}
+
+void BrowserElementsViews::TearDown() {
+  retrieval_callbacks_.clear();
+}
+
+// static
+BrowserElementsViews* BrowserElementsViews::From(
+    BrowserWindowInterface* browser) {
+  auto* const base = BrowserElements::From(browser);
+  return base ? base->AsA<BrowserElementsViews>() : nullptr;
+}
+
+// static
+BrowserElementsViews* BrowserElementsViews::From(views::View* view) {
+  const auto context = views::ElementTrackerViews::GetContextForView(view);
+  BrowserWindowInterface* result = nullptr;
+  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+      [&](BrowserWindowInterface* browser) {
+        if (auto* elements = BrowserElements::From(browser)) {
+          if (elements->GetContext() == context) {
+            result = browser;
+          }
+        }
+        return !result;
+      });
+  return result ? From(result) : nullptr;
+}
+
+views::View* BrowserElementsViews::GetView(ui::ElementIdentifier id,
+                                           bool require_visible) {
+  return views::ElementTrackerViews::GetInstance()->GetFirstMatchingView(
+      id, GetContext(), require_visible);
+}
+
+BrowserElementsViews::ViewList BrowserElementsViews::GetAllViews(
+    ui::ElementIdentifier id,
+    bool require_visible) {
+  return views::ElementTrackerViews::GetInstance()->GetAllMatchingViews(
+      id, GetContext(), require_visible);
+}

@@ -1,0 +1,102 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module action_chips.mojom;
+
+import "components/omnibox/browser/fusebox_action.mojom";
+import "components/omnibox/browser/searchbox.mojom";
+import "mojo/public/mojom/base/time.mojom";
+import "url/mojom/url.mojom";
+
+// Information about a tab to be sent to the WebUI.
+struct TabInfo {
+  int32 tab_id;
+  string title;
+  url.mojom.Url url;
+  mojo_base.mojom.Time last_active_time;
+};
+
+// This enum must be in sync with IconType in
+// third_party/omnibox_proto/suggest_template_info.proto.
+// In particular, the int values must match so the proto enum values are
+// correctly mapped to the mojom enum values.
+// LINT.IfChange(IconType)
+enum IconType {
+  kIconTypeUnspecified = 0,
+  kHistory = 1,
+  kSearchLoop = 2,
+  kSearchLoopWithSparkle = 3,
+  kTrending = 4,
+  kSubArrowRight = 5,
+  kGlobeWithSearchLoop = 6,
+  kBanana = 7,
+  kFavicon = 8,
+  kNotesSpark = 9,
+  kDraftSpark = 10,
+  kLightbulb = 11,
+  kAttachFile = 12,
+  kSchool = 13,
+  kInkPen = 14,
+  kTab = 15,
+  kPhotoSpark = 16,
+  kBolt = 17,
+};
+
+// LINT.ThenChange(//tools/metrics/histograms/metadata/new_tab_page/enums.xml:ActionChipIconType)
+
+struct FormattedString {
+  string text;
+  string? a11y_text;
+};
+
+// SuggestTemplateInfo contains a subset of the fields of SuggestTemplateInfo in
+// third_party/omnibox_proto/suggest_template_info.proto.
+// The field names must match.
+
+struct SuggestTemplateInfo {
+  IconType type_icon;
+  FormattedString? primary_text;
+  FormattedString? secondary_text;
+  fusebox_action.mojom.FuseboxAction? fusebox_action;
+};
+
+// The information representing a single action chip.
+struct ActionChip {
+  string suggestion;
+  SuggestTemplateInfo suggest_template_info;
+  // the tab associated with this chip.
+  TabInfo? tab;
+};
+
+// Interface for the browser-side handler.
+interface ActionChipsHandler {
+  // Start retrieving the information needed for action chips.
+  // Once the retrieval is complete, Page::OnActionChipsChanged is called to
+  // notify the UI.
+  StartActionChipsRetrieval();
+
+  // Activates a metrics funnel for the session.
+  ActivateMetricsFunnel(string funnel_name);
+
+  // Changes the visibility of the action chips feature.
+  SetActionChipsVisibility(bool is_visible);
+
+  // Navigates to AIM based on the given query_text and click modifiers.
+  NavigateToAim(string query_text,
+                uint8 mouse_button,
+                searchbox.mojom.ActionModifiers modifiers);
+};
+
+// Interface for the page-side handler receiving information from the browser.
+interface Page {
+  // Notifies the page that a new set of action chips is ready.
+  OnActionChipsChanged(array<ActionChip> action_chips);
+};
+
+// Factory to create the ActionChipsHandler.
+interface ActionChipsHandlerFactory {
+  // The WebUI component calls this method when the page is first initialized.
+  CreateActionChipsHandler(pending_receiver<ActionChipsHandler> handler,
+                           pending_remote<Page> page);
+};

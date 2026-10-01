@@ -1,0 +1,15 @@
+[
+  {
+    "os": [
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "security_token_session_notification_seconds",
+      "pref_location": "local_state",
+      "default_value": 0,
+      "values_to_test": [
+        10
+      ]
+    }
+  }
+]

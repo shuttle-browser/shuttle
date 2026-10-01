@@ -1,0 +1,24 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// https://html.spec.whatwg.org/C/#the-offscreencanvas-interface
+
+[
+    Exposed=(Window,Worker),
+    Transferable
+] interface OffscreenCanvas : EventTarget {
+    [CallWith=ScriptState, MeasureAs=OffscreenCanvas] constructor([EnforceRange] unsigned long width, [EnforceRange] unsigned long height);
+    attribute [EnforceRange] unsigned long width;
+    attribute [EnforceRange] unsigned long height;
+
+    [CallWith=ScriptState, MeasureAs=OffscreenCanvasTransferToImageBitmap, RaisesException] ImageBitmap transferToImageBitmap();
+    [CallWith=ScriptState, MeasureAs=OffscreenCanvasConvertToBlob, RaisesException] Promise<Blob> convertToBlob(optional ImageEncodeOptions options = {});
+
+    [RuntimeEnabled=CanvasDrawElement, RaisesException] DOMMatrix getElementTransform((Element or ElementImage) element, DOMMatrix draw_transform);
+    [RuntimeEnabled=CanvasDrawElement, RaisesException] void updateElementGeometry((Element or ElementImage) element, optional UpdateElementGeometryOptions options = {});
+    [RuntimeEnabled=CanvasDrawElement] void clearElementGeometry((Element or ElementImage) element);
+
+    attribute EventHandler oncontextlost;
+    attribute EventHandler oncontextrestored;
+};

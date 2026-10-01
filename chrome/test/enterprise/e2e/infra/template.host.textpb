@@ -1,0 +1,104 @@
+# This file is used as a template to generate host files for our CI tests.
+# <xyz> tokens are replaced with real values by generate_host_files.py.
+
+project {
+  # ID of the project. Note that it's not the name of the project.
+  name: '<project_id>'
+
+  # All assets will be created in this zone. Note that this is NOT the region name.
+  zone: 'us-west1-b'
+}
+
+# Where the logs go.
+log_settings { admin_log: "admin" }
+
+
+storage {
+  # The GCS storage bucket.
+  bucket: "<storage_bucket>",
+
+  # all files used by CEL will be put under this directory.
+  prefix: "<storage_prefix>"
+}
+
+# Use Infrastructure Manager
+deployment_backend: INFRASTRUCTURE_MANAGER
+
+
+machine_type {
+  # Name must match the host_machine_type field in the windows_machine asset
+  # entries.
+  name: 'win2016'
+
+  instance_properties {
+    machineType: 'projects/${host.project.name}/zones/${host.project.zone}/machineTypes/n1-standard-2'
+
+    scheduling {
+      automaticRestart: true
+    }
+
+    disks {
+      autoDelete: true
+      boot: true
+
+      initializeParams {
+        sourceImage: '${host.image.windows-2016.url}'
+      }
+    }
+  }
+}
+
+machine_type {
+  # Name must match the host_machine_type field in the windows_machine asset
+  # entries.
+  name: "win2019"
+
+  instance_properties {
+    machineType: "projects/${host.project.name}/zones/${host.project.zone}/machineTypes/n1-standard-2"
+
+    scheduling {
+      automaticRestart: true
+    }
+
+    disks {
+      autoDelete: true
+      boot: true
+
+      initializeParams {
+        sourceImage: "${host.image.windows-2019.url}"
+      }
+    }
+  }
+}
+
+machine_type {
+  # Name must match the host_machine_type field in the windows_machine asset
+  # entries.
+  name: "win2022"
+
+  instance_properties {
+    machineType: "projects/${host.project.name}/zones/${host.project.zone}/machineTypes/n1-standard-2"
+
+    scheduling {
+      automaticRestart: true
+    }
+
+    disks {
+      autoDelete: true
+      boot: true
+
+      initializeParams {
+        sourceImage: "${host.image.windows-2022.url}"
+      }
+    }
+  }
+}
+
+machine_type {
+  name: 'win10'
+  nested_vm {
+    image: 'gs://<storage_bucket>/images/win10_pro_1803.img'
+    user_name: 'win10'
+    password: 'pass@word!'
+  }
+}

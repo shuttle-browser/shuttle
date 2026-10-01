@@ -1,0 +1,473 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webui/print_preview/print_preview_handler_chromeos.h"
+
+#include <stddef.h>
+
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "ash/constants/webui_url_constants.h"
+#include "base/check.h"
+#include "base/check_is_test.h"
+#include "base/check_op.h"
+#include "base/containers/to_value_list.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
+#include "base/lazy_instance.h"
+#include "base/logging.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/values.h"
+#include "build/build_config.h"
+#include "chrome/browser/ash/printing/cups_printers_manager_factory.h"
+#include "chrome/browser/ash/printing/local_printer.h"
+#include "chrome/browser/printing/print_preview_dialog_controller.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/webui/print_preview/local_printer_handler_chromeos.h"
+#include "chrome/browser/ui/webui/print_preview/print_preview_handler.h"
+#include "chrome/browser/ui/webui/print_preview/print_preview_ui.h"
+#include "chrome/browser/ui/webui/print_preview/print_preview_utils.h"
+#include "chrome/browser/ui/webui/print_preview/printer_handler.h"
+#include "chrome/common/printing/printer_capabilities.h"
+#include "chromeos/ash/components/browser_context_helper/browser_context_helper.h"
+#include "chromeos/printing/printer_configuration.h"
+#include "chromeos/printing/printing_constants.h"
+#include "components/device_event_log/device_event_log.h"
+#include "components/session_manager/core/session.h"
+#include "components/session_manager/core/session_manager.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_ui.h"
+#include "printing/buildflags/buildflags.h"  // USE_CUPS
+#include "printing/mojom/print.mojom.h"
+#include "url/gurl.h"
+
+namespace printing {
+
+namespace {
+
+base::DictValue PrintServersConfigToValue(
+    const ash::PrintServersConfig& config) {
+  base::ListValue ui_print_servers;
+  for (const auto& print_server : config.print_servers) {
+    base::DictValue ui_print_server;
+    ui_print_server.Set("id", print_server.GetId());
+    ui_print_server.Set("name", print_server.GetName());
+    ui_print_servers.Append(std::move(ui_print_server));
+  }
+  base::DictValue ui_print_servers_config;
+  ui_print_servers_config.Set("printServers", std::move(ui_print_servers));
+  ui_print_servers_config.Set(
+      "isSingleServerFetchingMode",
+      config.fetching_mode ==
+          ash::ServerPrintersFetchingMode::kSingleServerOnly);
+  return ui_print_servers_config;
+}
+
+base::ListValue ConvertPrintersToValues(
+    std::vector<chromeos::Printer> printers) {
+  return base::ToValueList(printers, [](const auto& printer) {
+    return LocalPrinterHandlerChromeos::PrinterToValue(printer);
+  });
+}
+
+}  // namespace
+
+PrintPreviewHandlerChromeOS::PrintPreviewHandlerChromeOS() {
+#if BUILDFLAG(USE_CUPS)
+  // PrintPreviewDialogControllerUnitTest will bring up the whole stack upon UI
+  // creation including this PrintPreviewHandlerChromeOS.
+  // This is no easy way to inject a stub since the ui creation is real
+  // implementation.
+  // So ash::LocalPrinter may not be initialized at the unittest.
+  if (ash::LocalPrinter::IsSet()) {
+    local_printer_ = ash::LocalPrinter::Get();
+  } else {
+    CHECK_IS_TEST();
+  }
+#endif
+}
+
+PrintPreviewHandlerChromeOS::~PrintPreviewHandlerChromeOS() = default;
+
+void PrintPreviewHandlerChromeOS::RegisterMessages() {
+  web_ui()->RegisterMessageCallback(
+      "setupPrinter",
+      base::BindRepeating(&PrintPreviewHandlerChromeOS::HandlePrinterSetup,
+                          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "grantExtensionPrinterAccess",
+      base::BindRepeating(
+          &PrintPreviewHandlerChromeOS::HandleGrantExtensionPrinterAccess,
+          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "getEulaUrl",
+      base::BindRepeating(&PrintPreviewHandlerChromeOS::HandleGetEulaUrl,
+                          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "requestPrinterStatus",
+      base::BindRepeating(
+          &PrintPreviewHandlerChromeOS::HandleRequestPrinterStatusUpdate,
+          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "choosePrintServers",
+      base::BindRepeating(
+          &PrintPreviewHandlerChromeOS::HandleChoosePrintServers,
+          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "getPrintServersConfig",
+      base::BindRepeating(
+          &PrintPreviewHandlerChromeOS::HandleGetPrintServersConfig,
+          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "recordPrintAttemptOutcome",
+      base::BindRepeating(
+          &PrintPreviewHandlerChromeOS::HandleRecordPrintAttemptOutcome,
+          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "getShowManagePrinters",
+      base::BindRepeating(
+          &PrintPreviewHandlerChromeOS::HandleGetShowManagePrinters,
+          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "observeLocalPrinters",
+      base::BindRepeating(
+          &PrintPreviewHandlerChromeOS::HandleObserveLocalPrinters,
+          base::Unretained(this)));
+}
+
+void PrintPreviewHandlerChromeOS::OnJavascriptAllowed() {
+  print_servers_observation_.Reset();
+  ash::PrintServersManager* print_servers_manager = GetPrintServersManager();
+  if (!print_servers_manager) {
+    PRINTER_LOG(DEBUG) << "PrintServersManager not available";
+    return;
+  }
+  print_servers_observation_.Observe(print_servers_manager);
+}
+
+void PrintPreviewHandlerChromeOS::OnJavascriptDisallowed() {
+  // Normally the handler and print preview will be destroyed together, but
+  // this is necessary for refresh or navigation from the chrome://print page.
+  weak_factory_.InvalidateWeakPtrs();
+  print_servers_observation_.Reset();
+}
+
+void PrintPreviewHandlerChromeOS::HandleGrantExtensionPrinterAccess(
+    const base::ListValue& args) {
+  DCHECK(args[0].is_string());
+  DCHECK(args[1].is_string());
+  std::string callback_id = args[0].GetString();
+  std::string printer_id = args[1].GetString();
+  DCHECK(!callback_id.empty());
+  MaybeAllowJavascript();
+
+  PrinterHandler* handler = GetPrinterHandler(mojom::PrinterType::kExtension);
+  handler->StartGrantPrinterAccess(
+      printer_id,
+      base::BindOnce(&PrintPreviewHandlerChromeOS::OnGotExtensionPrinterInfo,
+                     weak_factory_.GetWeakPtr(), callback_id));
+}
+
+// |args| is expected to contain a string with representing the callback id
+// followed by a list of arguments the first of which should be the printer id.
+void PrintPreviewHandlerChromeOS::HandlePrinterSetup(
+    const base::ListValue& args) {
+  std::string callback_id;
+  std::string printer_name;
+  MaybeAllowJavascript();
+  if (args[0].is_string() && args[1].is_string()) {
+    callback_id = args[0].GetString();
+    printer_name = args[1].GetString();
+  }
+
+  if (callback_id.empty() || printer_name.empty()) {
+    RejectJavascriptCallback(base::Value(callback_id),
+                             base::Value(printer_name));
+    return;
+  }
+
+  PrinterHandler* handler = GetPrinterHandler(mojom::PrinterType::kLocal);
+  handler->StartGetCapability(
+      printer_name,
+      base::BindOnce(&PrintPreviewHandlerChromeOS::SendPrinterSetup,
+                     weak_factory_.GetWeakPtr(), callback_id, printer_name));
+}
+
+void PrintPreviewHandlerChromeOS::HandleGetEulaUrl(
+    const base::ListValue& args) {
+  CHECK_EQ(2U, args.size());
+  MaybeAllowJavascript();
+
+  const std::string& callback_id = args[0].GetString();
+  const std::string& destination_id = args[1].GetString();
+
+  PrinterHandler* handler = GetPrinterHandler(mojom::PrinterType::kLocal);
+  handler->StartGetEulaUrl(
+      destination_id, base::BindOnce(&PrintPreviewHandlerChromeOS::SendEulaUrl,
+                                     weak_factory_.GetWeakPtr(), callback_id));
+}
+
+void PrintPreviewHandlerChromeOS::SendEulaUrl(const std::string& callback_id,
+                                              const std::string& eula_url) {
+  VLOG(1) << "Get PPD license finished";
+  ResolveJavascriptCallback(base::Value(callback_id), base::Value(eula_url));
+}
+
+// Resolves the callback with a PrinterSetupResponse object (defined in
+// chrome/browser/resources/print_preview/native_layer_cros.js) or rejects it
+// if `destination_info` does not contain a capabilities dictionary.
+// `destination_info` is a CapabilitiesResponse object (defined in
+// chrome/browser/resources/print_preview/native_layer.js).
+void PrintPreviewHandlerChromeOS::SendPrinterSetup(
+    const std::string& callback_id,
+    const std::string& printer_name,
+    base::DictValue destination_info) {
+  base::DictValue* caps_value = destination_info.FindDict(kSettingCapabilities);
+  if (!caps_value) {
+    VLOG(1) << "Printer setup failed";
+    RejectJavascriptCallback(base::Value(callback_id), base::Value());
+    return;
+  }
+
+  FilterContinuousFeedMediaSizes(*caps_value);
+  base::DictValue response;
+  response.Set("printerId", printer_name);
+  response.Set("capabilities", std::move(*caps_value));
+  base::DictValue* printer = destination_info.FindDict(kPrinter);
+  if (printer) {
+    base::DictValue* policies_value = printer->FindDict(kSettingPolicies);
+    if (policies_value) {
+      response.Set("policies", std::move(*policies_value));
+    }
+  }
+  ResolveJavascriptCallback(base::Value(callback_id), response);
+}
+
+PrintPreviewHandler* PrintPreviewHandlerChromeOS::GetPrintPreviewHandler() {
+  PrintPreviewUI* ui = web_ui()->GetController()->GetAs<PrintPreviewUI>();
+  CHECK(ui);
+  return ui->handler();
+}
+
+PrinterHandler* PrintPreviewHandlerChromeOS::GetPrinterHandler(
+    mojom::PrinterType printer_type) {
+  return GetPrintPreviewHandler()->GetPrinterHandler(printer_type);
+}
+
+void PrintPreviewHandlerChromeOS::MaybeAllowJavascript() {
+  if (!IsJavascriptAllowed() &&
+      GetPrintPreviewHandler()->IsJavascriptAllowed()) {
+    AllowJavascript();
+  }
+}
+
+void PrintPreviewHandlerChromeOS::OnGotExtensionPrinterInfo(
+    const std::string& callback_id,
+    const base::DictValue& printer_info) {
+  if (printer_info.empty()) {
+    RejectJavascriptCallback(base::Value(callback_id), base::Value());
+  } else {
+    ResolveJavascriptCallback(base::Value(callback_id), printer_info);
+  }
+}
+
+void PrintPreviewHandlerChromeOS::HandleRequestPrinterStatusUpdate(
+    const base::ListValue& args) {
+  CHECK_EQ(2U, args.size());
+
+  const std::string& callback_id = args[0].GetString();
+  const std::string& printer_id = args[1].GetString();
+
+  MaybeAllowJavascript();
+  PrinterHandler* handler = GetPrinterHandler(mojom::PrinterType::kLocal);
+  handler->StartPrinterStatusRequest(
+      printer_id,
+      base::BindOnce(&PrintPreviewHandlerChromeOS::
+                         HandleRequestPrinterStatusUpdateCompletion,
+                     weak_factory_.GetWeakPtr(), base::Value(callback_id)));
+}
+
+void PrintPreviewHandlerChromeOS::HandleRequestPrinterStatusUpdateCompletion(
+    base::Value callback_id,
+    std::optional<base::DictValue> result) {
+  if (result) {
+    ResolveJavascriptCallback(callback_id, *result);
+  } else {
+    ResolveJavascriptCallback(callback_id, base::Value());
+  }
+}
+
+void PrintPreviewHandlerChromeOS::HandleChoosePrintServers(
+    const base::ListValue& args) {
+  CHECK_EQ(1U, args.size());
+
+  const base::Value& val = args[0];
+  std::vector<std::string> print_server_ids;
+  for (const auto& id : val.GetList()) {
+    print_server_ids.push_back(id.GetString());
+  }
+  MaybeAllowJavascript();
+  FireWebUIListener("server-printers-loading", base::Value(true));
+  ash::PrintServersManager* print_servers_manager = GetPrintServersManager();
+  if (!print_servers_manager) {
+    PRINTER_LOG(DEBUG) << "PrintServersManager not available";
+    return;
+  }
+  print_servers_manager->ChoosePrintServer(print_server_ids);
+}
+
+void PrintPreviewHandlerChromeOS::HandleGetPrintServersConfig(
+    const base::ListValue& args) {
+  CHECK(args[0].is_string());
+  std::string callback_id = args[0].GetString();
+  CHECK(!callback_id.empty());
+  MaybeAllowJavascript();
+  ash::PrintServersManager* print_servers_manager = GetPrintServersManager();
+  if (!print_servers_manager) {
+    PRINTER_LOG(DEBUG) << "PrintServersManager not available";
+    ResolveJavascriptCallback(base::Value(callback_id), base::Value());
+    return;
+  }
+  ResolveJavascriptCallback(
+      base::Value(callback_id),
+      PrintServersConfigToValue(
+          print_servers_manager->GetPrintServersConfig()));
+}
+
+void PrintPreviewHandlerChromeOS::HandleRecordPrintAttemptOutcome(
+    const base::ListValue& args) {
+  CHECK(args[0].is_int());
+  chromeos::PrintAttemptOutcome result =
+      static_cast<chromeos::PrintAttemptOutcome>(args[0].GetInt());
+  base::UmaHistogramEnumeration("PrintPreview.PrintAttemptOutcome", result);
+}
+
+void PrintPreviewHandlerChromeOS::OnPrintServersChanged(
+    const ash::PrintServersConfig& config) {
+  MaybeAllowJavascript();
+  FireWebUIListener("print-servers-config-changed",
+                    PrintServersConfigToValue(config));
+}
+
+void PrintPreviewHandlerChromeOS::OnServerPrintersChanged(
+    const std::vector<ash::PrinterDetector::DetectedPrinter>&) {
+  MaybeAllowJavascript();
+  FireWebUIListener("server-printers-loading", base::Value(false));
+}
+
+content::WebContents* PrintPreviewHandlerChromeOS::GetInitiator() {
+  if (this->test_initiator_) {
+    return this->test_initiator_;
+  }
+
+  auto* dialog_controller = PrintPreviewDialogController::GetInstance();
+  CHECK(dialog_controller);
+  return dialog_controller->GetInitiator(web_ui()->GetWebContents());
+}
+
+void PrintPreviewHandlerChromeOS::HandleGetShowManagePrinters(
+    const base::ListValue& args) {
+  CHECK_EQ(1U, args.size());
+  CHECK(args[0].is_string());
+
+  // AllowJavascript needs to be called here instead of relying on
+  // `HandleGetInitialSettings` due to timing of calls.
+  if (!IsJavascriptAllowed()) {
+    AllowJavascript();
+  }
+
+  auto* initiator = this->GetInitiator();
+  if (initiator == nullptr) {
+    ResolveJavascriptCallback(args[0], base::Value(false));
+    return;
+  }
+
+  const bool domain_is_os_settings =
+      initiator->GetLastCommittedURL().DomainIs(ash::kChromeUIOSSettingsHost);
+  ResolveJavascriptCallback(args[0], base::Value(!domain_is_os_settings));
+}
+
+void PrintPreviewHandlerChromeOS::HandleObserveLocalPrinters(
+    const base::ListValue& args) {
+  CHECK_EQ(1U, args.size());
+  CHECK(args[0].is_string());
+  const std::string& callback_id = args[0].GetString();
+
+  if (!local_printer_) {
+    PRINTER_LOG(DEBUG) << "Local printer not available";
+    ResolveJavascriptCallback(callback_id, base::ListValue());
+    return;
+  }
+
+  CHECK(user_manager::UserManager::IsInitialized());
+  CHECK(user_manager::UserManager::Get()->IsUserLoggedIn());
+  AccountId account_id =
+      session_manager::SessionManager::Get()->GetPrimarySession()->account_id();
+  if (!local_printers_observation_.IsObserving()) {
+    ash::CupsPrintersManager* printers_manager =
+        ash::CupsPrintersManagerFactory::GetForBrowserContext(
+            ash::BrowserContextHelper::Get()->GetBrowserContextByAccountId(
+                account_id));
+    local_printers_observation_.Observe(printers_manager);
+  }
+  local_printer_->GetPrinters(
+      // TODO(crbug.com/354842935): Replace by ash::AnnotatedAccountId.
+      // TODO(crbug.com/479647640): Check if we should use current user than
+      // primary user.
+      account_id,
+      base::BindOnce(ConvertPrintersToValues)
+          .Then(base::BindOnce(
+              &PrintPreviewHandlerChromeOS::ResolveJavascriptCallback,
+              weak_factory_.GetWeakPtr(), callback_id)));
+}
+
+void PrintPreviewHandlerChromeOS::OnLocalPrintersUpdated() {
+  if (!local_printer_) {
+    PRINTER_LOG(DEBUG) << "Local printer not available";
+    return;
+  }
+
+  local_printer_->GetPrinters(
+      // TODO(crbug.com/354842935): Replace by ash::AnnotatedAccountId.
+      // TODO(crbug.com/479647640): Check if we should use current user than
+      // primary user.
+      session_manager::SessionManager::Get()->GetPrimarySession()->account_id(),
+      base::BindOnce(ConvertPrintersToValues)
+          .Then(base::BindOnce(
+              [](base::WeakPtr<PrintPreviewHandlerChromeOS> self,
+                 base::ListValue value) {
+                if (!self) {
+                  return;
+                }
+                self->FireWebUIListener("local-printers-updated", value);
+              },
+              weak_factory_.GetWeakPtr())));
+}
+
+void PrintPreviewHandlerChromeOS::SetInitiatorForTesting(
+    content::WebContents* test_initiator) {
+  this->test_initiator_ = test_initiator;
+}
+
+ash::PrintServersManager*
+PrintPreviewHandlerChromeOS::GetPrintServersManager() {
+  // TODO(crbug.com/479647640): Check if we should use current user instead of
+  // primary user.
+  const auto* primary_session =
+      session_manager::SessionManager::Get()->GetPrimarySession();
+  CHECK(primary_session);
+  Profile* profile = Profile::FromBrowserContext(
+      ash::BrowserContextHelper::Get()->GetBrowserContextByAccountId(
+          primary_session->account_id()));
+  CHECK(profile);
+  ash::CupsPrintersManager* printers_manager =
+      ash::CupsPrintersManagerFactory::GetForBrowserContext(profile);
+  CHECK(printers_manager);
+  return printers_manager->GetPrintServersManager();
+}
+
+}  // namespace printing

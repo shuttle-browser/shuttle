@@ -1,0 +1,6 @@
+include_rules = [
+  "+components/url_formatter",
+  "+services/media_session/public",
+  "+third_party/skia/include/core",
+  "+ui",
+]

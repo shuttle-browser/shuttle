@@ -1,0 +1,40 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.privacy_guide;
+
+import static org.chromium.chrome.browser.privacy_guide.PrivacyGuideUtils.canUpdateHistorySyncValue;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.safe_browsing.SafeBrowsingState;
+import org.chromium.components.browser_ui.site_settings.WebsitePreferenceBridge;
+import org.chromium.components.content_settings.ContentSettingsType;
+
+/** Computes for each privacy guide step whether it should be displayed or not. */
+@NullMarked
+class StepDisplayHandlerImpl implements StepDisplayHandler {
+    private final Profile mProfile;
+
+    StepDisplayHandlerImpl(Profile profile) {
+        mProfile = profile;
+    }
+
+    @Override
+    public boolean shouldDisplayHistorySync() {
+        return canUpdateHistorySyncValue(mProfile);
+    }
+
+    @Override
+    public boolean shouldDisplaySafeBrowsing() {
+        return PrivacyGuideUtils.getSafeBrowsingState(mProfile)
+                != SafeBrowsingState.NO_SAFE_BROWSING;
+    }
+
+    @Override
+    public boolean shouldDisplayCookies() {
+        // Only show third-party cookies step if first-party cookies are allowed.
+        return WebsitePreferenceBridge.isCategoryEnabled(mProfile, ContentSettingsType.COOKIES);
+    }
+}

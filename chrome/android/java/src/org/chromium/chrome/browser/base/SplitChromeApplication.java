@@ -1,0 +1,371 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.base;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.content.Context;
+import android.content.pm.PackageManager;
+import android.content.res.Resources;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.SystemClock;
+import android.util.ArraySet;
+
+import org.jni_zero.JniZero;
+
+import org.chromium.base.ActivityLifecycleCallbacksAdapter;
+import org.chromium.base.BaseSwitches;
+import org.chromium.base.BundleUtils;
+import org.chromium.base.CommandLine;
+import org.chromium.base.ContextUtils;
+import org.chromium.base.JavaUtils;
+import org.chromium.base.TraceEvent;
+import org.chromium.base.library_loader.LibraryLoader;
+import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.build.BuildConfig;
+import org.chromium.build.annotations.IdentifierNameString;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.init.InitializeFeatureList;
+import org.chromium.chrome.modules.on_demand.OnDemandModule;
+import org.chromium.components.variations.firstrun.VariationsSeedFetcher;
+
+import java.util.concurrent.CountDownLatch;
+
+/**
+ * Application class for Chrome that knows how to deal with isolated splits. This class will perform
+ * any necessary initialization for non-browser processes without loading code from the chrome
+ * split. In the browser process, the necessary logic is loaded from the chrome split using
+ * reflection.
+ */
+@NullMarked
+public class SplitChromeApplication extends SplitCompatApplication {
+
+    @SuppressWarnings("FieldCanBeFinal") // @IdentifierNameString requires non-final
+    private static @IdentifierNameString String sImplClassName =
+            "org.chromium.chrome.browser.ChromeApplicationImpl";
+
+    @SuppressWarnings("FieldCanBeFinal") // @IdentifierNameString requires non-final
+    private static @IdentifierNameString String sChromePreloadName =
+            "org.chromium.chrome.browser.ChromeTabbedActivity$Preload";
+
+    @SuppressWarnings("FieldCanBeFinal") // @IdentifierNameString requires non-final
+    private static @IdentifierNameString String sOnDemandPreloadName =
+            "org.chromium.chrome.modules.on_demand.OnDemandModuleEntryPointsImpl";
+
+    private static final Object sSplitLock = new Object();
+    private static final ArraySet<String> sCachedSplits = new ArraySet<>();
+
+    @SuppressLint("StaticFieldLeak")
+    private static @Nullable SplitPreloader sSplitPreloader;
+
+    private final String mChromeApplicationClassName;
+    private @Nullable Resources mResources;
+
+    private final CountDownLatch mWarmUpClassLoaderLatch = new CountDownLatch(1);
+
+    public SplitChromeApplication() {
+        this(sImplClassName);
+    }
+
+    public SplitChromeApplication(String chromeApplicationClassName) {
+        mChromeApplicationClassName = chromeApplicationClassName;
+    }
+
+    @Override
+    public void onCreate() {
+        finishPreload(CHROME_SPLIT_NAME);
+        super.onCreate();
+        // setClassLoader() must be called before any values are queried for it to be used for
+        // nested Parcelables & Bundles. The framework queries the bundle before
+        // Activity.onCreate(), but not before onActivityPreCreated().
+        // https://crbug.com/40877199, https://crbug.com/549795122
+        registerActivityLifecycleCallbacks(
+                new ActivityLifecycleCallbacksAdapter() {
+                    @Override
+                    public void onActivityPreCreated(
+                            Activity activity, @Nullable Bundle savedInstanceState) {
+                        if (savedInstanceState == null) {
+                            return;
+                        }
+                        ClassLoader splitClassLoader = BundleUtils.getSplitCompatClassLoader();
+                        savedInstanceState.setClassLoader(splitClassLoader);
+                        BundleUtils.restoreLoadedSplits(savedInstanceState);
+                        // https://cs.android.com/search?q=Activity.java%20symbol:onRestoreInstanceState
+                        Bundle windowState =
+                                savedInstanceState.getBundle("android:viewHierarchyState");
+                        if (windowState != null) {
+                            windowState.setClassLoader(splitClassLoader);
+                        }
+                        // Eager unmarshalling is required for classes using AndroidX's
+                        // SavedState, since it overrides the ClassLoader that we set here.
+                        // https://crbug.com/527604007#comment17
+                        Bundle fragmentsState =
+                                savedInstanceState.getBundle("android:support:fragments");
+                        if (fragmentsState != null) {
+                            forceInflateBundleValues(fragmentsState, splitClassLoader);
+                        }
+                    }
+                });
+    }
+
+    @Override
+    protected void attachBaseContext(Context context) {
+        if (isBrowserProcess()) {
+            setImplSupplier(
+                    () ->
+                            (Impl)
+                                    BundleUtils.newInstance(
+                                            mChromeApplicationClassName, CHROME_SPLIT_NAME));
+        } else {
+            setImplSupplier(this::createNonBrowserApplication);
+        }
+        // We need to call setImplSupplier before continuing attachBaseContext. See
+        // crbug.com/395261363 for details.
+        super.attachBaseContext(context);
+    }
+
+    private static @Nullable String getPreloadClassName(String split) {
+        if (split.equals(CHROME_SPLIT_NAME)) {
+            return sChromePreloadName;
+        }
+        if (split.equals(OnDemandModule.SPLIT_NAME)) {
+            return sOnDemandPreloadName;
+        }
+        return null;
+    }
+
+    private Context createContextForSplitNoWait(String name) {
+        synchronized (sSplitLock) {
+            boolean shouldRecordHistogram = !sCachedSplits.contains(name);
+            try {
+                long startTime = SystemClock.uptimeMillis();
+                Context context = super.createContextForSplit(name);
+                if (shouldRecordHistogram) {
+                    // It is possible that the framework will load the split for us and cache the
+                    // ClassLoader, making this unnaturally quick. Locally we could not reproduce
+                    // this, but these entry points almost certainly exist.
+                    RecordHistogram.recordTimesHistogram(
+                            "Android.IsolatedSplits.ContextCreateTime2." + name,
+                            SystemClock.uptimeMillis() - startTime);
+                    sCachedSplits.add(name);
+                    String preloadClass = getPreloadClassName(name);
+                    if (preloadClass != null) {
+                        long loadStartTime = SystemClock.uptimeMillis();
+                        try {
+                            context.getClassLoader().loadClass(preloadClass);
+                        } catch (ReflectiveOperationException e) {
+                            throw new RuntimeException(
+                                    "Preload of "
+                                            + preloadClass
+                                            + " for split "
+                                            + name
+                                            + " failed.");
+                        }
+                        long endTime = SystemClock.uptimeMillis();
+                        RecordHistogram.recordTimesHistogram(
+                                "Android.IsolatedSplits.LoadFirstClassTime." + name,
+                                endTime - loadStartTime);
+                        RecordHistogram.recordTimesHistogram(
+                                "Android.IsolatedSplits.ContextCreateTime3." + name,
+                                endTime - startTime);
+                    }
+                }
+                return context;
+            } catch (PackageManager.NameNotFoundException e) {
+                throw JavaUtils.throwUnchecked(e);
+            }
+        }
+    }
+
+    /**
+     * From a reading of Android's source code, it appears that the only calls to this function from
+     * the framework are when installing a Content Provider, handling a Broadcast Receiver, or
+     * creating a Service. We only care about this method being called for 2 reasons - first, that
+     * we can finish our preload (which won't happen in the case of the framework starting us) and
+     * second because we emit an UMA histogram we're interested in (where these instances are rare
+     * enough relative to typical startups that we are fine just getting UMA for typical startups).
+     */
+    @Override
+    public Context createContextForSplit(String name) {
+        try (TraceEvent te = TraceEvent.scoped("SplitChromeApplication.createContextForSplit")) {
+            // Wait for any splits that are preloading so the framework does not have a race
+            // condition when updating its class loader cache (b/172602571).
+            finishPreload(name);
+            return createContextForSplitNoWait(name);
+        }
+    }
+
+    private void loadNativeLibraryAndInitFeatureList() {
+        if (CommandLine.getInstance().hasSwitch(BaseSwitches.DISABLE_NATIVE_INITIALIZATION)) {
+            return;
+        }
+
+        LibraryLoader.getInstance().ensureInitialized();
+
+        if (BuildConfig.IS_FOR_TEST) {
+            // For test builds, we should initialize the feature list early to apply the
+            // fieldtrial_testing_config.json.
+            ContextUtils.sDoFeatureListInitHookForTesting =
+                    InitializeFeatureList::initializeFeatureList;
+        } else if (!BuildConfig.IS_CHROME_BRANDED || !VariationsSeedFetcher.shouldFetchSeed()) {
+            // For non-Chrome branded builds, we should initialize the feature list early to
+            // apply the fieldtrial_testing_config.json. Otherwise, we should initialize the
+            // feature list early in non-first run when we are not fetching the first run
+            // variations seed.
+            long startTimeMs = SystemClock.uptimeMillis();
+            InitializeFeatureList.initializeFeatureList();
+            long endTimeMs = SystemClock.uptimeMillis();
+            RecordHistogram.recordTimesHistogram(
+                    "Startup.Android.InitializeFeatureListTime", endTimeMs - startTimeMs);
+        }
+    }
+
+    private void warmUpClassLoader(Context chromeContext) {
+        // A new thread is started here because we do not want to delay returning the chrome
+        // Context, since that slows down startup. This thread must be a HandlerThread because
+        // AsyncInitializationActivity (a base class of ChromeTabbedActivity) creates a Handler,
+        // so needs to have a Looper prepared.
+        HandlerThread thread = new HandlerThread("ActivityPreload");
+        thread.start();
+        new Handler(thread.getLooper())
+                .post(
+                        () -> {
+                            try {
+                                mWarmUpClassLoaderLatch.await();
+                            } catch (InterruptedException e) {
+                                throw new RuntimeException(e);
+                            }
+                            try {
+                                // Create a throwaway instance of ChromeTabbedActivity. This will
+                                // warm up the chrome ClassLoader, and perform loading of classes
+                                // used early in startup in the background.
+                                Class<?> chromePreloadClass =
+                                        chromeContext
+                                                .getClassLoader()
+                                                .loadClass(sChromePreloadName);
+                                if (!ChromeFeatureList.sTweakApplicationPreloadSkipNewInstance
+                                        .isEnabled()) {
+                                    var _ = chromePreloadClass.newInstance();
+                                }
+                            } catch (ReflectiveOperationException e) {
+                                throw new RuntimeException(e);
+                            }
+                            thread.quit();
+                        });
+    }
+
+    @Override
+    protected void performBrowserProcessPreloading(Context context) {
+        if (ChromeFeatureList.sTweakApplicationPreloadLoadNativeFirst.isEnabled()) {
+            loadNativeLibraryAndInitFeatureList();
+        }
+
+        // The chrome split has a large amount of code, which can slow down startup. Loading
+        // this in the background allows us to do this in parallel with startup tasks which do
+        // not depend on code in the chrome split.
+        sSplitPreloader = new SplitPreloader(context);
+        // If the chrome module is not enabled or isolated splits are not supported (e.g. in Android
+        // N), the onComplete function will run immediately so it must handle the case where the
+        // base context of the application has not been set yet.
+        sSplitPreloader.preload(
+                CHROME_SPLIT_NAME,
+                new SplitPreloader.PreloadHooks() {
+                    @Override
+                    public void runImmediatelyInBackgroundThread(Context chromeContext) {
+                        if (ChromeFeatureList.sTweakApplicationPreloadSkipWarmUp.isEnabled()) {
+                            return;
+                        }
+                        warmUpClassLoader(chromeContext);
+                        if (!ChromeFeatureList.sTweakApplicationPreloadMoveWarmUp.isEnabled()) {
+                            mWarmUpClassLoaderLatch.countDown();
+                        }
+                    }
+
+                    @Override
+                    public void runInUiThread(Context chromeContext) {
+                        // If the chrome module is not enabled or isolated splits are not supported,
+                        // chromeContext will have the same ClassLoader as the base context, so no
+                        // need to replace the ClassLoaders here.
+                        if (!context.getClassLoader().equals(chromeContext.getClassLoader())) {
+                            // Replace the application Context's ClassLoader with the chrome
+                            // ClassLoader, because the application ClassLoader is expected to be
+                            // able to access all chrome classes.
+                            BundleUtils.replaceClassLoader(
+                                    SplitChromeApplication.this, chromeContext.getClassLoader());
+                            JniZero.setJniClassLoader(BundleUtils.getSplitCompatClassLoader());
+                            // Resources holds a reference to a ClassLoader. Make our Application's
+                            // getResources() return a reference to the Chrome split's resources
+                            // since there are a spots where ContextUtils.getApplicationContext()
+                            // is used to retrieve resources (https://crbug.com/40815958).
+                            mResources = chromeContext.getResources();
+                        }
+                    }
+
+                    @Override
+                    public Context createIsolatedSplitContext(String name) {
+                        return createContextForSplitNoWait(name);
+                    }
+                });
+
+        if (!ChromeFeatureList.sTweakApplicationPreloadLoadNativeFirst.isEnabled()) {
+            loadNativeLibraryAndInitFeatureList();
+        }
+
+        if (ChromeFeatureList.sTweakApplicationPreloadMoveWarmUp.isEnabled()) {
+            mWarmUpClassLoaderLatch.countDown();
+        }
+    }
+
+    @Override
+    public Resources getResources() {
+        // If the cached resources from the Chrome split are available use those. Note that
+        // retrieving resources will use resources from the base split until the Chrome split is
+        // fully loaded. We don't want to ensure the Chrome split is loaded here because resources
+        // may be accessed early in startup, and forcing a load here will reduce the benefits of
+        // preloading the Chrome split in the background.
+        if (mResources != null) {
+            return mResources;
+        }
+        return getBaseContext().getResources();
+    }
+
+    /** Waits for the specified split to finish preloading if necessary. */
+    public static void finishPreload(String name) {
+        if (sSplitPreloader != null) {
+            sSplitPreloader.wait(name);
+        }
+    }
+
+    protected Impl createNonBrowserApplication() {
+        return new Impl();
+    }
+
+    /**
+     * Sets the ClassLoader on the given bundle and all nested bundles.
+     *
+     * <p>Iterates all values, and so also triggers unmarshalling of all values.
+     */
+    private static void forceInflateBundleValues(Bundle bundle, ClassLoader classLoader) {
+        bundle.setClassLoader(classLoader);
+        for (String key : bundle.keySet()) {
+            Object value;
+            try {
+                value = bundle.get(key);
+            } catch (Exception e) {
+                // Ignore unmarshalling errors.
+                continue;
+            }
+            // Bundles could also be nested in: Bundle[], List<?>, SparseArray<?>, but that has so
+            // far not come up.
+            if (value instanceof Bundle b) {
+                forceInflateBundleValues(b, classLoader);
+            }
+        }
+    }
+}

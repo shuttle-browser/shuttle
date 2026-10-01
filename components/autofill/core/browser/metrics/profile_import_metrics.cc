@@ -1,0 +1,547 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/autofill/core/browser/metrics/profile_import_metrics.h"
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include <algorithm>
+#include <optional>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "base/i18n/case_conversion.h"
+#include "base/i18n/char_iterator.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/notreached.h"
+#include "base/strings/strcat.h"
+#include "components/autofill/core/browser/data_manager/addresses/address_data_cleaner.h"
+#include "components/autofill/core/browser/data_model/addresses/autofill_profile.h"
+#include "components/autofill/core/browser/data_model/addresses/autofill_profile_comparator.h"
+#include "components/autofill/core/browser/data_model/transliterator.h"
+#include "components/autofill/core/browser/data_quality/addresses/address_import_requirement_util.h"
+#include "components/autofill/core/browser/field_types.h"
+#include "components/autofill/core/browser/form_import/addresses/autofill_profile_import_process.h"
+#include "components/autofill/core/browser/foundations/autofill_client.h"
+#include "components/autofill/core/browser/metrics/autofill_metrics_util.h"
+#include "components/autofill/core/common/mojom/autofill_types.mojom-shared.h"
+#include "services/metrics/public/cpp/ukm_builders.h"
+#include "services/metrics/public/cpp/ukm_recorder.h"
+#include "services/metrics/public/cpp/ukm_source_id.h"
+#include "third_party/icu/source/common/unicode/uchar.h"
+#include "third_party/icu/source/common/unicode/umachine.h"
+#include "third_party/icu/source/common/unicode/urename.h"
+
+namespace autofill::autofill_metrics {
+
+namespace {
+
+const char* GetAddressPromptDecisionMetricsSuffix(
+    AutofillClient::AddressPromptUserDecision decision) {
+  switch (decision) {
+    case AutofillClient::AddressPromptUserDecision::kUndefined:
+      return ".Undefined";
+    case AutofillClient::AddressPromptUserDecision::kUserNotAsked:
+      return ".UserNotAsked";
+    case AutofillClient::AddressPromptUserDecision::kAccepted:
+      return ".Accepted";
+    case AutofillClient::AddressPromptUserDecision::kDeclined:
+      return ".Declined";
+    case AutofillClient::AddressPromptUserDecision::kEditAccepted:
+      return ".EditAccepted";
+    case AutofillClient::AddressPromptUserDecision::kEditDeclined:
+      return ".EditDeclined";
+    case AutofillClient::AddressPromptUserDecision::kNever:
+      return ".Never";
+    case AutofillClient::AddressPromptUserDecision::kIgnored:
+      return ".Ignored";
+    case AutofillClient::AddressPromptUserDecision::kMessageTimeout:
+      return ".MessageTimeout";
+    case AutofillClient::AddressPromptUserDecision::kMessageDeclined:
+      return ".MessageDeclined";
+    case AutofillClient::AddressPromptUserDecision::kAutoDeclined:
+      return ".AutoDeclined";
+  }
+  NOTREACHED();
+}
+
+AddressValidZipCodeSeparatorMetric GetAddressValidZipCodeSeparatorMetric(
+    UChar32 code_point) {
+  switch (code_point) {
+    case 0x002D:
+      return AddressValidZipCodeSeparatorMetric::kHyphenMinus;
+    case 0x2013:
+      return AddressValidZipCodeSeparatorMetric::kEnDash;
+    case 0x2014:
+      return AddressValidZipCodeSeparatorMetric::kEmDash;
+    case 0x2010:
+      return AddressValidZipCodeSeparatorMetric::kHyphen;
+    case 0x2011:
+      return AddressValidZipCodeSeparatorMetric::kNonBreakingHyphen;
+    case 0x2212:
+      return AddressValidZipCodeSeparatorMetric::kMinusSign;
+    case 0x02D7:
+      return AddressValidZipCodeSeparatorMetric::kModifierMinus;
+    case 0x2012:
+      return AddressValidZipCodeSeparatorMetric::kFigureDash;
+    case 0x2015:
+      return AddressValidZipCodeSeparatorMetric::kHorizontalBar;
+    case 0xFE63:
+      return AddressValidZipCodeSeparatorMetric::kSmallHyphenMinus;
+    case 0xFF0D:
+      return AddressValidZipCodeSeparatorMetric::kFullwidthHyphenMinus;
+    case 0x0020:
+      return AddressValidZipCodeSeparatorMetric::kSpace;
+    case 0x00A0:
+      return AddressValidZipCodeSeparatorMetric::kNonBreakingSpace;
+    case 0x2002:
+      return AddressValidZipCodeSeparatorMetric::kEnSpace;
+    case 0x2003:
+      return AddressValidZipCodeSeparatorMetric::kEmSpace;
+    case 0x2009:
+      return AddressValidZipCodeSeparatorMetric::kThinSpace;
+    case 0x3000:
+      return AddressValidZipCodeSeparatorMetric::kIdeographicSpace;
+    case 0x2007:
+      return AddressValidZipCodeSeparatorMetric::kFigureSpace;
+    case 0x202F:
+      return AddressValidZipCodeSeparatorMetric::kNarrowNonBreakingSpace;
+    default:
+      return AddressValidZipCodeSeparatorMetric::kOther;
+  }
+}
+
+// LINT.IfChange(GetImportTypeMetricsString)
+
+std::string_view GetImportTypeEditedMetricsString(
+    AutofillProfileImportType type) {
+  switch (type) {
+    case AutofillProfileImportType::kNewProfile:
+      return "NewProfile";
+    case AutofillProfileImportType::kConfirmableMerge:
+    case AutofillProfileImportType::kConfirmableMergeAndSilentUpdate:
+      return "UpdateProfile";
+    case AutofillProfileImportType::kProfileMigration:
+    case AutofillProfileImportType::kProfileMigrationAndSilentUpdate:
+      return "MigrateProfile";
+    case AutofillProfileImportType::kHomeAndWorkSuperset:
+      return "HomeAndWorkSuperset";
+    case AutofillProfileImportType::kNameEmailSuperset:
+      return "NameEmailSuperset";
+    case AutofillProfileImportType::kHomeWorkNameEmailMerge:
+      return "HomeWorkNameEmailMerge";
+    // Those import types do not cause save/update/migrate/merge bubble to be
+    // displayed, thus they will never lead to emission of this metric.
+    case AutofillProfileImportType::kDuplicateImport:
+    case AutofillProfileImportType::kSilentUpdate:
+    case AutofillProfileImportType::kSuppressedNewProfile:
+    case AutofillProfileImportType::kSuppressedConfirmableMergeAndSilentUpdate:
+    case AutofillProfileImportType::kSuppressedConfirmableMerge:
+    case AutofillProfileImportType::kImportTypeUnspecified:
+      NOTREACHED();
+  }
+  NOTREACHED();
+}
+
+// LINT.ThenChange(//tools/metrics/histograms/metadata/autofill/histograms.xml:Autofill.ProfileImport.EditedType.ImportTypes)
+
+// Calculates a bitmask representing the categories of silent updates that
+// occurred.
+// The bitmask is constructed by or'ing the `FieldMergeCategory`s enums values
+// corresponding to the diffs provided as arguments to this method.
+int CalculateSilentUpdateMergeCategoryBitmask(
+    bool has_empty_to_non_empty_diff,
+    bool has_capitalization_only_diff,
+    bool has_diacritic_and_capitalization_only_diff) {
+  int silent_update_merge_category_bitmask = 0;
+  if (has_empty_to_non_empty_diff) {
+    silent_update_merge_category_bitmask |=
+        std::to_underlying(FieldMergeCategory::kEmptyToNonEmpty);
+  }
+  if (has_capitalization_only_diff) {
+    silent_update_merge_category_bitmask |=
+        std::to_underlying(FieldMergeCategory::kCapitalizationUpdate);
+  }
+  if (has_diacritic_and_capitalization_only_diff) {
+    silent_update_merge_category_bitmask |= std::to_underlying(
+        FieldMergeCategory::kDiacriticAndCapitalizationUpdate);
+  }
+  return silent_update_merge_category_bitmask;
+}
+}  // namespace
+
+void LogAddressProfileImportUkm(
+    ukm::UkmRecorder* ukm_recorder,
+    ukm::SourceId source_id,
+    AutofillProfileImportType import_type,
+    AutofillClient::AddressPromptUserDecision user_decision,
+    const ProfileImportMetadata& profile_import_metadata,
+    size_t num_edited_fields,
+    std::optional<AutofillProfile> import_candidate,
+    const std::vector<const AutofillProfile*>& existing_profiles,
+    std::string_view app_locale) {
+  ukm::builders::Autofill2_AddressProfileImport builder(source_id);
+  builder
+      .SetAutocompleteUnrecognizedImport(
+          profile_import_metadata
+              .did_import_from_unrecognized_autocomplete_field)
+      .SetImportType(static_cast<int64_t>(import_type))
+      .SetNumberOfEditedFields(num_edited_fields)
+      .SetPhoneNumberStatus(
+          static_cast<int64_t>(profile_import_metadata.phone_import_status))
+      .SetUserDecision(static_cast<int64_t>(user_decision))
+      .SetUserHasExistingProfile(!existing_profiles.empty());
+  if (import_type == AutofillProfileImportType::kNewProfile &&
+      !existing_profiles.empty() && import_candidate) {
+    builder.SetDuplicationRank(GetDuplicationRank(
+        AddressDataCleaner::CalculateMinimalIncompatibleProfileWithTypeSets(
+            *import_candidate, existing_profiles,
+            AutofillProfileComparator(app_locale))));
+  }
+  builder.Record(ukm_recorder);
+}
+
+void LogAddressFormImportRequirementMetric(
+    AddressProfileImportRequirementMetric metric) {
+  base::UmaHistogramEnumeration("Autofill.AddressProfileImportRequirements",
+                                metric);
+}
+
+void LogAddressFormImportCountrySource(
+    const ProfileImportMetadata& profile_import_metadata) {
+  base::UmaHistogramEnumeration("Autofill.AddressProfileImportCountrySource",
+                                profile_import_metadata.country_source);
+}
+
+void LogAddressFormImportRequirementMetric(const AutofillProfile& profile) {
+  std::vector<AddressProfileImportRequirementMetric> requirements =
+      ValidateProfileImportRequirements(profile);
+  for (AddressProfileImportRequirementMetric& requirement : requirements) {
+    LogAddressFormImportRequirementMetric(requirement);
+  }
+
+  bool is_zip_missing = std::ranges::contains(
+      requirements,
+      AddressProfileImportRequirementMetric::kZipRequirementViolated);
+  bool is_state_missing = std::ranges::contains(
+      requirements,
+      AddressProfileImportRequirementMetric::kStateRequirementViolated);
+  bool is_city_missing = std::ranges::contains(
+      requirements,
+      AddressProfileImportRequirementMetric::kCityRequirementViolated);
+  bool is_line1_missing = std::ranges::contains(
+      requirements,
+      AddressProfileImportRequirementMetric::kLine1RequirementViolated);
+  const auto metric =
+      static_cast<AddressProfileImportCountrySpecificFieldRequirementsMetric>(
+          (is_zip_missing ? 0b1 : 0) | (is_state_missing ? 0b10 : 0) |
+          (is_city_missing ? 0b100 : 0) | (is_line1_missing ? 0b1000 : 0));
+  base::UmaHistogramEnumeration(
+      "Autofill.AddressProfileImportCountrySpecificFieldRequirements", metric);
+}
+
+void LogAddressFormImportStatusMetric(AddressProfileImportStatusMetric metric) {
+  base::UmaHistogramEnumeration("Autofill.AddressProfileImportStatus", metric);
+}
+
+void LogSilentUpdateMergeCategory(const AutofillProfile& old_profile,
+                                  const AutofillProfile& new_profile) {
+  bool has_capitalization_only_diff = false;
+  bool has_diacritic_and_capitalization_only_diff = false;
+  bool has_empty_to_non_empty_diff = false;
+  bool has_diff = false;
+  for (FieldType type : AutofillProfile::kDatabaseStoredTypes) {
+    const std::u16string& old_value = old_profile.GetRawInfo(type);
+    const std::u16string& new_value = new_profile.GetRawInfo(type);
+    if (old_value == new_value) {
+      continue;
+    }
+    has_diff = true;
+    if (old_value.empty() && !new_value.empty()) {
+      has_empty_to_non_empty_diff = true;
+    }
+    if (base::i18n::ToLower(old_value) == base::i18n::ToLower(new_value)) {
+      has_capitalization_only_diff = true;
+    } else if (RemoveDiacriticsAndConvertToLowerCase(
+                   old_value, old_profile.GetAddressCountryCode()) ==
+               RemoveDiacriticsAndConvertToLowerCase(
+                   new_value, new_profile.GetAddressCountryCode())) {
+      has_diacritic_and_capitalization_only_diff = true;
+    }
+  }
+  // Do not record metrics when there are no differences in the database-stored
+  // values (e.g., if only metadata or verification statuses changed).
+  if (!has_diff) {
+    return;
+  }
+  base::UmaHistogramSparse(
+      "Autofill.ProfileImport.SilentUpdateFieldMergeCategoryBitmask",
+      CalculateSilentUpdateMergeCategoryBitmask(
+          has_empty_to_non_empty_diff, has_capitalization_only_diff,
+          has_diacritic_and_capitalization_only_diff));
+}
+
+void LogProfileImportType(AutofillProfileImportType import_type) {
+  base::UmaHistogramEnumeration("Autofill.ProfileImport.ProfileImportType",
+                                import_type);
+}
+
+void LogSilentUpdatesProfileImportType(AutofillProfileImportType import_type) {
+  base::UmaHistogramEnumeration(
+      "Autofill.ProfileImport.SilentUpdatesProfileImportType", import_type);
+}
+
+void LogNewProfileImportDecision(
+    AutofillClient::AddressPromptUserDecision decision,
+    const ProfileImportMetadata& profile_import_metadata,
+    const std::vector<const AutofillProfile*>& existing_profiles,
+    const AutofillProfile& import_candidate,
+    std::string_view app_locale) {
+  constexpr std::string_view kNameBase =
+      "Autofill.ProfileImport.NewProfileDecision2.";
+  base::UmaHistogramEnumeration(base::StrCat({kNameBase, "Aggregate"}),
+                                decision);
+
+  if (existing_profiles.empty()) {
+    base::UmaHistogramEnumeration(
+        base::StrCat({kNameBase, "UserHasNoExistingProfiles"}), decision);
+  } else {
+    base::UmaHistogramEnumeration(
+        base::StrCat({kNameBase, "UserHasExistingProfile"}), decision);
+
+    int duplication_rank = GetDuplicationRank(
+        AddressDataCleaner::CalculateMinimalIncompatibleProfileWithTypeSets(
+            import_candidate, existing_profiles,
+            AutofillProfileComparator(app_locale)));
+    if (duplication_rank == 1) {
+      base::UmaHistogramEnumeration(
+          base::StrCat({kNameBase, "UserHasQuasiDuplicateProfile"}), decision);
+    }
+  }
+  if (profile_import_metadata.observed_split_zip) {
+    base::UmaHistogramEnumeration(
+        "Autofill.ProfileImport.SplitZipFields.NewProfileDecision", decision);
+  }
+}
+
+void LogHomeWorkNameEmailMergeImportDecision(
+    AutofillClient::AddressPromptUserDecision decision) {
+  base::UmaHistogramEnumeration(
+      "Autofill.ProfileImport.HomeOrWorkAndNameEmailMergeDecision", decision);
+}
+
+void LogNewProfileStorageLocation(const AutofillProfile& import_candidate) {
+  base::UmaHistogramEnumeration(
+      "Autofill.ProfileImport.StorageNewAddressIsSavedTo",
+      import_candidate.record_type());
+}
+
+void LogProfileUpdateImportDecision(
+    AutofillClient::AddressPromptUserDecision decision,
+    const std::vector<const AutofillProfile*>& existing_profiles,
+    const AutofillProfile& import_candidate,
+    std::string_view app_locale) {
+  constexpr std::string_view kNameBase =
+      "Autofill.ProfileImport.UpdateProfileDecision2.";
+  base::UmaHistogramEnumeration(base::StrCat({kNameBase, "Aggregate"}),
+                                decision);
+
+  int duplication_rank = GetDuplicationRank(
+      AddressDataCleaner::CalculateMinimalIncompatibleProfileWithTypeSets(
+          import_candidate, existing_profiles,
+          AutofillProfileComparator(app_locale)));
+  if (duplication_rank == 1) {
+    base::UmaHistogramEnumeration(
+        base::StrCat({kNameBase, "UserHasQuasiDuplicateProfile"}), decision);
+  }
+}
+
+void LogNameEmailSupersetImportDecision(
+    AutofillClient::AddressPromptUserDecision decision) {
+  base::UmaHistogramEnumeration(
+      "Autofill.ProfileImport.NameEmailSupersetProfileDecision", decision);
+}
+
+void LogHomeAndWorkSupersetImportDecision(
+    AutofillClient::AddressPromptUserDecision decision) {
+  base::UmaHistogramEnumeration(
+      "Autofill.ProfileImport.HomeAndWorkSupersetProfileDecision", decision);
+}
+
+void LogHomeAndWorkSupersetAffectedType(FieldType affected_type) {
+  base::UmaHistogramEnumeration(
+      "Autofill.ProfileImport.HomeAndWorkSupersetAffectedType",
+      ConvertSettingsVisibleFieldTypeForMetrics(affected_type));
+}
+
+void LogProfileImportTypeEditedType(AutofillProfileImportType import_type,
+                                    FieldType edited_type) {
+  base::UmaHistogramEnumeration(
+      base::StrCat({"Autofill.ProfileImport.",
+                    GetImportTypeEditedMetricsString(import_type),
+                    "EditedType"}),
+      ConvertSettingsVisibleFieldTypeForMetrics(edited_type));
+}
+
+// static
+void LogPhoneNumberImportParsingResult(bool parsed_successfully) {
+  base::UmaHistogramBoolean("Autofill.ProfileImport.PhoneNumberParsed",
+                            parsed_successfully);
+}
+
+void LogProfileUpdateAffectedType(
+    FieldType affected_type,
+    AutofillClient::AddressPromptUserDecision decision) {
+  // Record the decision-specific metric.
+  base::UmaHistogramEnumeration(
+      base::StrCat({"Autofill.ProfileImport.UpdateProfileAffectedType",
+                    GetAddressPromptDecisionMetricsSuffix(decision)}),
+      ConvertSettingsVisibleFieldTypeForMetrics(affected_type));
+
+  // But also collect an histogram for any decision.
+  base::UmaHistogramEnumeration(
+      "Autofill.ProfileImport.UpdateProfileAffectedType.Any",
+      ConvertSettingsVisibleFieldTypeForMetrics(affected_type));
+}
+
+void LogUpdateProfileNumberOfAffectedFields(
+    int number_of_edited_fields,
+    AutofillClient::AddressPromptUserDecision decision) {
+  // Record the decision-specific metric.
+  base::UmaHistogramExactLinear(
+      base::StrCat(
+          {"Autofill.ProfileImport.UpdateProfileNumberOfAffectedFields",
+           GetAddressPromptDecisionMetricsSuffix(decision)}),
+      number_of_edited_fields, /*exclusive_max=*/15);
+
+  // But also collect an histogram for any decision.
+  base::UmaHistogramExactLinear(
+      "Autofill.ProfileImport.UpdateProfileNumberOfAffectedFields.Any",
+      number_of_edited_fields, /*exclusive_max=*/15);
+}
+
+void LogProfileMigrationImportDecision(
+    AutofillClient::AddressPromptUserDecision decision) {
+  base::UmaHistogramEnumeration("Autofill.ProfileImport.MigrateProfileDecision",
+                                decision);
+}
+
+void LogZipCodeLengthMetric(std::u16string_view zip) {
+  base::UmaHistogramExactLinear(
+      "Autofill.ProfileImportValidCandidate.ZipCode.Length", zip.size(), 20);
+}
+
+void LogZipCodeSeparatorMetric(std::u16string_view zip) {
+  if (zip.empty()) {
+    return;
+  }
+
+  for (base::i18n::UTF16CharIterator it(zip); !it.end(); it.Advance()) {
+    if (!u_isalnum(it.get())) {
+      base::UmaHistogramEnumeration(
+          "Autofill.ProfileImportValidCandidate.ZipCode.Separator",
+          GetAddressValidZipCodeSeparatorMetric(it.get()));
+      return;
+    }
+  }
+
+  base::UmaHistogramEnumeration(
+      "Autofill.ProfileImportValidCandidate.ZipCode.Separator",
+      AddressValidZipCodeSeparatorMetric::kNoSeparator);
+}
+
+void LogNewProfileUserDecisionPerSubmissionSourceMetric(
+    AutofillClient::AddressPromptUserDecision user_decision,
+    mojom::SubmissionSource submission_source) {
+  enum class SupportedDecision { kAccepted = 0, kDeclined = 1, kIgnored = 2 };
+  auto supported_decision =
+      [&user_decision] -> std::optional<SupportedDecision> {
+    switch (user_decision) {
+      case AutofillClient::AddressPromptUserDecision::kUndefined:
+      case AutofillClient::AddressPromptUserDecision::kUserNotAsked:
+      case AutofillClient::AddressPromptUserDecision::kAutoDeclined:
+        // The metric is only logged for the typical user decisions.
+        return std::nullopt;
+      case AutofillClient::AddressPromptUserDecision::kEditAccepted:
+      case AutofillClient::AddressPromptUserDecision::kAccepted:
+        return SupportedDecision::kAccepted;
+      case AutofillClient::AddressPromptUserDecision::kNever:
+      case AutofillClient::AddressPromptUserDecision::kMessageDeclined:
+      case AutofillClient::AddressPromptUserDecision::kEditDeclined:
+      case AutofillClient::AddressPromptUserDecision::kDeclined:
+        return SupportedDecision::kDeclined;
+      case AutofillClient::AddressPromptUserDecision::kMessageTimeout:
+      case AutofillClient::AddressPromptUserDecision::kIgnored:
+        return SupportedDecision::kIgnored;
+    }
+  }();
+  if (!supported_decision) {
+    return;
+  }
+
+  enum class SupportedSource {
+    kSameDocumentNavigation = 0,
+    kXhrSucceeded = 1,
+    kFrameDetached = 2,
+    kProbablyFormSubmitted = 3,
+    kFormSubmission = 4
+  };
+  auto supported_source =
+      [&submission_source] -> std::optional<SupportedSource> {
+    switch (submission_source) {
+      case mojom::SubmissionSource::NONE:
+      case mojom::SubmissionSource::DOM_MUTATION_AFTER_AUTOFILL:
+        // The metric is only logged for Autofill-supported submission sources.
+        return std::nullopt;
+      case mojom::SubmissionSource::SAME_DOCUMENT_NAVIGATION:
+        return SupportedSource::kSameDocumentNavigation;
+      case mojom::SubmissionSource::XHR_SUCCEEDED:
+        return SupportedSource::kXhrSucceeded;
+      case mojom::SubmissionSource::FRAME_DETACHED:
+        return SupportedSource::kFrameDetached;
+      case mojom::SubmissionSource::PROBABLY_FORM_SUBMITTED:
+        return SupportedSource::kProbablyFormSubmitted;
+      case mojom::SubmissionSource::FORM_SUBMISSION:
+        return SupportedSource::kFormSubmission;
+    }
+  }();
+  if (!supported_source) {
+    return;
+  }
+
+  enum class DecisionPerSource {
+    kSameDocumentNavigationAccepted = 0,
+    kSameDocumentNavigationDeclined = 1,
+    kSameDocumentNavigationIgnored = 2,
+    kXhrSucceededAccepted = 3,
+    kXhrSucceededDeclined = 4,
+    kXhrSucceededIgnored = 5,
+    kFrameDetachedAccepted = 6,
+    kFrameDetachedDeclined = 7,
+    kFrameDetachedIgnored = 8,
+    kProbablyFormSubmittedAccepted = 9,
+    kProbablyFormSubmittedDeclined = 10,
+    kProbablyFormSubmittedIgnored = 11,
+    kFormSubmissionAccepted = 12,
+    kFormSubmissionDeclined = 13,
+    kFormSubmissionIgnored = 14,
+    kMaxValue = kFormSubmissionIgnored,
+  };
+  DecisionPerSource decision_per_source =
+      static_cast<DecisionPerSource>(std::to_underlying(*supported_source) * 3 +
+                                     std::to_underlying(*supported_decision));
+  base::UmaHistogramEnumeration(
+      "Autofill.ProfileImport.NewProfileUserDecisionPerSubmissionSource",
+      decision_per_source);
+}
+
+void LogRemovedPlaceholderValue(FieldType field_type) {
+  base::UmaHistogramEnumeration(
+      "Autofill.ProfileImport.PlaceholderValueRemoved.ByFieldType", field_type,
+      FieldType::MAX_VALID_FIELD_TYPE);
+}
+
+}  // namespace autofill::autofill_metrics

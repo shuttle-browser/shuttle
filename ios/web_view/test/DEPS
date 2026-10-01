@@ -1,0 +1,14 @@
+include_rules = [
+  # keep-sorted start
+  "+base",
+  "+components/autofill/ios/form_util",
+  "+components/url_formatter",
+  "+components/variations",
+  "+ios/testing",
+  "+ios/web/common/uikit_ui_util.h",
+  "+ios/web_view/public",
+  "+mojo/core/embedder",
+  "+net",
+  "+ui/base",
+  # keep-sorted end
+]

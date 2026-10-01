@@ -1,0 +1,36 @@
+<!--
+@AURALINUX-ALLOW:actions*
+@BLINK-ALLOW:actions*
+@BLINK-ALLOW:name*
+@BLINK-ALLOW:hasActions*
+@MAC-ALLOW:AXCustomActionNamesForTesting
+@WIN-ALLOW:has-actions*
+@UIA-WIN-ALLOW:*hasactions=true*
+-->
+
+<!-- A named target and a target with no accessible name. Only the named
+     target should appear in the host's action list. -->
+<div role="tablist">
+  <div role="tab" id="mixed-host" aria-actions="rename-action empty-action">
+    Document.pdf
+  </div>
+</div>
+<button id="rename-action">Rename</button>
+<button id="empty-action"></button>
+
+<!-- Target whose aria-label is only whitespace is also dropped. -->
+<div role="group" id="whitespace-host" aria-actions="archive-action whitespace-label">
+  File section
+</div>
+<button id="archive-action">Archive</button>
+<button id="whitespace-label" aria-label="   "></button>
+
+<!-- All targets lack accessible names, so kActionsIds is empty, but
+     kHasActions must still appear on this host because Core-AAM PR 1805
+     requires has-actions:true whenever aria-actions is set on a role
+     that supports it (https://github.com/w3c/aria/pull/1805). -->
+<div role="group" id="all-invalid-host" aria-actions="unnamed-btn unlabelled-btn">
+  Section with no valid actions
+</div>
+<div id="unnamed-btn" role="button"></div>
+<div id="unlabelled-btn" role="button" aria-label="  "></div>

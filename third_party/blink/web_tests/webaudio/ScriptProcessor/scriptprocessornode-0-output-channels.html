@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>
+      Test Connecting 0-output channel ScriptProcessor to Another Node
+    </title>
+    <script src="../../resources/testharness.js"></script>
+    <script src="../../resources/testharnessreport.js"></script>
+  </head>
+  <body>
+    <script>
+      test(() => {
+        const context = new OfflineAudioContext(1, 1024, 44100);
+        const analyzer = new AnalyserNode(context);
+        // Create a ScriptProcessorNode with 0 output channels.
+        const scriptNode1 = context.createScriptProcessor(1024, 11, 0);
+        // Create a ScriptProcessorNode with 1 output channel.
+        const scriptNode2 = context.createScriptProcessor(1024, 1, 1);
+
+        // Connecting a node with 0 output channels should throw
+        // an InvalidAccessError.
+        assert_throws_dom(
+            'InvalidAccessError',
+            () => { scriptNode1.connect(analyzer); },
+            'scriptNode1.connect(analyzer)');
+
+        // Connecting a node with 1 output channel should not throw an error.
+        scriptNode2.connect(analyzer);
+      }, 'Test Connecting 0-output channel ScriptProcessor to Another Node');
+    </script>
+  </body>
+</html>

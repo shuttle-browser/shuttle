@@ -1,0 +1,78 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_AUTOFILL_CORE_BROWSER_SUGGESTIONS_SUGGESTION_UTIL_H_
+#define COMPONENTS_AUTOFILL_CORE_BROWSER_SUGGESTIONS_SUGGESTION_UTIL_H_
+
+#include <vector>
+
+#include "base/containers/span.h"
+#include "components/autofill/core/browser/foundations/autofill_client.h"
+
+namespace autofill {
+
+class AutofillField;
+struct Suggestion;
+
+// `AutocompleteUnrecognizedBehavior` describes the general behavior (as per
+// `AutofillClient`) whether fields with unrecognized autocomplete value can
+// have suppressed suggestions in general. The concrete behavior is influenced
+// by the concrete `AutofillField` and the operating system.
+// See `SuppressSuggestionsForAutocompleteUnrecognizedField` below for
+// determining the behavior for a specific `AutofillField`.
+enum class AutocompleteUnrecognizedBehavior {
+  // Suggestions are suppressed for autocomplete=unrecognized fields.
+  kSuggestionsSuppressed = 0,
+  // Suggestions are allowed for autocomplete=unrecognized fields as long as
+  // `kAutofillEnableSkippingUnrecognizedAttribute` is enabled.
+  kSuggestionsAllowed = 1,
+  kMaxValue = kSuggestionsAllowed,
+};
+
+// Based on the current state of `autofill_client`, determines if fields with
+// an unrecognized autocomplete attribute, should have suggestions suppressed.
+AutocompleteUnrecognizedBehavior GetAcUnrecognizedBehavior(
+    const AutofillClient& autofill_client);
+
+// Returns true if suggestions should be suppressed on `field` because of it
+// having an unrecognized HTML autocomplete attribute.
+bool SuppressSuggestionsForAutocompleteUnrecognizedField(
+    const AutofillField& field,
+    AutocompleteUnrecognizedBehavior behavior);
+
+// Returns the main filling product based on the `trigger_source` and `types`.
+FillingProduct GetFillingProductFromSuggestionTypes(
+    base::span<const SuggestionType> types,
+    AutofillSuggestionTriggerSource trigger_source);
+
+// Updates and returns `current_suggestions` such that a root-level suggestion
+// is marked as "loading" if either it is `selected_suggestion` or any of its
+// descendants are. Otherwise, root-level suggestions are deactivated. All child
+// suggestions (at any level) are deactivated.
+std::vector<Suggestion> PrepareLoadingStateSuggestions(
+    std::vector<Suggestion> current_suggestions,
+    const Suggestion& selected_suggestion);
+
+// Returns whether undoing the last filling operation on the given field is
+// supported.
+bool ShouldOfferUndoOnField(const AutofillField& field);
+
+// Returns the "Undo Autofill" suggestion.
+Suggestion CreateUndoSuggestion();
+
+// Returns true if `suggestion` is a management footer option (e.g., "Manage
+// addresses...", "Manage payment methods...", etc.).
+bool IsManagementFooterOption(const Suggestion& suggestion);
+
+// Extend the list of suggestions by inserting the new suggestions just
+// before the footer and add a new separator between existing and new
+// suggestions. The position of the footer is determined by the last separator
+// in `suggestions`. Thus, there may be no separators between footer items.
+// TODO(crbug.com/550171676): Improve logic for finding position of footer.
+void InsertBeforeFooter(std::vector<Suggestion>& suggestions,
+                        std::vector<Suggestion> suggestions_to_be_added);
+
+}  // namespace autofill
+
+#endif  // COMPONENTS_AUTOFILL_CORE_BROWSER_SUGGESTIONS_SUGGESTION_UTIL_H_

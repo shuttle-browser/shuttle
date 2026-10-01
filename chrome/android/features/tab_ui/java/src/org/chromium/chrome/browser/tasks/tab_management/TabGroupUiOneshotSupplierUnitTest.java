@@ -1,0 +1,194 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.tasks.tab_management;
+
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import android.app.Activity;
+import android.view.ViewGroup;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+
+import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.supplier.OneshotSupplier;
+import org.chromium.base.supplier.OneshotSupplierImpl;
+import org.chromium.base.supplier.SettableNonNullObservableSupplier;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.RobolectricUtil;
+import org.chromium.chrome.browser.ActivityTabProvider;
+import org.chromium.chrome.browser.bookmarks.TabBookmarker;
+import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider;
+import org.chromium.chrome.browser.data_sharing.DataSharingTabManager;
+import org.chromium.chrome.browser.layouts.LayoutStateProvider;
+import org.chromium.chrome.browser.share.ShareDelegate;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabObserver;
+import org.chromium.chrome.browser.tab_ui.TabContentManager;
+import org.chromium.chrome.browser.tabmodel.TabCreatorManager;
+import org.chromium.chrome.browser.tabmodel.TabModel;
+import org.chromium.chrome.browser.tabmodel.TabModelSelector;
+import org.chromium.chrome.browser.theme.ThemeColorProvider;
+import org.chromium.chrome.browser.undo_tab_close_snackbar.UndoBarThrottle;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
+import org.chromium.components.browser_ui.widget.scrim.ScrimManager;
+import org.chromium.ui.modaldialog.ModalDialogManager;
+
+import java.util.function.Supplier;
+
+/** Unit tests for {@link TabGroupUiOneshotSupplier}. */
+@RunWith(BaseRobolectricTestRunner.class)
+public class TabGroupUiOneshotSupplierUnitTest {
+    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Mock private TabModelSelector mTabModelSelector;
+    @Mock private Activity mActivity;
+    @Mock private ViewGroup mViewGroup;
+    @Mock private BrowserControlsStateProvider mBrowserControlsStateProvider;
+    @Mock private ScrimManager mScrimManager;
+    @Mock private BottomSheetController mBottomSheetController;
+    @Mock private DataSharingTabManager mDataSharingTabManager;
+    @Mock private TabContentManager mTabContentManager;
+    @Mock private TabCreatorManager mTabCreatorManager;
+    @Mock private ModalDialogManager mModalDialogManager;
+    @Mock private UndoBarThrottle mUndoBarThrottle;
+
+    @Mock private Tab mTab;
+    @Mock private TabModel mTabModel;
+    @Mock private TabManagementDelegate mTabManagementDelegate;
+    @Mock private TabGroupUi mTabGroupUi;
+    @Mock private ThemeColorProvider mThemeColorProvider;
+    @Mock private Supplier<ShareDelegate> mShareDelegateSupplier;
+
+    @Captor private ArgumentCaptor<TabObserver> mTabObserverCaptor;
+
+    private final ActivityTabProvider mActivityTabProvider = new ActivityTabProvider();
+    private final MonotonicObservableSupplier<TabBookmarker> mTabBookmarkerSupplier =
+            ObservableSuppliers.alwaysNull();
+    private final SettableNonNullObservableSupplier<Boolean> mOmniboxFocusStateSupplier =
+            ObservableSuppliers.createNonNull(false);
+    private final OneshotSupplier<LayoutStateProvider> mLayoutStateProviderSupplier =
+            new OneshotSupplierImpl<>();
+
+    private TabGroupUiOneshotSupplier mTabGroupUiOneshotSupplier;
+
+    @Before
+    public void setUp() {
+        when(mTabModelSelector.getModel(anyBoolean())).thenReturn(mTabModel);
+        when(mTab.isIncognito()).thenReturn(false);
+        mTabGroupUiOneshotSupplier =
+                new TabGroupUiOneshotSupplier(
+                        mActivityTabProvider,
+                        mTabModelSelector,
+                        mActivity,
+                        mViewGroup,
+                        mBrowserControlsStateProvider,
+                        mScrimManager,
+                        mOmniboxFocusStateSupplier,
+                        mBottomSheetController,
+                        mDataSharingTabManager,
+                        mTabContentManager,
+                        mTabCreatorManager,
+                        mLayoutStateProviderSupplier,
+                        mModalDialogManager,
+                        mThemeColorProvider,
+                        mUndoBarThrottle,
+                        mTabBookmarkerSupplier,
+                        mShareDelegateSupplier);
+        when(mTabManagementDelegate.createTabGroupUi(
+                        any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(),
+                        any(), any(), any(), any(), any()))
+                .thenReturn(mTabGroupUi);
+        TabManagementDelegateProvider.setTabManagementDelegateForTesting(mTabManagementDelegate);
+    }
+
+    @After
+    public void tearDown() {
+        mTabGroupUiOneshotSupplier.destroy();
+        verify(mTab).removeObserver(any());
+    }
+
+    @Test
+    public void testNotInGroupWhenFocusedThenInGroup() {
+        when(mTabModel.isTabInTabGroup(mTab)).thenReturn(false);
+
+        mActivityTabProvider.setForTesting(mTab);
+        verify(mTab).addObserver(mTabObserverCaptor.capture());
+        verifyNoInteractions(mTabManagementDelegate);
+        assertNull(mTabGroupUiOneshotSupplier.get());
+
+        when(mTabModel.isTabInTabGroup(mTab)).thenReturn(true);
+        mTabObserverCaptor.getValue().onTabGroupIdChanged(mTab, null);
+
+        RobolectricUtil.runAllBackgroundAndUi();
+
+        verify(mTabManagementDelegate)
+                .createTabGroupUi(
+                        mActivity,
+                        mViewGroup,
+                        mBrowserControlsStateProvider,
+                        mScrimManager,
+                        mOmniboxFocusStateSupplier,
+                        mBottomSheetController,
+                        mDataSharingTabManager,
+                        mTabModelSelector,
+                        mTabContentManager,
+                        mTabCreatorManager,
+                        mLayoutStateProviderSupplier,
+                        mModalDialogManager,
+                        mThemeColorProvider,
+                        mUndoBarThrottle,
+                        mTabBookmarkerSupplier,
+                        mShareDelegateSupplier);
+        assertNotNull(mTabGroupUiOneshotSupplier.get());
+    }
+
+    @Test
+    public void testInGroupWhenFocused() {
+        when(mTabModel.isTabInTabGroup(mTab)).thenReturn(true);
+
+        mActivityTabProvider.setForTesting(mTab);
+        verify(mTab).addObserver(mTabObserverCaptor.capture());
+        verifyNoInteractions(mTabManagementDelegate);
+        assertNull(mTabGroupUiOneshotSupplier.get());
+
+        RobolectricUtil.runAllBackgroundAndUi();
+
+        verify(mTabManagementDelegate)
+                .createTabGroupUi(
+                        mActivity,
+                        mViewGroup,
+                        mBrowserControlsStateProvider,
+                        mScrimManager,
+                        mOmniboxFocusStateSupplier,
+                        mBottomSheetController,
+                        mDataSharingTabManager,
+                        mTabModelSelector,
+                        mTabContentManager,
+                        mTabCreatorManager,
+                        mLayoutStateProviderSupplier,
+                        mModalDialogManager,
+                        mThemeColorProvider,
+                        mUndoBarThrottle,
+                        mTabBookmarkerSupplier,
+                        mShareDelegateSupplier);
+        assertNotNull(mTabGroupUiOneshotSupplier.get());
+    }
+}

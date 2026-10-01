@@ -1,0 +1,123 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//chrome/common/features.gni")
+
+source_set("background") {
+  if (!is_android) {
+    sources = [
+      "background_contents.h",
+      "background_contents_service_observer.h",
+    ]
+  }
+
+  if (enable_background_contents) {
+    sources += [
+      "background_contents_navigation_throttle.h",
+      "background_contents_service.h",
+      "background_contents_service_factory.h",
+    ]
+  }
+
+  deps = [
+    "//base",
+    "//chrome/browser/profiles",
+    "//content/public/browser",
+    "//ui/base",
+    "//url",
+  ]
+
+  if (enable_extensions_core) {
+    deps += [ "//extensions/browser" ]
+  }
+}
+
+source_set("impl") {
+  if (!is_android) {
+    sources = [ "background_contents.cc" ]
+  }
+
+  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+
+  deps = [
+    ":background",
+    "//chrome/browser/profiles",
+    "//chrome/browser/profiles:profile_manager",
+    "//chrome/browser/task_manager",
+    "//services/metrics/public/cpp:ukm_builders",
+  ]
+
+  if (enable_background_contents) {
+    sources += [
+      "background_contents_navigation_throttle.cc",
+      "background_contents_service.cc",
+      "background_contents_service_factory.cc",
+    ]
+    deps += [
+      "//chrome/browser:browser_process",
+      "//chrome/browser/apps/platform_apps",
+      "//chrome/browser/extensions",
+      "//chrome/browser/notifications",
+      "//chrome/browser/ui",
+      "//components/pref_registry",
+    ]
+    if (is_chromeos) {
+      deps += [ "//ash/constants" ]
+    }
+  }
+}
+
+if (!is_android) {
+  source_set("test_support") {
+    testonly = true
+    sources = [
+      "background_contents_test_waiter.cc",
+      "background_contents_test_waiter.h",
+    ]
+    public_deps = [
+      ":background",
+      "//base",
+    ]
+    deps = [
+      "//content/test:test_support",
+      "//testing/gtest",
+    ]
+  }
+
+  if (enable_background_contents) {
+    source_set("browser_tests") {
+      testonly = true
+      defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+      sources = [ "background_contents_service_browsertest.cc" ]
+      deps = [
+        ":background",
+        "//base",
+        "//chrome/browser:browser_process",
+        "//chrome/browser/notifications",
+        "//chrome/browser/profiles",
+        "//chrome/browser/ui",
+        "//chrome/common:constants",
+        "//chrome/test:test_support",
+        "//components/prefs",
+        "//content/test:test_support",
+      ]
+    }
+
+    source_set("unit_tests") {
+      testonly = true
+      sources = [ "background_contents_service_unittest.cc" ]
+      deps = [
+        ":background",
+        "//base",
+        "//chrome/browser/profiles",
+        "//chrome/common:constants",
+        "//chrome/test:test_support",
+        "//components/prefs",
+        "//content/test:test_support",
+        "//testing/gmock",
+        "//testing/gtest",
+      ]
+    }
+  }
+}

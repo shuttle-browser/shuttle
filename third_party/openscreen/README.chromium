@@ -1,0 +1,18 @@
+Name: Open Screen Protocol Library
+Short Name: openscreen
+URL: https://chromium.googlesource.com/openscreen
+Version: N/A
+Revision: fb748e428dfda43d3b55f3fb8c98d933ef66aa1c
+Update Mechanism: Autoroll
+License: BSD-3-Clause
+License File: src/LICENSE
+Security Critical: yes
+Shipped: yes
+License Android Compatible: yes
+
+Description:
+The Open Screen Library implements the Open Screen Protocol, Multicast DNS and
+DNS-SD, and the Chromecast protocols (discovery, application control, and media
+streaming).
+
+See src/README.md for a more detailed description of the contents.

@@ -1,0 +1,956 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/signin/internal/identity_manager/account_tracker_service.h"
+
+#include <stddef.h>
+
+#include <algorithm>
+#include <sstream>
+#include <string>
+#include <string_view>
+
+#include "base/check.h"
+#include "base/command_line.h"
+#include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/logging.h"
+#include "base/memory/ptr_util.h"
+#include "base/memory/ref_counted_memory.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/metrics/histogram_macros.h"
+#include "base/notreached.h"
+#include "base/strings/string_split.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/task/task_traits.h"
+#include "base/task/thread_pool.h"
+#include "base/threading/scoped_blocking_call.h"
+#include "base/trace_event/trace_event.h"
+#include "build/build_config.h"
+#include "build/buildflag.h"
+#include "components/prefs/pref_registry_simple.h"
+#include "components/prefs/scoped_user_pref_update.h"
+#include "components/signin/internal/identity_manager/account_capabilities_constants.h"
+#include "components/signin/internal/identity_manager/account_info_util.h"
+#include "components/signin/public/base/signin_buildflags.h"
+#include "components/signin/public/base/signin_metrics.h"
+#include "components/signin/public/base/signin_pref_names.h"
+#include "components/signin/public/base/signin_switches.h"
+#include "components/signin/public/identity_manager/account_capabilities.h"
+#include "components/signin/public/identity_manager/account_info.h"
+#include "components/signin/public/identity_manager/tribool.h"
+#include "google_apis/gaia/core_account_id.h"
+#include "google_apis/gaia/gaia_id.h"
+#include "ui/gfx/image/image.h"
+
+namespace {
+
+// Account folders used for storing account related data at disk.
+const base::FilePath::CharType kAccountsFolder[] =
+    FILE_PATH_LITERAL("Accounts");
+const base::FilePath::CharType kAvatarImagesFolder[] =
+    FILE_PATH_LITERAL("Avatar Images");
+
+// Marks the state of the account that are read from prefs.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+enum class AccountInPrefState {
+  kValid = 0,
+  kEmptyAccount = 1,
+  kEmptyEmailOrGaiaId = 2,
+  kEmptyAccountId = 3,
+
+  kMaxValue = kEmptyAccountId,
+};
+
+// Reads a PNG image from disk and decodes it. If the reading/decoding attempt
+// was unsuccessful, an empty image is returned.
+gfx::Image ReadImage(const base::FilePath& image_path) {
+  base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
+                                                base::BlockingType::MAY_BLOCK);
+
+  if (!base::PathExists(image_path)) {
+    return gfx::Image();
+  }
+  std::string image_data;
+  if (!base::ReadFileToString(image_path, &image_data)) {
+    LOG(ERROR) << "Failed to read image from disk: " << image_path;
+    return gfx::Image();
+  }
+  return gfx::Image::CreateFrom1xPNGBytes(
+      base::MakeRefCounted<base::RefCountedString>(std::move(image_data)));
+}
+
+// Saves |png_data| to disk at |image_path|.
+bool SaveImage(scoped_refptr<base::RefCountedMemory> png_data,
+               const base::FilePath& image_path) {
+  base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
+                                                base::BlockingType::MAY_BLOCK);
+  // Make sure the destination directory exists.
+  base::FilePath dir = image_path.DirName();
+  if (!base::DirectoryExists(dir) && !base::CreateDirectory(dir)) {
+    LOG(ERROR) << "Failed to create parent directory of: " << image_path;
+    return false;
+  }
+  if (!base::WriteFile(image_path, *png_data)) {
+    LOG(ERROR) << "Failed to save image to file: " << image_path;
+    return false;
+  }
+  return true;
+}
+
+// Removes the image at path |image_path|.
+void RemoveImage(const base::FilePath& image_path) {
+  if (!base::DeleteFile(image_path)) {
+    LOG(ERROR) << "Failed to delete image.";
+  }
+}
+
+std::string AccountsToString(
+    const std::map<CoreAccountId, AccountInfo>& accounts) {
+  std::stringstream result;
+  result << "[";
+  for (const auto& entry : accounts) {
+    result << "{" << entry.first.ToString() << ": (" << entry.second << ")}";
+  }
+  result << ']';
+  return result.str();
+}
+
+}  // namespace
+
+AccountTrackerService::AccountTrackerService(PrefService* pref_service,
+                                             base::FilePath user_data_dir)
+    : pref_service_(pref_service), user_data_dir_(std::move(user_data_dir)) {
+  CHECK(pref_service_);
+  LoadFromPrefs();
+  if (!user_data_dir_.empty()) {
+    // |image_storage_task_runner_| is a sequenced runner because we want to
+    // avoid read and write operations to the same file at the same time.
+    image_storage_task_runner_ = base::ThreadPool::CreateSequencedTaskRunner(
+        {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
+         base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN});
+    LoadAccountImagesFromDisk();
+  }
+}
+
+AccountTrackerService::~AccountTrackerService() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  accounts_.clear();
+}
+
+// static
+void AccountTrackerService::RegisterPrefs(PrefRegistrySimple* registry) {
+  registry->RegisterListPref(prefs::kAccountInfo);
+#if BUILDFLAG(IS_CHROMEOS)
+  registry->RegisterIntegerPref(prefs::kAccountIdMigrationState,
+                                AccountTrackerService::MIGRATION_NOT_STARTED);
+#endif
+}
+
+std::vector<AccountInfo> AccountTrackerService::GetAccounts() const {
+  std::vector<AccountInfo> accounts;
+  for (const auto& pair : accounts_) {
+    accounts.push_back(pair.second);
+  }
+  return accounts;
+}
+
+AccountInfo AccountTrackerService::GetAccountInfo(
+    const CoreAccountId& account_id) const {
+  const auto iterator = accounts_.find(account_id);
+  if (iterator != accounts_.end()) {
+    return iterator->second;
+  }
+
+  return AccountInfo();
+}
+
+AccountInfo AccountTrackerService::FindAccountInfoByGaiaId(
+    const GaiaId& gaia_id) const {
+  if (!gaia_id.empty()) {
+    const auto iterator = std::ranges::find(
+        accounts_, gaia_id, [](const auto& pair) { return pair.second.gaia; });
+    if (iterator != accounts_.end()) {
+      return iterator->second;
+    }
+  }
+
+  return AccountInfo();
+}
+
+AccountInfo AccountTrackerService::FindAccountInfoByEmail(
+    std::string_view email) const {
+  if (!email.empty()) {
+    const auto iterator =
+        std::ranges::find_if(accounts_, [email](const auto& pair) {
+          return gaia::AreEmailsSame(pair.second.email, email);
+        });
+    if (iterator != accounts_.end()) {
+      return iterator->second;
+    }
+  }
+
+  return AccountInfo();
+}
+
+#if BUILDFLAG(IS_CHROMEOS)
+AccountTrackerService::AccountIdMigrationState
+AccountTrackerService::GetMigrationState() const {
+  return GetMigrationState(pref_service_);
+}
+
+void AccountTrackerService::SetMigrationDone() {
+  SetMigrationState(MIGRATION_DONE);
+}
+#endif
+
+void AccountTrackerService::MaybeNotifyAccountUpdated(
+    const AccountInfo& account_info) {
+  DCHECK(!account_info.gaia.empty());
+  if (account_info.GetEmail().empty() &&
+      base::FeatureList::IsEnabled(switches::kGaiaAccountIdEnforcement)) {
+    // Do not notify about incomplete accounts.
+    return;
+  }
+  if (on_account_updated_callback_) {
+    on_account_updated_callback_.Run(account_info);
+  }
+}
+
+void AccountTrackerService::MaybeNotifyAccountRemoved(
+    const AccountInfo& account_info) {
+  DCHECK(!account_info.gaia.empty());
+  if (account_info.GetEmail().empty() &&
+      base::FeatureList::IsEnabled(switches::kGaiaAccountIdEnforcement)) {
+    // Do not notify about incomplete accounts.
+    return;
+  }
+  if (on_account_removed_callback_) {
+    on_account_removed_callback_.Run(account_info);
+  }
+}
+
+void AccountTrackerService::StartTrackingAccount(
+    const CoreAccountId& account_id) {
+  // TODO(crbug.com/40283610): Change into a CHECK once there are no crash
+  // reports for tracking empty account ids.
+  DUMP_WILL_BE_CHECK(!account_id.empty());
+  if (!accounts_.contains(account_id)) {
+    DVLOG(1) << "StartTracking " << account_id;
+    AccountInfo account_info;
+    if (base::FeatureList::IsEnabled(switches::kGaiaAccountIdEnforcement)) {
+      // TODO(crbug.com/502237328): Move the CHECK to the beginning of the
+      // method after launching GaiaAccountIdEnforcement.
+      CHECK(!account_id.empty());
+      // TODO(crbug.com/40283608): Revise StartTrackingAccount to ensure that
+      // it is invoked only when the basic info (email and gaia id) for the
+      // account is available.
+      // In the meantime, the hack below ensures that at least GaiaId is set in
+      // the corresponding AccountInfo object.
+      CHECK(!account_id.IsEmail());
+      account_info.gaia = GaiaId(account_id.ToString());
+    }
+    account_info.account_id = account_id;
+    accounts_.insert(std::make_pair(account_id, account_info));
+  }
+}
+
+bool AccountTrackerService::IsTrackingAccount(const CoreAccountId& account_id) {
+  return accounts_.contains(account_id);
+}
+
+void AccountTrackerService::StopTrackingAccount(
+    const CoreAccountId& account_id) {
+  DVLOG(1) << "StopTracking " << account_id;
+  if (accounts_.contains(account_id)) {
+    AccountInfo account_info = std::move(accounts_[account_id]);
+    RemoveFromPrefs(account_id.ToString());
+    RemoveAccountImageFromDisk(account_id.ToString());
+    accounts_.erase(account_id);
+
+    if (!account_info.gaia.empty()) {
+      MaybeNotifyAccountRemoved(account_info);
+    }
+  }
+}
+
+void AccountTrackerService::SetAccountInfoFromUserInfo(
+    const CoreAccountId& account_id,
+    const AccountInfo& fetched_user_info) {
+  DCHECK(accounts_.contains(account_id));
+  AccountInfo& account_info = accounts_[account_id];
+
+  AccountInPrefState state = AccountInPrefState::kValid;
+  if (account_info.IsEmpty()) {
+    state = AccountInPrefState::kEmptyAccount;
+  } else if (account_info.gaia.empty() || account_info.email.empty()) {
+    // This may happen if account capabilities are fetched first.
+    state = AccountInPrefState::kEmptyEmailOrGaiaId;
+  } else if (account_info.GetAccountId().empty()) {
+    // Needed to investigate https://crbug.com/483657395.
+    state = AccountInPrefState::kEmptyAccountId;
+  }
+  base::UmaHistogramEnumeration("Signin.AccountInPref.State", state);
+
+  CHECK(!fetched_user_info.gaia.empty());
+  CHECK(!fetched_user_info.email.empty());
+  AccountInfo user_info_copy = fetched_user_info;
+  user_info_copy.account_id =
+      PickAccountIdForAccount(fetched_user_info.gaia, fetched_user_info.email);
+
+  // Whether the existing account in pref matches the fetched account.
+  bool accounts_matching = user_info_copy.account_id == account_info.account_id;
+  base::UmaHistogramBoolean("Signin.AccountInPref.MatchingFetchedAccount",
+                            accounts_matching);
+
+  if (accounts_matching) {
+    account_info.UpdateWith(user_info_copy);
+  } else {
+    DLOG(ERROR) << "Cannot set account info from user info as account ids "
+                   "do not match: existing_account_info = {"
+                << account_info << "} new_account_info = {" << user_info_copy
+                << "}";
+  }
+
+  if (!account_info.gaia.empty()) {
+    MaybeNotifyAccountUpdated(account_info);
+  }
+  SaveToPrefs(account_info);
+}
+
+void AccountTrackerService::SetAccountImage(
+    const CoreAccountId& account_id,
+    const std::string& image_url_with_size,
+    const gfx::Image& image) {
+  auto it = accounts_.find(account_id);
+  if (it == accounts_.end()) {
+    return;
+  }
+  // Update the avatar image value in `it->second` and save the updated
+  // account info to disk.
+  AccountInfo& account_info = it->second;
+  account_info = AccountInfo::Builder(account_info)
+                     .SetAvatarImage(image)
+                     .SetLastDownloadedAvatarUrlWithSize(image_url_with_size)
+                     .Build();
+  SaveAccountImageToDisk(account_id, image, image_url_with_size);
+  MaybeNotifyAccountUpdated(account_info);
+}
+
+void AccountTrackerService::SetAccountCapabilities(
+    const CoreAccountId& account_id,
+    const AccountCapabilities& account_capabilities) {
+  DCHECK(accounts_.contains(account_id));
+  AccountInfo& account_info = accounts_[account_id];
+
+  AccountCapabilities updated_capabilities =
+      account_info.GetAccountCapabilities();
+  bool modified = updated_capabilities.UpdateWith(account_capabilities);
+  if (modified) {
+    account_info = AccountInfo::Builder(account_info)
+                       .UpdateAccountCapabilitiesWith(updated_capabilities)
+                       .Build();
+  }
+
+#if !(BUILDFLAG(IS_CHROMEOS))
+  // Set the child account status based on the account capabilities.
+  modified = UpdateAccountInfoChildStatus(
+                 account_info, account_info.GetAccountCapabilities()
+                                       .is_subject_to_parental_controls() ==
+                                   signin::Tribool::kTrue) ||
+             modified;
+#endif
+
+  if (!modified) {
+    return;
+  }
+
+  if (!account_info.gaia.empty()) {
+    MaybeNotifyAccountUpdated(account_info);
+  }
+  SaveToPrefs(account_info);
+}
+
+void AccountTrackerService::SetCapabilityOverride(
+    const CoreAccountId& account_id,
+    std::string_view capability_name,
+    std::optional<signin::Tribool> override_value) {
+  if (!accounts_.contains(account_id)) {
+    return;
+  }
+  AccountInfo& account_info = accounts_[account_id];
+
+  AccountCapabilities capabilities = account_info.GetAccountCapabilities();
+  capabilities.SetCapabilityOverride(capability_name, override_value);
+
+  account_info = AccountInfo::Builder(account_info)
+                     .SetAccountCapabilities(capabilities)
+                     .Build();
+
+  if (!account_info.gaia.empty()) {
+    MaybeNotifyAccountUpdated(account_info);
+  }
+  SaveToPrefs(account_info);
+}
+
+void AccountTrackerService::SetIsChildAccount(const CoreAccountId& account_id,
+                                              bool is_child_account) {
+  DCHECK(accounts_.contains(account_id)) << account_id.ToString();
+  AccountInfo& account_info = accounts_[account_id];
+  bool modified = UpdateAccountInfoChildStatus(account_info, is_child_account);
+  if (!modified) {
+    return;
+  }
+  if (!account_info.gaia.empty()) {
+    MaybeNotifyAccountUpdated(account_info);
+  }
+  SaveToPrefs(account_info);
+}
+
+void AccountTrackerService::SetIsAdvancedProtectionAccount(
+    const CoreAccountId& account_id,
+    bool is_under_advanced_protection) {
+  DCHECK(accounts_.contains(account_id)) << account_id.ToString();
+  AccountInfo& account_info = accounts_[account_id];
+  if (account_info.is_under_advanced_protection ==
+      is_under_advanced_protection) {
+    return;
+  }
+  account_info.is_under_advanced_protection = is_under_advanced_protection;
+  if (!account_info.gaia.empty()) {
+    MaybeNotifyAccountUpdated(account_info);
+  }
+  SaveToPrefs(account_info);
+}
+
+void AccountTrackerService::SetOnAccountUpdatedCallback(
+    AccountInfoCallback callback) {
+  DCHECK(!on_account_updated_callback_);
+  on_account_updated_callback_ = callback;
+}
+
+void AccountTrackerService::SetOnAccountRemovedCallback(
+    AccountInfoCallback callback) {
+  DCHECK(!on_account_removed_callback_);
+  on_account_removed_callback_ = callback;
+}
+
+void AccountTrackerService::CommitPendingAccountChanges() {
+  pref_service_->CommitPendingWrite();
+}
+
+#if BUILDFLAG(IS_CHROMEOS)
+void AccountTrackerService::MigrateToGaiaId() {
+  CHECK(!base::FeatureList::IsEnabled(switches::kGaiaAccountIdEnforcement));
+  DCHECK_EQ(GetMigrationState(), MIGRATION_IN_PROGRESS);
+
+  std::vector<CoreAccountId> to_remove;
+  std::vector<AccountInfo> migrated_accounts;
+  for (const auto& pair : accounts_) {
+    const CoreAccountId new_account_id =
+        CoreAccountId::FromGaiaId(pair.second.gaia);
+    if (pair.first == new_account_id) {
+      continue;
+    }
+
+    to_remove.push_back(pair.first);
+
+    // If there is already an account keyed to the current account's gaia id,
+    // assume this is the result of a partial migration and skip the account
+    // that is currently inspected.
+    if (accounts_.contains(new_account_id)) {
+      continue;
+    }
+
+    AccountInfo new_account_info = pair.second;
+    new_account_info.account_id = new_account_id;
+    SaveToPrefs(new_account_info);
+    migrated_accounts.emplace_back(std::move(new_account_info));
+  }
+
+  // Insert the new migrated accounts.
+  for (AccountInfo& new_account_info : migrated_accounts) {
+    // Copy the AccountInfo |gaia| member field so that it is not left in
+    // an undeterminate state in the structure after std::map::emplace call.
+    CoreAccountId account_id = new_account_info.account_id;
+    SaveToPrefs(new_account_info);
+
+    accounts_.emplace(std::move(account_id), std::move(new_account_info));
+  }
+
+  // Remove any obsolete account.
+  for (const auto& account_id : to_remove) {
+    DCHECK(accounts_.contains(account_id));
+    RemoveAccountImageFromDisk(account_id.ToString());
+    RemoveFromPrefs(account_id.ToString());
+    accounts_.erase(account_id);
+  }
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+bool AccountTrackerService::AreAllAccountsMigrated() const {
+  for (const auto& pair : accounts_) {
+    if (pair.first.ToString() != pair.second.gaia.ToString()) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+#if BUILDFLAG(IS_CHROMEOS)
+AccountTrackerService::AccountIdMigrationState
+AccountTrackerService::ComputeNewMigrationState() const {
+  CHECK(!base::FeatureList::IsEnabled(switches::kGaiaAccountIdEnforcement));
+  if (accounts_.empty()) {
+    // If there are no accounts in the account tracker service, then we expect
+    // that this is profile that was never signed in to Chrome. Consider the
+    // migration done as there are no accounts to migrate..
+    return MIGRATION_DONE;
+  }
+
+  bool migration_required = false;
+  for (const auto& pair : accounts_) {
+    // If there is any non-migratable account, skip migration.
+    if (pair.first.empty() || pair.second.gaia.empty()) {
+      return MIGRATION_NOT_STARTED;
+    }
+
+    // Migration is required if at least one account is not keyed to its
+    // gaia id.
+    migration_required |=
+        (pair.first.ToString() != pair.second.gaia.ToString());
+  }
+
+  return migration_required ? MIGRATION_IN_PROGRESS : MIGRATION_DONE;
+}
+
+void AccountTrackerService::SetMigrationState(AccountIdMigrationState state) {
+  DCHECK(state != MIGRATION_DONE || AreAllAccountsMigrated())
+      << "state: " << state << ", accounts = " << AccountsToString(accounts_);
+  pref_service_->SetInteger(prefs::kAccountIdMigrationState, state);
+}
+
+// static
+AccountTrackerService::AccountIdMigrationState
+AccountTrackerService::GetMigrationState(const PrefService* pref_service) {
+  return static_cast<AccountTrackerService::AccountIdMigrationState>(
+      pref_service->GetInteger(prefs::kAccountIdMigrationState));
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+base::FilePath AccountTrackerService::GetImagePathFor(
+    const GaiaIdMightBeEmail& account_id) {
+  return user_data_dir_.Append(kAccountsFolder)
+      .Append(kAvatarImagesFolder)
+      .AppendASCII(account_id);
+}
+
+void AccountTrackerService::OnAccountImageLoaded(
+    const CoreAccountId& account_id,
+    gfx::Image image) {
+  auto it = accounts_.find(account_id);
+  if (it == accounts_.end()) {
+    return;
+  }
+
+  AccountInfo& account_info = it->second;
+  if (account_info.GetAvatarImage().has_value()) {
+    // Don't do anything if `account_info` already has an avatar image.
+    return;
+  }
+
+  AccountInfo::Builder update_account_info_builder(account_info);
+  bool should_clear_last_downloaded_avatar_url = false;
+  if (!image.IsEmpty()) {
+    update_account_info_builder.SetAvatarImage(image);
+  } else {
+    // An image failed to load. We want to clear the last downloaded avatar URL
+    // so that an image can be downloaded again.
+    update_account_info_builder.SetLastDownloadedAvatarUrlWithSize("");
+    should_clear_last_downloaded_avatar_url = true;
+  }
+
+  account_info = update_account_info_builder.Build();
+  if (should_clear_last_downloaded_avatar_url) {
+    // Call `OnAccountImageUpdated()` to clear the last downloaded avatar URL.
+    OnAccountImageUpdated(account_id, /*image_url_with_size=*/std::string(),
+                          /*success=*/true);
+  }
+  MaybeNotifyAccountUpdated(account_info);
+}
+
+void AccountTrackerService::LoadAccountImagesFromDisk() {
+  if (!image_storage_task_runner_) {
+    return;
+  }
+  for (const auto& pair : accounts_) {
+    const CoreAccountId& account_id = pair.second.account_id;
+    image_storage_task_runner_->PostTaskAndReplyWithResult(
+        FROM_HERE,
+        base::BindOnce(&ReadImage, GetImagePathFor(account_id.ToString())),
+        base::BindOnce(&AccountTrackerService::OnAccountImageLoaded,
+                       weak_factory_.GetWeakPtr(), account_id));
+  }
+}
+
+void AccountTrackerService::SaveAccountImageToDisk(
+    const CoreAccountId& account_id,
+    const gfx::Image& image,
+    const std::string& image_url_with_size) {
+  if (!image_storage_task_runner_) {
+    return;
+  }
+
+  image_storage_task_runner_->PostTaskAndReplyWithResult(
+      FROM_HERE,
+      base::BindOnce(&SaveImage, image.As1xPNGBytes(),
+                     GetImagePathFor(account_id.ToString())),
+      base::BindOnce(&AccountTrackerService::OnAccountImageUpdated,
+                     weak_factory_.GetWeakPtr(), account_id,
+                     image_url_with_size));
+}
+
+void AccountTrackerService::OnAccountImageUpdated(
+    const CoreAccountId& account_id,
+    const std::string& image_url_with_size,
+    bool success) {
+  if (!success || !pref_service_) {
+    return;
+  }
+
+  base::DictValue* dict = nullptr;
+  ScopedListPrefUpdate update(pref_service_, prefs::kAccountInfo);
+  for (base::Value& value : *update) {
+    base::DictValue* maybe_dict = value.GetIfDict();
+    if (maybe_dict) {
+      const std::string* account_key =
+          maybe_dict->FindString(signin::kAccountIdKey);
+      if (account_key && *account_key == account_id.ToString()) {
+        dict = maybe_dict;
+        break;
+      }
+    }
+  }
+
+  if (!dict) {
+    return;
+  }
+  dict->Set(signin::kLastDownloadedImageURLWithSizeKey, image_url_with_size);
+}
+
+void AccountTrackerService::RemoveAccountImageFromDisk(
+    const GaiaIdMightBeEmail& account_id) {
+  if (!image_storage_task_runner_) {
+    return;
+  }
+  image_storage_task_runner_->PostTask(
+      FROM_HERE, base::BindOnce(&RemoveImage, GetImagePathFor(account_id)));
+}
+
+void AccountTrackerService::LoadFromPrefs() {
+  const base::ListValue& list = pref_service_->GetList(prefs::kAccountInfo);
+  std::set<std::string> to_remove;
+#if BUILDFLAG(IS_CHROMEOS)
+  std::vector<std::pair<AccountInfo, std::string>> accounts_to_migrate;
+#endif
+  for (const auto& i : list) {
+    const base::DictValue* dict = i.GetIfDict();
+    if (!dict) {
+      continue;
+    }
+
+    const std::string* account_key = dict->FindString(signin::kAccountIdKey);
+    if (!account_key) {
+      continue;
+    }
+
+    // Ignore empty account ids.
+    if (account_key->empty()) {
+      to_remove.insert(*account_key);
+      continue;
+    }
+    // Ignore incorrectly persisted non-canonical account ids.
+    if (account_key->find('@') != std::string::npos &&
+        *account_key != gaia::CanonicalizeEmail(*account_key)) {
+      to_remove.insert(*account_key);
+      continue;
+    }
+
+    if (base::FeatureList::IsEnabled(switches::kGaiaAccountIdEnforcement)) {
+      std::optional<AccountInfo> deserialized_account_info =
+          signin::DeserializeAccountInfo(*dict);
+      if (!deserialized_account_info) {
+        to_remove.insert(*account_key);
+        continue;
+      }
+#if BUILDFLAG(IS_CHROMEOS)
+      if (deserialized_account_info->GetAccountId().ToString() !=
+          *account_key) {
+        accounts_to_migrate.emplace_back(*deserialized_account_info,
+                                         *account_key);
+        // Do not insert into accounts_ here and finish reading the list first.
+        // This is needed to avoid re-migrating accounts that were already
+        // migrated.
+        continue;
+      }
+#endif
+      CoreAccountId account_id = deserialized_account_info->GetAccountId();
+      auto [it, inserted] =
+          accounts_.insert({account_id, std::move(*deserialized_account_info)});
+      MaybeNotifyAccountUpdated(it->second);
+    } else {
+      CoreAccountId account_id = CoreAccountId::FromString(*account_key);
+      StartTrackingAccount(account_id);
+      AccountInfo& account_info = accounts_[account_id];
+      std::optional<AccountInfo> deserialized_account_info =
+          signin::DeserializeAccountInfo(*dict);
+      if (deserialized_account_info) {
+        account_info = std::move(*deserialized_account_info);
+      }
+      account_info.account_id = account_id;
+      if (!account_info.gaia.empty()) {
+        MaybeNotifyAccountUpdated(account_info);
+      }
+    }
+  }
+
+  // Remove any obsolete prefs.
+  for (const auto& account_id : to_remove) {
+    RemoveFromPrefs(account_id);
+    RemoveAccountImageFromDisk(account_id);
+  }
+
+#if BUILDFLAG(IS_CHROMEOS)
+  if (base::FeatureList::IsEnabled(switches::kGaiaAccountIdEnforcement)) {
+    if (GetMigrationState() != MIGRATION_DONE) {
+      if (accounts_.empty() && accounts_to_migrate.empty()) {
+        SetMigrationState(MIGRATION_DONE);
+      } else {
+        SetMigrationState(MIGRATION_IN_PROGRESS);
+        for (const auto& [account_info, account_key] : accounts_to_migrate) {
+          // Do not overwrite accounts that were already migrated (in case of
+          // a partial migration crashing, etc.).
+          if (!accounts_.contains(account_info.GetAccountId())) {
+            SaveToPrefs(account_info);
+            accounts_.insert({account_info.GetAccountId(), account_info});
+            MaybeNotifyAccountUpdated(account_info);
+          }
+
+          // Remove the information saved under the old account id.
+          RemoveFromPrefs(account_key);
+          RemoveAccountImageFromDisk(account_key);
+        }
+      }
+    }
+    CHECK(AreAllAccountsMigrated())
+        << "state: " << (int)GetMigrationState()
+        << ", accounts = " << AccountsToString(accounts_);
+  } else {
+    if (GetMigrationState() != MIGRATION_DONE) {
+      const AccountIdMigrationState new_state = ComputeNewMigrationState();
+      SetMigrationState(new_state);
+
+      if (new_state == MIGRATION_IN_PROGRESS) {
+        MigrateToGaiaId();
+      }
+    }
+    DCHECK(GetMigrationState() != MIGRATION_DONE || AreAllAccountsMigrated())
+        << "state: " << (int)GetMigrationState()
+        << ", accounts = " << AccountsToString(accounts_);
+  }
+  UMA_HISTOGRAM_ENUMERATION("Signin.AccountTracker.GaiaIdMigrationState",
+                            GetMigrationState(), NUM_MIGRATION_STATES);
+#else
+  DCHECK(AreAllAccountsMigrated())
+      << "accounts = " << AccountsToString(accounts_);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+  UMA_HISTOGRAM_COUNTS_100("Signin.AccountTracker.CountOfLoadedAccounts",
+                           accounts_.size());
+}
+
+base::DictValue* AccountTrackerService::FindOrCreateDictForAccount(
+    ScopedListPrefUpdate& update,
+    const CoreAccountId& account_id) {
+  for (base::Value& value : *update) {
+    base::DictValue* dict = value.GetIfDict();
+    if (dict) {
+      const std::string* account_key = dict->FindString(signin::kAccountIdKey);
+      if (account_key && *account_key == account_id.ToString()) {
+        return dict;
+      }
+    }
+  }
+
+  update->Append(base::DictValue());
+  base::DictValue* new_dict = &update->back().GetDict();
+  new_dict->Set(signin::kAccountIdKey, account_id.ToString());
+  return new_dict;
+}
+
+void AccountTrackerService::SaveToPrefs(const AccountInfo& account_info) {
+  if (!pref_service_) {
+    return;
+  }
+
+  ScopedListPrefUpdate update(pref_service_, prefs::kAccountInfo);
+  base::DictValue* dict =
+      FindOrCreateDictForAccount(update, account_info.account_id);
+  dict->Remove(signin::kAccountCapabilityOverridesKey);
+  dict->Merge(signin::SerializeAccountInfo(account_info));
+}
+
+void AccountTrackerService::RemoveFromPrefs(
+    const GaiaIdMightBeEmail& account_id) {
+  if (!pref_service_) {
+    return;
+  }
+
+  ScopedListPrefUpdate update(pref_service_, prefs::kAccountInfo);
+  update->EraseIf([&account_id](const base::Value& value) {
+    if (!value.is_dict()) {
+      return false;
+    }
+    const std::string* account_key =
+        value.GetDict().FindString(signin::kAccountIdKey);
+    return account_key && *account_key == account_id;
+  });
+}
+
+CoreAccountId AccountTrackerService::PickAccountIdForAccount(
+    const GaiaId& gaia,
+    const std::string& email) const {
+  if (base::FeatureList::IsEnabled(switches::kGaiaAccountIdEnforcement)) {
+    CHECK(!gaia.empty());
+    return CoreAccountId::FromGaiaId(gaia);
+  }
+#if BUILDFLAG(IS_CHROMEOS)
+  DCHECK(!email.empty());
+  switch (GetMigrationState(pref_service_)) {
+    case MIGRATION_NOT_STARTED:
+      return CoreAccountId::FromEmail(gaia::CanonicalizeEmail(email));
+    case MIGRATION_IN_PROGRESS:
+    case MIGRATION_DONE:
+      DCHECK(!gaia.empty());
+      return CoreAccountId::FromGaiaId(gaia);
+    default:
+      NOTREACHED();
+  }
+#else
+  DCHECK(!gaia.empty());
+  return CoreAccountId::FromGaiaId(gaia);
+#endif
+}
+
+CoreAccountId AccountTrackerService::SeedAccountInfo(
+    const GaiaId& gaia,
+    const std::string& email,
+    std::optional<signin_metrics::AccessPoint> access_point) {
+  // TODO(https://crbug.com/40283608): Stop seeding incomplete accounts.
+  AccountInfo::Builder builder =
+      AccountInfo::Builder::CreateWithPossiblyEmptyGaiaIdAndEmail(gaia, email);
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+  if (access_point.has_value()) {
+    builder.SetLastAuthenticationAccessPoint(*access_point);
+  }
+#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
+  AccountInfo account_info = builder.Build();
+  CoreAccountId account_id = SeedAccountInfo(account_info);
+
+  DVLOG(1) << "AccountTrackerService::SeedAccountInfo"
+           << " account_id=" << account_id << " gaia_id=" << gaia
+           << " email=" << email;
+
+  return account_id;
+}
+
+CoreAccountId AccountTrackerService::SeedAccountInfo(AccountInfo info) {
+  info.account_id = PickAccountIdForAccount(info.gaia, info.email);
+  base::UmaHistogramBoolean(
+      "Signin.AccountTracker.SeedAccountInfo.IsAccountIdEmpty",
+      info.account_id.empty());
+
+  if (info.account_id.empty()) {
+    DLOG(ERROR) << "Cannot seed an account with an empty account id: [" << info
+                << "]";
+    return CoreAccountId();
+  }
+
+  const bool already_exists = accounts_.contains(info.account_id);
+  StartTrackingAccount(info.account_id);
+  AccountInfo& account_info = accounts_[info.account_id];
+  DCHECK(!already_exists || account_info.gaia.empty() ||
+         account_info.gaia == info.gaia);
+
+  // Update the missing fields in |account_info| with |info|.
+  if (account_info.UpdateWith(info)) {
+    if (!account_info.gaia.empty()) {
+      MaybeNotifyAccountUpdated(account_info);
+    }
+
+    SaveToPrefs(account_info);
+  }
+
+  if (!already_exists && info.GetAvatarImage().has_value()) {
+    SetAccountImage(
+        account_info.account_id,
+        std::string(
+            account_info.GetLastDownloadedAvatarUrlWithSize().value_or("")),
+        *info.GetAvatarImage());
+  }
+
+  return info.account_id;
+}
+
+void AccountTrackerService::SeedAccountsInfo(
+    const std::vector<AccountInfo>& accounts,
+    const std::optional<CoreAccountId>& primary_account_id,
+    bool should_remove_stale_accounts) {
+  DVLOG(1) << "AccountTrackerService.SeedAccountsInfo: "
+           << " number of accounts " << accounts.size();
+
+  if (primary_account_id) {
+    // The primary account must be present in the account list.
+    CHECK(std::ranges::contains(accounts, *primary_account_id,
+                                &AccountInfo::GetAccountId),
+          base::NotFatalUntil::M148);
+  }
+
+  if (should_remove_stale_accounts) {
+    // Remove the accounts deleted from the device, but don't remove the primary
+    // account.
+    for (const auto& account : GetAccounts()) {
+      CoreAccountId curr_account_id = account.account_id;
+      if (curr_account_id != primary_account_id &&
+          !std::ranges::contains(accounts, curr_account_id,
+                                 &AccountInfo::account_id)) {
+        RemoveAccount(curr_account_id);
+      }
+    }
+  }
+
+  for (const auto& account : accounts) {
+    SeedAccountInfo(account);
+  }
+}
+
+void AccountTrackerService::RemoveAccount(const CoreAccountId& account_id) {
+  StopTrackingAccount(account_id);
+}
+
+bool AccountTrackerService::UpdateAccountInfoChildStatus(
+    AccountInfo& account_info,
+    bool is_child_account) {
+  signin::Tribool new_status =
+      is_child_account ? signin::Tribool::kTrue : signin::Tribool::kFalse;
+  if (account_info.IsChildAccount() == new_status) {
+    return false;
+  }
+  account_info =
+      AccountInfo::Builder(account_info).SetIsChildAccount(new_status).Build();
+  return true;
+}

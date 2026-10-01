@@ -1,0 +1,50 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_win || is_mac || is_linux || is_chromeos || is_android)
+
+source_set("commerce") {
+  sources = [ "shopping_service_factory.h" ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/profiles:profile",
+  ]
+}
+
+source_set("impl") {
+  sources = [ "shopping_service_factory.cc" ]
+  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+  deps = [
+    ":commerce",
+    "//chrome/browser:browser_process",
+    "//chrome/browser/bookmarks",
+    "//chrome/browser/commerce/in_stock_notification",
+    "//chrome/browser/history",
+    "//chrome/browser/optimization_guide",
+    "//chrome/browser/persisted_state_db",
+    "//chrome/browser/power_bookmarks",
+    "//chrome/browser/sessions",
+    "//chrome/browser/signin",
+    "//chrome/browser/sync",
+    "//components/commerce/content/browser",
+    "//components/commerce/core:commerce_constants",
+    "//components/commerce/core:commerce_subscription_db_content_proto",
+    "//components/commerce/core:feature_list",
+    "//components/commerce/core:parcel_tracking_db_content_proto",
+    "//components/commerce/core:proto",
+    "//components/commerce/core:shopping_service",
+    "//components/leveldb_proto",
+    "//components/prefs",
+    "//components/variations/service",
+    "//content/public/browser",
+    "//url",
+  ]
+
+  if (!is_android) {
+    deps += [
+      "//chrome/browser/ui",
+      "//components/commerce/core:discounts_db_content_proto",
+    ]
+  }
+}

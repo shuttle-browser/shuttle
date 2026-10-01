@@ -1,0 +1,259 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/translate/core/browser/translate_script.h"
+
+#include "base/command_line.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/location.h"
+#include "base/logging.h"
+#include "base/notreached.h"
+#include "base/strings/escape.h"
+#include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
+#include "base/task/single_thread_task_runner.h"
+#include "build/build_config.h"
+#include "components/grit/components_resources.h"
+#include "components/prefs/pref_service.h"
+#include "components/translate/core/browser/translate_pref_names.h"
+#include "components/translate/core/browser/translate_url_fetcher.h"
+#include "components/translate/core/browser/translate_url_util.h"
+#include "components/translate/core/common/translate_features.h"
+#include "components/translate/core/common/translate_switches.h"
+#include "components/translate/core/common/translate_util.h"
+#include "components/variations/variations_associated_data.h"
+#include "google_apis/google_api_keys.h"
+#include "net/base/url_util.h"
+#include "net/http/http_request_headers.h"
+#include "ui/base/resource/resource_bundle.h"
+
+namespace translate {
+
+namespace {
+
+const int kExpirationDelayDays = 1;
+
+DataRegion GetDataRegionFromPref(PrefService* prefs) {
+  if (prefs && prefs->HasPrefPath(prefs::kTranslateDataRegionSetting)) {
+    switch (prefs->GetInteger(prefs::kTranslateDataRegionSetting)) {
+      case 0:
+        return DataRegion::kNoPreference;
+      case 1:
+        return DataRegion::kUnitedStates;
+      case 2:
+        return DataRegion::kEurope;
+    }
+    NOTREACHED();
+  }
+  return DataRegion::kNoPreference;
+}
+
+}  // namespace
+
+const char TranslateScript::kScriptURL[] =
+    "https://translate.googleapis.com/translate_a/element.js";
+
+const char TranslateScript::kRequestHeaderName[] =
+    "Google-Translate-Element-Mode";
+const char TranslateScript::kRequestHeaderValue[] = "library";
+const char TranslateScript::kExperimentFilterQueryName[] = "ef";
+const char TranslateScript::kExperimentFilterQueryValue[] = "ehcm";
+const char TranslateScript::kCallbackQueryName[] = "cb";
+const char TranslateScript::kCallbackQueryValue[] =
+    "cr.googleTranslate.onTranslateElementLoad";
+const char TranslateScript::kCssLoaderCallbackQueryName[] = "clc";
+const char TranslateScript::kCssLoaderCallbackQueryValue[] =
+    "cr.googleTranslate.onLoadCSS";
+const char TranslateScript::kJavascriptLoaderCallbackQueryName[] = "jlc";
+const char TranslateScript::kJavascriptLoaderCallbackQueryValue[] =
+    "cr.googleTranslate.onLoadJavascript";
+
+TranslateScript::TranslateScript()
+    : expiration_delay_(base::Days(kExpirationDelayDays)) {}
+
+TranslateScript::~TranslateScript() = default;
+
+void TranslateScript::ClearIfDataRegionChanged(PrefService* prefs) {
+  if (!base::FeatureList::IsEnabled(kTranslateElementRegionalization)) {
+    return;
+  }
+
+  if (GetDataRegionFromPref(prefs) != fetched_data_region_) {
+    Clear();
+  }
+}
+
+void TranslateScript::Request(RequestCallback callback,
+                              bool is_incognito,
+                              PrefService* prefs) {
+  script_fetch_start_time_ = base::Time::Now().InMillisecondsFSinceUnixEpoch();
+
+  DCHECK(data_.empty()) << "Do not fetch the script if it is already fetched";
+  callback_list_.AddUnsafe(std::move(callback));
+
+  if (fetcher_) {
+    // If there is already a request in progress, do nothing. |callback| will be
+    // run on completion.
+    return;
+  }
+
+  GURL translate_script_url = GetTranslateScriptURL();
+
+  if (base::FeatureList::IsEnabled(kTranslateElementRegionalization)) {
+    DataRegion data_region = GetDataRegionFromPref(prefs);
+
+    fetched_data_region_ = data_region;
+
+    switch (data_region) {
+      case DataRegion::kUnitedStates:
+        translate_script_url =
+            net::AppendQueryParameter(translate_script_url, "region", "us");
+        break;
+      case DataRegion::kEurope:
+        translate_script_url =
+            net::AppendQueryParameter(translate_script_url, "region", "eu");
+        break;
+      case DataRegion::kNoPreference:
+        // Do nothing, no region parameter needed.
+        break;
+    }
+  }
+
+  net::HttpRequestHeaders headers;
+  headers.SetHeader(TranslateScript::kRequestHeaderName,
+                    TranslateScript::kRequestHeaderValue);
+  fetcher_ = std::make_unique<TranslateURLFetcherImpl>(headers);
+
+  fetcher_->Request(translate_script_url,
+                    base::BindOnce(&TranslateScript::OnScriptFetchComplete,
+                                   base::Unretained(this)),
+                    is_incognito);
+}
+
+// static
+std::string TranslateScript::GetActiveElementFeatures() {
+  std::vector<std::string> active_element_features;
+  if (base::FeatureList::IsEnabled(translate::kTranslateSimplifiedHindi)) {
+    active_element_features.push_back(kExperimentFilterQueryValue);
+  }
+  if (base::FeatureList::IsEnabled(
+          translate::kTranslateElementExperimentFeatures)) {
+    std::string ef_param =
+        translate::kTranslateElementExperimentFeaturesParam.Get();
+    if (!ef_param.empty()) {
+      active_element_features.emplace_back(std::move(ef_param));
+    }
+  }
+  return base::JoinString(active_element_features, ",");
+}
+
+// static
+GURL TranslateScript::GetTranslateScriptURL() {
+  GURL translate_script_url;
+  // Check if command-line contains an alternative URL for translate service.
+  const base::CommandLine& command_line =
+      *base::CommandLine::ForCurrentProcess();
+  if (command_line.HasSwitch(translate::switches::kTranslateScriptURL)) {
+    translate_script_url = GURL(command_line.GetSwitchValueASCII(
+        translate::switches::kTranslateScriptURL));
+    if (!translate_script_url.is_valid()) {
+      LOG(WARNING) << "The following translate URL specified at the "
+                   << "command-line is invalid: "
+                   << translate_script_url.spec();
+      translate_script_url = GURL();
+    } else {
+      LOG(WARNING) << "Using custom translate URL: "
+                   << translate_script_url.spec();
+    }
+  }
+
+  // Use default URL when command-line argument is not specified, or specified
+  // URL is invalid.
+  if (translate_script_url.is_empty())
+    translate_script_url = GURL(kScriptURL);
+
+  translate_script_url = net::AppendQueryParameter(
+      translate_script_url, kCallbackQueryName, kCallbackQueryValue);
+
+  std::string ef_value = GetActiveElementFeatures();
+  if (!ef_value.empty()) {
+    translate_script_url = net::AppendQueryParameter(
+        translate_script_url, kExperimentFilterQueryName, ef_value);
+  }
+  translate_script_url = net::AppendQueryParameter(
+      translate_script_url, kCssLoaderCallbackQueryName,
+      kCssLoaderCallbackQueryValue);
+  translate_script_url = net::AppendQueryParameter(
+      translate_script_url, kJavascriptLoaderCallbackQueryName,
+      kJavascriptLoaderCallbackQueryValue);
+
+  translate_script_url = AddHostLocaleToUrl(translate_script_url);
+
+  return translate_script_url;
+}
+
+void TranslateScript::OnScriptFetchComplete(bool success,
+                                            const std::string& data) {
+  std::unique_ptr<const TranslateUrlFetcher> delete_ptr(std::move(fetcher_));
+
+  if (success) {
+    DCHECK(data_.empty());
+    // Insert variable definitions on API Key and security origin.
+    data_ = base::StringPrintf("var translateApiKey = '%s';\n",
+                               google_apis::GetAPIKey().c_str());
+
+    // Insert server params to pass experimental params to google translate
+    // server.
+    std::string server_params;
+    std::map<std::string, std::string> params;
+    base::StringAppendF(
+        &data_, "var gtTimeInfo = {'fetchStart': %0.f, 'fetchEnd': %0.f};\n",
+        script_fetch_start_time_,
+        base::Time::Now().InMillisecondsFSinceUnixEpoch());
+    base::StringAppendF(&data_, "var serverParams = '%s';\n",
+                        server_params.c_str());
+
+    GURL security_origin = translate::GetTranslateSecurityOrigin();
+    base::StringAppendF(&data_, "var securityOrigin = '%s';\n",
+                        security_origin.spec().c_str());
+
+    // Load embedded translate.js.
+    data_.append(ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(
+        IDR_TRANSLATE_JS));
+
+#if BUILDFLAG(IS_IOS)
+    // Append snippet to install callbacks on translate.js if available.
+    const char* install_callbacks =
+        "try {"
+        "  "
+        "__gCrWeb.getRegisteredApi('translate').getFunction('installCallbacks')"
+        "();"
+        "} catch (error) {};";
+    data_.append(install_callbacks);
+#endif  // BUILDFLAG(IS_IOS)
+
+    // Wrap |data| in try/catch block to handle unexpected script errors.
+    static constexpr char kFormat[] =
+        "try {"
+        "  %s;"
+        "} catch (error) {"
+        "  cr.googleTranslate.onTranslateElementError(error);"
+        "};";
+    base::StringAppendF(&data_, kFormat, data.c_str());
+
+    // We'll expire the cached script after some time, to make sure long
+    // running browsers still get fixes that might get pushed with newer
+    // scripts.
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+        FROM_HERE,
+        base::BindOnce(&TranslateScript::Clear,
+                       weak_method_factory_.GetWeakPtr()),
+        expiration_delay_);
+  }
+
+  callback_list_.Notify(success);
+}
+
+}  // namespace translate

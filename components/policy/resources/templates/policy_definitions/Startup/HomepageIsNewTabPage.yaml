@@ -1,0 +1,31 @@
+caption: Use New Tab Page as homepage
+default: null
+desc: |-
+  Setting the policy to Enabled makes the New Tab page the user's homepage, ignoring any homepage URL location. Setting the policy to Disabled means that their homepage is never the New Tab page, unless the user's homepage URL is set to chrome://newtab.
+
+  If you set the policy, users can't change their homepage type in <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph>. If not set, the user decides whether or not the New Tab page is their homepage.
+example_value: true
+features:
+  can_be_recommended: true
+  dynamic_refresh: true
+  per_profile: true
+future_on:
+- fuchsia
+items:
+- caption: Use New Tab Page as homepage
+  value: true
+- caption: Do not use New Tab Page as homepage
+  value: false
+- caption: Allow users to choose
+  value: null
+owners:
+- chrome-desktop-ntp@google.com
+schema:
+  type: boolean
+sensitive: true
+supported_on:
+- chrome.*:8-
+- chrome_os:11-
+- android:144-
+tags: []
+type: main

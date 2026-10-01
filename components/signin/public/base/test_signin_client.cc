@@ -1,0 +1,203 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/signin/public/base/test_signin_client.h"
+
+#include <memory>
+#include <vector>
+
+#include "base/check.h"
+#include "base/functional/callback.h"
+#include "components/signin/public/identity_manager/primary_account_change_event.h"
+#include "components/version_info/channel.h"
+#include "google_apis/gaia/gaia_auth_fetcher.h"
+#include "google_apis/gaia/gaia_auth_util.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "services/network/test/test_cookie_manager.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace {
+
+class TestOAuthConsumerRegistry : public signin::OAuthConsumerRegistry {
+ protected:
+  signin::OAuthConsumer GetOAuthConsumerForGlicUserStatus() const override {
+    NOTREACHED();
+  }
+
+  signin::OAuthConsumer GetOAuthConsumerForGlicInvokeApi() const override {
+    NOTREACHED();
+  }
+
+  signin::OAuthConsumer GetOAuthConsumerForContextualTasks() const override {
+    return signin::OAuthConsumer(
+        signin::oauth_consumer_name::kContextualTasksName, {});
+  }
+
+  signin::OAuthConsumer GetOAuthConsumerForIndigo() const override {
+    NOTREACHED();
+  }
+
+  signin::OAuthConsumer GetOAuthConsumerForSkillsService() const override {
+    return signin::OAuthConsumer("skills_service", {"test_scope"});
+  }
+
+  signin::OAuthConsumer GetOAuthConsumerForDrivePickerHost() const override {
+    return signin::OAuthConsumer(
+        signin::oauth_consumer_name::kDrivePickerHostName, {});
+  }
+
+  signin::OAuthConsumer GetOAuthConsumerForBrowserActuator() const override {
+    return signin::OAuthConsumer(
+        signin::oauth_consumer_name::kBrowserActuatorName, {});
+  }
+
+  signin::OAuthConsumer GetOAuthConsumerForSiteTokenProvider() const override {
+    return signin::OAuthConsumer("site_token_provider", {"test_scope"});
+  }
+};
+
+}  // namespace
+
+TestWaitForNetworkCallbackHelper::TestWaitForNetworkCallbackHelper() = default;
+TestWaitForNetworkCallbackHelper::~TestWaitForNetworkCallbackHelper() = default;
+
+void TestWaitForNetworkCallbackHelper::SetNetworkCallsDelayed(bool delayed) {
+  network_calls_delayed_ = delayed;
+
+  if (!network_calls_delayed_) {
+    std::vector<base::OnceClosure> callbacks;
+    delayed_network_calls_.swap(callbacks);
+    for (base::OnceClosure& callback : callbacks) {
+      std::move(callback).Run();
+    }
+  }
+}
+
+bool TestWaitForNetworkCallbackHelper::AreNetworkCallsDelayed() {
+  return network_calls_delayed_;
+}
+
+void TestWaitForNetworkCallbackHelper::DelayNetworkCall(
+    base::OnceClosure callback) {
+  if (AreNetworkCallsDelayed()) {
+    delayed_network_calls_.push_back(std::move(callback));
+  } else {
+    std::move(callback).Run();
+  }
+}
+
+TestSigninClient::TestSigninClient(
+    PrefService* pref_service,
+    network::TestURLLoaderFactory* test_url_loader_factory)
+    : test_wait_for_network_callback_helper_(
+          std::make_unique<TestWaitForNetworkCallbackHelper>()),
+      test_url_loader_factory_(test_url_loader_factory),
+      pref_service_(pref_service),
+      are_signin_cookies_allowed_(true),
+      oauth_consumer_registry_(std::make_unique<TestOAuthConsumerRegistry>()) {}
+
+TestSigninClient::~TestSigninClient() = default;
+
+void TestSigninClient::DoFinalInit() {}
+
+PrefService* TestSigninClient::GetPrefs() {
+  return pref_service_;
+}
+
+scoped_refptr<network::SharedURLLoaderFactory>
+TestSigninClient::GetURLLoaderFactory() {
+  return GetTestURLLoaderFactory()->GetSafeWeakWrapper();
+}
+
+network::mojom::CookieManager* TestSigninClient::GetCookieManager() {
+  if (!cookie_manager_) {
+    cookie_manager_ = std::make_unique<network::TestCookieManager>();
+  }
+  return cookie_manager_.get();
+}
+
+network::mojom::DeviceBoundSessionManager*
+TestSigninClient::GetDeviceBoundSessionManager() const {
+  return device_bound_session_manager_;
+}
+
+std::unique_ptr<signin::BoundSessionOAuthMultiLoginDelegate>
+TestSigninClient::CreateBoundSessionOAuthMultiloginDelegate() const {
+  if (bound_session_oauth_multilogin_delegate_factory_) {
+    return bound_session_oauth_multilogin_delegate_factory_.Run();
+  }
+  return nullptr;
+}
+
+network::mojom::NetworkContext* TestSigninClient::GetNetworkContext() {
+  if (!network_context_) {
+    network_context_ = std::make_unique<network::TestNetworkContext>();
+  }
+  return network_context_.get();
+}
+
+network::TestURLLoaderFactory* TestSigninClient::GetTestURLLoaderFactory() {
+  if (test_url_loader_factory_) {
+    return test_url_loader_factory_;
+  }
+
+  if (!default_test_url_loader_factory_) {
+    default_test_url_loader_factory_ =
+        std::make_unique<network::TestURLLoaderFactory>();
+  }
+
+  return default_test_url_loader_factory_.get();
+}
+
+void TestSigninClient::OverrideTestUrlLoaderFactory(
+    network::TestURLLoaderFactory* factory) {
+  DCHECK(!default_test_url_loader_factory_);
+  DCHECK(!test_url_loader_factory_);
+  test_url_loader_factory_ = factory;
+}
+
+void TestSigninClient::SetNetworkCallsDelayed(bool delayed) {
+  test_wait_for_network_callback_helper_->SetNetworkCallsDelayed(delayed);
+}
+
+bool TestSigninClient::AreSigninCookiesAllowed() {
+  return are_signin_cookies_allowed_;
+}
+
+bool TestSigninClient::AreSigninCookiesDeletedOnExit() {
+  return are_signin_cookies_deleted_on_exit_;
+}
+
+void TestSigninClient::AddContentSettingsObserver(
+    content_settings::Observer* observer) {}
+
+void TestSigninClient::RemoveContentSettingsObserver(
+    content_settings::Observer* observer) {}
+
+bool TestSigninClient::AreNetworkCallsDelayed() {
+  return test_wait_for_network_callback_helper_->AreNetworkCallsDelayed();
+}
+
+void TestSigninClient::DelayNetworkCall(base::OnceClosure callback) {
+  test_wait_for_network_callback_helper_->DelayNetworkCall(std::move(callback));
+}
+
+std::unique_ptr<GaiaAuthFetcher> TestSigninClient::CreateGaiaAuthFetcher(
+    GaiaAuthConsumer* consumer,
+    gaia::GaiaSource source) {
+  return std::make_unique<GaiaAuthFetcher>(consumer, source,
+                                           GetURLLoaderFactory());
+}
+
+version_info::Channel TestSigninClient::GetClientChannel() {
+  return version_info::Channel::UNKNOWN;
+}
+
+void TestSigninClient::OnPrimaryAccountChanged(
+    signin::PrimaryAccountChangeEvent event_details) {}
+
+signin::OAuthConsumer TestSigninClient::GetOAuthConsumerFromId(
+    signin::OAuthConsumerId oauth_consumer_id) const {
+  return oauth_consumer_registry_->GetOAuthConsumerFromId(oauth_consumer_id);
+}

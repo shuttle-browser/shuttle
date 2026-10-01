@@ -1,0 +1,85 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ui/base/interaction/element_test_util.h"
+
+#include "base/test/bind.h"
+#include "ui/base/interaction/element_tracker.h"
+#include "ui/base/interaction/safe_castable.h"
+
+namespace ui::test {
+
+TestElementBase::TestElementBase(ElementIdentifier id,
+                                 ElementContext context,
+                                 std::string_view secondary_id)
+    : TrackedElement(id, context), secondary_id_(secondary_id) {}
+
+TestElementBase::~TestElementBase() {
+  Hide();
+}
+
+TestElement::TestElement(ElementIdentifier id,
+                         ElementContext context,
+                         std::string_view secondary_id)
+    : TestElementBase(id, context, secondary_id) {}
+
+TestElementOtherFramework::TestElementOtherFramework(
+    ElementIdentifier id,
+    ElementContext context,
+    std::string_view secondary_id)
+    : TestElementBase(id, context, secondary_id) {}
+
+void TestElementBase::Show() {
+  if (visible_)
+    return;
+  visible_ = true;
+  ElementTracker::GetFrameworkDelegate()->NotifyElementShown(this);
+}
+
+void TestElementBase::Activate() {
+  DCHECK(visible_);
+  ElementTracker::GetFrameworkDelegate()->NotifyElementActivated(this);
+}
+
+void TestElementBase::Hide() {
+  if (!visible_)
+    return;
+  visible_ = false;
+  ElementTracker::GetFrameworkDelegate()->NotifyElementHidden(this);
+}
+
+bool TestElementBase::IsVisible() const {
+  return visible_;
+}
+
+void TestElementBase::SendCustomEvent(CustomElementEventType event_type) {
+  DCHECK(visible_);
+  ElementTracker::GetFrameworkDelegate()->NotifyCustomEvent(this, event_type);
+}
+
+void TestElementBase::SetScreenBounds(const gfx::Rect& screen_bounds) {
+  screen_bounds_ = screen_bounds;
+}
+
+gfx::Rect TestElementBase::GetScreenBounds() const {
+  return screen_bounds_;
+}
+
+void TestElementBase::SetNativeView(gfx::NativeView native_view) {
+  native_view_ = native_view;
+}
+
+gfx::NativeView TestElementBase::GetNativeView() const {
+  return native_view_;
+}
+
+std::string TestElementBase::GetSecondaryIdentifier() const {
+  return secondary_id_.empty() ? TrackedElement::GetSecondaryIdentifier()
+                               : secondary_id_;
+}
+
+DEFINE_SAFE_CAST_TARGET(TestElement)
+DEFINE_SAFE_CAST_TARGET(TestElementOtherFramework)
+
+}  // namespace ui::test

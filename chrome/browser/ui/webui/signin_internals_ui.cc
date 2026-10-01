@@ -1,0 +1,301 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webui/signin_internals_ui.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "base/hash/hash.h"
+#include "base/i18n/time_formatting.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/about_signin_internals_factory.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/common/channel_info.h"
+#include "chrome/common/url_constants.h"
+#include "components/grit/signin_internals_resources.h"
+#include "components/grit/signin_internals_resources_map.h"
+#include "components/signin/public/base/signin_buildflags.h"
+#include "components/signin/public/base/signin_switches.h"
+#include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/signin/public/identity_manager/tribool.h"
+#include "components/version_info/channel.h"
+#include "content/public/browser/web_ui.h"
+#include "content/public/browser/web_ui_data_source.h"
+#include "services/network/public/mojom/content_security_policy.mojom.h"
+#include "ui/webui/webui_util.h"
+
+#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+#include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_refresh_service.h"
+#include "chrome/browser/signin/bound_session_credentials/bound_session_cookie_refresh_service_factory.h"
+#include "chrome/browser/signin/bound_session_credentials/bound_session_debug_info.h"
+#include "chrome/common/renderer_configuration.mojom.h"
+#endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+
+namespace {
+
+void CreateAndAddSignInInternalsHTMLSource(Profile* profile) {
+  content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
+      profile, chrome::kChromeUISignInInternalsHost);
+  webui::SetupWebUIDataSource(source, kSigninInternalsResources,
+                              IDR_SIGNIN_INTERNALS_SIGNIN_INDEX_HTML);
+}
+
+#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+
+std::string GetBoundSessionExpirationString(base::Time expiration_time) {
+  return (expiration_time > base::Time::Now() ? "Expires at " : "Expired at ") +
+         base::TimeFormatAsIso8601(expiration_time);
+}
+
+void AppendBoundSessionInfo(
+    base::DictValue& signin_status,
+    BoundSessionCookieRefreshService* bound_session_service,
+    bool is_feature_enabled) {
+  // TODO(b/299884315): update bound session info dynamically by observing the
+  // service.
+  static constexpr std::string_view kSessionIdKey = "sessionID";
+  base::ListValue bound_sessions_list;
+  if (!bound_session_service) {
+    bound_sessions_list.Append(base::DictValue().Set(
+        kSessionIdKey, "Bound session service is disabled."));
+  } else if (std::vector<BoundSessionDebugInfo> bound_session_info =
+                 bound_session_service->GetBoundSessionDebugInfo();
+             bound_session_info.empty()) {
+    bound_sessions_list.Append(base::DictValue().Set(
+        kSessionIdKey, is_feature_enabled
+                           ? "No active bound sessions."
+                           : "Bound session feature is disabled."));
+  } else {
+    for (const auto& info : bound_session_info) {
+      bound_sessions_list.Append(
+          base::DictValue()
+              .Set(kSessionIdKey, info.session_id)
+              .Set("domain", info.domain)
+              .Set("path", info.path)
+              .Set("expirationTime",
+                   GetBoundSessionExpirationString(info.expiration_time))
+              .Set("throttlingPaused", info.throttling_paused)
+              .Set("boundCookieNames", info.bound_cookie_names)
+              .Set("refreshUrl", info.refresh_url.spec()));
+    }
+  }
+  signin_status.Set("boundSessionInfo", std::move(bound_sessions_list));
+}
+#endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+
+}  //  namespace
+
+SignInInternalsUI::SignInInternalsUI(content::WebUI* web_ui)
+    : WebUIController(web_ui) {
+  CreateAndAddSignInInternalsHTMLSource(Profile::FromWebUI(web_ui));
+  web_ui->AddMessageHandler(std::make_unique<SignInInternalsHandler>());
+}
+
+SignInInternalsUI::~SignInInternalsUI() = default;
+
+SignInInternalsHandler::SignInInternalsHandler() = default;
+
+SignInInternalsHandler::~SignInInternalsHandler() {
+  // This handler can be destroyed without OnJavascriptDisallowed() ever being
+  // called (https://crbug.com/40055554). Call it to ensure that `this` is
+  // removed as an observer.
+  OnJavascriptDisallowed();
+}
+
+void SignInInternalsHandler::OnJavascriptAllowed() {
+  Profile* profile = Profile::FromWebUI(web_ui());
+  if (profile) {
+    AboutSigninInternals* about_signin_internals =
+        AboutSigninInternalsFactory::GetForProfile(profile);
+    if (about_signin_internals) {
+      about_signin_internals_observeration_.Observe(about_signin_internals);
+    }
+  }
+}
+
+void SignInInternalsHandler::OnJavascriptDisallowed() {
+  about_signin_internals_observeration_.Reset();
+}
+
+void SignInInternalsHandler::RegisterMessages() {
+  web_ui()->RegisterMessageCallback(
+      "getSigninInfo",
+      base::BindRepeating(&SignInInternalsHandler::HandleGetSignInInfo,
+                          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "overrideCapability",
+      base::BindRepeating(&SignInInternalsHandler::HandleOverrideCapability,
+                          base::Unretained(this)));
+}
+
+void SignInInternalsHandler::HandleOverrideCapability(
+    const base::ListValue& args) {
+  AllowJavascript();
+
+  CHECK_EQ(args.size(), 3u);
+  std::string account_id_str = args[0].GetString();
+  std::string capability_name = args[1].GetString();
+  std::string value_str = args[2].GetString();
+
+  Profile* profile = Profile::FromWebUI(web_ui());
+  if (!profile) {
+    return;
+  }
+
+  AboutSigninInternals* about_signin_internals =
+      AboutSigninInternalsFactory::GetForProfile(profile);
+  if (!about_signin_internals) {
+    return;
+  }
+
+  CoreAccountId account_id = CoreAccountId::FromString(account_id_str);
+  if (!about_signin_internals->CanOverrideAccountCapability(
+          account_id, capability_name, chrome::GetChannel())) {
+    return;
+  }
+
+  signin::IdentityManager* identity_manager =
+      IdentityManagerFactory::GetForProfile(profile);
+  if (!identity_manager) {
+    return;
+  }
+
+  std::optional<signin::Tribool> override_value;
+
+  if (value_str == "True") {
+    override_value = signin::Tribool::kTrue;
+  } else if (value_str == "False") {
+    override_value = signin::Tribool::kFalse;
+  } else if (value_str == "Unknown") {
+    override_value = signin::Tribool::kUnknown;
+  } else if (value_str.empty()) {
+    override_value = std::nullopt;
+  } else {
+    NOTREACHED() << "Invalid override value: " << value_str;
+  }
+
+  identity_manager->SetCapabilityOverride(account_id, capability_name,
+                                          override_value);
+}
+
+void SignInInternalsHandler::HandleGetSignInInfo(const base::ListValue& args) {
+  std::string callback_id = args[0].GetString();
+  AllowJavascript();
+
+  Profile* profile = Profile::FromWebUI(web_ui());
+  if (!profile) {
+    ResolveJavascriptCallback(base::Value(callback_id), base::Value());
+    return;
+  }
+
+  AboutSigninInternals* about_signin_internals =
+      AboutSigninInternalsFactory::GetForProfile(profile);
+  // TODO(vishwath): The UI would look better if we passed in a dict with some
+  // reasonable defaults, so the about:signin-internals page doesn't look
+  // empty in incognito mode. Alternatively, we could force about:signin to
+  // open in non-incognito mode always (like about:settings for ex.).
+  base::DictValue signin_status =
+      about_signin_internals ? about_signin_internals->GetSigninStatus()
+                             : base::DictValue();
+  AddAccountCapabilitiesOverridesInfo(signin_status);
+#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+  AppendBoundSessionInfo(
+      signin_status,
+      BoundSessionCookieRefreshServiceFactory::GetForProfile(profile),
+      switches::IsBoundSessionCredentialsEnabled(profile->GetPrefs()));
+#endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+  ResolveJavascriptCallback(base::Value(callback_id), std::move(signin_status));
+
+  if (!about_signin_internals) {
+    return;
+  }
+
+  signin::IdentityManager* identity_manager =
+      IdentityManagerFactory::GetForProfile(profile);
+  signin::AccountsInCookieJarInfo accounts_in_cookie_jar =
+      identity_manager->GetAccountsInCookieJar();
+  if (accounts_in_cookie_jar.AreAccountsFresh()) {
+    about_signin_internals->OnAccountsInCookieUpdated(
+        accounts_in_cookie_jar, GoogleServiceAuthError::AuthErrorNone());
+  }
+}
+
+void SignInInternalsHandler::OnSigninStateChanged(const base::DictValue& info) {
+  base::DictValue signin_status = info.Clone();
+  AddAccountCapabilitiesOverridesInfo(signin_status);
+#if BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+  Profile* profile = Profile::FromWebUI(web_ui());
+  if (profile) {
+    AppendBoundSessionInfo(
+        signin_status,
+        BoundSessionCookieRefreshServiceFactory::GetForProfile(profile),
+        switches::IsBoundSessionCredentialsEnabled(profile->GetPrefs()));
+    FireWebUIListener("signin-info-changed", signin_status);
+    return;
+  }
+#endif  // BUILDFLAG(ENABLE_BOUND_SESSION_CREDENTIALS)
+
+  FireWebUIListener("signin-info-changed", signin_status);
+}
+
+void SignInInternalsHandler::OnCookieAccountsFetched(
+    const base::DictValue& info) {
+  FireWebUIListener("update-cookie-accounts", info);
+}
+
+void SignInInternalsHandler::AddAccountCapabilitiesOverridesInfo(
+    base::DictValue& signin_status) {
+  Profile* profile = Profile::FromWebUI(web_ui());
+  if (!profile) {
+    return;
+  }
+  AboutSigninInternals* about_signin_internals =
+      AboutSigninInternalsFactory::GetForProfile(profile);
+  if (!about_signin_internals) {
+    return;
+  }
+
+  base::ListValue* account_capabilities =
+      signin_status.FindList("accountCapabilities");
+  bool any_capability_can_override = false;
+  if (account_capabilities) {
+    for (base::Value& item : *account_capabilities) {
+      if (!item.is_dict()) {
+        continue;
+      }
+      base::DictValue& account_dict = item.GetDict();
+      const std::string* account_id_str = account_dict.FindString("accountId");
+      if (!account_id_str) {
+        continue;
+      }
+      CoreAccountId account_id = CoreAccountId::FromString(*account_id_str);
+      base::ListValue* capabilities_list =
+          account_dict.FindList("capabilities");
+      if (!capabilities_list) {
+        continue;
+      }
+      for (base::Value& cap_item : *capabilities_list) {
+        if (!cap_item.is_dict()) {
+          continue;
+        }
+        base::DictValue& cap_dict = cap_item.GetDict();
+        const std::string* cap_name = cap_dict.FindString("name");
+        if (!cap_name) {
+          continue;
+        }
+        bool can_override =
+            about_signin_internals->CanOverrideAccountCapability(
+                account_id, *cap_name, chrome::GetChannel());
+        cap_dict.Set("can_override", can_override);
+        if (can_override) {
+          any_capability_can_override = true;
+        }
+      }
+    }
+  }
+  signin_status.Set("canOverrideAccountInfo", any_capability_can_override);
+}

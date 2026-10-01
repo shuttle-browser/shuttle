@@ -1,0 +1,316 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.tab.tab_restore;
+
+import androidx.annotation.IntDef;
+
+import org.jni_zero.JNINamespace;
+import org.jni_zero.JniType;
+import org.jni_zero.NativeMethods;
+
+import org.chromium.base.Token;
+import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.WebContentsState;
+import org.chromium.chrome.browser.tabmodel.TabModel;
+import org.chromium.url.GURL;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.function.Supplier;
+
+/** Creates historical entries in TabRestoreService. */
+@NullMarked
+@JNINamespace("historical_tab_saver")
+public class HistoricalTabSaverImpl implements HistoricalTabSaver {
+    private final List<Supplier<TabModel>> mSecondaryTabModelSuppliers = new ArrayList<>();
+    private final TabModel mTabModel;
+
+    // These values are persisted to logs. Entries should not be renumbered and numeric values
+    // should never be reused.
+    @IntDef({
+        HistoricalSaverCloseType.TAB,
+        HistoricalSaverCloseType.GROUP,
+        HistoricalSaverCloseType.BULK,
+        HistoricalSaverCloseType.COUNT
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    private @interface HistoricalSaverCloseType {
+        int TAB = 0;
+        int GROUP = 1;
+        int BULK = 2;
+        int COUNT = 3;
+    }
+
+    /**
+     * @param tabModel The model from which tabs are being saved.
+     */
+    public HistoricalTabSaverImpl(TabModel tabModel) {
+        mTabModel = tabModel;
+    }
+
+    // HistoricalTabSaver implementation.
+
+    @Override
+    public void destroy() {
+        mSecondaryTabModelSuppliers.clear();
+    }
+
+    @Override
+    public void addSecondaryTabModelSupplier(Supplier<TabModel> tabModelSupplier) {
+        mSecondaryTabModelSuppliers.add(tabModelSupplier);
+    }
+
+    @Override
+    public void removeSecondaryTabModelSupplier(Supplier<TabModel> tabModelSupplier) {
+        mSecondaryTabModelSuppliers.remove(tabModelSupplier);
+    }
+
+    @Override
+    public void createHistoricalTab(Tab tab) {
+        if (!shouldSave(tab)) return;
+
+        createHistoricalTabInternal(tab);
+    }
+
+    @Override
+    public void createHistoricalTabOrGroup(HistoricalEntry entry) {
+        createHistoricalBulkClosure(Collections.singletonList(entry));
+    }
+
+    @Override
+    public void createHistoricalBulkClosure(List<HistoricalEntry> entries) {
+        // Filter out any invalid entire and tabs.
+        List<HistoricalEntry> validEntries = getValidatedEntries(entries);
+        if (validEntries.isEmpty()) return;
+
+        int totalTabs = 0;
+        int groupCount = 0;
+        for (HistoricalEntry entry : validEntries) {
+            totalTabs += entry.getTabs().size();
+            if (!entry.isSingleTab()) {
+                groupCount++;
+            }
+        }
+
+        // All tabs to be saved - one entry per tab.
+        List<Tab> allTabs = new ArrayList<>(totalTabs);
+        // Group IDs corresponding to each element of allTabs.
+        List<Token> perTabTabGroupId = new ArrayList<>(totalTabs);
+
+        // Distinct group IDs that will be saved - one per group.
+        List<Token> tabGroupIds = new ArrayList<>(groupCount);
+        List<String> savedTabGroupIds = new ArrayList<>(groupCount);
+        // Titles corresponding to each element in tabGroupIds.
+        List<String> groupTitles = new ArrayList<>(groupCount);
+        // Colors corresponding to each element in tabGroupIds.
+        int[] groupColors = new int[groupCount];
+
+        // Byte buffer associated with WebContentsState per tab by index.
+        List<ByteBuffer> byteBuffers = new ArrayList<>(totalTabs);
+        // Saved state version of WebContentsState per tab by index.
+        int[] savedStateVersions = new int[totalTabs];
+
+        int tabIndex = 0;
+        int groupIndex = 0;
+        for (HistoricalEntry entry : validEntries) {
+            if (entry.isSingleTab()) {
+                Tab firstTab = entry.getTabs().get(0);
+                WebContentsState tabWebContentsState = getWebContentsState(firstTab);
+                allTabs.add(firstTab);
+                perTabTabGroupId.add(null);
+                byteBuffers.add(tabWebContentsState.buffer());
+                savedStateVersions[tabIndex++] = tabWebContentsState.version();
+                continue;
+            }
+
+            Token tabGroupId = entry.getTabGroupId();
+            assert tabGroupId != null;
+            tabGroupIds.add(tabGroupId);
+            // TODO(b/336589861): Set a real saved tab group ID from its corresponding sync entity
+            // here.
+            savedTabGroupIds.add("");
+            groupTitles.add(entry.getGroupTitle() == null ? "" : entry.getGroupTitle());
+            groupColors[groupIndex++] = entry.getGroupColor();
+            for (Tab tab : entry.getTabs()) {
+                WebContentsState tabWebContentsState = getWebContentsState(tab);
+                allTabs.add(tab);
+                perTabTabGroupId.add(tabGroupId);
+                byteBuffers.add(tabWebContentsState.buffer());
+                savedStateVersions[tabIndex++] = tabWebContentsState.version();
+            }
+        }
+
+        // If there is only a single valid tab remaining save it individually.
+        if (validEntries.size() == 1 && validEntries.get(0).isSingleTab()) {
+            createHistoricalTabInternal(allTabs.get(0));
+            return;
+        }
+
+        // If there is only a single entry and more than one tab remaining so this is a group.
+        if (validEntries.size() == 1 && !validEntries.get(0).isSingleTab()) {
+            RecordHistogram.recordEnumeratedHistogram(
+                    "Tabs.RecentlyClosed.HistoricalSaverCloseType",
+                    HistoricalSaverCloseType.GROUP,
+                    HistoricalSaverCloseType.COUNT);
+            HistoricalTabSaverImplJni.get()
+                    .createHistoricalGroup(
+                            mTabModel,
+                            tabGroupIds.get(0),
+                            savedTabGroupIds.get(0),
+                            groupTitles.get(0),
+                            groupColors[0],
+                            allTabs,
+                            byteBuffers,
+                            savedStateVersions);
+            return;
+        }
+
+        RecordHistogram.recordEnumeratedHistogram(
+                "Tabs.RecentlyClosed.HistoricalSaverCloseType",
+                HistoricalSaverCloseType.BULK,
+                HistoricalSaverCloseType.COUNT);
+        HistoricalTabSaverImplJni.get()
+                .createHistoricalBulkClosure(
+                        mTabModel,
+                        tabGroupIds,
+                        savedTabGroupIds,
+                        groupTitles,
+                        groupColors,
+                        perTabTabGroupId,
+                        allTabs,
+                        byteBuffers,
+                        savedStateVersions);
+    }
+
+    private void createHistoricalTabInternal(Tab tab) {
+        RecordHistogram.recordEnumeratedHistogram(
+                "Tabs.RecentlyClosed.HistoricalSaverCloseType",
+                HistoricalSaverCloseType.TAB,
+                HistoricalSaverCloseType.COUNT);
+        // Index will be available for non-undoable closures as the tab is removed from the model
+        // after. Undoable closures are removed from the model earlier so the index will be -1.
+        int index = mTabModel.indexOf(tab);
+        WebContentsState state = getWebContentsState(tab);
+        HistoricalTabSaverImplJni.get()
+                .createHistoricalTab(tab, index, state.buffer(), state.version());
+    }
+
+    /**
+     * Checks that the tab has a valid URL for saving. This requires the URL to exist and not be an
+     * internal Chrome scheme, about:blank, or a native page and it cannot be incognito.
+     */
+    private boolean shouldSave(Tab tab) {
+        if (tab.isIncognito()) return false;
+        // Check the secondary tab model to see if the tab was moved instead of deleted.
+        if (tabIdExistsInSecondaryModel(tab.getId())) return false;
+
+        GURL committedUrlOrFrozenUrl;
+        if (tab.getWebContents() != null) {
+            committedUrlOrFrozenUrl = tab.getWebContents().getLastCommittedUrl();
+        } else {
+            if (tab.getWebContentsState() == null) return false;
+
+            committedUrlOrFrozenUrl = tab.getUrl();
+        }
+
+        return committedUrlOrFrozenUrl != null
+                && committedUrlOrFrozenUrl.isValid()
+                && !committedUrlOrFrozenUrl.isEmpty();
+    }
+
+    private boolean tabIdExistsInSecondaryModel(int tabId) {
+        for (Supplier<TabModel> tabModelSupplier : mSecondaryTabModelSuppliers) {
+            var tabModel = tabModelSupplier.get();
+            if (tabModel != null && tabModel.getTabById(tabId) != null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Generate a valid list of {@link HistoricalEntry}s. Filter out {@link Tab}s that do not pass
+     * the {@link #shouldSave(Tab)}.
+     */
+    private List<Tab> getValidatedTabs(List<Tab> tabs) {
+        List<Tab> validatedTabs = new ArrayList<>();
+        for (Tab tab : tabs) {
+            if (!shouldSave(tab)) continue;
+
+            validatedTabs.add(tab);
+        }
+        return validatedTabs;
+    }
+
+    /**
+     * Generate a valid list of {@link HistoricalEntry}s.
+     * - Filter out {@link Tab}s that do not pass the {@link #shouldSave(Tab)}.
+     * - Drop {@link HistoricalEntry} if empty after validation.
+     */
+    private List<HistoricalEntry> getValidatedEntries(List<HistoricalEntry> entries) {
+        List<HistoricalEntry> validatedEntries = new ArrayList<>();
+        for (HistoricalEntry entry : entries) {
+            List<Tab> validTabs = getValidatedTabs(entry.getTabs());
+            if (validTabs.isEmpty()) continue;
+
+            Token tabGroupId = entry.getTabGroupId();
+            if (tabGroupId == null) {
+                assert validTabs.size() == 1;
+                validatedEntries.add(new HistoricalEntry(validTabs.get(0)));
+                continue;
+            }
+            validatedEntries.add(
+                    new HistoricalEntry(
+                            tabGroupId, entry.getGroupTitle(), entry.getGroupColor(), validTabs));
+        }
+        return validatedEntries;
+    }
+
+    private static WebContentsState getWebContentsState(Tab tab) {
+        WebContentsState tempState = WebContentsState.getTempWebContentsState();
+        // If WebContents exists, on the native side during frozen tab restoration the same check
+        // will be made and return the contents immediately, skipping the logic that requires
+        // restoring from the WebContentsState. This tempState acts as an empty object placeholder.
+        if (tab.getWebContents() != null) return tempState;
+
+        WebContentsState state = tab.getWebContentsState();
+        return (state == null) ? tempState : state;
+    }
+
+    @NativeMethods
+    interface Natives {
+        void createHistoricalTab(Tab tab, int index, ByteBuffer state, int savedStateVersion);
+
+        void createHistoricalGroup(
+                @JniType("TabModel*") TabModel model,
+                @JniType("base::Token") Token token,
+                @JniType("std::u16string") String savedTabGroupId,
+                @JniType("std::u16string") String title,
+                int color,
+                @JniType("std::vector<TabAndroid*>") List<Tab> tabs,
+                @JniType("std::vector<base::android::ScopedJavaLocalRef<jobject>>")
+                        List<ByteBuffer> byteBuffers,
+                @JniType("std::vector<int32_t>") int[] savedStateVersions);
+
+        void createHistoricalBulkClosure(
+                @JniType("TabModel*") TabModel model,
+                @JniType("std::vector<std::optional<base::Token>>") List<Token> tabGroupIds,
+                @JniType("std::vector<std::u16string>") List<String> savedTabGroupIds,
+                @JniType("std::vector<std::u16string>") List<String> titles,
+                @JniType("std::vector<int>") int[] colors,
+                @JniType("std::vector<std::optional<base::Token>>") List<Token> perTabTabGroupId,
+                @JniType("std::vector<TabAndroid*>") List<Tab> tabs,
+                @JniType("std::vector<base::android::ScopedJavaLocalRef<jobject>>")
+                        List<ByteBuffer> byteBuffers,
+                @JniType("std::vector<int32_t>") int[] savedStateVersions);
+    }
+}

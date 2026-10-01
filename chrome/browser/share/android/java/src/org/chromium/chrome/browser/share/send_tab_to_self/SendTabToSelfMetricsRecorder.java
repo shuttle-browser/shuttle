@@ -1,0 +1,95 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.share.send_tab_to_self;
+
+import android.text.TextUtils;
+
+import org.jni_zero.JNINamespace;
+import org.jni_zero.JniType;
+import org.jni_zero.NativeMethods;
+
+import org.chromium.base.metrics.RecordUserAction;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.content_public.browser.WebContents;
+
+/** Class that captures all the metrics needed for Send Tab To Self on Android. */
+@JNINamespace("send_tab_to_self")
+@NullMarked
+public class SendTabToSelfMetricsRecorder {
+    public static void recordCrossDeviceTabJourney() {
+        RecordUserAction.record("MobileCrossDeviceTabJourney");
+    }
+
+    /**
+     * Attaches a scroll observer to the given tab to track scroll volume.
+     *
+     * @param tab The tab to attach the observer to.
+     * @param scrollToTextFragment The scroll-to-text fragment, if any.
+     */
+    public static void attachScrollObserverToTab(Tab tab, @Nullable String scrollToTextFragment) {
+        boolean hasScrollPosition = !TextUtils.isEmpty(scrollToTextFragment);
+        recordHasScrollPositionOnOpened(hasScrollPosition);
+        SendTabToSelfAndroidBridge.runWhenWebContentsAvailable(
+                tab, webContents -> attachScrollObserver(webContents, hasScrollPosition));
+    }
+
+    private static void attachScrollObserver(WebContents webContents, boolean hasScrollPosition) {
+        SendTabToSelfMetricsRecorderJni.get().attachScrollObserver(webContents, hasScrollPosition);
+    }
+
+    public static void recordHasScrollPositionOnOpened(boolean hasScrollPosition) {
+        SendTabToSelfMetricsRecorderJni.get().recordHasScrollPositionOnOpened(hasScrollPosition);
+    }
+
+    public static void recordNotificationStatus(@NotificationStatus int status) {
+        if (status == NotificationStatus.OPENED) {
+            RecordUserAction.record("MobileCrossDeviceTabJourney");
+        }
+        SendTabToSelfMetricsRecorderJni.get().recordNotificationStatus(status);
+    }
+
+    public static void recordScrollPositionGenerationOutcome(
+            @ScrollPositionGenerationOutcome int outcome) {
+        SendTabToSelfMetricsRecorderJni.get().recordScrollPositionGenerationOutcome(outcome);
+    }
+
+    public static void recordScrollPositionGenerationTime(long durationMs) {
+        SendTabToSelfMetricsRecorderJni.get().recordScrollPositionGenerationTime(durationMs);
+    }
+
+    public static void recordScrollPositionSelectorLength(int length) {
+        SendTabToSelfMetricsRecorderJni.get().recordScrollPositionSelectorLength(length);
+    }
+
+    public static void recordEntryPointInvoked(@ShareEntryPoint int entryPoint) {
+        SendTabToSelfMetricsRecorderJni.get().recordEntryPointInvoked(entryPoint);
+    }
+
+    @NativeMethods
+    interface Natives {
+        void recordNotificationStatus(
+                @JniType("send_tab_to_self::NotificationStatus") @NotificationStatus int status);
+
+        void attachScrollObserver(
+                @JniType("content::WebContents*") WebContents webContents,
+                boolean hasScrollPosition);
+
+        void recordHasScrollPositionOnOpened(boolean hasScrollPosition);
+
+        void recordScrollPositionGenerationOutcome(
+                @JniType("send_tab_to_self::ScrollPositionGenerationOutcome")
+                        @ScrollPositionGenerationOutcome
+                        int outcome);
+
+        void recordScrollPositionGenerationTime(long durationMs);
+
+        void recordScrollPositionSelectorLength(int length);
+
+        void recordEntryPointInvoked(
+                @JniType("send_tab_to_self::ShareEntryPoint") @ShareEntryPoint int entryPoint);
+    }
+}

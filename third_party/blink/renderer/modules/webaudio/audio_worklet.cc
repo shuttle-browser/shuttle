@@ -1,0 +1,128 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/modules/webaudio/audio_worklet.h"
+
+#include "third_party/blink/renderer/bindings/core/v8/serialization/serialized_script_value.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
+#include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/messaging/message_channel.h"
+#include "third_party/blink/renderer/core/messaging/message_port.h"
+#include "third_party/blink/renderer/core/workers/threaded_worklet_object_proxy.h"
+#include "third_party/blink/renderer/core/workers/worker_clients.h"
+#include "third_party/blink/renderer/modules/webaudio/audio_worklet_messaging_proxy.h"
+#include "third_party/blink/renderer/modules/webaudio/audio_worklet_node.h"
+#include "third_party/blink/renderer/modules/webaudio/base_audio_context.h"
+#include "third_party/blink/renderer/modules/webaudio/cross_thread_audio_worklet_processor_info.h"
+#include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+
+namespace blink {
+
+AudioWorklet::AudioWorklet(BaseAudioContext* context)
+    : Worklet(*To<LocalDOMWindow>(context->GetExecutionContext())),
+      context_(context) {
+  if (!RuntimeEnabledFeatures::AudioWorkletSharedPortEnabled()) {
+    return;
+  }
+
+  auto* channel =
+      MakeGarbageCollected<MessageChannel>(context->GetExecutionContext());
+  port_ = channel->port1();
+  global_scope_port_channel_ = channel->port2()->Disentangle();
+}
+
+void AudioWorklet::CreateProcessor(
+    scoped_refptr<AudioWorkletHandler> handler,
+    MessagePortChannel message_port_channel,
+    scoped_refptr<SerializedScriptValue> node_options) {
+  DCHECK(IsMainThread());
+  DCHECK(GetMessagingProxy());
+  GetMessagingProxy()->CreateProcessor(std::move(handler),
+                                       std::move(message_port_channel),
+                                       std::move(node_options));
+}
+
+MessagePort* AudioWorklet::port() const {
+  return port_.Get();
+}
+
+MessagePortChannel AudioWorklet::GetGlobalScopePortChannel() const {
+  return global_scope_port_channel_;
+}
+
+void AudioWorklet::NotifyGlobalScopeIsUpdated() {
+  DCHECK(IsMainThread());
+
+  if (!worklet_started_) {
+    context_->NotifyWorkletIsReady();
+    worklet_started_ = true;
+  }
+}
+
+BaseAudioContext* AudioWorklet::GetBaseAudioContext() const {
+  DCHECK(IsMainThread());
+  return context_.Get();
+}
+
+Vector<CrossThreadAudioParamInfo> AudioWorklet::GetParamInfoListForProcessor(
+    const String& name) {
+  DCHECK(IsMainThread());
+  DCHECK(GetMessagingProxy());
+  return GetMessagingProxy()->GetParamInfoListForProcessor(name);
+}
+
+bool AudioWorklet::IsProcessorRegistered(const String& name) {
+  DCHECK(IsMainThread());
+  DCHECK(GetMessagingProxy());
+  return GetMessagingProxy()->IsProcessorRegistered(name);
+}
+
+bool AudioWorklet::IsReady() {
+  DCHECK(IsMainThread());
+  return GetMessagingProxy() && GetMessagingProxy()->GetBackingWorkerThread();
+}
+
+bool AudioWorklet::NeedsToCreateGlobalScope() {
+  // This is a callback from `Worklet::FetchAndInvokeScript()` call, which only
+  // can be triggered by `Worklet.addModule()` call.
+  UseCounter::Count(GetExecutionContext(), WebFeature::kAudioWorkletAddModule);
+
+  return GetNumberOfGlobalScopes() == 0;
+}
+
+WorkletGlobalScopeProxy* AudioWorklet::CreateGlobalScope() {
+  DCHECK_EQ(GetNumberOfGlobalScopes(), 0u);
+
+  AudioWorkletMessagingProxy* proxy =
+      MakeGarbageCollected<AudioWorkletMessagingProxy>(GetExecutionContext(),
+                                                       this);
+  proxy->Initialize(MakeGarbageCollected<WorkerClients>(),
+                    ModuleResponsesMap(),
+                    WorkerBackingThreadStartupData::CreateDefault());
+  return proxy;
+}
+
+AudioWorkletMessagingProxy* AudioWorklet::GetMessagingProxy() {
+  return GetNumberOfGlobalScopes() == 0
+             ? nullptr
+             : static_cast<AudioWorkletMessagingProxy*>(
+                   FindAvailableGlobalScope());
+}
+
+void AudioWorklet::TerminateProxies() {
+  DCHECK(IsMainThread());
+  AbortPendingTasks();
+  for (const auto& proxy : proxies_) {
+    proxy->TerminateWorkletGlobalScope();
+  }
+}
+
+void AudioWorklet::Trace(Visitor* visitor) const {
+  visitor->Trace(context_);
+  visitor->Trace(port_);
+  Worklet::Trace(visitor);
+}
+
+}  // namespace blink

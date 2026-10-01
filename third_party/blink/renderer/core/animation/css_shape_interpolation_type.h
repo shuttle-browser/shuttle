@@ -1,0 +1,71 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_CSS_SHAPE_INTERPOLATION_TYPE_H_
+#define THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_CSS_SHAPE_INTERPOLATION_TYPE_H_
+
+#include "third_party/blink/renderer/core/animation/css_interpolation_type.h"
+#include "third_party/blink/renderer/core/animation/non_interpolable_value.h"
+#include "third_party/blink/renderer/core/animation/shape_property_functions.h"
+
+namespace blink {
+
+class CSSShapeInterpolationType : public CSSInterpolationType {
+ public:
+  explicit CSSShapeInterpolationType(PropertyHandle property)
+      : CSSInterpolationType(property) {}
+
+  void ApplyStandardPropertyValue(const InterpolableValue&,
+                                  const NonInterpolableValue*,
+                                  StyleResolverState&) const final;
+  void Composite(UnderlyingValueOwner&,
+                 double underlying_fraction,
+                 const InterpolationValue&,
+                 double interpolation_fraction) const final;
+
+  static CORE_EXPORT bool IsShapeNonInterpolableValue(
+      const NonInterpolableValue*);
+
+  // Returns true if the shape non-interpolable value contains arc segments,
+  // which produce variable conic weights in the resulting SkPath and cannot
+  // be reliably interpolated on the compositor.
+  static CORE_EXPORT bool HasArcSegments(const NonInterpolableValue*);
+
+  static CORE_EXPORT BasicShapeInfo
+  CreateShape(const InterpolableValue&,
+              const NonInterpolableValue&,
+              const CSSToLengthConversionData&);
+
+  static InterpolationValue MaybeConvertCSSValue(const BasicShapeCssInfo& info,
+                                                 const CSSProperty& property);
+  static InterpolationValue MaybeConvertBasicShape(const BasicShapeInfo& info,
+                                                   const CSSProperty& property,
+                                                   double zoom);
+  static bool ShapesAreCompatible(const NonInterpolableValue& a,
+                                  const NonInterpolableValue& b);
+  static InterpolableValue* CreateNeutralValue(
+      const NonInterpolableValue& non_interpolable);
+  static NonInterpolableValue::Type ShapeNonInterpolableValueType();
+  static ShapeReferenceBox GetBox(const NonInterpolableValue& value);
+
+ protected:
+  InterpolationValue MaybeConvertNeutral(const InterpolationValue& underlying,
+                                         ConversionCheckers&) const final;
+  InterpolationValue MaybeConvertInitial(const StyleResolverState&,
+                                         ConversionCheckers&) const final;
+  InterpolationValue MaybeConvertInherit(const StyleResolverState&,
+                                         ConversionCheckers&) const final;
+  InterpolationValue MaybeConvertValue(const CSSValue&,
+                                       const StyleResolverState&,
+                                       ConversionCheckers&) const final;
+  InterpolationValue MaybeConvertStandardPropertyUnderlyingValue(
+      const ComputedStyle&) const final;
+  PairwiseInterpolationValue MaybeMergeSingles(
+      InterpolationValue&& start,
+      InterpolationValue&& end) const final;
+};
+
+}  // namespace blink
+
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_ANIMATION_CSS_SHAPE_INTERPOLATION_TYPE_H_

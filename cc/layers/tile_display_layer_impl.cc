@@ -1,0 +1,306 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "cc/layers/tile_display_layer_impl.h"
+
+#include <algorithm>
+#include <memory>
+#include <utility>
+#include <variant>
+
+#include "base/check.h"
+#include "base/logging.h"
+#include "base/notreached.h"
+#include "cc/base/math_util.h"
+#include "cc/layers/append_quads_data.h"
+#include "cc/trees/layer_tree_impl.h"
+#include "components/viz/client/client_resource_provider.h"
+#include "components/viz/common/quads/solid_color_draw_quad.h"
+#include "components/viz/common/quads/tile_draw_quad.h"
+
+namespace cc {
+
+namespace {
+
+class TilingOrder {
+ public:
+  bool operator()(const std::unique_ptr<TileDisplayLayerTiling>& left,
+                  const std::unique_ptr<TileDisplayLayerTiling>& right) {
+    return left->contents_scale_key() > right->contents_scale_key();
+  }
+};
+
+}  // namespace
+
+TileDisplayLayerTile::TileDisplayLayerTile(
+    TileDisplayLayerImpl& layer,
+    const TileDisplayLayerTileContents& contents)
+    : layer_(layer), contents_(contents) {}
+
+TileDisplayLayerTile::TileDisplayLayerTile(TileDisplayLayerTile&&) = default;
+
+TileDisplayLayerTile::~TileDisplayLayerTile() {
+  if (auto* resource = std::get_if<TileDisplayLayerTileResource>(&contents_)) {
+    layer_->DiscardResource(resource->resource_id);
+  }
+}
+
+TileDisplayLayerTiling::TileDisplayLayerTiling(TileDisplayLayerImpl& layer,
+                                               float scale_key)
+    : layer_(layer), scale_key_(scale_key) {}
+
+TileDisplayLayerTiling::~TileDisplayLayerTiling() = default;
+
+TileDisplayLayerTile* TileDisplayLayerTiling::TileAt(
+    const TileIndex& index) const {
+  auto it = tiles_.find(index);
+  if (it == tiles_.end()) {
+    return nullptr;
+  }
+  return it->second.get();
+}
+
+void TileDisplayLayerTiling::SetRasterTransform(
+    const gfx::AxisTransform2d& transform) {
+  DCHECK_EQ(std::max(transform.scale().x(), transform.scale().y()), scale_key_);
+  raster_transform_ = transform;
+}
+
+void TileDisplayLayerTiling::SetTileSize(const gfx::Size& size) {
+  if (size == tiling_data_.max_texture_size()) {
+    return;
+  }
+
+  tiling_data_.SetMaxTextureSize(size);
+}
+
+void TileDisplayLayerTiling::SetTilingRect(const gfx::Rect& rect) {
+  if (rect == tiling_data_.tiling_rect()) {
+    return;
+  }
+
+  tiling_data_.SetTilingRect(rect);
+}
+
+void TileDisplayLayerTiling::SetTileContents(
+    const TileIndex& key,
+    const TileDisplayLayerTileContents& contents,
+    bool update_damage) {
+  if (update_damage) {
+    // Full tree updates receive damage as part of the LayerImpl::update_rect.
+    // For incremental tile updates on an Active tree, we need to record the
+    // damage caused by each tile change.
+    gfx::Rect tile_rect = tiling_data_.TileBoundsWithBorder(key.i, key.j);
+    tile_rect.set_size(tiling_data_.max_texture_size());
+    gfx::Rect enclosing_layer_rect = ToEnclosingRect(
+        raster_transform_.InverseMapRect(gfx::RectF(tile_rect)));
+    layer_->RecordDamage(enclosing_layer_rect);
+  }
+
+  std::unique_ptr<Tile> old_tile;
+  if (std::holds_alternative<TileDisplayLayerNoContents>(contents)) {
+    const auto& no_contents = std::get<TileDisplayLayerNoContents>(contents);
+    if (no_contents.reason == mojom::MissingTileReason::kTileDeleted) {
+      tiles_.erase(key);
+    } else {
+      old_tile =
+          std::exchange(tiles_[key], std::make_unique<Tile>(*layer_, contents));
+    }
+  } else {
+    old_tile =
+        std::exchange(tiles_[key], std::make_unique<Tile>(*layer_, contents));
+  }
+}
+
+DisplayTilingCoverageIterator TileDisplayLayerTiling::Cover(
+    const gfx::Rect& coverage_rect,
+    float coverage_scale) const {
+  return DisplayTilingCoverageIterator(this, coverage_scale, coverage_rect);
+}
+
+gfx::Size TileDisplayLayerTiling::raster_size() const {
+  return layer_->bounds();
+}
+
+TileDisplayLayerImpl::TileDisplayLayerImpl(LayerTreeImpl& tree, int id)
+    : TileBasedLayerImpl(&tree, id) {}
+
+TileDisplayLayerImpl::~TileDisplayLayerImpl() = default;
+
+TileDisplayLayerTiling& TileDisplayLayerImpl::GetOrCreateTilingFromScaleKey(
+    float scale_key) {
+  auto it = std::find_if(tilings_.begin(), tilings_.end(),
+                         [scale_key](const auto& tiling) {
+                           return tiling->contents_scale_key() == scale_key;
+                         });
+  if (it != tilings_.end()) {
+    return **it;
+  }
+
+  tilings_.push_back(
+      std::make_unique<TileDisplayLayerTiling>(*this, scale_key));
+  TileDisplayLayerTiling& tiling = *tilings_.back();
+  std::sort(tilings_.begin(), tilings_.end(), TilingOrder());
+  return tiling;
+}
+
+void TileDisplayLayerImpl::RemoveTiling(float scale_key) {
+  auto it = std::find_if(tilings_.begin(), tilings_.end(),
+                         [scale_key](const auto& tiling) {
+                           return tiling->contents_scale_key() == scale_key;
+                         });
+  if (it != tilings_.end()) {
+    tilings_.erase(it);
+  }
+}
+
+const TileDisplayLayerTiling* TileDisplayLayerImpl::GetTilingForTesting(
+    float scale_key) const {
+  auto it = std::find_if(tilings_.begin(), tilings_.end(),
+                         [scale_key](const auto& tiling) {
+                           return tiling->contents_scale_key() == scale_key;
+                         });
+  return it != tilings_.end() ? it->get() : nullptr;
+}
+
+mojom::LayerType TileDisplayLayerImpl::GetLayerType() const {
+  return mojom::LayerType::kTileDisplay;
+}
+
+std::unique_ptr<LayerImpl> TileDisplayLayerImpl::CreateLayerImpl(
+    LayerTreeImpl* tree_impl) const {
+  NOTREACHED();
+}
+
+void TileDisplayLayerImpl::CopyPropertiesTo(LayerImpl* layer) const {
+  NOTREACHED();
+}
+
+bool TileDisplayLayerImpl::ComputeCheckerboardedNeedsRecord() {
+  // NOTE: Currently it is not necessary to compute
+  // checkerboarded_needs_recorded on the Viz side, as it is consumed only on
+  // the client side. However, it will become necessary when we introduce
+  // frames driven entirely by Viz. At that point, we should dedupe the
+  // relevant code into TileBasedLayerImpl.
+  // See crbug.com/482862751.
+  return false;
+}
+
+float TileDisplayLayerImpl::GetMaximumContentsScaleForUseInAppendQuads() const {
+  return tilings_.empty() ? 1.0 : tilings_.front()->contents_scale_key();
+}
+
+bool TileDisplayLayerImpl::IsDirectlyCompositedImage() const {
+  return is_directly_composited_image_;
+}
+
+gfx::Rect TileDisplayLayerImpl::RecordedBounds() const {
+  return recorded_bounds_;
+}
+
+gfx::ContentColorUsage TileDisplayLayerImpl::GetContentColorUsage() const {
+  return content_color_usage_;
+}
+
+DamageReasonSet TileDisplayLayerImpl::GetDamageReasons() const {
+  DamageReasonSet reasons =
+      LayerImpl::GetDamageReasonsFromLayerPropertyChange();
+  if (has_animated_image_update_rect_) {
+    reasons.Put(DamageReason::kAnimatedImage);
+  }
+  if (has_non_animated_image_update_rect_ || !GetDamageRect().IsEmpty()) {
+    reasons.Put(DamageReason::kUntracked);
+  }
+  return reasons;
+}
+
+void TileDisplayLayerImpl::ResetChangeTracking() {
+  TileBasedLayerImpl<TileDisplayLayerTiling>::ResetChangeTracking();
+  has_animated_image_update_rect_ = false;
+  has_non_animated_image_update_rect_ = false;
+}
+
+void TileDisplayLayerImpl::RecordDamage(const gfx::Rect& damage_rect) {
+  UnionWithExistingDamage(damage_rect);
+}
+
+void TileDisplayLayerImpl::DiscardResource(viz::ResourceId resource) {
+  layer_tree_impl()->host_impl()->resource_provider()->RemoveImportedResource(
+      std::move(resource));
+}
+
+std::vector<float> TileDisplayLayerImpl::GetSafeToDeleteTilings() {
+  std::vector<float> safe_to_delete_scales;
+  for (float scale : proposed_tiling_scales_for_deletion_) {
+    // Check if a tiling corresponding to the candidate scale is present in
+    // |last_append_quads_scales_|.
+    if (!LastAppendQuadsScalesContains(scale)) {
+      // If a tiling corresponding to the candidate scale is not present in
+      // |last_append_quads_scales_|, then its safe to delete.
+      safe_to_delete_scales.push_back(scale);
+    }
+  }
+  proposed_tiling_scales_for_deletion_.clear();
+  return safe_to_delete_scales;
+}
+
+float TileDisplayLayerImpl::GetIdealContentsScaleKey() const {
+  const auto ideal_scale = GetIdealContentsScale();
+  float ideal_scale_key = std::max(ideal_scale.x(), ideal_scale.y());
+
+  // external_page_scale_factor (e.g. an OOPIF scaled by its embedder) affects
+  // raster/ideal scale but not geometry, so it is not part of
+  // GetIdealContentsScale(). Apply it here to mirror
+  // PictureLayerImpl::UpdateIdealScales(); otherwise the coverage iterator
+  // would select a lower-resolution tiling, producing blurry content.
+  ideal_scale_key *= layer_tree_impl()->external_page_scale_factor();
+  return ideal_scale_key;
+}
+
+bool TileDisplayLayerImpl::ValidateTilingSetForContentsResourceId() const {
+  // Masks are only supported if they fit on exactly one tile.
+  return tilings_.size() == 1u;
+}
+
+void TileDisplayLayerImpl::AppendQuadsForResourcelessSoftwareDraw(
+    const AppendQuadsContext& context,
+    viz::CompositorRenderPass* render_pass,
+    AppendQuadsData* append_quads_data,
+    viz::SharedQuadState* shared_quad_state,
+    const Occlusion& scaled_occlusion) {
+  // `DRAW_MODE_RESOURCELESS_SOFTWARE` is a renderer-only software draw mode,
+  // and its handling is thus specific to the renderer-side PictureLayerImpl. It
+  // should never be propagated to the Viz side.
+  NOTREACHED();
+}
+
+TilingSetCoverageIterator<TileDisplayLayerTiling> TileDisplayLayerImpl::Cover(
+    const gfx::Rect& coverage_rect,
+    float coverage_scale,
+    float ideal_contents_scale) const {
+  return TilingSetCoverageIterator<TileDisplayLayerTiling>(
+      tilings_, coverage_rect, coverage_scale, ideal_contents_scale);
+}
+
+TileBasedLayerImpl<TileDisplayLayerTiling>::TilingResolution
+TileDisplayLayerImpl::GetTilingResolutionForDebugBorders(
+    const TileDisplayLayerTiling* tiling) const {
+  const float ideal_scale_key = GetIdealContentsScaleKey();
+  if (MathUtil::IsFloatNearlyTheSame(tiling->contents_scale_key(),
+                                     ideal_scale_key)) {
+    // NOTE: The above check is not exactly the same computation as is
+    // used by PictureLayerImpl, as high resolution tiles within
+    // PictureLayerImpl use `raster_contents_scale_`, which is not
+    // necessarily the ideal scale. However, we don't have the former
+    // field here, so use the ideal scale as an approximation.
+    // TODO(crbug.com/450651370): Determine whether we want to fix this.
+    return TilingResolution::kHigh;
+  }
+  if (tiling->contents_scale_key() > ideal_scale_key) {
+    return TilingResolution::kAboveHigh;
+  }
+  return TilingResolution::kBelowHigh;
+}
+
+}  // namespace cc

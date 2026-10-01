@@ -1,0 +1,391 @@
+/* Copyright 2024 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=//read-anything-side-panel.top-chrome/shared/sp_shared_style.css.js
+ * #import=//resources/cr_elements/cr_hidden_style_lit.css.js
+ * #import=//resources/cr_elements/cr_shared_vars.css.js
+ * #include=sp-shared-style cr-hidden-style-lit
+ * #scheme=relative
+ * #css_wrapper_metadata_end */
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  --immersive-menu-font: 'Google Sans Text', 'Google Sans', system-ui, sans-serif;
+  --immersive-menu-font-size: 13px;
+  --immersive-menu-line-height: 20px;
+  --immersive-menu-font-weight: 400;
+}
+
+#lineFocus {
+  position: absolute;
+  top: var(--line-focus-y);
+  left: var(--line-focus-left);
+  right: var(--line-focus-right);
+  height: var(--line-focus-height);
+  background-color: var(--line-focus-bg);
+  display: var(--line-focus-display);
+  /* Darkens the area around this element when it is a window. Does nothing when
+     it is a line. */
+  box-shadow: var(--line-focus-shadow);
+  pointer-events: none;
+  z-index: 9997;
+}
+
+#lineFocus.line-mode {
+  --line-focus-left: var(--sp-card-block-padding);
+  --line-focus-right: var(--sp-card-block-padding);
+}
+
+#lineFocus.window-mode {
+  --line-focus-left: 0;
+  --line-focus-right: 0;
+}
+
+.immersive.full-page #lineFocus.line-mode {
+  --line-focus-left: var(--sp-card-block-padding);
+  --line-focus-right: var(--immersive-scrollbar-width);
+}
+
+#empty-state-container {
+  background: var(--background-color);
+  border-radius: 12px;
+  height: 100%;
+  margin: 0 8px;
+  margin-bottom: var(--sp-card-block-padding);
+  overflow: auto;
+  padding: 20px;
+}
+
+.sp-scroller {
+  display: block;
+}
+
+/* Provides a fading effect to containerScroller after scrolling. */
+.sp-scroller.fade {
+  --scrollbar-margin: calc(var(--sp-card-block-padding) * 2);
+  --text-top-margin: calc((var(--letter-spacing) + var(--font-size)) / 2);
+
+  /* Fade out the text at the top of the scroller. */
+  mask-image: linear-gradient(to bottom, transparent, black var(--text-top-margin)),
+  /* Prevent fading from extending to the scrollbar. */
+  linear-gradient(to left, black var(--scrollbar-margin),transparent var(--scrollbar-margin));
+}
+
+#toolbar-container {
+  width: 100%;
+}
+
+#appFlexParent {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  height: auto;
+  min-height: 0;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+#appFlexParent.immersive {
+  background-color: var(--background-color);
+}
+
+#appFlexParent #containerParent {
+  background: var(--background-color);
+  display: flex;
+  flex-grow:1;
+  height: 100%;
+  margin-bottom: var(--sp-card-block-padding);
+  min-height: 0;
+  padding-top: 2px;
+  padding-left: var(--sp-card-block-padding);
+  padding-right: var(--sp-card-block-padding);
+  padding-bottom: var(--sp-card-block-padding);
+}
+
+/* Provides vertical and horizontal scrolling */
+#appFlexParent #containerScroller {
+  align-items: safe center;
+  background:transparent;
+  display:flex;
+  flex: 1 1 0%;
+  justify-content: center;
+  /* Display the scroll bars in the gutters outside the card. */
+  margin-bottom:calc(var(--sp-card-block-padding) * -1);
+  overflow: auto;
+  padding-bottom: var(--sp-card-block-padding);
+  margin-inline-end: calc(var(--sp-card-block-padding) * -2);
+  padding-inline-end: calc(var(--sp-card-block-padding) * 2);
+}
+
+.sp-scroller::-webkit-scrollbar-track,
+#empty-state-container::-webkit-scrollbar-track {
+  margin-bottom: 6px;
+  margin-top: 6px;
+}
+
+/* Hide the scrollbar corner */
+#containerScroller::-webkit-scrollbar-corner,
+#empty-state-container::-webkit-scrollbar-corner {
+  background-color: transparent;
+}
+
+/* Set the horizontal scrollbar height to match the gutter space */
+#containerScroller::-webkit-scrollbar:horizontal,
+#empty-state-container::-webkit-scrollbar:horizontal {
+  height: var(--sp-card-block-padding);
+}
+
+/* Immersive Scrollbar */
+.immersive.full-page {
+  --immersive-scrollbar-width: 14px;
+}
+
+.immersive.full-page .sp-scroller::-webkit-scrollbar {
+  width: var(--immersive-scrollbar-width);
+  height: 14px;
+  background-color: transparent;
+}
+
+.immersive.full-page .sp-scroller::-webkit-scrollbar-track {
+  background-color: transparent;
+  border-left: 1px solid transparent;
+}
+
+.immersive.full-page .sp-scroller::-webkit-scrollbar-thumb {
+  background-color: var(--color-read-anything-full-page-scrollbar, var(--color-sys-primary));
+  border-radius: 14px;
+  border: 4px solid transparent;
+  background-clip: padding-box;
+  min-height: 40px;
+}
+
+.immersive.full-page .sp-scroller.scrollbar-hovered::-webkit-scrollbar-track {
+  border-inline-start: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.immersive.full-page .sp-scroller.scrollbar-hovered::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* User select should be disabled on the Read Anything panel when Read Aloud
+ * is playing audio and enabled otherwise. */
+.user-select-disabled-when-speech-active-true {
+  user-select: none;
+}
+
+.user-select-disabled-when-speech-active-false {
+  user-select: auto;
+}
+
+#appFlexParent #container {
+  background: var(--background-color);
+  color: var(--foreground-color);
+  font-family: var(--font-family);
+  font-size: var(--font-size);
+  letter-spacing: var(--letter-spacing);
+  word-spacing: var(--letter-spacing);
+  line-height: var(--line-height);
+  margin: 0 auto;
+  max-width: var(--max-width);
+  overflow-wrap: break-word;
+  padding-left: 20px;
+  padding-top: var(--line-focus-padding);
+  padding-bottom: var(--line-focus-padding);
+  width: 100%; /* Wrap text to width even with horizontal scroll bar */
+}
+
+#appFlexParent p {
+  margin-bottom: var(--paragraph-spacing);
+}
+
+#appFlexParent a:link {
+  color: var(--link-color);
+}
+
+#appFlexParent a:visited {
+  color: var(--visited-link-color);
+}
+
+#appFlexParent sp-empty-state {
+  display: flex;
+  margin: 0 auto 16px auto;
+  font-family: var(--font-family);
+  letter-spacing: var(--letter-spacing);
+  --sp-empty-state-heading-font-size: calc(var(--font-size) * 1.2);
+  --sp-empty-state-body-font-size: var(--font-size);
+
+  --sp-empty-state-heading-line-height: var(--line-height);
+  --sp-empty-state-body-line-height: var(--line-height);
+}
+
+#appFlexParent ::selection {
+  background: var(--selection-color);
+  color: var(--selection-text-color);
+}
+
+#appFlexParent .current-read-highlight {
+  background-color: var(--current-highlight-bg-color);
+}
+
+@media (forced-colors: active) {
+  #appFlexParent .current-read-highlight {
+    background-color: Highlight;
+    color: HighlightText;
+  }
+
+  #lineFocus.line-mode {
+    background-color: Highlight;
+  }
+
+  /* Per W3C
+   * (https://www.w3.org/TR/css-color-adjust-1/#forced-color-adjust-prop),
+   * forced-color-adjust: none is permitted when a specific color is needed
+   * to "provide a more appropriate user experience for those elements." In
+   * this case, without this rule, the browser forces box-shadow to 'none',
+   * completely breaking the line focus window scrim.
+   *
+   * Given that line focus is an optional feature within reading mode and
+   * without this rule, the line focus scrim will not work and therefore might
+   * not support the user's color and contrast needs, this is an acceptable
+   * use of forced-color-adjust: none */
+  #lineFocus.window-mode {
+    forced-color-adjust: none;
+  }
+
+  :host {
+    --color-read-anything-line-focus-scrim: color-mix(in srgb, Canvas 90%, transparent);
+  }
+
+  #toolbar-container {
+    /* Ensures the toolbar stays completely unobscured above the line focus scrim (z-index: 9997). */
+    z-index: 9999;
+  }
+}
+
+#appFlexParent .previous-read-highlight {
+  background-color: transparent;
+  color: var(--previous-highlight-color);
+}
+
+#appFlexParent canvas {
+  max-width: 100%;
+}
+
+/*
+ * Removing the visual decoration instead of changing it to a <span> to preserve
+ * the original tag's semantic meaning.
+ */
+#appFlexParent :is(abbr, em, u) {
+  font-style: normal;
+  text-decoration: none;
+}
+
+/*
+ * Hide nav elements unless there is an active selection.
+ * TODO: crbug.com/517614133 - The has_selection flag must be improved to
+ * indicate if the selection consists purely of nav elements or not.
+ */
+#appFlexParent:not(.has-selection) nav {
+  display: none;
+}
+
+/* Collapse table borders to make continuous lines. */
+#appFlexParent table {
+  border-collapse: collapse;
+}
+
+/*
+* Hide empty spacer rows (commonly found in distilled Wikipedia infoboxes) to
+* prevent awkward dead space.
+*/
+#appFlexParent tr:has(> th:empty:only-child) {
+  display: none;
+}
+
+/* Apply alternating background colors to data rows only.
+* Using :is(tbody, table) ensures it works for standard tables (<tbody>) and
+* Wikipedia-style tables (direct <tr> children), while ignoring <thead> so the
+* header and first row don't visually blend together.
+*/
+#appFlexParent :is(tbody, table) > tr:nth-child(odd of :not(:has(> th:empty:only-child))) {
+  background-color: color-mix(in srgb, var(--foreground-color) 15%, transparent);
+}
+
+/* Apply a starting border to each table cell to act as a separator. */
+#appFlexParent :is(th, td) {
+  border-inline-start: 2px solid color-mix(in srgb, var(--foreground-color) 30%, transparent);
+  padding: 4px 8px;
+}
+
+/* Remove the starting border from the first column of each row. */
+#appFlexParent tr > :is(th, td):first-child {
+  border-inline-start: none;
+}
+
+/* Ensure text in <pre> preformatted tags (which can be distilled with
+ * Readability) wraps to fill the reading mode panel, instead of extending
+ * through a horizontal scrollbar. Also extend the font-family to ensure
+ * the reading mode preferred font is honored, even if the text
+ * was preformatted.
+ * The use of <pre> tags in this way is technically invalid HTML, but it does
+ * exist on some sites where people might want to use reading mode (such as
+ * Wattpad).
+ * In the future, this may need to be adjusted to support both incorrect <pre>
+ * tag usage and code blocks / math. */
+#appFlexParent pre {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font-family: inherit;
+}
+
+#docs-load-more-button {
+  background: var(--color-sys-tonal-container);
+  margin: 0 auto;
+  border-width: 0;
+  width: 10em;
+  max-width: 100%;
+  height: 3em;
+  font-size: var(--font-size);
+  color: var(--cr-primary-text-color);
+  display: flex;
+  justify-content: center;
+}
+
+figure:has(img.distilled-full-width-img) {
+  margin-inline: 0;
+}
+
+img.distilled-inline-img {
+  display: inline;
+  vertical-align: middle;
+  width: auto;
+}
+
+img.distilled-full-width-img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+img.possibly-transparent-img {
+  filter:
+    drop-shadow(0 0 1px color-mix(in srgb, var(--foreground-color) 100%, transparent))
+    drop-shadow(0 0 1px color-mix(in srgb, var(--foreground-color) 100%, transparent));
+  clip-path: inset(0);
+}
+
+.settings-overlay {
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  background-color: transparent;
+  z-index: 9998;
+  display: none;
+}

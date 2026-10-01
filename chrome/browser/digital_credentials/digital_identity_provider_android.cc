@@ -1,0 +1,162 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/digital_credentials/digital_identity_provider_android.h"
+
+#include <jni.h>
+
+#include "base/android/jni_android.h"
+#include "base/android/jni_string.h"
+#include "base/json/json_reader.h"
+#include "base/json/json_writer.h"
+#include "base/trace_event/trace_event.h"
+#include "base/values.h"
+#include "chrome/browser/digital_credentials/digital_identity_low_risk_origins.h"
+#include "chrome/browser/ui/digital_credentials/digital_identity_safety_interstitial_bridge_android.h"
+#include "content/public/browser/digital_identity_provider.h"
+#include "content/public/browser/web_contents.h"
+#include "ui/android/window_android.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "chrome/browser/webid/jni_headers/DigitalIdentityProvider_jni.h"
+
+using base::android::AttachCurrentThread;
+using base::android::ScopedJavaLocalRef;
+
+using RequestStatusForMetrics =
+    content::DigitalIdentityProvider::RequestStatusForMetrics;
+using DigitalIdentityInterstitialAbortCallback =
+    content::DigitalIdentityProvider::DigitalIdentityInterstitialAbortCallback;
+using DigitalCredential = content::DigitalIdentityProvider::DigitalCredential;
+
+namespace {
+
+void RunDigitalIdentityCallback(
+    std::unique_ptr<DigitalIdentitySafetyInterstitialBridgeAndroid> controller,
+    content::DigitalIdentityProvider::DigitalIdentityInterstitialCallback
+        callback,
+    content::DigitalIdentityProvider::RequestStatusForMetrics
+        status_for_metrics) {
+  std::move(callback).Run(status_for_metrics);
+}
+
+}  // anonymous namespace
+
+DigitalIdentityProviderAndroid::DigitalIdentityProviderAndroid() {
+  JNIEnv* env = AttachCurrentThread();
+  j_digital_identity_provider_android_.Reset(
+      Java_DigitalIdentityProvider_create(env,
+                                            reinterpret_cast<intptr_t>(this)));
+}
+
+DigitalIdentityProviderAndroid::~DigitalIdentityProviderAndroid() {
+  JNIEnv* env = AttachCurrentThread();
+  Java_DigitalIdentityProvider_destroy(
+      env, j_digital_identity_provider_android_);
+}
+
+bool DigitalIdentityProviderAndroid::IsLastCommittedOriginLowRisk(
+    content::RenderFrameHost& render_frame_host) const {
+  return digital_credentials::IsLastCommittedOriginLowRisk(render_frame_host);
+}
+
+DigitalIdentityInterstitialAbortCallback
+DigitalIdentityProviderAndroid::ShowDigitalIdentityInterstitial(
+    content::WebContents& web_contents,
+    const url::Origin& origin,
+    content::DigitalIdentityInterstitialType interstitial_type,
+    DigitalIdentityInterstitialCallback callback) {
+  auto controller =
+      std::make_unique<DigitalIdentitySafetyInterstitialBridgeAndroid>();
+  // Callback takes ownership of |controller|.
+  return controller->ShowInterstitial(
+      web_contents, origin, interstitial_type,
+      base::BindOnce(&RunDigitalIdentityCallback, std::move(controller),
+                     std::move(callback)));
+}
+
+void DigitalIdentityProviderAndroid::Get(content::WebContents* web_contents,
+                                         const url::Origin& origin,
+                                         base::ValueView request,
+                                         DigitalIdentityCallback callback) {
+  TRACE_EVENT("content.digitalcredentials",
+              "DigitalIdentityProviderAndroid::Get");
+  std::optional<std::string> request_str = base::WriteJson(request);
+  if (!request_str.has_value()) {
+    std::move(callback).Run(
+        base::unexpected(RequestStatusForMetrics::kErrorInvalidJson));
+    return;
+  }
+
+  callback_ = std::move(callback);
+
+  ScopedJavaLocalRef<jobject> j_window = nullptr;
+  if (web_contents && web_contents->GetTopLevelNativeWindow()) {
+    j_window = web_contents->GetTopLevelNativeWindow()->GetJavaObject();
+  }
+
+  Java_DigitalIdentityProvider_request(
+      AttachCurrentThread(), j_digital_identity_provider_android_, j_window,
+      origin.Serialize(), *request_str);
+}
+
+void DigitalIdentityProviderAndroid::Create(content::WebContents* web_contents,
+                                            const url::Origin& origin,
+                                            const base::ValueView request,
+                                            DigitalIdentityCallback callback) {
+  TRACE_EVENT("content.digitalcredentials",
+              "DigitalIdentityProviderAndroid::Create");
+  std::optional<std::string> request_str = base::WriteJson(request);
+  if (!request_str.has_value()) {
+    std::move(callback).Run(
+        base::unexpected(RequestStatusForMetrics::kErrorInvalidJson));
+    return;
+  }
+
+  callback_ = std::move(callback);
+  ScopedJavaLocalRef<jobject> j_window = nullptr;
+  if (web_contents && web_contents->GetTopLevelNativeWindow()) {
+    j_window = web_contents->GetTopLevelNativeWindow()->GetJavaObject();
+  }
+
+  Java_DigitalIdentityProvider_create(
+      AttachCurrentThread(), j_digital_identity_provider_android_, j_window,
+      origin.Serialize(), *request_str);
+}
+
+void DigitalIdentityProviderAndroid::OnReceive(
+    std::string protocol,
+    const std::string& result,
+    RequestStatusForMetrics status_for_metrics) {
+  if (!callback_) {
+    return;
+  }
+
+  auto expected_value = ParseResult(result, status_for_metrics);
+  if (expected_value.has_value()) {
+    std::move(callback_).Run(DigitalCredential(
+        std::move(protocol), std::move(expected_value.value())));
+  } else {
+    std::move(callback_).Run(base::unexpected(expected_value.error()));
+  }
+}
+
+// static
+base::expected<base::Value,
+               DigitalIdentityProviderAndroid::RequestStatusForMetrics>
+DigitalIdentityProviderAndroid::ParseResult(
+    const std::string& result,
+    RequestStatusForMetrics status_for_metrics) {
+  if (status_for_metrics != RequestStatusForMetrics::kSuccess) {
+    return base::unexpected(status_for_metrics);
+  }
+
+  auto data = base::JSONReader::Read(result, base::JSON_PARSE_RFC);
+  if (data) {
+    return std::move(*data);
+  }
+  return base::unexpected(RequestStatusForMetrics::kErrorInvalidJson);
+}
+
+DEFINE_JNI(DigitalIdentityProvider)

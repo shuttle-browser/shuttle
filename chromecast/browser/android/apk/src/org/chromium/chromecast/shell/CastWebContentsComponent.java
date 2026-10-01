@@ -1,0 +1,248 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chromecast.shell;
+
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.net.Uri;
+import android.os.PatternMatcher;
+
+import androidx.annotation.VisibleForTesting;
+
+import org.chromium.base.ContextUtils;
+import org.chromium.base.Log;
+import org.chromium.chromecast.base.Controller;
+import org.chromium.chromecast.base.Observable;
+import org.chromium.chromecast.base.Observer;
+import org.chromium.chromecast.base.OwnedScope;
+import org.chromium.content_public.browser.WebContents;
+
+/**
+ * A layer of indirection between CastContentWindowAndroid and CastWebContents(Activity|Service).
+ * CastWebContentsActivity is expected to be created by cast_core, CastWebContentsComponent can only
+ * send updates after the activity is created.
+ */
+public class CastWebContentsComponent {
+    /**
+     * Callback interface for when the associated component is closed or the WebContents is
+     * detached.
+     */
+    public interface OnComponentClosedHandler {
+        void onComponentClosed();
+    }
+
+    /** Callback interface for when UI events occur. */
+    public interface SurfaceEventHandler {
+        void onVisibilityChange(int visibilityType);
+    }
+
+    /** Params to start WebContents in activity or service. */
+    static class StartParams {
+        public final WebContents webContents;
+        public final boolean shouldRequestAudioFocus;
+
+        public StartParams(WebContents webContents, boolean shouldRequestAudioFocus) {
+            this.webContents = webContents;
+            this.shouldRequestAudioFocus = shouldRequestAudioFocus;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (other == this) {
+                return true;
+            }
+
+            if (!(other instanceof StartParams)) {
+                return false;
+            }
+
+            StartParams params = (StartParams) other;
+            return params.webContents == this.webContents
+                    && params.shouldRequestAudioFocus == this.shouldRequestAudioFocus;
+        }
+    }
+
+    private void startCastActivity(
+            WebContents webContents,
+            boolean enableTouch,
+            boolean shouldRequestAudioFocus,
+            boolean turnOnScreen) {
+        Intent intent =
+                CastWebContentsIntentUtils.requestStartCastActivity(
+                        webContents,
+                        enableTouch,
+                        shouldRequestAudioFocus,
+                        turnOnScreen,
+                        mKeepScreenOn,
+                        mSessionId);
+        sResumeIntent.set(intent);
+        ContextUtils.getApplicationContext().startActivity(intent);
+    }
+
+    private void sendStopWebContentEvent() {
+        Intent intent = CastWebContentsIntentUtils.requestStopWebContents(mSessionId);
+        Log.d(TAG, "Requesting activity to stop: sessionId=%s", mSessionId);
+        sendIntentSync(intent);
+        sResumeIntent.reset();
+    }
+
+    public static final Controller<Intent> sResumeIntent = new Controller<Intent>();
+
+    private static final String TAG = "CastWebComponent";
+
+    private final OnComponentClosedHandler mComponentClosedHandler;
+    private final String mSessionId;
+    private final SurfaceEventHandler mSurfaceEventHandler;
+    private final Controller<WebContents> mHasWebContentsState = new Controller<>();
+    private final Controller<StartParams> mStartParams = new Controller<>();
+    private final OwnedScope mSubscription = new OwnedScope();
+    private boolean mStarted;
+    private boolean mEnableTouchInput;
+    private final boolean mTurnOnScreen;
+    private final boolean mKeepScreenOn;
+
+    public CastWebContentsComponent(
+            String sessionId,
+            OnComponentClosedHandler onComponentClosedHandler,
+            SurfaceEventHandler surfaceEventHandler,
+            boolean enableTouchInput,
+            boolean turnOnScreen,
+            boolean keepScreenOn) {
+        Log.d(
+                TAG,
+                "CastWebContentsComponent created: sessionId=%s, touchInput=%b, turnOnScreen=%b,"
+                        + " keepScreenOn=%b",
+                sessionId,
+                enableTouchInput,
+                turnOnScreen,
+                keepScreenOn);
+
+        mComponentClosedHandler = onComponentClosedHandler;
+        mEnableTouchInput = enableTouchInput;
+        mSessionId = sessionId;
+        mSurfaceEventHandler = surfaceEventHandler;
+        mTurnOnScreen = turnOnScreen;
+        mKeepScreenOn = keepScreenOn;
+
+        mSubscription.set(
+                mHasWebContentsState
+                        .subscribe(
+                                x -> {
+                                    final IntentFilter filter = new IntentFilter();
+                                    Uri instanceUri =
+                                            CastWebContentsIntentUtils.getInstanceUri(sessionId);
+                                    filter.addDataScheme(instanceUri.getScheme());
+                                    filter.addDataAuthority(instanceUri.getAuthority(), null);
+                                    filter.addDataPath(
+                                            instanceUri.getPath(), PatternMatcher.PATTERN_LITERAL);
+                                    filter.addAction(
+                                            CastWebContentsIntentUtils.ACTION_ACTIVITY_STOPPED);
+                                    filter.addAction(
+                                            CastWebContentsIntentUtils.ACTION_ON_VISIBILITY_CHANGE);
+                                    return new LocalBroadcastReceiverScope(
+                                            filter, this::onReceiveIntent);
+                                })
+                        .and(
+                                observeActivityStarted()
+                                        .ignoreAnd(mStartParams)
+                                        .subscribe(Observer.onOpen(this::startInternal))));
+    }
+
+    private void onReceiveIntent(Intent intent) {
+        if (CastWebContentsIntentUtils.isIntentOfActivityStopped(intent)) {
+            Log.d(TAG, "Activity stopped: sessionId=%s", mSessionId);
+            if (mComponentClosedHandler != null) {
+                mComponentClosedHandler.onComponentClosed();
+            }
+        } else if (CastWebContentsIntentUtils.isIntentOfVisibilityChange(intent)) {
+            int visibilityType = CastWebContentsIntentUtils.getVisibilityType(intent);
+            Log.d(
+                    TAG,
+                    "Activity visibility changed: sessionId=%s, visibilityType=%d",
+                    mSessionId,
+                    visibilityType);
+            if (mSurfaceEventHandler != null) {
+                mSurfaceEventHandler.onVisibilityChange(visibilityType);
+            }
+        }
+    }
+
+    private Observable<?> observeActivityStarted() {
+        return observer -> {
+            Controller<Intent> controller = new Controller<>();
+            final IntentFilter filter = new IntentFilter();
+            filter.addAction(CastWebContentsIntentUtils.ACTION_ON_ACTIVITY_STARTED_BY_CAST_CORE);
+            return controller
+                    .subscribe(observer)
+                    .and(new LocalBroadcastReceiverScope(filter, controller::set));
+        };
+    }
+
+    @VisibleForTesting
+    boolean isStarted() {
+        return mStarted;
+    }
+
+    public void start(StartParams params) {
+        mStartParams.set(params);
+    }
+
+    private void startInternal(StartParams params) {
+        Log.d(
+                TAG,
+                "Starting Cast activity: sessionId=%s, audioFocus=%b",
+                mSessionId,
+                params.shouldRequestAudioFocus);
+
+        mHasWebContentsState.set(params.webContents);
+        startCastActivity(
+                params.webContents,
+                mEnableTouchInput,
+                params.shouldRequestAudioFocus,
+                mTurnOnScreen);
+        mStarted = true;
+    }
+
+    public void stop() {
+        if (!mStarted) {
+            return;
+        }
+
+        Log.d(TAG, "Stopping WebContents: sessionId=%s", mSessionId);
+        mStartParams.reset();
+        mHasWebContentsState.reset();
+        sendStopWebContentEvent();
+        mStarted = false;
+    }
+
+    public void destroy() {
+        mSubscription.close();
+        Log.d(TAG, "CastWebContentsComponent destroyed.");
+    }
+
+    public void enableTouchInput(boolean enabled) {
+        Log.d(TAG, "Touch input updated: enabled=%b", enabled);
+        mEnableTouchInput = enabled;
+        sendIntentSync(CastWebContentsIntentUtils.enableTouchInput(mSessionId, enabled));
+    }
+
+    public static void onComponentClosed(String sessionId) {
+        Log.d(TAG, "Component closed: sessionId=%s", sessionId);
+        sendIntentSync(CastWebContentsIntentUtils.onActivityStopped(sessionId));
+    }
+
+    public static void onVisibilityChange(String sessionId, int visibilityType) {
+        Log.d(
+                TAG,
+                "Visibility changed: sessionId=%s, visibilityType=%d",
+                sessionId,
+                visibilityType);
+        sendIntentSync(CastWebContentsIntentUtils.onVisibilityChange(sessionId, visibilityType));
+    }
+
+    private static void sendIntentSync(Intent in) {
+        CastWebContentsIntentUtils.getLocalBroadcastManager().sendBroadcastSync(in);
+    }
+}

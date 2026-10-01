@@ -1,0 +1,136 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ash/system/accessibility/select_to_speak/select_to_speak_tray.h"
+
+#include "ash/accessibility/accessibility_controller.h"
+#include "ash/constants/tray_background_view_catalog.h"
+#include "ash/resources/vector_icons/vector_icons.h"
+#include "ash/session/session_controller_impl.h"
+#include "ash/shell.h"
+#include "ash/strings/grit/ash_strings.h"
+#include "ash/style/ash_color_id.h"
+#include "ash/system/tray/imaged_tray_icon.h"
+#include "ash/system/tray/tray_container.h"
+#include "ash/system/tray/tray_utils.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/base/models/image_model.h"
+#include "ui/views/controls/image_view.h"
+
+namespace ash {
+namespace {
+
+ui::ImageModel GetImageOnCurrentSelectToSpeakStatus(
+    const SelectToSpeakState& select_to_speak_state) {
+  // `kSelectToSpeakStateInactive` means the tray is inactive and
+  // will have a different icon color. `kSelectToSpeakStateSelecting` and
+  // `kSelectToSpeakStateSpeaking` means the tray is active.
+  switch (select_to_speak_state) {
+    case SelectToSpeakState::kSelectToSpeakStateInactive:
+      return ui::ImageModel::FromVectorIcon(kSystemTraySelectToSpeakNewuiIcon,
+                                            cros_tokens::kCrosSysOnSurface);
+    case SelectToSpeakState::kSelectToSpeakStateSelecting:
+      return ui::ImageModel::FromVectorIcon(
+          kSystemTraySelectToSpeakActiveNewuiIcon,
+          cros_tokens::kCrosSysSystemOnPrimaryContainer);
+    case SelectToSpeakState::kSelectToSpeakStateSpeaking:
+      return ui::ImageModel::FromVectorIcon(
+          kSystemTrayStopNewuiIcon,
+          cros_tokens::kCrosSysSystemOnPrimaryContainer);
+  }
+}
+
+int GetTooltipTextOnCurrentSelectToSpeakStatus(
+    const SelectToSpeakState& select_to_speak_state) {
+  switch (select_to_speak_state) {
+    case SelectToSpeakState::kSelectToSpeakStateInactive:
+      return IDS_ASH_STATUS_TRAY_ACCESSIBILITY_SELECT_TO_SPEAK;
+    case SelectToSpeakState::kSelectToSpeakStateSelecting:
+      return IDS_ASH_STATUS_TRAY_ACCESSIBILITY_SELECT_TO_SPEAK_INSTRUCTIONS;
+    case SelectToSpeakState::kSelectToSpeakStateSpeaking:
+      return IDS_ASH_STATUS_TRAY_ACCESSIBILITY_SELECT_TO_SPEAK_STOP_INSTRUCTIONS;
+  }
+}
+
+}  // namespace
+
+SelectToSpeakTray::SelectToSpeakTray(Shelf* shelf,
+                                     TrayBackgroundViewCatalogName catalog_name)
+    : ImagedTrayIcon(
+          shelf,
+          ui::ImageModel::FromVectorIcon(kSystemTraySelectToSpeakNewuiIcon,
+                                         kColorAshIconColorPrimary),
+          /*tooltip=*/
+          IDS_ASH_STATUS_TRAY_ACCESSIBILITY_SELECT_TO_SPEAK,
+          /*accessibility_name=*/
+          IDS_ASH_SELECT_TO_SPEAK_TRAY_ACCESSIBLE_NAME,
+          catalog_name) {
+  SetCallback(base::BindRepeating([](const ui::Event& event) {
+    Shell::Get()->accessibility_controller()->RequestSelectToSpeakStateChange();
+  }));
+
+  // Observe the accessibility controller state changes to know when Select to
+  // Speak state is updated or when it is disabled/enabled.
+  Shell::Get()->accessibility_controller()->AddObserver(this);
+}
+
+SelectToSpeakTray::~SelectToSpeakTray() {
+  // This may be called during shutdown in which case some of the
+  // ash objects may already be destroyed.
+  auto* shell = Shell::Get();
+  if (!shell) {
+    return;
+  }
+  auto* accessibility_controller = shell->accessibility_controller();
+  if (accessibility_controller) {
+    accessibility_controller->RemoveObserver(this);
+  }
+}
+
+void SelectToSpeakTray::Initialize() {
+  TrayBackgroundView::Initialize();
+  UpdateUXOnCurrentStatus();
+}
+
+void SelectToSpeakTray::OnAccessibilityStatusChanged() {
+  UpdateUXOnCurrentStatus();
+}
+
+void SelectToSpeakTray::OnSessionStateChanged(
+    session_manager::SessionState state) {
+  UpdateIconOnColorChanges();
+}
+
+void SelectToSpeakTray::UpdateUXOnCurrentStatus() {
+  auto* accessibility_controller = Shell::Get()->accessibility_controller();
+  if (!accessibility_controller->select_to_speak().enabled()) {
+    SetVisiblePreferred(false);
+    return;
+  }
+  const auto select_to_speak_state =
+      accessibility_controller->GetSelectToSpeakState();
+  image_view()->SetImage(
+      GetImageOnCurrentSelectToSpeakStatus(select_to_speak_state));
+  SetTooltip(GetTooltipTextOnCurrentSelectToSpeakStatus(select_to_speak_state));
+  SetIsActive(accessibility_controller->GetSelectToSpeakState() !=
+              SelectToSpeakState::kSelectToSpeakStateInactive);
+  SetVisiblePreferred(true);
+}
+
+void SelectToSpeakTray::UpdateIconOnColorChanges() {
+  auto* accessibility_controller = Shell::Get()->accessibility_controller();
+  if (!visible_preferred() ||
+      !accessibility_controller->select_to_speak().enabled()) {
+    return;
+  }
+  const auto select_to_speak_state =
+      accessibility_controller->GetSelectToSpeakState();
+  image_view()->SetImage(
+      GetImageOnCurrentSelectToSpeakStatus(select_to_speak_state));
+}
+
+BEGIN_METADATA(SelectToSpeakTray);
+END_METADATA
+
+}  // namespace ash

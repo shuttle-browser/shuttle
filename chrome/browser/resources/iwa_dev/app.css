@@ -1,0 +1,88 @@
+/* Copyright 2026 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=//resources/cr_elements/cr_shared_vars.css.js
+ * #css_wrapper_metadata_end */
+
+:host {
+  color: var(--cr-primary-text-color);
+  display: block;
+  max-width: 960px;
+  margin: 40px auto;
+  padding: 0 24px;
+}
+
+h1 {
+  font-size: 1.75rem;
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  color: var(--cr-secondary-text-color);
+  font-size: 1rem;
+}
+
+.subtitle a,
+#dev-mode-disabled-message a {
+  color: var(--cr-link-color);
+  text-decoration: none;
+}
+
+.subtitle a:hover,
+#dev-mode-disabled-message a:hover {
+  text-decoration: underline;
+}
+
+#learn-more {
+  margin-bottom: 32px;
+}
+
+#dev-mode-disabled-message {
+  font-size: 14px;
+  margin-top: 32px;
+}
+
+#dev-mode-disabled-message p {
+  margin: 6px 0;
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+h2 {
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+#installed-apps-subtitle {
+  margin-top: 4px;
+}
+
+#iwa-list {
+  display: flex;
+  flex-direction: column;
+  padding-top: 8px;
+}
+
+#iwa-list-message:not(:empty) {
+  border: 1px dashed var(--google-grey-300);
+  border-radius: var(--cr-card-border-radius);
+  color: var(--cr-secondary-text-color);
+  font-style: italic;
+  padding: 24px;
+  text-align: center;
+}
+
+#installButton {
+  /* Aligns perfectly with the 20px padding + 1px border of the app list cards */
+  margin-inline-end: 21px;
+  min-width: 81px;
+  gap: 4px;
+}

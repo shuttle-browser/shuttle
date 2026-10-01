@@ -1,0 +1,105 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.components.signin.identitymanager;
+
+import androidx.annotation.MainThread;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.components.signin.base.AccountInfo;
+import org.chromium.components.signin.base.CoreAccountInfo;
+import org.chromium.google_apis.gaia.CoreAccountId;
+
+import java.util.List;
+
+/** IdentityManager provides access to native IdentityManager's public API to java components. */
+@NullMarked
+public interface IdentityManager {
+    /**
+     * IdentityManager.Observer is notified when the available account information are updated. This
+     * is a subset of native's IdentityManager::Observer.
+     */
+    interface Observer {
+
+        /** Called when all accounts are loaded. */
+        default void onRefreshTokensLoaded() {}
+
+        /** Called when the given account is updated. */
+        default void onRefreshTokenUpdatedForAccount(CoreAccountInfo coreAccountInfo) {}
+
+        /** Called when the given account is removed. */
+        default void onRefreshTokenRemovedForAccount(CoreAccountId accountId) {}
+
+        /**
+         * Called for all types of changes to the primary account such as - primary account
+         * set/cleared or sync consent granted/revoked in C++.
+         *
+         * @param eventDetails Details about the primary account change event.
+         */
+        default void onPrimaryAccountChanged(PrimaryAccountChangeEvent eventDetails) {}
+
+        /**
+         * Called when the Gaia cookie has been deleted explicitly by a user action, e.g. from the
+         * settings.
+         */
+        default void onAccountsCookieDeletedByUserAction() {}
+
+        /** Called after an account is updated. */
+        default void onExtendedAccountInfoUpdated(AccountInfo accountInfo) {}
+    }
+
+    /** Registers a IdentityManager.Observer */
+    void addObserver(Observer observer);
+
+    /** Unregisters a IdentityManager.Observer */
+    void removeObserver(Observer observer);
+
+    /** Returns whether the user's primary account is available. */
+    boolean hasPrimaryAccount();
+
+    /**
+     * Provides access to the core information of the user's primary account. Returns non-null if
+     * the primary account was set, null otherwise.
+     */
+    @Nullable AccountInfo getPrimaryAccountInfo();
+
+    /**
+     * Looks up and returns information for account with given |accountId|. If the account cannot be
+     * found, return a null value.
+     */
+    @Nullable AccountInfo findExtendedAccountInfoByAccountId(CoreAccountId accountId);
+
+    /**
+     * Looks up and returns information for account with given |email|. If the account cannot be
+     * found, return a null value.
+     */
+    @Nullable AccountInfo findExtendedAccountInfoByEmailAddress(String email);
+
+    /**
+     * Returns an array of all accounts with refresh tokens.
+     *
+     * <p>Note: Returns an empty array if refresh tokens are not yet fully loaded. Use {@link
+     * #areRefreshTokensLoaded()} to verify the loading state before calling this method.
+     */
+    List<AccountInfo> getExtendedAccountInfoForAccountsWithRefreshToken();
+
+    /** Returns true if all accounts are loaded. */
+    boolean areRefreshTokensLoaded();
+
+    /** Refreshes extended {@link AccountInfo} with image for all accounts with a refresh token. */
+    // TODO(crbug.com/365057341): This doesn't need to be exposed in Java. Move this logic to
+    // native.
+    void refreshAccountInfoIfStale();
+
+    /** Returns true if the primary account can be cleared/removed from the browser. */
+    boolean isClearPrimaryAccountAllowed();
+
+    /**
+     * Called by native to invalidate an OAuth2 token. Please note that the token is invalidated
+     * asynchronously.
+     */
+    @MainThread
+    void invalidateAccessToken(String accessToken);
+}

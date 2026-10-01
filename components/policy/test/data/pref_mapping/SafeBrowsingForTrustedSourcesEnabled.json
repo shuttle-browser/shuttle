@@ -1,0 +1,16 @@
+[
+  {
+    "os": [
+      "win"
+    ],
+    "can_be_recommended": true,
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "safebrowsing_for_trusted_sources_enabled",
+      "default_value": true,
+      "values_to_test": [
+        true,
+        false
+      ]
+    }
+  }
+]

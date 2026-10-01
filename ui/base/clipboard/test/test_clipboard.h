@@ -1,0 +1,150 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef UI_BASE_CLIPBOARD_TEST_TEST_CLIPBOARD_H_
+#define UI_BASE_CLIPBOARD_TEST_TEST_CLIPBOARD_H_
+
+#include <stddef.h>
+#include <stdint.h>
+
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "base/containers/flat_map.h"
+#include "base/time/time.h"
+#include "base/types/optional_ref.h"
+#include "build/build_config.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "ui/base/clipboard/clipboard.h"
+#include "ui/base/data_transfer_policy/data_transfer_endpoint.h"
+
+namespace ui {
+
+// Platform-neutral ui::Clipboard mock used for tests.
+class TestClipboard : public Clipboard {
+ public:
+  TestClipboard();
+  TestClipboard(const TestClipboard&) = delete;
+  TestClipboard& operator=(const TestClipboard&) = delete;
+  ~TestClipboard() override;
+
+  // Creates and associates a TestClipboard with the current thread. When no
+  // longer needed, the returned clipboard must be freed by calling
+  // Clipboard::DestroyClipboardForCurrentThread() on the same thread.
+  static TestClipboard* CreateForCurrentThread();
+
+  // Sets the time to be returned by GetLastModifiedTime();
+  void SetLastModifiedTime(const base::Time& time);
+
+  // Clipboard overrides.
+  void OnPreShutdown() override;
+  void GetSource(ClipboardBuffer buffer,
+                 GetSourceCallback callback) const override;
+  const ClipboardSequenceNumberToken& GetSequenceNumber(
+      ClipboardBuffer buffer) const override;
+  void GetStandardFormats(ClipboardBuffer buffer,
+                          const std::optional<DataTransferEndpoint>& data_dst,
+                          GetStandardFormatsCallback callback) const override;
+  void GetAllAvailableFormats(
+      ClipboardBuffer buffer,
+      const std::optional<DataTransferEndpoint>& data_dst,
+      base::OnceCallback<void(base::flat_set<ClipboardFormatType>)> callback)
+      const override;
+  void Clear(ClipboardBuffer buffer) override;
+  void ReadAvailableTypes(ClipboardBuffer buffer,
+                          const std::optional<DataTransferEndpoint>& data_dst,
+                          ReadAvailableTypesCallback callback) const override;
+  void ReadText(ClipboardBuffer buffer,
+                const std::optional<DataTransferEndpoint>& data_dst,
+                ReadTextCallback callback) const override;
+  void ReadAsciiText(ClipboardBuffer buffer,
+                     const std::optional<DataTransferEndpoint>& data_dst,
+                     ReadAsciiTextCallback callback) const override;
+  void ReadHTML(ClipboardBuffer buffer,
+                const std::optional<DataTransferEndpoint>& data_dst,
+                ReadHtmlCallback callback) const override;
+  void ReadSvg(ClipboardBuffer buffer,
+               const std::optional<DataTransferEndpoint>& data_dst,
+               ReadSvgCallback callback) const override;
+  void ReadRTF(ClipboardBuffer buffer,
+               const std::optional<DataTransferEndpoint>& data_dst,
+               ReadRTFCallback callback) const override;
+  void ReadPng(ClipboardBuffer buffer,
+               const std::optional<DataTransferEndpoint>& data_dst,
+               ReadPngCallback callback) const override;
+  void ReadDataTransferCustomData(
+      ClipboardBuffer buffer,
+      const std::u16string& type,
+      const std::optional<DataTransferEndpoint>& data_dst,
+      ReadDataTransferCustomDataCallback callback) const override;
+  void ReadFilenames(ClipboardBuffer buffer,
+                     const std::optional<DataTransferEndpoint>& data_dst,
+                     ReadFilenamesCallback callback) const override;
+  void ReadURL(const std::optional<DataTransferEndpoint>& data_dst,
+               ReadUrlCallback callback) const override;
+  void ReadData(const ClipboardFormatType& format,
+                const std::optional<DataTransferEndpoint>& data_dst,
+                ReadDataCallback callback) const override;
+  base::Time GetLastModifiedTime() const override;
+  void ClearLastModifiedTime() override;
+#if BUILDFLAG(IS_OZONE)
+  bool IsSelectionBufferAvailable() const override;
+#endif  // BUILDFLAG(IS_OZONE)
+  void WritePortableAndPlatformRepresentations(
+      ClipboardBuffer buffer,
+      const ObjectMap& objects,
+      const std::vector<RawData>& raw_objects,
+      std::vector<Clipboard::PlatformRepresentation> platform_representations,
+      std::unique_ptr<DataTransferEndpoint> data_src,
+      uint32_t privacy_types) override;
+  void WriteText(std::string_view text) override;
+  void WriteHTML(std::string_view markup,
+                 std::optional<std::string_view> source_url) override;
+  void WriteSvg(std::string_view markup) override;
+  void WriteRTF(std::string_view rtf) override;
+  void WriteFilenames(std::vector<ui::FileInfo> filenames) override;
+  void WriteURL(const ClipboardUrlInfo& url_info) override;
+  void WriteWebSmartPaste() override;
+  void WriteBitmap(const SkBitmap& bitmap) override;
+  void WriteData(const ClipboardFormatType& format,
+                 base::span<const uint8_t> data) override;
+
+  void StopUpdatingSequenceNumberForTesting();
+  void UpdateSequenceManuallyForTesting(ClipboardBuffer buffer);
+
+ private:
+  struct DataStore {
+    DataStore();
+    DataStore(const DataStore& other);
+    DataStore& operator=(const DataStore& other);
+    ~DataStore();
+    void Clear();
+    void SetDataSource(std::optional<DataTransferEndpoint> new_data_src);
+    std::optional<DataTransferEndpoint> GetDataSource() const;
+    ClipboardSequenceNumberToken sequence_number;
+    base::flat_map<ClipboardFormatType, std::string> data;
+    std::string url_title;
+    std::string html_src_url;
+    std::vector<uint8_t> png;
+    std::vector<ui::FileInfo> filenames;
+    std::optional<DataTransferEndpoint> data_src;
+  };
+
+  // The non-const versions update the sequence number as a side effect.
+  const DataStore& GetStore(ClipboardBuffer buffer) const;
+  const DataStore& GetDefaultStore() const;
+  DataStore& GetStore(ClipboardBuffer buffer);
+  DataStore& GetDefaultStore();
+
+  bool should_update_sequence_number_ = true;
+  ClipboardBuffer default_store_buffer_;
+  mutable base::flat_map<ClipboardBuffer, DataStore> stores_;
+  base::Time last_modified_time_;
+};
+
+}  // namespace ui
+
+#endif  // UI_BASE_CLIPBOARD_TEST_TEST_CLIPBOARD_H_

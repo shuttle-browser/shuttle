@@ -1,0 +1,59 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module tabs_api.mojom;
+
+// References a node in the tab tree. (id, type) uniquely identifies a node in
+// the tree.
+struct NodeId {
+  // The type of object referenced by the id.
+  enum Type {
+    // An unknown type. This will never be returned by the service and usually
+    // indicates an invalid argument from the client.
+    kUnknown,
+    // A browser window. This serves as the top-level container for a single
+    // window's tab collection tree.
+    kWindow,
+    // A content tab.
+    kContent,
+    // A collection of tabs.
+    kCollection,
+  };
+
+  // An opaque string that uniquely identifies the underlying resource. This
+  // id will be unique across all resource types. Users should not try to
+  // extrapolate any sort of pattern from this string.
+  string id;
+
+  // The type of resource referenced by this id.
+  Type type;
+};
+
+// Position is an ephemeral object that should not be saved nor act as an
+// identifier. It is purely used in this API to determine the position within
+// the TabstripModel.
+struct Path {
+  array<NodeId> components;
+};
+
+struct Position {
+  // The absolute path to the parent collection of this node.
+  Path path;
+
+  // The index within the parent collection specified by the path.
+  uint32 index;
+};
+
+// Granular field mask for Tabs to indicate which properties have changed.
+struct TabFieldMask {
+  bool title;
+  bool url;
+  bool favicon;
+  bool alert_states;
+  bool network_state;
+  bool is_active;
+  bool is_selected;
+  bool is_blocked;
+  bool last_active;
+};

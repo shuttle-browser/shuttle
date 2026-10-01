@@ -1,0 +1,67 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_AUTOFILL_CORE_BROWSER_INTEGRATORS_AUTOFILL_AI_AUTOFILL_AI_LABELS_H_
+#define COMPONENTS_AUTOFILL_CORE_BROWSER_INTEGRATORS_AUTOFILL_AI_AUTOFILL_AI_LABELS_H_
+
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "base/containers/span.h"
+#include "components/autofill/core/browser/data_model/autofill_ai/entity_type.h"
+#include "components/autofill/core/common/dense_set.h"
+
+namespace autofill {
+
+class EntityInstance;
+
+// Separator to use between a certain entity label attributes, for example:
+// "Passport · Jon Doe · Germany".
+inline constexpr std::u16string_view kLabelSeparator = u" · ";
+
+// Initiating badge brace, e.g. "Photos [1]".
+inline constexpr std::u16string_view kBadgeStartDelimiter = u"[";
+
+// Ending badge brace, e.g. "Photos [1]".
+inline constexpr std::u16string_view kBadgeEndDelimiter = u"]";
+
+// The space between a badge and an app name, e.g. "Photos [1]". The
+// non-breaking space prevents the badge from becoming disconnected in
+// multi-line suggestions.
+inline constexpr std::u16string_view kBadgeSeparator = u"\u00A0";
+
+// During label computation, every entity's label is a vector of non-empty
+// strings (which the UI later concatenates).
+using EntityLabel = std::vector<std::u16string>;
+
+// Returns a vector of EntityLabels, with one entry for each EntityInstance in
+// `entities`.
+//
+// That is, the `i`th element of the returned vector corresponds to
+// `entities[i]`. The individual EntityLabels may be empty, but the strings they
+// contain are non-empty.
+//
+// This is for example used by filling suggestions and the settings page.
+//
+// `attribute_types_to_ignore` contains types that shouldn't be used to generate
+// labels.
+//
+// `obfuscate_sensitive_types` replaces the first characters of an entity value
+// with dots, leaving only the last 4 one visible. Only sensitive types are
+// obfuscated.
+//
+// If `only_disambiguating_types` is true, only `AttributeType`s satisfying
+// `AttributeType::is_disambiguating_type()` are considered. For example, for a
+// passport, the name and country are considered, but the number is not.
+std::vector<EntityLabel> GetLabelsForEntities(
+    base::span<const EntityInstance* const> entities,
+    DenseSet<AttributeType> attribute_types_to_ignore,
+    bool only_disambiguating_types,
+    bool obfuscate_sensitive_types,
+    std::string_view app_locale);
+
+}  // namespace autofill
+
+#endif  // COMPONENTS_AUTOFILL_CORE_BROWSER_INTEGRATORS_AUTOFILL_AI_AUTOFILL_AI_LABELS_H_

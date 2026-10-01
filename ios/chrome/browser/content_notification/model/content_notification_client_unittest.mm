@@ -1,0 +1,236 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/content_notification/model/content_notification_client.h"
+
+#import <UserNotifications/UserNotifications.h>
+
+#import "base/strings/sys_string_conversions.h"
+#import "base/test/metrics/histogram_tester.h"
+#import "base/threading/thread_restrictions.h"
+#import "components/prefs/scoped_user_pref_update.h"
+#import "ios/chrome/browser/content_notification/model/content_notification_service.h"
+#import "ios/chrome/browser/content_notification/model/content_notification_service_factory.h"
+#import "ios/chrome/browser/default_browser/model/promo_source.h"
+#import "ios/chrome/browser/default_browser/model/utils.h"
+#import "ios/chrome/browser/default_browser/model/utils_test_support.h"
+#import "ios/chrome/browser/push_notification/model/constants.h"
+#import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
+#import "ios/chrome/browser/shared/model/application_context/application_context.h"
+#import "ios/chrome/browser/shared/model/browser/browser_list.h"
+#import "ios/chrome/browser/shared/model/browser/browser_list_factory.h"
+#import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
+#import "ios/chrome/browser/shared/model/prefs/pref_names.h"
+#import "ios/chrome/browser/shared/model/profile/features.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_manager_ios.h"
+#import "ios/chrome/browser/shared/public/commands/browser_coordinator_commands.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/open_new_tab_command.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/shared/public/commands/settings_commands.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
+#import "ios/testing/scoped_block_swizzler.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "testing/gtest_mac.h"
+#import "testing/platform_test.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+#import "third_party/ocmock/gtest_support.h"
+
+namespace {
+
+class FakeContentNotificationService : public ContentNotificationService {
+ public:
+  FakeContentNotificationService() = default;
+  ~FakeContentNotificationService() override = default;
+
+  GURL GetDestinationUrl(NSDictionary<NSString*, id>* payload) override {
+    NSString* url_string = payload[@"destination_url"];
+    if (url_string) {
+      return GURL(base::SysNSStringToUTF8(url_string));
+    }
+    return GURL::EmptyGURL();
+  }
+
+  NSDictionary<NSString*, NSString*>* GetFeedbackPayload(
+      NSDictionary<NSString*, id>* payload) override {
+    return nil;
+  }
+
+  void SendNAUForConfiguration(
+      ContentNotificationNAUConfiguration* configuration) override {}
+};
+
+std::unique_ptr<KeyedService> CreateFakeContentNotificationService(
+    ProfileIOS* profile) {
+  return std::make_unique<FakeContentNotificationService>();
+}
+
+}  // namespace
+
+class ContentNotificationClientTest : public PlatformTest {
+ protected:
+  ContentNotificationClientTest() {
+    TestProfileIOS::Builder builder;
+    builder.AddTestingFactory(
+        ContentNotificationServiceFactory::GetInstance(),
+        base::BindRepeating(&CreateFakeContentNotificationService));
+    ProfileIOS* profile =
+        profile_manager_.AddProfileWithBuilder(std::move(builder));
+    BrowserList* list = BrowserListFactory::GetForProfile(profile);
+    scene_state_ = [[SceneState alloc] init];
+    scene_state_.activationLevel = SceneActivationLevelForegroundActive;
+    browser_ = std::make_unique<TestBrowser>(profile, scene_state_);
+    list->AddBrowser(browser_.get());
+    client_ = IsMultiProfilePushNotificationHandlingEnabled()
+                  ? std::make_unique<ContentNotificationClient>(profile)
+                  : std::make_unique<ContentNotificationClient>();
+    ScopedDictPrefUpdate update(GetApplicationContext()->GetLocalState(),
+                                prefs::kAppLevelPushNotificationPermissions);
+    update->Set(kContentNotificationKey, true);
+  }
+
+  NSDictionary<NSString*, id>* CreatePayload(BOOL IsContentNotification) {
+    if (IsContentNotification) {
+      NSMutableDictionary<NSString*, id>* payload =
+          [[NSMutableDictionary alloc] init];
+      [payload setObject:@"Mock Body"
+                  forKey:@"kContentNotificationNAUBodyParameter"];
+      return payload;
+    }
+    return nil;
+  }
+
+  id CreateContent(BOOL IsContentNotification) {
+    UNMutableNotificationContent* content =
+        [[UNMutableNotificationContent alloc] init];
+    content.title = @"Mock Title";
+    content.body = @"Mock Body";
+    content.categoryIdentifier = @"FEEDBACK_IDENTIFIER";
+    content.userInfo = CreatePayload(IsContentNotification);
+    return content;
+  }
+
+  id CreateRequest(BOOL IsContentNotification) {
+    UNNotificationRequest* request = [UNNotificationRequest
+        requestWithIdentifier:@"CONTENT"
+                      content:CreateContent(IsContentNotification)
+                      trigger:nil];
+    return request;
+  }
+
+  id CreateMockResponse(NSString* action_identifier,
+                        NSDictionary<NSString*, id>* payload) {
+    id mock_response = OCMClassMock([UNNotificationResponse class]);
+    id mock_notification = OCMClassMock([UNNotification class]);
+    id mock_request = OCMClassMock([UNNotificationRequest class]);
+    id mock_content = OCMClassMock([UNNotificationContent class]);
+
+    OCMStub([mock_response notification]).andReturn(mock_notification);
+    OCMStub([mock_notification request]).andReturn(mock_request);
+    OCMStub([mock_request content]).andReturn(mock_content);
+    OCMStub([mock_response actionIdentifier]).andReturn(action_identifier);
+    OCMStub([mock_content categoryIdentifier])
+        .andReturn(kContentNotificationFeedbackCategoryIdentifier);
+    OCMStub([mock_content userInfo]).andReturn(payload);
+
+    return mock_response;
+  }
+
+  web::WebTaskEnvironment task_environment_;
+  IOSChromeScopedTestingLocalState scoped_testing_local_state_;
+  TestProfileManagerIOS profile_manager_;
+  SceneState* scene_state_;
+  std::unique_ptr<TestBrowser> browser_;
+  std::unique_ptr<ContentNotificationClient> client_;
+  id mock_notification_center_;
+  std::unique_ptr<ScopedBlockSwizzler> notification_center_swizzler_;
+  id mock_application_handler_;
+};
+
+#pragma mark - Test cases
+
+// Tests that HandleNotificationReception does nothing and returns "NoData".
+TEST_F(ContentNotificationClientTest, HandleNotificationReception) {
+  EXPECT_EQ(client_->HandleNotificationReception(CreatePayload(NO)),
+            std::nullopt);
+}
+
+// Tests the appropriate secondary actions are registered.
+TEST_F(ContentNotificationClientTest, RegisterActionableNotifications) {
+  NSArray<UNNotificationCategory*>* secondaryActions =
+      client_->RegisterActionableNotifications();
+  EXPECT_EQ(secondaryActions.firstObject.identifier,
+            kContentNotificationFeedbackCategoryIdentifier);
+}
+
+// Tests that the client correctly loads a valid HTTP URL and records the
+// appropriate histograms.
+TEST_F(ContentNotificationClientTest, HandleNotificationInteractionValidURL) {
+  base::HistogramTester histogram_tester;
+  id mock_scene_commands = OCMProtocolMock(@protocol(SceneCommands));
+  [browser_->GetCommandDispatcher()
+      startDispatchingToTarget:mock_scene_commands
+                   forProtocol:@protocol(SceneCommands)];
+
+  OCMExpect([mock_scene_commands
+      openURLInNewTab:[OCMArg checkWithBlock:^BOOL(OpenNewTabCommand* command) {
+        return command.URL == GURL("http://www.example.com/");
+      }]]);
+
+  NSDictionary<NSString*, id>* payload =
+      @{@"destination_url" : @"http://www.example.com/"};
+  id mock_response =
+      CreateMockResponse(UNNotificationDefaultActionIdentifier, payload);
+
+  EXPECT_TRUE(client_->HandleNotificationInteraction(mock_response));
+  EXPECT_OCMOCK_VERIFY(mock_scene_commands);
+
+  histogram_tester.ExpectUniqueSample(
+      "ContentNotifications.OpenURLAction.HasURL", true, 1);
+}
+
+// Tests that the client filters out invalid/non-HTTP/HTTPS URLs (like
+// chrome://) and records HasURL as false.
+TEST_F(ContentNotificationClientTest, HandleNotificationInteractionChromeURL) {
+  base::HistogramTester histogram_tester;
+  id mock_scene_commands = OCMProtocolMock(@protocol(SceneCommands));
+  [browser_->GetCommandDispatcher()
+      startDispatchingToTarget:mock_scene_commands
+                   forProtocol:@protocol(SceneCommands)];
+
+  OCMReject([mock_scene_commands openURLInNewTab:[OCMArg any]]);
+
+  NSDictionary<NSString*, id>* payload =
+      @{@"destination_url" : @"chrome://settings"};
+  id mock_response =
+      CreateMockResponse(UNNotificationDefaultActionIdentifier, payload);
+
+  EXPECT_TRUE(client_->HandleNotificationInteraction(mock_response));
+  EXPECT_OCMOCK_VERIFY(mock_scene_commands);
+
+  histogram_tester.ExpectUniqueSample(
+      "ContentNotifications.OpenURLAction.HasURL", false, 1);
+}
+
+// Tests that the client filters out invalid URLs and records HasURL as false.
+TEST_F(ContentNotificationClientTest, HandleNotificationInteractionInvalidURL) {
+  base::HistogramTester histogram_tester;
+  id mock_scene_commands = OCMProtocolMock(@protocol(SceneCommands));
+  [browser_->GetCommandDispatcher()
+      startDispatchingToTarget:mock_scene_commands
+                   forProtocol:@protocol(SceneCommands)];
+
+  OCMReject([mock_scene_commands openURLInNewTab:[OCMArg any]]);
+
+  NSDictionary<NSString*, id>* payload = @{@"destination_url" : @"invalid_url"};
+  id mock_response =
+      CreateMockResponse(UNNotificationDefaultActionIdentifier, payload);
+
+  EXPECT_TRUE(client_->HandleNotificationInteraction(mock_response));
+  EXPECT_OCMOCK_VERIFY(mock_scene_commands);
+
+  histogram_tester.ExpectUniqueSample(
+      "ContentNotifications.OpenURLAction.HasURL", false, 1);
+}

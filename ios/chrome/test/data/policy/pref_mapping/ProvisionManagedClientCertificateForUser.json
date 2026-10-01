@@ -1,0 +1,14 @@
+[
+  {
+    "os": [
+      "ios"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "client_certificates.provision_for_user.value",
+      "default_value": 0,
+      "values_to_test": [
+        1
+      ]
+    }
+  }
+]

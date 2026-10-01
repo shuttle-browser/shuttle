@@ -1,0 +1,186 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/enterprise/data_controls/core/browser/rules_service_base.h"
+
+#include "base/metrics/histogram_functions.h"
+#include "components/enterprise/data_controls/core/browser/prefs.h"
+#include "components/policy/core/common/policy_types.h"
+#include "components/prefs/pref_service.h"
+
+namespace data_controls {
+
+RulesServiceBase::RulesServiceBase(PrefService* pref_service) {
+  pref_registrar_.Init(pref_service);
+  pref_registrar_.Add(
+      kDataControlsRulesPref,
+      base::BindRepeating(&RulesServiceBase::OnDataControlsRulesUpdate,
+                          base::Unretained(this)));
+  OnDataControlsRulesUpdate();
+}
+
+RulesServiceBase::~RulesServiceBase() = default;
+
+void RulesServiceBase::AddObserver(Observer* observer) {
+  observers_.AddObserver(observer);
+}
+
+void RulesServiceBase::RemoveObserver(Observer* observer) {
+  observers_.RemoveObserver(observer);
+}
+
+Verdict RulesServiceBase::GetCopyRestrictedBySourceVerdict(
+    const GURL& source) const {
+  return GetVerdict(Rule::Restriction::kClipboard,
+                    {
+                        .source =
+                            {
+                                .url = source,
+                                .incognito = incognito_profile(),
+                            },
+                    });
+}
+
+Verdict RulesServiceBase::GetCopyToOSClipboardVerdict(
+    const GURL& source) const {
+  // TODO(b/547920440): Replace this 1-param fallback with the
+  // 2-param version across all call sites (including iOS) to pipe the actual
+  // content size, and remove this helper.
+  return GetCopyToOSClipboardVerdict(source, std::nullopt);
+}
+
+Verdict RulesServiceBase::GetCopyToOSClipboardVerdict(
+    const GURL& source,
+    std::optional<size_t> content_size) const {
+  return GetVerdict(Rule::Restriction::kClipboard,
+                    {
+                        .source =
+                            {
+                                .url = source,
+                                .incognito = incognito_profile(),
+                                .content_size = content_size,
+                            },
+                        .destination =
+                            {
+                                .os_clipboard = true,
+                            },
+                    });
+}
+
+Verdict RulesServiceBase::GetPasteFromGeminiInChromeVerdict(
+    const GURL& destination) const {
+  return GetVerdict(Rule::Restriction::kClipboard,
+                    {
+                        .source =
+                            {
+                                .incognito = incognito_profile(),
+                                .gemini_in_chrome = true,
+                            },
+                        .destination =
+                            {
+                                .url = destination,
+                                .incognito = incognito_profile(),
+                            },
+                    });
+}
+
+Verdict RulesServiceBase::GetDownloadVerdict(const GURL& download_url) const {
+  return GetVerdict(Rule::Restriction::kFileDownload,
+                    {
+                        .source =
+                            {
+                                .url = download_url,
+                                .incognito = incognito_profile(),
+                            },
+                    });
+}
+
+bool RulesServiceBase::BlockScreenshots(const GURL& url) const {
+  base::ScopedUmaHistogramTimer timer(
+      "Enterprise.DataControls.Screenshot.EvaluationLatency");
+  return GetVerdict(Rule::Restriction::kScreenshot,
+                    {
+                        .source =
+                            {
+                                .url = url,
+                                .incognito = incognito_profile(),
+                            },
+                    })
+             .level() == Rule::Level::kBlock;
+}
+
+bool RulesServiceBase::HasBlockingScreenshotRule() const {
+  for (const auto& rule : rules_) {
+    // Check if the rule specifies any screenshot restriction (like kBlock).
+    // Note: 'kBlock' is the only level supported for screenshots.
+    if (rule.GetLevel(Rule::Restriction::kScreenshot) == Rule::Level::kBlock) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Verdict RulesServiceBase::GetVerdict(Rule::Restriction restriction,
+                                     const ActionContext& context) const {
+  Rule::Level max_level = Rule::Level::kNotSet;
+  Verdict::TriggeredRules triggered_rules;
+  for (size_t i = 0; i < rules_.size(); ++i) {
+    const auto& rule = rules_[i];
+    Rule::Level level = rule.GetLevel(restriction, context);
+    if (level > max_level) {
+      max_level = level;
+    }
+    if (level != Rule::Level::kNotSet) {
+      triggered_rules[Verdict::TriggeredRuleKey{
+          .index = i,
+          .machine_scope = MachineScopePolicy(),
+      }] = {
+          .rule_id = rule.rule_id(),
+          .rule_name = rule.name(),
+      };
+    }
+  }
+
+  switch (max_level) {
+    case Rule::Level::kNotSet:
+      return Verdict::NotSet();
+    case Rule::Level::kReport:
+      return Verdict::Report(std::move(triggered_rules));
+    case Rule::Level::kWarn:
+      return Verdict::Warn(std::move(triggered_rules));
+    case Rule::Level::kBlock:
+      return Verdict::Block(std::move(triggered_rules));
+    case Rule::Level::kAllow:
+      return Verdict::Allow();
+  }
+}
+
+bool RulesServiceBase::MachineScopePolicy() const {
+  return pref_registrar_.prefs()->GetInteger(kDataControlsRulesScopePref) ==
+         policy::POLICY_SCOPE_MACHINE;
+}
+
+void RulesServiceBase::OnDataControlsRulesUpdate() {
+  DCHECK(pref_registrar_.prefs());
+  rules_.clear();
+
+  const base::ListValue& rules_list =
+      pref_registrar_.prefs()->GetList(kDataControlsRulesPref);
+
+  for (const base::Value& rule_value : rules_list) {
+    auto rule = Rule::Create(rule_value);
+
+    if (!rule) {
+      continue;
+    }
+
+    rules_.push_back(std::move(*rule));
+  }
+
+  for (auto& observer : observers_) {
+    observer.OnRulesUpdated();
+  }
+}
+
+}  // namespace data_controls

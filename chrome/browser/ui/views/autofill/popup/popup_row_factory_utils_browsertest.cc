@@ -1,0 +1,639 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/autofill/popup/popup_row_factory_utils.h"
+
+#include <algorithm>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "base/i18n/test/scoped_rtl_for_testing.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/task/cancelable_task_tracker.h"
+#include "base/test/scoped_feature_list.h"
+#include "build/branding_buildflags.h"
+#include "chrome/browser/ui/autofill/autofill_popup_controller.h"
+#include "chrome/browser/ui/autofill/mock_autofill_popup_controller.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/test/test_browser_ui.h"
+#include "chrome/browser/ui/views/autofill/popup/mock_accessibility_selection_delegate.h"
+#include "chrome/browser/ui/views/autofill/popup/mock_selection_delegate.h"
+#include "chrome/browser/ui/views/autofill/popup/password_favicon_loader.h"
+#include "chrome/browser/ui/views/autofill/popup/popup_row_view.h"
+#include "components/autofill/core/browser/at_memory/at_memory_manager.h"
+#include "components/autofill/core/browser/data_model/autofill_ai/entity_instance.h"
+#include "components/autofill/core/browser/data_model/payments/bnpl_issuer.h"
+#include "components/autofill/core/browser/suggestions/suggestion.h"
+#include "components/autofill/core/browser/suggestions/suggestion_type.h"
+#include "components/autofill/core/common/autofill_payments_features.h"
+#include "components/compose/core/browser/compose_features.h"
+#include "components/tabs/public/tab_interface.h"
+#include "components/user_education/common/new_badge/new_badge_controller.h"
+#include "components/user_education/common/user_education_features.h"
+#include "content/public/test/browser_test.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/gfx/geometry/size.h"
+#include "ui/gfx/range/range.h"
+#include "ui/resources/grit/ui_resources.h"
+#include "ui/views/layout/layout_types.h"
+#include "ui/views/test/widget_test.h"
+#include "ui/views/widget/widget.h"
+#include "url/gurl.h"
+
+namespace autofill {
+namespace {
+
+using ::testing::NiceMock;
+using ::testing::Return;
+
+std::vector<std::u16string> minor_texts = {u"Minor text"};
+
+Suggestion CreatePasswordSuggestion(const std::u16string& main_text) {
+  Suggestion suggestion(main_text, SuggestionType::kPasswordEntry);
+  suggestion.icon = Suggestion::Icon::kKey;
+  suggestion.labels = {{Suggestion::Text(u"****")}};
+  return suggestion;
+}
+
+Suggestion CreateTryThisRecoverySuggestion(const std::u16string& main_text) {
+  Suggestion suggestion(main_text, SuggestionType::kBackupPasswordEntry);
+  suggestion.icon = Suggestion::Icon::kRecoveryPassword;
+  suggestion.additional_label = u"******";
+  suggestion.additional_label_alignment_right = true;
+  return suggestion;
+}
+
+Suggestion CreateTroubleSigninInSuggestion(const std::u16string& main_text) {
+  Suggestion suggestion(main_text, SuggestionType::kBackupPasswordEntry);
+  suggestion.icon = Suggestion::Icon::kQuestionMark;
+  suggestion.main_text.is_primary = Suggestion::Text::IsPrimary(false);
+  return suggestion;
+}
+
+Suggestion CreateBackupPasswordSuggestion(const std::u16string& main_text) {
+  Suggestion suggestion(main_text, SuggestionType::kBackupPasswordEntry);
+  suggestion.icon = Suggestion::Icon::kRecoveryPassword;
+  suggestion.labels = {{Suggestion::Text(u"*****")}};
+  suggestion.additional_label = u"Recovery";
+  return suggestion;
+}
+
+Suggestion CreateFreeformFooter() {
+  const std::u16string kMainText =
+      u"You recently changed a password found in a public data breach. In case "
+      "of trouble, Google Password Manager can help you sign in.";
+  Suggestion suggestion(kMainText, SuggestionType::kFreeformFooter);
+  suggestion.acceptability =
+      Suggestion::Acceptability::kUnselectableAndUnacceptable;
+  return suggestion;
+}
+
+Suggestion CreateSuggestionWithChildren(const std::u16string& main_text,
+                                        SuggestionType type,
+                                        std::vector<Suggestion> children) {
+  Suggestion suggestion(main_text, type);
+  suggestion.children = std::move(children);
+  return suggestion;
+}
+
+Suggestion CreateAllLoyaltyCardsEntry() {
+  Suggestion suggestion = CreateSuggestionWithChildren(
+      u"All_loyalty_cards_entry", SuggestionType::kAllLoyaltyCardsEntry,
+      {Suggestion(u"CVS", SuggestionType::kLoyaltyCardEntry)});
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  suggestion.icon = Suggestion::Icon::kGoogleWalletMonochrome;
+#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  return suggestion;
+}
+
+Suggestion CreateBnplSuggestion(const std::u16string& main_text,
+                                bool linked,
+                                bool deactivated) {
+  Suggestion suggestion(main_text, SuggestionType::kBnplEntry);
+  BnplIssuer issuer(linked ? std::optional<int64_t>(1234) : std::nullopt,
+                    BnplIssuer::IssuerId::kBnplZip, {});
+  suggestion.payload = Suggestion::BnplIssuer(issuer);
+  if (deactivated) {
+    suggestion.acceptability =
+        Suggestion::Acceptability::kUnselectableAndUnacceptable;
+  }
+  return suggestion;
+}
+
+// Suggestion main text (Suggestion::main_text) is used for the test and
+// screenshot names, avoid special symbols and keep them unique.
+const Suggestion kSuggestions[] = {
+    Suggestion(u"Address_entry",
+               minor_texts,
+               u"label",
+               Suggestion::Icon::kLocation,
+               SuggestionType::kAddressEntry),
+    CreatePasswordSuggestion(u"Password_entry"),
+    CreateTryThisRecoverySuggestion(u"Try_this_recovery_password"),
+    CreateTroubleSigninInSuggestion(u"Trouble_signing_in_entry"),
+    CreateBackupPasswordSuggestion(u"Backup_password_entry"),
+    Suggestion(u"Autofill_options",
+               minor_texts,
+               u"label",
+               Suggestion::Icon::kSettings,
+               SuggestionType::kManageAddress),
+    Suggestion(u"Autocomplete",
+               u"",
+               Suggestion::Icon::kNoIcon,
+               SuggestionType::kAutocompleteEntry),
+    Suggestion(u"Compose",
+               minor_texts,
+               u"label",
+               Suggestion::Icon::kMagic,
+               SuggestionType::kComposeResumeNudge),
+    Suggestion(u"Promo_code",
+               u"label",
+               Suggestion::Icon::kGlobe,
+               SuggestionType::kSeePromoCodeDetails),
+    Suggestion(u"Remove_this_info",
+               u"",
+               Suggestion::Icon::kClose,
+               SuggestionType::kRemoveAutofillAi)};
+
+const Suggestion kExpandableSuggestions[] = {
+    CreateSuggestionWithChildren(
+        u"Address_entry",
+        SuggestionType::kDevtoolsTestAddresses,
+        {Suggestion(u"Address", SuggestionType::kAddressEntry)}),
+    CreateAllLoyaltyCardsEntry(),
+    CreateSuggestionWithChildren(
+        u"Fill_autofill_ai",
+        SuggestionType::kFillAutofillAi,
+        {Suggestion(u"Source_attribution",
+                    SuggestionType::kAutofillAiSourceAttribution),
+         Suggestion(SuggestionType::kSeparator),
+         Suggestion(u"Remove_this_info", SuggestionType::kRemoveAutofillAi),
+         Suggestion(u"Manage_enhanced_autofill",
+                    SuggestionType::kManageEnhancedAutofill)})};
+
+const Suggestion kBnplSuggestions[] = {
+    CreateBnplSuggestion(u"Bnpl_linked",
+                         /*linked=*/true,
+                         /*deactivated=*/false),
+    CreateBnplSuggestion(u"Bnpl_unlinked",
+                         /*linked=*/false,
+                         /*deactivated=*/false),
+    CreateBnplSuggestion(u"Bnpl_linked_deactivated",
+                         /*linked=*/true,
+                         /*deactivated=*/true),
+    CreateBnplSuggestion(u"Bnpl_unlinked_deactivated",
+                         /*linked=*/false,
+                         /*deactivated=*/true)};
+
+struct AtMemoryTestParam {
+  std::string name;
+  base::RepeatingCallback<Suggestion()> generator;
+};
+
+Suggestion CreateAtMemorySearchResultSuggestion() {
+  MemorySearchResult entry(MemoryDataType::kPassportNumber, u"Passport Number",
+                           u"987654321");
+  entry.metadata_list.emplace_back(MemoryDataType::kPassportName, u"Name",
+                                   u"John Doe");
+  entry.sources.emplace_back(MemoryEntrySourceType::kGmail);
+  return AtMemoryManager::TransformResultIntoSuggestion(entry, "en-US");
+}
+
+Suggestion CreateAtMemoryAddressSearchResultTwoLinesNoOverflowSuggestion() {
+  MemorySearchResult entry(MemoryDataType::kAddressFull, u"Address",
+                           u"123 Long Street Name, Suite 100, San Francisco");
+  entry.metadata_list.emplace_back(MemoryDataType::kNameFull, u"Name",
+                                   u"John Doe");
+  entry.sources.emplace_back(MemoryEntrySourceType::kGmail);
+  return AtMemoryManager::TransformResultIntoSuggestion(entry, "en-US");
+}
+
+Suggestion CreateAtMemoryAddressSearchResultTwoLinesOverflowSuggestion() {
+  MemorySearchResult entry(
+      MemoryDataType::kAddressFull, u"Address",
+      u"123 Very Long Street Name, Suite 100, Building A, San Francisco, "
+      u"California 94107");
+  entry.metadata_list.emplace_back(MemoryDataType::kNameFull, u"Name",
+                                   u"John Doe");
+  entry.sources.emplace_back(MemoryEntrySourceType::kGmail);
+  return AtMemoryManager::TransformResultIntoSuggestion(entry, "en-US");
+}
+
+Suggestion CreateAtMemoryAddressSearchResultLabelTruncationSuggestion() {
+  MemorySearchResult entry(MemoryDataType::kAddressFull, u"Address",
+                           u"123 Long Street Name, Suite 100, San Francisco");
+  entry.metadata_list.emplace_back(
+      MemoryDataType::kNameFull, u"Name",
+      u"Very Long Name That Exceeds The Maximum Allowed Width For A Label");
+  entry.sources.emplace_back(MemoryEntrySourceType::kGmail);
+  return AtMemoryManager::TransformResultIntoSuggestion(entry, "en-US");
+}
+
+Suggestion CreateAtMemorySearchResultArabicSuggestion() {
+  MemorySearchResult entry(MemoryDataType::kPassportNumber, u"جواز سفر",
+                           u"987654321");
+  entry.metadata_list.emplace_back(MemoryDataType::kPassportName, u"الاسم",
+                                   u"محمد أحمد");
+  entry.sources.emplace_back(MemoryEntrySourceType::kGmail);
+  return AtMemoryManager::TransformResultIntoSuggestion(entry, "ar");
+}
+
+Suggestion
+CreateAtMemoryAddressSearchResultTwoLinesNoOverflowArabicSuggestion() {
+  MemorySearchResult entry(MemoryDataType::kAddressFull, u"العنوان",
+                           u"شارع الملك فهد، جناح ١٠٠، الرياض");
+  entry.metadata_list.emplace_back(MemoryDataType::kNameFull, u"الاسم",
+                                   u"محمد أحمد");
+  entry.sources.emplace_back(MemoryEntrySourceType::kGmail);
+  return AtMemoryManager::TransformResultIntoSuggestion(entry, "ar");
+}
+
+Suggestion CreateAtMemoryAddressSearchResultTwoLinesOverflowArabicSuggestion() {
+  MemorySearchResult entry(
+      MemoryDataType::kAddressFull, u"العنوان",
+      u"١٢٣ شارع الملك عبد العزيز الطويل جداً، جناح ١٠٠، مبنى أ، الرياض، "
+      u"المملكة العربية السعودية");
+  entry.metadata_list.emplace_back(MemoryDataType::kNameFull, u"الاسم",
+                                   u"محمد أحمد");
+  entry.sources.emplace_back(MemoryEntrySourceType::kGmail);
+  return AtMemoryManager::TransformResultIntoSuggestion(entry, "ar");
+}
+
+Suggestion CreateAtMemoryAddressSearchResultLabelTruncationArabicSuggestion() {
+  MemorySearchResult entry(MemoryDataType::kAddressFull, u"العنوان",
+                           u"شارع الملك فهد، جناح ١٠٠، الرياض");
+  entry.metadata_list.emplace_back(
+      MemoryDataType::kNameFull, u"الاسم",
+      u"اسم طويل جداً يتجاوز الحد الأقصى للعرض المسموح به لعنوان التسمية");
+  entry.sources.emplace_back(MemoryEntrySourceType::kGmail);
+  return AtMemoryManager::TransformResultIntoSuggestion(entry, "ar");
+}
+
+const AtMemoryTestParam kAtMemorySuggestions[] = {
+    {"AtMemory_search_result",
+     base::BindRepeating(&CreateAtMemorySearchResultSuggestion)},
+    {"AtMemory_address_search_result_2lines_no_overflow",
+     base::BindRepeating(
+         &CreateAtMemoryAddressSearchResultTwoLinesNoOverflowSuggestion)},
+    {"AtMemory_address_search_result_2lines_overflow",
+     base::BindRepeating(
+         &CreateAtMemoryAddressSearchResultTwoLinesOverflowSuggestion)},
+    {"AtMemory_address_search_result_label_truncation",
+     base::BindRepeating(
+         &CreateAtMemoryAddressSearchResultLabelTruncationSuggestion)},
+    {"AtMemory_source_attribution",
+     base::BindRepeating(&AtMemoryManager::CreateSourceAttributionSuggestion)},
+    {"AtMemory_fetching",
+     base::BindRepeating(&AtMemoryManager::CreateFetchingSuggestion, 0)},
+    {"AtMemory_search_affordance", base::BindRepeating([]() {
+       return AtMemoryManager::CreateSearchAffordanceSuggestion(u"passport");
+     })},
+    {"AtMemory_no_connection", base::BindRepeating([]() {
+       return AtMemoryManager::CreateNoConnectionSuggestion(u"passport");
+     })},
+    {"AtMemory_generic_error",
+     base::BindRepeating(&AtMemoryManager::CreateGenericErrorSuggestion)},
+};
+
+const AtMemoryTestParam kAtMemoryRtlSuggestions[] = {
+    {"AtMemory_search_result",
+     base::BindRepeating(&CreateAtMemorySearchResultArabicSuggestion)},
+    {"AtMemory_address_search_result_2lines_no_overflow",
+     base::BindRepeating(
+         &CreateAtMemoryAddressSearchResultTwoLinesNoOverflowArabicSuggestion)},
+    {"AtMemory_address_search_result_2lines_overflow",
+     base::BindRepeating(
+         &CreateAtMemoryAddressSearchResultTwoLinesOverflowArabicSuggestion)},
+    {"AtMemory_address_search_result_label_truncation",
+     base::BindRepeating(
+         &CreateAtMemoryAddressSearchResultLabelTruncationArabicSuggestion)},
+};
+
+class MockPasswordFaviconLoader : public PasswordFaviconLoader {
+ public:
+  MOCK_METHOD(void,
+              Load,
+              (const Suggestion::FaviconDetails&,
+               base::CancelableTaskTracker*,
+               OnLoadSuccess,
+               OnLoadFail),
+              (override));
+};
+
+// TODO(crbug.com/40285052): Add tests for RTL and dark mode.
+using TestParams =
+    std::tuple<Suggestion, std::optional<PopupRowView::CellType>>;
+
+class PopupRowViewTestBase : public UiBrowserTest {
+ public:
+  PopupRowViewTestBase() = default;
+  ~PopupRowViewTestBase() override = default;
+
+ protected:
+  MockAutofillPopupController& controller() { return controller_; }
+  MockPasswordFaviconLoader& favicon_loader() { return favicon_loader_; }
+
+  // BrowserTestBase:
+  void SetUpOnMainThread() override {
+    UiBrowserTest::SetUpOnMainThread();
+
+    widget_ = CreateWidget();
+
+    content::WebContents* web_contents =
+        browser()->GetActiveTabInterface()->GetContents();
+    ON_CALL(controller(), GetWebContents()).WillByDefault(Return(web_contents));
+  }
+
+  void TearDownOnMainThread() override {
+    widget_.reset();
+
+    UiBrowserTest::TearDownOnMainThread();
+  }
+
+  void CreateRowView(
+      Suggestion suggestion,
+      std::optional<PopupRowView::CellType> selected_cell,
+      std::optional<AutofillPopupController::SuggestionFilterMatch>
+          filter_match = std::nullopt) {
+    controller().set_suggestions({std::move(suggestion)});
+
+    auto view = CreatePopupRowView(controller_.GetWeakPtr(),
+                                   mock_a11y_selection_delegate_,
+                                   mock_selection_delegate_, /*line_number=*/0,
+                                   std::move(filter_match), &favicon_loader());
+    view->SetSelectedCell(selected_cell);
+
+    // Row view size depends on the parent view it's embedded into, 220px width
+    // is close to the actually used row size so that the screenshot is also
+    // close to what is rendered in the popup.
+    widget_->SetSize(view->GetPreferredSize(views::SizeBounds(420, 1024)));
+
+    widget_->SetContentsView(std::move(view));
+  }
+
+  // UiBrowserTest:
+  void ShowUi(const std::string& name) override { widget_->Show(); }
+
+  bool VerifyUi() override {
+    if (!widget_) {
+      return false;
+    }
+
+    auto* test_info = testing::UnitTest::GetInstance()->current_test_info();
+    return VerifyPixelUi(widget_.get(), test_info->test_suite_name(),
+                         test_info->name()) != ui::test::ActionResult::kFailed;
+  }
+
+  void WaitForUserDismissal() override {}
+
+ private:
+  std::unique_ptr<views::Widget> CreateWidget() {
+    auto widget = std::make_unique<views::Widget>();
+    widget->Init(views::Widget::InitParams(
+        views::Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET,
+        views::Widget::InitParams::TYPE_WINDOW_FRAMELESS));
+    return widget;
+  }
+
+  std::unique_ptr<views::Widget> widget_;
+  NiceMock<MockAutofillPopupController> controller_;
+  NiceMock<MockAccessibilitySelectionDelegate> mock_a11y_selection_delegate_;
+  NiceMock<MockSelectionDelegate> mock_selection_delegate_;
+  NiceMock<MockPasswordFaviconLoader> favicon_loader_;
+};
+
+class ParameterizedPopupRowViewTestBase
+    : public PopupRowViewTestBase,
+      public ::testing::WithParamInterface<TestParams> {
+ public:
+  ParameterizedPopupRowViewTestBase() = default;
+  ~ParameterizedPopupRowViewTestBase() override = default;
+
+  static std::string GetTestName(
+      const testing::TestParamInfo<TestParams>& info) {
+    const std::string suggestion_part =
+        base::UTF16ToUTF8(std::get<Suggestion>(info.param).main_text.value);
+    const auto selection =
+        std::get<std::optional<PopupRowView::CellType>>(info.param);
+    const std::string selection_part =
+        !selection.has_value()                          ? "NotSelected"
+        : selection == PopupRowView::CellType::kContent ? "ContentSelected"
+                                                        : "ControlSelected";
+    return suggestion_part + "_" + selection_part;
+  }
+};
+
+class CreatePopupRowViewTest : public ParameterizedPopupRowViewTestBase {
+ public:
+  CreatePopupRowViewTest() = default;
+  ~CreatePopupRowViewTest() override = default;
+
+ private:
+  user_education::NewBadgeController::TestLock disable_new_badges_ =
+      user_education::NewBadgeController::DisableNewBadgesForTesting();
+};
+
+IN_PROC_BROWSER_TEST_P(CreatePopupRowViewTest, SuggestionRowUiTest) {
+  CreateRowView(std::get<Suggestion>(GetParam()),
+                std::get<std::optional<PopupRowView::CellType>>(GetParam()));
+  ShowAndVerifyUi();
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Suggestions,
+    CreatePopupRowViewTest,
+    ::testing::Combine(::testing::ValuesIn(kSuggestions),
+                       ::testing::ValuesIn({
+                           std::optional<PopupRowView::CellType>(),
+                           std::optional(PopupRowView::CellType::kContent),
+                       })),
+    CreatePopupRowViewTest::GetTestName);
+
+INSTANTIATE_TEST_SUITE_P(
+    ExpandableSuggestions,
+    CreatePopupRowViewTest,
+    ::testing::Combine(::testing::ValuesIn(kExpandableSuggestions),
+                       ::testing::ValuesIn({
+                           std::optional<PopupRowView::CellType>(),
+                           std::optional(PopupRowView::CellType::kContent),
+                           std::optional(PopupRowView::CellType::kControl),
+                       })),
+    CreatePopupRowViewTest::GetTestName);
+
+IN_PROC_BROWSER_TEST_F(CreatePopupRowViewTest, FilterMatchHighlighting) {
+  CreateRowView(
+      Suggestion(u"Address_entry", minor_texts, u"label",
+                 Suggestion::Icon::kLocation, SuggestionType::kAddressEntry),
+      /*selected_cell=*/std::nullopt,
+      AutofillPopupController::SuggestionFilterMatch{.main_text_match =
+                                                         gfx::Range(1, 5)});
+  ShowAndVerifyUi();
+}
+
+using AtMemoryTestParamType =
+    std::tuple<AtMemoryTestParam, std::optional<PopupRowView::CellType>, bool>;
+
+class AtMemoryCreatePopupRowViewTest
+    : public PopupRowViewTestBase,
+      public ::testing::WithParamInterface<AtMemoryTestParamType> {
+ public:
+  static std::string GetTestName(
+      const testing::TestParamInfo<AtMemoryTestParamType>& info) {
+    const auto& [param, selection, is_rtl] = info.param;
+    const std::string selection_part =
+        !selection.has_value()                          ? "NotSelected"
+        : selection == PopupRowView::CellType::kContent ? "ContentSelected"
+                                                        : "ControlSelected";
+    const std::string rtl_part = is_rtl ? "_Rtl" : "";
+    return param.name + "_" + selection_part + rtl_part;
+  }
+
+  void SetUpOnMainThread() override {
+    scoped_rtl_.emplace(std::get<bool>(GetParam()));
+    PopupRowViewTestBase::SetUpOnMainThread();
+  }
+
+  void TearDownOnMainThread() override {
+    PopupRowViewTestBase::TearDownOnMainThread();
+    scoped_rtl_.reset();
+  }
+
+ private:
+  std::optional<base::i18n::ScopedRTLForTesting> scoped_rtl_;
+};
+
+// Tests that the suggestion row is rendered correctly.
+IN_PROC_BROWSER_TEST_P(AtMemoryCreatePopupRowViewTest, SuggestionRowUiTest) {
+  const auto& [param, selection, is_rtl] = GetParam();
+  CreateRowView(param.generator.Run(), selection);
+  ShowAndVerifyUi();
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AtMemorySuggestions,
+    AtMemoryCreatePopupRowViewTest,
+    ::testing::Combine(::testing::ValuesIn(kAtMemorySuggestions),
+                       ::testing::ValuesIn({
+                           std::optional<PopupRowView::CellType>(),
+                           std::optional(PopupRowView::CellType::kContent),
+                       }),
+                       ::testing::Bool()),
+    AtMemoryCreatePopupRowViewTest::GetTestName);
+
+INSTANTIATE_TEST_SUITE_P(
+    AtMemoryRtlSuggestions,
+    AtMemoryCreatePopupRowViewTest,
+    ::testing::Combine(::testing::ValuesIn(kAtMemoryRtlSuggestions),
+                       ::testing::ValuesIn({
+                           std::optional<PopupRowView::CellType>(),
+                           std::optional(PopupRowView::CellType::kContent),
+                       }),
+                       ::testing::Bool()),
+    AtMemoryCreatePopupRowViewTest::GetTestName);
+
+IN_PROC_BROWSER_TEST_F(CreatePopupRowViewTest, FreeformFooter) {
+  CreateRowView(CreateFreeformFooter(),
+                /*selected_cell=*/std::nullopt,
+                /*filter_match=*/std::nullopt);
+  ShowAndVerifyUi();
+}
+
+IN_PROC_BROWSER_TEST_F(CreatePopupRowViewTest, AutofillAiSourceAttribution) {
+  Suggestion suggestion(u"Suggested by Gemini · Photos\u00A0[1]",
+                        SuggestionType::kAutofillAiSourceAttribution);
+  suggestion.icon = Suggestion::Icon::kSpark;
+  suggestion.payload = Suggestion::AutofillAiPayload(
+      autofill::EntityInstance::EntityId("test-guid"),
+      {Suggestion::PersonalContextSourceCitation(
+          GURL("https://photos.google.com/test"), gfx::Range(29, 32))});
+  CreateRowView(std::move(suggestion), /*selected_cell=*/std::nullopt,
+                /*filter_match=*/std::nullopt);
+  ShowAndVerifyUi();
+}
+
+IN_PROC_BROWSER_TEST_F(CreatePopupRowViewTest, PasswordWithFaviconPlaceholder) {
+  Suggestion suggestion = CreatePasswordSuggestion(u"Password_entry");
+  suggestion.custom_icon =
+      Suggestion::FaviconDetails(/*domain_url=*/GURL("https://google.com"));
+  CreateRowView(std::move(suggestion), /*selected_cell=*/std::nullopt,
+                /*filter_match=*/std::nullopt);
+  ShowAndVerifyUi();
+}
+
+IN_PROC_BROWSER_TEST_F(CreatePopupRowViewTest, PasswordCustomIconLoader) {
+  ON_CALL(favicon_loader(), Load)
+      .WillByDefault([](const Suggestion::FaviconDetails&,
+                        base::CancelableTaskTracker* task_tracker,
+                        PasswordFaviconLoader::OnLoadSuccess on_success,
+                        PasswordFaviconLoader::OnLoadFail on_fail) {
+        std::move(on_success)
+            .Run(ui::ResourceBundle::GetSharedInstance().GetImageNamed(
+                IDR_DISABLE));
+      });
+
+  Suggestion suggestion(u"Password_entry", minor_texts, u"label",
+                        Suggestion::Icon::kKey, SuggestionType::kPasswordEntry);
+  suggestion.custom_icon =
+      Suggestion::FaviconDetails(/*domain_url=*/GURL("https://google.com"));
+  CreateRowView(std::move(suggestion),
+                /*selected_cell=*/std::nullopt,
+                /*filter_match=*/std::nullopt);
+  ShowAndVerifyUi();
+}
+
+class BnplCreatePopupRowViewTest : public ParameterizedPopupRowViewTestBase {
+ public:
+  BnplCreatePopupRowViewTest() {
+    scoped_feature_list_.InitAndEnableFeature(
+        features::kAutofillEnablePayNowPayLaterTabs);
+  }
+  ~BnplCreatePopupRowViewTest() override = default;
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_P(BnplCreatePopupRowViewTest, SuggestionRowUiTest) {
+  CreateRowView(std::get<Suggestion>(GetParam()),
+                std::get<std::optional<PopupRowView::CellType>>(GetParam()));
+  ShowAndVerifyUi();
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    BnplSuggestions,
+    BnplCreatePopupRowViewTest,
+    ::testing::Combine(::testing::ValuesIn(kBnplSuggestions),
+                       ::testing::Values(std::nullopt,
+                                         PopupRowView::CellType::kContent)),
+    BnplCreatePopupRowViewTest::GetTestName);
+
+class CreatePopupRowViewWithNoUserEducationRateLimitTest
+    : public PopupRowViewTestBase {
+ public:
+  CreatePopupRowViewWithNoUserEducationRateLimitTest() = default;
+  ~CreatePopupRowViewWithNoUserEducationRateLimitTest() override = default;
+
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    command_line->AppendSwitch(
+        user_education::features::kDisableRateLimitingCommandLine);
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(CreatePopupRowViewWithNoUserEducationRateLimitTest,
+                       ComposeWithNewBadge) {
+  Suggestion suggestion(u"Compose with a badge", minor_texts, u"label",
+                        Suggestion::Icon::kMagic,
+                        SuggestionType::kComposeProactiveNudge);
+  suggestion.feature_for_new_badge =
+      &compose::features::kEnableComposeProactiveNudge;
+
+  CreateRowView(std::move(suggestion), /*selected_cell=*/std::nullopt,
+                /*filter_match=*/std::nullopt);
+  ShowAndVerifyUi();
+}
+
+}  // namespace
+}  // namespace autofill

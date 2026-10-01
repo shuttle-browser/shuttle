@@ -1,0 +1,61 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("status_icons") {
+  sources = [
+    "status_icon.h",
+    "status_icon_menu_model.h",
+    "status_icon_observer.h",
+    "status_tray.h",
+  ]
+  public_deps = [
+    "//base",
+    "//ui/base",
+    "//ui/menus",
+  ]
+
+  if (!is_android) {
+    sources += [ "desktop_notification_balloon.h" ]
+  }
+}
+
+source_set("impl") {
+  sources = [
+    "status_icon.cc",
+    "status_icon_menu_model.cc",
+    "status_tray.cc",
+  ]
+  deps = [
+    ":status_icons",
+    "//chrome/browser/profiles:profile_manager",
+    "//ui/gfx",
+  ]
+
+  if (!is_android) {
+    sources += [ "desktop_notification_balloon.cc" ]
+    deps += [
+      "//chrome/browser/notifications",
+      "//ui/message_center/public/cpp",
+    ]
+  }
+
+  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "status_icon_menu_model_unittest.cc",
+    "status_icon_unittest.cc",
+    "status_tray_unittest.cc",
+  ]
+  deps = [
+    ":status_icons",
+    "//base:compiler_specific",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//ui/gfx:test_support",
+    "//ui/message_center/public/cpp",
+  ]
+}

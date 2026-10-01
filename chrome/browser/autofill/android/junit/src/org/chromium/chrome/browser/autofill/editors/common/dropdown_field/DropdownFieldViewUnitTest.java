@@ -1,0 +1,228 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.autofill.editors.common.dropdown_field;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+
+import static org.chromium.chrome.browser.autofill.editors.common.dropdown_field.DropdownFieldProperties.DROPDOWN_ALL_KEYS;
+import static org.chromium.chrome.browser.autofill.editors.common.dropdown_field.DropdownFieldProperties.DROPDOWN_KEY_VALUE_LIST;
+import static org.chromium.chrome.browser.autofill.editors.common.field.FieldProperties.ERROR_MESSAGE;
+import static org.chromium.chrome.browser.autofill.editors.common.field.FieldProperties.IS_REQUIRED;
+import static org.chromium.chrome.browser.autofill.editors.common.field.FieldProperties.LABEL;
+import static org.chromium.chrome.browser.autofill.editors.common.field.FieldProperties.VALIDATOR;
+import static org.chromium.chrome.browser.autofill.editors.common.field.FieldProperties.VALUE;
+import static org.chromium.chrome.browser.autofill.editors.common.field.FieldProperties.VALUE_CHANGED_CALLBACK;
+
+import android.app.Activity;
+import android.text.TextUtils;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.robolectric.Robolectric;
+
+import org.chromium.base.Callback;
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.DisabledTest;
+import org.chromium.chrome.browser.autofill.editors.common.field.EditorFieldValidator;
+import org.chromium.chrome.browser.autofill.editors.utils.TestUtils;
+import org.chromium.components.autofill.DropdownKeyValue;
+import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.ui.modelutil.PropertyModelChangeProcessor;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
+/** Unit test for {@link DropdownFieldView}. */
+@RunWith(BaseRobolectricTestRunner.class)
+public final class DropdownFieldViewUnitTest {
+    private Activity mActivity;
+    private ViewGroup mContentView;
+
+    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Mock private Callback<String> mValueChangedCallback;
+
+    @Before
+    public void setUp() {
+        mActivity = Robolectric.setupActivity(Activity.class);
+        mContentView = new LinearLayout(mActivity);
+    }
+
+    private PropertyModel buildDefaultPropertyModel() {
+        List<DropdownKeyValue> keyValues =
+                Arrays.asList(
+                        new DropdownKeyValue("key1", "value1"),
+                        new DropdownKeyValue("key2", "value2"));
+        return new PropertyModel.Builder(DROPDOWN_ALL_KEYS)
+                .with(IS_REQUIRED, false)
+                .with(DROPDOWN_KEY_VALUE_LIST, keyValues)
+                .with(LABEL, "label")
+                .with(VALUE_CHANGED_CALLBACK, mValueChangedCallback)
+                .build();
+    }
+
+    private PropertyModel buildPropertyModelNoValues() {
+        return new PropertyModel.Builder(DROPDOWN_ALL_KEYS)
+                .with(IS_REQUIRED, false)
+                .with(DROPDOWN_KEY_VALUE_LIST, Collections.emptyList())
+                .with(LABEL, "label")
+                .build();
+    }
+
+    private DropdownFieldView attachDropdownFieldView(PropertyModel model) {
+        DropdownFieldView field = new DropdownFieldView(mActivity, mContentView, model);
+        PropertyModelChangeProcessor.create(
+                model, field, DropdownFieldViewBinder::bindDropdownFieldView);
+        return field;
+    }
+
+    /** Test that the `VALUE_CHANGED_CALLBACK` is fired when the spinner value changes. */
+    @Test
+    public void testSetDropdownValue() {
+        PropertyModel model = buildDefaultPropertyModel();
+        DropdownFieldView field = attachDropdownFieldView(model);
+
+        TestUtils.setDropdownValue(field, "value2");
+        verify(mValueChangedCallback, times(1)).onResult("key2");
+    }
+
+    /** Test that no error message is displayed if there aren't any validation errors. */
+    @Test
+    public void testNoErrors() {
+        PropertyModel model = buildDefaultPropertyModel();
+        model.set(VALIDATOR, EditorFieldValidator.builder().build());
+        DropdownFieldView field = attachDropdownFieldView(model);
+        model.set(VALUE, "value2");
+
+        assertTrue(field.validate());
+        assertTrue(TextUtils.isEmpty(field.getErrorLabelForTests().getText()));
+    }
+
+    /** Test that the initial error message is cleared when the user changes the dropdown value. */
+    @Test
+    public void testInitialErrorMessage() {
+        PropertyModel model = buildDefaultPropertyModel();
+        model.set(
+                VALIDATOR,
+                EditorFieldValidator.builder()
+                        .withInitialErrorMessage("Initial error message")
+                        .build());
+        DropdownFieldView field = attachDropdownFieldView(model);
+        model.set(VALUE, "value2");
+
+        // Check initial state
+        assertEquals(1, field.getDropdown().getSelectedItemPosition());
+        assertFalse(field.validate());
+        assertFalse(TextUtils.isEmpty(field.getErrorLabelForTests().getText()));
+
+        // Change value.
+        field.getDropdown().setSelection(0);
+        assertTrue(field.validate());
+        assertTrue(TextUtils.isEmpty(field.getErrorLabelForTests().getText()));
+    }
+
+    /**
+     * Test that the error message is not cleared when the user changes the dropdown value if the
+     * error message is due to a predicate failing.
+     */
+    @Test
+    public void testEditKeepInvalid() {
+        PropertyModel model = buildDefaultPropertyModel();
+        model.set(
+                VALIDATOR,
+                EditorFieldValidator.builder()
+                        .withValidationPredicate(
+                                (value) -> {
+                                    return false;
+                                },
+                                "Error Message")
+                        .build());
+        DropdownFieldView field = attachDropdownFieldView(model);
+        model.set(VALUE, "value2");
+
+        // Check initial state
+        assertEquals(1, field.getDropdown().getSelectedItemPosition());
+        assertFalse(field.validate());
+        assertFalse(TextUtils.isEmpty(field.getErrorLabelForTests().getText()));
+
+        // Change value.
+        field.getDropdown().setSelection(0);
+        assertFalse(field.validate());
+        assertFalse(TextUtils.isEmpty(field.getErrorLabelForTests().getText()));
+    }
+
+    /** Test that the content description for dropdown elements is correctly set. */
+    @Test
+    @DisabledTest(message = "Flaky test. See https://crbug.com/416758468")
+    public void testContentDescriptionIsCorrect() {
+        PropertyModel model = buildDefaultPropertyModel();
+        DropdownFieldView field = attachDropdownFieldView(model);
+
+        assertTrue(field.getDropdown().isImportantForAccessibility());
+        assertFalse(field.getLabel().isImportantForAccessibility());
+
+        assertEquals("label/value1", field.getDropdown().getContentDescription());
+        model.set(VALUE, "value2");
+        assertEquals("label/value2", field.getDropdown().getContentDescription());
+    }
+
+    /**
+     * Test that the content description for dropdown elements is correctly set even if option list
+     * is empty.
+     */
+    @Test
+    @DisabledTest(message = "Flaky test. See https://crbug.com/416761636")
+    public void testContentDescriptionIsCorrectDropdownListEmpty() {
+        PropertyModel model = buildPropertyModelNoValues();
+        DropdownFieldView field = attachDropdownFieldView(model);
+
+        assertTrue(field.getDropdown().isImportantForAccessibility());
+        assertFalse(field.getLabel().isImportantForAccessibility());
+
+        assertEquals("label", field.getDropdown().getContentDescription());
+    }
+
+    /** Test that the error message is correctly set and cleared. */
+    @Test
+    public void testSetErrorMessage() {
+        PropertyModel model = buildDefaultPropertyModel();
+        DropdownFieldView field = attachDropdownFieldView(model);
+
+        TextView errorLabel = field.getErrorLabelForTests();
+        assertEquals(View.GONE, errorLabel.getVisibility());
+
+        model.set(ERROR_MESSAGE, "Error message");
+        assertEquals(View.VISIBLE, errorLabel.getVisibility());
+        assertEquals("Error message", errorLabel.getText().toString());
+
+        model.set(ERROR_MESSAGE, null);
+        assertEquals(View.GONE, errorLabel.getVisibility());
+        assertTrue(TextUtils.isEmpty(errorLabel.getText()));
+
+        // Show the error message again and make sure that an empty string hides the error message
+        // as well.
+        model.set(ERROR_MESSAGE, "Error message");
+        assertEquals(View.VISIBLE, errorLabel.getVisibility());
+        assertEquals("Error message", errorLabel.getText().toString());
+
+        model.set(ERROR_MESSAGE, "");
+        assertEquals(View.GONE, errorLabel.getVisibility());
+        assertTrue(TextUtils.isEmpty(errorLabel.getText()));
+    }
+}

@@ -1,0 +1,286 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/settings/ui_bundled/password/password_checkup/password_checkup_mediator.h"
+
+#import "base/test/bind.h"
+#import "base/test/metrics/histogram_tester.h"
+#import "base/test/scoped_feature_list.h"
+#import "components/affiliations/core/browser/fake_affiliation_service.h"
+#import "components/keyed_service/core/service_access_type.h"
+#import "components/password_manager/core/browser/password_form.h"
+#import "components/password_manager/core/browser/password_manager_test_utils.h"
+#import "components/password_manager/core/browser/password_store/password_form_converters.h"
+#import "components/password_manager/core/browser/password_store/test_password_store.h"
+#import "components/password_manager/core/browser/password_string.h"
+#import "ios/chrome/browser/affiliations/model/ios_chrome_affiliation_service_factory.h"
+#import "ios/chrome/browser/passwords/model/ios_chrome_password_check_manager_factory.h"
+#import "ios/chrome/browser/passwords/model/ios_chrome_profile_password_store_factory.h"
+#import "ios/chrome/browser/passwords/model/password_check_observer_bridge.h"
+#import "ios/chrome/browser/passwords/model/password_checkup_utils.h"
+#import "ios/chrome/browser/safety_check_notifications/utils/constants.h"
+#import "ios/chrome/browser/safety_check_notifications/utils/test_utils.h"
+#import "ios/chrome/browser/settings/ui_bundled/password/password_checkup/password_checkup_consumer.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_manager_ios.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
+#import "ios/chrome/test/testing_application_context.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "testing/platform_test.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+#import "third_party/ocmock/gtest_support.h"
+
+namespace {
+
+using password_manager::InsecurePasswordCounts;
+using password_manager::InsecureType;
+using password_manager::PasswordForm;
+using password_manager::PasswordString;
+using password_manager::TestPasswordStore;
+
+// Creates a saved stored credential.
+password_manager::StoredCredential CreateStoredCredential() {
+  password_manager::StoredCredential cred;
+  cred.username_value = u"test@egmail.com";
+  cred.password_value = PasswordString(u"strongPa55w0rd");
+  cred.signon_realm = "http://www.example.com/";
+  cred.in_store = PasswordForm::Store::kProfileStore;
+  return cred;
+}
+
+void AddIssueToCredential(password_manager::StoredCredential* cred,
+                          InsecureType insecure_type = InsecureType::kLeaked,
+                          bool is_muted = false) {
+  cred->password_issues.insert_or_assign(
+      insecure_type, password_manager::InsecurityMetadata(
+                         base::Time::Now(), password_manager::IsMuted(is_muted),
+                         password_manager::TriggerBackendNotification(false)));
+}
+
+}  // namespace
+
+// Test fixture for testing PasswordCheckupMediator class.
+class PasswordCheckupMediatorTest : public PlatformTest {
+ protected:
+  void SetUp() override {
+    PlatformTest::SetUp();
+
+    TestProfileIOS::Builder builder;
+
+    builder.AddTestingFactory(
+        IOSChromeProfilePasswordStoreFactory::GetInstance(),
+        base::BindOnce(
+            &password_manager::BuildPasswordStore<ProfileIOS,
+                                                  TestPasswordStore>));
+    builder.AddTestingFactory(
+        IOSChromeAffiliationServiceFactory::GetInstance(),
+        base::BindOnce([](ProfileIOS*) -> std::unique_ptr<KeyedService> {
+          return std::make_unique<affiliations::FakeAffiliationService>();
+        }));
+
+    profile_ = profile_manager_.AddProfileWithBuilder(std::move(builder));
+
+    password_check_ =
+        IOSChromePasswordCheckManagerFactory::GetForProfile(profile_.get());
+
+    consumer_ = OCMProtocolMock(@protocol(PasswordCheckupConsumer));
+
+    mediator_ = [[PasswordCheckupMediator alloc]
+        initWithPasswordCheckManager:password_check_];
+    mediator_.consumer = consumer_;
+  }
+
+  void TearDown() override {
+    [mediator_ disconnect];
+    mediator_ = nil;
+
+    password_check_ = nullptr;
+
+    PlatformTest::TearDown();
+  }
+
+  PasswordCheckupMediator* mediator() { return mediator_; }
+
+  ProfileIOS* profile() { return profile_.get(); }
+
+  id consumer() { return consumer_; }
+
+  TestPasswordStore& GetTestStore() {
+    return *static_cast<TestPasswordStore*>(
+        IOSChromeProfilePasswordStoreFactory::GetForProfile(
+            profile_.get(), ServiceAccessType::EXPLICIT_ACCESS)
+            .get());
+  }
+
+  void RunUntilIdle() { task_environment_.RunUntilIdle(); }
+
+ protected:
+  base::test::ScopedFeatureList feature_list_;
+
+ private:
+  web::WebTaskEnvironment task_environment_;
+  IOSChromeScopedTestingLocalState scoped_testing_local_state_;
+  TestProfileManagerIOS profile_manager_;
+  raw_ptr<TestProfileIOS> profile_;
+  scoped_refptr<IOSChromePasswordCheckManager> password_check_;
+  id consumer_;
+  PasswordCheckupMediator* mediator_;
+};
+
+// Tests that the consumer is correclty notified when the password check state
+// changed.
+TEST_F(PasswordCheckupMediatorTest,
+       NotifiesConsumerOnPasswordCheckStateChange) {
+  EXPECT_TRUE([mediator() conformsToProtocol:@protocol(PasswordCheckObserver)]);
+
+  InsecurePasswordCounts counts{};
+
+  OCMExpect([consumer()
+         setPasswordCheckupHomepageState:PasswordCheckupHomepageState::
+                                             PasswordCheckupHomepageStateDone
+                  insecurePasswordCounts:counts
+      formattedElapsedTimeSinceLastCheck:@"Check never run"]);
+  OCMExpect([consumer() setAffiliatedGroupCount:0]);
+
+  PasswordCheckupMediator<PasswordCheckObserver>* password_check_observer =
+      static_cast<PasswordCheckupMediator<PasswordCheckObserver>*>(mediator());
+
+  [password_check_observer
+      passwordCheckStateDidChange:PasswordCheckState::kIdle];
+
+  // Wait for the observer updates to complete.
+  RunUntilIdle();
+
+  EXPECT_OCMOCK_VERIFY(consumer());
+}
+
+// Tests that the consumer is correctly notified when the saved insecure
+// passwords changed.
+TEST_F(PasswordCheckupMediatorTest, NotifiesConsumerOnInsecurePasswordChange) {
+  InsecurePasswordCounts counts = {1, 0, 0, 1};
+
+  OCMExpect([consumer()
+         setPasswordCheckupHomepageState:PasswordCheckupHomepageState::
+                                             PasswordCheckupHomepageStateDone
+                  insecurePasswordCounts:counts
+      formattedElapsedTimeSinceLastCheck:@"Check never run"]);
+  OCMExpect([consumer() setAffiliatedGroupCount:1]);
+
+  PasswordCheckupMediator<PasswordCheckObserver>* password_check_observer =
+      static_cast<PasswordCheckupMediator<PasswordCheckObserver>*>(mediator());
+
+  [password_check_observer
+      passwordCheckStateDidChange:PasswordCheckState::kIdle];
+
+  password_manager::StoredCredential cred = CreateStoredCredential();
+  AddIssueToCredential(&cred, InsecureType::kLeaked);
+  AddIssueToCredential(&cred, InsecureType::kWeak);
+  GetTestStore().AddLogin(std::move(cred));
+  RunUntilIdle();
+
+  EXPECT_OCMOCK_VERIFY(consumer());
+}
+
+// Tests that the consumer is notified with the results of the last successful
+// password check when the current password check fails.
+TEST_F(PasswordCheckupMediatorTest,
+       NotifiesConsumerAfterPasswordCheckupFailed) {
+  PasswordCheckupMediator<PasswordCheckObserver>* password_check_observer =
+      static_cast<PasswordCheckupMediator<PasswordCheckObserver>*>(mediator());
+
+  [password_check_observer
+      passwordCheckStateDidChange:PasswordCheckState::kIdle];
+
+  // Add a leaked password. This password should be taken into account in the
+  // `insecurePasswordCounts` passed to the conusmer.
+  password_manager::StoredCredential cred1 = CreateStoredCredential();
+  AddIssueToCredential(&cred1, InsecureType::kLeaked);
+  GetTestStore().AddLogin(std::move(cred1));
+  RunUntilIdle();
+
+  InsecurePasswordCounts counts = {1, 0, 0, 0};
+
+  OCMExpect([consumer()
+         setPasswordCheckupHomepageState:PasswordCheckupHomepageState::
+                                             PasswordCheckupHomepageStateDone
+                  insecurePasswordCounts:counts
+      formattedElapsedTimeSinceLastCheck:@"Check never run"]);
+  OCMExpect([consumer() setAffiliatedGroupCount:1]);
+
+  // Enter an error state of PasswordCheckState.
+  [password_check_observer
+      passwordCheckStateDidChange:PasswordCheckState::kSignedOut];
+
+  // Add a weak password. This password shouldn't be taken into account in the
+  // `insecurePasswordCounts` passed to the conusmer since an error occurred.
+  password_manager::StoredCredential cred2 = CreateStoredCredential();
+  AddIssueToCredential(&cred2, InsecureType::kWeak);
+  GetTestStore().AddLogin(std::move(cred2));
+  RunUntilIdle();
+
+  EXPECT_OCMOCK_VERIFY(consumer());
+}
+
+// Verifies the consumer is notified when Safety Check notifications should be
+// enabled.
+TEST_F(PasswordCheckupMediatorTest,
+       NotifiesConsumerWhenSafetyCheckNotificationsAreEnabled) {
+  OCMExpect([consumer() setSafetyCheckNotificationsEnabled:YES]);
+
+  [mediator() reconfigureNotificationsSection:YES];
+
+  EXPECT_OCMOCK_VERIFY(consumer());
+}
+
+// Verifies the consumer is notified when Safety Check notifications should be
+// disabled.
+TEST_F(PasswordCheckupMediatorTest,
+       NotifiesConsumerWhenSafetyCheckNotificationsAreDisabled) {
+  OCMExpect([consumer() setSafetyCheckNotificationsEnabled:NO]);
+
+  [mediator() reconfigureNotificationsSection:NO];
+
+  EXPECT_OCMOCK_VERIFY(consumer());
+}
+
+// Verifies that the `kPasswordCheckupPageOptIn` value is correctly logged
+// in the `IOS.Notifications.SafetyCheck.NotificationsOptInSource` histogram
+// when notifications are enabled.
+TEST_F(PasswordCheckupMediatorTest, FiresOptInForSafetyCheckNotifications) {
+  // Configure notifications to be disabled initially.
+  UpdateSafetyCheckNotificationsPermission(NO);
+
+  base::HistogramTester histogram_tester;
+
+  // Simulate the toggle action.
+  [mediator() toggleSafetyCheckNotifications];
+
+  // Verify the histogram was fired for opting in.
+  histogram_tester.ExpectUniqueSample(
+      "IOS.Notifications.SafetyCheck.NotificationsOptInSource",
+      static_cast<int>(
+          SafetyCheckNotificationsOptInSource::kPasswordCheckupPageOptIn),
+      1);
+}
+
+// Verifies that the `kPasswordCheckupPageOptOut` value is correctly logged
+// in the `IOS.Notifications.SafetyCheck.NotificationsOptInSource` histogram
+// when notifications are disabled.
+TEST_F(PasswordCheckupMediatorTest, FiresOptOutForSafetyCheckNotifications) {
+  // Configure notifications to be enabled initially.
+  UpdateSafetyCheckNotificationsPermission(YES);
+
+  base::HistogramTester histogram_tester;
+
+  // Simulate the toggle action.
+  [mediator() toggleSafetyCheckNotifications];
+
+  // Verify the histogram was fired for opting out.
+  histogram_tester.ExpectUniqueSample(
+      "IOS.Notifications.SafetyCheck.NotificationsOptInSource",
+      static_cast<int>(
+          SafetyCheckNotificationsOptInSource::kPasswordCheckupPageOptOut),
+      1);
+}

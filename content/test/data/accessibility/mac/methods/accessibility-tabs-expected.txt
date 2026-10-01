@@ -1,0 +1,2 @@
+tablist.accessibilityTabs=ERROR:FAILED_TO_PARSE
+tab.accessibilityTabs=ERROR:FAILED_TO_PARSE

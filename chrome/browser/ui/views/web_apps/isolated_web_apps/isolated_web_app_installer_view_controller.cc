@@ -1,0 +1,748 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/web_apps/isolated_web_apps/isolated_web_app_installer_view_controller.h"
+
+#include <algorithm>
+#include <memory>
+#include <optional>
+#include <string>
+#include <variant>
+
+#include "base/containers/to_vector.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/logging.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
+#include "base/timer/timer.h"
+#include "base/uuid.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/views/web_apps/isolated_web_apps/callback_delayer.h"
+#include "chrome/browser/ui/views/web_apps/isolated_web_apps/isolated_web_app_installer_model.h"
+#include "chrome/browser/ui/views/web_apps/isolated_web_apps/isolated_web_app_installer_view.h"
+#include "chrome/browser/ui/views/web_apps/isolated_web_apps/isolated_web_app_user_installability_checker.h"
+#include "chrome/browser/web_applications/icons/icon_masker.h"
+#include "chrome/browser/web_applications/isolated_web_apps/install/isolated_web_app_install_source.h"
+#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_features.h"
+#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_user_installed_manager.h"
+#include "chrome/browser/web_applications/isolated_web_apps/signed_web_bundle_metadata.h"
+#include "chrome/browser/web_applications/locks/app_lock.h"
+#include "chrome/browser/web_applications/web_app.h"
+#include "chrome/browser/web_applications/web_app_command_scheduler.h"
+#include "chrome/browser/web_applications/web_app_install_info.h"
+#include "chrome/browser/web_applications/web_app_provider.h"
+#include "chrome/browser/web_applications/web_app_registry_update.h"
+#include "chrome/browser/web_applications/web_app_sync_bridge.h"
+#include "chrome/grit/generated_resources.h"
+#include "components/prefs/pref_service.h"
+#include "components/strings/grit/components_strings.h"
+#include "components/webapps/common/web_app_id.h"
+#include "content/public/browser/storage_partition.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/ui_base_types.mojom-shared.h"
+#include "ui/base/ui_base_types.h"
+#include "ui/gfx/geometry/size.h"
+#include "ui/gfx/image/image_skia.h"
+#include "ui/gfx/native_ui_types.h"
+#include "ui/strings/grit/ui_strings.h"
+#include "ui/views/layout/layout_provider.h"
+#include "ui/views/view.h"
+#include "ui/views/widget/widget.h"
+#include "ui/views/window/dialog_delegate.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "ash/constants/ash_pref_names.h"
+#include "ash/public/cpp/shelf_item.h"
+#include "ash/public/cpp/shelf_model.h"
+#include "ash/public/cpp/shelf_types.h"
+#include "ash/webui/settings/public/constants/routes.mojom.h"
+#include "chrome/browser/apps/app_service/app_service_proxy.h"
+#include "chrome/browser/apps/app_service/app_service_proxy_factory.h"
+#include "chrome/browser/ui/ash/shelf/isolated_web_app_installer_shelf_item_controller.h"
+#include "chrome/browser/ui/settings_window_manager_chromeos.h"
+#include "components/services/app_service/public/cpp/app_launch_util.h"
+#include "ui/events/event_constants.h"
+#else
+#include "base/command_line.h"
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+namespace web_app {
+
+BASE_FEATURE(kIwaUpdateChannelsInInstaller, base::FEATURE_ENABLED_BY_DEFAULT);
+
+namespace {
+
+constexpr auto kUpdateManifestFetchTrafficAnnotation =
+    net::DefinePartialNetworkTrafficAnnotation("iwa_installer_view_controller",
+                                               "iwa_update_manifest_fetcher",
+                                               R"(
+  semantics {
+    sender: "Isolated Web App Installer View Controller"
+    description:
+      "Downloads the update manifest of an Isolated Web App during a "
+      "user-initiated graphical installation. The update manifest contains "
+      "the list of available update channels."
+    trigger:
+      "The user selects an Isolated Web App bundle (.swbn) to install via "
+      "the graphical installer, and the installer checks for available "
+      "update channels to display in the UI."
+  }
+  policy {
+    cookies_allowed: NO
+    setting:
+      "This feature cannot be disabled in settings, but it is only "
+      "triggered by explicit user action (installing an IWA)."
+    chrome_policy {
+      IsolatedWebAppUserInstallationEnabled {
+        IsolatedWebAppUserInstallationEnabled: false
+      }
+    }
+  })");
+
+constexpr base::TimeDelta kGetMetadataMinimumDelay = base::Seconds(2);
+constexpr base::TimeDelta kInstallationMinimumDelay = base::Seconds(2);
+constexpr double kProgressBarPausePercentage = 0.8;
+
+// A DialogDelegate that notifies callers when it closes.
+// Accept/Cancel/Close callbacks could be used together to figure out when a
+// dialog closes, but this provides a simpler single callback.
+class OnCompleteDialogDelegate : public views::DialogDelegate {
+ public:
+  ~OnCompleteDialogDelegate() override {
+    if (callback_) {
+      std::move(callback_).Run();
+    }
+  }
+
+  void SetCompleteCallback(base::OnceClosure callback) {
+    callback_ = std::move(callback);
+  }
+
+ private:
+  base::OnceClosure callback_;
+};
+
+std::string CreateRandomInstanceId() {
+  base::Uuid uuid = base::Uuid::GenerateRandomV4();
+  return uuid.AsLowercaseString();
+}
+
+// Checks if a user is able to install Isolated Web Apps.
+// This function combines checks for the general feature
+// enablement, browser-level policy settings, and (on ChromeOS) the
+// OS-level IWA enablement setting.
+bool IsUserInstallEnabledForProfile(Profile* profile) {
+  if (!web_app::IsIwaUnmanagedInstallEnabled(profile)) {
+    return false;
+  }
+#if BUILDFLAG(IS_CHROMEOS)
+  if (!profile->GetPrefs()->GetBoolean(ash::prefs::kIsolatedWebAppsEnabled)) {
+    return false;
+  }
+#endif  // BUILDFLAG(IS_CHROMEOS)
+  return true;
+}
+
+void UpdateIwaChannelInDatabase(webapps::AppId app_id,
+                                UpdateChannel update_channel,
+                                AppLock& lock,
+                                base::DictValue& debug_value) {
+  debug_value.Set("update_channel", update_channel.ToString());
+
+  ScopedRegistryUpdate update = lock.sync_bridge().BeginUpdate();
+  WebApp* web_app = update->UpdateApp(app_id);
+
+  if (!web_app || !web_app->isolation_data()) {
+    LOG(ERROR) << "Failed to update IWA channel in database.";
+    return;
+  }
+
+  web_app->SetIsolationData(IsolationData::Builder(*web_app->isolation_data())
+                                .SetUpdateChannel(std::move(update_channel))
+                                .Build());
+}
+}  // namespace
+
+struct IsolatedWebAppInstallerViewController::InstallabilityCheckedVisitor {
+  explicit InstallabilityCheckedVisitor(
+      IsolatedWebAppInstallerModel& model,
+      IsolatedWebAppInstallerViewController& controller)
+      : model_(model), controller_(controller) {}
+
+  void operator()(const InstallabilityChecker::BundleInvalid& invalid) {
+    LOG(ERROR) << "Isolated Web App bundle installability check failed: "
+               << invalid.error;
+    model_->SetDialog(IsolatedWebAppInstallerModel::BundleInvalidDialog{});
+  }
+
+  void operator()(const InstallabilityChecker::BundleInstallable& installable) {
+    const auto& image_info = installable.metadata.image_info();
+    const auto& bitmaps = image_info.bitmaps;
+    if (!bitmaps.empty()) {
+      // Pick the largest available icon bitmap for the Shelf. The Shelf will
+      // rescale the icon anyway, so we prefer the largest bitmap.
+      const auto largest_bitmap = std::ranges::max_element(
+          bitmaps, std::less<>{}, [](const auto& item) { return item.first; });
+      controller_->SetIcon(
+          gfx::ImageSkia::CreateFrom1xBitmap(largest_bitmap->second),
+          image_info.is_maskable);
+      controller_->AddOrUpdateWindowToShelf();
+    }
+    model_->SetSignedWebBundleMetadata(installable.metadata);
+    controller_->LoadChannelsAndShowMetadata();
+  }
+
+  void operator()(const InstallabilityChecker::BundleUpdatable& updatable) {
+    model_->SetDialog(
+        IsolatedWebAppInstallerModel::BundleAlreadyInstalledDialog{
+            updatable.metadata.app_name(),
+            updatable.installed_version.version()});
+  }
+
+  void operator()(const InstallabilityChecker::BundleOutdated& outdated) {
+    // TODO(crbug.com/40280769): Once we have an update flow we should add
+    // more specific error messages for newer vs same version already installed.
+    model_->SetDialog(
+        IsolatedWebAppInstallerModel::BundleAlreadyInstalledDialog{
+            outdated.metadata.app_name(),
+            outdated.installed_version.version()});
+  }
+
+  void operator()(const InstallabilityChecker::ProfileShutdown&) {
+    controller_->Close();
+  }
+
+  void operator()(
+      const InstallabilityChecker::BundleNotAllowlistedForUserInstallation&
+          not_allowlisted) {
+    model_->SetDialog(IsolatedWebAppInstallerModel::
+                          BundleNotAllowlistedForUserInstallationDialog(
+                              not_allowlisted.metadata.app_name()));
+  }
+
+  void operator()(const InstallabilityChecker::BundleBlocklisted& blocklisted) {
+    model_->SetDialog(
+        IsolatedWebAppInstallerModel::BundleBlocklistedInstallationDialog{});
+  }
+
+ private:
+  raw_ref<IsolatedWebAppInstallerModel> model_;
+  raw_ref<IsolatedWebAppInstallerViewController> controller_;
+};
+
+IsolatedWebAppInstallerViewController::IsolatedWebAppInstallerViewController(
+    Profile* profile,
+    WebAppProvider* web_app_provider,
+    IsolatedWebAppInstallerModel* model)
+    : instance_id_(CreateRandomInstanceId()),
+      profile_(profile),
+      web_app_provider_(web_app_provider),
+      model_(model) {
+  CHECK(profile_);
+  CHECK(model_);
+  CHECK(web_app_provider_);
+
+  pref_change_registrar_.Init(profile_->GetPrefs());
+  model_observation_.Observe(model_);
+}
+
+IsolatedWebAppInstallerViewController::
+    ~IsolatedWebAppInstallerViewController() = default;
+
+void IsolatedWebAppInstallerViewController::Start(
+    base::OnceClosure initialized_callback,
+    base::OnceClosure completion_callback) {
+  CHECK(initialized_callback);
+  initialized_callback_ = std::move(initialized_callback);
+
+  CHECK(completion_callback);
+  completion_callback_ = std::move(completion_callback);
+
+#if BUILDFLAG(IS_CHROMEOS)
+  pref_change_registrar_.Add(
+      ash::prefs::kIsolatedWebAppsEnabled,
+      base::BindRepeating(&IsolatedWebAppInstallerViewController::
+                              OnUserInstallPreconditionsMaybeChanged,
+                          weak_ptr_factory_.GetWeakPtr()));
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(&IsolatedWebAppInstallerViewController::
+                                    OnUserInstallPreconditionsMaybeChanged,
+                                weak_ptr_factory_.GetWeakPtr()));
+}
+
+void IsolatedWebAppInstallerViewController::AddOrUpdateWindowToShelf() {
+  if (!window_) {
+    return;
+  }
+
+#if BUILDFLAG(IS_CHROMEOS)
+  ash::ShelfModel* shelf_model = ash::ShelfModel::Get();
+  ash::ShelfID shelf_id = ash::ShelfID(instance_id_);
+
+  int index = ash::ShelfModel::Get()->ItemIndexByID(shelf_id);
+
+  if (index == -1) {
+    // If there is no existing item by the ID in the Shelf, we add a new item.
+    auto delegate =
+        std::make_unique<IsolatedWebAppInstallerShelfItemController>(shelf_id);
+
+    ash::ShelfItem item;
+    item.id = shelf_id;
+    item.title = delegate->GetTitle();
+    CHECK(!item.title.empty());
+    item.status = ash::STATUS_RUNNING;
+    item.type = ash::TYPE_APP;
+    if (!icon_.isNull()) {
+      item.image = icon_;
+    } else {
+      item.image = IsolatedWebAppInstallerShelfItemController::
+          GetDefaultInstallerShelfIcon();
+    }
+
+    shelf_model->Add(item, std::move(delegate));
+  } else {
+    // If the item already exists in the Shelf, we update.
+    const ash::ShelfItem* existing_item = shelf_model->ItemByID(shelf_id);
+    CHECK(existing_item);
+
+    ash::ShelfItem item = *existing_item;
+    // Icon is the only thing we update for now.
+    if (!icon_.isNull()) {
+      item.image = icon_;
+    }
+
+    ash::ShelfModel::Get()->Set(index, item);
+  }
+
+  static_cast<IsolatedWebAppInstallerShelfItemController*>(
+      shelf_model->GetShelfItemDelegate(shelf_id))
+      ->AddWindow(window_);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+}
+
+void IsolatedWebAppInstallerViewController::SetIcon(gfx::ImageSkia icon,
+                                                    bool trigger_masking) {
+  icon_ = icon;
+  if (trigger_masking) {
+    web_app::MaskIconOnOs(
+        *icon_.bitmap(),
+        base::BindOnce(
+            &IsolatedWebAppInstallerViewController::OnIconMaskedUpdateShelf,
+            weak_ptr_factory_.GetWeakPtr()));
+  }
+}
+
+void IsolatedWebAppInstallerViewController::SetViewForTesting(
+    IsolatedWebAppInstallerView* view) {
+  view_ = view;
+}
+
+views::Widget* IsolatedWebAppInstallerViewController::GetWidgetForTesting() {
+  return widget_;
+}
+
+views::Widget*
+IsolatedWebAppInstallerViewController::GetChildWidgetForTesting() {
+  return child_widget_;
+}
+
+void IsolatedWebAppInstallerViewController::Show() {
+  CHECK(is_initialized_) << "Show() is being called before initialized.";
+  CHECK(!view_) << "Show() should not be called twice";
+
+  auto view = IsolatedWebAppInstallerView::Create(this);
+  view_ = view.get();
+
+  std::unique_ptr<views::DialogDelegate> dialog_delegate =
+      CreateDialogDelegate(std::move(view));
+  dialog_delegate_ = dialog_delegate.get();
+
+  OnStepChanged();
+  OnChildDialogChanged();
+
+  widget_ =
+      views::DialogDelegate::CreateDialogWidget(std::move(dialog_delegate),
+                                                /*context=*/gfx::NativeWindow(),
+                                                /*parent=*/gfx::NativeView());
+
+  CHECK(!window_);
+  window_ = widget_->GetNativeWindow();
+  AddOrUpdateWindowToShelf();
+
+  widget_->Show();
+}
+
+void IsolatedWebAppInstallerViewController::FocusWindow() {
+  if (window_) {
+    views::Widget::GetWidgetForNativeWindow(window_)->Activate();
+  }
+}
+
+// static
+bool IsolatedWebAppInstallerViewController::OnAcceptWrapper(
+    base::WeakPtr<IsolatedWebAppInstallerViewController> controller) {
+  if (controller) {
+    return controller->OnAccept();
+  }
+  return true;
+}
+
+// Returns true if the dialog should be closed.
+bool IsolatedWebAppInstallerViewController::OnAccept() {
+  switch (model_->step()) {
+    case IsolatedWebAppInstallerModel::Step::kShowMetadata:
+      model_->SetDialog(IsolatedWebAppInstallerModel::ConfirmInstallationDialog{
+          base::BindRepeating(&IsolatedWebAppInstallerViewController::
+                                  OnShowMetadataLearnMoreClicked,
+                              base::Unretained(this))});
+      return false;
+
+    case IsolatedWebAppInstallerModel::Step::kInstallSuccess: {
+      webapps::AppId app_id = model_->bundle_metadata().app_id();
+#if BUILDFLAG(IS_CHROMEOS)
+      apps::AppServiceProxyFactory::GetForProfile(profile_)->Launch(
+          app_id, ui::EF_NONE, apps::LaunchSource::kFromInstaller,
+          /*window_info=*/nullptr);
+#else
+      web_app_provider_->scheduler().LaunchAppFromCommandLine(
+          app_id, *base::CommandLine::ForCurrentProcess(),
+          /*current_directory=*/base::FilePath(),
+          /*protocol_handler_launch_url=*/std::nullopt,
+          /*file_launch_url=*/std::nullopt, /*launch_files=*/{},
+          base::DoNothing());
+#endif  // BUILDFLAG(IS_CHROMEOS)
+      return true;
+    }
+
+    default:
+      NOTREACHED();
+  }
+}
+
+void IsolatedWebAppInstallerViewController::OnComplete() {
+#if BUILDFLAG(IS_CHROMEOS)
+  ash::ShelfModel* shelf_model = ash::ShelfModel::Get();
+  int index = shelf_model->ItemIndexByID(ash::ShelfID(instance_id_));
+  if (index != -1) {
+    shelf_model->RemoveItemAt(index);
+  }
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+  view_ = nullptr;
+  dialog_delegate_ = nullptr;
+  widget_ = nullptr;
+  std::move(completion_callback_).Run();
+}
+
+void IsolatedWebAppInstallerViewController::Close() {
+  if (dialog_delegate_) {
+    dialog_delegate_->CancelDialog();
+  }
+}
+
+void IsolatedWebAppInstallerViewController::LoadChannelsAndShowMetadata() {
+  if (!base::FeatureList::IsEnabled(kIwaUpdateChannelsInInstaller)) {
+    model_->SetStep(IsolatedWebAppInstallerModel::Step::kShowMetadata);
+    return;
+  }
+
+  const std::optional<GURL>& update_manifest_url =
+      model_->bundle_metadata().update_manifest_url();
+
+  if (!update_manifest_url.has_value() || !update_manifest_url->is_valid()) {
+    model_->SetAvailableChannels({UpdateManifest::ChannelMetadata(
+        UpdateChannel::default_channel(), std::nullopt)});
+    model_->SetStep(IsolatedWebAppInstallerModel::Step::kShowMetadata);
+    return;
+  }
+
+  update_manifest_fetcher_ = std::make_unique<UpdateManifestFetcher>(
+      update_manifest_url.value(), kUpdateManifestFetchTrafficAnnotation,
+      profile_->GetDefaultStoragePartition()
+          ->GetURLLoaderFactoryForBrowserProcess(),
+      profile_->GetDefaultStoragePartition()->GetNetworkContext());
+
+  update_manifest_fetcher_->FetchUpdateManifest(base::BindOnce(
+      &IsolatedWebAppInstallerViewController::OnUpdateManifestFetched,
+      weak_ptr_factory_.GetWeakPtr()));
+
+  update_manifest_timer_.Start(
+      FROM_HERE, base::Seconds(15),
+      base::BindOnce(
+          &IsolatedWebAppInstallerViewController::OnUpdateManifestTimeout,
+          weak_ptr_factory_.GetWeakPtr()));
+}
+
+void IsolatedWebAppInstallerViewController::OnUpdateManifestFetched(
+    base::expected<UpdateManifest, UpdateManifestFetcher::Error> fetch_result) {
+  update_manifest_fetcher_.reset();
+  update_manifest_timer_.Stop();
+
+  base::flat_set<UpdateChannel> unique_channels;
+
+  if (fetch_result.has_value()) {
+    for (const auto& version : fetch_result->versions()) {
+      unique_channels.insert(version.channels().begin(),
+                             version.channels().end());
+    }
+  }
+
+  if (unique_channels.empty()) {
+    unique_channels.insert(UpdateChannel::default_channel());
+  }
+
+  std::vector<UpdateManifest::ChannelMetadata> channels_metadata =
+      base::ToVector(unique_channels, [&](const auto& channel) {
+        if (fetch_result.has_value()) {
+          return fetch_result->GetChannelMetadata(channel);
+        }
+        return UpdateManifest::ChannelMetadata(channel, std::nullopt);
+      });
+
+  model_->SetAvailableChannels(std::move(channels_metadata));
+  model_->SetStep(IsolatedWebAppInstallerModel::Step::kShowMetadata);
+}
+
+void IsolatedWebAppInstallerViewController::OnUpdateManifestTimeout() {
+  OnUpdateManifestFetched(
+      base::unexpected(UpdateManifestFetcher::Error::kDownloadFailed));
+}
+
+void IsolatedWebAppInstallerViewController::
+    OnUserInstallPreconditionsMaybeChanged() {
+  if (IsUserInstallEnabledForProfile(profile_)) {
+    if (model_->step() == IsolatedWebAppInstallerModel::Step::kNone ||
+        model_->step() == IsolatedWebAppInstallerModel::Step::kDisabled ||
+        model_->step() == IsolatedWebAppInstallerModel::Step::kInstall) {
+      model_->SetStep(IsolatedWebAppInstallerModel::Step::kGetMetadata);
+      model_->SetDialog(std::nullopt);
+    }
+
+    if (!installability_checker_) {
+      callback_delayer_ = std::make_unique<CallbackDelayer>(
+          kGetMetadataMinimumDelay, kProgressBarPausePercentage,
+          base::BindRepeating(&IsolatedWebAppInstallerViewController::
+                                  OnGetMetadataProgressUpdated,
+                              weak_ptr_factory_.GetWeakPtr()));
+
+      installability_checker_ = InstallabilityChecker::CreateAndStart(
+          profile_, web_app_provider_, model_->source(),
+          callback_delayer_->StartDelayingCallback(base::BindOnce(
+              &IsolatedWebAppInstallerViewController::OnInstallabilityChecked,
+              weak_ptr_factory_.GetWeakPtr())));
+    }
+  } else {
+    // Disables the installer if the user has not started installation yet.
+    // If IWA is disabled after step::kInstall, we allow installation to
+    // complete and blocks the IWA from launching.
+    if (model_->step() < IsolatedWebAppInstallerModel::Step::kInstall) {
+      model_->SetStep(IsolatedWebAppInstallerModel::Step::kDisabled);
+      model_->SetDialog(std::nullopt);
+      installability_checker_.reset();
+    }
+  }
+
+  if (!is_initialized_) {
+    is_initialized_ = true;
+    if (initialized_callback_) {
+      std::move(initialized_callback_).Run();
+    }
+  }
+}
+
+void IsolatedWebAppInstallerViewController::OnGetMetadataProgressUpdated(
+    double progress) {
+  if (view_) {
+    view_->UpdateGetMetadataProgress(progress);
+  }
+}
+
+void IsolatedWebAppInstallerViewController::OnInstallabilityChecked(
+    InstallabilityChecker::Result result) {
+  std::visit(InstallabilityCheckedVisitor(*model_, *this), result);
+}
+
+void IsolatedWebAppInstallerViewController::OnInstallProgressUpdated(
+    double progress) {
+  if (view_) {
+    view_->UpdateInstallProgress(progress);
+  }
+}
+
+void IsolatedWebAppInstallerViewController::OnIconMaskedUpdateShelf(
+    SkBitmap mask_bitmap) {
+  icon_ = gfx::ImageSkia::CreateFrom1xBitmap(std::move(mask_bitmap));
+  AddOrUpdateWindowToShelf();
+}
+
+void IsolatedWebAppInstallerViewController::StoreIwaUpdateChannel(
+    base::expected<InstallIsolatedWebAppCommandSuccess,
+                   InstallIsolatedWebAppCommandError> result) {
+  if (result.has_value()) {
+    if (base::FeatureList::IsEnabled(kIwaUpdateChannelsInInstaller)) {
+      std::optional<UpdateChannel> selected_channel =
+          model_->selected_channel();
+
+      if (selected_channel.has_value()) {
+        web_app_provider_->scheduler().ScheduleCallback(
+            "StoreIwaUpdateChannel",
+            AppLockDescription(model_->bundle_metadata().app_id()),
+            base::BindOnce(&UpdateIwaChannelInDatabase,
+                           model_->bundle_metadata().app_id(),
+                           std::move(selected_channel.value())),
+            base::DoNothing());
+      }
+    }
+    model_->SetStep(IsolatedWebAppInstallerModel::Step::kInstallSuccess);
+  } else {
+    model_->SetDialog(IsolatedWebAppInstallerModel::InstallationFailedDialog{});
+  }
+}
+
+void IsolatedWebAppInstallerViewController::OnShowMetadataLearnMoreClicked() {
+  // TODO(crbug.com/40280769): Implement
+}
+
+void IsolatedWebAppInstallerViewController::OnUpdateChannelSelected(
+    std::optional<UpdateChannel> channel) {
+  model_->SetSelectedChannel(std::move(channel));
+}
+
+void IsolatedWebAppInstallerViewController::OnSettingsLinkClicked() {
+#if BUILDFLAG(IS_CHROMEOS)
+  chrome::SettingsWindowManager::GetInstance()->ShowOSSettings(
+      profile_, /*sub_page=*/chromeos::settings::mojom::kAppsSectionPath,
+      chromeos::settings::mojom::Setting::kEnableIsolatedWebAppsOnOff);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+}
+
+void IsolatedWebAppInstallerViewController::OnChildDialogCanceled() {
+  // Currently all child dialogs should close the installer when closed.
+  Close();
+}
+
+void IsolatedWebAppInstallerViewController::OnChildDialogAccepted() {
+  model_->SetDialog(std::nullopt);
+  switch (model_->step()) {
+    case IsolatedWebAppInstallerModel::Step::kShowMetadata: {
+      model_->SetStep(IsolatedWebAppInstallerModel::Step::kInstall);
+
+      callback_delayer_ = std::make_unique<CallbackDelayer>(
+          kInstallationMinimumDelay, kProgressBarPausePercentage,
+          base::BindRepeating(
+              &IsolatedWebAppInstallerViewController::OnInstallProgressUpdated,
+              weak_ptr_factory_.GetWeakPtr()));
+
+      const SignedWebBundleMetadata& metadata = model_->bundle_metadata();
+      web_app_provider_->isolated_web_app_user_installed_manager().Install(
+          metadata.url_info(),
+          IsolatedWebAppInstallSource::FromGraphicalInstaller(
+              model_->source().WithFileOp(IwaSourceBundleProdFileOp::kCopy,
+                                          IwaSourceBundleDevFileOp::kCopy)),
+          metadata.version(),
+          callback_delayer_->StartDelayingCallback(base::BindOnce(
+              &IsolatedWebAppInstallerViewController::StoreIwaUpdateChannel,
+              weak_ptr_factory_.GetWeakPtr())));
+      break;
+    }
+
+    case IsolatedWebAppInstallerModel::Step::kInstall: {
+      // A child dialog on the install screen means the installation failed.
+      // Accepting the dialog corresponds to the Retry button.
+      installability_checker_.reset();
+      OnUserInstallPreconditionsMaybeChanged();
+      break;
+    }
+
+    default:
+      NOTREACHED();
+  }
+}
+
+void IsolatedWebAppInstallerViewController::OnChildDialogDestroying() {
+  child_widget_ = nullptr;
+}
+
+void IsolatedWebAppInstallerViewController::OnStepChanged() {
+  if (!view_) {
+    return;
+  }
+
+  switch (model_->step()) {
+    case IsolatedWebAppInstallerModel::Step::kNone:
+      NOTREACHED();
+    case IsolatedWebAppInstallerModel::Step::kDisabled:
+      IsolatedWebAppInstallerView::SetDialogButtons(
+          dialog_delegate_, IDS_APP_CLOSE,
+          /*accept_button_label_id=*/std::nullopt);
+      view_->ShowDisabledScreen();
+      break;
+
+    case IsolatedWebAppInstallerModel::Step::kGetMetadata:
+      IsolatedWebAppInstallerView::SetDialogButtons(
+          dialog_delegate_, IDS_APP_CANCEL,
+          /*accept_button_label_id=*/std::nullopt);
+      view_->ShowGetMetadataScreen();
+      break;
+
+    case IsolatedWebAppInstallerModel::Step::kShowMetadata:
+      IsolatedWebAppInstallerView::SetDialogButtons(
+          dialog_delegate_, IDS_APP_CANCEL, IDS_INSTALL);
+      view_->ShowMetadataScreen(model_->bundle_metadata(),
+                                model_->available_channels());
+      break;
+
+    case IsolatedWebAppInstallerModel::Step::kInstall:
+      IsolatedWebAppInstallerView::SetDialogButtons(
+          dialog_delegate_, IDS_APP_CANCEL,
+          /*accept_button_label_id=*/std::nullopt);
+      view_->ShowInstallScreen(model_->bundle_metadata());
+      break;
+
+    case IsolatedWebAppInstallerModel::Step::kInstallSuccess:
+      IsolatedWebAppInstallerView::SetDialogButtons(
+          dialog_delegate_, IDS_IWA_INSTALLER_SUCCESS_FINISH,
+          IDS_IWA_INSTALLER_SUCCESS_LAUNCH_APPLICATION);
+      view_->ShowInstallSuccessScreen(model_->bundle_metadata());
+      break;
+  }
+}
+
+void IsolatedWebAppInstallerViewController::OnChildDialogChanged() {
+  if (model_->has_dialog()) {
+    child_widget_ = view_->ShowDialog(model_->dialog(), dialog_delegate_);
+  }
+}
+
+std::unique_ptr<views::DialogDelegate>
+IsolatedWebAppInstallerViewController::CreateDialogDelegate(
+    std::unique_ptr<views::View> contents_view) {
+  auto delegate = std::make_unique<OnCompleteDialogDelegate>();
+  delegate->set_internal_name(
+      IsolatedWebAppInstallerView::kInstallerWidgetName);
+  delegate->SetOwnedByWidget(views::WidgetDelegate::OwnedByWidgetPassKey());
+  delegate->SetContentsView(std::move(contents_view));
+  delegate->SetModalType(ui::mojom::ModalType::kWindow);
+  delegate->SetShowCloseButton(false);
+  delegate->SetHasWindowSizeControls(false);
+  delegate->set_fixed_width(views::LayoutProvider::Get()->GetDistanceMetric(
+      views::DISTANCE_LARGE_MODAL_DIALOG_PREFERRED_WIDTH));
+  delegate->SetCanResize(false);
+  // TODO(crbug.com/40280769): Set the title of the dialog for Alt+Tab
+  delegate->SetShowTitle(false);
+
+  delegate->SetAcceptCallbackWithClose(base::BindRepeating(
+      &IsolatedWebAppInstallerViewController::OnAcceptWrapper,
+      weak_ptr_factory_.GetWeakPtr()));
+  delegate->SetCompleteCallback(
+      base::BindOnce(&IsolatedWebAppInstallerViewController::OnComplete,
+                     weak_ptr_factory_.GetWeakPtr()));
+  return delegate;
+}
+
+}  // namespace web_app

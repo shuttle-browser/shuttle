@@ -1,0 +1,144 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_GLIC_TEST_SUPPORT_GLIC_HISTOGRAM_TESTER_H_
+#define CHROME_BROWSER_GLIC_TEST_SUPPORT_GLIC_HISTOGRAM_TESTER_H_
+
+#include <string_view>
+#include <vector>
+
+#include "base/location.h"
+#include "base/strings/stringprintf.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/run_until.h"
+#include "chrome/browser/glic/test_support/test_result.h"
+#include "components/metrics/content/subprocess_metrics_provider.h"
+#include "content/public/test/browser_test_utils.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
+
+namespace glic {
+
+// A wrapper around base::HistogramTester that automatically calls
+// content::FetchHistogramsFromChildProcesses() and
+// metrics::SubprocessMetricsProvider::MergeHistogramDeltasForTesting()
+// before every assertion. This is required for testing WebUI metrics which
+// are recorded in the renderer process via chrome.histograms.
+class GlicHistogramTester {
+ public:
+  GlicHistogramTester() = default;
+  ~GlicHistogramTester() = default;
+
+  template <typename T>
+  void ExpectUniqueSample(
+      std::string_view name,
+      T sample,
+      base::HistogramBase::Count32 expected_bucket_count) const {
+    CollectHistograms();
+    tester_.ExpectUniqueSample(name, sample, expected_bucket_count);
+  }
+
+  template <typename T>
+  void ExpectBucketCount(
+      std::string_view name,
+      T sample,
+      base::HistogramBase::Count32 expected_bucket_count) const {
+    CollectHistograms();
+    tester_.ExpectBucketCount(name, sample, expected_bucket_count);
+  }
+
+  void ExpectTotalCount(std::string_view name,
+                        base::HistogramBase::Count32 count) const {
+    CollectHistograms();
+    tester_.ExpectTotalCount(name, count);
+  }
+
+  base::HistogramBase::Count32 GetTotalCount(std::string_view name) const {
+    CollectHistograms();
+    auto samples = tester_.GetAllSamples(name);
+    base::HistogramBase::Count32 count = 0;
+    for (const auto& bucket : samples) {
+      count += bucket.count;
+    }
+    return count;
+  }
+
+  template <typename T>
+  base::HistogramBase::Count32 GetBucketCount(std::string_view name,
+                                              T sample) const {
+    CollectHistograms();
+    return tester_.GetBucketCount(name, sample);
+  }
+
+  template <typename T>
+  [[nodiscard]] TestResult<> WaitForBucketCount(
+      std::string_view name,
+      T sample,
+      base::HistogramBase::Count32 expected_bucket_count) const {
+    base::HistogramBase::Count32 actual_bucket_count = 0;
+    bool success = base::test::RunUntil([&]() {
+      actual_bucket_count = GetBucketCount(name, sample);
+      return actual_bucket_count == expected_bucket_count;
+    });
+    if (!success) {
+      return base::unexpected(base::StringPrintf(
+          "Timeout waiting for histogram bucket count. Expected %d, got %d for "
+          "histogram %s",
+          expected_bucket_count, actual_bucket_count,
+          std::string(name).c_str()));
+    }
+    return base::ok();
+  }
+
+  [[nodiscard]] TestResult<> WaitForTotalCount(
+      std::string_view name,
+      base::HistogramBase::Count32 expected_count) const {
+    base::HistogramBase::Count32 actual_count = 0;
+    bool success = base::test::RunUntil([&]() {
+      actual_count = GetTotalCount(name);
+      return actual_count == expected_count;
+    });
+    if (!success) {
+      return base::unexpected(base::StringPrintf(
+          "Timeout waiting for histogram total count. Expected %d, got %d for "
+          "histogram %s",
+          expected_count, actual_count, std::string(name).c_str()));
+    }
+    return base::ok();
+  }
+
+  std::vector<base::Bucket> GetAllSamples(std::string_view name) const {
+    CollectHistograms();
+    return tester_.GetAllSamples(name);
+  }
+
+  void ExpectSampleValueGreaterThan(
+      std::string_view name,
+      base::HistogramBase::Sample32 threshold,
+      const base::Location& location = FROM_HERE) const {
+    CollectHistograms();
+    auto samples = tester_.GetAllSamples(name);
+    SCOPED_TRACE(location.ToString());
+    ASSERT_EQ(samples.size(), 1u);
+    EXPECT_GT(samples[0].min, threshold);
+  }
+
+  absl::flat_hash_map<std::string, std::vector<base::Bucket>>
+  GetAllSamplesForPrefix(std::string_view prefix) const {
+    CollectHistograms();
+    return tester_.GetAllSamplesForPrefix(prefix);
+  }
+
+ private:
+  void CollectHistograms() const {
+    content::FetchHistogramsFromChildProcesses();
+    metrics::SubprocessMetricsProvider::MergeHistogramDeltasForTesting();
+  }
+
+  base::HistogramTester tester_;
+};
+
+}  // namespace glic
+
+#endif  // CHROME_BROWSER_GLIC_TEST_SUPPORT_GLIC_HISTOGRAM_TESTER_H_

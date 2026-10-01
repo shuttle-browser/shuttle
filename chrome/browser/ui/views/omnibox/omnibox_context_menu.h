@@ -1,0 +1,91 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_CONTEXT_MENU_H_
+#define CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_CONTEXT_MENU_H_
+
+#include "base/containers/flat_map.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/omnibox/omnibox_context_menu_controller.h"
+#include "chrome/browser/ui/webui/top_chrome/top_chrome_web_ui_controller.h"
+#include "ui/base/models/menu_model_delegate.h"
+#include "ui/views/controls/menu/menu_delegate.h"
+
+namespace views {
+class MenuItemView;
+class MenuRunner;
+class View;
+class ViewShadow;
+class Widget;
+}  // namespace views
+
+namespace content {
+class WebContents;
+}  // namespace content
+
+class OmniboxPopupFileSelector;
+
+class OmniboxContextMenu : public views::MenuDelegate,
+                           public ui::MenuModelDelegate {
+ public:
+  explicit OmniboxContextMenu(
+      views::Widget* parent_widget,
+      OmniboxPopupFileSelector* file_selector,
+      content::WebContents* web_contents,
+      base::RepeatingClosure on_menu_closed = base::RepeatingClosure());
+
+  ~OmniboxContextMenu() override;
+
+  views::MenuItemView* menu() const { return menu_; }
+
+  // Shows the context menu at the specified point.
+  void RunMenuAt(const gfx::Point& point,
+                 ui::mojom::MenuSourceType source_type);
+
+  // Cancels the active menu runner.
+  void Cancel();
+
+  // views::MenuDelegate:
+  void ExecuteCommand(int command_id, int event_flags) override;
+  const gfx::FontList* GetLabelFontList(int command_id) const override;
+  std::optional<SkColor> GetLabelColor(int command_id) const override;
+  int GetMaxWidthForMenu(views::MenuItemView* menu) override;
+  void WillShowMenu(views::MenuItemView* menu) override;
+  bool IsCommandEnabled(int command_id) const override;
+  bool IsCommandVisible(int command_id) const override;
+  void OnMenuClosed(views::MenuItemView* menu) override;
+
+  // ui::MenuModelDelegate:
+  void OnIconChanged(int command_id) override;
+
+  // Returns minimum preferred width for `menu`. Submenus return the default
+  // width; top-level menu width depends on whether a shared tabs submenu is
+  // present.
+  int GetMinimumMenuWidth(const views::MenuItemView* menu) const;
+
+ private:
+  const raw_ptr<views::Widget> parent_widget_;
+  std::unique_ptr<OmniboxContextMenuController> controller_;
+
+  // Responsible for running the menu.
+  std::unique_ptr<views::MenuRunner> menu_runner_;
+  // The menu itself. This is owned by `menu_runner_`.
+  raw_ptr<views::MenuItemView> menu_;
+  // Optional callback to run after ExecuteCommand is called.
+  base::RepeatingClosure on_menu_closed_;
+  // The web contents of the Omnibox AIM Web UI.
+  base::WeakPtr<content::WebContents> web_contents_;
+
+  // The drop shadows of the menus, mapped from the shadowed container view.
+  base::flat_map<raw_ptr<views::View>, std::unique_ptr<views::ViewShadow>>
+      view_shadows_;
+
+  bool was_add_tabs_button_shown_logged_ = false;
+  bool was_add_tabs_button_hovered_logged_ = false;
+  bool was_add_tabs_flyout_shown_logged_ = false;
+};
+
+#endif  // CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_CONTEXT_MENU_H_

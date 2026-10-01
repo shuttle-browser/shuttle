@@ -1,0 +1,35 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/dictation/metrics.h"
+
+#include "base/metrics/histogram_functions.h"
+
+namespace dictation {
+
+void RecordDictationFirstRunExitStatus(DictationFirstRunExitStatus status) {
+  base::UmaHistogramEnumeration(kFirstRunExitStatusHistogramName, status);
+}
+
+void RecordDictationIsEnabledOnProfileInit(bool is_enabled) {
+  base::UmaHistogramBoolean(kIsEnabledOnProfileInitHistogramName, is_enabled);
+}
+
+void RecordDictationSessionStartSource(DictationSessionEntryPoint entry_point) {
+  base::UmaHistogramEnumeration(kSessionStartSourceHistogramName, entry_point);
+}
+
+void RecordDictationSessionUrlCategory(DictationUrlCategory category) {
+  base::UmaHistogramEnumeration(kSessionUrlCategoryHistogramName, category);
+}
+
+void RecordDictationStreamStartTrigger(DictationStreamStartTrigger trigger) {
+  base::UmaHistogramEnumeration(kStreamStartTriggerHistogramName, trigger);
+}
+
+void RecordDictationStreamExitStatus(DictationStreamExitStatus status) {
+  base::UmaHistogramEnumeration(kStreamExitReasonHistogramName, status);
+}
+
+}  // namespace dictation

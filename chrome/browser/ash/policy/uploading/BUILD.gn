@@ -1,0 +1,96 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_chromeos)
+
+static_library("uploading") {
+  sources = [
+    "status_uploader.cc",
+    "status_uploader.h",
+    "system_log_uploader.cc",
+    "system_log_uploader.h",
+    "system_log_uploader_delegate.cc",
+    "system_log_uploader_delegate.h",
+    "upload_job.h",
+    "upload_job_impl.cc",
+    "upload_job_impl.h",
+  ]
+
+  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+
+  deps = [
+    "//base",
+    "//chrome/browser:browser_process",
+    "//chrome/browser/ash/policy/core",
+    "//chrome/browser/device_identity",
+    "//chrome/browser/profiles:profile_manager",
+    "//chrome/common",
+    "//chrome/common:non_code_constants",
+    "//chromeos/ash/components/settings",
+    "//components/feedback/redaction_tool",
+    "//components/policy/core/browser",
+    "//components/policy/core/common",
+    "//components/policy/core/common:common_constants",
+    "//components/policy/proto",
+    "//components/prefs",
+    "//components/user_manager",
+    "//content/public/browser",
+    "//google_apis",
+    "//net",
+    "//net/traffic_annotation",
+    "//services/network/public/cpp",
+    "//services/network/public/cpp:cpp_base",
+    "//third_party/blink/public/common:headers",
+    "//third_party/zlib/google:zip",
+    "//ui/base",
+    "//ui/base/metadata",
+    "//url",
+  ]
+
+  allow_circular_includes_from = [ "//chrome/browser/ash/policy/core" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  sources = [
+    "status_uploader_unittest.cc",
+    "system_log_uploader_unittest.cc",
+    "upload_job_unittest.cc",
+  ]
+
+  deps = [
+    ":uploading",
+    "//base",
+    "//base/test:test_support",
+    "//chrome/browser",
+    "//chrome/browser/ash/policy/core",
+    "//chrome/browser/ash/policy/status_collector",
+    "//chrome/browser/ash/settings",
+    "//chrome/browser/ash/settings:test_support",
+    "//chrome/browser/prefs",
+    "//chrome/test:test_support",
+    "//chromeos/ash/components/settings",
+    "//chromeos/dbus/power",
+    "//chromeos/dbus/tpm_manager",
+    "//components/policy/core/common",
+    "//components/policy/core/common:test_support",
+    "//components/prefs:test_support",
+    "//components/session_manager/core",
+    "//components/session_manager/core:test_support",
+    "//content/test:test_support",
+    "//google_apis",
+    "//google_apis:test_support",
+    "//net",
+    "//net:test_support",
+    "//net/traffic_annotation:test_support",
+    "//services/network:test_support",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//ui/base",
+    "//ui/events",
+    "//ui/events:platform_event",
+    "//ui/events/platform",
+  ]
+}

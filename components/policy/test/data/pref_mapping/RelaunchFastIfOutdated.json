@@ -1,0 +1,18 @@
+[
+  {
+    "os": [
+      "win",
+      "linux",
+      "mac",
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "browser.relaunch_fast_if_outdated",
+      "pref_location": "local_state",
+      "default_value": 0,
+      "values_to_test": [
+        7
+      ]
+    }
+  }
+]

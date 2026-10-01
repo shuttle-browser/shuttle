@@ -1,0 +1,100 @@
+# Copyright 2020 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//components/safe_browsing/buildflags.gni")
+import("//testing/libfuzzer/fuzzer_test.gni")
+import("//third_party/libprotobuf-mutator/fuzzable_proto_library.gni")
+
+if (safe_browsing_mode != 0) {
+  source_set("phishing_classifier") {
+    _configs = configs
+    configs = []
+    configs = [ "//third_party/tflite:tflite_shim_config" ] + _configs
+    sources = [
+      "content_phishing_classifier.cc",
+      "content_phishing_classifier.h",
+      "content_phishing_classifier_delegate.cc",
+      "content_phishing_classifier_delegate.h",
+      "content_phishing_image_embedder.cc",
+      "content_phishing_image_embedder.h",
+      "content_phishing_image_embedder_delegate.cc",
+      "content_phishing_image_embedder_delegate.h",
+      "murmurhash3_util.cc",
+      "murmurhash3_util.h",
+      "phishing_dom_utils.cc",
+      "phishing_dom_utils.h",
+      "phishing_model_setter_impl.cc",
+      "phishing_model_setter_impl.h",
+      "phishing_visual_feature_extractor.cc",
+      "phishing_visual_feature_extractor.h",
+    ]
+
+    configs += [ "//build/config/compiler:wexit_time_destructors" ]
+
+    public_deps = [ "//base" ]
+    deps = [
+      "//cc/paint",
+      "//components/paint_preview/common",
+      "//components/safe_browsing/content/common:interfaces",
+      "//components/safe_browsing/content/renderer",
+      "//components/safe_browsing/core/common",
+      "//components/safe_browsing/core/common:visual_utils",
+      "//components/safe_browsing/core/common/fbs:client_model",
+      "//components/safe_browsing/core/common/phishing_classifier",
+      "//components/safe_browsing/core/common/proto:client_model_proto",
+      "//components/safe_browsing/core/common/proto:csd_proto",
+      "//content/public/renderer",
+      "//mojo/public/mojom/base:protobuf_support",
+      "//skia",
+      "//third_party/blink/public:blink_headers",
+      "//third_party/smhasher:murmurhash3",
+      "//third_party/tflite",
+      "//third_party/tflite:tflite_public_headers",
+      "//third_party/tflite_support",
+      "//third_party/tflite_support:tflite_support_proto",
+      "//ui/base",
+      "//ui/gfx",
+      "//ui/gfx/geometry",
+      "//url",
+      "//v8",
+    ]
+  }
+
+  source_set("unit_tests") {
+    testonly = true
+    sources = [ "murmurhash3_util_unittest.cc" ]
+    deps = [
+      ":phishing_classifier",
+      "//base",
+      "//testing/gtest",
+    ]
+  }
+
+  if (use_fuzzing_engine_with_lpm) {
+    fuzzer_test("client_side_phishing_fuzzer") {
+      sources = [ "client_side_phishing_fuzzer.cc" ]
+      deps = [
+        ":client_side_phishing_fuzzer_proto",
+        ":client_side_phishing_fuzzer_proto_fuzzable",
+        ":phishing_classifier",
+        "//base",
+        "//components/safe_browsing/core/common/fbs:client_model",
+        "//components/safe_browsing/core/common/phishing_classifier",
+        "//components/safe_browsing/core/common/proto:client_model_proto",
+        "//skia",
+        "//third_party/libprotobuf-mutator",
+      ]
+
+      # TODO(crbug.com/505034799): Migrate to FUZZ_TEST.
+      is_fuzztest_compatible = false
+    }
+
+    fuzzable_proto_library("client_side_phishing_fuzzer_proto") {
+      proto_in_dir = "//"
+      sources = [ "client_side_phishing_fuzzer.proto" ]
+      deps =
+          [ "//components/safe_browsing/core/common/proto:client_model_proto" ]
+    }
+  }
+}

@@ -1,0 +1,71 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.tab_bottom_sheet;
+
+import android.view.View;
+
+import androidx.annotation.ColorInt;
+import androidx.annotation.IdRes;
+import androidx.annotation.Px;
+import androidx.annotation.StringRes;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.context_sharing.R;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetContent.GlowSpec;
+
+/** Concrete test implementation of {@link TabBottomSheetContent} for automated testing. */
+@NullMarked
+public class TestTabBottomSheetContent extends TabBottomSheetContent {
+
+    /**
+     * Constructor.
+     *
+     * @param contentView The inflated view for the bottom sheet.
+     * @param defaultHeightRatio The default height ratio for the bottom sheet.
+     * @param fullHeightRatio The full height ratio for the bottom sheet.
+     * @param backgroundColor The background color for the bottom sheet.
+     * @param peekViewHeight The height of the peek view in pixels.
+     * @param peekViewContainerId The resource ID for the peek view container.
+     * @param onBackPressed Callback run when the back button/swipe is triggered.
+     */
+    public TestTabBottomSheetContent(
+            View contentView,
+            float defaultHeightRatio,
+            float fullHeightRatio,
+            @ColorInt int backgroundColor,
+            @Px int peekViewHeight,
+            @IdRes int peekViewContainerId,
+            Runnable onBackPressed) {
+        super(
+                contentView,
+                defaultHeightRatio,
+                fullHeightRatio,
+                backgroundColor,
+                peekViewHeight,
+                peekViewContainerId,
+                onBackPressed);
+    }
+
+    @Override
+    public @Nullable GlowSpec getSheetBackgroundGlowSpecOverride() {
+        return null;
+    }
+
+    @Override
+    public @StringRes int getSheetHalfHeightAccessibilityStringId() {
+        return R.string.tab_bottom_sheet_half_height;
+    }
+
+    @Override
+    public @StringRes int getSheetFullHeightAccessibilityStringId() {
+        return R.string.tab_bottom_sheet_full_height;
+    }
+
+    @Override
+    public @StringRes int getSheetClosedAccessibilityStringId() {
+        return R.string.tab_bottom_sheet_closed;
+    }
+}

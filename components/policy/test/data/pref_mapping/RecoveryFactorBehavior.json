@@ -1,0 +1,16 @@
+[
+  {
+    "os": [
+      "chromeos"
+    ],
+    "can_be_recommended": true,
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "ash.recovery.recovery_factor_behavior",
+      "default_for_enterprise_users": false,
+      "values_to_test": [
+        true,
+        false
+      ]
+    }
+  }
+]

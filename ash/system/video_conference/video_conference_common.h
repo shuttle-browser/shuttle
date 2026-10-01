@@ -1,0 +1,208 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef ASH_SYSTEM_VIDEO_CONFERENCE_VIDEO_CONFERENCE_COMMON_H_
+#define ASH_SYSTEM_VIDEO_CONFERENCE_VIDEO_CONFERENCE_COMMON_H_
+
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "ash/ash_export.h"
+#include "base/functional/callback.h"
+#include "base/time/time.h"
+#include "base/unguessable_token.h"
+#include "url/gurl.h"
+
+namespace ash {
+
+// Struct containing the id and new title for a VC app whose title updated.
+struct ASH_EXPORT TitleChangeInfo {
+  TitleChangeInfo();
+  TitleChangeInfo(const TitleChangeInfo&);
+  TitleChangeInfo& operator=(const TitleChangeInfo&);
+  TitleChangeInfo(TitleChangeInfo&&) noexcept;
+  TitleChangeInfo& operator=(TitleChangeInfo&&) noexcept;
+  ~TitleChangeInfo();
+
+  // Unique id corresponding to a VC web app.
+  base::UnguessableToken id;
+
+  // The VC app's new title.
+  std::u16string new_title;
+};
+
+enum class VideoConferenceAppUpdate {
+  kNone,
+  kAppAdded,
+  kAppRemoved,
+};
+
+// Useful notifications from clients. Intended mainly for the VC tray.
+struct ASH_EXPORT VideoConferenceClientUpdate {
+  explicit VideoConferenceClientUpdate(VideoConferenceAppUpdate update_type);
+  VideoConferenceClientUpdate();
+  VideoConferenceClientUpdate(const VideoConferenceClientUpdate&);
+  VideoConferenceClientUpdate& operator=(const VideoConferenceClientUpdate&);
+  VideoConferenceClientUpdate(VideoConferenceClientUpdate&&) noexcept;
+  VideoConferenceClientUpdate& operator=(
+      VideoConferenceClientUpdate&&) noexcept;
+  ~VideoConferenceClientUpdate();
+
+  // Client just added or removed a new VC app.
+  VideoConferenceAppUpdate added_or_removed_app =
+      VideoConferenceAppUpdate::kNone;
+
+  // Title change info. Only present if this client update was
+  // triggered by a title change.
+  std::optional<TitleChangeInfo> title_change_info;
+};
+
+constexpr int kVideoConferenceBubbleHorizontalPadding = 16;
+
+const int kReturnToAppIconSize = 20;
+
+// The duration for the gradient animation on the Image and Create with AI
+// buttons.
+const base::TimeDelta kGradientAnimationDuration = base::Milliseconds(3120);
+
+// This struct provides aggregated attributes of media apps
+// from one or more clients.
+struct VideoConferenceMediaState {
+  // At least one media app is running on the client(s).
+  bool has_media_app = false;
+  // At least one media app has camera permission on the client(s).
+  bool has_camera_permission = false;
+  // At least one media app has microphone permission on the client(s).
+  bool has_microphone_permission = false;
+  // At least one media app is capturing the camera on the client(s).
+  bool is_capturing_camera = false;
+  // At least one media app is capturing the microphone on the client(s).
+  bool is_capturing_microphone = false;
+  // At least one media app is capturing the screen on the client(s).
+  bool is_capturing_screen = false;
+
+  bool operator==(const VideoConferenceMediaState& other) const;
+};
+
+// Aggregated media usage status for a client.
+struct ASH_EXPORT VideoConferenceMediaUsageStatus {
+  explicit VideoConferenceMediaUsageStatus(
+      const base::UnguessableToken& client_id);
+  VideoConferenceMediaUsageStatus(const VideoConferenceMediaUsageStatus&);
+  VideoConferenceMediaUsageStatus& operator=(
+      const VideoConferenceMediaUsageStatus&);
+  VideoConferenceMediaUsageStatus(VideoConferenceMediaUsageStatus&&) noexcept;
+  VideoConferenceMediaUsageStatus& operator=(
+      VideoConferenceMediaUsageStatus&&) noexcept;
+  ~VideoConferenceMediaUsageStatus();
+
+  base::UnguessableToken client_id;
+  VideoConferenceMediaState state;
+
+  bool operator==(const VideoConferenceMediaUsageStatus& other) const;
+};
+
+// Native app type used by the in-process Ash/Chrome video conference pipeline.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+//
+// LINT.IfChange(VideoConferenceAppType)
+enum class VideoConferenceAppType {
+  kBrowserUnknown,
+  kChromeTab,
+  kChromeExtension,
+  kChromeApp,
+  kWebApp,
+  kArcApp,
+  kAppServiceUnknown,
+  kCrostiniVm,
+  kPluginVm,  // Deprecated. Do not reuse.
+  kBorealis,
+  kAshClientUnknown,
+  kAshCaptureMode,
+  kMaxValue = kAshCaptureMode,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/ash/enums.xml:VideoConferenceAppType)
+
+// Native media-app info used by the in-process Ash/Chrome video conference
+// pipeline.
+struct ASH_EXPORT VideoConferenceMediaAppInfo {
+  VideoConferenceMediaAppInfo();
+  VideoConferenceMediaAppInfo(const VideoConferenceMediaAppInfo&);
+  VideoConferenceMediaAppInfo& operator=(const VideoConferenceMediaAppInfo&);
+  VideoConferenceMediaAppInfo(VideoConferenceMediaAppInfo&&) noexcept;
+  VideoConferenceMediaAppInfo& operator=(
+      VideoConferenceMediaAppInfo&&) noexcept;
+  ~VideoConferenceMediaAppInfo();
+
+  base::UnguessableToken id;
+  base::Time last_activity_time;
+  bool is_capturing_camera = false;
+  bool is_capturing_microphone = false;
+  bool is_capturing_screen = false;
+  std::u16string title;
+  std::optional<GURL> url;
+  VideoConferenceAppType app_type = VideoConferenceAppType::kBrowserUnknown;
+
+  bool operator==(const VideoConferenceMediaAppInfo& other) const;
+};
+
+// Represents the media devices that can be captured by a video conferencing
+// app.
+enum class VideoConferenceMediaDevice {
+  kMicrophone,
+  kCamera,
+};
+
+// Client interface implemented by Ash and Chrome clients to interact with the
+// VideoConferenceManagerAsh.
+class ASH_EXPORT VideoConferenceManagerClient {
+ public:
+  using MediaApps = std::vector<VideoConferenceMediaAppInfo>;
+
+  virtual ~VideoConferenceManagerClient() = default;
+
+  // Returns the media apps currently tracked by this client.
+  virtual MediaApps GetMediaApps() = 0;
+
+  // Opens and focuses the media app corresponding to `id`. Returns whether the
+  // client handled the request.
+  virtual bool ReturnToApp(const base::UnguessableToken& id) = 0;
+
+  // Informs the client of the system or hardware media device status. Returns
+  // whether the client handled the update.
+  virtual bool SetSystemMediaDeviceStatus(VideoConferenceMediaDevice device,
+                                          bool enabled) = 0;
+};
+
+// This class defines the public interfaces of `VideoConferenceManagerAsh`
+// exposed to `VideoConferenceTrayController`. Although these public functions
+// serve similar purposes to `VideoConferenceManagerClient`, we should not use
+// `VideoConferenceManagerClient` here because they represent different
+// concepts. The signal will be passed from `VideoConferenceTrayController` to
+// `VideoConferenceManagerAsh` to `VideoConferenceManagerClient`.
+class VideoConferenceManagerBase {
+ public:
+  using MediaApps = std::vector<VideoConferenceMediaAppInfo>;
+  // Gets all media apps from `VideoConferenceManagerAsh` and runs the callback
+  // on that.
+  virtual void GetMediaApps(base::OnceCallback<void(MediaApps)>) = 0;
+
+  // Calls VideoConferenceManagerAsh to return to App identified by `id`.
+  virtual void ReturnToApp(const base::UnguessableToken& id) = 0;
+
+  // Sets whether |device| is enabled at the system or hardware level.
+  virtual void SetSystemMediaDeviceStatus(VideoConferenceMediaDevice device,
+                                          bool enabled) = 0;
+
+  // Called when CreateBackgroundImage button is clicked on.
+  virtual void CreateBackgroundImage() = 0;
+
+  virtual ~VideoConferenceManagerBase() = default;
+};
+
+}  // namespace ash
+
+#endif  // ASH_SYSTEM_VIDEO_CONFERENCE_VIDEO_CONFERENCE_COMMON_H_

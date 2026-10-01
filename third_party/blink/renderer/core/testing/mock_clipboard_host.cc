@@ -1,0 +1,294 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/core/testing/mock_clipboard_host.h"
+
+#include <algorithm>
+
+#include "base/numerics/byte_conversions.h"
+#include "build/build_config.h"
+#include "mojo/public/cpp/base/big_buffer.h"
+#include "third_party/blink/public/common/tokens/tokens.h"
+#include "third_party/blink/renderer/platform/graphics/color_behavior.h"
+#include "third_party/blink/renderer/platform/image-encoders/image_encoder.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/encode/SkPngRustEncoder.h"
+#include "ui/base/clipboard/clipboard_constants.h"
+
+namespace blink {
+
+MockClipboardHost::MockClipboardHost() = default;
+
+MockClipboardHost::~MockClipboardHost() = default;
+
+void MockClipboardHost::Bind(
+    mojo::PendingReceiver<mojom::blink::ClipboardHost> receiver) {
+  receivers_.Add(this, std::move(receiver));
+}
+
+void MockClipboardHost::ResetForTesting() {
+  plain_text_ = g_empty_string;
+  html_text_ = g_empty_string;
+  svg_text_ = g_empty_string;
+  rtf_text_ = g_empty_string;
+  files_ = mojom::blink::ClipboardFiles::New();
+  url_ = KURL();
+  png_.clear();
+  custom_data_.clear();
+  write_smart_paste_ = false;
+  needs_reset_ = false;
+  forced_formats_for_testing_.clear();
+
+  // Reset call tracking
+  read_text_call_count_for_testing_ = 0;
+  read_html_call_count_for_testing_ = 0;
+  read_available_formats_call_count_for_testing_ = 0;
+}
+
+void MockClipboardHost::WriteRtfForTesting(const String& rtf_text) {
+  if (needs_reset_) {
+    ResetForTesting();
+  }
+  rtf_text_ = rtf_text;
+}
+
+void MockClipboardHost::WriteFilesForTesting(
+    mojom::blink::ClipboardFilesPtr files) {
+  if (needs_reset_) {
+    ResetForTesting();
+  }
+  files_ = std::move(files);
+}
+
+void MockClipboardHost::GetSequenceNumber(
+    mojom::ClipboardBuffer clipboard_buffer,
+    GetSequenceNumberCallback callback) {
+  auto bytes = sequence_number_.value().AsBytes();
+  std::move(callback).Run(
+      absl::MakeUint128(base::U64FromLittleEndian(bytes.first<8>()),
+                        base::U64FromLittleEndian(bytes.last<8>())));
+}
+
+Vector<String> MockClipboardHost::ReadStandardFormatNames() {
+  Vector<String> types;
+  if (!plain_text_.empty())
+    types.push_back(ui::kMimeTypePlainText);
+  if (!html_text_.empty())
+    types.push_back(ui::kMimeTypeHtml);
+  if (!svg_text_.empty())
+    types.push_back(ui::kMimeTypeSvg);
+  if (!png_.empty())
+    types.push_back(ui::kMimeTypePng);
+  for (auto& it : custom_data_) {
+    CHECK(!std::ranges::contains(types, it.key));
+    types.push_back(it.key);
+  }
+  for (const String& fmt : forced_formats_for_testing_) {
+    if (!std::ranges::contains(types, fmt)) {
+      types.push_back(fmt);
+    }
+  }
+  return types;
+}
+
+void MockClipboardHost::ReadAvailableTypes(
+    mojom::ClipboardBuffer clipboard_buffer,
+    ReadAvailableTypesCallback callback) {
+  Vector<String> types = ReadStandardFormatNames();
+  std::move(callback).Run(std::move(types));
+}
+
+void MockClipboardHost::IsFormatAvailable(
+    mojom::ClipboardFormat format,
+    mojom::ClipboardBuffer clipboard_buffer,
+    IsFormatAvailableCallback callback) {
+  bool result = false;
+  switch (format) {
+    case mojom::ClipboardFormat::kPlaintext:
+      result = !plain_text_.empty();
+      break;
+    case mojom::ClipboardFormat::kHtml:
+      result = !html_text_.empty();
+      break;
+    case mojom::ClipboardFormat::kSmartPaste:
+      result = write_smart_paste_;
+      break;
+    case mojom::ClipboardFormat::kBookmark:
+      result = false;
+      break;
+  }
+  std::move(callback).Run(result);
+}
+
+void MockClipboardHost::ReadText(mojom::ClipboardBuffer clipboard_buffer,
+                                 ReadTextCallback callback) {
+  ++read_text_call_count_for_testing_;
+  if (defer_read_text_callback_for_testing_) {
+    // Stash the reply callback so the test can verify that the renderer
+    // does not block on this IPC. The callback will be invoked later via
+    // RunDeferredReadTextCallbackForTesting().
+    deferred_read_text_callback_for_testing_ = std::move(callback);
+    return;
+  }
+  std::move(callback).Run(plain_text_);
+}
+
+void MockClipboardHost::RunDeferredReadTextCallbackForTesting() {
+  CHECK(deferred_read_text_callback_for_testing_)
+      << "RunDeferredReadTextCallbackForTesting called with no pending "
+         "callback";
+  std::move(deferred_read_text_callback_for_testing_).Run(plain_text_);
+}
+
+void MockClipboardHost::ReadHtml(mojom::ClipboardBuffer clipboard_buffer,
+                                 ReadHtmlCallback callback) {
+  ++read_html_call_count_for_testing_;
+  std::move(callback).Run(html_text_, url_, 0, html_text_.length());
+}
+
+void MockClipboardHost::ReadSvg(mojom::ClipboardBuffer clipboard_buffer,
+                                ReadSvgCallback callback) {
+  std::move(callback).Run(svg_text_);
+}
+
+void MockClipboardHost::ReadRtf(mojom::ClipboardBuffer clipboard_buffer,
+                                ReadRtfCallback callback) {
+  std::move(callback).Run(rtf_text_);
+}
+
+void MockClipboardHost::ReadPng(mojom::ClipboardBuffer clipboard_buffer,
+                                ReadPngCallback callback) {
+  last_read_png_buffer_ = clipboard_buffer;
+  std::move(callback).Run(mojo_base::BigBuffer(png_));
+}
+
+void MockClipboardHost::ReadFiles(mojom::ClipboardBuffer clipboard_buffer,
+                                  ReadFilesCallback callback) {
+  std::move(callback).Run(std::move(files_));
+}
+
+void MockClipboardHost::ReadDataTransferCustomData(
+    mojom::ClipboardBuffer clipboard_buffer,
+    const String& type,
+    ReadDataTransferCustomDataCallback callback) {
+  auto it = custom_data_.find(type);
+  std::move(callback).Run(it != custom_data_.end() ? it->value
+                                                   : g_empty_string);
+}
+
+void MockClipboardHost::WriteText(const String& text) {
+  if (needs_reset_)
+    ResetForTesting();
+  plain_text_ = text;
+}
+
+void MockClipboardHost::WriteHtml(const String& markup, const KURL& url) {
+  if (needs_reset_)
+    ResetForTesting();
+  html_text_ = markup;
+  url_ = url;
+}
+
+void MockClipboardHost::WriteSvg(const String& markup) {
+  if (needs_reset_)
+    ResetForTesting();
+  svg_text_ = markup;
+}
+
+void MockClipboardHost::WriteSmartPasteMarker() {
+  if (needs_reset_)
+    ResetForTesting();
+  write_smart_paste_ = true;
+}
+
+void MockClipboardHost::WriteDataTransferCustomData(
+    const HashMap<String, String>& data) {
+  if (needs_reset_)
+    ResetForTesting();
+  for (auto& it : data)
+    custom_data_.Set(it.key, it.value);
+}
+
+void MockClipboardHost::WriteBookmark(const String& url, const String& title) {}
+
+void MockClipboardHost::WriteImage(const SkBitmap& bitmap) {
+  if (needs_reset_)
+    ResetForTesting();
+  SkPixmap pixmap;
+  bitmap.peekPixels(&pixmap);
+  // Use encoding options that favor speed over size.
+  ImageEncoder::Encode(&png_, pixmap, SkPngRustEncoder::CompressionLevel::kLow);
+}
+
+void MockClipboardHost::CommitWrite() {
+  sequence_number_ = ClipboardSequenceNumberToken();
+  needs_reset_ = true;
+}
+
+void MockClipboardHost::ReadAvailableCustomAndStandardFormats(
+    ReadAvailableCustomAndStandardFormatsCallback callback) {
+  ++read_available_formats_call_count_for_testing_;
+  Vector<String> format_names = ReadStandardFormatNames();
+  for (const auto& item : unsanitized_custom_data_map_)
+    format_names.emplace_back(item.key);
+  // TOCTOU race hook: lets tests mutate clipboard state inside the async
+  // gap. See crbug.com/498411773.
+  if (read_available_formats_hook_for_testing_) {
+    read_available_formats_hook_for_testing_.Run(this);
+  }
+  std::move(callback).Run(std::move(format_names));
+}
+
+void MockClipboardHost::ReadUnsanitizedCustomFormat(
+    const String& format,
+    ReadUnsanitizedCustomFormatCallback callback) {
+  const auto it = unsanitized_custom_data_map_.find(format);
+  if (it == unsanitized_custom_data_map_.end())
+    return;
+
+  mojo_base::BigBuffer buffer = mojo_base::BigBuffer(it->value);
+  std::move(callback).Run(std::move(buffer));
+}
+
+void MockClipboardHost::WriteUnsanitizedCustomFormat(
+    const String& format,
+    mojo_base::BigBuffer data) {
+  if (needs_reset_)
+    ResetForTesting();
+  // Simulate the underlying platform copying this data.
+  Vector<uint8_t> data_copy(base::saturated_cast<wtf_size_t>(data.size()),
+                            *data.data());
+  // Append the "web " prefix since it is removed by the clipboard writer during
+  // write.
+  unsanitized_custom_data_map_.Set("web " + format, std::move(data_copy));
+}
+
+void MockClipboardHost::RegisterClipboardListener(
+    mojo::PendingRemote<mojom::blink::ClipboardListener> listener) {
+  clipboard_listener_.reset();
+  clipboard_listener_.Bind(std::move(listener));
+}
+
+void MockClipboardHost::OnClipboardDataChangedForTesting() {
+  if (clipboard_listener_) {
+    auto sequence_number_bytes = sequence_number_.value().AsBytes();
+    clipboard_listener_->OnClipboardDataChanged(
+        ReadStandardFormatNames(),
+        absl::MakeUint128(
+            base::U64FromLittleEndian(sequence_number_bytes.first<8>()),
+            base::U64FromLittleEndian(sequence_number_bytes.last<8>())));
+  }
+}
+
+#if BUILDFLAG(IS_MAC)
+void MockClipboardHost::WriteStringToFindPboard(const String& text) {}
+
+void MockClipboardHost::GetPlatformPermissionState(
+    GetPlatformPermissionStateCallback callback) {
+  std::move(callback).Run(platform_permission_state_for_testing_);
+}
+#endif
+
+}  // namespace blink

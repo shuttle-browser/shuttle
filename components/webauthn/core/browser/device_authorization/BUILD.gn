@@ -1,0 +1,79 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("device_authorization") {
+  sources = [
+    "device_authorization_keys_fetcher.cc",
+    "device_authorization_keys_fetcher.h",
+  ]
+
+  deps = [
+    ":metrics",
+    ":switches",
+    "//base",
+    "//components/endpoint_fetcher",
+    "//components/signin/public/base",
+    "//components/signin/public/identity_manager",
+    "//components/sync/base",
+    "//components/version_info",
+    "//components/webauthn/core/browser/device_authorization/proto",
+    "//net",
+    "//net/traffic_annotation",
+    "//services/network/public/cpp",
+    "//url",
+  ]
+}
+
+source_set("features") {
+  sources = [
+    "device_authorization_features.cc",
+    "device_authorization_features.h",
+  ]
+
+  deps = [ "//base" ]
+}
+
+source_set("metrics") {
+  sources = [
+    "device_authorization_metrics.cc",
+    "device_authorization_metrics.h",
+  ]
+
+  deps = [ "//base" ]
+}
+
+source_set("switches") {
+  sources = [
+    "device_authorization_switches.cc",
+    "device_authorization_switches.h",
+  ]
+
+  deps = [
+    "//base",
+    "//url",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "device_authorization_keys_fetcher_unittest.cc" ]
+
+  deps = [
+    ":device_authorization",
+    ":metrics",
+    ":switches",
+    "//base",
+    "//base/test:test_support",
+    "//components/endpoint_fetcher",
+    "//components/signin/public/base",
+    "//components/signin/public/identity_manager:test_support",
+    "//components/webauthn/core/browser/device_authorization/proto",
+    "//google_apis",
+    "//net",
+    "//services/network:test_support",
+    "//services/network/public/cpp",
+    "//testing/gmock",
+    "//testing/gtest",
+  ]
+}

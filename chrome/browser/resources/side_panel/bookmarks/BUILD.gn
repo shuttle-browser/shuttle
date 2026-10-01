@@ -1,0 +1,94 @@
+# Copyright 2022 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//ui/webui/resources/tools/build_webui.gni")
+import("//ui/webui/webui_features.gni")
+
+assert(!is_android)
+
+build_webui("build") {
+  grd_prefix = "side_panel_bookmarks"
+
+  static_files = [
+    "images/bookmarks_empty.svg",
+    "images/bookmarks_empty_dark.svg",
+    "power_bookmarks.html",
+  ]
+
+  ts_files = [
+    "bookmarks_api_proxy.ts",
+    "commerce/shopping_list.html.ts",
+    "commerce/shopping_list.ts",
+    "keyboard_arrow_navigation_service.ts",
+    "power_bookmarks_metrics.ts",
+    "power_bookmarks_add_folder_button.html.ts",
+    "power_bookmarks_add_folder_button.ts",
+    "power_bookmarks_app.html.ts",
+    "power_bookmarks_app.ts",
+    "power_bookmarks_list_header.html.ts",
+    "power_bookmarks_list_header.ts",
+    "power_bookmarks_list.html.ts",
+    "power_bookmarks_list.ts",
+    "power_bookmark_row.html.ts",
+    "power_bookmark_row.ts",
+    "power_bookmark_row_item.html.ts",
+    "power_bookmark_row_item.ts",
+    "power_bookmarks_context_menu.html.ts",
+    "power_bookmarks_context_menu.ts",
+    "power_bookmarks_drag_manager.ts",
+    "power_bookmarks_edit_dialog.html.ts",
+    "power_bookmarks_edit_dialog.ts",
+    "power_bookmarks_labels.html.ts",
+    "power_bookmarks_labels.ts",
+    "power_bookmarks_service.ts",
+    "power_bookmarks_utils.ts",
+  ]
+
+  css_files = [
+    "power_bookmark_row.css",
+    "power_bookmark_row_item.css",
+    "power_bookmarks_add_folder_button.css",
+    "power_bookmarks_app.css",
+    "power_bookmarks_list_header.css",
+    "power_bookmarks_list.css",
+    "power_bookmarks_context_menu.css",
+    "power_bookmarks_edit_dialog.css",
+    "commerce/shopping_list.css",
+  ]
+
+  icons_html_files = [
+    "commerce/icons.html",
+    "icons.html",
+  ]
+
+  mojo_files_deps = [ "//chrome/browser/ui/webui/side_panel/bookmarks:mojo_bindings_ts__generator" ]
+  mojo_files = [ "$root_gen_dir/chrome/browser/ui/webui/side_panel/bookmarks/bookmarks.mojom-webui.ts" ]
+
+  ts_composite = true
+  ts_definitions = [
+    "//tools/typescript/definitions/bookmark_manager_private.d.ts",
+    "//tools/typescript/definitions/bookmarks.d.ts",
+    "//tools/typescript/definitions/chrome_event.d.ts",
+    "//tools/typescript/definitions/metrics_private.d.ts",
+    "//tools/typescript/definitions/tabs.d.ts",
+  ]
+  ts_deps = [
+    "../shared:build_ts",
+    "//third_party/lit/v3_0:build_ts",
+    "//ui/webui/resources/cr_components/color_change_listener:build_ts",
+    "//ui/webui/resources/cr_components/commerce:build_ts",
+    "//ui/webui/resources/cr_components/page_image_service:build_ts",
+    "//ui/webui/resources/cr_elements:build_ts",
+    "//ui/webui/resources/js:build_ts",
+    "//ui/webui/resources/mojo:build_ts",
+  ]
+  ts_path_mappings =
+      [ "//bookmarks-side-panel.top-chrome/shared/*|" +
+        rebase_path(
+            "$root_gen_dir/chrome/browser/resources/side_panel/shared/tsc/*",
+            target_gen_dir) ]
+
+  webui_context_type = "trusted"
+  generate_code_cache = enable_webui_generate_code_cache
+}

@@ -1,0 +1,151 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/bookmarks/bookmark_stats.h"
+
+#include "base/metrics/histogram_macros.h"
+#include "base/metrics/user_metrics.h"
+#include "chrome/browser/profiles/profile.h"
+#include "components/bookmarks/browser/bookmark_model.h"
+#include "components/bookmarks/browser/bookmark_node_data.h"
+#include "extensions/buildflags/buildflags.h"
+#include "url/gurl.h"
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+#include "chrome/common/extensions/extension_constants.h"
+#include "chrome/common/extensions/extension_metrics.h"
+#include "extensions/browser/extension_registry.h"
+#endif
+
+using bookmarks::BookmarkNode;
+
+namespace {
+
+bool IsBookmarkBarLocation(BookmarkLaunchLocation location) {
+  return location == BookmarkLaunchLocation::kAttachedBar ||
+         location == BookmarkLaunchLocation::kSubfolder;
+}
+
+auto GetMetricProfile(const Profile* profile) {
+  DCHECK(profile);
+  DCHECK(profile->IsRegularProfile() || profile->IsIncognitoProfile());
+  return profile->IsRegularProfile()
+             ? profile_metrics::BrowserProfileType::kRegular
+             : profile_metrics::BrowserProfileType::kIncognito;
+}
+
+}  // namespace
+
+std::ostream& operator<<(std::ostream& out,
+                         const BookmarkLaunchAction& launch_action) {
+  return out << "BookmarkLaunchAction(location = "
+             << static_cast<int>(launch_action.location)
+             << ", action_time = " << launch_action.action_time << ")";
+}
+
+void RecordAppLaunchForBookmarkBar(Profile* profile, const GURL& url) {
+  DCHECK(profile);
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+  const extensions::Extension* extension =
+      extensions::ExtensionRegistry::Get(profile)
+          ->enabled_extensions()
+          .GetAppByURL(url);
+  if (extension) {
+    extensions::RecordAppLaunchType(extension_misc::APP_LAUNCH_BOOKMARK_BAR,
+                                    extension->GetType());
+  }
+#endif
+}
+
+void RecordBookmarkLaunch(BookmarkLaunchLocation location,
+                          profile_metrics::BrowserProfileType profile_type) {
+  if (IsBookmarkBarLocation(location)) {
+    base::RecordAction(base::UserMetricsAction("ClickedBookmarkBarURLButton"));
+  } else if (location == BookmarkLaunchLocation::kAppMenu) {
+    base::RecordAction(
+        base::UserMetricsAction("WrenchMenu_Bookmarks_LaunchURL"));
+  } else if (location == BookmarkLaunchLocation::kTopMenu) {
+    base::RecordAction(base::UserMetricsAction("TopMenu_Bookmarks_LaunchURL"));
+  }
+
+  UMA_HISTOGRAM_ENUMERATION("Bookmarks.LaunchLocation", location);
+
+  UMA_HISTOGRAM_ENUMERATION("Bookmarks.UsageCountPerProfileType", profile_type);
+}
+
+void RecordBookmarkFolderLaunch(BookmarkLaunchLocation location) {
+  if (IsBookmarkBarLocation(location)) {
+    base::RecordAction(
+        base::UserMetricsAction("MiddleClickedBookmarkBarFolder"));
+  }
+}
+
+void RecordBookmarkFolderOpen(BookmarkLaunchLocation location) {
+  if (IsBookmarkBarLocation(location)) {
+    base::RecordAction(base::UserMetricsAction("ClickedBookmarkBarFolder"));
+  }
+}
+
+void RecordBookmarkAppsPageOpen(BookmarkLaunchLocation location) {
+  if (IsBookmarkBarLocation(location)) {
+    base::RecordAction(
+        base::UserMetricsAction("ClickedBookmarkBarAppsShortcutButton"));
+  }
+}
+
+void RecordBookmarkEdited(BookmarkLaunchLocation location) {
+  UMA_HISTOGRAM_ENUMERATION("Bookmarks.EditLocation", location);
+}
+
+void RecordBookmarkRemoved(BookmarkLaunchLocation location) {
+  UMA_HISTOGRAM_ENUMERATION("Bookmarks.RemovedLocation", location);
+}
+
+void RecordBookmarksAdded(const Profile* profile) {
+  profile_metrics::BrowserProfileType profile_type = GetMetricProfile(profile);
+  UMA_HISTOGRAM_ENUMERATION("Bookmarks.AddedPerProfileType", profile_type);
+}
+
+void RecordBookmarkDropped(const bookmarks::BookmarkNodeData& data,
+                           bool is_permanent_parent_node,
+                           bool is_reorder) {
+  enum class DropType : int {
+    kDropURLOntoBar = 0,
+    kDropURLIntoFolder = 1,
+    kDropBookmarkOntoBar = 2,
+    kDropBookmarkIntoFolder = 3,
+    kDropFolderOntoBar = 4,
+    kDropFolderIntoFolder = 5,
+    kReorderBookmarkOnBar = 6,
+    kReorderBookmarkInFolder = 7,
+    kReorderFolderOnBar = 8,
+    kReorderSubfolderInFolder = 9,
+    kMaxValue = kReorderSubfolderInFolder
+  };
+
+  // Note that `has_single_url()` is true for individual existing bookmarks as
+  // well as raw URLs, so we have to check the ID as well.
+  DropType drop_type;
+  if (data.has_single_url() && data.elements[0].id() == 0) {
+    drop_type = is_permanent_parent_node ? DropType::kDropURLOntoBar
+                                         : DropType::kDropURLIntoFolder;
+  } else if (is_reorder) {
+    if (data.has_single_url()) {
+      drop_type = is_permanent_parent_node ? DropType::kReorderBookmarkOnBar
+                                           : DropType::kReorderBookmarkInFolder;
+    } else {
+      drop_type = is_permanent_parent_node
+                      ? DropType::kReorderFolderOnBar
+                      : DropType::kReorderSubfolderInFolder;
+    }
+  } else {
+    if (data.has_single_url()) {
+      drop_type = is_permanent_parent_node ? DropType::kDropBookmarkOntoBar
+                                           : DropType::kDropBookmarkIntoFolder;
+    } else {
+      drop_type = is_permanent_parent_node ? DropType::kDropFolderOntoBar
+                                           : DropType::kDropFolderIntoFolder;
+    }
+  }
+  UMA_HISTOGRAM_ENUMERATION("Bookmarks.BookmarksBar.DragDropType", drop_type);
+}

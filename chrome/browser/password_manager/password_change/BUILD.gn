@@ -1,0 +1,119 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("password_change") {
+  sources = [
+    "annotated_page_content_capturer.cc",
+    "annotated_page_content_capturer.h",
+    "annotated_page_content_capturer_impl.cc",
+    "annotated_page_content_capturer_impl.h",
+    "button_click_helper.cc",
+    "button_click_helper.h",
+    "change_password_form_filler.cc",
+    "change_password_form_filler.h",
+    "change_password_form_filling_submission_helper.cc",
+    "change_password_form_filling_submission_helper.h",
+    "change_password_form_finder.cc",
+    "change_password_form_finder.h",
+    "change_password_form_waiter.cc",
+    "change_password_form_waiter.h",
+    "cross_origin_navigation_observer.cc",
+    "cross_origin_navigation_observer.h",
+    "detached_web_contents.cc",
+    "detached_web_contents.h",
+    "login_state_checker.cc",
+    "login_state_checker.h",
+    "model_quality_logs_uploader.cc",
+    "model_quality_logs_uploader.h",
+    "password_change_logging_util.cc",
+    "password_change_logging_util.h",
+    "password_change_page_stability_waiter.cc",
+    "password_change_page_stability_waiter.h",
+    "password_change_submission_verifier.cc",
+    "password_change_submission_verifier.h",
+  ]
+
+  public_deps = [ ":features" ]
+
+  deps = [
+    "//chrome/browser:browser_process",
+    "//chrome/browser/optimization_guide",
+    "//chrome/browser/page_content_annotations:extraction_service",
+    "//chrome/browser/profiles",
+    "//chrome/browser/translate",
+    "//chrome/common",
+    "//chrome/common:mojo_bindings",
+    "//components/actor/core:task_id",
+    "//components/autofill/content/browser",
+    "//components/optimization_guide/content/browser",
+    "//components/optimization_guide/core",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//components/page_content_annotations/content",
+    "//components/page_content_annotations/core",
+    "//components/page_content_annotations/core:features",
+    "//components/page_load_metrics/browser",
+    "//components/password_manager/content/browser",
+    "//components/password_manager/core/browser",
+    "//components/password_manager/core/browser:password_form",
+    "//components/password_manager/core/browser/features:password_features",
+    "//components/variations/service",
+    "//content/public/browser",
+    "//services/metrics/public/cpp:metrics_cpp",
+    "//ui/accessibility:ax_base",
+    "//ui/views",
+    "//ui/views/controls/webview",
+  ]
+}
+
+source_set("features") {
+  sources = [
+    "features.cc",
+    "features.h",
+  ]
+  deps = [ "//base" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "annotated_page_content_capturer_unittest.cc",
+    "change_password_form_filler_unittest.cc",
+    "change_password_form_filling_submission_helper_unittest.cc",
+    "change_password_form_finder_unittest.cc",
+    "change_password_form_waiter_unittest.cc",
+    "cross_origin_navigation_observer_unittest.cc",
+    "fake_annotated_page_content_capturer.cc",
+    "fake_annotated_page_content_capturer.h",
+    "login_state_checker_unittest.cc",
+    "model_quality_logs_uploader_unittest.cc",
+    "password_change_page_stability_waiter_unittest.cc",
+    "password_change_submission_verifier_unittest.cc",
+  ]
+  deps = [
+    ":password_change",
+    "//chrome/browser/optimization_guide:test_support",
+    "//chrome/browser/password_manager",
+    "//chrome/browser/password_manager/factories",
+    "//chrome/browser/sync",
+    "//chrome/browser/ui/autofill",
+    "//chrome/test:test_support",
+    "//components/affiliations/core/browser:test_support",
+    "//components/autofill/content/browser:test_support",
+    "//components/optimization_guide/core",
+    "//components/optimization_guide/core:test_support",
+    "//components/password_manager/content/browser",
+    "//components/password_manager/core/browser",
+    "//components/password_manager/core/browser:test_support",
+    "//components/password_manager/core/browser/password_store:test_support",
+    "//components/sync:test_support",
+    "//content/test:test_support",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//url",
+  ]
+
+  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
+  # enable the diagnostic by removing this line.
+  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
+}

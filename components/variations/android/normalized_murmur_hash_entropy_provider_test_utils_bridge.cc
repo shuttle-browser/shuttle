@@ -1,0 +1,32 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <jni.h>
+#include "components/variations/android/test_support_jni_headers/NormalizedMurmurHashEntropyProviderTestUtilsBridge_jni.h"
+#include "components/variations/entropy_provider.h"
+#include "components/variations/variations_murmur_hash.h"
+
+// static
+static int32_t
+JNI_NormalizedMurmurHashEntropyProviderTestUtilsBridge_MurmurHash16(
+    JNIEnv* env,
+    int32_t seed,
+    int32_t data) {
+  return variations::internal::VariationsMurmurHash::Hash16(seed, data);
+}
+
+static double
+JNI_NormalizedMurmurHashEntropyProviderTestUtilsBridge_GetEntropyForTrial(
+    JNIEnv* env,
+    int32_t randomization_seed,
+    int32_t j_entropy_value,
+    int32_t j_entropy_size) {
+  variations::ValueInRange entropy_value{static_cast<uint32_t>(j_entropy_value),
+                                         static_cast<uint32_t>(j_entropy_size)};
+  variations::NormalizedMurmurHashEntropyProvider entropy_provider(
+      entropy_value);
+  return entropy_provider.GetEntropyForTrial("", randomization_seed);
+}
+
+DEFINE_JNI(NormalizedMurmurHashEntropyProviderTestUtilsBridge)

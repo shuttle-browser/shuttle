@@ -1,0 +1,138 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/passwords/manage_passwords_test.h"
+#include "chrome/browser/ui/passwords/manage_passwords_ui_controller.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/page_action/page_action_view_interface.h"
+#include "chrome/browser/ui/views/page_action/test_support/page_action_test_accessor.h"
+#include "chrome/browser/ui/views/passwords/password_bubble_view_base.h"
+#include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions_container.h"
+#include "chrome/browser/ui/views/toolbar/toolbar_view.h"
+#include "chrome/grit/generated_resources.h"
+#include "chrome/test/base/interactive_test_utils.h"
+#include "components/password_manager/core/common/password_manager_ui.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/test_utils.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/views/bubble/bubble_dialog_delegate_view.h"
+#include "ui/views/interaction/interaction_test_util_views.h"
+
+class ManagePasswordsIconViewTest : public ManagePasswordsTest {
+ public:
+  ManagePasswordsIconViewTest() = default;
+
+  ManagePasswordsIconViewTest(const ManagePasswordsIconViewTest&) = delete;
+  ManagePasswordsIconViewTest& operator=(const ManagePasswordsIconViewTest&) =
+      delete;
+
+  ~ManagePasswordsIconViewTest() override = default;
+
+  password_manager::ui::State ViewState() {
+    return GetController()->GetState();
+  }
+
+  page_actions::PageActionTestAccessor GetIconAccessor() {
+    return page_actions::PageActionTestAccessor(
+        browser(), kActionShowPasswordsBubbleOrPage);
+  }
+
+  page_actions::PageActionViewInterface* GetIcon() {
+    auto* provider = BrowserView::GetBrowserViewForBrowser(browser())
+                         ->toolbar_button_provider();
+    return provider->GetPageActionViewInterface(
+        kActionShowPasswordsBubbleOrPage);
+  }
+
+  std::u16string GetTooltipText() { return GetIcon()->GetTooltipText(); }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+class ManagePasswordsIconViewTestToolbarPinningOnly
+    : public ManagePasswordsIconViewTest {
+ protected:
+  raw_ptr<content::WebContents> GetActiveWebContents() const {
+    return browser()->GetTabStripModel()->GetActiveWebContents();
+  }
+  bool IsBubbleShowing() const {
+    return PasswordBubbleViewBase::manage_password_bubble() &&
+           PasswordBubbleViewBase::manage_password_bubble()
+               ->GetWidget()
+               ->IsVisible();
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(ManagePasswordsIconViewTest, DefaultStateIsInactive) {
+  EXPECT_EQ(password_manager::ui::INACTIVE_STATE, ViewState());
+  EXPECT_FALSE(GetIconAccessor().GetVisible());
+}
+
+IN_PROC_BROWSER_TEST_F(ManagePasswordsIconViewTest, PendingState) {
+  SetupPendingPassword();
+  EXPECT_EQ(password_manager::ui::PENDING_PASSWORD_STATE, ViewState());
+  EXPECT_TRUE(GetIconAccessor().GetVisible());
+  // No tooltip because the bubble is showing.
+  EXPECT_EQ(std::u16string(), GetTooltipText());
+}
+
+IN_PROC_BROWSER_TEST_F(ManagePasswordsIconViewTest, ManageState) {
+  SetupManagingPasswords();
+  EXPECT_EQ(password_manager::ui::MANAGE_STATE, ViewState());
+  EXPECT_TRUE(GetIconAccessor().GetVisible());
+  EXPECT_EQ(l10n_util::GetStringUTF16(IDS_PASSWORD_MANAGER_TOOLTIP_MANAGE),
+            GetTooltipText());
+}
+
+IN_PROC_BROWSER_TEST_F(ManagePasswordsIconViewTest, CloseOnClick) {
+  SetupPendingPassword();
+  EXPECT_TRUE(GetIconAccessor().GetVisible());
+  GetIconAccessor().Click();
+  // Wait for the command execution to close the bubble.
+  content::RunAllPendingInMessageLoop();
+}
+
+IN_PROC_BROWSER_TEST_F(ManagePasswordsIconViewTestToolbarPinningOnly,
+                       ShowPasswordsBubbleOrPage) {
+  const GURL passwords_url = GURL("chrome://password-manager/");
+  PinnedToolbarActionsModel::Get(browser()->GetProfile())
+      ->UpdatePinnedState(kActionShowPasswordsBubbleOrPage, true);
+  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser());
+  CHECK(!features::IsWebUIPinnedToolbarActionsEnabled())
+      << "Test needs modification to support WebUIPinnedToolbarActions";
+  PinnedToolbarActionsContainer* container =
+      static_cast<PinnedToolbarActionsContainer*>(
+          browser_view->toolbar_button_provider()->GetPinnedToolbarActions());
+  PinnedActionToolbarButton* button =
+      container->GetButtonFor(kActionShowPasswordsBubbleOrPage);
+  ASSERT_NE(button, nullptr);
+
+  // Underline should not be visible here.
+  EXPECT_FALSE(button->GetStatusIndicatorForTesting()->GetVisible());
+
+  // We start with one tab (Tab 0) navigated to the test URL.
+  // Add a second tab (Tab 1) navigated to the same URL and show it.
+  ASSERT_TRUE(AddTabAtIndex(1, embedded_test_server()->GetURL("/empty.html"),
+                            ui::PAGE_TRANSITION_TYPED));
+
+  // Setup managing passwords on the active tab (Tab 1).
+  SetupManagingPasswords();
+  ASSERT_FALSE(IsBubbleShowing());
+
+  // Underline should show in this case.
+  EXPECT_TRUE(button->GetStatusIndicatorForTesting()->GetVisible());
+
+  // Switch back to Tab 0.
+  browser()->GetTabStripModel()->ActivateTabAt(0);
+
+  // Underline should NOT be visible on Tab 0.
+  EXPECT_FALSE(button->GetStatusIndicatorForTesting()->GetVisible());
+}

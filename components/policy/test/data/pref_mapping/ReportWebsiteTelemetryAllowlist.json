@@ -1,0 +1,17 @@
+[
+  {
+    "os": [
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "reporting.report_website_telemetry_allowlist",
+      "default_value": [],
+      "values_to_test": [
+        [
+          "https://www.google.com",
+          "[*.]chromium.org"
+        ]
+      ]
+    }
+  }
+]

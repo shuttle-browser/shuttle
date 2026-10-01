@@ -1,0 +1,142 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/tabs/fake_tab_slot_controller.h"
+
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/views/tabs/tab_container.h"
+#include "chrome/browser/ui/views/tabs/tab_strip_controller.h"
+#include "ui/views/view_utils.h"
+
+FakeTabSlotController::FakeTabSlotController(
+    TabStripController* tab_strip_controller)
+    : tab_strip_controller_(tab_strip_controller) {}
+
+ui::ListSelectionModel FakeTabSlotController::GetSelectionModel() const {
+  return selection_model_;
+}
+
+Tab* FakeTabSlotController::tab_at(int index) const {
+  return tab_container_->GetTabAtModelIndex(index);
+}
+
+void FakeTabSlotController::ToggleTabGroupCollapsedState(
+    const tab_groups::TabGroupId group,
+    ToggleTabGroupCollapsedStateOrigin origin) {}
+
+int FakeTabSlotController::GetTabCount() const {
+  if (tab_count_.has_value()) {
+    return tab_count_.value();
+  }
+  return tab_container_ ? tab_container_->GetTabCount() : 0;
+}
+
+bool FakeTabSlotController::IsActiveTab(const TabSlotView* tab) const {
+  return active_tab_ == views::AsViewClass<Tab>(tab);
+}
+
+bool FakeTabSlotController::IsTabSelected(const TabSlotView* tab) const {
+  return false;
+}
+
+bool FakeTabSlotController::IsFocusInTabStrip() const {
+  return false;
+}
+
+TabSlotController::Liveness FakeTabSlotController::ContinueDrag(
+    views::View* view,
+    const ui::LocatedEvent& event) {
+  return Liveness::kAlive;
+}
+
+bool FakeTabSlotController::EndDrag(EndDragReason reason) {
+  return false;
+}
+
+Tab* FakeTabSlotController::GetTabAt(const gfx::Point& point) {
+  return nullptr;
+}
+
+Tab* FakeTabSlotController::GetAdjacentTab(const Tab* tab, int offset) {
+  return nullptr;
+}
+
+std::vector<Tab*> FakeTabSlotController::GetTabsInSplit(const Tab* tab) {
+  return {};
+}
+
+bool FakeTabSlotController::HoverCardIsShowing(
+    HoverCardAnchorTarget* anchor_target) {
+  return false;
+}
+
+int FakeTabSlotController::GetStrokeThickness() const {
+  return 0;
+}
+
+bool FakeTabSlotController::CanPaintThrobberToLayer() const {
+  return paint_throbber_to_layer_;
+}
+
+bool FakeTabSlotController::IsGlassFrame() const {
+  return is_glass_;
+}
+
+SkColor FakeTabSlotController::GetTabSeparatorColor() const {
+  return SK_ColorBLACK;
+}
+
+std::u16string FakeTabSlotController::GetAccessibleTabName(
+    const Tab* tab) const {
+  return std::u16string();
+}
+
+float FakeTabSlotController::GetHoverOpacityForTab(
+    float range_parameter) const {
+  return 1.0f;
+}
+
+float FakeTabSlotController::GetHoverOpacityForRadialHighlight() const {
+  return 1.0f;
+}
+
+std::u16string FakeTabSlotController::GetGroupTitle(
+    const tab_groups::TabGroupId& group_id) const {
+  return tab_strip_controller_->GetGroupTitle(group_id);
+}
+
+std::u16string FakeTabSlotController::GetGroupContentString(
+    const tab_groups::TabGroupId& group) const {
+  return tab_strip_controller_->GetGroupContentString(group);
+}
+
+tab_groups::TabGroupColorId FakeTabSlotController::GetGroupColorId(
+    const tab_groups::TabGroupId& group_id) const {
+  return tab_strip_controller_->GetGroupColorId(group_id);
+}
+
+bool FakeTabSlotController::IsGroupCollapsed(
+    const tab_groups::TabGroupId& group) const {
+  return tab_strip_controller_->IsGroupCollapsed(group);
+}
+
+std::optional<tab_groups::TabGroupId> FakeTabSlotController::GetFocusedGroup()
+    const {
+  return tab_strip_controller_->GetFocusedGroup();
+}
+
+SkColor FakeTabSlotController::GetPaintedGroupColor(
+    const tab_groups::TabGroupColorId& color_id) const {
+  return SkColor();
+}
+
+BrowserWindowInterface* FakeTabSlotController::GetBrowserWindowInterface() {
+  return nullptr;
+}
+
+TabGroup* FakeTabSlotController::GetTabGroup(
+    const tab_groups::TabGroupId& group_id) const {
+  return tab_strip_controller_ ? tab_strip_controller_->GetTabGroup(group_id)
+                               : nullptr;
+}

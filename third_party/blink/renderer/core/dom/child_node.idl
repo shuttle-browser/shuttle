@@ -1,0 +1,43 @@
+/*
+ * Copyright (C) 2006, 2007, 2009 Apple Inc. All rights reserved.
+ * Copyright (C) 2006 Samuel Weinig <sam.weinig@gmail.com>
+ * Copyright (C) 2013 Samsung Electronics. All rights reserved.
+ *
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Library General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Library General Public License for more details.
+ *
+ * You should have received a copy of the GNU Library General Public License
+ * along with this library; see the file COPYING.LIB.  If not, write to
+ * the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA 02110-1301, USA.
+ */
+
+// https://dom.spec.whatwg.org/#interface-childnode
+interface mixin ChildNode {
+  [Unscopable, RaisesException, CEReactions] undefined before((Node or DOMString or TrustedScript) ... nodes);
+  [Unscopable, RaisesException, CEReactions] undefined after((Node or DOMString or TrustedScript)... nodes);
+  [Unscopable, RaisesException, CEReactions] undefined replaceWith((Node or DOMString or TrustedScript)... nodes);
+  [Unscopable, RaisesException, CEReactions] undefined remove();
+
+  // https://github.com/whatwg/html/issues/11669
+  [RuntimeEnabled=NewHTMLSettingMethods, RaisesException, MeasureAs=HTMLPositionalSetters] void beforeHTML(DOMString html, optional SetHTMLOptions options = {});
+  [RuntimeEnabled=NewHTMLSettingMethods, RaisesException, MeasureAs=HTMLPositionalSetters] void beforeHTMLUnsafe((TrustedHTML or DOMString) html, optional (SetHTMLUnsafeOptions or TrustedParserOptions) options = {});
+  [RuntimeEnabled=NewHTMLSettingMethods, RaisesException, MeasureAs=HTMLPositionalSetters] void afterHTML(DOMString html, optional SetHTMLOptions options = {});
+  [RuntimeEnabled=NewHTMLSettingMethods, RaisesException, MeasureAs=HTMLPositionalSetters] void afterHTMLUnsafe((TrustedHTML or DOMString) html, optional (SetHTMLUnsafeOptions or TrustedParserOptions) options = {});
+  [RuntimeEnabled=NewHTMLSettingMethods, RaisesException, MeasureAs=HTMLPositionalSetters] void replaceWithHTML(DOMString html, optional SetHTMLOptions options = {});
+  [RuntimeEnabled=NewHTMLSettingMethods, RaisesException, MeasureAs=HTMLPositionalSetters] void replaceWithHTMLUnsafe((TrustedHTML or DOMString) html, optional (SetHTMLUnsafeOptions or TrustedParserOptions) options = {});
+  [RuntimeEnabled=NewHTMLSettingMethods, CallWith=ScriptState, RaisesException, MeasureAs=HTMLStreaming] WritableStream streamBeforeHTML(optional SetHTMLOptions options = {});
+  [RuntimeEnabled=NewHTMLSettingMethods, CallWith=ScriptState, RaisesException, MeasureAs=HTMLStreaming] WritableStream streamBeforeHTMLUnsafe(optional (SetHTMLUnsafeOptions or TrustedParserOptions) options = {});
+  [RuntimeEnabled=NewHTMLSettingMethods, CallWith=ScriptState, RaisesException, MeasureAs=HTMLStreaming] WritableStream streamAfterHTML(optional SetHTMLOptions options = {});
+  [RuntimeEnabled=NewHTMLSettingMethods, CallWith=ScriptState, RaisesException, MeasureAs=HTMLStreaming] WritableStream streamAfterHTMLUnsafe(optional (SetHTMLUnsafeOptions or TrustedParserOptions) options = {});
+  [RuntimeEnabled=NewHTMLSettingMethods, CallWith=ScriptState, RaisesException, MeasureAs=HTMLStreaming] WritableStream streamReplaceWithHTML(optional SetHTMLOptions options = {});
+  [RuntimeEnabled=NewHTMLSettingMethods, CallWith=ScriptState, RaisesException, MeasureAs=HTMLStreaming] WritableStream streamReplaceWithHTMLUnsafe(optional (SetHTMLUnsafeOptions or TrustedParserOptions) options = {});
+};

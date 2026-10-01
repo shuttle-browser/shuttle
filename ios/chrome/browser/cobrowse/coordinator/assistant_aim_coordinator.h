@@ -1,0 +1,32 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_COBROWSE_COORDINATOR_ASSISTANT_AIM_COORDINATOR_H_
+#define IOS_CHROME_BROWSER_COBROWSE_COORDINATOR_ASSISTANT_AIM_COORDINATOR_H_
+
+#import "ios/chrome/browser/shared/coordinator/chrome_coordinator/chrome_coordinator.h"
+
+@class CobrowseContext;
+
+// Coordinator for the "AI Mode" flow.
+@interface AssistantAIMCoordinator : ChromeCoordinator
+
+// Starts the coordinator and specifies whether to present minimized.
+- (void)startInMinimizedState:(BOOL)shouldStartInMinimized;
+
+// Sets the visibility of the assistant without stopping the coordinator.
+- (void)setVisible:(BOOL)visible;
+
+// Sets the visibility of the assistant without stopping the coordinator.
+// Passing true to `inMinimizedState` will cause the assistant to open in the
+// minimized form.
+- (void)setVisible:(BOOL)visible inMinimizedState:(BOOL)minimized;
+
+// Triggers a reload of the assistant web state if its web process has
+// terminated.
+- (void)loadIfNecessary;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_COBROWSE_COORDINATOR_ASSISTANT_AIM_COORDINATOR_H_

@@ -1,0 +1,20 @@
+birnie@google.com
+bryantchandler@chromium.org
+carlosk@chromium.org
+dewittj@chromium.org
+erikchen@chromium.org
+harringtond@chromium.org
+wry@chromium.org
+
+per-file glic_actor*=file://chrome/browser/actor/OWNERS
+per-file glic_page_context_fetcher*=file://chrome/browser/actor/OWNERS
+
+per-file glic_annotation_manager*=adithyas@chromium.org
+
+per-file glic_internals*=file://chrome/browser/glic/API_OWNERS
+
+per-file *.mojom=set noparent
+per-file *.mojom=file://ipc/SECURITY_OWNERS
+
+per-file *_mojom_traits*.*=set noparent
+per-file *_mojom_traits*.*=file://ipc/SECURITY_OWNERS

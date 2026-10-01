@@ -1,0 +1,1396 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "cc/trees/property_tree.h"
+
+#include <cmath>
+#include <utility>
+
+#include "base/memory/raw_ref.h"
+#include "cc/input/main_thread_scrolling_reason.h"
+#include "cc/test/fake_impl_task_runner_provider.h"
+#include "cc/test/fake_layer_tree_host_impl.h"
+#include "cc/test/layer_test_common.h"
+#include "cc/test/test_task_graph_runner.h"
+#include "cc/trees/clip_node.h"
+#include "cc/trees/damage_reason.h"
+#include "cc/trees/draw_property_utils.h"
+#include "cc/trees/effect_node.h"
+#include "cc/trees/layer_tree_impl.h"
+#include "cc/trees/property_ids.h"
+#include "cc/trees/scroll_node.h"
+#include "cc/trees/transform_node.h"
+#include "cc/trees/viewport_property_ids.h"
+#include "components/viz/common/frame_sinks/copy_output_request.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/gfx/geometry/linear_gradient.h"
+#include "ui/gfx/geometry/rrect_f.h"
+#include "ui/gfx/geometry/test/geometry_util.h"
+
+namespace cc {
+namespace {
+
+TEST(PropertyTreeTest, ComputeTransformRoot) {
+  PropertyTrees property_trees;
+  TransformTree& tree = property_trees.transform_tree_mutable();
+  TransformNode contents_root;
+  contents_root.local.Translate(2, 2);
+  contents_root.id = tree.Insert(contents_root, 0);
+  tree.UpdateTransforms(1);
+
+  gfx::Transform expected;
+  gfx::Transform transform;
+  expected.Translate(2, 2);
+  tree.CombineTransformsBetween(1, 0, &transform);
+  EXPECT_TRANSFORM_EQ(expected, transform);
+
+  transform.MakeIdentity();
+  expected.MakeIdentity();
+  expected.Translate(-2, -2);
+  bool success = tree.CombineInversesBetween(0, 1, &transform);
+  EXPECT_TRUE(success);
+  EXPECT_TRANSFORM_EQ(expected, transform);
+}
+
+TEST(PropertyTreeTest, SetNeedsUpdate) {
+  PropertyTrees property_trees;
+  TransformTree& tree = property_trees.transform_tree_mutable();
+  TransformNode contents_root;
+  contents_root.id = tree.Insert(contents_root, 0);
+
+  EXPECT_FALSE(tree.needs_update());
+  tree.SetRootScaleAndTransform(0.6f, gfx::Transform());
+  EXPECT_TRUE(tree.needs_update());
+  tree.set_needs_update(false);
+  tree.SetRootScaleAndTransform(0.6f, gfx::Transform());
+  EXPECT_FALSE(tree.needs_update());
+}
+
+TEST(PropertyTreeTest, ComputeTransformChild) {
+  PropertyTrees property_trees;
+  TransformTree& tree = property_trees.transform_tree_mutable();
+  TransformNode contents_root;
+  contents_root.local.Translate(2, 2);
+  contents_root.id = tree.Insert(contents_root, 0);
+  tree.UpdateTransforms(contents_root.id);
+
+  TransformNode child;
+  child.local.Translate(3, 3);
+  child.id = tree.Insert(child, contents_root.id);
+
+  tree.UpdateTransforms(child.id);
+
+  gfx::Transform expected;
+  gfx::Transform transform;
+
+  expected.Translate(3, 3);
+  tree.CombineTransformsBetween(2, 1, &transform);
+  EXPECT_TRANSFORM_EQ(expected, transform);
+
+  transform.MakeIdentity();
+  expected.MakeIdentity();
+  expected.Translate(-3, -3);
+  bool success = tree.CombineInversesBetween(1, 2, &transform);
+  EXPECT_TRUE(success);
+  EXPECT_TRANSFORM_EQ(expected, transform);
+
+  transform.MakeIdentity();
+  expected.MakeIdentity();
+  expected.Translate(5, 5);
+  tree.CombineTransformsBetween(2, 0, &transform);
+  EXPECT_TRANSFORM_EQ(expected, transform);
+
+  transform.MakeIdentity();
+  expected.MakeIdentity();
+  expected.Translate(-5, -5);
+  success = tree.CombineInversesBetween(0, 2, &transform);
+  EXPECT_TRUE(success);
+  EXPECT_TRANSFORM_EQ(expected, transform);
+}
+
+TEST(PropertyTreeTest, ComputeTransformSibling) {
+  PropertyTrees property_trees;
+  TransformTree& tree = property_trees.transform_tree_mutable();
+  TransformNode contents_root;
+  contents_root.local.Translate(2, 2);
+  contents_root.id = tree.Insert(contents_root, 0);
+  tree.UpdateTransforms(1);
+
+  TransformNode child;
+  child.local.Translate(3, 3);
+  child.id = tree.Insert(child, 1);
+
+  TransformNode sibling;
+  sibling.local.Translate(7, 7);
+  sibling.id = tree.Insert(sibling, 1);
+
+  tree.UpdateTransforms(2);
+  tree.UpdateTransforms(3);
+
+  gfx::Transform expected;
+  gfx::Transform transform;
+
+  expected.Translate(4, 4);
+  tree.CombineTransformsBetween(3, 2, &transform);
+  EXPECT_TRANSFORM_EQ(expected, transform);
+
+  transform.MakeIdentity();
+  expected.MakeIdentity();
+  expected.Translate(-4, -4);
+  bool success = tree.CombineInversesBetween(2, 3, &transform);
+  EXPECT_TRUE(success);
+  EXPECT_TRANSFORM_EQ(expected, transform);
+}
+
+TEST(PropertyTreeTest, ComputeTransformSiblingSingularAncestor) {
+  // In this test, we have the following tree:
+  // root
+  //   + singular
+  //     + child
+  //     + sibling
+  // Since the lowest common ancestor of |child| and |sibling| has a singular
+  // transform, we cannot use screen space transforms to compute change of
+  // basis
+  // transforms between these nodes.
+  PropertyTrees property_trees;
+  TransformTree& tree = property_trees.transform_tree_mutable();
+  TransformNode contents_root;
+  contents_root.local.Translate(2, 2);
+  contents_root.id = tree.Insert(contents_root, 0);
+  tree.UpdateTransforms(1);
+
+  TransformNode singular;
+  singular.local.set_rc(2, 2, 0.0);
+  singular.id = tree.Insert(singular, 1);
+
+  TransformNode child;
+  child.local.Translate(3, 3);
+  child.id = tree.Insert(child, 2);
+
+  TransformNode sibling;
+  sibling.local.Translate(7, 7);
+  sibling.id = tree.Insert(sibling, 2);
+
+  tree.UpdateTransforms(2);
+  tree.UpdateTransforms(3);
+  tree.UpdateTransforms(4);
+
+  gfx::Transform expected;
+  gfx::Transform transform;
+
+  expected.Translate(4, 4);
+  tree.CombineTransformsBetween(4, 3, &transform);
+  EXPECT_TRANSFORM_EQ(expected, transform);
+
+  transform.MakeIdentity();
+  expected.MakeIdentity();
+  expected.Translate(-4, -4);
+  bool success = tree.CombineInversesBetween(3, 4, &transform);
+  EXPECT_TRUE(success);
+  EXPECT_TRANSFORM_EQ(expected, transform);
+}
+
+// Tests that the transform for fixed elements is translated based on the
+// overscroll nodes scroll_offset and that the clip node has an outset based on
+// the overscroll distance.
+TEST(PropertyTreeTest, UndoOverscroll) {
+  PropertyTrees property_trees;
+
+  ViewportPropertyIds viewport_property_ids;
+  ClipTree& clip_tree = property_trees.clip_tree_mutable();
+  const gfx::RectF clip_rect(0, 0, 100, 100);
+  ClipNode clip_node;
+  clip_node.id = 1;
+  clip_node.parent_id = 0;
+  clip_node.clip = clip_rect;
+  clip_tree.Insert(clip_node, 0);
+  viewport_property_ids.outer_clip = clip_node.id;
+
+  TransformTree& transform_tree = property_trees.transform_tree_mutable();
+  TransformNode contents_root;
+  contents_root.local.Translate(2, 2);
+  contents_root.id = transform_tree.Insert(contents_root, 0);
+  transform_tree.UpdateTransforms(1, &viewport_property_ids);
+
+  const gfx::PointF overscroll_offset(0, 10);
+  TransformNode overscroll_node;
+  overscroll_node.SetScrollOffset(overscroll_offset, DamageReason::kUntracked);
+  overscroll_node.id = transform_tree.Insert(overscroll_node, 1);
+  viewport_property_ids.overscroll_elasticity_transform = overscroll_node.id;
+
+  ScrollTree& scroll_tree = property_trees.scroll_tree_mutable();
+  ScrollNode scroll_node;
+  scroll_node.element_id = ElementId{2};
+  scroll_node.transform_id = contents_root.id;
+  scroll_node.scrolls_inner_viewport = true;
+  property_trees.scroll_tree_mutable().SetElasticOverscroll(
+      scroll_node, overscroll_offset.OffsetFromOrigin());
+  scroll_node.id = property_trees.scroll_tree_mutable().Insert(scroll_node, 0);
+  viewport_property_ids.inner_scroll = scroll_node.id;
+  scroll_tree.SetElasticOverscroll(scroll_node,
+                                   overscroll_offset.OffsetFromOrigin());
+  transform_tree.SetDrawnElasticOverscroll(
+      scroll_node.element_id, overscroll_offset.OffsetFromOrigin());
+
+  TransformNode fixed_node;
+  fixed_node.should_undo_overscroll = true;
+  fixed_node.id = transform_tree.Insert(fixed_node, 2);
+
+  transform_tree.UpdateTransforms(2,
+                                  &viewport_property_ids);  // overscroll_node
+  transform_tree.UpdateTransforms(3, &viewport_property_ids);  // fixed_node
+
+#if BUILDFLAG(IS_ANDROID)
+  // On Android, we expect the UndoOverscroll to not run.
+  gfx::Transform expected;
+  expected.MakeIdentity();
+  EXPECT_TRANSFORM_EQ(expected,
+                      transform_tree.MutableNode(fixed_node.id).to_parent);
+
+  gfx::RectF expected_clip_rect(clip_rect);
+  EXPECT_EQ(clip_tree.MutableNode(viewport_property_ids.outer_clip).clip,
+            expected_clip_rect);
+#else
+  gfx::Transform expected;
+  expected.Translate(overscroll_offset.OffsetFromOrigin());
+  EXPECT_TRANSFORM_EQ(expected,
+                      transform_tree.MutableNode(fixed_node.id).to_parent);
+
+  gfx::RectF expected_clip_rect(clip_rect);
+  expected_clip_rect.set_height(clip_rect.height() + overscroll_offset.y());
+  EXPECT_EQ(clip_tree.MutableNode(viewport_property_ids.outer_clip).clip,
+            expected_clip_rect);
+#endif
+}
+
+TEST(PropertyTreeTest,
+     ElasticOverscrollInnerViewportRespectsPageScaleAndPivot) {
+  PropertyTrees property_trees;
+
+  TransformTree& transform_tree = property_trees.transform_tree_mutable();
+  ScrollTree& scroll_tree = property_trees.scroll_tree_mutable();
+  ViewportPropertyIds viewport_property_ids;
+
+  // Use a non-one page scale to exercise inner-viewport pivot scaling.
+  constexpr float kPageScale = 2.f;
+  transform_tree.set_page_scale_factor(kPageScale);
+
+  // Transform node that will receive the elastic overscroll stretch/translate.
+  TransformNode overscroll_transform;
+  overscroll_transform.local.MakeIdentity();
+  overscroll_transform.id = transform_tree.Insert(overscroll_transform, 0);
+  viewport_property_ids.overscroll_elasticity_transform =
+      overscroll_transform.id;
+
+  // Inner viewport scroll node with non-empty container bounds.
+  ScrollNode inner_scroll;
+  inner_scroll.parent_id = 0;
+  inner_scroll.transform_id = overscroll_transform.id;
+  inner_scroll.scrolls_inner_viewport = true;
+
+  inner_scroll.element_id = ElementId(1u);
+  inner_scroll.container_bounds = gfx::Size(100, 200);
+  inner_scroll.id = scroll_tree.Insert(inner_scroll, 0);
+  viewport_property_ids.inner_scroll = inner_scroll.id;
+
+  // Wire ElementId -> scroll node id so FindNodeFromElementId works.
+  property_trees.scroll_tree_mutable().SetElementIdForNodeId(
+      inner_scroll.id, inner_scroll.element_id);
+
+  // Overscroll in both axes to stretch/translate from both "far edges".
+  const gfx::Vector2dF kElasticOverscroll(10.f, 20.f);
+  ASSERT_TRUE(
+      scroll_tree.SetElasticOverscroll(inner_scroll, kElasticOverscroll));
+  transform_tree.SetDrawnElasticOverscroll(inner_scroll.element_id,
+                                           kElasticOverscroll);
+
+  // Run the transform update to apply elastic overscroll.
+  transform_tree.UpdateTransforms(overscroll_transform.id,
+                                  &viewport_property_ids);
+
+  const TransformNode& node = transform_tree.Node(overscroll_transform.id);
+
+#if BUILDFLAG(IS_ANDROID)
+  // Create expected transform.
+  gfx::Transform expected;
+
+  // Pivot in physical space.
+  gfx::PointF pivot(inner_scroll.container_bounds.width(),
+                    inner_scroll.container_bounds.height());
+
+  // Scale pivot to content space.
+  pivot.Scale(1.f / kPageScale);
+
+  // Apply pivot logic.
+  expected.Translate(pivot.OffsetFromOrigin());
+  const float expected_scale_x =
+      1.f +
+      std::abs(kElasticOverscroll.x()) / inner_scroll.container_bounds.width();
+  const float expected_scale_y =
+      1.f +
+      std::abs(kElasticOverscroll.y()) / inner_scroll.container_bounds.height();
+  expected.Scale(expected_scale_x, expected_scale_y);
+  expected.Translate(-pivot.OffsetFromOrigin());
+
+  EXPECT_TRANSFORM_EQ(expected, node.to_parent);
+
+#else
+  // Non-Android: expect a simple translate by overscroll.
+  gfx::Transform expected;
+  expected.Translate(-kElasticOverscroll.x(), -kElasticOverscroll.y());
+
+  EXPECT_TRANSFORM_EQ(expected, node.to_parent);
+#endif
+}
+
+// Tests that elastic overscroll is applied correctly when the content is
+// already scrolled. On Android, this verifies the stretch anchor point; on
+// other platforms, it verifies the translation accumulation.
+TEST(PropertyTreeTest, ElasticOverscrollWithScrollOffset) {
+  PropertyTrees property_trees;
+
+  ViewportPropertyIds viewport_property_ids;
+  ClipTree& clip_tree = property_trees.clip_tree_mutable();
+  ClipNode clip_node;
+  clip_node.id = clip_tree.Insert(clip_node, kInvalidPropertyNodeId);
+  clip_node.clip = gfx::RectF(0, 0, 100, 100);
+  viewport_property_ids.outer_clip = clip_node.id;
+
+  TransformTree& transform_tree = property_trees.transform_tree_mutable();
+  TransformNode root;
+  root.id = transform_tree.Insert(root, kInvalidPropertyNodeId);
+
+  TransformNode transform_node;
+  transform_node.scrolls = true;
+  transform_node.element_id = ElementId(10);
+  transform_node.id = transform_tree.Insert(transform_node, root.id);
+  viewport_property_ids.overscroll_elasticity_transform = transform_node.id;
+
+  ScrollTree& scroll_tree = property_trees.scroll_tree_mutable();
+  ScrollNode scroll_node;
+  scroll_node.element_id = transform_node.element_id;
+  scroll_node.transform_id = transform_node.id;
+  scroll_node.container_bounds = gfx::Size(100, 100);
+  scroll_node.bounds = gfx::Size(100, 200);
+  scroll_node.scrolls_inner_viewport = true;
+  scroll_node.overscroll_behavior = OverscrollBehavior(
+      OverscrollBehavior::Type::kContain, OverscrollBehavior::Type::kContain);
+  scroll_node.id = scroll_tree.Insert(scroll_node, kInvalidPropertyNodeId);
+  scroll_tree.SetElementIdForNodeId(scroll_node.id, scroll_node.element_id);
+  viewport_property_ids.inner_scroll = scroll_node.id;
+
+  transform_tree.MutableNode(transform_node.id).element_id =
+      scroll_node.element_id;
+
+  // Scroll to the bottom (offset 100) and apply an elastic overscroll (50).
+  const gfx::PointF scroll_offset(0, 100);
+  scroll_tree.SetScrollOffset(scroll_node.element_id, scroll_offset);
+  transform_tree.MutableNode(transform_node.id)
+      .SetScrollOffset(scroll_offset, DamageReason::kUntracked);
+
+  const gfx::Vector2dF overscroll_delta(0.f, 50.f);
+  scroll_tree.SetElasticOverscroll(scroll_node, overscroll_delta);
+  transform_tree.SetDrawnElasticOverscroll(scroll_node.element_id,
+                                           overscroll_delta);
+
+  transform_tree.UpdateTransforms(transform_node.id, &viewport_property_ids);
+
+  const TransformNode& node = transform_tree.Node(transform_node.id);
+
+#if BUILDFLAG(IS_ANDROID)
+  constexpr float kEpsilon = 0.1f;
+
+  // Verify the stretch anchors to the bottom of the viewport (y=100).
+  gfx::PointF content_bottom(0, 200);
+  EXPECT_NEAR(100.0f, node.to_parent.MapPoint(content_bottom).y(), kEpsilon);
+
+  // Verify the top is stretched past the standard rigid translation.
+  // Rigid: Scroll(-100) + Overscroll(-50) = -150.
+  gfx::PointF content_top(0, 0);
+  EXPECT_LT(node.to_parent.MapPoint(content_top).y(), -150.0f - kEpsilon);
+#else
+  // Verify standard translation includes both scroll and overscroll.
+  gfx::Transform expected;
+  expected.Translate(0, -150);
+  EXPECT_TRANSFORM_EQ(expected, node.to_parent);
+#endif
+}
+
+TEST(PropertyTreeTest, TransformsWithFlattening) {
+  PropertyTrees property_trees;
+  TransformTree& tree = property_trees.transform_tree_mutable();
+  EffectTree& effect_tree = property_trees.effect_tree_mutable();
+
+  int grand_parent = tree.Insert(TransformNode(), 0);
+  int effect_grand_parent = effect_tree.Insert(EffectNode(), 0);
+  effect_tree.MutableNode(effect_grand_parent).render_surface_reason =
+      RenderSurfaceReason::kTest;
+  effect_tree.MutableNode(effect_grand_parent).transform_id = grand_parent;
+  effect_tree.MutableNode(effect_grand_parent).surface_contents_scale =
+      gfx::Vector2dF(1.f, 1.f);
+
+  gfx::Transform rotation_about_x;
+  rotation_about_x.RotateAboutXAxis(15);
+
+  int parent = tree.Insert(TransformNode(), grand_parent);
+  int effect_parent = effect_tree.Insert(EffectNode(), effect_grand_parent);
+  effect_tree.MutableNode(effect_parent).transform_id = parent;
+  effect_tree.MutableNode(effect_parent).render_surface_reason =
+      RenderSurfaceReason::kTest;
+  effect_tree.MutableNode(effect_parent).surface_contents_scale =
+      gfx::Vector2dF(1.f, 1.f);
+  tree.MutableNode(parent).local = rotation_about_x;
+
+  int child = tree.Insert(TransformNode(), parent);
+  tree.MutableNode(child).flattens_inherited_transform = true;
+  tree.MutableNode(child).local = rotation_about_x;
+
+  int grand_child = tree.Insert(TransformNode(), child);
+  tree.MutableNode(grand_child).flattens_inherited_transform = true;
+  tree.MutableNode(grand_child).local = rotation_about_x;
+
+  tree.set_needs_update(true);
+  draw_property_utils::ComputeTransforms(&tree, ViewportPropertyIds());
+  property_trees.ResetCachedData();
+
+  gfx::Transform flattened_rotation_about_x = rotation_about_x;
+  flattened_rotation_about_x.Flatten();
+
+  gfx::Transform to_target;
+  property_trees.GetToTarget(child, effect_parent, &to_target);
+  EXPECT_TRANSFORM_EQ(rotation_about_x, to_target);
+
+  EXPECT_TRANSFORM_EQ(flattened_rotation_about_x * rotation_about_x,
+                      tree.ToScreen(child));
+
+  property_trees.GetToTarget(grand_child, effect_parent, &to_target);
+  EXPECT_TRANSFORM_EQ(flattened_rotation_about_x * rotation_about_x, to_target);
+
+  EXPECT_TRANSFORM_EQ(flattened_rotation_about_x * flattened_rotation_about_x *
+                          rotation_about_x,
+                      tree.ToScreen(grand_child));
+
+  gfx::Transform grand_child_to_child;
+  tree.CombineTransformsBetween(grand_child, child, &grand_child_to_child);
+  EXPECT_TRANSFORM_EQ(rotation_about_x, grand_child_to_child);
+
+  // Remove flattening at grand_child, and recompute transforms.
+  tree.MutableNode(grand_child).flattens_inherited_transform = false;
+  tree.set_needs_update(true);
+  draw_property_utils::ComputeTransforms(&tree, ViewportPropertyIds());
+
+  property_trees.GetToTarget(grand_child, effect_parent, &to_target);
+  EXPECT_TRANSFORM_EQ(rotation_about_x * rotation_about_x, to_target);
+
+  EXPECT_TRANSFORM_EQ(
+      flattened_rotation_about_x * rotation_about_x * rotation_about_x,
+      tree.ToScreen(grand_child));
+
+  grand_child_to_child.MakeIdentity();
+  tree.CombineTransformsBetween(grand_child, child, &grand_child_to_child);
+  EXPECT_TRANSFORM_EQ(rotation_about_x, grand_child_to_child);
+}
+
+TEST(PropertyTreeTest, UnboundedRenderSurfaceReason) {
+  PropertyTrees property_trees;
+  EffectTree& effect_tree = property_trees.effect_tree_mutable();
+
+  int effect_node_id = effect_tree.Insert(EffectNode(), 0);
+  effect_tree.MutableNode(effect_node_id).render_surface_reason =
+      RenderSurfaceReason::kUnboundedElement;
+
+  EXPECT_TRUE(effect_tree.Node(effect_node_id).HasRenderSurface());
+  EXPECT_EQ(RenderSurfaceReason::kUnboundedElement,
+            effect_tree.Node(effect_node_id).render_surface_reason);
+}
+
+TEST(PropertyTreeTest, MultiplicationOrder) {
+  PropertyTrees property_trees;
+  TransformTree& tree = property_trees.transform_tree_mutable();
+  TransformNode contents_root;
+  contents_root.local.Translate(2, 2);
+  contents_root.id = tree.Insert(contents_root, 0);
+  tree.UpdateTransforms(1);
+
+  TransformNode child;
+  child.local.Scale(2, 2);
+  child.id = tree.Insert(child, 1);
+
+  tree.UpdateTransforms(2);
+
+  gfx::Transform expected;
+  expected.Translate(2, 2);
+  expected.Scale(2, 2);
+
+  gfx::Transform transform;
+  gfx::Transform inverse;
+
+  tree.CombineTransformsBetween(2, 0, &transform);
+  EXPECT_TRANSFORM_EQ(expected, transform);
+
+  bool success = tree.CombineInversesBetween(0, 2, &inverse);
+  EXPECT_TRUE(success);
+
+  transform = transform * inverse;
+  expected.MakeIdentity();
+  EXPECT_TRANSFORM_EQ(expected, transform);
+}
+
+TEST(PropertyTreeTest, ComputeTransformWithUninvertibleTransform) {
+  PropertyTrees property_trees;
+  TransformTree& tree = property_trees.transform_tree_mutable();
+  TransformNode contents_root;
+  contents_root.id = tree.Insert(contents_root, 0);
+  tree.UpdateTransforms(1);
+
+  TransformNode child;
+  child.local.Scale(0, 0);
+  child.id = tree.Insert(child, 1);
+
+  tree.UpdateTransforms(2);
+
+  gfx::Transform expected;
+  expected.Scale(0, 0);
+
+  gfx::Transform transform;
+  gfx::Transform inverse;
+
+  tree.CombineTransformsBetween(2, 1, &transform);
+  EXPECT_TRANSFORM_EQ(expected, transform);
+
+  // To compute this would require inverting the 0 matrix, so we cannot
+  // succeed.
+  bool success = tree.CombineInversesBetween(1, 2, &inverse);
+  EXPECT_FALSE(success);
+}
+
+TEST(PropertyTreeTest, ComputeTransformToTargetWithZeroSurfaceContentsScale) {
+  PropertyTrees property_trees;
+  TransformTree& tree = property_trees.transform_tree_mutable();
+  TransformNode contents_root;
+  contents_root.id = tree.Insert(contents_root, 0);
+  tree.UpdateTransforms(1);
+
+  TransformNode grand_parent;
+  grand_parent.local.Scale(2.f, 0.f);
+  int grand_parent_id = tree.Insert(grand_parent, 1);
+  tree.UpdateTransforms(grand_parent_id);
+
+  TransformNode parent;
+  parent.local.Translate(1.f, 1.f);
+  int parent_id = tree.Insert(parent, grand_parent_id);
+  tree.UpdateTransforms(parent_id);
+
+  TransformNode child;
+  child.local.Translate(3.f, 4.f);
+  int child_id = tree.Insert(child, parent_id);
+  tree.UpdateTransforms(child_id);
+
+  gfx::Transform expected_transform;
+  expected_transform.Translate(4.f, 5.f);
+
+  gfx::Transform transform;
+  tree.CombineTransformsBetween(child_id, grand_parent_id, &transform);
+  EXPECT_TRANSFORM_EQ(expected_transform, transform);
+
+  tree.MutableNode(grand_parent_id).local.MakeIdentity();
+  tree.MutableNode(grand_parent_id).local.Scale(0.f, 2.f);
+  tree.MutableNode(grand_parent_id).needs_local_transform_update = true;
+  tree.set_needs_update(true);
+
+  draw_property_utils::ComputeTransforms(&tree, ViewportPropertyIds());
+
+  transform.MakeIdentity();
+  tree.CombineTransformsBetween(child_id, grand_parent_id, &transform);
+  EXPECT_TRANSFORM_EQ(expected_transform, transform);
+
+  tree.MutableNode(grand_parent_id).local.MakeIdentity();
+  tree.MutableNode(grand_parent_id).local.Scale(0.f, 0.f);
+  tree.MutableNode(grand_parent_id).needs_local_transform_update = true;
+  tree.set_needs_update(true);
+
+  draw_property_utils::ComputeTransforms(&tree, ViewportPropertyIds());
+
+  transform.MakeIdentity();
+  tree.CombineTransformsBetween(child_id, grand_parent_id, &transform);
+  EXPECT_TRANSFORM_EQ(expected_transform, transform);
+}
+
+TEST(PropertyTreeTest, FlatteningWhenDestinationHasOnlyFlatAncestors) {
+  // This tests that flattening is performed correctly when
+  // destination and its ancestors are flat, but there are 3d transforms
+  // and flattening between the source and destination.
+  PropertyTrees property_trees;
+  TransformTree& tree = property_trees.transform_tree_mutable();
+
+  int parent = tree.Insert(TransformNode(), 0);
+  tree.MutableNode(parent).local.Translate(2, 2);
+
+  gfx::Transform rotation_about_x;
+  rotation_about_x.RotateAboutXAxis(15);
+
+  int child = tree.Insert(TransformNode(), parent);
+  tree.MutableNode(child).local = rotation_about_x;
+
+  int grand_child = tree.Insert(TransformNode(), child);
+  tree.MutableNode(grand_child).flattens_inherited_transform = true;
+
+  tree.set_needs_update(true);
+  draw_property_utils::ComputeTransforms(&tree, ViewportPropertyIds());
+
+  gfx::Transform flattened_rotation_about_x = rotation_about_x;
+  flattened_rotation_about_x.Flatten();
+
+  gfx::Transform grand_child_to_parent;
+  tree.CombineTransformsBetween(grand_child, parent, &grand_child_to_parent);
+  EXPECT_TRANSFORM_EQ(flattened_rotation_about_x, grand_child_to_parent);
+}
+
+TEST(PropertyTreeTest, ScreenSpaceOpacityUpdateTest) {
+  // This tests that screen space opacity is updated for the subtree when
+  // opacity of a node changes.
+  PropertyTrees property_trees;
+  EffectTree& tree = property_trees.effect_tree_mutable();
+
+  int parent = tree.Insert(EffectNode(), 0);
+  int child = tree.Insert(EffectNode(), parent);
+
+  EXPECT_EQ(tree.MutableNode(child).screen_space_opacity, 1.f);
+  tree.MutableNode(parent).opacity = 0.5f;
+  tree.set_needs_update(true);
+  draw_property_utils::ComputeEffects(&tree);
+  EXPECT_EQ(tree.MutableNode(child).screen_space_opacity, 0.5f);
+
+  tree.MutableNode(child).opacity = 0.5f;
+  tree.set_needs_update(true);
+  draw_property_utils::ComputeEffects(&tree);
+  EXPECT_EQ(tree.MutableNode(child).screen_space_opacity, 0.25f);
+}
+
+TEST(PropertyTreeTest, SingularTransformSnapTest) {
+  // This tests that to_target transform is not snapped when it has a singular
+  // transform.
+  PropertyTrees property_trees;
+  TransformTree& tree = property_trees.transform_tree_mutable();
+  EffectTree& effect_tree = property_trees.effect_tree_mutable();
+
+  int parent = tree.Insert(TransformNode(), 0);
+  int effect_parent = effect_tree.Insert(EffectNode(), 0);
+  effect_tree.MutableNode(effect_parent).render_surface_reason =
+      RenderSurfaceReason::kTest;
+  effect_tree.MutableNode(effect_parent).surface_contents_scale =
+      gfx::Vector2dF(1.f, 1.f);
+  tree.MutableNode(parent).scrolls = true;
+
+  int child = tree.Insert(TransformNode(), parent);
+  TransformNode& child_node = tree.MutableNode(child);
+  child_node.scrolls = true;
+  child_node.local.Scale3d(6.0f, 6.0f, 0.0f);
+  child_node.local.Translate(1.3f, 1.3f);
+  tree.set_needs_update(true);
+
+  draw_property_utils::ComputeTransforms(&tree, ViewportPropertyIds());
+  property_trees.ResetCachedData();
+
+  gfx::Transform from_target;
+  gfx::Transform to_target;
+  property_trees.GetToTarget(child, effect_parent, &to_target);
+  EXPECT_FALSE(to_target.GetInverse(&from_target));
+  // The following checks are to ensure that snapping is skipped because of
+  // singular transform (and not because of other reasons which also cause
+  // snapping to be skipped).
+  EXPECT_TRUE(child_node.scrolls);
+  property_trees.GetToTarget(child, effect_parent, &to_target);
+  EXPECT_TRUE(to_target.IsScaleOrTranslation());
+  EXPECT_FALSE(child_node.to_screen_is_potentially_animated);
+  EXPECT_FALSE(child_node.ancestors_are_invertible);
+
+  gfx::Transform rounded;
+  property_trees.GetToTarget(child, effect_parent, &rounded);
+  rounded.Round2dTranslationComponents();
+  property_trees.GetToTarget(child, effect_parent, &to_target);
+  EXPECT_NE(to_target, rounded);
+}
+
+// Tests that CopyOutputRequests are transformed by the EffectTree, such that
+// assumptions the original requestor made about coordinate spaces remains true
+// after the EffectTree transforms the requests.
+TEST(EffectTreeTest, CopyOutputRequestsAreTransformed) {
+  using viz::CopyOutputRequest;
+
+  PropertyTrees property_trees;
+
+  TransformTree& transform_tree = property_trees.transform_tree_mutable();
+  TransformNode contents_root;
+  contents_root.local.Scale(2, 2);
+  contents_root.id = transform_tree.Insert(contents_root, 0);
+  transform_tree.UpdateTransforms(contents_root.id);
+
+  EffectTree& effect_tree = property_trees.effect_tree_mutable();
+  EffectNode effect_node;
+  effect_node.render_surface_reason = RenderSurfaceReason::kTest;
+  effect_node.transform_id = contents_root.id;
+  effect_node.id = effect_tree.Insert(effect_node, 0);
+  effect_tree.UpdateEffects(effect_node.id);
+
+  // A CopyOutputRequest with only its area set should be transformed into one
+  // that is scaled by two. In this case, by specifying no result selection, the
+  // requestor has indicated they want all the pixels, regardless of size. Thus,
+  // the result selection and scale ratio should still be unset in the
+  // transformed request to carry-over those semantics.
+  auto request_in = CopyOutputRequest::CreateStubForTesting();
+  request_in->set_area(gfx::Rect(10, 20, 30, 40));
+  effect_tree.AddCopyRequest(effect_node.id, std::move(request_in));
+  std::vector<std::unique_ptr<CopyOutputRequest>> requests_out;
+  effect_tree.TakeCopyRequestsAndTransformToSurface(effect_node.id,
+                                                    &requests_out);
+  ASSERT_EQ(1u, requests_out.size());
+  const CopyOutputRequest* request_out = requests_out.front().get();
+  ASSERT_TRUE(request_out->has_area());
+  EXPECT_EQ(gfx::Rect(20, 40, 60, 80), request_out->area());
+  EXPECT_FALSE(request_out->has_result_selection());
+  EXPECT_FALSE(request_out->is_scaled());
+
+  // A CopyOutputRequest with its area and result selection set, but no scaling
+  // specified, should be transformed into one that has its area scaled by two,
+  // but now also includes a scale ratio of 1/2. This is because the requestor
+  // had originally specified a result selection under old assumptions about the
+  // source coordinate system.
+  request_in = CopyOutputRequest::CreateStubForTesting();
+  request_in->set_area(gfx::Rect(10, 20, 30, 40));
+  request_in->set_result_selection(gfx::Rect(1, 2, 3, 4));
+  effect_tree.AddCopyRequest(effect_node.id, std::move(request_in));
+  requests_out.clear();
+  effect_tree.TakeCopyRequestsAndTransformToSurface(effect_node.id,
+                                                    &requests_out);
+  ASSERT_EQ(1u, requests_out.size());
+  request_out = requests_out.front().get();
+  ASSERT_TRUE(request_out->has_area());
+  EXPECT_EQ(gfx::Rect(20, 40, 60, 80), request_out->area());
+  ASSERT_TRUE(request_out->has_result_selection());
+  EXPECT_EQ(gfx::Rect(1, 2, 3, 4), request_out->result_selection());
+  ASSERT_TRUE(request_out->is_scaled());
+  EXPECT_NEAR(0.5f,
+              static_cast<float>(request_out->scale_to().x()) /
+                  request_out->scale_from().x(),
+              0.000001);
+  EXPECT_NEAR(0.5f,
+              static_cast<float>(request_out->scale_to().y()) /
+                  request_out->scale_from().y(),
+              0.000001);
+
+  // A CopyOutputRequest with all three of: area, result selection, and scale
+  // ratio; should be transformed into one with an updated area and combined
+  // scale ratio.
+  request_in = CopyOutputRequest::CreateStubForTesting();
+  request_in->set_area(gfx::Rect(10, 20, 30, 40));
+  request_in->set_result_selection(gfx::Rect(1, 2, 3, 4));
+  // Request has a 3X scale in X, and 5X scale in Y.
+  request_in->SetScaleRatio(gfx::Vector2d(1, 1), gfx::Vector2d(3, 5));
+  effect_tree.AddCopyRequest(effect_node.id, std::move(request_in));
+  requests_out.clear();
+  effect_tree.TakeCopyRequestsAndTransformToSurface(effect_node.id,
+                                                    &requests_out);
+  ASSERT_EQ(1u, requests_out.size());
+  request_out = requests_out.front().get();
+  ASSERT_TRUE(request_out->has_area());
+  EXPECT_EQ(gfx::Rect(20, 40, 60, 80), request_out->area());
+  ASSERT_TRUE(request_out->has_result_selection());
+  EXPECT_EQ(gfx::Rect(1, 2, 3, 4), request_out->result_selection());
+  ASSERT_TRUE(request_out->is_scaled());
+  EXPECT_NEAR(3.0f / 2.0f,
+              static_cast<float>(request_out->scale_to().x()) /
+                  request_out->scale_from().x(),
+              0.000001);
+  EXPECT_NEAR(5.0f / 2.0f,
+              static_cast<float>(request_out->scale_to().y()) /
+                  request_out->scale_from().y(),
+              0.000001);
+}
+
+// Tests that a good CopyOutputRequest which becomes transformed into an invalid
+// one is dropped (i.e., the requestor would get an "empty response" in its
+// result callback). The scaling transform in this test is so extreme that it
+// would result in an illegal adjustment to the CopyOutputRequest's scale ratio.
+TEST(EffectTreeTest, CopyOutputRequestsThatBecomeIllegalAreDropped) {
+  using viz::CopyOutputRequest;
+
+  PropertyTrees property_trees;
+
+  TransformTree& transform_tree = property_trees.transform_tree_mutable();
+  TransformNode contents_root;
+  contents_root.local.Scale(1.0f / 1.0e9f, 1.0f / 1.0e9f);
+  contents_root.id = transform_tree.Insert(contents_root, 0);
+  transform_tree.UpdateTransforms(contents_root.id);
+
+  EffectTree& effect_tree = property_trees.effect_tree_mutable();
+  EffectNode effect_node;
+  effect_node.render_surface_reason = RenderSurfaceReason::kTest;
+  effect_node.transform_id = contents_root.id;
+  effect_node.id = effect_tree.Insert(effect_node, 0);
+  effect_tree.UpdateEffects(effect_node.id);
+
+  auto request_in = CopyOutputRequest::CreateStubForTesting();
+  request_in->set_area(gfx::Rect(10, 20, 30, 40));
+  request_in->set_result_selection(gfx::Rect(1, 2, 3, 4));
+  request_in->SetScaleRatio(gfx::Vector2d(1, 1), gfx::Vector2d(3, 5));
+  effect_tree.AddCopyRequest(effect_node.id, std::move(request_in));
+  std::vector<std::unique_ptr<CopyOutputRequest>> requests_out;
+  effect_tree.TakeCopyRequestsAndTransformToSurface(effect_node.id,
+                                                    &requests_out);
+  EXPECT_TRUE(requests_out.empty());
+}
+
+// Tests that GetPixelSnappedScrollOffset cannot return a negative offset, even
+// when the snap amount is larger than the scroll offset. The snap amount can be
+// (fractionally) larger due to floating point precision errors, and if the
+// scroll offset is near zero that can naively lead to a negative offset being
+// returned which is not desirable.
+TEST(ScrollTreeTest, GetScrollOffsetForScrollTimelineNegativeOffset) {
+  PropertyTrees property_trees;
+  ScrollTree& scroll_tree = property_trees.scroll_tree_mutable();
+  TransformTree& transform_tree = property_trees.transform_tree_mutable();
+
+  ElementId element_id(5);
+  int transform_node_id = transform_tree.Insert(TransformNode(), 0);
+  int scroll_node_id = scroll_tree.Insert(ScrollNode(), 0);
+  scroll_tree.MutableNode(scroll_node_id).transform_id = transform_node_id;
+  scroll_tree.MutableNode(scroll_node_id).element_id = element_id;
+
+  // Set a scroll value close to 0.
+  scroll_tree.SetScrollOffset(element_id, gfx::PointF(0, 0.1));
+  transform_tree.MutableNode(transform_node_id).scrolls = true;
+  transform_tree.MutableNode(transform_node_id)
+      .SetScrollOffset(gfx::PointF(0, 0.1), DamageReason::kUntracked);
+
+  // Pretend that the snap amount was slightly larger than 0.1.
+  transform_tree.MutableNode(transform_node_id).snap_amount =
+      gfx::Vector2dF(0, 0.2);
+  transform_tree.MutableNode(transform_node_id).needs_local_transform_update =
+      false;
+
+  // The returned offset should be clamped at a minimum of 0.
+  gfx::PointF offset = scroll_tree.GetScrollOffsetForScrollTimeline(
+      scroll_tree.Node(scroll_node_id));
+  EXPECT_EQ(offset.y(), 0);
+}
+
+TEST(ScrollTreeTest, GetScrollOffsetForScrollTimelineInvalidTransform) {
+  PropertyTrees property_trees;
+  ScrollTree& scroll_tree = property_trees.scroll_tree_mutable();
+
+  ElementId element_id(5);
+  int scroll_node_id = scroll_tree.Insert(ScrollNode(), 0);
+  scroll_tree.MutableNode(scroll_node_id).transform_id = kInvalidPropertyNodeId;
+  scroll_tree.MutableNode(scroll_node_id).element_id = element_id;
+
+  scroll_tree.SetScrollOffset(element_id, gfx::PointF(0, 10));
+
+  gfx::PointF offset = scroll_tree.GetScrollOffsetForScrollTimeline(
+      scroll_tree.Node(scroll_node_id));
+  EXPECT_EQ(offset.y(), 10);
+}
+
+// Verify that when fractional scroll delta is turned off, that the remaining
+// fractional delta does not cause additional property changes.
+TEST(ScrollTreeTest, PushScrollUpdatesFromMainThreadIntegerDelta) {
+  const bool use_fractional_deltas = false;
+
+  // Set up main property trees.
+  PropertyTrees property_trees;
+  ScrollTree& main_scroll_tree = property_trees.scroll_tree_mutable();
+  TransformTree& transform_tree = property_trees.transform_tree_mutable();
+  ElementId element_id(5);
+  int transform_node_id = transform_tree.Insert(TransformNode(), 0);
+  int scroll_node_id = main_scroll_tree.Insert(ScrollNode(), 0);
+  main_scroll_tree.MutableNode(scroll_node_id).transform_id = transform_node_id;
+  main_scroll_tree.MutableNode(scroll_node_id).element_id = element_id;
+  main_scroll_tree.MutableNode(scroll_node_id).is_composited = true;
+
+  // Set up FakeLayerTreeHostImpl.
+  TestTaskGraphRunner task_graph_runner;
+  FakeImplTaskRunnerProvider impl_task_runner_provider;
+  FakeLayerTreeHostImpl host_impl(CommitToPendingTreeLayerTreeSettings(),
+                                  &impl_task_runner_provider,
+                                  &task_graph_runner);
+  host_impl.CreatePendingTree();
+
+  // Set up pending property trees.
+  PropertyTrees* pending_property_trees =
+      host_impl.pending_tree()->property_trees();
+  EXPECT_TRUE(pending_property_trees);
+  ScrollTree& pending_scroll_tree =
+      pending_property_trees->scroll_tree_mutable();
+  TransformTree& pending_transform_tree =
+      pending_property_trees->transform_tree_mutable();
+  transform_node_id = pending_transform_tree.Insert(TransformNode(), 0);
+  scroll_node_id = pending_scroll_tree.Insert(ScrollNode(), 0);
+  pending_scroll_tree.MutableNode(scroll_node_id).transform_id =
+      transform_node_id;
+  pending_scroll_tree.MutableNode(scroll_node_id).element_id = element_id;
+  pending_scroll_tree.MutableNode(scroll_node_id).is_composited = true;
+  pending_property_trees->scroll_tree_mutable().SetElementIdForNodeId(
+      scroll_node_id, element_id);
+
+  // Push main scroll to pending.
+  main_scroll_tree.SetScrollOffset(element_id, gfx::PointF(0, 1));
+  pending_scroll_tree.PushScrollUpdatesFromMainThread(
+      property_trees, host_impl.pending_tree(), use_fractional_deltas);
+  const SyncedScrollOffset* scroll_offset =
+      pending_scroll_tree.GetSyncedScrollOffset(element_id);
+  EXPECT_TRUE(scroll_offset);
+
+  // Set a fractional delta and check it is not pulled with fractional delta
+  // turned off.
+  pending_scroll_tree.SetScrollOffsetDeltaForTesting(element_id,
+                                                     gfx::Vector2dF(0, 0.25));
+  main_scroll_tree.CollectScrollDeltasForTesting(use_fractional_deltas);
+  EXPECT_EQ(gfx::PointF(0, 1),
+            main_scroll_tree.current_scroll_offset(element_id));
+
+  // Rounding logic turned on should not cause property change on push.
+  host_impl.pending_tree()->property_trees()->set_changed(false);
+  pending_scroll_tree.PushScrollUpdatesFromMainThread(
+      property_trees, host_impl.pending_tree(), use_fractional_deltas);
+  EXPECT_FALSE(host_impl.pending_tree()->property_trees()->changed());
+
+  // Rounding logic turned off should cause property change on push.
+  host_impl.pending_tree()->property_trees()->set_changed(false);
+  pending_scroll_tree.PushScrollUpdatesFromMainThread(
+      property_trees, host_impl.pending_tree(), true);
+  EXPECT_TRUE(host_impl.pending_tree()->property_trees()->changed());
+}
+
+TEST(PropertyTreeTest, AnchorPositionAndStickyDataStaleIndex) {
+  PropertyTrees property_trees;
+  TransformTree& tree = property_trees.transform_tree_mutable();
+
+  // 1. Setup a node with anchor position scroll data.
+  TransformNode node;
+  node.id = tree.Insert(TransformNode(), kRootPropertyNodeId);
+  tree.EnsureAnchorPositionScrollData(node.id);
+  tree.MutableNode(node.id).anchor_position_scroll_data_id = 0;
+
+  EXPECT_EQ(tree.anchor_position_scroll_data().size(), 1u);
+  EXPECT_NE(tree.GetAnchorPositionScrollData(node.id), nullptr);
+
+  // 2. Simulate replacing the anchor_position_scroll_data vector with a smaller
+  // one.
+  tree.anchor_position_scroll_data() = std::vector<AnchorPositionScrollData>();
+  EXPECT_EQ(tree.anchor_position_scroll_data().size(), 0u);
+
+  // 3. Accessing the data for the node should now be safe (returns nullptr).
+  EXPECT_EQ(tree.GetAnchorPositionScrollData(node.id), nullptr);
+
+  // 4. EnsureAnchorPositionScrollData should also be safe and fix the index.
+  tree.EnsureAnchorPositionScrollData(node.id);
+  EXPECT_EQ(tree.anchor_position_scroll_data().size(), 1u);
+  EXPECT_EQ(tree.Node(node.id).anchor_position_scroll_data_id, 0);
+
+  // 5. Similarly for sticky position data.
+  TransformNode node2;
+  node2.id = tree.Insert(TransformNode(), kRootPropertyNodeId);
+  tree.EnsureStickyPositionData(node2.id);
+  tree.MutableNode(node2.id).sticky_position_constraint_id = 0;
+
+  EXPECT_EQ(tree.sticky_position_data().size(), 1u);
+  EXPECT_NE(tree.GetStickyPositionData(node2.id), nullptr);
+
+  tree.sticky_position_data() = std::vector<StickyPositionNodeData>();
+  EXPECT_EQ(tree.sticky_position_data().size(), 0u);
+
+  EXPECT_EQ(tree.GetStickyPositionData(node2.id), nullptr);
+
+  tree.EnsureStickyPositionData(node2.id);
+  EXPECT_EQ(tree.sticky_position_data().size(), 1u);
+  EXPECT_EQ(tree.Node(node2.id).sticky_position_constraint_id, 0);
+}
+
+TEST(PropertyTreeTest, ScrollOffsetValidation) {
+  PropertyTrees property_trees;
+  ScrollTree& scroll_tree = property_trees.scroll_tree_mutable();
+
+  // 1. Main thread SetScrollOffset
+  {
+    ElementId id(1);
+    property_trees.set_is_main_thread(true);
+    property_trees.set_is_active(false);
+
+    EXPECT_TRUE(scroll_tree.SetScrollOffset(id, gfx::PointF(10, 20)));
+    EXPECT_POINTF_EQ(gfx::PointF(10, 20),
+                     scroll_tree.current_scroll_offset(id));
+
+    EXPECT_FALSE(scroll_tree.SetScrollOffset(id, gfx::PointF(NAN, 20)));
+    EXPECT_POINTF_EQ(gfx::PointF(10, 20),
+                     scroll_tree.current_scroll_offset(id));
+
+    EXPECT_FALSE(scroll_tree.SetScrollOffset(id, gfx::PointF(10, INFINITY)));
+    EXPECT_POINTF_EQ(gfx::PointF(10, 20),
+                     scroll_tree.current_scroll_offset(id));
+  }
+
+  // 2. Impl thread (active tree) SetScrollOffset
+  {
+    ElementId id(2);
+    property_trees.set_is_main_thread(false);
+    property_trees.set_is_active(true);
+
+    scroll_tree.GetOrCreateSyncedScrollOffsetForTesting(id);
+
+    EXPECT_TRUE(scroll_tree.SetScrollOffset(id, gfx::PointF(30, 40)));
+    EXPECT_POINTF_EQ(gfx::PointF(30, 40),
+                     scroll_tree.current_scroll_offset(id));
+
+    EXPECT_FALSE(scroll_tree.SetScrollOffset(id, gfx::PointF(NAN, 40)));
+    EXPECT_POINTF_EQ(gfx::PointF(30, 40),
+                     scroll_tree.current_scroll_offset(id));
+
+    EXPECT_FALSE(scroll_tree.SetScrollOffset(id, gfx::PointF(30, INFINITY)));
+    EXPECT_POINTF_EQ(gfx::PointF(30, 40),
+                     scroll_tree.current_scroll_offset(id));
+  }
+
+  // 3. SetBaseScrollOffset on main thread
+  {
+    ElementId id(3);
+    property_trees.set_is_main_thread(true);
+    property_trees.set_is_active(false);
+
+    scroll_tree.SetBaseScrollOffset(id, gfx::PointF(50, 60));
+    EXPECT_POINTF_EQ(gfx::PointF(50, 60),
+                     scroll_tree.current_scroll_offset(id));
+
+    scroll_tree.SetBaseScrollOffset(id, gfx::PointF(NAN, 60));
+    EXPECT_POINTF_EQ(gfx::PointF(50, 60),
+                     scroll_tree.current_scroll_offset(id));
+  }
+
+  // 4. SetBaseScrollOffset on impl thread (pending tree)
+  {
+    ElementId id(4);
+    property_trees.set_is_main_thread(false);
+    property_trees.set_is_active(false);
+
+    scroll_tree.GetOrCreateSyncedScrollOffsetForTesting(id);
+
+    scroll_tree.SetBaseScrollOffset(id, gfx::PointF(70, 80));
+    EXPECT_POINTF_EQ(gfx::PointF(70, 80),
+                     scroll_tree.current_scroll_offset(id));
+
+    scroll_tree.SetBaseScrollOffset(id, gfx::PointF(NAN, 80));
+    EXPECT_POINTF_EQ(gfx::PointF(70, 80),
+                     scroll_tree.current_scroll_offset(id));
+  }
+}
+
+TEST(PropertyTreeTest, TransformNodeScrollOffsetValidation) {
+  TransformNode node;
+  node.SetScrollOffset(gfx::PointF(10, 20), DamageReason::kUntracked);
+  EXPECT_POINTF_EQ(gfx::PointF(10, 20), node.scroll_offset());
+
+  node.SetScrollOffset(gfx::PointF(NAN, 20), DamageReason::kUntracked);
+  EXPECT_POINTF_EQ(gfx::PointF(10, 20), node.scroll_offset());
+
+  node.SetScrollOffset(gfx::PointF(10, INFINITY), DamageReason::kUntracked);
+  EXPECT_POINTF_EQ(gfx::PointF(10, 20), node.scroll_offset());
+}
+
+class RoundedCornersHitTestHelper {
+ public:
+  using CornerRadii = EffectTree::RoundedCornersHitTestInfo::CornerRadii;
+
+  RoundedCornersHitTestHelper()
+      : transform_tree_(property_trees_.transform_tree_mutable()),
+        effect_tree_(property_trees_.effect_tree_mutable()) {
+    TransformNode transform_root;
+    contents_root_transform_id_ = transform_tree_->Insert(transform_root, 0);
+    transform_tree_->UpdateTransforms(contents_root_transform_id_);
+
+    EffectNode contents_root;
+    contents_root.transform_id = contents_root_transform_id_;
+    contents_root_effect_id_ = effect_tree_->Insert(contents_root, 0);
+  }
+
+  EffectTree& effect_tree() { return *effect_tree_; }
+  int contents_root_transform_id() const { return contents_root_transform_id_; }
+  int contents_root_effect_id() const { return contents_root_effect_id_; }
+
+  int InsertTransformNode(int parent_id) {
+    TransformNode node;
+    node.id = transform_tree_->Insert(node, parent_id);
+    transform_tree_->UpdateTransforms(node.id);
+    return node.id;
+  }
+
+  int InsertEffectNode(int parent_id, EffectNode node = EffectNode()) {
+    if (node.transform_id == kRootPropertyNodeId) {
+      node.transform_id = contents_root_transform_id_;
+    }
+    node.id = effect_tree_->Insert(node, parent_id);
+    return node.id;
+  }
+
+  int InsertRoundedCornerMaskNode(int parent_id, const gfx::RRectF& bounds) {
+    return InsertMaskFilterNode(parent_id, gfx::MaskFilterInfo(bounds));
+  }
+
+  int InsertMaskFilterNode(int parent_id,
+                           const gfx::MaskFilterInfo& mask_filter_info) {
+    EffectNode node;
+    node.mask_filter_info = mask_filter_info;
+    return InsertEffectNode(parent_id, node);
+  }
+
+  static CornerRadii GetCornerRadii(const gfx::RRectF& rounded_rect) {
+    return {rounded_rect.GetCornerRadii(gfx::RRectF::Corner::kUpperLeft),
+            rounded_rect.GetCornerRadii(gfx::RRectF::Corner::kUpperRight),
+            rounded_rect.GetCornerRadii(gfx::RRectF::Corner::kLowerRight),
+            rounded_rect.GetCornerRadii(gfx::RRectF::Corner::kLowerLeft)};
+  }
+
+ private:
+  PropertyTrees property_trees_;
+  const raw_ref<TransformTree> transform_tree_;
+  const raw_ref<EffectTree> effect_tree_;
+  int contents_root_transform_id_ = kInvalidPropertyNodeId;
+  int contents_root_effect_id_ = kInvalidPropertyNodeId;
+};
+
+TEST(EffectTreeTest, GetRoundedCornersForHitTestSingleCircularCorner) {
+  RoundedCornersHitTestHelper helper;
+  const int rounded_node_id = helper.InsertRoundedCornerMaskNode(
+      helper.contents_root_effect_id(),
+      gfx::RRectF(0.f, 0.f, 100.f, 100.f, 10.f));
+
+  auto result = helper.effect_tree().GetRoundedCornersForHitTest(
+      rounded_node_id, helper.contents_root_transform_id(),
+      gfx::RectF(0, 0, 100, 100));
+  EXPECT_FALSE(result.requires_async_hit_test);
+  ASSERT_TRUE(result.corner_radii);
+  EXPECT_EQ(helper.GetCornerRadii(gfx::RRectF(0.f, 0.f, 100.f, 100.f, 10.f)),
+            *result.corner_radii);
+}
+
+TEST(EffectTreeTest, GetRoundedCornersForHitTestAncestorRoundedCorner) {
+  RoundedCornersHitTestHelper helper;
+  const int rounded_ancestor_id = helper.InsertRoundedCornerMaskNode(
+      helper.contents_root_effect_id(),
+      gfx::RRectF(0.f, 0.f, 100.f, 100.f, 12.f));
+  const int current_effect_id = helper.InsertEffectNode(rounded_ancestor_id);
+
+  auto result = helper.effect_tree().GetRoundedCornersForHitTest(
+      current_effect_id, helper.contents_root_transform_id(),
+      gfx::RectF(0, 0, 100, 100));
+  EXPECT_FALSE(result.requires_async_hit_test);
+  ASSERT_TRUE(result.corner_radii);
+  EXPECT_EQ(helper.GetCornerRadii(gfx::RRectF(0.f, 0.f, 100.f, 100.f, 12.f)),
+            *result.corner_radii);
+}
+
+TEST(EffectTreeTest, GetRoundedCornersForHitTestMultipleRoundedCorners) {
+  RoundedCornersHitTestHelper helper;
+  const int grand_ancestor_id = helper.InsertRoundedCornerMaskNode(
+      helper.contents_root_effect_id(),
+      gfx::RRectF(0.f, 0.f, 100.f, 100.f, 12.f));
+  const int ancestor_id = helper.InsertRoundedCornerMaskNode(
+      grand_ancestor_id, gfx::RRectF(0.f, 0.f, 100.f, 100.f, 8.f));
+  const int current_effect_id = helper.InsertEffectNode(ancestor_id);
+
+  auto result = helper.effect_tree().GetRoundedCornersForHitTest(
+      current_effect_id, helper.contents_root_transform_id(),
+      gfx::RectF(0, 0, 100, 100));
+  EXPECT_TRUE(result.requires_async_hit_test);
+  EXPECT_FALSE(result.corner_radii);
+}
+
+TEST(EffectTreeTest, GetRoundedCornersForHitTestDuplicateRoundedCorners) {
+  RoundedCornersHitTestHelper helper;
+  const gfx::RRectF rounded_corner_bounds(0.f, 0.f, 100.f, 100.f, 8.f);
+  const int grand_ancestor_id = helper.InsertRoundedCornerMaskNode(
+      helper.contents_root_effect_id(), rounded_corner_bounds);
+  const int ancestor_id = helper.InsertRoundedCornerMaskNode(
+      grand_ancestor_id, rounded_corner_bounds);
+  const int current_effect_id = helper.InsertEffectNode(ancestor_id);
+
+  auto result = helper.effect_tree().GetRoundedCornersForHitTest(
+      current_effect_id, helper.contents_root_transform_id(),
+      gfx::RectF(0, 0, 100, 100));
+  EXPECT_FALSE(result.requires_async_hit_test);
+  ASSERT_TRUE(result.corner_radii);
+  EXPECT_EQ(helper.GetCornerRadii(gfx::RRectF(0.f, 0.f, 100.f, 100.f, 8.f)),
+            *result.corner_radii);
+}
+
+TEST(EffectTreeTest, GetRoundedCornersForHitTestGradientMask) {
+  RoundedCornersHitTestHelper helper;
+  gfx::LinearGradient gradient_mask(45);
+  gradient_mask.AddStep(0.f, 0xff);
+  gradient_mask.AddStep(1.f, 0x00);
+  const int masked_node_id = helper.InsertMaskFilterNode(
+      helper.contents_root_effect_id(),
+      gfx::MaskFilterInfo(gfx::RRectF(0.f, 0.f, 100.f, 100.f, 10.f),
+                          gradient_mask));
+
+  auto result = helper.effect_tree().GetRoundedCornersForHitTest(
+      masked_node_id, helper.contents_root_transform_id(),
+      gfx::RectF(0, 0, 100, 100));
+  EXPECT_TRUE(result.requires_async_hit_test);
+  EXPECT_FALSE(result.corner_radii);
+}
+
+TEST(EffectTreeTest, GetRoundedCornersForHitTestRectangleOnlyMaskInfo) {
+  RoundedCornersHitTestHelper helper;
+  const gfx::MaskFilterInfo mask_filter_info(gfx::RectF(0.f, 0.f, 100.f, 100.f),
+                                             gfx::RoundedCornersF(),
+                                             gfx::LinearGradient::GetEmpty());
+  ASSERT_FALSE(mask_filter_info.IsEmpty());
+  ASSERT_FALSE(mask_filter_info.HasRoundedCorners());
+  ASSERT_FALSE(mask_filter_info.HasGradientMask());
+  const int masked_node_id = helper.InsertMaskFilterNode(
+      helper.contents_root_effect_id(), mask_filter_info);
+
+  auto result = helper.effect_tree().GetRoundedCornersForHitTest(
+      masked_node_id, helper.contents_root_transform_id(),
+      gfx::RectF(0, 0, 100, 100));
+  EXPECT_TRUE(result.requires_async_hit_test);
+  EXPECT_FALSE(result.corner_radii);
+}
+
+TEST(EffectTreeTest, GetRoundedCornersForHitTestEllipticalRadii) {
+  RoundedCornersHitTestHelper helper;
+  const int elliptical_node_id = helper.InsertRoundedCornerMaskNode(
+      helper.contents_root_effect_id(),
+      gfx::RRectF(0.f, 0.f, 100.f, 100.f, 10.f, 20.f));
+
+  auto result = helper.effect_tree().GetRoundedCornersForHitTest(
+      elliptical_node_id, helper.contents_root_transform_id(),
+      gfx::RectF(0, 0, 100, 100));
+  EXPECT_FALSE(result.requires_async_hit_test);
+  ASSERT_TRUE(result.corner_radii);
+  EXPECT_EQ(
+      helper.GetCornerRadii(gfx::RRectF(0.f, 0.f, 100.f, 100.f, 10.f, 20.f)),
+      *result.corner_radii);
+}
+
+TEST(EffectTreeTest, GetRoundedCornersForHitTestTransformNodeMismatch) {
+  RoundedCornersHitTestHelper helper;
+  const int layer_transform_id =
+      helper.InsertTransformNode(helper.contents_root_transform_id());
+
+  const int rounded_ancestor_id = helper.InsertRoundedCornerMaskNode(
+      helper.contents_root_effect_id(),
+      gfx::RRectF(0.f, 0.f, 100.f, 100.f, 10.f));
+
+  EffectNode child_effect;
+  child_effect.transform_id = layer_transform_id;
+  const int child_effect_id =
+      helper.InsertEffectNode(rounded_ancestor_id, child_effect);
+
+  // The layer lives in layer_transform's space, which differs from the
+  // ancestor mask's transform_root space. This mismatch means the mask
+  // bounds cannot be compared to hit_test_rect directly.
+  auto result = helper.effect_tree().GetRoundedCornersForHitTest(
+      child_effect_id, layer_transform_id, gfx::RectF(0, 0, 100, 100));
+  EXPECT_TRUE(result.requires_async_hit_test);
+  EXPECT_FALSE(result.corner_radii);
+}
+
+TEST(EffectTreeTest, GetRoundedCornersForHitTestRenderSurfaceBoundary) {
+  RoundedCornersHitTestHelper helper;
+  const int rounded_ancestor_id = helper.InsertRoundedCornerMaskNode(
+      helper.contents_root_effect_id(),
+      gfx::RRectF(0.f, 0.f, 100.f, 100.f, 20.f));
+
+  // Intervening render surface between the ancestor with rounded corners and
+  // the layer. The render surface could represent clipping (clip mask/path for
+  // example) which would affect current_effect's output. One could allow
+  // specific render surface reasons that don't include clipping, but for now we
+  // are conservative and fall back to async.
+  EffectNode render_surface_node;
+  render_surface_node.render_surface_reason = RenderSurfaceReason::kTest;
+  const int render_surface_node_id =
+      helper.InsertEffectNode(rounded_ancestor_id, render_surface_node);
+  const int current_effect_id = helper.InsertEffectNode(render_surface_node_id);
+
+  auto result = helper.effect_tree().GetRoundedCornersForHitTest(
+      current_effect_id, helper.contents_root_transform_id(),
+      gfx::RectF(0, 0, 100, 100));
+  EXPECT_TRUE(result.requires_async_hit_test);
+  EXPECT_FALSE(result.corner_radii);
+}
+
+TEST(EffectTreeTest, GetRoundedCornersForHitTestRoundedCornerWithMaskingChild) {
+  RoundedCornersHitTestHelper helper;
+  const int rounded_frame_id = helper.InsertRoundedCornerMaskNode(
+      helper.contents_root_effect_id(),
+      gfx::RRectF(0.f, 0.f, 100.f, 100.f, 16.f));
+
+  // A mask layer is represented as a child effect with kDstIn blend mode. Even
+  // though `rounded_frame` has simple circular corners matching the hit-test
+  // rect, this child can supply additional alpha geometry that cannot be
+  // serialized as corner radii.
+  EffectNode mask_layer;
+  mask_layer.blend_mode = SkBlendMode::kDstIn;
+  const int mask_layer_id =
+      helper.InsertEffectNode(rounded_frame_id, mask_layer);
+  helper.effect_tree().UpdateEffects(mask_layer_id);
+  ASSERT_TRUE(helper.effect_tree().Node(rounded_frame_id).has_masking_child);
+
+  const int current_effect_id = helper.InsertEffectNode(rounded_frame_id);
+
+  auto result = helper.effect_tree().GetRoundedCornersForHitTest(
+      current_effect_id, helper.contents_root_transform_id(),
+      gfx::RectF(0, 0, 100, 100));
+  EXPECT_TRUE(result.requires_async_hit_test);
+  EXPECT_FALSE(result.corner_radii);
+}
+
+TEST(EffectTreeTest, GetRoundedCornersForHitTestBoundsMismatch) {
+  RoundedCornersHitTestHelper helper;
+  const int rounded_node_id = helper.InsertRoundedCornerMaskNode(
+      helper.contents_root_effect_id(),
+      gfx::RRectF(0.f, 0.f, 80.f, 80.f, 10.f));
+
+  auto result = helper.effect_tree().GetRoundedCornersForHitTest(
+      rounded_node_id, helper.contents_root_transform_id(),
+      gfx::RectF(0, 0, 100, 100));
+  EXPECT_TRUE(result.requires_async_hit_test);
+  EXPECT_FALSE(result.corner_radii);
+}
+
+TEST(EffectTreeTest, GetRoundedCornersForHitTestRectInTransformSpace) {
+  RoundedCornersHitTestHelper helper;
+  const int rounded_node_id = helper.InsertRoundedCornerMaskNode(
+      helper.contents_root_effect_id(),
+      gfx::RRectF(0.f, 133.f, 200.f, 200.f, 12.f));
+
+  auto result = helper.effect_tree().GetRoundedCornersForHitTest(
+      rounded_node_id, helper.contents_root_transform_id(),
+      gfx::RectF(0.f, 133.f, 200.f, 200.f));
+  EXPECT_FALSE(result.requires_async_hit_test);
+  ASSERT_TRUE(result.corner_radii);
+  EXPECT_EQ(helper.GetCornerRadii(gfx::RRectF(0.f, 133.f, 200.f, 200.f, 12.f)),
+            *result.corner_radii);
+}
+
+TEST(EffectTreeTest, GetRoundedCornersForHitTestAncestorGradientMask) {
+  RoundedCornersHitTestHelper helper;
+  gfx::LinearGradient gradient_mask(45);
+  gradient_mask.AddStep(0.f, 0xff);
+  gradient_mask.AddStep(1.f, 0x00);
+  const int gradient_ancestor_id = helper.InsertMaskFilterNode(
+      helper.contents_root_effect_id(),
+      gfx::MaskFilterInfo(gfx::RRectF(0.f, 0.f, 100.f, 100.f, 20.f),
+                          gradient_mask));
+  const int current_effect_id = helper.InsertEffectNode(gradient_ancestor_id);
+
+  auto result = helper.effect_tree().GetRoundedCornersForHitTest(
+      current_effect_id, helper.contents_root_transform_id(),
+      gfx::RectF(0, 0, 100, 100));
+  EXPECT_TRUE(result.requires_async_hit_test);
+  EXPECT_FALSE(result.corner_radii);
+}
+
+}  // namespace
+}  // namespace cc

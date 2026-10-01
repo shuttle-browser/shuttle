@@ -1,0 +1,101 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef MEDIA_MIDI_MIDI_MANAGER_ANDROID_H_
+#define MEDIA_MIDI_MIDI_MANAGER_ANDROID_H_
+
+#include <jni.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include <memory>
+#include <vector>
+
+#include "base/android/scoped_java_ref.h"
+#include "base/containers/span.h"
+#include "base/memory/raw_ptr.h"
+#include "base/synchronization/lock.h"
+#include "base/thread_annotations.h"
+#include "base/time/time.h"
+#include "media/midi/midi_export.h"
+#include "media/midi/midi_input_port_android.h"
+#include "media/midi/midi_manager.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
+
+namespace midi {
+
+class MidiDeviceAndroid;
+class MidiOutputPortAndroid;
+class MidiService;
+
+// Checks if the current running Android system implements the MIDI service.
+// Should be available only in tests.
+MIDI_EXPORT bool HasSystemFeatureMidiForTesting();
+
+// MidiManagerAndroid is a MidiManager subclass for Android M or newer. For
+// older android OSes, we use MidiManagerUsb.
+class MIDI_EXPORT MidiManagerAndroid final
+    : public MidiManager,
+      public MidiInputPortAndroid::Delegate {
+ public:
+  explicit MidiManagerAndroid(MidiService* service);
+  ~MidiManagerAndroid() override;
+
+  // MidiManager implementation.
+  void StartInitialization() override;
+  void DispatchSendMidiData(MidiManagerClient* client,
+                            uint32_t port_index,
+                            const std::vector<uint8_t>& data,
+                            base::TimeTicks timestamp) override;
+
+  // MidiInputPortAndroid::Delegate implementation.
+  void OnReceivedData(MidiInputPortAndroid* port,
+                      base::span<const uint8_t> data,
+                      base::TimeTicks timestampp) override;
+
+  // Called from the Java world.
+  void OnInitialized(JNIEnv* env,
+                     const base::android::JavaRef<jobjectArray>& devices);
+  void OnInitializationFailed(JNIEnv* env);
+  void OnAttached(JNIEnv* env, const base::android::JavaRef<jobject>& device);
+  void OnDetached(JNIEnv* env, const base::android::JavaRef<jobject>& device);
+
+ private:
+  void AddDevice(std::unique_ptr<MidiDeviceAndroid> device);
+  void AddInputPortAndroid(MidiInputPortAndroid* port,
+                           MidiDeviceAndroid* device);
+  void AddOutputPortAndroid(MidiOutputPortAndroid* port,
+                            MidiDeviceAndroid* device);
+
+  // Protects objects mutated on the UI thread but accessed on the IO thread.
+  base::Lock lock_;
+
+  // All ports held in |devices_|. Each device has ownership of ports, but we
+  // can store pointers here because a device will keep its ports while it is
+  // alive.
+  std::vector<raw_ptr<MidiInputPortAndroid, VectorExperimental>>
+      all_input_ports_ GUARDED_BY(lock_);
+  // A dictionary from a port to its index.
+  // input_port_to_index_[all_input_ports_[i]] == i for each valid |i|.
+  absl::flat_hash_map<MidiInputPortAndroid*, size_t> input_port_to_index_
+      GUARDED_BY(lock_);
+
+  // Ditto for output ports.
+  std::vector<raw_ptr<MidiOutputPortAndroid, VectorExperimental>>
+      all_output_ports_ GUARDED_BY(lock_);
+  absl::flat_hash_map<MidiOutputPortAndroid*, size_t> output_port_to_index_
+      GUARDED_BY(lock_);
+
+  // `devices_` must be declared after the port index maps so that it is
+  // destroyed first (in reverse declaration order). This ensures that MidiPorts
+  // are closed and stop receiving callbacks before the maps are destroyed.
+  // See https://crbug.com/490254128.
+  std::vector<std::unique_ptr<MidiDeviceAndroid>> devices_ GUARDED_BY(lock_);
+
+  base::android::ScopedJavaGlobalRef<jobject> raw_manager_;
+};
+
+}  // namespace midi
+
+#endif  // MEDIA_MIDI_MIDI_MANAGER_ANDROID_H_

@@ -1,0 +1,56 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("ui") {
+  sources = [
+    "actuation_worklog_debug_view_controller.h",
+    "actuation_worklog_debug_view_controller.mm",
+    "ai_prototyping_actor_tool_chip_view_controller.h",
+    "ai_prototyping_actor_tool_chip_view_controller.mm",
+    "ai_prototyping_actor_view_controller.h",
+    "ai_prototyping_actor_view_controller.mm",
+    "ai_prototyping_actuation_task_button_view_controller.h",
+    "ai_prototyping_actuation_task_button_view_controller.mm",
+    "ai_prototyping_actuation_task_card_view_controller.h",
+    "ai_prototyping_actuation_task_card_view_controller.mm",
+    "ai_prototyping_apc_view_controller.h",
+    "ai_prototyping_apc_view_controller.mm",
+    "ai_prototyping_calendar_view_controller.h",
+    "ai_prototyping_calendar_view_controller.mm",
+    "ai_prototyping_consumer.h",
+    "ai_prototyping_freeform_view_controller.h",
+    "ai_prototyping_freeform_view_controller.mm",
+    "ai_prototyping_mutator.h",
+    "ai_prototyping_tab_organization_view_controller.h",
+    "ai_prototyping_tab_organization_view_controller.mm",
+    "ai_prototyping_ui_catalog_view_controller.h",
+    "ai_prototyping_ui_catalog_view_controller.mm",
+    "ai_prototyping_view_controller.h",
+    "ai_prototyping_view_controller.mm",
+    "ai_prototyping_view_controller_protocol.h",
+    "ai_prototyping_worklog_compact_view_controller.h",
+    "ai_prototyping_worklog_compact_view_controller.mm",
+    "ai_prototyping_worklog_item_showcase_view_controller.h",
+    "ai_prototyping_worklog_item_showcase_view_controller.mm",
+  ]
+
+  deps = [
+    "//base",
+    "//components/autofill/core/common:features",
+    "//components/optimization_guide:optimization_guide_buildflags",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//ios/chrome/app/strings:ios_strings_grit",
+    "//ios/chrome/browser/ai_prototyping:features",
+    "//ios/chrome/browser/ai_prototyping/model",
+    "//ios/chrome/browser/ai_prototyping/utils",
+    "//ios/chrome/browser/intelligence/actor/ui",
+    "//ios/chrome/browser/intelligence/features",
+    "//ios/chrome/browser/shared/model/profile",
+    "//ios/chrome/browser/shared/ui/symbols",
+    "//ios/chrome/common/ui/colors",
+    "//ios/chrome/common/ui/util",
+    "//ios/web/public",
+    "//ui/base",
+  ]
+}

@@ -1,0 +1,5 @@
+This is a testharness.js-based test.
+[FAIL] The used values from getComputedStyle() resolve against the correct scroller.
+  assert_equals: expected "75px" but got "40px"
+Harness: the test ran to completion.
+

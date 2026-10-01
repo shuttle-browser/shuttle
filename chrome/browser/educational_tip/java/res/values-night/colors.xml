@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2025 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<resources>
+  <color name="educational_tip_card_logo_color_1">@color/material_primary_20</color>
+  <color name="educational_tip_card_logo_color_2">@color/material_primary_30</color>
+  <color name="educational_tip_card_logo_color_3">@color/material_primary_40</color>
+  <color name="educational_tip_card_logo_color_4">@color/material_primary_60</color>
+  <color name="educational_tip_card_logo_color_5">@color/material_primary_70</color>
+  <color name="educational_tip_card_logo_color_6">@color/material_primary_80</color>
+  <color name="educational_tip_card_logo_color_7">@color/material_primary_70</color>
+  <color name="educational_tip_card_logo_color_8">@color/material_secondary_40</color>
+  <color name="educational_tip_card_logo_color_9">@color/material_tertiary_40</color>
+
+  <!-- Setup List celebratory promo colors -->
+  <color name="setup_list_celebratory_promo_gradient_blue_start">@color/baseline_primary_80</color>
+  <color name="setup_list_celebratory_promo_gradient_blue_end">@color/setup_list_celebratory_promo_blue_dark_base</color>
+  <color name="setup_list_celebratory_promo_gradient_green_start">@color/baseline_tertiary_80</color>
+  <color name="setup_list_celebratory_promo_gradient_green_end">@color/setup_list_celebratory_promo_green_dark_base</color>
+
+  <!-- Ntp theme promo colors -->
+  <color name="ntp_theme_promo_image_background">@color/color_primary_with_alpha_20</color>
+</resources>

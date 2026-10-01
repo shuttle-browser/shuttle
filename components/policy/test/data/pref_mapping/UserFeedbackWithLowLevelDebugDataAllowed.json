@@ -1,0 +1,19 @@
+[
+  {
+    "os": [
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "ash.user_feedback_with_low_level_debug_data_allowed",
+      "default_value": [],
+      "values_to_test": [
+        [
+          "wifi"
+        ],
+        [
+          "all"
+        ]
+      ]
+    }
+  }
+]

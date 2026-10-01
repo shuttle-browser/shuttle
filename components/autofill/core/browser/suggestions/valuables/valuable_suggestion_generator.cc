@@ -1,0 +1,381 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+#include "components/autofill/core/browser/suggestions/valuables/valuable_suggestion_generator.h"
+
+#include <stddef.h>
+
+#include <algorithm>
+#include <iterator>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "base/check.h"
+#include "base/check_op.h"
+#include "base/containers/extend.h"
+#include "base/containers/span.h"
+#include "base/feature_list.h"
+#include "base/functional/callback.h"
+#include "base/functional/function_ref.h"
+#include "base/i18n/case_conversion.h"
+#include "base/numerics/safe_conversions.h"
+#include "base/strings/utf_string_conversions.h"
+#include "build/buildflag.h"
+#include "components/autofill/core/browser/autofill_field.h"
+#include "components/autofill/core/browser/data_manager/valuables/valuables_data_manager.h"
+#include "components/autofill/core/browser/data_model/valuables/loyalty_card.h"
+#include "components/autofill/core/browser/data_quality/addresses/profile_token_quality.h"
+#include "components/autofill/core/browser/field_types.h"
+#include "components/autofill/core/browser/foundations/autofill_client.h"
+#include "components/autofill/core/browser/integrators/password_form_classification.h"
+#include "components/autofill/core/browser/suggestions/suggestion.h"
+#include "components/autofill/core/browser/suggestions/suggestion_generator.h"
+#include "components/autofill/core/browser/suggestions/suggestion_type.h"
+#include "components/autofill/core/browser/suggestions/suggestion_util.h"
+#include "components/autofill/core/common/autofill_features.h"
+#include "components/autofill/core/common/form_data.h"
+#include "components/autofill/core/common/form_field_data.h"
+#include "components/feature_engagement/public/feature_constants.h"
+#include "components/strings/grit/components_strings.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/gfx/image/image.h"
+#include "url/gurl.h"
+
+namespace autofill {
+namespace {
+
+// Returns true if any of the features that use wallet public passes are
+// enabled.
+bool WalletPublicPassesEnabled() {
+  return base::FeatureList::IsEnabled(
+             features::kAutofillAiWalletVehicleRegistration) ||
+         base::FeatureList::IsEnabled(
+             features::kAutofillAiWalletFlightReservation);
+}
+
+// Creates a fallback icon used when there is no logo for loyalty card program.
+// The icon consists of the first letter of the merchant name.
+Suggestion::LetterMonochromeIcon CreateFallbackSuggestionIcon(
+    std::string_view merchant_name) {
+  CHECK(!merchant_name.empty());
+  return Suggestion::LetterMonochromeIcon(
+      base::UTF8ToUTF16(merchant_name.substr(0, 1)));
+}
+
+// Set the URL for the loyalty card icon image or fallback icon to be shown in
+// the `suggestion`.
+void SetLoyaltyCardIconURL(Suggestion& suggestion,
+                           const GURL& icon_url,
+                           const ValuablesDataManager& valuables_manager,
+                           std::string_view merchant_name) {
+  if constexpr (BUILDFLAG(IS_ANDROID)) {
+    suggestion.custom_icon = Suggestion::CustomIconUrl(icon_url);
+  } else {
+    if (const gfx::Image* image =
+            valuables_manager.GetCachedValuableImageForUrl(icon_url)) {
+      suggestion.custom_icon = *image;
+    } else {
+      suggestion.custom_icon = CreateFallbackSuggestionIcon(merchant_name);
+    }
+  }
+}
+
+// Creates `Manage loyalty card` suggestion.
+Suggestion CreateManageLoyaltyCardsSuggestion() {
+  Suggestion suggestion(
+      l10n_util::GetStringUTF16(IDS_AUTOFILL_MANAGE_LOYALTY_CARDS),
+      SuggestionType::kManageLoyaltyCard);
+  suggestion.voice_over =
+      l10n_util::GetStringUTF16(IDS_AUTOFILL_MANAGE_LOYALTY_CARDS_A11Y_HINT);
+  suggestion.icon = Suggestion::Icon::kSettings;
+  return suggestion;
+}
+
+// Builds suggestion for given `loyalty_card`.
+Suggestion CreateLoyaltyCardSuggestion(
+    const LoyaltyCard& loyalty_card,
+    const ValuablesDataManager& valuables_manager) {
+  Suggestion suggestion =
+      Suggestion(base::UTF8ToUTF16(loyalty_card.loyalty_card_number()),
+                 SuggestionType::kLoyaltyCardEntry);
+  suggestion.main_text.is_primary = Suggestion::Text::IsPrimary(true);
+  std::u16string merchant_name =
+      base::UTF8ToUTF16(loyalty_card.merchant_name());
+  suggestion.labels.push_back({Suggestion::Text(merchant_name)});
+  suggestion.payload = Suggestion::Guid(loyalty_card.id().value());
+  SetLoyaltyCardIconURL(suggestion, loyalty_card.program_logo(),
+                        valuables_manager, loyalty_card.merchant_name());
+  if (WalletPublicPassesEnabled()) {
+    suggestion.iph_metadata = Suggestion::IPHMetadata(
+        &feature_engagement::kIPHAutofillAiValuablesFeature);
+  } else {
+    suggestion.iph_metadata = Suggestion::IPHMetadata(
+        &feature_engagement::kIPHAutofillEnableLoyaltyCardsFeature);
+  }
+  return suggestion;
+}
+
+// Creates suggestions from given `loyalty_cards` and adds them to given
+// `suggestions`.
+std::vector<Suggestion> CreateSuggestionsFromLoyaltyCards(
+    base::span<const LoyaltyCard> loyalty_cards,
+    const ValuablesDataManager& valuables_manager) {
+  std::vector<Suggestion> suggestions;
+  suggestions.reserve(loyalty_cards.size());
+  for (const LoyaltyCard& loyalty_card : loyalty_cards) {
+    suggestions.push_back(
+        CreateLoyaltyCardSuggestion(loyalty_card, valuables_manager));
+  }
+  return suggestions;
+}
+
+// Returns non loyalty cards suggestions which are displayed below loyalty cards
+// suggestions in the Autofill popup. If supported, add a suggestion for undoing
+// the last Autofill operation on `trigger_field`.
+std::vector<Suggestion> GetLoyaltyCardsFooterSuggestions(
+    const AutofillField& trigger_field) {
+  std::vector<Suggestion> footer_suggestions;
+  footer_suggestions.emplace_back(SuggestionType::kSeparator);
+  if (ShouldOfferUndoOnField(trigger_field)) {
+    footer_suggestions.push_back(CreateUndoSuggestion());
+  }
+  footer_suggestions.push_back(CreateManageLoyaltyCardsSuggestion());
+  return footer_suggestions;
+}
+
+}  // namespace
+
+std::vector<Suggestion> GetSuggestionsForLoyaltyCards(
+    const FormData& form,
+    const FormStructure* form_structure,
+    const FormFieldData& field,
+    const AutofillField* autofill_field,
+    const PasswordFormClassification& password_form_classification,
+    AutofillClient& client) {
+  if (!client.GetValuablesDataManager()) {
+    return {};
+  }
+  std::vector<Suggestion> suggestions;
+  LoyaltyCardSuggestionGenerator loyalty_card_suggestion_generator(
+      password_form_classification);
+
+  auto on_suggestions_generated =
+      [&suggestions](
+          SuggestionGenerator::ReturnedSuggestions returned_suggestions) {
+        suggestions = std::move(returned_suggestions.second);
+      };
+
+  // Since the `on_suggestions_generated` callback is called synchronously,
+  // we can assume that `suggestions` will hold the correct value.
+  loyalty_card_suggestion_generator.GenerateSuggestions(
+      form, field, form_structure, autofill_field, client,
+      on_suggestions_generated);
+  return suggestions;
+}
+
+std::vector<Suggestion> CreateLoyaltyCardSuggestionsForMerge(
+    const ValuablesDataManager& valuables_manager,
+    const GURL& url) {
+  std::vector<LoyaltyCard> all_loyalty_cards =
+      valuables_manager.GetLoyaltyCardsToSuggest();
+  if (all_loyalty_cards.empty()) {
+    return {};
+  }
+
+  std::vector<LoyaltyCard> affiliated_cards;
+  std::copy_if(all_loyalty_cards.begin(), all_loyalty_cards.end(),
+               std::back_inserter(affiliated_cards),
+               [&](const LoyaltyCard& card) {
+                 return card.GetAffiliationCategory(url) ==
+                        LoyaltyCard::AffiliationCategory::kAffiliated;
+               });
+  if (affiliated_cards.empty()) {
+    return {};
+  }
+
+#if BUILDFLAG(IS_ANDROID)
+  // No submenu on Android. Loyalty card suggestions are listed right after
+  // email suggestions.
+  std::vector<Suggestion> loyalty_card_suggestions =
+      CreateSuggestionsFromLoyaltyCards(affiliated_cards, valuables_manager);
+  return loyalty_card_suggestions;
+#else
+  Suggestion submenu_suggestion = Suggestion(
+      l10n_util::GetStringUTF16(IDS_AUTOFILL_LOYALTY_CARDS_SUBMENU_TITLE),
+      SuggestionType::kAllLoyaltyCardsEntry);
+  submenu_suggestion.acceptability =
+      Suggestion::Acceptability::kSelectableButUnacceptable;
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  submenu_suggestion.icon = Suggestion::Icon::kGoogleWalletMonochrome;
+#endif
+  submenu_suggestion.children =
+      CreateSuggestionsFromLoyaltyCards(affiliated_cards, valuables_manager);
+  submenu_suggestion.children.emplace_back(SuggestionType::kSeparator);
+  submenu_suggestion.children.emplace_back(
+      CreateManageLoyaltyCardsSuggestion());
+  return {submenu_suggestion};
+#endif
+}
+
+void MergeLoyaltyCardsAndAddressSuggestions(
+    std::vector<Suggestion>& email_suggestions,
+    std::vector<Suggestion> loyalty_card_suggestions) {
+  CHECK(!email_suggestions.empty());
+  if (loyalty_card_suggestions.empty()) {
+    return;
+  }
+#if BUILDFLAG(IS_ANDROID)
+  base::Extend(email_suggestions, std::move(loyalty_card_suggestions));
+  return;
+#else
+  // There is at least one email, separator and manage addresses suggestion.
+  CHECK_GE(email_suggestions.size(), 3u);
+
+  InsertBeforeFooter(email_suggestions, std::move(loyalty_card_suggestions));
+#endif  // BUILDFLAG(IS_ANDROID)
+}
+
+LoyaltyCardSuggestionGenerator::LoyaltyCardSuggestionGenerator(
+    const PasswordFormClassification& password_form_classification)
+    : password_form_classification_(password_form_classification) {}
+
+LoyaltyCardSuggestionGenerator::~LoyaltyCardSuggestionGenerator() = default;
+
+void LoyaltyCardSuggestionGenerator::GenerateSuggestions(
+    const FormData& form,
+    const FormFieldData& trigger_field,
+    const FormStructure* form_structure,
+    const AutofillField* trigger_autofill_field,
+    AutofillClient& client,
+    base::OnceCallback<void(ReturnedSuggestions)> callback) {
+  GenerateSuggestions(
+      form, trigger_field, form_structure, trigger_autofill_field, client,
+      [&callback](ReturnedSuggestions returned_suggestions) {
+        std::move(callback).Run(std::move(returned_suggestions));
+      });
+}
+
+void LoyaltyCardSuggestionGenerator::GenerateSuggestions(
+    const FormData& form,
+    const FormFieldData& trigger_field,
+    const FormStructure* form_structure,
+    const AutofillField* trigger_autofill_field,
+    AutofillClient& client,
+    base::FunctionRef<void(ReturnedSuggestions)> callback) {
+  if (client.IsAutofillTypeBlockedByPolicy(
+          client.GetLastCommittedPrimaryMainFrameURL(),
+          AutofillClient::AutofillPolicyDataCategory::kPayments)) {
+    callback({SuggestionDataSource::kLoyaltyCard, {}});
+    return;
+  }
+
+  if (!trigger_autofill_field || !client.GetValuablesDataManager() ||
+      trigger_autofill_field->Type().GetTypes().contains_none(
+          {LOYALTY_MEMBERSHIP_ID, EMAIL_OR_LOYALTY_MEMBERSHIP_ID})) {
+    callback({SuggestionDataSource::kLoyaltyCard, {}});
+    return;
+  }
+
+  if (SuppressSuggestionsForAutocompleteUnrecognizedField(
+          *trigger_autofill_field, GetAcUnrecognizedBehavior(client))) {
+    callback({SuggestionDataSource::kLoyaltyCard, {}});
+    return;
+  }
+
+  std::vector<LoyaltyCard> all_loyalty_cards =
+      client.GetValuablesDataManager()->GetLoyaltyCardsToSuggest();
+
+  if (all_loyalty_cards.empty()) {
+    callback({SuggestionDataSource::kLoyaltyCard, {}});
+    return;
+  }
+
+  auto non_affiliated_cards = std::ranges::stable_partition(
+      all_loyalty_cards, [&](const LoyaltyCard& card) {
+        return card.GetAffiliationCategory(
+                   client.GetLastCommittedPrimaryMainFrameURL()) ==
+                   LoyaltyCard::AffiliationCategory::kAffiliated &&
+               client.GetLastCommittedPrimaryMainFrameOrigin() ==
+                   trigger_field.origin();
+      });
+
+  base::span<const LoyaltyCard> affiliated_cards =
+      base::span(all_loyalty_cards)
+          .first(base::checked_cast<size_t>(std::distance(
+              all_loyalty_cards.begin(), non_affiliated_cards.begin())));
+
+  const bool autofill_non_affiliated_cards_enabled =
+      base::FeatureList::IsEnabled(
+          features::kAutofillEnableNonAffiliatedLoyaltyCardsFilling);
+
+  // Show suggestions only in case there is a card that matches current domain.
+  if (affiliated_cards.empty() && !autofill_non_affiliated_cards_enabled) {
+    callback({SuggestionDataSource::kLoyaltyCard, {}});
+    return;
+  }
+
+  // If only non-affiliated cards are available, make sure those are never shown
+  // on a password-related form.
+  if (affiliated_cards.empty() && autofill_non_affiliated_cards_enabled &&
+      password_form_classification_.type !=
+          PasswordFormClassification::Type::kNoPasswordForm) {
+    callback({SuggestionDataSource::kLoyaltyCard, {}});
+    return;
+  }
+
+  // If no submenu is needed.
+#if BUILDFLAG(IS_ANDROID)
+  if (affiliated_cards.empty() && autofill_non_affiliated_cards_enabled) {
+    Suggestion all_loyalty_cards_entry(
+        l10n_util::GetStringUTF16(
+            IDS_AUTOFILL_LOYALTY_CARDS_ALL_YOUR_CARDS_SUGGESTION),
+        SuggestionType::kAllLoyaltyCardsEntry);
+    callback({SuggestionDataSource::kLoyaltyCard,
+              {std::move(all_loyalty_cards_entry)}});
+    return;
+  }
+  const bool generate_flat_suggestions = true;
+#else
+  const bool generate_flat_suggestions = non_affiliated_cards.empty();
+#endif
+
+  if (generate_flat_suggestions) {
+    std::vector<Suggestion> suggestions = CreateSuggestionsFromLoyaltyCards(
+        affiliated_cards, *client.GetValuablesDataManager());
+    base::Extend(suggestions,
+                 GetLoyaltyCardsFooterSuggestions(*trigger_autofill_field));
+    callback({SuggestionDataSource::kLoyaltyCard, std::move(suggestions)});
+    return;
+  }
+
+  // Build suggestions with 'all loyalty cards' submenu.
+  std::vector<Suggestion> suggestions;
+
+  // Build affiliated cards suggestions section if affiliated cards exist.
+  if (!affiliated_cards.empty()) {
+    suggestions = CreateSuggestionsFromLoyaltyCards(
+        affiliated_cards, *client.GetValuablesDataManager());
+    suggestions.emplace_back(SuggestionType::kSeparator);
+  }
+
+  // Build 'all loyalty cards' submenu.
+  Suggestion& submenu_suggestion = suggestions.emplace_back(
+      l10n_util::GetStringUTF16(
+          IDS_AUTOFILL_LOYALTY_CARDS_ALL_YOUR_CARDS_SUBMENU_TITLE),
+      SuggestionType::kAllLoyaltyCardsEntry);
+  submenu_suggestion.acceptability =
+      Suggestion::Acceptability::kSelectableButUnacceptable;
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  submenu_suggestion.icon = Suggestion::Icon::kGoogleWalletMonochrome;
+#endif
+  submenu_suggestion.children = CreateSuggestionsFromLoyaltyCards(
+      client.GetValuablesDataManager()->GetLoyaltyCardsToSuggest(),
+      *client.GetValuablesDataManager());
+  base::Extend(suggestions,
+               GetLoyaltyCardsFooterSuggestions(*trigger_autofill_field));
+  callback({SuggestionDataSource::kLoyaltyCard, std::move(suggestions)});
+}
+
+}  // namespace autofill

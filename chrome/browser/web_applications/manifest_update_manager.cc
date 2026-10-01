@@ -1,0 +1,221 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/web_applications/manifest_update_manager.h"
+
+#include <optional>
+
+#include "base/containers/map_util.h"
+#include "base/memory/weak_ptr.h"
+#include "base/types/optional_util.h"
+#include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_metrics_helper.h"
+#include "chrome/browser/web_applications/scheduler/manifest_silent_update_result.h"
+#include "chrome/browser/web_applications/web_app_command_scheduler.h"
+#include "chrome/browser/web_applications/web_app_constants.h"
+#include "chrome/browser/web_applications/web_app_filter.h"
+#include "chrome/browser/web_applications/web_app_helpers.h"
+#include "chrome/browser/web_applications/web_app_management_type.h"
+#include "chrome/browser/web_applications/web_app_provider.h"
+#include "chrome/browser/web_applications/web_app_registrar.h"
+#include "chrome/browser/web_applications/web_app_tab_helper.h"
+#include "components/content_settings/core/common/content_settings_types.h"
+#include "components/keep_alive_registry/scoped_keep_alive.h"
+#include "components/page_load_metrics/browser/metrics_web_contents_observer.h"
+#include "components/webapps/browser/features.h"
+#include "content/public/browser/web_contents.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-shared.h"
+#include "url/origin.h"
+
+class Profile;
+
+namespace web_app {
+
+ManifestUpdateManager::ManifestUpdateManager() = default;
+
+ManifestUpdateManager::~ManifestUpdateManager() = default;
+
+void ManifestUpdateManager::SetProvider(base::PassKey<WebAppProvider>,
+                                        WebAppProvider& provider) {
+  provider_ = &provider;
+}
+
+void ManifestUpdateManager::Start() {
+  install_manager_observation_.Observe(&provider_->install_manager());
+  CHECK(!started_);
+  started_ = true;
+}
+
+void ManifestUpdateManager::Shutdown() {
+  install_manager_observation_.Reset();
+  started_ = false;
+}
+
+void ManifestUpdateManager::OnManifestSeenOnPrimaryPage(
+    content::WebContents& web_contents,
+    const blink::mojom::ManifestPtr& manifest,
+    base::PassKey<WebAppTabHelper>) {
+  // Developer-specified manifests should always have a valid manifest URL.
+  CHECK(manifest->manifest_url.is_valid());
+  if (!started_) {
+    return;
+  }
+
+
+  webapps::AppId app_id = GenerateAppIdFromManifest(*manifest);
+
+  if (provider_->registrar_unsafe().AppMatches(app_id,
+                                               WebAppFilter::IsIsolatedApp())) {
+    return;
+  }
+
+  if (provider_->registrar_unsafe().AppMatches(
+          app_id, WebAppFilter::IsIsolatedSubApp())) {
+    TriggerManifestUpdateProcess(web_contents, app_id);
+    return;
+  }
+
+  if (base::FeatureList::IsEnabled(blink::features::kWebAppMigrationApi)) {
+    if (!manifest->migrate_from.empty()) {
+      provider_->scheduler().ScheduleWebAppInstallFromMigrateFromField(
+          web_contents.GetWeakPtr(), manifest.Clone(), base::DoNothing());
+
+      WebAppTabHelper* tab_helper =
+          WebAppTabHelper::FromWebContents(&web_contents);
+      if (tab_helper && tab_helper->window_app_id().has_value()) {
+        const webapps::AppId& window_app_id = *tab_helper->window_app_id();
+        for (const auto& migrate_from : manifest->migrate_from) {
+          std::optional<webapps::ManifestId> migrate_from_manifest_id =
+              webapps::ManifestId::Create(migrate_from->id);
+          if (!migrate_from_manifest_id.has_value()) {
+            continue;
+          }
+          if (GenerateAppIdFromManifestId(*migrate_from_manifest_id) ==
+                  window_app_id &&
+              migrate_from->install_url.has_value()) {
+            std::optional<base::Time> previous_time_for_silent_icon_update =
+                base::OptionalFromPtr(base::FindOrNull(
+                    update_check_for_silent_updates_, window_app_id));
+            provider_->scheduler().FetchManifestAndUpdate(
+                *migrate_from->install_url, *migrate_from_manifest_id,
+                previous_time_for_silent_icon_update,
+                /*force_trusted_silent_update=*/false,
+                base::BindOnce(&ManifestUpdateManager::
+                                   OnMigrationFetchManifestAndUpdateComplete,
+                               weak_factory_.GetWeakPtr(), window_app_id));
+          }
+        }
+      }
+    }
+    if (manifest->migrate_to &&
+        provider_->registrar_unsafe().AppMatches(
+            GenerateAppIdFromManifest(*manifest),
+            WebAppFilter::CanAppInstallTargetMigrationApp())) {
+      std::optional<webapps::ManifestId> source_manifest_id =
+          webapps::ManifestId::Create(manifest->id);
+      std::optional<webapps::ManifestId> target_manifest_id =
+          webapps::ManifestId::Create(manifest->migrate_to->id);
+      CHECK(source_manifest_id.has_value() && target_manifest_id.has_value());
+      provider_->scheduler().ScheduleInstallMigrateToApp(
+          *source_manifest_id, *target_manifest_id,
+          manifest->migrate_to->install_url, base::DoNothing());
+    }
+  }
+
+  TriggerManifestUpdateProcess(web_contents, app_id);
+}
+
+void ManifestUpdateManager::TriggerManifestUpdateProcess(
+    content::WebContents& web_contents,
+    const webapps::AppId& app_id) {
+  std::optional<base::Time> previous_time_for_silent_icon_update =
+      base::OptionalFromPtr(
+          base::FindOrNull(update_check_for_silent_updates_, app_id));
+
+  provider_->scheduler().ScheduleManifestSilentUpdate(
+      web_contents, previous_time_for_silent_icon_update,
+      base::BindOnce(&ManifestUpdateManager::OnManifestSilentUpdateComplete,
+                     weak_factory_.GetWeakPtr(), web_contents.GetWeakPtr(),
+                     app_id));
+}
+
+void ManifestUpdateManager::OnManifestSilentUpdateComplete(
+    base::WeakPtr<content::WebContents> contents,
+    const webapps::AppId& app_id,
+    ManifestSilentUpdateCompletionInfo completion_info) {
+  const WebAppRegistrar& registrar = provider_->registrar_unsafe();
+  const WebApp* app = registrar.GetAppById(app_id);
+
+  if (app && app->parent_app_id()) {
+    IsolatedWebAppMetricsHelper::ReportSubAppSilentUpdateResult(
+        url::Origin::Create(registrar.GetAppStartUrl(*app->parent_app_id())),
+        completion_info.result);
+  }
+
+  bool any_update_occurred;
+  switch (completion_info.result) {
+    case ManifestSilentUpdateCheckResult::kAppUpdateFailedDuringInstall:
+    case ManifestSilentUpdateCheckResult::kSystemShutdown:
+    case ManifestSilentUpdateCheckResult::kAppUpToDate:
+    case ManifestSilentUpdateCheckResult::kIconReadFromDiskFailed:
+    case ManifestSilentUpdateCheckResult::kWebContentsWasDestroyed:
+    case ManifestSilentUpdateCheckResult::kPendingIconWriteToDiskFailed:
+    case ManifestSilentUpdateCheckResult::kInvalidManifest:
+    case ManifestSilentUpdateCheckResult::kInvalidPendingUpdateInfo:
+    case ManifestSilentUpdateCheckResult::kUserNavigated:
+    case ManifestSilentUpdateCheckResult::kManifestToWebAppInstallInfoError:
+    case ManifestSilentUpdateCheckResult::kAppNotAllowedToUpdate:
+      any_update_occurred = false;
+      break;
+    case ManifestSilentUpdateCheckResult::kAppOnlyHasSecurityUpdate:
+    case ManifestSilentUpdateCheckResult::kAppSilentlyUpdated:
+    case ManifestSilentUpdateCheckResult::kAppHasNonSecurityAndSecurityChanges:
+    case ManifestSilentUpdateCheckResult::kAppHasSecurityUpdateDueToThrottle:
+    case ManifestSilentUpdateCheckResult::
+        kAppSilentlyUpdatedDueToSmallIconComparison:
+      any_update_occurred = true;
+      break;
+  }
+
+  // If a manifest update happened successfully, record feature usage of
+  // applying a manifest.
+  if (any_update_occurred && contents) {
+    page_load_metrics::MetricsWebContentsObserver::RecordFeatureUsage(
+        contents->GetPrimaryMainFrame(),
+        blink::mojom::WebFeature::kWebAppManifestUpdate);
+  }
+
+  // Track time for throttling future silent icon updates if the current update
+  // triggered a silent icon update.
+  if (completion_info.time_for_icon_diff_check.has_value()) {
+    update_check_for_silent_updates_[app_id] =
+        *completion_info.time_for_icon_diff_check;
+  }
+}
+
+void ManifestUpdateManager::OnMigrationFetchManifestAndUpdateComplete(
+    const webapps::AppId& app_id,
+    FetchManifestAndUpdateCompletionInfo completion_info) {
+  if (completion_info.time_for_icon_diff_check.has_value()) {
+    update_check_for_silent_updates_[app_id] =
+        *completion_info.time_for_icon_diff_check;
+  }
+}
+
+// WebAppInstallManager:
+void ManifestUpdateManager::OnWebAppWillBeUninstalled(
+    const webapps::AppId& app_id) {
+  CHECK(started_);
+
+  // Clear any data necessary for throttling updates for the current web app.
+  update_check_for_silent_updates_.erase(app_id);
+}
+
+void ManifestUpdateManager::OnWebAppInstallManagerDestroyed() {
+  install_manager_observation_.Reset();
+}
+
+}  // namespace web_app

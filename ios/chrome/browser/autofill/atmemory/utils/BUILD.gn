@@ -1,0 +1,28 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("utils") {
+  sources = [
+    "atmemory_ui_util.h",
+    "atmemory_ui_util.mm",
+  ]
+  deps = [
+    "//components/autofill/core/browser",
+    "//ios/chrome/browser/autofill/atmemory/public",
+    "//ios/chrome/browser/autofill/atmemory/ui:item",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "atmemory_ui_util_unittest.mm" ]
+  deps = [
+    ":utils",
+    "//components/autofill/core/browser",
+    "//components/strings",
+    "//ios/chrome/browser/autofill/atmemory/ui:item",
+    "//testing/gtest",
+    "//ui/base",
+  ]
+}

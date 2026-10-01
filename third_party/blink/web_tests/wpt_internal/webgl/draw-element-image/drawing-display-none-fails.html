@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<title>Drawing an element with display:none should fail</title>
+<link rel="help" href="https://github.com/WICG/html-in-canvas">
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+
+<canvas id="canvas_3d" layoutsubtree width="100" height="100" style="background: green;">
+  <div id="canvas_3d_div" style="width: 100px; height: 100px; background: red;"></div>
+</canvas>
+
+<script>
+  promise_test(async function() {
+    canvas_3d_div.getBoundingClientRect();
+    canvas_3d_div.style.display = 'none';
+    await new Promise(requestAnimationFrame);
+    await new Promise(setTimeout);
+    const gl = canvas_3d.getContext('webgl2');
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    const internalformat = gl.RGBA8;
+    // Allocate texture backing
+    gl.texImage2D(gl.TEXTURE_2D, 0, internalformat, 100, 100, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    assert_throws_dom(
+      "InvalidStateError",
+        () => gl.texElementSubImage2D(
+            gl.TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, canvas_3d_div),
+      'texElementSubImage2D cannot draw display:none elements.');
+  }, 'texElementSubImage2D with display:none element');
+</script>

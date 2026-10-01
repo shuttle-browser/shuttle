@@ -1,0 +1,31 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "components/webauthn/ios/ios_passkey_client.h"
+
+namespace webauthn {
+
+IOSPasskeyClient::RequestInfo::RequestInfo(
+    std::string frame_id,
+    std::string request_id,
+    std::optional<autofill::RemoteFrameToken> remote_frame_token)
+    : frame_id(std::move(frame_id)),
+      request_id(std::move(request_id)),
+      remote_frame_token(std::move(remote_frame_token)) {}
+
+IOSPasskeyClient::RequestInfo::RequestInfo(const RequestInfo& other) = default;
+IOSPasskeyClient::RequestInfo& IOSPasskeyClient::RequestInfo::operator=(
+    const RequestInfo& other) = default;
+IOSPasskeyClient::RequestInfo::RequestInfo(
+    IOSPasskeyClient::RequestInfo&& other) = default;
+IOSPasskeyClient::RequestInfo& IOSPasskeyClient::RequestInfo::operator=(
+    RequestInfo&& other) = default;
+IOSPasskeyClient::RequestInfo::~RequestInfo() = default;
+
+bool IOSPasskeyClient::RequestInfo::operator==(const RequestInfo& other) const =
+    default;
+
+void IOSPasskeyClient::OnPasskeyCreated() {}
+
+}  // namespace webauthn

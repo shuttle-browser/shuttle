@@ -1,0 +1,251 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_DEFAULT_BROWSER_MODEL_UTILS_H_
+#define IOS_CHROME_BROWSER_DEFAULT_BROWSER_MODEL_UTILS_H_
+
+#import <UIKit/UIKit.h>
+
+#import "base/feature_list.h"
+
+namespace feature_engagement {
+class Tracker;
+}
+namespace base {
+class TimeDelta;
+}  // namespace base
+@protocol PictureInPictureCommands;
+
+enum class DefaultBrowserPromoOverflowMenuType;
+
+// Enum for the different types of default browser modal promo. These are stored
+// as values, if adding a new one, make sure to add it at the end.
+typedef NS_ENUM(NSUInteger, DefaultPromoType) {
+  DefaultPromoTypeGeneral = 0,
+  DefaultPromoTypeStaySafe = 1,
+  DefaultPromoTypeMadeForIOS = 2,
+  DefaultPromoTypeAllTabs = 3,
+};
+
+// Enum actions for default browser promo UMA metrics. Entries should not be
+// renumbered and numeric values should never be reused.
+enum class IOSDefaultBrowserPromoAction {
+  kActionButton = 0,
+  kCancel = 1,
+  kRemindMeLater = 2,
+  kDismiss = 3,
+  kMaxValue = kDismiss,
+};
+
+// Enum for the default browser promo UMA histograms. These values are persisted
+// to logs. Entries should not be renumbered and numeric values should never be
+// reused.
+enum class DefaultPromoTypeForUMA {
+  kGeneral = 0,
+  kMadeForIOS = 1,
+  kStaySafe = 2,
+  kAllTabs = 3,
+  kMaxValue = kAllTabs,
+};
+
+// Enum actions for the IOS.DefaultBrowserVideoPromo.(Fullscreen || Halfscreen)*
+// UMA metrics.
+enum class IOSDefaultBrowserVideoPromoAction {
+  kPrimaryActionTapped = 0,
+  kSecondaryActionTapped = 1,
+  kSwipeDown = 2,
+  kTertiaryActionTapped = 3,
+  kMaxValue = kTertiaryActionTapped,
+};
+
+// Enum actions for the IOS.DefaultBrowserPromo.OverflowMenu UMA metrics.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(IOSDefaultBrowserPromoOverflowMenuAction)
+enum class IOSDefaultBrowserPromoOverflowMenuAction {
+  kNoAction = 0,
+  kHidden = 1,
+  kTapped = 2,
+  kMaxValue = kTapped,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/ios/enums.xml:IOSDefaultBrowserPromoOverflowMenuAction)
+
+// Enum actions for the IOS.DefaultBrowserBannerPromo.PromoSessionEnded UMA
+// metrics.
+// LINT.IfChange(IOSDefaultBrowserBannerPromoPromoSessionEndedReason)
+enum class IOSDefaultBrowserBannerPromoPromoSessionEndedReason {
+  kImpressionsMet = 0,
+  kUserClosed = 1,
+  kUserTappedPromo = 2,
+  kNavigationToSRP = 3,
+  kNavigationToNTP = 4,
+  kChromeNowDefault = 5,
+  kMaxValue = kChromeNowDefault,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/ios/enums.xml:IOSDefaultBrowserBannerPromoPromoSessionEndedReason)
+
+// The reason why a non modal promo was triggered.
+enum class NonModalDefaultBrowserPromoReason {
+  // Indicates that no specific promo reason is applicable.
+  PromoReasonNone = 0,
+
+  // The promo reason used when a user pastes a URL in the omnibox.
+  PromoReasonOmniboxPaste = 1,
+
+  // The promo reason used when a user opens Chrome from a first-party app.
+  PromoReasonAppSwitcher = 2,
+
+  // The promo reason used when a user shares Chrome via the share feature.
+  PromoReasonShare = 3,
+};
+
+// Visible for testing
+
+// Key in storage containing an NSDate corresponding to the last time
+// an HTTP(S) link was sent and opened by the app.
+extern NSString* const kLastHTTPURLOpenTime;
+
+// Key in storage containing an NSDate indicating the last time a user
+// interacted with a non-modal promo.
+extern NSString* const kLastTimeUserInteractedWithNonModalPromo;
+
+// Key in storage containing an int indicating the number of times the
+// user has interacted with a non-modal promo.
+extern NSString* const kUserInteractedWithNonModalPromoCount;
+
+// Specifies how long blue dot occurrence should last.
+extern base::TimeDelta const kBlueDotPromoDuration;
+
+// Specifies how often blue dot should reoccur.
+extern base::TimeDelta const kBlueDotPromoReoccurrancePeriod;
+
+// Helper function to set `data` for `key` into the storage object.
+void SetObjectIntoStorageForKey(NSString* key, NSObject* data);
+
+// Logs the timestamp of opening an HTTP(S) link sent and opened by the app.
+void LogOpenHTTPURLFromExternalURL();
+
+// Logs to the FET that a default browser promo has been shown.
+void LogToFETDefaultBrowserPromoShown(feature_engagement::Tracker* tracker);
+
+// Returns whether blue dot display timestamp has already been set.
+bool HasDefaultBrowserBlueDotDisplayTimestamp();
+
+// Resets  blue dot display timestamp to its default value when needed.
+void ResetDefaultBrowserBlueDotDisplayTimestampIfNeeded();
+
+// Set the current timestamp as blue dot first display timestamp if this was the
+// first instance.
+void RecordDefaultBrowserBlueDotFirstDisplay();
+
+// Returns true if the default browser blue dot should be shown.
+bool ShouldTriggerDefaultBrowserHighlightFeature(
+    feature_engagement::Tracker* tracker);
+
+// Returns true if the default browser promo should be shown in the
+// overflow menu. Uses FET and tracks active menus using `UserData` in a
+// multi-window environment.
+bool ShouldShowDefaultBrowserPromoOverflowMenu(
+    DefaultBrowserPromoOverflowMenuType type,
+    feature_engagement::Tracker* tracker);
+
+// Dismisses the default browser promo overflow menu FET feature and cleans up
+// active tracking data across windows if no active menus remain.
+void DismissDefaultBrowserPromoOverflowMenu(
+    feature_engagement::Tracker* tracker);
+
+// Returns the number of times the user has seen and interacted with the
+// non-modal promo before.
+NSInteger UserInteractionWithNonModalPromoCount();
+
+// Logs that the user has interacted with a non-modal promo. The expected
+// parameter value is the current count, because it will be incremented by 1 and
+// then saved to NSUserDefaults.
+void LogUserInteractionWithNonModalPromo(
+    NSInteger currentNonModalPromoInteractionsCount);
+
+// Returns true if the last URL open is within the specified number of `days`
+// which would indicate Chrome is likely still the default browser. Returns
+// false otherwise.
+bool IsChromeLikelyDefaultBrowserXDays(int days);
+
+// Returns true if the last URL open is within the time threshold that would
+// indicate Chrome is likely still the default browser. Returns false otherwise.
+bool IsChromeLikelyDefaultBrowser();
+
+// Do not use. Only for backward compatibility
+// Returns true if the last URL open is within 7 days. Returns false otherwise.
+bool IsChromeLikelyDefaultBrowser7Days();
+
+// Returns true if Chrome was likely the default browser in the last
+// `likelyDefaultInterval` days but not in the last `likelyNotDefaultInterval`
+// days.
+bool IsChromePotentiallyNoLongerDefaultBrowser(int likelyDefaultInterval,
+                                               int likelyNotDefaultInterval);
+
+// List of all key used to store data in NSUserDefaults. Still used as key
+// in the NSDictionary stored under `kBrowserDefaultsKey`.
+const NSArray<NSString*>* DefaultBrowserUtilsLegacyKeysForTesting();
+
+// Returns true if it was determined that the user is eligible for the
+// post restore default browser promo.
+bool IsPostRestoreDefaultBrowserEligibleUser();
+
+// Log given default browser promo action to the UMA histogram coorespnding to
+// the given promo type.
+void LogDefaultBrowserPromoHistogramForAction(
+    DefaultPromoType type,
+    IOSDefaultBrowserPromoAction action);
+
+// Returns the feature associated with a given promo reason.
+//
+// The promo reason (`promo_reason`) represents the event or condition
+// that triggered a non-modal default browser promotion. This function
+// maps the promo reason to its corresponding feature.
+//
+const base::Feature& GetFeatureForPromoReason(
+    NonModalDefaultBrowserPromoReason promo_reason);
+
+// Returns the feature engagement event name associated with a given promo
+// reason.
+//
+// The promo reason (`promo_reason`) represents the event or condition
+// that triggered a non-modal default browser promotion. This function
+// maps the promo reason to its corresponding feature engagement event name.
+//
+const std::string GetFeatureEventNameForPromoReason(
+    NonModalDefaultBrowserPromoReason promo_reason);
+
+// Migration to FET.
+
+// Records the last action the user took when a Default Browser Promo was
+// presented.
+void RecordDefaultBrowserPromoLastAction(IOSDefaultBrowserPromoAction action);
+
+// Log to UserDefaults non-modal promo migration done.
+void LogNonModalPromoMigrationDone();
+
+// Returns whether the non-modal promo migration is done.
+bool IsNonModalPromoMigrationDone();
+
+// Gets the date when the user last interacted with the non-modal promo.
+NSDate* LastTimeUserInteractedWithNonModalPromo();
+
+// Returns the last action, if any, that the user took when a Default Browser
+// Promo was presented.
+std::optional<IOSDefaultBrowserPromoAction> DefaultBrowserPromoLastAction();
+
+// Opens the appropriate iOS settings to set Chromium as default browser. If
+// the relevant feature flags are enabled or if
+// `force_default_apps_if_available` is set to true, the new Default Apps page
+// will be used as the destination if the device supports it. Otherwise, the
+// Chromium settings will be used. The second parameter is to facilitate mocking
+// in unit testing. The third parameter is to trigger the Picture-in-Picture
+// promo if enabled.
+void OpenIOSDefaultBrowserSettingsPage(
+    bool force_default_apps_if_available = false,
+    UIApplication* ui_application_to_use = nil,
+    id<PictureInPictureCommands> pip_handler = nil);
+
+#endif  // IOS_CHROME_BROWSER_DEFAULT_BROWSER_MODEL_UTILS_H_

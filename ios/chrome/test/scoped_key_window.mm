@@ -1,0 +1,41 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/test/scoped_key_window.h"
+
+#import "base/check_op.h"
+#import "base/ios/ios_util.h"
+#import "ios/chrome/browser/shared/ui/chrome_overlay_window/chrome_overlay_window.h"
+#import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
+#import "ios/chrome/test/app/uikit_test_util.h"
+
+ScopedKeyWindow::ScopedKeyWindow() {
+  NSSet<UIScene*>* scenes =
+      ([[UIApplication sharedApplication] connectedScenes]);
+  // Only one scene is supported in unittests at the moment.
+  DCHECK_EQ([scenes count], 1u);
+
+  scene_ = chrome_test_util::GetAnyWindowScene();
+  original_key_window_ = scene_.keyWindow;
+  DCHECK(original_key_window_);
+
+  current_key_window_ =
+      [[ChromeOverlayWindow alloc] initWithWindowScene:scene_];
+  DCHECK(current_key_window_);
+
+  current_key_window_.rootViewController = [[UIViewController alloc] init];
+  [current_key_window_ makeKeyAndVisible];
+}
+
+ScopedKeyWindow::~ScopedKeyWindow() {
+  [original_key_window_ makeKeyAndVisible];
+}
+
+UIWindow* ScopedKeyWindow::Get() {
+  return current_key_window_;
+}
+
+UIWindowScene* ScopedKeyWindow::GetScene() {
+  return scene_;
+}

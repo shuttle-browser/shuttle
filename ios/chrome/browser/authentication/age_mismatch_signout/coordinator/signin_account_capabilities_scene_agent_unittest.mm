@@ -1,0 +1,407 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/authentication/age_mismatch_signout/coordinator/signin_account_capabilities_scene_agent.h"
+
+#import "base/functional/callback_helpers.h"
+#import "base/memory/raw_ptr.h"
+#import "base/run_loop.h"
+#import "base/strings/sys_string_conversions.h"
+#import "base/test/ios/wait_util.h"
+#import "base/test/metrics/histogram_tester.h"
+#import "base/test/scoped_feature_list.h"
+#import "components/prefs/pref_service.h"
+#import "components/signin/internal/identity_manager/account_capabilities_constants.h"
+#import "components/signin/public/base/signin_metrics.h"
+#import "components/signin/public/base/signin_switches.h"
+#import "components/signin/public/identity_manager/account_capabilities.h"
+#import "components/signin/public/identity_manager/account_capabilities_test_mutator.h"
+#import "components/signin/public/identity_manager/identity_test_utils.h"
+#import "components/signin/public/identity_manager/objc/identity_manager_observer_bridge.h"
+#import "ios/chrome/app/application_delegate/app_state.h"
+#import "ios/chrome/app/profile/profile_state.h"
+#import "ios/chrome/app/profile/profile_state_test_utils.h"
+#import "ios/chrome/browser/authentication/age_mismatch_signout/coordinator/age_mismatch_signout_coordinator.h"
+#import "ios/chrome/browser/scoped_ui_blocker/ui_bundled/ui_blocker_manager.h"
+#import "ios/chrome/browser/scoped_ui_blocker/ui_bundled/ui_blocker_target.h"
+#import "ios/chrome/browser/shared/coordinator/layout_guide/layout_guide_scene_agent.h"
+#import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
+#import "ios/chrome/browser/shared/coordinator/scene/scene_ui_provider.h"
+#import "ios/chrome/browser/shared/coordinator/scene/test/fake_scene_state.h"
+#import "ios/chrome/browser/shared/model/application_context/application_context.h"
+#import "ios/chrome/browser/shared/model/browser/browser.h"
+#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
+#import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
+#import "ios/chrome/browser/shared/model/prefs/pref_names.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_manager_ios.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/shared/public/commands/show_signin_command.h"
+#import "ios/chrome/browser/signin/model/account_capabilities_fetcher_ios.h"
+#import "ios/chrome/browser/signin/model/authentication_service_factory.h"
+#import "ios/chrome/browser/signin/model/authentication_service_observer_bridge.h"
+#import "ios/chrome/browser/signin/model/chrome_account_manager_service_factory.h"
+#import "ios/chrome/browser/signin/model/fake_authentication_service_delegate.h"
+#import "ios/chrome/browser/signin/model/fake_system_identity.h"
+#import "ios/chrome/browser/signin/model/fake_system_identity_manager.h"
+#import "ios/chrome/browser/signin/model/identity_manager_factory.h"
+#import "ios/chrome/browser/signin/model/identity_test_environment_browser_state_adaptor.h"
+#import "ios/chrome/browser/signin/model/system_identity.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
+#import "ios/chrome/test/testing_application_context.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "testing/gmock/include/gmock/gmock.h"
+#import "testing/platform_test.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+#import "third_party/ocmock/gtest_support.h"
+
+@interface SigninAccountCapabilitiesSceneAgent (Testing)
+- (void)ageMismatchSignOutDoneFromIdentity:(id<SystemIdentity>)identity;
+@end
+
+class SigninAccountCapabilitiesSceneAgentTest : public PlatformTest {
+ public:
+  SigninAccountCapabilitiesSceneAgentTest() : PlatformTest() {
+    feature_list_.InitAndEnableFeature(
+        switches::kEnforceCanSignInToChromeCapability);
+
+    fake_system_identity_manager_ =
+        FakeSystemIdentityManager::FromSystemIdentityManager(
+            GetApplicationContext()->GetSystemIdentityManager());
+
+    TestProfileIOS::Builder builder;
+    builder.AddTestingFactory(
+        AuthenticationServiceFactory::GetInstance(),
+        AuthenticationServiceFactory::GetFactoryWithDelegateForTesting(
+            std::make_unique<FakeAuthenticationServiceDelegate>()));
+    builder.AddTestingFactory(SyncServiceFactory::GetInstance(),
+                              SyncServiceFactory::GetDefaultFactory());
+    builder.AddTestingFactory(
+        IdentityManagerFactory::GetInstance(),
+        base::BindRepeating(IdentityTestEnvironmentBrowserStateAdaptor::
+                                BuildIdentityManagerForTests));
+    profile_ = profile_manager_.AddProfileWithBuilder(std::move(builder));
+
+    app_state_ = OCMClassMock([AppState class]);
+
+    scene_state_ = [[FakeSceneState alloc] initWithProfile:profile_.get()];
+    LayoutGuideSceneAgent* layout_guide_scene_agent =
+        [[LayoutGuideSceneAgent alloc] init];
+    [scene_state_ addAgent:layout_guide_scene_agent];
+
+    scene_ui_provider_ = OCMProtocolMock(@protocol(SceneUIProvider));
+
+    profile_state_ = [[ProfileState alloc] initWithAppState:app_state_];
+    profile_state_.profile = profile_.get();
+    SetProfileStateInitStage(profile_state_, ProfileInitStage::kFinal);
+    scene_state_.profileState = profile_state_;
+
+    agent_ = [[SigninAccountCapabilitiesSceneAgent alloc]
+        initWithSceneUIProvider:scene_ui_provider_];
+    agent_.sceneState = scene_state_;
+  }
+
+  ~SigninAccountCapabilitiesSceneAgentTest() override {
+    @autoreleasepool {
+      [agent_ sceneStateDidDisableUI:scene_state_];
+      [scene_state_ shutdown];
+      scene_state_ = nil;
+      profile_state_ = nil;
+    }
+  }
+
+  void AddIdentity(FakeSystemIdentity* identity) {
+    fake_system_identity_manager_->AddIdentity(identity);
+    signin::IdentityManager* identity_manager =
+        IdentityManagerFactory::GetForProfile(profile_.get());
+    auto options =
+        signin::AccountAvailabilityOptionsBuilder().WithGaiaId(identity.gaiaId);
+    signin::MakeAccountAvailable(
+        identity_manager,
+        options.Build(base::SysNSStringToUTF8(identity.userEmail)));
+  }
+
+  void SetPrimaryIdentity(FakeSystemIdentity* identity) {
+    signin::IdentityManager* identity_manager =
+        IdentityManagerFactory::GetForProfile(profile_.get());
+    signin::MakePrimaryAccountAvailable(
+        identity_manager, base::SysNSStringToUTF8(identity.userEmail),
+        signin::ConsentLevel::kSignin);
+  }
+
+  void RemoveIdentity(FakeSystemIdentity* identity) {
+    fake_system_identity_manager_->ForgetIdentityFromOtherApplication(identity);
+    signin::IdentityManager* identity_manager =
+        IdentityManagerFactory::GetForProfile(profile_.get());
+    signin::RemoveRefreshTokenForAccount(
+        identity_manager, identity_manager
+                              ->FindExtendedAccountInfoByEmailAddress(
+                                  base::SysNSStringToUTF8(identity.userEmail))
+                              .GetAccountId());
+  }
+
+  void FetchCapabilities(FakeSystemIdentity* identity) {
+    signin::IdentityManager* identity_manager =
+        IdentityManagerFactory::GetForProfile(profile_.get());
+    AccountInfo account =
+        identity_manager->FindExtendedAccountInfoByEmailAddress(
+            base::SysNSStringToUTF8(identity.userEmail));
+    ChromeAccountManagerService* account_manager_service =
+        ChromeAccountManagerServiceFactory::GetForProfile(profile_.get());
+
+    base::RunLoop run_loop;
+    ios::AccountCapabilitiesFetcherIOS fetcher(
+        account, AccountCapabilitiesFetcher::FetchPriority::kForeground,
+        account_manager_service,
+        base::BindRepeating(^(const CoreAccountId& account_id,
+                              const AccountCapabilities& capabilities) {
+          AccountInfo::Builder builder(account);
+          builder.UpdateAccountCapabilitiesWith(capabilities);
+          signin::UpdateAccountInfoForAccount(identity_manager,
+                                              builder.Build());
+        }),
+        base::IgnoreArgs<const CoreAccountId&>(run_loop.QuitClosure()));
+
+    fetcher.Start();
+    run_loop.Run();
+  }
+
+  Browser* browser() {
+    return scene_state_.browserProviderInterface.currentBrowserProvider.browser;
+  }
+
+ protected:
+  web::WebTaskEnvironment task_environment_{
+      web::WebTaskEnvironment::MainThreadType::IO};
+  base::test::ScopedFeatureList feature_list_;
+  IOSChromeScopedTestingLocalState scoped_testing_local_state_;
+  TestProfileManagerIOS profile_manager_;
+  raw_ptr<TestProfileIOS> profile_;
+  id<SceneUIProvider> scene_ui_provider_;
+  ProfileState* profile_state_;
+  AppState* app_state_;
+  FakeSceneState* scene_state_;
+  SigninAccountCapabilitiesSceneAgent* agent_;
+  raw_ptr<FakeSystemIdentityManager> fake_system_identity_manager_;
+};
+
+// Tests that the agent handles the sign-in request from the coordinator.
+TEST_F(SigninAccountCapabilitiesSceneAgentTest, TestWantsToSignIn) {
+  // Mock the SceneCommands handler.
+  id<SceneCommands> scene_commands_mock =
+      OCMProtocolMock(@protocol(SceneCommands));
+  [browser()->GetCommandDispatcher()
+      startDispatchingToTarget:scene_commands_mock
+                   forProtocol:@protocol(SceneCommands)];
+
+  // Create a mock coordinator.
+  id coordinator_mock = OCMClassMock([AgeMismatchSignoutCoordinator class]);
+  [agent_ setValue:coordinator_mock forKey:@"ageMismatchSignoutCoordinator"];
+
+  // Expect the sign-in command to be shown.
+  OCMExpect([scene_commands_mock
+              showSignin:[OCMArg checkWithBlock:^BOOL(
+                                     ShowSigninCommand* command) {
+                return command.accessPoint ==
+                       signin_metrics::AccessPoint::kAgeMismatchSignout;
+              }]
+      baseViewController:[OCMArg any]]);
+
+  // Call the delegate method.
+  id<AgeMismatchSignoutCoordinatorDelegate> delegate =
+      (id<AgeMismatchSignoutCoordinatorDelegate>)agent_;
+  [delegate ageMismatchSignoutCoordinatorUserWantsToUseAnotherAccount:
+                coordinator_mock];
+
+  base::RunLoop run_loop;
+  task_environment_.GetMainThreadTaskRunner()->PostTask(FROM_HERE,
+                                                        run_loop.QuitClosure());
+  run_loop.Run();
+
+  // Clean up.
+  [agent_ setValue:nil forKey:@"ageMismatchSignoutCoordinator"];
+
+  // Verify that the sign-in command was shown.
+  EXPECT_OCMOCK_VERIFY((id)scene_commands_mock);
+  EXPECT_OCMOCK_VERIFY(coordinator_mock);
+}
+
+// Tests that the agent signs out the account if the `CanSignInToChrome`
+// capability is explicitly set to false.
+TEST_F(SigninAccountCapabilitiesSceneAgentTest,
+       TestSignoutOnCanSignInToChromeCapabilityFalse) {
+  base::HistogramTester histogram_tester;
+
+  FakeSystemIdentity* identity = [FakeSystemIdentity fakeIdentity1];
+  AddIdentity(identity);
+  SetPrimaryIdentity(identity);
+
+  scene_state_.activationLevel = SceneActivationLevelForegroundActive;
+
+  AccountCapabilitiesTestMutator* mutator =
+      fake_system_identity_manager_->GetPendingCapabilitiesMutator(identity);
+  mutator->set_can_sign_in_to_chrome(false);
+  FetchCapabilities(identity);
+
+  base::HistogramTester* histogram_tester_ptr = &histogram_tester;
+  EXPECT_TRUE(base::test::ios::WaitUntilConditionOrTimeout(
+      base::test::ios::kWaitForActionTimeout, true, ^bool {
+        return histogram_tester_ptr->GetBucketCount(
+                   "Signin.SignoutProfile",
+                   signin_metrics::ProfileSignout::
+                       kSignoutFromCanSignInToChromeCapability) == 1;
+      }));
+
+  AuthenticationService* authentication_service =
+      AuthenticationServiceFactory::GetForProfile(profile_.get());
+  EXPECT_FALSE(authentication_service->HasPrimaryIdentity());
+
+  // Wait for the sign-out completion block to finish.
+  base::RunLoop run_loop;
+  task_environment_.GetMainThreadTaskRunner()->PostTask(FROM_HERE,
+                                                        run_loop.QuitClosure());
+  run_loop.Run();
+}
+
+// Tests that the agent signs out the account if the `CanSignInToChrome`
+// capability is already false when the primary account is set.
+TEST_F(SigninAccountCapabilitiesSceneAgentTest,
+       TestSignoutOnPrimaryAccountChangedWithCapabilityFalse) {
+  base::HistogramTester histogram_tester;
+
+  FakeSystemIdentity* identity = [FakeSystemIdentity fakeIdentity1];
+  AddIdentity(identity);
+
+  // Set capability to false before setting as primary.
+  AccountCapabilitiesTestMutator* mutator =
+      fake_system_identity_manager_->GetPendingCapabilitiesMutator(identity);
+  mutator->set_can_sign_in_to_chrome(false);
+  FetchCapabilities(identity);
+
+  scene_state_.activationLevel = SceneActivationLevelForegroundActive;
+
+  // Setting primary account should trigger onPrimaryAccountChanged.
+  SetPrimaryIdentity(identity);
+
+  base::HistogramTester* histogram_tester_ptr = &histogram_tester;
+  EXPECT_TRUE(base::test::ios::WaitUntilConditionOrTimeout(
+      base::test::ios::kWaitForActionTimeout, true, ^bool {
+        return histogram_tester_ptr->GetBucketCount(
+                   "Signin.SignoutProfile",
+                   signin_metrics::ProfileSignout::
+                       kSignoutFromCanSignInToChromeCapability) == 1;
+      }));
+
+  AuthenticationService* authentication_service =
+      AuthenticationServiceFactory::GetForProfile(profile_.get());
+  EXPECT_FALSE(authentication_service->HasPrimaryIdentity());
+
+  // Wait for the sign-out completion block to finish.
+  base::RunLoop run_loop;
+  task_environment_.GetMainThreadTaskRunner()->PostTask(FROM_HERE,
+                                                        run_loop.QuitClosure());
+  run_loop.Run();
+}
+
+// Tests that isSignoutInProgress returns YES during sign-out and while the
+// coordinator is running.
+TEST_F(SigninAccountCapabilitiesSceneAgentTest, TestIsSignoutInProgress) {
+  EXPECT_FALSE(agent_.isSignoutInProgress);
+
+  // Set sign-out in progress.
+  [agent_ setValue:@YES forKey:@"isAgeMismatchSignoutInProgress"];
+  EXPECT_TRUE(agent_.isSignoutInProgress);
+
+  // Set coordinator running.
+  id coordinator_mock = OCMClassMock([AgeMismatchSignoutCoordinator class]);
+  [agent_ setValue:coordinator_mock forKey:@"ageMismatchSignoutCoordinator"];
+  [agent_ setValue:@NO forKey:@"isAgeMismatchSignoutInProgress"];
+  EXPECT_TRUE(agent_.isSignoutInProgress);
+
+  // Set both.
+  [agent_ setValue:@YES forKey:@"isAgeMismatchSignoutInProgress"];
+  EXPECT_TRUE(agent_.isSignoutInProgress);
+
+  // Clean up.
+  [agent_ setValue:@NO forKey:@"isAgeMismatchSignoutInProgress"];
+  [agent_ setValue:nil forKey:@"ageMismatchSignoutCoordinator"];
+  EXPECT_FALSE(agent_.isSignoutInProgress);
+}
+
+// Tests that the agent records the duration from an age mismatch signout
+// to when a proper account is signed in.
+TEST_F(SigninAccountCapabilitiesSceneAgentTest,
+       AgeMismatchSignoutToProperSigninDurationRecording) {
+  base::HistogramTester histogram_tester;
+
+  PrefService* localState = GetApplicationContext()->GetLocalState();
+  EXPECT_TRUE(
+      localState->GetTime(prefs::kAgeMismatchSignoutTimestamp).is_null());
+
+  id coordinator_mock = OCMClassMock([AgeMismatchSignoutCoordinator class]);
+  OCMStub([(AgeMismatchSignoutCoordinator*)coordinator_mock start]);
+
+  [agent_
+      ageMismatchSignOutDoneFromIdentity:[FakeSystemIdentity fakeIdentity1]];
+
+  base::Time signoutTime =
+      localState->GetTime(prefs::kAgeMismatchSignoutTimestamp);
+  EXPECT_FALSE(signoutTime.is_null());
+
+  [agent_ setValue:nil forKey:@"ageMismatchSignoutCoordinator"];
+
+  base::Time pastTime = signoutTime - base::Hours(2);
+  localState->SetTime(prefs::kAgeMismatchSignoutTimestamp, pastTime);
+
+  FakeSystemIdentity* properIdentity = [FakeSystemIdentity fakeIdentity2];
+  AddIdentity(properIdentity);
+  SetPrimaryIdentity(properIdentity);
+
+  AccountCapabilitiesTestMutator* mutator =
+      fake_system_identity_manager_->GetPendingCapabilitiesMutator(
+          properIdentity);
+  mutator->set_can_sign_in_to_chrome(true);
+  FetchCapabilities(properIdentity);
+
+  base::HistogramTester* histogram_tester_ptr = &histogram_tester;
+  EXPECT_TRUE(base::test::ios::WaitUntilConditionOrTimeout(
+      base::test::ios::kWaitForActionTimeout, true, ^bool {
+        return histogram_tester_ptr
+                   ->GetAllSamples(
+                       "Signin.AgeMismatchSignout.TimeToProperSignin")
+                   .size() == 1;
+      }));
+
+  histogram_tester.ExpectTotalCount(
+      "Signin.AgeMismatchSignout.TimeToProperSignin", 1);
+
+  EXPECT_TRUE(
+      localState->GetTime(prefs::kAgeMismatchSignoutTimestamp).is_null());
+}
+
+// Tests that a standard sign-out does not set the pref.
+TEST_F(SigninAccountCapabilitiesSceneAgentTest, StandardSignoutDoesNotSetPref) {
+  FakeSystemIdentity* identity = [FakeSystemIdentity fakeIdentity1];
+  AddIdentity(identity);
+  SetPrimaryIdentity(identity);
+
+  PrefService* localState = GetApplicationContext()->GetLocalState();
+  EXPECT_TRUE(
+      localState->GetTime(prefs::kAgeMismatchSignoutTimestamp).is_null());
+
+  AuthenticationService* authentication_service =
+      AuthenticationServiceFactory::GetForProfile(profile_.get());
+  authentication_service->SignOut(
+      signin_metrics::ProfileSignout::kUserClickedSignoutSettings, nil);
+
+  base::RunLoop run_loop;
+  task_environment_.GetMainThreadTaskRunner()->PostTask(FROM_HERE,
+                                                        run_loop.QuitClosure());
+  run_loop.Run();
+
+  EXPECT_TRUE(
+      localState->GetTime(prefs::kAgeMismatchSignoutTimestamp).is_null());
+}

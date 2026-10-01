@@ -1,0 +1,1091 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.net.impl;
+
+import static android.os.Process.THREAD_PRIORITY_DEFAULT;
+
+import static com.google.common.truth.Truth.assertThat;
+
+import static org.chromium.net.CronetEngine.Builder.HTTP_CACHE_DISK_NO_HTTP;
+import static org.chromium.net.truth.UrlResponseInfoSubject.assertThat;
+
+import android.content.Context;
+import android.os.Build;
+
+import androidx.test.filters.SmallTest;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.junit.After;
+import org.junit.Assume;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.RuleChain;
+import org.junit.runner.RunWith;
+import org.junit.runners.JUnit4;
+
+import org.chromium.base.test.util.DoNotBatch;
+import org.chromium.build.BuildConfig;
+import org.chromium.net.ConnectionCloseSource;
+import org.chromium.net.CronetEngine;
+import org.chromium.net.CronetLoggerTestRule;
+import org.chromium.net.CronetTestFramework.CronetImplementation;
+import org.chromium.net.CronetTestRule;
+import org.chromium.net.CronetTestRule.Flags;
+import org.chromium.net.CronetTestRule.IgnoreFor;
+import org.chromium.net.CronetTestRule.RequiresMinAndroidApi;
+import org.chromium.net.CronetTestRule.StringFlag;
+import org.chromium.net.ExperimentalCronetEngine;
+import org.chromium.net.Http2TestServer;
+import org.chromium.net.NativeTestServer;
+import org.chromium.net.TestBidirectionalStreamCallback;
+import org.chromium.net.TestUploadDataProvider;
+import org.chromium.net.TestUrlRequestCallback;
+import org.chromium.net.UrlRequest;
+import org.chromium.net.impl.CronetEngineBuilderImpl.HttpCacheMode;
+import org.chromium.net.impl.CronetLogger.CronetEngineBuilderInfo;
+import org.chromium.net.impl.CronetLogger.CronetSource;
+import org.chromium.net.impl.CronetLogger.CronetTrafficInfo;
+import org.chromium.net.impl.CronetLogger.CronetVersion;
+import org.chromium.net.test.ServerCertificate;
+
+import java.time.Duration;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Map.Entry;
+
+/** Test logging functionalities. */
+@DoNotBatch(reason = "Some logging is done from one-time static initialization")
+@RunWith(JUnit4.class)
+@RequiresMinAndroidApi(Build.VERSION_CODES.O)
+@IgnoreFor(
+        implementations = {CronetImplementation.FALLBACK, CronetImplementation.AOSP_PLATFORM},
+        reason = "CronetLoggerTestRule is supported only by the native implementation.")
+public final class CronetLoggerTest {
+    private final CronetTestRule mTestRule = CronetTestRule.withManualEngineStartup();
+    private final CronetLoggerTestRule<TestLogger> mLoggerTestRule =
+            new CronetLoggerTestRule<>(TestLogger.class);
+
+    @Rule public final RuleChain chain = RuleChain.outerRule(mTestRule).around(mLoggerTestRule);
+
+    private TestLogger mTestLogger;
+    private Context mContext;
+    private NativeTestServer mNativeTestServer;
+
+    @Before
+    public void setUp() {
+        mContext = mTestRule.getTestFramework().getContext();
+        mTestLogger = mLoggerTestRule.mTestLogger;
+        mNativeTestServer =
+                NativeTestServer.createNativeTestServerWithHTTPS(
+                        mContext, ServerCertificate.CERT_OK);
+        mNativeTestServer.start();
+    }
+
+    @After
+    public void tearDown() {
+        mTestLogger = null;
+        mNativeTestServer.close();
+    }
+
+    @Test
+    @SmallTest
+    public void testCronetEngineInfoCreation() {
+        CronetEngineBuilderImpl builder = new NativeCronetEngineBuilderImpl(mContext);
+        CronetEngineBuilderInfo builderInfo = builder.toLoggerInfo();
+        assertThat(builderInfo.isPublicKeyPinningBypassForLocalTrustAnchorsEnabled())
+                .isEqualTo(builder.publicKeyPinningBypassForLocalTrustAnchorsEnabled());
+        assertThat(builderInfo.getUserAgent()).isEqualTo(builder.getUserAgent());
+        assertThat(builderInfo.getStoragePath()).isEqualTo(builder.storagePath());
+        assertThat(builderInfo.isQuicEnabled()).isEqualTo(builder.quicEnabled());
+        assertThat(builderInfo.isHttp2Enabled()).isEqualTo(builder.http2Enabled());
+        assertThat(builderInfo.isBrotliEnabled()).isEqualTo(builder.brotliEnabled());
+        assertThat(builderInfo.getHttpCacheMode()).isEqualTo(builder.publicBuilderHttpCacheMode());
+        assertThat(builderInfo.getExperimentalOptions()).isEqualTo(builder.experimentalOptions());
+        assertThat(builderInfo.isNetworkQualityEstimatorEnabled())
+                .isEqualTo(builder.networkQualityEstimatorEnabled());
+        assertThat(builderInfo.getThreadPriority())
+                .isEqualTo(CronetEngineBuilderImpl.NETWORK_THREAD_PRIORITY);
+    }
+
+    @Test
+    @SmallTest
+    public void testCronetVersionCreation() {
+        final int major = 100;
+        final int minor = 0;
+        final int build = 1;
+        final int patch = 33;
+        final String version = String.format(Locale.US, "%d.%d.%d.%d", major, minor, build, patch);
+        final CronetVersion parsedVersion = new CronetVersion(version);
+        assertThat(parsedVersion.getMajorVersion()).isEqualTo(major);
+        assertThat(parsedVersion.getMinorVersion()).isEqualTo(minor);
+        assertThat(parsedVersion.getBuildVersion()).isEqualTo(build);
+        assertThat(parsedVersion.getPatchVersion()).isEqualTo(patch);
+    }
+
+    @Test
+    @SmallTest
+    public void testHttpCacheModeEnum() {
+        final int[] publicBuilderHttpCacheModes = {
+            CronetEngine.Builder.HTTP_CACHE_DISABLED,
+            CronetEngine.Builder.HTTP_CACHE_IN_MEMORY,
+            CronetEngine.Builder.HTTP_CACHE_DISK_NO_HTTP,
+            CronetEngine.Builder.HTTP_CACHE_DISK
+        };
+        for (int publicBuilderHttpCacheMode : publicBuilderHttpCacheModes) {
+            HttpCacheMode cacheModeEnum =
+                    HttpCacheMode.fromPublicBuilderCacheMode(publicBuilderHttpCacheMode);
+            assertThat(cacheModeEnum.toPublicBuilderCacheMode())
+                    .isEqualTo(publicBuilderHttpCacheMode);
+        }
+    }
+
+    @Test
+    @SmallTest
+    public void testSetLoggerForTesting() {
+        CronetLogger logger = CronetLoggerFactory.createLogger(mContext, null);
+        assertThat(mTestLogger.callsToLogCronetTrafficInfo()).isEqualTo(0);
+        assertThat(mTestLogger.callsToLogCronetEngineCreation()).isEqualTo(0);
+
+        // We don't care about what's being logged.
+        logger.logCronetTrafficInfo(0, null);
+        assertThat(mTestLogger.callsToLogCronetTrafficInfo()).isEqualTo(1);
+        assertThat(mTestLogger.callsToLogCronetEngineCreation()).isEqualTo(0);
+        logger.logCronetEngineCreation(0, null, null, null);
+        assertThat(mTestLogger.callsToLogCronetTrafficInfo()).isEqualTo(1);
+        assertThat(mTestLogger.callsToLogCronetEngineCreation()).isEqualTo(1);
+    }
+
+    @Test
+    @SmallTest
+    public void testTelemetryDefaultEnabled() throws JSONException {
+        final String url = mNativeTestServer.getEchoBodyURL();
+
+        TestUrlRequestCallback callback = new TestUrlRequestCallback();
+        CronetEngine engine = mTestRule.getTestFramework().startEngine();
+        UrlRequest.Builder requestBuilder =
+                engine.newUrlRequestBuilder(url, callback, callback.getExecutor());
+        UrlRequest request = requestBuilder.build();
+        request.start();
+        callback.blockForDone();
+        assertThat(callback.mOnCanceledCalled).isFalse();
+        assertThat(callback.mOnErrorCalled).isFalse();
+        mTestLogger.waitForLogCronetTrafficInfo();
+
+        // Test-logger should be bypassed.
+        assertThat(mTestLogger.callsToLogCronetEngineCreation()).isEqualTo(1);
+        assertThat(mTestLogger.callsToLogCronetTrafficInfo()).isEqualTo(1);
+    }
+
+    @Test
+    @SmallTest
+    public void testCronetEngineBuilderInitializedNotLoggedFromImpl() {
+        // The test framework bypasses the logic in CronetEngine.Builder, and the logic in
+        // CronetEngineBuilderImpl should not log anything since it should see the API code is up to
+        // date.
+        assertThat(mTestLogger.callsToLogCronetEngineBuilderInitializedInfo()).isEqualTo(0);
+        mTestRule
+                .getTestFramework()
+                .createNewSecondaryBuilder(mTestRule.getTestFramework().getContext());
+        assertThat(mTestLogger.callsToLogCronetEngineBuilderInitializedInfo()).isEqualTo(0);
+    }
+
+    @Test
+    @SmallTest
+    public void testCronetEngineBuilderInitializedLoggedFromImplIfApiIsTooOld() {
+        var originalApiLevel = CronetEngineBuilderImpl.sApiLevel;
+        try {
+            CronetEngineBuilderImpl.sApiLevel = 29;
+            assertThat(mTestLogger.callsToLogCronetEngineBuilderInitializedInfo()).isEqualTo(0);
+            var builder =
+                    mTestRule
+                            .getTestFramework()
+                            .createNewSecondaryBuilder(mTestRule.getTestFramework().getContext());
+            // The test framework bypasses the logic in CronetEngine.Builder, so we know this is
+            // coming from the impl.
+            assertThat(mTestLogger.callsToLogCronetEngineBuilderInitializedInfo()).isEqualTo(1);
+            var info = mTestLogger.getLastCronetEngineBuilderInitializedInfo();
+            assertThat(info).isNotNull();
+            assertThat(info.cronetInitializationRef).isNotEqualTo(0);
+            assertThat(info.author)
+                    .isEqualTo(CronetLogger.CronetEngineBuilderInitializedInfo.Author.IMPL);
+            assertThat(info.engineBuilderCreatedLatencyMillis).isAtLeast(0);
+            assertThat(info.source).isNotEqualTo(CronetSource.CRONET_SOURCE_UNSPECIFIED);
+            assertThat(info.creationSuccessful).isTrue();
+            assertThat(info.apiVersion.getMajorVersion()).isGreaterThan(0);
+            assertThat(info.implVersion.getMajorVersion()).isGreaterThan(0);
+            assertThat(info.uid).isGreaterThan(0);
+
+            builder.build();
+            final CronetEngineBuilderInfo builderInfo =
+                    mTestLogger.getLastCronetEngineBuilderInfo();
+            assertThat(builderInfo).isNotNull();
+            assertThat(builderInfo.getCronetInitializationRef())
+                    .isEqualTo(info.cronetInitializationRef);
+
+            mTestLogger.waitForCronetInitializedInfo();
+            var cronetInitializedInfo = mTestLogger.getLastCronetInitializedInfo();
+            assertThat(cronetInitializedInfo).isNotNull();
+            assertThat(cronetInitializedInfo.cronetInitializationRef)
+                    .isEqualTo(info.cronetInitializationRef);
+        } finally {
+            CronetEngineBuilderImpl.sApiLevel = originalApiLevel;
+        }
+    }
+
+    @Test
+    @SmallTest
+    public void testCronetEngineBuilderInitializedLoggedFromApi() {
+        // This test is disabled in AOSP for two reasons:
+        //
+        // 1. CronetEngine.Builder(..) is not part of the exposed API surface in AOSP.
+        //    The HttpEngine creation path explicitly uses NativeCronetEngineBuilderImpl instead:
+        //    http://ac/external/cronet/android/java/src/android/net/http/HttpEngine.java?l=149-150
+        //
+        // 2. CronetEngine.Builder(...) prioritizes HttpEngine over Cronet because the
+        //    HttpEngine version is always more recent. This causes the test to fail because
+        //    HttpEngine does not expose the required testing-specific APIs.
+        //    Ref: http://b/495755401
+        Assume.assumeFalse(BuildConfig.CRONET_FOR_AOSP_BUILD);
+        assertThat(mTestLogger.callsToLogCronetEngineBuilderInitializedInfo()).isEqualTo(0);
+        // The test framework bypasses the logic in CronetEngine.Builder, so we have to call it
+        // directly. We want to use the test framework context though for things like
+        // intercepting manifest reads.
+        // TODO(crbug.com/41494362): this is ugly. Ideally the test framework should be
+        // refactored to stop violating the Single Responsibility Principle (e.g. Context
+        // management and implementation selection should be separated)
+        var builder = new CronetEngine.Builder(mTestRule.getTestFramework().getContext());
+        assertThat(mTestLogger.callsToLogCronetEngineBuilderInitializedInfo()).isEqualTo(1);
+        var info = mTestLogger.getLastCronetEngineBuilderInitializedInfo();
+        assertThat(info).isNotNull();
+        assertThat(info.cronetInitializationRef).isNotEqualTo(0);
+        assertThat(info.author)
+                .isEqualTo(CronetLogger.CronetEngineBuilderInitializedInfo.Author.API);
+        assertThat(info.engineBuilderCreatedLatencyMillis).isAtLeast(0);
+        assertThat(info.source).isNotEqualTo(CronetSource.CRONET_SOURCE_UNSPECIFIED);
+        assertThat(info.creationSuccessful).isTrue();
+        assertThat(info.apiVersion.getMajorVersion()).isGreaterThan(0);
+        assertThat(info.implVersion.getMajorVersion()).isGreaterThan(0);
+        assertThat(info.uid).isGreaterThan(0);
+
+        builder.build();
+        final CronetEngineBuilderInfo builderInfo = mTestLogger.getLastCronetEngineBuilderInfo();
+        assertThat(builderInfo).isNotNull();
+        assertThat(builderInfo.getCronetInitializationRef())
+                .isEqualTo(info.cronetInitializationRef);
+
+        mTestLogger.waitForCronetInitializedInfo();
+        var cronetInitializedInfo = mTestLogger.getLastCronetInitializedInfo();
+        assertThat(cronetInitializedInfo).isNotNull();
+        assertThat(cronetInitializedInfo.cronetInitializationRef)
+                .isEqualTo(info.cronetInitializationRef);
+    }
+
+    @Test
+    @SmallTest
+    public void testEngineCreation() throws JSONException {
+        JSONObject staleDns =
+                new JSONObject()
+                        .put("enable", true)
+                        .put("delay_ms", 0)
+                        .put("allow_other_network", true)
+                        .put("persist_to_disk", true)
+                        .put("persist_delay_ms", 0);
+        final JSONObject jsonExperimentalOptions = new JSONObject().put("StaleDNS", staleDns);
+        final String experimentalOptions = jsonExperimentalOptions.toString();
+        final boolean isPublicKeyPinningBypassForLocalTrustAnchorsEnabled = false;
+        final String userAgent = "myUserAgent";
+        final String storagePath = CronetTestRule.getTestStorage(mContext);
+        final boolean isQuicEnabled = true;
+        final boolean isHttp2Enabled = false;
+        final boolean isBrotliEnabled = true;
+        final int cacheMode = HTTP_CACHE_DISK_NO_HTTP;
+        final boolean isNetworkQualityEstimatorEnabled = true;
+        final int threadPriority = THREAD_PRIORITY_DEFAULT;
+
+        mTestRule
+                .getTestFramework()
+                .applyEngineBuilderPatch(
+                        (builder) -> {
+                            builder.setExperimentalOptions(experimentalOptions);
+                            builder.enablePublicKeyPinningBypassForLocalTrustAnchors(
+                                    isPublicKeyPinningBypassForLocalTrustAnchorsEnabled);
+                            builder.setUserAgent(userAgent);
+                            builder.setStoragePath(storagePath);
+                            builder.enableQuic(isQuicEnabled);
+                            builder.enableHttp2(isHttp2Enabled);
+                            builder.enableBrotli(isBrotliEnabled);
+                            builder.enableHttpCache(cacheMode, 0);
+                            builder.enableNetworkQualityEstimator(isNetworkQualityEstimatorEnabled);
+                            builder.setThreadPriority(threadPriority);
+                        });
+
+        mTestRule.getTestFramework().startEngine();
+        final CronetEngineBuilderInfo builderInfo = mTestLogger.getLastCronetEngineBuilderInfo();
+        final CronetVersion version = mTestLogger.getLastCronetVersion();
+        final CronetSource source = mTestLogger.getLastCronetSource();
+
+        assertThat(builderInfo.isPublicKeyPinningBypassForLocalTrustAnchorsEnabled())
+                .isEqualTo(isPublicKeyPinningBypassForLocalTrustAnchorsEnabled);
+        assertThat(builderInfo.getUserAgent()).isEqualTo(userAgent);
+        assertThat(builderInfo.getStoragePath()).isEqualTo(storagePath);
+        assertThat(builderInfo.isQuicEnabled()).isEqualTo(isQuicEnabled);
+        assertThat(builderInfo.isHttp2Enabled()).isEqualTo(isHttp2Enabled);
+        assertThat(builderInfo.isBrotliEnabled()).isEqualTo(isBrotliEnabled);
+        assertThat(builderInfo.getHttpCacheMode()).isEqualTo(cacheMode);
+        assertThat(builderInfo.getExperimentalOptions()).isEqualTo(experimentalOptions);
+        assertThat(builderInfo.isNetworkQualityEstimatorEnabled())
+                .isEqualTo(isNetworkQualityEstimatorEnabled);
+        assertThat(builderInfo.getThreadPriority()).isEqualTo(threadPriority);
+        assertThat(version.toString()).isEqualTo(ImplVersion.getCronetVersion());
+        if (mTestRule.testingJavaImpl()) {
+            assertThat(source).isEqualTo(CronetSource.CRONET_SOURCE_FALLBACK);
+        } else {
+            assertThat(source).isEqualTo(CronetSource.CRONET_SOURCE_STATICALLY_LINKED);
+        }
+
+        assertThat(mTestLogger.callsToLogCronetEngineCreation()).isEqualTo(1);
+        assertThat(mTestLogger.callsToLogCronetTrafficInfo()).isEqualTo(0);
+    }
+
+    @Test
+    @SmallTest
+    public void testCronetInitializedInfo() {
+        // Creating another builder to ensure the cronet initialization ref allocation goes through
+        // TestLogger.
+        mTestRule
+                .getTestFramework()
+                .createNewSecondaryBuilder(mTestRule.getTestFramework().getContext())
+                .build();
+        mTestLogger.waitForCronetInitializedInfo();
+        var cronetInitializedInfo = mTestLogger.getLastCronetInitializedInfo();
+        assertThat(cronetInitializedInfo).isNotNull();
+        assertThat(cronetInitializedInfo.cronetInitializationRef).isNotEqualTo(0);
+        assertThat(cronetInitializedInfo.engineCreationLatencyMillis).isAtLeast(0);
+        assertThat(cronetInitializedInfo.engineAsyncLatencyMillis).isAtLeast(0);
+    }
+
+    @Test
+    @SmallTest
+    public void testEngineCreationAndTrafficInfoEngineId() throws Exception {
+        final String url = "www.example.com";
+        CronetEngine engine = mTestRule.getTestFramework().startEngine();
+        final long engineId = mTestLogger.getLastCronetEngineId();
+
+        TestUrlRequestCallback callback1 = new TestUrlRequestCallback();
+        UrlRequest.Builder requestBuilder1 =
+                engine.newUrlRequestBuilder(url, callback1, callback1.getExecutor());
+        UrlRequest request1 = requestBuilder1.build();
+        TestUrlRequestCallback callback2 = new TestUrlRequestCallback();
+        UrlRequest.Builder requestBuilder2 =
+                engine.newUrlRequestBuilder(url, callback2, callback2.getExecutor());
+        UrlRequest request2 = requestBuilder2.build();
+
+        request1.start();
+        callback1.blockForDone();
+        mTestLogger.waitForLogCronetTrafficInfo();
+        final long request1Id = mTestLogger.getLastCronetRequestId();
+
+        request2.start();
+        callback2.blockForDone();
+        mTestLogger.waitForLogCronetTrafficInfo();
+        final long request2Id = mTestLogger.getLastCronetRequestId();
+
+        assertThat(request1Id).isEqualTo(engineId);
+        assertThat(request2Id).isEqualTo(engineId);
+
+        assertThat(mTestLogger.callsToLogCronetEngineCreation()).isEqualTo(1);
+        assertThat(mTestLogger.callsToLogCronetTrafficInfo()).isEqualTo(2);
+    }
+
+    @Test
+    @SmallTest
+    public void testMultipleEngineCreationAndTrafficInfoEngineId() throws Exception {
+        final String url = "www.example.com";
+        ExperimentalCronetEngine.Builder engineBuilder =
+                mTestRule
+                        .getTestFramework()
+                        .createNewSecondaryBuilder(mTestRule.getTestFramework().getContext());
+
+        CronetEngine engine1 = engineBuilder.build();
+        final long engine1Id = mTestLogger.getLastCronetEngineId();
+        CronetEngine engine2 = engineBuilder.build();
+        final long engine2Id = mTestLogger.getLastCronetEngineId();
+
+        try {
+            TestUrlRequestCallback callback1 = new TestUrlRequestCallback();
+            UrlRequest.Builder requestBuilder1 =
+                    engine1.newUrlRequestBuilder(url, callback1, callback1.getExecutor());
+            UrlRequest request1 = requestBuilder1.build();
+            TestUrlRequestCallback callback2 = new TestUrlRequestCallback();
+            UrlRequest.Builder requestBuilder2 =
+                    engine2.newUrlRequestBuilder(url, callback2, callback2.getExecutor());
+            UrlRequest request2 = requestBuilder2.build();
+
+            request1.start();
+            callback1.blockForDone();
+            mTestLogger.waitForLogCronetTrafficInfo();
+            final long request1Id = mTestLogger.getLastCronetRequestId();
+
+            request2.start();
+            callback2.blockForDone();
+            mTestLogger.waitForLogCronetTrafficInfo();
+            final long request2Id = mTestLogger.getLastCronetRequestId();
+
+            assertThat(request1Id).isEqualTo(engine1Id);
+            assertThat(request2Id).isEqualTo(engine2Id);
+
+            assertThat(mTestLogger.callsToLogCronetEngineCreation()).isEqualTo(2);
+            assertThat(mTestLogger.callsToLogCronetTrafficInfo()).isEqualTo(2);
+        } finally {
+            engine1.shutdown();
+            engine2.shutdown();
+        }
+    }
+
+    @Test
+    @SmallTest
+    public void testSuccessfulRequestNative() throws Exception {
+        final String url = mNativeTestServer.getEchoMethodURL();
+        CronetEngine engine = mTestRule.getTestFramework().startEngine();
+
+        TestUrlRequestCallback callback = new TestUrlRequestCallback();
+        UrlRequest.Builder requestBuilder =
+                engine.newUrlRequestBuilder(url, callback, callback.getExecutor());
+        UrlRequest request = requestBuilder.build();
+        request.start();
+        callback.blockForDone();
+        assertThat(callback.mOnCanceledCalled).isFalse();
+        assertThat(callback.mOnErrorCalled).isFalse();
+        mTestLogger.waitForLogCronetTrafficInfo();
+
+        final CronetTrafficInfo trafficInfo = mTestLogger.getLastCronetTrafficInfo();
+        assertThat(trafficInfo.getRequestHeaderSizeInBytes()).isEqualTo(0);
+        assertThat(trafficInfo.getRequestBodySizeInBytes()).isNotEqualTo(0);
+        assertThat(trafficInfo.getResponseHeaderSizeInBytes()).isNotEqualTo(0);
+        assertThat(trafficInfo.getResponseBodySizeInBytes()).isNotEqualTo(0);
+        assertThat(trafficInfo.getResponseStatusCode()).isEqualTo(200);
+        assertThat(trafficInfo.getTimeToReceiveHeaderLastByteMicros()).isGreaterThan(0);
+        assertThat(trafficInfo.getTotalLatency()).isNotEqualTo(Duration.ofSeconds(0));
+        assertThat(trafficInfo.getNegotiatedProtocol()).isNotNull();
+        assertThat(trafficInfo.wasConnectionMigrationAttempted()).isFalse();
+        assertThat(trafficInfo.didConnectionMigrationSucceed()).isFalse();
+        assertThat(trafficInfo.getTerminalState())
+                .isEqualTo(CronetTrafficInfo.RequestTerminalState.SUCCEEDED);
+        assertThat(trafficInfo.getNonfinalUserCallbackExceptionCount()).isEqualTo(0);
+        assertThat(trafficInfo.getReadCount()).isGreaterThan(0);
+        assertThat(trafficInfo.getOnUploadReadCount()).isEqualTo(0);
+        assertThat(trafficInfo.getIsBidiStream()).isFalse();
+        assertThat(trafficInfo.getTimeToEstablishDNSMicros()).isGreaterThan(-1);
+        assertThat(trafficInfo.getTimeToEstablishSSLMicros()).isGreaterThan(0);
+        assertThat(trafficInfo.getTimeToConnectMicros()).isGreaterThan(0);
+        assertThat(trafficInfo.getTimeToSendFirstByteMicros()).isGreaterThan(0);
+        assertThat(trafficInfo.isProxied()).isFalse();
+
+        assertThat(mTestLogger.callsToLogCronetEngineCreation()).isEqualTo(1);
+        assertThat(mTestLogger.callsToLogCronetTrafficInfo()).isEqualTo(1);
+    }
+
+    @Test
+    @SmallTest
+    public void testFailedRequestNative() throws Exception {
+        final String url = "www.unreachable-url.com";
+        CronetEngine engine = mTestRule.getTestFramework().startEngine();
+
+        TestUrlRequestCallback callback = new TestUrlRequestCallback();
+        UrlRequest.Builder requestBuilder =
+                engine.newUrlRequestBuilder(url, callback, callback.getExecutor());
+        UrlRequest request = requestBuilder.build();
+        request.start();
+        callback.blockForDone();
+        assertThat(callback.mOnCanceledCalled).isFalse();
+        assertThat(callback.mOnErrorCalled).isTrue();
+        mTestLogger.waitForLogCronetTrafficInfo();
+
+        final CronetTrafficInfo trafficInfo = mTestLogger.getLastCronetTrafficInfo();
+        assertThat(trafficInfo.getRequestHeaderSizeInBytes()).isEqualTo(0);
+        assertThat(trafficInfo.getRequestBodySizeInBytes()).isEqualTo(0);
+        assertThat(trafficInfo.getResponseHeaderSizeInBytes()).isEqualTo(0);
+        assertThat(trafficInfo.getResponseBodySizeInBytes()).isEqualTo(0);
+        // When a request fails before hitting the server all these values won't be populated in
+        // the actual code. Check that the logger sets them to some known defaults before
+        // logging.
+        assertThat(trafficInfo.getResponseStatusCode()).isEqualTo(0);
+        assertThat(trafficInfo.getNegotiatedProtocol()).isEmpty();
+        assertThat(trafficInfo.wasConnectionMigrationAttempted()).isFalse();
+        assertThat(trafficInfo.didConnectionMigrationSucceed()).isFalse();
+        assertThat(trafficInfo.getTerminalState())
+                .isEqualTo(CronetTrafficInfo.RequestTerminalState.ERROR);
+        assertThat(trafficInfo.getNonfinalUserCallbackExceptionCount()).isEqualTo(0);
+        assertThat(trafficInfo.getReadCount()).isEqualTo(0);
+        assertThat(trafficInfo.getOnUploadReadCount()).isEqualTo(0);
+        assertThat(trafficInfo.getIsBidiStream()).isFalse();
+        assertThat(trafficInfo.getFinalUserCallbackThrew()).isFalse();
+
+        assertThat(trafficInfo.getConnectionCloseSource()).isEqualTo(ConnectionCloseSource.UNKNOWN);
+        assertThat(trafficInfo.getNetworkInternalErrorCode()).isEqualTo(-300);
+        assertThat(trafficInfo.getFailureReason())
+                .isEqualTo(CronetTrafficInfo.RequestFailureReason.NETWORK);
+        assertThat(trafficInfo.getTimeToEstablishDNSMicros()).isEqualTo(-1);
+        assertThat(trafficInfo.getTimeToEstablishSSLMicros()).isEqualTo(-1);
+        assertThat(trafficInfo.getTimeToConnectMicros()).isEqualTo(-1);
+        assertThat(trafficInfo.getTimeToSendFirstByteMicros()).isEqualTo(-1);
+
+        assertThat(mTestLogger.callsToLogCronetEngineCreation()).isEqualTo(1);
+        assertThat(mTestLogger.callsToLogCronetTrafficInfo()).isEqualTo(1);
+    }
+
+    @Test
+    @SmallTest
+    public void testNonfinalUserCallbackExceptionNative() throws Exception {
+        var callback = new TestUrlRequestCallback();
+        callback.setFailure(
+                TestUrlRequestCallback.FailureType.THROW_SYNC,
+                TestUrlRequestCallback.ResponseStep.ON_RESPONSE_STARTED);
+        mTestRule
+                .getTestFramework()
+                .startEngine()
+                .newUrlRequestBuilder(
+                        mNativeTestServer.getEchoMethodURL(), callback, callback.getExecutor())
+                .build()
+                .start();
+        callback.blockForDone();
+        mTestLogger.waitForLogCronetTrafficInfo();
+
+        final CronetTrafficInfo trafficInfo = mTestLogger.getLastCronetTrafficInfo();
+        assertThat(trafficInfo.getNonfinalUserCallbackExceptionCount()).isEqualTo(1);
+        assertThat(trafficInfo.getFinalUserCallbackThrew()).isFalse();
+        assertThat(trafficInfo.getConnectionCloseSource()).isEqualTo(ConnectionCloseSource.UNKNOWN);
+        assertThat(trafficInfo.getNetworkInternalErrorCode()).isEqualTo(0);
+        assertThat(trafficInfo.getFailureReason())
+                .isEqualTo(CronetTrafficInfo.RequestFailureReason.OTHER);
+    }
+
+    @Test
+    @SmallTest
+    public void testFinalUserCallbackExceptionNative() throws Exception {
+        var callback = new TestUrlRequestCallback();
+        callback.setFailure(
+                TestUrlRequestCallback.FailureType.THROW_SYNC,
+                TestUrlRequestCallback.ResponseStep.ON_SUCCEEDED);
+        mTestRule
+                .getTestFramework()
+                .startEngine()
+                .newUrlRequestBuilder(
+                        mNativeTestServer.getEchoMethodURL(), callback, callback.getExecutor())
+                .build()
+                .start();
+        callback.blockForDone();
+        mTestLogger.waitForLogCronetTrafficInfo();
+
+        final CronetTrafficInfo trafficInfo = mTestLogger.getLastCronetTrafficInfo();
+        assertThat(trafficInfo.getNonfinalUserCallbackExceptionCount()).isEqualTo(0);
+        assertThat(trafficInfo.getFinalUserCallbackThrew()).isTrue();
+    }
+
+    @Test
+    @SmallTest
+    public void testCanceledRequestNative() throws Exception {
+        final String url = mNativeTestServer.getEchoBodyURL();
+        CronetEngine engine = mTestRule.getTestFramework().startEngine();
+
+        TestUrlRequestCallback callback = new TestUrlRequestCallback();
+        callback.setAutoAdvance(false);
+        UrlRequest.Builder requestBuilder =
+                engine.newUrlRequestBuilder(url, callback, callback.getExecutor());
+        UrlRequest request = requestBuilder.build();
+        request.start();
+        request.cancel();
+        callback.blockForDone();
+        assertThat(callback.mOnCanceledCalled).isTrue();
+        assertThat(callback.mOnErrorCalled).isFalse();
+        mTestLogger.waitForLogCronetTrafficInfo();
+
+        final CronetTrafficInfo trafficInfo = mTestLogger.getLastCronetTrafficInfo();
+        assertThat(trafficInfo.getRequestHeaderSizeInBytes()).isEqualTo(0);
+        assertThat(trafficInfo.getRequestBodySizeInBytes()).isEqualTo(0);
+        assertThat(trafficInfo.getResponseHeaderSizeInBytes()).isEqualTo(0);
+        assertThat(trafficInfo.getResponseBodySizeInBytes()).isEqualTo(0);
+        // When a request fails before hitting the server all these values won't be populated in
+        // the actual code. Check that the logger sets them to some known defaults before
+        // logging.
+        assertThat(trafficInfo.getResponseStatusCode()).isEqualTo(0);
+        assertThat(trafficInfo.getNegotiatedProtocol()).isEmpty();
+        assertThat(trafficInfo.wasConnectionMigrationAttempted()).isFalse();
+        assertThat(trafficInfo.didConnectionMigrationSucceed()).isFalse();
+        assertThat(trafficInfo.getTerminalState())
+                .isEqualTo(CronetTrafficInfo.RequestTerminalState.CANCELLED);
+        assertThat(trafficInfo.getNonfinalUserCallbackExceptionCount()).isEqualTo(0);
+        assertThat(trafficInfo.getReadCount()).isEqualTo(0);
+        assertThat(trafficInfo.getOnUploadReadCount()).isEqualTo(0);
+        assertThat(trafficInfo.getIsBidiStream()).isFalse();
+        assertThat(trafficInfo.getFinalUserCallbackThrew()).isFalse();
+        assertThat(trafficInfo.getConnectionCloseSource()).isEqualTo(ConnectionCloseSource.UNKNOWN);
+        assertThat(trafficInfo.getNetworkInternalErrorCode()).isEqualTo(0);
+        assertThat(trafficInfo.getFailureReason())
+                .isEqualTo(CronetTrafficInfo.RequestFailureReason.UNKNOWN);
+        // The request failed before we received the response headers from the destination. In this
+        // scenario we don't know whether //net would have proxied the request. We report null to
+        // differentiate against the scenario where we received response headers but the request
+        // failed (in which case we definitely do know whether the request has been proxied or not).
+        assertThat(trafficInfo.isProxied()).isNull();
+        assertThat(mTestLogger.callsToLogCronetEngineCreation()).isEqualTo(1);
+        assertThat(mTestLogger.callsToLogCronetTrafficInfo()).isEqualTo(1);
+    }
+
+    @Test
+    @SmallTest
+    public void testUploadNative() throws Exception {
+        var callback = new TestUrlRequestCallback();
+        var dataProvider =
+                new TestUploadDataProvider(
+                        TestUploadDataProvider.SuccessCallbackMode.SYNC, callback.getExecutor());
+        dataProvider.addRead("test".getBytes());
+        mTestRule
+                .getTestFramework()
+                .startEngine()
+                .newUrlRequestBuilder(
+                        mNativeTestServer.getEchoBodyURL(), callback, callback.getExecutor())
+                .setUploadDataProvider(dataProvider, callback.getExecutor())
+                .addHeader("Content-Type", "useless/string")
+                .build()
+                .start();
+        callback.blockForDone();
+
+        mTestLogger.waitForLogCronetTrafficInfo();
+        assertThat(mTestLogger.getLastCronetTrafficInfo().getOnUploadReadCount()).isGreaterThan(0);
+    }
+
+    @Test
+    @SmallTest
+    public void testBidirectionalStream() throws Exception {
+        assertThat(Http2TestServer.startHttp2TestServer(mTestRule.getTestFramework().getContext()))
+                .isTrue();
+        try {
+            var callback = new TestBidirectionalStreamCallback();
+            callback.addWriteData(
+                    ("test long write data which has to be long so that the response "
+                                    + "body size is non-zero; see b/328737465")
+                            .getBytes());
+            var stream =
+                    mTestRule
+                            .getTestFramework()
+                            .startEngine()
+                            .newBidirectionalStreamBuilder(
+                                    Http2TestServer.getEchoStreamUrl(),
+                                    callback,
+                                    callback.getExecutor())
+                            .addHeader("Content-Type", "test/contenttype")
+                            .build();
+            stream.start();
+            callback.blockForDone();
+            assertThat(stream.isDone()).isTrue();
+            assertThat(callback.getResponseInfoWithChecks()).hasHttpStatusCodeThat().isEqualTo(200);
+            mTestLogger.waitForLogCronetTrafficInfo();
+
+            var trafficInfo = mTestLogger.getLastCronetTrafficInfo();
+            assertThat(trafficInfo.getRequestHeaderSizeInBytes()).isNotEqualTo(0);
+            assertThat(trafficInfo.getRequestBodySizeInBytes()).isNotEqualTo(0);
+            assertThat(trafficInfo.getResponseHeaderSizeInBytes()).isNotEqualTo(0);
+            assertThat(trafficInfo.getResponseBodySizeInBytes()).isNotEqualTo(0);
+            assertThat(trafficInfo.getResponseStatusCode()).isEqualTo(200);
+            assertThat(trafficInfo.getTimeToReceiveHeaderLastByteMicros()).isGreaterThan(0);
+            assertThat(trafficInfo.getTotalLatency()).isNotEqualTo(Duration.ofSeconds(0));
+            assertThat(trafficInfo.getNegotiatedProtocol()).isNotNull();
+            assertThat(trafficInfo.wasConnectionMigrationAttempted()).isFalse();
+            assertThat(trafficInfo.didConnectionMigrationSucceed()).isFalse();
+            assertThat(trafficInfo.getTerminalState())
+                    .isEqualTo(CronetTrafficInfo.RequestTerminalState.SUCCEEDED);
+            assertThat(trafficInfo.getNonfinalUserCallbackExceptionCount()).isEqualTo(0);
+            assertThat(trafficInfo.getReadCount()).isGreaterThan(0);
+            assertThat(trafficInfo.getOnUploadReadCount()).isGreaterThan(0);
+            assertThat(trafficInfo.getIsBidiStream()).isTrue();
+            assertThat(trafficInfo.getFinalUserCallbackThrew()).isFalse();
+            assertThat(trafficInfo.getConnectionCloseSource())
+                    .isEqualTo(ConnectionCloseSource.UNKNOWN);
+            assertThat(trafficInfo.getNetworkInternalErrorCode()).isEqualTo(0);
+            assertThat(trafficInfo.getFailureReason())
+                    .isEqualTo(CronetTrafficInfo.RequestFailureReason.UNKNOWN);
+            assertThat(trafficInfo.getTimeToEstablishDNSMicros()).isGreaterThan(-1);
+            assertThat(trafficInfo.getTimeToEstablishSSLMicros()).isGreaterThan(0);
+            assertThat(trafficInfo.getTimeToConnectMicros()).isGreaterThan(0);
+            assertThat(trafficInfo.getTimeToSendFirstByteMicros()).isGreaterThan(0);
+            switch (mTestRule.implementationUnderTest()) {
+                case STATICALLY_LINKED -> assertThat(trafficInfo.isProxied()).isFalse();
+                default -> throw new AssertionError("Unexpected implementation");
+            }
+            assertThat(mTestLogger.callsToLogCronetEngineCreation()).isEqualTo(1);
+            assertThat(mTestLogger.callsToLogCronetTrafficInfo()).isEqualTo(1);
+        } finally {
+            assertThat(Http2TestServer.shutdownHttp2TestServer()).isTrue();
+        }
+    }
+
+    @Test
+    @SmallTest
+    public void testEmptyHeadersSizeNative() {
+        Map<String, List<String>> headers = Collections.emptyMap();
+        assertThat(CronetRequestCommon.estimateHeadersSizeInBytes(headers)).isEqualTo(0);
+        headers = null;
+        assertThat(CronetRequestCommon.estimateHeadersSizeInBytes(headers)).isEqualTo(0);
+
+        ArrayList<Entry<String, String>> headersList = new ArrayList<>();
+        assertThat(CronetRequestCommon.estimateHeadersSizeInBytes(headersList)).isEqualTo(0);
+        headersList = null;
+        assertThat(CronetRequestCommon.estimateHeadersSizeInBytes(headersList)).isEqualTo(0);
+    }
+
+    @Test
+    @SmallTest
+    public void testNonEmptyHeadersSizeNative() {
+        Map<String, List<String>> headers = new HashMap<>();
+        headers.put("header1", Arrays.asList("value1", "value2")); // 7 + 6 + 6 = 19
+        headers.put("header2", null); // 19 + 7 = 26
+        headers.put("header3", Collections.emptyList()); // 26 + 7 + 0 = 33
+        headers.put(null, Arrays.asList("")); // 33 + 0 + 0 = 33
+
+        assertThat(CronetRequestCommon.estimateHeadersSizeInBytes(headers)).isEqualTo(33);
+
+        ArrayList<Map.Entry<String, String>> headersList = new ArrayList<>();
+        headersList.add(new AbstractMap.SimpleImmutableEntry<>("header1", "value1")); // 7 + 6 = 13
+        headersList.add(
+                new AbstractMap.SimpleImmutableEntry<>("header1", "value2")); // 13 + 7 + 6 = 26
+        headersList.add(new AbstractMap.SimpleImmutableEntry<>("header2", null)); // 26 + 7 + 0 = 33
+        headersList.add(new AbstractMap.SimpleImmutableEntry<>(null, "")); // 33 + 0 + 0 = 33
+
+        assertThat(CronetRequestCommon.estimateHeadersSizeInBytes(headersList)).isEqualTo(33);
+    }
+
+    @Test
+    @SmallTest
+    @Flags(
+            stringFlags = {
+                @StringFlag(name = CronetLibraryLoader.CRONET_UMA_ALLOWLIST_FLAG, value = "*")
+            })
+    public void testCronetUmaLogging() throws Exception {
+        mTestRule.getTestFramework().startEngine();
+
+        mTestLogger.clearUmaSamples();
+
+        final String histogramName = "Test.Cronet.Uma";
+        final long expectedHash = 2937041049411630354L;
+        final int sampleValue1 = 42;
+        final int sampleValue2 = 43;
+        CronetUmaRecorder.triggerUmaHistogramForTesting(histogramName, sampleValue1);
+        CronetUmaRecorder.triggerUmaHistogramForTesting(histogramName, sampleValue2);
+
+        waitForUmaSamples(expectedHash, 2);
+
+        List<TestLogger.UmaSample> samples = getMatchingSamples(expectedHash);
+        assertThat(samples).hasSize(2);
+        assertThat(samples.get(0).value).isEqualTo(sampleValue1);
+        assertThat(samples.get(1).value).isEqualTo(sampleValue2);
+    }
+
+    @Test
+    @SmallTest
+    @Flags(
+            stringFlags = {
+                @StringFlag(name = CronetLibraryLoader.CRONET_UMA_ALLOWLIST_FLAG, value = "12345")
+            })
+    public void testCronetUmaLoggingFiltered() throws Exception {
+        mTestRule.getTestFramework().startEngine();
+
+        mTestLogger.clearUmaSamples();
+
+        final String histogramName = "Test.Cronet.Uma";
+        final long expectedHash = 2937041049411630354L;
+        final int sampleValue = 42;
+        CronetUmaRecorder.triggerUmaHistogramForTesting(histogramName, sampleValue);
+
+        List<TestLogger.UmaSample> samples = getMatchingSamples(expectedHash);
+        assertThat(samples).isEmpty();
+    }
+
+    @Test
+    @SmallTest
+    @Flags(
+            stringFlags = {
+                @StringFlag(
+                        name = CronetLibraryLoader.CRONET_UMA_ALLOWLIST_FLAG,
+                        value = "2937041049411630354")
+            })
+    public void testCronetUmaLoggingAllowed() throws Exception {
+        mTestRule.getTestFramework().startEngine();
+
+        mTestLogger.clearUmaSamples();
+
+        final String histogramName = "Test.Cronet.Uma";
+        final long expectedHash = 2937041049411630354L;
+        final int sampleValue = 42;
+        CronetUmaRecorder.triggerUmaHistogramForTesting(histogramName, sampleValue);
+
+        waitForUmaSamples(expectedHash, 1);
+
+        List<TestLogger.UmaSample> samples = getMatchingSamples(expectedHash);
+        assertThat(samples).hasSize(1);
+        assertThat(samples.get(0).value).isEqualTo(sampleValue);
+        assertThat(samples.get(0).source).isEqualTo(getExpectedSource());
+    }
+
+    @Test
+    @SmallTest
+    @Flags(
+            stringFlags = {
+                @StringFlag(name = CronetLibraryLoader.CRONET_UMA_ALLOWLIST_FLAG, value = "")
+            })
+    public void testCronetUmaLoggingDisabled() throws Exception {
+        mTestRule.getTestFramework().startEngine();
+
+        mTestLogger.clearUmaSamples();
+
+        final String histogramName = "Test.Cronet.Uma";
+        final long expectedHash = 2937041049411630354L;
+        final int sampleValue = 42;
+        CronetUmaRecorder.triggerUmaHistogramForTesting(histogramName, sampleValue);
+
+        List<TestLogger.UmaSample> samples = getMatchingSamples(expectedHash);
+        assertThat(samples).isEmpty();
+    }
+
+    @Test
+    @SmallTest
+    @Flags(
+            stringFlags = {
+                // Only allow Test.Cronet.Uma (2937041049411630354)
+                @StringFlag(
+                        name = CronetLibraryLoader.CRONET_UMA_ALLOWLIST_FLAG,
+                        value = "2937041049411630354")
+            })
+    public void testCronetUmaLoggingMixed() throws Exception {
+        mTestRule.getTestFramework().startEngine();
+
+        mTestLogger.clearUmaSamples();
+
+        final String allowedHistogram = "Test.Cronet.Uma";
+        final long allowedHash = 2937041049411630354L;
+
+        final String filteredHistogram = "Test.Cronet.Uma2";
+        final long filteredHash = 7019680913562261270L;
+
+        // Trigger both histograms.
+        CronetUmaRecorder.triggerUmaHistogramForTesting(allowedHistogram, 42);
+        CronetUmaRecorder.triggerUmaHistogramForTesting(filteredHistogram, 43);
+
+        waitForUmaSamples(allowedHash, 1);
+
+        // Verify that only the allowed histogram was logged.
+        List<TestLogger.UmaSample> allowedSamples = getMatchingSamples(allowedHash);
+        assertThat(allowedSamples).hasSize(1);
+        assertThat(allowedSamples.get(0).value).isEqualTo(42);
+        assertThat(allowedSamples.get(0).source).isEqualTo(getExpectedSource());
+
+        List<TestLogger.UmaSample> filteredSamples = getMatchingSamples(filteredHash);
+        assertThat(filteredSamples).isEmpty();
+    }
+
+    @Test
+    @SmallTest
+    @Flags(
+            stringFlags = {
+                @StringFlag(
+                        name = CronetLibraryLoader.CRONET_UMA_ALLOWLIST_FLAG,
+                        value = "2937041049411630354,8946698020320526722")
+            })
+    public void testCronetUmaLoggingMultipleAllowed() throws Exception {
+        mTestRule.getTestFramework().startEngine();
+
+        mTestLogger.clearUmaSamples();
+
+        final String allowedHistogram1 = "Test.Cronet.Uma";
+        final long allowedHash1 = 2937041049411630354L;
+
+        final String allowedHistogram2 = "Test.Cronet.Uma4";
+        final long allowedHash2 = 8946698020320526722L;
+
+        final String filteredHistogram = "Test.Cronet.Uma3";
+
+        // Trigger all histograms.
+        CronetUmaRecorder.triggerUmaHistogramForTesting(allowedHistogram1, 42);
+        CronetUmaRecorder.triggerUmaHistogramForTesting(allowedHistogram2, 43);
+        CronetUmaRecorder.triggerUmaHistogramForTesting(filteredHistogram, 44);
+
+        waitForUmaSamples(allowedHash1, 1);
+        waitForUmaSamples(allowedHash2, 1);
+
+        List<TestLogger.UmaSample> samples = mTestLogger.getUmaSamples();
+        assertThat(samples).hasSize(2);
+
+        // Verify that only the allowed histograms were logged.
+        List<TestLogger.UmaSample> allowedSamples1 = getMatchingSamples(allowedHash1);
+        assertThat(allowedSamples1).hasSize(1);
+        assertThat(allowedSamples1.get(0).value).isEqualTo(42);
+        assertThat(allowedSamples1.get(0).source).isEqualTo(getExpectedSource());
+
+        List<TestLogger.UmaSample> allowedSamples2 = getMatchingSamples(allowedHash2);
+        assertThat(allowedSamples2).hasSize(1);
+        assertThat(allowedSamples2.get(0).value).isEqualTo(43);
+        assertThat(allowedSamples2.get(0).source).isEqualTo(getExpectedSource());
+    }
+
+    @Test
+    @SmallTest
+    @Flags(
+            stringFlags = {
+                @StringFlag(
+                        name = CronetLibraryLoader.CRONET_UMA_ALLOWLIST_FLAG,
+                        value = "2937041049411630354:1.0,8946698020320526722:1.0")
+            })
+    public void testCronetUmaLoggingWithRate100() throws Exception {
+        mTestRule.getTestFramework().startEngine();
+
+        mTestLogger.clearUmaSamples();
+
+        final String allowedHistogram1 = "Test.Cronet.Uma";
+        final long allowedHash1 = 2937041049411630354L;
+
+        final String allowedHistogram2 = "Test.Cronet.Uma4";
+        final long allowedHash2 = 8946698020320526722L;
+
+        final String filteredHistogram = "Test.Cronet.Uma3";
+        final long filteredHash = 7019680913562261270L;
+
+        CronetUmaRecorder.triggerUmaHistogramForTesting(allowedHistogram1, 42);
+        CronetUmaRecorder.triggerUmaHistogramForTesting(allowedHistogram2, 43);
+        CronetUmaRecorder.triggerUmaHistogramForTesting(filteredHistogram, 44);
+
+        waitForUmaSamples(allowedHash1, 1);
+        waitForUmaSamples(allowedHash2, 1);
+
+        List<TestLogger.UmaSample> samples = mTestLogger.getUmaSamples();
+        assertThat(samples).hasSize(2);
+
+        List<TestLogger.UmaSample> allowedSamples1 = getMatchingSamples(allowedHash1);
+        assertThat(allowedSamples1).hasSize(1);
+        assertThat(allowedSamples1.get(0).value).isEqualTo(42);
+        assertThat(allowedSamples1.get(0).source).isEqualTo(getExpectedSource());
+
+        List<TestLogger.UmaSample> allowedSamples2 = getMatchingSamples(allowedHash2);
+        assertThat(allowedSamples2).hasSize(1);
+        assertThat(allowedSamples2.get(0).value).isEqualTo(43);
+        assertThat(allowedSamples2.get(0).source).isEqualTo(getExpectedSource());
+
+        List<TestLogger.UmaSample> filteredSamples = getMatchingSamples(filteredHash);
+        assertThat(filteredSamples).isEmpty();
+    }
+
+    @Test
+    @SmallTest
+    @Flags(
+            stringFlags = {
+                @StringFlag(
+                        name = CronetLibraryLoader.CRONET_UMA_ALLOWLIST_FLAG,
+                        value = "2937041049411630354:0.5")
+            })
+    public void testCronetUmaLoggingWithRateSubsampled() throws Exception {
+        mTestRule.getTestFramework().startEngine();
+
+        mTestLogger.clearUmaSamples();
+
+        final String histogramName = "Test.Cronet.Uma";
+        final long hash = 2937041049411630354L;
+
+        for (int i = 0; i < 500; i++) {
+            CronetUmaRecorder.triggerUmaHistogramForTesting(histogramName, i);
+        }
+
+        // Wait for lower bound (195) to arrive, then allow 1000ms for rate limiting
+        // to flush any remaining queued samples.
+        waitForUmaSamples(hash, 195);
+        Thread.sleep(1000);
+
+        List<TestLogger.UmaSample> samples = getMatchingSamples(hash);
+        // For a binomial distribution (n=500, p=0.5), μ = 250 and σ ≈ 11.18.
+        // To achieve a 99.9999% confidence interval (z ≈ 4.892, 1 in 1,000,000 failure rate):
+        // Margin = z * σ ≈ 54.69, giving bounds [195.31, 304.69].
+        // Rounding outward to integers guarantees > 99.9999% probability of falling in [195, 305].
+        assertThat(samples.size()).isAtLeast(195);
+        assertThat(samples.size()).isAtMost(305);
+    }
+
+    @Test
+    @SmallTest
+    @Flags(
+            stringFlags = {
+                @StringFlag(name = CronetLibraryLoader.CRONET_UMA_ALLOWLIST_FLAG, value = "*")
+            })
+    public void testCronetUmaLoggingFlushingBehavior() throws Exception {
+        mTestRule.getTestFramework().startEngine();
+
+        mTestLogger.clearUmaSamples();
+
+        final String histogramName = "Test.Cronet.Uma";
+        final long expectedHash = 2937041049411630354L;
+
+        // Send first batch of samples.
+        CronetUmaRecorder.triggerUmaHistogramForTesting(histogramName, 42);
+        CronetUmaRecorder.triggerUmaHistogramForTesting(histogramName, 43);
+
+        waitForUmaSamples(expectedHash, 2);
+
+        // Verify first batch is received.
+        List<TestLogger.UmaSample> samples = getMatchingSamples(expectedHash);
+        assertThat(samples).hasSize(2);
+        assertThat(samples.get(0).value).isEqualTo(42);
+        assertThat(samples.get(0).source).isEqualTo(getExpectedSource());
+        assertThat(samples.get(1).value).isEqualTo(43);
+        assertThat(samples.get(1).source).isEqualTo(getExpectedSource());
+
+        // Clear samples in logger to start fresh.
+        mTestLogger.clearUmaSamples();
+
+        // Wait another 1s and make sure nothing new is sent.
+        Thread.sleep(1000);
+        assertThat(getMatchingSamples(expectedHash)).isEmpty();
+
+        // Send second batch of samples.
+        CronetUmaRecorder.triggerUmaHistogramForTesting(histogramName, 44);
+        CronetUmaRecorder.triggerUmaHistogramForTesting(histogramName, 45);
+
+        waitForUmaSamples(expectedHash, 2);
+
+        // Verify second batch is received.
+        samples = getMatchingSamples(expectedHash);
+        assertThat(samples).hasSize(2);
+        assertThat(samples.get(0).value).isEqualTo(44);
+        assertThat(samples.get(0).source).isEqualTo(getExpectedSource());
+        assertThat(samples.get(1).value).isEqualTo(45);
+        assertThat(samples.get(1).source).isEqualTo(getExpectedSource());
+    }
+
+    private List<TestLogger.UmaSample> getMatchingSamples(long hash) {
+        List<TestLogger.UmaSample> matching = new ArrayList<>();
+        for (TestLogger.UmaSample sample : mTestLogger.getUmaSamples()) {
+            if (sample.hash == hash) {
+                matching.add(sample);
+            }
+        }
+        return matching;
+    }
+
+    private CronetSource getExpectedSource() {
+        return BuildConfig.CRONET_FOR_AOSP_BUILD
+                ? CronetSource.CRONET_SOURCE_PLATFORM
+                : CronetSource.CRONET_SOURCE_STATICALLY_LINKED;
+    }
+
+    private void waitForUmaSamples(long hash, int expectedCount) {
+        while (getMatchingSamples(hash).size() < expectedCount) {
+            mTestLogger.waitForLogCronetUmaHistogram();
+        }
+    }
+}

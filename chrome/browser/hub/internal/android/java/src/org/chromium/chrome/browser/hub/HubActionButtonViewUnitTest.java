@@ -1,0 +1,198 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.hub;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+
+import static org.chromium.chrome.browser.hub.HubActionButtonProperties.ACTION_BUTTON_DATA;
+import static org.chromium.chrome.browser.hub.HubActionButtonProperties.ACTION_BUTTON_VISIBLE;
+import static org.chromium.chrome.browser.hub.HubColorMixer.COLOR_MIXER;
+
+import android.app.Activity;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.widget.Button;
+import android.widget.FrameLayout;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.robolectric.ParameterizedRobolectricTestRunner;
+import org.robolectric.ParameterizedRobolectricTestRunner.Parameter;
+import org.robolectric.ParameterizedRobolectricTestRunner.Parameters;
+import org.robolectric.Robolectric;
+import org.robolectric.android.controller.ActivityController;
+
+import org.chromium.base.DeviceInfo;
+import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.test.BaseRobolectricTestRule;
+import org.chromium.base.test.util.CallbackHelper;
+import org.chromium.base.test.util.Features;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.ui.actions.button.DelegateButtonData;
+import org.chromium.chrome.browser.ui.actions.button.DisplayButtonData;
+import org.chromium.chrome.browser.ui.actions.button.FullButtonData;
+import org.chromium.chrome.browser.ui.actions.button.ResourceButtonData;
+import org.chromium.ui.base.TestActivity;
+import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.ui.modelutil.PropertyModelChangeProcessor;
+
+import java.util.Arrays;
+import java.util.Collection;
+
+/** Unit tests for Hub Action Button using Button and HubActionButtonHelper. */
+@RunWith(ParameterizedRobolectricTestRunner.class)
+@Features.DisableFeatures({
+    ChromeFeatureList.ANDROID_SURFACE_COLOR_UPDATE,
+    ChromeFeatureList.GRID_TAB_SWITCHER_SURFACE_COLOR_UPDATE,
+})
+public class HubActionButtonViewUnitTest {
+    // All the tests in this file will run twice, once for isXrDevice=true and once for
+    // isXrDevice=false. Expect all the tests with the same results on XR devices too.
+    @Parameters
+    public static Collection<Object[]> data() {
+        return Arrays.asList(new Object[][] {{true}, {false}});
+    }
+
+    @Parameter(0)
+    public boolean mIsXrDevice;
+
+    @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Rule public BaseRobolectricTestRule mBaseRule = new BaseRobolectricTestRule();
+
+    private final CallbackHelper mOnButtonHelper = new CallbackHelper();
+
+    private ActivityController<TestActivity> mActivityController;
+    private Activity mActivity;
+    private Button mActionButton;
+    private PropertyModel mPropertyModel;
+    private HubColorMixer mColorMixer;
+    private MonotonicObservableSupplier<Pane> mFocusedPaneSupplier;
+
+    @Before
+    public void setUp() throws Exception {
+        DeviceInfo.setIsXrForTesting(mIsXrDevice);
+
+        mActivityController = Robolectric.buildActivity(TestActivity.class).setup();
+        mActivity = mActivityController.get();
+        mActivity.setTheme(R.style.Theme_BrowserUI_DayNight);
+
+        LayoutInflater inflater = LayoutInflater.from(mActivity);
+        int layoutId = mIsXrDevice ? R.layout.hub_xr_toolbar_layout : R.layout.hub_toolbar_layout;
+        FrameLayout toolbarContainer = (FrameLayout) inflater.inflate(layoutId, null, false);
+        mActionButton = toolbarContainer.findViewById(R.id.toolbar_action_button);
+
+        mFocusedPaneSupplier = ObservableSuppliers.alwaysNull();
+        mColorMixer =
+                spy(
+                        new HubColorMixerImpl(
+                                mActivity,
+                                ObservableSuppliers.alwaysTrue(),
+                                mFocusedPaneSupplier,
+                                ObservableSuppliers.alwaysNull()));
+        mPropertyModel =
+                new PropertyModel.Builder(HubActionButtonProperties.ALL_ACTION_BUTTON_KEYS)
+                        .with(ACTION_BUTTON_VISIBLE, true)
+                        .with(COLOR_MIXER, mColorMixer)
+                        .build();
+        PropertyModelChangeProcessor.create(
+                mPropertyModel, mActionButton, HubActionButtonViewBinder::bind);
+    }
+
+    private FullButtonData makeTestButtonData() {
+        DisplayButtonData displayButtonData =
+                new ResourceButtonData(
+                        R.string.button_new_tab, R.string.button_new_tab, R.drawable.ic_add_24dp);
+        return new DelegateButtonData.Builder(displayButtonData)
+                .setOnPress(view -> mOnButtonHelper.notifyCalled())
+                .build();
+    }
+
+    @Test
+    public void testActionButtonVisibility() {
+        // Initially no button data is set, so button should be invisible
+        assertEquals(View.GONE, mActionButton.getVisibility());
+
+        // Set button data, button should be visible
+        FullButtonData fullButtonData = makeTestButtonData();
+        mPropertyModel.set(ACTION_BUTTON_DATA, fullButtonData);
+        assertEquals(View.VISIBLE, mActionButton.getVisibility());
+
+        // Set ACTION_BUTTON_VISIBLE to false, button should be invisible
+        mPropertyModel.set(ACTION_BUTTON_VISIBLE, false);
+        assertEquals(View.GONE, mActionButton.getVisibility());
+
+        // Set ACTION_BUTTON_VISIBLE back to true, button should be visible again
+        mPropertyModel.set(ACTION_BUTTON_VISIBLE, true);
+        assertEquals(View.VISIBLE, mActionButton.getVisibility());
+    }
+
+    @Test
+    public void testActionButtonCallback() {
+        // Initially no button data is set, clicking should have no effect
+        mActionButton.callOnClick();
+        assertEquals(0, mOnButtonHelper.getCallCount());
+
+        // Set button data, clicking should trigger the callback
+        FullButtonData fullButtonData = makeTestButtonData();
+        mPropertyModel.set(ACTION_BUTTON_DATA, fullButtonData);
+        mActionButton.callOnClick();
+        assertEquals(1, mOnButtonHelper.getCallCount());
+
+        // Click again should trigger the callback again
+        mActionButton.callOnClick();
+        assertEquals(2, mOnButtonHelper.getCallCount());
+    }
+
+    @Test
+    public void testActionButtonTooltipText() {
+        assertNull(mActionButton.getTooltipText());
+
+        // Set button data, tooltip should be set.
+        FullButtonData fullButtonData = makeTestButtonData();
+        mPropertyModel.set(ACTION_BUTTON_DATA, fullButtonData);
+        assertEquals("New tab", mActionButton.getTooltipText());
+
+        // Set ACTION_BUTTON_VISIBLE to false, button should be invisible and tooltip should be
+        // null.
+        mPropertyModel.set(ACTION_BUTTON_VISIBLE, false);
+        assertEquals(View.GONE, mActionButton.getVisibility());
+        assertNull(mActionButton.getTooltipText());
+
+        // Set ACTION_BUTTON_VISIBLE back to true, button should be visible and tooltip should be
+        // set.
+        mPropertyModel.set(ACTION_BUTTON_VISIBLE, true);
+        assertEquals(View.VISIBLE, mActionButton.getVisibility());
+        assertEquals("New tab", mActionButton.getTooltipText());
+    }
+
+    @Test
+    public void testColorMixer() {
+        mPropertyModel.set(COLOR_MIXER, mColorMixer);
+
+        if (HubUtils.isGtsUpdateEnabled()) {
+            verify(mColorMixer, times(3)).registerBlend(any());
+        } else {
+            // Behaves differently on XR devices.
+            verify(mColorMixer).registerBlend(any());
+        }
+    }
+
+    @After
+    public void tearDown() {
+        mActivityController.close();
+    }
+}

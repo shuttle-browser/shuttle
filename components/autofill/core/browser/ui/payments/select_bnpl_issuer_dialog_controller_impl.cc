@@ -1,0 +1,103 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/autofill/core/browser/ui/payments/select_bnpl_issuer_dialog_controller_impl.h"
+
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "base/check_deref.h"
+#include "base/feature_list.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_forward.h"
+#include "build/buildflag.h"
+#include "components/autofill/core/browser/data_model/payments/bnpl_issuer.h"
+#include "components/autofill/core/browser/metrics/payments/bnpl_metrics.h"
+#include "components/autofill/core/browser/payments/bnpl_util.h"
+#include "components/autofill/core/browser/payments/payments_autofill_client.h"
+#include "components/autofill/core/browser/ui/payments/select_bnpl_issuer_view.h"
+#include "components/autofill/core/common/autofill_payments_features.h"
+#include "components/strings/grit/components_strings.h"
+#include "ui/base/l10n/l10n_util.h"
+
+namespace autofill::payments {
+
+using IssuerId = autofill::BnplIssuer::IssuerId;
+using ::autofill::autofill_metrics::LogBnplIssuerSelection;
+using ::autofill::autofill_metrics::LogSelectBnplIssuerDialogResult;
+using ::autofill::autofill_metrics::SelectBnplIssuerDialogResult;
+using l10n_util::GetStringUTF16;
+using std::u16string;
+
+SelectBnplIssuerDialogControllerImpl::SelectBnplIssuerDialogControllerImpl(
+    PaymentsAutofillClient* client)
+    : client_(CHECK_DEREF(client)) {}
+
+SelectBnplIssuerDialogControllerImpl::~SelectBnplIssuerDialogControllerImpl() =
+    default;
+
+void SelectBnplIssuerDialogControllerImpl::ShowDialog(
+    base::OnceCallback<std::unique_ptr<SelectBnplIssuerView>()>
+        create_and_show_dialog_callback,
+    std::vector<BnplIssuerContext> issuer_contexts,
+    std::string app_locale,
+    base::RepeatingCallback<void(BnplIssuer)> selected_issuer_callback,
+    base::OnceClosure cancel_callback) {
+  issuer_contexts_ = std::move(issuer_contexts);
+  app_locale_ = std::move(app_locale);
+  selected_issuer_callback_ = std::move(selected_issuer_callback);
+  cancel_callback_ = std::move(cancel_callback);
+
+  dialog_view_ = std::move(create_and_show_dialog_callback).Run();
+  autofill_metrics::LogBnplSelectionDialogShown();
+}
+
+void SelectBnplIssuerDialogControllerImpl::UpdateDialogWithIssuers(
+    std::vector<BnplIssuerContext> issuer_contexts) {
+  issuer_contexts_ = std::move(issuer_contexts);
+  dialog_view_->UpdateDialogWithIssuers();
+}
+
+void SelectBnplIssuerDialogControllerImpl::OnIssuerSelected(BnplIssuer issuer) {
+  LogSelectBnplIssuerDialogResult(
+      SelectBnplIssuerDialogResult::kIssuerSelected);
+  LogBnplIssuerSelection(issuer.issuer_id());
+
+  if (selected_issuer_callback_) {
+    selected_issuer_callback_.Run(std::move(issuer));
+  }
+}
+
+void SelectBnplIssuerDialogControllerImpl::OnUserCancelled() {
+  LogSelectBnplIssuerDialogResult(
+      SelectBnplIssuerDialogResult::kCancelButtonClicked);
+  Dismiss();
+  std::move(cancel_callback_).Run();
+}
+
+void SelectBnplIssuerDialogControllerImpl::Dismiss() {
+  dialog_view_.reset();
+}
+
+const std::vector<BnplIssuerContext>&
+SelectBnplIssuerDialogControllerImpl::GetIssuerContexts() const {
+  return issuer_contexts_;
+}
+
+const std::string& SelectBnplIssuerDialogControllerImpl::GetAppLocale() const {
+  return app_locale_;
+}
+
+u16string SelectBnplIssuerDialogControllerImpl::GetTitle() const {
+  return GetStringUTF16(IDS_AUTOFILL_CARD_BNPL_SELECT_PROVIDER_TITLE);
+}
+
+const PaymentsDataManager&
+SelectBnplIssuerDialogControllerImpl::GetPaymentsDataManager() const {
+  return client_->GetPaymentsDataManager();
+}
+
+}  // namespace autofill::payments

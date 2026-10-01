@@ -1,0 +1,239 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/contextual_tasks/android/contextual_tasks_bridge.h"
+
+#include <memory>
+
+#include "base/android/jni_android.h"
+#include "base/android/scoped_java_ref.h"
+#include "base/test/bind.h"
+#include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
+#include "chrome/browser/contextual_tasks/active_task_context_provider.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_eligibility_manager.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_service_factory.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_side_panel_coordinator.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
+#include "chrome/browser/contextual_tasks/entry_point_eligibility_manager.h"
+#include "chrome/browser/contextual_tasks/mock_contextual_tasks_ui_service.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/tab_list/mock_tab_list_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/test/mock_browser_window_interface.h"
+#include "chrome/test/base/testing_profile.h"
+#include "components/contextual_tasks/public/mock_contextual_tasks_service.h"
+#include "components/omnibox/browser/mock_aim_eligibility_service.h"
+#include "components/sessions/content/session_tab_helper.h"
+#include "components/sessions/core/session_id.h"
+#include "content/public/test/browser_task_environment.h"
+#include "content/public/test/test_renderer_host.h"
+#include "content/public/test/web_contents_tester.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/unowned_user_data/unowned_user_data_host.h"
+
+namespace contextual_tasks {
+
+using ::testing::NiceMock;
+using ::testing::Return;
+using ::testing::ReturnRef;
+
+namespace {
+
+std::unique_ptr<KeyedService> BuildMockAimEligibilityService(
+    content::BrowserContext* context) {
+  auto* profile = Profile::FromBrowserContext(context);
+  return std::make_unique<NiceMock<MockAimEligibilityService>>(
+      *profile->GetPrefs(),
+      /*template_url_service=*/nullptr,
+      /*url_loader_factory=*/nullptr,
+      /*identity_manager=*/nullptr, AimEligibilityService::Configuration{});
+}
+
+std::unique_ptr<KeyedService> BuildMockContextualTasksService(
+    content::BrowserContext* context) {
+  return std::make_unique<NiceMock<MockContextualTasksService>>();
+}
+
+}  // namespace
+
+class ContextualTasksBridgeTest : public testing::Test {
+ public:
+  void SetUp() override {
+    TestingProfile::Builder profile_builder;
+    profile_builder.AddTestingFactory(
+        AimEligibilityServiceFactory::GetInstance(),
+        base::BindRepeating(&BuildMockAimEligibilityService));
+    profile_builder.AddTestingFactory(
+        ContextualTasksServiceFactory::GetInstance(),
+        base::BindRepeating(&BuildMockContextualTasksService));
+    profile_ = profile_builder.Build();
+
+    auto* contextual_tasks_service =
+        ContextualTasksServiceFactory::GetForProfile(profile_.get());
+
+    auto mock_ui_service = std::make_unique<
+        testing::NiceMock<contextual_tasks::MockContextualTasksUiService>>(
+        profile_.get(), contextual_tasks_service,
+        /*identity_manager=*/nullptr,
+        /*aim_eligibility_service=*/nullptr,
+        /*eligibility_manager=*/nullptr,
+        /*cookie_synchronizer=*/nullptr);
+
+    ContextualTasksUiServiceFactory::GetInstance()->SetTestingFactory(
+        profile_.get(),
+        base::BindLambdaForTesting([service = std::move(mock_ui_service)](
+                                       content::BrowserContext* context) mutable
+                                       -> std::unique_ptr<KeyedService> {
+          return std::move(service);
+        }));
+  }
+
+  MockContextualTasksService* mock_service() {
+    return static_cast<MockContextualTasksService*>(
+        ContextualTasksServiceFactory::GetForProfile(profile_.get()));
+  }
+
+ protected:
+  content::BrowserTaskEnvironment task_environment_;
+  content::RenderViewHostTestEnabler rvh_test_enabler_;
+  std::unique_ptr<TestingProfile> profile_;
+  ui::UnownedUserDataHost unowned_user_data_host_;
+};
+
+TEST_F(ContextualTasksBridgeTest, InitPopulatesUserData) {
+  NiceMock<MockBrowserWindowInterface> mock_browser;
+  NiceMock<MockTabListInterface> mock_tab_list;
+  ON_CALL(mock_browser, GetProfile()).WillByDefault(Return(profile_.get()));
+  ON_CALL(mock_browser, GetUnownedUserDataHost())
+      .WillByDefault(ReturnRef(unowned_user_data_host_));
+
+  // Register mock tab list in the host.
+  ui::ScopedUnownedUserData<TabListInterface> tab_list_registration(
+      unowned_user_data_host_, mock_tab_list);
+
+  // Initially, none of the window-scoped features should be in the host.
+  EXPECT_EQ(nullptr,
+            ContextualTasksSidePanelCoordinator::Get(unowned_user_data_host_));
+  EXPECT_EQ(nullptr,
+            EntryPointEligibilityManager::Get(unowned_user_data_host_));
+  EXPECT_EQ(nullptr, ActiveTaskContextProvider::Get(unowned_user_data_host_));
+
+  // Instantiate the bridge.
+  ContextualTasksBridge bridge(nullptr, &mock_browser, profile_.get());
+
+  // After bridge construction, the features should be present in the host.
+  EXPECT_NE(nullptr,
+            ContextualTasksSidePanelCoordinator::Get(unowned_user_data_host_));
+  EXPECT_NE(nullptr,
+            EntryPointEligibilityManager::Get(unowned_user_data_host_));
+  EXPECT_NE(nullptr, ActiveTaskContextProvider::Get(unowned_user_data_host_));
+
+  // Verify Get() works.
+  EXPECT_EQ(&bridge, ContextualTasksBridge::From(&mock_browser));
+}
+
+TEST_F(ContextualTasksBridgeTest, GetTaskTitleForTab_Null) {
+  base::RunLoop run_loop;
+  ContextualTasksBridge::GetTaskTitleForTab(
+      nullptr, base::BindOnce(
+                   [](base::OnceClosure quit_closure, std::string title) {
+                     EXPECT_TRUE(title.empty());
+                     std::move(quit_closure).Run();
+                   },
+                   run_loop.QuitClosure()));
+  run_loop.Run();
+}
+
+TEST_F(ContextualTasksBridgeTest, GetTaskTitleForTab_Associated) {
+  std::unique_ptr<content::WebContents> web_contents =
+      content::WebContentsTester::CreateTestWebContents(profile_.get(),
+                                                        nullptr);
+  sessions::SessionTabHelper::CreateForWebContents(web_contents.get(),
+                                                   base::NullCallback());
+
+  base::Uuid task_id = base::Uuid::GenerateRandomV4();
+  ContextualTask task(task_id);
+  task.SetTitle("Task of Interest");
+
+  EXPECT_CALL(*mock_service(), GetContextualTaskForTab(testing::_))
+      .WillOnce(testing::Return(task));
+
+  base::RunLoop run_loop;
+  ContextualTasksBridge::GetTaskTitleForTab(
+      web_contents.get(),
+      base::BindOnce(
+          [](base::OnceClosure quit_closure, std::string title) {
+            EXPECT_EQ(title, "Task of Interest");
+            std::move(quit_closure).Run();
+          },
+          run_loop.QuitClosure()));
+  run_loop.Run();
+}
+
+TEST_F(ContextualTasksBridgeTest, GetTaskTitleForTab_InvalidTaskId) {
+  std::unique_ptr<content::WebContents> web_contents =
+      content::WebContentsTester::CreateTestWebContents(profile_.get(),
+                                                        nullptr);
+  sessions::SessionTabHelper::CreateForWebContents(web_contents.get(),
+                                                   base::NullCallback());
+
+  ON_CALL(*mock_service(), GetContextualTaskForTab(testing::_))
+      .WillByDefault(testing::Return(std::nullopt));
+
+  // Navigate to a WebUI url that does not have a valid taskId parameter.
+  const GURL gurl("chrome://contextual-tasks/?chrome_task_id=invalid-uuid");
+  content::WebContentsTester::For(web_contents.get())->NavigateAndCommit(gurl);
+
+  base::RunLoop run_loop;
+  ContextualTasksBridge::GetTaskTitleForTab(
+      web_contents.get(),
+      base::BindOnce(
+          [](base::OnceClosure quit_closure, std::string title) {
+            EXPECT_TRUE(title.empty());
+            std::move(quit_closure).Run();
+          },
+          run_loop.QuitClosure()));
+  run_loop.Run();
+}
+
+TEST_F(ContextualTasksBridgeTest, GetTaskTitleForTab_ValidTaskId) {
+  std::unique_ptr<content::WebContents> web_contents =
+      content::WebContentsTester::CreateTestWebContents(profile_.get(),
+                                                        nullptr);
+  sessions::SessionTabHelper::CreateForWebContents(web_contents.get(),
+                                                   base::NullCallback());
+
+  ON_CALL(*mock_service(), GetContextualTaskForTab(testing::_))
+      .WillByDefault(testing::Return(std::nullopt));
+
+  const GURL gurl(
+      "chrome://contextual-tasks/"
+      "?chrome_task_id=65e07d6b-0df8-43e2-b083-50fb5b1e744e");
+  content::WebContentsTester::For(web_contents.get())->NavigateAndCommit(gurl);
+
+  base::Uuid task_id =
+      base::Uuid::ParseLowercase("65e07d6b-0df8-43e2-b083-50fb5b1e744e");
+  ContextualTask task(task_id);
+  task.SetTitle("Backend Loaded Title");
+
+  EXPECT_CALL(*mock_service(), GetTaskById(task_id, testing::_))
+      .WillOnce([&task](const base::Uuid&,
+                        base::OnceCallback<void(std::optional<ContextualTask>)>
+                            callback) { std::move(callback).Run(task); });
+
+  base::RunLoop run_loop;
+  ContextualTasksBridge::GetTaskTitleForTab(
+      web_contents.get(),
+      base::BindOnce(
+          [](base::OnceClosure quit_closure, std::string title) {
+            EXPECT_EQ(title, "Backend Loaded Title");
+            std::move(quit_closure).Run();
+          },
+          run_loop.QuitClosure()));
+  run_loop.Run();
+}
+
+}  // namespace contextual_tasks

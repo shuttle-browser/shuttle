@@ -1,0 +1,337 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ash/webui/boca_ui/provider/classroom_page_handler_impl.h"
+
+#include "ash/constants/ash_features.h"
+#include "base/memory/weak_ptr.h"
+#include "base/task/thread_pool.h"
+#include "chromeos/ash/components/boca/boca_metrics_util.h"
+#include "chromeos/ash/components/boca/session_api/session_client_impl.h"
+#include "components/signin/public/base/consent_level.h"
+#include "google_apis/classroom/classroom_api_course_work_materials_response_types.h"
+#include "google_apis/classroom/classroom_api_course_work_response_types.h"
+#include "google_apis/classroom/classroom_api_courses_response_types.h"
+#include "google_apis/classroom/classroom_api_list_course_work_materials_request.h"
+#include "google_apis/classroom/classroom_api_list_course_work_request.h"
+#include "google_apis/classroom/classroom_api_list_courses_request.h"
+#include "google_apis/classroom/classroom_api_list_students_request.h"
+#include "google_apis/classroom/classroom_api_material_response_types.h"
+#include "google_apis/classroom/classroom_api_students_response_types.h"
+#include "google_apis/common/auth_service.h"
+#include "google_apis/common/request_sender.h"
+#include "google_apis/gaia/gaia_constants.h"
+
+namespace ash::boca {
+namespace {
+using ::google_apis::ApiErrorCode;
+using ::google_apis::classroom::ListCoursesRequest;
+using ::google_apis::classroom::ListCourseWorkMaterialRequest;
+using ::google_apis::classroom::ListCourseWorkRequest;
+using ::google_apis::classroom::ListStudentsRequest;
+
+// TODO(b/343731449): Update this once policy to control has been added.
+constexpr net::NetworkTrafficAnnotationTag kTrafficAnnotation =
+    net::DefineNetworkTrafficAnnotation("boca_classroom_integration", R"(
+          semantics: {
+            sender: "Boca"
+            description: "Provide ChromeOS users easy access to roster and "
+                         "courselist to control their in-classroom experience."
+            internal {
+              contacts {
+                  email: "cros-edu-eng@google.com"
+              }
+            }
+            user_data {
+              type: ACCESS_TOKEN
+              type: EMAIL
+              type: NAME
+            }
+            trigger: "User opens Boca app and goes through session start flow."
+            data: "The request is authenticated with an OAuth2 access token "
+                  "identifying the Google account. Rosters and courselists "
+                  "containing emails and names are sent to Boca."
+            destination: GOOGLE_OWNED_SERVICE
+            last_reviewed: "2024-06-26"
+          }
+          policy: {
+            cookies_allowed: NO
+            setting: "This feature cannot be disabled by settings yet."
+            policy_exception_justification: "Not implemented yet."
+          })");
+
+// This logic is shared between CourseWork and CourseWorkMaterial processing.
+std::vector<mojom::MaterialPtr> MaterialsApiToMojom(
+    const std::vector<std::unique_ptr<google_apis::classroom::Material>>&
+        api_materials) {
+  std::vector<mojom::MaterialPtr> materials;
+  for (const auto& api_material : api_materials) {
+    mojom::MaterialPtr material = mojom::Material::New();
+    material->title = api_material->title();
+    switch (api_material->type()) {
+      case google_apis::classroom::Material::Type::kSharedDriveFile:
+        material->type = mojom::MaterialType::kSharedDriveFile;
+        break;
+      case google_apis::classroom::Material::Type::kYoutubeVideo:
+        material->type = mojom::MaterialType::kYoutubeVideo;
+        break;
+      case google_apis::classroom::Material::Type::kLink:
+        material->type = mojom::MaterialType::kLink;
+        break;
+      case google_apis::classroom::Material::Type::kForm:
+        material->type = mojom::MaterialType::kForm;
+        break;
+      case google_apis::classroom::Material::Type::kGuidedLearning:
+        material->type = mojom::MaterialType::kGuidedLearning;
+        break;
+      case google_apis::classroom::Material::Type::kUnknown:
+      default:
+        material->type = mojom::MaterialType::kUnknown;
+        break;
+    }
+    materials.push_back(std::move(material));
+  }
+  return materials;
+}
+
+}  // namespace
+
+ClassroomPageHandlerImpl::ClassroomPageHandlerImpl(
+    SessionClientImpl& session_client_impl)
+    : ClassroomPageHandlerImpl(session_client_impl.CreateRequestSender(
+          signin::OAuthConsumerId::kAshBocaClassroomPageHandler,
+          kTrafficAnnotation)) {}
+
+ClassroomPageHandlerImpl::ClassroomPageHandlerImpl(
+    std::unique_ptr<google_apis::RequestSender> sender)
+    : sender_(std::move(sender)), weak_factory_(this) {}
+
+ClassroomPageHandlerImpl::~ClassroomPageHandlerImpl() = default;
+
+void ClassroomPageHandlerImpl::ListCourses(const std::string& teacher_id,
+                                           ListCoursesCallback callback) {
+  valid_course_ids_.clear();
+  ListCoursesHelper(teacher_id, /*page_token=*/"",
+                    std::make_unique<CourseList>(), std::move(callback));
+}
+
+void ClassroomPageHandlerImpl::ListStudents(const std::string& course_id,
+                                            ListStudentsCallback callback) {
+  if (valid_course_ids_.find(course_id) == valid_course_ids_.end()) {
+    return std::move(callback).Run(StudentList());
+  }
+  ListStudentsHelper(course_id, /*page_token=*/"",
+                     std::make_unique<StudentList>(), std::move(callback));
+}
+
+void ClassroomPageHandlerImpl::ListAssignments(
+    const std::string& course_id,
+    ListAssignmentsCallback callback) {
+  if (valid_course_ids_.find(course_id) == valid_course_ids_.end()) {
+    return std::move(callback).Run(AssignmentList());
+  }
+  ListAssignmentsHelper(course_id, /*page_token=*/"",
+                        std::make_unique<AssignmentList>(),
+                        std::move(callback));
+}
+
+void ClassroomPageHandlerImpl::ListCoursesHelper(
+    const std::string& teacher_id,
+    const std::string& page_token,
+    std::unique_ptr<CourseList> fetched_courses,
+    ListCoursesCallback callback) {
+  sender_->StartRequestWithAuthRetry(std::make_unique<ListCoursesRequest>(
+      sender_.get(), /*student_id=*/"", teacher_id, page_token,
+      base::BindOnce(&ClassroomPageHandlerImpl::OnListCoursesFetched,
+                     weak_factory_.GetWeakPtr(), teacher_id,
+                     std::move(fetched_courses), std::move(callback))));
+}
+
+void ClassroomPageHandlerImpl::OnListCoursesFetched(
+    const std::string& teacher_id,
+    std::unique_ptr<CourseList> fetched_courses,
+    ListCoursesCallback callback,
+    base::expected<std::unique_ptr<google_apis::classroom::Courses>,
+                   ApiErrorCode> result) {
+  if (!result.has_value()) {
+    boca::RecordListCoursesErrorCode(result.error());
+    std::move(callback).Run(std::move(*fetched_courses));
+    return;
+  }
+
+  for (const auto& item : result.value()->items()) {
+    mojom::CoursePtr course =
+        mojom::Course::New(item->id(), item->name(), item->section());
+    fetched_courses->push_back(std::move(course));
+    valid_course_ids_.insert(item->id());
+  }
+
+  if (!result.value()->next_page_token().empty()) {
+    ListCoursesHelper(teacher_id, result.value()->next_page_token(),
+                      std::move(fetched_courses), std::move(callback));
+  } else {
+    std::move(callback).Run(std::move(*fetched_courses));
+  }
+}
+
+void ClassroomPageHandlerImpl::ListStudentsHelper(
+    const std::string& course_id,
+    const std::string& page_token,
+    std::unique_ptr<StudentList> fetched_students,
+    ListStudentsCallback callback) {
+  sender_->StartRequestWithAuthRetry(std::make_unique<ListStudentsRequest>(
+      sender_.get(), course_id, page_token,
+      base::BindOnce(&ClassroomPageHandlerImpl::OnListStudentsFetched,
+                     weak_factory_.GetWeakPtr(), course_id,
+                     std::move(fetched_students), std::move(callback))));
+}
+
+void ClassroomPageHandlerImpl::OnListStudentsFetched(
+    const std::string& course_id,
+    std::unique_ptr<StudentList> fetched_students,
+    ListStudentsCallback callback,
+    base::expected<std::unique_ptr<google_apis::classroom::Students>,
+                   ApiErrorCode> result) {
+  if (!result.has_value()) {
+    boca::RecordListStudentsErrorCode(result.error());
+    std::move(callback).Run(std::move(*fetched_students));
+    return;
+  }
+
+  for (const auto& item : result.value()->items()) {
+    mojom::IdentityPtr student = mojom::Identity::New(
+        item->profile().id(), item->profile().name().full_name(),
+        item->profile().email_address(), item->profile().photo_url());
+
+    fetched_students->push_back(std::move(student));
+  }
+
+  if (!result.value()->next_page_token().empty()) {
+    ListStudentsHelper(course_id, result.value()->next_page_token(),
+                       std::move(fetched_students), std::move(callback));
+  } else {
+    std::move(callback).Run(std::move(*fetched_students));
+  }
+}
+
+void ClassroomPageHandlerImpl::ListAssignmentsHelper(
+    const std::string& course_id,
+    const std::string& page_token,
+    std::unique_ptr<AssignmentList> fetched_assignments,
+    ListAssignmentsCallback callback) {
+  sender_->StartRequestWithAuthRetry(std::make_unique<ListCourseWorkRequest>(
+      sender_.get(), course_id, page_token,
+      std::vector<ListCourseWorkRequest::AdditionalRequestField>{
+          ListCourseWorkRequest::AdditionalRequestField::kWorkType,
+          ListCourseWorkRequest::AdditionalRequestField::kMaterials},
+      base::BindOnce(&ClassroomPageHandlerImpl::OnListAssignmentsFetched,
+                     weak_factory_.GetWeakPtr(), course_id,
+                     std::move(fetched_assignments), std::move(callback))));
+}
+
+void ClassroomPageHandlerImpl::OnListAssignmentsFetched(
+    const std::string& course_id,
+    std::unique_ptr<AssignmentList> fetched_assignments,
+    ListAssignmentsCallback callback,
+    base::expected<std::unique_ptr<google_apis::classroom::CourseWork>,
+                   ApiErrorCode> result) {
+  if (!result.has_value()) {
+    boca::RecordListCourseWorksErrorCode(result.error());
+  }
+  if (result.has_value()) {
+    for (const auto& item : result.value()->items()) {
+      if (item->type() ==
+          google_apis::classroom::CourseWorkItem::Type::kUnspecified) {
+        continue;
+      }
+
+      mojom::AssignmentPtr assignment = mojom::Assignment::New();
+      assignment->title = item->title();
+      assignment->url = item->alternate_link();
+      assignment->materials = MaterialsApiToMojom(item->materials());
+      assignment->last_update_time = item->last_update();
+      switch (item->type()) {
+        case google_apis::classroom::CourseWorkItem::Type::kAssignment:
+          assignment->type = mojom::AssignmentType::kAssignment;
+          break;
+        case google_apis::classroom::CourseWorkItem::Type::kShortAnswerQuestion:
+          assignment->type = mojom::AssignmentType::kShortAnswerQuestion;
+          break;
+        case google_apis::classroom::CourseWorkItem::Type::
+            kMultipleChoiceQuestion:
+          assignment->type = mojom::AssignmentType::kMultipleChoiceQuestion;
+          break;
+        case google_apis::classroom::CourseWorkItem::Type::kUnspecified:
+        default:
+          assignment->type = mojom::AssignmentType::kUnspecified;
+      }
+      fetched_assignments->push_back(std::move(assignment));
+    }
+  }
+
+  if (result.has_value() && !result.value()->next_page_token().empty()) {
+    // This was a successful request and there are more pages, so continue
+    // pagination for /courseWork.
+    ListAssignmentsHelper(course_id, result.value()->next_page_token(),
+                          std::move(fetched_assignments), std::move(callback));
+  } else {
+    // Request failed OR all pages for /courseWork are finished.
+    // Move on to fetching CourseWorkMaterials.
+    ListCourseWorkMaterialsHelper(course_id, /*page_token=*/"",
+                                  std::move(fetched_assignments),
+                                  std::move(callback));
+  }
+}
+
+void ClassroomPageHandlerImpl::ListCourseWorkMaterialsHelper(
+    const std::string& course_id,
+    const std::string& page_token,
+    std::unique_ptr<AssignmentList> fetched_assignments,
+    ListAssignmentsCallback callback) {
+  sender_->StartRequestWithAuthRetry(
+      std::make_unique<ListCourseWorkMaterialRequest>(
+          sender_.get(), course_id, page_token,
+          base::BindOnce(
+              &ClassroomPageHandlerImpl::OnListCourseWorkMaterialsFetched,
+              weak_factory_.GetWeakPtr(), course_id,
+              std::move(fetched_assignments), std::move(callback))));
+}
+
+void ClassroomPageHandlerImpl::OnListCourseWorkMaterialsFetched(
+    const std::string& course_id,
+    std::unique_ptr<AssignmentList> fetched_assignments,
+    ListAssignmentsCallback callback,
+    base::expected<std::unique_ptr<google_apis::classroom::CourseWorkMaterial>,
+                   ApiErrorCode> result) {
+  if (!result.has_value()) {
+    boca::RecordListCourseWorkMaterialsErrorCode(result.error());
+    std::move(callback).Run(std::move(*fetched_assignments));
+    return;
+  }
+
+  for (const auto& item : result.value()->items()) {
+    mojom::AssignmentPtr assignment = mojom::Assignment::New();
+    assignment->title = item->title();
+    assignment->url = item->alternate_link();
+    assignment->last_update_time = item->last_update();
+    assignment->materials = MaterialsApiToMojom(item->materials());
+
+    // CourseWorkMaterial does not have a specific type, so we mark it as
+    // unspecified.
+    assignment->type = mojom::AssignmentType::kUnspecified;
+
+    fetched_assignments->push_back(std::move(assignment));
+  }
+
+  if (!result.value()->next_page_token().empty()) {
+    // Continue fetching pages for CourseWorkMaterial.
+    ListCourseWorkMaterialsHelper(course_id, result.value()->next_page_token(),
+                                  std::move(fetched_assignments),
+                                  std::move(callback));
+  } else {
+    std::move(callback).Run(std::move(*fetched_assignments));
+  }
+}
+
+}  // namespace ash::boca

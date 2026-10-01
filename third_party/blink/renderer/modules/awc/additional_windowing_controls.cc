@@ -1,0 +1,308 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/modules/awc/additional_windowing_controls.h"
+
+#include "third_party/blink/public/mojom/frame/frame.mojom-blink.h"
+#include "third_party/blink/public/mojom/permissions/permission.mojom-blink.h"
+#include "third_party/blink/public/mojom/permissions/permission_status.mojom-blink.h"
+#include "third_party/blink/renderer/bindings/core/v8/script_promise.h"
+#include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_throw_dom_exception.h"
+#include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
+#include "third_party/blink/renderer/core/page/chrome_client.h"
+#include "third_party/blink/renderer/core/page/page.h"
+#include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/bindings/script_state.h"
+#include "third_party/blink/renderer/platform/widget/frame_widget.h"
+
+namespace blink {
+
+using mojom::blink::PermissionDescriptor;
+using mojom::blink::PermissionDescriptorPtr;
+using mojom::blink::PermissionName;
+
+namespace {
+
+using AdditionalWindowingControlsActionCallback =
+    base::OnceCallback<void(mojom::blink::PermissionStatusWithDetailsPtr)>;
+using ui::mojom::blink::WindowShowState;
+
+bool IsPermissionGranted(
+    ScriptPromiseResolver<IDLUndefined>* resolver,
+    const mojom::blink::PermissionStatusWithDetails& status) {
+  if (!resolver->GetScriptState()->ContextIsValid()) {
+    return false;
+  }
+
+  if (status.status != mojom::blink::PermissionStatus::GRANTED) {
+    resolver->RejectWithDOMException(
+        DOMExceptionCode::kNotAllowedError,
+        status.status == mojom::blink::PermissionStatus::DENIED
+            ? "Permission denied."
+            : "Permission decision deferred.");
+    return false;
+  }
+  return true;
+}
+
+bool CanUseWindowingControls(LocalDOMWindow* window,
+                             ExceptionState& exception_state,
+                             bool require_user_activation) {
+  auto* frame = window->GetFrame();
+  if (!frame || !frame->IsOutermostMainFrame() ||
+      frame->GetPage()->IsPrerendering()) {
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kInvalidStateError,
+        "API is only supported in primary top-level browsing contexts.");
+    return false;
+  }
+  if (!window->document()->IsInWebAppScope()) {
+    exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
+                                      "API is only supported in web apps.");
+    return false;
+  }
+  if (require_user_activation && !window->IsIsolatedContext() &&
+      !LocalFrame::HasTransientUserActivation(frame)) {
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kNotAllowedError,
+        "API requires transient user activation.");
+    return false;
+  }
+  return true;
+}
+
+bool IsMaximized(LocalDOMWindow* window) {
+  if (auto* frame = window->GetFrame()) {
+    if (auto* widget = frame->GetWidgetForLocalRoot()) {
+      return widget->WindowShowState() == WindowShowState::kMaximized;
+    }
+  }
+  return false;
+}
+
+bool IsMinimized(LocalDOMWindow* window) {
+  if (auto* frame = window->GetFrame()) {
+    if (auto* widget = frame->GetWidgetForLocalRoot()) {
+      return widget->WindowShowState() == WindowShowState::kMinimized;
+    }
+  }
+  return false;
+}
+
+bool IsNormal(LocalDOMWindow* window) {
+  if (auto* frame = window->GetFrame()) {
+    if (auto* widget = frame->GetWidgetForLocalRoot()) {
+      WindowShowState show_state = widget->WindowShowState();
+      return show_state == WindowShowState::kDefault ||
+             show_state == WindowShowState::kNormal;
+    }
+  }
+  return false;
+}
+
+ScriptPromise<IDLUndefined> MaybePromptWindowManagementPermission(
+    LocalDOMWindow* window,
+    ScriptPromiseResolver<IDLUndefined>* resolver,
+    AdditionalWindowingControlsActionCallback callback) {
+  auto* permission_service =
+      window->document()->GetPermissionService(window->GetExecutionContext());
+  CHECK(permission_service);
+
+  auto permission_descriptor = PermissionDescriptor::New();
+  permission_descriptor->name = PermissionName::WINDOW_MANAGEMENT;
+
+  permission_service->RequestPermission(std::move(permission_descriptor),
+                                        std::move(callback));
+
+  return resolver->Promise();
+}
+
+base::OnceCallback<void(bool)> GetWindowEventCallback(
+    ScriptPromiseResolver<IDLUndefined>* resolver,
+    String error_message) {
+  return blink::BindOnce(
+      [](ScriptPromiseResolver<IDLUndefined>* resolver,
+         const String& error_message, bool succeeded) {
+        if (succeeded) {
+          resolver->Resolve();
+        } else {
+          resolver->RejectWithDOMException(DOMExceptionCode::kNotAllowedError,
+                                           error_message);
+        }
+      },
+      WrapPersistent(resolver), std::move(error_message));
+}
+
+base::OnceCallback<void(bool)> GetMaximizeCallback(
+    ScriptPromiseResolver<IDLUndefined>* resolver) {
+  return GetWindowEventCallback(resolver, "Could not maximize the window.");
+}
+
+base::OnceCallback<void(bool)> GetMinimizeCallback(
+    ScriptPromiseResolver<IDLUndefined>* resolver) {
+  return GetWindowEventCallback(resolver, "Could not minimize the window.");
+}
+
+base::OnceCallback<void(bool)> GetRestoreCallback(
+    ScriptPromiseResolver<IDLUndefined>* resolver) {
+  return GetWindowEventCallback(resolver, "Could not restore the window.");
+}
+
+base::OnceCallback<void(bool)> GetSetResizableCallback(
+    bool resizable,
+    ScriptPromiseResolver<IDLUndefined>* resolver) {
+  return GetWindowEventCallback(
+      resolver, resizable ? "Could not set the window to be resizable."
+                          : "Could not set the window to be non-resizable.");
+}
+
+void OnMaximizePermissionRequestComplete(
+    ScriptPromiseResolver<IDLUndefined>* resolver,
+    LocalDOMWindow* window,
+    mojom::blink::PermissionStatusWithDetailsPtr status) {
+  if (!IsPermissionGranted(resolver, *status)) {
+    return;
+  }
+  if (!window->IsIsolatedContext()) {
+    LocalFrame::ConsumeTransientUserActivation(window->GetFrame());
+  }
+
+  if (IsMaximized(window)) {
+    resolver->Resolve();
+  } else {
+    window->GetFrame()->GetChromeClient().Maximize(
+        *window->GetFrame(), GetMaximizeCallback(resolver));
+  }
+}
+
+void OnMinimizePermissionRequestComplete(
+    ScriptPromiseResolver<IDLUndefined>* resolver,
+    LocalDOMWindow* window,
+    mojom::blink::PermissionStatusWithDetailsPtr status) {
+  if (!IsPermissionGranted(resolver, *status)) {
+    return;
+  }
+  if (!window->IsIsolatedContext()) {
+    LocalFrame::ConsumeTransientUserActivation(window->GetFrame());
+  }
+
+  if (IsMinimized(window)) {
+    resolver->Resolve();
+  } else {
+    window->GetFrame()->GetChromeClient().Minimize(
+        *window->GetFrame(), GetMinimizeCallback(resolver));
+  }
+}
+
+void OnRestorePermissionRequestComplete(
+    ScriptPromiseResolver<IDLUndefined>* resolver,
+    LocalDOMWindow* window,
+    mojom::blink::PermissionStatusWithDetailsPtr status) {
+  if (!IsPermissionGranted(resolver, *status)) {
+    return;
+  }
+  if (!window->IsIsolatedContext()) {
+    LocalFrame::ConsumeTransientUserActivation(window->GetFrame());
+  }
+
+  if (IsNormal(window)) {
+    resolver->Resolve();
+  } else {
+    window->GetFrame()->GetChromeClient().Restore(*window->GetFrame(),
+                                                  GetRestoreCallback(resolver));
+  }
+}
+
+void OnSetResizablePermissionRequestComplete(
+    ScriptPromiseResolver<IDLUndefined>* resolver,
+    LocalDOMWindow* window,
+    bool resizable,
+    mojom::blink::PermissionStatusWithDetailsPtr status) {
+  if (!IsPermissionGranted(resolver, *status)) {
+    return;
+  }
+
+  window->GetFrame()->GetChromeClient().SetResizable(
+      resizable, *window->GetFrame(),
+      GetSetResizableCallback(resizable, resolver));
+}
+
+}  // namespace
+
+// static
+ScriptPromise<IDLUndefined> AdditionalWindowingControls::maximize(
+    ScriptState* script_state,
+    LocalDOMWindow& window,
+    ExceptionState& exception_state) {
+  if (!CanUseWindowingControls(&window, exception_state,
+                               /*require_user_activation=*/true)) {
+    return EmptyPromise();
+  }
+
+  auto* resolver =
+      MakeGarbageCollected<ScriptPromiseResolver<IDLUndefined>>(script_state);
+  return MaybePromptWindowManagementPermission(
+      &window, resolver,
+      BindOnce(&OnMaximizePermissionRequestComplete, WrapPersistent(resolver),
+               WrapPersistent(&window)));
+}
+
+// static
+ScriptPromise<IDLUndefined> AdditionalWindowingControls::minimize(
+    ScriptState* script_state,
+    LocalDOMWindow& window,
+    ExceptionState& exception_state) {
+  if (!CanUseWindowingControls(&window, exception_state,
+                               /*require_user_activation=*/true)) {
+    return EmptyPromise();
+  }
+
+  auto* resolver =
+      MakeGarbageCollected<ScriptPromiseResolver<IDLUndefined>>(script_state);
+  return MaybePromptWindowManagementPermission(
+      &window, resolver,
+      BindOnce(&OnMinimizePermissionRequestComplete, WrapPersistent(resolver),
+               WrapPersistent(&window)));
+}
+
+// static
+ScriptPromise<IDLUndefined> AdditionalWindowingControls::restore(
+    ScriptState* script_state,
+    LocalDOMWindow& window,
+    ExceptionState& exception_state) {
+  if (!CanUseWindowingControls(&window, exception_state,
+                               /*require_user_activation=*/true)) {
+    return EmptyPromise();
+  }
+
+  auto* resolver =
+      MakeGarbageCollected<ScriptPromiseResolver<IDLUndefined>>(script_state);
+  return MaybePromptWindowManagementPermission(
+      &window, resolver,
+      BindOnce(&OnRestorePermissionRequestComplete, WrapPersistent(resolver),
+               WrapPersistent(&window)));
+}
+
+// static
+ScriptPromise<IDLUndefined> AdditionalWindowingControls::setResizable(
+    ScriptState* script_state,
+    LocalDOMWindow& window,
+    bool resizable,
+    ExceptionState& exception_state) {
+  if (!CanUseWindowingControls(&window, exception_state,
+                               /*require_user_activation=*/false)) {
+    return EmptyPromise();
+  }
+
+  auto* resolver =
+      MakeGarbageCollected<ScriptPromiseResolver<IDLUndefined>>(script_state);
+  return MaybePromptWindowManagementPermission(
+      &window, resolver,
+      BindOnce(&OnSetResizablePermissionRequestComplete,
+               WrapPersistent(resolver), WrapPersistent(&window), resizable));
+}
+
+}  // namespace blink

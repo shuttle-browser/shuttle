@@ -1,0 +1,361 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/app/profile/first_run_profile_agent.h"
+
+#import "base/ios/block_types.h"
+#import "base/test/metrics/histogram_tester.h"
+#import "base/test/scoped_feature_list.h"
+#import "components/sync_preferences/features.h"
+#import "components/sync_preferences/testing_pref_service_syncable.h"
+#import "ios/chrome/app/application_delegate/app_state.h"
+#import "ios/chrome/app/application_delegate/fake_startup_information.h"
+#import "ios/chrome/app/profile/first_run_profile_agent+Testing.h"
+#import "ios/chrome/app/profile/profile_init_stage.h"
+#import "ios/chrome/app/profile/profile_state.h"
+#import "ios/chrome/app/profile/profile_state_observer.h"
+#import "ios/chrome/app/profile/profile_state_test_utils.h"
+#import "ios/chrome/browser/first_run/public/features.h"
+#import "ios/chrome/browser/shared/coordinator/scene/test/fake_scene_state.h"
+#import "ios/chrome/browser/shared/model/browser/browser.h"
+#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
+#import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
+#import "ios/chrome/browser/shared/model/prefs/pref_names.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/guided_tour_commands.h"
+#import "ios/chrome/browser/shared/public/commands/new_tab_page_commands.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/shared/public/commands/tab_grid_commands.h"
+#import "ios/chrome/browser/shared/public/commands/tab_grid_toolbar_commands.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/synced_set_up/public/synced_set_up_metrics.h"
+#import "ios/chrome/browser/synced_set_up/utils/utils.h"
+#import "ios/chrome/browser/welcome_back/model/features.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "testing/platform_test.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+#import "third_party/ocmock/gtest_support.h"
+
+@interface FakeTabGridToolbarCommands : NSObject <TabGridToolbarCommands>
+@property(nonatomic, copy) ProceduralBlock dismissalCompletion;
+@end
+
+@implementation FakeTabGridToolbarCommands
+- (void)showGuidedTourIncognitoStepWithDismissalCompletion:
+    (ProceduralBlock)completion {
+  self.dismissalCompletion = completion;
+}
+- (void)showGuidedTourTabGroupStepWithDismissalCompletion:
+    (ProceduralBlock)completion {
+  self.dismissalCompletion = completion;
+}
+- (void)showSavedTabGroupIPH {
+}
+- (void)hideTabGridToolbarGuidedTour {
+}
+@end
+
+@interface FakeTabGridCommands : NSObject <TabGridCommands>
+@property(nonatomic, copy) ProceduralBlock dismissalCompletion;
+@end
+
+@implementation FakeTabGridCommands
+- (void)showGuidedTourLongPressStepWithDismissalCompletion:
+    (ProceduralBlock)completion {
+  self.dismissalCompletion = completion;
+}
+- (void)bringGroupIntoView:(const TabGroup*)group animated:(BOOL)animated {
+}
+- (void)showHistoryForText:(NSString*)text {
+}
+- (void)showWebSearchForText:(NSString*)text {
+}
+- (void)showPage:(TabGridPage)page animated:(BOOL)animated {
+}
+- (void)prepareToExitTabGrid {
+}
+- (void)exitTabGrid {
+}
+- (void)hideTabGridGuidedTour {
+}
+- (void)presentPinTabBubble {
+}
+- (void)presentCreateTabGroupBubble {
+}
+- (void)showSwipeToIncognitoIPH {
+}
+- (void)showPageActionMenuFromTabGrid {
+}
+- (void)activateGridContainerConstraints {
+}
+- (void)deactivateGridContainerConstraints {
+}
+@end
+
+namespace {
+
+// Returns the id<BrowserProvider> from `scene_state` for `is_off_the_record`.
+id<BrowserProvider> BrowserProviderForMode(SceneState* scene_state,
+                                           bool is_off_the_record) {
+  id<BrowserProviderInterface> interface = scene_state.browserProviderInterface;
+  return is_off_the_record ? interface.incognitoBrowserProvider
+                           : interface.mainBrowserProvider;
+}
+
+}  // anonymous namespace
+
+// Tests the FirstRunProfileAgent.
+class FirstRunProfileAgentTest : public PlatformTest {
+ public:
+  explicit FirstRunProfileAgentTest() {
+    TestProfileIOS::Builder builder;
+    profile_ = std::move(builder).Build();
+
+    profile_state_ = [[ProfileState alloc] initWithAppState:nil];
+    profile_state_.profile = profile_.get();
+
+    profile_agent_ = [[FirstRunProfileAgent alloc] init];
+    [profile_state_ addAgent:profile_agent_];
+  }
+
+  ~FirstRunProfileAgentTest() override {
+    @autoreleasepool {
+      [scene_state_ shutdown];
+      scene_state_ = nil;
+      profile_state_ = nil;
+    }
+  }
+
+  // Initializes `scene_state_` using a configured `profile_`.
+  void InitializeActiveSceneState(bool is_off_the_record = false) {
+    scene_state_ = [[FakeSceneState alloc] initWithProfile:profile_.get()];
+    scene_state_.activationLevel = SceneActivationLevelForegroundActive;
+
+    [scene_state_
+        setCurrentBrowserProvider:BrowserProviderForMode(scene_state_,
+                                                         is_off_the_record)];
+  }
+
+  Browser* browser() {
+    return scene_state_.browserProviderInterface.currentBrowserProvider.browser;
+  }
+
+ protected:
+  IOSChromeScopedTestingLocalState scoped_testing_local_state_;
+  web::WebTaskEnvironment task_environment_;
+  base::test::ScopedFeatureList enabled_feature_list_;
+  std::unique_ptr<TestProfileIOS> profile_;
+  FirstRunProfileAgent* profile_agent_;
+  ProfileState* profile_state_;
+  FakeSceneState* scene_state_;
+};
+
+// Validates that the correct metric is logged when the user rejects Guided Tour
+// promo.
+TEST_F(FirstRunProfileAgentTest, GuidedTourPromoMetrics) {
+  enabled_feature_list_.InitAndEnableFeatureWithParameters(
+      kBestOfAppFRE, {{kWelcomeBackParam, "4"}});
+  base::HistogramTester tester;
+  [profile_agent_ dismissGuidedTourPromo];
+  tester.ExpectTotalCount("IOS.GuidedTour.Promo.DidAccept", 1);
+}
+
+// Validates that the correct metric is logged when a step in the Guided Tour
+// finishes.
+TEST_F(FirstRunProfileAgentTest, GuidedTourStepMetrics) {
+  enabled_feature_list_.InitAndEnableFeatureWithParameters(
+      kBestOfAppFRE, {{kWelcomeBackParam, "4"}});
+
+  InitializeActiveSceneState();
+  [profile_agent_ profileState:profile_state_
+      firstSceneHasInitializedUI:scene_state_];
+
+  FakeTabGridToolbarCommands* fake_tab_grid_toolbar_commands =
+      [[FakeTabGridToolbarCommands alloc] init];
+  [browser()->GetCommandDispatcher()
+      startDispatchingToTarget:fake_tab_grid_toolbar_commands
+                   forProtocol:@protocol(TabGridToolbarCommands)];
+
+  FakeTabGridCommands* fake_tab_grid_commands =
+      [[FakeTabGridCommands alloc] init];
+  [browser()->GetCommandDispatcher()
+      startDispatchingToTarget:fake_tab_grid_commands
+                   forProtocol:@protocol(TabGridCommands)];
+
+  id scene_commands_handler = OCMProtocolMock(@protocol(SceneCommands));
+  [browser()->GetCommandDispatcher()
+      startDispatchingToTarget:scene_commands_handler
+                   forProtocol:@protocol(SceneCommands)];
+
+  id guided_tour_handler = OCMProtocolMock(@protocol(GuidedTourCommands));
+  [browser()->GetCommandDispatcher()
+      startDispatchingToTarget:guided_tour_handler
+                   forProtocol:@protocol(GuidedTourCommands)];
+
+  // NewTabPageCommands is required by maybePresentPostFREPromos when the Guided
+  // Tour completes.
+  id ntp_commands_handler = OCMProtocolMock(@protocol(NewTabPageCommands));
+  [browser()->GetCommandDispatcher()
+      startDispatchingToTarget:ntp_commands_handler
+                   forProtocol:@protocol(NewTabPageCommands)];
+
+  base::HistogramTester tester;
+
+  // Start and stop step 1 (NTP).
+  [profile_agent_ startGuidedTour];
+  [profile_agent_ guidedTourNTPStepCompleted];
+  tester.ExpectBucketCount("IOS.GuidedTour.DidFinishStep", 0, 1);
+
+  // Tab grid being presented is the signal to start step 2.
+  [profile_agent_ tabGridWasPresented];
+
+  ASSERT_NE(fake_tab_grid_toolbar_commands.dismissalCompletion, nil);
+  fake_tab_grid_toolbar_commands.dismissalCompletion();
+  tester.ExpectBucketCount("IOS.GuidedTour.DidFinishStep", 1, 1);
+
+  // Step 2 completion triggers step 3.
+  ASSERT_NE(fake_tab_grid_commands.dismissalCompletion, nil);
+  fake_tab_grid_commands.dismissalCompletion();
+  tester.ExpectBucketCount("IOS.GuidedTour.DidFinishStep", 2, 1);
+
+  // Step 3 completion triggers step 4.
+  ASSERT_NE(fake_tab_grid_toolbar_commands.dismissalCompletion, nil);
+  fake_tab_grid_toolbar_commands.dismissalCompletion();
+  tester.ExpectBucketCount("IOS.GuidedTour.DidFinishStep", 3, 1);
+}
+
+// Validates that the Synced Set Up flow does not trigger from an off-the-record
+// profile.
+TEST_F(FirstRunProfileAgentTest, SyncedSetUpDoesNotTriggerInIncognito) {
+  enabled_feature_list_.InitAndEnableFeature(
+      sync_preferences::features::kEnableCrossDevicePrefTracker);
+
+  // Ensure that conditions are met for Synced Set Up to be shown on a
+  // non-incognito profile.
+  auto pref_service =
+      std::make_unique<sync_preferences::TestingPrefServiceSyncable>();
+  pref_service->registry()->RegisterIntegerPref(
+      prefs::kSyncedSetUpImpressionCount, 0);
+  ASSERT_TRUE(pref_service->FindPreference(prefs::kSyncedSetUpImpressionCount));
+  ASSERT_LT(pref_service->GetInteger(prefs::kSyncedSetUpImpressionCount),
+            kSyncedSetUpImpressionLimit);
+
+  TestProfileIOS::Builder builder;
+  builder.SetPrefService(std::move(pref_service));
+  profile_ = std::move(builder).Build();
+
+  InitializeActiveSceneState(/*is_off_the_record*/ true);
+  ASSERT_NE(scene_state_.browserProviderInterface.currentBrowserProvider, nil);
+
+  // Configure the app state for the post-first run flow.
+  FakeStartupInformation* startup_information =
+      [[FakeStartupInformation alloc] init];
+  startup_information.isFirstRun = YES;
+
+  AppState* app_state =
+      [[AppState alloc] initWithStartupInformation:startup_information];
+
+  [profile_state_ removeAgent:profile_agent_];
+  profile_state_ = [profile_state_ initWithAppState:app_state];
+  [profile_state_ sceneStateConnected:scene_state_];
+  SetProfileStateInitStage(profile_state_, ProfileInitStage::kFinal);
+
+  // Assert that whether the profile is off-the-record will be checked by the
+  // profile agent.
+  ASSERT_TRUE(profile_state_.appState.startupInformation.isFirstRun);
+  ASSERT_EQ(profile_state_.initStage, ProfileInitStage::kFinal);
+  ASSERT_FALSE(profile_state_.currentUIBlocker);
+  ASSERT_TRUE(profile_state_.foregroundActiveScene);
+
+  // Partial mock profile agent that prevents the profile agent from executing
+  // other post-first run actions.
+  id mock_profile_agent = OCMPartialMock(profile_agent_);
+  OCMStub([mock_profile_agent showFirstRunUI]);
+  OCMStub([mock_profile_agent performNextPostFirstRunAction]);
+
+  [profile_state_ addAgent:mock_profile_agent];
+
+  // Verify that no Synced Set Up triggers are logged after attempting to show
+  // Synced Set Up on an off-the-record profile.
+  base::HistogramTester histogram_tester;
+  [mock_profile_agent profileState:profile_state_
+        firstSceneHasInitializedUI:scene_state_];
+  [mock_profile_agent showSyncedSetUp];
+  histogram_tester.ExpectBucketCount(
+      "IOS.SyncedSetUp.TriggerSource",
+      static_cast<int>(SyncedSetUpTriggerSource::kPostFirstRun), 0);
+  histogram_tester.ExpectTotalCount("IOS.SyncedSetUp.TriggerSource", 0);
+}
+
+// Validates that stopGuidedTour does not crash when the command dispatcher
+// is not dispatching for GuidedTourCommands or SceneCommands.
+TEST_F(FirstRunProfileAgentTest, StopGuidedTourWithoutHandlers) {
+  enabled_feature_list_.InitAndEnableFeatureWithParameters(
+      kBestOfAppFRE, {{kWelcomeBackParam, "4"}});
+
+  InitializeActiveSceneState();
+  [profile_agent_ profileState:profile_state_
+      firstSceneHasInitializedUI:scene_state_];
+
+  [profile_agent_ startGuidedTour];
+
+  // This should not crash even if handlers are missing.
+  [profile_agent_ stopGuidedTour];
+}
+
+// Validates that maybePresentPostFREPromos correctly triggers the NTP command
+// to present the Lens bubble when the BestOfAppLensAnimatedPromo variant is
+// enabled.
+TEST_F(FirstRunProfileAgentTest, MaybePresentPostFREPromos_LensBubble) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(kBestOfAppFRE,
+                                                  {{"variant", "2"}});
+
+  InitializeActiveSceneState();
+  [profile_agent_ profileState:profile_state_
+      firstSceneHasInitializedUI:scene_state_];
+  [profile_state_ sceneStateConnected:scene_state_];
+
+  // Mock NewTabPageCommands.
+  id ntp_commands_handler = OCMProtocolMock(@protocol(NewTabPageCommands));
+  OCMExpect([ntp_commands_handler presentLensIconBubble]);
+
+  [browser()->GetCommandDispatcher()
+      startDispatchingToTarget:ntp_commands_handler
+                   forProtocol:@protocol(NewTabPageCommands)];
+
+  [profile_agent_ maybePresentPostFREPromos];
+
+  id self = nil;
+  OCMVerifyAll(ntp_commands_handler);
+}
+
+// Validates that maybePresentPostFREPromos correctly triggers the NTP command
+// to present the feed swipe bubble when BestOfAppLensAnimatedPromo is not
+// enabled.
+TEST_F(FirstRunProfileAgentTest, MaybePresentPostFREPromos_FeedSwipe) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(kBestOfAppFRE,
+                                                  {{"variant", "1"}});
+
+  InitializeActiveSceneState();
+  [profile_agent_ profileState:profile_state_
+      firstSceneHasInitializedUI:scene_state_];
+  [profile_state_ sceneStateConnected:scene_state_];
+
+  // Mock NewTabPageCommands.
+  id ntp_commands_handler = OCMProtocolMock(@protocol(NewTabPageCommands));
+  OCMExpect([ntp_commands_handler presentFeedSwipeFirstRunBubble]);
+
+  [browser()->GetCommandDispatcher()
+      startDispatchingToTarget:ntp_commands_handler
+                   forProtocol:@protocol(NewTabPageCommands)];
+
+  [profile_agent_ maybePresentPostFREPromos];
+
+  id self = nil;
+  OCMVerifyAll(ntp_commands_handler);
+}

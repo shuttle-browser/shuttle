@@ -1,0 +1,24 @@
+# Remove icons from the system icons
+XDG_ICON_RESOURCE="`command -v xdg-icon-resource 2> /dev/null || true`"
+if [ ! -x "$XDG_ICON_RESOURCE" ]; then
+  echo "Error: Could not find xdg-icon-resource" >&2
+  exit 1
+fi
+for icon in @@logo_resources_png; do
+  size="$(echo ${icon} | sed 's/[^0-9]//g')"
+  "$XDG_ICON_RESOURCE" uninstall --size "${size}" "@@PACKAGE"
+done
+
+# Update cache of .desktop file MIME types. Non-fatal since it's just a cache.
+update-desktop-database > /dev/null 2>&1 || true
+
+# Unload AppArmor profile
+# "remove" is for Debian/Ubuntu, "0" is for RPM distributions.
+if [ "$1" = "remove" ] || [ "$1" = "0" ]; then
+  if [ -f "/etc/apparmor.d/@@usr_bin_symlink_name" ]; then
+    if [ -x /sbin/apparmor_parser ]; then
+      /sbin/apparmor_parser -R "/etc/apparmor.d/@@usr_bin_symlink_name" || true
+    fi
+    rm -f "/etc/apparmor.d/@@usr_bin_symlink_name"
+  fi
+fi

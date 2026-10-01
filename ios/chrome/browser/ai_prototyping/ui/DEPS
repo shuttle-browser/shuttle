@@ -1,0 +1,7 @@
+include_rules = [
+  # keep-sorted start
+  "+ios/chrome/browser/intelligence/actor/ui",
+  "+ios/chrome/browser/intelligence/features/features.h",
+  "+ios/chrome/browser/optimization_guide/model",
+  # keep-sorted end
+]

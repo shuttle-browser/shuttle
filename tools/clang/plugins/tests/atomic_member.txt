@@ -1,0 +1,15 @@
+In file included from atomic_member.cpp:5:
+./atomic_member.h:32:1: warning: [chromium-style] Complex class/struct needs an explicit out-of-line constructor.
+class TenAtomicIntAliasesWarns {
+^
+./atomic_member.h:57:1: warning: [chromium-style] Complex class/struct needs an explicit out-of-line constructor.
+class TenAtomicIntTemplatesWarns {
+^
+./atomic_member.h:82:1: warning: [chromium-style] Complex class/struct needs an explicit out-of-line constructor.
+class TenAtomicPtrsWarns {
+^
+./atomic_member.h:95:1: warning: [chromium-style] Complex class/struct needs an explicit out-of-line constructor.
+class OneAtomicSharedPtrWarns {
+^
+./atomic_member.h:95:1: warning: [chromium-style] Complex class/struct needs an explicit out-of-line destructor.
+5 warnings generated.

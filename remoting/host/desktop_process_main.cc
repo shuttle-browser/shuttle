@@ -1,0 +1,165 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+//
+// This file implements the Windows service controlling Me2Me host processes
+// running within user sessions.
+
+#include <cstdlib>
+#include <memory>
+#include <utility>
+
+#include "base/command_line.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/message_loop/message_pump_type.h"
+#include "base/run_loop.h"
+#include "base/task/single_thread_task_executor.h"
+#include "base/task/thread_pool/thread_pool_instance.h"
+#include "build/build_config.h"
+#include "mojo/core/embedder/scoped_ipc_support.h"
+#include "mojo/public/cpp/platform/named_platform_channel.h"
+#include "mojo/public/cpp/platform/platform_channel.h"
+#include "mojo/public/cpp/platform/platform_channel_endpoint.h"
+#include "mojo/public/cpp/system/invitation.h"
+#include "mojo/public/cpp/system/message_pipe.h"
+#include "remoting/base/auto_thread.h"
+#include "remoting/base/auto_thread_task_runner.h"
+#include "remoting/host/base/host_exit_codes.h"
+#include "remoting/host/base/switches.h"
+#include "remoting/host/desktop_process.h"
+#include "remoting/host/me2me_desktop_environment.h"
+
+#if BUILDFLAG(IS_LINUX) && defined(REMOTING_USE_X11)
+#include <gtk/gtk.h>
+
+#include "ui/gfx/x/xlib_support.h"
+#endif
+
+#if BUILDFLAG(IS_POSIX)
+#include "base/files/file_descriptor_watcher_posix.h"
+#endif
+
+#if BUILDFLAG(IS_LINUX)
+#include "remoting/host/linux/systemd_user_env_setter.h"
+#endif
+
+#if BUILDFLAG(IS_WIN)
+#include "base/functional/bind.h"
+#include "remoting/host/win/session_interaction_strategy.h"
+#else
+#include "remoting/host/create_desktop_interaction_strategy_factory.h"
+#include "remoting/host/host_main.h"
+#endif
+
+namespace remoting {
+
+int DesktopProcessMain() {
+#if BUILDFLAG(IS_LINUX)
+  auto result = SetSystemdUserEnvironment();
+  if (!result.has_value()) {
+    LOG(ERROR) << "Failed to set systemd user environment: " << result.error();
+    return kInitializationFailed;
+  }
+#endif
+
+  const base::CommandLine* command_line =
+      base::CommandLine::ForCurrentProcess();
+
+#if BUILDFLAG(IS_LINUX) && defined(REMOTING_USE_X11)
+  // Initialize Xlib for multi-threaded use, allowing non-Chromium code to
+  // use X11 safely (such as the WebRTC capturer, GTK ...)
+  x11::InitXlib();
+
+  // Required for any calls into GTK functions, such as the Disconnect and
+  // Continue windows, though these should not be used for the Me2Me case
+  // (crbug.com/104377).
+#if GTK_CHECK_VERSION(3, 90, 0)
+  gtk_init();
+#else
+  gtk_init(nullptr, nullptr);
+#endif
+
+#endif  // BUILDFLAG(IS_LINUX) && defined(REMOTING_USE_X11)
+
+  base::ThreadPoolInstance::CreateAndStartWithDefaultParams("Me2Me");
+
+  base::SingleThreadTaskExecutor main_task_executor(base::MessagePumpType::UI,
+                                                    /*is_main_thread=*/true);
+  base::RunLoop run_loop;
+  scoped_refptr<AutoThreadTaskRunner> ui_task_runner = new AutoThreadTaskRunner(
+      main_task_executor.task_runner(), run_loop.QuitClosure());
+
+  // Launch the video capture thread.
+  scoped_refptr<AutoThreadTaskRunner> video_capture_task_runner =
+      AutoThread::Create("Video capture thread", ui_task_runner);
+
+  // Launch the input thread.
+  scoped_refptr<AutoThreadTaskRunner> input_task_runner =
+      AutoThread::CreateWithType("Input thread", ui_task_runner,
+                                 base::MessagePumpType::IO);
+
+  // Launch the I/O thread.
+  scoped_refptr<AutoThreadTaskRunner> io_task_runner =
+      AutoThread::CreateWithType("I/O thread", ui_task_runner,
+                                 base::MessagePumpType::IO);
+
+#if BUILDFLAG(IS_POSIX)
+  // Allow the main thread (which is not an I/O thread) to use
+  // FileDescriptorWatcher. The constructor of FileDescriptorWatcher registers
+  // itself in a thread local storage.
+  base::FileDescriptorWatcher fd_watcher(io_task_runner->task_runner());
+#endif
+
+  mojo::core::ScopedIPCSupport ipc_support(
+      io_task_runner->task_runner(),
+      mojo::core::ScopedIPCSupport::ShutdownPolicy::FAST);
+  mojo::PlatformChannelEndpoint endpoint =
+      mojo::PlatformChannel::RecoverPassedEndpointFromCommandLine(
+          *command_line);
+  if (!endpoint.is_valid()) {
+    endpoint = mojo::NamedPlatformChannel::ConnectToServer(*command_line);
+  }
+  if (!endpoint.is_valid()) {
+    return kInvalidCommandLineExitCode;
+  }
+
+  auto invitation = mojo::IncomingInvitation::Accept(std::move(endpoint));
+  mojo::ScopedMessagePipeHandle message_pipe = invitation.ExtractMessagePipe(
+      command_line->GetSwitchValueASCII(kMojoPipeToken));
+  DesktopProcess desktop_process(ui_task_runner, input_task_runner,
+                                 io_task_runner, std::move(message_pipe));
+
+  // Create a platform-dependent environment factory.
+#if BUILDFLAG(IS_WIN)
+  // base::Unretained() is safe here: |desktop_process| outlives run_loop.Run().
+  auto inject_sas_closure = base::BindRepeating(
+      &DesktopProcess::InjectSas, base::Unretained(&desktop_process));
+  auto lock_workstation_closure = base::BindRepeating(
+      &DesktopProcess::LockWorkstation, base::Unretained(&desktop_process));
+  auto interaction_strategy_factory =
+      std::make_unique<SessionInteractionStrategyFactory>(
+          ui_task_runner, ui_task_runner, video_capture_task_runner,
+          input_task_runner, std::move(inject_sas_closure),
+          std::move(lock_workstation_closure));
+#else   // !BUILDFLAG(IS_WIN)
+  auto interaction_strategy_factory = CreateDesktopInteractionStrategyFactory(
+      ui_task_runner, ui_task_runner, video_capture_task_runner,
+      input_task_runner);
+#endif  // !BUILDFLAG(IS_WIN)
+  auto desktop_environment_factory =
+      std::make_unique<Me2MeDesktopEnvironmentFactory>(
+          ui_task_runner, ui_task_runner,
+          std::move(interaction_strategy_factory));
+
+  if (!desktop_process.Start(std::move(desktop_environment_factory))) {
+    return kInitializationFailed;
+  }
+
+  // Run the UI message loop.
+  ui_task_runner = nullptr;
+  run_loop.Run();
+
+  return kSuccessExitCode;
+}
+
+}  // namespace remoting

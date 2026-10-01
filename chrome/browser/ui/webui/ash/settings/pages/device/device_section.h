@@ -1,0 +1,103 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_WEBUI_ASH_SETTINGS_PAGES_DEVICE_DEVICE_SECTION_H_
+#define CHROME_BROWSER_UI_WEBUI_ASH_SETTINGS_PAGES_DEVICE_DEVICE_SECTION_H_
+
+#include "ash/display/cros_display_config.h"
+#include "ash/public/cpp/night_light_controller.h"
+#include "ash/shell_observer.h"
+#include "ash/webui/settings/public/constants/setting.mojom-forward.h"
+#include "base/scoped_observation.h"
+#include "base/values.h"
+#include "chrome/browser/ash/system/pointer_device_observer.h"
+#include "chrome/browser/ui/webui/ash/settings/pages/device/inputs_section.h"
+#include "chrome/browser/ui/webui/ash/settings/pages/os_settings_section.h"
+#include "chrome/browser/ui/webui/ash/settings/pages/printing/printing_section.h"
+#include "ui/events/devices/input_device_event_observer.h"
+
+class PrefService;
+
+namespace ash {
+class Shell;
+}  // namespace ash
+
+namespace content {
+class WebUIDataSource;
+}  // namespace content
+
+namespace ash::settings {
+
+class SearchTagRegistry;
+
+// Provides UI strings and search tags for Device settings.
+class DeviceSection : public OsSettingsSection,
+                      public system::PointerDeviceObserver::Observer,
+                      public ui::InputDeviceEventObserver,
+                      public NightLightController::Observer,
+                      public ash::CrosDisplayConfig::Observer,
+                      public ash::ShellObserver {
+ public:
+  DeviceSection(Profile* profile,
+                SearchTagRegistry* search_tag_registry,
+                CupsPrintersManager* printers_manager,
+                PrefService* pref_service);
+  ~DeviceSection() override;
+
+  // ash::ShellObserver:
+  void OnShellDestroying() override;
+
+  // OsSettingsSection:
+  void AddLoadTimeData(content::WebUIDataSource* html_source) override;
+  void AddHandlers(content::WebUI* web_ui) override;
+  int GetSectionNameMessageId() const override;
+  chromeos::settings::mojom::Section GetSection() const override;
+  mojom::SearchResultIcon GetSectionIcon() const override;
+  const char* GetSectionPath() const override;
+  bool LogMetric(chromeos::settings::mojom::Setting setting,
+                 base::Value& value) const override;
+  void RegisterHierarchy(HierarchyGenerator* generator) const override;
+
+ private:
+  // system::PointerDeviceObserver::Observer:
+  void TouchpadExists(bool exists) override;
+  void HapticTouchpadExists(bool exists) override;
+  void MouseExists(bool exists) override;
+  void PointingStickExists(bool exists) override;
+
+  // ui::InputDeviceObserver:
+  void OnDeviceListsComplete() override;
+
+  // NightLightController::Observer:
+  void OnNightLightEnabledChanged(bool enabled) override;
+
+  // ash::CrosDisplayConfig::Observer:
+  void OnDisplayConfigChanged() override;
+
+  void UpdateStylusSearchTags();
+
+  void AddDevicePointersStrings(content::WebUIDataSource* html_source);
+  void AddDeviceGraphicsTabletStrings(
+      content::WebUIDataSource* html_source) const;
+  void AddCustomizeButtonsPageStrings(
+      content::WebUIDataSource* html_source) const;
+  void AddDeviceDisplayStrings(content::WebUIDataSource* html_source) const;
+
+  system::PointerDeviceObserver pointer_device_observer_;
+  InputsSection inputs_subsection_;
+  PrintingSection printing_subsection_;
+  raw_ptr<ash::CrosDisplayConfig> cros_display_config_ = nullptr;
+  base::ScopedObservation<ash::CrosDisplayConfig,
+                          ash::CrosDisplayConfig::Observer>
+      cros_display_config_observation_{this};
+  // TODO(crbug.com/485123493): Remove the observation and OnShellDestroying
+  // override once profiles (and thus DeviceSection) get destroyed
+  // before ash::Shell.
+  base::ScopedObservation<ash::Shell, ash::ShellObserver> shell_observation_{
+      this};
+};
+
+}  // namespace ash::settings
+
+#endif  // CHROME_BROWSER_UI_WEBUI_ASH_SETTINGS_PAGES_DEVICE_DEVICE_SECTION_H_

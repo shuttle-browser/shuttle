@@ -1,0 +1,190 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/location_bar/lens_overlay_homework_page_action_controller.h"
+
+#include "base/functional/bind.h"
+#include "build/build_config.h"
+#include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/lens/region_search/lens_region_search_controller.h"
+#include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/browser_element_identifiers.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/call_to_action/call_to_action_lock.h"
+#include "chrome/browser/ui/lens/lens_overlay_edu_utils.h"
+#include "chrome/browser/ui/lens/lens_overlay_entry_point_controller.h"
+#include "chrome/browser/ui/lens/lens_search_controller.h"
+#include "chrome/browser/ui/location_bar/location_bar.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/interaction/browser_elements_views.h"
+#include "chrome/browser/ui/views/location_bar/location_bar_view.h"
+#include "chrome/browser/user_education/user_education_service.h"
+#include "chrome/common/buildflags.h"
+#include "components/lens/lens_features.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
+#include "content/public/browser/web_contents.h"
+
+DEFINE_USER_DATA(LensOverlayHomeworkPageActionController);
+
+LensOverlayHomeworkPageActionController::
+    LensOverlayHomeworkPageActionController(
+        tabs::TabInterface& tab_interface,
+        Profile& profile,
+        page_actions::PageActionController& page_action_controller)
+    : profile_(profile),
+      tab_(tab_interface),
+      page_action_controller_(page_action_controller),
+      scoped_unowned_user_data_(tab_interface.GetUnownedUserDataHost(), *this) {
+  tab_will_detach_subscription_ =
+      tab_interface.RegisterWillDetach(base::BindRepeating(
+          &LensOverlayHomeworkPageActionController::OnTabWillDetach,
+          base::Unretained(this)));
+  tab_will_discard_contents_subscription_ =
+      tab_interface.RegisterWillDiscardContents(base::BindRepeating(
+          &LensOverlayHomeworkPageActionController::OnTabWillDiscardContents,
+          base::Unretained(this)));
+  Observe(tab_->GetContents());
+}
+
+LensOverlayHomeworkPageActionController::
+    ~LensOverlayHomeworkPageActionController() = default;
+
+// static.
+LensOverlayHomeworkPageActionController*
+LensOverlayHomeworkPageActionController::From(tabs::TabInterface& tab) {
+  return Get(tab.GetUnownedUserDataHost());
+}
+
+void LensOverlayHomeworkPageActionController::UpdatePageActionIcon() {
+  CHECK(tab_->GetContents());
+
+  if (ShouldShow()) {
+    if (!scoped_call_to_action_lock_) {
+      scoped_call_to_action_lock_ =
+          CallToActionLock::From(tab_->GetBrowserWindowInterface())
+              ->AcquireLock();
+      lens::RecordLensOverlayEduActionChipShown(base::to_address(profile_));
+    }
+    page_action_controller_->Show(kActionLensOverlayHomework);
+    page_action_controller_->ShowSuggestionChip(kActionLensOverlayHomework);
+  } else {
+    scoped_call_to_action_lock_.reset();
+    page_action_controller_->HideSuggestionChip(kActionLensOverlayHomework);
+    page_action_controller_->Hide(kActionLensOverlayHomework);
+  }
+}
+
+void LensOverlayHomeworkPageActionController::HandlePageActionEvent(
+    bool is_from_keyboard) {
+  // If the user entered Lens through the keyboard and keyboard selection is not
+  // enabled, we want to open Lens Web in a new tab.
+  if (is_from_keyboard &&
+      !lens::features::IsLensOverlayKeyboardSelectionEnabled()) {
+    lens::LensRegionSearchController::From(tab_->GetBrowserWindowInterface())
+        ->Start(tab_->GetContents(), /*use_fullscreen_capture=*/true,
+                /*is_google_default_search_provider=*/true,
+                lens::AmbientSearchEntryPoint::
+                    LENS_OVERLAY_LOCATION_BAR_ACCESSIBILITY_FALLBACK);
+    return;
+  }
+
+  LensSearchController* const controller =
+      LensSearchController::FromTabWebContents(tab_->GetContents());
+  CHECK(controller);
+
+  controller->OpenLensOverlay(
+      lens::LensOverlayInvocationSource::kHomeworkActionChip);
+  UserEducationService::MaybeNotifyNewBadgeFeatureUsed(
+      tab_->GetContents()->GetBrowserContext(), lens::features::kLensOverlay);
+
+  page_action_controller_->HideSuggestionChip(kActionLensOverlayHomework);
+  page_action_controller_->Hide(kActionLensOverlayHomework);
+}
+
+bool LensOverlayHomeworkPageActionController::ShouldShow() {
+  if (!lens::ShouldShowLensOverlayEduActionChip(base::to_address(profile_))) {
+    return false;
+  }
+
+  if (profile_->IsOffTheRecord()) {
+    return false;
+  }
+
+  if (lens::features::IsLensOverlayEduActionChipDisabledByGlic() &&
+      glic::GlicEnabling::IsEligibleForGlicTieredRollout(
+          base::to_address(profile_))) {
+    return false;
+  }
+
+  // Hide the homework chip if the broader lens feature is disabled.
+  const auto* lens_overlay_entry_point_controller =
+      lens::LensOverlayEntryPointController::From(
+          tab_->GetBrowserWindowInterface());
+  if (!lens_overlay_entry_point_controller ||
+      !lens_overlay_entry_point_controller->AreVisible()) {
+    return false;
+  }
+
+  const LocationBar* location_bar = nullptr;
+  // Legacy lookup path; only still around for performance experiment reasons.
+  if (!base::FeatureList::IsEnabled(
+          features::kLensOverlayHomeworkPageActionFocusOptimization)) {
+    location_bar = static_cast<LocationBarView*>(
+        BrowserElementsViews::From(tab_->GetBrowserWindowInterface())
+            ->GetView(kLocationBarElementId));
+  }
+
+  if (!location_bar) {
+    location_bar = lens_overlay_entry_point_controller->location_bar();
+  }
+
+  if (!location_bar) {
+    return false;
+  }
+
+  // Hide the homework chip if the location bar is focused.
+  if (location_bar->IsFocusWithin()) {
+    return false;
+  }
+
+  // Treat the chip as a window-level call to action UI; only one such UI is
+  // allowed to show at a time. Check if scoped_call_to_action_lock_ is
+  // already set (we are already showing the chip) before checking
+  // CanAcquireLock().
+  if (!scoped_call_to_action_lock_ &&
+      !CallToActionLock::From(tab_->GetBrowserWindowInterface())
+           ->CanAcquireLock()) {
+    return false;
+  }
+
+  content::NavigationEntry* entry =
+      tab_->GetContents()->GetController().GetLastCommittedEntry();
+  if (entry->IsInitialEntry()) {
+    entry = tab_->GetContents()->GetController().GetVisibleEntry();
+  }
+
+  return lens_overlay_entry_point_controller->IsUrlEduEligible(entry->GetURL());
+}
+
+void LensOverlayHomeworkPageActionController::DidFinishNavigation(
+    content::NavigationHandle* navigation_handle) {
+  // Since ShouldShow cares about the current URL, we need to update after
+  // navigations.
+  UpdatePageActionIcon();
+}
+
+void LensOverlayHomeworkPageActionController::OnTabWillDetach(
+    tabs::TabInterface* tab,
+    tabs::TabInterface::DetachReason reason) {
+  scoped_call_to_action_lock_.reset();
+}
+
+void LensOverlayHomeworkPageActionController::OnTabWillDiscardContents(
+    tabs::TabInterface* tab,
+    content::WebContents* discarded,
+    content::WebContents* replacement) {
+  Observe(replacement);
+}

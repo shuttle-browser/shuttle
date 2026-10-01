@@ -1,0 +1,265 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/ntp/search_engine_logo/mediator/search_engine_logo_mediator.h"
+
+#import "base/memory/raw_ptr.h"
+#import "components/search_engines/template_url_data_util.h"
+#import "components/search_engines/template_url_service.h"
+#import "components/search_provider_logos/logo_common.h"
+#import "ios/chrome/browser/google/model/google_logo_service.h"
+#import "ios/chrome/browser/google/model/google_logo_service_factory.h"
+#import "ios/chrome/browser/ntp/search_engine_logo/ui/search_engine_logo_container_view.h"
+#import "ios/chrome/browser/ntp/search_engine_logo/ui/search_engine_logo_state.h"
+#import "ios/chrome/browser/search_engines/model/template_url_service_factory.h"
+#import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/signin/model/identity_manager_factory.h"
+#import "ios/chrome/browser/url_loading/model/fake_url_loading_browser_agent.h"
+#import "ios/chrome/browser/url_loading/model/url_loading_browser_agent.h"
+#import "ios/chrome/browser/url_loading/model/url_loading_notifier_browser_agent.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
+#import "ios/web/public/test/fakes/fake_web_state.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "services/network/public/cpp/shared_url_loader_factory.h"
+#import "testing/gmock/include/gmock/gmock.h"
+#import "testing/gtest/include/gtest/gtest.h"
+#import "testing/platform_test.h"
+#import "third_party/search_engines_data/resources/definitions/prepopulated_engines.h"
+#import "third_party/skia/include/core/SkBitmap.h"
+#import "url/gurl.h"
+
+namespace {
+
+using ::testing::_;
+using ::testing::Return;
+
+class MockGoogleLogoService : public GoogleLogoService {
+ public:
+  MockGoogleLogoService(TemplateURLService* template_url_service,
+                        signin::IdentityManager* identity_manager)
+      : GoogleLogoService(template_url_service, identity_manager, nullptr) {}
+
+  MOCK_METHOD3(GetLogo, void(search_provider_logos::LogoCallbacks, bool, bool));
+};
+
+std::unique_ptr<KeyedService> BuildMockGoogleLogoService(ProfileIOS* profile) {
+  signin::IdentityManager* identity_manager =
+      IdentityManagerFactory::GetForProfile(profile);
+  return std::make_unique<MockGoogleLogoService>(
+      ios::TemplateURLServiceFactory::GetForProfile(profile), identity_manager);
+}
+
+class SearchEngineLogoMediatorTest : public PlatformTest {
+ protected:
+  SearchEngineLogoMediatorTest()
+      : web_state_(std::make_unique<web::FakeWebState>()) {
+    TestProfileIOS::Builder test_profile_builder;
+    test_profile_builder.AddTestingFactory(
+        ios::TemplateURLServiceFactory::GetInstance(),
+        ios::TemplateURLServiceFactory::GetDefaultFactory());
+    test_profile_builder.AddTestingFactory(
+        GoogleLogoServiceFactory::GetInstance(),
+        base::BindOnce(&BuildMockGoogleLogoService));
+    profile_ = std::move(test_profile_builder).Build();
+    browser_ = std::make_unique<TestBrowser>(profile_.get());
+    UrlLoadingNotifierBrowserAgent::CreateForBrowser(browser_.get());
+    FakeUrlLoadingBrowserAgent::InjectForBrowser(browser_.get());
+
+    url_loader_ = FakeUrlLoadingBrowserAgent::FromUrlLoadingBrowserAgent(
+        UrlLoadingBrowserAgent::FromBrowser(browser_.get()));
+
+    TemplateURLService* template_url_service =
+        ios::TemplateURLServiceFactory::GetForProfile(profile_.get());
+    logo_service_ = static_cast<MockGoogleLogoService*>(
+        GoogleLogoServiceFactory::GetForProfile(profile_.get()));
+    UrlLoadingBrowserAgent* URLLoadingBrowserAgent =
+        UrlLoadingBrowserAgent::FromBrowser(browser_.get());
+    scoped_refptr<network::SharedURLLoaderFactory> sharedURLLoaderFactory =
+        profile_->GetSharedURLLoaderFactory();
+    BOOL offTheRecord = profile_->IsOffTheRecord();
+    EXPECT_CALL(*logo_service_, GetLogo(_, false, false));
+    mediator_ = [[SearchEngineLogoMediator alloc]
+              initWithWebState:web_state_.get()
+            templateURLService:template_url_service
+                   logoService:logo_service_
+        URLLoadingBrowserAgent:URLLoadingBrowserAgent
+        sharedURLLoaderFactory:sharedURLLoaderFactory
+                  offTheRecord:offTheRecord];
+  }
+
+  void SelectSearchEngineWithKeyword(
+      const TemplateURLPrepopulateData::PrepopulatedEngine& engine) {
+    TemplateURLService* template_url_service =
+        ios::TemplateURLServiceFactory::GetForProfile(profile_.get());
+    TemplateURL* selected_template_url =
+        template_url_service->GetTemplateURLForKeyword(engine.keyword);
+    if (!selected_template_url) {
+      // Force-add it to the service.
+      std::unique_ptr<TemplateURLData> data =
+          TemplateURLDataFromPrepopulatedEngine(engine);
+      selected_template_url =
+          template_url_service->Add(std::make_unique<TemplateURL>(*data));
+    }
+
+    template_url_service->SetUserSelectedDefaultSearchProvider(
+        selected_template_url);
+    [mediator_ searchEngineChanged];
+  }
+
+  web::WebTaskEnvironment task_environment_;
+  IOSChromeScopedTestingLocalState scoped_testing_local_state_;
+  std::unique_ptr<web::WebState> web_state_;
+  std::unique_ptr<TestProfileIOS> profile_;
+  std::unique_ptr<Browser> browser_;
+  raw_ptr<FakeUrlLoadingBrowserAgent> url_loader_;
+  raw_ptr<MockGoogleLogoService> logo_service_;
+  SearchEngineLogoMediator* mediator_;
+};
+
+// Sanity check.
+TEST_F(SearchEngineLogoMediatorTest, TestConstructorDestructor) {
+  EXPECT_TRUE(mediator_);
+}
+
+// Verifies that tapping the doodle navigates to the stored URL.
+TEST_F(SearchEngineLogoMediatorTest, TestTapDoodleWithValidClickURL) {
+  const std::string kURL = "http://foo/";
+  [mediator_ setClickURLText:GURL(kURL)];
+
+  // Tap the doodle and verify the expected url was loaded.
+  [mediator_ simulateDoodleTapped];
+  EXPECT_EQ(kURL, url_loader_->last_params.web_params.url);
+  EXPECT_EQ(1, url_loader_->load_current_tab_call_count);
+}
+
+// Verifies the case where the URL value is invalid (which should result in not
+// attempting to load any URL when the doodle is tapped).
+TEST_F(SearchEngineLogoMediatorTest, TestTapDoodle_InvalidSearchQuery) {
+  [mediator_ setClickURLText:GURL("foo")];
+
+  // Tap the doodle and verify nothing was loaded.
+  [mediator_ simulateDoodleTapped];
+
+  EXPECT_EQ(GURL(), url_loader_->last_params.web_params.url);
+  EXPECT_EQ(0, url_loader_->load_current_tab_call_count);
+}
+
+// Verifies that the logo fetch is not restarted when the fetch is failed.
+TEST_F(SearchEngineLogoMediatorTest, TestFetchNotRestartedWhenFailed) {
+  // Set to other search engine.
+  EXPECT_CALL(*logo_service_, GetLogo(_, false, false))
+      .Times(testing::AtMost(1));
+  SelectSearchEngineWithKeyword(TemplateURLPrepopulateData::bing);
+  EXPECT_CALL(*logo_service_, GetLogo(_, false, false)).Times(0);
+
+  // Switch to Google search engine to trigger a doodle fetch.
+  search_provider_logos::LogoCallback logo_callback;
+  EXPECT_CALL(*logo_service_, GetLogo(_, false, false))
+      .WillOnce([&logo_callback](search_provider_logos::LogoCallbacks callbacks,
+                                 bool for_doodle, bool enable_animated_doodle) {
+        logo_callback = std::move(callbacks.on_fresh_decoded_logo_available);
+      });
+  SelectSearchEngineWithKeyword(TemplateURLPrepopulateData::google);
+  std::move(logo_callback)
+      .Run(search_provider_logos::LogoCallbackReason::FAILED, std::nullopt);
+  // Verify that the logo fetch is not restarted.
+  base::RunLoop run_loop;
+  EXPECT_CALL(*logo_service_, GetLogo(_, false, false)).Times(0);
+  task_environment_.GetMainThreadTaskRunner()->PostTask(FROM_HERE,
+                                                        run_loop.QuitClosure());
+  run_loop.Run();
+}
+
+// Verifies that the logo fetch is restarted when the fetch is canceled.
+TEST_F(SearchEngineLogoMediatorTest, TestFetchRestartedWhenCanceled) {
+  // Set to other search engine.
+  EXPECT_CALL(*logo_service_, GetLogo(_, false, false))
+      .Times(testing::AtMost(1));
+  SelectSearchEngineWithKeyword(TemplateURLPrepopulateData::bing);
+  EXPECT_CALL(*logo_service_, GetLogo(_, false, false)).Times(0);
+
+  // Switch to Google search engine to trigger a doodle fetch.
+  // Expect one call, which will be "canceled".
+  search_provider_logos::LogoCallback logo_callback;
+  EXPECT_CALL(*logo_service_, GetLogo(_, false, false))
+      .WillOnce([&logo_callback](search_provider_logos::LogoCallbacks callbacks,
+                                 bool for_doodle, bool enable_animated_doodle) {
+        logo_callback = std::move(callbacks.on_fresh_decoded_logo_available);
+      });
+  SelectSearchEngineWithKeyword(TemplateURLPrepopulateData::google);
+  std::move(logo_callback)
+      .Run(search_provider_logos::LogoCallbackReason::CANCELED, std::nullopt);
+  // Verify that the logo fetch is restarted.
+  base::RunLoop run_loop;
+  EXPECT_CALL(*logo_service_, GetLogo(_, false, false)).WillOnce([&run_loop] {
+    run_loop.Quit();
+  });
+  run_loop.Run();
+}
+
+// Tests that there is no crash if the mediator is disconnected during a logo
+// fetch.
+TEST_F(SearchEngineLogoMediatorTest, TestDisconnectMediatorWhileFetching) {
+  // Set to other search engine.
+  EXPECT_CALL(*logo_service_, GetLogo(_, false, false))
+      .Times(testing::AtMost(1));
+  SelectSearchEngineWithKeyword(TemplateURLPrepopulateData::bing);
+  EXPECT_CALL(*logo_service_, GetLogo(_, false, false)).Times(0);
+
+  search_provider_logos::LogoCallback logo_callback;
+  EXPECT_CALL(*logo_service_, GetLogo(_, false, false))
+      .WillOnce([&logo_callback](search_provider_logos::LogoCallbacks callbacks,
+                                 bool for_doodle, bool enable_animated_doodle) {
+        logo_callback = std::move(callbacks.on_fresh_decoded_logo_available);
+      });
+  SelectSearchEngineWithKeyword(TemplateURLPrepopulateData::google);
+  // Disconnect first, and then call the callback.
+  [mediator_ disconnect];
+  search_provider_logos::Logo logo;
+  std::move(logo_callback)
+      .Run(search_provider_logos::LogoCallbackReason::DETERMINED, logo);
+}
+
+// Verifies that an empty cache result does not reset the logo.
+TEST_F(SearchEngineLogoMediatorTest, TestEmptyCacheDoesNotResetLogo) {
+  // Switch to Google search engine to trigger a doodle fetch.
+  search_provider_logos::LogoCallback cached_logo_callback;
+  search_provider_logos::LogoCallback fresh_logo_callback;
+
+  EXPECT_CALL(*logo_service_, GetLogo(_, false, false))
+      .WillOnce([&cached_logo_callback, &fresh_logo_callback](
+                    search_provider_logos::LogoCallbacks callbacks,
+                    bool for_doodle, bool enable_animated_doodle) {
+        cached_logo_callback =
+            std::move(callbacks.on_cached_decoded_logo_available);
+        fresh_logo_callback =
+            std::move(callbacks.on_fresh_decoded_logo_available);
+      });
+
+  SelectSearchEngineWithKeyword(TemplateURLPrepopulateData::google);
+
+  SearchEngineLogoContainerView* containerView =
+      (SearchEngineLogoContainerView*)[mediator_ view];
+
+  // The default state for Google DSE is kLogo.
+  EXPECT_EQ(SearchEngineLogoState::kLogo, containerView.logoState);
+
+  // Run the CACHED callback with no logo (cache miss).
+  // This should NOT change the state.
+  std::move(cached_logo_callback)
+      .Run(search_provider_logos::LogoCallbackReason::DETERMINED, std::nullopt);
+
+  // Verify state is still kLogo.
+  EXPECT_EQ(SearchEngineLogoState::kLogo, containerView.logoState);
+
+  // Run the FRESH callback with no logo. This SHOULD reset it.
+  std::move(fresh_logo_callback)
+      .Run(search_provider_logos::LogoCallbackReason::DETERMINED, std::nullopt);
+
+  // Now it should be kNone.
+  EXPECT_EQ(SearchEngineLogoState::kNone, containerView.logoState);
+}
+
+}  // anonymous namespace

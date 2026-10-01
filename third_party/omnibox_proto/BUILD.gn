@@ -1,0 +1,67 @@
+# Copyright 2022 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This file was exported from google3, do not edit manually.
+# See README.chromium for details.
+
+import("//components/proto_extras/proto_extras.gni")
+import("//third_party/protobuf/proto_library.gni")
+
+if (is_android) {
+  import("//build/config/android/rules.gni")
+}
+
+_proto_files = [
+  "aim_eligibility_client_request.proto",
+  "aim_eligibility_response.proto",
+  "answer_data.proto",
+  "answer_type.proto",
+  "chrome_aim_entry_point.proto",
+  "chrome_searchbox_stats.proto",
+  "entity_info.proto",
+  "formatted_string.proto",
+  "groups.proto",
+  "icon.proto",
+  "icon_resource_ids.proto",
+  "input_constraints.proto",
+  "input_source.proto",
+  "input_type.proto",
+  "input_type_config.proto",
+  "input_type_rule.proto",
+  "model_config.proto",
+  "model_mode.proto",
+  "model_rule.proto",
+  "navigational_intent.proto",
+  "ntp_composebox_config.proto",
+  "page_vertical.proto",
+  "rich_answer_template.proto",
+  "rich_suggest_template.proto",
+  "rule_set.proto",
+  "search_context.proto",
+  "searchbox_config.proto",
+  "searchbox_tutorial.proto",
+  "section_config.proto",
+  "smart_compose_stats.proto",
+  "suggest_inventory.proto",
+  "suggest_template_info.proto",
+  "tool_config.proto",
+  "tool_mode.proto",
+  "tool_rule.proto",
+  "tool_substate.proto",
+  "tool_substate_config.proto",
+  "types.proto",
+  "url_param.proto",
+]
+
+proto_library("omnibox_proto") {
+  sources = _proto_files
+  proto_in_dir = "."
+}
+
+if (is_android) {
+  proto_java_library("omnibox_proto_java") {
+    proto_path = "."
+    sources = _proto_files
+  }
+}

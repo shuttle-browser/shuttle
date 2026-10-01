@@ -1,0 +1,15 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("ios_push") {
+  sources = [
+    "ios_push_notification_util.cc",
+    "ios_push_notification_util.h",
+  ]
+  deps = [
+    "//base",
+    "//components/sharing_message/proto",
+    "//components/version_info:channel",
+  ]
+}

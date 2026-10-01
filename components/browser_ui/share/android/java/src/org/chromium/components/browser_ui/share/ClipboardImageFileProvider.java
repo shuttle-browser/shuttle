@@ -1,0 +1,62 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.components.browser_ui.share;
+
+import static org.chromium.components.browser_ui.share.ClipboardConstants.CLIPBOARD_SHARED_URI;
+import static org.chromium.components.browser_ui.share.ClipboardConstants.CLIPBOARD_SHARED_URI_TIMESTAMP;
+
+import android.content.SharedPreferences;
+import android.net.Uri;
+import android.text.TextUtils;
+
+import org.chromium.base.Callback;
+import org.chromium.base.ContextUtils;
+import org.chromium.base.StrictModeContext;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.ui.base.Clipboard;
+import org.chromium.ui.base.Clipboard.ClipboardUriMetadata;
+
+/** Implementation class for {@link Clipboard.ImageFileProvider}. */
+@NullMarked
+public class ClipboardImageFileProvider implements Clipboard.ImageFileProvider {
+    @Override
+    public void storeImageAndGenerateUri(
+            byte[] imageData, String fileExtension, Callback<Uri> callback) {
+        ShareImageFileUtils.generateTemporaryUriFromData(imageData, fileExtension, callback);
+    }
+
+    @Override
+    public void storeLastCopiedImageMetadata(ClipboardUriMetadata clipboardUriMetadata) {
+        ContextUtils.getAppSharedPreferences()
+                .edit()
+                .putString(CLIPBOARD_SHARED_URI, clipboardUriMetadata.uri.toString())
+                .putLong(CLIPBOARD_SHARED_URI_TIMESTAMP, clipboardUriMetadata.timestamp)
+                .apply();
+    }
+
+    @Override
+    public @Nullable ClipboardUriMetadata getLastCopiedImageMetadata() {
+        SharedPreferences prefs = ContextUtils.getAppSharedPreferences();
+        try (StrictModeContext ignored = StrictModeContext.allowDiskReads()) {
+            String uriString = prefs.getString(CLIPBOARD_SHARED_URI, null);
+            if (TextUtils.isEmpty(uriString)) return null;
+
+            Uri uri = Uri.parse(uriString);
+            long timestamp = prefs.getLong(CLIPBOARD_SHARED_URI_TIMESTAMP, 0L);
+
+            return new ClipboardUriMetadata(uri, timestamp);
+        }
+    }
+
+    @Override
+    public void clearLastCopiedImageMetadata() {
+        ContextUtils.getAppSharedPreferences()
+                .edit()
+                .remove(CLIPBOARD_SHARED_URI)
+                .remove(CLIPBOARD_SHARED_URI_TIMESTAMP)
+                .apply();
+    }
+}

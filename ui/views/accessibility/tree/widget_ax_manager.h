@@ -1,0 +1,275 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef UI_VIEWS_ACCESSIBILITY_TREE_WIDGET_AX_MANAGER_H_
+#define UI_VIEWS_ACCESSIBILITY_TREE_WIDGET_AX_MANAGER_H_
+
+#include <stdint.h>
+
+#include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
+
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
+#include "base/observer_list.h"
+#include "base/scoped_observation.h"
+#include "build/build_config.h"
+#include "ui/accessibility/ax_enums.mojom-forward.h"
+#include "ui/accessibility/ax_node_id_forward.h"
+#include "ui/accessibility/ax_tree_id.h"
+#include "ui/accessibility/ax_tree_serializer.h"
+#include "ui/accessibility/platform/ax_mode_observer.h"
+#include "ui/accessibility/platform/ax_node_id_delegate.h"
+#include "ui/accessibility/platform/ax_platform_tree_manager_delegate.h"
+#include "ui/views/accessibility/tree/view_accessibility_ax_tree_source.h"
+#include "ui/views/accessibility/tree/widget_ax_manager_observer.h"
+#include "ui/views/focus/focus_manager.h"
+#include "ui/views/view_tracker.h"
+#include "ui/views/views_export.h"
+#include "ui/views/widget/widget_observer.h"
+
+namespace ui {
+class BrowserAccessibilityManager;
+struct AXUpdatesAndEvents;
+}  // namespace ui
+
+namespace views {
+
+class AXVirtualView;
+class ViewAccessibility;
+class Widget;
+
+using ViewAccessibilityAXTreeSerializer = ui::AXTreeSerializer<
+    ViewAccessibility*,
+    std::vector<raw_ptr<ViewAccessibility, VectorExperimental>>,
+    ui::AXTreeUpdate*,
+    ui::AXTreeData*,
+    ui::AXNodeData>;
+
+// This class owns and manages the accessibility tree for a Widget. It is owned
+// by the `widget_` and must never outlive its owner. This is currently under
+// construction.
+class VIEWS_EXPORT WidgetAXManager : public ui::AXModeObserver,
+                                     public ui::AXNodeIdDelegate,
+                                     public ui::AXPlatformTreeManagerDelegate,
+                                     public WidgetObserver,
+                                     public FocusChangeListener {
+ public:
+  explicit WidgetAXManager(Widget* widget);
+  WidgetAXManager(const WidgetAXManager&) = delete;
+  WidgetAXManager& operator=(const WidgetAXManager&) = delete;
+  WidgetAXManager(WidgetAXManager&&) = delete;
+  WidgetAXManager& operator=(WidgetAXManager&&) = delete;
+  ~WidgetAXManager() override;
+
+  // Initializes the manager if needed. Initialization cannot be done in the
+  // constructor because the widget's RootView isn't available yet. Must be
+  // called once.
+  void Init();
+
+  bool is_enabled() const { return is_enabled_; }
+
+  void AddObserver(WidgetAXManagerObserver* observer);
+  void RemoveObserver(WidgetAXManagerObserver* observer);
+
+  void OnEvent(ViewAccessibility& view_ax, ax::mojom::Event event_type);
+  void OnTransientFocusRequested(ViewAccessibility& view_ax);
+  void OnDataChanged(ViewAccessibility& view_ax);
+
+  void OnChildAdded(ViewAccessibility& child, ViewAccessibility& parent);
+  void OnChildRemoved(ViewAccessibility& child, ViewAccessibility& parent);
+
+  void OnChildManagerAdded(WidgetAXManager& child_manager);
+  void OnChildManagerRemoved(WidgetAXManager& child_manager);
+
+  size_t child_widget_tree_host_count() const {
+    return child_widget_tree_hosts_.size();
+  }
+
+  void AppendChildWidgetTreeHosts(
+      std::vector<raw_ptr<ViewAccessibility>>& out) const;
+
+  // Hosts this widget's AX tree in `host_view_ax` by wiring this tree's
+  // parent_tree_id to the host view's widget tree and setting the host view's
+  // child tree id to this tree.
+  void HostAXTreeInView(ViewAccessibility& host_view_ax);
+
+  // Keeps the host view's child tree id alive until pending updates/events can
+  // flush, then clears the child-tree hosting relationship.
+  void ScheduleUnhostAXTree();
+
+  gfx::NativeViewAccessible GetNativeViewAccessibleForId(ui::AXNodeID id);
+
+  ui::AXTreeID GetAXTreeID() const;
+
+  // Sets a test callback that is invoked on every exit from
+  // SendPendingUpdate(). If updates/events were actually sent, the optional
+  // contains the ui::AXUpdatesAndEvents; otherwise it is absl::nullopt.
+  void SetUpdatesAndEventsCallbackForTesting(
+      base::RepeatingCallback<
+          void(const std::optional<ui::AXUpdatesAndEvents>&)> callback) {
+    updates_and_events_callback_for_testing_ = std::move(callback);
+  }
+
+  // Returns a weak pointer to the underlying BrowserAccessibilityManager for
+  // testing purposes. Used by accessibility event tests to access the tree
+  // manager for firing sentinel events.
+  base::WeakPtr<ui::AXPlatformTreeManager> GetAXTreeManagerWeakPtrForTesting();
+
+  // ui::AXModeObserver:
+  void OnAXModeAdded(ui::AXMode mode) override;
+
+  // WidgetObserver:
+  void OnWidgetCreated(Widget* widget) override;
+  void OnWidgetDestroyed(Widget* widget) override;
+  void OnWidgetVisibilityChanged(Widget* widget, bool visible) override;
+
+  // ui::AXNodeIdDelegate:
+  ui::AXPlatformNodeId GetOrCreateAXNodeUniqueId(
+      ui::AXNodeID ax_node_id) override;
+  void OnAXNodeDeleted(ui::AXNodeID ax_node_id) override;
+
+  // ui::AXPlatformTreeManagerDelegate:
+  void AccessibilityPerformAction(const ui::AXActionData& data) override;
+  bool AccessibilityViewHasFocus() override;
+  void AccessibilityViewSetFocus() override;
+  gfx::Rect AccessibilityGetViewBounds() override;
+  float AccessibilityGetDeviceScaleFactor() override;
+  void UnrecoverableAccessibilityError() override;
+  gfx::AcceleratedWidget AccessibilityGetAcceleratedWidget() override;
+  gfx::NativeViewAccessible AccessibilityGetNativeViewAccessible() override;
+  gfx::NativeViewAccessible AccessibilityGetNativeViewAccessibleForWindow()
+      override;
+  void AccessibilityHitTest(
+      const gfx::Point& point_in_view_pixels,
+      const ax::mojom::Event& opt_event_to_fire,
+      int opt_request_id,
+      base::OnceCallback<void(ui::AXPlatformTreeManager* hit_manager,
+                              ui::AXNodeID hit_node_id)> opt_callback) override;
+  gfx::NativeWindow GetTopLevelNativeWindow() override;
+  bool CanFireAccessibilityEvents() const override;
+  bool AccessibilityIsRootFrame() const override;
+  bool ShouldSuppressAXLoadComplete() override;
+  content::WebContentsAccessibility* AccessibilityGetWebContentsAccessibility()
+      override;
+  bool AccessibilityIsWebContentSource() override;
+
+  // FocusChangeListener:
+  void OnDidChangeFocus(View* focused_before, View* focused_now) override;
+  void OnFocusManagerDestroying(FocusManager* focus_manager) override;
+
+  ui::AXNodeID GetFocusedNodeId() const { return focused_node_id_; }
+
+ private:
+  friend class WidgetAXManagerTestApi;
+
+  void InitAXTreeManager();
+  void EnableWhenWidgetCreated();
+  void Enable();
+  void NotifyEnabled();
+  void SetParentAXTreeID(const ui::AXTreeID& parent_ax_tree_id);
+
+  void UpdateParentTreeConnection();
+
+  void AddChildWidgetTreeHost(const ui::AXTreeID& child_tree_id);
+  void RemoveChildWidgetTreeHost(const ui::AXTreeID& child_tree_id);
+  AXVirtualView* FindChildWidgetTreeHost(
+      const ui::AXTreeID& child_tree_id) const;
+
+  void DetachFromParentTree();
+
+  void ClearAXTreeHost();
+  static void UnhostAXTreeAfterFlush(base::WeakPtr<WidgetAXManager> manager,
+                                     ui::AXTreeID child_tree_id,
+                                     uint32_t host_generation);
+
+  void StartObservingFocus();
+  ui::AXNodeID GetFocusedViewNodeId() const;
+
+  void SchedulePendingUpdate();
+  void SendPendingUpdate();
+
+  // The widget this manager is owned by.
+  raw_ptr<Widget> widget_;
+
+  // The AXTreeID for this widget's accessibility tree. Must be unique.
+  const ui::AXTreeID ax_tree_id_;
+
+  // The AXTreeID of the parent widget's accessibility tree, if any.
+  ui::AXTreeID parent_ax_tree_id_;
+
+  // The view currently hosting this widget's AX tree, if any.
+  ViewTracker ax_tree_host_tracker_;
+
+  // The virtual views that carry the tree ids of the child Widgets. They are
+  // ignored, thus each hosted tree takes the place of its host under the root
+  // view.
+  std::vector<std::unique_ptr<AXVirtualView>> child_widget_tree_hosts_;
+
+  // Incremented whenever the hosting relationship changes so a scheduled
+  // unhost task cannot clear a newer hosting relationship.
+  uint32_t ax_tree_host_generation_ = 0;
+
+  std::unique_ptr<WidgetViewAXCache> cache_;
+
+  // Holds the active views-based tree. A tree consists of all the views in the
+  // widget.
+  std::unique_ptr<ViewAccessibilityAXTreeSource> tree_source_;
+
+  // Serializes incremental updates on the currently active `tree_source_`.
+  std::unique_ptr<ViewAccessibilityAXTreeSerializer> tree_serializer_;
+
+  // Holds the generated AXTree of AXNodes for the views-based tree.
+  std::unique_ptr<ui::BrowserAccessibilityManager> ax_tree_manager_;
+
+  // Indicates whether we're actively serializing widget accessibility data.
+  bool is_enabled_ = false;
+
+  // Automatically unsubscribes from FocusManager on destruction.
+  base::ScopedObservation<FocusManager, FocusChangeListener>
+      focus_manager_observation_{this};
+
+  base::ScopedObservation<Widget, WidgetObserver> widget_observation_{this};
+
+  // Tracks WidgetObserver::OnWidgetCreated(), which precedes
+  // Widget::IsNativeWidgetInitialized().
+  bool widget_created_ = false;
+  bool enable_on_widget_created_ = false;
+
+  // The AXNodeID of the currently focused node in this widget's tree.
+  ui::AXNodeID focused_node_id_ = ui::kInvalidAXNodeID;
+
+  // Indicates whether we have already posted an event or data changed task to
+  // SendPendingUpdate().
+  bool processing_update_posted_ = false;
+
+  struct Event {
+    int id;
+    ax::mojom::Event event_type;
+    // TODO(accessibility): Implement action request tracking.
+  };
+  std::vector<Event> pending_events_;
+  absl::flat_hash_set<ui::AXNodeID> pending_data_updates_;
+
+  // Always invoked when SendPendingUpdate() exits. Receives a non-empty
+  // optional only if a non-empty updates/events payload was produced and
+  // dispatched to the tree manager.
+  base::RepeatingCallback<void(const std::optional<ui::AXUpdatesAndEvents>&)>
+      updates_and_events_callback_for_testing_;
+
+  base::ObserverList<WidgetAXManagerObserver,
+                     /*check_empty=*/true,
+                     base::ObserverListReentrancyPolicy::kDisallowReentrancy>
+      observers_;
+
+  // Ensure posted tasks don’t run after we’re destroyed.
+  base::WeakPtrFactory<WidgetAXManager> weak_factory_{this};
+};
+
+}  // namespace views
+
+#endif  // UI_VIEWS_ACCESSIBILITY_TREE_WIDGET_AX_MANAGER_H_

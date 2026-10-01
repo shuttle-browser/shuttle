@@ -1,0 +1,14 @@
+[
+  {
+    "os": [
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "ash.settings.page_up_and_page_down_keys_modifier",
+      "default_value": 0,
+      "values_to_test": [
+        1
+      ]
+    }
+  }
+]

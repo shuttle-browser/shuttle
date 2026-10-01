@@ -1,0 +1,17 @@
+include_rules = [
+  # keep-sorted start
+  "+components/actor/core",
+  "+components/actor/public/mojom",
+  "+ios/chrome/browser/ai_prototyping/model",
+  "+ios/chrome/browser/intelligence/actor/model",
+  "+ios/chrome/browser/intelligence/actor/public",
+  "+ios/chrome/browser/intelligence/actor/tools",
+  "+ios/chrome/browser/intelligence/enhanced_calendar/model",
+  "+ios/chrome/browser/intelligence/persist_tab_context/model",
+  "+ios/chrome/browser/intelligence/proto_wrappers",
+  "+ios/chrome/browser/intelligence/smart_tab_grouping/model",
+  "+ios/chrome/browser/intelligence/smart_tab_grouping/utils",
+  "+ios/chrome/browser/optimization_guide/model",
+  "+ios/chrome/browser/optimization_guide/mojom",
+  # keep-sorted end
+]

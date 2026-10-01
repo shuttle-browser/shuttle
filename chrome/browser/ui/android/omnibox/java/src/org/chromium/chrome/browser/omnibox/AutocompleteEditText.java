@@ -1,0 +1,462 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.omnibox;
+
+import static org.chromium.build.NullUtil.assumeNonNull;
+
+import android.content.Context;
+import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
+import android.provider.Settings;
+import android.text.Editable;
+import android.text.TextUtils;
+import android.util.AttributeSet;
+import android.view.KeyEvent;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
+import android.widget.EditText;
+
+import androidx.annotation.CallSuper;
+import androidx.annotation.VisibleForTesting;
+
+import org.chromium.base.Log;
+import org.chromium.build.annotations.EnsuresNonNull;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.components.omnibox.OmniboxFeatures;
+import org.chromium.components.omnibox.OmniboxUrlEmphasizer.UrlEmphasisSpan;
+import org.chromium.ui.accessibility.AccessibilityState;
+import org.chromium.ui.text.EmptyTextWatcher;
+import org.chromium.ui.widget.EditTextWithLeading;
+
+/** An {@link EditText} that shows autocomplete text at the end. */
+@NullMarked
+public class AutocompleteEditText extends EditTextWithLeading
+        implements AutocompleteEditTextModelBase.Delegate {
+    private static final String TAG = "AutocompleteEdit";
+    private static final boolean DEBUG = OmniboxFeatures.sDiagInputConnection.getValue();
+
+    private @Nullable AutocompleteEditTextModelBase mModel;
+    private boolean mIgnoreTextChangesForAutocomplete = true;
+    private boolean mLastEditWasPaste;
+    private boolean mOnSanitizing;
+    private boolean mNativeInitialized;
+
+    /**
+     * Whether default TextView scrolling should be disabled because autocomplete has been added.
+     * This allows the user entered text to be shown instead of the end of the autocomplete.
+     */
+    private boolean mDisableTextScrollingFromAutocomplete;
+
+    private @Nullable OnKeyListener mOnKeyListener;
+    private boolean mModelShouldIgnoreFocusChanges;
+
+    public AutocompleteEditText(Context context, AttributeSet attrs) {
+        super(context, attrs);
+        addTextWatcherForPaste();
+    }
+
+    /**
+     * Add a watcher to sanitize the text if the text is pasted. The normal pasted text will be
+     * sanitized by {@link UrlBarMediator#sanitizeTextForPaste}, but some IME may paste the text as
+     * user's typing, so we need to handle this case as well.
+     */
+    private void addTextWatcherForPaste() {
+        addTextChangedListener(
+                new EmptyTextWatcher() {
+                    @Override
+                    public void afterTextChanged(Editable editable) {
+                        if (wasLastEditPaste() && !mIgnoreTextChangesForAutocomplete) {
+                            mOnSanitizing = true;
+                            String text = editable.toString();
+                            String sanitizedText = sanitizeTextForPaste(text);
+                            if (!text.equals(sanitizedText)) {
+                                editable.replace(
+                                        0,
+                                        editable.length(),
+                                        sanitizedText,
+                                        0,
+                                        sanitizedText.length());
+                            }
+                            mOnSanitizing = false;
+                        }
+                    }
+                });
+    }
+
+    @VisibleForTesting
+    public String sanitizeTextForPaste(String s) {
+        return mNativeInitialized ? OmniboxViewUtil.sanitizeTextForPaste(s) : s;
+    }
+
+    /** Signals that's it safe to call code that requires native to be loaded. */
+    public void onFinishNativeInitialization() {
+        mNativeInitialized = true;
+    }
+
+    @EnsuresNonNull("mModel")
+    private void ensureModel() {
+        if (mModel != null) return;
+
+        mModel = new SpannableAutocompleteEditTextModel(this, getContext());
+        mModel.setIgnoreTextChangeFromAutocomplete(true);
+        mModel.onFocusChanged(hasFocus());
+        Editable text = assumeNonNull(getText());
+        mModel.onSetText(text);
+        mModel.onTextChanged(text, 0, 0, text.length());
+        mModel.onSelectionChanged(getSelectionStart(), getSelectionEnd());
+        if (mLastEditWasPaste) mModel.onPaste();
+        mModel.setIgnoreTextChangeFromAutocomplete(false);
+        mModel.setIgnoreTextChangeFromAutocomplete(mIgnoreTextChangesForAutocomplete);
+    }
+
+    /**
+     * Sets whether text changes should trigger autocomplete.
+     *
+     * @param ignoreAutocomplete Whether text changes should be ignored and no auto complete
+     *     triggered.
+     */
+    public void setIgnoreTextChangesForAutocomplete(boolean ignoreAutocomplete) {
+        mIgnoreTextChangesForAutocomplete = ignoreAutocomplete;
+        if (mModel != null) mModel.setIgnoreTextChangeFromAutocomplete(ignoreAutocomplete);
+    }
+
+    /**
+     * @return The user text without the autocomplete text.
+     */
+    public String getTextWithoutAutocomplete() {
+        // Return the current Text value when the content is requested before the InputConnection is
+        // created. This may happen when the user triggers ACTION_WEB_SEARCH, calling up the Omnibox
+        // for the selected text.
+        // When the InputConnection is empty we're guaranteed that there's no autocompletion
+        // available.
+        if (mModel == null) {
+            CharSequence result = getText();
+            if (TextUtils.isEmpty(result)) return "";
+            return result.toString();
+        }
+        return mModel.getTextWithoutAutocomplete();
+    }
+
+    /**
+     * @return Text that includes autocomplete.
+     */
+    public String getTextWithAutocomplete() {
+        // Return the current Text value when the content is requested before the InputConnection is
+        // created. This may happen when the user triggers ACTION_WEB_SEARCH, calling up the Omnibox
+        // for the selected text.
+        // When the InputConnection is empty we're guaranteed that there's no autocompletion
+        // available.
+        if (mModel == null) {
+            CharSequence result = getText();
+            if (TextUtils.isEmpty(result)) return "";
+            return result.toString();
+        }
+        return mModel.getTextWithAutocomplete();
+    }
+
+    /**
+     * @return Additional text presented in the omnibox, indicating the destination of the default
+     *     match.
+     */
+    @VisibleForTesting
+    public @Nullable String getAdditionalText() {
+        if (mModel == null) return null;
+        return mModel.getAdditionalText();
+    }
+
+    /**
+     * @return Whether any autocomplete information is specified on the current text.
+     */
+    public boolean hasAutocomplete() {
+        if (mModel == null) return false;
+        return mModel.hasAutocomplete();
+    }
+
+    /**
+     * Whether we want to be showing inline autocomplete results. We don't want to show them as the
+     * user deletes input. Also if there is a composition (e.g. while using the Japanese IME), we
+     * must not autocomplete or we'll destroy the composition.
+     *
+     * @return Whether we want to be showing inline autocomplete results.
+     */
+    public boolean shouldAutocomplete() {
+        if (mModel == null) return false;
+        return mModel.shouldAutocomplete();
+    }
+
+    @Override
+    protected void onSelectionChanged(int selStart, int selEnd) {
+        if (mModel != null) mModel.onSelectionChanged(selStart, selEnd);
+        super.onSelectionChanged(selStart, selEnd);
+    }
+
+    @Override
+    protected void onFocusChanged(boolean focused, int direction, Rect previouslyFocusedRect) {
+        if (mModel != null && !mModelShouldIgnoreFocusChanges) mModel.onFocusChanged(focused);
+        super.onFocusChanged(focused, direction, previouslyFocusedRect);
+        if (!focused) setCursorVisible(false);
+    }
+
+    void setModelShouldIgnoreFocusChanges(boolean ignoreFocusChanges) {
+        mModelShouldIgnoreFocusChanges = ignoreFocusChanges;
+    }
+
+    @Override
+    public boolean bringPointIntoView(int offset) {
+        if (mDisableTextScrollingFromAutocomplete) return false;
+        return super.bringPointIntoView(offset);
+    }
+
+    @Override
+    public boolean onPreDraw() {
+        boolean retVal = super.onPreDraw();
+        if (mDisableTextScrollingFromAutocomplete) {
+            // super.onPreDraw will put the selection at the end of the text selection, but
+            // in the case of autocomplete we want the last typed character to be shown, which
+            // is the start of selection.
+            mDisableTextScrollingFromAutocomplete = false;
+            bringPointIntoView(getSelectionStart());
+            retVal = true;
+        }
+        return retVal;
+    }
+
+    /** Call this when text is pasted. */
+    @CallSuper
+    public void onPaste() {
+        mLastEditWasPaste = true;
+        if (mModel != null) mModel.onPaste();
+    }
+
+    /**
+     * Autocompletes the text and selects the text that was not entered by the user. Using append()
+     * instead of setText() to preserve the soft-keyboard layout.
+     *
+     * @param userText user The text entered by the user.
+     * @param inlineAutocompleteText The suggested autocompletion for the user's text.
+     * @param additionalText This string is displayed adjacent to the omnibox if this match is the
+     *     default. Will usually be URL when autocompleting a title, and empty otherwise.
+     * @param siteSearchLabel The site search label to be shown.
+     */
+    public void setAutocompleteText(
+            CharSequence userText,
+            @Nullable CharSequence inlineAutocompleteText,
+            @Nullable String additionalText,
+            @Nullable String siteSearchLabel) {
+        boolean emptyAutocomplete = TextUtils.isEmpty(inlineAutocompleteText);
+        if (!emptyAutocomplete) mDisableTextScrollingFromAutocomplete = true;
+        if (mModel != null) {
+            mModel.setAutocompleteText(
+                    userText, inlineAutocompleteText, additionalText, siteSearchLabel);
+        }
+    }
+
+    /**
+     * Returns the length of the autocomplete text currently displayed, zero if none is currently
+     * displayed.
+     */
+    public int getAutocompleteLength() {
+        return mModel == null ? 0 : mModel.getAutocompleteTextLength();
+    }
+
+    @Override
+    protected void onTextChanged(CharSequence text, int start, int lengthBefore, int lengthAfter) {
+        super.onTextChanged(text, start, lengthBefore, lengthAfter);
+        // If AutocompleteEditText receives a series of keystrokes(more than 1) from the beginning,
+        // the input will be considered as paste. We do this because some IME may paste the text as
+        // a series of keystrokes, not from the system copy/paste method.
+        mLastEditWasPaste =
+                (start == 0
+                        && (lengthAfter - lengthBefore) > 1
+                        && !mOnSanitizing
+                        && !mIgnoreTextChangesForAutocomplete);
+
+        if (mModel != null) mModel.onTextChanged(text, start, lengthBefore, lengthAfter);
+    }
+
+    @Override
+    public void setText(CharSequence text, BufferType type) {
+        if (DEBUG) Log.i(TAG, "setText -- text: %s", text);
+        mDisableTextScrollingFromAutocomplete = false;
+        if (isTextEquivalentToExistingText(text)) {
+            if (mModel != null) mModel.onSetText(text);
+            return;
+        }
+
+        super.setText(text, type);
+        if (mModel != null) mModel.onSetText(text);
+    }
+
+    /**
+     * Returns whether setting {@code text} would leave the URL-emphasis state unchanged. Subclasses
+     * may extend this policy for other persistent spans. Framework, selection, composing, watcher,
+     * and IME spans are intentionally ignored so they do not defeat the no-reset path.
+     */
+    protected boolean isTextEquivalentToExistingText(CharSequence text) {
+        Editable currentText = getText();
+        return currentText != null
+                && TextUtils.equals(currentText, text)
+                && OmniboxViewUtil.haveEquivalentSpans(
+                        currentText, text, UrlEmphasisSpan.class);
+    }
+
+    @Override
+    public void sendAccessibilityEventUnchecked(AccessibilityEvent event) {
+        if (shouldIgnoreAccessibilityEvent(event)) {
+            if (DEBUG) Log.i(TAG, "Ignoring accessibility event from autocomplete.");
+            return;
+        }
+        super.sendAccessibilityEventUnchecked(event);
+    }
+
+    @Override
+    public void sendAccessibilityEvent(AccessibilityEvent event) {
+        if (AccessibilityState.isTouchExplorationEnabled()) {
+            sendAccessibilityEventUnchecked(event);
+        }
+    }
+
+    @Override
+    public void onPopulateAccessibilityEvent(AccessibilityEvent event) {
+        super.onPopulateAccessibilityEvent(event);
+        if (DEBUG) Log.i(TAG, "onPopulateAccessibilityEvent: " + event);
+    }
+
+    private boolean shouldIgnoreAccessibilityEvent(AccessibilityEvent event) {
+        return (mIgnoreTextChangesForAutocomplete
+                        || (mModel != null && mModel.shouldIgnoreAccessibilityEvent()))
+                && (event.getEventType() == AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED
+                        || event.getEventType() == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED);
+    }
+
+    @VisibleForTesting
+    public @Nullable InputConnection getInputConnection() {
+        if (mModel == null) return null;
+        return mModel.getInputConnection();
+    }
+
+    @Override
+    public @Nullable InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+        InputConnection target = super.onCreateInputConnection(outAttrs);
+        // Initially, target is null until View gets the focus.
+        if (target == null && mModel == null) {
+            if (DEBUG) Log.i(TAG, "onCreateInputConnection - ignoring null target.");
+            return null;
+        }
+        if (DEBUG) Log.i(TAG, "onCreateInputConnection: " + target);
+        ensureModel();
+        InputConnection retVal = mModel.onCreateInputConnection(target);
+        return retVal;
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(final KeyEvent event) {
+        OnKeyListener keyListener = getOnKeyListener();
+        try {
+            setOnKeyListener(null);
+            if (keyListener != null && keyListener.onKey(this, event.getKeyCode(), event)) {
+                return true;
+            }
+
+            if (mModel == null) return super.dispatchKeyEvent(event);
+            return mModel.dispatchKeyEvent(event);
+        } finally {
+            setOnKeyListener(keyListener);
+        }
+    }
+
+    @Override
+    public boolean onKeyPreIme(int keyCode, KeyEvent event) {
+        if (mModel != null && mModel.isDeleteByWord(event)) {
+            // Route directly to dispatchKeyEvent to override the native word deletion.
+            if (dispatchKeyEvent(event)) {
+                return true;
+            }
+        }
+        return super.onKeyPreIme(keyCode, event);
+    }
+
+    @Override
+    public void setOnKeyListener(@Nullable OnKeyListener listener) {
+        super.setOnKeyListener(listener);
+        mOnKeyListener = listener;
+    }
+
+    private @Nullable OnKeyListener getOnKeyListener() {
+        return mOnKeyListener;
+    }
+
+    private void dispatchKeyEventToModel(KeyEvent event) {
+        if (mModel == null) return;
+        mModel.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public boolean super_dispatchKeyEvent(KeyEvent event) {
+        return super.dispatchKeyEvent(event);
+    }
+
+    /**
+     * @return Whether the current UrlBar input has been pasted from the clipboard.
+     */
+    public boolean wasLastEditPaste() {
+        return mLastEditWasPaste;
+    }
+
+    @Override
+    public void replaceAllTextFromAutocomplete(String text) {
+        assert false; // make sure that this method is properly overridden.
+    }
+
+    @Override
+    public void onAutocompleteTextStateChanged(boolean updateDisplay) {
+        assert false; // make sure that this method is properly overridden.
+    }
+
+    @Override
+    public void onUpdateSelectionForTesting(int selStart, int selEnd) {}
+
+    @Override
+    public String getKeyboardPackageName() {
+        String defaultIme =
+                Settings.Secure.getString(
+                        getContext().getContentResolver(), Settings.Secure.DEFAULT_INPUT_METHOD);
+        return defaultIme == null ? "" : defaultIme;
+    }
+
+    @Override
+    public void setInputIsMultilineEligible(boolean isMultilineEligible) {}
+
+    /* package */ void setModelForTesting(AutocompleteEditTextModelBase model) {
+        mModel = model;
+    }
+
+    /* package */ @Nullable AutocompleteEditTextModelBase getModelForTesting() {
+        return mModel;
+    }
+
+    @Override
+    public void setSiteSearchChip(@Nullable String keyword) {
+        SiteSearchChipDrawable drawable = null;
+        if (keyword != null) {
+            // TODO(crbug.com/459590224): convert keyword to templateUrl.FullName() or equivalent.
+            drawable = new SiteSearchChipDrawable(getContext(), keyword);
+            drawable.setBounds(0, 0, drawable.getIntrinsicWidth(), drawable.getIntrinsicHeight());
+        }
+        Drawable[] drawables = getCompoundDrawablesRelative();
+        setCompoundDrawablesRelative(drawable, drawables[1], drawables[2], drawables[3]);
+    }
+
+    public void maybeAcceptInlineSuggestion(KeyEvent event) {
+        OnKeyListener onKeyListener = getOnKeyListener();
+        // Set our key listener to null because this method can be called in the process of handling
+        // a key event; if we don't set it to null we may recurse infinitely.
+        setOnKeyListener(null);
+        dispatchKeyEventToModel(event);
+        setOnKeyListener(onKeyListener);
+    }
+}

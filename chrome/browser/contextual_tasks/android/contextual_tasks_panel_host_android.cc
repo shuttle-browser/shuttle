@@ -1,0 +1,199 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/contextual_tasks/android/contextual_tasks_panel_host_android.h"
+
+#include <utility>
+
+#include "base/android/jni_android.h"
+#include "base/android/scoped_java_ref.h"
+#include "base/check.h"
+#include "chrome/browser/android/tab_android.h"
+#include "chrome/browser/context_sharing/tab_bottom_sheet/android/co_browse_views_bridge.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_panel_host.h"
+#include "chrome/browser/contextual_tasks/jni_headers/ContextualTaskBottomSheetComponentProvider_jni.h"
+#include "chrome/browser/tab_list/tab_list_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/webui/webui_embedding_context.h"
+#include "components/input/native_web_keyboard_event.h"
+#include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/web_contents.h"
+#include "ui/android/window_android.h"
+
+namespace contextual_tasks {
+
+ContextualTasksPanelHostAndroid::ContextualTasksPanelHostAndroid(
+    BrowserWindowInterface* browser_window)
+    : browser_window_(browser_window) {
+  CHECK(browser_window_);
+}
+
+ContextualTasksPanelHostAndroid::~ContextualTasksPanelHostAndroid() {
+  if (web_contents_) {
+    webui::SetBrowserWindowInterface(web_contents_, nullptr);
+    web_contents_->SetDelegate(nullptr);
+    web_contents_ = nullptr;
+  }
+}
+
+void ContextualTasksPanelHostAndroid::AddObserver(
+    ContextualTasksPanelHost::Observer* observer) {
+  observers_.AddObserver(observer);
+}
+
+void ContextualTasksPanelHostAndroid::RemoveObserver(
+    ContextualTasksPanelHost::Observer* observer) {
+  observers_.RemoveObserver(observer);
+}
+
+void ContextualTasksPanelHostAndroid::Show(AnimationStyle animation_style) {
+  if (auto* bridge = GetOrCreateBridge()) {
+    if (bridge->Show(views_bridge_->GetCoBrowseViews(), /*animate=*/false,
+                     /*starts_expanded=*/true)) {
+      is_open_ = true;
+      observers_.Notify(
+          &ContextualTasksPanelHost::Observer::OnSurfaceStateChanged,
+          SurfaceState::kVisible, StateChangeReason::kSystemAction);
+    }
+  }
+}
+
+void ContextualTasksPanelHostAndroid::Close(AnimationStyle animation_style) {
+  if (!is_open_) {
+    return;
+  }
+  if (auto* bridge = GetOrCreateBridge()) {
+    bridge->Close(/* animate= */ true);
+  }
+}
+
+bool ContextualTasksPanelHostAndroid::IsPanelInitialized() {
+  return true;
+}
+
+bool ContextualTasksPanelHostAndroid::IsPanelOpenForContextualTask() const {
+  return is_open_;
+}
+
+bool ContextualTasksPanelHostAndroid::IsPanelSuppressed() const {
+  return suppressed_for_testing_;
+}
+
+void ContextualTasksPanelHostAndroid::SetPanelSuppressedForTesting(
+    bool suppressed) {
+  suppressed_for_testing_ = suppressed;
+}
+
+content::WebContents* ContextualTasksPanelHostAndroid::GetWebContents() {
+  return web_contents_.get();
+}
+
+content::WebContents* ContextualTasksPanelHostAndroid::GetToolbarWebContents() {
+  return GetWebContents();
+}
+
+void ContextualTasksPanelHostAndroid::SetWebContents(
+    content::WebContents* web_contents) {
+  if (web_contents_ == web_contents) {
+    return;
+  }
+
+  if (content::WebContents* prev = std::exchange(web_contents_, web_contents)) {
+    webui::SetBrowserWindowInterface(prev, nullptr);
+    prev->SetDelegate(nullptr);
+  }
+
+  if (!web_contents_) {
+    return;
+  }
+
+  webui::SetBrowserWindowInterface(web_contents_, browser_window_);
+  web_contents_->SetDelegate(this);
+  if (auto* bridge = GetOrCreateBridge()) {
+    views_bridge_->SetWebContents(web_contents, /*request_focus=*/true);
+    if (is_open_) {
+      bridge->Show(views_bridge_->GetCoBrowseViews(), /*animate=*/false,
+                   /*starts_expanded=*/true);
+    }
+  }
+}
+
+void ContextualTasksPanelHostAndroid::OnClosed() {
+  is_open_ = false;
+  observers_.Notify(&ContextualTasksPanelHost::Observer::OnSurfaceStateChanged,
+                    SurfaceState::kClosed, StateChangeReason::kUserAction);
+}
+
+void ContextualTasksPanelHostAndroid::OnSuppressed() {}
+
+void ContextualTasksPanelHostAndroid::OnOpened(bool is_expanded) {}
+
+content::WebContents* ContextualTasksPanelHostAndroid::OpenURLFromTab(
+    content::WebContents* source,
+    const content::OpenURLParams& params,
+    base::OnceCallback<void(content::NavigationHandle&)>
+        navigation_handle_callback) {
+  if (browser_window_) {
+    return browser_window_->OpenURL(params,
+                                    std::move(navigation_handle_callback));
+  }
+  return nullptr;
+}
+
+bool ContextualTasksPanelHostAndroid::HandleKeyboardEvent(
+    content::WebContents* source,
+    const input::NativeWebKeyboardEvent& event) {
+  tabs::TabInterface* active_tab =
+      TabListInterface::From(browser_window_)->GetActiveTab();
+  if (active_tab && active_tab->GetContents() &&
+      active_tab->GetContents()->GetDelegate()) {
+    return active_tab->GetContents()->GetDelegate()->HandleKeyboardEvent(source,
+                                                                         event);
+  }
+  return false;
+}
+
+context_sharing::TabBottomSheetBridge*
+ContextualTasksPanelHostAndroid::GetOrCreateBridge() {
+  if (!tab_bottom_sheet_bridge_ || !tab_ref_) {
+    TabAndroid* tab_android = GetTabAndroid();
+    if (!tab_android) {
+      return nullptr;
+    }
+    TabListInterface* tab_list = TabListInterface::From(browser_window_);
+    if (tab_list && tab_list->GetActiveTab()) {
+      tab_ref_ = tab_list->GetActiveTab()->GetWeakPtr();
+    }
+    views_bridge_ = std::make_unique<context_sharing::CoBrowseViewsBridge>(
+        *tab_android,
+        context_sharing::TabBottomSheetClientType::kContextualTasks,
+        context_sharing::CoBrowseContainerType::kBottomSheet,
+        CreateBottomSheetContentProvider(),
+        /*enable_pinch_to_zoom=*/true);
+    tab_bottom_sheet_bridge_ =
+        std::make_unique<context_sharing::TabBottomSheetBridge>(this,
+                                                                tab_android);
+  }
+  return tab_bottom_sheet_bridge_.get();
+}
+
+TabAndroid* ContextualTasksPanelHostAndroid::GetTabAndroid() const {
+  TabListInterface* tab_list = TabListInterface::From(browser_window_);
+  if (!tab_list) {
+    return nullptr;
+  }
+  tabs::TabInterface* active_tab = tab_list->GetActiveTab();
+  if (!active_tab) {
+    return nullptr;
+  }
+  return TabAndroid::FromTabHandle(active_tab->GetHandle());
+}
+
+base::android::ScopedJavaLocalRef<jobject>
+ContextualTasksPanelHostAndroid::CreateBottomSheetContentProvider() {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  return Java_ContextualTaskBottomSheetComponentProvider_createProvider(env);
+}
+
+}  // namespace contextual_tasks

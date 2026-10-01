@@ -1,0 +1,8 @@
+include_rules = [
+  "+chromeos",
+  "+components/device_event_log",
+  "+dbus",
+  "+services/device/usb/jni_headers",
+  "+third_party/libusb",
+  "+third_party/re2",
+]

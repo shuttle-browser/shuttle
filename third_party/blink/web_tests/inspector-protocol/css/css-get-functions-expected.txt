@@ -1,0 +1,552 @@
+Verify that functions are reported properly.
+Functions for #test1
+function rule: {
+    children : [
+        [0] : {
+            style : {
+                cssProperties : [
+                    [0] : {
+                        disabled : false
+                        implicit : false
+                        name : --y
+                        range : {
+                            endColumn : 20
+                            endLine : 2
+                            startColumn : 6
+                            startLine : 2
+                        }
+                        text : --y: var(--x);
+                        value : var(--x)
+                    }
+                    [1] : {
+                        name : --y
+                        value : var(--x)
+                    }
+                ]
+                cssText : --y: var(--x);
+                range : {
+                    endColumn : 20
+                    endLine : 2
+                    startColumn : 6
+                    startLine : 2
+                }
+                shorthandEntries : [
+                ]
+                styleSheetId : <string 0>
+            }
+        }
+        [1] : {
+            condition : {
+                children : [
+                    [0] : {
+                        condition : {
+                            children : [
+                                [0] : {
+                                    style : {
+                                        cssProperties : [
+                                            [0] : {
+                                                disabled : false
+                                                implicit : false
+                                                name : --y
+                                                range : {
+                                                    endColumn : 21
+                                                    endLine : 5
+                                                    startColumn : 10
+                                                    startLine : 5
+                                                }
+                                                text : --y: green;
+                                                value : green
+                                            }
+                                            [1] : {
+                                                name : --y
+                                                value : green
+                                            }
+                                        ]
+                                        cssText : --y: green;
+                                        range : {
+                                            endColumn : 21
+                                            endLine : 5
+                                            startColumn : 10
+                                            startLine : 5
+                                        }
+                                        shorthandEntries : [
+                                        ]
+                                        styleSheetId : <string 0>
+                                    }
+                                }
+                            ]
+                            conditionText : (width > 300px)
+                            media : {
+                                mediaList : [
+                                    [0] : {
+                                        active : true
+                                        expressions : [
+                                            [0] : {
+                                                computedLength : 300
+                                                feature : width
+                                                unit : px
+                                                value : 300
+                                            }
+                                        ]
+                                    }
+                                ]
+                                range : {
+                                    endColumn : 30
+                                    endLine : 4
+                                    startColumn : 15
+                                    startLine : 4
+                                }
+                                source : mediaRule
+                                sourceURL : <string 1>
+                                styleSheetId : <string 0>
+                                text : (width > 300px)
+                            }
+                        }
+                    }
+                ]
+                conditionText : (color: green)
+                supports : {
+                    active : true
+                    range : {
+                        endColumn : 30
+                        endLine : 3
+                        startColumn : 16
+                        startLine : 3
+                    }
+                    styleSheetId : <string 0>
+                    text : (color: green)
+                }
+            }
+        }
+        [2] : {
+            style : {
+                cssProperties : [
+                    [0] : {
+                        disabled : false
+                        implicit : false
+                        name : result
+                        range : {
+                            endColumn : 23
+                            endLine : 8
+                            startColumn : 6
+                            startLine : 8
+                        }
+                        text : result: var(--y);
+                        value : var(--y)
+                    }
+                    [1] : {
+                        name : result
+                        value : var(--y)
+                    }
+                ]
+                cssText : result: var(--y);
+                range : {
+                    endColumn : 23
+                    endLine : 8
+                    startColumn : 6
+                    startLine : 8
+                }
+                shorthandEntries : [
+                ]
+                styleSheetId : <string 0>
+            }
+        }
+    ]
+    name : {
+        range : {
+            endColumn : 22
+            endLine : 1
+            startColumn : 14
+            startLine : 1
+        }
+        text : --f
+    }
+    origin : regular
+    originTreeScopeNodeId : <number 2>
+    parameters : [
+        [0] : {
+            name : --x
+            type : *
+        }
+    ]
+    styleSheetId : <string 0>
+}
+Functions for #test2
+function rule: {
+    children : [
+        [0] : {
+            style : {
+                cssProperties : [
+                    [0] : {
+                        disabled : false
+                        implicit : false
+                        name : result
+                        range : {
+                            endColumn : 28
+                            endLine : 2
+                            startColumn : 8
+                            startLine : 2
+                        }
+                        text : result: var(--used);
+                        value : var(--used)
+                    }
+                    [1] : {
+                        name : result
+                        value : var(--used)
+                    }
+                ]
+                cssText : result: var(--used);
+                range : {
+                    endColumn : 28
+                    endLine : 2
+                    startColumn : 8
+                    startLine : 2
+                }
+                shorthandEntries : [
+                ]
+                styleSheetId : <string 3>
+            }
+        }
+    ]
+    name : {
+        range : {
+            endColumn : 39
+            endLine : 1
+            startColumn : 16
+            startLine : 1
+        }
+        text : --f2
+    }
+    origin : regular
+    originTreeScopeNodeId : <number 2>
+    parameters : [
+        [0] : {
+            name : --ignored
+            type : *
+        }
+        [1] : {
+            name : --used
+            type : *
+        }
+    ]
+    styleSheetId : <string 3>
+}
+Functions for #test3
+function rule: {
+    children : [
+        [0] : {
+            style : {
+                cssProperties : [
+                    [0] : {
+                        disabled : false
+                        implicit : false
+                        name : result
+                        range : {
+                            endColumn : 23
+                            endLine : 14
+                            startColumn : 6
+                            startLine : 14
+                        }
+                        text : result: var(--x);
+                        value : var(--x)
+                    }
+                    [1] : {
+                        name : result
+                        value : var(--x)
+                    }
+                ]
+                cssText : result: var(--x);
+                range : {
+                    endColumn : 23
+                    endLine : 14
+                    startColumn : 6
+                    startLine : 14
+                }
+                shorthandEntries : [
+                ]
+                styleSheetId : <string 0>
+            }
+        }
+    ]
+    name : {
+        range : {
+            endColumn : 26
+            endLine : 13
+            startColumn : 14
+            startLine : 13
+        }
+        text : --inner
+    }
+    origin : regular
+    originTreeScopeNodeId : <number 2>
+    parameters : [
+        [0] : {
+            name : --x
+            type : *
+        }
+    ]
+    styleSheetId : <string 0>
+}
+function rule: {
+    children : [
+        [0] : {
+            style : {
+                cssProperties : [
+                    [0] : {
+                        disabled : false
+                        implicit : false
+                        name : result
+                        range : {
+                            endColumn : 21
+                            endLine : 17
+                            startColumn : 6
+                            startLine : 17
+                        }
+                        text : result: orange;
+                        value : orange
+                    }
+                    [1] : {
+                        name : result
+                        value : orange
+                    }
+                ]
+                cssText : result: orange;
+                range : {
+                    endColumn : 21
+                    endLine : 17
+                    startColumn : 6
+                    startLine : 17
+                }
+                shorthandEntries : [
+                ]
+                styleSheetId : <string 0>
+            }
+        }
+        [1] : {
+            condition : {
+                children : [
+                    [0] : {
+                        style : {
+                            cssProperties : [
+                                [0] : {
+                                    disabled : false
+                                    implicit : false
+                                    name : result
+                                    range : {
+                                        endColumn : 34
+                                        endLine : 19
+                                        startColumn : 8
+                                        startLine : 19
+                                    }
+                                    text : result: --inner(var(--x));
+                                    value : --inner(var(--x))
+                                }
+                                [1] : {
+                                    name : result
+                                    value : --inner(var(--x))
+                                }
+                            ]
+                            cssText : result: --inner(var(--x));
+                            range : {
+                                endColumn : 34
+                                endLine : 19
+                                startColumn : 8
+                                startLine : 19
+                            }
+                            shorthandEntries : [
+                            ]
+                            styleSheetId : <string 0>
+                        }
+                    }
+                ]
+                conditionText : (width > 300px)
+                containerQueries : {
+                    conditionText : (width > 300px)
+                    physicalAxes : Horizontal
+                    range : {
+                        endColumn : 32
+                        endLine : 18
+                        startColumn : 17
+                        startLine : 18
+                    }
+                    styleSheetId : <string 0>
+                    text : (width > 300px)
+                }
+            }
+        }
+    ]
+    name : {
+        range : {
+            endColumn : 26
+            endLine : 16
+            startColumn : 14
+            startLine : 16
+        }
+        text : --outer
+    }
+    origin : regular
+    originTreeScopeNodeId : <number 2>
+    parameters : [
+        [0] : {
+            name : --x
+            type : *
+        }
+    ]
+    styleSheetId : <string 0>
+}
+Functions for #test4
+function rule: {
+    children : [
+        [0] : {
+            style : {
+                cssProperties : [
+                    [0] : {
+                        disabled : false
+                        implicit : false
+                        name : result
+                        range : {
+                            endColumn : 18
+                            endLine : 26
+                            startColumn : 6
+                            startLine : 26
+                        }
+                        text : result: red;
+                        value : red
+                    }
+                    [1] : {
+                        name : result
+                        value : red
+                    }
+                ]
+                cssText : result: red;
+                range : {
+                    endColumn : 18
+                    endLine : 26
+                    startColumn : 6
+                    startLine : 26
+                }
+                shorthandEntries : [
+                ]
+                styleSheetId : <string 0>
+            }
+        }
+    ]
+    name : {
+        range : {
+            endColumn : 29
+            endLine : 25
+            startColumn : 14
+            startLine : 25
+        }
+        text : --after-color
+    }
+    origin : regular
+    originTreeScopeNodeId : <number 2>
+    parameters : [
+    ]
+    styleSheetId : <string 0>
+}
+Functions for #test5
+function rule: {
+    children : [
+        [0] : {
+            style : {
+                cssProperties : [
+                    [0] : {
+                        disabled : false
+                        implicit : false
+                        name : result
+                        range : {
+                            endColumn : 20
+                            endLine : 36
+                            startColumn : 6
+                            startLine : 36
+                        }
+                        text : result: black;
+                        value : black
+                    }
+                    [1] : {
+                        name : result
+                        value : black
+                    }
+                ]
+                cssText : result: black;
+                range : {
+                    endColumn : 20
+                    endLine : 36
+                    startColumn : 6
+                    startLine : 36
+                }
+                shorthandEntries : [
+                ]
+                styleSheetId : <string 0>
+            }
+        }
+    ]
+    name : {
+        range : {
+            endColumn : 19
+            endLine : 35
+            startColumn : 14
+            startLine : 35
+        }
+        text : --g
+    }
+    origin : regular
+    originTreeScopeNodeId : <number 2>
+    parameters : [
+    ]
+    styleSheetId : <string 0>
+}
+function rule: {
+    children : [
+        [0] : {
+            style : {
+                cssProperties : [
+                    [0] : {
+                        disabled : false
+                        implicit : false
+                        name : result
+                        range : {
+                            endColumn : 21
+                            endLine : 33
+                            startColumn : 6
+                            startLine : 33
+                        }
+                        text : result: yellow;
+                        value : yellow
+                    }
+                    [1] : {
+                        name : result
+                        value : yellow
+                    }
+                ]
+                cssText : result: yellow;
+                range : {
+                    endColumn : 21
+                    endLine : 33
+                    startColumn : 6
+                    startLine : 33
+                }
+                shorthandEntries : [
+                ]
+                styleSheetId : <string 0>
+            }
+        }
+    ]
+    name : {
+        range : {
+            endColumn : 33
+            endLine : 32
+            startColumn : 14
+            startLine : 32
+        }
+        text : --highlight-color
+    }
+    origin : regular
+    originTreeScopeNodeId : <number 2>
+    parameters : [
+    ]
+    styleSheetId : <string 0>
+}
+

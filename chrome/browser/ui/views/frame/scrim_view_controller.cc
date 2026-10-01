@@ -1,0 +1,60 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/frame/scrim_view_controller.h"
+
+#include "chrome/browser/ui/tabs/tab_change_type.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/frame/contents_web_view.h"
+#include "chrome/browser/ui/views/frame/scrim_view.h"
+#include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/web_contents.h"
+
+ScrimViewController::ScrimViewController(BrowserView* browser_view)
+    : browser_view_(browser_view),
+      tab_strip_model_(browser_view->browser()->GetTabStripModel()) {
+  browser_view_->browser()->GetTabStripModel()->AddObserver(this);
+}
+
+ScrimViewController::~ScrimViewController() {
+  browser_view_->browser()->GetTabStripModel()->RemoveObserver(this);
+}
+
+void ScrimViewController::OnTabStripModelChanged(
+    TabStripModel* tab_strip_model,
+    const TabStripModelChange& change,
+    const TabStripSelectionChange& selection) {
+  if (selection.active_tab_changed()) {
+    UpdateScrimViews();
+  }
+}
+
+void ScrimViewController::OnTabChangedAt(tabs::TabInterface* tab,
+                                         TabChangeType change_type) {
+  if (change_type == TabChangeType::kBlockedOnly) {
+    UpdateScrimViews();
+  }
+}
+
+void ScrimViewController::OnSplitTabChanged(const SplitTabChange& change) {
+  UpdateScrimViews();
+}
+
+void ScrimViewController::UpdateScrimViews() {
+  for (ContentsContainerView* contents_container_view :
+       browser_view_->GetContentsContainerViews()) {
+    const content::WebContents* web_contents =
+        contents_container_view->contents_view()->web_contents();
+    if (!web_contents) {
+      continue;
+    }
+
+    if (const tabs::TabInterface* tab =
+            tabs::TabInterface::GetFromContents(web_contents)) {
+      contents_container_view->contents_scrim_view()->SetVisible(
+          tab->IsBlocked());
+    }
+  }
+}

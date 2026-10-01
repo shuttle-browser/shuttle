@@ -1,0 +1,66 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/extensions/scoped_test_mv2_enabler.h"
+
+#include "base/one_shot_event.h"
+#include "chrome/browser/extensions/extension_browsertest.h"
+#include "chrome/browser/profiles/profile.h"
+#include "content/public/test/browser_test.h"
+#include "extensions/browser/extension_prefs.h"
+#include "extensions/browser/extension_registry.h"
+#include "extensions/browser/extension_system.h"
+#include "extensions/browser/manifest_v2_handler.h"
+#include "extensions/common/extension.h"
+#include "extensions/test/test_extension_dir.h"
+
+namespace extensions {
+
+class ScopedTestMV2EnablerBrowserTest : public ExtensionBrowserTest {
+ public:
+  ScopedTestMV2EnablerBrowserTest() = default;
+  ~ScopedTestMV2EnablerBrowserTest() override = default;
+
+ private:
+  ScopedTestMV2Enabler mv2_enabler_;
+};
+
+// Tests that, with the ScopedTestMV2Enabler, MV2 extensions can still be loaded
+// and won't be disabled on startup.
+IN_PROC_BROWSER_TEST_F(ScopedTestMV2EnablerBrowserTest,
+                       MV2ExtensionsAreAllowedAndNotDisabled) {
+  static constexpr char kManifest[] =
+      R"({
+           "name": "Test Extension",
+           "manifest_version": 2,
+           "version": "0.1"
+         })";
+  TestExtensionDir test_dir;
+  test_dir.WriteManifest(kManifest);
+
+  const Extension* extension =
+      InstallExtension(test_dir.UnpackedPath(), /*expected_change=*/1,
+                       mojom::ManifestLocation::kInternal);
+  ASSERT_TRUE(extension);
+
+  ManifestV2Handler* handler = ManifestV2Handler::Get(profile());
+
+  // The handler should not indicate the extension should be blocked from being
+  // installed.
+  EXPECT_FALSE(handler->ShouldBlockExtensionInstallation(
+      extension->manifest_version(), extension->GetType(),
+      extension->location()));
+
+  // Even after disabling affected extensions, the extension should remain
+  // enabled, since MV2 extensions are allowed for testing.
+  handler->DisableAffectedExtensionsForTesting();
+
+  EXPECT_TRUE(
+      extension_registry()->enabled_extensions().Contains(extension->id()));
+  EXPECT_TRUE(ExtensionPrefs::Get(profile())
+                  ->GetDisableReasons(extension->id())
+                  .empty());
+}
+
+}  // namespace extensions

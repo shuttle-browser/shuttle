@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<meta name=fuzzy content="maxDifference=0-3; totalPixels=0-1000">
+<script src="../../../resources/testdriver.js"></script>
+<script src="../../../resources/testdriver-vendor.js"></script>
+<script src="../resources/picker-common.js"></script>
+
+<input type='color' value='#ff0000' list>
+
+<script>
+  const input = document.querySelector('input');
+
+  function waitForPickerClosed() {
+    function waitFrame() {
+      if (!internals.pagePopupWindow)
+        return Promise.resolve();
+      return requestAnimationFramePromise().then(waitFrame);
+    }
+    return waitFrame();
+  }
+
+  window.onload = openPickerAppearanceOnly(input,() => {
+    // The color suggestion picker popup should close when the input type changes.
+    input.type = 'text';
+    return waitForPickerClosed()
+      .then(() => requestAnimationFramePromise())
+      .then(() => requestAnimationFramePromise());
+  });
+</script>

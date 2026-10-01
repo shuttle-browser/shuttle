@@ -1,0 +1,87 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_SKILLS_PUBLIC_SKILL_H_
+#define COMPONENTS_SKILLS_PUBLIC_SKILL_H_
+
+#include <ostream>
+#include <string>
+
+#include "base/time/time.h"
+#include "components/sync/protocol/skill_specifics.pb.h"
+#include "url/gurl.h"
+
+namespace skills {
+
+// LINT.IfChange(Skill)
+// Represents a single skill.
+struct Skill {
+  // TODO(crbug.com/538134415): Have other skills code use these shared
+  // constants to avoid duplicating validation constraints.
+  static constexpr size_t kMaxNameLength = 20;
+  static constexpr size_t kMaxDescriptionLength = 100;
+  static constexpr size_t kMaxPromptLength = 20000;
+
+  // A unique identifier for the skill. It's GUID now but can be other IDs in
+  // the future.
+  std::string id;
+
+  // The ID of the source skill this skill is derived from.
+  std::string source_skill_id;
+
+  // The user-facing name of the skill.
+  std::string name;
+
+  // The icon for the skill.
+  std::string icon;
+
+  // The underlying LLM prompt for the skill.
+  std::string prompt;
+
+  // The description of the skill.
+  std::string description;
+
+  // The name of the curator for this skill, if any.
+  std::string curated_by;
+
+  // The image URL associated with the skill.
+  GURL image_url;
+
+  // The category of the skill.
+  std::string category;
+
+  // The source of the skill which can be 1P or user created.
+  sync_pb::SkillSource source = sync_pb::SkillSource::SKILL_SOURCE_USER_CREATED;
+
+  // The time when the skill was created.
+  base::Time creation_time = base::Time::Now();
+
+  // The time when the skill was last updated.
+  base::Time last_update_time = creation_time;
+
+  Skill();
+  Skill(const std::string& id,
+        const std::string& name,
+        const std::string& icon,
+        const std::string& prompt,
+        const std::string& description = "",
+        const std::string& curated_by = "",
+        const GURL& image_url = GURL(),
+        const sync_pb::SkillSource& source =
+            sync_pb::SkillSource::SKILL_SOURCE_USER_CREATED,
+        const std::string& category = "");
+  Skill(const Skill&);
+  Skill& operator=(const Skill&);
+  Skill(Skill&&);
+  Skill& operator=(Skill&&);
+  ~Skill();
+
+  friend std::ostream& operator<<(std::ostream& os, const Skill& skill);
+};
+// LINT.ThenChange(//components/skills/public/skill.mojom:Skill,
+// //chrome/browser/glic/host/glic.mojom:Skill)
+
+}  // namespace skills
+
+#endif  // COMPONENTS_SKILLS_PUBLIC_SKILL_H_

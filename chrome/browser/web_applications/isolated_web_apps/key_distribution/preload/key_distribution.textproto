@@ -1,0 +1,342 @@
+# proto-file: components/webapps/isolated_web_apps/proto/key_distribution.proto
+# proto-message: IwaKeyDistribution
+
+key_rotation_data {
+  # Test entry: maps Web Bundle ID derived from testing_keys/ecdsa_p256.pem to
+  # the public key of testing_keys/ecdsa_p256_rotated_double.pem.
+  key_rotations {
+    key: "an43pcfoq6otbo6625jsvszlnv7qwtbjbo6xhenehxb33xai6fayiaacai"
+    value {
+      expected_key: "AydEPXfeFKrl93GXweZlwZN8xHTV9F2+tTA+YdOJ5vHO"
+    }
+  }
+  # crbug.com/469427358:
+  key_rotations {
+    key: "5qpj5uu6nmdigeqdkrlmfo5uqwpedb3ps6skhe6276wciir5h6yaaaic"
+    value {
+      expected_key: "f2qOTDtTUNtdiFCxuMs+XvgfSjY7Yk0CMrFT8kmh/28="
+    }
+  }
+  # crbug.com/469427358:
+  key_rotations {
+    key: "alxuw6tyvg7ri6eekczt3magynxwwqeoyndxjmiwuz33dlz6jnjr2aacai"
+    value {
+      expected_key: "IKmjZwB9Ggh2YTzHrCPZCg5iQUuNPC50Qo7XN7gKzNc="
+    }
+  }
+}
+
+special_app_permissions_data {
+  # crbug.com/447157667
+  special_app_permissions {
+    key: "ajbye5keylrcyakugr3zttu6f524eoamjc7mc6ubw3x3547xu3hxqaacai"
+    value: {
+      multi_screen_capture: {
+        skip_capture_started_notification: true
+      }
+    }
+  }
+  # crbug.com/447158840
+  special_app_permissions {
+    key: "aolx6xos3h4fx7beotfbqbh36e4yp5lhqkvcyawhlidphewmmq7hsaacai"
+    value: {
+      multi_screen_capture: {
+        skip_capture_started_notification: true
+      }
+    }
+  }
+  # crbug.com/463321025: Omnissa Horizon Client
+  special_app_permissions {
+    key: "ckg65ilaae42o6wd3uj4xfwznhba7pz2p6kojga5c27hkwq5f66qaaic"
+    value: {
+      chrome_os_permissions: {
+        allow_set_shape: true
+      }
+    }
+  }
+  # crbug.com/468162564: Citrix Workspace
+  special_app_permissions {
+    key: "ov6jyjge37xqptadeo5e2n6ayoxdjqw62pgm4afavkqbnqfpesraaaic"
+    value: {
+      chrome_os_permissions: {
+        allow_set_shape: true
+      }
+    }
+  }
+  # Test entry: provides notification override for a test app.
+  special_app_permissions {
+    key: "2ehqwjhen5u2cwyyymd3viv67gx2hsf7gwqusdltdprjuh3nppuaaaic"
+    value: {
+      multi_screen_capture: {
+        skip_capture_started_notification: true
+      }
+    }
+  }
+  # Test entry: provides notification override for a test app.
+  special_app_permissions {
+    key: "hbsokgnyjp3cuyuhikquupayzrvbu72ymm7k7lobxq7f5pwbkvwqaaic"
+    value: {
+      multi_screen_capture: {
+        skip_capture_started_notification: true
+      }
+    }
+  }
+}
+
+iwa_access_control {
+  # Fully approved apps
+  managed_allowlist {
+    key: "2ehqwjhen5u2cwyyymd3viv67gx2hsf7gwqusdltdprjuh3nppuaaaic"
+    value: {}
+  }
+  # crbug.com/548043204
+  managed_allowlist {
+    key: "4n53f7eowbcsbt66rbph6qqep2ylwfpoyo6havwypfcyjcb4gv2qaaic"
+    value: {}
+  }
+  # crbug.com/524691815
+  managed_allowlist {
+    key: "53k6qb7tefwtaawl7qi4lbj3gp75ugxru2zabegfgc75xtt5oduaaaic"
+    value: {}
+  }
+  # crbug.com/468778940
+  managed_allowlist {
+    key: "5qpj5uu6nmdigeqdkrlmfo5uqwpedb3ps6skhe6276wciir5h6yaaaic"
+    value: {}
+  }
+  # crbug.com/492436668
+  managed_allowlist {
+    key: "6skus5o46zlwbkaajs7auua5ntjhld6i3qxft3py6737xvrwic4aaaic"
+    value: {}
+  }
+  # crbug.com/496156700
+  managed_allowlist {
+    key: "7rxmsf7dy6d57dv3jtfzkbclmgyrfctyxzc4qw5ffhpubdqoxssaaaic"
+    value: {}
+  }
+  # crbug.com/457325169
+  managed_allowlist {
+    key: "aicmibhbmnxp2r7ai552eyuxjls5ksceyen5aj37f35cdr5wihvyyaacai"
+    value: {}
+  }
+  # crbug.com/461787022
+  managed_allowlist {
+    key: "aiv4bxauvcu3zvbu6r5yynoh4atkzqqaoeof5mwz54b4zfywcrjuoaacai"
+    value: {}
+  }
+  # crbug.com/460848649
+  managed_allowlist {
+    key: "ajbye5keylrcyakugr3zttu6f524eoamjc7mc6ubw3x3547xu3hxqaacai"
+    value: {}
+  }
+  # crbug.com/456113547
+  managed_allowlist {
+    key: "akdvjzgbaif24gkubpeadbdyh5w3iphbv3ea5elpckk3cx72mnd4caacai"
+    value: {}
+  }
+  # crbug.com/521465762
+  managed_allowlist {
+    key: "alsfb3ygfh4zkgt3ftglc5l5pzdldc6g6vx6xt4c4bktili7tntlgaacai"
+    value: {}
+  }
+  # crbug.com/454521558
+  managed_allowlist {
+    key: "alxuw6tyvg7ri6eekczt3magynxwwqeoyndxjmiwuz33dlz6jnjr2aacai"
+    value: {}
+  }
+  # crbug.com/505852387
+  managed_allowlist {
+    key: "amiyfm2piovvkvzy4i7glahjsd4udzlk3ghtvfxd7lxv2chcbmsfcaacai"
+    value: {}
+  }
+  # crbug.com/453958646
+  managed_allowlist {
+    key: "aolx6xos3h4fx7beotfbqbh36e4yp5lhqkvcyawhlidphewmmq7hsaacai"
+    value: {}
+  }
+  # crbug.com/492435576
+  managed_allowlist {
+    key: "ay6nbrwcfxvv66fterauuvjwdohunby6vdfp7cpz2v3p63tw77taaaic"
+    value: {}
+  }
+  # crbug.com/452607018
+  managed_allowlist {
+    key: "buhw6nnxnvtbkomwrl6tx4l5soue23i6latmsu7gsdnq4lyso7faaaic"
+    value: {}
+  }
+  # crbug.com/463321025
+  managed_allowlist {
+    key: "ckg65ilaae42o6wd3uj4xfwznhba7pz2p6kojga5c27hkwq5f66qaaic"
+    value: {}
+  }
+  # crbug.com/453632844
+  managed_allowlist {
+    key: "cpt62davrxj4yzauslsummydorzgy2kcnhbayaziceuqlzhaue7qaaic"
+    value: {}
+  }
+  # crbug.com/537771961
+  managed_allowlist {
+    key: "d2akgyaysipz5jkxlpwtnhs57377awcdyn4qipu7jzdiyq2j4vcaaaic"
+    value: {}
+  }
+  # crbug.com/492434018
+  managed_allowlist {
+    key: "fastb5gbwigsdvngfspsjt7nvlq2cur7ywysdizyxmoywcnxbplqaaic"
+    value: {}
+  }
+  managed_allowlist {
+    key: "grhw2odotdqioi5nwwftz62kslybtoj5smahu2wkhds4kupuvuraaaic"
+    value: {}
+  }
+  managed_allowlist {
+    key: "hbsokgnyjp3cuyuhikquupayzrvbu72ymm7k7lobxq7f5pwbkvwqaaic"
+    value: {}
+  }
+  # crbug.com/458266630
+  managed_allowlist {
+    key: "jr6zbzn3ueqgjogmvzzvfqb56ue7tnjv5ummqiyn5itn35fduzgaaaic"
+    value: {}
+  }
+  # crbug.com/456723422
+  managed_allowlist {
+    key: "lyn2suo6yezy4uv2xnv3o4fga7kxirtm6o22qlgwy3vrkvyfjpoaaaic"
+    value: {}
+  }
+  # crbug.com/468162564
+  managed_allowlist {
+    key: "ov6jyjge37xqptadeo5e2n6ayoxdjqw62pgm4afavkqbnqfpesraaaic"
+    value: {}
+  }
+  # crbug.com/524341920
+  managed_allowlist {
+    key: "pjqaquvltc2k4t3ppa75wpyj3uv2k35glyegmlivxa4axi57n56aaaic"
+    value: {}
+  }
+  # crbug.com/459181367
+  managed_allowlist {
+    key: "pqiwyfhyi45e26be5qonaqldtziczb5b42yaendw4k3lkjppcwhqaaic"
+    value: {}
+  }
+  # crbug.com/463735521
+  managed_allowlist {
+    key: "q2oy25prsvhmxocjxs2badhyi3uw7vqhrupfn66iflserug4st6qaaic"
+    value: {}
+  }
+  # crbug.com/543623550
+  managed_allowlist {
+    key: "q3ef272g4rvldlaep2z4ob7unnvuj3v67p5n6ngr3uhrdxqqpwnaaaic"
+    value: {}
+  }
+  # crbug.com/458285328
+  managed_allowlist {
+    key: "s3hbml4x5zgsz7fx3l53zbliq55b6tovsfeut52mn2zvbw4somiaaaic"
+    value: {}
+  }
+  managed_allowlist {
+    key: "t5y5u5ypkkszc6gproxry53r6itx72lzow6tbpxryk5xtjus6ieqaaic"
+    value: {}
+  }
+  # crbug.com/492435648
+  managed_allowlist {
+    key: "u5guulqoop6gbmcrx5dkyee3wx6dwkmrufqpxjveipjuydqpidtqaaic"
+    value: {}
+  }
+  # crbug.com/497720013
+  managed_allowlist {
+    key: "w3qlcgzfj7ch4ejo56aawwm2r3p2bnx52lbvukeskbq26sgskvzqaaic"
+    value: {}
+  }
+  # crbug.com/492434221
+  managed_allowlist {
+    key: "wibwt63t4vrnwzzzcp6k55b4sger2zbaw2ojwcrhancd3j2rdzaqaaic"
+    value: {}
+  }
+  # crbug.com/496294809
+  managed_allowlist {
+    key: "xfwlzxjaddzrkm6hgasosed65wchld6sqhkyn74je4cku55adccaaaic"
+    value: {}
+  }
+  # crbug.com/459313816
+  managed_allowlist {
+    key: "xg7j4jhurxb7v5kpnt6asdfdap4lgygu7rxw6wwmpg4p3zs3rffaaaic"
+    value: {}
+  }
+  # crbug.com/492435718
+  managed_allowlist {
+    key: "yrgjmfspm4zk44nzcr2xfj7qneuugb4tql6lxzm2odnygx7dyknaaaic"
+    value: {}
+  }
+  # crbug.com/500617956
+  managed_allowlist {
+    key: "zaeekwjquidnqkdbaxlveqbqgjkwqpp76lozvs4hkgv3afuaqteaaaic"
+    value: {}
+  }
+  # crbug.com/527874523
+  managed_allowlist {
+    key: "t754s3hmg6al6gzdheynflgbxy75kmydaodjmhw2avg2xh27dkaqaaic"
+    value: {}
+  }
+  # Apps waiting for approval
+  managed_allowlist {
+    key: "nk3e4k42gj6p5caxu3dfdympbzps7yt4kbk63ykyexaveteyuqfqaaic"
+    value: {}
+  }
+   # Test entry: Blocks the test app for the user install launch.
+  blocklist: {
+    key: "an6p6e2jxx4n6oxaygead345pextud2w2y5m3qubh3lyuuyuy5p7kaacai"
+    value: {}
+  }
+  # Test entry: Blocks Web Bundle ID derived from testing_keys/ed25519_blocked.pem
+  blocklist: {
+    key: "kc27yfbm2ipu5iqqdvgstfrn3jvt5y26zaqtvbh24xl76hantsiqaaic"
+    value: {}
+  }
+
+  # crbug.com/461787022
+  user_install_allowlist: {
+    key: "aiv4bxauvcu3zvbu6r5yynoh4atkzqqaoeof5mwz54b4zfywcrjuoaacai"
+    value: {
+      enterprise_name: "Google LLC"
+      entitlements {
+        version_range {
+          begin: "1.0.0"
+        }
+        entitlement: CONTROLLED_FRAME
+        entitlement: DIRECT_SOCKETS
+      }
+    }
+  }
+  # crbug.com/453632844
+  user_install_allowlist: {
+    key: "cpt62davrxj4yzauslsummydorzgy2kcnhbayaziceuqlzhaue7qaaic"
+    value: {
+      enterprise_name: "Google LLC"
+      entitlements {
+        version_range {
+          begin: "0.0.0"
+          end: "1.0.0"
+        }
+        entitlement: SMART_CARD
+      }
+    }
+  }
+  # crbug.com/501328395
+  user_install_allowlist: {
+    key: "ov6jyjge37xqptadeo5e2n6ayoxdjqw62pgm4afavkqbnqfpesraaaic"
+    value: {
+      enterprise_name: "Citrix Systems"
+      entitlements {
+        version_range {
+          begin: "0.0.0"
+        }
+        entitlement: CONTROLLED_FRAME
+        entitlement: DIRECT_SOCKETS
+        entitlement: DIRECT_SOCKETS_MULTICAST
+        entitlement: SMART_CARD
+        entitlement: SUB_APPS
+        entitlement: UNRESTRICTED_WEBUSB
+        entitlement: WEB_PRINTING
+      }
+    }
+  }
+}

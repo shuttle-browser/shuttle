@@ -1,0 +1,605 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webui/ash/settings/pages/people/account_manager_ui_handler.h"
+
+#include <memory>
+#include <optional>
+#include <ostream>
+
+#include "ash/constants/ash_switches.h"
+#include "base/memory/raw_ptr.h"
+#include "base/strings/string_util.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/test_future.h"
+#include "chrome/browser/ash/account_manager/account_apps_availability.h"
+#include "chrome/browser/ash/account_manager/account_apps_availability_factory.h"
+#include "chrome/browser/ash/login/test/logged_in_user_mixin.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/ui/ash/account_manager/scoped_fake_account_manager_dialog.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "chrome/test/base/in_process_browser_test_mixin.h"
+#include "chrome/test/base/mixin_based_in_process_browser_test.h"
+#include "chromeos/ash/components/account_manager/account_manager_factory.h"
+#include "chromeos/ash/components/browser_context_helper/annotated_account_id.h"
+#include "components/account_manager_core/account_manager_facade.h"
+#include "components/account_manager_core/account_manager_metrics.h"
+#include "components/account_manager_core/account_upsertion_result.h"
+#include "components/account_manager_core/chromeos/account_manager.h"
+#include "components/session_manager/core/session_manager.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/signin/public/identity_manager/identity_test_utils.h"
+#include "components/supervised_user/core/common/supervised_user_constants.h"
+#include "components/user_manager/known_user.h"
+#include "components/user_manager/user_type.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/test_web_ui.h"
+#include "google_apis/gaia/gaia_id.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
+#include "services/network/test/test_url_loader_factory.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace {
+
+using testing::Optional;
+using testing::StrEq;
+
+using ::account_manager::AccountManager;
+
+constexpr char kSecondaryAccount1Email[] = "secondary1@example.com";
+constexpr char kSecondaryAccount2Email[] = "secondary2@example.com";
+constexpr char kGetAccountsMessage[] = "getAccounts";
+constexpr char kHandleFunctionName[] = "handleFunctionName";
+constexpr char kAddAccountMessage[] = "addAccount";
+constexpr char kReauthAccountEmail[] = "settings-reauth@example.com";
+constexpr char kReauthenticateAccountMessage[] = "reauthenticateAccount";
+
+struct DeviceAccountInfo {
+  std::string id;
+  std::string email;
+  std::string fullName;
+  std::string organization;
+
+  user_manager::UserType user_type;
+  account_manager::AccountType account_type;
+  std::string token;
+
+  friend std::ostream& operator<<(std::ostream& stream,
+                                  const DeviceAccountInfo& device_account_info);
+};
+
+std::ostream& operator<<(std::ostream& stream,
+                         const DeviceAccountInfo& device_account_info) {
+  return stream << "{email: " << device_account_info.email
+                << ", user_type: " << device_account_info.user_type << "}";
+}
+
+DeviceAccountInfo GetGaiaDeviceAccountInfo() {
+  return {
+      signin::GetTestGaiaIdForEmail("primary@example.com").ToString() /*id*/,
+      "primary@example.com" /*email*/,
+      "primary" /*fullName*/,
+      "" /*organization*/,
+      user_manager::UserType::kRegular /*user_type*/,
+      account_manager::AccountType::kGaia /*account_type*/,
+      "device-account-token" /*token*/};
+}
+
+DeviceAccountInfo GetChildDeviceAccountInfo() {
+  return {supervised_user::kChildAccountSUID /*id*/,
+          "child@example.com" /*email*/,
+          "child" /*fullName*/,
+          "Family Link" /*organization*/,
+          user_manager::UserType::kChild /*user_type*/,
+          account_manager::AccountType::kGaia /*account_type*/,
+          "device-account-token" /*token*/};
+}
+
+std::optional<account_manager::Account> GetAccountByKey(
+    std::vector<account_manager::Account> accounts,
+    account_manager::AccountKey key) {
+  for (const account_manager::Account& account : accounts) {
+    if (account.key == key) {
+      return account;
+    }
+  }
+  return std::nullopt;
+}
+
+std::string ValueOrEmpty(const std::string* str) {
+  return str ? *str : std::string();
+}
+
+MATCHER_P(AccountEmailEqual, other, "") {
+  return arg.raw_email == other;
+}
+
+}  // namespace
+
+namespace ash::settings {
+
+class TestingAccountManagerUIHandler : public AccountManagerUIHandler {
+ public:
+  TestingAccountManagerUIHandler(
+      AccountManager* account_manager,
+      account_manager::AccountManagerFacade* account_manager_facade,
+      signin::IdentityManager* identity_manager,
+      AccountAppsAvailability* apps_availability,
+      content::WebUI* web_ui)
+      : AccountManagerUIHandler(account_manager,
+                                account_manager_facade,
+                                identity_manager,
+                                apps_availability) {
+    set_web_ui(web_ui);
+  }
+
+  TestingAccountManagerUIHandler(const TestingAccountManagerUIHandler&) =
+      delete;
+  TestingAccountManagerUIHandler& operator=(
+      const TestingAccountManagerUIHandler&) = delete;
+};
+
+class AccountManagerUIHandlerTest
+    : public MixinBasedInProcessBrowserTest,
+      public testing::WithParamInterface<DeviceAccountInfo> {
+ public:
+  AccountManagerUIHandlerTest()
+      : test_shared_loader_factory_(
+            base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
+                &test_url_loader_factory_)) {}
+
+  AccountManagerUIHandlerTest(const AccountManagerUIHandlerTest&) = delete;
+  AccountManagerUIHandlerTest& operator=(const AccountManagerUIHandlerTest&) =
+      delete;
+
+  void SetUpOnMainThread() override {
+    MixinBasedInProcessBrowserTest::SetUpOnMainThread();
+
+    // Split the setup so it can be called from the inherited classes.
+    SetUpEnvironment();
+
+    auto* account_manager_facade =
+        AccountManagerFactory::Get()->GetAccountManagerFacade(
+            GetProfile()->GetPath().value());
+    account_apps_availability_ =
+        AccountAppsAvailabilityFactory::GetForProfile(GetProfile());
+
+    handler_ = std::make_unique<TestingAccountManagerUIHandler>(
+        account_manager_, account_manager_facade, identity_manager_,
+        account_apps_availability_, &web_ui_);
+    handler_->SetProfileForTesting(GetProfile());
+    handler_->RegisterMessages();
+    handler_->AllowJavascriptForTesting();
+    base::RunLoop().RunUntilIdle();
+  }
+
+  void TearDownOnMainThread() override {
+    account_apps_availability_ = nullptr;
+    handler_.reset();
+    base::RunLoop().RunUntilIdle();
+    account_manager_ = nullptr;
+    identity_manager_ = nullptr;
+    MixinBasedInProcessBrowserTest::TearDownOnMainThread();
+  }
+
+  // Should be called only once on test setup.
+  void SetUpEnvironment() {
+    // Log-In the user.
+    if (GetDeviceAccountInfo().user_type == user_manager::UserType::kChild) {
+      login_mixin_.LogInUser();
+    } else {
+      user_manager::KnownUser known_user(g_browser_process->local_state());
+      known_user.SetProfileRequiresPolicy(
+          login_mixin_.GetAccountId(),
+          user_manager::ProfileRequiresPolicy::kNoPolicyRequired);
+      login_mixin_.LogInUser(
+          {LoggedInUserMixin::LoginDetails::kNoPolicyForUser});
+    }
+
+    account_manager_ = AccountManagerFactory::Get()->GetAccountManager(
+        GetProfile()->GetPath().value());
+    account_manager_->SetUrlLoaderFactoryForTests(test_shared_loader_factory_);
+    account_manager_->UpsertAccount(
+        ::account_manager::AccountKey{GetDeviceAccountInfo().id,
+                                      GetDeviceAccountInfo().account_type},
+        GetDeviceAccountInfo().email, GetDeviceAccountInfo().token);
+
+    identity_manager_ = IdentityManagerFactory::GetForProfile(GetProfile());
+    signin::WaitForRefreshTokensLoaded(identity_manager_);
+  }
+
+  void UpsertAccount(std::string email) {
+    account_manager_->UpsertAccount(::account_manager::AccountKey::FromGaiaId(
+                                        signin::GetTestGaiaIdForEmail(email)),
+                                    email, AccountManager::kInvalidToken);
+  }
+
+  std::vector<::account_manager::Account> GetAccountsFromAccountManager()
+      const {
+    base::test::TestFuture<const std::vector<::account_manager::Account>&>
+        future;
+    account_manager_->GetAccounts(future.GetCallback());
+    return future.Get();
+  }
+
+  bool HasDummyGaiaToken(const ::account_manager::AccountKey& account_key) {
+    base::test::TestFuture<bool> future;
+    account_manager_->HasDummyGaiaToken(account_key, future.GetCallback());
+    return future.Get();
+  }
+
+  DeviceAccountInfo GetDeviceAccountInfo() const { return GetParam(); }
+
+  content::TestWebUI* web_ui() { return &web_ui_; }
+  signin::IdentityManager* identity_manager() { return identity_manager_; }
+  AccountManager* account_manager() { return account_manager_; }
+
+ private:
+  ash::LoggedInUserMixin login_mixin_{
+      &mixin_host_,
+      /*test_base=*/this,
+      embedded_test_server(),
+      GetDeviceAccountInfo().user_type == user_manager::UserType::kChild
+          ? ash::LoggedInUserMixin::LogInType::kChild
+          : ash::LoggedInUserMixin::LogInType::kConsumer,
+      /*include_initial_user=*/true,
+      AccountId::FromUserEmailGaiaId(GetDeviceAccountInfo().email,
+                                     GaiaId(GetDeviceAccountInfo().id))};
+
+  raw_ptr<AccountManager> account_manager_ = nullptr;
+  raw_ptr<signin::IdentityManager> identity_manager_ = nullptr;
+
+  content::TestWebUI web_ui_;
+  std::unique_ptr<TestingAccountManagerUIHandler> handler_;
+  raw_ptr<AccountAppsAvailability> account_apps_availability_;
+
+  network::TestURLLoaderFactory test_url_loader_factory_;
+  scoped_refptr<network::SharedURLLoaderFactory> test_shared_loader_factory_;
+};
+
+IN_PROC_BROWSER_TEST_P(AccountManagerUIHandlerTest,
+                       OnGetAccountsNoSecondaryAccounts) {
+  const std::vector<::account_manager::Account> account_manager_accounts =
+      GetAccountsFromAccountManager();
+  // Only Primary account.
+  ASSERT_EQ(1UL, account_manager_accounts.size());
+
+  // Call "getAccounts".
+  base::ListValue args;
+  args.Append(kHandleFunctionName);
+  web_ui()->HandleReceivedMessage(kGetAccountsMessage, args);
+
+  // Wait for the async calls to finish.
+  base::RunLoop().RunUntilIdle();
+
+  const content::TestWebUI::CallData& call_data = *web_ui()->call_data().back();
+  EXPECT_EQ("cr.webUIResponse", call_data.function_name());
+  EXPECT_EQ(kHandleFunctionName, call_data.arg1()->GetString());
+  ASSERT_TRUE(call_data.arg2()->GetBool());
+
+  // Get results from JS callback.
+  const base::ListValue& result = call_data.arg3()->GetList();
+  ASSERT_EQ(account_manager_accounts.size(), result.size());
+
+  // Check first (device) account.
+  const base::DictValue& device_account = result[0].GetDict();
+  EXPECT_TRUE(device_account.FindBool("isDeviceAccount").value());
+  EXPECT_TRUE(device_account.FindBool("isSignedIn").value());
+  EXPECT_FALSE(device_account.FindBool("unmigrated").value());
+  EXPECT_EQ(static_cast<int>(GetDeviceAccountInfo().account_type),
+            device_account.FindInt("accountType"));
+  EXPECT_EQ(GetDeviceAccountInfo().email,
+            ValueOrEmpty(device_account.FindString("email")));
+  EXPECT_EQ(GetDeviceAccountInfo().id,
+            ValueOrEmpty(device_account.FindString("id")));
+  if (GetDeviceAccountInfo().user_type == user_manager::UserType::kChild) {
+    std::string organization = GetDeviceAccountInfo().organization;
+    base::ReplaceSubstringsAfterOffset(&organization, 0, " ", "&nbsp;");
+    EXPECT_EQ(organization,
+              ValueOrEmpty(device_account.FindString("organization")));
+  } else {
+    EXPECT_EQ(GetDeviceAccountInfo().organization,
+              ValueOrEmpty(device_account.FindString("organization")));
+  }
+}
+
+IN_PROC_BROWSER_TEST_P(AccountManagerUIHandlerTest,
+                       OnGetAccountsWithSecondaryAccounts) {
+  UpsertAccount(kSecondaryAccount1Email);
+  UpsertAccount(kSecondaryAccount2Email);
+  const std::vector<::account_manager::Account> account_manager_accounts =
+      GetAccountsFromAccountManager();
+  ASSERT_EQ(3UL, account_manager_accounts.size());
+
+  // Wait for accounts to propagate to IdentityManager.
+  base::RunLoop().RunUntilIdle();
+
+  // Call "getAccounts".
+  base::ListValue args;
+  args.Append(kHandleFunctionName);
+  web_ui()->HandleReceivedMessage(kGetAccountsMessage, args);
+
+  // Wait for the async calls to finish.
+  base::RunLoop().RunUntilIdle();
+
+  const content::TestWebUI::CallData& call_data = *web_ui()->call_data().back();
+  EXPECT_EQ("cr.webUIResponse", call_data.function_name());
+  EXPECT_EQ(kHandleFunctionName, call_data.arg1()->GetString());
+  ASSERT_TRUE(call_data.arg2()->GetBool());
+
+  // Get results from JS callback.
+  const base::ListValue& result = call_data.arg3()->GetList();
+  ASSERT_EQ(account_manager_accounts.size(), result.size());
+
+  // Check first (device) account.
+  const base::DictValue& device_account = result[0].GetDict();
+  EXPECT_TRUE(device_account.FindBool("isDeviceAccount").value());
+  EXPECT_TRUE(device_account.FindBool("isSignedIn").value());
+  EXPECT_FALSE(device_account.FindBool("unmigrated").value());
+  EXPECT_EQ(static_cast<int>(GetDeviceAccountInfo().account_type),
+            device_account.FindInt("accountType"));
+  EXPECT_EQ(GetDeviceAccountInfo().email,
+            ValueOrEmpty(device_account.FindString("email")));
+  EXPECT_EQ(GetDeviceAccountInfo().id,
+            ValueOrEmpty(device_account.FindString("id")));
+  if (GetDeviceAccountInfo().user_type == user_manager::UserType::kChild) {
+    std::string organization = GetDeviceAccountInfo().organization;
+    base::ReplaceSubstringsAfterOffset(&organization, 0, " ", "&nbsp;");
+    EXPECT_EQ(organization,
+              ValueOrEmpty(device_account.FindString("organization")));
+  } else {
+    EXPECT_EQ(GetDeviceAccountInfo().organization,
+              ValueOrEmpty(device_account.FindString("organization")));
+  }
+
+  // Check secondary accounts.
+  for (const base::Value& account_value : result) {
+    const base::DictValue& account = account_value.GetDict();
+    if (ValueOrEmpty(account.FindString("id")) == GetDeviceAccountInfo().id) {
+      continue;
+    }
+    EXPECT_FALSE(account.FindBool("isDeviceAccount").value());
+
+    ::account_manager::Account expected_account =
+        GetAccountByKey(account_manager_accounts,
+                        {ValueOrEmpty(account.FindString("id")),
+                         account_manager::AccountType::kGaia})
+            .value();
+    if (GetDeviceAccountInfo().user_type == user_manager::UserType::kChild) {
+      EXPECT_FALSE(account.FindBool("unmigrated").value());
+    } else {
+      EXPECT_EQ(HasDummyGaiaToken(expected_account.key),
+                account.FindBool("unmigrated").value());
+    }
+    EXPECT_EQ(static_cast<int>(expected_account.key.account_type()),
+              account.FindInt("accountType"));
+    EXPECT_EQ(expected_account.raw_email,
+              ValueOrEmpty(account.FindString("email")));
+
+    AccountInfo expected_account_info =
+        identity_manager()->FindExtendedAccountInfoByGaiaId(
+            GaiaId(expected_account.key.id()));
+    EXPECT_FALSE(expected_account_info.IsEmpty());
+    EXPECT_EQ(expected_account_info.GetFullName().value_or(""),
+              ValueOrEmpty(account.FindString("fullName")));
+    EXPECT_EQ(
+        !identity_manager()->HasAccountWithRefreshTokenInPersistentErrorState(
+            expected_account_info.GetAccountId()),
+        account.FindBool("isSignedIn").value());
+  }
+}
+
+IN_PROC_BROWSER_TEST_P(AccountManagerUIHandlerTest,
+                       ReauthenticateAccountOpensReauthDialog) {
+  base::HistogramTester histogram_tester;
+  ash::test::ScopedFakeAccountManagerDialog fake_account_manager_dialog(
+      GetProfile());
+
+  base::ListValue args;
+  args.Append(kReauthAccountEmail);
+  web_ui()->HandleReceivedMessage(kReauthenticateAccountMessage, args);
+
+  EXPECT_EQ(1, fake_account_manager_dialog
+                   ->show_account_reauthentication_dialog_calls());
+  EXPECT_THAT(fake_account_manager_dialog->last_reauth_email(),
+              Optional(StrEq(kReauthAccountEmail)));
+  EXPECT_EQ(0,
+            fake_account_manager_dialog->show_account_addition_dialog_calls());
+  histogram_tester.ExpectUniqueSample(
+      account_manager::kAccountAdditionSourceHistogramName,
+      account_manager::AccountAdditionSource::kSettingsReauthAccountButton,
+      /*expected_count=*/1);
+  histogram_tester.ExpectTotalCount(
+      account_manager::kAccountUpsertionResultStatusHistogramName, 0);
+
+  fake_account_manager_dialog->CloseDialog();
+  histogram_tester.ExpectUniqueSample(
+      account_manager::kAccountUpsertionResultStatusHistogramName,
+      account_manager::AccountUpsertionResult::Status::kCancelledByUser,
+      /*expected_count=*/1);
+}
+
+IN_PROC_BROWSER_TEST_P(AccountManagerUIHandlerTest,
+                       AddAccountOpensAddAccountDialog) {
+  base::HistogramTester histogram_tester;
+  ash::test::ScopedFakeAccountManagerDialog fake_account_manager_dialog(
+      GetProfile());
+
+  base::ListValue args;
+  web_ui()->HandleReceivedMessage(kAddAccountMessage, args);
+
+  EXPECT_EQ(1,
+            fake_account_manager_dialog->show_account_addition_dialog_calls());
+  EXPECT_EQ(0, fake_account_manager_dialog
+                   ->show_account_reauthentication_dialog_calls());
+  ASSERT_TRUE(
+      fake_account_manager_dialog->last_add_account_options().has_value());
+  EXPECT_TRUE(fake_account_manager_dialog->last_add_account_options()
+                  ->is_available_in_arc);
+  EXPECT_FALSE(fake_account_manager_dialog->last_add_account_options()
+                   ->show_arc_availability_picker);
+  histogram_tester.ExpectUniqueSample(
+      account_manager::kAccountAdditionSourceHistogramName,
+      account_manager::AccountAdditionSource::kSettingsAddAccountButton,
+      /*expected_count=*/1);
+  histogram_tester.ExpectTotalCount(
+      account_manager::kAccountUpsertionResultStatusHistogramName, 0);
+
+  fake_account_manager_dialog->CloseDialog();
+  histogram_tester.ExpectUniqueSample(
+      account_manager::kAccountUpsertionResultStatusHistogramName,
+      account_manager::AccountUpsertionResult::Status::kCancelledByUser,
+      /*expected_count=*/1);
+}
+
+INSTANTIATE_TEST_SUITE_P(AccountManagerUIHandlerTestSuite,
+                         AccountManagerUIHandlerTest,
+                         ::testing::Values(GetGaiaDeviceAccountInfo(),
+                                           GetChildDeviceAccountInfo()));
+
+class AccountManagerUIHandlerTestWithManagedArcAccountRestriction
+    : public AccountManagerUIHandlerTest {
+ public:
+  AccountManagerUIHandlerTestWithManagedArcAccountRestriction() = default;
+
+  void SetUpOnMainThread() override {
+    // Bypasses that AccountManagerUIHandlerTest::SetUpOnMainThread does.
+    MixinBasedInProcessBrowserTest::SetUpOnMainThread();
+    SetUpEnvironment();
+
+    auto* account_manager_facade =
+        AccountManagerFactory::Get()->GetAccountManagerFacade(
+            GetProfile()->GetPath().value());
+
+    account_apps_availability_ =
+        AccountAppsAvailabilityFactory::GetForProfile(GetProfile());
+
+    handler_ = std::make_unique<TestingAccountManagerUIHandler>(
+        account_manager(), account_manager_facade, identity_manager(),
+        account_apps_availability_, web_ui());
+    handler_->SetProfileForTesting(GetProfile());
+    handler_->RegisterMessages();
+    handler_->AllowJavascriptForTesting();
+    base::RunLoop().RunUntilIdle();
+  }
+
+  void TearDownOnMainThread() override {
+    account_apps_availability_ = nullptr;
+    handler_.reset();
+    AccountManagerUIHandlerTest::TearDownOnMainThread();
+  }
+
+  base::flat_set<::account_manager::Account> GetAccountsAvailableInArc() const {
+    base::test::TestFuture<const base::flat_set<::account_manager::Account>&>
+        future;
+    account_apps_availability_->GetAccountsAvailableInArc(future.GetCallback());
+    return future.Get();
+  }
+
+  std::optional<::account_manager::Account> FindAccountByEmail(
+      const std::vector<::account_manager::Account>& accounts,
+      const std::string& email) {
+    for (const auto& account : accounts) {
+      if (account.raw_email == email) {
+        return account;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<const base::Value> FindAccountDictByEmail(
+      const base::ListValue& accounts,
+      const std::string& email) {
+    for (const base::Value& account : accounts) {
+      if (ValueOrEmpty(account.GetDict().FindString("email")) == email) {
+        return account.Clone();
+      }
+    }
+    return std::nullopt;
+  }
+
+  AccountAppsAvailability* account_apps_availability() {
+    return account_apps_availability_;
+  }
+
+ private:
+  raw_ptr<AccountAppsAvailability> account_apps_availability_;
+  std::unique_ptr<TestingAccountManagerUIHandler> handler_;
+};
+
+IN_PROC_BROWSER_TEST_P(
+    AccountManagerUIHandlerTestWithManagedArcAccountRestriction,
+    CheckIsAvailableInArcValue) {
+  UpsertAccount(kSecondaryAccount1Email);
+  UpsertAccount(kSecondaryAccount2Email);
+  const std::vector<::account_manager::Account> account_manager_accounts =
+      GetAccountsFromAccountManager();
+  ASSERT_EQ(3UL, account_manager_accounts.size());
+
+  // Wait for accounts to propagate to IdentityManager.
+  base::RunLoop().RunUntilIdle();
+
+  std::optional<::account_manager::Account> account_1 =
+      FindAccountByEmail(account_manager_accounts, kSecondaryAccount1Email);
+  ASSERT_TRUE(account_1.has_value());
+  std::optional<::account_manager::Account> account_2 =
+      FindAccountByEmail(account_manager_accounts, kSecondaryAccount2Email);
+  ASSERT_TRUE(account_2.has_value());
+
+  account_apps_availability()->SetIsAccountAvailableInArc(account_1.value(),
+                                                          true);
+  account_apps_availability()->SetIsAccountAvailableInArc(account_2.value(),
+                                                          false);
+
+  // Call "getAccounts".
+  base::ListValue args;
+  args.Append(kHandleFunctionName);
+  web_ui()->HandleReceivedMessage(kGetAccountsMessage, args);
+
+  // Wait for the async calls to finish.
+  base::RunLoop().RunUntilIdle();
+
+  const content::TestWebUI::CallData& call_data = *web_ui()->call_data().back();
+  EXPECT_EQ("cr.webUIResponse", call_data.function_name());
+  EXPECT_EQ(kHandleFunctionName, call_data.arg1()->GetString());
+  ASSERT_TRUE(call_data.arg2()->GetBool());
+
+  // Get results from JS callback.
+  const base::ListValue& result = call_data.arg3()->GetList();
+  ASSERT_EQ(account_manager_accounts.size(), result.size());
+
+  // The value for the device account should be always `true`.
+  const base::DictValue& device_account = result[0].GetDict();
+  EXPECT_TRUE(device_account.FindBool("isAvailableInArc").value());
+
+  // Check secondary accounts.
+  std::optional<const base::Value> secondary_1_dict =
+      FindAccountDictByEmail(result, kSecondaryAccount1Email);
+  ASSERT_TRUE(secondary_1_dict.has_value());
+  std::optional<const base::Value> secondary_2_dict =
+      FindAccountDictByEmail(result, kSecondaryAccount2Email);
+  ASSERT_TRUE(secondary_2_dict.has_value());
+
+  std::optional<bool> is_available_1 =
+      secondary_1_dict.value().GetDict().FindBool("isAvailableInArc");
+  ASSERT_TRUE(is_available_1.has_value());
+  std::optional<bool> is_available_2 =
+      secondary_2_dict.value().GetDict().FindBool("isAvailableInArc");
+  ASSERT_TRUE(is_available_2.has_value());
+
+  // The values should match `SetIsAccountAvailableInArc` calls.
+  EXPECT_TRUE(is_available_1.value());
+  EXPECT_FALSE(is_available_2.value());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AccountManagerUIHandlerTestWithManagedArcAccountRestrictionSuite,
+    AccountManagerUIHandlerTestWithManagedArcAccountRestriction,
+    ::testing::Values(GetGaiaDeviceAccountInfo(), GetChildDeviceAccountInfo()));
+
+}  // namespace ash::settings

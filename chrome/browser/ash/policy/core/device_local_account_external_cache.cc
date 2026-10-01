@@ -1,0 +1,126 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ash/policy/core/device_local_account_external_cache.h"
+
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+
+#include "base/check.h"
+#include "base/files/file_path.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/values.h"
+#include "chrome/browser/ash/extensions/external_cache_impl.h"
+#include "components/user_manager/user.h"
+#include "components/user_manager/user_manager.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
+
+namespace chromeos {
+
+namespace {
+
+std::set<std::string> GetKeys(const base::DictValue& dict) {
+  std::set<std::string> keys;
+  for (auto [key, _] : dict) {
+    keys.insert(key);
+  }
+  return keys;
+}
+
+base::DictValue FilterOnKeys(const base::DictValue& dict,
+                             const std::set<std::string>& keys_to_keep) {
+  base::DictValue result;
+  for (auto [key, value] : dict) {
+    if (keys_to_keep.contains(key)) {
+      result.Set(key, value.Clone());
+    }
+  }
+  return result;
+}
+
+}  // namespace
+
+DeviceLocalAccountExternalCache::DeviceLocalAccountExternalCache(
+    scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory,
+    ExtensionListCallback loader,
+    const std::string& user_id,
+    const base::FilePath& cache_dir)
+    : shared_url_loader_factory_(std::move(shared_url_loader_factory)),
+      user_id_(user_id),
+      cache_dir_(cache_dir),
+      loader_(loader) {
+  CHECK(shared_url_loader_factory_);
+}
+
+DeviceLocalAccountExternalCache::~DeviceLocalAccountExternalCache() = default;
+
+void DeviceLocalAccountExternalCache::StartCache(
+    const scoped_refptr<base::SequencedTaskRunner>& cache_task_runner) {
+  DCHECK(!external_cache_);
+
+  external_cache_ = std::make_unique<ExternalCacheImpl>(
+      cache_dir_, shared_url_loader_factory_, cache_task_runner,
+      /*delegate=*/this,
+      /*always_check_updates=*/true,
+      /*wait_for_cache_initialization=*/false,
+      /*allow_scheduled_updates=*/false);
+}
+
+void DeviceLocalAccountExternalCache::UpdateExtensionsList(
+    base::DictValue extensions) {
+  extension_keys_ = GetKeys(extensions);
+
+  if (external_cache_) {
+    external_cache_->UpdateExtensionsList(std::move(extensions));
+  }
+}
+
+void DeviceLocalAccountExternalCache::StopCache(base::OnceClosure callback) {
+  if (external_cache_) {
+    external_cache_->Shutdown(std::move(callback));
+    external_cache_.reset();
+  } else {
+    std::move(callback).Run();
+  }
+
+  base::DictValue empty_prefs;
+  loader_.Run(user_id_, empty_prefs.Clone());
+}
+
+bool DeviceLocalAccountExternalCache::IsCacheRunning() const {
+  return external_cache_ != nullptr;
+}
+
+void DeviceLocalAccountExternalCache::OnExtensionListsUpdated(
+    const base::DictValue& prefs) {
+  loader_.Run(user_id_, FilterOnKeys(prefs, extension_keys_));
+}
+
+bool DeviceLocalAccountExternalCache::IsRollbackAllowed() const {
+  return true;
+}
+
+bool DeviceLocalAccountExternalCache::CanRollbackNow() const {
+  // Allow immediate rollback only if current user is not this device local
+  // account.
+  if (auto* user = user_manager::UserManager::Get()->GetPrimaryUser()) {
+    return user_id_ != user->GetAccountId().GetUserEmail();
+  }
+  return true;
+}
+
+base::DictValue DeviceLocalAccountExternalCache::GetCachedExtensionsForTesting()
+    const {
+  return external_cache_->GetCachedExtensions().Clone();
+}
+
+void DeviceLocalAccountExternalCache::SetCacheResponseForTesting(
+    const base::DictValue& cached_extensions) {
+  OnExtensionListsUpdated(cached_extensions);
+}
+
+}  // namespace chromeos

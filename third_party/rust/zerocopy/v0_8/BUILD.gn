@@ -1,0 +1,305 @@
+# Copyright 2023 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# @generated from third_party/rust/chromium_crates_io/BUILD.gn.hbs by
+# tools/crates/gnrt.
+# Do not edit!
+
+import("//build/rust/cargo_crate.gni")
+
+cargo_crate("lib") {
+  crate_name = "zerocopy"
+  epoch = "0.8"
+  crate_type = "rlib"
+  crate_root =
+      "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/lib.rs"
+  sources = [
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/byte_slice.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/byteorder.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/deprecated.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/doctests.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/error.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/impls.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/layout.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/lib.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/macros.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/pointer/inner.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/pointer/invariant.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/pointer/mod.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/pointer/ptr.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/pointer/transmute.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/ref.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/split_at.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/util/macro_util.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/util/macros.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/util/mod.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/wrappers.rs",
+  ]
+  inputs = [
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/as_bytes_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/as_bytes_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/as_bytes_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/as_bytes_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/as_bytes_static_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/as_bytes_static_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/extend_vec_zeroed.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/extend_vec_zeroed.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/extend_vec_zeroed.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/formats/coco_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/formats/coco_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/formats/coco_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/insert_vec_zeroed.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/insert_vec_zeroed.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/insert_vec_zeroed.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_box_zeroed.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_box_zeroed.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_box_zeroed.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_box_zeroed_with_elems_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_box_zeroed_with_elems_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_box_zeroed_with_elems_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_box_zeroed_with_elems_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_box_zeroed_with_elems_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_box_zeroed_with_elems_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_vec_zeroed.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_vec_zeroed.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_vec_zeroed.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_zeroed.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_zeroed.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/new_zeroed.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/read_from_bytes.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/read_from_bytes.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/read_from_bytes.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/read_from_prefix.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/read_from_prefix.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/read_from_prefix.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/read_from_suffix.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/read_from_suffix.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/read_from_suffix.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_static_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_static_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_with_elems_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_with_elems_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_with_elems_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_with_elems_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_with_elems_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_bytes_with_elems_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_static_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_static_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_with_elems_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_with_elems_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_with_elems_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_with_elems_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_with_elems_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_prefix_with_elems_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_static_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_static_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_with_elems_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_with_elems_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_with_elems_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_with_elems_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_with_elems_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/ref_from_suffix_with_elems_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_at_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_at_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_at_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_at_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_at_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_at_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_at_unchecked_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_at_unchecked_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_at_unchecked_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_at_unchecked_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_at_unchecked_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_at_unchecked_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_immutable_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_immutable_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_immutable_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_immutable_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_immutable_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_immutable_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_runtime_check_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_runtime_check_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_runtime_check_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_runtime_check_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_runtime_check_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_runtime_check_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_unchecked_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_unchecked_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_unchecked_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_unchecked_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_unchecked_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/split_via_unchecked_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/transmute.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/transmute.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/transmute.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/transmute_ref_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/transmute_ref_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/transmute_ref_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/transmute_ref_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/transmute_ref_static_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/transmute_ref_static_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_read_from_bytes.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_read_from_bytes.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_read_from_bytes.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_read_from_prefix.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_read_from_prefix.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_read_from_prefix.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_read_from_suffix.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_read_from_suffix.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_read_from_suffix.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_static_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_static_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_with_elems_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_with_elems_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_with_elems_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_with_elems_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_with_elems_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_bytes_with_elems_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_static_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_static_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_with_elems_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_with_elems_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_with_elems_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_with_elems_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_with_elems_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_prefix_with_elems_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_static_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_static_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_with_elems_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_with_elems_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_with_elems_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_with_elems_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_with_elems_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_ref_from_suffix_with_elems_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_transmute.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_transmute.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_transmute.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_transmute_ref_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_transmute_ref_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_transmute_ref_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_transmute_ref_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_transmute_ref_static_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/try_transmute_ref_static_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_prefix_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_prefix_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_prefix_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_prefix_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_prefix_static_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_prefix_static_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_static_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_static_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_suffix_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_suffix_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_suffix_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_suffix_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_suffix_static_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/write_to_suffix_static_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/zero_dynamic_padding.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/zero_dynamic_padding.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/zero_dynamic_padding.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/zero_dynamic_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/zero_dynamic_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/zero_dynamic_size.x86-64.mca",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/zero_static_size.rs",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/zero_static_size.x86-64",
+    "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/src/../benches/zero_static_size.x86-64.mca",
+  ]
+
+  build_native_rust_unit_tests = false
+  edition = "2021"
+  cargo_pkg_name = "zerocopy"
+  cargo_pkg_description = "Zerocopy makes zero-cost memory manipulation effortless. We write \"unsafe\" so you don't have to."
+  cargo_pkg_repository = "https://github.com/google/zerocopy"
+  cargo_pkg_version = "0.8.56"
+
+  allow_unsafe = true
+
+  features = [ "simd" ]
+  build_root =
+      "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/build.rs"
+  build_sources =
+      [ "//third_party/rust/chromium_crates_io/vendor/zerocopy-v0_8/build.rs" ]
+
+  # Only for usage from third-party crates. Add the crate to
+  # //third_party/rust/chromium_crates_io/Cargo.toml to use
+  # it from first-party code.
+  visibility = [ "//third_party/rust/*" ]
+  testonly = true
+
+  #####################################################################
+  # Tweaking which GN `config`s apply to this target.
+
+  # Config changes that apply to all `//third_party/rust` crates.
+  _configs_to_remove = [
+    # We don't need code coverage data for any `chromium_crates_io` crates.
+    "//build/config/coverage:default_coverage",
+
+    # This is third-party code, so remove `chromium_code` config.  We are not
+    # at the same time adding `//build/config/compiler:no_chromium_code`,
+    # because 1) we don't want to pull how warnings are handled by that config
+    # and 2) that config doesn't have any non-warnings-related stuff.
+    "//build/config/compiler:chromium_code",
+  ]
+  _configs_to_add = []
+
+  # Changing (if needed) which configs apply to this specific crate (based on
+  # `extra_kv.configs_to_remove` and `extra_kv.configs_to_add` from
+  # `gnrt_config.toml`).
+  _configs_to_remove += []
+  _configs_to_add += []
+
+  # Applying config changes.
+  library_configs -= _configs_to_remove
+  library_configs += _configs_to_add
+  executable_configs -= _configs_to_remove
+  executable_configs += _configs_to_add
+  proc_macro_configs -= _configs_to_remove
+  proc_macro_configs += _configs_to_add
+}

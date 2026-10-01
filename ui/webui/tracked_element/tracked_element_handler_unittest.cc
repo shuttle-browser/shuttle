@@ -1,0 +1,929 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ui/webui/tracked_element/tracked_element_handler.h"
+
+#include <algorithm>
+#include <map>
+#include <memory>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "base/strings/stringprintf.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/test/bind.h"
+#include "base/test/run_until.h"
+#include "content/public/browser/content_browser_client.h"
+#include "content/public/browser/visibility.h"
+#include "content/public/browser/web_ui_controller.h"
+#include "content/public/common/content_client.h"
+#include "content/public/test/browser_task_environment.h"
+#include "content/public/test/test_browser_context.h"
+#include "content/public/test/test_content_client_initializer.h"
+#include "content/public/test/test_renderer_host.h"
+#include "content/public/test/test_web_ui.h"
+#include "content/public/test/web_contents_tester.h"
+#include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/interaction/element_events.h"
+#include "ui/base/interaction/element_highlighter.h"
+#include "ui/base/interaction/element_identifier.h"
+#include "ui/base/interaction/element_tracker.h"
+#include "ui/base/interaction/expect_call_in_scope.h"
+#include "ui/gfx/geometry/rect_conversions.h"
+#include "ui/webui/resources/js/tracked_element/tracked_element.mojom.h"
+#include "ui/webui/tracked_element/tracked_element_handler_document_singleton.h"
+#include "ui/webui/tracked_element/tracked_element_web_ui.h"
+
+#if !BUILDFLAG(IS_ANDROID)
+#include "ui/gfx/native_ui_util.h"
+#include "ui/views/controls/webview/webview.h"
+#include "ui/views/test/widget_test.h"
+#include "ui/views/widget/widget.h"
+#endif
+
+namespace ui {
+
+namespace {
+
+DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kTestElementIdentifier1);
+DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kTestElementIdentifier2);
+constexpr std::string_view kTestSecondaryId1 = "3";
+constexpr std::string_view kTestSecondaryId2 = "7";
+constexpr gfx::RectF kElementBounds{10, 20, 30, 40};
+constexpr gfx::RectF kElementBounds2{15, 25, 35, 45};
+DEFINE_LOCAL_CUSTOM_ELEMENT_EVENT_TYPE(kTestCustomEvent);
+
+auto MakeId(ElementIdentifier id, std::string_view secondary_id) {
+  return tracked_element::mojom::TrackedElementIdentifier::New(
+      id.GetName(), std::string(secondary_id));
+}
+
+class TestTrackedElementManager
+    : public tracked_element::mojom::TrackedElementManager {
+ public:
+  explicit TestTrackedElementManager(
+      mojo::PendingReceiver<tracked_element::mojom::TrackedElementManager>
+          pending_receiver) {
+    receiver_.Bind(std::move(pending_receiver));
+  }
+
+  void OnElementHighlightChanged(
+      tracked_element::mojom::TrackedElementIdentifierPtr id,
+      bool highlighted) override {
+    highlight_events_.emplace_back(id->native_identifier, highlighted);
+  }
+
+  void ClickElement(tracked_element::mojom::TrackedElementIdentifierPtr id,
+                    ClickElementCallback callback) override {
+    interaction_events_.push_back("Click:" + id->native_identifier);
+    std::move(callback).Run(true);
+  }
+
+  void FocusElement(tracked_element::mojom::TrackedElementIdentifierPtr id,
+                    FocusElementCallback callback) override {
+    interaction_events_.push_back("Focus:" + id->native_identifier);
+    std::move(callback).Run(true);
+  }
+
+  void SelectTab(tracked_element::mojom::TrackedElementIdentifierPtr id,
+                 uint32_t index,
+                 SelectTabCallback callback) override {
+    interaction_events_.push_back(base::StringPrintf(
+        "SelectTab:%s:%u", id->native_identifier.c_str(), index));
+    std::move(callback).Run(true);
+  }
+
+  void SelectDropdownItem(
+      tracked_element::mojom::TrackedElementIdentifierPtr id,
+      uint32_t index,
+      SelectDropdownItemCallback callback) override {
+    interaction_events_.push_back(base::StringPrintf(
+        "SelectDropdownItem:%s:%u", id->native_identifier.c_str(), index));
+    std::move(callback).Run(true);
+  }
+
+  void EnterText(tracked_element::mojom::TrackedElementIdentifierPtr id,
+                 const std::u16string& text,
+                 tracked_element::mojom::TextEntryMode mode,
+                 EnterTextCallback callback) override {
+    interaction_events_.push_back(base::StringPrintf(
+        "EnterText:%s:%s:%d", id->native_identifier.c_str(),
+        base::UTF16ToUTF8(text).c_str(), static_cast<int>(mode)));
+    std::move(callback).Run(true);
+  }
+
+  void Confirm(tracked_element::mojom::TrackedElementIdentifierPtr id,
+               ConfirmCallback callback) override {
+    interaction_events_.push_back("Confirm:" + id->native_identifier);
+    std::move(callback).Run(true);
+  }
+
+  std::vector<std::pair<std::string, bool>> TakeHighlightEvents() {
+    return std::move(highlight_events_);
+  }
+
+  std::vector<std::string> TakeInteractionEvents() {
+    return std::move(interaction_events_);
+  }
+
+ private:
+  mojo::Receiver<tracked_element::mojom::TrackedElementManager> receiver_{this};
+  std::vector<std::pair<std::string, bool>> highlight_events_;
+  std::vector<std::string> interaction_events_;
+};
+
+}  // namespace
+
+class TrackedElementHandlerTest : public content::RenderViewHostTestHarness {
+ public:
+  TrackedElementHandlerTest() = default;
+  ~TrackedElementHandlerTest() override = default;
+
+  void SetUp() override {
+    content::SetBrowserClientForTesting(&test_browser_client_);
+    content::RenderViewHostTestHarness::SetUp();
+
+    mojo::PendingRemote<tracked_element::mojom::TrackedElementHandler> remote;
+    handler_ = std::make_unique<TrackedElementHandler>(
+        web_contents(),
+        // When there is a consistent way of assigning contexts, use that.
+        ui::ElementContext::CreateFakeContextForTesting(web_contents()),
+        std::vector<ui::ElementIdentifier>{kTestElementIdentifier1,
+                                           kTestElementIdentifier2});
+    handler_->BindInterface(remote.InitWithNewPipeAndPassReceiver());
+    tracked_element_handler_remote_.Bind(std::move(remote));
+  }
+
+  void TearDown() override {
+    tracked_element_handler_remote_.reset();
+    handler_.reset();
+    content::RenderViewHostTestHarness::TearDown();
+  }
+
+ protected:
+  tracked_element::mojom::TrackedElementHandler* handler_remote() {
+    return tracked_element_handler_remote_.get();
+  }
+
+  TrackedElementHandler* handler() { return handler_.get(); }
+
+  content::ContentBrowserClient test_browser_client_;
+  std::unique_ptr<TrackedElementHandler> handler_;
+  mojo::Remote<tracked_element::mojom::TrackedElementHandler>
+      tracked_element_handler_remote_;
+};
+
+TEST_F(TrackedElementHandlerTest, StartsWithNoElement) {
+  EXPECT_FALSE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier1));
+  EXPECT_FALSE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier2));
+}
+
+TEST_F(TrackedElementHandlerTest, ElementCreatedOnEvent) {
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const element =
+      ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+          kTestElementIdentifier1);
+  EXPECT_TRUE(element);
+  EXPECT_TRUE(element->IsA<TrackedElementWebUI>());
+  EXPECT_FALSE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier2));
+
+  // Verify that we don't leave elements dangling if the handler is destroyed.
+  handler_.reset();
+  tracked_element_handler_remote_.FlushForTesting();
+  EXPECT_FALSE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier1));
+  EXPECT_FALSE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier2));
+}
+
+TEST_F(TrackedElementHandlerTest, ElementHiddenOnEvent) {
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+  EXPECT_TRUE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier1));
+
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), false, gfx::RectF());
+  tracked_element_handler_remote_.FlushForTesting();
+  EXPECT_FALSE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier1));
+  EXPECT_FALSE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier2));
+}
+
+TEST_F(TrackedElementHandlerTest, ElementActivatedOnEvent) {
+  UNCALLED_MOCK_CALLBACK(ui::ElementTracker::Callback, activated);
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const tracker = ui::ElementTracker::GetElementTracker();
+  auto* const element =
+      tracker->GetElementInAnyContext(kTestElementIdentifier1);
+  ASSERT_TRUE(element);
+  auto subscription =
+      ui::ElementTracker::GetElementTracker()->AddElementActivatedCallback(
+          element->identifier(), element->context(), activated.Get());
+  EXPECT_CALL_IN_SCOPE(activated, Run(element), {
+    handler_remote()->TrackedElementActivated(
+        MakeId(kTestElementIdentifier1, kTestSecondaryId1));
+    tracked_element_handler_remote_.FlushForTesting();
+  });
+}
+
+TEST_F(TrackedElementHandlerTest, ElementCustomEventOnEvent) {
+  DEFINE_LOCAL_CUSTOM_ELEMENT_EVENT_TYPE(kCustomEvent);
+  kCustomEvent.GetName();  // Register it.
+  const std::string event_name = kCustomEvent.GetName();
+  UNCALLED_MOCK_CALLBACK(ui::ElementTracker::Callback, custom_event);
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const tracker = ui::ElementTracker::GetElementTracker();
+  auto* const element =
+      tracker->GetElementInAnyContext(kTestElementIdentifier1);
+  ASSERT_TRUE(element);
+  auto subscription =
+      ui::ElementTracker::GetElementTracker()->AddCustomEventCallback(
+          kCustomEvent, element->context(), custom_event.Get());
+  EXPECT_CALL_IN_SCOPE(custom_event, Run(element), {
+    handler_remote()->TrackedElementCustomEvent(
+        MakeId(kTestElementIdentifier1, kTestSecondaryId1), event_name);
+    tracked_element_handler_remote_.FlushForTesting();
+  });
+}
+
+TEST_F(TrackedElementHandlerTest,
+       ElementBoundsChangedEventFiredOnBoundsChange) {
+  UNCALLED_MOCK_CALLBACK(ui::ElementTracker::Callback, bounds_changed);
+  // Make element visible with initial bounds.
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const tracker = ui::ElementTracker::GetElementTracker();
+  auto* const element =
+      tracker->GetElementInAnyContext(kTestElementIdentifier1);
+  ASSERT_TRUE(element);
+
+  // Subscribe to bounds changed event.
+  auto subscription =
+      ui::ElementTracker::GetElementTracker()->AddCustomEventCallback(
+          kElementBoundsChangedEvent, element->context(), bounds_changed.Get());
+
+  // Change bounds - should trigger the event.
+  EXPECT_CALL_IN_SCOPE(bounds_changed, Run(element), {
+    handler_remote()->TrackedElementVisibilityChanged(
+        MakeId(kTestElementIdentifier1, kTestSecondaryId1), true,
+        kElementBounds2);
+    tracked_element_handler_remote_.FlushForTesting();
+  });
+}
+
+TEST_F(TrackedElementHandlerTest,
+       ElementBoundsChangedEventNotFiredWhenBoundsUnchanged) {
+  UNCALLED_MOCK_CALLBACK(ui::ElementTracker::Callback, bounds_changed);
+
+  // Make element visible with initial bounds.
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const tracker = ui::ElementTracker::GetElementTracker();
+  auto* const element =
+      tracker->GetElementInAnyContext(kTestElementIdentifier1);
+  ASSERT_TRUE(element);
+
+  // Subscribe to bounds changed event.
+  auto subscription =
+      ui::ElementTracker::GetElementTracker()->AddCustomEventCallback(
+          kElementBoundsChangedEvent, element->context(), bounds_changed.Get());
+
+  // Send same bounds - should NOT trigger the event.
+  EXPECT_CALL(bounds_changed, Run).Times(0);
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+}
+
+TEST_F(TrackedElementHandlerTest, ElementBoundsChangedEventNotFiredWhenHidden) {
+  UNCALLED_MOCK_CALLBACK(ui::ElementTracker::Callback, bounds_changed);
+
+  // Make element visible with initial bounds.
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const tracker = ui::ElementTracker::GetElementTracker();
+  auto* const element =
+      tracker->GetElementInAnyContext(kTestElementIdentifier1);
+  ASSERT_TRUE(element);
+
+  // Subscribe to bounds changed event.
+  auto subscription =
+      ui::ElementTracker::GetElementTracker()->AddCustomEventCallback(
+          kElementBoundsChangedEvent, element->context(), bounds_changed.Get());
+
+  // Hide element - should NOT trigger bounds changed event.
+  EXPECT_CALL(bounds_changed, Run).Times(0);
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), false, gfx::RectF());
+  tracked_element_handler_remote_.FlushForTesting();
+}
+
+TEST_F(TrackedElementHandlerTest, MultipleIdentifiers) {
+  // Show two elements.
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier2, kTestSecondaryId2), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+  EXPECT_TRUE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier1));
+  EXPECT_TRUE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier2));
+
+  // Hide one element.
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), false, gfx::RectF());
+  tracked_element_handler_remote_.FlushForTesting();
+  EXPECT_FALSE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier1));
+  EXPECT_TRUE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier2));
+
+  // Hide the other element.
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier2, kTestSecondaryId2), false, gfx::RectF());
+  tracked_element_handler_remote_.FlushForTesting();
+  EXPECT_FALSE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier1));
+  EXPECT_FALSE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier2));
+
+  // Re-show an element.
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+  EXPECT_TRUE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier1));
+  EXPECT_FALSE(ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+      kTestElementIdentifier2));
+}
+
+TEST_F(TrackedElementHandlerTest, DestroyHandlerCleansUpElement) {
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const element =
+      ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+          kTestElementIdentifier1);
+  ASSERT_TRUE(element);
+  EXPECT_EQ(kTestSecondaryId1, element->GetSecondaryIdentifier());
+  const ui::ElementContext context = element->context();
+  EXPECT_TRUE(ui::ElementTracker::GetElementTracker()->IsElementVisible(
+      kTestElementIdentifier1, context));
+  handler_.reset();
+  tracked_element_handler_remote_.FlushForTesting();
+  EXPECT_FALSE(ui::ElementTracker::GetElementTracker()->IsElementVisible(
+      kTestElementIdentifier1, context));
+}
+
+TEST_F(TrackedElementHandlerTest, CanHighlight) {
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier2, kTestSecondaryId2), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+  auto* const element1 =
+      ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+          kTestElementIdentifier1);
+  ASSERT_TRUE(element1);
+  auto* const element2 =
+      ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+          kTestElementIdentifier2);
+  ASSERT_TRUE(element2);
+  EXPECT_FALSE(
+      ui::ElementHighlighter::GetElementHighlighter()->CanBeHighlighted(
+          element1));
+  EXPECT_FALSE(
+      ui::ElementHighlighter::GetElementHighlighter()->CanBeHighlighted(
+          element2));
+
+  handler_remote()->TrackedElementCanHighlightChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true);
+  handler_remote()->TrackedElementCanHighlightChanged(
+      MakeId(kTestElementIdentifier2, kTestSecondaryId2), false);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  EXPECT_TRUE(ui::ElementHighlighter::GetElementHighlighter()->CanBeHighlighted(
+      element1));
+  EXPECT_FALSE(
+      ui::ElementHighlighter::GetElementHighlighter()->CanBeHighlighted(
+          element2));
+}
+
+TEST_F(TrackedElementHandlerTest, Highlight) {
+  mojo::Remote<tracked_element::mojom::TrackedElementManager> manager_remote;
+
+  TestTrackedElementManager manager(
+      manager_remote.BindNewPipeAndPassReceiver());
+
+  handler_remote()->SetManager(manager_remote.Unbind());
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier2, kTestSecondaryId2), true, kElementBounds);
+  handler_remote()->TrackedElementCanHighlightChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true);
+  handler_remote()->TrackedElementCanHighlightChanged(
+      MakeId(kTestElementIdentifier2, kTestSecondaryId2), false);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* element1 =
+      ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+          kTestElementIdentifier1);
+  ASSERT_TRUE(element1);
+  auto* element2 =
+      ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+          kTestElementIdentifier2);
+  ASSERT_TRUE(element2);
+
+  // Add 2 highlights, release 1, should just have one highlight event.
+  auto hl1 =
+      ui::ElementHighlighter::GetElementHighlighter()->AddHighlight(element1);
+  ASSERT_TRUE(hl1);
+  auto hl2 =
+      ui::ElementHighlighter::GetElementHighlighter()->AddHighlight(element1);
+  ASSERT_TRUE(hl2);
+  hl1.reset();
+  handler_->FlushManagerRemoteForTesting();
+  EXPECT_THAT(
+      manager.TakeHighlightEvents(),
+      testing::ElementsAre(std::pair(kTestElementIdentifier1.GetName(), true)));
+
+  // Release the remaining highlight on element 1, and try to acquire one
+  // on element 2. The latter should return null since it's not highlightable.
+  hl2.reset();
+  auto hl3 =
+      ui::ElementHighlighter::GetElementHighlighter()->AddHighlight(element2);
+  EXPECT_FALSE(hl3);
+  handler_->FlushManagerRemoteForTesting();
+  EXPECT_THAT(manager.TakeHighlightEvents(),
+              testing::ElementsAre(
+                  std::pair(kTestElementIdentifier1.GetName(), false)));
+
+  // Now enable highlighting for element2 as well.
+  handler_remote()->TrackedElementCanHighlightChanged(
+      MakeId(kTestElementIdentifier2, kTestSecondaryId2), true);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  // Grab and release HL on it.
+  auto hl4 =
+      ui::ElementHighlighter::GetElementHighlighter()->AddHighlight(element2);
+  ASSERT_TRUE(hl4);
+  hl4.reset();
+  handler_->FlushManagerRemoteForTesting();
+  EXPECT_THAT(manager.TakeHighlightEvents(),
+              testing::ElementsAre(
+                  std::pair(kTestElementIdentifier2.GetName(), true),
+                  std::pair(kTestElementIdentifier2.GetName(), false)));
+}
+
+TEST_F(TrackedElementHandlerTest, Interaction) {
+  mojo::Remote<tracked_element::mojom::TrackedElementManager> manager_remote;
+  TestTrackedElementManager manager(
+      manager_remote.BindNewPipeAndPassReceiver());
+
+  handler_remote()->SetManager(manager_remote.Unbind());
+  tracked_element_handler_remote_.FlushForTesting();
+
+  TrackedElementWebUI element(handler(), kTestElementIdentifier1, "1",
+                              handler()->context());
+
+  const std::string name = kTestElementIdentifier1.GetName();
+  EXPECT_TRUE(handler()->ClickElement(element));
+  EXPECT_THAT(manager.TakeInteractionEvents(),
+              testing::ElementsAre("Click:" + name));
+
+  EXPECT_TRUE(handler()->FocusElement(element));
+  EXPECT_THAT(manager.TakeInteractionEvents(),
+              testing::ElementsAre("Focus:" + name));
+
+  EXPECT_TRUE(handler()->SelectTab(element, 2));
+  EXPECT_THAT(manager.TakeInteractionEvents(),
+              testing::ElementsAre("SelectTab:" + name + ":2"));
+
+  EXPECT_TRUE(handler()->SelectDropdownItem(element, 1));
+  EXPECT_THAT(manager.TakeInteractionEvents(),
+              testing::ElementsAre("SelectDropdownItem:" + name + ":1"));
+
+  EXPECT_TRUE(handler()->EnterText(
+      element, u"hello", tracked_element::mojom::TextEntryMode::kAppend));
+  EXPECT_THAT(manager.TakeInteractionEvents(),
+              testing::ElementsAre("EnterText:" + name + ":hello:2"));
+
+  EXPECT_TRUE(handler()->EnterText(
+      element, u"hello", tracked_element::mojom::TextEntryMode::kReplaceAll));
+  EXPECT_THAT(manager.TakeInteractionEvents(),
+              testing::ElementsAre("EnterText:" + name + ":hello:0"));
+
+  EXPECT_TRUE(handler()->Confirm(element));
+  EXPECT_THAT(manager.TakeInteractionEvents(),
+              testing::ElementsAre("Confirm:" + name));
+}
+
+TEST_F(TrackedElementHandlerTest,
+       WebContentsVisibilityChangesElementVisibility) {
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const tracker = ui::ElementTracker::GetElementTracker();
+  auto* const element =
+      tracker->GetElementInAnyContext(kTestElementIdentifier1);
+  ASSERT_TRUE(element);
+  const ui::ElementContext context = element->context();
+  EXPECT_TRUE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+
+  // Hide WebContents.
+  handler()->OnVisibilityChanged(content::Visibility::HIDDEN);
+  EXPECT_FALSE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+
+  // Show WebContents.
+  handler()->OnVisibilityChanged(content::Visibility::VISIBLE);
+  EXPECT_TRUE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+}
+
+TEST_F(TrackedElementHandlerTest, DestroyHandlerHidesElement) {
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const tracker = ui::ElementTracker::GetElementTracker();
+  auto* const element =
+      tracker->GetElementInAnyContext(kTestElementIdentifier1);
+  ASSERT_TRUE(element);
+  const ui::ElementContext context = element->context();
+  EXPECT_TRUE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+
+  // Destroy handler (simulates WebContents being destroyed).
+  handler_.reset();
+  EXPECT_FALSE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+}
+
+TEST_F(TrackedElementHandlerTest, VisibilityLockPreventsHiding) {
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const tracker = ui::ElementTracker::GetElementTracker();
+  auto* const element =
+      tracker->GetElementInAnyContext(kTestElementIdentifier1);
+  ASSERT_TRUE(element);
+  const ui::ElementContext context = element->context();
+  EXPECT_TRUE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+
+  // Acquire lock.
+  auto lock = element->AsA<TrackedElementWebUI>()->LockVisible();
+  ASSERT_TRUE(lock);
+
+  // Hide WebContents.
+  handler()->OnVisibilityChanged(content::Visibility::HIDDEN);
+  // Element should still be visible because of the lock.
+  EXPECT_TRUE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+
+  // Release lock.
+  lock.reset();
+  // Now it should be hidden.
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return !tracker->IsElementVisible(kTestElementIdentifier1, context);
+  }));
+}
+
+TEST_F(TrackedElementHandlerTest, MultipleVisibilityLocks) {
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const tracker = ui::ElementTracker::GetElementTracker();
+  auto* const element =
+      tracker->GetElementInAnyContext(kTestElementIdentifier1);
+  ASSERT_TRUE(element);
+  const ui::ElementContext context = element->context();
+
+  auto lock1 = element->AsA<TrackedElementWebUI>()->LockVisible();
+  auto lock2 = element->AsA<TrackedElementWebUI>()->LockVisible();
+
+  handler()->OnVisibilityChanged(content::Visibility::HIDDEN);
+  EXPECT_TRUE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+
+  lock1.reset();
+  EXPECT_TRUE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+
+  lock2.reset();
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return !tracker->IsElementVisible(kTestElementIdentifier1, context);
+  }));
+}
+
+// Tests for multiple elements with the same ElementIdentifier but different
+// secondary identifiers.
+class TrackedElementHandlerSecondaryIdentifierTest
+    : public TrackedElementHandlerTest {
+ public:
+  TrackedElementHandlerSecondaryIdentifierTest() = default;
+  ~TrackedElementHandlerSecondaryIdentifierTest() override = default;
+
+  using ElementMap = std::map<std::string, ui::TrackedElement*>;
+
+  void ShowElements() {
+    handler_remote()->TrackedElementVisibilityChanged(
+        MakeId(kTestElementIdentifier1, kTestSecondaryId1), true,
+        kElementBounds);
+    handler_remote()->TrackedElementVisibilityChanged(
+        MakeId(kTestElementIdentifier1, kTestSecondaryId2), true,
+        kElementBounds2);
+    tracked_element_handler_remote_.FlushForTesting();
+  }
+
+  ElementMap GetElements() {
+    auto* const tracker = ui::ElementTracker::GetElementTracker();
+    auto elements =
+        tracker->GetAllMatchingElementsInAnyContext(kTestElementIdentifier1);
+    ElementMap result;
+    for (TrackedElement* el : elements) {
+      CHECK(el->IsA<TrackedElementWebUI>());
+      CHECK(result.emplace(el->GetSecondaryIdentifier(), el).second);
+    }
+    return result;
+  }
+};
+
+TEST_F(TrackedElementHandlerSecondaryIdentifierTest, VerifyAllElementsCreated) {
+  ShowElements();
+  auto elements = GetElements();
+  EXPECT_EQ(2U, elements.size());
+  EXPECT_TRUE(elements.contains(std::string(kTestSecondaryId1)));
+  EXPECT_TRUE(elements.contains(std::string(kTestSecondaryId2)));
+}
+
+TEST_F(TrackedElementHandlerSecondaryIdentifierTest, HideOneElement) {
+  ShowElements();
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), false,
+      kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto elements = GetElements();
+  EXPECT_EQ(1U, elements.size());
+  EXPECT_TRUE(elements.contains(std::string(kTestSecondaryId2)));
+}
+
+TEST_F(TrackedElementHandlerSecondaryIdentifierTest, TrackedElementActivated) {
+  UNCALLED_MOCK_CALLBACK(ElementTracker::Callback, activated_callback);
+  const auto subscription =
+      ElementTracker::GetElementTracker()->AddElementActivatedCallback(
+          kTestElementIdentifier1, handler()->context(),
+          activated_callback.Get());
+
+  ShowElements();
+  auto elements = GetElements();
+
+  EXPECT_CALL_IN_SCOPE(
+      activated_callback, Run(elements[std::string(kTestSecondaryId1)]), {
+        handler_remote()->TrackedElementActivated(
+            MakeId(kTestElementIdentifier1, kTestSecondaryId1));
+        tracked_element_handler_remote_.FlushForTesting();
+      });
+
+  EXPECT_CALL_IN_SCOPE(
+      activated_callback, Run(elements[std::string(kTestSecondaryId2)]), {
+        handler_remote()->TrackedElementActivated(
+            MakeId(kTestElementIdentifier1, kTestSecondaryId2));
+        tracked_element_handler_remote_.FlushForTesting();
+      });
+}
+
+TEST_F(TrackedElementHandlerSecondaryIdentifierTest,
+       TrackedElementCustomEvent) {
+  UNCALLED_MOCK_CALLBACK(ElementTracker::Callback, event_callback);
+  const auto subscription =
+      ElementTracker::GetElementTracker()->AddCustomEventCallback(
+          kTestCustomEvent, handler()->context(), event_callback.Get());
+
+  ShowElements();
+  auto elements = GetElements();
+
+  EXPECT_CALL_IN_SCOPE(event_callback,
+                       Run(elements[std::string(kTestSecondaryId1)]), {
+                         handler_remote()->TrackedElementCustomEvent(
+                             MakeId(kTestElementIdentifier1, kTestSecondaryId1),
+                             kTestCustomEvent.GetName());
+                         tracked_element_handler_remote_.FlushForTesting();
+                       });
+
+  EXPECT_CALL_IN_SCOPE(event_callback,
+                       Run(elements[std::string(kTestSecondaryId2)]), {
+                         handler_remote()->TrackedElementCustomEvent(
+                             MakeId(kTestElementIdentifier1, kTestSecondaryId2),
+                             kTestCustomEvent.GetName());
+                         tracked_element_handler_remote_.FlushForTesting();
+                       });
+}
+
+#if !BUILDFLAG(IS_ANDROID)
+class TrackedElementHandlerWidgetTest : public views::test::WidgetTest {
+ public:
+  TrackedElementHandlerWidgetTest()
+      : views::test::WidgetTest(std::unique_ptr<base::test::TaskEnvironment>(
+            std::make_unique<content::BrowserTaskEnvironment>())) {}
+  ~TrackedElementHandlerWidgetTest() override = default;
+
+  void SetUp() override {
+    content::SetBrowserClientForTesting(&test_browser_client_);
+    rvh_enabler_ = std::make_unique<content::RenderViewHostTestEnabler>();
+    views::test::WidgetTest::SetUp();
+
+    browser_context_ = std::make_unique<content::TestBrowserContext>();
+    web_contents_ = content::WebContentsTester::CreateTestWebContents(
+        browser_context_.get(), nullptr);
+
+    mojo::PendingRemote<tracked_element::mojom::TrackedElementHandler> remote;
+    handler_ = std::make_unique<TrackedElementHandler>(
+        web_contents_.get(),
+        // When there is a consistent way of assigning contexts, use that.
+        ui::ElementContext::CreateFakeContextForTesting(web_contents_.get()),
+        std::vector<ui::ElementIdentifier>{kTestElementIdentifier1,
+                                           kTestElementIdentifier2});
+    handler_->BindInterface(remote.InitWithNewPipeAndPassReceiver());
+    tracked_element_handler_remote_.Bind(std::move(remote));
+  }
+
+  void TearDown() override {
+    tracked_element_handler_remote_.reset();
+    handler_.reset();
+    web_contents_.reset();
+    browser_context_.reset();
+    rvh_enabler_.reset();
+    views::test::WidgetTest::TearDown();
+  }
+
+ protected:
+  tracked_element::mojom::TrackedElementHandler* handler_remote() {
+    return tracked_element_handler_remote_.get();
+  }
+
+  TrackedElementHandler* handler() { return handler_.get(); }
+
+  content::ContentBrowserClient test_browser_client_;
+  std::unique_ptr<content::RenderViewHostTestEnabler> rvh_enabler_;
+  std::unique_ptr<content::BrowserContext> browser_context_;
+  std::unique_ptr<content::WebContents> web_contents_;
+  std::unique_ptr<content::TestWebUI> test_web_ui_;
+  std::unique_ptr<TrackedElementHandler> handler_;
+  mojo::Remote<tracked_element::mojom::TrackedElementHandler>
+      tracked_element_handler_remote_;
+};
+
+TEST_F(TrackedElementHandlerWidgetTest, GetNativeView) {
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const element =
+      ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+          kTestElementIdentifier1);
+  ASSERT_TRUE(element);
+  EXPECT_TRUE(element->IsA<TrackedElementWebUI>());
+
+  auto widget = std::make_unique<views::Widget>();
+  views::Widget::InitParams params =
+      CreateParams(views::Widget::InitParams::TYPE_WINDOW);
+  params.ownership = views::Widget::InitParams::CLIENT_OWNS_WIDGET;
+  widget->Init(std::move(params));
+  widget->Show();
+
+  auto* webview = widget->SetClientContentsView(
+      std::make_unique<views::WebView>(browser_context_.get()));
+  webview->SetWebContents(web_contents_.get());
+
+  // The element should return the native view of the widget.
+  EXPECT_EQ(widget->GetNativeView(), element->GetNativeView());
+
+  webview->SetWebContents(nullptr);
+  widget->CloseNow();
+}
+
+TEST_F(TrackedElementHandlerWidgetTest, GetWebView) {
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const element =
+      ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+          kTestElementIdentifier1);
+  ASSERT_TRUE(element);
+  auto* const webui_element = element->AsA<TrackedElementWebUI>();
+  ASSERT_TRUE(webui_element);
+
+  // Before widget is initialized, GetWebView() should return nullptr.
+  EXPECT_EQ(nullptr, handler_->GetWebView());
+  EXPECT_EQ(nullptr, webui_element->GetWebView());
+
+  auto widget = std::make_unique<views::Widget>();
+  views::Widget::InitParams params =
+      CreateParams(views::Widget::InitParams::TYPE_WINDOW);
+  params.ownership = views::Widget::InitParams::CLIENT_OWNS_WIDGET;
+  widget->Init(std::move(params));
+  widget->Show();
+
+  auto* webview = widget->SetClientContentsView(
+      std::make_unique<views::WebView>(browser_context_.get()));
+  webview->SetWebContents(web_contents_.get());
+
+  // Should discover the WebView automatically.
+  EXPECT_EQ(webview, handler_->GetWebView());
+  EXPECT_EQ(webview, webui_element->GetWebView());
+
+  // Explicitly setting WebView should also work.
+  auto custom_webview =
+      std::make_unique<views::WebView>(browser_context_.get());
+  custom_webview->SetWebContents(web_contents_.get());
+  handler_->SetWebViewForTesting(custom_webview.get());
+  EXPECT_EQ(custom_webview.get(), handler_->GetWebView());
+  handler_->SetWebViewForTesting(webview);
+  EXPECT_EQ(webview, handler_->GetWebView());
+
+  custom_webview->SetWebContents(nullptr);
+  webview->SetWebContents(nullptr);
+  widget->CloseNow();
+}
+#endif
+
+TEST_F(TrackedElementHandlerTest, GetBoundsInWebContents) {
+  handler_remote()->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  tracked_element_handler_remote_.FlushForTesting();
+
+  auto* const element =
+      ui::ElementTracker::GetElementTracker()->GetElementInAnyContext(
+          kTestElementIdentifier1);
+  ASSERT_TRUE(element);
+  auto* const webui_element = element->AsA<TrackedElementWebUI>();
+  ASSERT_TRUE(webui_element);
+  EXPECT_EQ(gfx::ToRoundedRect(kElementBounds),
+            webui_element->GetBoundsInWebContents());
+}
+
+class TestWebUIController : public content::WebUIController {
+ public:
+  explicit TestWebUIController(content::WebUI* web_ui)
+      : content::WebUIController(web_ui) {}
+  ~TestWebUIController() override = default;
+};
+
+TEST_F(TrackedElementHandlerTest, DocumentSingleton) {
+  content::TestWebUI test_web_ui;
+  test_web_ui.set_web_contents(web_contents());
+  auto controller = std::make_unique<TestWebUIController>(&test_web_ui);
+
+  // Initially should return null.
+  EXPECT_FALSE(TrackedElementHandlerDocumentSingleton::GetOrCreate(main_rfh()));
+
+  // Register.
+  TrackedElementHandlerDocumentSingleton::Register(controller.get(),
+                                                   {kTestElementIdentifier1});
+
+  // Now should return a valid handler.
+  auto handler =
+      TrackedElementHandlerDocumentSingleton::GetOrCreate(main_rfh());
+  ASSERT_TRUE(handler);
+  EXPECT_EQ(web_contents(), handler->web_contents());
+
+  // Retrieving again should return the same handler.
+  EXPECT_EQ(
+      handler.get(),
+      TrackedElementHandlerDocumentSingleton::GetOrCreate(main_rfh()).get());
+}
+
+// TODO(crbug.com/40243115): add tests for element screen bounds. This requires
+// an update to the TestWebContents API to fake
+// WebContents::GetContainerBounds().
+
+}  // namespace ui

@@ -1,0 +1,15 @@
+[
+  {
+    "os": [
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "security_token_session_behavior",
+      "pref_location": "local_state",
+      "default_value": "IGNORE",
+      "values_to_test": [
+        "LOGOUT"
+      ]
+    }
+  }
+]

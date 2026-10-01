@@ -1,0 +1,19 @@
+include_rules = [
+  # web interfaces cannot depend on private web code.
+  "-ios/web",
+
+  # keep-sorted start
+  "+ios/web/common",
+  "+ios/web/public",
+  "+services/network/public/mojom",
+  # keep-sorted end
+]
+
+specific_include_rules = {
+  # Implementations of public web interfaces can depend on private web code.
+  "^.*\\.(cc|mm)$": [
+    "+ios/web",
+  ],
+}
+
+new_usages_require_review = False

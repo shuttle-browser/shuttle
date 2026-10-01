@@ -1,0 +1,58 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_AI_PROTOTYPING_UI_AI_PROTOTYPING_MUTATOR_H_
+#define IOS_CHROME_BROWSER_AI_PROTOTYPING_UI_AI_PROTOTYPING_MUTATOR_H_
+
+#import <Foundation/Foundation.h>
+
+#import "components/optimization_guide/optimization_guide_buildflags.h"
+#import "components/optimization_guide/proto/string_value.pb.h"
+
+namespace optimization_guide::proto {
+
+enum BlingPrototypingRequest_ModelEnum : int;
+}  // namespace optimization_guide::proto
+
+// Mutator protocol for the UI layer to communicate to the
+// AIPrototypingMediator.
+@protocol AIPrototypingMutator
+
+// Executes a freeform prototyping request to a server-hosted model.
+- (void)executeFreeformServerQuery:(NSString*)query
+                systemInstructions:(NSString*)systemInstructions
+                includePageContext:(BOOL)includePageContext
+                    richExtraction:(BOOL)richExtraction
+                      uploadToMQLS:(BOOL)uploadToMQLS
+                  storePageContext:(BOOL)storePageContext
+                       temperature:(float)temperature
+                             model:(optimization_guide::proto::
+                                        BlingPrototypingRequest_ModelEnum)model;
+
+
+// Executes a tab organization request.
+- (void)executeSmartTabGrouping;
+
+// Executes an enhanced calendar request with a given (optional) prompt and
+// selected text.
+- (void)executeEnhancedCalendarQueryWithPrompt:(NSString*)prompt
+                                  selectedText:(NSString*)selectedText;
+
+- (void)executeFreeformOnDeviceQuery:
+    (optimization_guide::proto::StringValue)request;
+
+// Executes an actuation request with the given parameters.
+- (void)executeActuationWithParams:(NSDictionary*)params;
+
+// Requests a list of current tabs.
+- (void)listTabs;
+
+// Executes an APC extraction request.
+- (void)executeAPCExtractionWithRichExtraction:(BOOL)useRichExtraction
+                                actionableMode:(BOOL)actionableMode
+                              includeDebugData:(BOOL)includeDebugData;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_AI_PROTOTYPING_UI_AI_PROTOTYPING_MUTATOR_H_

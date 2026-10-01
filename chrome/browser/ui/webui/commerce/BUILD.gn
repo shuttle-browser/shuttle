@@ -1,0 +1,149 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("commerce_internals_ui_config") {
+  sources = [ "commerce_internals_ui_config.cc" ]
+  public = [ "commerce_internals_ui_config.h" ]
+  public_deps = [ "//content/public/browser" ]
+  deps = [
+    "//chrome/browser/commerce",
+    "//chrome/browser/profiles:profile",
+    "//components/commerce/content/browser",
+    "//components/commerce/core:commerce_constants",
+  ]
+}
+
+if (!is_android) {
+  source_set("commerce") {
+    sources = [
+      "price_insights_handler.h",
+      "price_tracking_handler.h",
+      "shopping_insights_side_panel_ui.h",
+      "shopping_list_context_menu_controller.h",
+      "shopping_ui_handler_delegate.h",
+    ]
+    public_deps = [
+      "//chrome/browser/ui/webui/top_chrome",
+      "//components/bookmarks/browser",
+      "//components/commerce/core:commerce_constants",
+      "//components/commerce/core:shopping_service",
+      "//components/commerce/core/mojom:mojo_bindings",
+      "//components/commerce/core/subscriptions",
+      "//components/commerce/core/webui",
+      "//components/feature_engagement/public",
+      "//components/page_image_service/mojom:mojo_bindings",
+      "//ui/views",
+      "//ui/web_dialogs",
+    ]
+  }
+
+  source_set("impl") {
+    sources = [
+      "price_insights_handler.cc",
+      "price_tracking_handler.cc",
+      "shopping_insights_side_panel_ui.cc",
+      "shopping_list_context_menu_controller.cc",
+      "shopping_ui_handler_delegate.cc",
+    ]
+
+    public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+
+    deps = [
+      ":commerce",
+      "//chrome/app:command_ids",
+      "//chrome/browser:browser_process",
+      "//chrome/browser/bookmarks",
+      "//chrome/browser/commerce",
+      "//chrome/browser/feature_engagement",
+      "//chrome/browser/feedback",
+      "//chrome/browser/optimization_guide",
+      "//chrome/browser/resources/side_panel/commerce:resources_grit",
+      "//chrome/browser/resources/side_panel/shared:resources_grit",
+      "//chrome/browser/signin",
+      "//chrome/browser/sync",
+      "//chrome/browser/ui:chrome_pages",
+      "//chrome/browser/ui/bookmarks",
+      "//chrome/browser/ui/browser_window",
+      "//chrome/browser/ui/dialogs",
+      "//chrome/browser/ui/tabs:tab_strip",
+      "//chrome/browser/ui/webui",
+      "//chrome/browser/ui/webui:webui_load_timer",
+      "//components/bookmarks/browser",
+      "//components/commerce/core:feature_list",
+      "//components/commerce/core:metrics",
+      "//components/commerce/core:shopping_service",
+      "//components/commerce/core:utils",
+      "//components/power_bookmarks/core",
+      "//components/web_modal",
+      "//ui/webui",
+    ]
+  }
+
+  source_set("browser_tests") {
+    testonly = true
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+    sources = [
+      "price_insights_handler_browsertest.cc",
+      "price_tracking_handler_browsertest.cc",
+      "shopping_ui_handler_delegate_browsertest.cc",
+    ]
+    deps = [
+      ":commerce",
+      ":impl",
+      "//chrome/browser/bookmarks",
+      "//chrome/browser/profiles:profile",
+      "//chrome/browser/signin",
+      "//chrome/browser/sync",
+      "//chrome/browser/ui",
+      "//chrome/browser/ui/webui/feedback",
+      "//chrome/common",
+      "//chrome/test:test_support",
+      "//components/bookmarks/browser",
+      "//components/bookmarks/test",
+      "//components/commerce/core:account_checker",
+      "//components/commerce/core:account_checker_test_support",
+      "//components/commerce/core:shopping_service_test_support",
+      "//components/commerce/core/mojom:mojo_bindings",
+      "//components/feature_engagement/test:test_support",
+      "//components/prefs",
+      "//components/signin/public/base",
+      "//components/signin/public/identity_manager",
+      "//components/signin/public/identity_manager:test_support",
+      "//components/sync:test_support",
+      "//components/sync_bookmarks",
+      "//components/ukm:test_support",
+      "//content/public/browser",
+      "//content/test:test_support",
+      "//ui/views",
+      "//ui/views:test_support",
+    ]
+  }
+
+  source_set("unit_tests") {
+    testonly = true
+    sources = [
+      "price_tracking_handler_unittest.cc",
+      "shopping_list_context_menu_controller_unittest.cc",
+    ]
+    deps = [
+      ":commerce",
+      ":impl",
+      "//chrome/app:command_ids",
+      "//components/bookmarks/browser",
+      "//components/bookmarks/test",
+      "//components/commerce/core:account_checker_test_support",
+      "//components/commerce/core:shopping_service_test_support",
+      "//components/commerce/core/mojom:mojo_bindings",
+      "//components/feature_engagement/test:test_support",
+      "//components/power_bookmarks/core",
+      "//components/power_bookmarks/core:proto",
+      "//components/prefs:test_support",
+      "//components/strings:components_strings_grit",
+      "//content/test:test_support",
+      "//testing/gtest",
+      "//ui/base",
+      "//ui/menus",
+    ]
+  }
+}

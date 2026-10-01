@@ -1,0 +1,14 @@
+[
+  {
+    "os": [
+      "win"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "printing.rasterization_mode",
+      "default_value": 0,
+      "values_to_test": [
+        1
+      ]
+    }
+  }
+]

@@ -1,0 +1,63 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_WEBAPPS_ISOLATED_WEB_APPS_URL_LOADING_URL_LOADER_FACTORY_H_
+#define COMPONENTS_WEBAPPS_ISOLATED_WEB_APPS_URL_LOADING_URL_LOADER_FACTORY_H_
+
+#include <optional>
+#include <string>
+
+#include "base/component_export.h"
+#include "components/webapps/isolated_web_apps/types/source.h"
+#include "content/public/browser/frame_tree_node_id.h"
+#include "mojo/public/cpp/bindings/pending_remote.h"
+#include "services/network/public/mojom/url_loader_factory.mojom-forward.h"
+#include "url/origin.h"
+
+namespace content {
+class BrowserContext;
+}  // namespace content
+
+namespace web_app {
+
+// A URLLoaderFactory used for the isolated-app:// scheme.
+class COMPONENT_EXPORT(ISOLATED_WEB_APPS) IsolatedWebAppURLLoaderFactory {
+ public:
+  // Returns a mojo::PendingRemote to a newly constructed URLLoaderFactory
+  // for an Isolated Web App.
+  //
+  // Receivers are bound to an implementation of
+  // IsolatedWebAppURLLoaderFactory. The factory is self-owned - it will delete
+  // itself once there are no more receivers (including the receiver associated
+  // with the returned mojo::PendingRemote and the receivers bound by the Clone
+  // method).
+  //
+  // If `app_origin` is present, it identifies the IWA this factory is intended
+  // for.
+  //
+  // `enforce_same_origin` should be true only when the spec requires strict
+  // same-origin enforcement (e.g., DedicatedWorker main scripts) and we want to
+  // guard against a compromised renderer process. It should be false for
+  // navigations or subresource loads where cross-origin requests might be
+  // legitimate or are handled by other security layers (like CORS/CSP/Site
+  // Isolation).
+  static mojo::PendingRemote<network::mojom::URLLoaderFactory> CreateForFrame(
+      content::BrowserContext* browser_context,
+      std::optional<url::Origin> app_origin,
+      content::FrameTreeNodeId frame_tree_node_id,
+      bool enforce_same_origin);
+
+  // The same as `CreateForFrame`, but doesn't have access to a FrameTreeNode
+  // to log errors to.
+  static mojo::PendingRemote<network::mojom::URLLoaderFactory> Create(
+      content::BrowserContext* browser_context,
+      std::optional<url::Origin> app_origin,
+      bool enforce_same_origin);
+
+  static void EnsureAssociatedFactoryBuilt();
+};
+
+}  // namespace web_app
+
+#endif  // COMPONENTS_WEBAPPS_ISOLATED_WEB_APPS_URL_LOADING_URL_LOADER_FACTORY_H_

@@ -1,0 +1,102 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/rules.gni")
+import("//third_party/jni_zero/jni_zero.gni")
+
+# Supports native unit tests.
+android_library("native_unit_test_support_java") {
+  testonly = true
+  sources = [ "java/src/org/chromium/chrome/browser/ui/side_panel/WindowScopedSidePanelRegistryBridgeNativeUnitTestSupport.java" ]
+  deps = [
+    "//build/android:build_java",
+    "//chrome/browser/ui/side_panel/internal/android:java",
+    "//chrome/test/android:chrome_java_test_support_common",
+    "//third_party/jni_zero:jni_zero_java",
+  ]
+  srcjar_deps = [ ":native_unit_test_support_jni" ]
+}
+
+# JNI for native unit tests.
+generate_jni("native_unit_test_support_jni") {
+  testonly = true
+  sources = [ "java/src/org/chromium/chrome/browser/ui/side_panel/WindowScopedSidePanelRegistryBridgeNativeUnitTestSupport.java" ]
+}
+
+# Supports native browser tests.
+android_library("browser_test_support_java") {
+  testonly = true
+  sources = [ "java/src/org/chromium/chrome/browser/ui/side_panel/test/SidePanelCoordinatorAndroidBrowserTestSupport.java" ]
+  deps = [
+    "//base/version_info/android:version_constants_java",
+    "//build/android:build_java",
+    "//chrome/browser/android/content:java",
+    "//chrome/browser/profiles/android:java",
+    "//components/embedder_support/android:content_view_java",
+    "//components/embedder_support/android:web_contents_delegate_java",
+    "//components/thin_webview:factory_java",
+    "//components/thin_webview:java",
+    "//content/public/android:content_java",
+    "//third_party/jni_zero:jni_zero_java",
+    "//ui/android:ui_java",
+    "//ui/android:ui_no_recycler_view_java",
+  ]
+}
+
+# JNI for native browser tests.
+generate_jni("browser_test_support_jni") {
+  testonly = true
+  sources = [ "java/src/org/chromium/chrome/browser/ui/side_panel/test/SidePanelCoordinatorAndroidBrowserTestSupport.java" ]
+}
+
+source_set("browser_test_support") {
+  testonly = true
+  sources = [
+    "side_panel_android_browser_test_base.cc",
+    "side_panel_android_browser_test_base.h",
+  ]
+  deps = [
+    "//base",
+    "//chrome/browser/flags:flags_android",
+    "//chrome/browser/glic/public:features",
+    "//chrome/browser/tab_list",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/browser_window/test:android_browser_test_support",
+    "//chrome/browser/ui/side_panel/android",
+    "//chrome/browser/ui/side_panel/test/android:browser_test_support_jni",
+    "//chrome/test:test_support_ui_android",
+    "//components/tabs:public",
+    "//testing/gtest",
+  ]
+}
+
+# Supports Java integration tests.
+android_library("integration_test_support_java") {
+  testonly = true
+  sources = [ "java/src/org/chromium/chrome/browser/ui/side_panel/test/SidePanelContainerCoordinatorIntegrationTestSupport.java" ]
+  deps = [
+    "//build/android:build_java",
+    "//chrome/browser/tab:java",
+    "//chrome/browser/ui/side_panel/android:java",
+    "//third_party/jni_zero:jni_zero_java",
+  ]
+  srcjar_deps = [ ":integration_test_support_jni_headers" ]
+}
+
+generate_jni("integration_test_support_jni_headers") {
+  testonly = true
+  sources = [ "java/src/org/chromium/chrome/browser/ui/side_panel/test/SidePanelContainerCoordinatorIntegrationTestSupport.java" ]
+}
+
+source_set("integration_test_support") {
+  testonly = true
+  sources = [ "side_panel_container_coordinator_integration_test_support.cc" ]
+  deps = [
+    ":integration_test_support_jni_headers",
+    "//base",
+    "//chrome/browser/android:tabs_public",
+    "//chrome/browser/ui/side_panel",
+    "//chrome/browser/ui/side_panel:side_panel_ui_provider",
+  ]
+}

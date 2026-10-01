@@ -1,0 +1,50 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/settings/ui_bundled/autofill/autofill_settings_constants.h"
+
+NSString* const kAutofillProfileEditTableViewId =
+    @"kAutofillProfileEditTableViewId";
+NSString* const kAutofillProfileTableViewID = @"kAutofillProfileTableViewID";
+NSString* const kAutofillAddressSwitchViewId = @"kAutofillAddressSwitchViewId";
+NSString* const kAutofillAddressManagedViewId =
+    @"kAutofillAddressManagedViewId";
+NSString* const kEnhancedAutofillTableViewId = @"kEnhancedAutofillTableViewId";
+NSString* const kSuggestionsFromGeminiTableViewId =
+    @"kSuggestionsFromGeminiTableViewId";
+NSString* const kAutofillVerificationSwitchTableViewId =
+    @"kAutofillVerificationSwitchTableViewId";
+NSString* const kAutofillCreditCardTableViewId =
+    @"kAutofillCreditCardTableViewId";
+NSString* const kAutofillCreditCardSwitchViewId =
+    @"kAutofillCreditCardSwitchViewId";
+NSString* const kAutofillCreditCardManagedViewId =
+    @"kAutofillCreditCardManagedViewId";
+NSString* const kAutofillDeleteSecurityCodesButtonId =
+    @"kAutofillDeleteSecurityCodesButtonId";
+NSString* const kAutofillPaymentMethodsToolbarId =
+    @"kAutofillPaymentMethodsToolbarId";
+NSString* const kAutofillMandatoryReauthSwitchViewId =
+    @"kAutofillMandatoryReauthSwitchViewId";
+NSString* const kAutofillSaveSecurityCodesSwitchViewId =
+    @"kAutofillSaveSecurityCodesSwitchViewId";
+NSString* const kAutofillSecurityCvcsTableViewId =
+    @"kAutofillSecurityCvcsTableViewId";
+NSString* const kEnhancedAutofillSwitchViewId =
+    @"kEnhancedAutofillSwitchViewId";
+NSString* const kSuggestionsFromGeminiSwitchViewId =
+    @"kSuggestionsFromGeminiSwitchViewId";
+
+NSString* const kAutofillCreditCardEditTableViewId =
+    @"kAutofillCreditCardEditTableViewId";
+
+NSString* const kAutofillAddressMigrateToAccountButtonId =
+    @"kAutofillAddressMigrateToAccountButtonId";
+
+NSString* const kAutofillEditButtonCellId = @"kAutofillEditButtonCellId";
+
+NSString* const kAutofillPayOverTimeCellId = @"kAutofillPayOverTimeCellId";
+
+NSString* const kAutofillBnplTableViewId = @"kAutofillBnplTableViewId";
+NSString* const kAutofillBnplSwitchViewId = @"kAutofillBnplSwitchViewId";

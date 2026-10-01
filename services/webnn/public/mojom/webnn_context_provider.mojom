@@ -1,0 +1,119 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module webnn.mojom;
+
+import "mojo/public/mojom/base/file.mojom";
+import "services/webnn/public/mojom/features.mojom";
+import "services/webnn/public/mojom/webnn_compiler_context.mojom";
+import "services/webnn/public/mojom/webnn_context.mojom";
+import "services/webnn/public/mojom/webnn_context_properties.mojom";
+import "services/webnn/public/mojom/webnn_device.mojom";
+import "services/webnn/public/mojom/webnn_error.mojom";
+import "third_party/blink/public/mojom/tokens/tokens.mojom";
+
+// Represents options of creating `WebNNContext` interface.
+struct CreateContextOptions {
+  enum PowerPreference {
+    // Let the user agent select the most suitable behavior.
+    kDefault,
+    // Prioritizes execution speed over power consumption.
+    kHighPerformance,
+    // Prioritizes power consumption over other considerations such as execution
+    // speed.
+    kLowPower,
+  };
+
+  // Indicates the kind of device used for the context.
+  Device device;
+  // The power preference for power consumption.
+  PowerPreference power_preference;
+};
+
+// Represents a successful call to `WebNNContextProvider::CreateWebNNContext`.
+struct CreateContextSuccess {
+  pending_remote<WebNNContext>? context_remote;
+  // Optional Compiler process remote. Set when compilation is offloaded
+  // to the Compiler process (e.g., ORT backend). Null when graph building
+  // happens in the GPU process.
+  pending_remote<WebNNCompilerContext>? compiler_context_remote;
+  ContextProperties context_properties;
+  // context_handle is a generated token used as handle to identify the
+  // the context from the renderer. The token is only valid for the lifetime
+  // of the context and is used to resolve a buffer in the service using the
+  // context corresponding to this handle.
+  blink.mojom.WebNNContextToken context_handle;
+  // Data pipes for transferring large data buffers between the renderer
+  // and the GPU process.
+  handle<data_pipe_producer>? write_tensor_producer;
+  handle<data_pipe_consumer>? read_tensor_consumer;
+  // The command buffer ID of the context, which is used to create a sync token
+  // for synchronizing access to resources between WebNN and WebGPU.
+  uint64 command_buffer_id;
+};
+
+// Represents the return value of `WebNNContextProvider::CreateWebNNContext()`.
+// Let it be `success` if a WebNNContext was successfully created and `error`
+// otherwise.
+union CreateContextResult {
+  CreateContextSuccess success;
+  Error error;
+};
+
+// This interface runs in the GPU process and is called from the renderer
+// process to create `WebNNContext` interface. The renderer requests this
+// interface from the frame's BrowserInterfaceBroker, which requests it
+// from the GpuService via the GpuClient.
+[RuntimeFeature=webnn.mojom.features.kWebMachineLearningNeuralNetwork]
+interface WebNNContextProvider {
+  // Called by the renderer process to create a message pipe for `MLContext`,
+  // the `CreateContextResult` will be `Error` with error messages if the
+  // configuration of options isn't supported.
+  CreateWebNNContext(CreateContextOptions options)
+      => (CreateContextResult result);
+};
+
+// Per-file session for an in-renderer weights file. One instance is created
+// by `WebNNWeightsFileCreator::OpenWeightsFile` for each file; the session
+// owns the on-disk tempfile in the browser process for its entire lifetime.
+//
+// The renderer calls `RequestCapacityChange` (sync) before each write that
+// would extend the file (the browser enforces per-context and per-origin
+// budgets), then calls `Finalize` once after all weights have been written
+// to receive a sealed read-only fd back. Dropping the session pipe before
+// `Finalize` releases the reserved budgets.
+//
+// TODO(crbug.com/507502295): Use file manager for TFLite weights files.
+[RuntimeFeature=webnn.mojom.features.kWebMachineLearningNeuralNetwork]
+interface WeightsFileSession {
+  // Returns false if any budget check fails or the file has already grown
+  // beyond what was previously granted (anti-tamper). The renderer must abort
+  // the graph build when false is returned.
+  [Sync]
+  RequestCapacityChange(uint64 new_size) => (bool granted);
+
+  // Called after all weights are written. The browser fstat-validates the
+  // final file size (ReportBadMessage on violation), reopens the file
+  // read-only and unlinks the path, then returns the sealed fd for mmap.
+  // Returns null on error. The session pipe is implicitly closed after this
+  // reply.
+  Finalize() => (mojo_base.mojom.ReadOnlyFile? sealed_file);
+};
+
+// Interface for creating temporary weights files in the browser process.
+// Used by the in-renderer TFLite backend which cannot create files directly
+// due to the renderer process sandbox. One creator instance is bound per
+// `navigator.ml`; the creator is a thin factory and may be used to spawn
+// multiple concurrent `WeightsFileSession`s (one per graph build).
+// TODO(crbug.com/507502295): Use file manager for TFLite weights files.
+[RuntimeFeature=webnn.mojom.features.kWebMachineLearningNeuralNetwork]
+interface WebNNWeightsFileCreator {
+  // Opens a temporary weights file. The browser creates a deferred-unlink
+  // tempfile, dups a writable fd to the renderer, and self-owns a paired
+  // `WeightsFileSession` whose `PendingRemote` is returned. Returns null
+  // fds on failure (e.g. disk full).
+  OpenWeightsFile()
+      => (mojo_base.mojom.File? writable_fd,
+          pending_remote<WeightsFileSession>? session);
+};

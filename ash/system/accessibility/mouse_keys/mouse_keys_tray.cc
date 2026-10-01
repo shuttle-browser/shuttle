@@ -1,0 +1,120 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ash/system/accessibility/mouse_keys/mouse_keys_tray.h"
+
+#include "ash/accessibility/accessibility_controller.h"
+#include "ash/accessibility/mouse_keys/mouse_keys_controller.h"
+#include "ash/constants/tray_background_view_catalog.h"
+#include "ash/resources/vector_icons/vector_icons.h"
+#include "ash/session/session_controller_impl.h"
+#include "ash/shelf/shelf.h"
+#include "ash/shell.h"
+#include "ash/strings/grit/ash_strings.h"
+#include "ash/style/ash_color_id.h"
+#include "ash/system/tray/imaged_tray_icon.h"
+#include "ash/system/tray/tray_container.h"
+#include "ui/accessibility/accessibility_features.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/base/models/image_model.h"
+#include "ui/views/controls/image_view.h"
+
+namespace ash {
+
+namespace {
+ui::ImageModel GetMouseKeysIcon() {
+  return ui::ImageModel::FromVectorIcon(
+      kSystemTrayMouseKeysIcon,
+      static_cast<ui::ColorId>(cros_tokens::kCrosSysOnSurface));
+}
+
+}  // namespace
+
+MouseKeysTray::MouseKeysTray(Shelf* shelf,
+                             TrayBackgroundViewCatalogName catalog_name)
+    : ImagedTrayIcon(shelf,
+                     GetMouseKeysIcon(),
+                     /*tooltip=*/
+                     IDS_ASH_STATUS_TRAY_ACCESSIBILITY_MOUSE_KEYS_PAUSE,
+                     /*accessibility_name=*/
+                     IDS_ASH_STATUS_TRAY_ACCESSIBILITY_MOUSE_KEYS_PAUSE,
+                     catalog_name) {
+  SetCallback(
+      base::BindRepeating(&MouseKeysTray::OnMouseKeyIconPressed, GetWeakPtr()));
+
+  // Observe the accessibility controller state changes to know when mouse keys
+  // state is updated or when it is disabled/enabled.
+  Shell::Get()->accessibility_controller()->AddObserver(this);
+}
+
+MouseKeysTray::~MouseKeysTray() {
+  // This may be called during shutdown in which case some of the
+  // ash objects may already be destroyed.
+  auto* shell = Shell::Get();
+  if (!shell) {
+    return;
+  }
+  auto* accessibility_controller = shell->accessibility_controller();
+  if (accessibility_controller) {
+    accessibility_controller->RemoveObserver(this);
+  }
+}
+
+void MouseKeysTray::OnMouseKeyIconPressed(const ui::Event& event) {
+  Shell::Get()->accessibility_controller()->ToggleMouseKeys();
+}
+
+void MouseKeysTray::Initialize() {
+  TrayBackgroundView::Initialize();
+  OnAccessibilityStatusChanged();
+}
+
+void MouseKeysTray::UpdateTrayItemColor(bool is_active) {
+  SetIsActive(is_active);
+}
+
+void MouseKeysTray::OnAccessibilityStatusChanged() {
+  UpdateStatus();
+}
+
+void MouseKeysTray::UpdateStatus() {
+  auto* mouse_keys_controller = Shell::Get()->mouse_keys_controller();
+
+  // Early exit if mouse_keys_controller is not available
+  if (!mouse_keys_controller) {
+    return;
+  }
+
+  bool is_mouse_keys_enabled = ::features::IsAccessibilityMouseKeysEnabled() &&
+                               mouse_keys_controller->enabled();
+
+  SetVisiblePreferred(is_mouse_keys_enabled);
+
+  bool is_mouse_keys_active =
+      is_mouse_keys_enabled && !mouse_keys_controller->paused();
+  UpdateTrayItemColor(is_mouse_keys_active);
+  SetMouseKeysStatusText(is_mouse_keys_active);
+}
+
+void MouseKeysTray::SetMouseKeysStatusText(bool is_active) {
+  auto message_id = is_active
+                        ? IDS_ASH_STATUS_TRAY_ACCESSIBILITY_MOUSE_KEYS_PAUSE
+                        : IDS_ASH_STATUS_TRAY_ACCESSIBILITY_MOUSE_KEYS_RESUME;
+
+  SetAccessibilityName(message_id);
+  SetTooltip(message_id);
+}
+
+void MouseKeysTray::OnSessionStateChanged(session_manager::SessionState state) {
+  image_view()->SetImage(GetMouseKeysIcon());
+}
+
+base::WeakPtr<MouseKeysTray> MouseKeysTray::GetWeakPtr() {
+  return weak_ptr_factory_.GetWeakPtr();
+}
+
+BEGIN_METADATA(MouseKeysTray);
+END_METADATA
+
+}  // namespace ash

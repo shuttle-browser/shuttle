@@ -1,0 +1,127 @@
+#!/bin/sh
+
+# Copyright 2012 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Version = @@VERSION@@
+
+HELPERTOOLS=/Library/PrivilegedHelperTools
+SERVICE_NAME=org.chromium.chromoting
+HOST_BUNDLE_NAME=@@HOST_BUNDLE_NAME@@
+CONFIG_FILE="$HELPERTOOLS/$SERVICE_NAME.json"
+OLD_SCRIPT_FILE="$HELPERTOOLS/$SERVICE_NAME.me2me.sh"
+HOST_BUNDLE_PATH="$HELPERTOOLS/$HOST_BUNDLE_NAME"
+HOST_SERVICE_BINARY="$HELPERTOOLS/$HOST_BUNDLE_NAME/Contents/MacOS/remoting_me2me_host_service"
+USERS_TMP_FILE="$HOST_SERVICE_BINARY.users"
+PLIST=/Library/LaunchAgents/org.chromium.chromoting.plist
+BROKER_PLIST=/Library/LaunchDaemons/org.chromium.chromoting.broker.plist
+ENABLED_FILE="$HELPERTOOLS/$SERVICE_NAME.me2me_enabled"
+ENABLED_FILE_BACKUP="$ENABLED_FILE.backup"
+PREF_PANE=/Library/PreferencePanes/ChromeRemoteDesktop.prefPane
+BROKER_SERVICE_TARGET="system/org.chromium.chromoting.broker"
+
+# In case of errors, log the fact, but continue to unload launchd jobs as much
+# as possible. When finished, this preflight script should exit successfully in
+# case this is a Keystone-triggered update which must be allowed to proceed.
+function on_error {
+  logger An error occurred during Chrome Remote Desktop setup.
+}
+
+function find_users_with_active_hosts {
+  # User might be running the old script, the new service binary, or both in
+  # some cases, so we need to find both processes then dedup the uid.
+  ps -eo uid,command |
+    awk -v script="$OLD_SCRIPT_FILE" -v binary="$HOST_SERVICE_BINARY" '
+      ($2 == "/bin/sh" && $3 == script && $4 == "--run-from-launchd") ||
+      ($2 == binary && $3 == "--run-from-launchd") {
+        print $1
+      }' | sort | uniq
+}
+
+function find_login_window_for_user {
+  # This function mimics the behaviour of pgrep, which may not be installed
+  # on Mac OS X.
+  local user=$1
+  ps -ec -u "$user" -o comm,pid | awk '$1 == "loginwindow" { print $2; exit }'
+}
+
+trap on_error ERR
+
+logger Running Chrome Remote Desktop preflight script @@VERSION@@
+
+if [[ -f "$ENABLED_FILE" ]]; then
+  # If there is an _enabled file, rename it while upgrading.
+  logger Moving _enabled file
+  mv "$ENABLED_FILE" "$ENABLED_FILE_BACKUP"
+fi
+
+# If there is an old launchd script, create a backup of it, so that the
+# postflight script can restore it. This ensures the new host service falls back
+# to the old launchd script when it is available on Mojave.
+# The script needs to be backed up and restored, as the new package does not
+# provide it, and the installer deletes it from the system.
+if [[ -f "$OLD_SCRIPT_FILE" ]]; then
+  logger Backing up launchd agent
+  cp "$OLD_SCRIPT_FILE" "$INSTALLER_TEMP/script_backup"
+fi
+
+# Record the user IDs so the service can be restarted for the same users in the
+# postflight script.
+rm -f "$USERS_TMP_FILE"
+
+for uid in $(find_users_with_active_hosts); do
+  if [[ -n "$uid" ]]; then
+    echo "$uid" >> "$USERS_TMP_FILE"
+  fi
+done
+
+# Send SIGUSR2 before unloading the service to allow host processes to shut down
+# cleanly after notifying clients.
+logger "Sending SIGUSR2 to Chrome Remote Desktop host service..."
+pkill -USR2 -f "^$HOST_SERVICE_BINARY" || true
+# Wait up to 5 seconds for the host processes to shut down cleanly.
+for i in {1..10}; do
+  if ! pgrep -f "^$HOST_SERVICE_BINARY" > /dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+
+# Stop and unload the service for each user that was running the service.
+if [[ -f "$USERS_TMP_FILE" ]]; then
+  for uid in $(sort "$USERS_TMP_FILE" | uniq); do
+    logger Unloading service for user "$uid"
+    if [[ "$uid" = "0" ]]; then
+      context="LoginWindow"
+    else
+      context="Aqua"
+    fi
+
+    stop="launchctl stop $SERVICE_NAME"
+    unload="launchctl unload -w -S $context $PLIST"
+    bootstrap_user="launchctl asuser $uid"
+
+    logger $bootstrap_user $sudo_user $stop
+    $bootstrap_user $sudo_user $stop
+    logger $bootstrap_user $sudo_user $unload
+    $bootstrap_user $sudo_user $unload
+  done
+fi
+
+logger Unloading broker service
+logger launchctl bootout $BROKER_SERVICE_TARGET
+launchctl bootout $BROKER_SERVICE_TARGET
+
+# Processes such as the native messaging hosts may keep running after the
+# binaries get updated, causing unexpected issues. So we kill them to prevent
+# the issues.
+logger Killing all processes in $HOST_BUNDLE_PATH
+logger pkill -9 -f "^$HOST_BUNDLE_PATH"'.*$'
+pkill -9 -f "^$HOST_BUNDLE_PATH"'.*$'
+
+# The installer no longer includes a preference-pane applet, so remove any
+# pref-pane from a previous installation.
+rm -rf "$PREF_PANE"
+
+exit 0

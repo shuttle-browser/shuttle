@@ -1,0 +1,20 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_AUTHENTICATION_ACCOUNT_MENU_COORDINATOR_ACCOUNT_MENU_COORDINATOR_DELEGATE_H_
+#define IOS_CHROME_BROWSER_AUTHENTICATION_ACCOUNT_MENU_COORDINATOR_ACCOUNT_MENU_COORDINATOR_DELEGATE_H_
+
+#import <Foundation/Foundation.h>
+
+@class AccountMenuCoordinator;
+
+@protocol AccountMenuCoordinatorDelegate <NSObject>
+
+// Requests the delegate to synchronously stop the account menu.
+- (void)accountMenuCoordinatorWantsToBeStopped:
+    (AccountMenuCoordinator*)coordinator;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_AUTHENTICATION_ACCOUNT_MENU_COORDINATOR_ACCOUNT_MENU_COORDINATOR_DELEGATE_H_

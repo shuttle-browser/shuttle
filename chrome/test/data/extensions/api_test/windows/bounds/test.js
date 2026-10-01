@@ -1,0 +1,31 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+let count = 0;
+const bounds = {
+  top: 0,
+  left: 0,
+  width: 0,
+  height: 0,
+};
+
+chrome.windows.onBoundsChanged.addListener(function(window) {
+  ++count;
+  bounds.top = window.top;
+  bounds.left = window.left;
+  bounds.width = window.width;
+  bounds.height = window.height;
+});
+
+chrome.test.sendMessage('ready', function(actualBounds) {
+  const parsedBounds = JSON.parse(actualBounds);
+
+  chrome.test.assertEq(1, count);
+  chrome.test.assertEq(bounds.top, parsedBounds.top);
+  chrome.test.assertEq(bounds.left, parsedBounds.left);
+  chrome.test.assertEq(bounds.width, parsedBounds.width);
+  chrome.test.assertEq(bounds.height, parsedBounds.height);
+
+  chrome.test.notifyPass();
+});

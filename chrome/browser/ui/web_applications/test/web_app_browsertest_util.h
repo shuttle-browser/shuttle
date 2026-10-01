@@ -1,0 +1,244 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_WEB_APPLICATIONS_TEST_WEB_APP_BROWSERTEST_UTIL_H_
+#define CHROME_BROWSER_UI_WEB_APPLICATIONS_TEST_WEB_APP_BROWSERTEST_UTIL_H_
+
+#include <string_view>
+
+#include "base/functional/callback_forward.h"
+#include "base/location.h"
+#include "base/memory/raw_ptr.h"
+#include "base/run_loop.h"
+#include "base/scoped_observation.h"
+#include "chrome/browser/ui/browser_init_state.h"
+#include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"
+#include "chrome/browser/web_applications/externally_managed_app_manager.h"
+#include "chrome/browser/web_applications/web_app_constants.h"
+#include "chrome/browser/web_applications/web_app_install_manager.h"
+#include "chrome/browser/web_applications/web_app_install_manager_observer.h"
+#include "components/webapps/common/web_app_id.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/window_open_disposition.h"
+
+class BrowserWindowInterface;
+class GlobalBrowserCollection;
+class GURL;
+class Profile;
+
+namespace base {
+class FilePath;
+}
+
+namespace webapps {
+enum class InstallResultCode;
+}
+
+namespace content {
+class WebContents;
+}  // namespace content
+
+namespace web_app {
+
+struct ExternalInstallOptions;
+class WebAppInstallManager;
+
+// For InstallWebAppFromInfo see web_app_install_test_utils.h
+
+struct InstallWebAppOptions {
+  bool launch_or_reparent_page_to_app = false;
+};
+
+// Navigates to |app_url| and installs app without any installability checks.
+// Always selects to open app in its own window.
+webapps::AppId InstallWebAppFromPage(BrowserWindowInterface* browser,
+                                     const GURL& app_url,
+                                     InstallWebAppOptions options = {});
+
+// Navigates to |app_url| and installs app without any installability checks.
+// Always selects to open app in its own window. Returns the browser for the
+// newly installed app. Use AppBrowserController::From(browser)->app_id() to get
+// the app id.
+BrowserWindowInterface* InstallWebAppFromPageGetBrowser(
+    BrowserWindowInterface* browser,
+    const GURL& app_url);
+
+// Same as InstallWebAppFromPage() but waits for the app browser window to
+// appear and closes it.
+webapps::AppId InstallWebAppInNewTabAndClose(BrowserWindowInterface* browser,
+                                             const GURL& app_url);
+
+// Navigates to |app_url|, verifies WebApp installability, and installs app.
+webapps::AppId InstallWebAppFromManifest(BrowserWindowInterface* browser,
+                                         const GURL& app_url);
+
+// Launches a new app window for |app| in |profile| with specified
+// |disposition|. This call waits until the launch command completes and load to
+// stop, while special-casing the /hung url which will never stop loading.
+BrowserWindowInterface* LaunchWebAppBrowser(
+    Profile*,
+    const webapps::AppId&,
+    WindowOpenDisposition disposition = WindowOpenDisposition::CURRENT_TAB);
+
+// Launches the app, waits for the app url to load.
+BrowserWindowInterface* LaunchWebAppBrowserAndWait(
+    Profile*,
+    const webapps::AppId&,
+    WindowOpenDisposition disposition = WindowOpenDisposition::CURRENT_TAB);
+
+// Launches a new tab for |app| in |profile|.
+BrowserWindowInterface* LaunchBrowserForWebAppInTab(
+    Profile*,
+    const webapps::AppId&,
+    WindowOpenDisposition disposition =
+        WindowOpenDisposition::NEW_FOREGROUND_TAB);
+
+// Launches the web app to the given URL.
+BrowserWindowInterface* LaunchWebAppToURL(Profile* profile,
+                                          const webapps::AppId& app_id,
+                                          const GURL& url);
+
+// Return |ExternalInstallOptions| with OS shortcut creation disabled.
+ExternalInstallOptions CreateInstallOptions(
+    const GURL& url,
+    const ExternalInstallSource& source =
+        ExternalInstallSource::kInternalDefault);
+
+// Synchronous version of ExternallyManagedAppManager::Install.
+ExternallyManagedAppManager::InstallResult ExternallyManagedAppManagerInstall(
+    Profile*,
+    ExternalInstallOptions);
+
+// This function simulates loading a given url via a link click.
+// If |proceed_through_interstitial| is true, asserts that a security
+// interstitial is shown, and clicks through it, before returning.
+// Note - this does NOT wait for the given url to load, it just waits for
+// navigation to complete. To ensure the given url is fully loaded, wait for
+// that separately.
+void NavigateViaLinkClickToURLAndWait(
+    BrowserWindowInterface* browser,
+    const GURL& url,
+    bool proceed_through_interstitial = false);
+
+// Performs a navigation and then checks that the toolbar visibility is as
+// expected.
+void NavigateAndCheckForToolbar(BrowserWindowInterface* browser,
+                                const GURL& url,
+                                bool expected_visibility,
+                                bool proceed_through_interstitial = false);
+
+enum AppMenuCommandState {
+  kEnabled,
+  kDisabled,
+  kNotPresent,
+};
+
+// For a non-app browser, determines if the command is enabled/disabled/absent.
+AppMenuCommandState GetAppMenuCommandState(int command_id,
+                                           BrowserWindowInterface* browser);
+
+// Searches for a Browser window for a given |app_id|.
+// BrowserInitState::From(browser)->create_params().app_name must be defined.
+BrowserWindowInterface* FindWebAppBrowser(Profile* profile,
+                                          const webapps::AppId& app_id);
+
+void CloseAndWait(BrowserWindowInterface* browser);
+
+bool IsBrowserOpen(const BrowserWindowInterface* test_browser);
+
+// Install a web policy app with |url|.
+// Returns a valid app ID of the installed app or nullopt.
+std::optional<webapps::AppId> ForceInstallWebApp(Profile* profile, GURL url);
+
+// Helper class that lets you await one Browser added and one Browser removed
+// event. Optionally filters to a specific Browser with |filter|. Useful for
+// closing the web app window that appears after installation from page.
+class BrowserWaiter : public BrowserCollectionObserver {
+ public:
+  explicit BrowserWaiter(BrowserWindowInterface* filter = nullptr);
+  ~BrowserWaiter() override;
+
+  BrowserWindowInterface* AwaitAdded(
+      const base::Location& location = base::Location::Current());
+  BrowserWindowInterface* AwaitRemoved(
+      const base::Location& location = base::Location::Current());
+
+  // BrowserCollectionObserver:
+  void OnBrowserCreated(BrowserWindowInterface* browser) override;
+  void OnBrowserClosed(BrowserWindowInterface* browser) override;
+
+ private:
+  const raw_ptr<BrowserWindowInterface, AcrossTasksDanglingUntriaged> filter_ =
+      nullptr;
+
+  base::RunLoop added_run_loop_;
+  raw_ptr<BrowserWindowInterface, AcrossTasksDanglingUntriaged> added_browser_ =
+      nullptr;
+
+  base::RunLoop removed_run_loop_;
+  raw_ptr<BrowserWindowInterface, AcrossTasksDanglingUntriaged>
+      removed_browser_ = nullptr;
+
+  base::ScopedObservation<GlobalBrowserCollection, BrowserCollectionObserver>
+      observation_{this};
+};
+
+class UpdateAwaiter : public WebAppInstallManagerObserver {
+ public:
+  explicit UpdateAwaiter(WebAppInstallManager& install_manager);
+  ~UpdateAwaiter() override;
+  void AwaitUpdate(const base::Location& location = base::Location::Current());
+
+  // WebAppInstallManagerObserver:
+  void OnWebAppManifestUpdated(const webapps::AppId& app_id) override;
+  void OnWebAppInstallManagerDestroyed() override;
+
+ private:
+  base::RunLoop run_loop_;
+  base::ScopedObservation<WebAppInstallManager, WebAppInstallManagerObserver>
+      scoped_observation_{this};
+};
+
+// Creates a temporary file with the |extension|.
+base::FilePath CreateTestFileWithExtension(std::string_view extension);
+
+// Wait for an IPH bubble to show up inside the browser, and return true or
+// false based on whether the bubble showed up.
+bool WaitForIPHToShowIfAny(BrowserWindowInterface* browser);
+
+namespace test {
+
+// Denote ways to simulate click on an element.
+enum class ClickMethod {
+  kLeftClick,
+  kMiddleClick,
+  kShiftClick,
+  kRightClickLaunchApp
+};
+
+// This function simulates a click on the middle of an element matching
+// `element_id` based on the type of click passed to it.
+void SimulateClickOnElement(content::WebContents* contents,
+                            std::string element_id,
+                            ClickMethod click);
+
+// Runs `action` for all tabs. This method is resilient to `action` waiting on
+// async work, and considers the fresh `BrowserList` and tab model before each
+// call. This method ensures that `action` is not called for the same web
+// contents twice.
+void RunForAllTabs(base::RepeatingCallback<void(content::WebContents&)> action);
+
+void WaitForLoadCompleteAndMaybeManifestSeen(content::WebContents& contents);
+
+// Wait for all available `WebContents` when this is called to finish loading.
+// Note: This will hang forever if any web contents purposefully never finishes
+// loading, causes reloads, or in any other way doesn't call the 'load' event in
+// the page.
+void CompletePageLoadForAllWebContents();
+
+}  // namespace test
+
+}  // namespace web_app
+
+#endif  // CHROME_BROWSER_UI_WEB_APPLICATIONS_TEST_WEB_APP_BROWSERTEST_UTIL_H_

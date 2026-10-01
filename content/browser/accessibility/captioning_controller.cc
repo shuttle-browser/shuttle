@@ -1,0 +1,97 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/accessibility/captioning_controller.h"
+
+#include "base/android/jni_string.h"
+#include "content/browser/web_contents/web_contents_impl.h"
+#include "third_party/blink/public/common/web_preferences/web_preferences.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "content/public/android/content_jni_headers/CaptioningController_jni.h"
+
+using base::android::AttachCurrentThread;
+using base::android::ConvertJavaStringToUTF8;
+using base::android::JavaRef;
+using base::android::ScopedJavaLocalRef;
+
+namespace content {
+
+namespace {
+
+// Adds !important to all captions styles. They should always override any
+// styles added by the video author or by a user stylesheet. This is because in
+// Chrome, there is an option to turn off captions styles, so any time the
+// captions are on, the styles should take priority.
+std::string AddCSSImportant(std::string css_string) {
+  return css_string + " !important";
+}
+
+}  // namespace
+
+CaptioningController::CaptioningController(WebContents* web_contents)
+    : WebContentsObserver(web_contents) {}
+
+CaptioningController::~CaptioningController() = default;
+
+void CaptioningController::Destroy(JNIEnv* env) {
+  delete this;
+}
+
+void CaptioningController::PrimaryPageChanged(Page& page) {
+  CaptioningController::RenderViewReady();
+}
+
+void CaptioningController::RenderViewReady() {
+  JNIEnv* env = AttachCurrentThread();
+  ScopedJavaLocalRef<jobject> obj = GetFromWebContents(env, web_contents());
+  if (!obj.is_null()) {
+    Java_CaptioningController_onRenderProcessChange(env, obj);
+  }
+}
+
+void CaptioningController::SetTextTrackSettings(
+    JNIEnv* env,
+    bool textTracksEnabled,
+    const JavaRef<jstring>& textTrackBackgroundColor,
+    const JavaRef<jstring>& textTrackFontFamily,
+    const JavaRef<jstring>& textTrackFontStyle,
+    const JavaRef<jstring>& textTrackFontVariant,
+    const JavaRef<jstring>& textTrackTextColor,
+    const JavaRef<jstring>& textTrackTextShadow,
+    const JavaRef<jstring>& textTrackTextSize) {
+  auto web_prefs = web_contents()->GetOrCreateWebPreferences();
+  web_prefs.text_tracks_enabled = textTracksEnabled;
+  web_prefs.text_track_background_color =
+      AddCSSImportant(ConvertJavaStringToUTF8(env, textTrackBackgroundColor));
+  web_prefs.text_track_font_family =
+      AddCSSImportant(ConvertJavaStringToUTF8(env, textTrackFontFamily));
+  web_prefs.text_track_font_style =
+      AddCSSImportant(ConvertJavaStringToUTF8(env, textTrackFontStyle));
+  web_prefs.text_track_font_variant =
+      AddCSSImportant(ConvertJavaStringToUTF8(env, textTrackFontVariant));
+  web_prefs.text_track_text_color =
+      AddCSSImportant(ConvertJavaStringToUTF8(env, textTrackTextColor));
+  web_prefs.text_track_text_shadow =
+      AddCSSImportant(ConvertJavaStringToUTF8(env, textTrackTextShadow));
+  web_prefs.text_track_text_size =
+      AddCSSImportant(ConvertJavaStringToUTF8(env, textTrackTextSize));
+  web_contents()->SetWebPreferences(web_prefs);
+}
+
+ScopedJavaLocalRef<jobject> CaptioningController::GetFromWebContents(
+    JNIEnv* env,
+    WebContents* web_contents) {
+  return Java_CaptioningController_getFromWebContents(env, web_contents);
+}
+
+static int64_t JNI_CaptioningController_Init(JNIEnv* env,
+                                             WebContents* web_contents) {
+  CHECK(web_contents);
+  return reinterpret_cast<intptr_t>(new CaptioningController(web_contents));
+}
+
+}  // namespace content
+
+DEFINE_JNI(CaptioningController)

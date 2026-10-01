@@ -1,0 +1,114 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/credential_provider_extension/reauthentication_handler.h"
+
+#import "base/logging.h"
+#import "base/strings/sys_string_conversions.h"
+#import "ios/chrome/common/app_group/app_group_command.h"
+#import "ios/chrome/common/app_group/app_group_constants.h"
+#import "ios/chrome/common/ui/reauthentication/reauthentication_module.h"
+#import "ios/chrome/credential_provider_extension/generated_localized_strings.h"
+
+@implementation ReauthenticationHandler {
+  // Module containing the reauthentication mechanism used accessing passwords.
+  __weak id<ReauthenticationProtocol> _weakReauthenticationModule;
+}
+
+- (instancetype)initWithReauthenticationModule:
+    (id<ReauthenticationProtocol>)reauthenticationModule {
+  DCHECK(reauthenticationModule);
+  self = [super init];
+  if (self) {
+    _weakReauthenticationModule = reauthenticationModule;
+  }
+  return self;
+}
+
+- (void)verifyUserToAccessPasskeys:(BOOL)forPasskeys
+              withCompletionHandler:
+                  (ReauthenticationResultBlock)completionHandler
+    presentReminderOnViewController:(UIViewController*)viewController {
+  NSString* localizedReason =
+      forPasskeys ? CredentialProviderScreenlockReasonPasskeysString()
+                  : CredentialProviderScreenlockReasonPasswordsString();
+  if ([_weakReauthenticationModule canAttemptReauth]) {
+    [_weakReauthenticationModule
+        attemptReauthWithLocalizedReason:localizedReason
+                    canReusePreviousAuth:YES
+                                 handler:completionHandler];
+  } else {
+    [self showSetPasscodeDialogOnViewController:viewController
+                              completionHandler:completionHandler];
+  }
+}
+
+- (void)showSetPasscodeDialogOnViewController:(UIViewController*)viewController
+                            completionHandler:
+                                (ReauthenticationResultBlock)completionHandler {
+  UIAlertController* alertController = [UIAlertController
+      alertControllerWithTitle:CredentialProviderSetUpScreenlockTitleString()
+                       message:CredentialProviderSetUpScreenlockContentString()
+                preferredStyle:UIAlertControllerStyleAlert];
+
+  __weak UIResponder* opener = [self openerFromViewController:viewController];
+  UIAlertAction* learnAction = [UIAlertAction
+      actionWithTitle:CredentialProviderSetUpScreenlockLearnHowString()
+                style:UIAlertActionStyleDefault
+              handler:^(UIAlertAction*) {
+                [self openAppWithURL:[NSURL
+                                         URLWithString:base::SysUTF8ToNSString(
+                                                           kPasscodeArticleURL)]
+                              opener:opener];
+                completionHandler(ReauthenticationResult::kFailure);
+              }];
+  [alertController addAction:learnAction];
+  UIAlertAction* okAction = [UIAlertAction
+      actionWithTitle:CredentialProviderOkString()
+                style:UIAlertActionStyleDefault
+              handler:^(UIAlertAction*) {
+                completionHandler(ReauthenticationResult::kFailure);
+              }];
+  [alertController addAction:okAction];
+  alertController.preferredAction = okAction;
+  [viewController presentViewController:alertController
+                               animated:YES
+                             completion:nil];
+}
+
+- (BOOL)canAttemptReauthWithBiometrics {
+  return [_weakReauthenticationModule canAttemptReauthWithBiometrics];
+}
+
+#pragma mark - Private
+
+// Returns first responder up the chain that can open a URL.
+- (UIResponder*)openerFromViewController:(UIViewController*)viewController {
+  UIResponder* responder = viewController;
+  while (responder) {
+    if ([responder respondsToSelector:@selector(openURL:)]) {
+      return responder;
+    }
+    responder = responder.nextResponder;
+  }
+  return nil;
+}
+
+// Open URL through app group commands.
+- (void)openAppWithURL:(NSURL*)URL opener:(UIResponder*)opener {
+  AppGroupCommand* command = [[AppGroupCommand alloc]
+      initWithSourceApp:app_group::kOpenCommandSourceCredentialsExtension
+         URLOpenerBlock:^(NSURL* openURL) {
+           if ([opener respondsToSelector:@selector(openURL:)]) {
+             [opener performSelector:@selector(openURL:)
+                          withObject:openURL
+                          afterDelay:0];
+           }
+         }];
+
+  [command prepareToOpenURL:URL];
+  [command executeInApp];
+}
+
+@end

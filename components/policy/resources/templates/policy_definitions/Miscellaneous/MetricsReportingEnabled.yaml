@@ -1,0 +1,37 @@
+caption: Enable reporting of usage and crash-related data
+default:  null
+desc: |-
+  When this policy is Enabled, anonymous reporting of usage and crash-related data about <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph> to Google is recommended to be enabled by default. Users will still be able to change this setting.
+
+  When this policy is Disabled, anonymous reporting is disabled and no usage or crash data is sent to Google. Users won't be able to change this setting.
+
+  When this policy is not set, users can choose the anonymous reporting behavior at installation or first run, and can change this setting later.
+
+  (For <ph name="PRODUCT_OS_NAME">$2<ex>Google ChromeOS</ex></ph>, see <ph name="DEVICE_METRICS_REPORTING_ENABLED_POLICY_NAME">DeviceMetricsReportingEnabled</ph>.)
+example_value: true
+features:
+  can_be_recommended: true
+  dynamic_refresh: false
+  per_profile: false
+future_on:
+- fuchsia
+items:
+- caption: Enable reporting of usage and crash-related data
+  value: true
+- caption: Disable reporting of usage and crash-related data
+  value: false
+- caption: Allow users to choose
+  value: null
+owners:
+- file://components/policy/OWNERS
+- zmin@chromium.org
+schema:
+  type: boolean
+sensitive: true
+supported_on:
+- chrome.*:8-
+- ios:88-
+- android:110-
+tags:
+- google-sharing
+type: main

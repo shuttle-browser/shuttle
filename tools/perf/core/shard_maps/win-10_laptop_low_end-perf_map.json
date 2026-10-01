@@ -1,0 +1,271 @@
+{
+    "0": {
+        "benchmarks": {
+            "ad_frames.fencedframe": {
+                "abridged": false
+            },
+            "blink_perf.accessibility": {
+                "abridged": false
+            },
+            "blink_perf.bindings": {
+                "abridged": false
+            },
+            "blink_perf.css": {
+                "abridged": false
+            },
+            "blink_perf.dom": {
+                "end": 11,
+                "abridged": false
+            },
+            "jetstream2": {
+                "abridged": false
+            }
+        }
+    },
+    "1": {
+        "benchmarks": {
+            "blink_perf.dom": {
+                "begin": 11,
+                "abridged": false
+            },
+            "blink_perf.events": {
+                "abridged": false
+            },
+            "blink_perf.image_decoder": {
+                "abridged": false
+            },
+            "blink_perf.layout": {
+                "abridged": false
+            },
+            "blink_perf.owp_storage": {
+                "abridged": false
+            },
+            "blink_perf.parser": {
+                "abridged": false
+            },
+            "blink_perf.shadow_dom": {
+                "end": 23,
+                "abridged": false
+            },
+            "jetstream2": {
+                "abridged": false
+            }
+        }
+    },
+    "2": {
+        "benchmarks": {
+            "blink_perf.shadow_dom": {
+                "begin": 23,
+                "abridged": false
+            },
+            "blink_perf.webaudio": {
+                "abridged": false
+            },
+            "blink_perf.webcodecs": {
+                "abridged": false
+            },
+            "blink_perf.webgl": {
+                "abridged": false
+            },
+            "blink_perf.webgpu": {
+                "abridged": false
+            },
+            "desktop_ui": {
+                "abridged": false
+            },
+            "dummy_benchmark.noisy_benchmark_1": {
+                "abridged": false
+            },
+            "dummy_benchmark.stable_benchmark_1": {
+                "abridged": false
+            },
+            "jetstream2": {
+                "abridged": false
+            },
+            "media.desktop": {
+                "abridged": false
+            },
+            "memory.desktop": {
+                "end": 4,
+                "abridged": false,
+                "pageset_repeat": 5
+            }
+        }
+    },
+    "3": {
+        "benchmarks": {
+            "memory.desktop": {
+                "begin": 4,
+                "abridged": false,
+                "pageset_repeat": 5
+            },
+            "power.desktop": {
+                "abridged": false
+            },
+            "rasterize_and_record_micro.top_25": {
+                "abridged": false
+            },
+            "rendering.desktop": {
+                "end": 13,
+                "abridged": false
+            },
+            "jetstream2": {
+                "abridged": false
+            }
+        }
+    },
+    "4": {
+        "benchmarks": {
+            "rendering.desktop": {
+                "begin": 13,
+                "end": 85,
+                "abridged": false
+            },
+            "jetstream2": {
+                "abridged": false
+            }
+        }
+    },
+    "5": {
+        "benchmarks": {
+            "rendering.desktop": {
+                "begin": 85,
+                "end": 162,
+                "abridged": false
+            }
+        }
+    },
+    "6": {
+        "benchmarks": {
+            "rendering.desktop": {
+                "begin": 162,
+                "end": 235,
+                "abridged": false
+            }
+        }
+    },
+    "7": {
+        "benchmarks": {
+            "rendering.desktop": {
+                "begin": 235,
+                "end": 289,
+                "abridged": false
+            }
+        }
+    },
+    "8": {
+        "benchmarks": {
+            "rendering.desktop": {
+                "begin": 289,
+                "end": 338,
+                "abridged": false
+            }
+        }
+    },
+    "9": {
+        "benchmarks": {
+            "rendering.desktop": {
+                "begin": 338,
+                "abridged": false
+            },
+            "rendering.desktop.notracing": {
+                "abridged": false
+            },
+            "speedometer3": {
+                "abridged": false
+            },
+            "speedometer3-future": {
+                "abridged": false
+            },
+            "system_health.common_desktop": {
+                "end": 43,
+                "abridged": false
+            }
+        }
+    },
+    "10": {
+        "benchmarks": {
+            "system_health.common_desktop": {
+                "begin": 43,
+                "abridged": false
+            },
+            "system_health.memory_desktop": {
+                "end": 14,
+                "abridged": false,
+                "pageset_repeat": 3
+            }
+        }
+    },
+    "11": {
+        "benchmarks": {
+            "system_health.memory_desktop": {
+                "begin": 14,
+                "end": 45,
+                "abridged": false,
+                "pageset_repeat": 3
+            }
+        }
+    },
+    "12": {
+        "benchmarks": {
+            "system_health.memory_desktop": {
+                "begin": 45,
+                "end": 67,
+                "abridged": false,
+                "pageset_repeat": 3
+            }
+        }
+    },
+    "13": {
+        "benchmarks": {
+            "system_health.memory_desktop": {
+                "begin": 67,
+                "abridged": false,
+                "pageset_repeat": 3
+            },
+            "v8.browsing_desktop": {
+                "end": 15,
+                "abridged": false
+            }
+        }
+    },
+    "14": {
+        "benchmarks": {
+            "v8.browsing_desktop": {
+                "begin": 15,
+                "abridged": false
+            },
+            "v8.browsing_desktop-future": {
+                "abridged": false
+            },
+            "wasmpspdfkit": {
+                "abridged": false
+            },
+            "webrtc": {
+                "abridged": false
+            }
+        }
+    },
+    "extra_infos": {
+        "num_stories": 1133,
+        "predicted_min_shard_time": 2884.0,
+        "predicted_min_shard_index": 10,
+        "predicted_max_shard_time": 3086.0,
+        "predicted_max_shard_index": 12,
+        "shard #0": 2976.0,
+        "shard #1": 2976.0,
+        "shard #2": 3019.0,
+        "shard #3": 2952.0,
+        "shard #4": 2970.0,
+        "shard #5": 2956.0,
+        "shard #6": 2959.0,
+        "shard #7": 2971.0,
+        "shard #8": 2978.0,
+        "shard #9": 2985.0,
+        "shard #10": 2884.0,
+        "shard #11": 3033.0,
+        "shard #12": 3086.0,
+        "shard #13": 2943.0,
+        "shard #14": 2929.0
+    }
+}

@@ -1,0 +1,8 @@
+# This directory is a frozen, self-contained clone of legacy Mojo Core and
+# must not depend on //mojo (see README.md).
+include_rules = [
+  "-mojo",
+
+  # Mirrors //mojo/public/DEPS: simple_watcher.cc emits a typed tracing event.
+  "+third_party/perfetto/protos/perfetto/trace/track_event",
+]

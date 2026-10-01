@@ -1,0 +1,27 @@
+Name: Ink
+URL: https://github.com/google/ink.git
+Version: N/A
+Revision: 4aa45f40c047ee173dcbf1095ba9353e3308709d
+Update Mechanism: Autoroll
+License: Apache-2.0
+License File: src/LICENSE
+Shipped: yes
+Security Critical: yes
+
+Description:
+
+The C++ library used in the PDF Viewer for annotating PDFs.
+
+Local Modifications:
+
+None
+
+Update Instructions:
+
+* Sources are autorolled by https://autoroll.skia.org/r/ink-chromium
+* BUILD.gn is manually maintained
+  * In order to avoid adding unused JNI implementations, ask gemini to use
+    find_required_jni.py to filter the is_android sources list.
+  * Note: It does not take into account methods that R8 determines as
+    unreachable. Trimming it based on R8 would be more correct, but may
+    also lead to more frequent updates.

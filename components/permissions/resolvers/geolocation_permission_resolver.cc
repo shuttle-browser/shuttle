@@ -1,0 +1,146 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/permissions/resolvers/geolocation_permission_resolver.h"
+
+#include <optional>
+#include <variant>
+
+#include "base/debug/stack_trace.h"
+#include "base/notimplemented.h"
+#include "base/notreached.h"
+#include "base/values.h"
+#include "components/content_settings/core/common/content_settings.h"
+#include "components/content_settings/core/common/content_settings_types.h"
+#include "components/permissions/permission_prompt_decision.h"
+#include "components/permissions/permission_request_data.h"
+#include "components/permissions/permission_util.h"
+#include "components/permissions/resolvers/permission_prompt_options.h"
+#include "third_party/abseil-cpp/absl/functional/overload.h"
+#include "third_party/blink/public/mojom/permissions/permission.mojom.h"
+#include "third_party/blink/public/mojom/permissions/permission_status.mojom-forward.h"
+
+namespace permissions {
+
+namespace {
+
+blink::mojom::PermissionStatus PermissionOptionToPermissionStatus(
+    PermissionOption permission_option) {
+  switch (permission_option) {
+    case PermissionOption::kAllowed:
+      return blink::mojom::PermissionStatus::GRANTED;
+    case PermissionOption::kDenied:
+      return blink::mojom::PermissionStatus::DENIED;
+    case PermissionOption::kAsk:
+      return blink::mojom::PermissionStatus::ASK;
+  }
+  NOTREACHED();
+}
+
+}  // namespace
+
+GeolocationPermissionResolver::GeolocationPermissionResolver(
+    const blink::mojom::PermissionDescriptor& permission_descriptor)
+    : PermissionResolver(ContentSettingsType::GEOLOCATION_WITH_OPTIONS) {
+  if (permission_descriptor.name == blink::mojom::PermissionName::GEOLOCATION) {
+    requested_precise_ = true;
+  } else if (permission_descriptor.name ==
+             blink::mojom::PermissionName::GEOLOCATION_APPROXIMATE) {
+    requested_precise_ = false;
+  } else {
+    NOTREACHED();
+  }
+}
+
+blink::mojom::PermissionStatus
+GeolocationPermissionResolver::DeterminePermissionStatus(
+    const PermissionSetting& setting) const {
+  GeolocationSetting geo_setting = std::get<GeolocationSetting>(setting);
+  blink::mojom::PermissionStatus precise_status =
+      PermissionOptionToPermissionStatus(geo_setting.precise);
+  if (requested_precise_ &&
+      precise_status != blink::mojom::PermissionStatus::DENIED) {
+    return precise_status;
+  }
+  return PermissionOptionToPermissionStatus(geo_setting.approximate);
+}
+
+PermissionSetting
+GeolocationPermissionResolver::ComputePermissionDecisionResultInternal(
+    const PermissionSetting& previous_setting,
+    const PermissionPromptDecision& decision,
+    std::optional<GeolocationPromptType> prompt_type) const {
+  auto setting = std::get<GeolocationSetting>(previous_setting);
+
+  switch (decision.overall_decision) {
+    case PermissionDecision::kAllow:
+    case PermissionDecision::kAllowThisTime:
+      setting.approximate = PermissionOption::kAllowed;
+
+      if (requested_precise_) {
+        if (prompt_type == GeolocationPromptType::kUpgradeToPrecise) {
+          setting.precise = PermissionOption::kAllowed;
+        } else {
+          CHECK(std::holds_alternative<GeolocationPromptOptions>(
+              decision.prompt_options));
+          switch (std::get<GeolocationPromptOptions>(decision.prompt_options)
+                      .selected_accuracy) {
+            case GeolocationAccuracy::kPrecise:
+              setting.precise = PermissionOption::kAllowed;
+              break;
+            case GeolocationAccuracy::kApproximate:
+              // If the user downgraded the request, we consider precise as
+              // blocked.
+              setting.precise = PermissionOption::kDenied;
+              break;
+          }
+        }
+      } else {
+        CHECK(std::holds_alternative<std::monostate>(decision.prompt_options) ||
+              std::get<GeolocationPromptOptions>(decision.prompt_options)
+                      .selected_accuracy == GeolocationAccuracy::kApproximate);
+      }
+      break;
+    case PermissionDecision::kNone:
+      break;
+    case PermissionDecision::kDeny:
+      if (prompt_type != GeolocationPromptType::kUpgradeToPrecise) {
+        setting.approximate = PermissionOption::kDenied;
+      }
+      setting.precise = PermissionOption::kDenied;
+      break;
+  }
+
+  return setting;
+}
+
+GeolocationPromptType GeolocationPermissionResolver::GetGeolocationPromptType(
+    bool is_embedded_permission_element_initiated,
+    const PermissionSetting& current_setting_state) const {
+  if (!requested_precise_) {
+    return GeolocationPromptType::kApproximateOnly;
+  }
+  if (is_embedded_permission_element_initiated) {
+    // TODO(crbug.com/417894145): <geolocation> does not support upgrade prompt
+    // yet.
+    return GeolocationPromptType::kApproximateOrPrecise;
+  }
+  const GeolocationSetting* geolocation_setting =
+      std::get_if<GeolocationSetting>(&current_setting_state);
+  CHECK(geolocation_setting);
+  if (geolocation_setting->approximate == PermissionOption::kAllowed &&
+      geolocation_setting->precise == PermissionOption::kAsk) {
+    return GeolocationPromptType::kUpgradeToPrecise;
+  }
+  return GeolocationPromptType::kApproximateOrPrecise;
+}
+
+GeolocationPermissionResolver::PromptParameters
+GeolocationPermissionResolver::GetPromptParameters(
+    const PermissionSetting& current_setting_state) const {
+  NOTIMPLEMENTED();
+  return PromptParameters();
+}
+
+}  // namespace permissions

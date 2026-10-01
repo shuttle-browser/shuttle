@@ -1,0 +1,44 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// TODO(crbug.com/373648906): Figure out where this definition should be.
+enum PermissionState {
+    "granted",
+    "denied",
+    "prompt"
+};
+
+// TODO(https://crbug.com/461543463): Putting this here rather than in a
+// distinct file, as it's possible that we'll rename it in the near future.
+// 
+// https://wicg.github.io/PEPC/permission-elements.html#permission-mixin
+interface mixin InPagePermissionMixin {
+  [MeasureAs=CapabilityElementIsValid] readonly attribute boolean isValid;
+  // TODO(https://crbug.com/461543463): This should be
+  // `InPagePermissionMixinBlockerReason`, but that will require changing
+  // `HTMLPermissionElement` too.
+  [MeasureAs=CapabilityElementInvalidReason] readonly attribute DOMString invalidReason;
+  [MeasureAs=CapabilityElementInitialPermissionStatus] readonly attribute PermissionState initialPermissionStatus;
+  [MeasureAs=CapabilityElementPermissionStatus] readonly attribute PermissionState permissionStatus;
+
+  [MeasureAs=CapabilityElementOnPromptAction] attribute EventHandler onpromptaction;
+  [MeasureAs=CapabilityElementOnPromptDismiss] attribute EventHandler onpromptdismiss;
+  [MeasureAs=CapabilityElementOnValidationStatusChange] attribute EventHandler onvalidationstatuschange;
+};
+
+// https://wicg.github.io/PEPC/permission-elements.html#geolocation-element
+[RuntimeEnabled=GeolocationElement, Exposed=Window]
+interface HTMLGeolocationElement : HTMLElement {
+  [HTMLConstructor] constructor();
+
+  attribute EventHandler onlocation;
+
+  readonly attribute GeolocationPosition? position;
+  readonly attribute GeolocationPositionError? error;
+
+  [CEReactions, Reflect] attribute DOMString accuracymode;
+  [CEReactions, Reflect] attribute boolean autolocate;
+  [CEReactions, Reflect] attribute boolean watch;
+};
+HTMLGeolocationElement includes InPagePermissionMixin;

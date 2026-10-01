@@ -1,0 +1,251 @@
+# Copyright 2022 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//chrome/common/features.gni")
+import("//chrome/test/data/webui/check_tests_referenced.gni")
+import("//tools/grit/preprocess_if_expr.gni")
+import("//tools/typescript/webui_ts_library.gni")
+import("//ui/webui/resources/tools/eslint_ts.gni")
+import("//ui/webui/resources/tools/generate_grd.gni")
+
+template("build_webui_tests") {
+  not_needed([ "target_name" ])
+
+  forward_variables_from(invoker,
+                         [
+                           "files",
+                           "cc_test_files",
+                         ])
+
+  preprocess_dir = "${target_gen_dir}/preprocessed"
+  tsc_dir = "${target_gen_dir}/tsc"
+
+  # Generated Mojo TS files.
+  if (defined(invoker.mojo_files)) {
+    assert(defined(invoker.mojo_files_deps))
+    mojo_files = []
+    foreach(mojo_file, invoker.mojo_files) {
+      mojo_files += [ get_path_info(invoker.mojo_files, "file") ]
+    }
+  }
+
+  if (defined(invoker.static_files)) {
+    static_files_filter = [
+      "*.html",
+      "*.json",
+    ]
+    static_files = filter_include(invoker.static_files, static_files_filter)
+    assert(static_files == invoker.static_files,
+           "Static files must be .html,.json files")
+    preprocess_if_expr("preprocess_static_files") {
+      visibility = [ ":build_grdp" ]
+      defines = chrome_grit_defines
+      in_folder = "."
+      out_folder = preprocess_dir
+      in_files = static_files
+      out_manifest = "${target_gen_dir}/preprocess_static_files_manifest.json"
+    }
+  }
+
+  preprocess_if_expr("preprocess") {
+    visibility = [
+      ":build_ts",
+      ":lint",
+    ]
+    defines = chrome_grit_defines
+    in_folder = "."
+    out_folder = preprocess_dir
+    in_files = files
+  }
+
+  if (defined(invoker.mojo_files_deps)) {
+    copy("copy_mojo") {
+      visibility = [ ":build_ts" ]
+      deps = invoker.mojo_files_deps
+      sources = invoker.mojo_files
+      outputs = [ "${preprocess_dir}/{{source_file_part}}" ]
+    }
+  }
+
+  webui_ts_library("build_ts") {
+    composite = false
+    if (defined(invoker.ts_composite)) {
+      composite = invoker.ts_composite
+    }
+    if (!composite) {
+      visibility = [
+        ":build_grdp",
+        ":lint",
+      ]
+    }
+    root_dir = preprocess_dir
+    out_dir = tsc_dir
+
+    # Default tsconfig is set to
+    # //chrome/test/data/webui/tsconfig_base_lit.json for targets
+    # with a Lit dependency, and //chrome/test/data/webui/tsconfig_base.json
+    # for other targets.
+    tsconfig_base = "//chrome/test/data/webui/tsconfig_base.json"
+    if (defined(invoker.ts_tsconfig_base)) {
+      tsconfig_base = invoker.ts_tsconfig_base
+    } else if (defined(invoker.ts_deps)) {
+      has_lit = filter_include(invoker.ts_deps,
+                               [ "//third_party/lit/v3_0:build_ts" ]) != []
+      if (has_lit) {
+        tsconfig_base = "//chrome/test/data/webui/tsconfig_base_lit.json"
+      }
+    }
+
+    path_mappings = []
+
+    # Add invoker provided path_mappings before the default one, because the
+    # order matters.
+    if (defined(invoker.ts_path_mappings)) {
+      path_mappings += invoker.ts_path_mappings
+    }
+    path_mappings += [ "//webui-test/*|" +
+                       rebase_path("$root_gen_dir/chrome/test/data/webui/tsc/*",
+                                   target_gen_dir) ]
+    if (defined(invoker.is_chrome_untrusted) && invoker.is_chrome_untrusted) {
+      path_mappings += [ "chrome-untrusted://webui-test/*|" + rebase_path(
+                             "$root_gen_dir/chrome/test/data/webui/tsc/*",
+                             target_gen_dir) ]
+      webui_context_type = "untrusted"
+    } else {
+      path_mappings += [ "chrome://webui-test/*|" + rebase_path(
+                             "$root_gen_dir/chrome/test/data/webui/tsc/*",
+                             target_gen_dir) ]
+      webui_context_type = "trusted"
+    }
+    in_files = files
+
+    if (defined(invoker.ts_definitions)) {
+      definitions = invoker.ts_definitions
+    }
+    deps = [ "//chrome/test/data/webui:build_ts" ]
+    if (defined(invoker.ts_deps)) {
+      deps += invoker.ts_deps
+    }
+    extra_deps = [ ":preprocess" ]
+
+    if (defined(invoker.mojo_files)) {
+      target_outputs = get_target_outputs(":copy_mojo")
+
+      # Add all Mojo JS files produced by `:copy_mojo` as inputs to the TS
+      # compiler.
+      foreach(o, target_outputs) {
+        in_files += [ rebase_path(o, preprocess_dir) ]
+      }
+      extra_deps += [ ":copy_mojo" ]
+    }
+    if (defined(invoker.ts_extra_deps)) {
+      extra_deps += invoker.ts_extra_deps
+    }
+  }
+
+  enable_type_aware_eslint_checks =
+      !defined(invoker.enable_type_aware_eslint_checks) ||
+      invoker.enable_type_aware_eslint_checks
+
+  if (enable_type_aware_eslint_checks) {
+    if (is_chromeos) {
+      # Folders hosting Ash-only WebUIs. Should be kept in sync with
+      # //tools/typescript/path_utils.py. This is used to differentiate
+      # eslint_ts() configurations.
+      ash_folders = [
+        "//chrome/test/data/webui/chromeos",
+        "//chrome/test/data/webui/cr_components/chromeos",
+      ]
+    }
+
+    # Determine whether the current invocation corresponds to an Ash WebUI.
+    is_ash_webui = false
+    if (is_chromeos) {
+      target_dir = get_label_info(":build_ts", "dir")
+
+      foreach(prefix, ash_folders) {
+        if (!is_ash_webui) {
+          is_ash_webui = string_replace(target_dir, prefix, "") != target_dir
+        }
+      }
+    }
+
+    eslint_ts("lint") {
+      visibility = [ ":build_grdp" ]
+      in_folder = preprocess_dir
+      in_files = filter_exclude(files, [ "*.js" ])
+      tsconfig = "$target_gen_dir/tsconfig_build_ts.json"
+      deps = [
+        ":build_ts",
+        ":preprocess",
+      ]
+
+      no_explicit_any_exceptions = [
+        # Note: DO NOT add new entries to the list below.
+        # TODO(crbug.com/494464740): Fix all violations below and turn on this
+        # check by default.
+        "//chrome/test/data/webui/contextual_tasks",
+        "//chrome/test/data/webui/cr_components/composebox",
+        "//chrome/test/data/webui/cr_components/searchbox",
+        "//chrome/test/data/webui/glic",
+        "//chrome/test/data/webui/print_preview",
+        "//chrome/test/data/webui/webui_toolbar",
+      ]
+
+      if (is_android) {
+        no_explicit_any_exceptions +=
+            [ "//chrome/test/data/webui/guest_view_shared" ]
+      }
+
+      if (!is_ash_webui && filter_include([ get_label_info(":lint", "dir") ],
+                                          no_explicit_any_exceptions) == []) {
+        enable_no_explicit_any = true
+      } else {
+        # Prevent GN from throwing an error.
+        not_needed([ "no_explicit_any_exceptions" ])
+      }
+    }
+  }
+
+  check_tests_referenced("check_tests_referenced") {
+    visibility = [ ":build_grdp" ]
+    in_folder = "."
+    cc_files = cc_test_files
+    ts_files = filter_include(files,
+                              [
+                                "*_test.ts",
+                                "*_test.js",
+                              ])
+  }
+
+  # This target is public so that it can be depended on by
+  # chrome/test/data/webui:build_grd which will place this grdp file into a grd
+  # file.
+  generate_grd("build_grdp") {
+    resource_path_prefix = rebase_path(".", "//chrome/test/data/webui")
+    if (defined(invoker.resource_path_prefix)) {
+      resource_path_prefix = invoker.resource_path_prefix
+    }
+    grd_prefix = "webui_" + string_replace(resource_path_prefix, "/", "_")
+    out_grd = "$target_gen_dir/resources.grdp"
+    deps = [ ":build_ts" ]
+    manifest_files =
+        filter_include(get_target_outputs(":build_ts"), [ "*_manifest.json" ])
+    if (defined(invoker.static_files)) {
+      deps += [ ":preprocess_static_files" ]
+      manifest_files +=
+          [ "${target_gen_dir}/preprocess_static_files_manifest.json" ]
+    }
+
+    # Adding a few dependencies that perform checks below so that they run as
+    # part of the build, even though this `generate_grd()` target does not use
+    # any outputs from them.
+
+    if (enable_type_aware_eslint_checks) {
+      deps += [ ":lint" ]
+    }
+
+    deps += [ ":check_tests_referenced" ]
+  }
+}

@@ -1,0 +1,26 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// https://w3c.github.io/webtransport/#duplex-stream
+[
+    Exposed=(Window,Worker),
+    SecureContext,
+    ImplementedAs=DatagramDuplexStream
+] interface WebTransportDatagramDuplexStream {
+  [CallWith=ScriptState, RaisesException, RuntimeEnabled=WebTransportDatagramsWritable, MeasureAs=WebTransportDatagramDuplexStreamCreateWritable]
+  WebTransportDatagramsWritable createWritable(
+      optional WebTransportSendOptions options = {});
+  readonly attribute ReadableStream readable;
+  readonly attribute WritableStream writable;
+
+  readonly attribute unsigned long maxDatagramSize;
+  attribute double? incomingMaxAge;
+  attribute double? outgoingMaxAge;
+  attribute unsigned long incomingMaxBufferedDatagrams;
+  attribute unsigned long outgoingMaxBufferedDatagrams;
+  [DeprecateAs=WebTransportDatagramDuplexStreamIncomingHighWaterMark]
+  attribute long incomingHighWaterMark;
+  [DeprecateAs=WebTransportDatagramDuplexStreamOutgoingHighWaterMark]
+  attribute long outgoingHighWaterMark;
+};

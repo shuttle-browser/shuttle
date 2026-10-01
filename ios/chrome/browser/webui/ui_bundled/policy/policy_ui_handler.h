@@ -1,0 +1,213 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_WEBUI_UI_BUNDLED_POLICY_POLICY_UI_HANDLER_H_
+#define IOS_CHROME_BROWSER_WEBUI_UI_BUNDLED_POLICY_POLICY_UI_HANDLER_H_
+
+#include <memory>
+#include <optional>
+#include <string>
+
+#include "base/containers/flat_map.h"
+#include "base/containers/flat_set.h"
+#include "base/memory/weak_ptr.h"
+#include "base/scoped_observation.h"
+#include "base/values.h"
+#include "components/policy/core/browser/webui/policy_status_provider.h"
+#include "components/policy/core/common/policy_service.h"
+#include "components/policy/core/common/schema_registry.h"
+#include "components/policy/resources/webui/mojom/policy.mojom-forward.h"
+#include "components/policy/resources/webui/mojom/policy.mojom.h"
+#include "ios/chrome/browser/policy/model/status_provider/user_cloud_policy_status_provider.h"
+#include "ios/chrome/browser/shared/model/profile/profile_ios.h"
+#include "ios/web/public/webui/web_ui_ios.h"
+#include "ios/web/public/webui/web_ui_ios_data_source.h"
+#include "ios/web/public/webui/web_ui_ios_message_handler.h"
+#include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "mojo/public/cpp/bindings/pending_remote.h"
+#include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
+
+namespace policy {
+class PolicyMap;
+struct PolicyNamespace;
+}  // namespace policy
+
+// The JavaScript message handler for the chrome://policy page.
+class PolicyUIHandler : public web::WebUIIOSMessageHandler,
+                        public policy::mojom::PolicyPageHandler,
+                        public UserCloudPolicyStatusProvider::Delegate,
+                        public policy::PolicyService::Observer,
+                        public policy::PolicyStatusProvider::Observer,
+                        public policy::SchemaRegistry::Observer {
+ public:
+  // Constructs legacy web::WebUIIOSMessageHandler.
+  explicit PolicyUIHandler(ProfileIOS* profile);
+
+  // Constructs in-migration policy::mojom::PolicyPageHandler.
+  PolicyUIHandler(
+      mojo::PendingReceiver<policy::mojom::PolicyPageHandler> receiver,
+      mojo::PendingRemote<policy::mojom::PolicyPageClient> client,
+      ProfileIOS* profile);
+
+  ~PolicyUIHandler() override;
+  PolicyUIHandler(const PolicyUIHandler&) = delete;
+  PolicyUIHandler& operator=(const PolicyUIHandler&) = delete;
+
+  static void AddCommonLocalizedStringsToSource(
+      web::WebUIIOSDataSource* source);
+
+  // web::WebUIIOSMessageHandler.
+  void RegisterMessages() override;
+
+  // policy::PolicyService::Observer.
+  void OnPolicyUpdated(const policy::PolicyNamespace& ns,
+                       const policy::PolicyMap& previous,
+                       const policy::PolicyMap& current) override;
+
+  // policy::PolicyValueProvider::Observer implementation.
+  void OnPolicyStatusChanged() override;
+
+  // Called when report has been uploaded, successfully or not.
+  void OnReportUploaded(const std::string& callback_id);
+
+  // policy::SchemaRegistry::Observer.
+  void OnSchemaRegistryUpdated(bool has_new_schemas) override;
+
+  // policy::mojom::PolicyPageHandler implementation.
+  void GetDebugString(GetDebugStringCallback callback) override;
+  void RestartBrowser(const std::string& policies) override;
+  void SetUserAffiliated(bool affiliated,
+                         SetUserAffiliatedCallback callback) override;
+  void GetAppliedTestPolicies(GetAppliedTestPoliciesCallback callback) override;
+  void RevertLocalTestPolicies() override;
+  void SetLocalTestPolicies(
+      const std::string& policies,
+      const std::string& profile_separation_policy_response,
+      SetLocalTestPoliciesCallback callback) override;
+  void GetPolicyLogs(GetPolicyLogsCallback callback) override;
+  void GetPoliciesJson(policy::mojom::GetPoliciesReason reason,
+                       GetPoliciesJsonCallback callback) override;
+
+ private:
+  // UserCloudPolicyStatusProvider::Delegate.
+  base::flat_set<std::string> GetDeviceAffiliationIds() override;
+  std::optional<std::string> GetProfileId() override;
+
+  // Returns a dictionary containing the policies supported by Chrome.
+  base::DictValue GetPolicyNames() const;
+
+  // Returns a dictionary containing the current values of the policies
+  // supported by Chrome and list of the policy IDs.
+  base::DictValue GetPolicyValues() const;
+
+  // Called to handle the "listenPoliciesUpdates" WebUI message.
+  void HandleListenPoliciesUpdates(const base::ListValue& args);
+
+  // Called to handle the "getPoliciesJson" WebUI message.
+  void HandleGetPoliciesJson(const base::ListValue& args);
+
+  // Called to handle the "reloadPolicies" WebUI message.
+  void HandleReloadPolicies(const base::ListValue& args);
+
+  // Called to handle the "uploadReport" WebUI message.
+  void HandleUploadReport(const base::ListValue& args);
+
+  // Called to handle the "uploadReport" WebUI message. This disables all
+  // policy providers except the LocalTestPolicyProvider which contains
+  // policies set via chrome://policy/test.
+  void HandleSetLocalTestPolicies(const base::ListValue& args);
+
+  // Called to handle the "revertLocalTestPolicies" WebUI message. This enables
+  // all policy providers except the LocalTestPolicyProvider which contains
+  // policies set via chrome://policy/test.
+  void HandleRevertLocalTestPolicies(const base::ListValue& args);
+
+  // Called to handle the "restartBrowser" WebUI message.
+  // This writes policies set via chrome://policy/test in a pref
+  // which will be read next time the browser restarts.
+  // Since the page is the same on browser and iOS, the message is the
+  // same on all platforms, however here, we expect the user to manually restart
+  // the browser.
+  void HandleRestartBrowser(const base::ListValue& args);
+
+  // Called to handle the "setUserAffiliation" WebUI message.
+  // This fakes that the LocalTestPolicyProvider policies are affiliated.
+  void HandleSetUserAffiliation(const base::ListValue& args);
+
+  // Called to handle the "getPolicyLogs" WebUI message from
+  // chrome://policy/logs.
+  void HandleGetPolicyLogs(const base::ListValue& args);
+  void OnGetPolicyLogs(base::Value callback_id, base::ListValue logs);
+
+  // Called to handle the "getAppliedTestPolicies" WebUI message from
+  // chrome://policy/test. This returns the policies that have been set through
+  // the page.
+  void HandleGetAppliedTestPolicies(const base::ListValue& args);
+
+  // Core logic for setting the user affiliation status for test policies.
+  // This is used to simulate user affiliation for testing purposes.
+  void SetUserAffiliatedImpl(bool affiliated);
+
+  // Core logic for retrieving the currently applied local test policies as a
+  // JSON string. Returns the current set of policies loaded in the
+  // LocalTestPolicyProvider.
+  const std::string& GetAppliedTestPoliciesImpl();
+
+  // Core logic for setting local test policies from a JSON string.
+  // This function is the core implementation for applying test policies
+  // to the LocalTestPolicyProvider.
+  void SetLocalTestPoliciesImpl(const std::string& policies);
+
+  // Send information about the current policy values to the UI. For each policy
+  // whose value has been set, dictionaries containing the value and additional
+  // metadata are sent.
+  void SendPolicies();
+
+  // Send the current policy schema to the UI: the list of supported Chrome &
+  // policies, and their types.
+  void SendSchema();
+
+  // Get a value dictionary of cloud policies' status information for each scope
+  // that has cloud policy enabled (device and/or user).
+  base::DictValue GetStatusValue() const;
+  base::flat_map<std::string, policy::mojom::StatusPtr> GetStatus();
+
+  void SendStatus();
+
+  // The callback invoked by PolicyService::RefreshPolicies().
+  void OnRefreshPoliciesDone();
+
+  // Build a JSON string containing data for all policies.
+  std::string GetPoliciesJsonImpl();
+
+  // Returns the PolicyService associated with this WebUI's BrowserState.
+  policy::PolicyService* GetPolicyService() const;
+
+  // Provider that supplies status information for machine policy.
+  std::unique_ptr<policy::PolicyStatusProvider> machine_status_provider_;
+
+  // Provider that supplies status information for user policy.
+  std::unique_ptr<policy::PolicyStatusProvider> user_policy_status_provider_;
+
+  inline bool IsMojoEnabled() const { return client_.is_bound(); }
+
+  base::ScopedObservation<policy::PolicyStatusProvider,
+                          policy::PolicyStatusProvider::Observer>
+      machine_status_provider_observation_{this};
+
+  uint32_t reload_policies_count_ = 0;
+  uint32_t copy_to_json_count_ = 0;
+  uint32_t upload_report_count_ = 0;
+
+  mojo::Receiver<policy::mojom::PolicyPageHandler> receiver_{this};
+  mojo::Remote<policy::mojom::PolicyPageClient> client_{mojo::NullRemote()};
+
+  raw_ref<ProfileIOS> profile_;
+
+  // Vends WeakPtrs for this object.
+  base::WeakPtrFactory<PolicyUIHandler> weak_factory_{this};
+};
+
+#endif  // IOS_CHROME_BROWSER_WEBUI_UI_BUNDLED_POLICY_POLICY_UI_HANDLER_H_

@@ -1,0 +1,34 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_VALUE_CLAMPING_UTILS_H_
+#define THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_VALUE_CLAMPING_UTILS_H_
+
+#include <concepts>
+
+#include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
+
+namespace blink {
+
+class CORE_EXPORT CSSValueClampingUtils {
+  STATIC_ONLY(CSSValueClampingUtils);
+
+ public:
+  // https://www.w3.org/TR/css-values-4/#top-level-calculation
+  template <typename T>
+    requires std::floating_point<T>
+  static T CensorNaNToZero(T value) {
+    return std::isnan(value) ? 0 : value;
+  }
+  static double ClampDouble(double value);
+  static double ClampLength(double value);
+  static float ClampLength(float value);
+  static double ClampTime(double value);
+  static double ClampAngle(double value);
+};
+
+}  // namespace blink
+
+#endif  // THIRD_PARTY_BLINK_RENDERER_CORE_CSS_CSS_VALUE_CLAMPING_UTILS_H_

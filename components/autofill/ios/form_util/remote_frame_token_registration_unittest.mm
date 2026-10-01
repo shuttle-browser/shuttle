@@ -1,0 +1,275 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import <optional>
+
+#import "base/functional/bind.h"
+#import "base/memory/raw_ptr.h"
+#import "base/test/ios/wait_util.h"
+#import "base/test/scoped_feature_list.h"
+#import "base/values.h"
+#import "components/autofill/core/common/unique_ids.h"
+#import "components/autofill/ios/browser/autofill_util.h"
+#import "components/autofill/ios/browser/new_frame_catcher.h"
+#import "components/autofill/ios/common/features.h"
+#import "components/autofill/ios/form_util/autofill_test_with_web_state.h"
+#import "components/autofill/ios/form_util/child_frame_registrar.h"
+#import "components/autofill/ios/form_util/form_handlers_java_script_feature.h"
+#import "ios/web/public/js_messaging/web_frame.h"
+#import "ios/web/public/js_messaging/web_frames_manager.h"
+#import "ios/web/public/test/fakes/fake_web_client.h"
+#import "ios/web/public/test/js_test_util.h"
+#import "ios/web/public/test/web_test_with_web_state.h"
+#import "testing/gmock/include/gmock/gmock.h"
+#import "testing/gtest/include/gtest/gtest.h"
+
+using autofill::test::NewFrameCatcher;
+using base::test::ios::kWaitForJSCompletionTimeout;
+using web::WebFrame;
+
+namespace autofill {
+
+// Test fixture for verifying the registration of remote frame tokens associated
+// to frame IDs in the frames registrar.
+class RemoteFrameTokenRegistrationTest : public web::WebTestWithWebState {
+ public:
+  RemoteFrameTokenRegistrationTest()
+      : web::WebTestWithWebState(std::make_unique<web::FakeWebClient>()) {
+    web::FakeWebClient* web_client =
+        static_cast<web::FakeWebClient*>(GetWebClient());
+    web_client->SetJavaScriptFeatures({
+        FormHandlersJavaScriptFeature::GetInstance(),
+    });
+  }
+
+ protected:
+  web::WebFramesManager* web_frames_manager() {
+    return FormHandlersJavaScriptFeature::GetInstance()->GetWebFramesManager(
+        web_state());
+  }
+
+  FormHandlersJavaScriptFeature* form_handlers_java_script_feature() {
+    return FormHandlersJavaScriptFeature::GetInstance();
+  }
+
+  ChildFrameRegistrar* frame_registrar() {
+    return ChildFrameRegistrar::GetOrCreateForWebState(web_state());
+  }
+
+  // Wait for a new frame to become available.
+  WebFrame* WaitForNewFrame(
+      std::unique_ptr<NewFrameCatcher> new_frame_catcher) {
+    NewFrameCatcher* catcher_ptr = new_frame_catcher.get();
+    EXPECT_TRUE(base::test::ios::WaitUntilConditionOrTimeout(
+        kWaitForJSCompletionTimeout, ^bool {
+          return catcher_ptr->latest_new_frame_id().has_value();
+        }));
+    return web_frames_manager()->GetFrameWithId(
+        new_frame_catcher->latest_new_frame_id().value_or(""));
+  }
+
+  // Reads the remote frame token stored in the DOM of `frame`;
+  std::optional<RemoteFrameToken> GetRemoteFrameToken(WebFrame* frame) {
+    __block bool done = false;
+    __block std::string remote_frame_token;
+    frame->ExecuteJavaScript(
+        u"document.documentElement.getAttribute('__gCrRemoteFrameToken')",
+        base::BindOnce(^(const base::Value* result) {
+          if (result && result->is_string()) {
+            remote_frame_token = result->GetString();
+          }
+          done = true;
+        }));
+
+    bool execution_complete = base::test::ios::WaitUntilConditionOrTimeout(
+        kWaitForJSCompletionTimeout, ^() {
+          return done;
+        });
+
+    if (execution_complete) {
+      if (std::optional<base::UnguessableToken> remote =
+              DeserializeJavaScriptFrameId(remote_frame_token)) {
+        return RemoteFrameToken(*remote);
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  // Finds the local frame token associated to `remote_frame_token` in the
+  // frames registrar.
+  std::optional<LocalFrameToken> LookupLocalFrameToken(
+      RemoteFrameToken remote_frame_token) {
+    return frame_registrar()->LookupChildFrame(remote_frame_token);
+  }
+};
+
+// Verifies that the main frame registers a remote frame token associated to its
+// frame id in the frames registrar.
+TEST_F(RemoteFrameTokenRegistrationTest, MainFrameRegistersItself) {
+  std::unique_ptr<NewFrameCatcher> catcher =
+      std::make_unique<NewFrameCatcher>(web_frames_manager());
+  LoadHtml(@"<html><body>Test</body></html>");
+  WebFrame* frame = WaitForNewFrame(std::move(catcher));
+  ASSERT_TRUE(frame);
+  ASSERT_TRUE(frame->IsMainFrame());
+
+  std::optional<RemoteFrameToken> remote_frame_token =
+      GetRemoteFrameToken(frame);
+  ASSERT_TRUE(remote_frame_token);
+
+  // Verify that the remote frame token was registered to the frame id.
+  std::optional<LocalFrameToken> local_frame_token =
+      LookupLocalFrameToken(*remote_frame_token);
+  ASSERT_TRUE(local_frame_token);
+
+  EXPECT_THAT(frame->GetFrameId(),
+              testing::StrCaseEq(local_frame_token->ToString()));
+}
+
+// Validates that a child frame registers a remote frame token associated to its
+// frame id.
+TEST_F(RemoteFrameTokenRegistrationTest, ChildFrameRegistersItself) {
+  std::unique_ptr<NewFrameCatcher> catcher =
+      std::make_unique<NewFrameCatcher>(web_frames_manager());
+  LoadHtml(@"<html><body>Test</body></html>");
+  WebFrame* main_frame = WaitForNewFrame(std::move(catcher));
+  ASSERT_TRUE(main_frame);
+  ASSERT_TRUE(main_frame->IsMainFrame());
+
+  catcher = std::make_unique<NewFrameCatcher>(web_frames_manager());
+
+  web::test::ExecuteJavaScriptForFeature(
+      web_state(),
+      @"const newFrame = document.createElement('iframe');newFrame.id = "
+      @"'frame1';document.body.appendChild(newFrame);",
+      form_handlers_java_script_feature());
+
+  WebFrame* child_frame = WaitForNewFrame(std::move(catcher));
+  ASSERT_TRUE(child_frame);
+  ASSERT_FALSE(child_frame->IsMainFrame());
+
+  std::optional<RemoteFrameToken> main_remote_token =
+      GetRemoteFrameToken(main_frame);
+  std::optional<RemoteFrameToken> child_remote_token =
+      GetRemoteFrameToken(child_frame);
+  ASSERT_TRUE(main_remote_token);
+  ASSERT_TRUE(child_remote_token);
+
+  // Verify that each frame registered a remote token associated to their frame
+  // IDs.
+  std::optional<LocalFrameToken> main_local_token =
+      LookupLocalFrameToken(*main_remote_token);
+  std::optional<LocalFrameToken> child_local_token =
+      LookupLocalFrameToken(*child_remote_token);
+  ASSERT_TRUE(main_local_token);
+  ASSERT_TRUE(child_local_token);
+
+  EXPECT_THAT(main_frame->GetFrameId(),
+              testing::StrCaseEq(main_local_token->ToString()));
+  EXPECT_THAT(child_frame->GetFrameId(),
+              testing::StrCaseEq(child_local_token->ToString()));
+}
+
+// Verifies that the main frame ignores registration commands sent to it.
+TEST_F(RemoteFrameTokenRegistrationTest, MainFrameIgnoresRegistrationCommand) {
+  LoadHtml(@"<html><body>Test</body></html>");
+  const RemoteFrameToken remote_token(base::UnguessableToken::Create());
+  web::test::ExecuteJavaScriptForFeature(
+      web_state(),
+      [NSString stringWithFormat:@"window.postMessage({command: "
+                                 @"'registerAsChildFrame', remoteFrameId: "
+                                 @"'%s'}, '*');",
+                                 remote_token.ToString().c_str()],
+      form_handlers_java_script_feature());
+
+  // Drain the JavaScript event loop to process the postMessage.
+  EXPECT_TRUE(web::test::ExecuteJavaScriptForFeatureAndReturnResult(
+      web_state(), @"true", form_handlers_java_script_feature()));
+  EXPECT_FALSE(LookupLocalFrameToken(remote_token).has_value());
+}
+
+// Verifies that a child frame ignores registration commands from a non-parent
+// frame (e.g. sibling), but accepts commands from its parent.
+TEST_F(RemoteFrameTokenRegistrationTest,
+       ChildFrameIgnoresNonParentRegistration) {
+  LoadHtml(@"<iframe></iframe><iframe></iframe>");
+  ASSERT_TRUE(base::test::ios::WaitUntilConditionOrTimeout(
+      kWaitForJSCompletionTimeout, ^bool {
+        return web_frames_manager()->GetAllWebFrames().size() == 3;
+      }));
+
+  const RemoteFrameToken sibling_token(base::UnguessableToken::Create());
+  const RemoteFrameToken parent_token(base::UnguessableToken::Create());
+
+  web::test::ExecuteJavaScriptForFeature(
+      web_state(),
+      [NSString
+          stringWithFormat:
+              @"window.frames[0].eval(\"parent.frames[1].postMessage({command: "
+              @"'registerAsChildFrame', remoteFrameId: '%s'}, '*');\");"
+              @"window.frames[1].postMessage({command: 'registerAsChildFrame', "
+              @"remoteFrameId: '%s'}, '*');",
+              sibling_token.ToString().c_str(),
+              parent_token.ToString().c_str()],
+      form_handlers_java_script_feature());
+
+  ASSERT_TRUE(base::test::ios::WaitUntilConditionOrTimeout(
+      kWaitForJSCompletionTimeout, ^bool {
+        return LookupLocalFrameToken(parent_token).has_value();
+      }));
+  EXPECT_FALSE(LookupLocalFrameToken(sibling_token).has_value());
+}
+
+// Verifies that a parent frame ignores registration commands sent from a child
+// frame.
+TEST_F(RemoteFrameTokenRegistrationTest, ParentFrameIgnoresChildRegistration) {
+  LoadHtml(@"<iframe></iframe>");
+  ASSERT_TRUE(base::test::ios::WaitUntilConditionOrTimeout(
+      kWaitForJSCompletionTimeout, ^bool {
+        return web_frames_manager()->GetAllWebFrames().size() == 2;
+      }));
+
+  const RemoteFrameToken token(base::UnguessableToken::Create());
+  web::test::ExecuteJavaScriptForFeature(
+      web_state(),
+      [NSString stringWithFormat:
+                    @"window.frames[0].eval(\"parent.postMessage({command: "
+                    @"'registerAsChildFrame', remoteFrameId: '%s'}, '*');\");",
+                    token.ToString().c_str()],
+      form_handlers_java_script_feature());
+
+  // Drain the JavaScript event loop to process the postMessage.
+  EXPECT_TRUE(web::test::ExecuteJavaScriptForFeatureAndReturnResult(
+      web_state(), @"true", form_handlers_java_script_feature()));
+  EXPECT_FALSE(LookupLocalFrameToken(token).has_value());
+}
+
+// Verifies that a nested child frame accepts registration commands originating
+// from an ancestor frame (e.g. grandparent).
+TEST_F(RemoteFrameTokenRegistrationTest,
+       ChildFrameAcceptsAncestorRegistration) {
+  LoadHtml(@"<iframe srcdoc='<iframe "
+           @"srcdoc=\"<body>grandchild</body>\"></iframe>'></iframe>");
+  ASSERT_TRUE(base::test::ios::WaitUntilConditionOrTimeout(
+      kWaitForJSCompletionTimeout, ^bool {
+        return web_frames_manager()->GetAllWebFrames().size() == 3;
+      }));
+
+  const RemoteFrameToken ancestor_token(base::UnguessableToken::Create());
+  web::test::ExecuteJavaScriptForFeature(
+      web_state(),
+      [NSString stringWithFormat:
+                    @"window.frames[0].frames[0].postMessage({command: "
+                    @"'registerAsChildFrame', remoteFrameId: '%s'}, '*');",
+                    ancestor_token.ToString().c_str()],
+      form_handlers_java_script_feature());
+
+  ASSERT_TRUE(base::test::ios::WaitUntilConditionOrTimeout(
+      kWaitForJSCompletionTimeout, ^bool {
+        return LookupLocalFrameToken(ancestor_token).has_value();
+      }));
+}
+
+}  // namespace autofill

@@ -1,0 +1,109 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/search_engine_choice/search_engine_choice_learn_more/coordinator/search_engine_choice_learn_more_coordinator.h"
+
+#import "base/check.h"
+#import "components/regional_capabilities/regional_capabilities_service.h"
+#import "ios/chrome/browser/regional_capabilities/model/regional_capabilities_service_factory.h"
+#import "ios/chrome/browser/search_engine_choice/search_engine_choice_learn_more/ui/search_engine_choice_learn_more_view_controller.h"
+#import "ios/chrome/browser/search_engine_choice/ui/search_engine_choice_constants.h"
+#import "ios/chrome/browser/shared/model/browser/browser.h"
+#import "ios/chrome/browser/shared/model/profile/profile_ios.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ui/base/device_form_factor.h"
+
+@interface SearchEngineChoiceLearnMoreCoordinator () <
+    SearchEngineChoiceLearnMoreDelegate,
+    UIAdaptivePresentationControllerDelegate>
+@end
+
+@implementation SearchEngineChoiceLearnMoreCoordinator {
+  // The view controller displaying the information.
+  SearchEngineChoiceLearnMoreViewController* _viewController;
+}
+
+- (void)start {
+  [super start];
+  ProfileIOS* profile = self.browser->GetProfile();
+  regional_capabilities::RegionalCapabilitiesService*
+      regionalCapabilitiesService =
+          ios::RegionalCapabilitiesServiceFactory::GetForProfile(profile);
+  std::optional<
+      regional_capabilities::RegionalCapabilitiesService::ChoiceScreenDesign>
+      choiceScreenDesign = regionalCapabilitiesService->GetChoiceScreenDesign();
+  CHECK(choiceScreenDesign.has_value());
+
+  _viewController = [[SearchEngineChoiceLearnMoreViewController alloc] init];
+  _viewController.thirdParagraphStringID =
+      choiceScreenDesign->learn_more_third_paragraph_string_id;
+  _viewController.delegate = self;
+  // Creates the navigation controller and presents.
+  UINavigationController* navigationController = [[UINavigationController alloc]
+      initWithRootViewController:_viewController];
+  // Need to set `modalPresentationStyle` otherwise, UIKit ignores the value.
+  if (self.forcePresentationFormSheet) {
+    navigationController.modalPresentationStyle = UIModalPresentationFormSheet;
+  } else {
+    ui::DeviceFormFactor deviceFormFactor = ui::GetDeviceFormFactor();
+    if (deviceFormFactor == ui::DEVICE_FORM_FACTOR_PHONE) {
+      navigationController.modalPresentationStyle =
+          UIModalPresentationPageSheet;
+    } else {
+      navigationController.modalPresentationStyle =
+          UIModalPresentationFormSheet;
+      navigationController.preferredContentSize =
+          CGSizeMake(kIPadSearchEngineChoiceScreenPreferredWidth,
+                     kIPadSearchEngineChoiceScreenPreferredHeight);
+    }
+  }
+  navigationController.presentationController.delegate = self;
+  UISheetPresentationController* presentationController =
+      navigationController.sheetPresentationController;
+  presentationController.prefersEdgeAttachedInCompactHeight = YES;
+  presentationController.detents = @[
+    [UISheetPresentationControllerDetent mediumDetent],
+    [UISheetPresentationControllerDetent largeDetent]
+  ];
+  [self.baseViewController presentViewController:navigationController
+                                        animated:YES
+                                      completion:nil];
+}
+
+- (void)stop {
+  [_viewController dismissViewControllerAnimated:NO completion:nil];
+  _viewController.delegate = nil;
+  _viewController = nil;
+  [super stop];
+}
+
+#pragma mark - UIAdaptivePresentationControllerDelegate
+
+- (void)presentationControllerDidDismiss:
+    (UIPresentationController*)presentationController {
+  [self viewControllerDidDismiss];
+}
+
+#pragma mark - SearchEngineChoiceLearnMoreDelegate
+
+- (void)learnMoreDone:
+    (SearchEngineChoiceLearnMoreViewController*)viewController {
+  CHECK_EQ(_viewController, viewController);
+  __weak __typeof(self) weakSelf = self;
+  [_viewController dismissViewControllerAnimated:YES
+                                      completion:^() {
+                                        [weakSelf viewControllerDidDismiss];
+                                      }];
+}
+
+#pragma mark - Private
+
+// Called when the view controller has been dismissed.
+- (void)viewControllerDidDismiss {
+  _viewController.delegate = nil;
+  _viewController = nil;
+  [self.delegate learnMoreDidDismiss];
+}
+
+@end

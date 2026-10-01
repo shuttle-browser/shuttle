@@ -1,0 +1,82 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef PDF_PDFIUM_PDFIUM_INK_READER_H_
+#define PDF_PDFIUM_PDFIUM_INK_READER_H_
+
+#include <optional>
+#include <vector>
+
+#include "base/containers/span.h"
+#include "base/memory/raw_ptr.h"
+#include "pdf/buildflags.h"
+#include "pdf/pdf_ink_text.h"
+#include "third_party/ink/src/ink/geometry/mesh.h"
+#include "third_party/ink/src/ink/geometry/partitioned_mesh.h"
+#include "third_party/ink/src/ink/geometry/point.h"
+#include "third_party/pdfium/public/fpdfview.h"
+
+static_assert(BUILDFLAG(ENABLE_PDF_INK2), "ENABLE_PDF_INK2 not set to true");
+
+namespace chrome_pdf {
+
+struct ReadV2InkPathResult {
+  FPDF_PAGEOBJECT page_object;
+  ink::PartitionedMesh shape;
+};
+
+// Returns whether the given `page` contains a "V2" path created by Ink.
+// Returns false if `page` is null.
+bool PageContainsV2InkPath(FPDF_PAGE page);
+
+// For the given `page`, iterate through all page objects and import "V2" paths
+// created by Ink as ink::PartitionedMeshs. For each shape, also return its
+// associated page object. The shapes do not have outlines and are only suitable
+// for use with ink::Intersects().
+//
+// If a path does not match the characteristics of a "V2" path, or if the path
+// cannot be properly tessellated, then it is ignored.
+//
+// If `page` is null, then the return value is an empty vector.
+std::vector<ReadV2InkPathResult> ReadV2InkPathsFromPageAsModeledShapes(
+    FPDF_PAGE page);
+
+// Exposes internal CreateInkMeshFromPolyline() for testing.
+std::optional<ink::Mesh> CreateInkMeshFromPolylineForTesting(
+    base::span<const ink::Point> polyline);
+
+struct ReadInkTextResult {
+  ReadInkTextResult(
+      InkTextBox textbox,
+      std::vector<base::RawPtrIfPtrT<FPDF_PAGEOBJECT, DanglingUntriaged>>
+          text_objects);
+  ReadInkTextResult(const ReadInkTextResult&) = delete;
+  ReadInkTextResult& operator=(const ReadInkTextResult&) = delete;
+  ReadInkTextResult(ReadInkTextResult&&) noexcept;
+  ReadInkTextResult& operator=(ReadInkTextResult&&) noexcept;
+  ~ReadInkTextResult();
+
+  InkTextBox textbox;
+  std::vector<base::RawPtrIfPtrT<FPDF_PAGEOBJECT, DanglingUntriaged>>
+      text_objects;
+};
+
+// Returns whether the given `page` contains any text annotations.
+// Returns false if `page` is null.
+bool PageContainsInkTextAnnotation(FPDF_PAGE page);
+
+// For the given `page`, iterates through all page objects and reconstructs
+// text annotations. For each textbox, groups internal text objects and returns
+// their associated metadata and string payload, along with the underlying
+// PDFium page objects.
+//
+// If a text object does not match the characteristics of a text annotation,
+// or if it holds corrupted parameters, it is ignored.
+//
+// If `page` is null, then the return value is an empty vector.
+std::vector<ReadInkTextResult> ReadInkTextAnnotationsFromPage(FPDF_PAGE page);
+
+}  // namespace chrome_pdf
+
+#endif  // PDF_PDFIUM_PDFIUM_INK_READER_H_

@@ -1,0 +1,822 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/settings/ui_bundled/settings_table_view_controller.h"
+
+#import "base/apple/foundation_util.h"
+#import "base/memory/raw_ptr.h"
+#import "base/strings/sys_string_conversions.h"
+#import "base/test/metrics/histogram_tester.h"
+#import "base/test/scoped_feature_list.h"
+#import "base/test/task_environment.h"
+#import "components/autofill/core/common/autofill_prefs.h"
+#import "components/feature_engagement/public/feature_constants.h"
+#import "components/feature_engagement/test/mock_tracker.h"
+#import "components/keyed_service/core/service_access_type.h"
+#import "components/password_manager/core/browser/password_manager_test_utils.h"
+#import "components/password_manager/core/browser/password_store/test_password_store.h"
+#import "components/password_manager/core/common/password_manager_pref_names.h"
+#import "components/policy/core/common/policy_loader_ios_constants.h"
+#import "components/policy/policy_constants.h"
+#import "components/search_engines/template_url_service.h"
+#import "components/signin/public/base/consent_level.h"
+#import "components/signin/public/base/signin_metrics.h"
+#import "components/signin/public/base/signin_pref_names.h"
+#import "components/sync/test/test_sync_service.h"
+#import "components/sync/test/test_sync_user_settings.h"
+#import "ios/chrome/browser/authentication/ui_bundled/cells/table_view_account_item.h"
+#import "ios/chrome/browser/default_browser/model/features.h"
+#import "ios/chrome/browser/discover_feed/model/discover_feed_visibility_browser_agent.h"
+#import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
+#import "ios/chrome/browser/passwords/model/ios_chrome_profile_password_store_factory.h"
+#import "ios/chrome/browser/photos/model/photos_service_factory.h"
+#import "ios/chrome/browser/policy/model/policy_util.h"
+#import "ios/chrome/browser/search_engines/model/template_url_service_factory.h"
+#import "ios/chrome/browser/settings/ui_bundled/settings_navigation_controller.h"
+#import "ios/chrome/browser/settings/ui_bundled/settings_table_view_controller_constants.h"
+#import "ios/chrome/browser/shared/model/application_context/application_context.h"
+#import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
+#import "ios/chrome/browser/shared/model/prefs/pref_names.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_manager_ios.h"
+#import "ios/chrome/browser/shared/public/commands/browser_commands.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/picture_in_picture_commands.h"
+#import "ios/chrome/browser/shared/public/commands/popup_menu_commands.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/shared/public/commands/settings_commands.h"
+#import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_detail_icon_item.h"
+#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_image_item.h"
+#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_info_button_item.h"
+#import "ios/chrome/browser/shared/ui/table_view/legacy_chrome_table_view_controller_test.h"
+#import "ios/chrome/browser/signin/model/authentication_service.h"
+#import "ios/chrome/browser/signin/model/authentication_service_factory.h"
+#import "ios/chrome/browser/signin/model/fake_authentication_service_delegate.h"
+#import "ios/chrome/browser/signin/model/fake_system_identity.h"
+#import "ios/chrome/browser/signin/model/fake_system_identity_manager.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
+#import "ios/chrome/browser/sync/model/test_sync_service_utils.h"
+#import "ios/chrome/browser/voice/model/voice_search_prefs.h"
+#import "ios/chrome/grit/ios_branded_strings.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_variations_service.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "testing/gtest/include/gtest/gtest.h"
+#import "testing/gtest_mac.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+#import "third_party/ocmock/gtest_support.h"
+#import "ui/base/l10n/l10n_util_mac.h"
+
+using web::WebTaskEnvironment;
+
+@interface SettingsTableViewController ()
+- (BOOL)triggerPassivePromoIfNeeded:(const base::Feature&)feature;
+- (void)didTapDefaultBrowserPromoCardCloseButton:(UIButton*)sender;
+@end
+
+std::unique_ptr<KeyedService> BuildFeatureEngagementMockTracker(
+    ProfileIOS* profile) {
+  return std::make_unique<feature_engagement::test::MockTracker>();
+}
+
+class SettingsTableViewControllerTest
+    : public LegacyChromeTableViewControllerTest {
+ public:
+  void SetUp() override {
+    LegacyChromeTableViewControllerTest::SetUp();
+
+    scoped_testing_variations_service_.Get()->OverrideStoredPermanentCountry(
+        "us");
+
+    TestProfileIOS::Builder builder;
+    builder.AddTestingFactory(
+        feature_engagement::TrackerFactory::GetInstance(),
+        base::BindOnce(&BuildFeatureEngagementMockTracker));
+    builder.AddTestingFactory(SyncServiceFactory::GetInstance(),
+                              base::BindRepeating(&CreateTestSyncService));
+    builder.AddTestingFactory(
+        ios::TemplateURLServiceFactory::GetInstance(),
+        ios::TemplateURLServiceFactory::GetDefaultFactory());
+    builder.AddTestingFactory(PhotosServiceFactory::GetInstance(),
+                              PhotosServiceFactory::GetDefaultFactory());
+    builder.AddTestingFactory(
+        AuthenticationServiceFactory::GetInstance(),
+        AuthenticationServiceFactory::GetFactoryWithDelegateForTesting(
+            std::make_unique<FakeAuthenticationServiceDelegate>()));
+    builder.AddTestingFactory(
+        IOSChromeProfilePasswordStoreFactory::GetInstance(),
+        base::BindOnce(&password_manager::BuildPasswordStore<
+                       ProfileIOS, password_manager::TestPasswordStore>));
+    profile_ = profile_manager_.AddProfileWithBuilder(std::move(builder));
+
+    // Prepare mocks for PushNotificationClient dependency
+    browser_ = std::make_unique<TestBrowser>(profile_.get());
+    DiscoverFeedVisibilityBrowserAgent::CreateForBrowser(browser_.get());
+
+    sync_service_ = static_cast<syncer::TestSyncService*>(
+        SyncServiceFactory::GetForProfile(profile_.get()));
+
+    auth_service_ = AuthenticationServiceFactory::GetForProfile(profile_.get());
+
+    password_store_mock_ =
+        base::WrapRefCounted(static_cast<password_manager::TestPasswordStore*>(
+            IOSChromeProfilePasswordStoreFactory::GetForProfile(
+                profile_.get(), ServiceAccessType::EXPLICIT_ACCESS)
+                .get()));
+
+    fake_identity_ = [FakeSystemIdentity fakeIdentity1];
+    FakeSystemIdentityManager* system_identity_manager =
+        FakeSystemIdentityManager::FromSystemIdentityManager(
+            GetApplicationContext()->GetSystemIdentityManager());
+    system_identity_manager->AddIdentity(fake_identity_);
+    auth_service_->SignIn(fake_identity_,
+                          signin_metrics::AccessPoint::kStartPage);
+    sync_service_->SetSignedIn(signin::ConsentLevel::kSignin);
+
+    // Make sure there is no pre-existing policy present.
+    [[NSUserDefaults standardUserDefaults]
+        removeObjectForKey:kPolicyLoaderIOSConfigurationKey];
+  }
+
+  void TearDown() override {
+    // Cleanup any policies left from the test.
+    [[NSUserDefaults standardUserDefaults]
+        removeObjectForKey:kPolicyLoaderIOSConfigurationKey];
+
+    [static_cast<SettingsTableViewController*>(controller())
+        settingsWillBeDismissed];
+    LegacyChromeTableViewControllerTest::TearDown();
+  }
+
+  LegacyChromeTableViewController* InstantiateController() override {
+    // Create mock command handlers. These are just for initializing the view
+    // controller; because the handlers are local to this methdd, they will not
+    // exist during tests, so if the tests call any commands they will fail.
+    id mock_application_handler = OCMProtocolMock(@protocol(SceneCommands));
+    id mock_settings_handler = OCMProtocolMock(@protocol(SettingsCommands));
+    id mock_browser_handler = OCMProtocolMock(@protocol(BrowserCommands));
+    id mock_pip_handler = OCMProtocolMock(@protocol(PictureInPictureCommands));
+    id mock_snackbar_handler = OCMProtocolMock(@protocol(SnackbarCommands));
+    mock_popup_menu_handler_ = OCMProtocolMock(@protocol(PopupMenuCommands));
+
+    CommandDispatcher* dispatcher = browser_->GetCommandDispatcher();
+    [dispatcher startDispatchingToTarget:mock_application_handler
+                             forProtocol:@protocol(SceneCommands)];
+    [dispatcher startDispatchingToTarget:mock_settings_handler
+                             forProtocol:@protocol(SettingsCommands)];
+    [dispatcher startDispatchingToTarget:mock_browser_handler
+                             forProtocol:@protocol(BrowserCommands)];
+    [dispatcher startDispatchingToTarget:mock_pip_handler
+                             forProtocol:@protocol(PictureInPictureCommands)];
+    [dispatcher startDispatchingToTarget:mock_snackbar_handler
+                             forProtocol:@protocol(SnackbarCommands)];
+    [dispatcher startDispatchingToTarget:mock_popup_menu_handler_
+                             forProtocol:@protocol(PopupMenuCommands)];
+
+    SettingsTableViewController* controller =
+        [[SettingsTableViewController alloc]
+                     initWithBrowser:browser_.get()
+            hasDefaultBrowserBlueDot:has_default_browser_blue_dot_];
+
+    navigation_controller_ = [[SettingsNavigationController alloc]
+        initWithRootViewController:controller
+                           browser:browser_.get()
+                          delegate:nil];
+    controller.sceneHandler = HandlerForProtocol(dispatcher, SceneCommands);
+    controller.settingsHandler =
+        HandlerForProtocol(dispatcher, SettingsCommands);
+    controller.snackbarHandler =
+        HandlerForProtocol(dispatcher, SnackbarCommands);
+    return controller;
+  }
+
+  void AddSigninDisabledEnterprisePolicy() {
+    NSDictionary* policy = @{
+      base::SysUTF8ToNSString(policy::key::kBrowserSignin) : [NSNumber
+          numberWithInt:static_cast<int>(BrowserSigninMode::kDisabled)]
+    };
+
+    [[NSUserDefaults standardUserDefaults]
+        setObject:policy
+           forKey:kPolicyLoaderIOSConfigurationKey];
+  }
+
+  PrefService* GetLocalState() {
+    return GetApplicationContext()->GetLocalState();
+  }
+
+  void VerifyDefaultBrowwserBlueDot(bool has_default_browser_blue_dot) {
+    has_default_browser_blue_dot_ = has_default_browser_blue_dot;
+    CreateController();
+    CheckController();
+
+    NSArray<TableViewItem*>* default_section_items =
+        [controller().tableViewModel
+            itemsInSectionWithIdentifier:SettingsSectionIdentifier::
+                                             SettingsSectionIdentifierDefaults];
+
+    TableViewDetailIconItem* default_browser_item =
+        static_cast<TableViewDetailIconItem*>(default_section_items[0]);
+
+    EXPECT_EQ(has_default_browser_blue_dot,
+              BadgeType::kNotificationDot == default_browser_item.badgeType);
+  }
+
+ protected:
+  // Needed for test profile created by TestProfileIOS().
+  web::WebTaskEnvironment task_environment_;
+  IOSChromeScopedTestingLocalState scoped_testing_local_state_;
+  IOSChromeScopedTestingVariationsService scoped_testing_variations_service_;
+  TestProfileManagerIOS profile_manager_;
+  SettingsNavigationController* navigation_controller_;
+
+  FakeSystemIdentity* fake_identity_ = nullptr;
+  raw_ptr<AuthenticationService> auth_service_ = nullptr;
+  raw_ptr<syncer::TestSyncService> sync_service_ = nullptr;
+  scoped_refptr<password_manager::TestPasswordStore> password_store_mock_;
+
+  raw_ptr<TestProfileIOS> profile_;
+  std::unique_ptr<TestBrowser> browser_;
+
+  BOOL has_default_browser_blue_dot_ = false;
+  id<PopupMenuCommands> mock_popup_menu_handler_;
+};
+
+// Verifies that the sign-in setting row is removed if sign-in is disabled
+// through the "Allow Chrome Sign-in" option.
+TEST_F(SettingsTableViewControllerTest, SigninDisabled) {
+  profile_->GetPrefs()->SetBoolean(prefs::kSigninAllowed, false);
+  CreateController();
+  CheckController();
+
+  ASSERT_FALSE([controller().tableViewModel
+      hasSectionForSectionIdentifier:SettingsSectionIdentifier::
+                                         SettingsSectionIdentifierSignIn]);
+}
+
+// Verifies that for a signed-in user, the account section shows 2 items: the
+// one with the name/email, and the "Google Services" one.
+TEST_F(SettingsTableViewControllerTest, AccountSectionIfSignedIn) {
+  auth_service_->SignIn(fake_identity_,
+                        signin_metrics::AccessPoint::kStartPage);
+  sync_service_->SetSignedIn(signin::ConsentLevel::kSignin);
+
+  CreateController();
+  CheckController();
+
+  NSArray* account_items = [controller().tableViewModel
+      itemsInSectionWithIdentifier:SettingsSectionIdentifier::
+                                       SettingsSectionIdentifierAccount];
+  ASSERT_EQ(2U, account_items.count);
+
+  auto* account_item = static_cast<TableViewAccountItem*>(account_items[0]);
+  auto* google_services_item =
+      static_cast<TableViewDetailIconItem*>(account_items[1]);
+  EXPECT_NSEQ(fake_identity_.userFullName, account_item.text);
+  EXPECT_NSEQ(fake_identity_.userEmail, account_item.detailText);
+  EXPECT_NSEQ(l10n_util::GetNSString(IDS_IOS_GOOGLE_SERVICES_SETTINGS_TITLE),
+              google_services_item.text);
+  EXPECT_NSEQ(nil, google_services_item.detailText);
+}
+
+// Verifies the correct relative section placement of the Default Passive
+// section when the user is signed in.
+TEST_F(SettingsTableViewControllerTest,
+       DefaultPassiveSectionPlacementWhenSignedIn) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      kIOSSettingsDefaultBrowserPromoV2,
+      {{kIOSSettingsDefaultBrowserPromoTypeParam, "1"}});
+
+  feature_engagement::test::MockTracker* tracker =
+      static_cast<feature_engagement::test::MockTracker*>(
+          feature_engagement::TrackerFactory::GetForProfile(profile_));
+  EXPECT_CALL(
+      *tracker,
+      ShouldTriggerHelpUI(testing::Ref(
+          feature_engagement::kIPHiOSPromoSettingsCellDefaultBrowserFeature)))
+      .WillRepeatedly(testing::Return(true));
+  EXPECT_CALL(
+      *tracker,
+      Dismissed(testing::Ref(
+          feature_engagement::kIPHiOSPromoSettingsCellDefaultBrowserFeature)))
+      .Times(testing::AnyNumber());
+
+  auth_service_->SignIn(fake_identity_,
+                        signin_metrics::AccessPoint::kStartPage);
+  sync_service_->SetSignedIn(signin::ConsentLevel::kSignin);
+
+  CreateController();
+  CheckController();
+
+  TableViewModel<TableViewItem*>* model = controller().tableViewModel;
+
+  ASSERT_TRUE(
+      [model hasSectionForSectionIdentifier:
+                 SettingsSectionIdentifier::SettingsSectionIdentifierAccount]);
+  ASSERT_TRUE([model hasSectionForSectionIdentifier:
+                         SettingsSectionIdentifier::
+                             SettingsSectionIdentifierDefaultPassiveCell]);
+
+  NSInteger account_index =
+      [model sectionForSectionIdentifier:SettingsSectionIdentifier::
+                                             SettingsSectionIdentifierAccount];
+  NSInteger default_passive_index =
+      [model sectionForSectionIdentifier:
+                 SettingsSectionIdentifier::
+                     SettingsSectionIdentifierDefaultPassiveCell];
+
+  EXPECT_EQ(default_passive_index, account_index + 1);
+}
+
+// Test that the Card promo persists within the same session even if
+// ShouldTriggerHelpUI subsequently returns false.
+TEST_F(SettingsTableViewControllerTest,
+       DefaultBrowserCardPromoSameSessionPersistence) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      kIOSSettingsDefaultBrowserPromoV2,
+      {{kIOSSettingsDefaultBrowserPromoTypeParam, "0"}});
+
+  feature_engagement::test::MockTracker* tracker =
+      static_cast<feature_engagement::test::MockTracker*>(
+          feature_engagement::TrackerFactory::GetForProfile(profile_));
+  EXPECT_CALL(
+      *tracker,
+      ShouldTriggerHelpUI(testing::Ref(
+          feature_engagement::kIPHiOSPromoSettingsCardDefaultBrowserFeature)))
+      .WillOnce(testing::Return(true))
+      .WillRepeatedly(testing::Return(false));
+  EXPECT_CALL(
+      *tracker,
+      Dismissed(testing::Ref(
+          feature_engagement::kIPHiOSPromoSettingsCardDefaultBrowserFeature)))
+      .Times(testing::AnyNumber());
+
+  auth_service_->SignIn(fake_identity_,
+                        signin_metrics::AccessPoint::kStartPage);
+  sync_service_->SetSignedIn(signin::ConsentLevel::kSignin);
+
+  CreateController();
+  CheckController();
+
+  TableViewModel<TableViewItem*>* model = controller().tableViewModel;
+  ASSERT_TRUE([model hasSectionForSectionIdentifier:
+                         SettingsSectionIdentifier::
+                             SettingsSectionIdentifierDefaultPassiveCard]);
+
+  // Verify that calling triggerPassivePromoIfNeeded again in the same session
+  // returns YES even when ShouldTriggerHelpUI now returns false, because
+  // card_shown_in_current_session is YES.
+  BOOL triggered = [static_cast<SettingsTableViewController*>(controller())
+      triggerPassivePromoIfNeeded:
+          feature_engagement::kIPHiOSPromoSettingsCardDefaultBrowserFeature];
+  ASSERT_TRUE(triggered);
+}
+
+// Test that dismissing the Card promo resets session state and logs UMA,
+// preventing subsequent automatic triggers without ShouldTriggerHelpUI.
+TEST_F(SettingsTableViewControllerTest,
+       DefaultBrowserCardPromoDismissalResetsSessionState) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      kIOSSettingsDefaultBrowserPromoV2,
+      {{kIOSSettingsDefaultBrowserPromoTypeParam, "0"}});
+
+  base::HistogramTester histogram_tester;
+
+  feature_engagement::test::MockTracker* tracker =
+      static_cast<feature_engagement::test::MockTracker*>(
+          feature_engagement::TrackerFactory::GetForProfile(profile_));
+  EXPECT_CALL(
+      *tracker,
+      ShouldTriggerHelpUI(testing::Ref(
+          feature_engagement::kIPHiOSPromoSettingsCardDefaultBrowserFeature)))
+      .WillOnce(testing::Return(true))
+      .WillRepeatedly(testing::Return(false));
+  EXPECT_CALL(
+      *tracker,
+      Dismissed(testing::Ref(
+          feature_engagement::kIPHiOSPromoSettingsCardDefaultBrowserFeature)))
+      .Times(testing::AnyNumber());
+
+  auth_service_->SignIn(fake_identity_,
+                        signin_metrics::AccessPoint::kStartPage);
+  sync_service_->SetSignedIn(signin::ConsentLevel::kSignin);
+
+  CreateController();
+  CheckController();
+
+  TableViewModel<TableViewItem*>* model = controller().tableViewModel;
+  ASSERT_TRUE([model hasSectionForSectionIdentifier:
+                         SettingsSectionIdentifier::
+                             SettingsSectionIdentifierDefaultPassiveCard]);
+
+  // Simulate tapping the close button on the card promo.
+  [static_cast<SettingsTableViewController*>(controller())
+      didTapDefaultBrowserPromoCardCloseButton:nil];
+
+  histogram_tester.ExpectUniqueSample(
+      "IOS.Settings.DefaultBrowserSettingsPassivePromo", 0 /* kClosed */, 1);
+
+  // Calling triggerPassivePromoIfNeeded should now return NO because
+  // card_shown_in_current_session was reset to NO and ShouldTriggerHelpUI
+  // returns false.
+  BOOL triggered = [static_cast<SettingsTableViewController*>(controller())
+      triggerPassivePromoIfNeeded:
+          feature_engagement::kIPHiOSPromoSettingsCardDefaultBrowserFeature];
+  ASSERT_FALSE(triggered);
+}
+
+// Verifies the correct relative section placement of the Default Passive
+// section when the user is signed out.
+TEST_F(SettingsTableViewControllerTest,
+       DefaultPassiveSectionPlacementWhenSignedOut) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      kIOSSettingsDefaultBrowserPromoV2,
+      {{kIOSSettingsDefaultBrowserPromoTypeParam, "1"}});
+
+  feature_engagement::test::MockTracker* tracker =
+      static_cast<feature_engagement::test::MockTracker*>(
+          feature_engagement::TrackerFactory::GetForProfile(profile_));
+  EXPECT_CALL(
+      *tracker,
+      ShouldTriggerHelpUI(testing::Ref(
+          feature_engagement::kIPHiOSPromoSettingsCellDefaultBrowserFeature)))
+      .WillRepeatedly(testing::Return(true));
+  EXPECT_CALL(
+      *tracker,
+      Dismissed(testing::Ref(
+          feature_engagement::kIPHiOSPromoSettingsCellDefaultBrowserFeature)))
+      .Times(testing::AnyNumber());
+
+  auth_service_->SignOut(signin_metrics::ProfileSignout::kTest, nil);
+  ASSERT_FALSE(auth_service_->HasPrimaryIdentity());
+
+  CreateController();
+  CheckController();
+
+  TableViewModel<TableViewItem*>* model = controller().tableViewModel;
+
+  ASSERT_TRUE(
+      [model hasSectionForSectionIdentifier:
+                 SettingsSectionIdentifier::SettingsSectionIdentifierSignIn]);
+  ASSERT_TRUE(
+      [model hasSectionForSectionIdentifier:
+                 SettingsSectionIdentifier::SettingsSectionIdentifierAccount]);
+  ASSERT_TRUE([model hasSectionForSectionIdentifier:
+                         SettingsSectionIdentifier::
+                             SettingsSectionIdentifierDefaultPassiveCell]);
+
+  NSInteger signin_index =
+      [model sectionForSectionIdentifier:SettingsSectionIdentifier::
+                                             SettingsSectionIdentifierSignIn];
+  NSInteger account_index =
+      [model sectionForSectionIdentifier:SettingsSectionIdentifier::
+                                             SettingsSectionIdentifierAccount];
+  NSInteger default_passive_index =
+      [model sectionForSectionIdentifier:
+                 SettingsSectionIdentifier::
+                     SettingsSectionIdentifierDefaultPassiveCell];
+
+  EXPECT_EQ(account_index, signin_index + 1);
+  EXPECT_EQ(default_passive_index, account_index + 1);
+}
+
+// Verifies that the FET feature is properly dismissed (Dismissed(...)) when
+// closing/dismissing settings.
+TEST_F(SettingsTableViewControllerTest,
+       DefaultBrowserPassivePromoDismissedWhenSettingsClosed) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      kIOSSettingsDefaultBrowserPromoV2,
+      {{kIOSSettingsDefaultBrowserPromoTypeParam, "1"}});
+
+  feature_engagement::test::MockTracker* tracker =
+      static_cast<feature_engagement::test::MockTracker*>(
+          feature_engagement::TrackerFactory::GetForProfile(profile_));
+  EXPECT_CALL(
+      *tracker,
+      ShouldTriggerHelpUI(testing::Ref(
+          feature_engagement::kIPHiOSPromoSettingsCellDefaultBrowserFeature)))
+      .WillRepeatedly(testing::Return(true));
+
+  // Expect that Dismissed is called exactly once when settings is dismissed.
+  EXPECT_CALL(
+      *tracker,
+      Dismissed(testing::Ref(
+          feature_engagement::kIPHiOSPromoSettingsCellDefaultBrowserFeature)))
+      .Times(1);
+
+  CreateController();
+  CheckController();
+
+  // Dismiss settings.
+  [static_cast<SettingsTableViewController*>(controller())
+      settingsWillBeDismissed];
+}
+
+// Verifies that the sign-in setting item is replaced by the managed sign-in
+// item if sign-in is disabled by policy.
+TEST_F(SettingsTableViewControllerTest, SigninDisabledByPolicy) {
+  AddSigninDisabledEnterprisePolicy();
+  GetLocalState()->SetInteger(prefs::kBrowserSigninPolicy,
+                              static_cast<int>(BrowserSigninMode::kDisabled));
+  CreateController();
+  CheckController();
+
+  NSArray* signin_items = [controller().tableViewModel
+      itemsInSectionWithIdentifier:SettingsSectionIdentifier::
+                                       SettingsSectionIdentifierSignIn];
+  ASSERT_EQ(1U, signin_items.count);
+
+  TableViewInfoButtonItem* signin_item =
+      static_cast<TableViewInfoButtonItem*>(signin_items[0]);
+  ASSERT_NSEQ(signin_item.text,
+              l10n_util::GetNSString(IDS_IOS_SIGN_IN_TO_CHROME_SETTING_TITLE));
+  ASSERT_NSEQ(signin_item.statusText,
+              l10n_util::GetNSString(IDS_IOS_SETTING_OFF));
+}
+
+// Verifies that when eligible the account item model holds the Account Storage
+// error.
+TEST_F(SettingsTableViewControllerTest, HoldAccountStorageErrorWhenEligible) {
+  // Set account error.
+  auth_service_->SignIn(fake_identity_,
+                        signin_metrics::AccessPoint::kStartPage);
+  sync_service_->SetSignedIn(signin::ConsentLevel::kSignin);
+  sync_service_->GetUserSettings()->SetPassphraseRequired();
+
+  CreateController();
+  CheckController();
+
+  NSArray* account_items = [controller().tableViewModel
+      itemsInSectionWithIdentifier:SettingsSectionIdentifier::
+                                       SettingsSectionIdentifierAccount];
+  ASSERT_NE(0U, account_items.count);
+
+  // Verify that the account item is in an error state.
+  TableViewAccountItem* identityAccountItem =
+      base::apple::ObjCCast<TableViewAccountItem>(account_items[0]);
+  ASSERT_EQ(TableViewAccountDetailImage::kError,
+            identityAccountItem.detailImage);
+}
+
+// Verifies that the error is removed from the model when the Account Storage
+// error is resolved. Triggers the model update by firing a Sync State change.
+TEST_F(SettingsTableViewControllerTest, ClearAccountStorageErrorWhenResolved) {
+  // Set account error to resolve.
+  auth_service_->SignIn(fake_identity_,
+                        signin_metrics::AccessPoint::kStartPage);
+  sync_service_->SetSignedIn(signin::ConsentLevel::kSignin);
+  const char kSyncPassphrase[] = "passphrase";
+  sync_service_->GetUserSettings()->SetPassphraseRequired(kSyncPassphrase);
+
+  CreateController();
+  CheckController();
+
+  NSArray* account_items = [controller().tableViewModel
+      itemsInSectionWithIdentifier:SettingsSectionIdentifier::
+                                       SettingsSectionIdentifierAccount];
+  ASSERT_NE(0U, account_items.count);
+
+  // Verify that the account item is in an error state.
+  TableViewAccountItem* identityAccountItem =
+      base::apple::ObjCCast<TableViewAccountItem>(account_items[0]);
+  ASSERT_EQ(TableViewAccountDetailImage::kError,
+            identityAccountItem.detailImage);
+
+  // Resolve the account error.
+  sync_service_->GetUserSettings()->SetDecryptionPassphrase(kSyncPassphrase);
+
+  // Verify that the account item is not in an error state when the error was
+  // resolved and the data model reloaded.
+  [controller() loadModel];
+  account_items = [controller().tableViewModel
+      itemsInSectionWithIdentifier:SettingsSectionIdentifier::
+                                       SettingsSectionIdentifierAccount];
+  ASSERT_NE(0U, account_items.count);
+  identityAccountItem =
+      base::apple::ObjCCast<TableViewAccountItem>(account_items[0]);
+  ASSERT_TRUE(identityAccountItem != nil);
+  ASSERT_EQ(TableViewAccountDetailImage::kNone,
+            identityAccountItem.detailImage);
+}
+
+// Verifies that when eligible the account item model doesn't have the Account
+// Storage error when there is no error.
+TEST_F(SettingsTableViewControllerTest, DontHoldAccountErrorWhenNoError) {
+  // Set no account error state.
+  auth_service_->SignIn(fake_identity_,
+                        signin_metrics::AccessPoint::kStartPage);
+  sync_service_->SetSignedIn(signin::ConsentLevel::kSignin);
+
+  CreateController();
+  CheckController();
+
+  NSArray* account_items = [controller().tableViewModel
+      itemsInSectionWithIdentifier:SettingsSectionIdentifier::
+                                       SettingsSectionIdentifierAccount];
+  ASSERT_NE(0U, account_items.count);
+
+  // Verify that the account item is not in an error state.
+  TableViewAccountItem* identityAccountItem =
+      base::apple::ObjCCast<TableViewAccountItem>(account_items[0]);
+  ASSERT_TRUE(identityAccountItem != nil);
+  ASSERT_EQ(TableViewAccountDetailImage::kNone,
+            identityAccountItem.detailImage);
+}
+
+// Verifies that if the Save to Photos flag is enabled and Save to Photos is
+// supported, then there is a Downloads Settings item in the expected section.
+TEST_F(SettingsTableViewControllerTest, HasDownloadsMenuItem) {
+  base::test::ScopedFeatureList features;
+
+  CreateController();
+  CheckController();
+
+  EXPECT_TRUE([controller().tableViewModel
+      hasItemForItemType:SettingsItemTypeDownloadsSettings
+       sectionIdentifier:SettingsSectionIdentifierInfo]);
+}
+
+// Verifies that if kDomainLevelSitePermissions is enabled, then there is a
+// Site Permissions Settings item in the Info section.
+TEST_F(SettingsTableViewControllerTest, HasSitePermissionsMenuItem) {
+  base::test::ScopedFeatureList features;
+  features.InitAndEnableFeature(kDomainLevelSitePermissions);
+
+  CreateController();
+  CheckController();
+
+  EXPECT_TRUE([controller().tableViewModel
+      hasItemForItemType:SettingsItemTypeSitePermissions
+       sectionIdentifier:SettingsSectionIdentifierInfo]);
+}
+
+// Verifies that Backend Promo Debug Tools item is in the Debug section when
+// enabled.
+TEST_F(SettingsTableViewControllerTest, HasBackendPromoDebugToolsItem) {
+  [[NSUserDefaults standardUserDefaults] setBool:YES
+                                          forKey:@"ShowBackendPromoDebugTools"];
+
+  CreateController();
+  CheckController();
+
+  EXPECT_TRUE([controller().tableViewModel
+      hasItemForItemType:SettingsItemTypeBackendPromoDebugTools
+       sectionIdentifier:SettingsSectionIdentifierDebug]);
+
+  [[NSUserDefaults standardUserDefaults]
+      removeObjectForKey:@"ShowBackendPromoDebugTools"];
+}
+
+// Verifies that the Level Up walkthrough target item (Autofill and Passwords)
+// exists in SettingsTableViewController.
+TEST_F(SettingsTableViewControllerTest, HasAutofillAndPasswordsLevelUpItem) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(kYourSavedInfoSettingsPageIos);
+
+  CreateController();
+  CheckController();
+
+  EXPECT_TRUE([controller().tableViewModel
+      hasItemForItemType:SettingsItemTypeAutofillAndPasswords
+       sectionIdentifier:SettingsSectionIdentifierBasics]);
+}
+
+// Verifies that the default browser blue dot is displayed when indicated.
+TEST_F(SettingsTableViewControllerTest, TestHasDefaultBrowserBlueDot) {
+  VerifyDefaultBrowwserBlueDot(true);
+}
+
+// Verifies that the default browser blue dot is not displayed when indicated.
+TEST_F(SettingsTableViewControllerTest, TestHasNoDefaultBrowserBlueDot) {
+  VerifyDefaultBrowwserBlueDot(false);
+}
+
+// Verifies that blue dot will be updated when default browser settings are
+// viewed while blue dot was showing.
+TEST_F(SettingsTableViewControllerTest,
+       TestUpdateToolsMenuBlueDotVisibilityCalled) {
+  has_default_browser_blue_dot_ = true;
+  CreateController();
+  CheckController();
+
+  OCMExpect([mock_popup_menu_handler_ updateToolsMenuBlueDotVisibility]);
+
+  TableViewModel<TableViewItem*>* model = controller().tableViewModel;
+  NSInteger defaults_section =
+      [model sectionForSectionIdentifier:SettingsSectionIdentifier::
+                                             SettingsSectionIdentifierDefaults];
+
+  // Tap on the default browser settings.
+  [controller() tableView:controller().tableView
+      didSelectRowAtIndexPath:[NSIndexPath indexPathForItem:0
+                                                  inSection:defaults_section]];
+
+  EXPECT_OCMOCK_VERIFY((id)mock_popup_menu_handler_);
+}
+
+// Verifies that blue dot will not be updated when default browser settings
+// are viewed with no blue dot showing.
+TEST_F(SettingsTableViewControllerTest,
+       TestUpdateToolsMenuBlueDotVisibilityNotCalled) {
+  has_default_browser_blue_dot_ = false;
+  CreateController();
+  CheckController();
+
+  OCMReject([mock_popup_menu_handler_ updateToolsMenuBlueDotVisibility]);
+
+  TableViewModel<TableViewItem*>* model = controller().tableViewModel;
+  NSInteger defaults_section =
+      [model sectionForSectionIdentifier:SettingsSectionIdentifier::
+                                             SettingsSectionIdentifierDefaults];
+
+  // Tap on the default browser settings.
+  [controller() tableView:controller().tableView
+      didSelectRowAtIndexPath:[NSIndexPath indexPathForItem:0
+                                                  inSection:defaults_section]];
+
+  EXPECT_OCMOCK_VERIFY((id)mock_popup_menu_handler_);
+}
+
+// Tests that updating search engines does not cause a crash.
+// See crbug.com/408017580 for more details.
+TEST_F(SettingsTableViewControllerTest, SearchEngineChangedDoesntCrash) {
+  // Make sure the controller is initialized without creating the view/model.
+  CreateControllerWithoutView();
+
+  TemplateURLService* template_url_service =
+      ios::TemplateURLServiceFactory::GetForProfile(profile_.get());
+
+  // Force the search engines to load and alert their observer (the settings
+  // table view controller). This should not crash, even though the view
+  // controller has not loaded its model yet.
+  template_url_service->Load();
+}
+
+// Tests that updating observed preferences before the model is loaded
+// does not cause a crash. See crbug.com/419661932 for more details.
+TEST_F(SettingsTableViewControllerTest, ObservedPreferencesChangedDoesntCrash) {
+  CreateControllerWithoutView();
+  profile_->GetPrefs()->SetString(prefs::kVoiceSearchLocale, "en-US");
+  profile_->GetPrefs()->SetBoolean(
+      password_manager::prefs::kCredentialsEnableService, NO);
+  profile_->GetPrefs()->SetBoolean(autofill::prefs::kAutofillProfileEnabled,
+                                   NO);
+  profile_->GetPrefs()->SetBoolean(autofill::prefs::kAutofillCreditCardEnabled,
+                                   NO);
+  CheckController();
+}
+
+// Verifies that the Basics section only shows the Autofill and Passwords row
+// when the YourSavedInfoSettingsPageIos flag is enabled.
+TEST_F(SettingsTableViewControllerTest,
+       BasicsSectionWithYourSavedInfoSettingsPageIosEnabled) {
+  base::test::ScopedFeatureList features{kYourSavedInfoSettingsPageIos};
+
+  CreateController();
+  CheckController();
+
+  NSArray* basics_items = [controller().tableViewModel
+      itemsInSectionWithIdentifier:SettingsSectionIdentifier::
+                                       SettingsSectionIdentifierBasics];
+  ASSERT_EQ(1U, basics_items.count);
+
+  TableViewItem* item = static_cast<TableViewItem*>(basics_items[0]);
+  EXPECT_EQ(SettingsItemTypeAutofillAndPasswords, item.type);
+}
+
+// Verifies that the Basics section shows the Passwords, Payment Methods, and
+// Addresses and More rows when the YourSavedInfoSettingsPageIos flag is
+// disabled.
+// TODO(crbug.com/496456595): Remove once kYourSavedInfoSettingsPageIos is
+// launched.
+TEST_F(SettingsTableViewControllerTest,
+       BasicsSectionWithYourSavedInfoSettingsPageIosDisabled) {
+  base::test::ScopedFeatureList features;
+  features.InitAndDisableFeature(kYourSavedInfoSettingsPageIos);
+
+  CreateController();
+  CheckController();
+
+  NSArray* basics_items = [controller().tableViewModel
+      itemsInSectionWithIdentifier:SettingsSectionIdentifier::
+                                       SettingsSectionIdentifierBasics];
+  ASSERT_EQ(3U, basics_items.count);
+
+  TableViewItem* item1 = static_cast<TableViewItem*>(basics_items[0]);
+  EXPECT_EQ(SettingsItemTypePasswords, item1.type);
+
+  TableViewItem* item2 = static_cast<TableViewItem*>(basics_items[1]);
+  EXPECT_EQ(SettingsItemTypeAutofillCreditCard, item2.type);
+
+  TableViewItem* item3 = static_cast<TableViewItem*>(basics_items[2]);
+  EXPECT_EQ(SettingsItemTypeAutofillProfile, item3.type);
+}

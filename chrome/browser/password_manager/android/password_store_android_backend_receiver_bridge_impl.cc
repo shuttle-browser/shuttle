@@ -1,0 +1,158 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/password_manager/android/password_store_android_backend_receiver_bridge_impl.h"
+
+#include <jni.h>
+
+#include <cstdint>
+
+#include "base/android/jni_android.h"
+#include "base/sequence_checker.h"
+#include "base/task/sequenced_task_runner.h"
+#include "chrome/browser/password_manager/android/protos/list_affiliated_passwords_result.pb.h"
+#include "chrome/browser/password_manager/android/protos/list_passwords_result.pb.h"
+#include "chrome/browser/password_manager/android/protos/password_with_local_data.pb.h"
+#include "chrome/browser/password_manager/android/unified_password_manager_proto_utils.h"
+#include "components/password_manager/core/browser/password_form.h"
+#include "components/password_manager/core/browser/password_store/stored_credential.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "chrome/browser/password_manager/android/jni_headers/PasswordStoreAndroidBackendReceiverBridgeImpl_jni.h"
+
+namespace password_manager {
+
+namespace {
+
+using JobId = PasswordStoreAndroidBackendReceiverBridge::JobId;
+
+template <typename ProtoType>
+std::vector<StoredCredential> CreateStoredCredentialsVector(
+    const base::android::JavaRef<jbyteArray>& passwords,
+    password_manager::IsAccountStore is_account_store) {
+  ProtoType list_passwords_result;
+  {
+    auto view = passwords.CreateViewCritical<uint8_t>(
+        base::android::AttachCurrentThread());
+    bool parsing_succeeds =
+        list_passwords_result.ParseFromArray(view.data(), view.size());
+    DCHECK(parsing_succeeds);
+  }
+  return StoredCredentialVectorFromListResult(list_passwords_result,
+                                              is_account_store);
+}
+
+}  // namespace
+
+std::unique_ptr<PasswordStoreAndroidBackendReceiverBridge>
+PasswordStoreAndroidBackendReceiverBridge::Create(
+    password_manager::IsAccountStore is_account_store) {
+  return std::make_unique<PasswordStoreAndroidBackendReceiverBridgeImpl>(
+      is_account_store);
+}
+
+PasswordStoreAndroidBackendReceiverBridgeImpl::
+    PasswordStoreAndroidBackendReceiverBridgeImpl(
+        password_manager::IsAccountStore is_account_store)
+    : is_account_store_(is_account_store) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(main_sequence_checker_);
+  java_object_ = Java_PasswordStoreAndroidBackendReceiverBridgeImpl_create(
+      base::android::AttachCurrentThread(), reinterpret_cast<intptr_t>(this));
+}
+
+PasswordStoreAndroidBackendReceiverBridgeImpl::
+    ~PasswordStoreAndroidBackendReceiverBridgeImpl() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(main_sequence_checker_);
+  Java_PasswordStoreAndroidBackendReceiverBridgeImpl_destroy(
+      base::android::AttachCurrentThread(), java_object_);
+}
+
+base::android::ScopedJavaGlobalRef<jobject>
+PasswordStoreAndroidBackendReceiverBridgeImpl::GetJavaBridge() const {
+  return java_object_;
+}
+
+void PasswordStoreAndroidBackendReceiverBridgeImpl::SetConsumer(
+    base::WeakPtr<Consumer> consumer) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(main_sequence_checker_);
+  consumer_ = consumer;
+}
+
+void PasswordStoreAndroidBackendReceiverBridgeImpl::OnCompleteWithLogins(
+    JNIEnv* env,
+    int32_t job_id,
+    const base::android::JavaRef<jbyteArray>& passwords) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(main_sequence_checker_);
+  DCHECK(consumer_);
+  consumer_->OnCompleteWithLogins(
+      JobId(job_id), CreateStoredCredentialsVector<ListPasswordsResult>(
+                         passwords, is_account_store_));
+}
+
+void PasswordStoreAndroidBackendReceiverBridgeImpl::OnCompleteWithBrandedLogins(
+    JNIEnv* env,
+    int32_t job_id,
+    const base::android::JavaRef<jbyteArray>& passwords) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(main_sequence_checker_);
+  DCHECK(consumer_);
+  consumer_->OnCompleteWithLogins(
+      JobId(job_id),
+      CreateStoredCredentialsVector<ListPasswordsWithUiInfoResult>(
+          passwords, is_account_store_));
+}
+
+void PasswordStoreAndroidBackendReceiverBridgeImpl::
+    OnCompleteWithAffiliatedLogins(
+        JNIEnv* env,
+        int32_t job_id,
+        const base::android::JavaRef<jbyteArray>& passwords) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(main_sequence_checker_);
+  CHECK(consumer_);
+  consumer_->OnCompleteWithLogins(
+      JobId(job_id),
+      CreateStoredCredentialsVector<ListAffiliatedPasswordsResult>(
+          passwords, is_account_store_));
+}
+
+void PasswordStoreAndroidBackendReceiverBridgeImpl::OnError(
+    JNIEnv* env,
+    int32_t job_id,
+    int32_t error_type,
+    int32_t api_error_code,
+    bool has_connection_result,
+    int32_t connection_result_code) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(main_sequence_checker_);
+  DCHECK(consumer_);
+  // Posting the tasks to the same sequence prevents that synchronous responses
+  // try to finish tasks before their registration was completed.
+  AndroidBackendError error{static_cast<AndroidBackendErrorType>(error_type)};
+
+  if (error.type == AndroidBackendErrorType::kExternalError) {
+    error.api_error_code = static_cast<int>(api_error_code);
+  }
+
+  if (has_connection_result) {
+    error.connection_result_code = static_cast<int>(connection_result_code);
+  }
+
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE,
+      base::BindOnce(
+          &PasswordStoreAndroidBackendReceiverBridge::Consumer::OnError,
+          consumer_, JobId(job_id), std::move(error)));
+}
+
+void PasswordStoreAndroidBackendReceiverBridgeImpl::OnLoginChanged(
+    JNIEnv* env,
+    int32_t job_id) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(main_sequence_checker_);
+  DCHECK(consumer_);
+  // Notifying that a login changed without providing a changelist prompts the
+  // caller to explicitly check the remaining logins.
+  consumer_->OnLoginsChanged(JobId(job_id), std::nullopt);
+}
+
+}  // namespace password_manager
+
+DEFINE_JNI(PasswordStoreAndroidBackendReceiverBridgeImpl)

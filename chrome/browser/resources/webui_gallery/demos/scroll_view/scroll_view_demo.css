@@ -1,0 +1,59 @@
+/* Copyright 2024 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=../demo.css.js
+ * #import=//resources/cr_elements/cr_scrollable_lit.css.js
+ * #import=//resources/cr_elements/cr_shared_vars.css.js
+ * #scheme=relative
+ * #include=demo cr-scrollable-lit
+ * #css_wrapper_metadata_end */
+
+#container {
+  max-height: 300px;
+  overflow: auto;
+  position: relative;
+  width: 100%;
+}
+
+.item {
+  padding: 16px;
+  text-align: center;
+}
+
+.item:focus {
+  background-color: var(--cr-focused-item-color);
+  outline: none;
+}
+
+#sliderContainer {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+#itemsLengthSlider {
+  width: 200px;
+}
+
+#cr-scrollable-demos {
+  flex-direction: row;
+}
+
+.cr-scrollable {
+  box-sizing: border-box;
+  width: 100%;
+  height: 300px;
+  padding: 12px;
+}
+
+.block {
+  height: 500px;
+}
+
+.label {
+  position: sticky;
+  top: 0;
+}

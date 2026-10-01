@@ -1,0 +1,390 @@
+/* Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=chrome://resources/cr_elements/cr_shared_style_lit.css.js
+ * #import=chrome://resources/cr_elements/cr_icons_lit.css.js
+ * #scheme=relative
+ * #include=cr-shared-style-lit cr-icons-lit
+ * #css_wrapper_metadata_end */
+
+:host {
+  --chip-background-color: var(--color-new-tab-page-action-chip-background);
+  --ntp-chips-container-width: 449px;
+  --chip-slide-duration: 1000ms;
+  --chip-fade-duration: 850ms;
+  --chip-animation-curve: cubic-bezier(0.38, 0.72, 0.00, 1.00);
+  min-height: 236px;
+}
+
+:host([small-chips-enabled]) {
+  min-height: 176px;
+}
+
+@keyframes chips-slide {
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes chips-fade-in {
+  to {
+    opacity: 1;
+  }
+}
+
+.action-chips-wrapper {
+  margin-bottom: 40px;
+  max-width: calc(var(--ntp-chips-container-width) + 2px);
+}
+
+
+.action-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+  width: 100%;
+}
+
+
+.action-chip-icon-container:not(.icon-type-favicon):not(.icon-type-banana) {
+  background-color: var(--color-new-tab-page-action-chip-text-body);
+}
+
+.icon-type-sub-arrow-right {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/suggestion_old.svg);
+}
+
+.icon-type-globe-with-search-loop {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/deep_search_old.svg);
+}
+
+.icon-type-draft-spark {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/canvas_old.svg);
+}
+
+:host-context([webui-rounded-icons]) .icon-type-sub-arrow-right {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/suggestion.svg);
+}
+
+:host-context([webui-rounded-icons]) .icon-type-globe-with-search-loop {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/deep_search.svg);
+}
+
+:host-context([webui-rounded-icons]) .icon-type-draft-spark {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/canvas.svg);
+}
+
+.icon-type-banana {
+  background-image: url(chrome://new-tab-page/icons/banana.svg);
+}
+
+.icon-type-search-spark {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/search_spark.svg);
+}
+
+.icon-type-lightbulb {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/lightbulb.svg);
+}
+
+.icon-type-attach-file {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/attach_file.svg);
+}
+
+.icon-type-school {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/school.svg);
+}
+
+.icon-type-ink-pen {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/ink_pen.svg);
+}
+
+.icon-type-bolt {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/bolt.svg);
+}
+
+.icon-type-photo-spark {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/photo_spark.svg);
+}
+
+.icon-type-tab {
+  -webkit-mask-image: url(chrome://new-tab-page/icons/tab.svg);
+}
+
+.action-chip {
+  align-items: center;
+  background-color: var(--chip-background-color);
+  border-radius: 16px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  gap: 12px;
+  height: 56px;
+  isolation: isolate;
+  max-height: 56px;
+  min-height: 56px;
+  opacity: 0;
+  overflow: hidden;
+  padding: 8px 14px;
+  position: relative;
+  transform: translateY(-56px);
+  transition: max-height 350ms ease;
+  width: 240px;
+}
+
+:host([small-chips-enabled]) .action-chips-container {
+  row-gap: 8px;
+}
+
+:host([small-chips-enabled]) .action-chip {
+  border-radius: 20px;
+  box-sizing: border-box;
+  gap: 6px;
+  height: 40px;
+  max-height: 40px;
+  min-height: 40px;
+  padding: 8px 16px;
+  width: fit-content;
+  max-width: 208px;
+}
+
+:host([small-chips-enabled]) .action-chip .action-chip-icon-container,
+:host([small-chips-enabled]) .action-chip .action-chip-text-container {
+  align-self: center;
+}
+
+:host([small-chips-enabled]) .action-chip .action-chip-icon-container {
+  margin-top: 0;
+}
+
+:host([small-chips-enabled]) .action-chip .action-chip-text-container {
+  padding: 0;
+}
+
+:host([small-chips-enabled]) .action-chip .chip-title {
+  font-weight: 400;
+  max-width: 150px;
+}
+
+.chip-button-wrapper {
+  height: fit-content;
+}
+
+.action-chip:hover,
+.action-chip:focus {
+  max-height: 74px;
+}
+
+.action-chip:focus-visible {
+  box-shadow: none;
+  outline: 2px solid var(--color-new-tab-page-focus-ring);
+  outline-offset: 2px;
+}
+
+.action-chips-container .action-chip:nth-child(1) {
+  animation:
+    chips-slide var(--chip-slide-duration) 250ms
+      var(--chip-animation-curve) forwards,
+    chips-fade-in var(--chip-fade-duration) 400ms
+      var(--chip-animation-curve) forwards;
+}
+
+.action-chips-container .action-chip:nth-child(2) {
+  animation:
+    chips-slide var(--chip-slide-duration) 280ms
+      var(--chip-animation-curve) forwards,
+    chips-fade-in var(--chip-fade-duration) 430ms
+      var(--chip-animation-curve) forwards;
+}
+
+.action-chips-container .action-chip:nth-child(3) {
+  animation:
+    chips-slide var(--chip-slide-duration) 310ms
+      var(--chip-animation-curve) forwards,
+    chips-fade-in var(--chip-fade-duration) 460ms
+      var(--chip-animation-curve) forwards;
+}
+
+.action-chip::before {
+  background-color: transparent;
+  content: '';
+  inset: 0;
+  position: absolute;
+  z-index: -1;
+}
+
+.action-chip:hover::before {
+  background-color: var(--color-new-tab-page-action-chip-background-hover);
+}
+
+.action-chip-icon-container {
+  align-self: flex-start;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100%;
+  border-radius: 100%;
+  height: 24px;
+  margin-top: 8px;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: 100%;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100%;
+  width: 24px;
+}
+
+.action-chip-recent-tab-favicon {
+  border-radius: 2px;
+  height: 24px;
+  width: 24px;
+}
+
+.action-chip-text-container {
+  align-items: flex-start;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: auto;
+  margin-top: auto;
+  min-width: 0;
+  padding-top: 2px;
+  width: 100%;
+}
+
+.action-chip:has(.icon-type-sub-arrow-right) .action-chip-text-container {
+  padding: 2px 0;
+}
+
+.chip-title {
+  color: var(--color-new-tab-page-action-chip-text-title);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+
+.chip-body {
+  color: var(--color-new-tab-page-action-chip-text-body);
+  display: -webkit-box;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  overflow: hidden;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: normal;
+  width: 100%;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.action-chip:has(.icon-type-sub-arrow-right) .chip-body {
+  -webkit-line-clamp: 2;
+}
+
+.action-chip:hover .chip-body,
+.action-chip:focus .chip-body {
+  max-height: 88px;
+  overflow: hidden;
+  white-space: normal;
+  -webkit-line-clamp: 2;
+}
+
+.action-chip:has(.icon-type-sub-arrow-right):hover .chip-body,
+.action-chip:has(.icon-type-sub-arrow-right):focus .chip-body {
+  word-break: break-word;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.chip-remove-button {
+  --cr-icon-button-icon-size: 16px;
+  --cr-icon-button-size: 24px;
+  --cr-icon-image: url('chrome://resources/images/icon_clear_old.svg');
+  align-self: center;
+  display: none;
+  position: absolute;
+  right: 16px;
+}
+
+:host-context([webui-rounded-icons]) .chip-remove-button {
+  --cr-icon-image: url('chrome://resources/images/icon_clear.svg');
+}
+
+
+/* Responsive container widths and reserved min-heights:
+ * - Standard chips: height 56px, gap 14px, margin-bottom 40px.
+ *   - >=900px (1 row):  56px + 40px = 96px.
+ *   - >=672px (2 rows): (56px * 2) + 14px + 40px = 166px.
+ *   - >=560px (3 rows): (56px * 3) + (14px * 2) + 40px = 236px.
+ *   - <560px (3 rows, same 449px cap): (56px * 3) + (14px * 2) + 40px = 236px.
+ * - Small chips: height 40px, row-gap 8px, margin-bottom 40px.
+ *   - >=900px (1 row):  40px + 40px = 80px.
+ *   - >=672px (2 rows): (40px * 2) + 8px + 40px = 128px.
+ *   - >=560px (3 rows): (40px * 3) + (8px * 2) + 40px = 176px.
+ *   - <560px (3 rows): (40px * 3) + (8px * 2) + 40px = 176px.
+ */
+@media (min-width: 560px) {
+  :host {
+    --ntp-chips-container-width: 449px;
+    min-height: 236px;
+  }
+
+  :host([small-chips-enabled]) {
+    min-height: 176px;
+  }
+}
+
+@media (min-width: 672px) {
+  :host {
+    --ntp-chips-container-width: 561px;
+    min-height: 166px;
+  }
+
+  :host([small-chips-enabled]) {
+    min-height: 128px;
+  }
+}
+
+@media (min-width: 900px) {
+  :host {
+    --ntp-chips-container-width: 746px;
+    min-height: 96px;
+  }
+
+  :host([small-chips-enabled]) {
+    min-height: 80px;
+  }
+}
+
+/* Unset reserved min-height once small chips are rendered so the container
+ * adapts naturally to 1, 2, or 3 rows without hardcoded geometry
+ * calculations. */
+:host([small-chips-enabled][has-chips]) {
+  min-height: unset;
+}
+
+cr-button>span {
+  display: block;
+}
+
+@container style(--cr-animations-disabled: 1) {
+  .action-chips-container,
+  .action-chips-container .action-chip:nth-child(n) {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

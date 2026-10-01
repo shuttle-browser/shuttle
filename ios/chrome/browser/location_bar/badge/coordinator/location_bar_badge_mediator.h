@@ -1,0 +1,61 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_LOCATION_BAR_BADGE_COORDINATOR_LOCATION_BAR_BADGE_MEDIATOR_H_
+#define IOS_CHROME_BROWSER_LOCATION_BAR_BADGE_COORDINATOR_LOCATION_BAR_BADGE_MEDIATOR_H_
+
+#import <Foundation/Foundation.h>
+
+#import "ios/chrome/browser/location_bar/badge/ui/location_bar_badge_mutator.h"
+#import "ios/chrome/browser/shared/public/commands/location_bar_badge_commands.h"
+
+@protocol ContextualPanelEntrypointIPHCommands;
+@protocol ContextualSheetCommands;
+class GeminiBrowserAgent;
+class GeminiService;
+@protocol LocationBarBadgeConsumer;
+@protocol LocationBarBadgeMediatorDelegate;
+class PrefService;
+class WebStateList;
+
+namespace feature_engagement {
+class Tracker;
+}  // namespace feature_engagement
+
+// Mediator for the location bar badge.
+@interface LocationBarBadgeMediator
+    : NSObject <LocationBarBadgeCommands, LocationBarBadgeMutator>
+
+- (instancetype)initWithWebStateList:(WebStateList*)webStateList
+                             tracker:(feature_engagement::Tracker*)tracker
+                         prefService:(PrefService*)prefService
+                       geminiService:(GeminiService*)geminiService
+                  geminiBrowserAgent:(GeminiBrowserAgent*)geminiBrowserAgent
+
+    NS_DESIGNATED_INITIALIZER;
+
+- (instancetype)init NS_UNAVAILABLE;
+
+// The consumer for this mediator.
+@property(nonatomic, weak) id<LocationBarBadgeConsumer> consumer;
+// The delegate for this mediator.
+@property(nonatomic, weak) id<LocationBarBadgeMediatorDelegate> delegate;
+// The command handler for entrypoint in-product help commands.
+@property(nonatomic, weak) id<ContextualPanelEntrypointIPHCommands>
+    entrypointHelpHandler;
+// The command handler for contextual sheet commands.
+@property(nonatomic, weak) id<ContextualSheetCommands> contextualSheetHandler;
+
+// Whether this location bar is currently active or not.
+@property(nonatomic, assign) BOOL active;
+
+// Cleans up mediator properties and variables.
+- (void)disconnect;
+
+// Cancels any ongoing or future loud moment for the current navigation.
+- (void)cancelContextualPanelEntrypointLoudMoment;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_LOCATION_BAR_BADGE_COORDINATOR_LOCATION_BAR_BADGE_MEDIATOR_H_

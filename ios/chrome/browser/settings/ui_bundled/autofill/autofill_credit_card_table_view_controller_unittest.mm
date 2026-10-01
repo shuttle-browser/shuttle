@@ -1,0 +1,575 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/settings/ui_bundled/autofill/autofill_credit_card_table_view_controller.h"
+
+#import "base/apple/foundation_util.h"
+#import "base/strings/utf_string_conversions.h"
+#import "base/test/ios/wait_util.h"
+#import "base/test/metrics/user_action_tester.h"
+#import "base/test/scoped_feature_list.h"
+#import "base/uuid.h"
+#import "components/autofill/core/browser/data_manager/addresses/address_data_manager.h"
+#import "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
+#import "components/autofill/core/browser/data_manager/personal_data_manager.h"
+#import "components/autofill/core/browser/data_manager/personal_data_manager_test_util.h"
+#import "components/autofill/core/browser/data_model/payments/credit_card.h"
+#import "components/autofill/core/browser/geo/alternative_state_name_map_updater.h"
+#import "components/autofill/core/common/autofill_payments_features.h"
+#import "components/autofill/core/common/autofill_prefs.h"
+#import "components/strings/grit/components_strings.h"
+#import "components/sync/test/test_sync_service.h"
+#import "ios/chrome/browser/autofill/model/personal_data_manager_factory.h"
+#import "ios/chrome/browser/autofill/ui_bundled/cells/autofill_credit_card_edit_item.h"
+#import "ios/chrome/browser/settings/autofill/payments/ui/autofill_add_credit_card_view_controller.h"
+#import "ios/chrome/browser/settings/autofill/payments/ui/autofill_add_credit_card_view_controller_delegate.h"
+#import "ios/chrome/browser/settings/ui_bundled/autofill/autofill_credit_card_edit_table_view_controller.h"
+#import "ios/chrome/browser/settings/ui_bundled/autofill/cells/autofill_card_item.h"
+#import "ios/chrome/browser/shared/model/application_context/application_context.h"
+#import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_text_edit_item_delegate.h"
+#import "ios/chrome/browser/shared/ui/table_view/legacy_chrome_table_view_controller_test.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
+#import "ios/chrome/browser/sync/model/test_sync_service_utils.h"
+#import "ios/chrome/browser/webdata_services/model/web_data_service_factory.h"
+#import "ios/chrome/common/ui/reauthentication/reauthentication_module.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "testing/gtest/include/gtest/gtest.h"
+#import "testing/gtest_mac.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+#import "third_party/ocmock/gtest_support.h"
+#import "ui/base/l10n/l10n_util.h"
+
+namespace {
+
+class AutofillCreditCardTableViewControllerTest
+    : public LegacyChromeTableViewControllerTest {
+ protected:
+  AutofillCreditCardTableViewControllerTest() {
+    TestProfileIOS::Builder builder;
+    // Credit card import requires a PersonalDataManager which itself needs the
+    // WebDataService; this is not initialized on a TestProfileIOS by
+    // default.
+    builder.AddTestingFactory(ios::WebDataServiceFactory::GetInstance(),
+                              ios::WebDataServiceFactory::GetDefaultFactory());
+    profile_ = std::move(builder).Build();
+    browser_ = std::make_unique<TestBrowser>(profile_.get());
+    // Set circular SyncService dependency to null.
+    autofill::PersonalDataManagerFactory::GetForProfile(profile_.get())
+        ->SetSyncServiceForTest(nullptr);
+  }
+
+  LegacyChromeTableViewController* InstantiateController() override {
+    return [[AutofillCreditCardTableViewController alloc]
+        initWithBrowser:browser_.get()];
+  }
+
+  void TearDown() override {
+    [base::apple::ObjCCastStrict<AutofillCreditCardTableViewController>(
+        controller()) settingsWillBeDismissed];
+    LegacyChromeTableViewControllerTest::TearDown();
+  }
+
+  void AddCreditCard(const std::string& card_holder_name,
+                     const std::string& card_number,
+                     const std::string& cvc = "") {
+    autofill::PersonalDataManager* personal_data_manager =
+        autofill::PersonalDataManagerFactory::GetForProfile(profile_.get());
+    autofill::PersonalDataChangedWaiter waiter(*personal_data_manager);
+
+    autofill::CreditCard credit_card(
+        base::Uuid::GenerateRandomV4().AsLowercaseString());
+    credit_card.SetRawInfo(autofill::CREDIT_CARD_NAME_FULL,
+                           base::ASCIIToUTF16(card_holder_name));
+    credit_card.SetRawInfo(autofill::CREDIT_CARD_NUMBER,
+                           base::ASCIIToUTF16(card_number));
+    if (!cvc.empty()) {
+      credit_card.SetRawInfo(autofill::CREDIT_CARD_VERIFICATION_CODE,
+                             base::ASCIIToUTF16(cvc));
+    }
+    personal_data_manager->payments_data_manager()
+        .OnAcceptedLocalCreditCardSave(credit_card);
+    std::move(waiter).Wait();  // Wait for completion of the async operation.
+  }
+
+  // Deletes the item at (section, row) and waits util condition returns true or
+  // timeout.
+  bool DeleteItemAndWait(int section, int row, ConditionBlock condition) {
+    AutofillCreditCardTableViewController* view_controller =
+        base::apple::ObjCCastStrict<AutofillCreditCardTableViewController>(
+            controller());
+    [view_controller deleteItems:@[ [NSIndexPath indexPathForRow:row
+                                                       inSection:section] ]];
+    return base::test::ios::WaitUntilConditionOrTimeout(
+        base::test::ios::kWaitForUIElementTimeout, condition);
+  }
+
+  // Checks whether device reauth is supported.
+  bool CheckCanAttemptReauth() {
+    ReauthenticationModule* reauthModule =
+        [[ReauthenticationModule alloc] init];
+    return [reauthModule canAttemptReauth];
+  }
+
+  PrefService* local_state() {
+    return GetApplicationContext()->GetLocalState();
+  }
+
+  web::WebTaskEnvironment task_environment_;
+  IOSChromeScopedTestingLocalState scoped_testing_local_state_;
+  std::unique_ptr<TestProfileIOS> profile_;
+  std::unique_ptr<Browser> browser_;
+};
+
+TEST_F(AutofillCreditCardTableViewControllerTest,
+       TestTitleWithYourSavedInfoPageEnabled) {
+  base::test::ScopedFeatureList feature_list{kYourSavedInfoSettingsPageIos};
+
+  CreateController();
+  CheckController();
+
+  EXPECT_NSEQ(controller().title,
+              l10n_util::GetNSString(IDS_AUTOFILL_PAYMENTS_TITLE));
+}
+
+// TODO(crbug.com/496456595): Remove this test once
+// kYourSavedInfoSettingsPageIos is fully rolled out.
+TEST_F(AutofillCreditCardTableViewControllerTest,
+       TestTitleWithYourSavedInfoPageDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(kYourSavedInfoSettingsPageIos);
+
+  CreateController();
+  CheckController();
+
+  EXPECT_NSEQ(controller().title,
+              l10n_util::GetNSString(IDS_AUTOFILL_PAYMENT_METHODS));
+}
+
+// Default test case of no credit cards.
+TEST_F(AutofillCreditCardTableViewControllerTest, TestInitialization) {
+  CreateController();
+  CheckController();
+
+  // Expect three switch sections (the credit card Autofill switch, CVC
+  // storage autofill and mandatory reauth switch).
+  ASSERT_EQ(3, NumberOfSections());
+  // Expect each switch section to contain one row.
+  EXPECT_EQ(1, NumberOfItemsInSection(0));
+  EXPECT_EQ(1, NumberOfItemsInSection(1));
+}
+
+// Adding a single credit card results in a credit card section.
+TEST_F(AutofillCreditCardTableViewControllerTest, TestOneCreditCardWithoutCvc) {
+  AddCreditCard("John Doe", "378282246310005");
+  CreateController();
+  CheckController();
+
+  // Expect four sections (credit card switch, mandatory reauth switch,
+  // CVC storage switch and credit card section).
+  ASSERT_EQ(4, NumberOfSections());
+  // Expect credit card section to contain one row (the credit card itself).
+  EXPECT_EQ(1, NumberOfItemsInSection(3));
+
+  // Check that the CVC indicator is not present when CVC is not stored.
+  AutofillCardItem* item =
+      base::apple::ObjCCastStrict<AutofillCardItem>(GetTableViewItem(3, 0));
+  NSString* cvc_indicator = l10n_util::GetNSString(
+      IDS_AUTOFILL_SETTINGS_PAGE_CVC_TAG_FOR_CREDIT_CARD_LIST_ENTRY);
+  EXPECT_FALSE([item.leadingDetailText containsString:cvc_indicator])
+      << "Expected to find CVC indicator in text: " << item.leadingDetailText;
+}
+
+// Deleting the only credit card results in item deletion and section deletion.
+TEST_F(AutofillCreditCardTableViewControllerTest,
+       TestOneCreditCardItemDeleted) {
+  AddCreditCard("John Doe", "378282246310005");
+  CreateController();
+  CheckController();
+
+  // Expect four sections (credit card Autofill switch, mandatory reauth switch,
+  // CVC storage switch and credit card section).
+  ASSERT_EQ(4, NumberOfSections());
+  // Expect credit card section to contain one row (the credit card itself).
+  EXPECT_EQ(1, NumberOfItemsInSection(3));
+
+  // Delete the credit card item and check that the section is removed.
+  EXPECT_TRUE(DeleteItemAndWait(3, 0, ^{
+    return NumberOfSections() == 3;
+  }));
+}
+
+// Tests that when the MandatoryReauth feature is enabled a switch
+// appears.
+TEST_F(AutofillCreditCardTableViewControllerTest,
+       TestMandatoryReauthSwitchExists) {
+  autofill::PersonalDataManager* personal_data_manager =
+      autofill::PersonalDataManagerFactory::GetForProfile(profile_.get());
+  EXPECT_TRUE(personal_data_manager->payments_data_manager()
+                  .IsPaymentMethodsMandatoryReauthEnabled());
+
+  CreateController();
+  CheckController();
+
+  // Expect 3 sections, 1 for switches, 1 for mandatory reauth and 1 for CVC
+  // storage switch.
+  EXPECT_EQ(3, NumberOfSections());
+
+  // Expect Mandatory Reauth section to have 2 items, the switch and the
+  // subtitle.
+  EXPECT_EQ(1, NumberOfItemsInSection(1));
+
+  // Confirm the text to the side of the switch. Whether the switch is turned on
+  // depends on whether the device supports device reauth.
+  CheckSwitchCellStateAndText(
+      CheckCanAttemptReauth(),
+      l10n_util::GetNSString(
+          IDS_PAYMENTS_AUTOFILL_ENABLE_MANDATORY_REAUTH_TOGGLE_LABEL),
+      1, 0);
+
+  // Confirm the sublabel of the switch.
+  CheckSectionFooter(
+      l10n_util::GetNSString(
+          IDS_PAYMENTS_AUTOFILL_ENABLE_MANDATORY_REAUTH_TOGGLE_SUBLABEL),
+      1);
+}
+
+// Tests that when the CVC storage feature is enabled, a CVC storage button
+// appears.
+TEST_F(AutofillCreditCardTableViewControllerTest, TestCVCStorageButtonExists) {
+  CreateController();
+  CheckController();
+
+  // Expect 3 sections: Autofill switch, mandatory reauth switch, and CVC
+  // storage.
+  EXPECT_EQ(3, NumberOfSections());
+
+  // Expect CVC storage section to have 1 item, the button.
+  EXPECT_EQ(1, NumberOfItemsInSection(2));
+
+  // Confirm the text of the button.
+  CheckTextCellText(l10n_util::GetNSString(
+                        IDS_PAYMENTS_AUTOFILL_ENABLE_SAVE_SECURITY_CODES_LABEL),
+                    2, 0);
+
+  // Confirm the sublabel of the button.
+  CheckSectionFooter(
+      l10n_util::GetNSString(
+          IDS_PAYMENTS_AUTOFILL_ENABLE_SAVE_SECURITY_CODES_SUBLABEL),
+      2);
+}
+
+// Tests that the CVC indicator is present when CVC is stored.
+TEST_F(AutofillCreditCardTableViewControllerTest, TestOneCreditCardWithCvc) {
+  AddCreditCard("John Doe", "378282246310005", "123");
+  CreateController();
+  CheckController();
+
+  // Expect four sections (credit card switch, mandatory reauth switch,
+  // CVC storage switch and credit card section).
+  ASSERT_EQ(4, NumberOfSections());
+  // Expect credit card section to contain one row (the credit card itself).
+  EXPECT_EQ(1, NumberOfItemsInSection(3));
+
+  // Check that the CVC indicator is present when CVC is stored.
+  AutofillCardItem* item =
+      base::apple::ObjCCastStrict<AutofillCardItem>(GetTableViewItem(3, 0));
+  NSString* cvc_indicator = l10n_util::GetNSString(
+      IDS_AUTOFILL_SETTINGS_PAGE_CVC_TAG_FOR_CREDIT_CARD_LIST_ENTRY);
+  EXPECT_TRUE([item.leadingDetailText containsString:cvc_indicator])
+      << "Expected to find CVC indicator in text: " << item.leadingDetailText;
+}
+
+TEST_F(AutofillCreditCardTableViewControllerTest,
+       TestGoogleWalletNoticeFooterExists_FlagEnabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(
+      autofill::features::kAutofillEnableWalletReminderNotice);
+
+  AddCreditCard("John Doe", "378282246310005", "123");
+  CreateController();
+  CheckController();
+
+  ASSERT_EQ(4, NumberOfSections());
+  EXPECT_EQ(1, NumberOfItemsInSection(3));
+  CheckSectionFooter(
+      l10n_util::GetNSString(IDS_AUTOFILL_SETTINGS_GOOGLE_WALLET_LEGAL_NOTICE),
+      3);
+}
+
+TEST_F(AutofillCreditCardTableViewControllerTest,
+       TestGoogleWalletNoticeFooterDoesNotExist_FlagDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(
+      autofill::features::kAutofillEnableWalletReminderNotice);
+
+  AddCreditCard("John Doe", "378282246310005", "123");
+  CreateController();
+  CheckController();
+
+  ASSERT_EQ(4, NumberOfSections());
+  EXPECT_EQ(1, NumberOfItemsInSection(3));
+  EXPECT_EQ(nil, [[controller() tableViewModel] footerForSectionIndex:3]);
+}
+
+TEST_F(AutofillCreditCardTableViewControllerTest,
+       TestOneCreditCardWithCvcItemDeleted) {
+  // Add a credit card with a CVC.
+  AddCreditCard("John Doe", "378282246310005", "123");
+  CreateController();
+  CheckController();
+
+  base::UserActionTester user_action_tester;
+
+  // Expect four sections: the credit card Autofill switch, the CVC storage
+  // switch, the mandatory reauth switch, and the credit card section.
+  ASSERT_EQ(4, NumberOfSections());
+  // Expect the credit card section to contain one row for the card itself.
+  EXPECT_EQ(1, NumberOfItemsInSection(3));
+  // The action should not have been recorded yet.
+  EXPECT_EQ(0, user_action_tester.GetActionCount(
+                   "AutofillCreditCardDeletedAndHadCvc"));
+
+  // Delete the credit card item and check that the section is removed.
+  EXPECT_TRUE(DeleteItemAndWait(3, 0, ^{
+    return NumberOfSections() == 3;
+  }));
+
+  // Verify that the user action was recorded exactly once.
+  EXPECT_EQ(1, user_action_tester.GetActionCount(
+                   "AutofillCreditCardDeletedAndHadCvc"));
+}
+
+TEST_F(AutofillCreditCardTableViewControllerTest,
+       TestOneCreditCardWithoutCvcItemDeleted_MetricNotLogged) {
+  // Add a credit card without a CVC.
+  AddCreditCard("John Doe", "378282246310005");
+  CreateController();
+  CheckController();
+
+  base::UserActionTester user_action_tester;
+
+  // Expect four sections initially.
+  ASSERT_EQ(4, NumberOfSections());
+  // The action should not have been recorded yet.
+  EXPECT_EQ(0, user_action_tester.GetActionCount(
+                   "AutofillCreditCardDeletedAndHadCvc"));
+
+  // Delete the credit card item and check that the section is removed.
+  EXPECT_TRUE(DeleteItemAndWait(3, 0, ^{
+    return NumberOfSections() == 3;
+  }));
+
+  // Verify that the user action was NOT recorded.
+  EXPECT_EQ(0, user_action_tester.GetActionCount(
+                   "AutofillCreditCardDeletedAndHadCvc"));
+}
+
+TEST_F(AutofillCreditCardTableViewControllerTest,
+       TestPayOverTimeButton_HiddenByDefault) {
+  CreateController();
+  CheckController();
+
+  // Pay Over Time is hidden by default. Section count remains 3.
+  EXPECT_EQ(3, NumberOfSections());
+}
+
+TEST_F(AutofillCreditCardTableViewControllerTest, TestPayOverTimeButton_Shown) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(
+      autofill::features::kAutofillEnableBuyNowPayLater);
+  profile_->GetPrefs()->SetBoolean(autofill::prefs::kAutofillHasSeenBnpl, true);
+
+  CreateController();
+  CheckController();
+
+  // Expect 4 sections when Pay Over Time is enabled:
+  // 0: Autofill switch
+  // 1: Mandatory reauth switch
+  // 2: CVC storage switch
+  // 3: Pay Over Time setting entry
+  EXPECT_EQ(4, NumberOfSections());
+  EXPECT_EQ(1, NumberOfItemsInSection(3));
+
+  // Confirm the text of the button.
+  CheckTextCellText(l10n_util::GetNSString(IDS_IOS_SETTINGS_PAY_OVER_TIME), 3,
+                    0);
+}
+
+class AutofillAddCreditCardViewControllerTest
+    : public LegacyChromeTableViewControllerTest {
+ protected:
+  AutofillAddCreditCardViewControllerTest() {}
+
+  LegacyChromeTableViewController* InstantiateController() override {
+    mock_delegate_ =
+        OCMProtocolMock(@protocol(AddCreditCardViewControllerDelegate));
+    return [[AutofillAddCreditCardViewController alloc]
+        initWithDelegate:mock_delegate_];
+  }
+
+  AutofillAddCreditCardViewController* GetAddController() {
+    return base::apple::ObjCCastStrict<AutofillAddCreditCardViewController>(
+        controller());
+  }
+
+  // Helper to find item by UI Type (public property)
+  AutofillCreditCardEditItem* GetItem(AutofillCreditCardUIType uiType) {
+    TableViewModel* model = [controller() tableViewModel];
+    for (NSInteger section = 0; section < [model numberOfSections]; ++section) {
+      NSInteger itemCount = [model numberOfItemsInSection:section];
+      for (NSInteger itemIndex = 0; itemIndex < itemCount; ++itemIndex) {
+        NSIndexPath* path = [NSIndexPath indexPathForItem:itemIndex
+                                                inSection:section];
+        id item = [model itemAtIndexPath:path];
+        AutofillCreditCardEditItem* editItem =
+            base::apple::ObjCCast<AutofillCreditCardEditItem>(item);
+        if (editItem && editItem.autofillCreditCardUIType == uiType) {
+          return editItem;
+        }
+      }
+    }
+    return nil;
+  }
+
+  id mock_delegate_;
+};
+
+TEST_F(AutofillAddCreditCardViewControllerTest,
+       AccessibilityLabel_InvalidInput) {
+  CreateController();
+  CheckController();
+
+  AutofillCreditCardEditItem* item = GetItem(AutofillCreditCardUIType::kNumber);
+  ASSERT_TRUE(item);
+
+  // Mock invalid result
+  OCMStub([mock_delegate_ addCreditCardViewController:[OCMArg any]
+                              isValidCreditCardNumber:[OCMArg any]])
+      .andReturn(NO);
+
+  item.textFieldValue = @"1234";
+  // Cast to delegate to call protocol method
+  [(id<TableViewTextEditItemDelegate>)GetAddController()
+      tableViewItemDidChange:item];
+
+  // Verify accessibility label contains the error message
+  NSString* error = l10n_util::GetNSString(
+      IDS_IOS_AUTOFILL_INVALID_CARD_NUMBER_ACCESSIBILITY_ANNOUNCEMENT);
+  EXPECT_TRUE([item.cellAccessibilityLabel containsString:error]);
+}
+
+TEST_F(AutofillAddCreditCardViewControllerTest,
+       AccessibilityLabel_ValidInputWithPlaceholder) {
+  CreateController();
+  CheckController();
+  AutofillCreditCardEditItem* item =
+      GetItem(AutofillCreditCardUIType::kExpMonth);
+  ASSERT_TRUE(item);
+
+  OCMStub([mock_delegate_ addCreditCardViewController:[OCMArg any]
+                     isValidCreditCardExpirationMonth:[OCMArg any]])
+      .andReturn(YES);
+
+  item.textFieldValue = @"12";
+  [(id<TableViewTextEditItemDelegate>)GetAddController()
+      tableViewItemDidChange:item];
+
+  // Verify label contains placeholder
+  EXPECT_TRUE(item.textFieldPlaceholder.length > 0);
+  EXPECT_TRUE(
+      [item.cellAccessibilityLabel containsString:item.textFieldPlaceholder]);
+}
+
+class AutofillCreditCardEditTableViewControllerTest
+    : public LegacyChromeTableViewControllerTest {
+ protected:
+  AutofillCreditCardEditTableViewControllerTest() {
+    TestProfileIOS::Builder builder;
+    builder.AddTestingFactory(ios::WebDataServiceFactory::GetInstance(),
+                              ios::WebDataServiceFactory::GetDefaultFactory());
+    builder.AddTestingFactory(SyncServiceFactory::GetInstance(),
+                              base::BindRepeating(&CreateTestSyncService));
+    profile_ = std::move(builder).Build();
+    browser_ = std::make_unique<TestBrowser>(profile_.get());
+  }
+
+  LegacyChromeTableViewController* InstantiateController() override {
+    autofill::CreditCard credit_card = autofill::CreditCard(
+        base::Uuid::GenerateRandomV4().AsLowercaseString());
+
+    return [[AutofillCreditCardEditTableViewController alloc]
+         initWithCreditCard:credit_card
+        personalDataManager:autofill::PersonalDataManagerFactory::GetForProfile(
+                                profile_.get())];
+  }
+
+  AutofillCreditCardEditTableViewController* GetEditController() {
+    return base::apple::ObjCCastStrict<
+        AutofillCreditCardEditTableViewController>(controller());
+  }
+
+  AutofillCreditCardEditItem* GetItem(AutofillCreditCardUIType uiType) {
+    TableViewModel* model = [controller() tableViewModel];
+    for (NSInteger section = 0; section < [model numberOfSections]; ++section) {
+      NSInteger itemCount = [model numberOfItemsInSection:section];
+      for (NSInteger itemIndex = 0; itemIndex < itemCount; ++itemIndex) {
+        NSIndexPath* path = [NSIndexPath indexPathForItem:itemIndex
+                                                inSection:section];
+        id item = [model itemAtIndexPath:path];
+        AutofillCreditCardEditItem* editItem =
+            base::apple::ObjCCast<AutofillCreditCardEditItem>(item);
+        if (editItem && editItem.autofillCreditCardUIType == uiType) {
+          return editItem;
+        }
+      }
+    }
+    return nil;
+  }
+
+  web::WebTaskEnvironment task_environment_;
+  std::unique_ptr<TestProfileIOS> profile_;
+  std::unique_ptr<Browser> browser_;
+};
+
+TEST_F(AutofillCreditCardEditTableViewControllerTest,
+       AccessibilityLabel_InvalidCVC) {
+  CreateController();
+  CheckController();
+  // Use kSecurityCode for CVC
+  AutofillCreditCardEditItem* item =
+      GetItem(AutofillCreditCardUIType::kSecurityCode);
+  ASSERT_TRUE(item);
+
+  item.textFieldValue = @"1";
+  [(id<TableViewTextEditItemDelegate>)GetEditController()
+      tableViewItemDidChange:item];
+
+  NSString* error = l10n_util::GetNSString(
+      IDS_IOS_AUTOFILL_INVALID_CVC_ACCESSIBILITY_ANNOUNCEMENT);
+  EXPECT_TRUE([item.cellAccessibilityLabel containsString:error]);
+}
+
+TEST_F(AutofillCreditCardEditTableViewControllerTest,
+       AccessibilityLabel_ValidCVCWithPlaceholder) {
+  CreateController();
+  CheckController();
+  AutofillCreditCardEditItem* item =
+      GetItem(AutofillCreditCardUIType::kSecurityCode);
+  ASSERT_TRUE(item);
+
+  item.textFieldValue = @"123";
+  [(id<TableViewTextEditItemDelegate>)GetEditController()
+      tableViewItemDidChange:item];
+
+  // Should contain "Optional" placeholder
+  EXPECT_TRUE(
+      [item.cellAccessibilityLabel containsString:item.textFieldPlaceholder]);
+}
+
+}  // namespace

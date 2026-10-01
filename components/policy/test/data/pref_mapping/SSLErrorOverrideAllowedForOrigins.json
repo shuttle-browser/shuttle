@@ -1,0 +1,22 @@
+[
+  {
+    "os": [
+      "win",
+      "mac",
+      "linux",
+      "chromeos",
+      "android",
+      "fuchsia"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "ssl.error_override_allowed_for_origins",
+      "default_value": [],
+      "values_to_test": [
+        [
+          "meow.com",
+          "woof.net"
+        ]
+      ]
+    }
+  }
+]

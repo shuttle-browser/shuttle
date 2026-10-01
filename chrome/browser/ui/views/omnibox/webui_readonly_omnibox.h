@@ -1,0 +1,269 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_VIEWS_OMNIBOX_WEBUI_READONLY_OMNIBOX_H_
+#define CHROME_BROWSER_UI_VIEWS_OMNIBOX_WEBUI_READONLY_OMNIBOX_H_
+
+#include <stddef.h>
+
+#include <memory>
+#include <set>
+#include <string>
+#include <string_view>
+#include <variant>
+
+#include "base/gtest_prod_util.h"
+#include "base/memory/raw_ref.h"
+#include "base/memory/weak_ptr.h"
+#include "base/scoped_observation.h"
+#include "base/time/time.h"
+#include "base/types/expected.h"
+#include "build/build_config.h"
+#include "chrome/browser/ui/omnibox/omnibox_view.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_context_menu_mixin.h"
+#include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom.h"
+#include "components/prefs/pref_change_registrar.h"
+#include "components/search_engines/template_url_service_observer.h"
+#include "content/public/browser/context_menu_params.h"
+#include "content/public/browser/web_contents_observer.h"
+#include "mojo/public/mojom/base/error.mojom.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
+#include "ui/events/keycodes/dom/dom_key.h"
+#include "ui/gfx/break_list.h"
+#include "ui/gfx/range/range.h"
+#include "ui/menus/simple_menu_model.h"
+#include "ui/views/controls/menu/menu_runner.h"
+
+namespace content {
+class WebContents;
+}  // namespace content
+
+namespace gfx {
+class Point;
+}  // namespace gfx
+
+namespace views {
+class Widget;
+}  // namespace views
+
+class LocationBar;
+class WebUIToolbarControlDelegate;
+
+// WebUI-implementation of OmniboxView, which happens to be readonly,
+// as it counts on the popup to handle the editing.
+// TODO(crbug.com/500653057): Rename it in a manner more consistent with other
+// classes here. It's also no longer read-only!
+class WebUIReadOnlyOmnibox
+    : public OmniboxView,
+      public OmniboxContextMenuMixin<ui::SimpleMenuModel::Delegate>,
+      public TemplateURLServiceObserver,
+      public content::WebContentsObserver {
+ public:
+  // Interface from the omnibox to its embedder (e.g. the location bar).
+  class UpdatePropagator {
+   public:
+    virtual ~UpdatePropagator();
+    // Push omnibox state, `update`, to WebUI.
+    virtual void PropagateOmniboxUpdate(
+        toolbar_ui_api::mojom::OmniboxViewStatePtr update) = 0;
+
+    // Push whether to synthesize fake focus ring for AIM button to WebUI.
+    virtual void PropagateApplyFocusRingToAimButton(bool force_focus) = 0;
+
+    // Push a focus request to WebUI.
+    virtual void PropagateFocusRequest(
+        toolbar_ui_api::mojom::FocusRequestTarget target) = 0;
+
+    // If the location bar is using a full popup, ask to open it,
+    // potentially also querying zero suggest.
+    virtual void OpenOmniboxIfFullPopup(bool query_zps) = 0;
+  };
+
+  // Parameters must outlive `this`.
+  // `location_bar` and `toolbar_delegate` may be null in tests.
+  WebUIReadOnlyOmnibox(LocationBar* location_bar,
+                       WebUIToolbarControlDelegate* toolbar_delegate,
+                       OmniboxController* controller,
+                       UpdatePropagator& update_propagator);
+  WebUIReadOnlyOmnibox(const WebUIReadOnlyOmnibox&) = delete;
+  WebUIReadOnlyOmnibox& operator=(const WebUIReadOnlyOmnibox&) = delete;
+  ~WebUIReadOnlyOmnibox() override;
+
+  // Called from the location bar.
+  void SaveStateToTab(content::WebContents* tab);
+  void OnTabChanged(content::WebContents* web_contents);
+  void ResetTabState(content::WebContents* web_contents);
+  void OnBlur();
+  base::expected<std::monostate, mojo_base::mojom::ErrorPtr> OnOmniboxAction(
+      toolbar_ui_api::mojom::OmniboxActionPtr action);
+
+  void HandleContextMenu(views::Widget* widget,
+                         const gfx::Point& point,
+                         ui::mojom::MenuSourceType source_type,
+                         const content::ContextMenuParams& menu_params);
+
+  // Updates the state of the display stored in `this` OmniboxView. Doesn't
+  // notify the OmniboxEditModel or the WebUI end.
+  void SetTextAndSelectedRange(const std::u16string& text,
+                               const std::u16string& inline_autocompletion,
+                               const gfx::Range& selection,
+                               bool keep_additional_text);
+
+  void ClearAccessibilityLabel();
+
+  // OmniboxView:
+  void Update() override;
+  std::u16string GetText() const override;
+  void SetWindowTextAndCaretPos(const std::u16string& text,
+                                size_t caret_pos,
+                                bool update_popup,
+                                bool notify_text_changed) override;
+  void SetCaretPos(size_t caret_pos) override;
+  void SetAdditionalText(const std::u16string& text) override;
+  void EnterKeywordModeForDefaultSearchProvider() override;
+  bool IsSelectAll() const override;
+  gfx::Range GetSelectionBounds() const override;
+  void SetSelectionBounds(gfx::Range selection) override;
+  bool HasSelection() const override;
+  void SelectAll(bool reversed) override;
+  void RevertAll() override;
+  void UpdatePopup() override;
+  void SetFocus(bool is_user_initiated) override;
+  void ApplyFocusRingToAimButton(bool focus_aim) override;
+  bool AimButtonVisible() const override;
+  void ApplyCaretVisibility() override;
+  void SetAccessibilityLabel(const std::u16string& display_text,
+                             const AutocompleteMatch& match,
+                             bool notify_text_changed) override;
+  void OnTemporaryTextMaybeChanged(const std::u16string& display_text,
+                                   const AutocompleteMatch& match,
+                                   bool save_original_selection,
+                                   bool notify_text_changed) override;
+  void OnInlineAutocompleteTextMaybeChanged(
+      const std::u16string& user_text,
+      const std::u16string& inline_autocompletion) override;
+  void OnInlineAutocompleteTextCleared() override;
+  void OnRevertTemporaryText(const std::u16string& display_text,
+                             const AutocompleteMatch& match) override;
+  void OnBeforePossibleChange() override;
+  bool OnAfterPossibleChange(bool allow_keyword_ui_change) override;
+  void OnKeywordPlaceholderTextChange() override;
+  int GetOmniboxTextLength() const override;
+  void EmphasizeURLComponents() override;
+  void SetEmphasis(bool emphasize, const gfx::Range& range) override;
+  void UpdateSchemeStyle(const gfx::Range& range) override;
+
+  // ui::SimpleMenuModel::Delegate:
+  void ExecuteCommand(int command_id, int event_flags) override;
+  bool GetAcceleratorForCommandId(int command_id,
+                                  ui::Accelerator* accelerator) const override;
+
+  // OmniboxContextMenuMixinBase:
+  bool IsContextMenuForReadOnlyOmnibox() const override;
+  const gfx::FontList& FontListForContextMenu() const override;
+  bool IsContextMenuTextEditingCommandEnabled(int command_id) const override;
+  views::Widget* GetWidgetForTextServices() override;
+
+  toolbar_ui_api::mojom::OmniboxViewStatePtr ComputeMojoState();
+
+  // Requests focus with particular omnibox-related target
+  void SetFocusWithTarget(toolbar_ui_api::mojom::FocusRequestTarget target);
+
+  // Sends the current state of the omnibox to the UpdatePropagator
+  // passed to the constructor.
+  void RequestUpdateWebUI();
+
+  bool has_focus() const { return has_focus_; }
+
+ private:
+  void ResetFormatting();
+  void ResetBrowserVersion();
+
+  base::expected<std::monostate, mojo_base::mojom::ErrorPtr> OnFocusChange(
+      const toolbar_ui_api::mojom::OmniboxActionFocusChange& focus_change);
+  base::expected<std::monostate, mojo_base::mojom::ErrorPtr> OnTextInput(
+      const toolbar_ui_api::mojom::OmniboxActionTextInput& text_input);
+  base::expected<std::monostate, mojo_base::mojom::ErrorPtr> OnKey(
+      const toolbar_ui_api::mojom::OmniboxActionKey& key);
+  base::expected<std::monostate, mojo_base::mojom::ErrorPtr> OnPointer(
+      const toolbar_ui_api::mojom::OmniboxActionPointer& pointer);
+  base::expected<std::monostate, mojo_base::mojom::ErrorPtr> OnDropText(
+      const toolbar_ui_api::mojom::OmniboxActionDropText& drop_text);
+  base::expected<std::monostate, mojo_base::mojom::ErrorPtr> OnDropFile(
+      const toolbar_ui_api::mojom::OmniboxActionDropFile& drop_file);
+
+  void OnContextMenuReady(views::Widget* widget,
+                          const gfx::Point& point,
+                          ui::mojom::MenuSourceType source_type);
+
+  ui::DomKey LookupAndCacheDomKey(std::string_view key_str);
+
+  // TemplateURLServiceObserver:
+  void OnTemplateURLServiceChanged() override;
+
+  // content::WebContentsObserver:
+  void DidFinishNavigation(
+      content::NavigationHandle* navigation_handle) override;
+  void TitleWasSet(content::NavigationEntry* entry) override;
+
+  raw_ptr<LocationBar> location_bar_;  // owns `this`
+  raw_ptr<WebUIToolbarControlDelegate> toolbar_delegate_;  // indirect owner.
+  raw_ref<UpdatePropagator> update_propagator_;
+
+  absl::flat_hash_map<std::string, ui::DomKey> key_code_cache_;
+
+  // Versions of the text on both ends. The browser end increments its version
+  // number when the entire URL is reset, due to navigation or interaction
+  // with popup; the UI end increments it on user user input.
+  uint32_t ui_version_ = 0;
+  uint32_t browser_version_ = 0;
+
+  // Text and selection (or caret) we were asked to display (e.g. via
+  // SetWindowTextAndCaretPos()) by either the base class or OmniboxEditModel.
+  std::u16string text_;
+
+  // Inline completion suggested by auto-complete.
+  std::u16string inline_autocompletion_;
+
+  // An additional description for what's being displayed.
+  std::u16string additional_text_;
+
+  // Accessibility info on selected suggestion entry. Empty when the user input
+  // is what's in use.
+  std::u16string friendly_accessible_label_;
+
+  // Rich text formatting for `text`.
+  gfx::BreakList<bool> text_strike_through_;
+  gfx::BreakList<toolbar_ui_api::mojom::OmniboxTextColor> text_colors_;
+  bool text_is_url_ = false;
+
+  // When start and end positions match, this represents a caret position;
+  // if they don't, it's a selection.
+  gfx::Range selection_;
+
+  // Selection saved when temporary text is being displayed, so it can be
+  // restored if the user presses `Esc` to cancel it.
+  gfx::Range saved_selection_for_temporary_text_;
+
+  // State of the world at the time of last call to `OnBeforePossibleChange()`;
+  // used in `OnAfterPossibleChange()` to figure out what changed.
+  State state_before_change_;
+
+  bool has_focus_ = false;
+  bool aim_hint_currently_shown_ = false;
+  bool aim_page_action_icon_has_fake_focus_ = false;
+
+  // Used to show the context menu.
+  content::ContextMenuParams menu_params_;
+  std::unique_ptr<ui::SimpleMenuModel> menu_model_;
+  std::unique_ptr<views::MenuRunner> menu_runner_;
+
+  PrefChangeRegistrar pref_change_registrar_;
+  base::ScopedObservation<TemplateURLService, TemplateURLServiceObserver>
+      scoped_template_url_service_observation_{this};
+
+  base::WeakPtrFactory<WebUIReadOnlyOmnibox> weak_ptr_factory_{this};
+};
+
+#endif  // CHROME_BROWSER_UI_VIEWS_OMNIBOX_WEBUI_READONLY_OMNIBOX_H_

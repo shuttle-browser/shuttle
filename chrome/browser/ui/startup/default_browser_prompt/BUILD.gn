@@ -1,0 +1,200 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_win || is_mac || is_linux,
+       "Default browser prompts exist only on non-Chromeos desktop platforms")
+
+source_set("default_browser_prompt") {
+  friend = [
+    ":impl",
+    ":interactive_ui_tests",
+    ":unit_tests",
+    ":browser_tests",
+    "//chrome/browser/ui/webui/default_browser:default_browser_modal",
+  ]
+
+  public = [
+    "default_browser_infobar_delegate.h",
+    "default_browser_prompt.h",
+    "default_browser_prompt_manager.h",
+    "default_browser_prompt_prefs.h",
+  ]
+
+  sources = [
+    "default_browser_bubble_dialog.h",
+    "default_browser_bubble_dialog_manager.h",
+    "default_browser_infobar_manager.h",
+    "default_browser_modal_dialog_manager.h",
+    "default_browser_surface_manager.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//chrome/browser:browser_process",
+    "//chrome/browser:shell_integration",
+    "//chrome/browser/infobars",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui:browser_tab_strip",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/tabs:tab_model",
+    "//chrome/browser/ui/tabs:tab_strip_model_observer",
+    "//components/infobars/content",
+    "//components/infobars/core",
+    "//content/public/browser",
+  ]
+
+  deps = [ "//chrome/browser/default_browser" ]
+}
+
+source_set("impl") {
+  sources = [
+    "default_browser_bubble_dialog.cc",
+    "default_browser_bubble_dialog_manager.cc",
+    "default_browser_infobar_delegate.cc",
+    "default_browser_infobar_manager.cc",
+    "default_browser_modal_dialog_manager.cc",
+    "default_browser_prompt.cc",
+    "default_browser_prompt_manager.cc",
+    "default_browser_prompt_prefs.cc",
+    "default_browser_surface_manager.cc",
+  ]
+
+  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+
+  deps = [
+    ":default_browser_prompt",
+    "//chrome/app:branded_strings",
+    "//chrome/app:generated_resources",
+    "//chrome/app/theme:chrome_unscaled_resources_grit",
+    "//chrome/browser:browser_public_dependencies",
+    "//chrome/browser:global_features",
+    "//chrome/browser:shell_integration",
+    "//chrome/browser/default_browser",
+    "//chrome/browser/infobars",
+    "//chrome/browser/profiles:profile_manager",
+    "//chrome/browser/ui:browser_tab_strip_tracker",
+    "//chrome/browser/ui:ui_features",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/tabs:tab_strip",
+    "//chrome/browser/ui/views/frame:toolbar_button_provider",
+    "//chrome/browser/ui/views/toolbar",
+    "//chrome/browser/ui/webui/default_browser:default_browser_modal",
+    "//components/infobars/content",
+    "//components/infobars/core",
+    "//components/omnibox/browser",
+    "//components/omnibox/browser:vector_icons",
+    "//components/prefs",
+    "//components/vector_icons",
+    "//components/version_info",
+    "//content/public/common",
+    "//ui/base",
+  ]
+
+  if (is_win) {
+    deps += [
+      "//chrome/browser/win",
+      "//chrome/installer/util:with_no_strings",
+    ]
+  }
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  sources = [ "default_browser_prompt_manager_unittest.cc" ]
+
+  deps = [
+    ":default_browser_prompt",
+    "//base",
+    "//chrome/browser:browser_process",
+    "//chrome/browser/default_browser",
+    "//chrome/common:constants",
+    "//chrome/test:test_support",
+    "//components/infobars/content",
+    "//components/prefs",
+    "//components/prefs:test_support",
+    "//content/test:test_support",
+    "//testing/gmock",
+    "//testing/gtest",
+  ]
+}
+
+source_set("browser_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+  sources = [ "default_browser_infobar_manager_browsertest.cc" ]
+  deps = [
+    ":default_browser_prompt",
+    "//base/test:test_support",
+    "//chrome/browser:browser_process",
+    "//chrome/browser/infobars",
+    "//chrome/browser/ui:browser_tab_strip",
+    "//chrome/browser/ui/tabs:tab_strip",
+    "//chrome/common:constants",
+    "//chrome/test:test_support",
+    "//components/infobars/content",
+    "//components/infobars/core",
+    "//components/prefs",
+    "//content/test:test_support",
+    "//testing/gtest",
+    "//url",
+  ]
+}
+
+source_set("interactive_ui_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+  sources = [ "default_browser_prompt_interactive_uitest.cc" ]
+
+  if (is_win) {
+    sources += [
+      "default_browser_bubble_dialog_interactive_uitest.cc",
+      "default_browser_modal_dialog_manager_interactive_uitest.cc",
+    ]
+  }
+
+  deps = [
+    ":default_browser_prompt",
+    "//base/test:test_support",
+    "//chrome/app:command_ids",
+    "//chrome/browser:browser_process",
+    "//chrome/browser:chrome_browser_main",
+    "//chrome/browser:shell_integration",
+    "//chrome/browser/default_browser",
+    "//chrome/browser/default_browser:test_support",
+    "//chrome/browser/infobars",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui:browser_element_identifiers",
+    "//chrome/browser/ui:chrome_pages",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/startup",
+    "//chrome/browser/ui/toolbar",
+    "//chrome/browser/ui/views/infobars",
+    "//chrome/browser/ui/webui/default_browser:default_browser_modal",
+    "//chrome/common",
+    "//chrome/common:constants",
+    "//chrome/common:non_code_constants",
+    "//chrome/test:test_support",
+    "//chrome/test:test_support_ui",
+    "//components/infobars/content",
+    "//components/infobars/core",
+    "//components/prefs",
+    "//content/public/browser",
+    "//content/public/common",
+    "//content/test:test_support",
+    "//testing/gtest",
+    "//ui/base",
+    "//ui/gfx:gfx_switches",
+    "//ui/gfx:test_support",
+  ]
+
+  if (is_win || is_mac) {
+    sources += [ "pin_infobar/pin_infobar_interactive_uitest.cc" ]
+    deps += [
+      "//chrome/browser/ui/startup/default_browser_prompt/pin_infobar",
+      "//chrome/browser/ui/startup/default_browser_prompt/pin_infobar:impl",
+    ]
+  }
+}

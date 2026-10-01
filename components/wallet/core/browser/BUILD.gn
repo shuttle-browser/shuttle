@@ -1,0 +1,106 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//components/optimization_guide/features.gni")
+
+static_library("browser") {
+  sources = [
+    "data_models/boarding_pass.cc",
+    "data_models/boarding_pass.h",
+    "data_models/country_type.h",
+    "data_models/data_model_utils.cc",
+    "data_models/data_model_utils.h",
+    "data_models/wallet_barcode.h",
+    "data_models/wallet_pass.cc",
+    "data_models/wallet_pass.h",
+    "ingestion/walletable_pass_client.h",
+    "ingestion/walletable_pass_ingestion_controller.cc",
+    "ingestion/walletable_pass_ingestion_controller.h",
+    "ingestion/walletable_pass_ingestion_utils.cc",
+    "ingestion/walletable_pass_ingestion_utils.h",
+    "metrics/wallet_metrics.cc",
+    "metrics/wallet_metrics.h",
+    "network/get_unmasked_pass_request.cc",
+    "network/get_unmasked_pass_request.h",
+    "network/upsert_private_pass_request.cc",
+    "network/upsert_private_pass_request.h",
+    "network/upsert_public_pass_request.cc",
+    "network/upsert_public_pass_request.h",
+    "network/wallet_http_client.h",
+    "network/wallet_http_client_impl.cc",
+    "network/wallet_http_client_impl.h",
+    "network/wallet_request.cc",
+    "network/wallet_request.h",
+    "strike_databases/walletable_pass_consent_strike_database.h",
+    "strike_databases/walletable_pass_save_strike_database_by_host.cc",
+    "strike_databases/walletable_pass_save_strike_database_by_host.h",
+    "walletable_permission_utils.cc",
+    "walletable_permission_utils.h",
+  ]
+  deps = [
+    "//base",
+    "//components/consent_auditor",
+    "//components/keyed_service/core",
+    "//components/optimization_guide/core",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//components/prefs",
+    "//components/signin/public/identity_manager",
+    "//components/strike_database",
+    "//components/sync",
+    "//components/version_info",
+    "//components/wallet/core/common:features",
+    "//components/wallet/core/common:prefs",
+    "//services/network/public/cpp",
+    "//url",
+  ]
+
+  public_deps = [ "//components/wallet/core/browser/proto" ]
+}
+
+source_set("test_support") {
+  testonly = true
+  sources = [ "ingestion/walletable_pass_ingestion_controller_test_api.h" ]
+  deps = [
+    ":browser",
+    "//base",
+    "//url",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "data_models/boarding_pass_unittest.cc",
+    "data_models/wallet_pass_unittest.cc",
+    "ingestion/walletable_pass_ingestion_utils_unittest.cc",
+    "network/get_unmasked_pass_request_unittest.cc",
+    "network/upsert_private_pass_request_unittest.cc",
+    "network/upsert_public_pass_request_unittest.cc",
+    "network/wallet_http_client_impl_unittest.cc",
+    "walletable_permission_utils_unittest.cc",
+  ]
+  if (build_with_model_execution) {
+    sources += [ "ingestion/walletable_pass_ingestion_controller_unittest.cc" ]
+  }
+  deps = [
+    ":browser",
+    ":test_support",
+    "//base",
+    "//base/test:test_support",
+    "//components/consent_auditor",
+    "//components/optimization_guide/core",
+    "//components/optimization_guide/core:test_support",
+    "//components/prefs:test_support",
+    "//components/signin/public/identity_manager:test_support",
+    "//components/strike_database:test_support",
+    "//components/sync_preferences:test_support",
+    "//components/version_info",
+    "//components/wallet/core/common:features",
+    "//components/wallet/core/common:prefs",
+    "//services/network:test_support",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//url",
+  ]
+}

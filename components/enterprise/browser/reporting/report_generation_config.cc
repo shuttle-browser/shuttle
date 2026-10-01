@@ -1,0 +1,149 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/enterprise/browser/reporting/report_generation_config.h"
+
+#include "base/check_op.h"
+#include "base/strings/stringprintf.h"
+
+namespace {
+constexpr char kReportGenerationConfigTemplate[] =
+    R"(Trigger: %s, Report Type: %s, Security Signals Mode: %s,"
+    " Using Cookies: %s, Has Challenge: %s, Selectors: %s, Is Retrying: %s)";
+
+std::string_view TranslateReportType(
+    enterprise_reporting::ReportType report_type) {
+  switch (report_type) {
+    case enterprise_reporting::ReportType::kBrowser:
+      return "Browser Report";
+    case enterprise_reporting::ReportType::kBrowserVersion:
+      return "Browser Version Report";
+    case enterprise_reporting::ReportType::kProfileReport:
+      return "Profile Report";
+  }
+}
+
+std::string_view TranslateSecuritySignalsMode(
+    SecuritySignalsMode security_signals_mode) {
+  switch (security_signals_mode) {
+    case SecuritySignalsMode::kNoSignals:
+      return "No security signals reported";
+    case SecuritySignalsMode::kSignalsAttached:
+      return "Security signals reported alongside status report";
+    case SecuritySignalsMode::kSignalsOnly:
+      return "Security signals are reported exclusively";
+  }
+}
+
+}  // namespace
+
+namespace enterprise_reporting {
+
+std::string_view ReportTriggerToString(ReportTrigger report_trigger) {
+  switch (report_trigger) {
+    case ReportTrigger::kTriggerNone:
+      return "No trigger";
+    case ReportTrigger::kTriggerTimer:
+      return "Periodic timer expired";
+    case ReportTrigger::kTriggerUpdate:
+      return "An update was detected";
+    case ReportTrigger::kTriggerNewVersion:
+      return "A new version is running";
+    case ReportTrigger::kTriggerManual:
+      return "Trigger manually";
+    case ReportTrigger::kTriggerSecurity:
+      return "Trigger for security signals";
+    case ReportTrigger::kTriggerProfileOpened:
+      return "Profile opened";
+  }
+}
+
+ReportGenerationConfig::ReportGenerationConfig(
+    ReportTrigger report_trigger,
+    ReportType report_type,
+    SecuritySignalsMode security_signals_mode,
+    bool use_cookies,
+    std::optional<std::string> challenge,
+    base::ListValue client_certificates_selectors,
+    bool is_retrying)
+    : report_trigger(report_trigger),
+      report_type(report_type),
+      security_signals_mode(security_signals_mode),
+      use_cookies(use_cookies),
+      challenge(std::move(challenge)),
+      client_certificates_selectors(std::move(client_certificates_selectors)),
+      is_retrying(is_retrying) {
+  // Currently security signals are only being reported in profile level
+  // reporting.
+  if (report_type != ReportType::kProfileReport) {
+    CHECK_EQ(security_signals_mode, SecuritySignalsMode::kNoSignals);
+  }
+}
+
+ReportGenerationConfig::ReportGenerationConfig(ReportTrigger report_trigger)
+    : ReportGenerationConfig(report_trigger,
+                             ReportType::kBrowser,
+                             SecuritySignalsMode::kNoSignals,
+                             /*use_cookies=*/false,
+                             /*challenge=*/std::nullopt) {}
+
+ReportGenerationConfig::ReportGenerationConfig()
+    : ReportGenerationConfig(ReportTrigger::kTriggerNone) {}
+
+ReportGenerationConfig::ReportGenerationConfig(
+    const ReportGenerationConfig& other)
+    : report_trigger(other.report_trigger),
+      report_type(other.report_type),
+      security_signals_mode(other.security_signals_mode),
+      use_cookies(other.use_cookies),
+      challenge(other.challenge),
+      client_certificates_selectors(
+          other.client_certificates_selectors.Clone()),
+      is_retrying(other.is_retrying) {}
+
+ReportGenerationConfig& ReportGenerationConfig::operator=(
+    const ReportGenerationConfig& other) {
+  if (this != &other) {
+    report_trigger = other.report_trigger;
+    report_type = other.report_type;
+    security_signals_mode = other.security_signals_mode;
+    use_cookies = other.use_cookies;
+    challenge = other.challenge;
+    client_certificates_selectors = other.client_certificates_selectors.Clone();
+    is_retrying = other.is_retrying;
+  }
+  return *this;
+}
+
+ReportGenerationConfig::ReportGenerationConfig(ReportGenerationConfig&&) =
+    default;
+
+ReportGenerationConfig& ReportGenerationConfig::operator=(
+    ReportGenerationConfig&&) = default;
+
+ReportGenerationConfig::~ReportGenerationConfig() = default;
+
+bool ReportGenerationConfig::operator==(const ReportGenerationConfig&) const =
+    default;
+
+std::string ReportGenerationConfig::ToString() const {
+  return base::StringPrintf(
+      kReportGenerationConfigTemplate, ReportTriggerToString(report_trigger),
+      TranslateReportType(report_type),
+      TranslateSecuritySignalsMode(security_signals_mode),
+      use_cookies ? "Yes" : "No", challenge.has_value() ? "Yes" : "No",
+      client_certificates_selectors.DebugString().c_str(),
+      is_retrying ? "Yes" : "No");
+}
+
+void ReportGenerationConfig::PrintDebugString(std::ostream* os) const {
+  *os << ToString();
+}
+
+std::ostream& operator<<(std::ostream& os,
+                         const ReportGenerationConfig& config) {
+  return os << config.ToString();
+}
+
+}  // namespace enterprise_reporting

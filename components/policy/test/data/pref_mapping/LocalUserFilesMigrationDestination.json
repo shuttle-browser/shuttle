@@ -1,0 +1,17 @@
+[
+  {
+    "os": [
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "filebrowser.local_user_files_migration_destination",
+      "pref_location": "local_state",
+      "default_value": "read_only",
+      "values_to_test": [
+        "google_drive",
+        "microsoft_onedrive",
+        "delete"
+      ]
+    }
+  }
+]

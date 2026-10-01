@@ -1,0 +1,333 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/android_autofill/browser/android_autofill_client.h"
+
+#include <optional>
+#include <utility>
+
+#include "base/check_op.h"
+#include "base/containers/span.h"
+#include "base/feature_list.h"
+#include "base/functional/function_ref.h"
+#include "base/notimplemented.h"
+#include "base/notreached.h"
+#include "components/android_autofill/browser/android_autofill_manager.h"
+#include "components/android_autofill/browser/android_autofill_provider.h"
+#include "components/autofill/content/browser/content_autofill_client.h"
+#include "components/autofill/core/browser/crowdsourcing/autofill_crowdsourcing_manager.h"
+#include "components/autofill/core/browser/payments/legal_message_line.h"
+#include "components/autofill/core/browser/suggestions/suggestion.h"
+#include "components/autofill/core/browser/suggestions/suggestion_type.h"
+#include "components/autofill/core/browser/ui/autofill_suggestion_delegate.h"
+#include "components/autofill/core/browser/webdata/autofill_webdata_service.h"
+#include "components/autofill/core/common/aliases.h"
+#include "components/autofill/core/common/autofill_features.h"
+#include "components/credential_management/android/features.h"
+#include "components/credential_management/android/third_party_credential_manager_impl.h"
+#include "components/prefs/pref_service.h"
+#include "components/security_state/content/android/security_state_client.h"
+#include "components/security_state/content/android/security_state_model_delegate.h"
+#include "components/user_prefs/user_prefs.h"
+#include "content/public/browser/browser_context.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
+#include "content/public/browser/page.h"
+#include "content/public/browser/ssl_status.h"
+#include "content/public/browser/storage_partition.h"
+#include "content/public/browser/web_contents.h"
+#include "ui/android/view_android.h"
+#include "ui/gfx/geometry/rect_f.h"
+
+namespace android_autofill {
+
+void AndroidAutofillClient::CreateForWebContents(
+    content::WebContents* contents) {
+  DCHECK(contents);
+  if (!FromWebContents(contents)) {
+    contents->SetUserData(
+        UserDataKey(), base::WrapUnique(new AndroidAutofillClient(contents)));
+  }
+}
+
+AndroidAutofillClient::AndroidAutofillClient(content::WebContents* web_contents)
+    : autofill::ContentAutofillClient(web_contents),
+      content::WebContentsObserver(web_contents),
+      content_credential_manager_(
+          std::make_unique<
+              credential_management::ThirdPartyCredentialManagerImpl>(
+              web_contents)) {}
+
+AndroidAutofillClient::~AndroidAutofillClient() {
+  HideSuggestions(autofill::SuggestionHidingReason::kTabGone,
+                  /*product=*/std::nullopt);
+}
+
+// From this point on, the ContentCredentialManager will service API calls
+// in the context of the new WebContents::GetLastCommittedURL, which may
+// very well be cross-origin. Disconnect existing client, and drop pending
+// requests.
+void AndroidAutofillClient::PrimaryPageChanged(content::Page& page) {
+  content_credential_manager_.DisconnectBinding();
+}
+
+void AndroidAutofillClient::WebContentsDestroyed() {
+  // TODO(crbug.com/40133549): Drop the connection before the
+  // WebContentsObserver destructors are invoked. Other classes may contain
+  // callbacks to the Mojo methods. Those callbacks don't like to be destroyed
+  // earlier than the pipe itself.
+  content_credential_manager_.DisconnectBinding();
+}
+
+base::WeakPtr<autofill::AutofillClient> AndroidAutofillClient::GetWeakPtr() {
+  return weak_ptr_factory_.GetWeakPtr();
+}
+
+const std::string& AndroidAutofillClient::GetAppLocale() const {
+  NOTREACHED();
+}
+
+bool AndroidAutofillClient::IsOffTheRecord() const {
+  auto* mutable_this = const_cast<AndroidAutofillClient*>(this);
+  return mutable_this->GetWebContents().GetBrowserContext()->IsOffTheRecord();
+}
+
+scoped_refptr<network::SharedURLLoaderFactory>
+AndroidAutofillClient::GetURLLoaderFactory() {
+  return GetWebContents()
+      .GetBrowserContext()
+      ->GetDefaultStoragePartition()
+      ->GetURLLoaderFactoryForBrowserProcess();
+}
+
+autofill::AutofillCrowdsourcingManager&
+AndroidAutofillClient::GetCrowdsourcingManager() {
+  if (!crowdsourcing_manager_) {
+    // Lazy initialization to avoid virtual function calls in the constructor.
+    crowdsourcing_manager_ =
+        std::make_unique<autofill::AutofillCrowdsourcingManager>(this,
+                                                                 GetChannel());
+  }
+  return *crowdsourcing_manager_;
+}
+
+autofill::VotesUploader& AndroidAutofillClient::GetVotesUploader() {
+  return votes_uploader_;
+}
+
+bool AndroidAutofillClient::HasPersonalDataManager() const {
+  return false;
+}
+
+autofill::PersonalDataManager& AndroidAutofillClient::GetPersonalDataManager() {
+  NOTREACHED();
+}
+
+autofill::ValuablesDataManager*
+AndroidAutofillClient::GetValuablesDataManager() {
+  return nullptr;
+}
+
+autofill::EntityDataManager* AndroidAutofillClient::GetEntityDataManager() {
+  return nullptr;
+}
+
+autofill::SingleFieldFillRouter&
+AndroidAutofillClient::GetSingleFieldFillRouter() {
+  NOTREACHED();
+}
+
+autofill::AutocompleteHistoryManager*
+AndroidAutofillClient::GetAutocompleteHistoryManager() {
+  NOTREACHED();
+}
+
+PrefService* AndroidAutofillClient::GetPrefs() {
+  return const_cast<PrefService*>(std::as_const(*this).GetPrefs());
+}
+
+const PrefService* AndroidAutofillClient::GetPrefs() const {
+  return user_prefs::UserPrefs::Get(GetWebContents().GetBrowserContext());
+}
+
+syncer::SyncService* AndroidAutofillClient::GetSyncService() {
+  // TODO(crbug.com/321949351): Move this and other stubs into AutofillClient.
+  return nullptr;
+}
+
+signin::IdentityManager* AndroidAutofillClient::GetIdentityManager() {
+  return nullptr;
+}
+
+const signin::IdentityManager* AndroidAutofillClient::GetIdentityManager()
+    const {
+  return nullptr;
+}
+
+autofill::FormDataImporter* AndroidAutofillClient::GetFormDataImporter() {
+  return nullptr;
+}
+
+strike_database::StrikeDatabase* AndroidAutofillClient::GetStrikeDatabase() {
+  return nullptr;
+}
+
+ukm::UkmRecorder* AndroidAutofillClient::GetUkmRecorder() {
+  return nullptr;
+}
+
+autofill::AddressNormalizer* AndroidAutofillClient::GetAddressNormalizer() {
+  return nullptr;
+}
+
+const GURL& AndroidAutofillClient::GetLastCommittedPrimaryMainFrameURL() const {
+  return GetWebContents().GetPrimaryMainFrame()->GetLastCommittedURL();
+}
+
+url::Origin AndroidAutofillClient::GetLastCommittedPrimaryMainFrameOrigin()
+    const {
+  return GetWebContents().GetPrimaryMainFrame()->GetLastCommittedOrigin();
+}
+
+security_state::SecurityLevel
+AndroidAutofillClient::GetSecurityLevelForUmaHistograms() {
+  if (SecurityStateModelDelegate* delegate =
+          security_state::GetSecurityStateModelDelegate()) {
+    return delegate->GetSecurityLevel(&GetWebContents());
+  }
+
+  // If there is no helper, it means we are not in a "web" state or the embedder
+  // doesn't support the state helper. Return SECURITY_LEVEL_COUNT which will
+  //  not be logged.
+  return security_state::SecurityLevel::SECURITY_LEVEL_COUNT;
+}
+
+const translate::LanguageState* AndroidAutofillClient::GetLanguageState() {
+  return nullptr;
+}
+
+translate::TranslateDriver* AndroidAutofillClient::GetTranslateDriver() {
+  return nullptr;
+}
+
+void AndroidAutofillClient::ShowAutofillSettings(
+    autofill::SuggestionType suggestion_type) {
+  NOTIMPLEMENTED();
+}
+
+void AndroidAutofillClient::ConfirmSaveAddressProfile(
+    const autofill::AutofillProfile& profile,
+    const autofill::AutofillProfile* original_profile,
+    SaveAddressBubbleType save_address_bubble_type,
+    AddressProfileSavePromptCallback callback) {
+  NOTIMPLEMENTED();
+}
+
+autofill::AutofillClient::SuggestionUiSessionId
+AndroidAutofillClient::ShowAutofillSuggestions(
+    const autofill::AutofillClient::PopupOpenArgs& open_args,
+    base::WeakPtr<autofill::AutofillSuggestionDelegate> delegate) {
+  NOTIMPLEMENTED();
+  return SuggestionUiSessionId();
+}
+
+void AndroidAutofillClient::UpdateAutofillDataListValues(
+    base::span<const autofill::SelectOption> datalist) {
+  // Leaving as an empty method since updating autofill popup window
+  // dynamically does not seem to be a useful feature when delegating to Android
+  // APIs.
+}
+
+void AndroidAutofillClient::HideSuggestions(
+    autofill::SuggestionHidingReason reason,
+    std::optional<autofill::FillingProduct> product) {
+  // TODO(321950502): Analyze hiding the datalist popup here.
+}
+
+bool AndroidAutofillClient::IsAutofillEnabled() const {
+  NOTREACHED();
+}
+
+bool AndroidAutofillClient::IsAutofillProfileEnabled() const {
+  NOTREACHED();
+}
+
+bool AndroidAutofillClient::IsWalletPublicPassStorageEnabled() const {
+  return false;
+}
+
+bool AndroidAutofillClient::IsAutocompleteEnabled() const {
+  return false;
+}
+
+bool AndroidAutofillClient::IsPasswordManagerEnabled() const {
+  // Android 3P mode and WebView rely on the AndroidAutofillManager which
+  // doesn't call this function. If it ever does, the function needs to
+  // be implemented in a meaningful way.
+  NOTREACHED();
+}
+
+bool AndroidAutofillClient::UsesPlatformAutofill() const {
+  return true;
+}
+
+bool AndroidAutofillClient::IsContextSecure() const {
+  // Note: As of crbug.com/701018, Chrome determines whether the page is
+  // secure from the embedder-enriched security state, exposed here through
+  // SecurityStateModelDelegate. WebView does not register a
+  // SecurityStateClient, so it uses the SSLStatus fallback below.
+  if (SecurityStateModelDelegate* delegate =
+          security_state::GetSecurityStateModelDelegate()) {
+    return security_state::IsSslCertificateValid(
+        delegate->GetSecurityLevel(&GetWebContents()));
+  }
+
+  content::NavigationEntry* navigation_entry =
+      GetWebContents().GetController().GetLastCommittedEntry();
+  if (!navigation_entry ||
+      !navigation_entry->GetURL().SchemeIsCryptographic()) {
+    return false;
+  }
+
+  content::SSLStatus ssl_status = navigation_entry->GetSSL();
+  return ssl_status.certificate &&
+         !net::IsCertStatusError(ssl_status.cert_status) &&
+         !(ssl_status.content_status &
+           content::SSLStatus::RAN_INSECURE_CONTENT);
+}
+
+autofill::autofill_metrics::FormInteractionsUkmLogger&
+AndroidAutofillClient::GetFormInteractionsUkmLogger() {
+  return form_interactions_ukm_logger_;
+}
+metrics::ProfileMetricsService*
+AndroidAutofillClient::GetProfileMetricsService() {
+  NOTREACHED();
+}
+
+content::WebContents& AndroidAutofillClient::GetWebContents() const {
+  // While a const_cast is not ideal. The Autofill API uses const in various
+  // spots and the content public API doesn't have const accessors. So the const
+  // cast is the lesser of two evils.
+  return const_cast<content::WebContents&>(
+      ContentAutofillClient::GetWebContents());
+}
+
+std::unique_ptr<autofill::AutofillManager> AndroidAutofillClient::CreateManager(
+    base::PassKey<autofill::ContentAutofillDriver> pass_key,
+    autofill::ContentAutofillDriver& driver) {
+  return base::WrapUnique(new autofill::AndroidAutofillManager(&driver));
+}
+
+credential_management::ContentCredentialManager*
+AndroidAutofillClient::GetContentCredentialManager() {
+  if (base::FeatureList::IsEnabled(
+          credential_management::features::
+              kCredentialManagementThirdPartyWebApiRequestForwarding)) {
+    return &content_credential_manager_;
+  }
+  return nullptr;
+}
+
+}  // namespace android_autofill

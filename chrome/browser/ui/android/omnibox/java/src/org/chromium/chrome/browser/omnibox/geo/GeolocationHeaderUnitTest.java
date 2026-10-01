@@ -1,0 +1,541 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.omnibox.geo;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import android.content.Context;
+import android.location.Location;
+import android.location.LocationManager;
+import android.os.SystemClock;
+
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.Granularity;
+import com.google.android.gms.location.LocationListener;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationServices;
+
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.robolectric.annotation.Config;
+import org.robolectric.annotation.Implementation;
+import org.robolectric.annotation.Implements;
+
+import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.components.browser_ui.site_settings.GeolocationSetting;
+import org.chromium.components.browser_ui.site_settings.PermissionSetting;
+import org.chromium.components.browser_ui.site_settings.WebsitePreferenceBridge;
+import org.chromium.components.browser_ui.site_settings.WebsitePreferenceBridgeJni;
+import org.chromium.components.content_settings.ContentSetting;
+import org.chromium.components.content_settings.ContentSettingsType;
+import org.chromium.components.omnibox.OmniboxFeatureList;
+import org.chromium.components.omnibox.OmniboxFeatures;
+import org.chromium.components.permissions.PermissionsAndroidFeatureList;
+import org.chromium.components.search_engines.TemplateUrlService;
+import org.chromium.content_public.browser.BrowserContextHandle;
+
+/** Robolectric tests for {@link GeolocationHeader}. */
+@RunWith(BaseRobolectricTestRunner.class)
+@DisableFeatures({OmniboxFeatureList.PLATFORM_AGNOSTIC_X_GEO})
+@EnableFeatures(PermissionsAndroidFeatureList.APPROXIMATE_GEOLOCATION_PERMISSION)
+public class GeolocationHeaderUnitTest {
+    private static final String SEARCH_URL = "https://www.google.com/search?q=potatoes";
+
+    private static final double LOCATION_LAT = 20.3;
+    private static final double LOCATION_LONG = 155.8;
+    private static final float LOCATION_ACCURACY = 20f;
+    private static final long LOCATION_TIME = 400;
+    // Encoded location for LOCATION_LAT, LOCATION_LONG, LOCATION_ACCURACY and LOCATION_TIME.
+    // Textproto contents for precise location:
+    // {
+    //  role: CURRENT_LOCATION
+    //  producer: DEVICE_LOCATION
+    //  timestamp: 400000
+    //  latlng: {
+    //    latitude_e7 : 203000000
+    //    longitude_e7: 1558000000
+    //  }
+    //  radius: 20000.0
+    //  permission_granularity: PERMISSION_GRANULARITY_FINE
+    // }
+    private static final String ENCODED_PROTO_LOCATION_PRECISE =
+            "CAEQDBiAtRgqCg3AiBkMFYAx3Vw9AECcRsgBAg==";
+    // Textproto contents for coarse location:
+    // {
+    //  role: CURRENT_LOCATION
+    //  producer: DEVICE_LOCATION
+    //  timestamp: 400000
+    //  latlng: {
+    //    latitude_e7 : 203000000
+    //    longitude_e7: 1558000000
+    //  }
+    //  radius: 20000.0
+    //  permission_granularity: PERMISSION_GRANULARITY_COARSE
+    // }
+    private static final String ENCODED_PROTO_LOCATION_COARSE =
+            "CAEQDBiAtRgqCg3AiBkMFYAx3Vw9AECcRsgBAQ==";
+    private int mRefreshLastKnownLocationCount;
+
+    @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Mock private WebsitePreferenceBridge.Natives mWebsitePreferenceBridgeJniMock;
+    @Mock private Profile mProfileMock;
+    @Mock private TemplateUrlService mTemplateUrlServiceMock;
+    @Mock private FusedLocationProviderClient mLocationProviderClient;
+    @Captor private ArgumentCaptor<LocationListener> mLocationListenerCaptor;
+    @Captor private ArgumentCaptor<LocationRequest> mLocationRequestCaptor;
+
+    @Before
+    public void setUp() {
+        WebsitePreferenceBridgeJni.setInstanceForTesting(mWebsitePreferenceBridgeJniMock);
+        Location location = generateMockLocation("should_not_matter", LOCATION_TIME);
+        GeolocationTracker.setLocationForTesting(location, null);
+        GeolocationTracker.setLocationAgeForTesting(1 * 60 * 1000L);
+        GeolocationHeader.setAppPermissionsForTesting(/* hasCoarse= */ true, /* hasFine= */ true);
+        GeolocationHeader.resetStateForTesting();
+        setSiteGeolocationPermissions(
+                /* approximate= */ ContentSetting.ALLOW, /* precise= */ ContentSetting.ALLOW);
+        when(mWebsitePreferenceBridgeJniMock.isDseOrigin(any(BrowserContextHandle.class), any()))
+                .thenReturn(true);
+        when(mProfileMock.isOffTheRecord()).thenReturn(false);
+        when(mTemplateUrlServiceMock.getUrlForSearchQuery(anyString()))
+                .thenReturn("https://www.google.com/search?q=a");
+        when(mTemplateUrlServiceMock.isDefaultSearchEngineGoogle()).thenReturn(true);
+        mRefreshLastKnownLocationCount = 0;
+        GeolocationTracker.setRefreshLastKnownLocationRunnableForTesting(
+                () -> mRefreshLastKnownLocationCount++);
+        ShadowLocationServices.sFusedLocationProviderClient = mLocationProviderClient;
+    }
+
+    @Test
+    public void testEncodeProtoLocation() {
+        Location location = generateMockLocation("should_not_matter", LOCATION_TIME);
+        String encodedProtoLocation = GeolocationHeader.encodeProtoLocation(location, true);
+        assertEquals(ENCODED_PROTO_LOCATION_PRECISE, encodedProtoLocation);
+        String encodedProtoLocationApproximate =
+                GeolocationHeader.encodeProtoLocation(location, false);
+        assertEquals(ENCODED_PROTO_LOCATION_COARSE, encodedProtoLocationApproximate);
+    }
+
+    @Test
+    public void testGetGeoHeaderFreshLocation() {
+        Location location = generateMockLocation("should_not_matter", LOCATION_TIME);
+        GeolocationTracker.setLocationForTesting(location, null);
+        // 1 minute should be good enough and not require visible networks.
+        GeolocationTracker.setLocationAgeForTesting(1 * 60 * 1000L);
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        assertEquals("X-Geo: w " + ENCODED_PROTO_LOCATION_PRECISE, header);
+    }
+
+    @Test
+    public void testConsistentHeader_ReturnsHeaderForGoogleSearchUrl() {
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        assertEquals("X-Geo: w " + ENCODED_PROTO_LOCATION_PRECISE, header);
+    }
+
+    @Test
+    public void testConsistentHeader_ReturnsNullInIncognito() {
+        when(mProfileMock.isOffTheRecord()).thenReturn(true);
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        assertNull(header);
+    }
+
+    @Test
+    public void testConsistentHeader_ReturnsNullForNonGoogleUrl() {
+        String header =
+                GeolocationHeader.getGeoHeader(
+                        "https://www.chrome.fr/", mProfileMock, mTemplateUrlServiceMock);
+        assertNull(header);
+    }
+
+    @Test
+    public void testConsistentHeader_ReturnsNullForHttpUrl() {
+        String header =
+                GeolocationHeader.getGeoHeader(
+                        "http://www.google.com/search?q=potatoes",
+                        mProfileMock,
+                        mTemplateUrlServiceMock);
+        assertNull(header);
+    }
+
+    @Test
+    public void testConsistentHeaderApproximate() {
+        setSiteGeolocationPermissions(
+                /* approximate= */ ContentSetting.ALLOW, /* precise= */ ContentSetting.BLOCK);
+
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        assertEquals("X-Geo: w " + ENCODED_PROTO_LOCATION_COARSE, header);
+    }
+
+    @Test
+    public void testConsistentHeader_ApproximateAllow_PreciseAsk() {
+        setSiteGeolocationPermissions(
+                /* approximate= */ ContentSetting.ALLOW, /* precise= */ ContentSetting.ASK);
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        assertEquals("X-Geo: w " + ENCODED_PROTO_LOCATION_COARSE, header);
+    }
+
+    @Test
+    public void testConsistentHeader_ApproximateBlock_PreciseAllow() {
+        setSiteGeolocationPermissions(
+                /* approximate= */ ContentSetting.BLOCK, /* precise= */ ContentSetting.ALLOW);
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        assertNull(header);
+    }
+
+    @Test
+    public void testConsistentHeader_ApproximateAsk_PreciseAllow() {
+        setSiteGeolocationPermissions(
+                /* approximate= */ ContentSetting.ASK, /* precise= */ ContentSetting.ALLOW);
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        assertNull(header);
+    }
+
+    @Test
+    public void testConsistentHeaderForOneTimeGrant() {
+        when(mWebsitePreferenceBridgeJniMock.getPermissionSettingWithEmbargo(
+                        any(BrowserContextHandle.class),
+                        eq(ContentSettingsType.GEOLOCATION_WITH_OPTIONS),
+                        anyString(),
+                        anyString()))
+                .thenReturn(
+                        new PermissionSetting(
+                                new GeolocationSetting(ContentSetting.ALLOW, ContentSetting.ALLOW),
+                                null,
+                                /* isOneTime= */ true));
+
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        assertEquals("X-Geo: w " + ENCODED_PROTO_LOCATION_PRECISE, header);
+    }
+
+    @Test
+    public void testPermissionWithoutAutogrant_AllowsHeaderWhenAllowed() {
+        setSiteGeolocationPermissions(ContentSetting.ALLOW, ContentSetting.ALLOW);
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        assertEquals("X-Geo: w " + ENCODED_PROTO_LOCATION_PRECISE, header);
+    }
+
+    @Test
+    public void testPermissionWithoutAutogrant_BlocksHeaderWhenBlocked() {
+        setSiteGeolocationPermissions(ContentSetting.BLOCK, ContentSetting.BLOCK);
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        assertNull(header);
+    }
+
+    @Test
+    public void testPermissionWithoutAutogrant_BlocksHeaderWhenAsk() {
+        setSiteGeolocationPermissions(ContentSetting.ASK, ContentSetting.ASK);
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        assertNull(header);
+    }
+
+    @Test
+    public void testGpsFallback() {
+        setSiteGeolocationPermissions(ContentSetting.ALLOW, ContentSetting.ALLOW);
+        long now = System.currentTimeMillis();
+        Location gpsLocation = generateMockLocation(LocationManager.GPS_PROVIDER, now);
+        GeolocationTracker.setLocationForTesting(null, gpsLocation);
+
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        String expectedHeader =
+                "X-Geo: w " + GeolocationHeader.encodeProtoLocation(gpsLocation, true);
+        assertEquals(expectedHeader, header);
+    }
+
+    @Test
+    public void testGpsFallbackYounger() {
+        setSiteGeolocationPermissions(ContentSetting.ALLOW, ContentSetting.ALLOW);
+        long now = System.currentTimeMillis();
+        Location gpsLocation = generateMockLocation(LocationManager.GPS_PROVIDER, now);
+        Location netLocation = generateMockLocation(LocationManager.NETWORK_PROVIDER, now - 100);
+        GeolocationTracker.setLocationForTesting(netLocation, gpsLocation);
+
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        String expectedHeader =
+                "X-Geo: w " + GeolocationHeader.encodeProtoLocation(gpsLocation, true);
+        assertEquals(expectedHeader, header);
+    }
+
+    @Test
+    public void testGpsFallbackOlder() {
+        setSiteGeolocationPermissions(ContentSetting.ALLOW, ContentSetting.ALLOW);
+        long now = System.currentTimeMillis();
+        Location gpsLocation = generateMockLocation(LocationManager.GPS_PROVIDER, now - 100);
+        Location netLocation = generateMockLocation(LocationManager.NETWORK_PROVIDER, now);
+        GeolocationTracker.setLocationForTesting(netLocation, gpsLocation);
+
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        String expectedHeader =
+                "X-Geo: w " + GeolocationHeader.encodeProtoLocation(netLocation, true);
+        assertEquals(expectedHeader, header);
+    }
+
+    @Test
+    public void testGetGeoHeaderOld() {
+        checkOldLocation("X-Geo: w " + ENCODED_PROTO_LOCATION_PRECISE);
+        GeolocationHeader.setAppPermissionsForTesting(/* hasCoarse= */ true, /* hasFine= */ false);
+        // Even if the app-level permission is coarse, the site has precise location so the X-Geo
+        // header will report a fine location permission.
+        checkOldLocation("X-Geo: w " + ENCODED_PROTO_LOCATION_PRECISE);
+    }
+
+    @Test
+    public void testGetGeoHeaderOldLocationAppPermissionDenied() {
+        GeolocationHeader.setAppPermissionsForTesting(/* hasCoarse= */ false, /* hasFine= */ false);
+        // Nothing should be included when app permission is missing.
+        checkOldLocation(null);
+    }
+
+    @Test
+    @DisableFeatures(OmniboxFeatureList.USE_FUSED_LOCATION_PROVIDER)
+    public void testPrimeLocationForGeoHeader() {
+        GeolocationHeader.primeLocationForGeoHeaderIfEnabled(mProfileMock, mTemplateUrlServiceMock);
+        assertEquals(1, mRefreshLastKnownLocationCount);
+    }
+
+    @Test
+    public void testPrimeLocationForGeoHeaderPermissionOff() {
+        GeolocationHeader.setAppPermissionsForTesting(/* hasCoarse= */ false, /* hasFine= */ false);
+        GeolocationHeader.primeLocationForGeoHeaderIfEnabled(mProfileMock, mTemplateUrlServiceMock);
+        assertEquals(0, mRefreshLastKnownLocationCount);
+    }
+
+    @Test
+    public void testPrimeLocationForGeoHeaderDseAutograntOff() {
+        setSiteGeolocationPermissions(
+                /* approximate= */ ContentSetting.ASK, /* precise= */ ContentSetting.ASK);
+        GeolocationHeader.primeLocationForGeoHeaderIfEnabled(mProfileMock, mTemplateUrlServiceMock);
+        assertEquals(0, mRefreshLastKnownLocationCount);
+    }
+
+    @Test
+    @Config(shadows = {ShadowLocationServices.class})
+    public void testFusedLocationProvider() {
+        GeolocationHeader.primeLocationForGeoHeaderIfEnabled(mProfileMock, mTemplateUrlServiceMock);
+        verify(mLocationProviderClient)
+                .requestLocationUpdates(
+                        mLocationRequestCaptor.capture(),
+                        mLocationListenerCaptor.capture(),
+                        eq(null));
+
+        LocationRequest actualRequest = mLocationRequestCaptor.getValue();
+        assertEquals(
+                OmniboxFeatures.sGeolocationRequestMaxLocationAge.getValue(),
+                actualRequest.getMaxUpdateAgeMillis());
+        assertEquals(
+                OmniboxFeatures.sGeolocationRequestPriority.getValue(),
+                actualRequest.getPriority());
+        assertEquals(Granularity.GRANULARITY_PERMISSION_LEVEL, actualRequest.getGranularity());
+
+        Location mockLocation = generateMockLocation("network", LOCATION_TIME);
+        mLocationListenerCaptor.getValue().onLocationChanged(mockLocation);
+        assertEquals(
+                mockLocation,
+                GeolocationHeader.getLastKnownLocation(/* hasFineSitePermission= */ true));
+        assertEquals(0, mRefreshLastKnownLocationCount);
+
+        GeolocationHeader.stopListeningForLocationUpdates();
+        verify(mLocationProviderClient).removeLocationUpdates(mLocationListenerCaptor.getValue());
+
+        doThrow(new RuntimeException())
+                .when(mLocationProviderClient)
+                .requestLocationUpdates(
+                        any(LocationRequest.class), any(LocationListener.class), eq(null));
+        GeolocationHeader.primeLocationForGeoHeaderIfEnabled(mProfileMock, mTemplateUrlServiceMock);
+
+        assertEquals(1, mRefreshLastKnownLocationCount);
+    }
+
+    @Test
+    @Config(shadows = {ShadowLocationServices.class})
+    public void testFusedLocationProvider_SitePrecisePermissionGranted() {
+        // App-level and site-level permissions are granted at precise-level by default in `setUp`.
+
+        GeolocationHeader.primeLocationForGeoHeaderIfEnabled(mProfileMock, mTemplateUrlServiceMock);
+        verify(mLocationProviderClient)
+                .requestLocationUpdates(
+                        mLocationRequestCaptor.capture(),
+                        mLocationListenerCaptor.capture(),
+                        eq(null));
+
+        LocationRequest actualRequest = mLocationRequestCaptor.getValue();
+        assertEquals(Granularity.GRANULARITY_PERMISSION_LEVEL, actualRequest.getGranularity());
+
+        Location mockLocation = generateMockLocation("network", LOCATION_TIME);
+        mLocationListenerCaptor.getValue().onLocationChanged(mockLocation);
+        assertEquals(
+                mockLocation,
+                GeolocationHeader.getLastKnownLocation(/* hasFineSitePermission= */ true));
+        assertEquals(0, mRefreshLastKnownLocationCount);
+    }
+
+    @Test
+    @Config(shadows = {ShadowLocationServices.class})
+    public void testFusedLocationProvider_SiteApproximatePermissionGranted() {
+        // App-level permissions are granted by default in setUp.
+        // Site-level permission is granted for approximate.
+        setSiteGeolocationPermissions(
+                /* approximate= */ ContentSetting.ALLOW, /* precise= */ ContentSetting.BLOCK);
+
+        GeolocationHeader.primeLocationForGeoHeaderIfEnabled(mProfileMock, mTemplateUrlServiceMock);
+        verify(mLocationProviderClient)
+                .requestLocationUpdates(
+                        mLocationRequestCaptor.capture(),
+                        mLocationListenerCaptor.capture(),
+                        eq(null));
+
+        LocationRequest actualRequest = mLocationRequestCaptor.getValue();
+        assertEquals(Granularity.GRANULARITY_COARSE, actualRequest.getGranularity());
+
+        Location mockLocation = generateMockLocation("network", LOCATION_TIME);
+        mLocationListenerCaptor.getValue().onLocationChanged(mockLocation);
+        assertEquals(
+                mockLocation,
+                GeolocationHeader.getLastKnownLocation(/* hasFineSitePermission= */ false));
+        assertEquals(0, mRefreshLastKnownLocationCount);
+    }
+
+    @Test
+    @Config(shadows = {ShadowLocationServices.class})
+    public void testFusedLocationProvider_SitePermissionDenied() {
+        // App-level permissions are granted by default in setUp.
+        // Site-level permission is denied.
+        setSiteGeolocationPermissions(
+                /* approximate= */ ContentSetting.BLOCK, /* precise= */ ContentSetting.BLOCK);
+
+        GeolocationHeader.primeLocationForGeoHeaderIfEnabled(mProfileMock, mTemplateUrlServiceMock);
+        verify(mLocationProviderClient, never())
+                .requestLocationUpdates(
+                        any(LocationRequest.class), any(LocationListener.class), eq(null));
+        assertEquals(0, mRefreshLastKnownLocationCount);
+    }
+
+    @Test
+    @Config(shadows = {ShadowLocationServices.class})
+    public void testFusedLocationProvider_AppCoarseSitePrecisePermission() {
+        // App has only coarse permission.
+        GeolocationHeader.setAppPermissionsForTesting(/* hasCoarse= */ true, /* hasFine= */ false);
+
+        // Site has precise permission.
+        setSiteGeolocationPermissions(
+                /* approximate= */ ContentSetting.ALLOW, /* precise= */ ContentSetting.ALLOW);
+
+        GeolocationHeader.primeLocationForGeoHeaderIfEnabled(mProfileMock, mTemplateUrlServiceMock);
+        verify(mLocationProviderClient)
+                .requestLocationUpdates(
+                        mLocationRequestCaptor.capture(),
+                        mLocationListenerCaptor.capture(),
+                        eq(null));
+
+        // The request should be coarse because the app permission is the most restrictive.
+        LocationRequest actualRequest = mLocationRequestCaptor.getValue();
+        assertEquals(Granularity.GRANULARITY_PERMISSION_LEVEL, actualRequest.getGranularity());
+
+        // Verify that the location is treated as not fine.
+        Location mockLocation = generateMockLocation("network", LOCATION_TIME);
+        mLocationListenerCaptor.getValue().onLocationChanged(mockLocation);
+        assertEquals(
+                mockLocation,
+                GeolocationHeader.getLastKnownLocation(/* hasFineSitePermission= */ false));
+        assertEquals(0, mRefreshLastKnownLocationCount);
+    }
+
+    @Test
+    @EnableFeatures({OmniboxFeatureList.PLATFORM_AGNOSTIC_X_GEO})
+    public void testGetGeoHeaderPlatformAgnosticXGeoEnabled() {
+        Location location = generateMockLocation("should_not_matter", LOCATION_TIME);
+        GeolocationTracker.setLocationForTesting(location, null);
+        GeolocationTracker.setLocationAgeForTesting(1 * 60 * 1000L);
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        assertNull(header);
+    }
+
+    @Test
+    @EnableFeatures({OmniboxFeatureList.PLATFORM_AGNOSTIC_X_GEO})
+    public void testPrimeLocationPlatformAgnosticXGeoEnabled() {
+        GeolocationHeader.primeLocationForGeoHeaderIfEnabled(mProfileMock, mTemplateUrlServiceMock);
+        assertFalse(GeolocationHeader.isGeolocationPrimedForTesting());
+    }
+
+    private void setSiteGeolocationPermissions(
+            @ContentSetting int approximate, @ContentSetting int precise) {
+        when(mWebsitePreferenceBridgeJniMock.getPermissionSettingWithEmbargo(
+                        any(BrowserContextHandle.class),
+                        eq(ContentSettingsType.GEOLOCATION_WITH_OPTIONS),
+                        anyString(),
+                        anyString()))
+                .thenReturn(
+                        new PermissionSetting(
+                                new GeolocationSetting(approximate, precise),
+                                null,
+                                /* isOneTime= */ false));
+    }
+
+    private void checkOldLocation(String expectedHeader) {
+        Location location = generateMockLocation("should_not_matter", LOCATION_TIME);
+        GeolocationTracker.setLocationForTesting(location, null);
+        // 6 minutes should hit the age limit, but the feature is off.
+        GeolocationTracker.setLocationAgeForTesting(6 * 60 * 1000L);
+        String header =
+                GeolocationHeader.getGeoHeader(SEARCH_URL, mProfileMock, mTemplateUrlServiceMock);
+        assertEquals(expectedHeader, header);
+    }
+
+    private Location generateMockLocation(String provider, long time) {
+        Location location = new Location(provider);
+        location.setLatitude(LOCATION_LAT);
+        location.setLongitude(LOCATION_LONG);
+        location.setAccuracy(LOCATION_ACCURACY);
+        location.setTime(time);
+        location.setElapsedRealtimeNanos(
+                SystemClock.elapsedRealtimeNanos() + 1000000 * (time - System.currentTimeMillis()));
+        return location;
+    }
+
+    /** Shadow for LocationServices */
+    @Implements(LocationServices.class)
+    public static class ShadowLocationServices {
+        static FusedLocationProviderClient sFusedLocationProviderClient;
+
+        @Implementation
+        public static FusedLocationProviderClient getFusedLocationProviderClient(Context context) {
+            return sFusedLocationProviderClient;
+        }
+    }
+}

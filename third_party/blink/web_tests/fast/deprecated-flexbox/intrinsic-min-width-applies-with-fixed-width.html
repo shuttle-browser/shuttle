@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<style>
+.min-content, .max-content, .fit-content {
+    display: -webkit-box;
+    width: 10px;
+    outline: 2px solid;
+    line-height: 0;
+}
+.min-content {
+    min-width: min-content;
+}
+.max-content {
+    min-width: max-content;
+}
+.fit-content {
+    min-width: fit-content;
+}
+.child {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    background-color: pink;
+}
+</style>
+<script src="../../resources/check-layout.js"></script>
+
+<body onload="checkLayout('body > div')">
+<p>Check that min-width intrinsic size still applies if a fixed width is set.</p>
+
+<div class="min-content" data-expected-width=20>
+    <div>
+        <div class="child"></div><div class="child"></div>
+    </div>
+</div>
+
+<div class="max-content" data-expected-width=40>
+    <div>
+        <div class="child"></div><div class="child"></div>
+    </div>
+</div>
+
+<div class="fit-content" data-expected-width=40>
+    <div>
+        <div class="child"></div><div class="child"></div>
+    </div>
+</div>
+
+<div style="width: 30px">
+    <div class="fit-content" data-expected-width=30>
+        <div>
+            <div class="child"></div><div class="child"></div>
+        </div>
+    </div>
+</div>
+
+<div style="width: 10px">
+    <div class="fit-content" data-expected-width=20>
+        <div>
+            <div class="child"></div><div class="child"></div>
+        </div>
+    </div>
+</div>
+
+</body>

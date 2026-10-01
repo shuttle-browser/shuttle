@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>
+      Test if canceling events after setTargetAtTime crashes
+    </title>
+    <script src="../../resources/testharness.js"></script>
+    <script src="../../resources/testharnessreport.js"></script>
+  </head>
+  <body>
+    <script>
+      // Arbitrary parameters for the offline context.
+      const sampleRate = 48000;
+      const renderDuration = 1;
+      const channels = 2;
+      const renderFrames = renderDuration * sampleRate;
+
+      promise_test(async () => {
+        const context =
+            new OfflineAudioContext(channels, renderFrames, sampleRate);
+        const source = new ConstantSourceNode(context);
+        const analyser = new AnalyserNode(context);
+        source.connect(analyser);
+
+        // Scheduling the following at an earlier time than above causes the
+        // page to crash in 73.0.3638.0. See crbug.com/913217.
+        source.offset.setValueAtTime(1, context.currentTime);
+        source.offset.setTargetAtTime(0, context.currentTime + 2, 0.00001);
+        source.offset.cancelAndHoldAtTime(context.currentTime + 1.99999);
+
+        source.start(context.currentTime);
+
+        await context.startRendering();
+        // Should finish without a crash.
+      }, 'crash');
+    </script>
+  </body>
+</html>

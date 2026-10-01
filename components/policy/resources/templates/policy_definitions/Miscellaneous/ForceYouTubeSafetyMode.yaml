@@ -1,0 +1,36 @@
+arc_support: This policy has no effect on the <ph name="ANDROID_NAME">Android</ph> <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> app. If Safety Mode
+  on <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> should be enforced, installation of the <ph name="ANDROID_NAME">Android</ph> <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> app should be
+  disallowed.
+caption: Force <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> Safety Mode
+deprecated: true
+desc: |-
+  This policy is deprecated. Consider using <ph name="FORCE_YOUTUBE_RESTRICT_POLICY_NAME">ForceYouTubeRestrict</ph>, which overrides this policy and allows more fine-grained tuning.
+
+        Forces <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> Moderate Restricted Mode and prevents users from changing this setting.
+
+        If this setting is enabled, Restricted Mode on <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> is always enforced to be at least Moderate.
+
+        If this setting is disabled or no value is set, Restricted Mode on <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> is not enforced by <ph name="PRODUCT_NAME">$1<ex>Google Chrome</ex></ph>. External policies such as <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> policies might still enforce Restricted Mode, though.
+default: false
+example_value: false
+features:
+  can_be_recommended: false
+  dynamic_refresh: true
+  per_profile: true
+items:
+- caption: Force <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> Restricted Mode to be at least Moderate
+  value: true
+- caption: Do not enforce <ph name="YOUTUBE_PRODUCT_NAME">YouTube</ph> Restricted Mode
+  value: false
+owners:
+- treib@chromium.org
+- igorcov@chromium.org
+schema:
+  type: boolean
+supported_on:
+- chrome.*:41-
+- chrome_os:41-
+- android:41-
+tags:
+- filtering
+type: main

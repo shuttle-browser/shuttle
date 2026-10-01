@@ -1,0 +1,11 @@
+include_rules = [
+  # keep-sorted start
+  "+components/lookalikes/core",
+  "+components/reputation/core",
+  "+components/ukm",
+  "+components/url_formatter",
+  "+ios/net",
+  "+net/base",
+  "+services/metrics/public/cpp",
+  # keep-sorted end
+]

@@ -1,0 +1,79 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/skills/skills_glic_mojom_util.h"
+
+#include <optional>
+
+#include "base/check.h"
+#include "base/notreached.h"
+#include "components/skills/public/skill.h"
+#include "url/gurl.h"
+
+namespace skills {
+
+glic::mojom::SkillSource SyncPbToGlicMojomSkillSource(
+    sync_pb::SkillSource source) {
+  switch (source) {
+    case sync_pb::SkillSource::SKILL_SOURCE_UNKNOWN:
+      return glic::mojom::SkillSource::kUnknown;
+    case sync_pb::SkillSource::SKILL_SOURCE_FIRST_PARTY:
+      return glic::mojom::SkillSource::kFirstParty;
+    case sync_pb::SkillSource::SKILL_SOURCE_USER_CREATED:
+      return glic::mojom::SkillSource::kUserCreated;
+    case sync_pb::SkillSource::SKILL_SOURCE_DERIVED_FROM_FIRST_PARTY:
+      return glic::mojom::SkillSource::kDerivedFromFirstParty;
+    case sync_pb::SkillSource::SKILL_SOURCE_ENTERPRISE:
+      return glic::mojom::SkillSource::kEnterprise;
+    case sync_pb::SkillSource::SKILL_SOURCE_DERIVED_FROM_ENTERPRISE:
+      return glic::mojom::SkillSource::kDerivedFromEnterprise;
+  }
+  NOTREACHED();
+}
+
+sync_pb::SkillSource GlicMojomToSyncPbSkillSource(
+    glic::mojom::SkillSource source) {
+  switch (source) {
+    case glic::mojom::SkillSource::kUnknown:
+      return sync_pb::SkillSource::SKILL_SOURCE_UNKNOWN;
+    case glic::mojom::SkillSource::kFirstParty:
+      return sync_pb::SkillSource::SKILL_SOURCE_FIRST_PARTY;
+    case glic::mojom::SkillSource::kUserCreated:
+      return sync_pb::SkillSource::SKILL_SOURCE_USER_CREATED;
+    case glic::mojom::SkillSource::kDerivedFromFirstParty:
+      return sync_pb::SkillSource::SKILL_SOURCE_DERIVED_FROM_FIRST_PARTY;
+    case glic::mojom::SkillSource::kEnterprise:
+      return sync_pb::SkillSource::SKILL_SOURCE_ENTERPRISE;
+    case glic::mojom::SkillSource::kDerivedFromEnterprise:
+      return sync_pb::SkillSource::SKILL_SOURCE_DERIVED_FROM_ENTERPRISE;
+  }
+  NOTREACHED();
+}
+
+glic::mojom::SkillPreviewPtr SkillToGlicMojomSkillPreview(
+    const skills::Skill* skill) {
+  CHECK(skill);
+  std::optional<GURL> image_url;
+  if (!skill->image_url.is_empty()) {
+    image_url = skill->image_url;
+  }
+  std::optional<std::string> curated_by;
+  if (!skill->curated_by.empty()) {
+    curated_by = skill->curated_by;
+  }
+  std::optional<std::string> category;
+  if (!skill->category.empty()) {
+    category = skill->category;
+  }
+  std::optional<base::Time> creation_time;
+  if (!skill->creation_time.is_null()) {
+    creation_time = skill->creation_time;
+  }
+  return glic::mojom::SkillPreview::New(
+      skill->id, skill->name, skill->icon,
+      SyncPbToGlicMojomSkillSource(skill->source), skill->description,
+      curated_by, image_url, category, creation_time);
+}
+
+}  // namespace skills

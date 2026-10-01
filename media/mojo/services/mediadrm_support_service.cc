@@ -1,0 +1,61 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "media/mojo/services/mediadrm_support_service.h"
+
+#include <utility>
+
+#include "base/check.h"
+#include "base/feature_list.h"
+#include "base/functional/callback.h"
+#include "media/base/android/media_drm_bridge.h"
+#include "media/base/media_switches.h"
+
+namespace media {
+
+MediaDrmSupportService::MediaDrmSupportService(
+    mojo::PendingReceiver<mojom::MediaDrmSupport> receiver)
+    : receiver_(this, std::move(receiver)) {}
+
+MediaDrmSupportService::~MediaDrmSupportService() = default;
+
+void MediaDrmSupportService::IsKeySystemSupported(
+    const std::string& key_system,
+    bool is_secure,
+    IsKeySystemSupportedCallback callback) {
+  DCHECK(!key_system.empty());
+  DVLOG(1) << __func__ << " key_system: " << key_system;
+
+  auto security_level =
+      is_secure ? media::MediaDrmBridge::SECURITY_LEVEL_HW_SECURE_ALL
+                : media::MediaDrmBridge::SECURITY_LEVEL_SW_SECURE_CRYPTO;
+
+  auto supported_containers =
+      MediaDrmBridge::GetSupportedContainers(key_system, security_level);
+
+  if (supported_containers.empty()) {
+    std::move(callback).Run(nullptr);
+    return;
+  }
+
+  auto result = mojom::MediaDrmSupportResult::New();
+  auto version = MediaDrmBridge::MaybeGetVersion(key_system, security_level);
+  if (!version.has_value() &&
+      version.error() ==
+          media::CreateCdmStatus::kAndroidFailedL1SecurityLevel) {
+    // Failed to determine version as `security_level` not supported.
+    std::move(callback).Run(std::move(result));
+    return;
+  }
+
+  result->key_system_supports_video_webm =
+      supported_containers.contains("video/webm");
+  result->key_system_supports_video_mp4 =
+      supported_containers.contains("video/mp4");
+  result->key_system_version = version.value_or(base::Version());
+
+  std::move(callback).Run(std::move(result));
+}
+
+}  // namespace media

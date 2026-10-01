@@ -1,0 +1,61 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "base/android/feature_map.h"
+#include "base/feature_list.h"
+#include "base/no_destructor.h"
+#include "ui/android/ui_android_features.h"
+#include "ui/base/ui_base_features.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "ui/android/ui_android_feature_map_jni/UiAndroidFeatureMap_jni.h"
+
+namespace ui {
+
+namespace {
+
+// Array of features exposed through the Java UiAndroidFeatureMap API.
+const base::Feature* const kFeaturesExposedToJava[] = {
+    &ui::kAndroidResourceMemoryOptimization,
+    &ui::kAndroidUseCorrectDisplayWorkArea,
+    &ui::kAndroidUseCorrectWindowBounds,
+    &ui::kAndroidUseDisplayTopology,
+    &ui::kAndroidWindowOcclusion,
+    &ui::kBlockMouseEventsOnView,
+    &ui::kBottomSheetRemeasureFix,
+    &ui::kCachedGestureNavMetrics,
+    &ui::kCheckIntentCallerPermission,
+    &ui::kClipboardConfusedDeputyDefenseText,
+    &ui::kClipboardConfusedDeputyDefenseImages,
+    &ui::kClipboardConfusedDeputyDefenseFiles,
+    &ui::kClipboardOversizedPayloadProvider,
+    &ui::kDeprecatedExternalPickerFunction,
+    &ui::kDisablePhotoPickerForVideoCapture,
+    &ui::kMaximumWindowForGestureNavDetection,
+    &ui::kPointerLockMouseScaling,
+    &ui::kRefactorMinWidthContextOverride,
+    &ui::kReportBottomOverscrolls,
+    &ui::kRequireLeadingInTextViewWithLeading,
+    &ui::kAndroidUpdateDisplayForContext,
+    &ui::kSupportKeyboard,
+    &ui::kAndroidTouchpadOverscrollHistoryNavigation,
+    &ui::kUpdatePaddingForDisplayCalculation,
+};
+
+// static
+base::android::FeatureMap* GetFeatureMap() {
+  static base::NoDestructor<base::android::FeatureMap> kFeatureMap(
+      kFeaturesExposedToJava);
+  return kFeatureMap.get();
+}
+
+}  // namespace
+
+static int64_t JNI_UiAndroidFeatureMap_GetNativeMap(JNIEnv* env) {
+  return reinterpret_cast<int64_t>(GetFeatureMap());
+}
+
+}  // namespace ui
+
+DEFINE_JNI(UiAndroidFeatureMap)

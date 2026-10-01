@@ -1,0 +1,19 @@
+{
+  "name": "chrome.cookies",
+  "version": "0.1",
+  "manifest_version": 3,
+  "description": "end-to-end browser test for chrome.cookies.getPartitionKey API",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": [
+    "cookies",
+    "webNavigation",
+    "tabs",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://b.com/",
+    "http://a.com/"
+  ]
+}

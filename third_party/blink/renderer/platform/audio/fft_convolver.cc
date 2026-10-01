@@ -1,0 +1,107 @@
+/*
+ * Copyright (C) 2010 Google Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1.  Redistributions of source code must retain the above copyright
+ *     notice, this list of conditions and the following disclaimer.
+ * 2.  Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ * 3.  Neither the name of Apple Computer, Inc. ("Apple") nor the names of
+ *     its contributors may be used to endorse or promote products derived
+ *     from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY APPLE AND ITS CONTRIBUTORS "AS IS" AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL APPLE OR ITS CONTRIBUTORS BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include "third_party/blink/renderer/platform/audio/fft_convolver.h"
+
+#include <algorithm>
+
+#include "third_party/blink/renderer/platform/audio/vector_math.h"
+#include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
+
+namespace blink {
+
+FFTConvolver::FFTConvolver(unsigned fft_size)
+    : frame_(fft_size),
+      read_write_index_(0),
+      input_buffer_(fft_size),  // 2nd half of buffer is always zeroed
+      output_buffer_(fft_size),
+      last_overlap_buffer_(fft_size / 2) {}
+
+void FFTConvolver::Process(const FFTFrame* fft_kernel,
+                           base::span<const float> source,
+                           base::span<float> dest) {
+  DCHECK_EQ(source.size(), dest.size());
+
+  unsigned half_size = FftSize() / 2;
+
+  base::span<float> input_buffer_span = input_buffer_.as_span();
+  base::span<float> output_buffer_span = output_buffer_.as_span();
+
+  while (!source.empty()) {
+    size_t frames_to_copy =
+        std::min(source.size(), half_size - read_write_index_);
+
+    // Copy samples to input buffer
+    DCHECK_LE(read_write_index_ + frames_to_copy, input_buffer_.size());
+
+    input_buffer_span.subspan(read_write_index_, frames_to_copy)
+        .copy_from(source.take_first(frames_to_copy));
+
+    // Copy samples from output buffer
+    DCHECK_LE(read_write_index_ + frames_to_copy, output_buffer_.size());
+
+    dest.take_first(frames_to_copy)
+        .copy_from(
+            output_buffer_span.subspan(read_write_index_, frames_to_copy));
+    read_write_index_ += frames_to_copy;
+
+    // Check if it's time to perform the next FFT
+    if (read_write_index_ == half_size) {
+      {
+        TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("webaudio.audionode"),
+                     "FFTConvolver::ExecuteFFT");
+        // The input buffer is now filled (get frequency-domain version)
+        frame_.DoFFT(input_buffer_span);
+        frame_.Multiply(*fft_kernel);
+        frame_.DoInverseFFT(output_buffer_span);
+      }
+
+      // Overlap-add 1st half from previous time
+      vector_math::Vadd(output_buffer_.as_span(),
+                        last_overlap_buffer_.as_span(),
+                        output_buffer_.as_span(), half_size);
+
+      // Finally, save 2nd half of result
+      DCHECK_EQ(output_buffer_.size(), 2 * half_size);
+      DCHECK_EQ(last_overlap_buffer_.size(), half_size);
+
+      last_overlap_buffer_.as_span().copy_from(
+          output_buffer_span.subspan(half_size, half_size));
+
+      // Reset index back to start for next time
+      read_write_index_ = 0;
+    }
+  }
+}
+
+void FFTConvolver::Reset() {
+  last_overlap_buffer_.Zero();
+  read_write_index_ = 0;
+}
+
+}  // namespace blink

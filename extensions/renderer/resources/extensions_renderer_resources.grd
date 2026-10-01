@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grit latest_public_release="0" current_release="1">
+  <outputs>
+    <output filename="grit/extensions_renderer_resources.h" type="rc_header">
+      <emit emit_type='prepend'></emit>
+    </output>
+    <output filename="extensions_renderer_resources.pak" type="data_package" />
+  </outputs>
+  <release seq="1">
+    <structures>
+      <!-- Extension styles. -->
+      <structure name="IDR_EXTENSION_CSS" file="extension.css" type="chrome_html" flattenhtml="true" />
+    </structures>
+  </release>
+</grit>

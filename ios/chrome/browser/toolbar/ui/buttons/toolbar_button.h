@@ -1,0 +1,49 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_TOOLBAR_UI_BUTTONS_TOOLBAR_BUTTON_H_
+#define IOS_CHROME_BROWSER_TOOLBAR_UI_BUTTONS_TOOLBAR_BUTTON_H_
+
+#import <UIKit/UIKit.h>
+
+#import "ios/chrome/browser/toolbar/ui/buttons/toolbar_button_visibility.h"
+#import "ios/chrome/browser/toolbar/ui/buttons/toolbar_element_with_background.h"
+#import "ios/chrome/common/ui/elements/highlight_button.h"
+
+@protocol GeminiCommands;
+
+using ToolbarButtonImageLoader = UIImage* (^)(void);
+
+// Button displayed in the toolbar.
+@interface ToolbarButton : HighlightButton <ToolbarElementWithBackground>
+
+// Handler for Gemini commands.
+@property(nonatomic, weak) id<GeminiCommands> geminiHandler;
+
+// The visibility mask for this button.
+@property(nonatomic, assign) ToolbarButtonVisibility visibilityMask;
+
+// When true the button is hidden, no matter the visibility mask. Default NO.
+@property(nonatomic, assign) BOOL forceHidden;
+
+// When true, the button has a blue gradient background.
+@property(nonatomic, assign) BOOL iphHighlighted;
+
+// When true, the button has a blue dot in the top right corner.
+@property(nonatomic, assign) BOOL hasBlueDot;
+
+// When true, shadow and background are removed from this button. Default NO.
+@property(nonatomic, assign) BOOL shadowAndBackgroundRemoved;
+
+// The string to be used for the accessibility label when the blue dot is
+// visible.
+@property(nonatomic, copy) NSString* blueDotAccessibilityLabel;
+
+// Initializer for this button in `incognito` with an `imageLoader`.
+- (instancetype)initWithImageLoader:(ToolbarButtonImageLoader)imageLoader
+                          incognito:(BOOL)incognito;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_TOOLBAR_UI_BUTTONS_TOOLBAR_BUTTON_H_

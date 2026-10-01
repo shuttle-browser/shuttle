@@ -1,0 +1,378 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_GLIC_SERVICE_METRICS_METRICS_TYPES_H_
+#define CHROME_BROWSER_GLIC_SERVICE_METRICS_METRICS_TYPES_H_
+
+#include <string>
+#include <string_view>
+
+#include "chrome/browser/glic/glic_enums.h"
+#include "chrome/browser/glic/host/glic.mojom.h"
+#include "services/metrics/public/cpp/ukm_source_id.h"
+
+namespace tabs {
+class TabInterface;
+}
+
+namespace glic {
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(ResponseSegmentation)
+enum class ResponseSegmentation {
+  kUnknown = 0,
+  kOsButtonAttachedText = 1,
+  kOsButtonAttachedAudio = 2,
+  kOsButtonDetachedText = 3,
+  kOsButtonDetachedAudio = 4,
+  kOsButtonMenuAttachedText = 5,
+  kOsButtonMenuAttachedAudio = 6,
+  kOsButtonMenuDetachedText = 7,
+  kOsButtonMenuDetachedAudio = 8,
+  kOsButtonHotkeyAttachedText = 9,
+  kOsButtonHotkeyAttachedAudio = 10,
+  kOsButtonHotkeyDetachedText = 11,
+  kOsButtonHotkeyDetachedAudio = 12,
+  kButtonTopChromeAttachedText = 13,
+  kButtonTopChromeAttachedAudio = 14,
+  kButtonTopChromeDetachedText = 15,
+  kButtonTopChromeDetachedAudio = 16,
+  kFreAttachedText = 17,
+  kFreAttachedAudio = 18,
+  kFreDetachedText = 19,
+  kFreDetachedAudio = 20,
+  kProfilePickerAttachedText = 21,
+  kProfilePickerAttachedAudio = 22,
+  kProfilePickerDetachedText = 23,
+  kProfilePickerDetachedAudio = 24,
+  kNudgeAttachedText = 25,
+  kNudgeAttachedAudio = 26,
+  kNudgeDetachedText = 27,
+  kNudgeDetachedAudio = 28,
+  kThreeDotsMenuAttachedText = 29,
+  kThreeDotsMenuAttachedAudio = 30,
+  kThreeDotsMenuDetachedText = 31,
+  kThreeDotsMenuDetachedAudio = 32,
+  kUnsupportedAttachedText = 33,
+  kUnsupportedAttachedAudio = 34,
+  kUnsupportedDetachedText = 35,
+  kUnsupportedDetachedAudio = 36,
+  kWhatsNewAttachedText = 37,
+  kWhatsNewAttachedAudio = 38,
+  kWhatsNewDetachedText = 39,
+  kWhatsNewDetachedAudio = 40,
+  kAfterSignInAttachedText = 41,
+  kAfterSignInAttachedAudio = 42,
+  kAfterSignInDetachedText = 43,
+  kAfterSignInDetachedAudio = 44,
+  kSharedTabAttachedText = 45,
+  kSharedTabAttachedAudio = 46,
+  kSharedTabDetachedText = 47,
+  kSharedTabDetachedAudio = 48,
+  kActorTaskIconAttachedText = 49,
+  kActorTaskIconAttachedAudio = 50,
+  kActorTaskIconDetachedText = 51,
+  kActorTaskIconDetachedAudio = 52,
+  kSharedImageAttachedText = 53,
+  kSharedImageAttachedAudio = 54,
+  kSharedImageDetachedText = 55,
+  kSharedImageDetachedAudio = 56,
+  kHandoffButtonAttachedText = 57,
+  kHandoffButtonAttachedAudio = 58,
+  kHandoffButtonDetachedText = 59,
+  kHandoffButtonDetachedAudio = 60,
+  kSkillsAttachedText = 61,
+  kSkillsAttachedAudio = 62,
+  kSkillsDetachedText = 63,
+  kSkillsDetachedAudio = 64,
+  kAutoOpenedByContextualCueAttachedText = 65,
+  kAutoOpenedByContextualCueAttachedAudio = 66,
+  kAutoOpenedByContextualCueDetachedText = 67,
+  kAutoOpenedByContextualCueDetachedAudio = 68,
+  kPdfSummarizeButtonAttachedText = 69,
+  kPdfSummarizeButtonAttachedAudio = 70,
+  kPdfSummarizeButtonDetachedText = 71,
+  kPdfSummarizeButtonDetachedAudio = 72,
+  kNavigationCaptureAttachedText = 73,
+  kNavigationCaptureAttachedAudio = 74,
+  kNavigationCaptureDetachedText = 75,
+  kNavigationCaptureDetachedAudio = 76,
+  kAutoOpenedForPdfAttachedText = 77,
+  kAutoOpenedForPdfAttachedAudio = 78,
+  kAutoOpenedForPdfDetachedText = 79,
+  kAutoOpenedForPdfDetachedAudio = 80,
+  kCaptureRegionHotkeyAttachedText = 81,
+  kCaptureRegionHotkeyAttachedAudio = 82,
+  kCaptureRegionHotkeyDetachedText = 83,
+  kCaptureRegionHotkeyDetachedAudio = 84,
+  kIphAttachedText = 85,
+  kIphAttachedAudio = 86,
+  kIphDetachedText = 87,
+  kIphDetachedAudio = 88,
+  kAnchoredContextualCueAttachedText = 89,
+  kAnchoredContextualCueAttachedAudio = 90,
+  kAnchoredContextualCueDetachedText = 91,
+  kAnchoredContextualCueDetachedAudio = 92,
+  kWebContentsContextMenuAttachedText = 93,
+  kWebContentsContextMenuAttachedAudio = 94,
+  kWebContentsContextMenuDetachedText = 95,
+  kWebContentsContextMenuDetachedAudio = 96,
+  kTextSelectionNudgeAttachedText = 97,
+  kTextSelectionNudgeAttachedAudio = 98,
+  kTextSelectionNudgeDetachedText = 99,
+  kTextSelectionNudgeDetachedAudio = 100,
+  kTextSelectionWidgetAttachedText = 101,
+  kTextSelectionWidgetAttachedAudio = 102,
+  kTextSelectionWidgetDetachedText = 103,
+  kTextSelectionWidgetDetachedAudio = 104,
+  kObsoleteZeroStateAutoSummarizeAttachedText = 105,
+  kObsoleteZeroStateAutoSummarizeAttachedAudio = 106,
+  kObsoleteZeroStateAutoSummarizeDetachedText = 107,
+  kObsoleteZeroStateAutoSummarizeDetachedAudio = 108,
+  kUniversalCartAttachedText = 109,
+  kUniversalCartAttachedAudio = 110,
+  kUniversalCartDetachedText = 111,
+  kUniversalCartDetachedAudio = 112,
+  kExperimentalTriggeringAttachedText = 113,
+  kExperimentalTriggeringAttachedAudio = 114,
+  kExperimentalTriggeringDetachedText = 115,
+  kExperimentalTriggeringDetachedAudio = 116,
+  kPasswordChangeAttachedText = 117,
+  kPasswordChangeAttachedAudio = 118,
+  kPasswordChangeDetachedText = 119,
+  kPasswordChangeDetachedAudio = 120,
+  kAutofillAttachedText = 121,
+  kAutofillAttachedAudio = 122,
+  kAutofillDetachedText = 123,
+  kAutofillDetachedAudio = 124,
+  kToolbarButtonAttachedText = 125,
+  kToolbarButtonAttachedAudio = 126,
+  kToolbarButtonDetachedText = 127,
+  kToolbarButtonDetachedAudio = 128,
+  kIndigoPageActionAttachedText = 129,
+  kIndigoPageActionAttachedAudio = 130,
+  kIndigoPageActionDetachedText = 131,
+  kIndigoPageActionDetachedAudio = 132,
+  kWebDragDropAttachedText = 133,
+  kWebDragDropAttachedAudio = 134,
+  kWebDragDropDetachedText = 135,
+  kWebDragDropDetachedAudio = 136,
+  kPromotionPageAttachedText = 137,
+  kPromotionPageAttachedAudio = 138,
+  kPromotionPageDetachedText = 139,
+  kPromotionPageDetachedAudio = 140,
+  kDaisyChainOnNewTabAttachedText = 141,
+  kDaisyChainOnNewTabAttachedAudio = 142,
+  kDaisyChainOnNewTabDetachedText = 143,
+  kDaisyChainOnNewTabDetachedAudio = 144,
+  kDaisyChainOnFollowLinkAttachedText = 145,
+  kDaisyChainOnFollowLinkAttachedAudio = 146,
+  kDaisyChainOnFollowLinkDetachedText = 147,
+  kDaisyChainOnFollowLinkDetachedAudio = 148,
+  kConversationSwitchAttachedText = 149,
+  kConversationSwitchAttachedAudio = 150,
+  kConversationSwitchDetachedText = 151,
+  kConversationSwitchDetachedAudio = 152,
+  kDetachAttachButtonAttachedText = 153,
+  kDetachAttachButtonAttachedAudio = 154,
+  kDetachAttachButtonDetachedText = 155,
+  kDetachAttachButtonDetachedAudio = 156,
+  kTabRestoreAttachedText = 157,
+  kTabRestoreAttachedAudio = 158,
+  kTabRestoreDetachedText = 159,
+  kTabRestoreDetachedAudio = 160,
+  kReshowInactiveAttachedText = 161,
+  kReshowInactiveAttachedAudio = 162,
+  kReshowInactiveDetachedText = 163,
+  kReshowInactiveDetachedAudio = 164,
+  kTabContextMenuAttachedText = 165,
+  kTabContextMenuAttachedAudio = 166,
+  kTabContextMenuDetachedText = 167,
+  kTabContextMenuDetachedAudio = 168,
+  kWebContinuityAttachedText = 169,
+  kWebContinuityAttachedAudio = 170,
+  kWebContinuityDetachedText = 171,
+  kWebContinuityDetachedAudio = 172,
+  kMaxValue = kWebContinuityDetachedAudio,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicResponseSegmentation)
+
+enum class ModeOffset : int {
+  kTextAttached = 1,
+  kAudioAttached = 2,
+  kTextDetached = 3,
+  kAudioDetached = 4,
+  kMaxValue = kAudioDetached,
+};
+
+// LINT.IfChange(DaisyChainSource)
+enum class DaisyChainSource {
+  kUnknown = 0,
+  kGlicContents = 1,
+  kTabContents = 2,
+  kActorAddTab = 3,
+  kNewTab = 4,
+  kWebHandoff = 5,
+  kAutoOpenPdf = 6,
+  kLastActiveInstance = 7,
+  kBookmark = 8,
+  kMaxValue = kBookmark,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/histograms.xml:Source)
+
+// LINT.IfChange(GlicDragAndDropValidationResult)
+enum class GlicDragAndDropValidationResult {
+  kSuccess = 0,
+  kBlockedByFeatureFlag = 1,
+  kInvalidDragId = 2,
+  kCrossProfileDragBlocked = 3,
+  kSourceWebContentsDestroyed = 4,
+  kSourceTabClosed = 5,
+  kTargetWebContentsDestroyed = 6,
+  kSourceFrameNavigatedBeforeContextFetched = 7,
+  kContextFetchFailed = 8,
+  kMaxValue = kContextFetchFailed,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicDragAndDropValidationResult)
+
+// LINT.IfChange(GlicDragAndDropContentType)
+enum class GlicDragAndDropContentType {
+  kUnknown = 0,
+  kImage = 1,
+  kText = 2,
+  kHtml = 3,
+  kUrl = 4,
+  kFile = 5,
+  kMaxValue = kFile,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicDragAndDropContentType)
+
+// This enumerates a set of possible lifecycle errors which are logged when the
+// sequence of received events was not expected.
+// LINT.IfChange(GlicInstanceMetricsError)
+enum class GlicInstanceMetricsError {
+  kResponseStartWithoutInput = 0,
+  kResponseStopWithoutInput = 1,
+  kResponseStartWhileHidingOrHidden = 2,
+  kInputSubmittedWhileResponseInProgress = 3,
+  kSidePanelOpenedWhileAlreadyOpen = 4,
+  kFloatyOpenedWhileAlreadyOpen = 5,
+  kInputSubmittedWhileHidden = 6,
+  kTabUnbindWithoutOpen = 7,
+  kSidePanelClosedWithoutOpen = 8,
+  kFloatyClosedWithoutOpen = 9,
+  kMaxValue = kFloatyClosedWithoutOpen,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicInstanceMetricsError)
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// This enum should be kept in sync with GlicInstanceEvent in enums.xml. Each
+// value is recorded at most once per instance.
+
+// LINT.IfChange(GlicInstanceEvent)
+enum class GlicInstanceEvent {
+  kInstanceCreated = 0,
+  kWarmedInstanceCreated = 1,
+  kInstanceCreatedWithoutWarming = 2,
+  kInstancePromoted = 3,
+  kSidePanelShown = 4,
+  kFloatyShown = 5,
+  kDetachedToFloaty = 6,
+  kTabBound = 7,
+  kTabBoundViaDaisyChain = 8,
+  kDaisyChainFailed = 9,
+  kConversationSwitchedFromFloaty = 10,
+  kConversationSwitchedFromSidePanel = 11,
+  kConversationSwitchedToFloaty = 12,
+  kConversationSwitchedToSidePanel = 13,
+  kRegisterConversation = 14,
+  kInstanceHidden = 15,
+  kClose = 16,
+  kToggle = 17,
+  kBoundTabDestroyed = 18,
+  kCreateTab = 19,
+  kCreateTask = 20,
+  kPerformActions = 21,
+  kStopActorTask = 22,
+  kPauseActorTask = 23,
+  kResumeActorTask = 24,
+  kInterruptActorTask = 25,
+  kUninterruptActorTask = 26,
+  kWebUiStateUninitialized = 27,
+  kWebUiStateBeginLoad = 28,
+  kWebUiStateShowLoading = 29,
+  kWebUiStateHoldLoading = 30,
+  kWebUiStateFinishLoading = 31,
+  kWebUiStateError = 32,
+  kWebUiStateOffline = 33,
+  kWebUiStateUnavailable = 34,
+  kWebUiStateReady = 35,
+  kWebUiStateUnresponsive = 36,
+  kWebUiStateSignIn = 37,
+  kWebUiStateGuestError = 38,
+  kWebUiStateDisabledByAdmin = 39,
+  kUnbindEmbedder = 40,
+  kUserInputSubmitted = 41,
+  kContextRequested = 42,
+  kResponseStarted = 43,
+  kResponseStopped = 44,
+  kTurnCompleted = 45,
+  kReaction = 46,
+  kShown = 47,
+  kOpen = 48,
+  kWebUiStateWarmed = 49,
+  // kOpen2 = 50 - Only used in Canary M150
+  kWebUiStateLocationMismatch = 51,
+  kWebUiStateIneligibleAccount = 52,
+  kClientReady = 53,
+  kMaxValue = kClientReady,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicInstanceEvent)
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(SkillsInvokeFunnel)
+enum class SkillsInvokeFunnel {
+  kOpenedMenu = 0,
+  kInvokedSkill = 1,
+  kMaxValue = kInvokedSkill,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:SkillsInvokeFunnel)
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(SkillBuilderEvent)
+enum class SkillBuilderEvent {
+  kClickedPromoChip = 0,
+  kPromptGenerated = 1,
+  kClickedSaveAsSkill = 2,
+  kMaxValue = kClickedSaveAsSkill,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:SkillBuilderEvent)
+
+// LINT.IfChange(GlicOnboardingFunnelStep)
+enum class OnboardingFunnelStep {
+  kNewUserOpen = 0,
+  kFreOptInShown = 1,
+  kFreOptInAccepted = 2,
+  kFirstPromptSubmitted = 3,
+  kMaxValue = kFirstPromptSubmitted,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicOnboardingFunnelStep)
+
+std::string GetDaisyChainSourceString(DaisyChainSource source);
+
+ResponseSegmentation GetResponseSegmentation(bool attached,
+                                             mojom::WebClientMode mode,
+                                             mojom::InvocationSource source);
+
+std::string GetInvocationSourceString(mojom::InvocationSource source);
+std::string_view GetEmbedderTypeString(EmbedderType type);
+
+ukm::SourceId GetUkmSourceIdForTab(tabs::TabInterface* tab);
+}  // namespace glic
+
+#endif  // CHROME_BROWSER_GLIC_SERVICE_METRICS_METRICS_TYPES_H_

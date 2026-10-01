@@ -1,0 +1,237 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/sad_tab/ui_bundled/sad_tab_coordinator.h"
+
+#import "base/metrics/histogram_macros.h"
+#import "components/ui_metrics/sadtab_metrics_types.h"
+#import "components/ukm/ios/ukm_url_recorder.h"
+#import "ios/chrome/browser/context_menu/ui_bundled/context_menu_configuration_provider.h"
+#import "ios/chrome/browser/fullscreen/ui_bundled/scoped_fullscreen_disabler.h"
+#import "ios/chrome/browser/overscroll_actions/ui_bundled/overscroll_actions_controller.h"
+#import "ios/chrome/browser/sad_tab/ui_bundled/sad_tab_view_controller.h"
+#import "ios/chrome/browser/shared/model/browser/browser.h"
+#import "ios/chrome/browser/shared/model/profile/profile_ios.h"
+#import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/fullscreen_commands.h"
+#import "ios/chrome/browser/shared/public/commands/open_new_tab_command.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/shared/ui/util/layout_guide_names.h"
+#import "ios/chrome/browser/shared/ui/util/named_guide.h"
+#import "ios/chrome/browser/tabs/model/tabs_dependency_installer_bridge.h"
+#import "ios/chrome/browser/web/model/sad_tab_tab_helper.h"
+#import "ios/chrome/browser/web/model/web_navigation_browser_agent.h"
+#import "ios/chrome/common/ui/util/constraints_ui_util.h"
+#import "ios/web/public/ui/context_menu_params.h"
+#import "ios/web/public/web_state.h"
+#import "services/metrics/public/cpp/ukm_builders.h"
+
+@interface SadTabCoordinator () <SadTabViewControllerDelegate,
+                                 TabsDependencyInstalling>
+@end
+
+@implementation SadTabCoordinator {
+  SadTabViewController* _viewController;
+  std::unique_ptr<ScopedFullscreenDisabler> _fullscreenDisabler;
+  // Bridge to observe the web state list from Objective-C.
+  TabsDependencyInstallerBridge _dependencyInstallerBridge;
+}
+
+- (instancetype)initWithBaseViewController:(UIViewController*)viewController
+                                   browser:(Browser*)browser {
+  self = [super initWithBaseViewController:viewController browser:browser];
+  if (self) {
+    _dependencyInstallerBridge.StartObserving(self, browser);
+  }
+  return self;
+}
+
+#pragma mark - ChromeCoordinator
+
+- (void)start {
+  if (_viewController) {
+    return;
+  }
+
+  if (self.repeatedFailure) {
+    UMA_HISTOGRAM_ENUMERATION(ui_metrics::kSadTabFeedbackHistogramKey,
+                              ui_metrics::SadTabEvent::DISPLAYED,
+                              ui_metrics::SadTabEvent::COUNT);
+  } else {
+    UMA_HISTOGRAM_ENUMERATION(ui_metrics::kSadTabReloadHistogramKey,
+                              ui_metrics::SadTabEvent::DISPLAYED,
+                              ui_metrics::SadTabEvent::COUNT);
+  }
+  [self recordSadTabUKMWithEvent:ui_metrics::SadTabEvent::DISPLAYED];
+
+  if (IsFullscreenRefactoringEnabled()) {
+    id<FullscreenCommands> handler = HandlerForProtocol(
+        self.browser->GetCommandDispatcher(), FullscreenCommands);
+    _fullscreenDisabler =
+        std::make_unique<ScopedFullscreenDisabler>(handler, /*animated=*/false);
+  } else {
+    FullscreenController* controller =
+        FullscreenController::FromBrowser(self.browser);
+    _fullscreenDisabler =
+        std::make_unique<ScopedFullscreenDisabler>(controller);
+  }
+
+  _viewController = [[SadTabViewController alloc] init];
+  _viewController.delegate = self;
+  _viewController.overscrollDelegate = self.overscrollDelegate;
+  _viewController.offTheRecord = self.isOffTheRecord;
+  _viewController.repeatedFailure = self.repeatedFailure;
+
+  [self.baseViewController addChildViewController:_viewController];
+  [self.baseViewController.view addSubview:_viewController.view];
+  [_viewController didMoveToParentViewController:self.baseViewController];
+
+  _viewController.view.translatesAutoresizingMaskIntoConstraints = NO;
+  AddSameConstraints([NamedGuide guideWithName:kContentAreaGuide
+                                          view:self.baseViewController.view],
+                     _viewController.view);
+}
+
+- (void)stop {
+  if (!_viewController) {
+    return;
+  }
+
+  _fullscreenDisabler = nullptr;
+
+  [_viewController willMoveToParentViewController:nil];
+  [_viewController.view removeFromSuperview];
+  [_viewController removeFromParentViewController];
+  _viewController = nil;
+}
+
+- (void)disconnect {
+  // Stop observing the WebStateList before destroying the bridge object.
+  _dependencyInstallerBridge.StopObserving();
+}
+
+- (void)setOverscrollDelegate:
+    (id<OverscrollActionsControllerDelegate>)delegate {
+  _viewController.overscrollDelegate = delegate;
+  _overscrollDelegate = delegate;
+}
+
+#pragma mark - SadTabViewDelegate
+
+- (void)sadTabViewControllerShowReportAnIssue:
+    (SadTabViewController*)sadTabViewController {
+  [self recordSadTabUKMWithEvent:ui_metrics::SadTabEvent::BUTTON_CLICKED];
+  // TODO(crbug.com/40670043): Use HandlerForProtocol after commands protocol
+  // clean up.
+  [static_cast<id<SceneCommands>>(self.browser->GetCommandDispatcher())
+      showReportAnIssueFromViewController:self.baseViewController
+                                   sender:UserFeedbackSender::SadTab];
+}
+
+- (void)sadTabViewController:(SadTabViewController*)sadTabViewController
+    showSuggestionsPageWithURL:(const GURL&)URL {
+  [self recordSadTabUKMWithEvent:ui_metrics::SadTabEvent::HELP_LINK_CLICKED];
+  OpenNewTabCommand* command =
+      [OpenNewTabCommand commandWithURLFromChrome:URL
+                                      inIncognito:self.isOffTheRecord];
+
+  // TODO(crbug.com/40670043): Use HandlerForProtocol after commands protocol
+  // clean up.
+  [static_cast<id<SceneCommands>>(self.browser->GetCommandDispatcher())
+      openURLInNewTab:command];
+}
+
+- (UIMenu*)sadTabViewController:(SadTabViewController*)sadTabViewController
+    contextMenuConfigurationForURL:(const GURL&)URL {
+  web::WebState* webState =
+      self.browser->GetWebStateList()->GetActiveWebState();
+  if (!webState) {
+    return nil;
+  }
+
+  web::ContextMenuParams params;
+  params.link_url = URL;
+  params.view = sadTabViewController.view;
+
+  UIMenu* menu = [self.contextMenuProvider
+      contextMenuForWebState:webState
+                      params:params
+                    scenario:kMenuScenarioHistogramSadTab];
+  if (menu) {
+    [self.contextMenuProvider recordMenuShown:kMenuScenarioHistogramSadTab];
+  }
+  return menu;
+}
+
+- (void)sadTabViewControllerReload:(SadTabViewController*)sadTabViewController {
+  [self recordSadTabUKMWithEvent:ui_metrics::SadTabEvent::BUTTON_CLICKED];
+  WebNavigationBrowserAgent::FromBrowser(self.browser)->Reload();
+}
+
+#pragma mark - Private
+
+- (void)recordSadTabUKMWithEvent:(ui_metrics::SadTabEvent)event {
+  web::WebState* webState =
+      self.browser->GetWebStateList()->GetActiveWebState();
+  if (!webState) {
+    return;
+  }
+  ukm::SourceId sourceId = ukm::GetSourceIdForWebStateDocument(webState);
+  if (sourceId != ukm::kInvalidSourceId) {
+    ukm::builders::Tabs_SadTab(sourceId)
+        .SetEventType(static_cast<int>(event))
+        .SetIsFeedbackMode(self.repeatedFailure)
+        .Record(ukm::UkmRecorder::Get());
+  }
+}
+
+#pragma mark - SadTabTabHelperDelegate
+
+- (void)sadTabTabHelper:(SadTabTabHelper*)tabHelper
+    presentSadTabForWebState:(web::WebState*)webState
+             repeatedFailure:(BOOL)repeatedFailure {
+  if (!webState->IsVisible()) {
+    return;
+  }
+
+  self.repeatedFailure = repeatedFailure;
+  [self start];
+}
+
+- (void)sadTabTabHelperDismissSadTab:(SadTabTabHelper*)tabHelper {
+  [self stop];
+}
+
+- (void)sadTabTabHelper:(SadTabTabHelper*)tabHelper
+    didShowForRepeatedFailure:(BOOL)repeatedFailure {
+  self.repeatedFailure = repeatedFailure;
+  [self start];
+}
+
+- (void)sadTabTabHelperDidHide:(SadTabTabHelper*)tabHelper {
+  [self stop];
+}
+
+#pragma mark - TabsDependencyInstalling
+
+- (void)webStateInserted:(web::WebState*)webState {
+  SadTabTabHelper::FromWebState(webState)->SetDelegate(self);
+}
+
+- (void)webStateRemoved:(web::WebState*)webState {
+  SadTabTabHelper::FromWebState(webState)->SetDelegate(nil);
+}
+
+- (void)webStateDeleted:(web::WebState*)webState {
+  // Nothing to do.
+}
+
+- (void)newWebStateActivated:(web::WebState*)newActive
+           oldActiveWebState:(web::WebState*)oldActive {
+  // Nothing to do.
+}
+
+@end

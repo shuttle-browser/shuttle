@@ -1,0 +1,13 @@
+LocalNetworkAccessSettings:
+  caption: Local Network Access settings
+  policies:
+  - LocalNetworkAccessAllowedForUrls
+  - LocalNetworkAccessBlockedForUrls
+  - LocalNetworkAccessIpAddressSpaceOverrides
+  - LocalNetworkAllowedForUrls
+  - LocalNetworkBlockedForUrls
+  - LocalNetworkAccessRestrictionsEnabled
+  - LocalNetworkAccessRestrictionsTemporaryOptOut
+  - LoopbackNetworkAllowedForUrls
+  - LoopbackNetworkBlockedForUrls
+  - LocalNetworkAccessPermissionsPolicyDefaultEnabled

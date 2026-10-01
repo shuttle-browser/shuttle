@@ -1,0 +1,18 @@
+include_rules = [
+    "+components/viz/service/frame_sinks",
+    "+gpu/GLES2",
+    "+mojo/public",
+    "+components/viz/client/client_resource_provider.h",
+]
+
+specific_include_rules = {
+  "layer_context_impl_mojolpm_fuzzer\\.cc": [
+    "+mojo/core/embedder/embedder.h",
+    "+third_party/libprotobuf-mutator/src/src/libfuzzer/libfuzzer_macro.h",
+  ],
+  "viz_layer_tree_host_impl_unittest\\.cc": [
+    "+gpu/command_buffer/client/client_shared_image.h",
+    "+gpu/command_buffer/common/mailbox.h",
+    "+gpu/command_buffer/common/shared_image_usage.h",
+  ],
+}

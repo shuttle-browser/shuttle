@@ -1,0 +1,43 @@
+# Copyright 2023 The Chromium Authors
+# Use of this source code is governed by a BSD - style license that can be
+# found in the LICENSE file.
+
+import("//chrome/common/chromeos/extensions/api/api_sources.gni")
+import("//extensions/buildflags/buildflags.gni")
+
+assert(enable_extensions,
+       "Cannot depend on extensions because enable_extensions=false.")
+
+source_set("management") {
+  sources = [
+    "management_api.cc",
+    "management_api.h",
+  ]
+
+  deps = [
+    "//base",
+    "//chrome/browser/chromeos/extensions/telemetry/api/common",
+    "//chrome/common/chromeos/extensions/api",
+    "//chromeos/ash/components/audio",
+    "//extensions/browser",
+    "//extensions/common",
+  ]
+}
+
+source_set("browser_tests") {
+  testonly = true
+
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+  sources = [ "management_api_browsertest.cc" ]
+
+  deps = [
+    ":management",
+    "//base",
+    "//chrome/browser/chromeos/extensions/telemetry/api/common:test_support",
+    "//chromeos/ash/components/audio",
+    "//chromeos/ash/components/dbus/audio",
+    "//content/test:test_support",
+    "//testing/gtest",
+  ]
+}

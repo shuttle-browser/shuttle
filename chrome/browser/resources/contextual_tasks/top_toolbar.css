@@ -1,0 +1,143 @@
+/* Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=chrome://resources/cr_elements/cr_icons_lit.css.js
+ * #import=chrome://resources/cr_elements/cr_shared_vars.css.js
+ * #import=chrome://resources/cr_elements/mwb_shared_vars.css.js
+ * #scheme=relative
+ * #include=cr-icons-lit
+ * #css_wrapper_metadata_end */
+
+:host {
+  --mwb-primary-text-font-size: 12px;
+  --mwb-secondary-text-font-size: 11px;
+
+  background-color: var(--toolbar-background-color);
+  box-sizing: border-box;
+  color: var(--toolbar-text-color);
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  padding: 7px 12px;
+  margin: 6px 4px 0 4px;
+}
+
+#top-row {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  height: 20px;
+  width: 100%;
+}
+
+.top-toolbar-title {
+  overflow: hidden;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 500;
+  flex: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-toolbar-logo-container {
+  flex: 0;
+  height: 18px;
+  margin-right: 8px;
+  position: relative;
+  width: 18px;
+}
+
+.top-toolbar-logo-button {
+  align-items: center;
+  display: flex;
+  height: 18px;
+  justify-content: center;
+  width: 18px;
+}
+
+.top-toolbar-logo-button.clickable {
+  --cr-button-height: 28px;
+  align-items: center;
+  background: var(--toolbar-background-color, #FFF);
+  border: none;
+  border-radius: 100px;
+  box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.2), 0 0 2px 0 rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  display: flex;
+  height: 28px;
+  justify-content: center;
+  left: -5px;
+  min-width: 28px;
+  padding: 0;
+  position: absolute;
+  top: -5px;
+  width: 28px;
+}
+
+:host([dark-mode]) .top-toolbar-logo-button.clickable {
+  background: var(--toolbar-background-color, #292a2d);
+  box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.6);
+}
+
+.top-toolbar-logo-button.clickable:focus-visible {
+  outline: 2px solid var(--cr-focus-outline-color, #1a73e8);
+  outline-offset: 2px;
+}
+
+.top-toolbar-logo {
+  --cr-icon-size: 18px;
+  box-sizing: border-box;
+  display: block;
+  flex: 0;
+  height: 18px;
+  width: 18px;
+}
+
+.chrome-logo-dark {
+  display: none;
+}
+
+:host([dark-mode]) .chrome-logo-light {
+  display: none;
+}
+
+:host([dark-mode]) .chrome-logo-dark {
+  display: block;
+}
+
+.top-toolbar-action-buttons {
+  flex: 0;
+  display: flex;
+  flex-direction: row;
+}
+
+.top-toolbar-action-buttons> :not(:first-child) {
+  /**
+  * cr-icon is 20px and cr-icon-button is 32px
+  * Add another 4px to visually make the margin 16px.
+  */
+  margin-inline-start: 4px;
+}
+
+.top-toolbar-action-buttons>contextual-tasks-favicon-group {
+  /* Add horizontal padding to match cr-icon-button. */
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+cr-icon-button {
+  --cr-icon-button-icon-size: 20px;
+  --cr-icon-button-fill-color: var(--toolbar-button-icon-color);
+}
+
+cr-icon-button[hidden] {
+  display: none;
+}
+
+#overflowMenuButton.active {
+  background-color: var(--cr-active-background-color);
+}

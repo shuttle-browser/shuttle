@@ -1,0 +1,124 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.components.page_info;
+
+import android.content.Context;
+import android.content.res.ColorStateList;
+import android.text.Spanned;
+import android.text.TextUtils;
+import android.text.method.LinkMovementMethod;
+import android.text.style.ClickableSpan;
+import android.util.AttributeSet;
+import android.util.DisplayMetrics;
+import android.view.LayoutInflater;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.TextView;
+
+import androidx.annotation.ColorRes;
+import androidx.annotation.DrawableRes;
+import androidx.core.widget.ImageViewCompat;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.ui.base.ViewUtils;
+
+/** View showing an icon, title and subtitle for a page info row. */
+@NullMarked
+public class PageInfoRowView extends FrameLayout {
+    /** Parameters to configure the row view. */
+    public static class ViewParams {
+        public boolean visible;
+        public @DrawableRes int iconResId;
+        public @ColorRes int iconTint;
+        public boolean tintIcon = true;
+        public @Nullable CharSequence title;
+        public @Nullable CharSequence subtitle;
+        public @Nullable Runnable clickCallback;
+        public boolean decreaseIconSize;
+        public boolean singleLineSubTitle;
+        public @ColorRes int rowTint;
+        public @ColorRes int titleTint;
+    }
+
+    private final ImageView mIcon;
+    private final TextView mTitle;
+    private final TextView mSubtitle;
+
+    public PageInfoRowView(Context context, @Nullable AttributeSet attrs) {
+        super(context, attrs);
+        LayoutInflater.from(context).inflate(R.layout.page_info_row, this, true);
+        mIcon = findViewById(R.id.page_info_row_icon);
+        mTitle = findViewById(R.id.page_info_row_title);
+        mSubtitle = findViewById(R.id.page_info_row_subtitle);
+        setVisibility(GONE);
+    }
+
+    public void setParams(ViewParams params) {
+        setVisibility(params.visible ? VISIBLE : GONE);
+        if (!params.visible) return;
+
+        Context context = getContext();
+        DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
+        mIcon.setImageResource(params.iconResId);
+        if (params.decreaseIconSize) {
+            // All icons are 24dp but some are effectively 20dp because fill the side with padding.
+            // Add 2dp padding for the images that are otherwise too large to make them
+            // equal size.
+            // TODO(crbug.com/40723471): Figure out why we have these differences.
+            int p = ViewUtils.dpToPx(displayMetrics, 2);
+            mIcon.setPadding(p, p, p, p);
+        }
+
+        if (!params.tintIcon) {
+            ImageViewCompat.setImageTintList(mIcon, null);
+        } else if (params.iconTint != 0) {
+            ImageViewCompat.setImageTintList(
+                    mIcon, ColorStateList.valueOf(context.getColor(params.iconTint)));
+        } else {
+            ImageViewCompat.setImageTintList(
+                    mIcon, context.getColorStateList(R.color.default_icon_color_tint_list));
+        }
+
+        mTitle.setText(params.title);
+        mTitle.setVisibility(params.title != null ? VISIBLE : GONE);
+        if (params.titleTint != 0) {
+            mTitle.setTextColor(context.getColor(params.titleTint));
+        } else {
+            mTitle.setTextColor(context.getColorStateList(R.color.default_text_color_list));
+        }
+        updateSubtitle(params.subtitle);
+        mSubtitle.setSingleLine(params.singleLineSubTitle);
+        mSubtitle.setEllipsize(params.singleLineSubTitle ? TextUtils.TruncateAt.END : null);
+        if (params.title != null && params.subtitle != null) {
+            mTitle.setPadding(0, 0, 0, ViewUtils.dpToPx(displayMetrics, 4));
+        }
+        var clickCallback = params.clickCallback;
+        if (clickCallback != null) {
+            setClickable(true);
+            setFocusable(true);
+            setOnClickListener(v -> clickCallback.run());
+        }
+        if (params.rowTint != 0) {
+            setBackgroundColor(context.getColor(params.rowTint));
+        }
+    }
+
+    /**
+     * Updates the subtitle text. Sets LinkMovementMethod only if the subtitle contains
+     * ClickableSpans to avoid intercepting row click events when no links exist.
+     */
+    public void updateSubtitle(@Nullable CharSequence subtitle) {
+        mSubtitle.setText(subtitle);
+        mSubtitle.setVisibility(subtitle != null ? VISIBLE : GONE);
+        boolean hasLink =
+                subtitle instanceof Spanned
+                        && ((Spanned) subtitle)
+                                        .getSpans(0, subtitle.length(), ClickableSpan.class)
+                                        .length
+                                > 0;
+        mSubtitle.setMovementMethod(hasLink ? LinkMovementMethod.getInstance() : null);
+    }
+}

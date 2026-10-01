@@ -1,0 +1,73 @@
+{{header}}
+{{object 1 0}} <<
+  /Type /Catalog
+  /Pages 2 0 R
+>>
+endobj
+{{object 2 0}} <<
+  /Type /Pages
+  /Count 4
+  /Kids [3 0 R 4 0 R 5 0 R 6 0 R]
+  /Resources <<
+    /XObject <<
+      /I1 7 0 R
+    >>
+  >>
+  /MediaBox [0 0 600 800]
+>>
+endobj
+{{object 3 0}} <<
+  /Type /Page
+  /Parent 2 0 R
+  /Contents [8 0 R]
+>>
+endobj
+{{object 4 0}} <<
+  /Type /Page
+  /Parent 2 0 R
+  /Contents [8 0 R]
+>>
+endobj
+{{object 5 0}} <<
+  /Type /Page
+  /Parent 2 0 R
+  /Contents [8 0 R]
+>>
+endobj
+{{object 6 0}} <<
+  /Type /Page
+  /Parent 2 0 R
+  /Contents [8 0 R]
+>>
+endobj
+{{object 7 0}} <<
+ /Type /XObject
+  /Subtype /Image
+  /Width 100
+  /Height 100
+  /BitsPerComponent 8
+  /ColorSpace /DeviceRGB
+  /Filter [/ASCII85Decode /FlateDecode /DCTDecode]
+  /Name /I1
+  {{streamlen}}
+>>
+stream
+GhU,s3tB+m$q/.hA[T8U4+[!"+@Um>6f\ZGL25.7E!SW:2d*d>UnZjOZE2H4m;a^1n:'/P+DPlF6@!#J
+do:'@MKQAeSQiV^@gkPSR$Th1/qqYEgF\hIA+#,D#G&CXTpdghCQMIcr%mF9nX)!J&i;pEW*HUY=7M,G
+H,\YjWgRI2>Kno^5EH?=)'delHoU)W:q==Ar)FjQ~>
+endstream
+endobj
+{{object 8 0}} <<
+  {{streamlen}}
+>>
+stream
+q
+600 0 0 800 0 0 cm
+/I1 Do
+Q
+endstream
+endobj
+{{xref}}
+{{trailer}}
+{{startxref}}
+%%EOF

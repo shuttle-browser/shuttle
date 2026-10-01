@@ -1,0 +1,31 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef SERVICES_ON_DEVICE_MODEL_PUBLIC_CPP_CAPABILITIES_H_
+#define SERVICES_ON_DEVICE_MODEL_PUBLIC_CPP_CAPABILITIES_H_
+
+#include "base/containers/enum_set.h"
+
+namespace on_device_model {
+
+// Minimum VRAM required for audio input support (6GB).
+inline constexpr int kAudioVramMinMb = 6144;
+
+// A set of capabilities a model can have.
+enum class CapabilityFlags {
+  // Model supports image input.
+  kImageInput,
+  // Model supports audio input.
+  kAudioInput,
+  // Model supports tool use (declarations, calls, and responses).
+  kToolUse,
+
+  kMinValue = kImageInput,
+  kMaxValue = kToolUse,
+};
+using Capabilities = base::EnumSet<CapabilityFlags>;
+
+}  // namespace on_device_model
+
+#endif  // SERVICES_ON_DEVICE_MODEL_PUBLIC_CPP_CAPABILITIES_H_

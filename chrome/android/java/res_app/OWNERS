@@ -1,0 +1,7 @@
+# This restriction is in place to avoid accidential addition to our top level
+# layout files.
+set noparent
+
+file://ui/android/java/res/LAYOUT_OWNERS
+
+per-file layout/main_forked_with_secondary_ui_container.xml=file://chrome/browser/ui/side_ui/OWNERS

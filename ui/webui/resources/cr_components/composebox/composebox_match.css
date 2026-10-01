@@ -1,0 +1,172 @@
+/* Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=//resources/cr_elements/cr_icons_lit.css.js
+ * #scheme=relative
+ * #include=cr-icons-lit
+ * #css_wrapper_metadata_end */
+
+:host {
+  --tab-select-color_: rgba(23, 112, 216, 1);
+  --input-inline-spacing: 12px;
+  outline: none;
+  height: var(--cr-composebox-match-height, 44px);
+  display: block;
+}
+
+:host(:not([is-last])) {
+  padding-bottom: var(--cr-composebox-match-match-padding-bottom, 2px);
+}
+
+.container {
+  border-start-end-radius: 24px;
+  border-end-end-radius: 24px;
+  color: var(--color-composebox-font);
+  cursor: default;
+  display: flex;
+  font-size: 16px;
+  height: var(--cr-composebox-match-height, 44px);
+  line-height: var(--cr-composebox-match-line-height, 24px);
+  position: relative;
+}
+
+.container:hover {
+  background-color: var(--color-searchbox-results-background-hovered);
+}
+
+:host(:is(:focus-visible, [selected])) .container {
+  background-color: var(--color-searchbox-results-background-selected,
+      var(--color-searchbox-results-background-hovered));
+
+  /* Optional match border if '--match-border-size' is set
+   * via ::part. Otherwise, keep it as 0px. */
+  border: var(--match-border-size, 0) solid
+      var(--color-searchbox-results-icon-focused-outline);
+}
+
+@media (forced-colors: active) {
+  .container:hover,
+  :host(:is(:focus-visible, [selected])) .container {
+    --color-searchbox-results-background-hovered: Highlight;
+  }
+}
+
+#focusIndicator {
+  background-color: var(--color-searchbox-results-focus-indicator);
+  border-radius: 4px;
+  display: none;
+  margin-inline-start: -4px;
+  height: 100%;
+  position: absolute;
+  width: 8px;
+}
+
+:host(:is(:focus-visible, [selected])) #focusIndicator {
+  display: block;
+}
+
+#iconContainer {
+  align-items: center;
+  display: flex;
+  padding-inline-start: var(--cr-composebox-match-icon-container-padding-inline-start, 18px);
+  justify-content: center;
+}
+
+#icon {
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: cover;
+  background-color: var(--color-composebox-input-icon);
+  height: var(--cr-composebox-match-icon-size, 20px);
+  width: var(--cr-composebox-match-icon-size, 20px);
+}
+
+#textContainer {
+  align-content: center;
+  color: var(--color-composebox-font-light);
+  font-size: var(--cr-composebox-match-text-container-font-size, 16px);
+  flex-grow: 1;
+  overflow: hidden;
+  padding-inline: var(--cr-searchbox-match-text-padding-inline-start, 12px) 4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:host(:is(:focus-visible, [selected])) #textContainer {
+  color: var(--color-searchbox-results-foreground-selected,
+      var(--color-composebox-font-light));
+}
+
+.container:hover:has(#remove:not([hidden])) #textContainer {
+  padding-inline-end: var(--cr-composebox-match-text-padding-inline-end, 4px);
+}
+
+#remove {
+  --cr-icon-button-fill-color:
+      var(--color-searchbox-results-icon-selected);
+  --cr-icon-button-icon-size:
+      var(--cr-composebox-dropdown-match-icon-size, 16px);
+  --cr-icon-button-hover-background-color:
+      var(--color-searchbox-results-button-hover);
+  --cr-icon-button-margin-end:
+      var(--cr-composebox-dropdown-match-margin-end, 4px);
+  --cr-icon-button-margin-start:
+      var(--cr-composebox-dropdown-match-margin-start, 0);
+  display: none;
+  top: var(--cr-composebox-match-remove-button-top, 6px);
+}
+
+.container:hover #remove:not([hidden]),
+:host-context(cr-composebox-match:-webkit-any(:focus-within, [selected])) #remove:not([hidden]) {
+  display: inline-flex;
+}
+
+/* Enum 1 is deepSearch. */
+:host([tool-mode='1']) #textContainer,
+:host(:not([override-clamp-line-num='-1'])) #textContainer {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--clamp-line-num);
+  line-height: var(--cr-composebox-match-line-height, 24px);
+  white-space: normal;
+}
+
+:host([tool-mode='1']) #focusIndicator {
+  top: 0;
+  bottom: 0;
+  height: auto;
+}
+
+/* Enum 1 is deepSearch. */
+:host([tool-mode='1']) {
+  height: auto;
+  min-height: var(--cr-composebox-match-height, 44px);
+  white-space: nowrap;
+}
+
+/* Enum 1 is deepSearch. */
+:host([tool-mode='1']) .container {
+  height: auto;
+  min-height: 24px;
+  padding-block: 10px;
+  border-start-end-radius: 24px;
+  border-end-end-radius: 24px;
+}
+
+/* For co-browsing. Must be defined here since cannot be injected via ::part. */
+@keyframes loading-bar-color-change {
+  0% {
+    background-color: var(--color-composebox-loading-start);
+  }
+
+  50% {
+    background-color: var(--color-composebox-loading-end);
+  }
+
+  100% {
+    background-color: var(--color-composebox-loading-start);
+  }
+}

@@ -1,0 +1,786 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/bookmarks/browser/bookmark_node_data.h"
+
+#include <memory>
+#include <string>
+
+#include "base/files/scoped_temp_dir.h"
+#include "base/memory/raw_ptr.h"
+#include "base/pickle.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/task_environment.h"
+#include "build/build_config.h"
+#include "components/bookmarks/browser/bookmark_model.h"
+#include "components/bookmarks/common/bookmark_features.h"
+#include "components/bookmarks/test/bookmark_test_helpers.h"
+#include "components/bookmarks/test/test_bookmark_client.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/clipboard/clipboard.h"
+#include "ui/base/clipboard/test/clipboard_test_util.h"
+#include "ui/base/dragdrop/os_exchange_data.h"
+#include "ui/base/dragdrop/os_exchange_data_provider.h"
+#include "url/gurl.h"
+
+using base::ASCIIToUTF16;
+
+namespace bookmarks {
+
+#if !BUILDFLAG(IS_APPLE)
+// Builds a legacy-format Pickle with `depth` levels of nested folders.
+namespace {
+
+base::Pickle BuildDeeplyNestedLegacyPickle(size_t depth) {
+  base::Pickle pickle;
+  base::FilePath(FILE_PATH_LITERAL("Default")).WriteToPickle(&pickle);
+  pickle.WriteUInt32(1);
+
+  for (size_t i = 0; i < depth; ++i) {
+    pickle.WriteBool(false);
+    pickle.WriteString(std::string());
+    pickle.WriteString16(u"Folder");
+    pickle.WriteInt64(static_cast<int64_t>(i + 1));
+    pickle.WriteUInt32(0);
+    pickle.WriteUInt32(i < depth - 1 ? 1 : 0);
+  }
+  return pickle;
+}
+
+// Builds a new-format Pickle with `depth` levels of nested folders.
+// Each child element is wrapped via WriteData (length-prefixed blob).
+base::Pickle BuildNestedElementPickle(size_t depth, size_t current) {
+  base::Pickle pickle;
+  pickle.WriteBool(false);
+  pickle.WriteString(std::string());
+  pickle.WriteString16(u"Folder");
+  pickle.WriteInt64(static_cast<int64_t>(current + 1));
+  pickle.WriteUInt32(0);
+  if (current < depth - 1) {
+    pickle.WriteUInt32(1);
+    pickle.WriteData(BuildNestedElementPickle(depth, current + 1));
+  } else {
+    pickle.WriteUInt32(0);
+  }
+  return pickle;
+}
+
+base::Pickle BuildDeeplyNestedNewFormatPickle(size_t depth) {
+  base::Pickle pickle;
+  base::FilePath(FILE_PATH_LITERAL("Default")).WriteToPickle(&pickle);
+  pickle.WriteUInt32(0);  // Sentinel for new format.
+  pickle.WriteUInt32(1);
+  pickle.WriteData(BuildNestedElementPickle(depth, 0));
+  return pickle;
+}
+
+}  // namespace
+#endif
+
+class BookmarkNodeDataTest : public testing::Test {
+ public:
+  BookmarkNodeDataTest()
+      : task_environment_(base::test::TaskEnvironment::MainThreadType::UI) {}
+
+  BookmarkNodeDataTest(const BookmarkNodeDataTest&) = delete;
+  BookmarkNodeDataTest& operator=(const BookmarkNodeDataTest&) = delete;
+
+  void SetUp() override {
+    model_ = TestBookmarkClient::CreateModel();
+    test::WaitForBookmarkModelToLoad(model_.get());
+    bool success = profile_dir_.CreateUniqueTempDir();
+    ASSERT_TRUE(success);
+  }
+
+  void TearDown() override {
+    model_.reset();
+    bool success = profile_dir_.Delete();
+    ASSERT_TRUE(success);
+    ui::Clipboard::DestroyClipboardForCurrentThread();
+  }
+
+  const base::FilePath& GetProfilePath() const {
+    return profile_dir_.GetPath();
+  }
+
+  BookmarkModel* model() { return model_.get(); }
+
+ protected:
+  ui::Clipboard& clipboard() { return *ui::Clipboard::GetForCurrentThread(); }
+
+ private:
+  base::ScopedTempDir profile_dir_;
+  std::unique_ptr<BookmarkModel> model_;
+  base::test::TaskEnvironment task_environment_;
+};
+
+namespace {
+
+std::unique_ptr<ui::OSExchangeDataProvider> CloneProvider(
+    const ui::OSExchangeData& data) {
+  return data.provider().Clone();
+}
+
+}  // namespace
+
+// Makes sure BookmarkNodeData is initially invalid.
+TEST_F(BookmarkNodeDataTest, InitialState) {
+  BookmarkNodeData data;
+  EXPECT_FALSE(data.is_valid());
+}
+
+// Makes sure reading bogus data leaves the BookmarkNodeData invalid.
+TEST_F(BookmarkNodeDataTest, BogusRead) {
+  ui::OSExchangeData data;
+  BookmarkNodeData drag_data;
+  EXPECT_FALSE(drag_data.Read(ui::OSExchangeData(CloneProvider(data))));
+  EXPECT_FALSE(drag_data.is_valid());
+}
+
+// Writes a URL to the clipboard and make sure BookmarkNodeData can correctly
+// read it.
+TEST_F(BookmarkNodeDataTest, JustURL) {
+  const GURL url("http://google.com");
+  const std::u16string title(u"google.com");
+
+  ui::OSExchangeData data;
+  data.SetURL(url, title);
+
+  BookmarkNodeData drag_data;
+  EXPECT_TRUE(drag_data.Read(ui::OSExchangeData(CloneProvider(data))));
+  EXPECT_TRUE(drag_data.is_valid());
+  ASSERT_EQ(1u, drag_data.size());
+  EXPECT_TRUE(drag_data.elements[0].is_url);
+  EXPECT_EQ(url, drag_data.elements[0].url);
+  EXPECT_EQ(title, drag_data.elements[0].title);
+  EXPECT_TRUE(drag_data.elements[0].date_added.is_null());
+  EXPECT_TRUE(drag_data.elements[0].date_folder_modified.is_null());
+  EXPECT_EQ(0u, drag_data.elements[0].children.size());
+}
+
+TEST_F(BookmarkNodeDataTest, URL) {
+  // Write a single node representing a URL to the clipboard.
+  const BookmarkNode* root = model()->bookmark_bar_node();
+  GURL url(GURL("http://foo.com"));
+  const std::u16string title(u"foo.com");
+  const BookmarkNode* node = model()->AddURL(root, 0, title, url);
+  BookmarkNodeData drag_data(node);
+  EXPECT_TRUE(drag_data.is_valid());
+  ASSERT_EQ(1u, drag_data.size());
+  EXPECT_TRUE(drag_data.elements[0].is_url);
+  EXPECT_EQ(url, drag_data.elements[0].url);
+  EXPECT_EQ(title, drag_data.elements[0].title);
+  EXPECT_EQ(node->date_added(), drag_data.elements[0].date_added);
+  EXPECT_EQ(node->date_folder_modified(),
+            drag_data.elements[0].date_folder_modified);
+  ui::OSExchangeData data;
+  drag_data.Write(GetProfilePath(), &data);
+
+  // Now read the data back in.
+  ui::OSExchangeData data2(CloneProvider(data));
+  BookmarkNodeData read_data;
+  EXPECT_TRUE(read_data.Read(data2));
+  EXPECT_TRUE(read_data.is_valid());
+  ASSERT_EQ(1u, read_data.size());
+  EXPECT_TRUE(read_data.elements[0].is_url);
+  EXPECT_EQ(url, read_data.elements[0].url);
+  EXPECT_EQ(title, read_data.elements[0].title);
+  EXPECT_TRUE(read_data.elements[0].date_added.is_null());
+  EXPECT_TRUE(read_data.elements[0].date_folder_modified.is_null());
+  EXPECT_TRUE(read_data.GetFirstNode(model(), GetProfilePath()) == node);
+
+  // Make sure asking for the node with a different profile returns NULL.
+  base::ScopedTempDir other_profile_dir;
+  EXPECT_TRUE(other_profile_dir.CreateUniqueTempDir());
+  EXPECT_TRUE(read_data.GetFirstNode(model(), other_profile_dir.GetPath()) ==
+              nullptr);
+
+  // Writing should also put the URL and title on the clipboard.
+  std::vector<ui::ClipboardUrlInfo> url_infos =
+      data2.GetURLs(ui::FilenameToURLPolicy::CONVERT_FILENAMES);
+  ASSERT_FALSE(url_infos.empty());
+  EXPECT_EQ(url, url_infos[0].url);
+  EXPECT_EQ(title, url_infos[0].title);
+}
+
+// Tests writing a folder to the clipboard.
+TEST_F(BookmarkNodeDataTest, Folder) {
+  const BookmarkNode* root = model()->bookmark_bar_node();
+  const BookmarkNode* g1 = model()->AddFolder(root, 0, u"g1");
+  model()->AddFolder(g1, 0, u"g11");
+  const BookmarkNode* g12 = model()->AddFolder(g1, 0, u"g12");
+
+  BookmarkNodeData drag_data(g12);
+  EXPECT_TRUE(drag_data.is_valid());
+  ASSERT_EQ(1u, drag_data.size());
+  EXPECT_EQ(g12->GetTitle(), drag_data.elements[0].title);
+  EXPECT_FALSE(drag_data.elements[0].is_url);
+  EXPECT_EQ(g12->date_added(), drag_data.elements[0].date_added);
+  EXPECT_EQ(g12->date_folder_modified(),
+            drag_data.elements[0].date_folder_modified);
+
+  ui::OSExchangeData data;
+  drag_data.Write(GetProfilePath(), &data);
+
+  // Now read the data back in.
+  ui::OSExchangeData data2(CloneProvider(data));
+  BookmarkNodeData read_data;
+  EXPECT_TRUE(read_data.Read(data2));
+  EXPECT_TRUE(read_data.is_valid());
+  ASSERT_EQ(1u, read_data.size());
+  EXPECT_EQ(g12->GetTitle(), read_data.elements[0].title);
+  EXPECT_FALSE(read_data.elements[0].is_url);
+  EXPECT_TRUE(read_data.elements[0].date_added.is_null());
+  EXPECT_TRUE(read_data.elements[0].date_folder_modified.is_null());
+
+  // We should get back the same node when asking for the same profile.
+  const BookmarkNode* r_g12 = read_data.GetFirstNode(model(), GetProfilePath());
+  EXPECT_TRUE(g12 == r_g12);
+
+  // A different profile should return NULL for the node.
+  base::ScopedTempDir other_profile_dir;
+  EXPECT_TRUE(other_profile_dir.CreateUniqueTempDir());
+  EXPECT_TRUE(read_data.GetFirstNode(model(), other_profile_dir.GetPath()) ==
+              nullptr);
+}
+
+// Tests reading/writing a folder with children.
+TEST_F(BookmarkNodeDataTest, FolderWithChild) {
+  const BookmarkNode* root = model()->bookmark_bar_node();
+  const BookmarkNode* folder = model()->AddFolder(root, 0, u"g1");
+
+  GURL url(GURL("http://foo.com"));
+  const std::u16string title(u"blah2");
+
+  model()->AddURL(folder, 0, title, url);
+
+  BookmarkNodeData drag_data(folder);
+
+  ui::OSExchangeData data;
+  drag_data.Write(GetProfilePath(), &data);
+
+  // Now read the data back in.
+  ui::OSExchangeData data2(CloneProvider(data));
+  BookmarkNodeData read_data;
+  EXPECT_TRUE(read_data.Read(data2));
+  ASSERT_EQ(1u, read_data.size());
+  ASSERT_EQ(1u, read_data.elements[0].children.size());
+  const BookmarkNodeData::Element& read_child =
+      read_data.elements[0].children[0];
+
+  EXPECT_TRUE(read_child.is_url);
+  EXPECT_EQ(title, read_child.title);
+  EXPECT_EQ(url, read_child.url);
+  EXPECT_TRUE(read_data.elements[0].date_added.is_null());
+  EXPECT_TRUE(read_data.elements[0].date_folder_modified.is_null());
+  EXPECT_TRUE(read_child.is_url);
+
+  // And make sure we get the node back.
+  const BookmarkNode* r_folder =
+      read_data.GetFirstNode(model(), GetProfilePath());
+  EXPECT_TRUE(folder == r_folder);
+}
+
+// Tests reading/writing of multiple nodes.
+TEST_F(BookmarkNodeDataTest, MultipleNodes) {
+  const BookmarkNode* root = model()->bookmark_bar_node();
+  const BookmarkNode* folder = model()->AddFolder(root, 0, u"g1");
+
+  GURL url(GURL("http://foo.com"));
+  const std::u16string title(u"blah2");
+
+  const BookmarkNode* url_node = model()->AddURL(folder, 0, title, url);
+
+  // Write the nodes to the clipboard.
+  std::vector<raw_ptr<const BookmarkNode, VectorExperimental>> nodes;
+  nodes.push_back(folder);
+  nodes.push_back(url_node);
+  BookmarkNodeData drag_data(nodes);
+  ui::OSExchangeData data;
+  drag_data.Write(GetProfilePath(), &data);
+
+  // Read the data back in.
+  ui::OSExchangeData data2(CloneProvider(data));
+  BookmarkNodeData read_data;
+  EXPECT_TRUE(read_data.Read(data2));
+  EXPECT_TRUE(read_data.is_valid());
+  ASSERT_EQ(2u, read_data.size());
+  ASSERT_EQ(1u, read_data.elements[0].children.size());
+  EXPECT_TRUE(read_data.elements[0].date_added.is_null());
+  EXPECT_TRUE(read_data.elements[0].date_folder_modified.is_null());
+
+  const BookmarkNodeData::Element& read_folder = read_data.elements[0];
+  EXPECT_FALSE(read_folder.is_url);
+  EXPECT_EQ(u"g1", read_folder.title);
+  EXPECT_EQ(1u, read_folder.children.size());
+
+  const BookmarkNodeData::Element& read_url = read_data.elements[1];
+  EXPECT_TRUE(read_url.is_url);
+  EXPECT_EQ(title, read_url.title);
+  EXPECT_EQ(0u, read_url.children.size());
+
+  // And make sure we get the node back.
+  std::vector<raw_ptr<const BookmarkNode, VectorExperimental>> read_nodes =
+      read_data.GetNodes(model(), GetProfilePath());
+  ASSERT_EQ(2u, read_nodes.size());
+  EXPECT_TRUE(read_nodes[0] == folder);
+  EXPECT_TRUE(read_nodes[1] == url_node);
+
+  // Asking for the first node should return NULL with more than one element
+  // present.
+  EXPECT_TRUE(read_data.GetFirstNode(model(), GetProfilePath()) == nullptr);
+}
+
+TEST_F(BookmarkNodeDataTest, WriteToClipboardURL) {
+  BookmarkNodeData data;
+  GURL url(GURL("http://foo.com"));
+  const std::u16string title(u"blah");
+
+  data.ReadFromTuple(url, title);
+  data.WriteToClipboard(/*is_off_the_record=*/false);
+
+  // Now read the data back in.
+  std::u16string clipboard_text = ui::clipboard_test_util::ReadText(
+      &clipboard(), ui::ClipboardBuffer::kCopyPaste,
+      /*data_dst=*/nullptr);
+  EXPECT_EQ(base::UTF8ToUTF16(url.spec()), clipboard_text);
+}
+
+#if BUILDFLAG(IS_APPLE)
+#define MAYBE_WriteToClipboardMultipleURLs DISABLED_WriteToClipboardMultipleURLs
+#else
+#define MAYBE_WriteToClipboardMultipleURLs WriteToClipboardMultipleURLs
+#endif
+TEST_F(BookmarkNodeDataTest, MAYBE_WriteToClipboardMultipleURLs) {
+  BookmarkNodeData data;
+  const BookmarkNode* root = model()->bookmark_bar_node();
+  GURL url(GURL("http://foo.com"));
+  const std::u16string title(u"blah");
+  GURL url2(GURL("http://bar.com"));
+  const std::u16string title2(u"blah2");
+  const BookmarkNode* url_node = model()->AddURL(root, 0, title, url);
+  const BookmarkNode* url_node2 = model()->AddURL(root, 1, title2, url2);
+  std::vector<raw_ptr<const BookmarkNode, VectorExperimental>> nodes;
+  nodes.push_back(url_node);
+  nodes.push_back(url_node2);
+
+  data.ReadFromVector(nodes);
+  data.WriteToClipboard(/*is_off_the_record=*/false);
+
+  // Now read the data back in.
+  std::u16string combined_text;
+#if BUILDFLAG(IS_WIN)
+  std::u16string new_line = u"\r\n";
+#else
+  std::u16string new_line = u"\n";
+#endif
+  combined_text = base::UTF8ToUTF16(url.spec()) + new_line
+    + base::UTF8ToUTF16(url2.spec());
+  std::u16string clipboard_text = ui::clipboard_test_util::ReadText(
+      &clipboard(), ui::ClipboardBuffer::kCopyPaste,
+      /*data_dst=*/nullptr);
+  EXPECT_EQ(combined_text, clipboard_text);
+}
+
+#if BUILDFLAG(IS_APPLE)
+#define MAYBE_WriteToClipboardEmptyFolder DISABLED_WriteToClipboardEmptyFolder
+#else
+#define MAYBE_WriteToClipboardEmptyFolder WriteToClipboardEmptyFolder
+#endif
+TEST_F(BookmarkNodeDataTest, MAYBE_WriteToClipboardEmptyFolder) {
+  BookmarkNodeData data;
+  const BookmarkNode* root = model()->bookmark_bar_node();
+  const BookmarkNode* folder = model()->AddFolder(root, 0, u"g1");
+  std::vector<raw_ptr<const BookmarkNode, VectorExperimental>> nodes;
+  nodes.push_back(folder);
+
+  data.ReadFromVector(nodes);
+  data.WriteToClipboard(/*is_off_the_record=*/false);
+
+  // Now read the data back in.
+  std::u16string clipboard_text = ui::clipboard_test_util::ReadText(
+      &clipboard(), ui::ClipboardBuffer::kCopyPaste,
+      /*data_dst=*/nullptr);
+  EXPECT_EQ(u"g1", clipboard_text);
+}
+
+// Test is flaky on Mac: crbug.com/1236362
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_WriteToClipboardFolderWithChildren \
+  DISABLED_WriteToClipboardFolderWithChildren
+#else
+#define MAYBE_WriteToClipboardFolderWithChildren \
+  WriteToClipboardFolderWithChildren
+#endif
+TEST_F(BookmarkNodeDataTest, MAYBE_WriteToClipboardFolderWithChildren) {
+  BookmarkNodeData data;
+  const BookmarkNode* root = model()->bookmark_bar_node();
+  const BookmarkNode* folder = model()->AddFolder(root, 0, u"g1");
+  GURL url(GURL("http://foo.com"));
+  const std::u16string title(u"blah");
+  model()->AddURL(folder, 0, title, url);
+  std::vector<raw_ptr<const BookmarkNode, VectorExperimental>> nodes;
+  nodes.push_back(folder);
+
+  data.ReadFromVector(nodes);
+  data.WriteToClipboard(/*is_off_the_record=*/false);
+
+  // Now read the data back in.
+  std::u16string clipboard_text = ui::clipboard_test_util::ReadText(
+      &clipboard(), ui::ClipboardBuffer::kCopyPaste,
+      /*data_dst=*/nullptr);
+  EXPECT_EQ(u"g1", clipboard_text);
+}
+
+// TODO(crbug.com/40651106): This test is failing on mac.
+#if BUILDFLAG(IS_MAC)
+#define MAYBE_WriteToClipboardFolderAndURL DISABLED_WriteToClipboardFolderAndURL
+#else
+#define MAYBE_WriteToClipboardFolderAndURL WriteToClipboardFolderAndURL
+#endif
+TEST_F(BookmarkNodeDataTest, MAYBE_WriteToClipboardFolderAndURL) {
+  BookmarkNodeData data;
+  GURL url(GURL("http://foo.com"));
+  const std::u16string title(u"blah");
+  const BookmarkNode* root = model()->bookmark_bar_node();
+  const BookmarkNode* url_node = model()->AddURL(root, 0, title, url);
+  const BookmarkNode* folder = model()->AddFolder(root, 0, u"g1");
+  std::vector<raw_ptr<const BookmarkNode, VectorExperimental>> nodes;
+  nodes.push_back(url_node);
+  nodes.push_back(folder);
+
+  data.ReadFromVector(nodes);
+  data.WriteToClipboard(/*is_off_the_record=*/false);
+
+  // Now read the data back in.
+  std::u16string combined_text;
+#if BUILDFLAG(IS_WIN)
+  std::u16string new_line = u"\r\n";
+#else
+  std::u16string new_line = u"\n";
+#endif
+  std::u16string folder_title = u"g1";
+  combined_text = base::ASCIIToUTF16(url.spec()) + new_line + folder_title;
+  std::u16string clipboard_text = ui::clipboard_test_util::ReadText(
+      &clipboard(), ui::ClipboardBuffer::kCopyPaste,
+      /*data_dst=*/nullptr);
+  EXPECT_EQ(combined_text, clipboard_text);
+}
+
+// Tests reading/writing of meta info.
+TEST_F(BookmarkNodeDataTest, MetaInfo) {
+  // Create a node containing meta info.
+  const BookmarkNode* node = model()->AddURL(
+      model()->other_node(), 0, u"foo bar", GURL("http://www.google.com"));
+  model()->SetNodeMetaInfo(node, "somekey", "somevalue");
+  model()->SetNodeMetaInfo(node, "someotherkey", "someothervalue");
+
+  BookmarkNodeData node_data(node);
+  ui::OSExchangeData data;
+  node_data.Write(GetProfilePath(), &data);
+
+  // Read the data back in.
+  ui::OSExchangeData data2(CloneProvider(data));
+  BookmarkNodeData read_data;
+  EXPECT_TRUE(read_data.Read(data2));
+  EXPECT_TRUE(read_data.is_valid());
+  ASSERT_EQ(1u, read_data.size());
+
+  // Verify that the read data contains the same meta info.
+  BookmarkNode::MetaInfoMap meta_info_map = read_data.elements[0].meta_info_map;
+  EXPECT_EQ(2u, meta_info_map.size());
+  EXPECT_EQ("somevalue", meta_info_map["somekey"]);
+  EXPECT_EQ("someothervalue", meta_info_map["someotherkey"]);
+}
+
+#if !BUILDFLAG(IS_APPLE)
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_Legacy_TooManyNodes) {
+  // Test case determined by a fuzzer. See https://crbug.com/956583.
+  const uint8_t pickled_data[] = {0x08, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                  0x00, 0x00, 0xff, 0x03, 0x03, 0x41};
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_FALSE(bookmark_node_data.ReadFromPickle(
+      base::PickleIterator::WithData(pickled_data)));
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_Legacy_NoNodes) {
+  base::Pickle pickle;
+  base::FilePath().WriteToPickle(&pickle);
+  pickle.WriteUInt32(0);  // element_count
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_FALSE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_Legacy_InvalidElementCount) {
+  base::Pickle pickle;
+  base::FilePath().WriteToPickle(&pickle);
+  pickle.WriteString("0");  // element_count
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_FALSE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_Legacy_ValidData) {
+  base::Pickle pickle;
+  base::FilePath().WriteToPickle(&pickle);
+  pickle.WriteUInt32(1);  // elements size
+  // Add a folder.
+  pickle.WriteBool(false);          // is_url
+  pickle.WriteString("");           // url
+  pickle.WriteString16(u"folder");  // title
+  pickle.WriteInt64(0);             // id
+  pickle.WriteUInt32(0);            // meta_info_map_size
+  pickle.WriteUInt32(1);            // children_size
+  // Add a child URL into the folder.
+  pickle.WriteBool(true);                 // is_url
+  pickle.WriteString("http://foo.com/");  // url
+  pickle.WriteString16(u"url");           // title
+  pickle.WriteInt64(1);                   // id
+  pickle.WriteUInt32(1);                  // meta_info_map_size
+  pickle.WriteString("somekey");
+  pickle.WriteString("somevalue");
+  pickle.WriteUInt32(0);  // children_size
+
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_TRUE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+  ASSERT_EQ(1u, bookmark_node_data.size());
+  ASSERT_EQ(1u, bookmark_node_data.elements[0].children.size());
+  auto& parent_element = bookmark_node_data.elements[0];
+  auto& child_element = parent_element.children[0];
+
+  EXPECT_EQ(u"folder", parent_element.title);
+  ASSERT_EQ(0u, parent_element.meta_info_map.size());
+  EXPECT_EQ(u"url", child_element.title);
+  ASSERT_EQ(1u, child_element.meta_info_map.size());
+  EXPECT_EQ("somevalue", child_element.meta_info_map["somekey"]);
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_TooManyNodes) {
+  const uint8_t pickled_data[] = {0x0C, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                  0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                  0xff, 0x03, 0x03, 0x41};
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_FALSE(bookmark_node_data.ReadFromPickle(
+      base::PickleIterator::WithData(pickled_data)));
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_NoNodes) {
+  base::Pickle pickle;
+  base::FilePath().WriteToPickle(&pickle);
+  pickle.WriteUInt32(0);  // backward compatibility flag
+  pickle.WriteUInt32(0);  // element_count
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_FALSE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_InvalidElementCount) {
+  base::Pickle pickle;
+  base::FilePath().WriteToPickle(&pickle);
+  pickle.WriteUInt32(0);    // backward compatibility flag
+  pickle.WriteString("0");  // element_count
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_FALSE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_ValidData) {
+  base::Pickle pickle;
+  base::FilePath().WriteToPickle(&pickle);
+  pickle.WriteUInt32(0);  // backward compatibility flag
+  pickle.WriteUInt32(1);  // elements size
+  // Add a folder.
+  base::Pickle parent_pickle;
+  parent_pickle.WriteBool(false);          // is_url
+  parent_pickle.WriteString("");           // url
+  parent_pickle.WriteString16(u"folder");  // title
+  parent_pickle.WriteInt64(0);             // id
+  parent_pickle.WriteUInt32(0);            // meta_info_map_size
+  parent_pickle.WriteUInt32(1);            // children_size
+  // Add a child URL into the folder.
+  base::Pickle child_pickle;
+  child_pickle.WriteBool(true);                 // is_url
+  child_pickle.WriteString("http://foo.com/");  // url
+  child_pickle.WriteString16(u"url");           // title
+  child_pickle.WriteInt64(1);                   // id
+  child_pickle.WriteUInt32(1);                  // meta_info_map_size
+  child_pickle.WriteString("somekey");
+  child_pickle.WriteString("somevalue");
+  child_pickle.WriteUInt32(0);  // children_size
+  parent_pickle.WriteData(child_pickle);
+  // Write the element pickle to the main pickle.
+  pickle.WriteData(parent_pickle);
+
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_TRUE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+  ASSERT_EQ(1u, bookmark_node_data.size());
+  ASSERT_EQ(1u, bookmark_node_data.elements[0].children.size());
+  auto& parent_element = bookmark_node_data.elements[0];
+  auto& child_element = parent_element.children[0];
+
+  EXPECT_EQ(u"folder", parent_element.title);
+  ASSERT_EQ(0u, parent_element.meta_info_map.size());
+  EXPECT_EQ(u"url", child_element.title);
+  ASSERT_EQ(1u, child_element.meta_info_map.size());
+  EXPECT_EQ("somevalue", child_element.meta_info_map["somekey"]);
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickleLegacyFormat) {
+  const BookmarkNode* folder =
+      model()->AddFolder(model()->bookmark_bar_node(), 0, u"f");
+  const BookmarkNode* sub_folder = model()->AddFolder(folder, 0, u"fs");
+  const BookmarkNode* node =
+      model()->AddURL(sub_folder, 0, u"n", GURL("http://foo.com/"));
+  model()->SetNodeMetaInfo(node, "somekey", "somevalue");
+  model()->SetNodeMetaInfo(node, "someotherkey", "someothervalue");
+
+  base::Pickle pickle;
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndEnableFeature(
+        bookmarks::kEnableBookmarkNodeDataNewPickleFormat);
+    BookmarkNodeData(folder).WriteToPickle(base::FilePath(), &pickle);
+  }
+
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_TRUE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+
+  EXPECT_TRUE(bookmark_node_data.is_valid());
+  ASSERT_EQ(1u, bookmark_node_data.size());
+  ASSERT_EQ(1u, bookmark_node_data.elements[0].children.size());
+  ASSERT_EQ(1u, bookmark_node_data.elements[0].children[0].children.size());
+  EXPECT_EQ(folder->GetTitle(), bookmark_node_data.elements[0].title);
+  EXPECT_EQ(sub_folder->GetTitle(),
+            bookmark_node_data.elements[0].children[0].title);
+  EXPECT_EQ(node->GetTitle(),
+            bookmark_node_data.elements[0].children[0].children[0].title);
+
+  // Verify that the read data contains the same meta info.
+  auto* meta_info_map = node->GetMetaInfoMap();
+  ASSERT_NE(meta_info_map, nullptr);
+  EXPECT_EQ(2u, meta_info_map->size());
+  EXPECT_EQ("somevalue", meta_info_map->at("somekey"));
+  EXPECT_EQ("someothervalue", meta_info_map->at("someotherkey"));
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickleNewFormat) {
+  const BookmarkNode* folder =
+      model()->AddFolder(model()->bookmark_bar_node(), 0, u"f");
+  const BookmarkNode* sub_folder = model()->AddFolder(folder, 0, u"fs");
+  const BookmarkNode* node =
+      model()->AddURL(sub_folder, 0, u"n", GURL("http://foo.com/"));
+  model()->SetNodeMetaInfo(node, "somekey", "somevalue");
+  model()->SetNodeMetaInfo(node, "someotherkey", "someothervalue");
+
+  base::Pickle pickle;
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndDisableFeature(
+        bookmarks::kEnableBookmarkNodeDataNewPickleFormat);
+    BookmarkNodeData(folder).WriteToPickle(base::FilePath(), &pickle);
+  }
+
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_TRUE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+
+  EXPECT_TRUE(bookmark_node_data.is_valid());
+  ASSERT_EQ(1u, bookmark_node_data.size());
+  ASSERT_EQ(1u, bookmark_node_data.elements[0].children.size());
+  ASSERT_EQ(1u, bookmark_node_data.elements[0].children[0].children.size());
+  EXPECT_EQ(folder->GetTitle(), bookmark_node_data.elements[0].title);
+  EXPECT_EQ(sub_folder->GetTitle(),
+            bookmark_node_data.elements[0].children[0].title);
+  EXPECT_EQ(node->GetTitle(),
+            bookmark_node_data.elements[0].children[0].children[0].title);
+
+  // Verify that the read data contains the same meta info.
+  auto* meta_info_map = node->GetMetaInfoMap();
+  ASSERT_NE(meta_info_map, nullptr);
+  EXPECT_EQ(2u, meta_info_map->size());
+  EXPECT_EQ("somevalue", meta_info_map->at("somekey"));
+  EXPECT_EQ("someothervalue", meta_info_map->at("someotherkey"));
+}
+#endif
+
+#if !BUILDFLAG(IS_APPLE)
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_Legacy_DeeplyNested_Rejected) {
+  constexpr size_t kDepth = 600;
+  base::Pickle pickle = BuildDeeplyNestedLegacyPickle(kDepth);
+
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_FALSE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_Legacy_ModerateNesting_Accepted) {
+  constexpr size_t kDepth = 50;
+  base::Pickle pickle = BuildDeeplyNestedLegacyPickle(kDepth);
+
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_TRUE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+
+  // Verify the structure: single element with nested children.
+  ASSERT_EQ(1u, bookmark_node_data.elements.size());
+  const BookmarkNodeData::Element* node = &bookmark_node_data.elements[0];
+  size_t actual_depth = 0;
+  while (!node->children.empty()) {
+    ASSERT_EQ(1u, node->children.size());
+    node = &node->children[0];
+    actual_depth++;
+  }
+  EXPECT_EQ(kDepth - 1, actual_depth);
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_Legacy_ExactlyAtLimit_Accepted) {
+  // 500 folders: deepest is at depth 499 (< kMaxBookmarkNestingDepth).
+  constexpr size_t kDepth = 500;
+  base::Pickle pickle = BuildDeeplyNestedLegacyPickle(kDepth);
+
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_TRUE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_Legacy_OneOverLimit_Rejected) {
+  // 501 folders: deepest is at depth 500 (== kMaxBookmarkNestingDepth).
+  constexpr size_t kDepth = 501;
+  base::Pickle pickle = BuildDeeplyNestedLegacyPickle(kDepth);
+
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_FALSE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_NewFormat_DeeplyNested_Rejected) {
+  constexpr size_t kDepth = 600;
+  base::Pickle pickle = BuildDeeplyNestedNewFormatPickle(kDepth);
+
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_FALSE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+}
+
+TEST_F(BookmarkNodeDataTest,
+       ReadFromPickle_NewFormat_ModerateNesting_Accepted) {
+  constexpr size_t kDepth = 50;
+  base::Pickle pickle = BuildDeeplyNestedNewFormatPickle(kDepth);
+
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_TRUE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+
+  ASSERT_EQ(1u, bookmark_node_data.elements.size());
+  const BookmarkNodeData::Element* node = &bookmark_node_data.elements[0];
+  size_t actual_depth = 0;
+  while (!node->children.empty()) {
+    ASSERT_EQ(1u, node->children.size());
+    node = &node->children[0];
+    actual_depth++;
+  }
+  EXPECT_EQ(kDepth - 1, actual_depth);
+}
+
+TEST_F(BookmarkNodeDataTest, ReadFromPickle_NewFormat_OneOverLimit_Rejected) {
+  constexpr size_t kDepth = 501;
+  base::Pickle pickle = BuildDeeplyNestedNewFormatPickle(kDepth);
+
+  BookmarkNodeData bookmark_node_data;
+  EXPECT_FALSE(bookmark_node_data.ReadFromPickle(base::PickleIterator(pickle)));
+}
+#endif
+
+}  // namespace bookmarks

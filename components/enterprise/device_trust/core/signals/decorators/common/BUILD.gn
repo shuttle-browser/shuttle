@@ -1,0 +1,59 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("common") {
+  configs += [ "//components/enterprise:extra_warnings" ]
+
+  sources = [ "signals_aggregator_decorator.cc" ]
+
+  public = [
+    "signals_aggregator_decorator.h",
+    "signals_decorator.h",
+  ]
+
+  public_deps = [ "//base" ]
+
+  deps = [
+    "//components/device_signals/core/browser",
+    "//components/device_signals/core/common",
+    "//components/safe_browsing/core/common:safe_browsing_prefs",
+  ]
+}
+
+source_set("test_support") {
+  testonly = true
+  configs += [ "//components/enterprise:extra_warnings" ]
+
+  sources = [
+    "mock_signals_decorator.cc",
+    "mock_signals_decorator.h",
+  ]
+
+  public_deps = [
+    ":common",
+    "//testing/gmock",
+  ]
+
+  deps = [ "//base" ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  configs += [ "//components/enterprise:extra_warnings" ]
+
+  sources = [ "signals_aggregator_decorator_unittest.cc" ]
+
+  deps = [
+    ":common",
+    "//base",
+    "//base/test:test_support",
+    "//components/device_signals/core/browser",
+    "//components/device_signals/core/browser:test_support",
+    "//components/device_signals/core/common",
+    "//components/enterprise/connectors/core:constants",
+    "//components/safe_browsing/core/common:safe_browsing_prefs",
+    "//testing/gmock",
+    "//testing/gtest",
+  ]
+}

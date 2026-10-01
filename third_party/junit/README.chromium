@@ -1,0 +1,13 @@
+Name: JUnit
+URL: http://junit.org
+Version: 300468b1efd48d76fac2f7bd6d576846dcbbf5ed
+Update Mechanism: Manual
+CPEPrefix: cpe:/a:junit:junit4:4.13.2:-
+License: CPL-1.0
+License File: LICENSE
+Security Critical: no
+Shipped: no
+License Android Compatible: yes
+Description: JUnit is a java unit testing library.
+Local Modifications:
+ * Added BUILD.gn

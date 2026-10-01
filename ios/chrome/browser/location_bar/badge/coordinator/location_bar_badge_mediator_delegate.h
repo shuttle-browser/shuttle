@@ -1,0 +1,45 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_LOCATION_BAR_BADGE_COORDINATOR_LOCATION_BAR_BADGE_MEDIATOR_DELEGATE_H_
+#define IOS_CHROME_BROWSER_LOCATION_BAR_BADGE_COORDINATOR_LOCATION_BAR_BADGE_MEDIATOR_DELEGATE_H_
+
+#import <UIKit/UIKit.h>
+
+@class GeminiStartupState;
+@class LocationBarBadgeMediator;
+
+// Usage is for parity with ContextualPanelEntryPointConsumer.
+// Delegate for the LocationBarBadgeMediator;
+@protocol LocationBarBadgeMediatorDelegate
+
+// Whether the location bar is currently in a state where the chip can be shown.
+- (BOOL)canShowChip:(LocationBarBadgeMediator*)mediator;
+
+// Sets the location label of the location bar centered relative to the content
+// around it when centered is passed as YES. Otherwise, resets it to the
+// "absolute" center.
+- (void)setLocationBarLabelCenteredBetweenContent:
+            (LocationBarBadgeMediator*)mediator
+                                         centered:(BOOL)centered;
+
+// Disables fullscreen until `enableFullscreen` is called afterwards.
+- (void)disableFullscreen;
+
+// Re-enables fullscreen, no-op if fullscreen was not disabled beforehand.
+- (void)enableFullscreen;
+
+// Gets the current bottom omnibox state.
+- (BOOL)isBottomOmniboxActive;
+
+// Gets the in-product help anchor point in window coordinates.
+- (CGPoint)helpAnchorUsingBottomOmnibox:(BOOL)isBottomOmnibox;
+
+// Starts the Gemini entry flow for the given startup state.
+- (void)locationBarBadgeMediator:(LocationBarBadgeMediator*)mediator
+    startGeminiEntryFlowWithStartupState:(GeminiStartupState*)startupState;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_LOCATION_BAR_BADGE_COORDINATOR_LOCATION_BAR_BADGE_MEDIATOR_DELEGATE_H_

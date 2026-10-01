@@ -1,0 +1,34 @@
+include_rules = [
+  # keep-sorted start
+  "+components/signin/internal/identity_manager",
+  "+components/trusted_vault",
+  "+ios/chrome/browser/authentication/ui_bundled/signin/signin_constants.h",
+  "+ios/chrome/browser/authentication/ui_bundled/signin/signin_utils.h",
+  "+ios/chrome/browser/bookmarks/model",
+  "+ios/chrome/browser/browser_state/model/constants.h",
+  "+ios/chrome/browser/browsing_data/model",
+  "+ios/chrome/browser/content_settings/model",
+  "+ios/chrome/browser/crash_report/model",
+  "+ios/chrome/browser/policy/model",
+  "+ios/chrome/browser/subscription_eligibility/model",
+  "+ios/chrome/browser/sync/model",
+  "+ios/chrome/browser/tabs/model/tabs_dependency_installer.h",
+  "+ios/chrome/browser/web/model",
+  "+ios/chrome/browser/webdata_services/model",
+  # keep-sorted end
+]
+
+specific_include_rules = {
+  "^account_consistency_browser_agent.mm": [
+    "+ios/chrome/browser/authentication/ui_bundled/continuation.h",
+    "+ios/chrome/browser/authentication/ui_bundled/signin/signin_coordinator.h",
+    "+ios/chrome/browser/authentication/ui_bundled/signin/signin_utils.h",
+  ],
+  "^system_account_updater.mm": [
+    "+ios/chrome/browser/widget_kit/model/features.h",
+    "+ios/chrome/browser/widget_kit/model/model_swift.h",
+  ],
+  "^system_account_updater_unittest.mm": [
+    "+ios/chrome/browser/widget_kit/model/features.h",
+  ],
+}

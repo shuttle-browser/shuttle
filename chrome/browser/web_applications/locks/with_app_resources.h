@@ -1,0 +1,64 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_WEB_APPLICATIONS_LOCKS_WITH_APP_RESOURCES_H_
+#define CHROME_BROWSER_WEB_APPLICATIONS_LOCKS_WITH_APP_RESOURCES_H_
+
+#include "base/memory/weak_ptr.h"
+
+namespace web_app {
+
+class ExtensionsManager;
+class OsIntegrationManager;
+class WebAppIconManager;
+class WebAppInstallManager;
+class WebAppLockManager;
+class WebAppRegistrar;
+class WebAppSyncBridge;
+class WebAppTranslationManager;
+class WebAppUiManager;
+class WebAppIsolationDelegate;
+
+// A mixin class that provides access to web app components that allow
+// read/write access to web app data. A lock class that needs this kind of
+// access can inherit from this class.
+//
+// Note: Accessing resources before the lock is granted or after the
+// WebAppProvider system has shutdown (or the profile has shut down) will
+// CHECK-fail.
+class WithAppResources {
+ public:
+  virtual ~WithAppResources();
+
+  // Will CHECK-fail if accessed before the lock is granted.
+  ExtensionsManager& extensions_manager();
+  // Will CHECK-fail if accessed before the lock is granted.
+  WebAppRegistrar& registrar();
+  // Will CHECK-fail if accessed before the lock is granted.
+  WebAppSyncBridge& sync_bridge();
+  // Will CHECK-fail if accessed before the lock is granted.
+  OsIntegrationManager& os_integration_manager();
+  // Will CHECK-fail if accessed before the lock is granted.
+  WebAppInstallManager& install_manager();
+  // Will CHECK-fail if accessed before the lock is granted.
+  WebAppIconManager& icon_manager();
+  // Will CHECK-fail if accessed before the lock is granted.
+  WebAppTranslationManager& translation_manager();
+  // Will CHECK-fail if accessed before the lock is granted.
+  WebAppUiManager& ui_manager();
+  // Will CHECK-fail if accessed before the lock is granted.
+  WebAppIsolationDelegate& isolation_delegate();
+
+ protected:
+  WithAppResources();
+
+  void GrantWithAppResources(WebAppLockManager& lock_manager);
+
+ private:
+  base::WeakPtr<WebAppLockManager> lock_manager_;
+};
+
+}  // namespace web_app
+
+#endif  // CHROME_BROWSER_WEB_APPLICATIONS_LOCKS_WITH_APP_RESOURCES_H_

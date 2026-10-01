@@ -1,0 +1,201 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_AUTOFILL_IOS_BROWSER_AUTOFILL_UTIL_H_
+#define COMPONENTS_AUTOFILL_IOS_BROWSER_AUTOFILL_UTIL_H_
+
+#import <map>
+#import <optional>
+#import <set>
+
+#import "base/strings/string_number_conversions.h"
+#import "base/types/expected.h"
+#import "base/types/optional_ref.h"
+#import "base/unguessable_token.h"
+#import "base/values.h"
+#import "components/autofill/core/common/unique_ids.h"
+#import "ios/web/public/js_messaging/web_frame.h"
+
+class GURL;
+
+namespace url {
+class Origin;
+}
+
+namespace web {
+class WebFramesManager;
+class WebState;
+}
+
+namespace autofill {
+
+class FormData;
+class FormFieldData;
+class FieldDataManager;
+struct FrameTokenWithPredecessor;
+
+// Enumeration representing the various reasons why form data extraction might
+// fail.
+//
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+//
+// LINT.IfChange(InvalidSubmittedFormReasonIOS)
+enum class ExtractFormDataFailure {
+  // The form data is missing the "name" field.
+  kMissingName = 0,
+  // The form name does not match the expected name when filtering.
+  kFilteredNameMismatch = 1,
+  // The form data is missing the "origin" field.
+  kMissingOrigin = 2,
+  // The form origin does not match the expected origin.
+  kOriginMismatch = 3,
+  // The form data is missing the "host_frame" field.
+  kMissingHostFrame = 4,
+  // The host frame token is invalid.
+  kInvalidHostFrame = 5,
+  // The frame ID does not match the host frame parameter.
+  kFrameIdMismatch = 6,
+  // The form data is missing the "fields" list.
+  kMissingFields = 7,
+  //  Failed to extract data from one or more form fields.
+  kInvalidField = 8,
+  kMaxValue = kInvalidField,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/autofill/enums.xml:InvalidSubmittedFormReasonIOS)
+
+// LINT.IfChange(SubmissionBlockedReasonIOS)
+enum class SubmissionBlockedReason {
+  // The submission was blocked because it lacked a user gesture.
+  kNoUserGesture = 0,
+  // The submission was blocked because Autofill is disabled.
+  kAutofillDisabled = 1,
+  // The submission was blocked because the frame was missing or destroyed.
+  kNoFrame = 2,
+  // The submission was blocked because the driver was missing.
+  kNoDriver = 3,
+  // The submission was blocked because the frame is cross-origin.
+  kCrossOriginFrame = 4,
+  // The submission was blocked because the delegate is missing.
+  kNoDelegate = 5,
+  kMaxValue = kNoDelegate,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/autofill/enums.xml:SubmissionBlockedReasonIOS)
+
+// Checks if current context is secure from an autofill standpoint.
+bool IsContextSecureForWebState(web::WebState* web_state);
+
+// Tries to parse a JSON string into base::Value. Returns nullptr if parsing is
+// unsuccessful.
+std::unique_ptr<base::Value> ParseJson(NSString* json_string);
+
+// Local and remote frame IDs generated in JavaScript are equivalent to
+// base::UnguessableToken (128 bits, cryptographically random). Returns a
+// base::UnguessableToken equivalent to the given JS-generated ID.
+std::optional<base::UnguessableToken> DeserializeJavaScriptFrameId(
+    const std::string& frame_id);
+
+// Processes the JSON form data extracted into `FormData`s.
+// See `ExtractFormData` for details on the function parameters.
+std::optional<std::vector<FormData>> ExtractFormsData(
+    NSString* form_json,
+    base::optional_ref<const std::u16string> form_name_filter,
+    const GURL& main_frame_url,
+    const url::Origin& frame_origin,
+    const GURL& form_frame_url,
+    const FieldDataManager& field_data_manager,
+    const std::string& frame_id,
+    LocalFrameToken host_frame = LocalFrameToken());
+
+// Converts `form` into FormData.
+// - `form_name_filter` limits the forms that will be returned: if not nullopt,
+//    then only forms with `form_data.name == *form_name_filter` are returned.
+// - If a form's origin does not match `frame_origin`, the form is dropped.
+// - `host_frame` is the isolated world frame corresponding to the page content
+//   world frame where the forms were extracted. For forms extracted in the
+//   isolated world, pass a null `host_frame`, and the frame token is derived
+//   from `frame_id`.
+// - Returns std::nullopt if the data was invalid.
+base::expected<FormData, ExtractFormDataFailure> ExtractFormData(
+    const base::DictValue& form,
+    base::optional_ref<const std::u16string> form_name_filter,
+    const GURL& main_frame_url,
+    const url::Origin& form_frame_origin,
+    const GURL& form_frame_url,
+    const FieldDataManager& field_data_manager,
+    const std::string& frame_id,
+    LocalFrameToken host_frame = LocalFrameToken());
+
+// Extracts a single form field from the JSON dictionary into a FormFieldData
+// object.
+// Returns false if the field could not be extracted.
+bool ExtractFormFieldData(const base::DictValue& field,
+                          const FieldDataManager& field_data_manager,
+                          FormFieldData* field_data);
+
+typedef base::OnceCallback<void(const base::Value*)> JavaScriptResultCallback;
+
+// Creates a callback for a string JS function return type.
+JavaScriptResultCallback CreateStringCallback(
+    void (^completionHandler)(NSString*));
+JavaScriptResultCallback CreateStringCallback(
+    base::OnceCallback<void(NSString*)> callback);
+
+// Creates a callback for a bool JS function return type.
+JavaScriptResultCallback CreateBoolCallback(void (^completionHandler)(BOOL));
+JavaScriptResultCallback CreateBoolCallback(base::OnceCallback<void(BOOL)>);
+
+// Executes the JavaScript function with the given name and argument.
+// If |callback| is not null, it will be called when the result of the
+// command is received, or immediately if the command cannot be executed.
+void ExecuteJavaScriptFunction(const std::string& name,
+                               const base::ListValue& parameters,
+                               web::WebFrame* frame,
+                               JavaScriptResultCallback callback);
+
+// Extracts a vector of 32 bits numeric renderer IDs from the JS returned json
+// string.
+// - IDType: Identifier type must be constructable from uint32_t.
+template <typename IDType>
+std::optional<std::set<IDType>> ExtractIDs(NSString* json_string) {
+  std::unique_ptr<base::Value> ids_value = ParseJson(json_string);
+
+  if (!ids_value || !ids_value->is_list()) {
+    return std::nullopt;
+  }
+
+  std::set<IDType> ids;
+
+  for (const auto& unique_id : ids_value->GetList()) {
+    if (!unique_id.is_string()) {
+      return std::nullopt;
+    }
+    uint32_t id_num = 0;
+    if (!base::StringToUint(unique_id.GetString(), &id_num)) {
+      return std::nullopt;
+    }
+    ids.insert(IDType(id_num));
+  }
+
+  return ids;
+}
+
+// Extracts a map of filled renderer IDs and values from the JS returned json
+// string.
+bool ExtractFillingResults(NSString* json_string,
+                           std::map<uint32_t, std::u16string>* filling_results);
+
+// Returns the WebFramesManager that manages the frame space in which Autofill
+// works.
+web::WebFramesManager* GetWebFramesManagerForAutofill(web::WebState* web_state);
+
+std::vector<FrameTokenWithPredecessor> ExtractChildFramesForTest(
+    const base::DictValue& form);
+
+std::optional<FrameTokenWithPredecessor> ExtractRemoteFrameTokenForTest(
+    const base::DictValue& frame_data);
+
+}  // namespace autofill
+
+#endif  // COMPONENTS_AUTOFILL_IOS_BROWSER_AUTOFILL_UTIL_H_

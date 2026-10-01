@@ -1,0 +1,148 @@
+/*
+ * Copyright (C) 2004, 2005, 2008 Nikolas Zimmermann <zimmermann@kde.org>
+ * Copyright (C) 2004, 2005, 2006, 2007 Rob Buis <buis@kde.org>
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Library General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Library General Public License for more details.
+ *
+ * You should have received a copy of the GNU Library General Public License
+ * along with this library; see the file COPYING.LIB.  If not, write to
+ * the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA 02110-1301, USA.
+ */
+
+#include "third_party/blink/renderer/core/svg/svg_tests.h"
+
+#include "third_party/blink/renderer/core/dom/document.h"
+#include "third_party/blink/renderer/core/frame/settings.h"
+#include "third_party/blink/renderer/core/mathml_names.h"
+#include "third_party/blink/renderer/core/page/page.h"
+#include "third_party/blink/renderer/core/svg/svg_element.h"
+#include "third_party/blink/renderer/core/svg/svg_static_string_list.h"
+#include "third_party/blink/renderer/core/svg_names.h"
+#include "third_party/blink/renderer/platform/language.h"
+
+namespace blink {
+
+SVGTests::SVGTests() = default;
+
+SVGStaticStringList& SVGTests::EnsureRequiredExtensions(
+    const SVGElement* owner) {
+  if (!required_extensions_) {
+    required_extensions_ = SVGStaticStringList::Create<' '>(
+        const_cast<SVGElement*>(owner), svg_names::kRequiredExtensionsAttr);
+  }
+  return *required_extensions_;
+}
+
+SVGStaticStringList& SVGTests::EnsureSystemLanguage(const SVGElement* owner) {
+  if (!system_language_) {
+    system_language_ = SVGStaticStringList::Create<','>(
+        const_cast<SVGElement*>(owner), svg_names::kSystemLanguageAttr);
+  }
+  return *system_language_;
+}
+
+void SVGTests::Trace(Visitor* visitor) const {
+  visitor->Trace(required_extensions_);
+  visitor->Trace(system_language_);
+}
+
+SVGStringListTearOff* SVGTests::requiredExtensions(const SVGElement* owner) {
+  return EnsureRequiredExtensions(owner).TearOff();
+}
+
+SVGStringListTearOff* SVGTests::systemLanguage(const SVGElement* owner) {
+  return EnsureSystemLanguage(owner).TearOff();
+}
+
+SVGAnimatedPropertyBase* SVGTests::PropertyFromAttribute(
+    const SVGElement* owner,
+    const QualifiedName& attribute_name) {
+  if (attribute_name == svg_names::kRequiredExtensionsAttr) {
+    return &EnsureRequiredExtensions(owner);
+  } else if (attribute_name == svg_names::kSystemLanguageAttr) {
+    return &EnsureSystemLanguage(owner);
+  } else {
+    return nullptr;
+  }
+}
+
+void SVGTests::SynchronizeAllSVGAttributes() const {
+  if (required_extensions_) {
+    SVGAnimatedPropertyBase* attrs[]{required_extensions_.Get()};
+    SVGElement::SynchronizeListOfSVGAttributes(attrs);
+  }
+  if (system_language_) {
+    SVGAnimatedPropertyBase* attrs[]{system_language_.Get()};
+    SVGElement::SynchronizeListOfSVGAttributes(attrs);
+  }
+}
+
+static bool IsLangTagPrefix(const String& lang_tag,
+                            const StringView& language) {
+  if (!lang_tag.StartsWithIgnoringAsciiCase(language)) {
+    return false;
+  }
+  return lang_tag.length() == language.length() ||
+         lang_tag[language.length()] == '-';
+}
+
+static bool MatchLanguageList(const String& lang_tag,
+                              const Vector<StringView>& languages) {
+  for (const auto& value : languages) {
+    if (IsLangTagPrefix(lang_tag, value))
+      return true;
+  }
+  return false;
+}
+
+bool SVGTests::IsValid() const {
+  if (system_language_ && system_language_->IsSpecified()) {
+    bool match_found = false;
+    String accept_languages = system_language_->ContextElement()
+                                  ->GetDocument()
+                                  .GetPage()
+                                  ->GetSettings()
+                                  .GetAcceptLanguages();
+    Vector<StringView> languages =
+        StringView(accept_languages).SplitSkippingEmpty(',');
+    for (const auto& lang_tag : system_language_->Value()->Values()) {
+      if (MatchLanguageList(lang_tag, languages)) {
+        match_found = true;
+        break;
+      }
+    }
+    if (!match_found)
+      return false;
+  }
+
+  if (required_extensions_ && required_extensions_->IsSpecified()) {
+    const Vector<String>& extensions = required_extensions_->Value()->Values();
+    // 'If a null string or empty string value is given to attribute
+    // 'requiredExtensions', the attribute evaluates to "false".'
+    if (extensions.empty())
+      return false;
+    for (const auto& extension : extensions) {
+      if (extension != html_names::xhtmlNamespaceURI &&
+          extension != mathml_names::kNamespaceURI) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool SVGTests::IsKnownAttribute(const QualifiedName& attr_name) {
+  return attr_name == svg_names::kRequiredExtensionsAttr ||
+         attr_name == svg_names::kSystemLanguageAttr;
+}
+
+}  // namespace blink

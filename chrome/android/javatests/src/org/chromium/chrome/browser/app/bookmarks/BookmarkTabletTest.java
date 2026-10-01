@@ -1,0 +1,262 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.app.bookmarks;
+
+import static androidx.test.espresso.Espresso.onView;
+import static androidx.test.espresso.action.ViewActions.click;
+import static androidx.test.espresso.action.ViewActions.replaceText;
+import static androidx.test.espresso.assertion.ViewAssertions.matches;
+import static androidx.test.espresso.matcher.ViewMatchers.isDescendantOfA;
+import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
+import static androidx.test.espresso.matcher.ViewMatchers.isFocused;
+import static androidx.test.espresso.matcher.ViewMatchers.withId;
+import static androidx.test.espresso.matcher.ViewMatchers.withText;
+
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.startsWith;
+import static org.junit.Assert.assertEquals;
+
+import static org.chromium.chrome.browser.url_constants.UrlConstantResolver.getOriginalNativeBookmarksUrl;
+import static org.chromium.chrome.browser.url_constants.UrlConstantResolver.getOriginalNativeNtpUrl;
+
+import androidx.recyclerview.widget.RecyclerView;
+import androidx.test.filters.MediumTest;
+import androidx.test.filters.SmallTest;
+import androidx.test.platform.app.InstrumentationRegistry;
+
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+import org.chromium.base.ThreadUtils;
+import org.chromium.base.test.util.CallbackHelper;
+import org.chromium.base.test.util.CommandLineFlags;
+import org.chromium.base.test.util.DoNotBatch;
+import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.Restriction;
+import org.chromium.chrome.R;
+import org.chromium.chrome.browser.bookmarks.BookmarkManagerCoordinator;
+import org.chromium.chrome.browser.bookmarks.BookmarkModel;
+import org.chromium.chrome.browser.bookmarks.BookmarkPage;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.flags.ChromeSwitches;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabObserver;
+import org.chromium.chrome.browser.ui.native_page.NativePage;
+import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
+import org.chromium.chrome.test.transit.ChromeTransitTestRules;
+import org.chromium.chrome.test.transit.FreshCtaTransitTestRule;
+import org.chromium.chrome.test.util.BookmarkTestUtil;
+import org.chromium.chrome.test.util.ChromeTabUtils;
+import org.chromium.chrome.test.util.TabStripUtils;
+import org.chromium.components.embedder_support.util.UrlConstants;
+import org.chromium.ui.accessibility.AccessibilityStateTestHelper;
+import org.chromium.ui.base.DeviceFormFactor;
+import org.chromium.ui.base.DeviceInput;
+
+/** Tests for the bookmark manager on tablet. */
+@RunWith(ChromeJUnit4ClassRunner.class)
+@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
+@Restriction(DeviceFormFactor.TABLET_OR_DESKTOP)
+// TODO(crbug.com/40899175): Investigate batching.
+@DoNotBatch(reason = "Test has side-effects (bookmarks, pageloads) and thus can't be batched.")
+@DisableFeatures({
+    ChromeFeatureList.ANDROID_DESKTOP_BOOKMARK_LAYOUT,
+    ChromeFeatureList.ANDROID_DESKTOP_BOOKMARK_DIALOG
+})
+public class BookmarkTabletTest {
+    @Rule
+    public FreshCtaTransitTestRule mActivityTestRule =
+            ChromeTransitTestRules.freshChromeTabbedActivityRule();
+
+    private BookmarkManagerCoordinator mBookmarkManagerCoordinator;
+    private BookmarkModel mBookmarkModel;
+    private RecyclerView mItemsContainer;
+
+    @Before
+    public void setUp() {
+        mActivityTestRule.startOnBlankPage();
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    mBookmarkModel = mActivityTestRule.getActivity().getBookmarkModelForTesting();
+                    mBookmarkModel.loadEmptyPartnerBookmarkShimForTesting();
+                });
+    }
+
+    private void openBookmarkManager() throws InterruptedException {
+        BookmarkTestUtil.waitForBookmarkModelLoaded();
+
+        String rootFolderId = "folder/0";
+        mActivityTestRule.loadUrl(getOriginalNativeBookmarksUrl() + rootFolderId);
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    mItemsContainer =
+                            mActivityTestRule
+                                    .getActivity()
+                                    .findViewById(R.id.selectable_list_recycler_view);
+                    mItemsContainer.setItemAnimator(null); // Disable animation to reduce flakiness.
+                    mBookmarkManagerCoordinator =
+                            ((BookmarkPage) mActivityTestRule.getActivityTab().getNativePage())
+                                    .getManagerForTesting();
+                    AccessibilityStateTestHelper.setIsAnyAccessibilityServiceEnabledForTesting(
+                            false);
+                });
+    }
+
+    /**
+     * Simulates a click on a tab, selecting it.
+     *
+     * @param incognito Whether or not this tab is in the incognito or normal stack.
+     * @param id The id of the tab to click.
+     */
+    protected void selectTab(final boolean incognito, final int id) {
+        ChromeTabUtils.selectTabWithAction(
+                InstrumentationRegistry.getInstrumentation(),
+                mActivityTestRule.getActivity(),
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        TabStripUtils.clickTab(
+                                TabStripUtils.findStripLayoutTab(
+                                        mActivityTestRule.getActivity(), incognito, id),
+                                InstrumentationRegistry.getInstrumentation(),
+                                mActivityTestRule.getActivity());
+                    }
+                });
+    }
+
+    @Test
+    @MediumTest
+    public void switchBetweenTabs_editVisibility() throws Exception {
+        Tab bookmarksTab = mActivityTestRule.getActivityTab();
+        openBookmarkManager();
+        BookmarkTestUtil.openMobileBookmarks(
+                mItemsContainer,
+                mBookmarkManagerCoordinator.getBookmarkDelegateForTesting(),
+                mBookmarkModel);
+
+        mActivityTestRule.loadUrlInNewTab(getOriginalNativeNtpUrl());
+        selectTab(false, bookmarksTab.getId());
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+
+        Assert.assertFalse(
+                mBookmarkManagerCoordinator
+                        .getToolbarForTesting()
+                        .getMenu()
+                        .findItem(R.id.edit_menu_id)
+                        .isVisible());
+    }
+
+    @Test
+    @SmallTest
+    public void testShowBookmarkManager() throws InterruptedException {
+        BookmarkTestUtil.loadEmptyPartnerBookmarksForTesting(mBookmarkModel);
+        BookmarkTestUtil.waitForBookmarkModelLoaded();
+
+        CallbackHelper callbackHelper = new CallbackHelper();
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    Tab tab = mActivityTestRule.getActivity().getActivityTab();
+                    tab.addObserver(
+                            new TabObserver() {
+                                NativePage mBookmarksNativePage;
+
+                                @Override
+                                public void onTitleUpdated(Tab tab) {
+                                    NativePage nativePage = tab.getNativePage();
+                                    // Track that there's only one instance of BookmarkPage created.
+                                    if (mBookmarksNativePage != null
+                                            && !mBookmarksNativePage.equals(nativePage)) {
+                                        callbackHelper.notifyCalled();
+                                        return;
+                                    }
+                                    if (nativePage != null
+                                            && nativePage
+                                                    .getHost()
+                                                    .equals(UrlConstants.BOOKMARKS_HOST)) {
+                                        mBookmarksNativePage = nativePage;
+                                    }
+                                }
+                            });
+                });
+        String rootFolderId = "folder/0";
+        mActivityTestRule.loadUrl(getOriginalNativeBookmarksUrl() + rootFolderId);
+        onView(withText(startsWith("Mobile bookmarks"))).check(matches(isDisplayed()));
+        assertEquals(0, callbackHelper.getCallCount());
+    }
+
+    @Test
+    @MediumTest
+    public void testSearchBarAutoFocusWithoutKeyboard() throws Exception {
+        DeviceInput.setSupportsKeyboardForTesting(false);
+        openBookmarkManager();
+        boolean isKeyboardAttached =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> DeviceInput.supportsKeyboard(mActivityTestRule.getActivity()));
+
+        if (isKeyboardAttached) return;
+
+        // The search bar should not be automatically focused on devices without physical keyboard
+        BookmarkTestUtil.getSearchBoxViewInteraction().check(matches(not(isFocused())));
+        // users should be able to directly type "google" in the search bar
+        BookmarkTestUtil.getSearchBoxViewInteraction().perform(replaceText("google"));
+        onView(allOf(isDescendantOfA(withId(R.id.action_bar)), withText("Bookmarks")))
+                .check(matches(isDisplayed()));
+
+        onView(allOf(withId(R.id.clear_text_button), isDisplayed())).perform(click());
+        onView(withText(startsWith("Mobile bookmarks"))).perform(click());
+        onView(allOf(isDescendantOfA(withId(R.id.action_bar)), withText("Mobile bookmarks")))
+                .check(matches(isDisplayed()));
+
+        // After navigating to a new folder, the search bar should not be focused.
+        BookmarkTestUtil.getSearchBoxViewInteraction().check(matches(not(isFocused())));
+        // And the search text should be cleared.
+        BookmarkTestUtil.getSearchBoxViewInteraction().check(matches(withText("")));
+        // go back to the bookmark page
+        onView(withId(R.id.back_button)).perform(click());
+        // user's query is empty in the search bar
+        BookmarkTestUtil.getSearchBoxViewInteraction().perform(replaceText(""));
+        // user's query is empty the context inside bookmarks should not change
+        onView(withText(startsWith("Mobile bookmarks"))).check(matches(isDisplayed()));
+    }
+
+    @Test
+    @MediumTest
+    public void testSearchBarAutoFocusWithKeyboard() throws Exception {
+        DeviceInput.setSupportsKeyboardForTesting(true);
+        openBookmarkManager();
+        boolean isKeyboardAttached =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> DeviceInput.supportsKeyboard(mActivityTestRule.getActivity()));
+
+        if (!isKeyboardAttached) return;
+
+        // The search bar should be focused automatically
+        BookmarkTestUtil.getSearchBoxViewInteraction().check(matches(isFocused()));
+        // users should be able to directly type "google" in the search bar
+        BookmarkTestUtil.getSearchBoxViewInteraction().perform(replaceText("google"));
+        onView(allOf(isDescendantOfA(withId(R.id.action_bar)), withText("Bookmarks")))
+                .check(matches(isDisplayed()));
+
+        onView(allOf(withId(R.id.clear_text_button), isDisplayed())).perform(click());
+        onView(withText(startsWith("Mobile bookmarks"))).perform(click());
+        onView(allOf(isDescendantOfA(withId(R.id.action_bar)), withText("Mobile bookmarks")))
+                .check(matches(isDisplayed()));
+
+        // After navigating to a new folder, the search bar should be focused again.
+        BookmarkTestUtil.getSearchBoxViewInteraction().check(matches(isFocused()));
+        // And the search text should be cleared.
+        BookmarkTestUtil.getSearchBoxViewInteraction().check(matches(withText("")));
+        // go back to the bookmark page
+        onView(withId(R.id.back_button)).perform(click());
+        // user's query is empty in the search bar
+        BookmarkTestUtil.getSearchBoxViewInteraction().perform(replaceText(""));
+        // user's query is empty the context inside bookmarks should not change
+        onView(withText(startsWith("Mobile bookmarks"))).check(matches(isDisplayed()));
+    }
+}

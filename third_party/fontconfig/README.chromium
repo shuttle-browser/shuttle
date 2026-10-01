@@ -1,0 +1,24 @@
+Name: fontconfig
+URL: http://www.freedesktop.org/wiki/Software/fontconfig/
+Version: 2.18.3
+Revision: d17ee184e436712c2abbe14a9c0ec02fb6acf5c5
+Update Mechanism: Manual
+CPEPrefix: cpe:/a:fontconfig_project:fontconfig:2.18.3
+License: HPND-sell-variant, MIT, MIT-Modern-Variant, Public-Domain-MD5, Public-Domain-ftglue, Unicode-TOU
+License File: src/COPYING
+Security Critical: yes
+Shipped: yes
+
+Description:
+Fontconfig is a library for configuring and customizing font access.
+
+Modifications:
+- We locally build FontConfig fully based on Fontations, and without FreeType.
+  We do that by removing ENABLE_FREETYPE from meson-config.h see
+    - https://gitlab.freedesktop.org/fontconfig/fontconfig/-/issues/502
+    - https://gitlab.freedesktop.org/fontconfig/fontconfig/-/merge_requests/488
+    - https://gitlab.freedesktop.org/fontconfig/fontconfig/-/merge_requests/490
+  The update.sh script removes these lines from meson-config.h
+
+To import a new snapshot of fontconfig:
+Run update.sh

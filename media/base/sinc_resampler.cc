@@ -1,0 +1,528 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+//
+// Initial input buffer layout, dividing into regions r0_ to r4_ (note: r0_, r3_
+// and r4_ will move after the first load):
+//
+// |----------------|-----------------------------------------|----------------|
+//
+//                                        request_frames_
+//                   <--------------------------------------------------------->
+//                                    r0_ (during first load)
+//
+//  kernel_size_ / 2  kernel_size_ / 2        kernel_size_ / 2  kernel_size_ / 2
+// <---------------> <--------------->       <---------------> <--------------->
+//        r1_               r2_                     r3_               r4_
+//
+//                             block_size_ == r4_ - r2_
+//                   <--------------------------------------->
+//
+//                                                  request_frames_
+//                                    <------------------ ... ----------------->
+//                                               r0_ (during second load)
+//
+// On the second request r0_ slides to the right by kernel_size_ / 2 and r3_,
+// r4_ and block_size_ are reinitialized via step (3) in the algorithm below.
+//
+// These new regions remain constant until a Flush() occurs.  While complicated,
+// this allows us to reduce jitter by always requesting the same amount from the
+// provided callback.
+//
+// The algorithm:
+//
+// 1) Allocate input_buffer of size: request_frames_ + kernel_size_; this
+// ensures
+//    there's enough room to read request_frames_ from the callback into region
+//    r0_ (which will move between the first and subsequent passes).
+//
+// 2) Let r1_, r2_ each represent half the kernel centered around r0_:
+//
+//        r0_ = input_buffer_ + kernel_size_ / 2
+//        r1_ = input_buffer_
+//        r2_ = r0_
+//
+//    r0_ is always request_frames_ in size.  r1_, r2_ are kernel_size_ / 2 in
+//    size.  r1_ must be zero initialized to avoid convolution with garbage (see
+//    step (5) for why).
+//
+// 3) Let r3_, r4_ each represent half the kernel right aligned with the end of
+//    r0_ and choose block_size_ as the distance in frames between r4_ and r2_:
+//
+//        r3_ = r0_ + request_frames_ - kernel_size_
+//        r4_ = r0_ + request_frames_ - kernel_size_ / 2
+//        block_size_ = r4_ - r2_ = request_frames_ - kernel_size_ / 2
+//
+// 4) Consume request_frames_ frames into r0_.
+//
+// 5) Position kernel centered at start of r2_ and generate output frames until
+//    the kernel is centered at the start of r4_ or we've finished generating
+//    all the output frames.
+//
+// 6) Wrap left over data from the r3_ to r1_ and r4_ to r2_.
+//
+// 7) If we're on the second load, in order to avoid overwriting the frames we
+//    just wrapped from r4_ we need to slide r0_ to the right by the size of
+//    r4_, which is kernel_size_ / 2:
+//
+//        r0_ = r0_ + kernel_size_ / 2 = input_buffer_ + kernel_size_
+//
+//    r3_, r4_, and block_size_ then need to be reinitialized, so goto (3).
+//
+// 8) Else, if we're not on the second load, goto (4).
+//
+// Note: we're glossing over how the sub-sample handling works with
+// |virtual_source_idx_|, etc.
+
+#include "media/base/sinc_resampler.h"
+
+#include <limits>
+#include <numbers>
+#include <numeric>
+
+#include "base/check_op.h"
+#include "base/containers/auto_spanification_helper.h"
+#include "base/containers/span.h"
+#include "base/cpu.h"
+#include "base/memory/aligned_memory.h"
+#include "base/trace_event/trace_event.h"
+#include "build/build_config.h"
+#include "cc/base/math_util.h"
+
+#if defined(ARCH_CPU_X86_FAMILY)
+#include <immintrin.h>
+// Including these headers directly should generally be avoided. Since
+// Chrome is compiled with -msse3 (the minimal requirement), we include the
+// headers directly to make the intrinsics available.
+#include <avx2intrin.h>
+#include <avxintrin.h>
+#include <fmaintrin.h>
+#elif defined(ARCH_CPU_ARM_FAMILY) && defined(USE_NEON)
+#include <arm_neon.h>
+#endif
+
+namespace media {
+namespace {
+constexpr size_t kAlignment = 32;
+}
+
+static double SincScaleFactor(double io_ratio, size_t kernel_size) {
+  // |sinc_scale_factor| is basically the normalized cutoff frequency of the
+  // low-pass filter.
+  double sinc_scale_factor = io_ratio > 1.0 ? 1.0 / io_ratio : 1.0;
+
+  // The sinc function is an idealized brick-wall filter, but since we're
+  // windowing it the transition from pass to stop does not happen right away.
+  // So we should adjust the low pass filter cutoff slightly downward to avoid
+  // some aliasing at the very high-end.
+  // Note: these values are derived empirically.
+  if (kernel_size == SincResampler::kMaxKernelSize) {
+    sinc_scale_factor *= 0.92;
+  } else {
+    DCHECK_EQ(kernel_size, SincResampler::kMinKernelSize);
+    sinc_scale_factor *= 0.90;
+  }
+
+  return sinc_scale_factor;
+}
+
+// If we know the minimum architecture at compile time, avoid CPU detection.
+void SincResampler::InitializeCPUSpecificFeatures() {
+#if defined(ARCH_CPU_ARM_FAMILY) && defined(USE_NEON)
+  convolve_proc_ = Convolve_NEON;
+#elif defined(ARCH_CPU_X86_FAMILY)
+  base::CPU cpu;
+  // Using AVX2 instead of SSE2 when AVX2/FMA3 supported.
+  if (cpu.has_avx2() && cpu.has_fma3()) {
+    convolve_proc_ = Convolve_AVX2;
+  } else if (cpu.has_sse2()) {
+    convolve_proc_ = Convolve_SSE;
+  } else {
+    convolve_proc_ = Convolve_C;
+  }
+#else
+  // Unknown architecture.
+  convolve_proc_ = Convolve_C;
+#endif
+}
+
+static int CalculateChunkSize(int block_size_, double io_ratio) {
+  return block_size_ / io_ratio;
+}
+
+// Static
+size_t SincResampler::KernelSizeFromRequestFrames(int request_frames) {
+  // We want the kernel size to *more* than 1.5 * `request_frames`.
+  constexpr int kSmallKernelLimit = kMaxKernelSize * 3 / 2;
+  return request_frames <= kSmallKernelLimit ? kMinKernelSize : kMaxKernelSize;
+}
+
+SincResampler::SincResampler(double io_sample_rate_ratio,
+                             int request_frames,
+                             const ReadCB read_cb)
+    : kernel_size_(KernelSizeFromRequestFrames(request_frames)),
+      io_sample_rate_ratio_(io_sample_rate_ratio),
+      read_cb_(std::move(read_cb)),
+      request_frames_(request_frames),
+      input_buffer_size_(request_frames_ + kernel_size_),
+      // Create input buffers with a 32-byte alignment for SIMD optimizations.
+      kernel_storage_(
+          base::AlignedUninit<float>(kernel_size_ * (kKernelOffsetCount + 1),
+                                     kAlignment)),
+      kernel_pre_sinc_storage_(
+          base::AlignedUninit<float>(kernel_size_ * (kKernelOffsetCount + 1),
+                                     kAlignment)),
+      kernel_window_storage_(
+          base::AlignedUninit<float>(kernel_size_ * (kKernelOffsetCount + 1),
+                                     kAlignment)),
+      input_buffer_(base::AlignedUninit<float>(input_buffer_size_, kAlignment)),
+      r1_(input_buffer_),
+      r2_(input_buffer_.subspan(kernel_size_ / 2)) {
+  CHECK_GE(request_frames, static_cast<int>(kMinRequestSize))
+      << "request_frames must be greater than 1.5 kernels to allow sufficient "
+         "data for resampling";
+  // This means that after the first call to Flush we will have
+  // block_size_ > kernel_size_ and r2_ < r3_.
+
+  InitializeCPUSpecificFeatures();
+  DCHECK(convolve_proc_);
+  Flush();
+
+  std::ranges::fill(kernel_storage_, 0);
+  std::ranges::fill(kernel_pre_sinc_storage_, 0);
+  std::ranges::fill(kernel_pre_sinc_storage_, 0);
+
+  InitializeKernel();
+}
+
+SincResampler::~SincResampler() = default;
+
+void SincResampler::UpdateRegions(bool second_load) {
+  // Setup various region pointers in the buffer (see diagram above).  If we're
+  // on the second load we need to slide r0_ to the right by kernel_size_ / 2.
+  r0_ = input_buffer_.subspan(second_load ? kernel_size_ : kernel_size_ / 2);
+  r3_ = r0_.subspan(request_frames_ - kernel_size_);
+  r4_ = r0_.subspan(request_frames_ - kernel_size_ / 2);
+  block_size_ = r4_.data() - r2_.data();
+  chunk_size_ = CalculateChunkSize(block_size_, io_sample_rate_ratio_);
+
+  // r1_ at the beginning of the buffer.
+  CHECK_EQ(r1_.data(), input_buffer_.data());
+  // r1_ left of r2_, r4_ left of r3_ and size correct.
+  CHECK_EQ(r2_.data() - r1_.data(), r4_.data() - r3_.data());
+  // r2_ left of r3.
+  CHECK_LT(r2_.data(), r3_.data());
+}
+
+void SincResampler::InitializeKernel() {
+  // Blackman window parameters.
+  static const double kAlpha = 0.16;
+  static const double kA0 = 0.5 * (1.0 - kAlpha);
+  static const double kA1 = 0.5;
+  static const double kA2 = 0.5 * kAlpha;
+
+  // Generates a set of windowed sinc() kernels.
+  // We generate a range of sub-sample offsets from 0.0 to 1.0.
+  const double sinc_scale_factor =
+      SincScaleFactor(io_sample_rate_ratio_, kernel_size_);
+  for (int offset_idx = 0; offset_idx <= kKernelOffsetCount; ++offset_idx) {
+    const float subsample_offset =
+        static_cast<float>(offset_idx) / kKernelOffsetCount;
+    // The algorithm below, deals with negative values, we don't want implicit
+    // conversion to unsigned values.
+    const int signed_kernel_size = static_cast<int>(kernel_size_);
+    for (int i = 0; i < signed_kernel_size; ++i) {
+      const int idx = i + offset_idx * kernel_size_;
+      const float pre_sinc = std::numbers::pi_v<float> *
+                             (i - signed_kernel_size / 2 - subsample_offset);
+      kernel_pre_sinc_storage_[idx] = pre_sinc;
+
+      // Compute Blackman window, matching the offset of the sinc().
+      const float x = (i - subsample_offset) / signed_kernel_size;
+      const float window =
+          static_cast<float>(kA0 - kA1 * cos(2.0 * std::numbers::pi * x) +
+                             kA2 * cos(4.0 * std::numbers::pi * x));
+      kernel_window_storage_[idx] = window;
+
+      // Compute the sinc with offset, then window the sinc() function and store
+      // at the correct offset.
+      kernel_storage_[idx] = static_cast<float>(
+          window * (pre_sinc ? sin(sinc_scale_factor * pre_sinc) / pre_sinc
+                             : sinc_scale_factor));
+    }
+  }
+}
+
+void SincResampler::SetRatio(double io_sample_rate_ratio) {
+  if (fabs(io_sample_rate_ratio_ - io_sample_rate_ratio) <
+      std::numeric_limits<double>::epsilon()) {
+    return;
+  }
+
+  io_sample_rate_ratio_ = io_sample_rate_ratio;
+  chunk_size_ = CalculateChunkSize(block_size_, io_sample_rate_ratio_);
+
+  // Optimize reinitialization by reusing values which are independent of
+  // |sinc_scale_factor|.  Provides a 3x speedup.
+  const double sinc_scale_factor =
+      SincScaleFactor(io_sample_rate_ratio_, kernel_size_);
+  for (int offset_idx = 0; offset_idx <= kKernelOffsetCount; ++offset_idx) {
+    for (size_t i = 0; i < kernel_size_; ++i) {
+      const int idx = i + offset_idx * kernel_size_;
+      const float window = kernel_window_storage_[idx];
+      const float pre_sinc = kernel_pre_sinc_storage_[idx];
+
+      kernel_storage_[idx] = static_cast<float>(
+          window * (pre_sinc ? sin(sinc_scale_factor * pre_sinc) / pre_sinc
+                             : sinc_scale_factor));
+    }
+  }
+}
+
+void SincResampler::Resample(base::span<float> destination) {
+  TRACE_EVENT1(TRACE_DISABLED_BY_DEFAULT("audio"), "SincResampler::Resample",
+               "io sample rate ratio", io_sample_rate_ratio_);
+  int remaining_frames = destination.size();
+
+  // Step (1) -- Prime the input buffer at the start of the input stream.
+  if (!buffer_primed_ && remaining_frames) {
+    read_cb_.Run(r0_.first(request_frames_));
+    buffer_primed_ = true;
+  }
+
+  // Step (2) -- Resample!
+  auto dest_iter = destination.begin();
+  while (remaining_frames) {
+    // Silent audio can contain non-zero samples small enough to result in
+    // subnormals internally. Disabling subnormals can be significantly faster.
+    {
+      cc::ScopedSubnormalFloatDisabler disable_subnormals;
+
+      while (virtual_source_idx_ < block_size_) {
+        // |virtual_source_idx_| lies in between two kernel offsets so figure
+        // out what they are.
+        const size_t source_idx = static_cast<size_t>(virtual_source_idx_);
+        const double virtual_offset_idx =
+            (virtual_source_idx_ - source_idx) * kKernelOffsetCount;
+        const int offset_idx = static_cast<int>(virtual_offset_idx);
+
+        // We'll compute "convolutions" for the two kernels which straddle
+        // |virtual_source_idx_|.
+        const size_t starting_idx = offset_idx * kernel_size_;
+        const base::span<float> k1 =
+            kernel_storage_.subspan(starting_idx, kernel_size_);
+        const base::span<float> k2 =
+            kernel_storage_.subspan(starting_idx + kernel_size_, kernel_size_);
+
+        // Ensure |k1|, |k2| are 32-byte aligned for SIMD usage.  Should always
+        // be true so long as `kernel_size_` is a multiple of 32.
+        DCHECK(base::IsAligned(k1.data(), kAlignment));
+        DCHECK(base::IsAligned(k2.data(), kAlignment));
+
+        // Initialize input pointer based on quantized |virtual_source_idx_|.
+        const base::span<float> input_span =
+            r1_.subspan(source_idx, kernel_size_);
+
+        // Figure out how much to weight each kernel's "convolution".
+        const double kernel_interpolation_factor =
+            virtual_offset_idx - offset_idx;
+        *dest_iter++ =
+            convolve_proc_(input_span, k1, k2, kernel_interpolation_factor);
+
+        // Advance the virtual index.
+        virtual_source_idx_ += io_sample_rate_ratio_;
+        if (!--remaining_frames) {
+          return;
+        }
+      }
+    }
+
+    // Wrap back around to the start.
+    DCHECK_GE(virtual_source_idx_, block_size_);
+    virtual_source_idx_ -= block_size_;
+
+    // Step (3) -- Copy r3_, r4_ to r1_, r2_.
+    // This wraps the last input frames back to the start of the buffer.
+    r1_.first(kernel_size_).copy_from_nonoverlapping(r3_.first(kernel_size_));
+
+    // Step (4) -- Reinitialize regions if necessary.
+    if (r0_.data() == r2_.data()) {
+      UpdateRegions(true);
+    }
+
+    // Step (5) -- Refresh the buffer with more input.
+    read_cb_.Run(r0_.first(request_frames_));
+  }
+}
+
+void SincResampler::PrimeWithSilence() {
+  // By enforcing the buffer hasn't been primed, we ensure the input buffer has
+  // already been zeroed during construction or by a previous Flush() call.
+  DCHECK(!buffer_primed_);
+  DCHECK_EQ(input_buffer_[0], 0.0f);
+  UpdateRegions(true);
+}
+
+void SincResampler::Flush() {
+  virtual_source_idx_ = 0;
+  buffer_primed_ = false;
+  std::ranges::fill(input_buffer_, 0);
+  UpdateRegions(false);
+}
+
+int SincResampler::GetMaxInputFramesRequested(
+    int output_frames_requested) const {
+  const int num_chunks = static_cast<int>(
+      std::ceil(static_cast<float>(output_frames_requested) / chunk_size_));
+
+  return num_chunks * request_frames_;
+}
+
+double SincResampler::BufferedFrames() const {
+  return buffer_primed_ ? request_frames_ - virtual_source_idx_ : 0;
+}
+
+size_t SincResampler::KernelSize() const {
+  return kernel_size_;
+}
+
+float SincResampler::Convolve_C(const base::span<const float>& input_span,
+                                const base::span<const float>& k1,
+                                const base::span<const float>& k2,
+                                double kernel_interpolation_factor) {
+  CHECK_EQ(k1.size(), input_span.size());
+  CHECK_EQ(k2.size(), input_span.size());
+  // Generate a single output sample.  Unrolling this loop hurt performance in
+  // local testing.
+  float sum1 = 0;
+  float sum2 = 0;
+  for (size_t i = 0; i < input_span.size(); ++i) {
+    sum1 += input_span[i] * k1[i];
+    sum2 += input_span[i] * k2[i];
+  }
+
+  // Linearly interpolate the two "convolutions".
+  return static_cast<float>((1.0 - kernel_interpolation_factor) * sum1 +
+                            kernel_interpolation_factor * sum2);
+}
+
+#if defined(ARCH_CPU_X86_FAMILY)
+float SincResampler::Convolve_SSE(const base::span<const float>& input_span,
+                                  const base::span<const float>& k1,
+                                  const base::span<const float>& k2,
+                                  double kernel_interpolation_factor) {
+  CHECK_EQ(k1.size(), input_span.size());
+  CHECK_EQ(k2.size(), input_span.size());
+  __m128 m_input;
+  __m128 m_sums1 = _mm_setzero_ps();
+  __m128 m_sums2 = _mm_setzero_ps();
+
+  // Based on |input_span| alignment, we need to use loadu or load.  Unrolling
+  // these loops hurt performance in local testing.
+  if (base::IsAligned(input_span.data(), 16)) {
+    for (size_t i = 0; i < input_span.size(); i += 4) {
+      m_input = _mm_load_ps(&input_span[i]);
+      m_sums1 = _mm_add_ps(m_sums1, _mm_mul_ps(m_input, _mm_load_ps(&k1[i])));
+      m_sums2 = _mm_add_ps(m_sums2, _mm_mul_ps(m_input, _mm_load_ps(&k2[i])));
+    }
+  } else {
+    for (size_t i = 0; i < input_span.size(); i += 4) {
+      m_input = _mm_loadu_ps(&input_span[i]);
+      m_sums1 = _mm_add_ps(m_sums1, _mm_mul_ps(m_input, _mm_load_ps(&k1[i])));
+      m_sums2 = _mm_add_ps(m_sums2, _mm_mul_ps(m_input, _mm_load_ps(&k2[i])));
+    }
+  }
+
+  // Linearly interpolate the two "convolutions".
+  m_sums1 = _mm_mul_ps(
+      m_sums1,
+      _mm_set_ps1(static_cast<float>(1.0 - kernel_interpolation_factor)));
+  m_sums2 = _mm_mul_ps(
+      m_sums2, _mm_set_ps1(static_cast<float>(kernel_interpolation_factor)));
+  m_sums1 = _mm_add_ps(m_sums1, m_sums2);
+
+  // Sum components together.
+  float result;
+  m_sums2 = _mm_add_ps(_mm_movehl_ps(m_sums1, m_sums1), m_sums1);
+  _mm_store_ss(&result,
+               _mm_add_ss(m_sums2, _mm_shuffle_ps(m_sums2, m_sums2, 1)));
+
+  return result;
+}
+
+__attribute__((target("avx2,fma"))) float SincResampler::Convolve_AVX2(
+    const base::span<const float>& input_span,
+    const base::span<const float>& k1,
+    const base::span<const float>& k2,
+    double kernel_interpolation_factor) {
+  CHECK_EQ(k1.size(), input_span.size());
+  CHECK_EQ(k2.size(), input_span.size());
+  __m256 m_input;
+  __m256 m_sums1 = _mm256_setzero_ps();
+  __m256 m_sums2 = _mm256_setzero_ps();
+
+  // Based on |input_span| alignment, we need to use loadu or load.  Unrolling
+  // these loops has not been tested or benchmarked.
+  if (base::IsAligned(input_span.data(), 32)) {
+    for (size_t i = 0; i < input_span.size(); i += 8) {
+      m_input = _mm256_load_ps(&input_span[i]);
+      m_sums1 = _mm256_fmadd_ps(m_input, _mm256_load_ps(&k1[i]), m_sums1);
+      m_sums2 = _mm256_fmadd_ps(m_input, _mm256_load_ps(&k2[i]), m_sums2);
+    }
+  } else {
+    for (size_t i = 0; i < input_span.size(); i += 8) {
+      m_input = _mm256_loadu_ps(&input_span[i]);
+      m_sums1 = _mm256_fmadd_ps(m_input, _mm256_load_ps(&k1[i]), m_sums1);
+      m_sums2 = _mm256_fmadd_ps(m_input, _mm256_load_ps(&k2[i]), m_sums2);
+    }
+  }
+
+  // Linearly interpolate the two "convolutions".
+  __m128 m128_sums1 = _mm_add_ps(_mm256_extractf128_ps(m_sums1, 0),
+                                 _mm256_extractf128_ps(m_sums1, 1));
+  __m128 m128_sums2 = _mm_add_ps(_mm256_extractf128_ps(m_sums2, 0),
+                                 _mm256_extractf128_ps(m_sums2, 1));
+  m128_sums1 = _mm_mul_ps(
+      m128_sums1,
+      _mm_set_ps1(static_cast<float>(1.0 - kernel_interpolation_factor)));
+  m128_sums2 = _mm_mul_ps(
+      m128_sums2, _mm_set_ps1(static_cast<float>(kernel_interpolation_factor)));
+  m128_sums1 = _mm_add_ps(m128_sums1, m128_sums2);
+
+  // Sum components together.
+  float result;
+  m128_sums2 = _mm_add_ps(_mm_movehl_ps(m128_sums1, m128_sums1), m128_sums1);
+  _mm_store_ss(&result, _mm_add_ss(m128_sums2,
+                                   _mm_shuffle_ps(m128_sums2, m128_sums2, 1)));
+
+  return result;
+}
+#elif defined(ARCH_CPU_ARM_FAMILY) && defined(USE_NEON)
+float SincResampler::Convolve_NEON(const base::span<const float>& input_span,
+                                   const base::span<const float>& k1,
+                                   const base::span<const float>& k2,
+                                   double kernel_interpolation_factor) {
+  CHECK_EQ(k1.size(), input_span.size());
+  CHECK_EQ(k2.size(), input_span.size());
+  float32x4_t m_input;
+  float32x4_t m_sums1 = vmovq_n_f32(0);
+  float32x4_t m_sums2 = vmovq_n_f32(0);
+
+  for (size_t i = 0; i < input_span.size(); i += 4) {
+    m_input = vld1q_f32(&input_span[i]);
+    m_sums1 = vmlaq_f32(m_sums1, m_input, vld1q_f32(&k1[i]));
+    m_sums2 = vmlaq_f32(m_sums2, m_input, vld1q_f32(&k2[i]));
+  }
+
+  // Linearly interpolate the two "convolutions".
+  m_sums1 = vmlaq_f32(
+      vmulq_f32(m_sums1, vmovq_n_f32(1.0 - kernel_interpolation_factor)),
+      m_sums2, vmovq_n_f32(kernel_interpolation_factor));
+
+  // Sum components together.
+  float32x2_t m_half = vadd_f32(vget_high_f32(m_sums1), vget_low_f32(m_sums1));
+  return vget_lane_f32(vpadd_f32(m_half, m_half), 0);
+}
+#endif
+
+}  // namespace media

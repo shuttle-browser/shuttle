@@ -1,0 +1,169 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_win || is_mac || is_linux || is_chromeos)
+
+import("//build/config/chrome_build.gni")
+import("//build/config/ui.gni")
+import("//chrome/common/features.gni")
+
+source_set("toasts") {
+  sources = [
+    "toast_controller.h",
+    "toast_features.h",
+    "toast_metrics.h",
+    "toast_service.h",
+    "toast_view.h",
+  ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/commerce",
+    "//chrome/browser/ui/exclusive_access",
+    "//chrome/browser/ui/omnibox",
+    "//chrome/browser/ui/tabs:tab_strip_model_observer",
+    "//chrome/browser/ui/toasts/api:toasts",
+    "//components/commerce/core:feature_list",
+    "//components/omnibox/browser:vector_icons",
+    "//components/omnibox/common",
+    "//content/public/browser",
+    "//ui/base",
+    "//ui/base/unowned_user_data",
+    "//ui/views",
+  ]
+}
+
+source_set("impl") {
+  sources = [
+    "toast_controller.cc",
+    "toast_features.cc",
+    "toast_metrics.cc",
+    "toast_service.cc",
+    "toast_view.cc",
+  ]
+  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+  deps = [
+    ":toasts",
+    "//chrome/app:generated_resources",
+    "//chrome/app:generated_resources_grit",
+    "//chrome/app/vector_icons",
+    "//chrome/browser:browser_process",
+    "//chrome/browser:browser_public_dependencies",
+    "//chrome/browser/actor/resources:common_resources",
+    "//chrome/browser/actor/resources:grit",
+    "//chrome/browser/dictation",
+    "//chrome/browser/glic",
+    "//chrome/browser/glic/browser_ui",
+    "//chrome/browser/indigo",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/send_tab_to_self",
+    "//chrome/browser/skills:public",
+    "//chrome/browser/translate",
+    "//chrome/browser/ui:browser_element_identifiers",
+    "//chrome/browser/ui:chrome_pages",
+    "//chrome/browser/ui/fullscreen",
+    "//chrome/browser/ui/send_tab_to_self",
+    "//chrome/browser/ui/side_panel",
+    "//chrome/browser/ui/side_panel:side_panel_views_dependent",
+    "//chrome/browser/ui/tabs/saved_tab_groups",
+    "//chrome/browser/ui/views:layout_provider",
+    "//chrome/browser/ui/views/interaction",
+    "//chrome/browser/ui/views/side_panel",
+    "//chrome/browser/ui/webui_browser:headers",
+    "//components/autofill/core/browser",
+    "//components/data_sharing/public:features",
+    "//components/record_replay/core/common",
+    "//components/safe_browsing/core/common:features",
+    "//components/safe_browsing/core/common:safe_browsing_prefs",
+    "//components/vector_icons",
+    "//ui/base/metadata",
+    "//ui/compositor",
+    "//ui/menus",
+    "//ui/strings:ui_strings_grit",
+  ]
+
+  if (is_mac) {
+    deps += [ "//chrome/browser/ui:fullscreen_util_mac" ]
+  }
+}
+
+source_set("interactive_ui_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+  sources = [ "toast_controller_interactive_ui_test.cc" ]
+  deps = [
+    ":toasts",
+    "//base",
+    "//base/test:test_support",
+    "//chrome/app:command_ids",
+    "//chrome/browser",
+    "//chrome/browser:browser_process",
+    "//chrome/browser/ui",
+    "//chrome/browser/ui:browser_element_identifiers",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/location_bar",
+    "//chrome/browser/ui/views/location_bar",
+    "//chrome/test:test_support",
+    "//components/safe_browsing/core/common:features",
+    "//components/vector_icons",
+    "//content/public/browser",
+    "//content/test:test_support",
+    "//testing/gtest",
+    "//ui/base",
+    "//ui/base:test_support",
+    "//ui/gfx",
+    "//ui/strings:ui_strings_grit",
+    "//ui/views",
+    "//ui/views:test_support",
+  ]
+
+  if (use_ozone) {
+    deps += [ "//ui/ozone" ]
+  }
+}
+
+source_set("browser_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+  sources = [
+    "toast_service_browsertest.cc",
+    "toast_view_browsertest.cc",
+  ]
+  deps = [
+    ":toasts",
+    "//base",
+    "//base/test:test_support",
+    "//chrome/browser",
+    "//chrome/browser:browser_process",
+    "//chrome/browser/dictation",
+    "//chrome/browser/ui",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/views:layout_provider",
+    "//chrome/test:test_support",
+    "//components/data_sharing/public:features",
+    "//components/multistep_filter/core:features",
+    "//components/safe_browsing/core/common:features",
+    "//components/vector_icons",
+    "//content/public/browser",
+    "//content/test:test_support",
+    "//testing/gtest",
+    "//ui/base",
+    "//ui/gfx",
+    "//ui/strings:ui_strings_grit",
+    "//ui/views",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "toast_controller_unittest.cc" ]
+  deps = [
+    ":toasts",
+    "//base",
+    "//base/test:test_support",
+    "//chrome/test:test_support",
+    "//testing/gtest",
+    "//ui/gfx",
+  ]
+}

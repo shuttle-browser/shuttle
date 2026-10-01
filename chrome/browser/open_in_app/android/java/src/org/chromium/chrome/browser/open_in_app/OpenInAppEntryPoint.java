@@ -1,0 +1,364 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.open_in_app;
+
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.graphics.drawable.Drawable;
+import android.net.Uri;
+
+import androidx.annotation.VisibleForTesting;
+
+import org.chromium.base.ContextUtils;
+import org.chromium.base.PackageManagerUtils;
+import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.base.supplier.NullableObservableSupplier;
+import org.chromium.base.task.AsyncTask;
+import org.chromium.base.task.PostTask;
+import org.chromium.base.task.TaskTraits;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabSupplierObserver;
+import org.chromium.chrome.browser.tabmodel.TabClosingSource;
+import org.chromium.chrome.browser.tabmodel.TabClosureParams;
+import org.chromium.chrome.browser.tabmodel.TabModelSelectorSupplier;
+import org.chromium.components.embedder_support.util.UrlUtilities;
+import org.chromium.components.external_intents.ExternalNavigationHandler;
+import org.chromium.components.webapk.lib.client.WebApkValidator;
+import org.chromium.content_public.browser.NavigationHandle;
+import org.chromium.content_public.browser.WebContents;
+import org.chromium.content_public.browser.WebContentsObserver;
+import org.chromium.url.GURL;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** Abstract base entry point class for Open in App. */
+@NullMarked
+public abstract class OpenInAppEntryPoint implements OpenInAppMenuItemProvider {
+    private final TabSupplierObserver mTabSupplierObserver;
+    private @Nullable Tab mCurrentTab;
+    private @Nullable OpenInAppDelegate mOpenInAppDelegate;
+    private boolean mIsPackageReceiverRegistered;
+    private int mCurrentResolveTaskId;
+
+    private final BroadcastReceiver mPackageChangeReceiver =
+            new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    onAppInstallationStateChanged();
+                }
+            };
+
+    sealed interface ResolveResult
+            permits ResolveResult.Info, ResolveResult.ResolverActivity, ResolveResult.None {
+        @SuppressWarnings("AvoidCommonTypeNames")
+        final class Info implements ResolveResult {
+            public final ResolveInfo resolveInfo;
+
+            Info(ResolveInfo resolveInfo) {
+                this.resolveInfo = resolveInfo;
+            }
+        }
+
+        final class ResolverActivity implements ResolveResult {}
+
+        final class None implements ResolveResult {}
+    }
+
+    private final WebContentsObserver mWebContentsObserver =
+            new WebContentsObserver() {
+                @Override
+                public void didFinishNavigationInPrimaryMainFrame(
+                        NavigationHandle navigationHandle) {
+                    if (!navigationHandle.hasCommitted()) return;
+
+                    resolveIntent(navigationHandle.getUrl(), navigationHandle.getNavigationId());
+                }
+            };
+
+    /** Resolves the app intent when the app installation state on the device changes. */
+    public void onAppInstallationStateChanged() {
+        Tab tab = mCurrentTab;
+        if (tab == null) return;
+        WebContents webContents = tab.getWebContents();
+        if (webContents == null) return;
+        GURL url = webContents.getLastCommittedUrl();
+        if (url == null || url.isEmpty() || !UrlUtilities.isHttpOrHttps(url)) {
+            updateOpenInAppInfo(mOpenInAppDelegate, null);
+            return;
+        }
+        resolveIntent(url, -1);
+    }
+
+    /**
+     * Resolves the app intent whenever navigation completes, or an app was recently installed. A
+     * navigationId of -1 means that an app installation state has changed, and no new navigation
+     * happened.
+     */
+    private void resolveIntent(GURL url, long navigationId) {
+        if (mOpenInAppDelegate == null) return;
+        var delegate = mOpenInAppDelegate;
+
+        delegate.setLastNavigatedUrl(url);
+        // Clear the open in app info to prevent trying to open an app based on outdated info.
+        updateOpenInAppInfo(delegate, null);
+
+        if (!UrlUtilities.isHttpOrHttps(url)) return;
+
+        final int taskId = ++mCurrentResolveTaskId;
+        Intent targetIntent = new Intent(Intent.ACTION_VIEW);
+        targetIntent.setData(Uri.parse(url.getSpec()));
+        ExternalNavigationHandler.sanitizeQueryIntentActivitiesIntent(targetIntent);
+
+        new AsyncTask<ResolveResult>() {
+            @Override
+            protected ResolveResult doInBackground() {
+                List<ResolveInfo> resolveInfos =
+                        PackageManagerUtils.queryIntentActivities(
+                                targetIntent,
+                                PackageManager.GET_RESOLVED_FILTER | PackageManager.GET_META_DATA);
+
+                var browserPackages = ExternalNavigationHandler.getInstalledBrowserPackages();
+
+                ArrayList<ResolveInfo> suitableApps = new ArrayList<>();
+                for (var info : resolveInfos) {
+                    if (browserPackages.contains(info.activityInfo.packageName)) {
+                        continue;
+                    }
+
+                    boolean isDefault =
+                            info.filter != null && info.filter.hasCategory(Intent.CATEGORY_DEFAULT);
+                    boolean isWebApk =
+                            WebApkValidator.isValidWebApk(mContext, info.activityInfo.packageName);
+
+                    if (isDefault || isWebApk) {
+                        suitableApps.add(info);
+                    }
+                }
+
+                if (suitableApps.isEmpty()) {
+                    return new ResolveResult.None();
+                }
+
+                if (suitableApps.size() > 1) {
+                    ResolveInfo resolveActivity =
+                            PackageManagerUtils.resolveActivity(
+                                    targetIntent, PackageManager.MATCH_DEFAULT_ONLY);
+
+                    if (resolveActivity != null) {
+                        if (ExternalNavigationHandler.resolvesToChooser(
+                                resolveActivity, resolveInfos)) {
+                            return new ResolveResult.ResolverActivity();
+                        } else {
+                            return new ResolveResult.Info(resolveActivity);
+                        }
+                    }
+                }
+
+                return new ResolveResult.Info(suitableApps.get(0));
+            }
+
+            @Override
+            protected void onPostExecute(ResolveResult result) {
+                onResolveInfosFetched(delegate, result, targetIntent, url, navigationId, taskId);
+            }
+        }.executeWithTaskTraits(TaskTraits.UI_DEFAULT);
+    }
+
+    protected OpenInAppDelegate.@Nullable OpenInAppInfo mOpenInAppInfo;
+    protected final Context mContext;
+
+    /**
+     * Constructor for this class.
+     *
+     * @param tabSupplier A supplier that notifies of tab changes.
+     * @param context The {@link Context} to get resources from.
+     */
+    public OpenInAppEntryPoint(NullableObservableSupplier<Tab> tabSupplier, Context context) {
+        mTabSupplierObserver =
+                new TabSupplierObserver(tabSupplier, /* shouldTrigger= */ false) {
+                    @Override
+                    protected void onObservingDifferentTab(@Nullable Tab tab) {
+                        mCurrentResolveTaskId++;
+                        mCurrentTab = tab;
+
+                        if (mCurrentTab == null) {
+                            mOpenInAppDelegate = null;
+                            mWebContentsObserver.observe(null);
+                            updateOpenInAppInfo(null, null);
+                            return;
+                        }
+
+                        mOpenInAppDelegate = OpenInAppDelegate.from(mCurrentTab);
+                        updateOpenInAppInfo(
+                                mOpenInAppDelegate, mOpenInAppDelegate.getCurrentOpenInAppInfo());
+
+                        var webContents = mCurrentTab.getWebContents();
+                        mWebContentsObserver.observe(webContents);
+                    }
+                };
+        mContext = context;
+
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_PACKAGE_ADDED);
+        filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        filter.addAction(Intent.ACTION_PACKAGE_REPLACED);
+        filter.addDataScheme("package");
+        ContextUtils.registerProtectedBroadcastReceiver(mContext, mPackageChangeReceiver, filter);
+        mIsPackageReceiverRegistered = true;
+    }
+
+    public void destroy() {
+        if (mIsPackageReceiverRegistered) {
+            mContext.unregisterReceiver(mPackageChangeReceiver);
+            mIsPackageReceiverRegistered = false;
+        }
+        mTabSupplierObserver.destroy();
+        mWebContentsObserver.observe(null);
+        mOpenInAppDelegate = null;
+        mOpenInAppInfo = null;
+    }
+
+    @VisibleForTesting
+    void onResolveInfosFetched(
+            OpenInAppDelegate delegate,
+            ResolveResult result,
+            Intent targetIntent,
+            GURL url,
+            long navigationId) {
+        onResolveInfosFetched(
+                delegate, result, targetIntent, url, navigationId, mCurrentResolveTaskId);
+    }
+
+    void setResolveTaskIdForTesting(int taskId) {
+        mCurrentResolveTaskId = taskId;
+    }
+
+    @VisibleForTesting
+    void onResolveInfosFetched(
+            OpenInAppDelegate delegate,
+            ResolveResult result,
+            Intent targetIntent,
+            GURL url,
+            long navigationId,
+            int taskId) {
+        if (taskId != mCurrentResolveTaskId) return;
+        GURL lastUrl = delegate.getLastNavigatedUrl();
+        if (lastUrl == null || !lastUrl.equals(url)) return;
+
+        if (result instanceof ResolveResult.None) {
+            updateOpenInAppInfo(delegate, null);
+            delegate.setLastLoggedPackage(null);
+            return;
+        }
+
+        CharSequence name = null;
+        Drawable icon = null;
+        String packageName = null;
+        // Having actual resolve info means the intent is going to be handled by an app and not
+        // ResolverActivity.
+        if (result instanceof ResolveResult.Info info) {
+            var resolveInfo = info.resolveInfo;
+            var pm = mContext.getPackageManager();
+            packageName = resolveInfo.activityInfo.packageName;
+
+            var iconAndLabel =
+                    ExternalNavigationHandler.getApplicationIconAndLabel(pm, packageName);
+            if (iconAndLabel == null) return;
+
+            name = iconAndLabel.second;
+            icon = iconAndLabel.first;
+
+            // We're setting the package explicitly to make sure the app that this intent launches
+            // matches what's expected based on the other data in resolveActivity.
+            targetIntent.setPackage(packageName);
+        } else if (result instanceof ResolveResult.ResolverActivity) {
+            String domain = UrlUtilities.getDomainAndRegistry(url.getSpec(), false);
+            packageName = "multiple:" + (domain != null ? domain : "");
+        }
+
+        // The app should always launch in a new task.
+        targetIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        // Prevent the OS from showing a dialog prompting the user to open the app, or if it's
+        // showing a chooser with multiple apps, they're not browsers.
+        targetIntent.addFlags(Intent.FLAG_ACTIVITY_REQUIRE_NON_BROWSER);
+
+        Runnable openInApp =
+                () -> {
+                    var helper = delegate.getExternalNavigationHelper();
+                    if (helper != null) {
+                        var openInAppInfo = delegate.getCurrentOpenInAppInfo();
+                        if (openInAppInfo != null) {
+                            Tab tab = delegate.getTab();
+                            Runnable closeTab =
+                                    () -> {
+                                        var tabModelSelector =
+                                                TabModelSelectorSupplier.getValueOrNullFrom(
+                                                        tab.getWindowAndroid());
+                                        if (tabModelSelector == null) return;
+                                        tabModelSelector.tryCloseTab(
+                                                TabClosureParams.closeTab(tab)
+                                                        .allowUndo(false)
+                                                        .tabClosingSource(
+                                                                TabClosingSource.OPEN_IN_APP)
+                                                        .build(),
+                                                /* allowDialog= */ false);
+                                    };
+                            // This is posted to prevent a crash as a result of the WebContents
+                            // being destroyed before the intent can be reported to safe browsing.
+                            Runnable postClose =
+                                    () -> PostTask.postTask(TaskTraits.UI_DEFAULT, closeTab);
+
+                            if (tab.isOffTheRecord()) {
+                                helper.launchExternalAppWithIncognitoConfirmation(
+                                        targetIntent, navigationId, mContext, postClose);
+                            } else {
+                                helper.launchExternalApp(targetIntent, mContext);
+                                postClose.run();
+                            }
+                        }
+                    }
+                };
+
+        if (packageName != null && !packageName.equals(delegate.getLastLoggedPackage())) {
+            RecordHistogram.recordBooleanHistogram("Android.OpenInApp.Impression", true);
+            delegate.setLastLoggedPackage(packageName);
+        }
+
+        updateOpenInAppInfo(
+                delegate, new OpenInAppDelegate.OpenInAppInfo(openInApp, name, icon, packageName));
+    }
+
+    private void updateOpenInAppInfo(
+            @Nullable OpenInAppDelegate delegate,
+            OpenInAppDelegate.@Nullable OpenInAppInfo openInAppInfo) {
+        if (delegate != null) {
+            delegate.updateOpenInAppInfo(openInAppInfo);
+        }
+
+        if (delegate == mOpenInAppDelegate) {
+            mOpenInAppInfo = openInAppInfo;
+            onOpenInAppInfoChanged(mOpenInAppInfo);
+        }
+    }
+
+    /**
+     * Subclasses should override this method to be notified when the {@link
+     * OpenInAppDelegate.OpenInAppInfo} changes.
+     */
+    protected void onOpenInAppInfoChanged(
+            OpenInAppDelegate.@Nullable OpenInAppInfo openInAppInfo) {}
+
+    @Override
+    public OpenInAppDelegate.@Nullable OpenInAppInfo getOpenInAppInfoForMenuItem() {
+        return mOpenInAppInfo;
+    }
+}

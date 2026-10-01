@@ -1,0 +1,17 @@
+Name: sqlite
+URL: https://github.com/sqlite/sqlite
+Revision: ba8c54c83337618a9f15dd368a267e46b672fc84
+Update Mechanism: Manual
+Version: 3.53.4
+CPEPrefix: cpe:/a:sqlite:sqlite:3.53.4
+Security Critical: yes
+Shipped: yes
+License: blessing
+License File: LICENSE
+
+Chromium maintains a mirror of the official SQLite Git repository at
+https://chromium.googlesource.com/chromium/deps/sqlite. Generally the stock
+upstream release branch is used, but occasionally unreleased upstream bug
+fixes are backported to the release branch.
+
+The SQLite homepage is https://sqlite.org/.

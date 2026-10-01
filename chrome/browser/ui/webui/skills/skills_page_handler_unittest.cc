@@ -1,0 +1,384 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webui/skills/skills_page_handler.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "base/run_loop.h"
+#include "base/test/bind.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/mock_callback.h"
+#include "base/test/test_future.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/skills/skills_service_factory.h"
+#include "chrome/browser/ui/webui/skills/skills.mojom.h"
+#include "chrome/test/base/testing_profile.h"
+#include "components/prefs/pref_service.h"
+#include "components/skills/internal/skills_downloader.h"
+#include "components/skills/mocks/mock_skills_service.h"
+#include "components/skills/proto/skill.pb.h"
+#include "components/skills/public/skill.mojom.h"
+#include "components/skills/public/skills_metrics.h"
+#include "components/skills/public/skills_prefs.h"
+#include "components/skills/public/skills_types.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_task_environment.h"
+#include "content/public/test/test_web_ui.h"
+#include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace skills {
+namespace {
+
+using ::testing::_;
+using ::testing::NiceMock;
+using ::testing::ReturnRef;
+using ::testing::StrictMock;
+
+inline constexpr char kEnterpriseSkillId[] = "enterprise_id";
+inline constexpr char kEnterpriseSkillName[] = "Enterprise Skill";
+inline constexpr char kEnterpriseSkillIcon[] = "enterprise_icon";
+inline constexpr char kEnterpriseSkillPrompt[] = "Enterprise Prompt";
+
+class MockSkillsPage : public skills::mojom::SkillsPage {
+ public:
+  mojo::PendingRemote<skills::mojom::SkillsPage> BindAndGetRemote() {
+    DCHECK(!receiver_.is_bound());
+    return receiver_.BindNewPipeAndPassRemote();
+  }
+
+  MOCK_METHOD(void,
+              UpdateSkills,
+              ((const std::vector<skills::Skill>&)),
+              (override));
+  MOCK_METHOD(void, RemoveSkill, (const std::string& skill_id), (override));
+  MOCK_METHOD(void,
+              Update1PSkills,
+              (mojom::BrowseSkillsInitialStatePtr),
+              (override));
+  MOCK_METHOD(void, SetSkillsEnabled, (bool enabled), (override));
+
+  mojo::Receiver<skills::mojom::SkillsPage> receiver_{this};
+};
+
+class SkillsPageHandlerTest : public testing::Test {
+ public:
+  void SetUp() override {
+    SkillsServiceFactory::GetInstance()->SetTestingFactory(
+        &profile_,
+        base::BindLambdaForTesting([](content::BrowserContext* context)
+                                       -> std::unique_ptr<KeyedService> {
+          return std::make_unique<NiceMock<MockSkillsService>>();
+        }));
+
+    web_contents_ = content::WebContents::Create(
+        content::WebContents::CreateParams(&profile_));
+    web_ui_.set_web_contents(web_contents_.get());
+
+    handler_ = std::make_unique<SkillsPageHandler>(
+        page_handler_.BindNewPipeAndPassReceiver(),
+        mock_page_.BindAndGetRemote(), web_ui_.GetWebContents());
+  }
+
+ protected:
+  content::BrowserTaskEnvironment task_environment_{
+      base::test::TaskEnvironment::TimeSource::MOCK_TIME};
+  TestingProfile profile_;
+  std::unique_ptr<content::WebContents> web_contents_;
+  content::TestWebUI web_ui_;
+  mojo::Remote<skills::mojom::PageHandler> page_handler_;
+  StrictMock<MockSkillsPage> mock_page_;
+  std::unique_ptr<SkillsPageHandler> handler_;
+  base::HistogramTester histogram_tester_;
+};
+
+TEST_F(SkillsPageHandlerTest, OnDiscoverySkillsUpdated) {
+  auto first_party_skill_data = std::make_unique<FirstPartySkillData>();
+
+  skills::proto::Skill skill_proto;
+  skill_proto.set_id("skill_id");
+  skill_proto.set_name("Skill Name");
+  skill_proto.set_icon("icon");
+  skill_proto.set_prompt("Skill prompt");
+  skill_proto.set_category("Category");
+  skill_proto.set_description("Skill description");
+  skill_proto.set_image_url("https://gstatic.com/image.png");
+
+  first_party_skill_data->skills_list.push_back(skill_proto);
+
+  skills::proto::TopicInfo topic_info;
+  topic_info.set_category_name("Category");
+  topic_info.set_display_name("Display Name");
+  first_party_skill_data->topics_info_list.push_back(topic_info);
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(mock_page_, Update1PSkills(_))
+      .WillOnce([&run_loop](mojom::BrowseSkillsInitialStatePtr state) {
+        ASSERT_EQ(1u, state->skill_map.size());
+        ASSERT_TRUE(state->skill_map.contains("Category"));
+        const auto& skills = state->skill_map.at("Category");
+        ASSERT_EQ(1u, skills.size());
+        const auto& skill = skills[0];
+        EXPECT_EQ("skill_id", skill.id);
+        EXPECT_EQ("Skill Name", skill.name);
+        EXPECT_EQ("icon", skill.icon);
+        EXPECT_EQ("Skill prompt", skill.prompt);
+        EXPECT_EQ("Skill description", skill.description);
+        EXPECT_EQ("https://gstatic.com/image.png", skill.image_url);
+        EXPECT_EQ(sync_pb::SkillSource::SKILL_SOURCE_FIRST_PARTY, skill.source);
+
+        ASSERT_EQ(1u, state->topics_info_list.size());
+        EXPECT_EQ("Category", state->topics_info_list[0].category_name());
+        EXPECT_EQ("Display Name", state->topics_info_list[0].display_name());
+
+        run_loop.Quit();
+      });
+
+  handler_->OnDiscoverySkillsUpdated(first_party_skill_data.get());
+
+  run_loop.Run();
+}
+
+TEST_F(SkillsPageHandlerTest, MaybeSave1PSkill_Success) {
+  base::test::TestFuture<bool> future;
+  // Make a save skill request
+  handler_->MaybeSave1PSkill("skill_id", future.GetCallback());
+
+  // Manually trigger map update with valid map
+  skills::proto::Skill skill_proto;
+  skill_proto.set_id("skill_id");
+  FirstPartySkillData first_party_skill_data;
+  first_party_skill_data.skills_list = {skill_proto};
+  handler_->OnDiscoverySkillsUpdated(&first_party_skill_data);
+  EXPECT_TRUE(future.Get());
+  EXPECT_FALSE(handler_->Is1PDownloadTimerRunning());
+  histogram_tester_.ExpectBucketCount(
+      "Skills.Management.FirstParty.DownloadRequestStatus",
+      SkillsDownloadRequestStatus::kSent, 1);
+  histogram_tester_.ExpectBucketCount(
+      "Skills.Management.FirstParty.DownloadRequestStatus",
+      SkillsDownloadRequestStatus::kResponseReceived, 1);
+}
+
+TEST_F(SkillsPageHandlerTest, MaybeSave1PSkill_NotFound) {
+  base::test::TestFuture<bool> future;
+  // Make a save skill request with invalid skill id
+  handler_->MaybeSave1PSkill("nonexistent_skill_id", future.GetCallback());
+
+  // Manually trigger map update with valid map
+  skills::proto::Skill skill_proto;
+  skill_proto.set_id("skill_id");
+  FirstPartySkillData first_party_skill_data;
+  first_party_skill_data.skills_list = {skill_proto};
+  handler_->OnDiscoverySkillsUpdated(&first_party_skill_data);
+  EXPECT_FALSE(future.Get());
+  EXPECT_FALSE(handler_->Is1PDownloadTimerRunning());
+  histogram_tester_.ExpectUniqueSample("Skills.Management.Error",
+                                       SkillsManagementError::k1pSkillDNE, 1);
+}
+
+TEST_F(SkillsPageHandlerTest, MaybeSave1PSkill_Timeout) {
+  base::test::TestFuture<bool> future;
+  handler_->MaybeSave1PSkill("skill_id", future.GetCallback());
+  // Fast forward past the timeout
+  task_environment_.FastForwardBy(base::Seconds(30));
+  EXPECT_FALSE(future.Get());
+  EXPECT_FALSE(handler_->Is1PDownloadTimerRunning());
+  histogram_tester_.ExpectBucketCount(
+      "Skills.Management.FirstParty.DownloadRequestStatus",
+      SkillsDownloadRequestStatus::kTimedOut, 1);
+}
+
+TEST_F(SkillsPageHandlerTest, GetInitialUserSkills_ServiceNotReady) {
+  // Mock service check to fail
+  EXPECT_CALL(*static_cast<MockSkillsService*>(
+                  SkillsServiceFactory::GetForProfile(&profile_)),
+              GetServiceStatus())
+      .WillRepeatedly(
+          testing::Return(SkillsService::ServiceStatus::kNotInitialized));
+
+  base::test::TestFuture<const std::vector<skills::Skill>&> future;
+  handler_->GetInitialUserSkills(future.GetCallback());
+  EXPECT_TRUE(future.Get().empty());
+
+  histogram_tester_.ExpectUniqueSample(
+      "Skills.Management.Error", SkillsManagementError::kSkillsServiceNotReady,
+      1);
+}
+
+TEST_F(SkillsPageHandlerTest, Request1PSkills_DownloadAlreadyRunning) {
+  handler_->Request1PSkills();
+  EXPECT_TRUE(handler_->Is1PDownloadTimerRunning());
+
+  // Second request should log kAlreadyRunning
+  handler_->Request1PSkills();
+  histogram_tester_.ExpectBucketCount(
+      "Skills.Management.FirstParty.DownloadRequestStatus",
+      SkillsDownloadRequestStatus::kAlreadyRunning, 1);
+}
+
+TEST_F(SkillsPageHandlerTest, OnSkillsEnabledPrefChanged) {
+  base::RunLoop run_loop;
+  EXPECT_CALL(mock_page_, SetSkillsEnabled(false)).WillOnce([&run_loop]() {
+    run_loop.Quit();
+  });
+  profile_.GetPrefs()->SetBoolean(skills::prefs::kChromeSkillsEnabled, false);
+  run_loop.Run();
+}
+
+TEST_F(SkillsPageHandlerTest, HidesInternalSkillsFromBrowser) {
+  auto first_party_skill_data = std::make_unique<FirstPartySkillData>();
+
+  // Standard visible skill
+  skills::proto::Skill visible_skill;
+  visible_skill.set_id("visible_id");
+  visible_skill.set_name("Visible Skill");
+  visible_skill.set_category("Category");
+  first_party_skill_data->skills_list.push_back(visible_skill);
+
+  // Internal hidden skill
+  skills::proto::Skill internal_skill;
+  internal_skill.set_id("internal_id");
+  internal_skill.set_name("Internal Skill");
+  internal_skill.set_category("Internal");
+  first_party_skill_data->skills_list.push_back(internal_skill);
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(mock_page_, Update1PSkills(_))
+      .WillOnce([&run_loop](mojom::BrowseSkillsInitialStatePtr state) {
+        // Should only contain the "Category" skill map entry, NOT "internal"
+        EXPECT_EQ(1u, state->skill_map.size());
+        EXPECT_TRUE(state->skill_map.contains("Category"));
+        EXPECT_FALSE(state->skill_map.contains("internal"));
+
+        const auto& skills = state->skill_map.at("Category");
+        ASSERT_EQ(1u, skills.size());
+        EXPECT_EQ("visible_id", skills[0].id);
+
+        run_loop.Quit();
+      });
+
+  handler_->OnDiscoverySkillsUpdated(first_party_skill_data.get());
+  run_loop.Run();
+}
+
+TEST_F(SkillsPageHandlerTest, 1pSkills_OnlyShowAcceptsHttpsImageUrls) {
+  auto first_party_skill_data = std::make_unique<FirstPartySkillData>();
+  const std::vector<std::pair<std::string, std::string>> kCases = {
+      {"invalid_https_id", "https://example.com/image.png"},
+      {"http_id", "http://gstatic.com/image.png"},
+      {"https_id", "https://gstatic.com/image.png"},
+      {"data_id", "data:image/png;base64,iVBORw0KGgo="},
+      {"empty_id", ""},
+  };
+
+  for (const auto& [id, image_url] : kCases) {
+    skills::proto::Skill skill_proto;
+    skill_proto.set_id(id);
+    skill_proto.set_name("Skill Name");
+    skill_proto.set_category("Category");
+    skill_proto.set_image_url(image_url);
+    first_party_skill_data->skills_list.push_back(skill_proto);
+  }
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(mock_page_, Update1PSkills(_))
+      .WillOnce([&run_loop](mojom::BrowseSkillsInitialStatePtr state) {
+        ASSERT_TRUE(state->skill_map.contains("Category"));
+        const auto& skills = state->skill_map.at("Category");
+        for (const auto& skill : skills) {
+          if (skill.id == "http_id" || skill.id == "https_id") {
+            EXPECT_FALSE(skill.image_url.is_empty());
+          } else {
+            EXPECT_TRUE(skill.image_url.is_empty());
+          }
+        }
+        run_loop.Quit();
+      });
+
+  handler_->OnDiscoverySkillsUpdated(first_party_skill_data.get());
+  run_loop.Run();
+}
+
+// Verifies that when provided enterprise skills change, SkillsPageHandler
+// updates the Browse Skills page (Update1PSkills) with the provided skills.
+TEST_F(SkillsPageHandlerTest, OnProvidedSkillsChanged_IncludesProvidedSkills) {
+  auto* mock_service = static_cast<MockSkillsService*>(
+      SkillsServiceFactory::GetForProfile(&profile_));
+  EXPECT_CALL(*mock_service, GetServiceStatus())
+      .WillRepeatedly(testing::Return(SkillsService::ServiceStatus::kReady));
+
+  std::unordered_map<std::string, std::unique_ptr<skills::Skill>>
+      mock_provided_skills;
+  auto enterprise_skill = std::make_unique<skills::Skill>(
+      kEnterpriseSkillId, kEnterpriseSkillName, kEnterpriseSkillIcon,
+      kEnterpriseSkillPrompt);
+  enterprise_skill->source = sync_pb::SkillSource::SKILL_SOURCE_ENTERPRISE;
+  mock_provided_skills[enterprise_skill->id] = std::move(enterprise_skill);
+
+  std::vector<skills::proto::TopicInfo> empty_topics;
+  skills::SkillProtoList empty_1p_skills;
+  EXPECT_CALL(*mock_service, GetProvidedSkills())
+      .WillRepeatedly(testing::ReturnRef(mock_provided_skills));
+  EXPECT_CALL(*mock_service, Get1PTopicsInfo())
+      .WillRepeatedly(testing::ReturnRef(empty_topics));
+  EXPECT_CALL(*mock_service, Get1PSkills())
+      .WillRepeatedly(testing::ReturnRef(empty_1p_skills));
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(mock_page_, Update1PSkills(_))
+      .WillOnce([&run_loop](mojom::BrowseSkillsInitialStatePtr state) {
+        EXPECT_TRUE(state->skill_map.contains("From your organization"));
+        const auto& skills = state->skill_map.at("From your organization");
+        ASSERT_EQ(1u, skills.size());
+        EXPECT_EQ(kEnterpriseSkillId, skills[0].id);
+        EXPECT_EQ(kEnterpriseSkillName, skills[0].name);
+        run_loop.Quit();
+      });
+
+  handler_->OnProvidedSkillsChanged(nullptr);
+  run_loop.Run();
+}
+
+TEST_F(SkillsPageHandlerTest, OnDiscoverySkillsUpdated_IncludesProvidedSkills) {
+  auto* mock_service = static_cast<MockSkillsService*>(
+      SkillsServiceFactory::GetForProfile(&profile_));
+  EXPECT_CALL(*mock_service, GetServiceStatus())
+      .WillRepeatedly(testing::Return(SkillsService::ServiceStatus::kReady));
+
+  std::unordered_map<std::string, std::unique_ptr<skills::Skill>>
+      mock_provided_skills;
+  auto enterprise_skill = std::make_unique<skills::Skill>(
+      kEnterpriseSkillId, kEnterpriseSkillName, kEnterpriseSkillIcon,
+      kEnterpriseSkillPrompt);
+  enterprise_skill->source = sync_pb::SkillSource::SKILL_SOURCE_ENTERPRISE;
+  mock_provided_skills[enterprise_skill->id] = std::move(enterprise_skill);
+
+  EXPECT_CALL(*mock_service, GetProvidedSkills())
+      .WillRepeatedly(ReturnRef(mock_provided_skills));
+
+  auto first_party_skill_data = std::make_unique<FirstPartySkillData>();
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(mock_page_, Update1PSkills(_))
+      .WillOnce([&run_loop](mojom::BrowseSkillsInitialStatePtr state) {
+        EXPECT_TRUE(state->skill_map.contains("From your organization"));
+        const auto& skills = state->skill_map.at("From your organization");
+        ASSERT_EQ(1u, skills.size());
+        EXPECT_EQ(kEnterpriseSkillId, skills[0].id);
+        EXPECT_EQ(kEnterpriseSkillName, skills[0].name);
+        run_loop.Quit();
+      });
+
+  handler_->OnDiscoverySkillsUpdated(first_party_skill_data.get());
+  run_loop.Run();
+}
+
+}  // namespace
+}  // namespace skills

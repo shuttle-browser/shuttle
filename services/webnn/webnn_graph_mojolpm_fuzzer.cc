@@ -1,0 +1,331 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <cstdint>
+#include <optional>
+#include <ranges>
+
+#include "base/base_switches.h"
+#include "base/byte_size.h"
+#include "base/command_line.h"
+#include "base/debug/asan_service.h"
+#include "base/files/scoped_temp_dir.h"
+#include "base/memory/raw_ref.h"
+#include "base/no_destructor.h"
+#include "base/notreached.h"
+#include "base/test/allow_check_is_test_for_testing.h"
+#include "base/test/bind.h"
+#include "base/test/insecure_random_generator.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/task_environment.h"
+#include "base/test/test_future.h"
+#include "base/test/test_timeouts.h"
+#include "base/types/fixed_array.h"
+#include "content/test/fuzzer/mojolpm_fuzzer_support.h"
+#include "mojo/public/cpp/base/big_buffer.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "services/webnn/public/cpp/ml_tensor_usage.h"
+#include "services/webnn/public/mojom/features.mojom-features.h"
+#include "services/webnn/public/mojom/webnn_context.mojom.h"
+#include "services/webnn/public/mojom/webnn_context_provider.mojom-mojolpm.h"
+#include "services/webnn/public/mojom/webnn_context_provider.mojom.h"
+#include "services/webnn/public/mojom/webnn_graph.mojom-mojolpm.h"
+#include "services/webnn/public/mojom/webnn_graph.mojom.h"
+#include "services/webnn/public/mojom/webnn_tensor.mojom.h"
+#include "services/webnn/webnn_context_impl.h"
+#include "services/webnn/webnn_context_provider_impl.h"
+#include "services/webnn/webnn_graph_builder_impl.h"
+#include "services/webnn/webnn_graph_impl.h"
+#include "services/webnn/webnn_graph_mojolpm_fuzzer.pb.h"
+#include "services/webnn/webnn_test_environment.h"
+#include "testing/libfuzzer/libfuzzer_exports.h"
+#include "third_party/blink/public/common/tokens/tokens.h"
+#include "third_party/libprotobuf-mutator/src/src/libfuzzer/libfuzzer_macro.h"
+
+namespace {
+
+struct InitGlobals {
+  InitGlobals() {
+    CHECK(base::CommandLine::InitializedForCurrentProcess());
+    mojo::core::Init();
+    base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+    bool success = base::FeatureList::InitInstance(
+        command_line->GetSwitchValueASCII(switches::kEnableFeatures),
+        command_line->GetSwitchValueASCII(switches::kDisableFeatures));
+    CHECK(success);
+    scoped_feature_list_.InitAndEnableFeature(
+        webnn::mojom::features::kWebMachineLearningNeuralNetwork);
+
+    TestTimeouts::Initialize();
+
+#if defined(ADDRESS_SANITIZER)
+    base::debug::AsanService::GetInstance()->Initialize();
+#endif
+
+    base::test::AllowCheckIsTestForTesting();
+
+    // Create the test environment once and persist it across fuzzer iterations.
+    // This avoids destroying and recreating the TaskEnvironment (thread pool)
+    // and GPU backend state between iterations, which causes ASan thread
+    // initialization crashes from the resulting thread churn.
+    webnn_test_environment_.emplace();
+  }
+
+  base::test::ScopedFeatureList scoped_feature_list_;
+  std::optional<webnn::test::WebNNTestEnvironment> webnn_test_environment_;
+};
+
+InitGlobals* init_globals = nullptr;
+
+class WebnnGraphLPMFuzzer {
+ public:
+  explicit WebnnGraphLPMFuzzer(
+      const services::fuzzing::webnn_graph::proto::Testcase& testcase)
+      : testcase_(testcase) {
+    input_generator_.ReseedForTesting(testcase_->seed_for_input_data());
+  }
+
+  void NextAction() {
+    const auto& action = testcase_->actions(action_index_);
+    ++action_index_;
+    const auto& create_graph = action.create_graph();
+
+    webnn::mojom::Device device;
+    mojolpm::FromProto(action.device(), device);
+    BuildGraph(create_graph.graph_info(), device);
+  }
+
+  // Cap the number of actions at 100 to avoid timeouts.
+  bool IsFinished() {
+    return action_index_ > 100 || action_index_ >= testcase_->actions_size();
+  }
+
+ private:
+  mojo_base::BigBuffer GenerateBytes(size_t byte_size) {
+    mojo_base::BigBuffer buffer(byte_size);
+    // SAFETY: Generating a uint64_t view over an existing buffer where we hold
+    // the only pointer. Unsafe buffer access patterns are used to avoid the
+    // overhead of bounds checks when the code is heavily instrumented for
+    // fuzzing.
+    uint64_t* buffer_ptr = reinterpret_cast<uint64_t*>(buffer.data());
+    for (size_t i = 0; i < byte_size / sizeof(uint64_t); ++i) {
+      UNSAFE_BUFFERS(buffer_ptr[i]) = input_generator_.RandUint64();
+    }
+    for (size_t i = byte_size / sizeof(uint64_t) * sizeof(uint64_t);
+         i < byte_size; ++i) {
+      UNSAFE_BUFFERS(buffer.data()[i]) = input_generator_.RandUint32();
+    }
+    return buffer;
+  }
+
+  void BuildGraph(const mojolpm::webnn::mojom::GraphInfo& graph_info_proto,
+                  webnn::mojom::Device device) {
+    mojo::Remote<webnn::mojom::WebNNContextProvider> webnn_provider_remote;
+    init_globals->webnn_test_environment_->BindWebNNContextProvider(
+        webnn_provider_remote.BindNewPipeAndPassReceiver());
+
+    // Create the ContextImpl through context provider.
+    mojo::Remote<webnn::mojom::WebNNContext> webnn_context_remote;
+    base::test::TestFuture<webnn::mojom::CreateContextResultPtr>
+        create_context_future;
+    webnn_provider_remote->CreateWebNNContext(
+        webnn::mojom::CreateContextOptions::New(
+            device,
+            webnn::mojom::CreateContextOptions::PowerPreference::kDefault),
+        create_context_future.GetCallback());
+    webnn::mojom::CreateContextResultPtr create_context_result =
+        create_context_future.Take();
+    if (!create_context_result->is_success()) {
+      return;
+    }
+
+    static bool logged_backend = false;
+    if (!logged_backend) {
+      logged_backend = true;
+      for (const auto backend_name :
+           init_globals->webnn_test_environment_->GetContextBackendNames()) {
+        LOG(INFO) << "[WebNN Fuzzer] Created WebNN context with backend: "
+                  << backend_name;
+      }
+    }
+
+    webnn_context_remote.Bind(
+        std::move(create_context_result->get_success()->context_remote));
+
+    EXPECT_TRUE(webnn_context_remote.is_bound());
+
+    // Create the GraphBuilder through the context.
+    mojo::Remote<webnn::mojom::WebNNGraphBuilder> webnn_graph_builder_remote;
+    webnn_context_remote->CreateGraphBuilder(
+        webnn_graph_builder_remote.BindNewPipeAndPassReceiver());
+
+    base::test::TestFuture<base::expected<webnn::mojom::CreateGraphSuccessPtr,
+                                          webnn::mojom::ErrorPtr>>
+        create_graph_future;
+    webnn_graph_builder_remote.set_disconnect_handler(
+        base::BindLambdaForTesting([&] {
+          create_graph_future.SetValue(base::unexpected(
+              webnn::mojom::Error::New(webnn::mojom::Error::Code::kUnknownError,
+                                       "Failed to create graph.")));
+        }));
+
+    auto graph_info = webnn::mojom::GraphInfo::New();
+    mojolpm::FromProto(graph_info_proto, graph_info);
+
+    size_t total_tensor_length = 0;
+    for (uint32_t id = 0; id < graph_info->operands.size(); ++id) {
+      const auto& operand = graph_info->operands[id];
+
+      // Limit the total size of tensors in the graph to avoid running out of
+      // memory or timing out from computing extremely large graphs. Ideally we
+      // would be able to exercise larger graphs but the tradeoff is that the
+      // fuzzer will not explore as many graphs when it spends too much time
+      // with these large examples.
+      constexpr size_t kMaxTensorBytes = base::GiB(1).InBytes();
+      const size_t tensor_length = operand->descriptor.PackedByteLength();
+      if (kMaxTensorBytes - total_tensor_length < tensor_length) {
+        return;
+      }
+      total_tensor_length += tensor_length;
+
+      if (operand->kind == webnn::mojom::Operand::Kind::kConstant) {
+        const blink::WebNNPendingConstantToken token;
+        webnn_graph_builder_remote->CreatePendingConstant(
+            token, operand->descriptor.data_type(),
+            GenerateBytes(tensor_length));
+        graph_info->constant_operand_ids_to_handles.emplace(
+            webnn::OperandId(id), token);
+      }
+    }
+
+    webnn_graph_builder_remote->CreateGraph(std::move(graph_info),
+                                            create_graph_future.GetCallback());
+    auto create_graph_result = create_graph_future.Take();
+    if (!create_graph_result.has_value()) {
+      return;
+    }
+    webnn_graph_builder_remote.reset();
+
+    blink::WebNNGraphToken graph_token =
+        create_graph_result.value()->graph_token;
+
+    // Get graph_info again for tensor operations.
+    graph_info = webnn::mojom::GraphInfo::New();
+    mojolpm::FromProto(graph_info_proto, graph_info);
+
+    // Create input tensors.
+    base::FixedArray<mojo::AssociatedRemote<webnn::mojom::WebNNTensor>>
+        input_remotes(graph_info->input_operands.size());
+
+    std::vector<std::pair<std::string, blink::WebNNTensorToken>>
+        named_input_handles;
+    named_input_handles.reserve(graph_info->input_operands.size());
+
+    for (auto [operand_id, remote] :
+         std::views::zip(graph_info->input_operands, input_remotes)) {
+      const webnn::mojom::Operand& operand =
+          *graph_info->operands.at(operand_id.value());
+      EXPECT_TRUE(operand.name.has_value());
+
+      auto tensor_info = webnn::mojom::TensorInfo::New(
+          operand.descriptor,
+          webnn::MLTensorUsage{webnn::MLTensorUsageFlags::kWrite});
+
+      base::test::TestFuture<webnn::mojom::CreateTensorResultPtr>
+          create_tensor_future;
+      webnn_context_remote->CreateTensor(std::move(tensor_info),
+                                         create_tensor_future.GetCallback());
+      webnn::mojom::CreateTensorResultPtr create_tensor_result =
+          create_tensor_future.Take();
+      if (!create_tensor_result->is_success()) {
+        return;
+      }
+      remote.Bind(
+          std::move(create_tensor_result->get_success()->tensor_remote));
+
+      named_input_handles.emplace_back(
+          *operand.name, create_tensor_result->get_success()->tensor_handle);
+      remote->WriteTensor(GenerateBytes(operand.descriptor.PackedByteLength()));
+    }
+
+    // Create output tensors.
+    base::FixedArray<mojo::AssociatedRemote<webnn::mojom::WebNNTensor>>
+        output_remotes(graph_info->output_operands.size());
+
+    std::vector<std::pair<std::string, blink::WebNNTensorToken>>
+        named_output_handles;
+    named_output_handles.reserve(graph_info->output_operands.size());
+
+    for (auto&& [operand_id, remote] :
+         std::views::zip(graph_info->output_operands, output_remotes)) {
+      const webnn::mojom::Operand& operand =
+          *graph_info->operands.at(operand_id.value());
+      EXPECT_TRUE(operand.name.has_value());
+
+      auto tensor_info = webnn::mojom::TensorInfo::New(
+          operand.descriptor,
+          webnn::MLTensorUsage{webnn::MLTensorUsageFlags::kRead});
+
+      base::test::TestFuture<webnn::mojom::CreateTensorResultPtr>
+          create_tensor_future;
+      webnn_context_remote->CreateTensor(std::move(tensor_info),
+                                         create_tensor_future.GetCallback());
+      webnn::mojom::CreateTensorResultPtr create_tensor_result =
+          create_tensor_future.Take();
+      if (!create_tensor_result->is_success()) {
+        return;
+      }
+      remote.Bind(
+          std::move(create_tensor_result->get_success()->tensor_remote));
+
+      named_output_handles.emplace_back(
+          *operand.name, create_tensor_result->get_success()->tensor_handle);
+    }
+
+    webnn_context_remote->Dispatch(graph_token, named_input_handles,
+                                   named_output_handles);
+
+    // Wait for reading all output data.
+    for (auto& remote : output_remotes) {
+      base::test::TestFuture<webnn::mojom::ReadTensorResultPtr>
+          read_tensor_future;
+      remote->ReadTensor(read_tensor_future.GetCallback());
+      EXPECT_TRUE(read_tensor_future.Wait());
+    }
+
+    webnn_context_remote->DestroyGraph(graph_token);
+  }
+
+  const raw_ref<const services::fuzzing::webnn_graph::proto::Testcase>
+      testcase_;
+  int action_index_ = 0;
+  base::test::InsecureRandomGenerator input_generator_;
+};
+
+DEFINE_TEXT_PROTO_FUZZER(
+    const services::fuzzing::webnn_graph::proto::Testcase& testcase) {
+  {
+    WebnnGraphLPMFuzzer webnn_graph_fuzzer_instance(testcase);
+    while (!webnn_graph_fuzzer_instance.IsFinished()) {
+      webnn_graph_fuzzer_instance.NextAction();
+    }
+  }
+  // Ensure that tasks scheduled by creating and destroying WebNN contexts have
+  // completed before continuing to the next test case.
+  // See https://crbug.com/441020155.
+  init_globals->webnn_test_environment_->WaitForAllContextsToBeDestroyed();
+}
+
+}  // namespace
+
+extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv) {
+  // Avoid crashing if CommandLine is already initialized, which can happen on
+  // Android.
+  if (!base::CommandLine::InitializedForCurrentProcess()) {
+    CHECK(base::CommandLine::Init(*argc, *argv));
+  }
+  static base::NoDestructor<InitGlobals> globals;
+  init_globals = globals.get();
+  return 0;
+}

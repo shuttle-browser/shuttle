@@ -1,0 +1,48 @@
+# For patches touching specific topics, try the topic-specific OWNERS. For
+# patches that touch multiple areas or if you aren't sure, try the general
+# OWNERS at the bottom.
+
+# display / resources / quads / passes
+vmpstr@chromium.org
+
+# renderers (Skia/Software)
+ccameron@chromium.org
+vasilyt@chromium.org
+hitawala@chromium.org
+
+# Skia renderer
+per-file skia_*=michaelludwig@google.com
+
+# display_embedder / ozone
+
+# frame sinks / surfaces
+kylechar@chromium.org
+jonross@chromium.org
+amanvr@google.com
+kartarsingh@google.com
+gaiko@google.com
+
+# gpu
+kylechar@chromium.org
+
+# hit testing
+jonross@chromium.org
+
+# math / geometry
+dbaron@chromium.org
+flackr@chromium.org
+
+# overlays
+ccameron@chromium.org
+vasilyt@chromium.org
+magchen@chromium.org
+
+# viz debugger
+
+# scheduling / begin frames
+jonross@chromium.org
+
+# general
+vmpstr@chromium.org
+kylechar@chromium.org
+khushalsagar@chromium.org

@@ -1,0 +1,405 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "base/command_line.h"
+#include "base/functional/callback_helpers.h"
+#include "base/memory/raw_ptr.h"
+#include "base/test/bind.h"
+#include "build/build_config.h"
+#include "chrome/browser/extensions/api/cookies/cookies_api.h"
+#include "chrome/browser/extensions/extension_apitest.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_destroyer.h"
+#include "components/content_settings/core/common/content_settings.h"
+#include "content/public/browser/network_service_instance.h"
+#include "content/public/browser/network_service_util.h"
+#include "content/public/browser/storage_partition.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/browser_test_utils.h"
+#include "extensions/browser/extension_registry_observer.h"
+#include "extensions/browser/process_manager.h"
+#include "extensions/buildflags/buildflags.h"
+#include "extensions/test/extension_test_message_listener.h"
+#include "extensions/test/test_extension_dir.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "net/dns/mock_host_resolver.h"
+#include "net/test/embedded_test_server/default_handlers.h"
+#include "services/network/public/mojom/cookie_manager.mojom.h"
+#include "services/network/public/mojom/network_context.mojom.h"
+
+static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
+
+namespace extensions {
+
+using ContextType = extensions::browser_test_util::ContextType;
+
+namespace {
+
+enum class SameSiteCookieSemantics {
+  kModern,
+  kLegacy,
+};
+
+}  // namespace
+
+#if !BUILDFLAG(IS_ANDROID)
+// This test cannot be run by a Service Worked-based extension
+// because it uses the Document object.
+IN_PROC_BROWSER_TEST_F(ExtensionApiTest, ReadFromDocument) {
+  ASSERT_TRUE(RunExtensionTest("cookies/read_from_doc")) << message_;
+}
+#endif
+
+class CookiesApiTest
+    : public ExtensionApiTest,
+      public testing::WithParamInterface<SameSiteCookieSemantics> {
+ public:
+  CookiesApiTest() = default;
+  ~CookiesApiTest() override = default;
+  CookiesApiTest(const CookiesApiTest&) = delete;
+  CookiesApiTest& operator=(const CookiesApiTest&) = delete;
+
+  void SetUpOnMainThread() override {
+    ExtensionApiTest::SetUpOnMainThread();
+
+    // If SameSite access semantics is "legacy", add content settings to allow
+    // legacy access for all sites.
+    if (!AreSameSiteCookieSemanticsModern()) {
+      profile()
+          ->GetDefaultStoragePartition()
+          ->GetNetworkContext()
+          ->GetCookieManager(
+              cookie_manager_remote_.BindNewPipeAndPassReceiver());
+      cookie_manager_remote_->SetContentSettings(
+          ContentSettingsType::LEGACY_COOKIE_ACCESS,
+          {ContentSettingPatternSource(
+              ContentSettingsPattern::Wildcard(),
+              ContentSettingsPattern::Wildcard(),
+              base::Value(ContentSetting::CONTENT_SETTING_ALLOW),
+              content_settings::ProviderType::kNone, false /* incognito */)},
+          base::NullCallback());
+      cookie_manager_remote_.FlushForTesting();
+    }
+
+    net::test_server::RegisterDefaultHandlers(embedded_test_server());
+    host_resolver()->AddRule("*", "127.0.0.1");
+
+    ASSERT_TRUE(StartEmbeddedTestServer());
+  }
+
+ protected:
+  bool RunTest(const char* extension_name,
+               bool allow_in_incognito = false,
+               const char* custom_arg = nullptr) {
+    return RunExtensionTest(extension_name, {.custom_arg = custom_arg},
+                            {.allow_in_incognito = allow_in_incognito});
+  }
+
+  bool AreSameSiteCookieSemanticsModern() {
+    return GetParam() == SameSiteCookieSemantics::kModern;
+  }
+
+ private:
+  mojo::Remote<network::mojom::CookieManager> cookie_manager_remote_;
+};
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         CookiesApiTest,
+                         ::testing::Values(SameSiteCookieSemantics::kLegacy,
+                                           SameSiteCookieSemantics::kModern));
+
+// TODO(crbug.com/40839864): Flaky on Windows.
+// TODO(crbug.com/371423073): Flaky on desktop Android.
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_ANDROID)
+#define MAYBE_Cookies DISABLED_Cookies
+#else
+#define MAYBE_Cookies Cookies
+#endif
+IN_PROC_BROWSER_TEST_P(CookiesApiTest, MAYBE_Cookies) {
+  ASSERT_TRUE(RunTest("cookies/api", /*allow_in_incognito=*/false,
+                      AreSameSiteCookieSemanticsModern() ? "true" : "false"))
+      << message_;
+}
+
+IN_PROC_BROWSER_TEST_P(CookiesApiTest, CookiesEvents) {
+  ASSERT_TRUE(RunTest("cookies/events")) << message_;
+}
+
+IN_PROC_BROWSER_TEST_P(CookiesApiTest, CookiesNoPermission) {
+  ASSERT_TRUE(RunTest("cookies/no_permission")) << message_;
+}
+
+#if !BUILDFLAG(IS_ANDROID)
+// TODO(crbug.com/488468448): On Android, crashes without a stack while waiting
+// for the Java layer to asynchronously return the Java window.
+IN_PROC_BROWSER_TEST_P(CookiesApiTest, CookiesEventsSpanningAsync) {
+  // This version of the test creates the OTR page *after* the JavaScript test
+  // code has registered the cookie listener. This tests the cookie API code
+  // that listens for the new profile creation.
+  //
+  // The test sends us message with the string "listening" once it's registered
+  // its listener. We force a reply to synchronize with the JS so the test
+  // always runs the same way.
+  ExtensionTestMessageListener listener("listening", ReplyBehavior::kWillReply);
+  listener.SetOnSatisfied(
+      base::BindLambdaForTesting([this, &listener](const std::string&) {
+        PlatformOpenURLOffTheRecord(profile(), GURL("chrome://version/"));
+        listener.Reply("ok");
+      }));
+
+  ASSERT_TRUE(RunTest("cookies/events_spanning",
+                      /*allow_in_incognito=*/true))
+      << message_;
+}
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+#if !BUILDFLAG(IS_ANDROID)
+// Android only supports a single primary profile and a single OTR profile.
+IN_PROC_BROWSER_TEST_P(CookiesApiTest, CookiesEventsObservePrimaryOTROnly) {
+  // In addition to above, this test makes sure that CookiesEventRouter
+  // does not observe a non-primary OTR profile, which leads to CHECK
+  // failure (crbug.com/6527130).
+  ExtensionTestMessageListener listener("listening", ReplyBehavior::kWillReply);
+  listener.SetOnSatisfied(
+      base::BindLambdaForTesting([this, &listener](const std::string&) {
+        PlatformOpenURLOffTheRecord(profile(), GURL("chrome://newtab/"));
+        listener.Reply("ok");
+      }));
+
+  ASSERT_TRUE(RunTest("cookies/events_spanning",
+                      /*allow_in_incognito=*/true))
+      << message_;
+  {
+    auto* second_profile = profile()->GetOffTheRecordProfile(
+        Profile::OTRProfileID::CreateUniqueForTesting(),
+        /*create_if_needed=*/true);
+    ProfileDestroyer::DestroyOTRProfileWhenAppropriate(second_profile);
+  }
+}
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+IN_PROC_BROWSER_TEST_P(CookiesApiTest, CookiesEventsSpanning) {
+  // We need to initialize an incognito mode window in order have an initialized
+  // incognito cookie store. Otherwise, the chrome.cookies.set operation is just
+  // ignored and we won't be notified about a newly set cookie for which we want
+  // to test whether the storeId is set correctly.
+  PlatformOpenURLOffTheRecord(profile(), GURL("chrome://newtab/"));
+  ASSERT_TRUE(RunTest("cookies/events_spanning",
+                      /*allow_in_incognito=*/true))
+      << message_;
+}
+
+IN_PROC_BROWSER_TEST_P(CookiesApiTest, TestGetPartitionKey) {
+  // Before running test, set up a top-level site (a.com) that embeds a
+  // cross-site (b.com). To test the cookies.getPartitionKey() api.
+  content::WebContents* contents = GetActiveWebContents();
+  const std::string default_response = "/defaultresponse";
+  ASSERT_TRUE(NavigateToURL(
+      contents, embedded_test_server()->GetURL("a.com", default_response)));
+
+  // Inject two iframes and navigate one to a cross-site with host permissions
+  // (b.com) and the other to a cross-site (c.com) with no host permissions.
+  const GURL cross_site_url =
+      embedded_test_server()->GetURL("b.com", default_response);
+  const GURL no_host_permissions_url =
+      embedded_test_server()->GetURL("c.com", default_response);
+
+  std::string script =
+      "var f = document.createElement('iframe');\n"
+      "f.src = '" +
+      cross_site_url.spec() +
+      "';\n"
+      "document.body.appendChild(f);\n"
+      "var noHostFrame = document.createElement('iframe');\n"
+      "noHostFrame.src = '" +
+      no_host_permissions_url.spec() +
+      "';\n"
+      "document.body.appendChild(noHostFrame);\n";
+
+  EXPECT_TRUE(ExecJs(contents, script));
+  EXPECT_TRUE(WaitForLoadStop(contents));
+  ASSERT_TRUE(RunTest("cookies/get_partition_key")) << message_;
+}
+
+IN_PROC_BROWSER_TEST_F(ExtensionApiTest, OTRReceiverMojoConnectionError) {
+  // Test that simulates a mojo connection error with an existing OTR profile.
+  // This test verifies that the fix for crbug.com/472076020 works correctly:
+  // when MaybeStartListening() is called after a connection error, it should
+  // not try to add an observation for the OTR profile again because
+  // OnOffTheRecordProfileCreated() already added it.
+
+  // First, install an extension with cookie permissions to trigger
+  // CookiesEventRouter creation.
+  static constexpr char kManifest[] = R"({
+    "name": "Cookies API Test",
+    "version": "1.0",
+    "manifest_version": 3,
+    "permissions": ["cookies"],
+    "host_permissions": ["<all_urls>"],
+    "background": {"service_worker": "background.js"}
+  })";
+
+  static constexpr char kBackgroundJs[] = R"(
+    chrome.cookies.onChanged.addListener((changeInfo) => {
+      // Listener to trigger CookiesEventRouter creation
+    });
+    chrome.test.sendMessage('listener_registered');
+  )";
+
+  TestExtensionDir test_dir;
+  test_dir.WriteManifest(kManifest);
+  test_dir.WriteFile(FILE_PATH_LITERAL("background.js"), kBackgroundJs);
+
+  // Load the extension with a listener to ensure CookiesEventRouter is created.
+  ExtensionTestMessageListener listener_registered("listener_registered");
+  const Extension* extension = LoadExtension(
+      test_dir.UnpackedPath(),
+      {.allow_in_incognito = true, .wait_for_registration_stored = true});
+  ASSERT_TRUE(extension);
+  ASSERT_TRUE(listener_registered.WaitUntilSatisfied());
+
+  // Get the CookiesAPI instance which owns the CookiesEventRouter.
+  CookiesAPI* cookies_api = CookiesAPI::GetFactoryInstance()->Get(profile());
+  ASSERT_TRUE(cookies_api);
+
+  CookiesEventRouter* event_router =
+      cookies_api->GetCookiesEventRouterForTesting();
+  ASSERT_TRUE(event_router);
+
+  // Create an OTR profile. This should trigger OnOffTheRecordProfileCreated()
+  // which starts observing the OTR profile and binds the OTR mojo receiver.
+  Profile* otr_profile =
+      profile()->GetPrimaryOTRProfile(/*create_if_needed=*/true);
+  mojo::Receiver<network::mojom::CookieChangeListener>& otr_receiver =
+      event_router->otr_receiver_;
+  const base::ScopedObservation<Profile, ProfileObserver>&
+      otr_profile_observation = event_router->otr_profile_observation_;
+  ASSERT_TRUE(otr_profile);
+  EXPECT_TRUE(otr_profile_observation.IsObservingSource(otr_profile));
+  EXPECT_TRUE(otr_receiver.is_bound());
+
+  // Simulate a mojo connection error and verify that the OTR receiver is
+  // re-bound and the observation is still active.
+  event_router->OnConnectionError(&otr_receiver);
+  EXPECT_TRUE(otr_receiver.is_bound());
+  EXPECT_TRUE(otr_profile_observation.IsObservingSource(otr_profile));
+}
+
+class CookiesCrashApiTest : public ExtensionApiTest {
+ public:
+  void RunCrashTest(const char* background_js_format) {
+    if (!content::IsOutOfProcessNetworkService()) {
+      GTEST_SKIP()
+          << "Can't crash the network service if it's running in-process!";
+    }
+
+    static constexpr char kManifest[] = R"({
+      "name": "Cookies API Test",
+      "version": "1.0",
+      "manifest_version": 3,
+      "permissions": ["cookies"],
+      "host_permissions": ["*://example.com/*"],
+      "background": {"service_worker": "background.js"}
+    })";
+
+    TestExtensionDir test_dir;
+    test_dir.WriteManifest(kManifest);
+    test_dir.WriteFile(FILE_PATH_LITERAL("background.js"),
+                       background_js_format);
+
+    ExtensionTestMessageListener ready_listener("ready",
+                                                ReplyBehavior::kWillReply);
+    ExtensionTestMessageListener api_called_listener("api_called");
+
+    const Extension* extension = LoadExtension(test_dir.UnpackedPath());
+    ASSERT_TRUE(extension);
+    ASSERT_TRUE(ready_listener.WaitUntilSatisfied());
+
+    ready_listener.Reply("go");
+    ASSERT_TRUE(api_called_listener.WaitUntilSatisfied());
+
+    // Ensure the service worker is running before the crash.
+    ASSERT_FALSE(ProcessManager::Get(profile())
+                     ->GetServiceWorkersForExtension(extension->id())
+                     .empty());
+
+    SimulateNetworkServiceCrash();
+    content::FlushNetworkServiceInstanceForTesting();
+
+    // The test passes if no DCHECK is triggered by the call above, resulting in
+    // ExtensionFunction destruction due to the mojo connection error. The
+    // service worker gets terminated after the crash for some reason, so no
+    // need to clean it up here.
+    ASSERT_TRUE(ProcessManager::Get(profile())
+                    ->GetServiceWorkersForExtension(extension->id())
+                    .empty());
+  }
+};
+
+// Test that crashing the network service while a cookies.get call is in
+// progress does not trigger a DCHECK failure in the ExtensionFunction
+// destructor. This is a regression test for crbug.com/391122178.
+IN_PROC_BROWSER_TEST_F(CookiesCrashApiTest, CookiesGetNetworkServiceCrash) {
+  RunCrashTest(R"(
+    chrome.test.sendMessage('ready', () => {
+      function callApi() {
+        chrome.cookies.get({url: 'http://example.com', name: 'foo'}, (c) => {});
+        setTimeout(callApi, 0);
+      }
+      callApi();
+      chrome.test.sendMessage('api_called');
+    });
+  )");
+}
+
+// Test that crashing the network service while a cookies.getAll call is in
+// progress does not trigger a DCHECK failure in the ExtensionFunction
+// destructor. This is a regression test for crbug.com/391122178.
+IN_PROC_BROWSER_TEST_F(CookiesCrashApiTest, CookiesGetAllNetworkServiceCrash) {
+  RunCrashTest(R"(
+    chrome.test.sendMessage('ready', () => {
+      function callApi() {
+        chrome.cookies.getAll({url: 'http://example.com'}, (c) => {});
+        setTimeout(callApi, 0);
+      }
+      callApi();
+      chrome.test.sendMessage('api_called');
+    });
+  )");
+}
+
+// Test that crashing the network service while a cookies.set call is in
+// progress does not trigger a DCHECK failure in the ExtensionFunction
+// destructor. This is a regression test for crbug.com/391122178.
+IN_PROC_BROWSER_TEST_F(CookiesCrashApiTest, CookiesSetNetworkServiceCrash) {
+  RunCrashTest(R"(
+    chrome.test.sendMessage('ready', () => {
+      function callApi() {
+        chrome.cookies.set({url: 'http://example.com', name: 'f', value: 'v'}, (c) => {});
+        setTimeout(callApi, 0);
+      }
+      callApi();
+      chrome.test.sendMessage('api_called');
+    });
+  )");
+}
+
+// Test that crashing the network service while a cookies.remove call is in
+// progress does not trigger a DCHECK failure in the ExtensionFunction
+// destructor. This is a regression test for crbug.com/391122178.
+IN_PROC_BROWSER_TEST_F(CookiesCrashApiTest, CookiesRemoveNetworkServiceCrash) {
+  RunCrashTest(R"(
+    chrome.test.sendMessage('ready', () => {
+      function callApi() {
+        chrome.cookies.remove({url: 'http://example.com', name: 'f'}, (c) => {});
+        setTimeout(callApi, 0);
+      }
+      callApi();
+      chrome.test.sendMessage('api_called');
+    });
+  )");
+}
+
+}  // namespace extensions

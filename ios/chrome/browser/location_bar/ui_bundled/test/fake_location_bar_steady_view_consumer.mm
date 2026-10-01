@@ -1,0 +1,39 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/location_bar/ui_bundled/test/fake_location_bar_steady_view_consumer.h"
+
+@implementation FakeLocationBarSteadyViewConsumer
+
+- (void)updateLocationText:(NSString*)string clipTail:(BOOL)clipTail {
+  _locationText = [string copy];
+  _clipTail = clipTail;
+}
+
+- (void)updateLocationIcon:(UIImage*)icon
+        securityStatusText:(NSString*)statusText {
+  _icon = icon;
+  _statusText = [statusText copy];
+}
+
+- (void)updateLocationShareable:(BOOL)shareable {
+  _locationShareable = shareable;
+  if (self.onUpdateLocationShareable) {
+    self.onUpdateLocationShareable(shareable);
+  }
+}
+
+- (void)updateAfterNavigatingToNTP {
+}
+
+- (void)attemptShowingLensOverlayIPH {
+}
+
+- (void)recordLensOverlayAvailability {
+}
+
+- (void)updateAIHubNewBadgeVisibility {
+}
+
+@end

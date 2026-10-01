@@ -1,0 +1,8 @@
+include_rules = [
+  "+components/contextual_search",
+  "+components/contextual_tasks/public/features.h",
+  "+ios/chrome/browser/aim/model",
+  "+ios/chrome/browser/signin/model",
+  "+ios/chrome/browser/tab_switcher/ui_bundled",
+  "+third_party/omnibox_proto/searchbox_config.pb.h",
+]

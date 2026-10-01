@@ -1,0 +1,85 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROMEOS_ASH_EXPERIENCES_SETTINGS_UI_SETTINGS_APP_MANAGER_H_
+#define CHROMEOS_ASH_EXPERIENCES_SETTINGS_UI_SETTINGS_APP_MANAGER_H_
+
+#include <string_view>
+
+#include "ash/webui/settings/public/constants/setting.mojom-shared.h"
+#include "base/component_export.h"
+#include "ui/display/types/display_constants.h"
+
+namespace user_manager {
+class User;
+}  // namespace user_manager
+
+namespace ash {
+
+// Manages Settings System Web App interaction.
+// This (its implementation class) can be alive at most once at a time.
+class COMPONENT_EXPORT(SETTINGS_UI) SettingsAppManager {
+ public:
+  // These are used in histograms, do not remove/renumber entries. If you're
+  // adding to this enum with the intention that it will be logged, update the
+  // EntryPoint enum listing in
+  // tools/metrics/histograms/metadata/apps/enums.xml.
+  // LINT.IfChange(EntryPoint)
+  enum class EntryPoint {
+    kAppListContextMenuAppInfoArc = 0,
+    kAppListContextMenuAppInfoChromeApp = 1,
+    kAppListContextMenuAppInfoWebApp = 2,
+    kShelfContextMenuAppInfoArc = 3,
+    kShelfContextMenuAppInfoChromeApp = 4,
+    kShelfContextMenuAppInfoWebApp = 5,
+    kAppManagementMainViewArc = 6,
+    kAppManagementMainViewChromeApp = 7,
+    kAppManagementMainViewWebApp = 8,
+    kOsSettingsMainPage = 9,
+    kDeprecatedAppManagementMainViewPluginVm = 10,
+    kDeprecatedDBusServicePluginVm = 11,
+    kDeprecatedNotificationPluginVm = 12,
+    kAppManagementMainViewBorealis = 13,
+    kPageInfoView = 14,
+    kPrivacyIndicatorsNotificationSettings = 15,
+    kSubAppsInstallPrompt = 16,
+    kSiteDataDialog = 17,
+    kMaxValue = kSiteDataDialog,
+  };
+  // LINT.ThenChange(
+  //   //ui/webui/resources/cr_components/app_management/constants.ts:AppManagementEntryPoint,
+  //   //tools/metrics/histograms/metadata/apps/enums.xml:AppManagementEntryPoint
+  // )
+
+  // Helper method to create the path.
+  static std::string CreateAppManagementPagePath(std::string_view app_id);
+
+  // Returns the singleton instance
+  static SettingsAppManager* Get();
+
+  SettingsAppManager(const SettingsAppManager&) = delete;
+  SettingsAppManager& operator=(const SettingsAppManager&) = delete;
+
+  struct OpenParams {
+    // If specified, opens the subpage, instead of settings top page.
+    std::string_view sub_page;
+    std::optional<chromeos::settings::mojom::Setting> setting_id;
+    // If specified, used to record AppManagement.EntryPoints histogram.
+    std::optional<EntryPoint> entry_point;
+
+    // ID of the display to be used, if given.
+    int64_t display_id = display::kInvalidDisplayId;
+  };
+
+  // Opens the settings app of the given `user`.
+  virtual void Open(const user_manager::User& user, OpenParams params) = 0;
+
+ protected:
+  SettingsAppManager();
+  virtual ~SettingsAppManager();
+};
+
+}  // namespace ash
+
+#endif  // CHROMEOS_ASH_EXPERIENCES_SETTINGS_UI_SETTINGS_APP_MANAGER_H_

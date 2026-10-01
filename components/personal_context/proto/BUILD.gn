@@ -1,0 +1,28 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//components/proto_extras/proto_extras.gni")
+import("//third_party/protobuf/proto_library.gni")
+
+proto_library("personal_context_proto") {
+  proto_in_dir = "//"
+  sources = [
+    "context_memory_service.proto",
+    "features/ambient_autofill.proto",
+    "features/at_memory.proto",
+    "features/auto_todos.proto",
+    "features/common_data.proto",
+    "features/smart_search.proto",
+  ]
+}
+
+proto_extras("personal_context_proto_extras") {
+  sources = [
+    "features/at_memory.proto",
+    "features/common_data.proto",
+  ]
+  deps = [ ":personal_context_proto" ]
+  omit_to_value_serialization = true
+  omit_stream_operators = true
+}

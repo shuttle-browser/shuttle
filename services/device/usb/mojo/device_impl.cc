@@ -1,0 +1,962 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "services/device/usb/mojo/device_impl.h"
+
+#include <stddef.h>
+
+#include <algorithm>
+#include <memory>
+#include <numeric>
+#include <optional>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "base/compiler_specific.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/memory/ptr_util.h"
+#include "base/memory/ref_counted_memory.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/notreached.h"
+#include "base/strings/strcat.h"
+#include "base/strings/stringprintf.h"
+#include "services/device/public/cpp/device_features.h"
+#include "services/device/public/cpp/usb/usb_utils.h"
+#include "services/device/usb/usb_descriptors.h"
+#include "services/device/usb/usb_device.h"
+#include "third_party/blink/public/common/features.h"
+
+namespace device {
+
+using mojom::UsbControlTransferParamsPtr;
+using mojom::UsbControlTransferRecipient;
+using mojom::UsbControlTransferType;
+using mojom::UsbIsochronousPacketPtr;
+using mojom::UsbTransferDirection;
+using mojom::UsbTransferStatus;
+
+namespace usb {
+
+namespace {
+
+constexpr size_t kUsbTransferLengthLimit = 32 * 1024 * 1024;  // 32 MiB
+
+// USB 2.0 Specification Table 9-4: Standard Request Codes
+constexpr uint8_t kUsbRequestGetStatus = 0x00;
+[[maybe_unused]] constexpr uint8_t kUsbRequestClearFeature = 0x01;
+[[maybe_unused]] constexpr uint8_t kUsbRequestSetFeature = 0x03;
+[[maybe_unused]] constexpr uint8_t kUsbRequestSetAddress = 0x05;
+constexpr uint8_t kUsbRequestGetDescriptor = 0x06;
+[[maybe_unused]] constexpr uint8_t kUsbRequestSetDescriptor = 0x07;
+constexpr uint8_t kUsbRequestGetConfiguration = 0x08;
+[[maybe_unused]] constexpr uint8_t kUsbRequestSetConfiguration = 0x09;
+constexpr uint8_t kUsbRequestGetInterface = 0x0A;
+[[maybe_unused]] constexpr uint8_t kUsbRequestSetInterface = 0x0B;
+constexpr uint8_t kUsbRequestSynchFrame = 0x0C;
+
+void OnTransferIn(mojom::UsbDevice::GenericTransferInCallback callback,
+                  UsbTransferStatus status,
+                  scoped_refptr<base::RefCountedBytes> buffer,
+                  size_t buffer_size) {
+  auto data = buffer ? base::span(*buffer).first(buffer_size)
+                     : base::span<const uint8_t>();
+  std::move(callback).Run(mojo::ConvertTo<mojom::UsbTransferStatus>(status),
+                          data);
+}
+
+void OnTransferOut(mojom::UsbDevice::GenericTransferOutCallback callback,
+                   UsbTransferStatus status,
+                   scoped_refptr<base::RefCountedBytes> buffer,
+                   size_t buffer_size) {
+  std::move(callback).Run(mojo::ConvertTo<mojom::UsbTransferStatus>(status));
+}
+
+void OnIsochronousTransferIn(
+    mojom::UsbDevice::IsochronousTransferInCallback callback,
+    scoped_refptr<base::RefCountedBytes> buffer,
+    std::vector<UsbIsochronousPacketPtr> packets) {
+  uint32_t buffer_size = std::accumulate(
+      packets.begin(), packets.end(), 0u,
+      [](const uint32_t& a, const UsbIsochronousPacketPtr& packet) {
+        return a + packet->length;
+      });
+  auto data = buffer ? base::span(*buffer).first(buffer_size)
+                     : base::span<const uint8_t>();
+  std::move(callback).Run(data, std::move(packets));
+}
+
+void OnIsochronousTransferOut(
+    mojom::UsbDevice::IsochronousTransferOutCallback callback,
+    scoped_refptr<base::RefCountedBytes> buffer,
+    std::vector<UsbIsochronousPacketPtr> packets) {
+  std::move(callback).Run(std::move(packets));
+}
+
+// IsAndroidSecurityKeyRequest returns true if |params| is attempting to
+// configure an Android phone to act as a security key.
+bool IsAndroidSecurityKeyRequest(
+    const mojom::UsbControlTransferParamsPtr& params,
+    base::span<const uint8_t> data) {
+  // This matches a request to send an AOA model string:
+  // https://source.android.com/devices/accessories/aoa#attempt-to-start-in-accessory-mode
+  //
+  // The magic model is matched as a prefix because sending trailing NULs etc
+  // would be considered equivalent by Android but would not be caught by an
+  // exact match here. Android is case-sensitive thus a byte-wise match is
+  // suitable.
+  auto magic = base::byte_span_from_cstring(
+      mojom::UsbControlTransferParams::kSecurityKeyAOAModel);
+  return params->type == mojom::UsbControlTransferType::VENDOR &&
+         params->request == 52 && params->index == 1 &&
+         data.size() >= magic.size() && data.first(magic.size()) == magic;
+}
+
+// Returns the sum of `packet_lengths`, or nullopt if the sum would overflow.
+std::optional<uint32_t> TotalPacketLength(
+    base::span<const uint32_t> packet_lengths) {
+  uint32_t total_bytes = 0;
+  for (const uint32_t packet_length : packet_lengths) {
+    // Check for overflow.
+    if (std::numeric_limits<uint32_t>::max() - total_bytes < packet_length) {
+      return std::nullopt;
+    }
+    total_bytes += packet_length;
+  }
+  return total_bytes;
+}
+
+// Helper to log blocked transfers to the correct variant.
+void LogBlockedControlTransfer(uint8_t class_code,
+                               UsbTransferDirection direction,
+                               UsbControlTransferType type) {
+  std::string_view direction_str =
+      (direction == UsbTransferDirection::INBOUND) ? "Inbound" : "Outbound";
+  std::string_view type_str;
+  switch (type) {
+    case UsbControlTransferType::STANDARD:
+      type_str = "Standard";
+      break;
+    case UsbControlTransferType::CLASS:
+      type_str = "Class";
+      break;
+    case UsbControlTransferType::VENDOR:
+      type_str = "Vendor";
+      break;
+    default:
+      return;  // Skip RESERVED type
+  }
+
+  base::UmaHistogramSparse(base::StrCat({"WebUsb.ControlTransferBlocked.",
+                                         direction_str, ".", type_str}),
+                           class_code);
+}
+
+}  // namespace
+
+// static
+void DeviceImpl::Create(scoped_refptr<device::UsbDevice> device,
+                        mojo::PendingReceiver<mojom::UsbDevice> receiver,
+                        mojo::PendingRemote<mojom::UsbDeviceClient> client,
+                        base::span<const uint8_t> blocked_interface_classes,
+                        bool allow_security_key_requests,
+                        bool allow_unrestricted_control_transfers) {
+  auto* device_impl = new DeviceImpl(
+      std::move(device), std::move(client), blocked_interface_classes,
+      allow_security_key_requests, allow_unrestricted_control_transfers);
+  device_impl->receiver_ = mojo::MakeSelfOwnedReceiver(
+      base::WrapUnique(device_impl), std::move(receiver));
+}
+
+DeviceImpl::~DeviceImpl() {
+  if (device_state_change_in_progress_) {
+    device_state_change_in_progress_ = false;
+    if (device_) {
+      device_->set_device_state_change_in_progress(false);
+    }
+  }
+  CloseHandle();
+}
+
+DeviceImpl::DeviceImpl(scoped_refptr<device::UsbDevice> device,
+                       mojo::PendingRemote<mojom::UsbDeviceClient> client,
+                       base::span<const uint8_t> blocked_interface_classes,
+                       bool allow_security_key_requests,
+                       bool allow_unrestricted_control_transfers)
+    : device_(std::move(device)),
+      blocked_interface_classes_(blocked_interface_classes.begin(),
+                                 blocked_interface_classes.end()),
+      allow_security_key_requests_(allow_security_key_requests),
+      allow_unrestricted_control_transfers_(
+          allow_unrestricted_control_transfers),
+      client_(std::move(client)) {
+  DCHECK(device_);
+  observation_.Observe(device_.get());
+
+  if (client_) {
+    client_.set_disconnect_handler(base::BindOnce(
+        &DeviceImpl::OnClientConnectionError, weak_factory_.GetWeakPtr()));
+  }
+}
+
+void DeviceImpl::CloseHandle() {
+  if (device_handle_) {
+    device_handle_->Close();
+    if (client_)
+      client_->OnDeviceClosed();
+  }
+  device_handle_ = nullptr;
+}
+
+const mojom::UsbInterfaceInfo* DeviceImpl::FindInterface(
+    const mojom::UsbConfigurationInfo* config,
+    uint8_t interface_number) const {
+  auto it = std::ranges::find(config->interfaces, interface_number,
+                              &mojom::UsbInterfaceInfo::interface_number);
+  return it == config->interfaces.end() ? nullptr : it->get();
+}
+
+std::optional<uint8_t> DeviceImpl::FindBlockedClass(
+    const mojom::UsbInterfaceInfo* interface) const {
+  if (!base::FeatureList::IsEnabled(
+          features::kWebUsbProtectedClassControlTransferBlock)) {
+    return std::nullopt;
+  }
+  for (const auto& alternate : interface->alternates) {
+    if (blocked_interface_classes_.contains(alternate->class_code)) {
+      return alternate->class_code;
+    }
+  }
+  return std::nullopt;
+}
+
+bool DeviceImpl::HasProtectedInterface(
+    const mojom::UsbConfigurationInfo* config) const {
+  for (const auto& interface : config->interfaces) {
+    if (FindBlockedClass(interface.get())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool DeviceImpl::AllowAndLog(WebUsbControlTransferPermissionOutcome outcome) {
+  base::UmaHistogramEnumeration("WebUsb.ControlTransferPermissionOutcome",
+                                outcome);
+  return true;
+}
+
+bool DeviceImpl::BlockAndLog(WebUsbControlTransferPermissionOutcome outcome) {
+  base::UmaHistogramEnumeration("WebUsb.ControlTransferPermissionOutcome",
+                                outcome);
+  return false;
+}
+
+bool DeviceImpl::HasControlTransferPermission(
+    UsbTransferDirection direction,
+    UsbControlTransferType type,
+    UsbControlTransferRecipient recipient,
+    uint8_t request,
+    uint16_t index) {
+  DCHECK(device_handle_);
+
+  const mojom::UsbConfigurationInfo* config = device_->GetActiveConfiguration();
+  if (!config) {
+    return BlockAndLog(
+        WebUsbControlTransferPermissionOutcome::kError_NoConfiguration);
+  }
+
+  // ==========================================
+  // 1. STANDARD Requests
+  // ==========================================
+  if (type == UsbControlTransferType::STANDARD) {
+    if (!allow_unrestricted_control_transfers_ &&
+        base::FeatureList::IsEnabled(
+            features::kWebUsbEnforceStandardRequestAllowlist)) {
+      // Reject all Standard requests except fundamental inspection and
+      // discovery inbound commands (GET_STATUS, GET_DESCRIPTOR,
+      // GET_CONFIGURATION, GET_INTERFACE, SYNCH_FRAME). Legitimate
+      // configuration and feature management must be performed via dedicated
+      // WebIDL methods (e.g., selectConfiguration).
+      if (direction == UsbTransferDirection::INBOUND &&
+          (request == kUsbRequestGetStatus ||
+           request == kUsbRequestGetDescriptor ||
+           request == kUsbRequestGetConfiguration ||
+           request == kUsbRequestGetInterface ||
+           request == kUsbRequestSynchFrame)) {
+        return AllowAndLog(WebUsbControlTransferPermissionOutcome::kAllowed);
+      }
+      return BlockAndLog(WebUsbControlTransferPermissionOutcome::kBlocked);
+    }
+
+    // Legacy fallback behavior.
+    if (recipient == UsbControlTransferRecipient::DEVICE ||
+        recipient == UsbControlTransferRecipient::OTHER) {
+      return AllowAndLog(WebUsbControlTransferPermissionOutcome::kAllowed);
+    }
+
+    // Fall through case: allowlist is disabled, and recipient is
+    // INTERFACE/ENDPOINT. We must validate the interface.
+    const mojom::UsbInterfaceInfo* interface = nullptr;
+    if (recipient == UsbControlTransferRecipient::ENDPOINT) {
+      interface = device_handle_->FindInterfaceByEndpoint(index & 0xff);
+    } else if (recipient == UsbControlTransferRecipient::INTERFACE) {
+      interface = FindInterface(config, index & 0xff);
+    }
+
+    if (interface) {
+      auto blocked_class = FindBlockedClass(interface);
+      if (blocked_class) {
+        LogBlockedControlTransfer(*blocked_class, direction, type);
+        return BlockAndLog(WebUsbControlTransferPermissionOutcome::kBlocked);
+      }
+      return AllowAndLog(WebUsbControlTransferPermissionOutcome::kAllowed);
+    }
+
+    return BlockAndLog(
+        WebUsbControlTransferPermissionOutcome::kError_InterfaceNotFound);
+  }
+
+  // ==========================================
+  // 2. CLASS Requests
+  // ==========================================
+  if (type == UsbControlTransferType::CLASS) {
+    if (recipient == UsbControlTransferRecipient::INTERFACE ||
+        recipient == UsbControlTransferRecipient::ENDPOINT) {
+      const mojom::UsbInterfaceInfo* interface = nullptr;
+      if (recipient == UsbControlTransferRecipient::ENDPOINT) {
+        interface = device_handle_->FindInterfaceByEndpoint(index & 0xff);
+      } else {
+        interface = FindInterface(config, index & 0xff);
+      }
+
+      if (!interface) {
+        return BlockAndLog(
+            WebUsbControlTransferPermissionOutcome::kError_InterfaceNotFound);
+      }
+
+      auto blocked_class = FindBlockedClass(interface);
+      if (blocked_class) {
+        LogBlockedControlTransfer(*blocked_class, direction, type);
+        return BlockAndLog(WebUsbControlTransferPermissionOutcome::kBlocked);
+      }
+
+      return AllowAndLog(WebUsbControlTransferPermissionOutcome::kAllowed);
+    }
+
+    // For DEVICE and OTHER recipients, we block the request if the device
+    // has any protected interfaces. This prevents bypassing the blocklist by
+    // specifying a non-protected interface number (or an invalid one) on a
+    // device that ignores the wIndex field.
+    if (HasProtectedInterface(config)) {
+      return BlockAndLog(WebUsbControlTransferPermissionOutcome::kBlocked);
+    }
+
+    return AllowAndLog(WebUsbControlTransferPermissionOutcome::kAllowed);
+  }
+
+  // ==========================================
+  // 3. VENDOR Requests
+  // ==========================================
+  if (type == UsbControlTransferType::VENDOR) {
+    const mojom::UsbInterfaceInfo* interface = nullptr;
+    if (recipient == UsbControlTransferRecipient::ENDPOINT) {
+      interface = device_handle_->FindInterfaceByEndpoint(index & 0xff);
+    } else if (recipient == UsbControlTransferRecipient::INTERFACE) {
+      // We ONLY lookup interface for INTERFACE recipient.
+      interface = FindInterface(config, index & 0xff);
+    }
+
+    // Block if the targeted interface is protected.
+    if (interface) {
+      auto blocked_class = FindBlockedClass(interface);
+      if (blocked_class) {
+        LogBlockedControlTransfer(*blocked_class, direction, type);
+        return BlockAndLog(WebUsbControlTransferPermissionOutcome::kBlocked);
+      }
+    }
+
+    // For requests explicitly targeting an INTERFACE or ENDPOINT, the interface
+    // must actually exist in the current configuration.
+    if (recipient == UsbControlTransferRecipient::INTERFACE ||
+        recipient == UsbControlTransferRecipient::ENDPOINT) {
+      return interface ? AllowAndLog(
+                             WebUsbControlTransferPermissionOutcome::kAllowed)
+                       : BlockAndLog(WebUsbControlTransferPermissionOutcome::
+                                         kError_InterfaceNotFound);
+    }
+
+    // DEVICE/OTHER vendor requests are always allowed.
+    return AllowAndLog(WebUsbControlTransferPermissionOutcome::kAllowed);
+  }
+
+  // Default fallback. Catches and blocks unhandled request types, including
+  // RESERVED (which is not exposed to JavaScript via the WebIDL layer).
+  return BlockAndLog(WebUsbControlTransferPermissionOutcome::kBlocked);
+}
+
+// static
+void DeviceImpl::OnOpen(base::WeakPtr<DeviceImpl> self,
+                        OpenCallback callback,
+                        scoped_refptr<UsbDeviceHandle> handle) {
+  if (!self) {
+    if (handle)
+      handle->Close();
+    return;
+  }
+
+  self->opening_ = false;
+  self->device_handle_ = std::move(handle);
+  if (self->device_handle_ && self->client_)
+    self->client_->OnDeviceOpened();
+
+  if (self->device_handle_) {
+    std::move(callback).Run(mojom::UsbOpenDeviceResult::NewSuccess(
+        mojom::UsbOpenDeviceSuccess::OK));
+  } else {
+    std::move(callback).Run(mojom::UsbOpenDeviceResult::NewError(
+        mojom::UsbOpenDeviceError::ACCESS_DENIED));
+  }
+}
+
+void DeviceImpl::OnPermissionGrantedForOpen(OpenCallback callback,
+                                            bool granted) {
+  if (granted) {
+    device_->Open(base::BindOnce(
+        &DeviceImpl::OnOpen, weak_factory_.GetWeakPtr(), std::move(callback)));
+  } else {
+    opening_ = false;
+    std::move(callback).Run(mojom::UsbOpenDeviceResult::NewError(
+        mojom::UsbOpenDeviceError::ACCESS_DENIED));
+  }
+}
+
+void DeviceImpl::Open(OpenCallback callback) {
+  if (opening_ || device_handle_) {
+    std::move(callback).Run(mojom::UsbOpenDeviceResult::NewError(
+        mojom::UsbOpenDeviceError::ALREADY_OPEN));
+    return;
+  }
+
+  opening_ = true;
+
+  if (!device_->permission_granted()) {
+    device_->RequestPermission(
+        base::BindOnce(&DeviceImpl::OnPermissionGrantedForOpen,
+                       weak_factory_.GetWeakPtr(), std::move(callback)));
+    return;
+  }
+
+  device_->Open(base::BindOnce(&DeviceImpl::OnOpen, weak_factory_.GetWeakPtr(),
+                               std::move(callback)));
+}
+
+void DeviceImpl::Close(CloseCallback callback) {
+  CloseHandle();
+  std::move(callback).Run();
+}
+
+void DeviceImpl::SetConfiguration(uint8_t value,
+                                  SetConfigurationCallback callback) {
+  if (any_state_change_in_progress()) {
+    RecordStateChangeBlocked(WebUsbStateChangeBlockedMethod::kSetConfiguration,
+                             any_interface_state_change_in_progress());
+    std::move(callback).Run(false);
+    return;
+  }
+  if (!device_handle_) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  device_state_change_in_progress_ = true;
+  device_->set_device_state_change_in_progress(true);
+  device_handle_->SetConfiguration(
+      value, base::BindOnce(&DeviceImpl::OnSetConfigurationComplete,
+                            weak_factory_.GetWeakPtr(), std::move(callback)));
+}
+
+void DeviceImpl::ClaimInterface(uint8_t interface_number,
+                                ClaimInterfaceCallback callback) {
+  bool interface_in_progress =
+      IsInterfaceStateChangeInProgress(interface_number);
+  if (device_->device_state_change_in_progress() || interface_in_progress) {
+    RecordStateChangeBlocked(WebUsbStateChangeBlockedMethod::kClaimInterface,
+                             interface_in_progress);
+    std::move(callback).Run(mojom::UsbClaimInterfaceResult::kFailure);
+    return;
+  }
+  if (!device_handle_) {
+    std::move(callback).Run(mojom::UsbClaimInterfaceResult::kFailure);
+    return;
+  }
+
+  const mojom::UsbConfigurationInfo* config = device_->GetActiveConfiguration();
+  if (!config) {
+    std::move(callback).Run(mojom::UsbClaimInterfaceResult::kFailure);
+    return;
+  }
+
+  auto interface_it =
+      std::ranges::find(config->interfaces, interface_number,
+                        &mojom::UsbInterfaceInfo::interface_number);
+  if (interface_it == config->interfaces.end()) {
+    std::move(callback).Run(mojom::UsbClaimInterfaceResult::kFailure);
+    return;
+  }
+
+  for (const auto& alternate : (*interface_it)->alternates) {
+    if (blocked_interface_classes_.contains(alternate->class_code)) {
+      std::move(callback).Run(mojom::UsbClaimInterfaceResult::kProtectedClass);
+      return;
+    }
+  }
+
+  SetInterfaceStateChangeInProgress(interface_number, true);
+  device_handle_->ClaimInterface(
+      interface_number, base::BindOnce(&DeviceImpl::OnInterfaceClaimed,
+                                       weak_factory_.GetWeakPtr(),
+                                       std::move(callback), interface_number));
+}
+
+void DeviceImpl::ReleaseInterface(uint8_t interface_number,
+                                  ReleaseInterfaceCallback callback) {
+  bool interface_in_progress =
+      IsInterfaceStateChangeInProgress(interface_number);
+  if (device_->device_state_change_in_progress() || interface_in_progress) {
+    RecordStateChangeBlocked(WebUsbStateChangeBlockedMethod::kReleaseInterface,
+                             interface_in_progress);
+    std::move(callback).Run(false);
+    return;
+  }
+  if (!device_handle_) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  SetInterfaceStateChangeInProgress(interface_number, true);
+  device_handle_->ReleaseInterface(
+      interface_number, base::BindOnce(&DeviceImpl::OnInterfaceReleased,
+                                       weak_factory_.GetWeakPtr(),
+                                       std::move(callback), interface_number));
+}
+
+void DeviceImpl::SetInterfaceAlternateSetting(
+    uint8_t interface_number,
+    uint8_t alternate_setting,
+    SetInterfaceAlternateSettingCallback callback) {
+  bool interface_in_progress =
+      IsInterfaceStateChangeInProgress(interface_number);
+  if (device_->device_state_change_in_progress() || interface_in_progress) {
+    RecordStateChangeBlocked(
+        WebUsbStateChangeBlockedMethod::kSetInterfaceAlternateSetting,
+        interface_in_progress);
+    std::move(callback).Run(false);
+    return;
+  }
+  if (!device_handle_) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  const mojom::UsbConfigurationInfo* config = device_->GetActiveConfiguration();
+  if (!config) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  CombinedInterfaceInfo interface =
+      FindInterfaceInfoFromConfig(config, interface_number, alternate_setting);
+  if (!interface.IsValid()) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  if (blocked_interface_classes_.contains(interface.alternate->class_code)) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  SetInterfaceStateChangeInProgress(interface_number, true);
+  device_handle_->SetInterfaceAlternateSetting(
+      interface_number, alternate_setting,
+      base::BindOnce(&DeviceImpl::OnSetInterfaceAlternateSettingComplete,
+                     weak_factory_.GetWeakPtr(), std::move(callback),
+                     interface_number));
+}
+
+void DeviceImpl::Reset(ResetCallback callback) {
+  if (any_state_change_in_progress()) {
+    RecordStateChangeBlocked(WebUsbStateChangeBlockedMethod::kReset,
+                             any_interface_state_change_in_progress());
+    std::move(callback).Run(false);
+    return;
+  }
+  if (!device_handle_) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  device_state_change_in_progress_ = true;
+  device_->set_device_state_change_in_progress(true);
+  device_handle_->ResetDevice(base::BindOnce(&DeviceImpl::OnResetComplete,
+                                             weak_factory_.GetWeakPtr(),
+                                             std::move(callback)));
+}
+
+void DeviceImpl::ClearHalt(UsbTransferDirection direction,
+                           uint8_t endpoint_number,
+                           ClearHaltCallback callback) {
+  uint8_t endpoint_address = endpoint_number;
+  if (direction == UsbTransferDirection::INBOUND) {
+    endpoint_address |= 0x80;
+  }
+  if (!IsEndpointReadyForTransfer(WebUsbStateChangeBlockedMethod::kClearHalt,
+                                  endpoint_address)) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  device_handle_->ClearHalt(direction, endpoint_number, std::move(callback));
+}
+
+void DeviceImpl::ControlTransferIn(UsbControlTransferParamsPtr params,
+                                   uint32_t length,
+                                   uint32_t timeout,
+                                   ControlTransferInCallback callback) {
+  if (any_state_change_in_progress()) {
+    RecordStateChangeBlocked(WebUsbStateChangeBlockedMethod::kControlTransferIn,
+                             any_interface_state_change_in_progress());
+    std::move(callback).Run(mojom::UsbTransferStatus::PERMISSION_DENIED, {});
+    return;
+  }
+  if (!device_handle_) {
+    std::move(callback).Run(mojom::UsbTransferStatus::TRANSFER_ERROR, {});
+    return;
+  }
+  if (ShouldRejectUsbTransferLengthAndReportBadMessage(length)) {
+    return;
+  }
+
+  if (HasControlTransferPermission(UsbTransferDirection::INBOUND, params->type,
+                                   params->recipient, params->request,
+                                   params->index)) {
+    auto buffer = base::MakeRefCounted<base::RefCountedBytes>(length);
+    device_handle_->ControlTransfer(
+        UsbTransferDirection::INBOUND, params->type, params->recipient,
+        params->request, params->value, params->index, buffer, timeout,
+        base::BindOnce(&OnTransferIn, std::move(callback)));
+  } else {
+    std::move(callback).Run(mojom::UsbTransferStatus::PERMISSION_DENIED, {});
+  }
+}
+
+void DeviceImpl::ControlTransferOut(UsbControlTransferParamsPtr params,
+                                    base::span<const uint8_t> data,
+                                    uint32_t timeout,
+                                    ControlTransferOutCallback callback) {
+  if (any_state_change_in_progress()) {
+    RecordStateChangeBlocked(
+        WebUsbStateChangeBlockedMethod::kControlTransferOut,
+        any_interface_state_change_in_progress());
+    std::move(callback).Run(mojom::UsbTransferStatus::PERMISSION_DENIED);
+    return;
+  }
+  if (!device_handle_) {
+    std::move(callback).Run(mojom::UsbTransferStatus::TRANSFER_ERROR);
+    return;
+  }
+  if (ShouldRejectUsbTransferLengthAndReportBadMessage(data.size())) {
+    return;
+  }
+
+  if (HasControlTransferPermission(UsbTransferDirection::OUTBOUND, params->type,
+                                   params->recipient, params->request,
+                                   params->index) &&
+      (allow_security_key_requests_ ||
+       !IsAndroidSecurityKeyRequest(params, data))) {
+    auto buffer = base::MakeRefCounted<base::RefCountedBytes>(data);
+    device_handle_->ControlTransfer(
+        UsbTransferDirection::OUTBOUND, params->type, params->recipient,
+        params->request, params->value, params->index, buffer, timeout,
+        base::BindOnce(&OnTransferOut, std::move(callback)));
+  } else {
+    std::move(callback).Run(mojom::UsbTransferStatus::PERMISSION_DENIED);
+  }
+}
+
+void DeviceImpl::GenericTransferIn(uint8_t endpoint_number,
+                                   uint32_t length,
+                                   uint32_t timeout,
+                                   GenericTransferInCallback callback) {
+  uint8_t endpoint_address = endpoint_number | 0x80;
+  if (!IsEndpointReadyForTransfer(
+          WebUsbStateChangeBlockedMethod::kGenericTransferIn,
+          endpoint_address)) {
+    std::move(callback).Run(mojom::UsbTransferStatus::PERMISSION_DENIED, {});
+    return;
+  }
+  if (ShouldRejectUsbTransferLengthAndReportBadMessage(length)) {
+    return;
+  }
+
+  auto buffer = base::MakeRefCounted<base::RefCountedBytes>(length);
+  device_handle_->GenericTransfer(
+      UsbTransferDirection::INBOUND, endpoint_address, buffer, timeout,
+      base::BindOnce(&OnTransferIn, std::move(callback)));
+}
+
+void DeviceImpl::GenericTransferOut(uint8_t endpoint_number,
+                                    base::span<const uint8_t> data,
+                                    uint32_t timeout,
+                                    GenericTransferOutCallback callback) {
+  uint8_t endpoint_address = endpoint_number;
+  if (!IsEndpointReadyForTransfer(
+          WebUsbStateChangeBlockedMethod::kGenericTransferOut,
+          endpoint_address)) {
+    std::move(callback).Run(mojom::UsbTransferStatus::PERMISSION_DENIED);
+    return;
+  }
+  if (ShouldRejectUsbTransferLengthAndReportBadMessage(data.size())) {
+    return;
+  }
+
+  auto buffer = base::MakeRefCounted<base::RefCountedBytes>(data);
+  device_handle_->GenericTransfer(
+      UsbTransferDirection::OUTBOUND, endpoint_address, buffer, timeout,
+      base::BindOnce(&OnTransferOut, std::move(callback)));
+}
+
+void DeviceImpl::IsochronousTransferIn(
+    uint8_t endpoint_number,
+    const std::vector<uint32_t>& packet_lengths,
+    uint32_t timeout,
+    IsochronousTransferInCallback callback) {
+  uint8_t endpoint_address = endpoint_number | 0x80;
+  if (!IsEndpointReadyForTransfer(
+          WebUsbStateChangeBlockedMethod::kIsochronousTransferIn,
+          endpoint_address)) {
+    std::move(callback).Run(
+        {}, BuildIsochronousPacketArray(
+                packet_lengths, mojom::UsbTransferStatus::PERMISSION_DENIED));
+    return;
+  }
+
+  std::optional<uint32_t> total_bytes = TotalPacketLength(packet_lengths);
+  if (!total_bytes.has_value()) {
+    mojo::ReportBadMessage("Invalid isochronous packet lengths.");
+    std::move(callback).Run(
+        {}, BuildIsochronousPacketArray(
+                packet_lengths, mojom::UsbTransferStatus::TRANSFER_ERROR));
+    return;
+  }
+  if (ShouldRejectUsbTransferLengthAndReportBadMessage(total_bytes.value())) {
+    return;
+  }
+
+  device_handle_->IsochronousTransferIn(
+      endpoint_address, packet_lengths, timeout,
+      base::BindOnce(&OnIsochronousTransferIn, std::move(callback)));
+}
+
+void DeviceImpl::IsochronousTransferOut(
+    uint8_t endpoint_number,
+    base::span<const uint8_t> data,
+    const std::vector<uint32_t>& packet_lengths,
+    uint32_t timeout,
+    IsochronousTransferOutCallback callback) {
+  uint8_t endpoint_address = endpoint_number;
+  if (!IsEndpointReadyForTransfer(
+          WebUsbStateChangeBlockedMethod::kIsochronousTransferOut,
+          endpoint_address)) {
+    std::move(callback).Run(BuildIsochronousPacketArray(
+        packet_lengths, mojom::UsbTransferStatus::PERMISSION_DENIED));
+    return;
+  }
+
+  std::optional<uint32_t> total_bytes = TotalPacketLength(packet_lengths);
+  if (!total_bytes.has_value() || total_bytes.value() != data.size()) {
+    mojo::ReportBadMessage("Invalid isochronous packet lengths.");
+    std::move(callback).Run(BuildIsochronousPacketArray(
+        packet_lengths, mojom::UsbTransferStatus::TRANSFER_ERROR));
+    return;
+  }
+  if (ShouldRejectUsbTransferLengthAndReportBadMessage(total_bytes.value())) {
+    return;
+  }
+
+  auto buffer = base::MakeRefCounted<base::RefCountedBytes>(data);
+  device_handle_->IsochronousTransferOut(
+      endpoint_address, buffer, packet_lengths, timeout,
+      base::BindOnce(&OnIsochronousTransferOut, std::move(callback)));
+}
+
+void DeviceImpl::OnDeviceRemoved(scoped_refptr<device::UsbDevice> device) {
+  DCHECK_EQ(device_, device);
+  receiver_->Close();
+}
+
+void DeviceImpl::OnInterfaceClaimed(ClaimInterfaceCallback callback,
+                                    uint8_t interface_number,
+                                    bool success) {
+  SetInterfaceStateChangeInProgress(interface_number, false);
+  std::move(callback).Run(success ? mojom::UsbClaimInterfaceResult::kSuccess
+                                  : mojom::UsbClaimInterfaceResult::kFailure);
+}
+
+void DeviceImpl::OnInterfaceReleased(ReleaseInterfaceCallback callback,
+                                     uint8_t interface_number,
+                                     bool success) {
+  SetInterfaceStateChangeInProgress(interface_number, false);
+  std::move(callback).Run(success);
+}
+
+void DeviceImpl::OnSetInterfaceAlternateSettingComplete(
+    SetInterfaceAlternateSettingCallback callback,
+    uint8_t interface_number,
+    bool success) {
+  SetInterfaceStateChangeInProgress(interface_number, false);
+  std::move(callback).Run(success);
+}
+
+void DeviceImpl::OnSetConfigurationComplete(SetConfigurationCallback callback,
+                                            bool success) {
+  if (device_state_change_in_progress_) {
+    device_state_change_in_progress_ = false;
+    device_->set_device_state_change_in_progress(false);
+  }
+  std::move(callback).Run(success);
+}
+
+void DeviceImpl::OnResetComplete(ResetCallback callback, bool success) {
+  if (device_state_change_in_progress_) {
+    device_state_change_in_progress_ = false;
+    device_->set_device_state_change_in_progress(false);
+  }
+  std::move(callback).Run(success);
+}
+
+void DeviceImpl::OnClientConnectionError() {
+  // Close the connection with Blink when WebUsbServiceImpl notifies the
+  // permission revocation from settings UI.
+  receiver_->Close();
+}
+
+bool DeviceImpl::ShouldRejectUsbTransferLengthAndReportBadMessage(
+    size_t length) {
+  if (!base::FeatureList::IsEnabled(
+          blink::features::kWebUSBTransferSizeLimit)) {
+    return false;
+  }
+
+  if (length <= kUsbTransferLengthLimit) {
+    return false;
+  }
+  receiver_->ReportBadMessage(
+      base::StringPrintf("Transfer size %zu is over the limit.", length));
+  return true;
+}
+
+bool DeviceImpl::IsEndpointReadyForTransfer(
+    WebUsbStateChangeBlockedMethod method,
+    uint8_t endpoint_address) {
+  bool device_in_progress = device_->device_state_change_in_progress();
+  bool device_closed = !device_handle_;
+
+  std::optional<uint8_t> interface_number;
+  bool interface_not_claimed = true;
+  bool interface_in_progress = false;
+
+  if (device_handle_) {
+    const mojom::UsbInterfaceInfo* interface =
+        device_handle_->FindInterfaceByEndpoint(endpoint_address);
+    if (interface) {
+      interface_number = interface->interface_number;
+      interface_not_claimed = false;
+      interface_in_progress =
+          IsInterfaceStateChangeInProgress(interface->interface_number);
+    }
+  }
+
+  if (!device_in_progress && !device_closed && !interface_not_claimed &&
+      !interface_in_progress) {
+    return true;
+  }
+
+  WebUsbEndpointNotReadyReason reason;
+  if (device_in_progress) {
+    reason = WebUsbEndpointNotReadyReason::kDeviceStateChangeInProgress;
+  } else if (device_closed) {
+    reason = WebUsbEndpointNotReadyReason::kDeviceNotOpen;
+  } else if (interface_in_progress) {
+    reason = WebUsbEndpointNotReadyReason::kInterfaceStateChangeInProgress;
+  } else {
+    reason =
+        WebUsbEndpointNotReadyReason::kInterfaceNotClaimedOrInvalidEndpoint;
+  }
+
+  base::UmaHistogramEnumeration("WebUsb.EndpointNotReadyReason", reason);
+
+  if (device_in_progress || interface_in_progress) {
+    RecordStateChangeBlocked(method, interface_in_progress);
+  }
+
+  return false;
+}
+
+bool DeviceImpl::IsInterfaceStateChangeInProgress(
+    uint8_t interface_number) const {
+  return interface_state_changes_in_progress_.contains(interface_number);
+}
+
+bool DeviceImpl::any_interface_state_change_in_progress() const {
+  return !interface_state_changes_in_progress_.empty();
+}
+
+bool DeviceImpl::any_state_change_in_progress() const {
+  return device_->device_state_change_in_progress() ||
+         any_interface_state_change_in_progress();
+}
+
+void DeviceImpl::SetInterfaceStateChangeInProgress(uint8_t interface_number,
+                                                   bool in_progress) {
+  if (in_progress) {
+    interface_state_changes_in_progress_.insert(interface_number);
+  } else {
+    interface_state_changes_in_progress_.erase(interface_number);
+  }
+}
+
+void DeviceImpl::RecordStateChangeBlocked(WebUsbStateChangeBlockedMethod method,
+                                          bool interface_in_progress) {
+  bool device_in_progress = device_->device_state_change_in_progress();
+  bool same_connection_device = device_state_change_in_progress_;
+
+  WebUsbStateChangeBlockedContext context;
+  if (device_in_progress) {
+    if (same_connection_device) {
+      context =
+          WebUsbStateChangeBlockedContext::kDeviceStateChangeSameConnection;
+    } else {
+      context =
+          WebUsbStateChangeBlockedContext::kDeviceStateChangeOtherConnection;
+    }
+  } else if (interface_in_progress) {
+    context =
+        WebUsbStateChangeBlockedContext::kInterfaceStateChangeSameConnection;
+  } else {
+    // This fallback should not be hit under normal circumstances because direct
+    // callers guard against state changes before calling, and endpoint callers
+    // in IsEndpointReadyForTransfer skip logging when known non-state-change
+    // scenarios are detected (e.g. interface is not claimed).
+    context = WebUsbStateChangeBlockedContext::kUnknown;
+  }
+
+  base::UmaHistogramEnumeration("WebUsb.StateChangeBlocked.Context", context);
+  base::UmaHistogramEnumeration("WebUsb.StateChangeBlocked.Method", method);
+}
+
+}  // namespace usb
+}  // namespace device

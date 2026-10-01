@@ -1,0 +1,400 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/autofill/autofill_suggestion_controller_utils.h"
+
+#include <string>
+#include <variant>
+#include <vector>
+
+#include "base/notreached.h"
+#include "chrome/browser/feature_engagement/tracker_factory.h"
+#include "components/autofill/content/browser/content_autofill_driver.h"
+#include "components/autofill/core/browser/metrics/autofill_metrics.h"
+#include "components/autofill/core/browser/suggestions/suggestion.h"
+#include "components/autofill/core/browser/suggestions/suggestion_type.h"
+#include "components/autofill/core/common/autofill_features.h"
+#include "components/autofill/core/common/form_field_data.h"
+#include "components/compose/core/browser/compose_features.h"
+#include "components/feature_engagement/public/feature_constants.h"
+#include "components/feature_engagement/public/tracker.h"
+#include "components/password_manager/content/browser/content_password_manager_driver.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/render_widget_host_view.h"
+#include "content/public/browser/web_contents.h"
+#include "third_party/abseil-cpp/absl/functional/overload.h"
+
+#if !BUILDFLAG(IS_ANDROID)
+// UserEducationService is not implemented on Android.
+#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
+#include "chrome/browser/user_education/user_education_service.h"
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+namespace autofill {
+
+SuggestionSection GetSuggestionSection(SuggestionType type) {
+  switch (type) {
+    // Structural items.
+    case SuggestionType::kSeparator:
+    case SuggestionType::kTitle:
+      return SuggestionSection::kStructure;
+
+    // Footer items.
+    case SuggestionType::kAllLoyaltyCardsEntry:
+    case SuggestionType::kAllSavedPasswordsEntry:
+    case SuggestionType::kAtMemoryAiDisclosure:
+    case SuggestionType::kAutocompleteAtMemoryButton:
+    case SuggestionType::kBnplFootnote:
+    case SuggestionType::kFreeformFooter:
+    case SuggestionType::kManageAddress:
+    case SuggestionType::kManageAutofillAi:
+    case SuggestionType::kManageAutofillAiIdentityDocs:
+    case SuggestionType::kManageAutofillAiShopping:
+    case SuggestionType::kManageAutofillAiTravel:
+    case SuggestionType::kManageCreditCard:
+    case SuggestionType::kManageEnhancedAutofill:
+    case SuggestionType::kManageIban:
+    case SuggestionType::kManageLoyaltyCard:
+    case SuggestionType::kPendingStateSignin:
+    case SuggestionType::kRemoveAutofillAi:
+    case SuggestionType::kScanCreditCard:
+    case SuggestionType::kSeePromoCodeDetails:
+    case SuggestionType::kUndo:
+    case SuggestionType::kViewPasswordDetails:
+      return SuggestionSection::kFooter;
+
+    // Body items.
+    case SuggestionType::kAccountStoragePasswordEntry:
+    case SuggestionType::kAddressEntry:
+    case SuggestionType::kAddressEntryOnTyping:
+    case SuggestionType::kAddressFieldByFieldFilling:
+    case SuggestionType::kAtMemoryGenericError:
+    case SuggestionType::kAtMemoryFetching:
+    case SuggestionType::kAtMemoryInactivityNudge:
+    case SuggestionType::kAtMemoryNoConnection:
+    case SuggestionType::kAtMemoryOpenGemini:
+    case SuggestionType::kAtMemorySearchAffordance:
+    case SuggestionType::kAtMemorySearchResult:
+    case SuggestionType::kAtMemorySourceAttribution:
+    case SuggestionType::kAutocompleteEntry:
+    case SuggestionType::kAutofillAiOtherOrders:
+    case SuggestionType::kAutofillAiOtherShipments:
+    case SuggestionType::kAutofillAiPrivateInferenceNotice:
+    case SuggestionType::kAutofillAiSourceAttribution:
+    case SuggestionType::kBackupPasswordEntry:
+    case SuggestionType::kBnplEntry:
+    case SuggestionType::kComposeDisable:
+    case SuggestionType::kComposeGoToSettings:
+    case SuggestionType::kComposeNeverShowOnThisSiteAgain:
+    case SuggestionType::kComposeProactiveNudge:
+    case SuggestionType::kComposeResumeNudge:
+    case SuggestionType::kComposeSavedStateNotification:
+    case SuggestionType::kCreditCardEntry:
+    case SuggestionType::kDatalistEntry:
+    case SuggestionType::kDevtoolsTestAddressByCountry:
+    case SuggestionType::kDevtoolsTestAddressEntry:
+    case SuggestionType::kDevtoolsTestAddresses:
+    case SuggestionType::kFetchingAmbientData:
+    case SuggestionType::kFillAutofillAi:
+    case SuggestionType::kFillPassword:
+    case SuggestionType::kGeneratePasswordEntry:
+    case SuggestionType::kIbanEntry:
+    case SuggestionType::kIdentityCredential:
+    case SuggestionType::kInsecureContextPaymentDisabledMessage:
+    case SuggestionType::kLoadingThrobber:
+    case SuggestionType::kLoyaltyCardEntry:
+    case SuggestionType::kMaximizeCreditCardBenefitsEntry:
+    case SuggestionType::kMerchantPromoCodeEntry:
+    case SuggestionType::kOneTimePasswordEntry:
+    case SuggestionType::kPasswordEntry:
+    case SuggestionType::kPasswordFieldByFieldFilling:
+    case SuggestionType::kPersonalContextNotice:
+    case SuggestionType::kSaveAndFillCreditCardEntry:
+    case SuggestionType::kTroubleSigningInEntry:
+    case SuggestionType::kVirtualCreditCardEntry:
+    case SuggestionType::kWebauthnCredential:
+    case SuggestionType::kWebauthnPasskeyQrCode:
+      return SuggestionSection::kBody;
+
+    case SuggestionType::kWebauthnSignInWithAnotherDevice:
+#if BUILDFLAG(IS_ANDROID)
+      return SuggestionSection::kBody;
+#else
+      return SuggestionSection::kFooter;
+#endif
+  }
+}
+
+bool IsFooterSuggestionType(SuggestionType type) {
+  return GetSuggestionSection(type) == SuggestionSection::kFooter;
+}
+
+bool IsFooterItem(const std::vector<Suggestion>& suggestions,
+                  size_t line_number) {
+  if (line_number >= suggestions.size()) {
+    return false;
+  }
+
+  // Structural elements (separators, titles) belong to the footer section
+  // iff the next item exists and belongs to the footer section.
+  SuggestionType type = suggestions[line_number].type;
+  return GetSuggestionSection(type) == SuggestionSection::kStructure
+             ? IsFooterItem(suggestions, line_number + 1)
+             : IsFooterSuggestionType(type);
+}
+
+bool IsStandaloneSuggestionType(SuggestionType type) {
+  switch (GetSuggestionSection(type)) {
+    case SuggestionSection::kBody:
+      return true;
+    case SuggestionSection::kFooter:
+      return type == SuggestionType::kScanCreditCard ||
+             type == SuggestionType::kWebauthnSignInWithAnotherDevice;
+    case SuggestionSection::kStructure:
+      return false;
+  }
+  NOTREACHED();
+}
+
+bool ShouldApplyDeactivatedStyle(const Suggestion& suggestion) {
+  if (suggestion.IsSelectable()) {
+    return false;
+  }
+
+  // Unselectable suggestions use deactivated (greyed out) styling by default,
+  // except for suggestion types like source attribution, which are
+  // informational.
+  switch (suggestion.type) {
+    case SuggestionType::kAtMemoryGenericError:
+    case SuggestionType::kAtMemoryNoConnection:
+    case SuggestionType::kAtMemorySourceAttribution:
+    case SuggestionType::kAutofillAiSourceAttribution:
+      return false;
+    case SuggestionType::kAtMemorySearchResult:
+      // No data suggestions do not have an `AtMemoryPayload`.
+      // Do not gray those out.
+      return std::holds_alternative<Suggestion::AtMemoryPayload>(
+          suggestion.payload);
+
+    case SuggestionType::kAccountStoragePasswordEntry:
+    case SuggestionType::kAddressEntry:
+    case SuggestionType::kAddressEntryOnTyping:
+    case SuggestionType::kAddressFieldByFieldFilling:
+    case SuggestionType::kAllLoyaltyCardsEntry:
+    case SuggestionType::kAllSavedPasswordsEntry:
+    case SuggestionType::kAtMemoryAiDisclosure:
+    case SuggestionType::kAtMemoryFetching:
+    case SuggestionType::kAtMemoryInactivityNudge:
+    case SuggestionType::kAtMemoryOpenGemini:
+    case SuggestionType::kAtMemorySearchAffordance:
+    case SuggestionType::kAutocompleteAtMemoryButton:
+    case SuggestionType::kAutocompleteEntry:
+    case SuggestionType::kAutofillAiOtherOrders:
+    case SuggestionType::kAutofillAiOtherShipments:
+    case SuggestionType::kAutofillAiPrivateInferenceNotice:
+    case SuggestionType::kBackupPasswordEntry:
+    case SuggestionType::kBnplEntry:
+    case SuggestionType::kBnplFootnote:
+    case SuggestionType::kComposeDisable:
+    case SuggestionType::kComposeGoToSettings:
+    case SuggestionType::kComposeNeverShowOnThisSiteAgain:
+    case SuggestionType::kComposeProactiveNudge:
+    case SuggestionType::kComposeResumeNudge:
+    case SuggestionType::kComposeSavedStateNotification:
+    case SuggestionType::kCreditCardEntry:
+    case SuggestionType::kDatalistEntry:
+    case SuggestionType::kDevtoolsTestAddressByCountry:
+    case SuggestionType::kDevtoolsTestAddressEntry:
+    case SuggestionType::kDevtoolsTestAddresses:
+    case SuggestionType::kFetchingAmbientData:
+    case SuggestionType::kFillAutofillAi:
+    case SuggestionType::kFillPassword:
+    case SuggestionType::kFreeformFooter:
+    case SuggestionType::kGeneratePasswordEntry:
+    case SuggestionType::kIbanEntry:
+    case SuggestionType::kIdentityCredential:
+    case SuggestionType::kInsecureContextPaymentDisabledMessage:
+    case SuggestionType::kLoadingThrobber:
+    case SuggestionType::kLoyaltyCardEntry:
+    case SuggestionType::kManageAddress:
+    case SuggestionType::kManageAutofillAi:
+    case SuggestionType::kManageAutofillAiIdentityDocs:
+    case SuggestionType::kManageAutofillAiShopping:
+    case SuggestionType::kManageAutofillAiTravel:
+    case SuggestionType::kManageCreditCard:
+    case SuggestionType::kManageEnhancedAutofill:
+    case SuggestionType::kManageIban:
+    case SuggestionType::kManageLoyaltyCard:
+    case SuggestionType::kMaximizeCreditCardBenefitsEntry:
+    case SuggestionType::kMerchantPromoCodeEntry:
+    case SuggestionType::kOneTimePasswordEntry:
+    case SuggestionType::kPasswordEntry:
+    case SuggestionType::kPasswordFieldByFieldFilling:
+    case SuggestionType::kPendingStateSignin:
+    case SuggestionType::kPersonalContextNotice:
+    case SuggestionType::kRemoveAutofillAi:
+    case SuggestionType::kSaveAndFillCreditCardEntry:
+    case SuggestionType::kScanCreditCard:
+    case SuggestionType::kSeePromoCodeDetails:
+    case SuggestionType::kSeparator:
+    case SuggestionType::kTitle:
+    case SuggestionType::kTroubleSigningInEntry:
+    case SuggestionType::kUndo:
+    case SuggestionType::kViewPasswordDetails:
+    case SuggestionType::kVirtualCreditCardEntry:
+    case SuggestionType::kWebauthnCredential:
+    case SuggestionType::kWebauthnPasskeyQrCode:
+    case SuggestionType::kWebauthnSignInWithAnotherDevice:
+      return true;
+  }
+}
+
+bool ShouldResetIdleBarrier(AutofillSuggestionTriggerSource trigger_source) {
+  switch (trigger_source) {
+    case AutofillSuggestionTriggerSource::kAtMemoryContextMenu:
+    case AutofillSuggestionTriggerSource::kAtMemoryDoubleCtrl:
+    case AutofillSuggestionTriggerSource::kAtMemoryInactivityNudge:
+    case AutofillSuggestionTriggerSource::kAtMemoryKeyboardShortcut:
+    case AutofillSuggestionTriggerSource::kAtMemoryTriggerString:
+      return false;
+    case AutofillSuggestionTriggerSource::kUnspecified:
+    case AutofillSuggestionTriggerSource::kFormControlElementClicked:
+    case AutofillSuggestionTriggerSource::kTextareaFocusedWithoutClick:
+    case AutofillSuggestionTriggerSource::kContentEditableClicked:
+    case AutofillSuggestionTriggerSource::kTextFieldValueChanged:
+    case AutofillSuggestionTriggerSource::kTextFieldDidReceiveKeyDown:
+    case AutofillSuggestionTriggerSource::kOpenTextDataListChooser:
+    case AutofillSuggestionTriggerSource::kPasswordManager:
+    case AutofillSuggestionTriggerSource::kiOS:
+    case AutofillSuggestionTriggerSource::kManualFallbackPasswords:
+    case AutofillSuggestionTriggerSource::kComposeDialogLostFocus:
+    case AutofillSuggestionTriggerSource::kComposeDelayedProactiveNudge:
+    case AutofillSuggestionTriggerSource::kPasswordManagerProcessedFocusedField:
+    case AutofillSuggestionTriggerSource::kProactivePasswordRecovery:
+    case AutofillSuggestionTriggerSource::kGlic:
+      return true;
+  }
+}
+
+content::RenderFrameHost* GetRenderFrameHost_DoNotUse(
+    AutofillSuggestionDelegate& delegate) {
+  return std::visit(
+      absl::Overload{
+          [](AutofillDriver* driver) {
+            return static_cast<ContentAutofillDriver*>(driver)
+                ->render_frame_host();
+          },
+          [](password_manager::PasswordManagerDriver* driver) {
+            return static_cast<password_manager::ContentPasswordManagerDriver*>(
+                       driver)
+                ->render_frame_host();
+          }},
+      delegate.GetDriver_DoNotUse());
+}
+
+bool IsAncestorOf(content::RenderFrameHost* ancestor,
+                  content::RenderFrameHost* descendant) {
+  for (auto* rfh = descendant; rfh; rfh = rfh->GetParent()) {
+    if (rfh == ancestor) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsPointerLocked(content::WebContents* web_contents) {
+  content::RenderFrameHost* rfh;
+  content::RenderWidgetHostView* rwhv;
+  return web_contents && (rfh = web_contents->GetFocusedFrame()) &&
+         (rwhv = rfh->GetView()) && rwhv->IsPointerLocked();
+}
+
+void NotifyUserEducationAboutAcceptedSuggestion(content::WebContents* contents,
+                                                const Suggestion& suggestion) {
+#if BUILDFLAG(IS_ANDROID)
+  if (suggestion.iph_metadata.feature) {
+    using IphEventPair = std::pair<const base::Feature*, const char*>;
+    static const auto kIphFeatures = std::to_array<IphEventPair>(
+        {IphEventPair{&feature_engagement::kIPHAutofillCreditCardBenefitFeature,
+                      "autofill_credit_card_benefit_iph_accepted"},
+         IphEventPair{&feature_engagement::
+                          kIPHAutofillExternalAccountProfileSuggestionFeature,
+                      "autofill_external_account_profile_suggestion_accepted"},
+         IphEventPair{
+             &feature_engagement::kIPHAutofillVirtualCardSuggestionFeature,
+             "autofill_virtual_card_suggestion_accepted"},
+         IphEventPair{&feature_engagement::
+                          kIPHAutofillCardInfoRetrievalSuggestionFeature,
+                      "autofill_card_info_retrieval_suggestion_accepted"},
+         IphEventPair{&feature_engagement::
+                          kIPHAutofillDisabledVirtualCardSuggestionFeature,
+                      "autofill_disabled_virtual_card_suggestion_accepted"},
+         IphEventPair{
+             &feature_engagement::kIPHAutofillVirtualCardCVCSuggestionFeature,
+             "autofill_virtual_card_cvc_suggestion_accepted"}});
+    if (auto it =
+            std::ranges::find(kIphFeatures, suggestion.iph_metadata.feature,
+                              &IphEventPair::first);
+        it != kIphFeatures.end()) {
+      feature_engagement::TrackerFactory::GetForBrowserContext(
+          contents->GetBrowserContext())
+          ->NotifyEvent(it->second);
+    }
+  }
+#else
+  if (suggestion.iph_metadata.feature) {
+    if (auto* interface =
+            BrowserUserEducationInterface::MaybeGetForWebContentsInTab(
+                contents)) {
+      interface->NotifyFeaturePromoFeatureUsed(
+          *suggestion.iph_metadata.feature,
+          FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
+    }
+  }
+  if (suggestion.feature_for_new_badge &&
+      suggestion.feature_for_new_badge != suggestion.iph_metadata.feature) {
+    UserEducationService::MaybeNotifyNewBadgeFeatureUsed(
+        contents->GetBrowserContext(), *suggestion.feature_for_new_badge);
+  }
+#endif
+}
+
+std::vector<Suggestion> UpdateSuggestionsFromDataList(
+    base::span<const SelectOption> options,
+    std::vector<Suggestion> suggestions) {
+  // Remove all the old data list values, which should always be at the top of
+  // the list if they are present.
+  std::erase_if(suggestions, [](const Suggestion& suggestion) {
+    return suggestion.type == SuggestionType::kDatalistEntry;
+  });
+
+  // If there are no new data list values, exit (clearing the separator if there
+  // is one).
+  if (options.empty()) {
+    if (!suggestions.empty() &&
+        suggestions[0].type == SuggestionType::kSeparator) {
+      suggestions.erase(suggestions.begin());
+    }
+    return suggestions;
+  }
+  AutofillMetrics::LogDataListSuggestionsUpdated();
+  // Add a separator if there are any other values.
+  if (!suggestions.empty() &&
+      suggestions[0].type != SuggestionType::kSeparator) {
+    suggestions.insert(suggestions.begin(),
+                       Suggestion(SuggestionType::kSeparator));
+  }
+
+  // Prepend the parameters to the suggestions we already have.
+  suggestions.insert(suggestions.begin(), options.size(),
+                     Suggestion(SuggestionType::kDatalistEntry));
+  for (size_t i = 0; i < options.size(); i++) {
+    suggestions[i].main_text =
+        Suggestion::Text(options[i].value, Suggestion::Text::IsPrimary(true));
+    suggestions[i].labels = {{Suggestion::Text(options[i].text)}};
+  }
+  return suggestions;
+}
+
+}  // namespace autofill

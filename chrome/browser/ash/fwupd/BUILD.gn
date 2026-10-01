@@ -1,0 +1,24 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_chromeos)
+
+static_library("fwupd") {
+  sources = [
+    "fwupd_download_client_impl.cc",
+    "fwupd_download_client_impl.h",
+  ]
+
+  public_deps = [
+    "//ash/public/cpp",
+    "//base",
+  ]
+
+  deps = [
+    "//chrome/browser/profiles:profile",
+    "//chromeos/ash/components/browser_context_helper",
+    "//components/user_manager",
+    "//services/network/public/cpp",
+  ]
+}

@@ -1,0 +1,12 @@
+# crbug.com/343800065
+-SigninManagerAndroidTest.DeleteBookmarksWhenWipingAllData
+-SigninManagerAndroidTest.DoNotWipePasswordsIfLocalUpmOn
+-SigninManagerAndroidWithoutLocalUpmTest.WipePasswordsIfLocalUpmOff
+
+# crbug.com/343782003
+-ChromeBrowsingDataRemoverDelegateOriginTrialsTest.*
+-ChromeBrowsingDataRemoverDelegateTest.AllTypesAreGettingDeleted
+-ChromeBrowsingDataRemoverDelegateTest.RemovePersistentIsolatedOrigins
+
+# TODO(crbug.com/531590779): Flaky path pollution on android-desktop.
+-DownloadTargetDeterminerTest.NotifyExtensionsSuggestedPathWithPrompt

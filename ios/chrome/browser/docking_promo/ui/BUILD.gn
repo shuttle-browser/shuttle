@@ -1,0 +1,26 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("ui") {
+  sources = [
+    "docking_promo_metrics.h",
+    "docking_promo_metrics.mm",
+    "docking_promo_view_controller.h",
+    "docking_promo_view_controller.mm",
+  ]
+  deps = [
+    "//base",
+    "//ios/chrome/app/strings",
+    "//ios/chrome/browser/docking_promo/model:utils",
+    "//ios/chrome/browser/shared/public/features",
+    "//ios/chrome/browser/shared/ui/animated_promo",
+    "//ios/chrome/browser/shared/ui/animated_promo:utils",
+    "//ios/chrome/common/ui/colors",
+    "//ui/base",
+  ]
+  frameworks = [
+    "UIKit.framework",
+    "Foundation.framework",
+  ]
+}

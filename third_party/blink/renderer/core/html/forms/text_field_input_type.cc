@@ -1,0 +1,967 @@
+/*
+ * Copyright (C) 2010 Google Inc. All rights reserved.
+ * Copyright (C) 2011 Apple Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following disclaimer
+ * in the documentation and/or other materials provided with the
+ * distribution.
+ *     * Neither the name of Google Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include "third_party/blink/renderer/core/html/forms/text_field_input_type.h"
+
+#include "base/feature_list.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/renderer/core/accessibility/scoped_blink_ax_event_intent.h"
+#include "third_party/blink/renderer/core/css_value_keywords.h"
+#include "third_party/blink/renderer/core/dom/events/event_dispatch_forbidden_scope.h"
+#include "third_party/blink/renderer/core/dom/events/scoped_event_queue.h"
+#include "third_party/blink/renderer/core/dom/focus_params.h"
+#include "third_party/blink/renderer/core/dom/shadow_root.h"
+#include "third_party/blink/renderer/core/editing/frame_selection.h"
+#include "third_party/blink/renderer/core/events/before_text_inserted_event.h"
+#include "third_party/blink/renderer/core/events/drag_event.h"
+#include "third_party/blink/renderer/core/events/keyboard_event.h"
+#include "third_party/blink/renderer/core/events/mouse_event.h"
+#include "third_party/blink/renderer/core/events/text_event.h"
+#include "third_party/blink/renderer/core/frame/event_handler_registry.h"
+#include "third_party/blink/renderer/core/frame/local_frame.h"
+#include "third_party/blink/renderer/core/html/forms/html_data_list_element.h"
+#include "third_party/blink/renderer/core/html/forms/html_input_element.h"
+#include "third_party/blink/renderer/core/html/forms/html_select_element.h"
+#include "third_party/blink/renderer/core/html/forms/text_control_inner_elements.h"
+#include "third_party/blink/renderer/core/html/shadow/shadow_element_names.h"
+#include "third_party/blink/renderer/core/html_names.h"
+#include "third_party/blink/renderer/core/keywords.h"
+#include "third_party/blink/renderer/core/layout/forms/layout_text_control_single_line.h"
+#include "third_party/blink/renderer/core/page/chrome_client.h"
+#include "third_party/blink/renderer/core/page/page.h"
+#include "third_party/blink/renderer/core/paint/paint_layer.h"
+#include "third_party/blink/renderer/core/paint/paint_layer_scrollable_area.h"
+#include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+
+namespace blink {
+
+class DataListIndicatorElement final : public HTMLDivElement {
+ private:
+  inline HTMLInputElement* HostInput() const {
+    return To<HTMLInputElement>(OwnerShadowHost());
+  }
+
+  void DefaultEventHandler(Event& event) override {
+    DCHECK(GetDocument().IsActive());
+    if (event.type() != event_type_names::kClick)
+      return;
+    HTMLInputElement* host = HostInput();
+    if (host && !host->IsDisabledOrReadOnly() &&
+        !host->IsBaseAppearanceCombobox()) {
+      GetDocument().GetPage()->GetChromeClient().OpenTextDataListChooser(*host);
+      event.SetDefaultHandled();
+    }
+  }
+
+  bool WillRespondToMouseClickEvents() override {
+    return HostInput() && !HostInput()->IsDisabledOrReadOnly() &&
+           GetDocument().IsActive();
+  }
+
+ public:
+  explicit DataListIndicatorElement(Document& document)
+      : HTMLDivElement(document) {}
+
+  // This function should be called after appending |this| to a UA ShadowRoot.
+  void InitializeInShadowTree() {
+    DCHECK(ContainingShadowRoot());
+    DCHECK(ContainingShadowRoot()->IsUserAgent());
+    SetShadowPseudoId(shadow_element_names::kPseudoCalendarPickerIndicator);
+    setAttribute(html_names::kIdAttr, shadow_element_names::kIdPickerIndicator);
+    if (!RuntimeEnabledFeatures::CustomizableComboboxEnabled()) {
+      // When CustomizableCombobox is enabled, this property is set in the UA
+      // stylesheet. It must be in the UA stylesheet because it uses
+      // -internal-auto-base(), which can only be parsed from the UA
+      // stylesheet.
+      SetInlineStyleProperty(CSSPropertyID::kDisplay, CSSValueID::kListItem);
+    }
+    SetInlineStyleProperty(CSSPropertyID::kListStyle, "disclosure-open inside");
+    SetInlineStyleProperty(CSSPropertyID::kCounterIncrement, "list-item 0");
+    SetInlineStyleProperty(CSSPropertyID::kBlockSize, 1.0,
+                           CSSPrimitiveValue::UnitType::kEms);
+    // Do not expose list-item role.
+    setAttribute(html_names::kAriaHiddenAttr, keywords::kTrue);
+  }
+};
+
+TextFieldInputType::TextFieldInputType(Type type, HTMLInputElement& element)
+    : InputType(type, element), InputTypeView(element) {}
+
+TextFieldInputType::~TextFieldInputType() = default;
+
+void TextFieldInputType::Trace(Visitor* visitor) const {
+  InputTypeView::Trace(visitor);
+  InputType::Trace(visitor);
+}
+
+InputTypeView* TextFieldInputType::CreateView() {
+  return this;
+}
+
+InputType::ValueMode TextFieldInputType::GetValueMode() const {
+  return ValueMode::kValue;
+}
+
+SpinButtonElement* TextFieldInputType::GetSpinButtonElement() const {
+  if (!HasCreatedShadowSubtree()) {
+    return nullptr;
+  }
+  auto* element = GetElement().UserAgentShadowRoot()->getElementById(
+      shadow_element_names::kIdSpinButton);
+  CHECK(!element || IsA<SpinButtonElement>(element));
+  return To<SpinButtonElement>(element);
+}
+
+bool TextFieldInputType::MayTriggerVirtualKeyboard() const {
+  return true;
+}
+
+bool TextFieldInputType::ValueMissing(const String& value) const {
+  // For text-mode input elements, the value is missing only if it is mutable.
+  // https://html.spec.whatwg.org/multipage/input.html#the-required-attribute
+  return GetElement().IsRequired() && value.empty() &&
+         !GetElement().IsDisabledOrReadOnly();
+}
+
+bool TextFieldInputType::CanSetSuggestedValue() {
+  return true;
+}
+
+void TextFieldInputType::SetValue(const String& sanitized_value,
+                                  bool value_changed,
+                                  TextFieldEventBehavior event_behavior,
+                                  TextControlSetValueSelection selection) {
+  // We don't use InputType::setValue.  TextFieldInputType dispatches events
+  // different way from InputType::setValue.
+  const String old_value = GetElement().Value();
+  if (event_behavior == TextFieldEventBehavior::kDispatchNoEvent)
+    GetElement().SetNonAttributeValue(sanitized_value);
+  else
+    GetElement().SetNonAttributeValueByUserEdit(sanitized_value);
+
+  // Visible value needs update if it differs from sanitized value,
+  // if it was set with setValue().
+  // event_behavior == kDispatchNoEvent usually means this call is
+  // not a user edit.
+  bool need_editor_update =
+      value_changed ||
+      (event_behavior == TextFieldEventBehavior::kDispatchNoEvent &&
+       sanitized_value != GetElement().InnerEditorValue());
+
+  if (need_editor_update)
+    GetElement().UpdateView();
+  // The following early-return can't be moved to the beginning of this
+  // function. We need to update non-attribute value even if the value is not
+  // changed.  For example, <input type=number> has a badInput string, that is
+  // to say, IDL value=="", and new value is "", which should clear the badInput
+  // string and update validity.
+  if (!value_changed)
+    return;
+
+  // Handles programmatic value changes by updating OpaqueRanges as a
+  // full-value replace. If the skip flag is set (e.g. by setRangeText), this
+  // automatic update is skipped since the caller issues its own targeted range
+  // update.
+  if (value_changed &&
+      RuntimeEnabledFeatures::OpaqueRangeEnabled(
+          GetElement().GetExecutionContext()) &&
+      !GetElement().ShouldSkipNextSetValueAutoDiff()) {
+    GetElement().CommitProgrammaticOpaqueRangeEdit(
+        old_value, /*old_sel_start=*/0u, /*old_sel_end=*/old_value.length());
+  }
+
+  if (selection == TextControlSetValueSelection::kSetSelectionToEnd) {
+    unsigned max = VisibleValue().length();
+    GetElement().SetSelectionRange(max, max);
+  }
+
+  switch (event_behavior) {
+    case TextFieldEventBehavior::kDispatchChangeEvent:
+      // If the user is still editing this field, dispatch an input event rather
+      // than a change event.  The change event will be dispatched when editing
+      // finishes.
+      if (GetElement().IsFocused())
+        GetElement().DispatchInputEvent();
+      else
+        GetElement().DispatchFormControlChangeEvent();
+      break;
+
+    case TextFieldEventBehavior::kDispatchInputEvent:
+      GetElement().DispatchInputEvent();
+      break;
+
+    case TextFieldEventBehavior::kDispatchInputAndChangeEvent:
+      GetElement().DispatchInputEvent();
+      GetElement().DispatchFormControlChangeEvent();
+      break;
+
+    case TextFieldEventBehavior::kDispatchNoEvent:
+      break;
+  }
+
+  // We have to call FilterOptions here in order to catch when input.value is
+  // set from script, and we also have to call FilterOptions in ForwardEvent in
+  // order to catch when the user actually types into the input. This method is
+  // not called when the user types despite the calls to DispatchInputEvent.
+  FilterOptions();
+}
+
+void TextFieldInputType::HandleKeydownEvent(KeyboardEvent& event) {
+  if (!GetElement().IsFocused())
+    return;
+  if (GetElement().IsBaseAppearanceCombobox()) {
+    if (HandleKeydownForCustomizableCombobox(event)) {
+      event.SetDefaultHandled();
+    }
+    // If this is a base appearance combobox, then we should never call into
+    // ChromeClient to do stuff with the "native" datalist popup, so return
+    // early here.
+    return;
+  }
+  if (HandleKeydownForFilterableSelect(event)) {
+    event.SetDefaultHandled();
+    return;
+  }
+  if (ChromeClient* chrome_client = GetChromeClient()) {
+    if (chrome_client->HandleKeyboardEventOnEditableElement(GetElement(),
+                                                            event)) {
+      event.SetDefaultHandled();
+      return;
+    }
+  }
+}
+
+bool TextFieldInputType::HandleKeydownForCustomizableCombobox(
+    KeyboardEvent& event) {
+  CHECK(RuntimeEnabledFeatures::CustomizableComboboxEnabled());
+  auto* datalist = GetElement().DataList();
+  CHECK(datalist);
+  const AtomicString key(event.key());
+  // These modifiers are copied from HTMLOptionElement::DefaultEventHandler.
+  const int tab_ignore_modifiers = WebInputEvent::kControlKey |
+                                   WebInputEvent::kAltKey |
+                                   WebInputEvent::kMetaKey;
+  const int ignore_modifiers = WebInputEvent::kShiftKey | tab_ignore_modifiers;
+
+  if (!(event.GetModifiers() & ignore_modifiers)) {
+    if (key == keywords::kCapitalEnter && datalist->popoverOpen()) {
+      CHECK(datalist->ActiveOption());
+      datalist->ActiveOption()->ChooseOptionForCombobox(GetElement(),
+                                                        *datalist);
+      return true;
+    } else if (key == keywords::kArrowUp) {
+      // TODO(crbug.com/485286877): Consider looking at other arrow keys for
+      // other writing modes.
+      if (datalist->popoverOpen()) {
+        datalist->MoveActiveOption(HTMLDataListElement::Direction::kBackwards);
+      } else {
+        datalist->ShowPopoverInternal(&GetElement(),
+                                      /*exception_state=*/nullptr);
+      }
+      return true;
+    } else if (key == keywords::kArrowDown) {
+      if (datalist->popoverOpen()) {
+        datalist->MoveActiveOption(HTMLDataListElement::Direction::kForwards);
+      } else {
+        datalist->ShowPopoverInternal(&GetElement(),
+                                      /*exception_state=*/nullptr);
+      }
+      return true;
+    }
+    // TODO(crbug.com/453705243): Handle PageUp and PageDown like
+    // HTMLOptionElement::DefaultEventHandler does.
+  }
+  return false;
+}
+
+bool TextFieldInputType::HandleKeydownForFilterableSelect(
+    KeyboardEvent& event) {
+  HTMLSelectElement* select = GetElement().FilterTarget();
+  if (!select) {
+    return false;
+  }
+
+  // These modifiers are copied from HTMLOptionElement::DefaultEventHandler.
+  const int tab_ignore_modifiers = WebInputEvent::kControlKey |
+                                   WebInputEvent::kAltKey |
+                                   WebInputEvent::kMetaKey;
+  const int ignore_modifiers = WebInputEvent::kShiftKey | tab_ignore_modifiers;
+  const AtomicString key(event.key());
+  if (!(event.GetModifiers() & ignore_modifiers)) {
+    if (key == keywords::kCapitalEnter) {
+      select->ToggleActiveOption(event);
+    } else if (key == keywords::kArrowUp) {
+      select->MoveActiveOptionBackwards();
+    } else if (key == keywords::kArrowDown) {
+      select->MoveActiveOptionForwards();
+    } else {
+      return false;
+    }
+    // TODO(crbug.com/453705243): Handle PageUp and PageDown like
+    // HTMLOptionElement::DefaultEventHandler does.
+    return true;
+  }
+  return false;
+}
+
+void TextFieldInputType::HandleKeydownEventForSpinButton(KeyboardEvent& event) {
+  if (GetElement().IsDisabledOrReadOnly())
+    return;
+  const AtomicString key(event.key());
+  const PhysicalToLogical<const AtomicString*> key_mapper(
+      GetElement().GetComputedStyle()
+          ? GetElement().GetComputedStyle()->GetWritingDirection()
+          : WritingDirectionMode(WritingMode::kHorizontalTb,
+                                 TextDirection::kLtr),
+      &keywords::kArrowUp, &keywords::kArrowRight, &keywords::kArrowDown,
+      &keywords::kArrowLeft);
+  const AtomicString* key_up = key_mapper.LineOver();
+  const AtomicString* key_down = key_mapper.LineUnder();
+
+  if (key == *key_up) {
+    SpinButtonStepUp();
+  } else if (key == *key_down && !event.altKey()) {
+    SpinButtonStepDown();
+  } else {
+    return;
+  }
+  GetElement().DispatchFormControlChangeEvent();
+  event.SetDefaultHandled();
+}
+
+void TextFieldInputType::ForwardEvent(Event& event) {
+  if (SpinButtonElement* spin_button = GetSpinButtonElement()) {
+    spin_button->ForwardEvent(event);
+    if (event.DefaultHandled())
+      return;
+  }
+
+  if (event.type() == event_type_names::kInput) {
+    FilterOptions();
+  }
+
+  // Style and layout may be dirty at this point. E.g. if an event handler for
+  // the input element has modified its type attribute. If so, the LayoutObject
+  // and the input type is out of sync. Avoid accessing the LayoutObject if we
+  // have scheduled a forced re-attach (GetForceReattachLayoutTree()) for the
+  // input element.
+  if (GetElement().GetLayoutObject() &&
+      !GetElement().GetForceReattachLayoutTree() &&
+      (IsA<MouseEvent>(event) || IsA<DragEvent>(event) ||
+       event.HasInterface(event_interface_names::kWheelEvent) ||
+       event.type() == event_type_names::kBlur ||
+       event.type() == event_type_names::kFocus)) {
+    if (event.type() == event_type_names::kBlur) {
+      if (LayoutBox* inner_editor_layout_object =
+              GetElement().InnerEditorElement()->GetLayoutBox()) {
+        // FIXME: This class has no need to know about PaintLayer!
+        if (PaintLayer* inner_layer = inner_editor_layout_object->Layer()) {
+          if (PaintLayerScrollableArea* inner_scrollable_area =
+                  inner_layer->GetScrollableArea()) {
+            inner_scrollable_area->SetScrollOffset(
+                ScrollOffset(0, 0), mojom::blink::ScrollType::kProgrammatic,
+                cc::ScrollSourceType::kAbsoluteScroll);
+          }
+        }
+      }
+    }
+
+    GetElement().ForwardEvent(event);
+  }
+}
+
+void TextFieldInputType::HandleBlurEvent() {
+  InputTypeView::HandleBlurEvent();
+  HTMLInputElement& input = GetElement();
+
+  input.EndEditing();
+  if (SpinButtonElement* spin_button = GetSpinButtonElement())
+    spin_button->ReleaseCapture();
+  UpdateWheelEventRegistration(/*is_detaching=*/false);
+
+  if (input.IsBaseAppearanceCombobox()) {
+    auto* datalist = input.DataList();
+    CHECK(datalist);
+    if (datalist->popoverOpen()) {
+      Element* new_focused_element = input.GetDocument().FocusedElement();
+      // Don't close the popover if focus moved to something inside of the
+      // popover, or if focus was reset (which happens when clicking in
+      // non-focusable elements inside the datalist). This makes sure that
+      // clicking on an option inside the datalist works correctly without
+      // closing the datalist before the click is finished.
+      if (new_focused_element &&
+          !FlatTreeTraversal::Contains(*datalist, *new_focused_element)) {
+        datalist->HidePopoverInternal(
+            &input, HidePopoverFocusBehavior::kNone,
+            HidePopoverTransitionBehavior::kFireEventsAndWaitForTransitions,
+            /*exception_state=*/nullptr);
+      }
+    }
+  }
+
+  if (HTMLSelectElement* select = input.FilterTarget()) {
+    select->StopFiltering();
+  }
+}
+
+bool TextFieldInputType::ShouldSubmitImplicitly(const Event& event) {
+  if (const TextEvent* text_event = DynamicTo<TextEvent>(event)) {
+    if (!text_event->IsPaste() && !text_event->IsDrop() &&
+        text_event->data() == "\n") {
+      return true;
+    }
+  }
+  return InputTypeView::ShouldSubmitImplicitly(event);
+}
+
+void TextFieldInputType::AdjustStyle(ComputedStyleBuilder& builder) {
+  // The flag is necessary in order that a text field <input> with non-'visible'
+  // overflow property doesn't change its baseline.
+  builder.SetShouldIgnoreOverflowPropertyForInlineBlockBaseline();
+}
+
+LayoutObject* TextFieldInputType::CreateLayoutObject(
+    const ComputedStyle&) const {
+  return MakeGarbageCollected<LayoutTextControlSingleLine>(&GetElement());
+}
+
+AppearanceValue TextFieldInputType::AutoAppearance() const {
+  return AppearanceValue::kTextField;
+}
+
+bool TextFieldInputType::IsInnerEditorValueEmpty() const {
+  if (!HasCreatedShadowSubtree()) {
+    return VisibleValue().empty();
+  }
+  return GetElement().InnerEditorValue().empty();
+}
+
+void TextFieldInputType::CreateShadowSubtree() {
+  DCHECK(IsShadowHost(GetElement()));
+  ShadowRoot* shadow_root = GetElement().UserAgentShadowRoot();
+  DCHECK(!shadow_root->HasChildren());
+
+  bool should_have_spin_button = GetElement().IsSteppable();
+  bool should_have_data_list_indicator = GetElement().HasValidDataListOptions();
+  bool creates_container = should_have_spin_button ||
+                           should_have_data_list_indicator || NeedsContainer();
+
+  HTMLElement* inner_editor = GetElement().CreateInnerEditorElement();
+  if (!creates_container) {
+    shadow_root->AppendChild(inner_editor);
+    return;
+  }
+
+  Document& document = GetElement().GetDocument();
+  auto* container = MakeGarbageCollected<HTMLDivElement>(document);
+  container->SetInlineStyleProperty(CSSPropertyID::kUnicodeBidi,
+                                    CSSValueID::kNormal);
+  container->SetIdAttribute(shadow_element_names::kIdTextFieldContainer);
+  container->SetShadowPseudoId(
+      shadow_element_names::kPseudoTextFieldDecorationContainer);
+  shadow_root->AppendChild(container);
+
+  auto* editing_view_port =
+      MakeGarbageCollected<EditingViewPortElement>(document);
+  editing_view_port->AppendChild(inner_editor);
+  container->AppendChild(editing_view_port);
+
+  if (should_have_data_list_indicator) {
+    auto* data_list = MakeGarbageCollected<DataListIndicatorElement>(document);
+    container->AppendChild(data_list);
+    data_list->InitializeInShadowTree();
+  }
+  // FIXME: Because of a special handling for a spin button in
+  // LayoutTextControlSingleLine, we need to put it to the last position. It's
+  // inconsistent with multiple-fields date/time types.
+  if (should_have_spin_button) {
+    container->AppendChild(
+        MakeGarbageCollected<SpinButtonElement, Document&,
+                             SpinButtonElement::SpinButtonOwner&>(document,
+                                                                  *this));
+  }
+
+  // See listAttributeTargetChanged too.
+}
+
+Element* TextFieldInputType::ContainerElement() const {
+  return GetElement().EnsureShadowSubtree()->getElementById(
+      shadow_element_names::kIdTextFieldContainer);
+}
+
+void TextFieldInputType::DestroyShadowSubtree() {
+  InputTypeView::DestroyShadowSubtree();
+  if (SpinButtonElement* spin_button = GetSpinButtonElement())
+    spin_button->RemoveSpinButtonOwner();
+  UpdateWheelEventRegistration(/*is_detaching=*/false);
+}
+
+void TextFieldInputType::ListAttributeTargetChanged() {
+  if (!HasCreatedShadowSubtree()) {
+    return;
+  }
+  if (ChromeClient* chrome_client = GetChromeClient())
+    chrome_client->TextFieldDataListChanged(GetElement());
+  Element* picker = GetElement().UserAgentShadowRoot()->getElementById(
+      shadow_element_names::kIdPickerIndicator);
+  bool did_have_picker_indicator = picker;
+  bool will_have_picker_indicator = GetElement().HasValidDataListOptions();
+  if (did_have_picker_indicator == will_have_picker_indicator)
+    return;
+  EventDispatchForbiddenScope::AllowUserAgentEvents allow_events;
+  if (will_have_picker_indicator) {
+    Document& document = GetElement().GetDocument();
+    if (Element* container = ContainerElement()) {
+      auto* data_list =
+          MakeGarbageCollected<DataListIndicatorElement>(document);
+      container->InsertBefore(data_list, GetSpinButtonElement());
+      data_list->InitializeInShadowTree();
+    } else {
+      // FIXME: The following code is similar to createShadowSubtree(),
+      // but they are different. We should simplify the code by making
+      // containerElement mandatory.
+      auto* rp_container = MakeGarbageCollected<HTMLDivElement>(document);
+      rp_container->SetIdAttribute(shadow_element_names::kIdTextFieldContainer);
+      rp_container->SetShadowPseudoId(
+          shadow_element_names::kPseudoTextFieldDecorationContainer);
+      Element* inner_editor = GetElement().InnerEditorElement();
+      inner_editor->parentNode()->ReplaceChild(rp_container, inner_editor);
+      auto* editing_view_port =
+          MakeGarbageCollected<EditingViewPortElement>(document);
+      editing_view_port->AppendChild(inner_editor);
+      rp_container->AppendChild(editing_view_port);
+      auto* data_list =
+          MakeGarbageCollected<DataListIndicatorElement>(document);
+      rp_container->AppendChild(data_list);
+      data_list->InitializeInShadowTree();
+      Element& input = GetElement();
+      if (input.GetDocument().FocusedElement() == input)
+        input.UpdateSelectionOnFocus(SelectionBehaviorOnFocus::kRestore);
+    }
+  } else {
+    picker->remove(ASSERT_NO_EXCEPTION);
+  }
+}
+
+void TextFieldInputType::ValueAttributeChanged() {
+  UpdateView();
+}
+
+void TextFieldInputType::DisabledOrReadonlyAttributeChanged(
+    DisabledChangedReason reason) {
+  if (SpinButtonElement* spin_button = GetSpinButtonElement()) {
+    bool avoid_dispatch =
+        RuntimeEnabledFeatures::
+            DisableFormControlChangeEventDuringMutationEnabled() &&
+        (GetElement().GetDocument().StatePreservingAtomicMoveInProgress() ||
+         reason == DisabledChangedReason::kFieldsetChildrenChanged);
+    SpinButtonElement::EventDispatch dispatch =
+        avoid_dispatch ? SpinButtonElement::kEventDispatchDisallowed
+                       : SpinButtonElement::kEventDispatchAllowed;
+    spin_button->ReleaseCapture(dispatch);
+  }
+  UpdateWheelEventRegistration(/*is_detaching=*/false);
+}
+
+void TextFieldInputType::DisabledAttributeChanged(
+    DisabledChangedReason reason) {
+  if (!HasCreatedShadowSubtree()) {
+    return;
+  }
+  DisabledOrReadonlyAttributeChanged(reason);
+}
+
+void TextFieldInputType::ReadonlyAttributeChanged() {
+  if (!HasCreatedShadowSubtree()) {
+    return;
+  }
+  DisabledOrReadonlyAttributeChanged(DisabledChangedReason::kAttributeChanged);
+}
+
+bool TextFieldInputType::SupportsReadOnly() const {
+  return true;
+}
+
+static bool IsASCIILineBreak(UChar c) {
+  return c == '\r' || c == '\n';
+}
+
+// Returns true if `c` may contain a line break. This is an inexact comparison.
+// This is used as the common case is the text does not contain a newline.
+static bool MayBeASCIILineBreak(UChar c) {
+  static_assert('\n' < '\r');
+  return c <= '\r';
+}
+
+static String LimitLength(const String& string, unsigned max_length) {
+  unsigned new_length = std::min(max_length, string.length());
+  if (new_length == string.length())
+    return string;
+  if (new_length > 0 && U16_IS_LEAD(string[new_length - 1]))
+    --new_length;
+  return string.substr(0, new_length);
+}
+
+String TextFieldInputType::SanitizeValue(const String& proposed_value) const {
+  // Typical case is the string doesn't contain a break and fits. The Find()
+  // is not exact (meaning it'll match many other characters), but is a good
+  // approximation for a fast path.
+  if (proposed_value.Find(MayBeASCIILineBreak) == kNotFound &&
+      proposed_value.length() < std::numeric_limits<int>::max()) {
+    return proposed_value;
+  }
+  return LimitLength(proposed_value.RemoveCharacters(IsASCIILineBreak),
+                     std::numeric_limits<int>::max());
+}
+
+void TextFieldInputType::HandleBeforeTextInsertedEvent(
+    BeforeTextInsertedEvent& event) {
+  // Make sure that the text to be inserted will not violate the maxLength.
+
+  // We use HTMLInputElement::innerEditorValue() instead of
+  // HTMLInputElement::value() because they can be mismatched by
+  // sanitizeValue() in HTMLInputElement::subtreeHasChanged() in some cases.
+  unsigned old_length = GetElement().InnerEditorValue().length();
+
+  // selectionLength represents the selection length of this text field to be
+  // removed by this insertion.
+  // If the text field has no focus, we don't need to take account of the
+  // selection length. The selection is the source of text drag-and-drop in
+  // that case, and nothing in the text field will be removed.
+  unsigned selection_length = 0;
+  if (GetElement().IsFocused()) {
+    // TODO(editing-dev): Use of UpdateStyleAndLayout
+    // needs to be audited.  See http://crbug.com/590369 for more details.
+    GetElement().GetDocument().UpdateStyleAndLayout(
+        DocumentUpdateReason::kEditing);
+
+    FrameSelection& selection =
+        GetElement().GetDocument().GetFrame()->Selection();
+    Element* editable_element =
+        selection.RootEditableElementOrDocumentElement();
+    // If the root editable element of the selection is not a descendant of the
+    // focused element, we don't need to take account of the selection length.
+    if (!RuntimeEnabledFeatures::DelegatesFocusTextControlInputFixEnabled() ||
+        (editable_element &&
+         editable_element->IsDescendantOrShadowDescendantOf(&GetElement()))) {
+      selection_length = selection.SelectedText().length();
+    }
+  }
+  DCHECK_GE(old_length, selection_length);
+
+  // Selected characters will be removed by the next text event.
+  unsigned base_length = old_length - selection_length;
+  unsigned max_length;
+  if (MaxLength() < 0)
+    max_length = std::numeric_limits<int>::max();
+  else
+    max_length = static_cast<unsigned>(MaxLength());
+  unsigned appendable_length =
+      max_length > base_length ? max_length - base_length : 0;
+
+  // Truncate the inserted text to avoid violating the maxLength and other
+  // constraints.
+  String event_text = event.GetText();
+  unsigned text_length = event_text.length();
+  while (text_length > 0 && IsASCIILineBreak(event_text[text_length - 1]))
+    text_length--;
+  event_text = event_text.substr(0, text_length);
+  event_text.Replace("\r\n", " ");
+  event_text.Replace('\r', ' ');
+  event_text.Replace('\n', ' ');
+
+  event.SetText(LimitLength(event_text, appendable_length));
+
+  if (ChromeClient* chrome_client = GetChromeClient()) {
+    if (selection_length == old_length && selection_length != 0 &&
+        !event_text.empty()) {
+      chrome_client->DidClearValueInTextField(GetElement());
+    }
+  }
+}
+
+bool TextFieldInputType::ShouldRespectListAttribute() {
+  return true;
+}
+
+HTMLElement* TextFieldInputType::UpdatePlaceholderText(
+    bool is_suggested_value) {
+  if (!HasCreatedShadowSubtree()) {
+    return nullptr;
+  }
+  if (!SupportsPlaceholder()) {
+    return nullptr;
+  }
+  HTMLElement* placeholder = GetElement().PlaceholderElement();
+  if (!is_suggested_value &&
+      !GetElement().FastHasAttribute(html_names::kPlaceholderAttr)) {
+    if (placeholder)
+      placeholder->remove(ASSERT_NO_EXCEPTION);
+    return nullptr;
+  }
+  if (!placeholder) {
+    GetElement().EnsureShadowSubtree();
+    auto* new_element =
+        MakeGarbageCollected<HTMLDivElement>(GetElement().GetDocument());
+    placeholder = new_element;
+    placeholder->SetShadowPseudoId(
+        shadow_element_names::kPseudoInputPlaceholder);
+    placeholder->SetInlineStyleProperty(CSSPropertyID::kDisplay,
+                                        GetElement().IsPlaceholderVisible()
+                                            ? CSSValueID::kBlock
+                                            : CSSValueID::kNone,
+                                        true);
+    placeholder->setAttribute(html_names::kIdAttr,
+                              shadow_element_names::kIdPlaceholder);
+    Element* container = ContainerElement();
+    Node* previous = container ? container : GetElement().InnerEditorElement();
+    previous->parentNode()->InsertBefore(placeholder, previous);
+    SECURITY_DCHECK(placeholder->parentNode() == previous->parentNode());
+  }
+  if (is_suggested_value) {
+    placeholder->SetInlineStyleProperty(CSSPropertyID::kUserSelect,
+                                        CSSValueID::kNone, true);
+  } else {
+    placeholder->RemoveInlineStyleProperty(CSSPropertyID::kUserSelect);
+  }
+  placeholder->setTextContent(GetElement().GetPlaceholderValue());
+  return placeholder;
+}
+
+String TextFieldInputType::ConvertFromVisibleValue(
+    const String& visible_value) const {
+  return visible_value;
+}
+
+void TextFieldInputType::SubtreeHasChanged() {
+  GetElement().SetValueFromRenderer(SanitizeUserInputValue(
+      ConvertFromVisibleValue(GetElement().InnerEditorValue())));
+  GetElement().UpdatePlaceholderVisibility();
+  GetElement().PseudoStateChanged(CSSSelector::kPseudoValid);
+  GetElement().PseudoStateChanged(CSSSelector::kPseudoInvalid);
+  GetElement().PseudoStateChanged(CSSSelector::kPseudoUserValid);
+  GetElement().PseudoStateChanged(CSSSelector::kPseudoUserInvalid);
+  GetElement().PseudoStateChanged(CSSSelector::kPseudoInRange);
+  GetElement().PseudoStateChanged(CSSSelector::kPseudoOutOfRange);
+
+  if (RuntimeEnabledFeatures::OpaqueRangeEnabled(
+          GetElement().GetExecutionContext())) {
+    GetElement().CommitOpaqueRangeEdit();
+  }
+
+  DidSetValueByUserEdit();
+}
+
+void TextFieldInputType::OpenPopupView() {
+  if (GetElement().IsDisabledOrReadOnly() ||
+      GetElement().IsBaseAppearanceCombobox()) {
+    return;
+  }
+  if (ChromeClient* chrome_client = GetChromeClient())
+    chrome_client->OpenTextDataListChooser(GetElement());
+}
+
+void TextFieldInputType::DidSetValueByUserEdit() {
+  if (!GetElement().IsFocused())
+    return;
+  if (ChromeClient* chrome_client = GetChromeClient()) {
+    if (GetElement().Value().empty()) {
+      chrome_client->DidClearValueInTextField(GetElement());
+    }
+    chrome_client->DidChangeValueInTextField(GetElement());
+  }
+  if (GetElement().IsBaseAppearanceCombobox()) {
+    // TODO(https://crbug.com/453705243): Make IsBaseAppearanceCombobox return
+    // the datalist element since i am always using the datalist afterwards and
+    // checking that its valid.
+    HTMLDataListElement* datalist = GetElement().DataList();
+    CHECK(datalist);
+    if (!datalist->popoverOpen()) {
+      datalist->ShowPopoverInternal(&GetElement(), /*exception_state=*/nullptr);
+    }
+  }
+}
+
+void TextFieldInputType::SpinButtonStepDown() {
+  ScopedBlinkAXEventIntent intent(
+      BlinkAXEventIntent(ax::mojom::blink::Command::kSpinButtonDecrement),
+      &GetElement().GetDocument());
+  StepUpFromLayoutObject(-1);
+}
+
+void TextFieldInputType::SpinButtonStepUp() {
+  ScopedBlinkAXEventIntent intent(
+      BlinkAXEventIntent(ax::mojom::blink::Command::kSpinButtonIncrement),
+      &GetElement().GetDocument());
+  StepUpFromLayoutObject(1);
+}
+
+void TextFieldInputType::UpdateView() {
+  if (GetElement().SuggestedValue().empty() &&
+      GetElement().NeedsToUpdateViewValue()) {
+    // Update the view only if needsToUpdateViewValue is true. It protects
+    // an unacceptable view value from being overwritten with the DOM value.
+    //
+    // e.g. <input type=number> has a view value "abc", and input.max is
+    // updated. In this case, updateView() is called but we should not
+    // update the view value.
+    GetElement().SetInnerEditorValue(VisibleValue());
+    GetElement().UpdatePlaceholderVisibility();
+  }
+}
+
+void TextFieldInputType::FocusAndSelectSpinButtonOwner() {
+  GetElement().Focus(FocusParams(FocusTrigger::kUserGesture));
+  GetElement().SetSelectionRange(0, std::numeric_limits<int>::max());
+}
+
+bool TextFieldInputType::ShouldSpinButtonRespondToMouseEvents() {
+  return !GetElement().IsDisabledOrReadOnly();
+}
+
+bool TextFieldInputType::ShouldSpinButtonRespondToWheelEvents() {
+  return ShouldSpinButtonRespondToMouseEvents() && GetElement().IsFocused();
+}
+
+void TextFieldInputType::SpinButtonDidReleaseMouseCapture(
+    SpinButtonElement::EventDispatch event_dispatch) {
+  if (event_dispatch == SpinButtonElement::kEventDispatchAllowed)
+    GetElement().DispatchFormControlChangeEvent();
+}
+
+void TextFieldInputType::HandleFocusInEvent(
+    Element* old_focused_element,
+    mojom::blink::FocusType focus_type) {
+  HTMLInputElement& input = GetElement();
+  if (input.IsBaseAppearanceCombobox()) {
+    if (auto* datalist = input.DataList()) {
+      datalist->ShowPopoverInternal(&input, /*exception_state=*/nullptr);
+    }
+  } else if (HTMLSelectElement* select = input.FilterTarget()) {
+    select->StartFiltering();
+
+    // TODO(crbug.com/453705243): Track the target select element like we are
+    // already doing for the list attribute in order to remove the
+    // :active-option pseudo.
+  }
+  UpdateWheelEventRegistration(/*is_detaching=*/false);
+}
+
+namespace {
+
+void UpdateOptionFiltered(HTMLInputElement& input, HTMLOptionElement& option) {
+  // TODO(crbug.com/453705243): Consider doing something more sophisticated like
+  // HTMLInputElement::FilteredDataListOptions, but probably with DisplayLabel
+  // instead of option.value and option.label.
+  if (option.DisplayLabel().FoldCase().contains(input.Value().FoldCase())) {
+    option.SetFiltered(false);
+  } else {
+    option.SetFiltered(true);
+  }
+}
+
+}  // namespace
+
+void TextFieldInputType::FilterOptions() {
+  if (!GetElement().IsBaseAppearanceCombobox() &&
+      !GetElement().FilterTarget()) {
+    return;
+  }
+
+  Event* beforefilter =
+      Event::CreateCancelableBubble(event_type_names::kBeforefilter);
+  beforefilter->SetTarget(&GetElement());
+  if (GetElement().DispatchEvent(*beforefilter) !=
+      DispatchEventResult::kNotCanceled) {
+    return;
+  }
+
+  // Since script has run, we might not want to perform filtering anymore if it
+  // messed with the state of this input, the datalist target, or the select
+  // target.
+  // TODO(crbug.com/453705243): Add more tests for this behavior and consider
+  // checking more state here, such as whether this TextFieldInputType is still
+  // the one registered to the input element.
+
+  if (GetElement().IsBaseAppearanceCombobox()) {
+    for (Element* element : *GetElement().DataList()->options()) {
+      HTMLOptionElement* option = To<HTMLOptionElement>(element);
+      UpdateOptionFiltered(GetElement(), *option);
+    }
+  } else if (GetElement().FilterTarget()) {
+    for (HTMLOptionElement& option :
+         GetElement().FilterTarget()->GetOptionList()) {
+      UpdateOptionFiltered(GetElement(), option);
+    }
+  }
+}
+
+bool TextFieldInputType::SupportsBaseAppearance(
+    Element::BaseAppearanceValue value) const {
+  if (!RuntimeEnabledFeatures::AppearanceBaseEnabled()) {
+    return false;
+  }
+  return value == Element::BaseAppearanceValue::kBase;
+}
+
+void TextFieldInputType::UpdateWheelEventRegistration(bool is_detaching) {
+  auto* frame = GetElement().GetDocument().GetFrame();
+  if (!frame) {
+    return;
+  }
+  bool should_register = !is_detaching && GetSpinButtonElement() &&
+                         GetElement().GetLayoutObject() &&
+                         ShouldSpinButtonRespondToWheelEvents();
+  if (should_register && !has_registered_wheel_event_handler_) {
+    frame->GetEventHandlerRegistry().DidAddEventHandler(
+        GetElement(), EventHandlerRegistry::kWheelEventBlocking);
+    has_registered_wheel_event_handler_ = true;
+  } else if (!should_register && has_registered_wheel_event_handler_) {
+    frame->GetEventHandlerRegistry().DidRemoveEventHandler(
+        GetElement(), EventHandlerRegistry::kWheelEventBlocking);
+    has_registered_wheel_event_handler_ = false;
+  }
+}
+
+void TextFieldInputType::OnAttachWithLayoutObject() {
+  InputType::OnAttachWithLayoutObject();
+  UpdateWheelEventRegistration(/*is_detaching=*/false);
+}
+
+void TextFieldInputType::OnDetachWithLayoutObject() {
+  UpdateWheelEventRegistration(/*is_detaching=*/true);
+  InputType::OnDetachWithLayoutObject();
+}
+
+}  // namespace blink

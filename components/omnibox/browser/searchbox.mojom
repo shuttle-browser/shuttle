@@ -1,0 +1,716 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module searchbox.mojom;
+
+import "components/omnibox/browser/fusebox_action.mojom";
+import "components/omnibox/browser/omnibox.mojom";
+import "components/omnibox/composebox/composebox_query.mojom";
+import "mojo/public/mojom/base/big_buffer.mojom";
+import "mojo/public/mojom/base/string16.mojom";
+import "mojo/public/mojom/base/time.mojom";
+import "mojo/public/mojom/base/unguessable_token.mojom";
+import "ui/base/mojom/window_open_disposition.mojom";
+import "ui/gfx/geometry/mojom/geometry.mojom";
+import "url/mojom/url.mojom";
+
+// See components/omnibox/browser/autocomplete_match.h.
+struct ACMatchClassification {
+  uint32 offset;
+  int32 style;
+};
+
+// See components/omnibox/browser/actions/omnibox_action.h
+struct Action {
+  // Controls contents in action chip. Can be HTML or text.
+  string hint;
+  // Determines the tooltip of the action chip.
+  string suggestion_contents;
+  // The relative URL pointing to a bundled resource or a data URI. Used for the
+  // action icon. Used directly in CSS to show the icon. Or it's a data URI.
+  string icon_path;
+  string a11y_label;
+};
+
+enum KeywordType {
+  kChip,
+  kInKeyword,
+  kInstant,
+};
+
+struct InputKeywordModel {
+  KeywordType type;
+  string keyword;
+  string display_text;
+};
+
+struct MatchKeywordModel {
+  KeywordType type;
+  string chip_hint;
+  string chip_a11y;
+  string placeholder;
+  string keyword;
+};
+
+// LINT.IfChange(SuggestStyle)
+// Style of the suggestion match as reported in SuggestTemplateInfo.
+// NOTE: Must match StandardSuggestStyle in
+// //third_party/omnibox_proto/suggest_template_info.proto exactly as values
+// are cast directly between them.
+enum SuggestStyle {
+  kUnspecified = 0,
+  kDefault = 1,
+  kEnriched = 2,
+  kAnnotated = 3,
+  kRichImage = 4,
+};
+// LINT.ThenChange(//third_party/omnibox_proto/suggest_template_info.proto:StandardSuggestStyle)
+
+struct AutocompleteMatch {
+  // Whether match should be hidden from UI.
+  bool is_hidden;
+  mojo_base.mojom.String16 a11y_label;
+  bool allowed_to_be_default_match;
+  array<Action> actions;
+  mojo_base.mojom.String16 contents;
+  array<ACMatchClassification> contents_class;
+  mojo_base.mojom.String16 description;
+  array<ACMatchClassification> description_class;
+  url.mojom.Url destination_url;
+  mojo_base.mojom.String16 inline_autocompletion;
+  mojo_base.mojom.String16 fill_into_edit;
+  // The path for the suggestion icon. This is a relative url pointing to a
+  // bundled resource and is used directly in CSS to show the icon.
+  string icon_path;
+  // The url for the suggestion icon. |icon_url| is an external url or
+  // a data URI.
+  url.mojom.Url icon_url;
+  // Used to paint a placeholder while fetching |image_url|. These two fields
+  // are valid for entity suggestions only. Entity suggestions have a |type| of
+  // 'search-suggest-entity'.
+  string image_dominant_color;
+  // The image url for entity suggestions. |image_url| is an external url or
+  // a data URI.
+  string image_url;
+  // Used to determine if the match is a contextual suggestion.
+  bool is_contextual_suggestion;
+  // Used to determine if the match is a non-canned AI suggestion.
+  bool is_noncanned_aim_suggestion;
+  // Used to determine if the match should be rendered in a two-row layout
+  // (e.g. calculator, entity images, people search).
+  bool is_two_row_suggestion;
+  // Result of AutocompleteMatch::IsSearchType().
+  bool is_search_type;
+  // Used to determine if the match is an enterprise search aggregator people
+  // suggestion.
+  bool is_enterprise_search_aggregator_people_type;
+  string type;  // Result of AutocompleteMatchType::ToString().
+  mojo_base.mojom.String16 remove_button_a11y_label;
+  bool swap_contents_and_description;
+  // Whether to show the description for a contextual match.
+  bool show_contextual_description;
+  // ID of the group the suggestion belongs to. 0 if it does not belong to any.
+  int32 suggestion_group_id;
+  bool supports_deletion;
+  // Holds the common part of tail suggestion. Not every match has a tail
+  // suggestion prefix. For example, the tail suggestion prefix for "hobbit
+  // holes for sale in" is "hobbit holes for sale" and the match contents
+  // would be the text following "sale".
+  mojo_base.mojom.String16? tail_suggest_common_prefix;
+  // Keyword UI state for this match. Empty if not a keyword suggestion.
+  MatchKeywordModel? keyword_model;
+  // FuseboxAction carries client behavior and configuration to apply when the
+  // user accepts a suggestion.
+  fusebox_action.mojom.FuseboxAction? fusebox_action;
+  // Style of this suggestion match as reported in SuggestTemplateInfo.
+  SuggestStyle suggest_style = SuggestStyle.kUnspecified;
+};
+
+// Information about a suggested tab in the WebUI.
+struct TabInfo {
+  // The unique identifier of the tab.
+  int32 tab_id;
+  // The title of the tab.
+  string title;
+  // The URL of the tab.
+  url.mojom.Url url;
+  // Whether the tab is suitable for display in the current tab chip.
+  bool show_in_current_tab_chip;
+  // Whether the tab is suitable for display in the previous tab chip.
+  bool show_in_previous_tab_chip;
+  // The time the tab was last active.
+  mojo_base.mojom.TimeTicks last_active;
+};
+
+// Represents a file attachment whose upload was started browser-side (currently
+// an image or PDF only).
+struct FileAttachment {
+  // A client-side unique identifier referring to a specific file upload. The
+  // UUID is assigned on the browser-side.
+  mojo_base.mojom.UnguessableToken uuid;
+  // The name of the file.
+  string name;
+  // The mime type of the file.
+  string mime_type;
+  // A data URL for an image preview of the file (may only be supplied for
+  // images but is independent of MIME type).
+  string? image_data_url;
+  // The error type if the upload failed.
+  composebox_query.mojom.ContextUploadErrorType? error_type;
+  // The URL of the file icon, if available. This is currently only populated
+  // for Google Drive files via the OnePick 3P API in
+  // chrome-untrusted://drive-picker-host. The URL is validated to originate
+  // from a trusted Google domain by DrivePickerSanitizer in the trusted
+  // browser process before being populated here.
+  url.mojom.Url? icon_url;
+  // The URL of the file thumbnail, if available. This is currently only
+  // populated for Google Drive files. The URL is validated to originate
+  // from a trusted Google domain by DrivePickerSanitizer in the trusted
+  // browser process before being populated here.
+  url.mojom.Url? thumbnail_url;
+};
+
+// The source/origin of a tab attachment. Used to track how a tab was
+// added to the composebox.
+enum TabAttachmentSource {
+  // Unknown or unspecified source.
+  kOther = 0,
+  // Added via the WebUI context menu.
+  kContextMenu = 1,
+  // Added via the "Current Tab" chip.
+  kCurrentTabChip = 2,
+  // Added via a searchbox action chip.
+  kActionChip = 3,
+  // Automatically added because it was the active tab when the session started.
+  kAutoActive = 4,
+  // Automatically added through cobrowse entrypoints.
+  kAutoAdded = 5,
+};
+
+// Represents a tab attachment chosen browser-side and communicated to WebUI.
+struct TabAttachment {
+  // The unique identifier of the tab.
+  int32 tab_id;
+  // The title of the tab.
+  string title;
+  // The URL of the tab.
+  url.mojom.Url url;
+  // The source/origin of the tab attachment.
+  TabAttachmentSource source;
+};
+
+// Represents a single attachment to the search context, either a file or a tab.
+// The stub name is intended to indicate that usage of
+// this struct is being iterated on and usage must currently be flagged with
+// `MojomWorkInProgress`.
+union SearchContextAttachment {
+  FileAttachment file_attachment;
+  TabAttachment tab_attachment;
+};
+
+// Represents the context of a search query.
+struct SearchContext {
+  // The input text of the search query.
+  string input;
+  // A list of attachments to the search context.
+  array<SearchContextAttachment> attachments;
+  // The mode of the search query.
+  composebox_query.mojom.ToolMode tool_mode;
+};
+
+// Information about a contextual input.
+struct SelectedFileInfo {
+  // Name of the file.
+  string file_name;
+  // Mime type of the file.
+  string mime_type;
+  // The data URL of the file if it is an image.
+  string? image_data_url;
+  // Whether the file is deletable from the UI.
+  bool is_deletable;
+  // Time that the file was selected at.
+  mojo_base.mojom.JSTime selection_time;
+  // The URL of the file thumbnail, if available. This is currently only
+  // populated for Google Drive files. The URL is validated to originate
+  // from a trusted Google domain by DrivePickerSanitizer in the trusted
+  // browser process before being populated here.
+  url.mojom.Url? thumbnail_url;
+};
+
+// Indicates whether a suggestion group is in the primary or the secondary
+// column of suggestions. See //third_party/omnibox_proto/groups.proto.
+enum SideType {
+  kDefaultPrimary = 0,
+  kSecondary = 1,
+};
+
+// Indicates whether a suggestion group should be rendered vertically or
+// horizontally. See //third_party/omnibox_proto/groups.proto.
+enum RenderType {
+  kDefaultVertical = 0,
+  kHorizontal = 1,
+  kGrid = 2,
+};
+
+struct SuggestionGroup {
+  mojo_base.mojom.String16 header;  // Header for suggestion group.
+  RenderType render_type = RenderType.kDefaultVertical;
+  SideType side_type = SideType.kDefaultPrimary;
+};
+
+struct SmartComposeStats {
+  bool enabled;
+  int32 shown_count;
+  int32 accepted_count;
+  int32 characters_accepted;
+  int32 shown_length;
+};
+
+struct AutocompleteResult {
+  int32 query_id;
+  uint32 sequence_id;
+  mojo_base.mojom.String16 input;
+  // Map of suggestion group IDs to their respective info.
+  map<int32, SuggestionGroup> suggestion_groups_map;
+  array<AutocompleteMatch> matches;
+  mojo_base.mojom.String16? smart_compose_inline_hint;
+};
+
+enum SelectionLineState {
+  kNormal = 1,
+  kKeywordMode = 2,
+  kFocusedButtonAction = 3,
+  kFocusedButtonRemoveSuggestion = 4,
+  kFocusedButtonAim = 5,
+  kFocusedButtonContextEntrypoint = 6,
+  kCtrlEnter = 7,
+};
+
+// See components/omnibox/browser/omnibox_popup_selection.h
+struct OmniboxPopupSelection {
+  uint8 line;
+  SelectionLineState state;
+  uint8 action_index;
+};
+
+// Modifier keys pressed when the action was triggered.
+struct ActionModifiers {
+  bool alt_key = false;
+  bool ctrl_key = false;
+  bool meta_key = false;
+  bool shift_key = false;
+};
+
+// Directions for stepping through selections. These may apply for going
+// up/down by lines or cycling left/right through states within a line.
+enum SelectionDirection {
+  kForward = 1,
+  kBackward = 2,
+};
+
+// When changing selections, these are the possible stepping behaviors.
+enum SelectionStep {
+  kWholeLine = 1,
+  kStateOrLine = 2,
+  kAllLines = 3,
+};
+
+// Configuration for the cycling placeholder texts that appear on the searchbox
+// UI.
+struct PlaceholderConfig {
+  array<mojo_base.mojom.String16> texts;
+  mojo_base.mojom.TimeDelta change_text_animation_interval;
+  mojo_base.mojom.TimeDelta fade_text_animation_duration;
+};
+
+// Errors that can occur when processing selected Drive files.
+enum DriveUploadError {
+  kSizeLimitExceeded,
+  kMaxFilesExceeded,
+};
+
+// The Google Drive picker disclaimer/consent status.
+enum DriveDisclaimerStatus {
+  kNotAccepted = 0,
+  kAccepted = 1,
+  kRestricted = 2,
+};
+
+// LINT.IfChange(InputMethod)
+enum InputMethod {
+  kKeyboard = 1,
+  kPaste = 2,
+  kSpeech = 6,
+  kTab = 8,
+  kLensCamera = 10,
+  kSmartCompose = 11,
+};
+
+// LINT.ThenChange(//third_party/omnibox_proto/chrome_searchbox_stats.proto:InputMethod)
+
+// Information about a successfully processed Drive file.
+struct DriveFile {
+  // The UnguessableToken acts as a secure, cross-process identifier. The WebUI
+  // uses this token to:
+  //   1. Identify the file payload and metadata when submitting a query.
+  //   2. Delete the file from the browser-process cache.
+  //   3. Listen for status changes from the browser-process.
+  // It does not grant the WebUI any direct access or capabilities to the file
+  // itself.
+  mojo_base.mojom.UnguessableToken token;
+  string mime_type;
+  string file_name;
+  string? thumbnail_url;
+  url.mojom.Url? icon_url;
+};
+
+// The result of the Drive upload action.
+struct DriveUploadResponse {
+  // It is expected that the order in this array is the order of the selection,
+  // so we know which files to drop off based on upload size error.
+  array<DriveFile> files;
+  DriveUploadError? error;
+};
+
+// Used by the WebUI page to bootstrap bidirectional communication.
+interface PageHandlerFactory {
+  // The SearchboxBrowserProxy singleton calls this when it's first initialized.
+  CreatePageHandler(
+      pending_remote<Page> page, pending_receiver<PageHandler> handler);
+};
+
+// Browser-side handler for requests from WebUI page. The web pages that embed
+// searchboxes which communicate with this interface are chrome://new-tab-page
+// and two chrome-untrusted://lens pages.
+interface PageHandler {
+  // Informs the handler and model about focus state changes.
+  OnFocusChanged(bool focused);
+
+  // Queries autocomplete matches from the browser. `cursor_position` is cursor
+  // position in `input`.
+  // `tab_id` is only supported for the full WebUI Omnibox popup, where it
+  // prevents in-flight query race conditions on fast tab switching.
+  QueryAutocomplete(int32 query_id,
+                    int32? tab_id,
+                    mojo_base.mojom.String16 input,
+                    bool prevent_inline_autocomplete,
+                    uint32 cursor_position,
+                    fusebox_action.mojom.SuggestInventory suggest_inventory,
+                    bool is_on_focus,
+                    string keyword,
+                    InputMethod input_method);
+
+  // Cancels the current autocomplete query. Clears the result set if
+  // |clear_result| is true.
+  StopAutocomplete(bool clear_result);
+
+  // Handles navigation to an autocomplete match (i.e. an item in the realbox's
+  // list of matches).
+  // Note: |url| is only used to confirm the match |line| selection.
+  // |mouse_button| indicates which mouse button was pressed on the match. See
+  // https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent/button
+  OpenAutocompleteMatch(uint8 line,
+                        url.mojom.Url url,
+                        bool are_matches_showing,
+                        uint8 mouse_button,
+                        ActionModifiers modifiers,
+                        bool via_keyboard);
+
+  // Sets the Smart Compose stats to be passed during the next navigation.
+  SetSmartComposeStats(SmartComposeStats smart_compose_stats);
+
+
+  // Sets the native OmniboxEditModel popup selection.
+  // TODO(crbug.com/483117840): This drives some omnibox state affecting
+  //  OmniboxViewViews and can be eliminated once we have full webui popup.
+  SetPopupSelection(OmniboxPopupSelection selection);
+
+  // Opens a specified popup selection.
+  OpenPopupSelection(uint32 result_sequence_id,
+                     OmniboxPopupSelection selection,
+                     ui.mojom.WindowOpenDisposition disposition);
+
+  // Informs the browser that the user has changed the selected suggestion. The
+  // new suggestion is located at |line|. |navigation_predictor|
+  // indicates the event that indicated navigation was likely.
+  // |url| is only used to confirm the match |line| selection.
+  OnNavigationLikely(uint8 line,
+                     url.mojom.Url url,
+                     omnibox.mojom.NavigationPredictor navigation_predictor);
+
+  // Deletes the AutocompleteMatch in the current results by |line| number if
+  // it is deletable. |url| is used to confirm the match |line| selection.
+  DeleteAutocompleteMatch(uint8 line, url.mojom.Url url);
+
+  // Activate a keyword. `match_selection_timestamp` is the number of
+  // microseconds since Jan. 1, 1970 (ECMAScript epoch). `url` is only used to
+  // confirm the match `line` selection. `is_mouse_event` is used for logging.
+  ActivateKeyword(uint8 line,
+                  url.mojom.Url url,
+                  mojo_base.mojom.TimeTicks match_selection_timestamp,
+                  bool is_mouse_event);
+
+  // Executes the Pedal Action. `match_selection_timestamp` is the number of
+  // microseconds since Jan. 1, 1970 (ECMAScript epoch). `url` is only used to
+  // confirm the match `line` selection. `mouse_button`, and modifier keys are
+  // used to determine the disposition.
+  ExecuteAction(uint8 line,
+                uint8 action_index,
+                url.mojom.Url url,
+                mojo_base.mojom.TimeTicks match_selection_timestamp,
+                uint8 mouse_button,
+                bool alt_key,
+                bool ctrl_key,
+                bool meta_key,
+                bool shift_key);
+
+  // Notifies browser that thumbnail has been removed.
+  OnThumbnailRemoved();
+
+  // Returns configuration data leveraged when displaying cycling placeholder
+  // texts on the searchbox UI.
+  GetCyclingPlaceholderConfig() => (PlaceholderConfig config);
+
+  // Returns information about recent tabs.
+  GetRecentTabs() => (array<TabInfo> tabs);
+
+  // Returns a data URL for the preview of the tab with the given ID.
+  GetTabPreview(int32 tab_id) => (string? preview_data_url);
+
+  // Waits for the tab with the given ID to finish loading its favicon and
+  // returns a data URL for the favicon, or null if it fails/times out.
+  WaitForTabFaviconLoad(int32 tab_id) => (url.mojom.Url? favicon_data_url);
+
+  // Returns information about the current input state.
+  GetInputState() => (composebox_query.mojom.InputState? state);
+
+  // Called when a user has started a contextual searchbox session.
+  NotifySessionStarted();
+
+  // Called when a user has started a contextual searchbox session.
+  NotifySessionAbandoned();
+
+  // File management.
+  // Upload a file to the server and add it to the query's context. Handler will
+  // create a token for identifying and return it via callback. The
+  // UnguessableToken is associated with a file via this method and only with
+  // an UnguessableToken created by the browser-process at this step. The
+  // controller that houses the association is specific to the WebUI's handler
+  // instance.
+  // What the WebUI can do with the UnguessableToken:
+  //   1. Delete a file from browser-process cache.
+  //   2. Listen for status changes from browser-process.
+  AddFileContext(
+      SelectedFileInfo file_info, mojo_base.mojom.BigBuffer file_bytes)
+      => result<mojo_base.mojom.UnguessableToken, composebox_query.mojom.ContextUploadErrorType>;
+
+  // Attach a tab to the query context. If the tab cannot be attached, the
+  // result will contain an error, otherwise it will contain the token
+  // identifying the tab context.
+  AddTabContext(int32 tab_id, bool delay_upload, TabAttachmentSource source)
+      => result<mojo_base.mojom.UnguessableToken, composebox_query.mojom.ContextUploadErrorType>;
+
+  // Notify handler of context deletion. This removes the context data (e.g.
+  // File, or tab page content) from the browser-side cache.
+  // `from_automatic_chip` indicates whether the deleted context is auto
+  // suggested.
+  DeleteContext(
+      mojo_base.mojom.UnguessableToken token, bool from_automatic_chip);
+
+  // Notify handler of tab context deletion by tab ID.
+  DeleteTabContext(int32 tab_id);
+
+  // Clears all files from cache.
+  // `clear_auto_suggested_tabs` indicates whether the URLs of auto suggested
+  // tabs should be blocked from being suggested again.
+  ClearFiles(bool should_block_auto_suggested_tabs);
+
+  // Called when a user submits a query with valid input.
+  SubmitQuery(string query_text,
+              uint8 mouse_button,
+              bool alt_key,
+              bool ctrl_key,
+              bool meta_key,
+              bool shift_key,
+              bool is_voice_search);
+
+  // Opens the Lens search UI.
+  OpenLensSearch();
+
+  // Called when a tool is enabled (either manually or via AIM webpage
+  // auto tool add).
+  SetActiveToolMode(composebox_query.mojom.ToolMode tool,
+                    bool is_set_by_aim);
+
+  // Called when a user enables a model.
+  SetActiveModelMode(composebox_query.mojom.ModelMode model,
+                     bool is_set_by_aim);
+
+  // Activates a metrics funnel for the session.
+  ActivateMetricsFunnel(string funnel_name);
+
+  // Called when a user interacts with a tool selection button explicitly.
+  RecordToolSelectionAction(composebox_query.mojom.ToolMode tool);
+
+  // Called when a user interacts with a model selection button explicitly.
+  RecordModelSelectionAction(composebox_query.mojom.ModelMode model);
+
+  // Gets the Google Drive disclaimer and consent status.
+  GetDriveDisclaimerStatus() => (DriveDisclaimerStatus status);
+
+  // Informs the browser that the user accepted the AIM x Drive disclaimer.
+  OnDriveDisclaimerAccepted();
+
+  // Called when the user clicks the drive upload button.
+  OnDriveUploadClicked() => (DriveUploadResponse response);
+
+  // Opens the profile picker for switching profiles.
+  OpenProfilePicker();
+
+  // Shows the native screenshot/screensharing menu anchored to `anchor_rect`.
+  // `anchor_rect` is the bounding box of the anchor element (e.g. the Lens /
+  // screenshot button) in WebContents viewport-relative DIPs. Passing a rect
+  // rather than a point allows the native menu runner to position and flip the
+  // menu without occluding the anchor element.
+  ShowScreenshotMenu(gfx.mojom.Rect anchor_rect);
+
+  // Triggers screensharing (window or entire screen picker).
+  // `prefer_entire_screen` is a hint indicating whether the screen picker
+  // should default to selecting the entire screen (true) or a window
+  // (false).
+  // Returns a token on success, or null if the selection was cancelled, failed
+  // to start, or if there is already an active screensharing session.
+  // The token is used by the WebUI to create a placeholder chip synchronously,
+  // and subsequently to associate it with the captured screenshot details
+  // delivered asynchronously via `Page.AddFileContext()`. It can also be used
+  // to delete the context via `DeleteContext()`.
+  StartScreenshare(bool prefer_entire_screen)
+      => (mojo_base.mojom.UnguessableToken? token);
+
+  // Triggers interactive region selection screenshot capture.
+  // Returns a token on success, or null if the selection was cancelled, failed
+  // to start, or if there is already an active capture session.
+  CaptureRegionScreenshot()
+      => (mojo_base.mojom.UnguessableToken? token);
+
+  // Gets the page classification for the current context.
+  GetPageClassification() => (string metricSource);
+
+  // Called to enable or disable Smart Tab Sharing for subsequent queries.
+  // This will trigger a callback to Page.UpdateSmartTabSharingActive()
+  // to notify all WebUI clients of the new active state.
+  [EnableIfNot=is_android]
+  SetSmartTabSharingActive(bool active);
+
+  // Called to retrieve the current Smart Tab Sharing state.
+  [EnableIfNot=is_android]
+  GetSmartTabSharingActive() => (bool active);
+
+  // Dispatched when the First-Run Experience (FRE) notice is dismissed.
+  DismissFre();
+
+  // Opens platform/browser shortcut configuration settings.
+  OpenHotkeySettings();
+};
+
+// WebUI-side handler for requests from the browser.
+interface Page {
+  // Notifies the page of whether the FRE notice promo should be displayed.
+  SetShowFre(bool show);
+
+  // Updates the page with the autocomplete results.
+  AutocompleteResultChanged(AutocompleteResult result);
+
+  // Updates the UI's selected line and action based on the |selection| and
+  // |old_selection|.
+  UpdateSelection(
+      OmniboxPopupSelection old_selection, OmniboxPopupSelection selection);
+
+  // Signals user intent to change popup selection.
+  // TODO(crbug.com/483117840): This is driven by interaction with
+  //  OmniboxViewViews and can be eliminated once we have full webui popup.
+  StepSelection(SelectionDirection direction, SelectionStep step);
+
+  // Signals user intent to open the current popup selection.
+  // TODO(crbug.com/483117840): This is driven by interaction with
+  //  OmniboxViewViews and can be eliminated once we have full webui popup.
+  OpenCurrentSelection(ui.mojom.WindowOpenDisposition disposition);
+
+  // Updates visibility of the AIM button (on right side of OmniboxViewViews).
+  // TODO(crbug.com/483117840): This is driven by interaction with
+  //  OmniboxViewViews and can be eliminated once we have full webui popup.
+  SetAimButtonVisible(bool visible);
+
+  // Updates properties of the AIM button (label text, tooltip/title, a11y
+  // label, icon URL) based on the config provided by the AIM button service.
+  SetAimButtonConfig(
+      string text, string tooltip, string a11y_label, url.mojom.Url icon_url);
+
+  // Called to set searchbox input.
+  SetInputText(string input);
+
+  // Sets whether keyword space triggering is enabled.
+  SetKeywordSpaceTriggeringEnabled(bool enabled);
+
+  // Sets searchbox thumbnail.
+  SetThumbnail(string thumbnail_url, bool is_deletable);
+
+  // Used to update the user on the status of a query context (i.e. File, tab)
+  // upload operation. Each context upload operation is associated with a unique
+  // token, and the browser process uses these tokens to provide context upload
+  // updates to the WebUI.
+  OnContextualInputStatusChanged(
+      mojo_base.mojom.UnguessableToken token,
+      composebox_query.mojom.ContextUploadStatus status,
+      composebox_query.mojom.ContextUploadErrorType? error_type);
+
+  // Notifies the page that the tab strip has changed.
+  OnTabStripChanged();
+
+  // Notifies the page that the input state has changed.
+  OnInputStateChanged(composebox_query.mojom.InputState input_state);
+
+  // Adds a contextual input to the UI.
+  AddFileContext(
+      mojo_base.mojom.UnguessableToken token, SelectedFileInfo file_info);
+
+  // Updates the automatically suggested tab context on the UI. This call will
+  // replace the previously auto suggested tab with the new tab. If the provided
+  // tab is null, the suggested tab should be removed from the UI.
+  // `invocation_source` is the string representation of the
+  // `lens::LensOverlayInvocationSource` enum that triggered the active Lens
+  // search session (e.g. "OmniboxPageAction"), obtained via existing
+  // `lens::InvocationSourceToString()`. Passed as a string to avoid exposing
+  // platform-specific type enum in this shared interface.
+  UpdateAutoSuggestedTabContext(TabInfo? tab, string? invocation_source);
+
+  // Called when Lens search eligibility changes.
+  UpdateLensSearchEligibility(bool eligible);
+
+  // Called when content sharing policy changes.
+  UpdateContentSharingPolicy(bool enabled);
+
+  // Notifies the UI to show or hide the AIM popup for omnibox.
+  UpdateAimPopupEligibility(bool eligible);
+
+  // Notifies the UI that the Smart Tab Sharing active state has changed.
+  [EnableIfNot=is_android]
+  UpdateSmartTabSharingActive(bool active);
+
+  // Notifies the size of the permission prompt and that it is
+  // showing or being hidden.
+  OnPermissionPromptChanged(bool is_showing, gfx.mojom.Size prompt_size);
+
+  // Sets the tab IDs that should be shown as selected before tabs are selected.
+  SetRestoredTabIds(array<int32> ids);
+
+  // Sets the TabInfo for the attachments restored from the AIM thread history.
+  SetAimThreadRestoredTabs(array<TabInfo> tabs);
+
+  // Notifies that a native screenshot menu has closed.
+  OnScreenshotMenuClosed();
+
+  // Notifies the page of updated profile information (avatar URL, name, email).
+  UpdateProfileInfo(url.mojom.Url avatar_url, string name, string email);
+};

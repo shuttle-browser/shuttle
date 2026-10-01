@@ -1,0 +1,153 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_WEBUI_PRINT_PREVIEW_PRINT_PREVIEW_HANDLER_CHROMEOS_H_
+#define CHROME_BROWSER_UI_WEBUI_PRINT_PREVIEW_PRINT_PREVIEW_HANDLER_CHROMEOS_H_
+
+#include <string>
+
+#include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
+#include "base/scoped_observation.h"
+#include "base/values.h"
+#include "chrome/browser/ash/printing/cups_printers_manager.h"
+#include "chrome/browser/ash/printing/print_servers_manager.h"
+#include "chrome/common/buildflags.h"
+#include "components/prefs/pref_service.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "content/public/browser/web_ui_message_handler.h"
+#include "printing/backend/print_backend.h"
+#include "printing/buildflags/buildflags.h"
+#include "printing/print_job_constants.h"
+
+namespace ash {
+class LocalPrinter;
+}
+
+namespace content {
+class WebContents;
+}
+
+namespace printing {
+
+namespace mojom {
+enum class PrinterType;
+}
+
+class PrinterHandler;
+class PrintPreviewHandler;
+
+// The handler for Javascript messages related to the print preview dialog.
+class PrintPreviewHandlerChromeOS
+    : public content::WebUIMessageHandler,
+      public ash::PrintServersManager::Observer,
+      public ash::CupsPrintersManager::LocalPrintersObserver {
+ public:
+  PrintPreviewHandlerChromeOS();
+  PrintPreviewHandlerChromeOS(const PrintPreviewHandlerChromeOS&) = delete;
+  PrintPreviewHandlerChromeOS& operator=(const PrintPreviewHandlerChromeOS&) =
+      delete;
+  ~PrintPreviewHandlerChromeOS() override;
+
+  // WebUIMessageHandler implementation.
+  void RegisterMessages() override;
+  void OnJavascriptDisallowed() override;
+  void OnJavascriptAllowed() override;
+
+  // CupsPrintersManager::LocalPrintersObserver:
+  void OnLocalPrintersUpdated() override;
+
+ protected:
+  // Protected so unit tests can override.
+  virtual PrinterHandler* GetPrinterHandler(mojom::PrinterType printer_type);
+
+ private:
+  friend class PrintPreviewHandlerChromeOSTest;
+  friend class TestPrintServersManager;
+
+  PrintPreviewHandler* GetPrintPreviewHandler();
+
+  void MaybeAllowJavascript();
+
+  // Grants an extension access to a provisional printer.  First element of
+  // |args| is the provisional printer ID.
+  void HandleGrantExtensionPrinterAccess(const base::ListValue& args);
+
+  // Performs printer setup. First element of |args| is the printer name.
+  void HandlePrinterSetup(const base::ListValue& args);
+
+  // Gets the EULA URL.
+  void HandleGetEulaUrl(const base::ListValue& args);
+
+  // Send the EULA URL;
+  void SendEulaUrl(const std::string& callback_id, const std::string& eula_url);
+
+  // Send the result of performing printer setup. |settings_info| contains
+  // printer capabilities.
+  void SendPrinterSetup(const std::string& callback_id,
+                        const std::string& printer_name,
+                        base::DictValue settings_info);
+
+  // Called when an extension reports information requested for a provisional
+  // printer.
+  // |callback_id|: The javascript callback to resolve or reject.
+  // |printer_info|: The data reported by the extension.
+  void OnGotExtensionPrinterInfo(const std::string& callback_id,
+                                 const base::DictValue& printer_info);
+
+  // Called to initiate a status request for a printer.
+  void HandleRequestPrinterStatusUpdate(const base::ListValue& args);
+  void HandleRequestPrinterStatusUpdateCompletion(
+      base::Value callback_id,
+      std::optional<base::DictValue> result);
+
+  // ash::PrintServersManager::Observer Implementation:
+  void OnPrintServersChanged(const ash::PrintServersConfig& config) override;
+  void OnServerPrintersChanged(
+      const std::vector<ash::PrinterDetector::DetectedPrinter>& printers)
+      override;
+
+  // Loads printers corresponding to the print server(s).  First element of
+  // |args| is the print server IDs.
+  void HandleChoosePrintServers(const base::ListValue& args);
+
+  // Gets the list of print servers and fetching mode.
+  void HandleGetPrintServersConfig(const base::ListValue& args);
+
+  // Records the `PrintPreview.PrintAttemptOutcome` histogram.
+  void HandleRecordPrintAttemptOutcome(const base::ListValue& args);
+
+  // Gets the WebContents that initiated print preview request using
+  // `PrintPreviewDialogController`.
+  content::WebContents* GetInitiator();
+
+  // Gets whether the UI should show the button to open printer settings. Button
+  // should be hidden if preview launched from the settings SWA.
+  void HandleGetShowManagePrinters(const base::ListValue& args);
+
+  void HandleObserveLocalPrinters(const base::ListValue& args);
+
+  void SetInitiatorForTesting(content::WebContents* test_initiator);
+
+  ash::PrintServersManager* GetPrintServersManager();
+
+  // Used for testing, when `GetInitiator` called and `test_initiator` is set
+  // then it will be returned instead of calling `PrintPreviewDialogController`
+  // to find the initiator.
+  raw_ptr<content::WebContents> test_initiator_ = nullptr;
+
+  raw_ptr<ash::LocalPrinter> local_printer_ = nullptr;
+  base::ScopedObservation<ash::CupsPrintersManager,
+                          ash::CupsPrintersManager::LocalPrintersObserver>
+      local_printers_observation_{this};
+  base::ScopedObservation<ash::PrintServersManager,
+                          ash::PrintServersManager::Observer>
+      print_servers_observation_{this};
+
+  base::WeakPtrFactory<PrintPreviewHandlerChromeOS> weak_factory_{this};
+};
+
+}  // namespace printing
+
+#endif  // CHROME_BROWSER_UI_WEBUI_PRINT_PREVIEW_PRINT_PREVIEW_HANDLER_CHROMEOS_H_

@@ -1,0 +1,47 @@
+[
+  {
+    "os": [
+      "win",
+      "mac",
+      "linux",
+      "android",
+      "fuchsia"
+    ],
+    "can_be_recommended": true,
+    "policy_pref_mapping_tests": [
+      {
+        "policies": {},
+        "prefs": {
+          "user_experience_metrics.reporting_enabled": {
+            "location": "local_state",
+            "default_value": false
+          }
+        }
+      },
+      {
+        "policies": {
+          "MetricsReportingEnabled": false
+        },
+        "prefs": {
+          "user_experience_metrics.reporting_enabled": {
+            "location": "local_state",
+            "value": false
+          }
+        }
+      },
+      {
+        "policies": {
+          "MetricsReportingEnabled": true
+        },
+        "prefs": {
+          "user_experience_metrics.reporting_enabled": {
+            "location": "local_state",
+            "value": true,
+            "note": "See DowngradeMetricsReportingToRecommendedPolicy(), policy is only applied as recommended.",
+            "check_for_mandatory": false
+          }
+        }
+      }
+    ]
+  }
+]

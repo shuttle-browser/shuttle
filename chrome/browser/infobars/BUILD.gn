@@ -1,0 +1,150 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/ui.gni")
+import("//extensions/buildflags/buildflags.gni")
+
+source_set("infobars") {
+  public = [
+    "confirm_infobar_creator.h",
+    "infobar_features.h",
+    "infobar_spec.h",
+    "simple_alert_infobar_creator.h",
+  ]
+
+  sources = [
+    "confirm_infobar_creator.cc",
+    "infobar_features.cc",
+    "infobar_spec.cc",
+    "simple_alert_infobar_creator.cc",
+  ]
+
+  if (!is_android) {
+    public += [ "browser_infobar_manager.h" ]
+    sources += [ "browser_infobar_manager.cc" ]
+  }
+
+  public_deps = [
+    "//base",
+    "//chrome/browser:global_features",
+    "//chrome/browser/ui/browser_window",
+    "//components/infobars/content",
+    "//components/infobars/core",
+    "//components/tabs:public",
+  ]
+
+  deps = [
+    "//chrome/app:generated_resources",
+    "//chrome/app:generated_resources_grit",
+    "//chrome/browser/ui:ui_features",
+    "//components/omnibox/browser:vector_icons",
+    "//components/strings:components_strings",
+    "//components/vector_icons",
+    "//content/public/browser",
+    "//ui/base",
+  ]
+
+  if (is_win || is_mac) {
+    deps += [ "//chrome/browser/ui/startup/default_browser_prompt/pin_infobar" ]
+  }
+
+  if (!is_android) {
+    deps += [ "//chrome/browser/ui/tabs:tab_strip" ]
+  }
+
+  if (toolkit_views) {
+    deps += [ "//chrome/browser/ui/views/infobars" ]
+  }
+}
+
+source_set("test_support") {
+  testonly = true
+
+  sources = [
+    "test_support/infobar_observer.cc",
+    "test_support/infobar_observer.h",
+    "test_support/infobar_responder.cc",
+    "test_support/infobar_responder.h",
+  ]
+
+  deps = [
+    "//base",
+    "//components/infobars/content",
+    "//components/infobars/core",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  sources = [ "infobar_spec_unittest.cc" ]
+
+  deps = [
+    ":infobars",
+    "//base",
+    "//components/infobars/core",
+    "//content/public/browser",
+    "//testing/gtest",
+    "//url",
+  ]
+}
+
+if (!is_android) {
+  source_set("browser_tests") {
+    testonly = true
+
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+    sources = [
+      "browser_infobar_manager_browsertest.cc",
+      "infobars_browsertest.cc",
+    ]
+
+    deps = [
+      ":infobars",
+      "//base",
+      "//chrome/browser/devtools",
+      "//chrome/browser/infobars:test_support",
+      "//chrome/browser/ui",
+      "//chrome/browser/ui:collected_cookies_infobar_delegate",
+      "//chrome/browser/ui:ui_features",
+      "//chrome/browser/ui/browser_window",
+      "//chrome/browser/ui/page_info",
+      "//chrome/browser/ui/select_file_policy",
+      "//chrome/browser/ui/startup",
+      "//chrome/browser/ui/tab_sharing",
+      "//chrome/browser/ui/tab_sharing:test_support",
+      "//chrome/browser/ui/test:test_support",
+      "//chrome/test:test_support",
+      "//chrome/test:test_support_ui",
+      "//components/infobars/content",
+      "//components/infobars/core",
+      "//content/public/browser",
+      "//content/test:test_support",
+      "//testing/gtest",
+      "//url",
+    ]
+
+    if (is_win || is_mac || is_linux) {
+      deps += [
+        "//chrome/browser/ui/startup/default_browser_prompt",
+        "//chrome/browser/ui/views/session_restore_infobar",
+      ]
+    }
+
+    if (toolkit_views) {
+      deps += [
+        "//chrome/browser/ui/views/infobars",
+        "//chrome/browser/ui/views/site_data",
+      ]
+    }
+
+    if (enable_extensions_core) {
+      deps += [
+        "//chrome/browser/ui/extensions",
+        "//extensions/browser:crx_installer",
+      ]
+    }
+  }
+}

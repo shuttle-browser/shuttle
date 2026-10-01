@@ -1,0 +1,529 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/optimization_guide/core/model_execution/performance_class.h"
+
+#include <algorithm>
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <utility>
+
+#include "base/functional/callback_helpers.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_split.h"
+#include "base/strings/string_util.h"
+#include "base/strings/to_string.h"
+#include "base/trace_event/trace_event.h"
+#include "base/version_info/version_info.h"
+#include "build/branding_buildflags.h"
+#include "build/build_config.h"
+#include "components/optimization_guide/core/model_execution/model_execution_prefs.h"
+#include "components/optimization_guide/core/optimization_guide_enums.h"
+#include "components/optimization_guide/core/optimization_guide_features.h"
+#include "components/optimization_guide/core/optimization_guide_switches.h"
+#include "components/optimization_guide/optimization_guide_buildflags.h"
+#include "components/optimization_guide/public/mojom/model_broker_debug.mojom.h"
+#include "components/prefs/pref_service.h"
+#include "components/variations/synthetic_trials.h"
+#include "mojo/public/cpp/bindings/callback_helpers.h"
+#include "services/on_device_model/public/cpp/capabilities.h"
+#if BUILDFLAG(BUILD_WITH_INTERNAL_OPTIMIZATION_GUIDE)
+#include "services/on_device_model/ml/performance_class.h"  // nogncheck
+#endif
+#include "services/on_device_model/public/cpp/cpu.h"
+#include "services/on_device_model/public/cpp/features.h"
+#include "third_party/abseil-cpp/absl/strings/str_format.h"
+
+namespace optimization_guide {
+
+namespace {
+
+#if BUILDFLAG(BUILD_WITH_INTERNAL_OPTIMIZATION_GUIDE)
+// Returns the minimum VRAM, in MiB, required to satisfy the currently active
+// performance class requirement.
+uint64_t GetMinimumVramRequired() {
+  std::string perf_classes_string =
+      optimization_guide::features::kPerformanceClassListForOnDeviceModel.Get();
+
+  if (optimization_guide::IsPerformanceClassCompatible(
+          perf_classes_string,
+          optimization_guide::OnDeviceModelPerformanceClass::kVeryLow)) {
+    return 0ul;
+  } else if (optimization_guide::IsPerformanceClassCompatible(
+                 perf_classes_string,
+                 optimization_guide::OnDeviceModelPerformanceClass::kLow) ||
+             optimization_guide::IsPerformanceClassCompatible(
+                 perf_classes_string,
+                 optimization_guide::OnDeviceModelPerformanceClass::kMedium)) {
+    return ml::GetLowRamThresholdMb();
+  } else {
+    return ml::GetHighRamThresholdMb();
+  }
+}
+#endif
+
+// Whether image input is enabled for CPU backend.
+BASE_FEATURE(kOnDeviceModelCpuImageInput, base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Whether audio input is enabled for CPU backend.
+BASE_FEATURE(kOnDeviceModelCpuAudioInput, base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Whether audio input is enabled for GPU backend.
+BASE_FEATURE(kOnDeviceModelGpuAudioInput, base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Minimum VRAM required for audio input support (6GB).
+const base::FeatureParam<int> kOnDeviceModelAudioInputVramMin{
+    &kOnDeviceModelGpuAudioInput, "on_device_model_audio_input_vram_min",
+    on_device_model::kAudioVramMinMb};
+
+// Commandline switch to force a particular performance class.
+const char kOverridePerformanceClassSwitch[] =
+    "optimization-guide-performance-class";
+
+bool NeedsPerformanceClassUpdate(const PrefService& local_state) {
+  if (base::FeatureList::IsEnabled(
+          features::kOnDeviceModelFetchPerformanceClassEveryStartup)) {
+    return true;
+  }
+  return local_state.GetString(model_execution::prefs::localstate::
+                                   kOnDevicePerformanceClassVersion) !=
+         version_info::GetVersionNumber();
+}
+
+// Convert a number to a performance class.
+OnDeviceModelPerformanceClass AsPerformanceClass(int value) {
+  if (value < 0 ||
+      value > static_cast<int>(OnDeviceModelPerformanceClass::kMaxValue)) {
+    return OnDeviceModelPerformanceClass::kUnknown;
+  }
+  return static_cast<OnDeviceModelPerformanceClass>(value);
+}
+
+OnDeviceModelPerformanceClass GetPerformanceClassSwitch() {
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  if (!command_line->HasSwitch(kOverridePerformanceClassSwitch)) {
+    return OnDeviceModelPerformanceClass::kUnknown;
+  }
+  int value = 0;
+  if (!base::StringToInt(
+          command_line->GetSwitchValueASCII(kOverridePerformanceClassSwitch),
+          &value)) {
+    return OnDeviceModelPerformanceClass::kUnknown;
+  }
+  return AsPerformanceClass(value);
+}
+
+bool IsSignificantPerformanceChange(
+    PrefService* local_state,
+    OnDeviceModelPerformanceClass performance_class) {
+  OnDeviceModelPerformanceClass current_class =
+      PerformanceClassFromPref(*local_state);
+  // For performance class change between VeryLow and VeryHigh, there can be
+  // run to run variability depending on whether the device is plugged in or is
+  // on battery power. Consider these changes alone as insignificant.
+  // Windows Copilot+ laptops with Qualcomm GPUs exhibit this behavior.
+  if (performance_class >= OnDeviceModelPerformanceClass::kVeryLow &&
+      performance_class <= OnDeviceModelPerformanceClass::kVeryHigh &&
+      current_class >= OnDeviceModelPerformanceClass::kVeryLow &&
+      current_class <= OnDeviceModelPerformanceClass::kVeryHigh &&
+      performance_class <= current_class) {
+    return false;
+  }
+  return true;
+}
+
+std::string GetPerformanceClassGPUId(uint32_t vendor_id,
+                                     uint32_t device_id,
+                                     const std::string& driver_version) {
+  return absl::StrFormat("%x:%x:%s", vendor_id, device_id, driver_version);
+}
+
+bool HasDeviceInfoChanged(
+    PrefService* local_state,
+    const on_device_model::mojom::DeviceInfo& device_info) {
+  std::string gpu_id = GetPerformanceClassGPUId(
+      device_info.vendor_id, device_info.device_id, device_info.driver_version);
+  return local_state->GetString(model_execution::prefs::localstate::
+                                    kOnDevicePerformanceClassGPUId) != gpu_id;
+}
+
+}  // namespace
+
+OnDeviceModelPerformanceClass ConvertToOnDeviceModelPerformanceClass(
+    on_device_model::mojom::PerformanceClass performance_class) {
+  switch (performance_class) {
+    case on_device_model::mojom::PerformanceClass::kError:
+      return OnDeviceModelPerformanceClass::kError;
+    case on_device_model::mojom::PerformanceClass::kVeryLow:
+      return OnDeviceModelPerformanceClass::kVeryLow;
+    case on_device_model::mojom::PerformanceClass::kLow:
+      return OnDeviceModelPerformanceClass::kLow;
+    case on_device_model::mojom::PerformanceClass::kMedium:
+      return OnDeviceModelPerformanceClass::kMedium;
+    case on_device_model::mojom::PerformanceClass::kHigh:
+      return OnDeviceModelPerformanceClass::kHigh;
+    case on_device_model::mojom::PerformanceClass::kVeryHigh:
+      return OnDeviceModelPerformanceClass::kVeryHigh;
+    case on_device_model::mojom::PerformanceClass::kGpuBlocked:
+      return OnDeviceModelPerformanceClass::kGpuBlocked;
+    case on_device_model::mojom::PerformanceClass::kFailedToLoadLibrary:
+      return OnDeviceModelPerformanceClass::kFailedToLoadLibrary;
+  }
+}
+
+std::string_view SyntheticTrialGroupForPerformanceClass(
+    OnDeviceModelPerformanceClass performance_class) {
+  switch (performance_class) {
+    case OnDeviceModelPerformanceClass::kUnknown:
+      return "Unknown";
+    case OnDeviceModelPerformanceClass::kError:
+      return "Error";
+    case OnDeviceModelPerformanceClass::kVeryLow:
+      return "VeryLow";
+    case OnDeviceModelPerformanceClass::kLow:
+      return "Low";
+    case OnDeviceModelPerformanceClass::kMedium:
+      return "Medium";
+    case OnDeviceModelPerformanceClass::kHigh:
+      return "High";
+    case OnDeviceModelPerformanceClass::kVeryHigh:
+      return "VeryHigh";
+    case OnDeviceModelPerformanceClass::kGpuBlocked:
+      return "GpuBlocked";
+    case OnDeviceModelPerformanceClass::kFailedToLoadLibrary:
+      return "FailedToLoadLibrary";
+    case OnDeviceModelPerformanceClass::kServiceCrash:
+      return "ServiceCrash";
+  }
+}
+
+std::string_view SyntheticTrialGroupForPerformanceHint(
+    proto::OnDeviceModelPerformanceHint performance_hint) {
+  switch (performance_hint) {
+    case proto::ON_DEVICE_MODEL_PERFORMANCE_HINT_UNSPECIFIED:
+      return "Unspecified";
+    case proto::ON_DEVICE_MODEL_PERFORMANCE_HINT_HIGHEST_QUALITY:
+      return "HighestQuality";
+    case proto::ON_DEVICE_MODEL_PERFORMANCE_HINT_FASTEST_INFERENCE:
+      return "FastestInference";
+    case proto::ON_DEVICE_MODEL_PERFORMANCE_HINT_CPU:
+      return "Cpu";
+  }
+}
+
+std::ostream& operator<<(std::ostream& out,
+                         OnDeviceModelPerformanceClass performance_class) {
+  switch (performance_class) {
+    case OnDeviceModelPerformanceClass::kUnknown:
+      return out << "Unknown";
+    case OnDeviceModelPerformanceClass::kError:
+      return out << "Error";
+    case OnDeviceModelPerformanceClass::kVeryLow:
+      return out << "VeryLow";
+    case OnDeviceModelPerformanceClass::kLow:
+      return out << "Low";
+    case OnDeviceModelPerformanceClass::kMedium:
+      return out << "Medium";
+    case OnDeviceModelPerformanceClass::kHigh:
+      return out << "High";
+    case OnDeviceModelPerformanceClass::kVeryHigh:
+      return out << "VeryHigh";
+    case OnDeviceModelPerformanceClass::kServiceCrash:
+      return out << "ServiceCrash";
+    case OnDeviceModelPerformanceClass::kGpuBlocked:
+      return out << "GpuBlocked";
+    case OnDeviceModelPerformanceClass::kFailedToLoadLibrary:
+      return out << "FailedToLoadLibrary";
+  }
+}
+
+bool IsPerformanceClassCompatible(
+    std::string perf_classes_string,
+    OnDeviceModelPerformanceClass performance_class) {
+  if (perf_classes_string == "*") {
+    return true;
+  }
+  std::vector<std::string_view> perf_classes_list = base::SplitStringPiece(
+      perf_classes_string, ",", base::WhitespaceHandling::TRIM_WHITESPACE,
+      base::SplitResult::SPLIT_WANT_NONEMPTY);
+  return std::ranges::contains(
+      perf_classes_list, base::ToString(static_cast<int>(performance_class)));
+}
+
+OnDeviceModelPerformanceClass PerformanceClassFromPref(
+    const PrefService& local_state) {
+  int value = local_state.GetInteger(
+      model_execution::prefs::localstate::kOnDevicePerformanceClass);
+  if (value < 0 ||
+      value > static_cast<int>(OnDeviceModelPerformanceClass::kMaxValue)) {
+    return OnDeviceModelPerformanceClass::kUnknown;
+  }
+  return static_cast<OnDeviceModelPerformanceClass>(value);
+}
+
+void UpdatePerformanceClassVersionPref(PrefService* local_state) {
+  local_state->SetString(
+      model_execution::prefs::localstate::kOnDevicePerformanceClassVersion,
+      version_info::GetVersionNumber());
+}
+
+void UpdatePerformanceClassPref(
+    PrefService* local_state,
+    OnDeviceModelPerformanceClass performance_class) {
+  local_state->SetInteger(
+      model_execution::prefs::localstate::kOnDevicePerformanceClass,
+      std::to_underlying(performance_class));
+  UpdatePerformanceClassVersionPref(local_state);
+}
+
+void UpdateVramPref(PrefService* local_state, uint64_t vram_mb) {
+  local_state->SetUint64(model_execution::prefs::localstate::kOnDeviceVramMb,
+                         vram_mb);
+}
+
+void UpdateDeviceInfoPrefs(
+    PrefService* local_state,
+    const on_device_model::mojom::DeviceInfo& device_info) {
+  std::string gpu_id = GetPerformanceClassGPUId(
+      device_info.vendor_id, device_info.device_id, device_info.driver_version);
+  local_state->SetString(
+      model_execution::prefs::localstate::kOnDevicePerformanceClassGPUId,
+      gpu_id);
+}
+
+PerformanceClassifier::PerformanceClassifier(
+    PrefService* local_state,
+    base::SafeRef<on_device_model::ServiceClient> service_client)
+    : local_state_(local_state), service_client_(std::move(service_client)) {
+  TRACE_EVENT("optimization_guide",
+              "PerformanceClassifier::PerformanceClassifier");
+  OnDeviceModelPerformanceClass override_class = GetPerformanceClassSwitch();
+#if BUILDFLAG(CHROME_FOR_TESTING)
+  // In CfT, the performance class is assumed to be the most generic value.
+  if (override_class == OnDeviceModelPerformanceClass::kUnknown) {
+    override_class = OnDeviceModelPerformanceClass::kGpuBlocked;
+  }
+#endif
+  if (override_class != OnDeviceModelPerformanceClass::kUnknown) {
+    UpdatePerformanceClassPref(local_state_, override_class);
+    UpdateDeviceInfoPrefs(local_state_, on_device_model::mojom::DeviceInfo());
+    performance_class_state_ = PerformanceClassState::kComplete;
+    return;
+  }
+  if (!NeedsPerformanceClassUpdate(*local_state_)) {
+    performance_class_state_ = PerformanceClassState::kComplete;
+  }
+}
+PerformanceClassifier::~PerformanceClassifier() = default;
+
+void PerformanceClassifier::ScheduleEvaluation() {
+  TRACE_EVENT("optimization_guide",
+              "PerformanceClassifier::ScheduleEvaluation");
+  base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE,
+      base::BindOnce(&PerformanceClassifier::EnsurePerformanceClassAvailable,
+                     weak_ptr_factory_.GetWeakPtr(), base::DoNothing()),
+      optimization_guide::features::GetOnDeviceStartupMetricDelay());
+}
+
+void PerformanceClassifier::EnsurePerformanceClassAvailable(
+    base::OnceClosure complete) {
+  TRACE_EVENT("optimization_guide",
+              "PerformanceClassifier::EnsurePerformanceClassAvailable");
+  if (ListenForPerformanceClassAvailable(std::move(complete))) {
+    return;
+  }
+
+  if (performance_class_state_ != PerformanceClassState::kNotStarted) {
+    return;
+  }
+
+  performance_class_state_ = PerformanceClassState::kComputing;
+  service_client_->Get()->GetDeviceAndPerformanceInfo(
+      mojo::WrapCallbackWithDefaultInvokeIfNotRun(
+          base::BindOnce(&PerformanceClassifier::OnDeviceAndPerformanceInfo,
+                         weak_ptr_factory_.GetWeakPtr()),
+          nullptr, nullptr));
+}
+
+bool PerformanceClassifier::ListenForPerformanceClassAvailable(
+    base::OnceClosure available) {
+  TRACE_EVENT("optimization_guide",
+              "PerformanceClassifier::ListenForPerformanceClassAvailable");
+  if (IsPerformanceClassAvailable()) {
+    std::move(available).Run();
+    return true;
+  }
+
+  // Use unsafe because cancellation isn't needed.
+  performance_class_callbacks_.AddUnsafe(std::move(available));
+  return false;
+}
+
+OnDeviceModelPerformanceClass PerformanceClassifier::GetPerformanceClass()
+    const {
+  CHECK(IsPerformanceClassAvailable());
+  return PerformanceClassFromPref(*local_state_);
+}
+
+bool PerformanceClassifier::IsDeviceGPUCapable() const {
+  return IsPerformanceClassCompatible(
+      features::kPerformanceClassListForOnDeviceModel.Get(),
+      GetPerformanceClass());
+}
+
+bool PerformanceClassifier::IsDeviceCapable() const {
+  return IsDeviceGPUCapable() || on_device_model::IsCpuCapable();
+}
+
+bool PerformanceClassifier::IsLowTierDevice() const {
+  return IsPerformanceClassCompatible(
+      features::kLowTierPerformanceClassListForOnDeviceModel.Get(),
+      GetPerformanceClass());
+}
+
+bool PerformanceClassifier::SupportsImageInput() const {
+  return (IsDeviceGPUCapable() &&
+          IsPerformanceClassCompatible(
+              features::kPerformanceClassListForImageInput.Get(),
+              GetPerformanceClass())) ||
+         (IsDeviceCapable() &&
+          base::FeatureList::IsEnabled(kOnDeviceModelCpuImageInput));
+}
+
+bool PerformanceClassifier::SupportsAudioInput() const {
+  // Check if the device is GPU capable and has enough VRAM.
+  if (IsDeviceGPUCapable() &&
+      base::FeatureList::IsEnabled(kOnDeviceModelGpuAudioInput)) {
+    uint64_t vram_mb = local_state_->GetUint64(
+        model_execution::prefs::localstate::kOnDeviceVramMb);
+    return vram_mb >=
+           static_cast<uint64_t>(kOnDeviceModelAudioInputVramMin.Get());
+  }
+
+  // Check if the device is CPU capable and the feature is enabled.
+  return on_device_model::IsCpuCapable() &&
+         base::FeatureList::IsEnabled(kOnDeviceModelCpuAudioInput);
+}
+
+std::vector<proto::OnDeviceModelPerformanceHint>
+PerformanceClassifier::GetPossibleHints() const {
+  bool force_cpu_backend = base::FeatureList::IsEnabled(
+      on_device_model::features::kOnDeviceModelForceCpuBackend);
+  std::vector<proto::OnDeviceModelPerformanceHint> hints;
+  if (IsDeviceGPUCapable() && !force_cpu_backend) {
+    // Best option is highest quality for GPU device that is not low tier.
+    if (!IsLowTierDevice()) {
+      hints.push_back(proto::ON_DEVICE_MODEL_PERFORMANCE_HINT_HIGHEST_QUALITY);
+    }
+    // Other GPU capable devices get fastest inference.
+    hints.push_back(proto::ON_DEVICE_MODEL_PERFORMANCE_HINT_FASTEST_INFERENCE);
+  }
+  if (on_device_model::IsCpuCapable()) {
+    // Last option is CPU if the device is capable but not GPU capable.
+    hints.push_back(proto::ON_DEVICE_MODEL_PERFORMANCE_HINT_CPU);
+  }
+  return hints;
+}
+
+on_device_model::Capabilities
+PerformanceClassifier::GetPossibleOnDeviceCapabilities() const {
+  on_device_model::Capabilities capabilities;
+  if (SupportsImageInput()) {
+    capabilities.Put(on_device_model::CapabilityFlags::kImageInput);
+  }
+  if (SupportsAudioInput()) {
+    capabilities.Put(on_device_model::CapabilityFlags::kAudioInput);
+  }
+  return capabilities;
+}
+
+std::vector<mojom::BrokerPropertyInfoPtr>
+PerformanceClassifier::GetBrokerProperties() const {
+  std::vector<mojom::BrokerPropertyInfoPtr> props;
+  if (!IsPerformanceClassAvailable()) {
+    props.push_back(mojom::BrokerPropertyInfo::New("Performance Class",
+                                                   "Not available yet"));
+    return props;
+  }
+  props.push_back(mojom::BrokerPropertyInfo::New(
+      "Performance Class", base::ToString(GetPerformanceClass())));
+  props.push_back(mojom::BrokerPropertyInfo::New(
+      "Device Capable", base::ToString(IsDeviceCapable())));
+
+#if BUILDFLAG(BUILD_WITH_INTERNAL_OPTIMIZATION_GUIDE)
+  uint64_t vram_mb = local_state_->GetUint64(
+      model_execution::prefs::localstate::kOnDeviceVramMb);
+  uint64_t required_vram = GetMinimumVramRequired();
+  bool enough_vram = vram_mb >= required_vram;
+  props.push_back(mojom::BrokerPropertyInfo::New(
+      "Enough VRAM",
+      base::StrCat({enough_vram ? "true" : "false", " (",
+                    base::NumberToString(vram_mb), " MiB actual, ",
+                    base::NumberToString(required_vram), " MiB required)"})));
+#endif
+
+  auto capabilities = GetPossibleOnDeviceCapabilities();
+  std::vector<std::string_view> capabilities_strings;
+  if (capabilities.Has(on_device_model::CapabilityFlags::kImageInput)) {
+    capabilities_strings.push_back("Image");
+  }
+  if (capabilities.Has(on_device_model::CapabilityFlags::kAudioInput)) {
+    capabilities_strings.push_back("Audio");
+  }
+  if (capabilities.Has(on_device_model::CapabilityFlags::kToolUse)) {
+    capabilities_strings.push_back("ToolUse");
+  }
+  props.push_back(mojom::BrokerPropertyInfo::New(
+      "Possible Capabilities", base::JoinString(capabilities_strings, ", ")));
+
+  return props;
+}
+
+void PerformanceClassifier::OnDeviceAndPerformanceInfo(
+    on_device_model::mojom::DevicePerformanceInfoPtr perf_info,
+    on_device_model::mojom::DeviceInfoPtr device_info) {
+  TRACE_EVENT("optimization_guide",
+              "PerformanceClassifier::OnDeviceAndPerformanceInfo");
+  if (!perf_info || !device_info) {
+    // Must be a DefaultInvoke due to service crash
+    base::UmaHistogramEnumeration(
+        "OptimizationGuide.ModelExecution.OnDeviceModelPerformanceClass",
+        OnDeviceModelPerformanceClass::kServiceCrash);
+    UpdatePerformanceClassPref(local_state_,
+                               OnDeviceModelPerformanceClass::kServiceCrash);
+  } else {
+    OnDeviceModelPerformanceClass performance_class =
+        ConvertToOnDeviceModelPerformanceClass(perf_info->performance_class);
+    base::UmaHistogramEnumeration(
+        "OptimizationGuide.ModelExecution.OnDeviceModelPerformanceClass",
+        performance_class);
+    base::UmaHistogramMemoryLargeMB(
+        "OptimizationGuide.OnDeviceModel.DetectedVram", perf_info->vram_mb);
+    UpdateVramPref(local_state_, perf_info->vram_mb);
+
+    if (HasDeviceInfoChanged(local_state_, *device_info) ||
+        IsSignificantPerformanceChange(local_state_, performance_class)) {
+      UpdatePerformanceClassPref(local_state_, performance_class);
+      UpdateDeviceInfoPrefs(local_state_, *device_info);
+    } else {
+      // Even when suppressing a run-to-run downgrade, record the browser
+      // version we classified for so classification isn't re-run on every
+      // startup.
+      UpdatePerformanceClassVersionPref(local_state_);
+    }
+  }
+  performance_class_state_ = PerformanceClassState::kComplete;
+  performance_class_callbacks_.Notify();
+}
+
+uint64_t PerformanceClassifier::GetDeviceVramMb() const {
+  return local_state_->GetUint64(
+      model_execution::prefs::localstate::kOnDeviceVramMb);
+}
+
+}  // namespace optimization_guide

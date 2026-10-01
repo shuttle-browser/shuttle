@@ -1,0 +1,80 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_WEBAPPS_ISOLATED_WEB_APPS_ERROR_UNUSABLE_SWBN_FILE_ERROR_H_
+#define COMPONENTS_WEBAPPS_ISOLATED_WEB_APPS_ERROR_UNUSABLE_SWBN_FILE_ERROR_H_
+
+#include <string>
+
+#include "base/component_export.h"
+#include "components/web_package/mojom/web_bundle_parser.mojom.h"
+#include "components/web_package/signed_web_bundles/signed_web_bundle_signature_verifier.h"
+
+namespace web_app {
+
+// The status provides information about if the Signed Web Bundle (.swbn) file
+// can be used at all. If this error occurs then we should not read any
+// response that this .swbn file contains. This error means that the file
+// has critical errors (bad signature, wrong format, etc). If such an error
+// occurs we can't do much with it and most probably we should delete
+// the file.
+class COMPONENT_EXPORT(ISOLATED_WEB_APPS) UnusableSwbnFileError {
+ public:
+  // So far this enum represents every error type that can occur during
+  // integrity block and metadata parsing, before responses are read from
+  // Signed Web Bundles. In future we may add more errors here.
+  //
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  enum class Error {
+    // Integrity Block-related errors
+    kIntegrityBlockParserInternalError = 1,
+    kIntegrityBlockParserFormatError = 2,
+    kIntegrityBlockParserVersionError = 3,
+    kIntegrityBlockValidationError = 4,
+
+    // Signature verification errors
+    kSignatureVerificationError = 5,
+
+    // Metadata-related errors
+    kMetadataParserInternalError = 6,
+    kMetadataParserFormatError = 7,
+    kMetadataParserVersionError = 8,
+    kMetadataValidationError = 9,
+
+    kMaxValue = kMetadataValidationError
+  };
+
+  explicit UnusableSwbnFileError(Error error, std::string message = "");
+  explicit UnusableSwbnFileError(
+      const web_package::mojom::BundleIntegrityBlockParseErrorPtr& error);
+  explicit UnusableSwbnFileError(
+      const web_package::mojom::BundleMetadataParseErrorPtr& error);
+  explicit UnusableSwbnFileError(
+      const web_package::SignedWebBundleSignatureVerifier::Error& error);
+
+  UnusableSwbnFileError(const UnusableSwbnFileError& other) = default;
+  UnusableSwbnFileError& operator=(const UnusableSwbnFileError& other) =
+      default;
+  UnusableSwbnFileError(UnusableSwbnFileError&& other) = default;
+  UnusableSwbnFileError& operator=(UnusableSwbnFileError&& other) = default;
+
+  Error value() const { return error_; }
+  const std::string& message() const { return message_; }
+
+  std::string ToString() const;
+
+ private:
+  Error error_;
+  std::string message_;
+};
+
+COMPONENT_EXPORT(ISOLATED_WEB_APPS)
+bool operator==(const UnusableSwbnFileError& lhs,
+                const UnusableSwbnFileError& rhs);
+COMPONENT_EXPORT(ISOLATED_WEB_APPS)
+UnusableSwbnFileError::Error ToErrorEnum(const UnusableSwbnFileError& err);
+}  // namespace web_app
+
+#endif  // COMPONENTS_WEBAPPS_ISOLATED_WEB_APPS_ERROR_UNUSABLE_SWBN_FILE_ERROR_H_

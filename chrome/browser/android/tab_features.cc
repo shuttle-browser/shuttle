@@ -1,0 +1,209 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/android/tab_features.h"
+
+#include <memory>
+
+#include "chrome/browser/actor/actor_keyed_service.h"
+#include "chrome/browser/actor/actor_tab_data.h"
+#include "chrome/browser/actor/android/ui/actor_ui_tab_controller_android.h"
+#include "chrome/browser/android/tab_android.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_tab_visit_tracker.h"
+#include "chrome/browser/enterprise/data_protection/data_protection_navigation_controller.h"
+#include "chrome/browser/enterprise/reporting/saas_usage/saas_usage_navigation_observer.h"
+#include "chrome/browser/enterprise/util/managed_browser_utils.h"
+#include "chrome/browser/flags/android/chrome_feature_list.h"
+#include "chrome/browser/glic/public/features.h"
+#include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/glic/public/widget/glic_side_panel_coordinator_android.h"
+#include "chrome/browser/glic/public/widget/glic_side_panel_coordinator_desktop_android.h"
+#include "chrome/browser/glic/service/glic_instance_helper.h"
+#include "chrome/browser/glic/suggestions/contextual_cueing_helper.h"
+#include "chrome/browser/net/http_auth_cache_status.h"
+#include "chrome/browser/net/qwac_web_contents_observer.h"
+#include "chrome/browser/payments/web_payments_observer.h"
+#include "chrome/browser/preloading/new_tab_page_preload/new_tab_page_preload_pipeline_manager.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ssl/ask_before_http_dialog_controller.h"
+#include "chrome/browser/ssl/connection_help_tab_helper.h"
+#include "chrome/browser/ssl/security_state_event_observer.h"
+#include "chrome/browser/sync/sessions/sync_sessions_router_tab_helper.h"
+#include "chrome/browser/sync/sessions/sync_sessions_web_contents_router_factory.h"
+#include "chrome/browser/translate/chrome_translate_client.h"
+#include "chrome/browser/ui/contextual_search/tab_contextualization_controller.h"
+#include "chrome/browser/ui/side_panel/android/android_side_panel_enabled_fn.h"
+#include "chrome/browser/ui/side_panel/internal/android/dev/side_panel_tab_scoped_dev_feature.h"
+#include "chrome/browser/ui/side_panel/side_panel_registry.h"
+#include "chrome/browser/ui/side_panel/side_panel_ui.h"
+#include "chrome/browser/ui/tabs/page_context_eligibility_helper.h"
+#include "chrome/browser/ui/webui/webui_embedding_context.h"
+#include "chrome/common/buildflags.h"
+#include "chrome/common/chrome_features.h"
+#include "components/actor/core/actor_features.h"
+#include "components/contextual_tasks/public/features.h"
+#include "components/enterprise/browser/reporting/reporting_features.h"
+#include "components/enterprise/data_protection/features.h"
+#include "components/favicon/content/content_favicon_driver.h"
+#include "components/payments/core/features.h"
+#include "components/search/ntp_features.h"
+#include "components/security_interstitials/core/features.h"
+#include "components/tabs/public/tab_interface.h"
+#include "net/base/features.h"
+#include "ui/base/unowned_user_data/user_data_factory.h"
+#include "ui/webui/buildflags.h"
+
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
+#include "chrome/browser/ui/customize_chrome/side_panel_controller_android.h"
+#endif
+
+namespace tabs {
+
+TabFeatures::TabFeatures(content::WebContents* web_contents, Profile* profile) {
+  TabInterface* const tab = TabInterface::GetFromContents(web_contents);
+  CHECK(tab);
+  tab_subscription_ = webui::InitEmbeddingContext(tab);
+
+  sync_sessions_router_ =
+      std::make_unique<sync_sessions::SyncSessionsRouterTabHelper>(
+          web_contents,
+          sync_sessions::SyncSessionsWebContentsRouterFactory::GetForProfile(
+              profile),
+          ChromeTranslateClient::FromWebContents(web_contents),
+          favicon::ContentFaviconDriver::FromWebContents(web_contents));
+
+  http_auth_cache_status_ = std::make_unique<HttpAuthCacheStatus>(web_contents);
+
+  security_state_event_observer_ =
+      std::make_unique<SecurityStateEventObserver>(web_contents);
+
+  connection_help_tab_helper_ =
+      GetUserDataFactory().CreateInstance<ConnectionHelpTabHelper>(
+          *tab, *tab, web_contents);
+
+  if (base::FeatureList::IsEnabled(net::features::kVerifyQWACs)) {
+    qwac_web_contents_observer_ =
+        std::make_unique<QwacWebContentsObserver>(web_contents);
+  }
+
+  new_tab_page_preload_pipeline_manager_ =
+      std::make_unique<NewTabPagePreloadPipelineManager>(web_contents);
+
+  if (base::FeatureList::IsEnabled(
+          security_interstitials::features::kHttpsFirstDialogUi)) {
+    ask_before_http_dialog_controller_ =
+        GetUserDataFactory().CreateInstance<AskBeforeHttpDialogController>(*tab,
+                                                                           tab);
+  }
+
+  tab_scoped_side_panel_registry_ =
+      AndroidSidePanelEnabledFn::IsEnabled()
+          ? std::make_unique<SidePanelRegistry>(tab)
+          : nullptr;
+
+  if (tab_scoped_side_panel_registry_ &&
+      base::FeatureList::IsEnabled(
+          chrome::android::kEnableAndroidSidePanelDevFeature)) {
+    std::string scope = base::GetFieldTrialParamValueByFeature(
+        chrome::android::kEnableAndroidSidePanelDevFeature, "scope");
+    if (scope == "tab") {
+      tab_scoped_side_panel_dev_feature_ =
+          std::make_unique<SidePanelTabScopedDevFeature>(
+              tab, tab_scoped_side_panel_registry_.get());
+    }
+  }
+
+  if (base::FeatureList::IsEnabled(features::kGlicActor)) {
+    actor_tab_data_ =
+        GetUserDataFactory().CreateInstance<actor::ActorTabData>(*tab, tab);
+  }
+
+  auto* actor_service = actor::ActorKeyedService::Get(profile);
+  if (glic::GlicEnabling::IsProfileEligible(profile) && actor_service) {
+    actor_ui_tab_controller_ =
+        GetUserDataFactory()
+            .CreateInstance<actor::ui::ActorUiTabControllerAndroid>(
+                *tab, *tab, actor_service);
+  }
+
+  if (base::FeatureList::IsEnabled(contextual_tasks::kContextualTasksContext)) {
+    contextual_tasks_tab_visit_tracker_ =
+        GetUserDataFactory()
+            .CreateInstance<contextual_tasks::ContextualTasksTabVisitTracker>(
+                *tab, *tab);
+  }
+
+  tab_contextualization_controller_ =
+      GetUserDataFactory().CreateInstance<lens::TabContextualizationController>(
+          *tab, tab);
+
+  if (base::FeatureList::IsEnabled(
+          enterprise_data_protection::
+              kEnableAndroidEnterpriseScreenshotProtection) &&
+      enterprise_util::IsBrowserManaged(profile)) {
+    data_protection_tab_controller_ = std::make_unique<
+        enterprise_data_protection::DataProtectionNavigationController>(tab);
+  }
+
+  glic_instance_helper_ =
+      GetUserDataFactory().CreateInstance<glic::GlicInstanceHelper>(*tab, tab);
+
+  page_context_eligibility_helper_ =
+      GetUserDataFactory().CreateInstance<tabs::PageContextEligibilityHelper>(
+          *tab, *tab);
+
+  if (base::FeatureList::IsEnabled(features::kGlicAndroidSidePanel) &&
+      AndroidSidePanelEnabledFn::IsEnabled()) {
+    glic_side_panel_coordinator_ =
+        GetUserDataFactory()
+            .CreateInstance<glic::GlicSidePanelCoordinatorDesktopAndroid>(
+                *tab, tab, tab_scoped_side_panel_registry_.get(), profile);
+  } else {
+    glic_side_panel_coordinator_ =
+        GetUserDataFactory()
+            .CreateInstance<glic::GlicSidePanelCoordinatorAndroid>(*tab, tab);
+  }
+
+  contextual_cueing_helper_ = glic::ContextualCueingHelper::MaybeCreate(tab);
+
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
+  if (base::FeatureList::IsEnabled(ntp_features::kNtpCustomizeWebUiAndroid)) {
+    customize_chrome_side_panel_controller_ =
+        std::make_unique<customize_chrome::SidePanelControllerAndroid>(*tab);
+  }
+#endif
+
+  if (base::FeatureList::IsEnabled(enterprise_reporting::kSaasUsageReporting)) {
+    saas_usage_navigation_observer_ =
+        std::make_unique<enterprise_reporting::SaasUsageNavigationObserver>(
+            web_contents);
+  }
+
+  if (base::FeatureList::IsEnabled(
+          payments::features::kThreeDSecureTelemetry)) {
+    web_payments_observer_ =
+        std::make_unique<payments::WebPaymentsObserver>(web_contents);
+  }
+}
+
+TabFeatures::~TabFeatures() = default;
+
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
+customize_chrome::SidePanelController*
+TabFeatures::SetCustomizeChromeSidePanelControllerForTesting(  // IN-TEST
+    std::unique_ptr<customize_chrome::SidePanelController>
+        customize_chrome_side_panel_controller) {
+  customize_chrome_side_panel_controller_ =
+      std::move(customize_chrome_side_panel_controller);
+  return customize_chrome_side_panel_controller_.get();
+}
+#endif
+
+// static
+ui::UserDataFactoryWithOwner<TabInterface>& TabFeatures::GetUserDataFactory() {
+  static base::NoDestructor<ui::UserDataFactoryWithOwner<TabInterface>> factory;
+  return *factory;
+}
+
+}  // namespace tabs

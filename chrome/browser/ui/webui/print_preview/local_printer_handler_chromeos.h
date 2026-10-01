@@ -1,0 +1,179 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_WEBUI_PRINT_PREVIEW_LOCAL_PRINTER_HANDLER_CHROMEOS_H_
+#define CHROME_BROWSER_UI_WEBUI_PRINT_PREVIEW_LOCAL_PRINTER_HANDLER_CHROMEOS_H_
+
+#include <memory>
+#include <optional>
+#include <string>
+
+#include "base/memory/raw_ptr.h"
+#include "base/memory/ref_counted_memory.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/memory/weak_ptr.h"
+#include "base/types/optional_ref.h"
+#include "base/values.h"
+#include "chrome/browser/ui/webui/print_preview/printer_handler.h"
+#include "chromeos/printing/printer_configuration.h"
+#include "printing/backend/print_backend.h"
+
+namespace content {
+class WebContents;
+}
+
+namespace ash {
+class LocalPrinter;
+namespace printing {
+class IppClientInfoCalculator;
+}  // namespace printing
+}  // namespace ash
+
+namespace printing {
+
+// Managed print options constants.
+inline constexpr char kManagedPrintOptions[] = "managedPrintOptions";
+
+inline constexpr char kManagedPrintOptions_DefaultValue[] = "defaultValue";
+inline constexpr char kManagedPrintOptions_AllowedValues[] = "allowedValues";
+
+inline constexpr char kManagedPrintOptions_SizeWidth[] = "width";
+inline constexpr char kManagedPrintOptions_SizeHeight[] = "height";
+
+inline constexpr char kManagedPrintOptions_DpiHorizontal[] = "horizontal";
+inline constexpr char kManagedPrintOptions_DpiVertical[] = "vertical";
+
+inline constexpr char kManagedPrintOptions_MediaSize[] = "mediaSize";
+inline constexpr char kManagedPrintOptions_MediaType[] = "mediaType";
+inline constexpr char kManagedPrintOptions_Duplex[] = "duplex";
+inline constexpr char kManagedPrintOptions_Color[] = "color";
+inline constexpr char kManagedPrintOptions_Dpi[] = "dpi";
+inline constexpr char kManagedPrintOptions_Quality[] = "quality";
+inline constexpr char kManagedPrintOptions_PrintAsImage[] = "printAsImage";
+
+// This class must be created and used on the UI thread.
+class LocalPrinterHandlerChromeos : public PrinterHandler {
+ public:
+  using AshJobSettingsCallback =
+      base::OnceCallback<void(base::DictValue settings)>;
+
+  static std::unique_ptr<LocalPrinterHandlerChromeos> Create(
+      content::WebContents* preview_web_contents);
+
+  // Creates an instance suitable for testing with the `ash::LocalPrinter` and
+  // `ash::printing::IppClientInfoCalculator` and with
+  // `preview_web_contents_` set to nullptr. PrinterHandler methods run input
+  // callbacks with reasonable defaults when `ash::LocalPrinter` is unavailable.
+  // `local_printer` must be non-null and outlive the returned instance.
+  static std::unique_ptr<LocalPrinterHandlerChromeos> CreateForTesting(
+      ash::LocalPrinter* local_printer,
+      std::unique_ptr<ash::printing::IppClientInfoCalculator>
+          ipp_client_info_calculator);
+
+  // Prefer using Create() above.
+  explicit LocalPrinterHandlerChromeos(
+      content::WebContents* preview_web_contents);
+  LocalPrinterHandlerChromeos(const LocalPrinterHandlerChromeos&) = delete;
+  LocalPrinterHandlerChromeos& operator=(const LocalPrinterHandlerChromeos&) =
+      delete;
+  ~LocalPrinterHandlerChromeos() override;
+
+  // Returns a LocalDestinationInfo object (defined in
+  // chrome/browser/resources/print_preview/data/local_parsers.js).
+  static base::DictValue PrinterToValue(const chromeos::Printer& printer);
+
+  // Converts `caps` to a CapabilitiesResponse object (defined in
+  // chrome/browser/resources/print_preview/native_layer.js).  If `caps` has no
+  // value, the resulting object is empty.  Otherwise, `printer` must have a
+  // value too and is used to fill in some of the information such as printer
+  // name.
+  static base::DictValue CapabilityToValue(
+      base::optional_ref<const chromeos::Printer> printer,
+      const std::optional<::printing::PrinterSemanticCapsAndDefaults>& caps);
+
+  // Returns a PrinterStatus object (defined in
+  // chrome/browser/resources/print_preview/data/printer_status_cros.ts).
+  static base::DictValue StatusToValue(
+      const chromeos::CupsPrinterStatus& status);
+
+  // Return a ManagedPrintOptions object (defined in
+  // chrome/browser/resources/print_preview/data/managed_print_options_cros.ts).
+  static base::DictValue ManagedPrintOptionsToValue(
+      const chromeos::Printer::ManagedPrintOptions& managed_print_options);
+
+  // PrinterHandler implementation.
+  void Reset() override;
+  void GetDefaultPrinter(DefaultPrinterCallback callback) override;
+  void StartGetPrinters(AddedPrintersCallback added_printers_callback,
+                        GetPrintersDoneCallback done_callback) override;
+  void StartGetCapability(const std::string& destination_id,
+                          GetCapabilityCallback callback) override;
+  void StartPrint(const std::u16string& job_title,
+                  base::DictValue settings,
+                  scoped_refptr<base::RefCountedMemory> print_data,
+                  PrintCallback callback) override;
+  void StartGetEulaUrl(const std::string& destination_id,
+                       GetEulaUrlCallback callback) override;
+  void StartPrinterStatusRequest(
+      const std::string& printer_id,
+      PrinterStatusRequestCallback callback) override;
+
+  // Public wrapper for `GetAshJobSettings` to use in tests.
+  void GetAshJobSettingsForTesting(std::string printer_id,
+                                   AshJobSettingsCallback callback,
+                                   base::DictValue settings);
+
+ private:
+  // Get ash-specific job settings for the specified printer, merge them with
+  // `settings`, and run `callback` with the result.
+  void GetAshJobSettings(std::string printer_id,
+                         AshJobSettingsCallback callback,
+                         base::DictValue settings);
+
+  // Step 1 of the `GetAshJobSettings` chain.
+  // Examines the `kPrintingSendUsernameAndFilenameEnabled` profile preference
+  // to determine if the user's email can be shared. If permitted, adds the
+  // email to `settings`. Invokes `callback` to proceed to `GetOAuthToken`.
+  void GetUsernamePerPolicy(AshJobSettingsCallback callback,
+                            base::DictValue settings) const;
+
+  // Step 2 of the `GetAshJobSettings` chain.
+  // Obtains an OAuth access token from ash::LocalPrinter to authorize the print
+  // job for the given printer. Adds the token to `settings` if available, and
+  // invokes `callback` to proceed to `GetIppClientInfo`.
+  void GetOAuthToken(const std::string& printer_id,
+                     AshJobSettingsCallback callback,
+                     base::DictValue settings) const;
+
+  // Step 3 of the `GetAshJobSettings` chain.
+  // Populates client metadata (OS and device info) into `settings` using
+  // `IppClientInfoCalculator` and `LocalPrinter::GetPrinter()`. Device info
+  // is only added for managed printers with secure connections for affiliated
+  // users. Invokes the final `callback` to complete the settings gathering.
+  void GetIppClientInfo(const std::string& printer_id,
+                        AshJobSettingsCallback callback,
+                        base::DictValue settings) const;
+
+  ash::printing::IppClientInfoCalculator* GetIppClientInfoCalculator() const;
+
+  // Wrapper for `printing::StartLocalPrint()` to use as a callback bound to the
+  // lifetime of `this`.
+  void CallStartLocalPrint(scoped_refptr<base::RefCountedMemory> print_data,
+                           PrinterHandler::PrintCallback callback,
+                           base::DictValue settings);
+
+  const raw_ptr<content::WebContents> preview_web_contents_;
+  raw_ptr<ash::LocalPrinter> local_printer_ = nullptr;
+  // Lazy initialization of `IppClientInfoCalculator` because
+  // linux-chromeos browser_tests and interactive_ui_tests won't pass
+  // CHECK(IsRunningOnChromeOS()). These browser_tests tests the printing UI
+  // functions and does not really need the IPP client info.
+  mutable std::unique_ptr<ash::printing::IppClientInfoCalculator>
+      ipp_client_info_calculator_;
+  base::WeakPtrFactory<LocalPrinterHandlerChromeos> weak_ptr_factory_{this};
+};
+
+}  // namespace printing
+
+#endif  // CHROME_BROWSER_UI_WEBUI_PRINT_PREVIEW_LOCAL_PRINTER_HANDLER_CHROMEOS_H_

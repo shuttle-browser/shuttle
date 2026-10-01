@@ -1,0 +1,235 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/autofill/core/browser/filling/filling_product.h"
+
+#include <string>
+
+#include "base/notreached.h"
+#include "build/buildflag.h"
+#include "components/autofill/core/browser/field_types.h"
+#include "components/autofill/core/browser/suggestions/suggestion_generator.h"
+#include "components/autofill/core/browser/suggestions/suggestion_type.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "base/android/scoped_java_ref.h"
+#include "components/autofill/android/main_autofill_jni_headers/FillingProductBridge_jni.h"
+#endif  // BUILDFLAG(IS_ANDROID)
+
+namespace autofill {
+
+// LINT.IfChange(FillingProductToString)
+std::string_view FillingProductToString(FillingProduct filling_product) {
+  switch (filling_product) {
+    case FillingProduct::kNone:
+      return "None";
+    case FillingProduct::kAddress:
+      return "Address";
+    case FillingProduct::kCreditCard:
+      return "CreditCard";
+    case FillingProduct::kMerchantPromoCode:
+      return "MerchantPromoCode";
+    case FillingProduct::kIban:
+      return "Iban";
+    case FillingProduct::kAutocomplete:
+      return "Autocomplete";
+    case FillingProduct::kPasskey:
+      return "Passkey";
+    case FillingProduct::kPassword:
+      return "Password";
+    case FillingProduct::kCompose:
+      return "Compose";
+    case FillingProduct::kAutofillAi:
+      return "AutofillAi";
+    case FillingProduct::kLoyaltyCard:
+      return "LoyaltyCard";
+    case FillingProduct::kIdentityCredential:
+      return "IdentityCredential";
+    case FillingProduct::kDataList:
+      return "DataList";
+    case FillingProduct::kOneTimePassword:
+      return "OneTimePassword";
+    case FillingProduct::kAtMemory:
+      return "AtMemory";
+  }
+  NOTREACHED();
+}
+// LINT.ThenChange(//tools/metrics/histograms/metadata/autofill/histograms.xml:Autofill.FillingProduct)
+
+FillingProduct GetFillingProductFromSuggestionType(SuggestionType type) {
+  switch (type) {
+    case SuggestionType::kAddressEntry:
+    case SuggestionType::kAddressEntryOnTyping:
+    case SuggestionType::kAddressFieldByFieldFilling:
+    case SuggestionType::kDevtoolsTestAddressByCountry:
+    case SuggestionType::kDevtoolsTestAddressEntry:
+    case SuggestionType::kDevtoolsTestAddresses:
+    case SuggestionType::kManageAddress:
+      return FillingProduct::kAddress;
+    case SuggestionType::kBnplEntry:
+    case SuggestionType::kCreditCardEntry:
+    case SuggestionType::kManageCreditCard:
+    case SuggestionType::kMaximizeCreditCardBenefitsEntry:
+    case SuggestionType::kSaveAndFillCreditCardEntry:
+    case SuggestionType::kScanCreditCard:
+    case SuggestionType::kVirtualCreditCardEntry:
+      return FillingProduct::kCreditCard;
+    case SuggestionType::kMerchantPromoCodeEntry:
+      return FillingProduct::kMerchantPromoCode;
+    case SuggestionType::kIbanEntry:
+    case SuggestionType::kManageIban:
+      return FillingProduct::kIban;
+    case SuggestionType::kAutocompleteEntry:
+      return FillingProduct::kAutocomplete;
+    case SuggestionType::kAccountStoragePasswordEntry:
+    case SuggestionType::kAllSavedPasswordsEntry:
+    case SuggestionType::kBackupPasswordEntry:
+    case SuggestionType::kFillPassword:
+    case SuggestionType::kFreeformFooter:
+    case SuggestionType::kGeneratePasswordEntry:
+    case SuggestionType::kPasswordEntry:
+    case SuggestionType::kPasswordFieldByFieldFilling:
+    case SuggestionType::kPendingStateSignin:
+    case SuggestionType::kTroubleSigningInEntry:
+    case SuggestionType::kViewPasswordDetails:
+      return FillingProduct::kPassword;
+    case SuggestionType::kComposeDisable:
+    case SuggestionType::kComposeGoToSettings:
+    case SuggestionType::kComposeNeverShowOnThisSiteAgain:
+    case SuggestionType::kComposeProactiveNudge:
+    case SuggestionType::kComposeResumeNudge:
+    case SuggestionType::kComposeSavedStateNotification:
+      return FillingProduct::kCompose;
+    case SuggestionType::kDatalistEntry:
+      return FillingProduct::kDataList;
+    case SuggestionType::kAtMemoryAiDisclosure:
+    case SuggestionType::kAtMemoryGenericError:
+    case SuggestionType::kAtMemoryInactivityNudge:
+    case SuggestionType::kAtMemoryNoConnection:
+    case SuggestionType::kAtMemoryOpenGemini:
+    case SuggestionType::kAtMemorySearchAffordance:
+    case SuggestionType::kAutocompleteAtMemoryButton:
+    case SuggestionType::kBnplFootnote:
+    case SuggestionType::kInsecureContextPaymentDisabledMessage:
+    case SuggestionType::kLoadingThrobber:
+    case SuggestionType::kPersonalContextNotice:
+    case SuggestionType::kSeePromoCodeDetails:
+    case SuggestionType::kSeparator:
+    case SuggestionType::kTitle:
+    case SuggestionType::kUndo:
+      return FillingProduct::kNone;
+    case SuggestionType::kAutofillAiOtherOrders:
+    case SuggestionType::kAutofillAiOtherShipments:
+    case SuggestionType::kAutofillAiPrivateInferenceNotice:
+    case SuggestionType::kAutofillAiSourceAttribution:
+    case SuggestionType::kFetchingAmbientData:
+    case SuggestionType::kFillAutofillAi:
+    case SuggestionType::kManageAutofillAi:
+    case SuggestionType::kManageAutofillAiIdentityDocs:
+    case SuggestionType::kManageAutofillAiShopping:
+    case SuggestionType::kManageAutofillAiTravel:
+    case SuggestionType::kRemoveAutofillAi:
+      return FillingProduct::kAutofillAi;
+    case SuggestionType::kAllLoyaltyCardsEntry:
+    case SuggestionType::kLoyaltyCardEntry:
+    case SuggestionType::kManageLoyaltyCard:
+      return FillingProduct::kLoyaltyCard;
+    case SuggestionType::kIdentityCredential:
+      return FillingProduct::kIdentityCredential;
+    case SuggestionType::kOneTimePasswordEntry:
+      return FillingProduct::kOneTimePassword;
+    case SuggestionType::kAtMemoryFetching:
+    case SuggestionType::kAtMemorySearchResult:
+    case SuggestionType::kAtMemorySourceAttribution:
+    case SuggestionType::kManageEnhancedAutofill:
+      return FillingProduct::kAtMemory;
+    case SuggestionType::kWebauthnCredential:
+    case SuggestionType::kWebauthnPasskeyQrCode:
+    case SuggestionType::kWebauthnSignInWithAnotherDevice:
+      return FillingProduct::kPasskey;
+  }
+  NOTREACHED();
+}
+
+FillingProduct GetFillingProductFromSuggestionDataSource(
+    SuggestionGenerator::SuggestionDataSource source) {
+  switch (source) {
+    case SuggestionGenerator::SuggestionDataSource::kAutofillAi:
+      return FillingProduct::kAutofillAi;
+    case SuggestionGenerator::SuggestionDataSource::kAddress:
+    case SuggestionGenerator::SuggestionDataSource::kAddressOnTyping:
+      return FillingProduct::kAddress;
+    case SuggestionGenerator::SuggestionDataSource::kCreditCard:
+    case SuggestionGenerator::SuggestionDataSource::kVirtualStandaloneCvc:
+    case SuggestionGenerator::SuggestionDataSource::kSaveAndFillPromo:
+      return FillingProduct::kCreditCard;
+    case SuggestionGenerator::SuggestionDataSource::kIban:
+      return FillingProduct::kIban;
+    case SuggestionGenerator::SuggestionDataSource::kMerchantPromoCode:
+      return FillingProduct::kMerchantPromoCode;
+    case SuggestionGenerator::SuggestionDataSource::kAutocomplete:
+      return FillingProduct::kAutocomplete;
+    case SuggestionGenerator::SuggestionDataSource::kLoyaltyCard:
+      return FillingProduct::kLoyaltyCard;
+    case SuggestionGenerator::SuggestionDataSource::kIdentityCredential:
+      return FillingProduct::kIdentityCredential;
+    case SuggestionGenerator::SuggestionDataSource::kPasskey:
+      return FillingProduct::kPasskey;
+    case SuggestionGenerator::SuggestionDataSource::kCompose:
+      return FillingProduct::kCompose;
+    case SuggestionGenerator::SuggestionDataSource::kOneTimePassword:
+      return FillingProduct::kOneTimePassword;
+    case SuggestionGenerator::SuggestionDataSource::kAtMemoryInactivityNudge:
+      return FillingProduct::kNone;
+  }
+  NOTREACHED();
+}
+
+#if BUILDFLAG(IS_ANDROID)
+static int32_t JNI_FillingProductBridge_GetFillingProductFromSuggestionType(
+    JNIEnv* env,
+    int32_t type) {
+  SuggestionType suggestion_type = static_cast<SuggestionType>(type);
+  return static_cast<int32_t>(
+      GetFillingProductFromSuggestionType(suggestion_type));
+}
+#endif  // BUILDFLAG(IS_ANDROID)
+
+FillingProduct GetFillingProductFromFieldTypeGroup(
+    FieldTypeGroup field_type_group) {
+  using enum FieldTypeGroup;
+  switch (field_type_group) {
+    case kUnfillable:
+    case kTransaction:
+    case kNoGroup:
+      return FillingProduct::kNone;
+    case kName:
+    case kEmail:
+    case kCompany:
+    case kAddress:
+    case kPhone:
+      return FillingProduct::kAddress;
+    case kCreditCard:
+    case kStandaloneCvcField:
+      return FillingProduct::kCreditCard;
+    case kPasswordField:
+    case kUsernameField:
+      return FillingProduct::kPassword;
+    case kIban:
+      return FillingProduct::kIban;
+    case kAutofillAi:
+      return FillingProduct::kAutofillAi;
+    case kLoyaltyCard:
+      return FillingProduct::kLoyaltyCard;
+    case kOneTimePassword:
+      return FillingProduct::kOneTimePassword;
+  }
+  NOTREACHED();
+}
+
+}  // namespace autofill
+
+#if BUILDFLAG(IS_ANDROID)
+DEFINE_JNI(FillingProductBridge)
+#endif

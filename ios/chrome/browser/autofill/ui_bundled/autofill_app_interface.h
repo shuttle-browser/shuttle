@@ -1,0 +1,209 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_AUTOFILL_UI_BUNDLED_AUTOFILL_APP_INTERFACE_H_
+#define IOS_CHROME_BROWSER_AUTOFILL_UI_BUNDLED_AUTOFILL_APP_INTERFACE_H_
+
+#import <Foundation/Foundation.h>
+
+#import "base/time/time.h"
+
+// CreditCardSaveManager events that can be waited on by the IOSTestEventWaiter.
+// Name reflects the observer method that is triggering this event.
+enum CreditCardSaveManagerObserverEvent : int {
+  kOnOfferLocalSaveCalled,
+  kOnDecideToRequestUploadSaveCalled,
+  kOnReceivedGetUploadDetailsResponseCalled,
+  kOnSentUploadCardRequestCalled,
+  kOnReceivedUploadCardResponseCalled,
+  kOnStrikeChangeCompleteCalled,
+  kOnShowCardSavedFeedbackCalled
+};
+
+// AutofillAppInterface contains the app-side
+// implementation for helpers. These helpers are compiled into
+// the app binary and can be called from either app or test code.
+@interface AutofillAppInterface : NSObject
+
+// Removes all credentials stored in the profile store.
++ (void)clearProfilePasswordStore;
+
+// Saves an example form in the profile store.
++ (void)saveExamplePasswordFormToProfileStore;
+
+// Saves an example form in the store for the passed URL spec.
++ (void)savePasswordFormForURLSpec:(NSString*)URLSpec;
+
+// Saves an example form with a backup password in the store for the passed URL
+// spec.
++ (void)savePasswordFormWithBackupForURLSpec:(NSString*)URLSpec;
+
+// Returns the number of profiles (addresses) in the data manager.
++ (NSInteger)profilesCount;
+
+// Returns true if the profile is saved to account.
++ (BOOL)isAccountProfileAtIndex:(NSInteger)index;
+
+// Clears the profiles (addresses) in the data manager.
++ (void)clearProfilesStore;
+
+// Saves a sample profile (address) in the data manager.
++ (void)saveExampleProfile;
+
+// Saves a sample account profile (address) in the data manager.
++ (void)saveExampleAccountProfile;
+
+// Saves a sample account profile (address) with Home record type in the data
+// manager.
++ (void)saveExampleHomeAndWorkAccountProfile;
+
+// Saves a sample account name and email profile in the data manager.
++ (void)saveExampleAccountNameEmailProfile;
+
+// Returns the name of the sample profile.
++ (NSString*)exampleProfileName;
+
+// Returns the street address of the sample profile.
++ (NSString*)exampleProfileAddress;
+
+// Returns the city of the sample profile.
++ (NSString*)exampleProfileCity;
+
+// Returns the state of the sample profile.
++ (NSString*)exampleProfileState;
+
+// Returns the zip code of the sample profile.
++ (NSString*)exampleProfileZip;
+
+// Removes the locally stored credit cards.
++ (void)clearCreditCardStore;
+
+// Clears all server data including server cards.
++ (void)clearAllServerDataForTesting;
+
+// Saves a local credit card that doesn't require CVC to be used.
+// Returns the `card.NetworkAndLastFourDigits` of the card used in the UIs.
++ (NSString*)saveLocalCreditCard;
+
+// Saves a local credit card that requires CVC to be used.
+// Returns the `card.NetworkAndLastFourDigits` of the card used in the UIs.
++ (NSString*)saveLocalCreditCardWithCvc;
+
+// Returns the number of credit cards in the local store.
++ (NSInteger)localCreditCount;
+
+// Returns the CVC of the first saved local credit card.
++ (NSString*)firstLocalCreditCardCvc;
+
+// Returns the cardholder name of the sample local credit card.
++ (NSString*)exampleCreditCardName;
+
+// Returns the credit card number of the sample local credit card.
++ (NSString*)exampleCreditCardNumber;
+
+// Saves a masked credit card that requires CVC to be used.
+// Returns the `card.NetworkAndLastFourDigits` of the card used in the UIs.
++ (NSString*)saveMaskedCreditCard;
+
+// Saves a masked credit card which is enrolled to create a Virtual Card.
+// No current CVC auth required.
+// Returns the `card.NetworkAndLastFourDigits` of the card used in the UIs.
++ (NSString*)saveMaskedCreditCardEnrolledInVirtualCard;
+
+// Saves a masked credit card which is enrolled in CardInfoRetrieval.
+// No current CVC auth required.
+// Returns the `card.NetworkAndLastFourDigits` of the card used in the UIs.
++ (NSString*)saveMaskedCreditCardEnrolledInCardInfoRetrieval;
+
+// The functions below are helpers for the SaveCardInfobarEGTest that requires
+// observing autofill events in the app process.
+// FakeCreditCardServer is an object instantiated in the app process that
+// will observe the needed events.
+
+// Creates a FakeCreditCardServer object and call SetUp on it.
+// This will register event observer and test URL loader and histogram tester.
++ (void)setUpFakeCreditCardServer;
+
+// Tear down the FakeCreditCardServer, unregister it and delete it.
++ (void)tearDownFakeCreditCardServer;
+
+// Clears the virtual card enrollment strike data.
++ (void)clearVirtualCardEnrollmentStrikes;
+
+// Sets the Autofill events that are expected to be triggered.
++ (void)resetEventWaiterForEvents:(NSArray*)events
+                          timeout:(base::TimeDelta)timeout;
+
+// Wait until all expected events are triggered.
++ (BOOL)waitForEvents [[nodiscard]];
+
+// Sets the next response of the payments server for `request`.
++ (void)setPaymentsResponse:(NSString*)response
+                 forRequest:(NSString*)request
+              withErrorCode:(int)error;
+
+// Clear all existing fake response.
++ (void)clearPaymentsResponses;
+
+// Sets a fake access token to bypass the token fetch request.
++ (void)setAccessToken;
+
+// Sets the number of times the user refused to save a card.
++ (void)setFormFillMaxStrikes:(int)max forCard:(NSString*)card;
+
+// Gets the risk data for payments.
++ (NSString*)paymentsRiskData;
+
+// Sets the risk data for payments.
++ (void)setPaymentsRiskData:(NSString*)riskData;
+
+// Make it that we consider the credit card form to be a secure in the current
+// context. This will allow us to fill the textfields on the web page. We only
+// want to use this for tests.
++ (void)considerCreditCardFormSecureForTesting;
+
+// Configs the mandatory reauth preference.
++ (void)setMandatoryReauthEnabled:(BOOL)enabled;
+
+// Sets the CVC storage preference.
++ (void)setPaymentCvcStorageEnabled:(BOOL)enabled;
+
+// Triggers the Autofill AI save entity bubble.
++ (void)showAutofillAiSaveEntityBubble;
+
+// TODO(crbug.com/538242036): Remove showAtMemoryUI once the
+// SuggestionType::kAutocompleteAtMemoryButton can be received.
+// Triggers the AtMemory UI.
++ (void)showAtMemoryUI;
+
+// Saves a Redress Number entity with the given name and number. Returns the
+// UUID of the created entity. Because entities are saved asynchronously, it is
+// not immediately available to be retrieved from the EntityDataManager.
++ (NSString*)saveRedressNumberEntityWithName:(NSString*)name
+                                      number:(NSString*)number;
+
+// Removes the entity with the given UUID.
++ (void)removeEntityWithUUID:(NSString*)uuid;
+
+// Deletes all entities modified since the given time.
++ (void)removeEntityModifiedSince:(NSDate*)time;
+
+// Saves a Passport entity with test data.
++ (BOOL)savePassportEntity;
+
+// Saves a Passport entity with type kServerWallet.
++ (NSString*)saveServerWalletPassportEntity;
+
+// Saves a Vehicle entity with test data.
++ (BOOL)saveVehicleEntity;
+
+// Returns YES if there is at least one form cached in the AutofillManager.
++ (BOOL)isFormCachedInMainFrame;
+
+// Wait until a form is cached in the AutofillManager.
++ (BOOL)waitForFormToBeCachedInMainFrame;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_AUTOFILL_UI_BUNDLED_AUTOFILL_APP_INTERFACE_H_

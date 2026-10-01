@@ -1,0 +1,27 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_chromeos)
+
+static_library("slow") {
+  sources = [
+    "slow_trace_ui.cc",
+    "slow_trace_ui.h",
+    "slow_ui.cc",
+    "slow_ui.h",
+  ]
+
+  deps = [
+    "//ash/constants",
+    "//base",
+    "//chrome/app:generated_resources",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/resources/chromeos/slow:resources",
+    "//components/feedback/content",
+    "//components/prefs",
+    "//content/public/browser",
+    "//content/public/common",
+    "//ui/webui",
+  ]
+}

@@ -1,0 +1,721 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/download/ui/download_list/download_list_table_view_controller.h"
+
+#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+
+#import "base/apple/foundation_util.h"
+#import "base/functional/bind.h"
+#import "base/location.h"
+#import "base/strings/sys_string_conversions.h"
+#import "base/time/time.h"
+#import "base/timer/timer.h"
+#import "ios/chrome/browser/download/model/download_filter_util.h"
+#import "ios/chrome/browser/download/model/external_app_util.h"
+#import "ios/chrome/browser/download/ui/download_list/download_list_action_delegate.h"
+#import "ios/chrome/browser/download/ui/download_list/download_list_consumer.h"
+#import "ios/chrome/browser/download/ui/download_list/download_list_group_item.h"
+#import "ios/chrome/browser/download/ui/download_list/download_list_grouping_util.h"
+#import "ios/chrome/browser/download/ui/download_list/download_list_item.h"
+#import "ios/chrome/browser/download/ui/download_list/download_list_mutator.h"
+#import "ios/chrome/browser/download/ui/download_list/download_list_table_view_cell_content_configuration.h"
+#import "ios/chrome/browser/download/ui/download_list/download_list_table_view_header.h"
+#import "ios/chrome/browser/shared/ui/symbols/symbols.h"
+#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_cell.h"
+#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_text_header_footer_item.h"
+#import "ios/chrome/browser/shared/ui/table_view/content_configuration/table_view_cell_content_configuration.h"
+#import "ios/chrome/browser/shared/ui/table_view/table_view_illustrated_empty_view.h"
+#import "ios/chrome/browser/shared/ui/table_view/table_view_model.h"
+#import "ios/chrome/browser/shared/ui/table_view/table_view_utils.h"
+#import "ios/chrome/common/string_util.h"
+#import "ios/chrome/common/ui/colors/semantic_color_names.h"
+#import "ios/chrome/common/ui/util/chrome_button.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "ui/base/l10n/l10n_util.h"
+
+namespace {
+/// Constants for cancel button styling.
+static const CGFloat kCancelButtonIconSize = 30;
+/// Constants for the default header height.
+static const CGFloat kHeaderDefaultHeight = 48;
+
+/// Constants for timer update intervals.
+static constexpr base::TimeDelta kNormalUpdateInterval =
+    base::Milliseconds(100);  // 10 FPS
+/// Skip ratio for tracking mode: skip 2 out of 3 updates (keep every 3rd
+/// update)
+static const NSInteger kTrackingModeSkipRatio = 3;
+
+NSString* const kCancelButtonPrimaryActionIdentifier =
+    @"kCancelButtonPrimaryActionIdentifier";
+
+// Helper function to create the attributed string with a link.
+NSAttributedString* GetAttributedString(NSString* message) {
+  NSDictionary* textAttributes =
+      [TableViewIllustratedEmptyView defaultTextAttributesForSubtitle];
+  NSDictionary* linkAttributes = @{
+    NSForegroundColorAttributeName : [UIColor colorNamed:kBlueColor],
+    NSFontAttributeName :
+        [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline],
+    NSUnderlineStyleAttributeName : @(NSUnderlineStyleNone),
+    NSLinkAttributeName : GetFilesAppUrl().absoluteString,
+  };
+
+  return AttributedStringFromStringWithLink(message, textAttributes,
+                                            linkAttributes);
+}
+
+}  // namespace
+
+// Diffable data source types using DownloadListGroupItem for section
+// identifiers.
+typedef UITableViewDiffableDataSource<DownloadListGroupItem*, DownloadListItem*>
+    DownloadListDiffableDataSource;
+typedef NSDiffableDataSourceSnapshot<DownloadListGroupItem*, DownloadListItem*>
+    DownloadListSnapshot;
+
+@interface DownloadListTableViewController () <
+    TableViewIllustratedEmptyViewDelegate,
+    UISearchResultsUpdating>
+// Filter header view for download list.
+@property(nonatomic, strong) DownloadListTableViewHeader* filterHeaderView;
+// Counter to track number of updates for throttling logic.
+@property(nonatomic, assign) NSInteger updateCounter;
+// Search controller for filtering downloads by keyword.
+@property(nonatomic, strong) UISearchController* searchController;
+@end
+
+@implementation DownloadListTableViewController {
+  DownloadListDiffableDataSource* _diffableDataSource;
+  // Cached download items for timer updates.
+  NSArray<DownloadListItem*>* _cachedDownloadItems;
+  // Repeating timer for periodic UI updates.
+  base::RepeatingTimer _updateTimer;
+  // Height of the on-screen keyboard overlapping `self.view`. Used to keep
+  // the empty-state illustration vertically centered within the visible
+  // (un-occluded) area while the search keyboard is up.
+  CGFloat _keyboardOverlap;
+}
+
+- (void)viewDidLoad {
+  [super viewDidLoad];
+
+  self.title = l10n_util::GetNSString(IDS_IOS_DOWNLOAD_LIST_TITLE);
+
+  // Configure navigation bar.
+  self.navigationController.navigationBar.prefersLargeTitles = YES;
+  UIBarButtonItem* closeButton = [[UIBarButtonItem alloc]
+      initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                           target:self
+                           action:@selector(closeButtonTapped)];
+  self.navigationItem.rightBarButtonItem = closeButton;
+
+  // Configure table view.
+  // Register cells for both the base configuration and download-specific
+  // configuration.
+  [DownloadListTableViewCellContentConfiguration
+      registerCellForTableView:self.tableView];
+  RegisterTableViewHeaderFooter<TableViewTextHeaderFooterView>(self.tableView);
+
+  // Setup filter header view.
+  [self setupFilterHeaderView];
+
+  // Setup search controller.
+  [self setupSearchController];
+
+  [self configureDiffableDataSource];
+
+  // Load download records.
+  [self.mutator loadDownloadRecords];
+
+  // Start periodic updates.
+  [self startPeriodicUpdates];
+}
+
+#pragma mark - Private
+
+// Sets up the filter header view for the download list.
+- (void)setupFilterHeaderView {
+  self.filterHeaderView = [[DownloadListTableViewHeader alloc]
+      initWithFrame:CGRectMake(0, 0, self.tableView.bounds.size.width,
+                               kHeaderDefaultHeight)];
+  self.filterHeaderView.mutator = self.mutator;
+}
+
+// Sets up the search controller for filtering downloads by keyword.
+- (void)setupSearchController {
+  self.searchController =
+      [[UISearchController alloc] init];
+  self.searchController.searchResultsUpdater = self;
+  self.searchController.obscuresBackgroundDuringPresentation = NO;
+  self.navigationItem.searchController = self.searchController;
+  // For iPad, the search bar does not show at the first time when the view
+  // appears. Set the search bar always visible.
+  self.navigationItem.hidesSearchBarWhenScrolling = NO;
+}
+
+// Updates the frame of the table header view to fit its content.
+- (void)updateTableHeaderViewFrame {
+  if (!self.filterHeaderView) {
+    return;
+  }
+
+  // Ensure view is loaded before accessing tableView.
+  if (!self.viewLoaded) {
+    return;
+  }
+  CGFloat width = self.tableView.bounds.size.width;
+
+  CGSize fittingSize = [self.filterHeaderView
+      systemLayoutSizeFittingSize:CGSizeMake(
+                                      width,
+                                      UILayoutFittingCompressedSize.height)];
+
+  CGRect newFrame = CGRectMake(0, 0, width, fittingSize.height);
+  if (!CGRectEqualToRect(self.filterHeaderView.frame, newFrame)) {
+    self.filterHeaderView.frame = newFrame;
+    // Reassign to trigger table view layout update.
+    if (self.tableView.tableHeaderView == self.filterHeaderView) {
+      self.tableView.tableHeaderView = self.filterHeaderView;
+    }
+  }
+}
+
+- (void)viewDidLayoutSubviews {
+  [super viewDidLayoutSubviews];
+  [self updateTableHeaderViewFrame];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+  [super viewWillDisappear:animated];
+  [self pausePeriodicUpdates];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+  [super viewWillAppear:animated];
+  [self resumePeriodicUpdates];
+  // Observe keyboard frame changes so the empty-state illustration can be
+  // kept above the keyboard (it would otherwise stay centered against the
+  // full tableView bounds and slide behind the search keyboard).
+  [[NSNotificationCenter defaultCenter]
+      addObserver:self
+         selector:@selector(keyboardWillChangeFrame:)
+             name:UIKeyboardWillChangeFrameNotification
+           object:nil];
+  // Drop any stale keyboard overlap captured during the previous appearance
+  // and re-apply to any existing empty view so it doesn't render off-center.
+  _keyboardOverlap = 0;
+  TableViewIllustratedEmptyView* emptyView =
+      base::apple::ObjCCast<TableViewIllustratedEmptyView>(
+          self.tableView.backgroundView);
+  if (emptyView) {
+    [self applyEmptyViewKeyboardOverlap:emptyView];
+  }
+}
+
+- (void)viewDidDisappear:(BOOL)animated {
+  [super viewDidDisappear:animated];
+  [[NSNotificationCenter defaultCenter]
+      removeObserver:self
+                name:UIKeyboardWillChangeFrameNotification
+              object:nil];
+}
+
+- (void)dealloc {
+  [self stopPeriodicUpdates];
+}
+
+#pragma mark - Keyboard Handling
+
+// Re-centers the empty-state illustration above the on-screen keyboard. The
+// inner scroll view of `TableViewIllustratedEmptyView` is centerY-pinned to
+// its container, so growing its bottom content inset by the overlap height
+// shifts the centered stack up by overlap/2 — leaving it visually centered
+// in the un-occluded area without re-laying-out the table view itself.
+- (void)keyboardWillChangeFrame:(NSNotification*)note {
+  if (!self.viewLoaded || !self.view.window) {
+    return;
+  }
+  NSValue* endFrameValue = note.userInfo[UIKeyboardFrameEndUserInfoKey];
+  if (!endFrameValue) {
+    return;
+  }
+  CGRect endFrameInView = [self.view convertRect:[endFrameValue CGRectValue]
+                                        fromView:nil];
+  _keyboardOverlap =
+      MAX(0, CGRectGetMaxY(self.view.bounds) - CGRectGetMinY(endFrameInView));
+
+  TableViewIllustratedEmptyView* emptyView =
+      base::apple::ObjCCast<TableViewIllustratedEmptyView>(
+          self.tableView.backgroundView);
+  if (!emptyView) {
+    return;
+  }
+  NSTimeInterval duration =
+      [note.userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+  UIViewAnimationCurve curve = static_cast<UIViewAnimationCurve>(
+      [note.userInfo[UIKeyboardAnimationCurveUserInfoKey] integerValue]);
+  __weak __typeof(self) weakSelf = self;
+  [UIView animateWithDuration:duration
+                        delay:0
+                      options:(curve << 16) |
+                              UIViewAnimationOptionBeginFromCurrentState
+                   animations:^{
+                     [weakSelf applyEmptyViewKeyboardOverlap:emptyView];
+                   }
+                   completion:nil];
+}
+
+// Pushes the cached keyboard overlap height into the empty view's inner
+// scroll-view bottom inset. Called both from the keyboard notification and
+// when an empty view is freshly installed while the keyboard is already up.
+- (void)applyEmptyViewKeyboardOverlap:(TableViewIllustratedEmptyView*)view {
+  UIEdgeInsets insets = view.scrollViewContentInsets;
+  if (insets.bottom == _keyboardOverlap) {
+    return;
+  }
+  insets.bottom = _keyboardOverlap;
+  view.scrollViewContentInsets = insets;
+}
+
+#pragma mark - Periodic Updates
+
+// MARK: - UI Refresh Rate Optimization
+// The following methods implement a throttling mechanism to avoid excessive UI
+// updates using base::RepeatingTimer. Background: applySnapshot operations take
+// approximately 5ms each, so frequent calls can cause performance issues and UI
+// stuttering. This system batches updates and controls refresh frequency to
+// maintain smooth scrolling and responsive UI. The timer runs on the same
+// sequence and implements skip logic for UITrackingRunLoopMode.
+
+/// Starts the periodic update timer.
+- (void)startPeriodicUpdates {
+  [self stopPeriodicUpdates];
+
+  // Reset update counter
+  self.updateCounter = 0;
+
+  // Start base::RepeatingTimer: 100ms intervals (10 FPS) for UI updates.
+  // The timer runs on the same sequence (main thread) and we implement
+  // frequency reduction logic in performPeriodicUpdate based on run loop mode.
+  __weak __typeof(self) weakSelf = self;
+  _updateTimer.Start(FROM_HERE, kNormalUpdateInterval, base::BindRepeating(^{
+                       [weakSelf performPeriodicUpdate];
+                     }));
+}
+
+/// Stops the periodic update timer.
+- (void)stopPeriodicUpdates {
+  _updateTimer.Stop();
+}
+
+/// Pauses periodic updates without stopping the timer.
+- (void)pausePeriodicUpdates {
+  _updateTimer.Stop();
+}
+
+// Resumes periodic updates by restarting the timer if not already running.
+- (void)resumePeriodicUpdates {
+  if (!_updateTimer.IsRunning()) {
+    [self startPeriodicUpdates];
+  }
+}
+
+/// Performs periodic UI update based on cached download items.
+- (void)performPeriodicUpdate {
+  // Only update if we have cached items waiting to be processed AND
+  // the timer is running (updates are not paused).
+  // This prevents unnecessary applySnapshot calls when no data changes
+  // occurred or when updates are intentionally paused.
+  if (!_cachedDownloadItems || !_updateTimer.IsRunning()) {
+    return;
+  }
+
+  // Increment update counter for tracking mode throttling.
+  self.updateCounter++;
+
+  // Check current runloop mode to determine if we should throttle updates.
+  NSString* currentMode = [[NSRunLoop currentRunLoop] currentMode];
+  BOOL isInTrackingMode = [currentMode isEqualToString:UITrackingRunLoopMode];
+
+  if (isInTrackingMode) {
+    // During UITrackingRunLoopMode (user scrolling), throttle updates by only
+    // processing every kTrackingModeSkipRatio-th update to maintain smooth
+    // scrolling performance.
+    if (self.updateCounter % kTrackingModeSkipRatio != 0) {
+      return;
+    }
+  }
+
+  // Perform throttled UI update based on cached items.
+  // This ensures applySnapshot is called at controlled intervals rather than
+  // immediately upon each data change, reducing the ~5ms overhead per update.
+  [self updateUI];
+}
+
+/// Updates the UI with the current cached download items.
+- (void)updateUI {
+  // Create a new snapshot with date-grouped sections.
+  DownloadListSnapshot* snapshot = [[DownloadListSnapshot alloc] init];
+
+  // Group items by date.
+  NSArray<DownloadListGroupItem*>* groupItems =
+      download_list_grouping_util::GroupDownloadItemsByDate(
+          _cachedDownloadItems);
+
+  // Add sections and items.
+  for (DownloadListGroupItem* groupItem in groupItems) {
+    [snapshot appendSectionsWithIdentifiers:@[ groupItem ]];
+    [snapshot appendItemsWithIdentifiers:groupItem.items
+               intoSectionWithIdentifier:groupItem];
+  }
+
+  // Detect changes between old and new items for efficient updates.
+  // This minimizes the work done by applySnapshot by only reconfiguring changed
+  // cells rather than rebuilding the entire table view structure.
+  NSArray<DownloadListItem*>* oldItems =
+      _diffableDataSource.snapshot.itemIdentifiers;
+  if (oldItems.count > 0) {
+    NSSet<DownloadListItem*>* oldItemsSet = [NSSet setWithArray:oldItems];
+    NSMutableArray<DownloadListItem*>* changedItems =
+        [[NSMutableArray alloc] init];
+
+    for (DownloadListItem* newItem in _cachedDownloadItems) {
+      DownloadListItem* existingItem = [oldItemsSet member:newItem];
+      if (existingItem && ![existingItem isEqualToItem:newItem]) {
+        [changedItems addObject:newItem];
+      }
+    }
+
+    if (changedItems.count > 0) {
+      [snapshot reconfigureItemsWithIdentifiers:changedItems];
+    }
+  }
+
+  // Apply the snapshot to update the table view.
+  // Note: This operation takes ~5ms, which is why we throttle these calls
+  // using the CADisplayLink mechanism above to prevent performance issues.
+  [_diffableDataSource applySnapshot:snapshot animatingDifferences:NO];
+
+  // Clear cached items after processing to indicate no pending updates.
+  _cachedDownloadItems = nil;
+}
+
+#pragma mark - Mutator setter override
+
+- (void)setMutator:(id<DownloadListMutator>)mutator {
+  _mutator = mutator;
+  // Update the filter view's mutator when it's set.
+  if (self.filterHeaderView) {
+    self.filterHeaderView.mutator = mutator;
+  }
+}
+
+/// Dismisses the view controller when the close button is tapped.
+- (void)closeButtonTapped {
+  [self.downloadListHandler hideDownloadList];
+}
+
+/// Configures the diffable data source for the table view.
+- (void)configureDiffableDataSource {
+  __weak __typeof(self) weakSelf = self;
+  _diffableDataSource = [[DownloadListDiffableDataSource alloc]
+      initWithTableView:self.tableView
+           cellProvider:^UITableViewCell*(UITableView* tableView,
+                                          NSIndexPath* indexPath,
+                                          DownloadListItem* item) {
+             return [weakSelf cellForItem:item atIndexPath:indexPath];
+           }];
+  self.tableView.dataSource = _diffableDataSource;
+}
+
+/// Creates and configures a cell for the given item at the specified index
+/// path.
+- (UITableViewCell*)cellForItem:(DownloadListItem*)item
+                    atIndexPath:(NSIndexPath*)indexPath {
+  // Use the new DownloadListTableViewCellContentConfiguration
+  DownloadListTableViewCellContentConfiguration* configuration =
+      [DownloadListTableViewCellContentConfiguration
+          configurationWithDownloadListItem:item];
+
+  UITableViewCell* cell = [DownloadListTableViewCellContentConfiguration
+      dequeueTableViewCell:self.tableView];
+  cell.contentConfiguration = configuration;
+  [self configureCancelButtonForCell:cell
+                       configuration:configuration
+                                item:item];
+  return cell;
+}
+
+/// Configures the cancel button accessory for the given cell and item.
+- (void)configureCancelButtonForCell:(UITableViewCell*)cell
+                       configuration:
+                           (DownloadListTableViewCellContentConfiguration*)
+                               configuration
+                                item:(DownloadListItem*)item {
+  if (configuration.showCancelButton) {
+    UIButton* cancelButton =
+        base::apple::ObjCCast<UIButton>(cell.accessoryView);
+    if (!cancelButton) {
+      // Create and configure cancel button if it does not exist.
+      cancelButton =
+          [[ChromeButton alloc] initWithStyle:ChromeButtonStyleSecondary];
+      cancelButton.translatesAutoresizingMaskIntoConstraints = YES;
+      UIImage* cancelButtonImage = SymbolWithPalette(
+          SymbolWithPointSize(SymbolXMarkCircleFill, kCancelButtonIconSize), @[
+            [UIColor colorNamed:kGrey600Color],
+            [UIColor colorNamed:kGrey200Color],
+          ]);
+      [cancelButton setImage:cancelButtonImage forState:UIControlStateNormal];
+      cancelButton.frame =
+          CGRectMake(0, 0, kCancelButtonIconSize, kCancelButtonIconSize);
+      cancelButton.accessibilityLabel = l10n_util::GetNSString(
+          IDS_IOS_DOWNLOAD_LIST_CANCEL_ACCESSIBILITY_LABEL);
+      cell.accessoryView = cancelButton;
+    }
+    __weak __typeof(self) weakSelf = self;
+    UIAction* primaryAction =
+        [UIAction actionWithTitle:@""
+                            image:nil
+                       identifier:kCancelButtonPrimaryActionIdentifier
+                          handler:^(__kindof UIAction* action) {
+                            [weakSelf.mutator cancelDownloadItem:item];
+                          }];
+    [cancelButton addAction:primaryAction
+           forControlEvents:UIControlEventTouchUpInside];
+  } else {
+    cell.accessoryView = nil;
+  }
+}
+
+#pragma mark - UITableViewDelegate
+
+- (void)tableView:(UITableView*)tableView
+    didSelectRowAtIndexPath:(NSIndexPath*)indexPath {
+  [tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
+
+- (void)tableView:(UITableView*)tableView
+    performPrimaryActionForRowAtIndexPath:(NSIndexPath*)indexPath {
+  DownloadListItem* item =
+      [_diffableDataSource itemIdentifierForIndexPath:indexPath];
+
+  CHECK(item);
+  if (item.downloadState != web::DownloadTask::State::kComplete) {
+    return;
+  }
+  if (item.filePath.empty()) {
+    return;
+  }
+  base::FilePath filePath = item.filePath;
+  std::string mimeType = base::SysNSStringToUTF8(item.mimeType);
+
+  [self.downloadRecordHandler openFileWithPath:filePath mimeType:mimeType];
+}
+
+- (UIContextMenuConfiguration*)tableView:(UITableView*)tableView
+    contextMenuConfigurationForRowAtIndexPath:(NSIndexPath*)indexPath
+                                        point:(CGPoint)point {
+  DownloadListItem* item =
+      [_diffableDataSource itemIdentifierForIndexPath:indexPath];
+
+  // Downloads with no available actions do not support context menu.
+  if (item.availableActions == DownloadListItemActionNone) {
+    return nil;
+  }
+
+  __weak __typeof(self) weakSelf = self;
+
+  UIContextMenuActionProvider actionProvider =
+      ^(NSArray<UIMenuElement*>* suggestedActions) {
+        if (!weakSelf) {
+          return [UIMenu menuWithTitle:@"" children:@[]];
+        }
+
+        return [weakSelf createMenuForDownloadItem:item];
+      };
+
+  return
+      [UIContextMenuConfiguration configurationWithIdentifier:nil
+                                              previewProvider:nil
+                                               actionProvider:actionProvider];
+}
+
+// Creates a context menu with available actions for the given download item.
+- (UIMenu*)createMenuForDownloadItem:(DownloadListItem*)item {
+  NSMutableArray<UIMenuElement*>* actions = [[NSMutableArray alloc] init];
+  __weak __typeof(self) weakSelf = self;
+  DownloadListItemAction availableActions = item.availableActions;
+
+  // Check if "Open in Files App" action is available.
+  if (availableActions & DownloadListItemActionOpenInFiles) {
+    UIAction* openInFilesAction =
+        [UIAction actionWithTitle:l10n_util::GetNSString(
+                                      IDS_IOS_OPEN_IN_FILES_APP_ACTION_TITLE)
+                            image:SymbolWithPointSize(SymbolOpenImageAction,
+                                                      kSymbolActionPointSize)
+                       identifier:nil
+                          handler:^(UIAction* action) {
+                            [weakSelf.actionDelegate openDownloadInFiles:item];
+                          }];
+    [actions addObject:openInFilesAction];
+  }
+
+  // Check if Delete action is available.
+  if (availableActions & DownloadListItemActionDelete) {
+    UIAction* deleteAction = [UIAction
+        actionWithTitle:l10n_util::GetNSString(IDS_IOS_DELETE_ACTION_TITLE)
+                  image:SymbolWithPointSize(SymbolTrash, kSymbolActionPointSize)
+             identifier:nil
+                handler:^(UIAction* action) {
+                  [weakSelf.mutator deleteDownloadItem:item];
+                }];
+    deleteAction.attributes = UIMenuElementAttributesDestructive;
+    [actions addObject:deleteAction];
+  }
+
+  return [UIMenu menuWithTitle:@"" children:actions];
+}
+
+- (UISwipeActionsConfiguration*)tableView:(UITableView*)tableView
+    trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath*)indexPath {
+  DownloadListItem* item =
+      [_diffableDataSource itemIdentifierForIndexPath:indexPath];
+
+  // Only show delete action if it's available for this item.
+  if (!item || !(item.availableActions & DownloadListItemActionDelete)) {
+    return nil;
+  }
+
+  __weak __typeof(self) weakSelf = self;
+
+  // Create delete action.
+  UIContextualAction* deleteAction = [UIContextualAction
+      contextualActionWithStyle:UIContextualActionStyleDestructive
+                          title:nil
+                        handler:^(UIContextualAction* action,
+                                  __kindof UIView* sourceView,
+                                  void (^completionHandler)(BOOL)) {
+                          [weakSelf.mutator deleteDownloadItem:item];
+                          completionHandler(YES);
+                        }];
+
+  // Set delete action icon.
+  deleteAction.image = SymbolWithPointSize(SymbolTrash, kSymbolActionPointSize);
+
+  return
+      [UISwipeActionsConfiguration configurationWithActions:@[ deleteAction ]];
+}
+
+- (UIView*)tableView:(UITableView*)tableView
+    viewForHeaderInSection:(NSInteger)section {
+  // Get the section identifier (DownloadListGroupItem) from the data source
+  // snapshot.
+  DownloadListGroupItem* groupItem =
+      [_diffableDataSource sectionIdentifierForIndex:section];
+
+  TableViewTextHeaderFooterView* headerView =
+      DequeueTableViewHeaderFooter<TableViewTextHeaderFooterView>(tableView);
+  [headerView setTitle:groupItem.title];
+
+  return headerView;
+}
+
+#pragma mark - DownloadListConsumer
+
+- (void)setDownloadListItems:(NSArray<DownloadListItem*>*)items {
+  // Cache the input parameters for throttled DisplayLink updates
+  // Instead of immediately calling applySnapshot (which costs ~5ms), we cache
+  // the new items and let the CADisplayLink timer handle the actual UI update
+  // at controlled intervals. This prevents excessive refresh calls that could
+  // cause UI stuttering, especially during rapid data changes.
+  _cachedDownloadItems = [items copy];
+}
+
+- (void)setLoadingState:(BOOL)loading {
+}
+
+- (void)setEmptyState:(BOOL)empty {
+  if (empty) {
+    // Show empty view illustration.
+    if (!self.tableView.backgroundView) {
+      UIImage* emptyImage = [UIImage imageNamed:@"download_list_empty"];
+      TableViewIllustratedEmptyView* emptyView = [[TableViewIllustratedEmptyView
+          alloc] initWithFrame:self.view.bounds
+                         image:emptyImage
+                         title:l10n_util::GetNSString(
+                                   IDS_IOS_DOWNLOAD_LIST_NO_ENTRIES_TITLE)
+            attributedSubtitle:GetAttributedString(l10n_util::GetNSString(
+                                   IDS_IOS_DOWNLOAD_LIST_NO_ENTRIES_MESSAGE))];
+      emptyView.delegate = self;
+      self.tableView.backgroundView = emptyView;
+      // If the keyboard is already up (e.g. user typed a non-matching
+      // search), apply the current overlap so the prompt is installed
+      // already-centered in the visible area.
+      [self applyEmptyViewKeyboardOverlap:emptyView];
+    }
+    // Only hide search bar when genuinely empty, not during active search
+    // with no matching results.
+    if (!self.searchController.isActive) {
+      self.navigationItem.searchController = nil;
+    }
+  } else {
+    // Hide the empty view and show search bar.
+    self.tableView.backgroundView = nil;
+    self.navigationItem.searchController = self.searchController;
+  }
+  if (self.filterHeaderView && self.filterHeaderView.isHidden == NO) {
+    [self.filterHeaderView setAttributionTextShown:!empty];
+  }
+}
+
+- (void)setDownloadListHeaderShown:(BOOL)shown {
+  if (shown) {
+    // Records exist: allow automatic large/small title transition based on
+    // scroll position, and show filter header.
+    self.navigationItem.largeTitleDisplayMode =
+        UINavigationItemLargeTitleDisplayModeAutomatic;
+    if (self.tableView.tableHeaderView != self.filterHeaderView) {
+      self.tableView.tableHeaderView = self.filterHeaderView;
+    }
+  } else {
+    // No records at all: show small title and hide filter header.
+    self.navigationItem.largeTitleDisplayMode =
+        UINavigationItemLargeTitleDisplayModeNever;
+    self.tableView.tableHeaderView = nil;
+  }
+}
+
+#pragma mark - UIAdaptivePresentationControllerDelegate
+
+/// Called after the presentation controller did dismiss.
+- (void)presentationControllerDidDismiss:
+    (UIPresentationController*)presentationController {
+  [self.downloadListHandler hideDownloadList];
+}
+
+#pragma mark - UISearchResultsUpdating
+
+- (void)updateSearchResultsForSearchController:
+    (UISearchController*)searchController {
+  NSString* searchText = searchController.searchBar.text;
+  [self.mutator filterRecordsWithKeyword:searchText];
+}
+
+#pragma mark - TableViewIllustratedEmptyViewDelegate
+
+// Invoked when a link in `view`'s subtitle is tapped.
+- (void)tableViewIllustratedEmptyView:(TableViewIllustratedEmptyView*)view
+                   didTapSubtitleLink:(NSURL*)URL {
+  if (!URL) {
+    return;
+  }
+  [[UIApplication sharedApplication] openURL:URL
+                                     options:@{}
+                           completionHandler:nil];
+}
+
+@end

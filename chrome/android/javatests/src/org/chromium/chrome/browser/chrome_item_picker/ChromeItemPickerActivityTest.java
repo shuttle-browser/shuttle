@@ -1,0 +1,179 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.chrome_item_picker;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.when;
+
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
+import android.view.View;
+
+import androidx.test.filters.MediumTest;
+import androidx.test.runner.lifecycle.Stage;
+
+import org.hamcrest.Matchers;
+import org.junit.After;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+
+import org.chromium.base.ContextUtils;
+import org.chromium.base.ThreadUtils;
+import org.chromium.base.test.BaseActivityTestRule;
+import org.chromium.base.test.util.ApplicationTestUtils;
+import org.chromium.base.test.util.Criteria;
+import org.chromium.base.test.util.CriteriaHelper;
+import org.chromium.base.test.util.DisabledTest;
+import org.chromium.base.test.util.DoNotBatch;
+import org.chromium.chrome.browser.IntentHandler;
+import org.chromium.chrome.browser.app.tabwindow.TabWindowManagerSingleton;
+import org.chromium.chrome.browser.tabwindow.TabWindowManager;
+import org.chromium.chrome.tab_ui.R;
+import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
+import org.chromium.components.browser_ui.styles.ChromeColors;
+import org.chromium.components.browser_ui.util.ChromeItemPickerExtras;
+import org.chromium.ui.test.util.BlankUiTestActivity;
+
+/** Instrumentation Test for ChromeItemPickerActivity. */
+@RunWith(ChromeJUnit4ClassRunner.class)
+@DoNotBatch(reason = "Testing ChromeItemPickerActivity launch behavior.")
+public class ChromeItemPickerActivityTest {
+    private static final int TEST_WINDOW_ID = 1;
+
+    @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Rule
+    public BaseActivityTestRule<ChromeItemPickerActivity> mActivityRule =
+            new BaseActivityTestRule<>(ChromeItemPickerActivity.class);
+
+    @Rule
+    public BaseActivityTestRule<BlankUiTestActivity> mBlankActivityRule =
+            new BaseActivityTestRule<>(BlankUiTestActivity.class);
+
+    @Mock private TabWindowManager mTabWindowManager;
+
+    private Intent createPickerIntent(boolean isIncognito) {
+        Context context = ContextUtils.getApplicationContext();
+        Intent intent = new Intent(context, ChromeItemPickerActivity.class);
+        intent.putExtra(ChromeItemPickerExtras.EXTRA_IS_INCOGNITO_BRANDED, isIncognito);
+        intent.putExtra(IntentHandler.EXTRA_WINDOW_ID, TEST_WINDOW_ID);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+        return intent;
+    }
+
+    private void doTestActivityThemeColor(boolean isIncognito) {
+        // EnableFeature(ChromeFeatureList.ANDROID_OPEN_INCOGNITO_AS_WINDOW)
+        final ChromeItemPickerActivity activity =
+                mActivityRule.launchActivity(createPickerIntent(isIncognito));
+
+        final int expectedColor = ChromeColors.getDefaultThemeColor(activity, isIncognito);
+
+        // Wait until the TabListEditorLayout is present.
+        CriteriaHelper.pollUiThread(
+                () -> {
+                    View listEditorLayout = activity.findViewById(R.id.selectable_list);
+                    Criteria.checkThat(
+                            "TabListEditorLayout must be present.",
+                            listEditorLayout,
+                            Matchers.notNullValue());
+                });
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    // Get the TabListEditorLayout background, which should reflect the theme color
+                    // setfor the item picker (DecorView is now transparent to allow the paused
+                    // Activity underneath to be visible).
+                    View listEditorLayout = activity.findViewById(R.id.selectable_list);
+                    assertNotNull("TabListEditorLayout must be present.", listEditorLayout);
+
+                    Drawable background = listEditorLayout.getBackground();
+
+                    assertNotNull("Activity DecorView background must not be null.", background);
+                    assertTrue(
+                            "Background must be a ColorDrawable to check color directly.",
+                            background instanceof ColorDrawable);
+
+                    final int actualColor = ((ColorDrawable) background).getColor();
+
+                    assertEquals(expectedColor, actualColor);
+                });
+    }
+
+    @After
+    public void tearDown() {
+        if (mTabWindowManager != null) {
+            clearInvocations(mTabWindowManager);
+        }
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> TabWindowManagerSingleton.setTabWindowManagerForTesting(null));
+    }
+
+    @Test
+    @MediumTest
+    public void testActivityThemeColorIsIncognito() {
+        doTestActivityThemeColor(true);
+    }
+
+    @Test
+    @MediumTest
+    @DisabledTest(message = "https://crbug.com/463427787")
+    public void testActivityThemeColorIsDefault() {
+        doTestActivityThemeColor(false);
+    }
+
+    @Test
+    @MediumTest
+    public void testActivityLaunchWithExplicitWindowId() {
+        final Intent intent = createPickerIntent(/* isIncognito= */ false);
+        final Context context = ContextUtils.getApplicationContext();
+
+        final ChromeItemPickerActivity activity =
+                ApplicationTestUtils.waitForActivityWithClass(
+                        ChromeItemPickerActivity.class,
+                        Stage.CREATED,
+                        () -> context.startActivity(intent));
+
+        assertNotNull(activity);
+        assertEquals(TEST_WINDOW_ID, activity.getWindowIdForTesting());
+    }
+
+    @Test
+    @MediumTest
+    public void testActivityLaunchWithoutWindowId_resolvesFromSameTaskHost() throws Exception {
+        mBlankActivityRule.launchActivity(null);
+        BlankUiTestActivity hostActivity = mBlankActivityRule.getActivity();
+
+        final int expectedWindowId = 42;
+        when(mTabWindowManager.getIdForWindow(any())).thenReturn(expectedWindowId);
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> TabWindowManagerSingleton.setTabWindowManagerForTesting(mTabWindowManager));
+
+        Intent intent = new Intent(hostActivity, ChromeItemPickerActivity.class);
+        intent.putExtra(ChromeItemPickerExtras.EXTRA_IS_INCOGNITO_BRANDED, false);
+        // Omit IntentHandler.EXTRA_WINDOW_ID to trigger ApplicationStatus same-task activity
+        // lookup.
+
+        ChromeItemPickerActivity activity =
+                ApplicationTestUtils.waitForActivityWithClass(
+                        ChromeItemPickerActivity.class,
+                        Stage.CREATED,
+                        () -> hostActivity.startActivity(intent));
+
+        assertNotNull(activity);
+        assertEquals(expectedWindowId, activity.getWindowIdForTesting());
+    }
+}

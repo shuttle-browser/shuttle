@@ -1,0 +1,276 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.ntp_customization.theme.theme_collections;
+
+import static org.chromium.chrome.browser.ntp_customization.NtpCustomizationCoordinator.BottomSheetType.SINGLE_THEME_COLLECTION;
+import static org.chromium.chrome.browser.ntp_customization.NtpCustomizationCoordinator.BottomSheetType.THEME;
+import static org.chromium.chrome.browser.ntp_customization.NtpCustomizationCoordinator.BottomSheetType.THEME_COLLECTIONS;
+import static org.chromium.chrome.browser.ntp_customization.theme.theme_collections.NtpThemeCollectionsAdapter.ThemeCollectionsItemType.THEME_COLLECTIONS_ITEM;
+
+import android.content.ComponentCallbacks;
+import android.content.Context;
+import android.content.res.Configuration;
+import android.view.LayoutInflater;
+import android.view.View;
+
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.ntp_customization.BottomSheetDelegate;
+import org.chromium.chrome.browser.ntp_customization.NtpCustomizationConfigManager;
+import org.chromium.chrome.browser.ntp_customization.NtpCustomizationCoordinator.BottomSheetType;
+import org.chromium.chrome.browser.ntp_customization.NtpCustomizationMetricsUtils;
+import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils;
+import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils.NtpBackgroundType;
+import org.chromium.chrome.browser.ntp_customization.R;
+import org.chromium.chrome.browser.ntp_customization.theme.ThemeBottomSheetObserver;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.components.image_fetcher.ImageFetcher;
+
+import java.util.List;
+
+/** Coordinator for the NTP appearance theme collections bottom sheet in the NTP customization. */
+@NullMarked
+public class NtpThemeCollectionsCoordinator implements ThemeBottomSheetObserver {
+    private static final int RECYCLE_VIEW_SPAN_COUNT = 3;
+
+    private final List<BackgroundCollection> mThemeCollectionsList;
+    private final BottomSheetDelegate mBottomSheetDelegate;
+    private final Context mContext;
+    private final View mNtpThemeCollectionsBottomSheetView;
+    private final View mBackButton;
+    private final RecyclerView mThemeCollectionsBottomSheetRecyclerView;
+    private final NtpThemeCollectionManager mNtpThemeCollectionManager;
+    private final ImageFetcher mImageFetcher;
+    private final ComponentCallbacks mComponentCallbacks;
+    private final int mItemMaxWidth;
+    private final int mSpacing;
+    private final Runnable mOnDailyRefreshCancelledCallback;
+    private NtpThemeCollectionsAdapter mNtpThemeCollectionsAdapter;
+    private int mScreenWidth;
+    private @Nullable NtpSingleThemeCollectionCoordinator mNtpSingleThemeCollectionCoordinator;
+
+    /**
+     * Constructor for the coordinator.
+     *
+     * @param context The context for inflating views and accessing resources.
+     * @param delegate The delegate to handle bottom sheet interactions.
+     * @param profile The profile for which this coordinator is created.
+     * @param ntpThemeCollectionManager The manager to fetch theme data.
+     * @param onDailyRefreshCancelledCallback The callback for daily refresh function being
+     *     cancelled.
+     */
+    public NtpThemeCollectionsCoordinator(
+            Context context,
+            BottomSheetDelegate delegate,
+            Profile profile,
+            NtpThemeCollectionManager ntpThemeCollectionManager,
+            Runnable onDailyRefreshCancelledCallback,
+            List<BackgroundCollection> themeCollectionsList) {
+        mContext = context;
+        mBottomSheetDelegate = delegate;
+        mImageFetcher = NtpCustomizationUtils.createImageFetcher(profile);
+        mNtpThemeCollectionManager = ntpThemeCollectionManager;
+        mOnDailyRefreshCancelledCallback = onDailyRefreshCancelledCallback;
+        mThemeCollectionsList = themeCollectionsList;
+
+        mItemMaxWidth =
+                mContext.getResources()
+                        .getDimensionPixelSize(
+                                R.dimen.ntp_customization_theme_collections_list_item_max_width);
+        mSpacing =
+                mContext.getResources()
+                                .getDimensionPixelSize(
+                                        R.dimen
+                                                .ntp_customization_theme_collection_list_item_margin_horizontal)
+                        * 2;
+
+        mNtpThemeCollectionsBottomSheetView =
+                LayoutInflater.from(context)
+                        .inflate(
+                                R.layout.ntp_customization_theme_collections_bottom_sheet_layout,
+                                null,
+                                false);
+
+        mBottomSheetDelegate.registerBottomSheetLayout(
+                THEME_COLLECTIONS, mNtpThemeCollectionsBottomSheetView);
+
+        // Add the back press handler of the back button in the bottom sheet.
+        mBackButton = mNtpThemeCollectionsBottomSheetView.findViewById(R.id.back_button);
+        mBackButton.setOnClickListener(v -> mBottomSheetDelegate.showBottomSheet(THEME));
+
+        // Build the RecyclerView containing theme collections in the bottom sheet.
+        mThemeCollectionsBottomSheetRecyclerView =
+                mNtpThemeCollectionsBottomSheetView.findViewById(
+                        R.id.theme_collections_recycler_view);
+        // Disable the animation to prevent a crash when switching between theme collections
+        // rapidly.
+        mThemeCollectionsBottomSheetRecyclerView.setItemAnimator(null);
+        GridLayoutManager gridLayoutManager =
+                new GridLayoutManager(context, RECYCLE_VIEW_SPAN_COUNT);
+        mThemeCollectionsBottomSheetRecyclerView.setLayoutManager(gridLayoutManager);
+        mNtpThemeCollectionsAdapter =
+                new NtpThemeCollectionsAdapter(
+                        mThemeCollectionsList,
+                        THEME_COLLECTIONS_ITEM,
+                        this::handleThemeCollectionClick,
+                        mImageFetcher);
+        mThemeCollectionsBottomSheetRecyclerView.setAdapter(mNtpThemeCollectionsAdapter);
+        mNtpThemeCollectionsAdapter.setItems(mThemeCollectionsList);
+
+        // Post the task to expand the sheet to ensure that the bottom sheet view is laid out and
+        // has a height, allowing it to correctly open to the half-height state.
+        mThemeCollectionsBottomSheetRecyclerView.post(
+                () -> {
+                    delegate.getBottomSheetController().expandSheet();
+                });
+
+        NtpThemeCollectionsUtils.updateSpanCountOnLayoutChange(
+                gridLayoutManager,
+                mThemeCollectionsBottomSheetRecyclerView,
+                mItemMaxWidth,
+                mSpacing);
+        mComponentCallbacks =
+                NtpThemeCollectionsUtils.registerOrientationListener(
+                        mContext,
+                        (newConfig) ->
+                                handleConfigurationChanged(
+                                        newConfig,
+                                        gridLayoutManager,
+                                        mThemeCollectionsBottomSheetRecyclerView));
+    }
+
+    public void destroy() {
+        if (mComponentCallbacks != null) {
+            mContext.unregisterComponentCallbacks(mComponentCallbacks);
+        }
+
+        mImageFetcher.destroy();
+
+        mBackButton.setOnClickListener(null);
+
+        if (mNtpThemeCollectionsAdapter != null) {
+            mNtpThemeCollectionsAdapter.clearOnClickListeners();
+        }
+
+        if (mNtpSingleThemeCollectionCoordinator != null) {
+            mNtpSingleThemeCollectionCoordinator.destroy();
+        }
+    }
+
+    @Override
+    public void onBackgroundTypeChanged() {
+        @NtpBackgroundType
+        int backgroundType = NtpCustomizationConfigManager.getInstance().getBackgroundType();
+        if (backgroundType != NtpBackgroundType.THEME_COLLECTION) {
+            cancelLoadingState();
+        }
+    }
+
+    /**
+     * Initialize the bottom sheet content of the given bottom sheet type when it becomes visible.
+     *
+     * @param bottomSheetType The type of the bottom sheet to update.
+     */
+    public void initializeBottomSheetContent(@BottomSheetType int bottomSheetType) {
+        switch (bottomSheetType) {
+            case THEME_COLLECTIONS:
+                if (mNtpThemeCollectionsAdapter != null) {
+                    mNtpThemeCollectionsAdapter.setSelection(
+                            mNtpThemeCollectionManager.getSelectedThemeCollectionId(),
+                            mNtpThemeCollectionManager.getSelectedThemeCollectionImageUrl());
+                }
+                return;
+            case SINGLE_THEME_COLLECTION:
+                if (mNtpSingleThemeCollectionCoordinator != null) {
+                    mNtpSingleThemeCollectionCoordinator.initializeBottomSheetContent();
+                }
+                return;
+            default:
+                assert false : "Bottom sheet type not supported!";
+        }
+    }
+
+    /**
+     * Handles configuration changes, particularly screen width changes, to update the span count of
+     * the grid layout.
+     *
+     * @param newConfig The new configuration.
+     * @param manager The {@link GridLayoutManager} for the RecyclerView.
+     * @param recyclerView The {@link RecyclerView} whose span count needs to be updated.
+     */
+    private void handleConfigurationChanged(
+            Configuration newConfig, GridLayoutManager manager, RecyclerView recyclerView) {
+        int currentScreenWidth = newConfig.screenWidthDp;
+        if (currentScreenWidth == mScreenWidth) {
+            return;
+        }
+
+        mScreenWidth = currentScreenWidth;
+        NtpThemeCollectionsUtils.updateSpanCountOnLayoutChange(
+                manager, recyclerView, mItemMaxWidth, mSpacing);
+    }
+
+    private void handleThemeCollectionClick(View view) {
+        int position = mThemeCollectionsBottomSheetRecyclerView.getChildAdapterPosition(view);
+
+        if (position == RecyclerView.NO_POSITION) return;
+
+        BackgroundCollection collection = mThemeCollectionsList.get(position);
+        String collectionId = collection.id;
+        String themeCollectionTitle = collection.label;
+        int themeCollectionHash = collection.hash;
+
+        if (mNtpSingleThemeCollectionCoordinator != null) {
+            mNtpSingleThemeCollectionCoordinator.updateThemeCollection(
+                    collectionId, themeCollectionTitle, themeCollectionHash);
+        } else {
+            mNtpSingleThemeCollectionCoordinator =
+                    new NtpSingleThemeCollectionCoordinator(
+                            mContext,
+                            mBottomSheetDelegate,
+                            mNtpThemeCollectionManager,
+                            mImageFetcher,
+                            collectionId,
+                            themeCollectionTitle,
+                            themeCollectionHash,
+                            mOnDailyRefreshCancelledCallback);
+        }
+
+        mBottomSheetDelegate.showBottomSheet(BottomSheetType.SINGLE_THEME_COLLECTION);
+        NtpCustomizationMetricsUtils.recordThemeCollectionShow(themeCollectionHash);
+    }
+
+    /**
+     * Cancels the loading state of any single theme collection item that is currently showing a
+     * spinner.
+     */
+    void cancelLoadingState() {
+        if (mNtpSingleThemeCollectionCoordinator != null) {
+            mNtpSingleThemeCollectionCoordinator.cancelLoadingState();
+        }
+    }
+
+    void setNtpThemeCollectionsAdapterForTesting(NtpThemeCollectionsAdapter adapter) {
+        mNtpThemeCollectionsAdapter = adapter;
+        mThemeCollectionsBottomSheetRecyclerView.setAdapter(adapter);
+    }
+
+    void setNtpSingleThemeCollectionCoordinatorForTesting(
+            NtpSingleThemeCollectionCoordinator ntpSingleThemeCollectionCoordinator) {
+        mNtpSingleThemeCollectionCoordinator = ntpSingleThemeCollectionCoordinator;
+    }
+
+    @Nullable NtpSingleThemeCollectionCoordinator
+            getNtpSingleThemeCollectionCoordinatorForTesting() {
+        return mNtpSingleThemeCollectionCoordinator;
+    }
+
+    int getScreenWidthForTesting() {
+        return mScreenWidth;
+    }
+}

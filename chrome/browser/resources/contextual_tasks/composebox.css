@@ -1,0 +1,887 @@
+/* Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=chrome://resources/cr_elements/cr_shared_vars.css.js
+ * #scheme=relative
+ * #css_wrapper_metadata_end */
+
+/* TODO(crbug.com/461801378): Add styling for non-AIM pages. */
+
+:host {
+  --aim-header-height: 66px;
+  --cancel-button-inline-end: 16px;
+  --cancel-button-top: 12px;
+  /* LINT.IfChange(ComposeboxBorderRadius) */
+  --composebox-border-radius: 24px;
+  /* LINT.ThenChange(//depot/chromium/chrome/browser/resources/contextual_tasks/app.ts:ComposeboxBorderRadius) */
+  --composebox-collapsed-height: 90px;
+  --composebox-margin-bottom: 30px;
+  --context-carousel-inline-end-spacing: 56px;
+  --context-carousel-inline-start-spacing: 20px;
+  --context-carousel-top-position: 20px;
+  --context-top-carousel-bottom-margin: 0;
+  --context-top-carousel-top-margin: 0;
+  /* Set by resize observer of composebox component child. */
+  --composebox-container-height:
+    calc(var(--composebox-height) + var(--composebox-dropdown-height)
+      + var(--composebox-margin-bottom)
+    );
+  /* Shared sizing between voice cancel and regular cancel buttons. */
+  --composebox-cancel-button-size: 40px;
+  --composebox-icon-menu-bottom: 12px;
+  --composebox-min-height: 112px;
+  --composebox-submit-container-size: 48px;
+  --composebox-submit-container-inline-end:
+      var(--composebox-last-icon-inline-end);
+  --composebox-last-icon-inline-end: 12px;
+  --cr-composebox-entrypoint-icon-animation-delay: 750ms;
+  --cr-composebox-tool-chip-animation: none;
+  --cr-composebox-tool-chip-height: var(--icon-menu-button-size);
+  --cr-searchbox-height: 52px;
+  --cr-searchbox-min-width: min(calc(100%), 1100px);
+  --icon-menu-spacing: 6px;
+  --icon-menu-icon-size: 24px;
+  --icon-menu-button-size: 40px;
+  --pdf-icon-size: 16px;
+  --document-icon-size: 16px;
+  --injected-input-icon-size: 24px;
+  --lens-submit-icon-extra-spacing: 0;
+
+  /* Energy Effect Motion Curves */
+  --emphasized-curve: cubic-bezier(0.2, 0, 0, 1);
+  --emphasized-decelerate-curve: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --emphasized-accelerate-curve: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --standard-accelerate-curve: cubic-bezier(0.3, 0, 1, 1);
+  --standard-decelerate-curve: cubic-bezier(0, 0, 0, 1);
+}
+
+:host-context([webui-rounded-icons]) {
+  --pdf-icon-size: 24px;
+}
+
+:host([energy-effect-enabled_]) {
+  --cr-composebox-collapse-curve: cubic-bezier(0.63, -0.5, 0, 1);
+  --cr-composebox-collapse-duration: 500ms;
+  --cr-composebox-expand-curve: cubic-bezier(0.40, 1.38, 0.22, 0.96);
+  --cr-composebox-expand-duration: 500ms;
+  --cr-composebox-carousel-fade-curve: cubic-bezier(0.38, 1.21, 0.22, 1);
+  --cr-composebox-carousel-fade-delay: 65ms;
+  --cr-composebox-carousel-fade-duration: 450ms;
+  --cr-composebox-input-position: relative;
+  --cr-composebox-tool-chip-animation:
+    fade-in 100ms cubic-bezier(0, 0, 0, 1) forwards,
+    slide-in 350ms cubic-bezier(0.42, 1.67, 0.21, 0.9) forwards;
+  --cr-composebox-file-thumbnail-entry-animation:
+    slide-in 350ms cubic-bezier(0.27, 1.06, 0.18, 1.00) forwards,
+    fade-in 150ms cubic-bezier(0.31, 0.94, 0.34, 1.00) forwards;
+  --cr-composebox-file-thumbnail-exit-animation:
+    slide-out 350ms cubic-bezier(0.27, 1.06, 0.18, 1.00) forwards,
+    fade-out 150ms cubic-bezier(0.31, 0.94, 0.34, 1.00) forwards,
+    shrink-out 500ms cubic-bezier(0.38, 1.21, 0.22, 1) 35ms forwards;
+  --cr-composebox-file-thumbnail-exit-animation-last:
+    slide-out 350ms cubic-bezier(0.27, 1.06, 0.18, 1.00) forwards,
+    fade-out 150ms cubic-bezier(0.31, 0.94, 0.34, 1.00) forwards;
+  --cancel-button-inline-end: 16px;
+  --context-carousel-inline-start-spacing: 12px;
+  --context-carousel-top-position: 12px;
+  --cr-composebox-text-container-padding-block-start: 12px;
+  --cr-composebox-tool-chip-height: 36px;
+  --file-thumbnail-border-radius: 6px;
+  --file-chip-border-radius: 12px;
+  --icon-menu-button-size: 36px;
+  --lens-submit-icon-extra-spacing: 8px;
+}
+
+:host([energy-effect-enabled_][is-zero-state]) {
+  --cr-composebox-carousel-fade-delay: 85ms;
+  --cr-composebox-carousel-fade-duration: 500ms;
+}
+
+@media (prefers-color-scheme: light) {
+  :host([energy-effect-enabled_]) {
+    --color-composebox-file-chip-background: rgba(240, 242, 245, 1);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :host([energy-effect-enabled_]) {
+    --color-composebox-file-chip-background: rgba(78, 80, 89, 1);
+  }
+}
+
+/* Composebox default colors are for light mode on AIM results. */
+#composeboxContainer {
+  --color-composebox-scrim-background: var(--search-background-color);
+  --composebox-container-height:
+    calc(var(--composebox-height) + var(--composebox-dropdown-height)
+    + var(--composebox-margin-bottom));
+
+  align-items: center;
+  height: auto;
+  justify-content: flex-end;
+  min-height: var(--composebox-collapsed-height);
+  position: relative;
+  /* Do not set pointer-events to none; is inherited by
+   * whole composebox + buttons. Width var taken from parent.
+   */
+  width: 100%;
+}
+
+:host(:not([is-zero-state])) #composeboxContainer {
+  margin-bottom: var(--composebox-margin-bottom);
+}
+
+/* When the composebox is focused, make the background color
+ * extend to the top of the screen so that the user can see the full
+ * composebox when it is expanded. */
+:host([is-composebox-focused])
+  #composeboxContainer:has(#composebox[show-dropdown]) {
+  background: linear-gradient(to top,
+    rgba(var(--search-background-color-rgb), 1) var(--composebox-container-height),
+    rgba(var(--search-background-color-rgb), 0.9) 75vh,
+  transparent);
+  height: 100%;
+  inset-block-start: auto;
+  pointer-events: auto;
+  position: fixed;
+}
+
+#composebox::part(composebox) {
+  /* Plus button padding. */
+  --contextual-entrypoint-and-carousel-context-entrypoint-padding-inline-start:
+      12px;
+  --contextual-entrypoint-and-carousel-context-entrypoint-padding-inline-end:
+      8px;
+
+  /* Context menu padding. */
+  --contextual-entrypoint-and-carousel-context-menu-container-padding-inline-start:
+      0;
+  min-height: var(--composebox-min-height);
+}
+
+:host(:not([input-enabled])) #composebox::part(composebox) {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+:host(:not([input-enabled])) #composebox::part(input) {
+  caret-color: transparent;
+}
+
+:host(:not([is-zero-state])) #composebox::before {
+  background: var(--search-background-color);
+  border-radius: var(--composebox-border-radius);
+  content: '';
+  display: block;
+  /* Expand past the bottom of the composebox.
+   * Requires parent to have overflow hidden.
+   */
+  height: 40vh;
+  position: absolute;
+  width: 100%;
+  z-index: 0;
+}
+
+/* Add border in ::after instead of '#composebox' so it
+ * is on top of ::before.
+ */
+#composebox::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--color-composebox-input-plate-outline);
+  border-radius: var(--composebox-border-radius);
+  box-sizing: border-box;
+  pointer-events: none;
+  transition: opacity 2s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 2;
+}
+
+:host([in-voice-search-mode]) #composebox::after {
+  opacity: 0;
+}
+
+#composebox,
+#contextualTasksSuggestionsContainer {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+:host([is-zero-state]:not([in-nlm])) #composebox,
+:host([is-zero-state]) #contextualTasksSuggestionsContainer {
+  opacity: 0;
+  transform: translateY(12px);
+  will-change: transform, opacity;
+}
+
+@keyframes zero-state-enter-composebox {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+:host(.play-zero-state[is-zero-state]:not([in-nlm])) #composebox,
+:host(.play-zero-state[is-zero-state]) #contextualTasksSuggestionsContainer {
+  animation: zero-state-enter-composebox 900ms var(--emphasized-curve) both;
+}
+
+#composebox {
+  --cr-composebox-font-size: 16px;
+  --expanded-border-radius: var(--composebox-border-radius);
+  --input-bottom-spacing: 16px;
+  --text-input-inline-start-spacing: 20px;
+  --text-input-top-spacing: 12px;
+  --composebox-context-menu-entrypoint-button-color:
+      var(--color-composebox-voice-lens-button);
+  box-shadow: none;
+  box-sizing: border-box;
+  display: block;
+  max-width: var(--composebox-max-width);
+  position: relative;
+  /* Fast out (start), slow in (end) box shadow transition. */
+  transition: box-shadow 600ms cubic-bezier(0.4, 0.0, 0.2, 1);
+  width: 100%;
+  z-index: 1;
+}
+
+:host([energy-effect-enabled_]) #composebox {
+  --cr-composebox-submit-height: 36px;
+  --cr-composebox-submit-width: 48px;
+  --cr-composebox-submit-border-radius: 100px;
+}
+
+:host([is-zero-state]) #composebox {
+  bottom: auto;
+}
+
+:host([is-side-panel]) #composeboxContainer #composebox {
+  max-width: var(--composebox-max-width);
+  min-width: 200px;
+}
+
+#composebox::part(thumbnail) {
+  --thumbnail-size_: var(--file-chip-thumbnail-full-size);
+  height: var(--thumbnail-size_);
+  padding: 0;
+  width: var(--thumbnail-size_);
+}
+
+:host([is-zero-state]) #composeboxContainer {
+  background: transparent;
+  display: block;
+  position: relative;
+}
+
+#composebox::part(g-container) {
+  max-height: 40vh;
+  padding: 0;
+}
+
+#composebox::part(input),
+#composebox::part(tool-chip-label),
+#composebox::part(file-thumbnail-title),
+#composebox::part(mirror),
+#composebox::part(smart-compose) {
+  font-family: var(--google-sans-font);
+}
+
+#composebox::part(input-container) {
+  --input-bottom-spacing: 12px;
+  transition: padding-top var(--emphasized-curve);
+  transition-duration: var(--collapse-duration);
+}
+
+#composebox[expanding_]::part(input-container) {
+  transition-duration: var(--expand-duration);
+}
+
+:host([energy-effect-enabled_]) #composebox::part(input-container) {
+  transition: padding-top var(--cr-composebox-collapse-duration) var(--cr-composebox-collapse-curve);
+}
+
+:host([energy-effect-enabled_]) #composebox[expanding_]::part(input-container) {
+  transition: padding-top var(--cr-composebox-expand-duration) var(--cr-composebox-expand-curve);
+}
+
+#composebox::part(carousel-divider) {
+  display: none;
+}
+
+#composebox::part(carousel-container) {
+  opacity: 0;
+}
+
+:host([energy-effect-enabled_]) #composebox::part(carousel-container) {
+  transition: opacity var(--cr-composebox-collapse-duration) var(--cr-composebox-collapse-curve);
+}
+
+#composebox[show-file-carousel][expanding_]::part(carousel-container) {
+  opacity: 1;
+  transition: var(--icon-entry-transition);
+}
+
+:host([energy-effect-enabled_]) #composebox[show-file-carousel][expanding_]::part(carousel-container) {
+  transition: opacity var(--cr-composebox-carousel-fade-duration) var(--cr-composebox-carousel-fade-curve) var(--cr-composebox-carousel-fade-delay);
+}
+
+#composebox[show-file-carousel]::part(carousel-container) {
+  /* Give room for the close button in the top right. */
+  --context-carousel-inline-end-spacing: 56px;
+}
+
+#composebox:not([expanding_])[show-file-carousel]::part(cr-composebox-file-carousel) {
+  pointer-events: none;
+}
+
+#composebox[show-file-carousel][expanding_]::part(input-container) {
+  padding-top: var(--carousel-height, 60px);
+}
+
+:host([is-zero-state][energy-effect-enabled_]) #composebox::part(input-container) {
+  height: 100%;
+}
+
+@keyframes zero-state-input-plate-ease-in {
+  0% {
+    opacity: 0;
+  }
+  17% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+:host([energy-effect-enabled_]) #composebox[show-file-carousel][expanding_]::part(input-container) {
+  padding-top: calc(var(--carousel-height, 60px) - 8px);
+}
+
+#composebox::part(icon-container) {
+  display: none;
+}
+
+#composebox::part(input) {
+  color: var(--color-composebox-font);
+}
+
+#composebox::part(context-menu-and-tools) {
+  min-height: var(--cr-icon-button-size);
+}
+
+#composebox::part(input)::placeholder {
+  color: var(--color-composebox-hint-text);
+}
+
+#composebox::part(context-menu-entrypoint-icon) {
+  --cr-icon-button-fill-color: var(--composebox-context-menu-entrypoint-button-color);
+  --cr-icon-button-icon-size: var(--icon-menu-icon-size);
+  /* Do not set '--cr-icon-button-margin-start' here. Use
+  * 'contextual-entrypoint-and-carousel-context-entrypoint-padding-inline-start'
+  * and the 'inline-end version'. These variables are set in
+  * '#composebox::part(composebox)'.
+  */
+  --cr-icon-button-size: var(--icon-menu-button-size);
+}
+
+:host([energy-effect-enabled_]) #composebox:not([in-tool-mode_])::part(context-menu-entrypoint-icon),
+:host([energy-effect-enabled_]) #composebox:not([in-tool-mode_])::part(entrypoint-button) {
+  --cr-composebox-entrypoint-background-color:
+      var(--color-composebox-context-entrypoint-background);
+  --cr-composebox-entrypoint-border-radius: 100px;
+  --cr-composebox-entrypoint-height: 36px;
+  --cr-composebox-entrypoint-width: 48px;
+}
+
+:host([energy-effect-animation-enabled_]) #composebox::part(context-menu-entrypoint-icon),
+:host([energy-effect-animation-enabled_]) #composebox::part(entrypoint-button) {
+  --button-scale-x: 1.16;
+  --cr-icon-button-transition:
+    var(--on-release-duration) var(--expressive-fast-curve);
+  --expressive-fast-curve: cubic-bezier(0.42, 1.67, 0.21, 0.9);
+  --icon-scale-x: 0.95;
+  --on-press-duration: 200ms;
+  --on-release-duration: 400ms;
+
+  transform-origin: center;
+  transition: transform var(--on-release-duration) var(--expressive-fast-curve);
+  will-change: transform;
+}
+
+:host([energy-effect-animation-enabled_]) #composebox::part(context-menu-entrypoint-icon):active:hover,
+:host([energy-effect-animation-enabled_]) #composebox::part(context-menu-entrypoint-icon):active:focus-visible,
+:host([energy-effect-animation-enabled_]) #composebox::part(entrypoint-button):active:hover,
+:host([energy-effect-animation-enabled_]) #composebox::part(entrypoint-button):active:focus-visible {
+  --cr-icon-button-icon-size:
+    calc(var(--icon-menu-icon-size, 24px) * var(--icon-scale-x));
+  --cr-icon-button-transition:
+    var(--on-press-duration) var(--expressive-fast-curve);
+
+  transform: scale(var(--button-scale-x), 1);
+  transition-duration: var(--on-press-duration);
+}
+
+:host([energy-effect-enabled_][in-tool-mode_]) #composebox::part(context-menu-entrypoint-icon),
+:host([energy-effect-enabled_][in-tool-mode_]) #composebox::part(entrypoint-button) {
+  --cr-composebox-entrypoint-background-color: transparent;
+  --cr-icon-button-hover-background-color: transparent;
+}
+
+:host([energy-effect-enabled_]) #composebox::part(entrypoint-button)::before {
+  background-color: var(--color-composebox-context-entrypoint-hover-background);
+  border-radius: inherit;
+  content: '';
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+:host([energy-effect-enabled_]) #composebox::part(entrypoint-button):hover::before {
+  opacity: 0.06;
+}
+
+/* Controls cancel and submit buttons. */
+#composebox::part(action-icon) {
+  --cr-icon-button-hover-background-color: var(--color-composebox-hover);
+}
+
+#composebox::part(cancel-icon) {
+  --cr-icon-button-fill-color: var(--color-composebox-cancel-button);
+  --cr-icon-button-hover-background-color:
+      var(--color-composebox-cancel-button-hover-background,
+          var(--color-composebox-hover));
+  /*
+   * Inner icon size of cancel button == cancel button size,
+   * unlike other buttons.
+   */
+  --cr-icon-button-size: var(--composebox-cancel-button-size);
+  display: none;
+  inset-inline-end: var(--cancel-button-inline-end);
+  top: var(--cancel-button-top);
+  z-index: 2;
+}
+
+/* Only show when text is in there (when can submit). */
+#composebox[submit-enabled]::part(cancel-icon) {
+  display: block;
+}
+
+#composebox::part(lens-icon) {
+  --cr-icon-button-fill-color: var(--color-composebox-voice-lens-button);
+  --cr-icon-button-hover-background-color:
+      var(--color-composebox-lens-button-hover-background);
+  --cr-icon-button-icon-size: var(--icon-menu-icon-size);
+  --cr-icon-button-size: var(--icon-menu-button-size);
+  /* Override the expanding fade in animation to make the icon appear instantly. */
+  animation: none;
+  bottom: var(--composebox-icon-menu-bottom);
+  display: block;
+  inset-inline-end: var(--composebox-last-icon-inline-end);
+  position: absolute;
+  transition: ease-out 100ms;
+}
+
+:host([is-overlay-open-for-aim-visual-search]) #composebox::part(lens-icon) {
+  background-color: var(--color-composebox-lens-active-background);
+  border-radius: 50%;
+}
+
+#composebox[submit-enabled]::part(lens-icon) {
+  inset-inline-end: calc(var(--composebox-submit-container-size)
+      + var(--icon-menu-spacing)
+      + var(--lens-submit-icon-extra-spacing)
+      + var(--composebox-submit-container-inline-end));
+}
+
+#composebox:not([expanding_])::part(cancel),
+#composebox:not([expanding_])::part(submit) {
+  pointer-events: none;
+}
+
+#composebox::part(label) {
+  display: none;
+}
+
+/* icon-fade class; applies to submit and cancel. */
+#composebox::part(cancel),
+#composebox::part(submit) {
+  --icon-entry-transition: opacity 600ms
+      var(--emphasized-curve, ease) 200ms;
+  --icon-exit-transition: opacity 600ms
+      var(--emphasized-curve, ease);
+}
+
+#composebox::part(submit) {
+  /* --cr-icon-button-icon-size changes arrow size;
+   * --cr-icon-button-size here changes
+   * blue part of submit button. Container-size changes
+   * wrapper size around submit button.
+   */
+  --cr-composebox-submit-container-size:
+      var(--composebox-submit-container-size);
+  --cr-icon-button-icon-size: 18px;
+}
+
+:host([energy-effect-enabled_]) #composebox::part(submit) {
+  --cr-icon-button-icon-size: 24px;
+}
+
+#composebox::part(submit-icon),
+#composebox::part(submit-overlay) {
+  /* Inline-end to center the button (+ its overlay)
+   * (icon size: 40px; button size: 48px. 4px on each side.
+   * Bottom 0px since wrapper is aligned at the
+   * bottom with other icons (like voice). This,
+   * to be aligned, must also be at the bottom.)
+   * Position absolute is also from action-icon.
+   */
+  bottom: 0;
+  inset-inline-end: 4px;
+  inset-inline-start: auto;
+  position: absolute;
+  top: auto;
+  --cr-icon-button-size: 40px;
+}
+
+:host([energy-effect-enabled_]) #composebox::part(submit-icon),
+:host([energy-effect-enabled_]) #composebox::part(submit-overlay) {
+  inset-inline-end: 0;
+}
+
+:host([energy-effect-enabled_]) #composebox:not([submit-enabled])::part(submit) {
+  display: block; /* Override display: none from shared CSS */
+  opacity: 0;
+  transform: scale(0);
+  visibility: hidden;
+}
+
+#composebox[submit-enabled]::part(submit) {
+  bottom: var(--composebox-icon-menu-bottom);
+  display: block;
+  inset-inline-end: var(--composebox-submit-container-inline-end);
+  inset-inline-start: auto;
+  position: absolute;
+  top: auto;
+}
+
+:host([energy-effect-enabled_]) #composebox[submit-enabled]::part(submit) {
+  opacity: 1;
+  transform: scale(1);
+  visibility: visible;
+  transition:
+    opacity 100ms linear,
+    transform 100ms cubic-bezier(0.4, 0, 1, 1),
+    visibility 0ms;
+}
+
+#composebox::part(dropdown) {
+  --cr-composebox-match-height: 54px;
+
+  background-color: var(--search-background-color);
+  bottom: 0;
+  flex-direction: column-reverse;
+  /* Stack the dropdown on top of the other elements in the composebox. */
+  order: -1;
+  position: fixed;
+  transform: translateY(calc(-1 * (var(--composebox-height) + var(--composebox-margin-bottom))));
+  /* composebox-width defined by app.css */
+  width: calc(var(--composebox-width, 692px) - 32px);
+  z-index: 4;
+}
+
+/* Hide the dropdown when the dropdown is not enabled, the dropdown is not showable,
+ * or when the composebox is not focused. */
+:host(:not([is-composebox-focused])) #composeboxContainer #composebox::part(dropdown),
+#composeboxContainer:has(#composebox:not([show-dropdown])) #composebox::part(dropdown) {
+  display: none;
+}
+
+#composebox[submit-enabled]::part(voice-icon) {
+  inset-inline-end: calc(var(--composebox-submit-container-size)
+      + var(--icon-menu-spacing)
+      + var(--composebox-submit-container-inline-end));
+}
+
+:host([voice-search-coherence-enabled_])
+    #composebox::part(voice-submit-button) {
+  --cr-composebox-submit-icon-offset: 0;
+}
+
+/* Lens is only shown in side panel, so adjust spacing. */
+:host([is-side-panel][show-lens-button])
+    #composebox[submit-enabled]::part(voice-icon) {
+  inset-inline-end: calc(var(--composebox-submit-container-size)
+      + var(--icon-menu-button-size)
+      + 2 * var(--icon-menu-spacing)
+      + var(--lens-submit-icon-extra-spacing)
+      + var(--composebox-submit-container-inline-end));
+}
+
+#composebox::part(voice-icon) {
+  --cr-icon-button-fill-color: var(--color-composebox-voice-lens-button);
+  --cr-icon-button-hover-background-color: var(--color-composebox-voice-button-hover-background);
+  --cr-icon-button-icon-size: var(--icon-menu-icon-size);
+  --cr-icon-button-size: var(--icon-menu-button-size);
+  bottom: var(--composebox-icon-menu-bottom);
+  inset-inline-end: var(--composebox-last-icon-inline-end);
+  position: absolute;
+  top: auto;
+  transition: ease-out 100ms;
+}
+
+/* Lens is only shown in side panel, so adjust spacing. */
+:host([is-side-panel][show-lens-button]) #composebox::part(voice-icon) {
+  inset-inline-end: calc(
+      var(--icon-menu-button-size)
+      + var(--icon-menu-spacing)
+      + var(--composebox-last-icon-inline-end));
+}
+
+/* When Deep Search is active lens buttion is hidden so we move the voice icon to the far right. */
+:host([is-side-panel][active-tool-mode='1']) #composebox::part(voice-icon) {
+  inset-inline-end: 14px;
+}
+
+/* When Deep Search is active, lens button is hidden, and submit is enabled */
+:host([is-side-panel][active-tool-mode='1']) #composebox[submit-enabled]::part(voice-icon) {
+  inset-inline-end: calc(var(--composebox-submit-container-size)
+      + var(--icon-menu-spacing)
+      + var(--lens-submit-icon-extra-spacing)
+      + var(--composebox-submit-container-inline-end));
+}
+
+#composebox::part(voice-close-button) {
+ --cr-icon-button-size: var(--composebox-cancel-button-size);
+ inset-inline-end: var(--cancel-button-inline-end);
+ top: var(--cancel-button-top);
+}
+
+#composebox::part(voice-details-link) {
+ pointer-events: auto;
+ cursor: pointer;
+}
+
+#composebox[in-voice-search-mode_]::part(composebox-background)::before {
+ background-color: var(--cr-composebox-background-color);
+}
+
+#composebox::part(composebox-background)::before {
+ transition: background-color 400ms ease-in-out;
+}
+
+:host([is-zero-state]) #contextualTasksSuggestionsContainer {
+  --cr-composebox-match-height: 100%;
+  --cr-composebox-match-line-height: 18px;
+  --cr-composebox-match-match-padding-bottom: 0px;
+
+  --color-searchbox-results-background-hovered: transparent;
+  --color-searchbox-results-background-selected: transparent;
+  --match-border-size: 2px;
+  --color-searchbox-results-icon-focused-outline: rgba(153, 200, 255, 1);
+
+  align-items: flex-start;
+  background-color: transparent;
+  justify-content: flex-start;
+  margin-top: 16px;
+  padding-inline-end: 8px;
+  padding-inline-start: 8px;
+  /* Start inline from .flex-center is 20px.
+   * Inner padding is 8px from above line.
+   * The first item in each suggestions block
+   * is the icon, which has 8px indent. This means
+   * that suggestions have full indentation of 20px from .flex-center,
+   * then 16px total within suggestions container after that,
+   * totaling 36px total indent.
+   */
+  pointer-events: auto;
+  /* Do not set width since we are using padding + fitting children content. */
+}
+
+:host([is-zero-state][is-side-panel]) #contextualTasksSuggestionsContainer  {
+  margin-bottom: 24px;
+  margin-top: 24px;
+  /* Becomes 18px ending from width padding in child. */
+  padding-inline-end: 10px;
+}
+
+:host(.play-zero-state[is-zero-state]) #contextualTasksSuggestionsContainer::part(match-wrapper) {
+  animation: zero-state-recommendations-enter 600ms var(--emphasized-decelerate-curve) both;
+  animation-delay: calc(var(--match-wrapper-index, 0) * 50ms);
+}
+
+@keyframes zero-state-recommendations-enter {
+  0% {
+    opacity: 0;
+    transform: translate(0, 60px);
+  }
+  15% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+}
+
+:host([is-zero-state]) #contextualTasksSuggestionsContainer::part(match-focus-indicator) {
+  /* 'Important' is used to override all higher-specificity
+   * dynamic focusIndicator modifications.
+   */
+  display: none !important;
+}
+
+:host([is-zero-state]) #contextualTasksSuggestionsContainer::part(match-container) {
+  align-items: center;
+  border-radius: 8px;
+  box-sizing: border-box;
+  height: 100%;
+  padding: 6px 0 6px 0;
+  width: calc(100% - 8px);
+}
+
+:host([is-zero-state]) #contextualTasksSuggestionsContainer::part(match-wrapper) {
+  width: 100%;
+}
+
+:host([is-loading_]) #contextualTasksSuggestionsContainer::part(match-container) {
+  pointer-events: none;
+}
+
+:host([is-zero-state]) #contextualTasksSuggestionsContainer::part(match-container):hover {
+  background-color: var(
+      --color-composebox-zero-state-suggestions-background-hovered);
+}
+
+@media (forced-colors: active) {
+  :host {
+    --color-searchbox-results-icon-focused-outline: Highlight;
+    --select-color_: Highlight;
+  }
+
+  #composebox::part(context-menu-entrypoint-icon),
+  #composebox::part(cancel-icon),
+  #composebox::part(lens-icon),
+  #composebox::part(voice-icon) {
+    --cr-icon-button-fill-color: ButtonText;
+  }
+}
+
+:host([is-zero-state]) #contextualTasksSuggestionsContainer::part(match-icon-container) {
+  height: 24px;
+  /* Keep in mind .flex-container and the outer suggestions container
+   * indentation when changing this. */
+  padding-inline-end: 8px;
+  /* This + 8px from suggestion container's
+   * indent start = 16px. */
+  padding-inline-start: 8px;
+  width: 24px;
+}
+
+:host([is-zero-state][is-side-panel])
+    #contextualTasksSuggestionsContainer::part(match-icon-container) {
+  padding-inline-end: 12px;
+}
+
+:host([is-zero-state]) #contextualTasksSuggestionsContainer::part(match-icon) {
+  background-color: var(--color-zero-state-match-icon);
+  height: 20px;
+  margin: 2px;
+  width: 20px;
+}
+
+:host([is-zero-state]) #contextualTasksSuggestionsContainer::part(match-text-container) {
+  border-radius: 4px;
+  color: var(--color-zero-state-match-text);
+  font-family: var(--google-sans-font);
+  font-size: 16px;
+  letter-spacing: 1%;
+  inset-inline-start: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+/* 'loading-bar-color-change' must be defined in child component
+ * the animation modifies.
+ */
+:host([is-zero-state][is-loading_]) #contextualTasksSuggestionsContainer::part(match-text-container) {
+  animation: 2s loading-bar-color-change calc(0.1s * var(--loading-bar-animation-delay))
+      infinite;
+  background-color: var(--color-composebox-loading-start);
+}
+
+:host(:not([is-side-panel])[is-zero-state])
+    #contextualTasksSuggestionsContainer::part(match-text-container) {
+  inset-inline-start: 8px;
+  width: calc(100% - 8px);
+}
+
+:host([is-zero-state])
+    #contextualTasksSuggestionsContainer::part(match-remove-button) {
+  --cr-composebox-dropdown-match-margin-end: -8px;
+  --cr-composebox-dropdown-match-margin-start: 16px;
+  --cr-composebox-match-remove-button-top: 0;
+  display: none;
+}
+
+#suggestionActivity {
+  color: var(--color-composebox-suggestion-activity);
+  display: flex;
+  font-family: var(--google-sans-font);
+  font-size: 12px;
+  font-weight: 400;
+  justify-content: flex-start;
+  line-height: 16px;
+  padding-bottom: 10px;
+  padding-inline-end: 8px;
+  padding-inline-start: 20px;
+  padding-top: 8px;
+  position: relative;
+  pointer-events: auto;
+}
+
+:host:has(#composebox:not([show-dropdown])) #contextualTasksSuggestionsContainer {
+  display: none;
+}
+
+/* Needed for space between header and composebox. */
+:host([is-side-panel][is-zero-state]) #composebox:not([show-dropdown]) {
+  margin-top: 24px;
+}
+
+/* Disable animations if requested */
+@container style(--cr-animations-disabled: 1) {
+  #composebox::part(submit) {
+    transition: none;
+  }
+}
+
+:host(:not([energy-effect-enabled_])) #composebox[animation-state='submitting'] {
+  animation: bump-on-submit 350ms;
+  animation-delay: 50ms;
+  transform-origin: bottom;
+}
+
+@keyframes bump-on-submit {
+  0% {
+    animation-timing-function: cubic-bezier(0, 0, 0, 1);
+    transform: scaleY(1);
+  }
+  28.5% {
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transform: scaleY(1.12);
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
+

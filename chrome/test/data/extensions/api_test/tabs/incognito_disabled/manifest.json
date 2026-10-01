@@ -1,0 +1,10 @@
+{
+   "background": {
+     "service_worker": "background.js"
+  },
+   "description": "Test whether extensions open incognito windows after policy disallows it",
+   "name": "Incognito Disabled",
+   "permissions": [ "tabs" ],
+   "manifest_version": 3,
+   "version": "1.0"
+}

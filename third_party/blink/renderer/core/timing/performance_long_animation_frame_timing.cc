@@ -1,0 +1,179 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/core/timing/performance_long_animation_frame_timing.h"
+
+#include "third_party/blink/renderer/bindings/core/v8/idl_types.h"
+#include "third_party/blink/renderer/bindings/core/v8/to_v8_traits.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_object_builder.h"
+#include "third_party/blink/renderer/core/dom/dom_high_res_time_stamp.h"
+#include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/core/frame/dom_window.h"
+#include "third_party/blink/renderer/core/frame/local_dom_window.h"
+#include "third_party/blink/renderer/core/performance_entry_names.h"
+#include "third_party/blink/renderer/core/timing/dom_window_performance.h"
+#include "third_party/blink/renderer/core/timing/performance.h"
+#include "third_party/blink/renderer/core/timing/performance_mark_conditional.h"
+#include "third_party/blink/renderer/core/timing/performance_measure_conditional.h"
+#include "third_party/blink/renderer/core/timing/performance_script_timing.h"
+#include "third_party/blink/renderer/core/timing/task_attribution_timing.h"
+#include "third_party/blink/renderer/core/timing/window_performance.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/weborigin/security_origin.h"
+
+namespace blink {
+
+PerformanceLongAnimationFrameTiming*
+PerformanceLongAnimationFrameTiming::Create(
+    AnimationFrameTimingInfo* info,
+    base::TimeTicks time_origin,
+    bool cross_origin_isolated_capability,
+    ExecutionContext* execution_context,
+    const std::optional<DOMPaintTimingInfo>& paint_timing_info,
+    uint64_t navigation_id) {
+  // Worker contexts have no window, so `source` is nullptr there. The observer
+  // security origin filters which scripts may expose their source attribution.
+  DOMWindow* source = DynamicTo<LocalDOMWindow>(execution_context);
+  const SecurityOrigin* observer_security_origin =
+      execution_context ? execution_context->GetSecurityOrigin() : nullptr;
+
+  DOMHighResTimeStamp startTime =
+      Performance::MonotonicTimeToDOMHighResTimeStamp(
+          time_origin, info->FrameStartTime(),
+          /*allow_negative_value=*/false, cross_origin_isolated_capability);
+  double duration =
+      paint_timing_info
+          ? (paint_timing_info->paint_time - startTime)
+          : Performance::ClampTimeResolution(info->Duration(),
+                                             cross_origin_isolated_capability);
+  PerformanceLongAnimationFrameTiming* entry =
+      MakeGarbageCollected<PerformanceLongAnimationFrameTiming>(
+          duration, startTime, info, time_origin,
+          cross_origin_isolated_capability, source, observer_security_origin,
+          navigation_id);
+  if (paint_timing_info.has_value()) {
+    entry->SetPaintTimingInfo(*paint_timing_info);
+  }
+  return entry;
+}
+
+PerformanceLongAnimationFrameTiming::PerformanceLongAnimationFrameTiming(
+    double duration,
+    DOMHighResTimeStamp startTime,
+    AnimationFrameTimingInfo* info,
+    base::TimeTicks time_origin,
+    bool cross_origin_isolated_capability,
+    DOMWindow* source,
+    const SecurityOrigin* observer_security_origin,
+    uint64_t navigation_id)
+    : PerformanceEntry(duration,
+                       AtomicString("long-animation-frame"),
+                       startTime,
+                       source,
+                       navigation_id),
+      script_count_(info->ScriptCount()),
+      render_start_(Performance::MonotonicTimeToDOMHighResTimeStamp(
+          time_origin,
+          info->RenderStartTime(),
+          /*allow_negative_value=*/false,
+          cross_origin_isolated_capability)),
+      style_and_layout_start_(Performance::MonotonicTimeToDOMHighResTimeStamp(
+          time_origin,
+          info->StyleAndLayoutStartTime(),
+          /*allow_negative_value=*/false,
+          cross_origin_isolated_capability)),
+      first_ui_event_timestamp_(Performance::MonotonicTimeToDOMHighResTimeStamp(
+          time_origin,
+          info->FirstUIEventTime(),
+          /*allow_negative_value=*/false,
+          cross_origin_isolated_capability)),
+      blocking_duration_(
+          Performance::ClampTimeResolution(info->TotalBlockingDuration(),
+                                           cross_origin_isolated_capability)),
+      style_duration_(
+          Performance::ClampTimeResolution(info->StyleDuration(),
+                                           cross_origin_isolated_capability)),
+      layout_duration_(
+          Performance::ClampTimeResolution(info->LayoutDuration(),
+                                           cross_origin_isolated_capability)) {
+  for (ScriptTimingInfo* script : info->Scripts()) {
+    if (!observer_security_origin ||
+        observer_security_origin->CanAccess(script->GetSecurityOrigin())) {
+      scripts_.push_back(MakeGarbageCollected<PerformanceScriptTiming>(
+          script, time_origin, cross_origin_isolated_capability, source,
+          navigation_id));
+    }
+  }
+
+  if (RuntimeEnabledFeatures::ConditionalTracingLoAFEnabled()) {
+    // Build mark entries (already sorted by start_time).
+    PerformanceEntryVector mark_entries;
+    for (const ConditionalMarkInfo& conditional_mark :
+         info->ConditionalMarks()) {
+      mark_entries.push_back(MakeGarbageCollected<PerformanceMarkConditional>(
+          conditional_mark.name, conditional_mark.start_time, source,
+          navigation_id));
+    }
+
+    // Build measure entries and sort them by start_time.
+    PerformanceEntryVector measure_entries;
+    for (const ConditionalMeasureInfo& conditional_measure :
+         info->ConditionalMeasures()) {
+      measure_entries.push_back(PerformanceMeasureConditional::Create(
+          conditional_measure.name, conditional_measure.start_time,
+          conditional_measure.end_time, source, navigation_id));
+    }
+    std::sort(measure_entries.begin(), measure_entries.end(),
+              PerformanceEntry::StartTimeCompareLessThan);
+
+    // Merge sorted marks and measures into user_timing_entries_.
+    user_timing_entries_ = MergePerformanceEntryVectors(
+        mark_entries, measure_entries, AtomicString());
+  } else {
+    CHECK(info->ConditionalMarks().empty());
+    CHECK(info->ConditionalMeasures().empty());
+  }
+}
+
+PerformanceLongAnimationFrameTiming::~PerformanceLongAnimationFrameTiming() =
+    default;
+
+const AtomicString& PerformanceLongAnimationFrameTiming::entryType() const {
+  return performance_entry_names::kLongAnimationFrame;
+}
+
+PerformanceEntryType PerformanceLongAnimationFrameTiming::EntryTypeEnum()
+    const {
+  return PerformanceEntry::EntryType::kLongAnimationFrame;
+}
+
+void PerformanceLongAnimationFrameTiming::BuildJSONValue(
+    V8ObjectBuilder& builder) const {
+  PerformanceEntry::BuildJSONValue(builder);
+  if (RuntimeEnabledFeatures::LongAnimationFrameWorkerEnabled(
+          ExecutionContext::From(builder.GetScriptState()))) {
+    builder.AddNumber("scriptCount", script_count_);
+  }
+  builder.AddNumber("renderStart", render_start_);
+  builder.AddNumber("styleAndLayoutStart", style_and_layout_start_);
+  builder.AddNumber("firstUIEventTimestamp", first_ui_event_timestamp_);
+  builder.AddNumber("blockingDuration", blocking_duration_);
+  if (RuntimeEnabledFeatures::LongAnimationFrameStyleDurationEnabled(
+          ExecutionContext::From(builder.GetScriptState()))) {
+    builder.AddNumber("styleDuration", style_duration_);
+    builder.AddNumber("layoutDuration", layout_duration_);
+  }
+  builder.AddV8Value("scripts",
+                     ToV8Traits<IDLArray<PerformanceScriptTiming>>::ToV8(
+                         builder.GetScriptState(), scripts_));
+}
+
+void PerformanceLongAnimationFrameTiming::Trace(Visitor* visitor) const {
+  PerformanceEntry::Trace(visitor);
+  visitor->Trace(scripts_);
+  visitor->Trace(user_timing_entries_);
+}
+
+}  // namespace blink

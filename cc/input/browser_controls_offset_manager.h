@@ -1,0 +1,385 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CC_INPUT_BROWSER_CONTROLS_OFFSET_MANAGER_H_
+#define CC_INPUT_BROWSER_CONTROLS_OFFSET_MANAGER_H_
+
+#include <memory>
+#include <optional>
+#include <utility>
+
+#include "base/feature_list.h"
+#include "base/memory/raw_ptr.h"
+#include "base/time/time.h"
+#include "base/types/optional_ref.h"
+#include "cc/input/browser_controls_offset_tag_modifications.h"
+#include "cc/input/browser_controls_state.h"
+#include "cc/input/scroll_velocity_tracker.h"
+#include "cc/layers/layer_impl.h"
+#include "cc/trees/browser_controls_params.h"
+#include "components/viz/common/quads/offset_tag.h"
+#include "ui/gfx/animation/tween.h"
+#include "ui/gfx/geometry/size.h"
+#include "ui/gfx/geometry/vector2d_f.h"
+
+namespace cc {
+
+class BrowserControlsOffsetManagerClient;
+
+// Manages the position of the browser controls.
+class CC_EXPORT BrowserControlsOffsetManager {
+ public:
+  enum class AnimationDirection {
+    kNoAnimation,
+    kShowingControls,
+    kHidingControls
+  };
+
+  static std::unique_ptr<BrowserControlsOffsetManager> Create(
+      BrowserControlsOffsetManagerClient* client,
+      float controls_show_threshold,
+      float controls_hide_threshold,
+      bool in_viz_process = false);
+  BrowserControlsOffsetManager(const BrowserControlsOffsetManager&) = delete;
+  virtual ~BrowserControlsOffsetManager();
+
+  BrowserControlsOffsetManager& operator=(const BrowserControlsOffsetManager&) =
+      delete;
+
+  // The offset from the window top to the top edge of the controls. Runs from 0
+  // (controls fully shown) to negative values (down is positive).
+  float ControlsTopOffset() const;
+
+  // The amount of offset of the web content area. Same as the current shown
+  // height of the browser controls.
+  float ContentTopOffset() const;
+
+  float TopControlsShownRatio() const;
+  float TopControlsHeight() const;
+  float TopControlsMinHeight() const;
+  int TopControlsAdditionalHeight() const;
+
+  // The minimum shown ratio top controls can have.
+  float TopControlsMinShownRatio() const;
+
+  // The current top controls min-height. If the min-height is changing with an
+  // animation, this will return a value between the old min-height and the new
+  // min-height, which is equal to the current visible min-height. Otherwise,
+  // this will return the same value as |TopControlsMinHeight()|.
+  float TopControlsMinHeightOffset() const;
+
+  viz::OffsetTag ContentOffsetTag() const;
+  viz::OffsetTag TopControlsOffsetTag() const;
+
+  // The amount of offset of the web content area, calculating from the bottom.
+  // Same as the current shown height of the bottom controls.
+  float ContentBottomOffset() const;
+
+  // Similar to TopControlsHeight(), this method should return a static value.
+  // The current animated height should be acquired from ContentBottomOffset().
+  float BottomControlsHeight() const;
+  float BottomControlsMinHeight() const;
+  float BottomControlsShownRatio() const;
+  int BottomControlsAdditionalHeight() const;
+
+  // The minimum shown ratio bottom controls can have.
+  float BottomControlsMinShownRatio() const;
+
+  // The current bottom controls min-height. If the min-height is changing with
+  // an animation, this will return a value between the old min-height and the
+  // new min-height, which is equal to the current visible min-height.
+  // Otherwise, this will return the same value as |BottomControlsMinHeight()|.
+  float BottomControlsMinHeightOffset() const;
+
+  viz::OffsetTag BottomControlsOffsetTag() const;
+
+  bool HasOffsetTag() const;
+
+  // Valid shown ratio range for the top controls. The values will be (0, 1) if
+  // there is no animation running.
+  std::pair<float, float> TopControlsShownRatioRange();
+
+  // Valid shown ratio range for the bottom controls. The values will be (0, 1)
+  // if there is no animation running.
+  std::pair<float, float> BottomControlsShownRatioRange();
+
+  bool HasAnimation();
+  bool IsAnimatingToShowControls() const {
+    return top_controls_animation_.IsInitialized() &&
+           top_controls_animation_.Direction() ==
+               AnimationDirection::kShowingControls;
+  }
+
+  // See UpdateBrowserControlsState in
+  // third_party/blink/public/mojom/frame/frame.mojom
+  void UpdateBrowserControlsState(
+      BrowserControlsState constraints,
+      BrowserControlsState current,
+      bool animate,
+      base::optional_ref<const BrowserControlsOffsetTagModifications>
+          offset_tag_modifications);
+
+  // Directly set the current offset tag modifications.
+  // This is used to set the offset tag modifications from the viz process.
+  void SetOffsetTagModifications(
+      const BrowserControlsOffsetTagModifications& offset_tag_modifications) {
+    offset_tag_modifications_ = offset_tag_modifications;
+  }
+
+  // Returns the current offset tag modifications.
+  const BrowserControlsOffsetTagModifications& GetOffsetTagModifications()
+      const {
+    return offset_tag_modifications_;
+  }
+
+  // Return the browser control constraint that must be synced to the
+  // main renderer thread (to trigger viewport and related changes).
+  BrowserControlsState PullConstraintForMainThread(
+      bool* out_changed_since_commit);
+  // Called to notify this object that the control constraint has
+  // been pushed to the main thread. When a compositor commit does not
+  // happen the value pulled by the method above may not be synced;
+  // a call to this method notifies us that it has.
+  void NotifyConstraintSyncedToMainThread();
+
+  void OnBrowserControlsParamsChanged(bool animate_changes);
+
+  void ScrollBegin();
+  // Scrolls the browser controls by the given `pending_delta` and returns the
+  // remaining scroll delta that was not applied. `is_inertial` indicates
+  // whether the scroll update received from the browser process corresponds to
+  // a scroll that continues after the user lifts their finger off the screen
+  // (e.g. fling).
+  //
+  // TODO(anandrv): Remove the default value for the `is_inertial` parameter
+  // once snap animation is always enabled.
+  gfx::Vector2dF ScrollBy(const gfx::Vector2dF& pending_delta,
+                          bool is_inertial = false);
+  void ScrollEnd(
+      const gfx::Vector2dF& compensated_scroll_delta = gfx::Vector2dF());
+
+  // The caller should ensure that |Pinch{Begin,End}| are called within
+  // the scope of |Scroll{Begin,End}|.
+  void PinchBegin();
+  void PinchEnd();
+
+  gfx::Vector2dF Animate(base::TimeTicks monotonic_time);
+
+  // Predict what the outer viewport container bounds delta will be as browser
+  // controls are shown or hidden during a scroll gesture before the Blink
+  // WebView is resized to reflect the new state.
+  double PredictViewportBoundsDelta(double current_bounds_delta,
+                                    gfx::Vector2dF scroll_distance);
+
+  void ResetAnimations();
+
+  float MaximumShownRatioDeltaPerFrame(float min_ratio) const;
+
+  // Returns the viewport Y-offset above which the toolbar will always be shown
+  // when snap animation is enabled.
+  float SnapAnimationAlwaysShownRegionHeight() const;
+
+  // Returns a pair of floats representing the can-hide region heights from the
+  // top and bottom of the page respectively.
+  //
+  // `slowness` is a multiplier that controls how much the height of the
+  // can-hide region changes relative to the height of the controls, where a
+  // higher value means a larger region and a lower value means a smaller
+  // region. The value should be between 0 and 1.
+  std::pair<float, float> SnapAnimationCanHideRegionHeights(
+      float slowness) const;
+
+  // Returns the magnitude of scroll delta in a single scroll sequence required
+  // to trigger the snap animation.
+  //
+  // `slowness` is a multiplier that controls how much the trigger threshold
+  // changes relative to the reference threshold, where a higher value means
+  // a larger threshold and a lower value means a smaller threshold. The value
+  // should be between 0 and 1.
+  float SnapAnimationThreshold(float slowness) const;
+
+ protected:
+  BrowserControlsOffsetManager(BrowserControlsOffsetManagerClient* client,
+                               float controls_show_threshold,
+                               float controls_hide_threshold,
+                               bool in_viz_process = false);
+
+ private:
+  class Animation;
+
+  void SetupAnimation(AnimationDirection direction,
+                      int64_t duration_ms,
+                      gfx::Tween::Type tween_type = gfx::Tween::LINEAR);
+
+  // Sets up the snap animation in the given direction based on the given scroll
+  // delta.
+  //
+  // `use_minimum_can_hide_region` indicates whether to use the smallest
+  // possible value for the can-hide region height when deciding whether to
+  // trigger the snap animation.
+  void SetupSnapAnimation(AnimationDirection direction,
+                          const gfx::Vector2dF& scroll_delta,
+                          bool use_minimum_can_hide_region);
+  void StartAnimationIfNecessary();
+  void ResetBaseline();
+  float OldTopControlsMinShownRatio();
+  float OldBottomControlsMinShownRatio();
+  void UpdateOldBrowserControlsParams();
+  void InitAnimationForHeightChange(Animation* animation,
+                                    float start_ratio,
+                                    float stop_ratio);
+  void SetTopMinHeightOffsetAnimationRange(float from, float to);
+  void SetBottomMinHeightOffsetAnimationRange(float from, float to);
+  bool IsAnimatingHeightChange();
+  void MaybeRecordHasExistingAnimationHistogram();
+
+  gfx::Vector2dF ScrollByPrecise(const gfx::Vector2dF& pending_delta);
+  void ScrollBySnap(const gfx::Vector2dF& pending_delta, bool is_inertial);
+  float ControlsAnimatedHeight() const;
+  float TopControlsAnimatedHeight() const;
+  float BottomControlsAnimatedHeight() const;
+
+  // The client manages the lifecycle of this.
+  raw_ptr<BrowserControlsOffsetManagerClient> client_;
+
+  BrowserControlsState permitted_state_;
+
+  // Accumulated scroll delta since last baseline reset
+  float accumulated_scroll_delta_;
+
+  // When the amount by which the browser controls can scroll is limited by
+  // the BrowserControlsSmoothScroll feature, this tracks the remaining delta
+  // that has been accumulated but not applied.
+  float unapplied_scroll_delta_;
+
+  // Content offset when last baseline reset occurred.
+  float baseline_top_content_offset_;
+  float baseline_bottom_content_offset_;
+
+  // The percent height of the visible control such that it must be shown
+  // when the user stops the scroll.
+  float controls_show_threshold_;
+
+  // The percent height of the visible control such that it must be hidden
+  // when the user stops the scroll.
+  float controls_hide_threshold_;
+
+  bool pinch_gesture_active_;
+
+  // Used to track whether the constraint has changed and we need up reflect
+  // the changes to Blink.
+  bool constraint_changed_since_commit_;
+
+  // The old browser controls params that are used to figure out how to animate
+  // the height and min-height changes.
+  BrowserControlsParams old_browser_controls_params_;
+
+  // Whether a min-height change animation is in progress.
+  bool top_min_height_change_in_progress_;
+  bool bottom_min_height_change_in_progress_;
+
+  // Current top/bottom controls min-height.
+  float top_controls_min_height_offset_;
+  float bottom_controls_min_height_offset_;
+
+  // Minimum and maximum values |top_controls_min_height_offset_| can take
+  // during the current min-height change animation.
+  std::optional<std::pair<float, float>> top_min_height_offset_animation_range_;
+  // Minimum and maximum values |bottom_controls_min_height_offset_| can take
+  // during the current min-height change animation.
+  std::optional<std::pair<float, float>>
+      bottom_min_height_offset_animation_range_;
+
+  // Should ScrollEnd() animate the controls into view?  This is used if there's
+  // a race between chrome starting an animation to show the controls while the
+  // user is doing a scroll gesture, which would cancel animations.  We want to
+  // err on the side of showing the controls, so that the user realizes that
+  // they're an option. If we have started, but not yet completed an animation
+  // to show the controls when the scroll starts, or if one starts during the
+  // gesture, then we reorder the animation until after the scroll.
+  bool show_controls_when_scroll_completes_ = false;
+
+  // Used to track if the browser controls hide animation ran during the current
+  // scroll sequence.
+  bool did_hide_this_scroll_ = false;
+
+  // If set to true, browser controls will snap to fully show or hide on scroll
+  // instead of moving in pixel-perfect sync with the scroll.
+  const bool use_snap_animation_ = false;
+  const bool in_viz_process_ = false;
+
+  BrowserControlsOffsetTagModifications offset_tag_modifications_;
+
+  // Class that holds and manages the state of the controls animations.
+  class Animation {
+   public:
+    Animation();
+
+    // Whether the animation is initialized with a direction and start and stop
+    // values.
+    bool IsInitialized() const { return initialized_; }
+    AnimationDirection Direction() const { return direction_; }
+    void Initialize(AnimationDirection direction,
+                    float start_value,
+                    float stop_value,
+                    int64_t duration,
+                    bool jump_to_end_on_reset,
+                    gfx::Tween::Type tween_type);
+    // Returns the animated value for the given monotonic time tick if the
+    // animation is initialized. Otherwise, returns |std::nullopt|.
+    std::optional<float> Tick(base::TimeTicks monotonic_time);
+    // Set the minimum and maximum values the animation can have.
+    void SetBounds(float min, float max);
+    // Reset the properties. If |skip_to_end_on_reset_| is false, this function
+    // will return |std::nullopt|. Otherwise, it will return the end value
+    // (clamped to min-max).
+    std::optional<float> Reset();
+
+    // Returns the value the animation will end on. This will be the stop_value
+    // passed to the constructor clamped by the currently configured bounds.
+    float FinalValue();
+
+    // Return the bounds.
+    float min_value() { return min_value_; }
+    float max_value() { return max_value_; }
+
+    bool jump_to_end_on_reset() { return jump_to_end_on_reset_; }
+
+   private:
+    bool IsComplete(float value);
+
+    // Whether the animation is running.
+    bool started_ = false;
+    // Whether the animation is initialized by setting start and stop time and
+    // values.
+    bool initialized_ = false;
+    AnimationDirection direction_ = AnimationDirection::kNoAnimation;
+    // Monotonic start and stop times.
+    base::TimeTicks start_time_;
+    base::TimeTicks stop_time_;
+    // Animation duration.
+    base::TimeDelta duration_;
+    // Start and stop values.
+    float start_value_ = 0.0f;
+    float stop_value_ = 0.0f;
+    // Minimum and maximum values the animation can have, used to decide if the
+    // animation is complete.
+    float min_value_ = 0.0f;
+    float max_value_ = 1.0f;
+    // Whether to fast-forward to end when reset. It is still BCOM's
+    // responsibility to actually set the shown ratios using the value returned
+    // by ::Reset().
+    bool jump_to_end_on_reset_ = false;
+    gfx::Tween::Type tween_type_ = gfx::Tween::LINEAR;
+  };
+
+  Animation top_controls_animation_;
+  Animation bottom_controls_animation_;
+
+  ScrollVelocityTracker scroll_velocity_tracker_;
+};
+
+}  // namespace cc
+
+#endif  // CC_INPUT_BROWSER_CONTROLS_OFFSET_MANAGER_H_

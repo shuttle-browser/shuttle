@@ -1,0 +1,143 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(!is_android && !is_chromeos,
+       "Default browser is for desktop platforms only except ChromeOS.")
+
+source_set("default_browser") {
+  friend = [
+    ":browser_tests",
+    ":test_support",
+    ":unit_tests",
+  ]
+
+  public = [
+    "default_browser_changed_notification_handler.h",
+    "default_browser_controller.h",
+    "default_browser_features.h",
+    "default_browser_manager.h",
+  ]
+
+  sources = [
+    "default_browser_changed_notification_handler.cc",
+    "default_browser_controller.cc",
+    "default_browser_features.cc",
+    "default_browser_manager.cc",
+    "default_browser_monitor.cc",
+    "default_browser_monitor.h",
+    "default_browser_notification_observer.cc",
+    "default_browser_notification_observer.h",
+    "default_browser_setter.h",
+    "default_browser_time_after_setter_failure_tracker.cc",
+    "default_browser_time_after_setter_failure_tracker.h",
+    "setters/default_browser_visual_guided_setter.cc",
+    "setters/default_browser_visual_guided_setter.h",
+    "setters/shell_integration_default_browser_setter.cc",
+    "setters/shell_integration_default_browser_setter.h",
+  ]
+
+  public_deps = [ "//base" ]
+
+  deps = [
+    "//chrome/app:branded_strings_grit",
+    "//chrome/app:generated_resources_grit",
+    "//chrome/app/theme:chrome_unscaled_resources_grit",
+    "//chrome/browser:browser_process",
+    "//chrome/browser:shell_integration",
+    "//chrome/browser/notifications",
+    "//chrome/browser/notifications:system_notification_helper",
+    "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/navigator",
+    "//chrome/browser/ui/toasts",
+    "//chrome/browser/ui/toasts/api:toasts",
+    "//components/tabs:public",
+    "//components/vector_icons",
+    "//ui/base",
+    "//ui/base/unowned_user_data",
+    "//ui/message_center/public/cpp",
+    "//url",
+  ]
+
+  if (is_win) {
+    sources += [ "default_browser_monitor_win.cc" ]
+
+    deps += [
+      "//chrome/browser/win",
+      "//chrome/browser/win:registry_watcher",
+      "//chrome/install_static:install_static_util",
+    ]
+  } else {
+    sources += [ "default_browser_monitor_stub.cc" ]
+  }
+}
+
+source_set("test_support") {
+  testonly = true
+
+  sources = [
+    "test_support/fake_default_browser_setter.cc",
+    "test_support/fake_default_browser_setter.h",
+    "test_support/fake_shell_delegate.cc",
+    "test_support/fake_shell_delegate.h",
+  ]
+
+  deps = [
+    ":default_browser",
+    "//chrome/browser:shell_integration",
+    "//chrome/test:test_support",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  sources = [
+    "default_browser_controller_unittest.cc",
+    "default_browser_features_unittest.cc",
+    "default_browser_manager_unittest.cc",
+    "setters/shell_integration_default_browser_setter_unittest.cc",
+  ]
+
+  if (is_win) {
+    sources += [ "default_browser_notification_observer_unittest.cc" ]
+  }
+
+  deps = [
+    ":default_browser",
+    ":test_support",
+    "//base/test:test_support",
+    "//chrome/browser:global_features",
+    "//chrome/browser:shell_integration",
+    "//chrome/test:test_support",
+    "//content/test:test_support",
+    "//ui/base/unowned_user_data",
+    "//url",
+  ]
+}
+
+source_set("browser_tests") {
+  testonly = true
+
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+  sources = [ "default_browser_manager_browsertest.cc" ]
+
+  if (is_win) {
+    sources += [ "setters/default_browser_visual_guided_setter_browsertest.cc" ]
+  }
+
+  deps = [
+    ":default_browser",
+    ":test_support",
+    "//base/test:test_support",
+    "//chrome/browser:browser_process",
+    "//chrome/browser:global_features",
+    "//chrome/browser/ui/toasts",
+    "//chrome/browser/ui/toasts/api:toasts",
+    "//chrome/test:test_support",
+    "//chrome/test:test_support_ui",
+    "//content/test:test_support",
+    "//ui/base",
+  ]
+}

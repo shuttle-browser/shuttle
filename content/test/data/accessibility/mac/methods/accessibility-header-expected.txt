@@ -1,0 +1,2 @@
+table.accessibilityHeader=ERROR:FAILED_TO_PARSE
+row.accessibilityHeader=ERROR:FAILED_TO_PARSE

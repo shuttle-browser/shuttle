@@ -1,0 +1,103 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "ui/gfx/mac/io_surface.h"
+
+#include <CoreVideo/CoreVideo.h>
+
+#include "components/viz/common/resources/shared_image_format.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace gfx {
+
+namespace {
+
+TEST(IOSurface, SharedImageFormatToIOSurfacePixelFormat) {
+  bool override_rgba_to_bgra = true;
+  EXPECT_EQ(SharedImageFormatToIOSurfacePixelFormat(
+                viz::SinglePlaneFormat::kR_8, override_rgba_to_bgra),
+            static_cast<uint32_t>(kCVPixelFormatType_OneComponent8));
+  EXPECT_EQ(
+      SharedImageFormatToIOSurfacePixelFormat(viz::MultiPlaneFormat::kNV12,
+                                              override_rgba_to_bgra),
+      static_cast<uint32_t>(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange));
+  EXPECT_EQ(
+      SharedImageFormatToIOSurfacePixelFormat(viz::MultiPlaneFormat::kP010,
+                                              override_rgba_to_bgra),
+      static_cast<uint32_t>(kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange));
+  EXPECT_EQ(SharedImageFormatToIOSurfacePixelFormat(
+                viz::MultiPlaneFormat::kI420, override_rgba_to_bgra),
+            static_cast<uint32_t>(kCVPixelFormatType_420YpCbCr8Planar));
+  EXPECT_EQ(SharedImageFormatToIOSurfacePixelFormat(
+                viz::MultiPlaneFormat::kYV12, override_rgba_to_bgra),
+            std::nullopt);
+}
+
+TEST(IOSurface, IOSurfacePixelFormatToSharedImageFormat) {
+  EXPECT_EQ(
+      IOSurfacePixelFormatToSharedImageFormat(kCVPixelFormatType_OneComponent8),
+      viz::SinglePlaneFormat::kR_8);
+  EXPECT_EQ(IOSurfacePixelFormatToSharedImageFormat(
+                kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
+            viz::MultiPlaneFormat::kNV12);
+  EXPECT_EQ(IOSurfacePixelFormatToSharedImageFormat(
+                kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange),
+            viz::MultiPlaneFormat::kP010);
+  EXPECT_EQ(IOSurfacePixelFormatToSharedImageFormat(
+                kCVPixelFormatType_420YpCbCr8Planar),
+            viz::MultiPlaneFormat::kI420);
+  EXPECT_EQ(IOSurfacePixelFormatToSharedImageFormat('FAKE'), std::nullopt);
+}
+
+TEST(IOSurface, WebGPUCompatibility) {
+  EXPECT_TRUE(
+      IOSurfacePixelFormatIsWebGPUCompatible(kCVPixelFormatType_32BGRA));
+  EXPECT_TRUE(
+      IOSurfacePixelFormatIsWebGPUCompatible(kCVPixelFormatType_32RGBA));
+  EXPECT_TRUE(IOSurfacePixelFormatIsWebGPUCompatible(
+      kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange));
+  EXPECT_TRUE(IOSurfacePixelFormatIsWebGPUCompatible(
+      kCVPixelFormatType_TwoComponent16Half));
+  EXPECT_FALSE(IOSurfacePixelFormatIsWebGPUCompatible(
+      kCVPixelFormatType_420YpCbCr8Planar));
+}
+
+TEST(IOSurface, OddSizeMultiPlanar) {
+  base::apple::ScopedCFTypeRef<IOSurfaceRef> io_surface =
+      CreateIOSurface(gfx::Size(101, 99), viz::MultiPlaneFormat::kNV12);
+  DCHECK(io_surface);
+  // Plane sizes are rounded up.
+  // https://crbug.com/1226056
+  EXPECT_EQ(IOSurfaceGetWidthOfPlane(io_surface.get(), 1), 51u);
+  EXPECT_EQ(IOSurfaceGetHeightOfPlane(io_surface.get(), 1), 50u);
+}
+
+TEST(IOSurface, MachPortRetainDeadName) {
+  const mach_port_t task = mach_task_self();
+
+  // Create a port and give it send rights so that it will transition to a dead
+  // name when the receive right is removed.
+  mach_port_t port = MACH_PORT_NULL;
+  ASSERT_EQ(KERN_SUCCESS,
+            mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE, &port));
+  ASSERT_EQ(KERN_SUCCESS,
+            mach_port_insert_right(task, port, port, MACH_MSG_TYPE_MAKE_SEND));
+
+  // Remove the receive right.
+  ASSERT_EQ(KERN_SUCCESS,
+            mach_port_mod_refs(task, port, MACH_PORT_RIGHT_RECEIVE, -1));
+  mach_port_type_t port_type = MACH_PORT_TYPE_NONE;
+  ASSERT_EQ(KERN_SUCCESS, mach_port_type(task, port, &port_type));
+  ASSERT_TRUE(port_type & MACH_PORT_TYPE_DEAD_NAME)
+      << "port should have transitioned to a dead name";
+
+  // Attempting to retain a dead name fails, `Retain(port)` should return NULL.
+  mach_port_t result = internal::IOSurfaceMachPortTraits::Retain(port);
+  EXPECT_EQ(result, static_cast<mach_port_t>(MACH_PORT_NULL))
+      << "IOSurface should not retain a dead port";
+}
+
+}  // namespace
+
+}  // namespace gfx

@@ -1,0 +1,408 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/code_cache/generated_code_cache_context.h"
+
+#include <stdint.h>
+
+#include <memory>
+#include <optional>
+#include <string>
+
+#include "base/barrier_closure.h"
+#include "base/containers/span.h"
+#include "base/feature_list.h"
+#include "base/files/file_path.h"
+#include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
+#include "base/location.h"
+#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/metrics/histogram_macros.h"
+#include "base/numerics/safe_conversions.h"
+#include "base/sequence_checker.h"
+#include "base/system/sys_info.h"
+#include "base/task/bind_post_task.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/task/single_thread_task_runner_thread_mode.h"
+#include "base/task/task_traits.h"
+#include "base/task/thread_pool.h"
+#include "base/types/expected_macros.h"
+#include "build/build_config.h"
+#include "content/browser/code_cache/generated_code_cache.h"
+#include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
+#include "content/public/common/content_features.h"
+#include "mojo/public/cpp/base/big_buffer.h"
+#include "net/base/cache_type.h"
+#include "net/disk_cache/cache_util.h"
+#include "net/disk_cache/disk_cache.h"
+#include "net/http/http_cache.h"
+#include "third_party/blink/public/common/features.h"
+
+#if !BUILDFLAG(IS_FUCHSIA)
+#include "components/persistent_cache/client.h"
+#include "components/persistent_cache/entry_metadata.h"
+#include "components/persistent_cache/pending_backend.h"
+#include "components/persistent_cache/persistent_cache_collection.h"
+#include "components/persistent_cache/transaction_error.h"
+#endif
+
+namespace content {
+
+#if !BUILDFLAG(IS_FUCHSIA)
+namespace {
+
+std::unique_ptr<persistent_cache::PersistentCacheCollection>
+MakePersistentCacheCollection(
+    int max_bytes,
+    const base::FilePath& disk_cache_path,
+    const base::FilePath& persistent_cache_collection_path) {
+  std::optional<base::SysInfo::DiskSpaceInfo> disk_space =
+      base::SysInfo::AmountOfDiskSpace(disk_cache_path);
+
+  int64_t disk_cache_max_size =
+      max_bytes > 0 ? max_bytes
+                    : disk_cache::PreferredCacheSize(
+                          disk_space ? std::make_optional(disk_space->available)
+                                     : std::nullopt,
+                          net::GENERATED_BYTE_CODE_CACHE)
+                          .InBytes();
+
+  return std::make_unique<persistent_cache::PersistentCacheCollection>(
+      persistent_cache_collection_path, disk_cache_max_size,
+      persistent_cache::Client::kCodeCache);
+}
+
+}  // namespace
+#endif  // !BUILDFLAG(IS_FUCHSIA)
+
+// static
+void GeneratedCodeCacheContext::RunOrPostTask(
+    scoped_refptr<GeneratedCodeCacheContext> context,
+    const base::Location& location,
+    base::OnceClosure task) {
+  if (!context || context->task_runner_->RunsTasksInCurrentSequence()) {
+    std::move(task).Run();
+    return;
+  }
+
+  context->task_runner_->PostTask(location, std::move(task));
+}
+
+// static
+scoped_refptr<base::SequencedTaskRunner>
+GeneratedCodeCacheContext::GetTaskRunner(
+    scoped_refptr<GeneratedCodeCacheContext> context) {
+  if (!context)
+    return base::SequencedTaskRunner::GetCurrentDefault();
+  return context->task_runner_;
+}
+
+GeneratedCodeCacheContext::GeneratedCodeCacheContext() {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  DETACH_FROM_SEQUENCE(sequence_checker_);
+}
+
+void GeneratedCodeCacheContext::Initialize(const base::FilePath& path,
+                                           int max_bytes) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK(!task_runner_);  // Only initialize once.
+
+  if (blink::features::IsPersistentCacheForCodeCacheEnabled() ||
+      blink::features::IsInlineScriptCacheEnabled()) {
+    // Use a SequencedTaskRunner tied to the path resource. This ensures that if
+    // this StoragePartition is destroyed and recreated with the same path,
+    // operations (including deletions of old files and creation of new ones)
+    // are strictly sequenced, avoiding race conditions between distinct
+    // instances. MayBlock() because disk operations are happening on-thread
+    // under the experiment for now.
+    task_runner_for_resource_ = DedicatedTaskRunnerForResource::Acquire(
+        {base::TaskPriority::USER_BLOCKING, base::MayBlock()}, path);
+    task_runner_ = task_runner_for_resource_.task_runner();
+  } else {
+    task_runner_ = base::ThreadPool::CreateSingleThreadTaskRunner(
+        {base::TaskPriority::USER_BLOCKING});
+  }
+  RunOrPostTask(this, FROM_HERE,
+                base::BindOnce(&GeneratedCodeCacheContext::InitializeOnThread,
+                               this, path, max_bytes));
+}
+
+void GeneratedCodeCacheContext::InitializeOnThread(const base::FilePath& path,
+                                                   int max_bytes) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  int max_bytes_js = max_bytes;
+
+  base::FilePath generated_js_code_cache_path = path.AppendASCII("js");
+  base::FilePath webui_js_code_cache_path = path.AppendASCII("webui_js");
+  base::FilePath generated_wasm_code_cache_path = path.AppendASCII("wasm");
+#if !BUILDFLAG(IS_FUCHSIA)
+  // Use a short name for the root directory due to max path length limits.
+  base::FilePath persistent_cache_collection_path = path.AppendASCII("pc");
+#endif  // !BUILDFLAG(IS_FUCHSIA)
+
+  const bool replace_by_persistent_cache =
+      blink::features::IsPersistentCacheForCodeCacheEnabled();
+  if (!replace_by_persistent_cache) {
+    if (base::FeatureList::IsEnabled(features::kWebUICodeCache)) {
+      int max_bytes_webui_js = max_bytes;
+      if (max_bytes > 0) {
+        // If a maximum was specified, then we should limit the total JS
+        // bytecode, both from WebUI and from open web sites, to max_bytes. The
+        // larger portion by far should be reserved for open web sites.
+        const int kMaxWebUIPercent = 2;
+        max_bytes_webui_js =
+            std::min(base::saturated_cast<int>(static_cast<int64_t>(max_bytes) *
+                                               kMaxWebUIPercent / 100),
+                     disk_cache::kMaxWebUICodeCacheSize);
+
+        // The rest is left over for open web JS.
+        max_bytes_js = max_bytes - max_bytes_webui_js;
+        DCHECK_GT(max_bytes_js, max_bytes_webui_js);
+
+        // Specifying a maximum size of zero means to use heuristics based on
+        // available disk size, which would be the opposite of our intent if the
+        // specified number was so small that the division above truncated to
+        // zero.
+        if (max_bytes_webui_js == 0) {
+          max_bytes_webui_js = 1;
+        }
+      }
+
+      generated_webui_js_code_cache_ = std::make_unique<GeneratedCodeCache>(
+          webui_js_code_cache_path, max_bytes_webui_js,
+          GeneratedCodeCache::CodeCacheType::kWebUIJavaScript);
+
+      UMA_HISTOGRAM_BOOLEAN("WebUICodeCache.FeatureEnabled", true);
+    }
+
+    generated_js_code_cache_ = std::make_unique<GeneratedCodeCache>(
+        generated_js_code_cache_path, max_bytes_js,
+        GeneratedCodeCache::CodeCacheType::kJavaScript);
+
+    generated_wasm_code_cache_ = std::make_unique<GeneratedCodeCache>(
+        generated_wasm_code_cache_path, max_bytes,
+        GeneratedCodeCache::CodeCacheType::kWebAssembly);
+
+#if !BUILDFLAG(IS_FUCHSIA)
+    if (blink::features::IsInlineScriptCacheEnabled()) {
+      persistent_cache_collection_ = MakePersistentCacheCollection(
+          max_bytes_js, path, persistent_cache_collection_path);
+    } else {
+      // Delete the PersistentCache files that won't be used to avoid wasting
+      // space.
+      base::ThreadPool::CreateSequencedTaskRunner({base::MayBlock()})
+          ->PostTask(
+              FROM_HERE,
+              base::BindOnce(base::IgnoreResult(base::DeletePathRecursively),
+                             persistent_cache_collection_path));
+    }
+#endif  // !BUILDFLAG(IS_FUCHSIA)
+  } else {
+#if !BUILDFLAG(IS_FUCHSIA)
+    persistent_cache_collection_ = MakePersistentCacheCollection(
+        max_bytes, path, persistent_cache_collection_path);
+
+    // Delete the GeneratedCodeCache files that won't be used to avoid
+    // wasting space.
+    base::ThreadPool::CreateSequencedTaskRunner({base::MayBlock()})
+        ->PostTask(FROM_HERE,
+                   base::BindOnce(
+                       [](const base::FilePath& js_path,
+                          const base::FilePath& webui_js_path,
+                          const base::FilePath& wasm_path) {
+                         base::DeletePathRecursively(js_path);
+                         base::DeletePathRecursively(webui_js_path);
+                         base::DeletePathRecursively(wasm_path);
+                       },
+                       generated_js_code_cache_path, webui_js_code_cache_path,
+                       generated_wasm_code_cache_path));
+#else   // !BUILDFLAG(IS_FUCHSIA)
+    NOTREACHED();
+#endif  // !BUILDFLAG(IS_FUCHSIA)
+  }
+}
+
+void GeneratedCodeCacheContext::Shutdown() {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  RunOrPostTask(this, FROM_HERE,
+                base::BindOnce(&GeneratedCodeCacheContext::ShutdownOnThread,
+                               this, std::move(task_runner_for_resource_)));
+  task_runner_.reset();
+}
+
+void GeneratedCodeCacheContext::ShutdownForTesting(base::OnceClosure callback) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  auto ui_callback = base::BindPostTaskToCurrentDefault(std::move(callback));
+
+  RunOrPostTask(
+      this, FROM_HERE,
+      base::BindOnce(&GeneratedCodeCacheContext::ShutdownOnThreadForTesting,
+                     this, std::move(ui_callback),
+                     std::move(task_runner_for_resource_)));
+  task_runner_.reset();
+}
+
+void GeneratedCodeCacheContext::ClearAndDeletePersistentCacheCollection() {
+#if !BUILDFLAG(IS_FUCHSIA)
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (persistent_cache_collection_) {
+    persistent_cache_collection_->DeleteAllFiles();
+  }
+#endif
+}
+
+#if !BUILDFLAG(IS_FUCHSIA)
+std::optional<persistent_cache::PendingBackend>
+GeneratedCodeCacheContext::ShareReadOnlyConnection(
+    const std::string& context_key) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (persistent_cache_collection_) {
+    return persistent_cache_collection_->ShareReadOnlyConnection(context_key);
+  }
+
+  return std::nullopt;
+}
+
+void GeneratedCodeCacheContext::InsertIntoPersistentCacheCollection(
+    const std::string& context_key,
+    base::span<const uint8_t> cache_key,
+    base::span<const uint8_t> content,
+    persistent_cache::EntryMetadata metadata) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (!persistent_cache_collection_) {
+    return;
+  }
+
+  RETURN_IF_ERROR(persistent_cache_collection_->Insert(context_key, cache_key,
+                                                       content, metadata),
+                  [](persistent_cache::TransactionError error) {
+                    // TODO(crbug.com/374930286): Handle or at least address
+                    // permanent errors.
+                    return;
+                  });
+}
+
+std::optional<GeneratedCodeCacheContext::MetadataAndContent>
+GeneratedCodeCacheContext::FindInPersistentCacheCollection(
+    const std::string& context_key,
+    base::span<const uint8_t> cache_key) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  if (!persistent_cache_collection_) {
+    return std::nullopt;
+  }
+
+  mojo_base::BigBuffer content_buffer;
+
+  // A BufferProvider for PersistentCache that puts a new mojo_base::BigBuffer
+  // in `content_buffer` to hold an entry's content and returns a view into it.
+  auto buffer_provider = [&content_buffer](size_t content_size) {
+    content_buffer = mojo_base::BigBuffer(content_size);
+    return base::span(content_buffer);
+  };
+
+  ASSIGN_OR_RETURN(std::optional<persistent_cache::EntryMetadata> metadata,
+                   persistent_cache_collection_->Find(
+                       context_key, cache_key, std::move(buffer_provider)),
+                   // An adapter that is invoked on error. Its return value
+                   // percolates up out of this function.
+                   [](persistent_cache::TransactionError error)
+                       -> std::optional<MetadataAndContent> {
+                     // TODO(crbug.com/374930286): Handle or at least address
+                     // permanent errors.
+                     return std::nullopt;
+                   });
+
+  if (!metadata.has_value()) {
+    return std::nullopt;  // Cache miss.
+  }
+
+  // Cache hit.
+  return MetadataAndContent{*std::move(metadata), std::move(content_buffer)};
+}
+#endif  // !BUILDFLAG(IS_FUCHSIA)
+
+void GeneratedCodeCacheContext::ShutdownOnThread(
+    DedicatedTaskRunnerForResource task_runner_for_resource) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+#if !BUILDFLAG(IS_FUCHSIA)
+  persistent_cache_collection_.reset();
+#endif  // !BUILDFLAG(IS_FUCHSIA)
+  generated_js_code_cache_.reset();
+  generated_wasm_code_cache_.reset();
+  generated_webui_js_code_cache_.reset();
+}
+
+void GeneratedCodeCacheContext::ShutdownOnThreadForTesting(  // IN-TEST
+    base::OnceClosure callback,
+    DedicatedTaskRunnerForResource task_runner_for_resource) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  std::vector<GeneratedCodeCache*> caches_to_wait;
+  if (generated_js_code_cache_) {
+    caches_to_wait.push_back(generated_js_code_cache_.get());
+  }
+  if (generated_wasm_code_cache_) {
+    caches_to_wait.push_back(generated_wasm_code_cache_.get());
+  }
+  if (generated_webui_js_code_cache_) {
+    caches_to_wait.push_back(generated_webui_js_code_cache_.get());
+  }
+
+  if (caches_to_wait.empty()) {
+    ShutdownOnThread(std::move(task_runner_for_resource));
+    std::move(callback).Run();
+    return;
+  }
+
+#if !BUILDFLAG(IS_FUCHSIA)
+  persistent_cache_collection_.reset();
+#endif  // !BUILDFLAG(IS_FUCHSIA)
+
+  // A callback to be run once all GeneratedCodeCache instances have completely
+  // shut down their backends.
+  auto on_cleanup_complete = base::BindOnce(
+      [](scoped_refptr<GeneratedCodeCacheContext> self,
+         base::OnceClosure callback,
+         DedicatedTaskRunnerForResource task_runner_for_resource) {
+        self->ShutdownOnThread(std::move(task_runner_for_resource));
+        std::move(callback).Run();
+      },
+      base::WrapRefCounted(this), std::move(callback),
+      std::move(task_runner_for_resource));
+
+  auto barrier = base::BarrierClosure(caches_to_wait.size(),
+                                      std::move(on_cleanup_complete));
+  for (auto* cache : caches_to_wait) {
+    cache->ShutdownForTesting(barrier);  // IN-TEST
+  }
+}
+
+GeneratedCodeCache* GeneratedCodeCacheContext::generated_js_code_cache() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return generated_js_code_cache_.get();
+}
+
+GeneratedCodeCache* GeneratedCodeCacheContext::generated_wasm_code_cache()
+    const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return generated_wasm_code_cache_.get();
+}
+
+GeneratedCodeCache* GeneratedCodeCacheContext::generated_webui_js_code_cache()
+    const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return generated_webui_js_code_cache_.get();
+}
+
+GeneratedCodeCacheContext::~GeneratedCodeCacheContext() = default;
+
+}  // namespace content

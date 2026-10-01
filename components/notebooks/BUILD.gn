@@ -1,0 +1,18 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/features.gni")
+
+group("unit_tests") {
+  testonly = true
+
+  deps = [
+    "//components/notebooks/internal:unit_tests",
+    "//components/notebooks/public:unit_tests",
+  ]
+
+  if (use_blink) {
+    deps += [ "//components/notebooks/internals/webui:unit_tests" ]
+  }
+}

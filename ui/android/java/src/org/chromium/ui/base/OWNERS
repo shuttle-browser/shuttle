@@ -1,0 +1,17 @@
+# Implementation of the new in-app file picker.
+per-file PhotoPicker*.java=finnur@chromium.org
+per-file PhotoPicker*.java=peter@chromium.org
+per-file SelectFileDialog.java=finnur@chromium.org
+per-file SelectFileDialog.java=peter@chromium.org
+
+# Clipboard
+per-file Clipboard*.java=ender@chromium.org
+
+# Device form factor
+per-file DeviceFormFactor.java=skavuluru@google.com
+
+# Activity result tracker
+per-file ActivityResultTracker.java=myuu@google.com
+per-file ActivityResultTrackerImpl.java=myuu@google.com
+
+per-file ViewUtils.java=clhager@google.com

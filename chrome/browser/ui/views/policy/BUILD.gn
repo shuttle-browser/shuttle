@@ -1,0 +1,57 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/ui.gni")
+
+assert(toolkit_views)
+
+if (!is_chromeos) {
+  source_set("enterprise_startup_dialog") {
+    public = [ "enterprise_startup_dialog_view.h" ]
+    sources = [ "enterprise_startup_dialog_view.cc" ]
+    if (is_mac) {
+      public += [ "enterprise_startup_dialog_mac_util.h" ]
+      sources += [ "enterprise_startup_dialog_mac_util.mm" ]
+    }
+    deps = [
+      "//build:branding_buildflags",
+      "//chrome/app:branded_strings",
+      "//chrome/app/theme:theme_resources",
+      "//chrome/app/vector_icons",
+      "//chrome/browser/headless",
+      "//chrome/browser/ui:enterprise_startup_dialog",
+      "//chrome/browser/ui/views:layout_provider",
+      "//components/constrained_window",
+      "//ui/base",
+      "//ui/gfx",
+      "//ui/native_theme",
+      "//ui/views",
+    ]
+  }
+
+  source_set("idle_dialog") {
+    public = [ "idle_dialog_view.h" ]
+    sources = [ "idle_dialog_view.cc" ]
+    public_deps = [
+      "//base",
+      "//chrome/browser/ui:idle_dialog",
+      "//ui/views",
+    ]
+    deps = [
+      "//chrome/app:branded_strings",
+      "//chrome/app:generated_resources",
+      "//chrome/browser/ui:idle_dialog",
+      "//chrome/browser/ui/browser_window",
+      "//chrome/browser/ui/views:layout_provider",
+      "//chrome/browser/ui/views/relaunch_notification",
+      "//components/constrained_window",
+      "//components/vector_icons",
+      "//ui/base",
+      "//ui/base/mojom",
+      "//ui/base/mojom:ui_base_types",
+      "//ui/gfx",
+      "//ui/gfx/geometry",
+    ]
+  }
+}

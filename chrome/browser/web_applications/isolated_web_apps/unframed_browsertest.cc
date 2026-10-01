@@ -1,0 +1,286 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <optional>
+#include <string>
+#include <string_view>
+
+#include "base/check.h"
+#include "base/check_deref.h"
+#include "base/location.h"
+#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/web_applications/app_browser_controller.h"
+#include "chrome/browser/ui/web_applications/test/isolated_web_app_test_utils.h"
+#include "chrome/browser/ui/web_applications/test/web_app_browsertest_util.h"
+#include "chrome/browser/ui/web_applications/web_app_browsertest_base.h"
+#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_url_info.h"
+#include "chrome/browser/web_applications/isolated_web_apps/test/isolated_web_app_builder.h"
+#include "chrome/browser/web_applications/model/display_override.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "chrome/test/base/ui_test_utils.h"
+#include "components/content_settings/core/browser/host_content_settings_map.h"
+#include "components/content_settings/core/common/content_settings.h"
+#include "components/content_settings/core/common/content_settings_types.h"
+#include "components/content_settings/core/common/content_settings_types.mojom-shared.h"
+#include "components/webapps/common/web_app_id.h"
+#include "content/public/common/content_features.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/browser_test_utils.h"
+#include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-shared.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/manifest/manifest_util.h"
+#include "third_party/blink/public/common/safe_url_pattern.h"
+#include "third_party/blink/public/mojom/manifest/display_mode.mojom-shared.h"
+#include "third_party/liburlpattern/part.h"
+#include "url/gurl.h"
+#include "url/origin.h"
+
+namespace web_app {
+
+namespace {
+
+// The paths to the two pages in the test IWA. See `CreateUnframedIwaBuilder`.
+constexpr std::string_view kStandalonePagePath = "/standalone-page.html";
+constexpr std::string_view kUnframedPagePath = "/unframed-page.html";
+
+// The text displayed in the test IWA `message` element to report when it is
+// in unframed display mode. See `CreateUnframedIwaBuilder` and
+// `ReadAppMessage`.
+constexpr std::string_view kNotUnframedMessage = "This window is not unframed.";
+constexpr std::string_view kUnframedMessage = "This window is unframed.";
+
+// Returns a `SafeUrlPattern` that matches the given `pathname`.
+blink::SafeUrlPattern UrlPatternForPath(std::string_view pathname) {
+  liburlpattern::Part part;
+  part.type = liburlpattern::PartType::kFixed;
+  part.value = pathname;
+  blink::SafeUrlPattern pattern;
+  pattern.pathname = {part};
+  return pattern;
+}
+
+IsolatedWebAppBuilder CreateUnframedIwaBuilder() {
+  constexpr std::string_view kPageHtml = R"(
+    <!doctype html>
+    <html>
+      <head>
+        <link rel="stylesheet" href="/styles.css" />
+      </head>
+      <body>
+        <p id="message">
+          This window is <span class="hide-in-unframed">not</span> unframed.
+        </p>
+      </body>
+    </html>
+    )";
+  return IsolatedWebAppBuilder(
+             ManifestBuilder()
+                 .SetDisplayMode(blink::mojom::DisplayMode::kStandalone)
+                 .SetDisplayModeOverride(
+                     {web_app::DisplayOverride::CreateUnframed(
+                         {UrlPatternForPath(kUnframedPagePath)})})
+                 .AddPermissionsPolicy(
+                     network::mojom::PermissionsPolicyFeature::
+                         kWindowManagement,
+                     /*self=*/true, /*origins=*/{}))
+      .AddResource("/styles.css", R"(
+          .hide-in-unframed {
+            display: initial;
+          }
+          @media (display-mode: unframed) {
+            .hide-in-unframed {
+              display: none;
+            }
+          }
+          )",
+                   "text/css")
+      .AddHtml(kStandalonePagePath, kPageHtml)
+      .AddHtml(kUnframedPagePath, kPageHtml);
+}
+
+content::WebContents& WebContentsOf(BrowserWindowInterface& browser) {
+  return CHECK_DEREF(browser.tab_strip_model()->GetActiveWebContents());
+}
+
+blink::mojom::DisplayMode DisplayModeOf(BrowserWindowInterface& browser) {
+  auto& web_contents = WebContentsOf(browser);
+  return web_contents.GetDelegate()->GetDisplayMode(&web_contents);
+}
+
+// Reads the inner text of the "message" element. See
+// `CreateUnframedIwaBuilder`.
+content::EvalJsResult ReadAppMessage(BrowserWindowInterface& browser) {
+  return content::EvalJs(
+      &WebContentsOf(browser),
+      "document.getElementById('message').innerText.trim();");
+}
+
+// Sets the `content_type` setting for `origin_url` to the given `setting`.
+void SetContentSetting(
+    Profile* profile,
+    const GURL& origin_url,
+    content_settings::mojom::ContentSettingsType content_type,
+    ContentSetting setting) {
+  CHECK_DEREF(HostContentSettingsMapFactory::GetForProfile(profile))
+      .SetContentSettingDefaultScope(/*primary_url=*/origin_url,
+                                     /*secondary_url=*/origin_url, content_type,
+                                     setting);
+}
+
+content::EvalJsResult WaitUntilCssDisplayModeIs(
+    BrowserWindowInterface& browser,
+    blink::mojom::DisplayMode mode) {
+  std::string css_mode = blink::DisplayModeToString(mode);
+  std::string script = content::JsReplace(R"(
+    new Promise((resolve) => {
+      const mq = window.matchMedia('(display-mode: ' + $1 + ')');
+      if (mq.matches) {
+        return resolve(true);
+      } else {
+        mq.addEventListener('change', ({ matches }) => {
+          resolve(matches);
+        }, { once: true });
+      }
+    });
+  )",
+                                          css_mode);
+  return content::EvalJs(&WebContentsOf(browser), script);
+}
+
+BrowserWindowInterface& CallWindowOpenAndReturnNewBrowser(
+    BrowserWindowInterface& browser,
+    std::string_view url_path) {
+  BrowserWaiter browser_waiter(nullptr);
+  CHECK(content::ExecJs(&WebContentsOf(browser),
+                        content::JsReplace("window.open($1)", url_path)));
+  BrowserWindowInterface& new_browser =
+      CHECK_DEREF(browser_waiter.AwaitAdded(FROM_HERE));
+  CHECK(content::WaitForLoadStop(&WebContentsOf(new_browser)));
+  return new_browser;
+}
+
+}  // namespace
+
+class UnframedTest : public WebAppBrowserTestBase {
+ public:
+  UnframedTest()
+      : WebAppBrowserTestBase(
+            {features::kIsolatedWebApps, blink::features::kUnframedIwa},
+            {}) {}
+
+ protected:
+  void SetUpOnMainThread() override {
+    WebAppBrowserTestBase::SetUpOnMainThread();
+    app_url_info_ =
+        CreateUnframedIwaBuilder().BuildBundle()->InstallChecked(profile());
+  }
+
+  BrowserWindowInterface& LaunchAppInPathAndWait(std::string_view url_path) {
+    BrowserWindowInterface& browser =
+        CHECK_DEREF(LaunchWebAppToURL(profile(), app_url_info_->app_id(),
+                                      app_origin_url().Resolve(url_path)));
+    CHECK(content::WaitForLoadStop(&WebContentsOf(browser)));
+    return browser;
+  }
+
+  BrowserWindowInterface& LaunchAppWithWindowOpenAndWait(
+      std::string_view url_path) {
+    BrowserWindowInterface& starting_browser =
+        CHECK_DEREF(LaunchWebAppBrowserAndWait(app_url_info_->app_id()));
+    BrowserWindowInterface& browser =
+        CallWindowOpenAndReturnNewBrowser(starting_browser, url_path);
+    CloseBrowserSynchronously(&starting_browser);
+    return browser;
+  }
+
+  bool NavigateToAppPathAndWait(BrowserWindowInterface& browser,
+                                std::string_view url_path) {
+    return ui_test_utils::NavigateToURL(&browser,
+                                        app_origin_url().Resolve(url_path)) &&
+           content::WaitForLoadStop(&WebContentsOf(browser));
+  }
+
+  void SetAppWindowManagementPermission(ContentSetting setting) {
+    SetContentSetting(profile(), app_origin_url(),
+                      ContentSettingsType::WINDOW_MANAGEMENT, setting);
+  }
+
+ private:
+  GURL app_origin_url() const { return app_url_info_->origin().GetURL(); }
+
+  // Not null after the IWA is installed in `SetUpOnMainThread`.
+  std::optional<IsolatedWebAppUrlInfo> app_url_info_;
+};
+
+IN_PROC_BROWSER_TEST_F(UnframedTest, AppCanCreateStandaloneWindow) {
+  SetAppWindowManagementPermission(CONTENT_SETTING_ALLOW);
+
+  BrowserWindowInterface& browser = LaunchAppInPathAndWait(kStandalonePagePath);
+  EXPECT_EQ(DisplayModeOf(browser), blink::mojom::DisplayMode::kStandalone);
+  EXPECT_EQ(ReadAppMessage(browser), kNotUnframedMessage);
+}
+
+IN_PROC_BROWSER_TEST_F(UnframedTest, AppCanCreateUnframedWindow) {
+  SetAppWindowManagementPermission(CONTENT_SETTING_ALLOW);
+
+  BrowserWindowInterface& browser = LaunchAppInPathAndWait(kUnframedPagePath);
+  EXPECT_EQ(DisplayModeOf(browser), blink::mojom::DisplayMode::kUnframed);
+  EXPECT_EQ(ReadAppMessage(browser), kUnframedMessage);
+}
+
+IN_PROC_BROWSER_TEST_F(UnframedTest, DisplayModeDoesNotChangeOnNavigation) {
+  SetAppWindowManagementPermission(CONTENT_SETTING_ALLOW);
+
+  {
+    BrowserWindowInterface& browser =
+        LaunchAppInPathAndWait(kStandalonePagePath);
+    EXPECT_EQ(DisplayModeOf(browser), blink::mojom::DisplayMode::kStandalone);
+
+    EXPECT_TRUE(NavigateToAppPathAndWait(browser, kUnframedPagePath));
+    EXPECT_EQ(DisplayModeOf(browser), blink::mojom::DisplayMode::kStandalone);
+  }
+
+  {
+    BrowserWindowInterface& browser = LaunchAppInPathAndWait(kUnframedPagePath);
+    EXPECT_EQ(DisplayModeOf(browser), blink::mojom::DisplayMode::kUnframed);
+
+    EXPECT_TRUE(NavigateToAppPathAndWait(browser, kStandalonePagePath));
+    EXPECT_EQ(DisplayModeOf(browser), blink::mojom::DisplayMode::kUnframed);
+  }
+}
+
+IN_PROC_BROWSER_TEST_F(UnframedTest,
+                       AppCannotCreateUnframedWindowWithoutPermission) {
+  SetAppWindowManagementPermission(CONTENT_SETTING_BLOCK);
+
+  BrowserWindowInterface& browser = LaunchAppInPathAndWait(kUnframedPagePath);
+  EXPECT_EQ(DisplayModeOf(browser), blink::mojom::DisplayMode::kStandalone);
+  EXPECT_EQ(ReadAppMessage(browser), kNotUnframedMessage);
+}
+
+IN_PROC_BROWSER_TEST_F(UnframedTest,
+                       AppSwitchesInAndOutOfUnframedAsPermissionChanges) {
+  SetAppWindowManagementPermission(CONTENT_SETTING_ALLOW);
+
+  BrowserWindowInterface& browser =
+      LaunchAppWithWindowOpenAndWait(kUnframedPagePath);
+  EXPECT_EQ(DisplayModeOf(browser), blink::mojom::DisplayMode::kUnframed);
+  EXPECT_EQ(ReadAppMessage(browser), kUnframedMessage);
+
+  SetAppWindowManagementPermission(CONTENT_SETTING_BLOCK);
+  EXPECT_EQ(true, WaitUntilCssDisplayModeIs(
+                      browser, blink::mojom::DisplayMode::kStandalone));
+  EXPECT_EQ(DisplayModeOf(browser), blink::mojom::DisplayMode::kStandalone);
+  EXPECT_EQ(ReadAppMessage(browser), kNotUnframedMessage);
+
+  SetAppWindowManagementPermission(CONTENT_SETTING_ALLOW);
+  EXPECT_EQ(true, WaitUntilCssDisplayModeIs(
+                      browser, blink::mojom::DisplayMode::kUnframed));
+  EXPECT_EQ(DisplayModeOf(browser), blink::mojom::DisplayMode::kUnframed);
+  EXPECT_EQ(ReadAppMessage(browser), kUnframedMessage);
+}
+
+}  // namespace web_app

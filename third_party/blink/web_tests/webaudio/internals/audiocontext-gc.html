@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Test GC of Closed AudioContext</title>
+    <script src="../../resources/gc.js"></script>
+    <script src="../../resources/testharness.js"></script>
+    <script src="../../resources/testharnessreport.js"></script>
+  </head>
+
+  <body>
+    <script>
+      // Number of contexts to create for testing.  Fairly arbitrary, but should
+      // be at least 6 (previous max allowed contexts) but not too many.
+      const numberOfContexts = 10;
+
+      promise_test(async () => {
+        // Initial number of handlers.
+        let initialCount = 0;
+        await asyncGC();
+
+        initialCount = internals.audioHandlerCount();
+        // For information only
+        assert_equals(
+            initialCount, initialCount, 'Number of handlers before GC');
+
+        // Create a bunch of contexts for testing
+        const contexts = [];
+        for (let k = 0; k < numberOfContexts; ++k) {
+          let c = new AudioContext();
+          contexts.push(c.close());
+          c = null;
+        }
+
+        // Wait for all the close methods to resolve before we check.
+        await Promise.all(contexts);
+
+        await asyncGC();
+
+        assert_equals(
+            contexts.length, numberOfContexts, 'Number of contexts created');
+        assert_equals(
+            internals.audioHandlerCount(),
+            initialCount,
+            'Number of handlers after GC');
+      }, 'Test GC of Closed AudioContexts');
+    </script>
+  </body>
+</html>

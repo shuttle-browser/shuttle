@@ -1,0 +1,125 @@
+# Copyright 2019 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+if (is_android) {
+  import("//build/config/android/config.gni")
+  import("//build/config/android/rules.gni")
+}
+
+group("password_manager") {
+  public_deps = [
+    ":factory",
+    ":public",
+  ]
+}
+
+source_set("factory") {
+  if (is_android) {
+    sources = [
+      "touch_to_fill_password_manager_view_factory.cc",
+      "touch_to_fill_password_manager_view_factory.h",
+    ]
+
+    deps = [ "//chrome/browser/touch_to_fill/password_manager/android" ]
+  }
+
+  public_deps = [ ":public" ]
+}
+
+source_set("public") {
+  deps = [
+    "//base",
+    "//components/password_manager/core/browser",
+  ]
+
+  public_deps = [ "//url" ]
+
+  sources = [ "touch_to_fill_password_manager_view.h" ]
+}
+
+if (is_android) {
+  source_set("impl") {
+    sources = [
+      "touch_to_fill_password_manager_controller.cc",
+      "touch_to_fill_password_manager_controller.h",
+      "touch_to_fill_password_manager_credential_delegate.cc",
+      "touch_to_fill_password_manager_credential_delegate.h",
+      "touch_to_fill_password_manager_delegate.cc",
+      "touch_to_fill_password_manager_delegate.h",
+      "touch_to_fill_password_manager_webauthn_delegate.cc",
+      "touch_to_fill_password_manager_webauthn_delegate.h",
+    ]
+
+    public_deps = [
+      ":factory",
+      ":public",
+      "//chrome/browser:browser_public_dependencies",
+    ]
+
+    allow_circular_includes_from = [ "//chrome/browser/password_manager" ]
+
+    deps = [
+      "//base",
+      "//chrome/browser/password_manager",
+      "//chrome/browser/password_manager/android:utils",
+      "//chrome/browser/password_manager/android/grouped_affiliations:public",
+      "//chrome/browser/profiles:profile",
+      "//chrome/browser/touch_to_fill/password_manager/no_passkeys/android:public",
+      "//chrome/browser/webauthn",
+      "//components/device_reauth",
+      "//components/password_manager/content/browser",
+      "//components/password_manager/core/browser",
+      "//components/webauthn/android",
+      "//content/public/browser",
+      "//ui/android",
+      "//ui/gfx",
+      "//url",
+    ]
+  }
+
+  source_set("unit_tests") {
+    testonly = true
+
+    sources = [
+      "touch_to_fill_password_manager_credential_delegate_unittest.cc",
+      "touch_to_fill_password_manager_webauthn_delegate_unittest.cc",
+    ]
+
+    # In touch_to_fill_password_manager_webauthn_delegate_unittest.cc, test
+    # globals (const std::vector, std::u16string) have non-trivial destructors.
+    cflags_cc = [ "-Wno-exit-time-destructors" ]
+
+    deps = [
+      ":impl",
+      ":public",
+      "//base",
+      "//base/test:test_support",
+      "//chrome/browser/password_manager",
+      "//chrome/browser/password_manager/android/grouped_affiliations:public",
+      "//chrome/browser/password_manager/android/grouped_affiliations:test_utils",
+      "//chrome/browser/touch_to_fill/password_manager/no_passkeys/android:public",
+      "//chrome/browser/webauthn",
+      "//chrome/browser/webauthn:webauthn_request_delegate_android",
+      "//chrome/test:test_support",
+      "//components/autofill/core/common",
+      "//components/password_manager/content/browser",
+      "//components/password_manager/content/browser:test_support",
+      "//components/password_manager/core/browser",
+      "//components/password_manager/core/browser:test_support",
+      "//components/ukm:test_support",
+      "//components/webauthn/android",
+      "//components/webauthn/android:test_support",
+      "//content/public/browser",
+      "//content/test:test_support",
+      "//testing/gmock",
+      "//testing/gtest",
+      "//ui/android",
+      "//url",
+    ]
+  }
+
+  java_cpp_enum("java_enum_srcjar") {
+    visibility = [ "./*" ]
+    sources = [ "touch_to_fill_password_manager_credential_delegate.h" ]
+  }
+}

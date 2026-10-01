@@ -1,0 +1,304 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/signin/android/signin_manager_android.h"
+
+#include <utility>
+#include <vector>
+
+#include "base/android/callback_android.h"
+#include "base/android/jni_string.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/memory/raw_ptr.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
+#include "chrome/browser/browsing_data/chrome_browsing_data_remover_constants.h"
+#include "chrome/browser/enterprise/util/managed_browser_utils.h"
+#include "chrome/browser/policy/cloud/user_policy_signin_service_factory.h"
+#include "chrome/browser/policy/cloud/user_policy_signin_service_mobile.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/account_id_from_account_info.h"
+#include "components/google/core/common/google_util.h"
+#include "components/policy/core/common/cloud/user_cloud_policy_manager.h"
+#include "components/prefs/android/pref_service_android.h"
+#include "components/prefs/pref_service.h"
+#include "components/signin/public/base/signin_switches.h"
+#include "components/signin/public/identity_manager/account_managed_status_finder.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "content/public/browser/browsing_data_filter_builder.h"
+#include "content/public/browser/browsing_data_remover.h"
+#include "content/public/browser/storage_partition.h"
+#include "extensions/buildflags/buildflags.h"
+#include "google_apis/gaia/gaia_auth_util.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
+
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+#include "chrome/browser/extensions/sync/account_extension_tracker.h"
+#endif
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "chrome/browser/signin/services/android/jni_headers/SigninManagerImpl_jni.h"
+
+namespace {
+
+// A BrowsingDataRemover::Observer that clears Profile data and then invokes
+// a callback and deletes itself. It can be configured to delete all data
+// (for enterprise users) or only Google's service workers (for all users).
+class ProfileDataRemover : public content::BrowsingDataRemover::Observer {
+ public:
+  ProfileDataRemover(Profile* profile,
+                     ClearedTypes cleared_types,
+                     base::OnceClosure callback)
+      : callback_(std::move(callback)),
+        origin_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()),
+        remover_(profile->GetBrowsingDataRemover()) {
+    remover_->AddObserver(this);
+
+    switch (cleared_types) {
+      case ClearedTypes::kGoogleServiceWorkerCaches: {
+        std::unique_ptr<content::BrowsingDataFilterBuilder> google_tld_filter =
+            content::BrowsingDataFilterBuilder::Create(
+                content::BrowsingDataFilterBuilder::Mode::kDelete);
+
+        // TODO(msramek): BrowsingDataFilterBuilder was not designed for
+        // large filters. Optimize it.
+        for (const std::string& domain :
+             google_util::GetGoogleRegistrableDomains()) {
+          google_tld_filter->AddRegisterableDomain(domain);
+        }
+
+        remover_->RemoveWithFilterAndReply(
+            base::Time(), base::Time::Max(),
+            content::BrowsingDataRemover::DATA_TYPE_CACHE_STORAGE,
+            chrome_browsing_data_remover::ALL_ORIGIN_TYPES,
+            std::move(google_tld_filter), this);
+        break;
+      }
+      case ClearedTypes::kAllData: {
+        remover_->RemoveAndReply(base::Time(), base::Time::Max(),
+                                 chrome_browsing_data_remover::ALL_DATA_TYPES,
+                                 chrome_browsing_data_remover::ALL_ORIGIN_TYPES,
+                                 this);
+        break;
+      }
+    }
+  }
+
+  ProfileDataRemover(const ProfileDataRemover&) = delete;
+  ProfileDataRemover& operator=(const ProfileDataRemover&) = delete;
+
+  ~ProfileDataRemover() override = default;
+
+  void OnBrowsingDataRemoverDone(uint64_t failed_data_types) override {
+    remover_->RemoveObserver(this);
+    origin_runner_->PostTask(FROM_HERE, std::move(callback_));
+    origin_runner_->DeleteSoon(FROM_HERE, this);
+  }
+
+ private:
+  base::OnceClosure callback_;
+  scoped_refptr<base::SingleThreadTaskRunner> origin_runner_;
+  raw_ptr<content::BrowsingDataRemover> remover_;
+};
+
+// Returns whether the user *may* be a managed user.
+bool ShouldLoadPolicyForUser(const std::string& username) {
+  return signin::AccountManagedStatusFinder::MayBeEnterpriseUserBasedOnEmail(
+      username);
+}
+
+}  // namespace
+
+SigninManagerAndroid::SigninManagerAndroid(
+    Profile* profile,
+    signin::IdentityManager* identity_manager)
+    : profile_(profile),
+      identity_manager_(identity_manager),
+      user_cloud_policy_manager_(profile_->GetUserCloudPolicyManager()),
+      user_policy_signin_service_(
+          policy::UserPolicySigninServiceFactory::GetForProfile(profile_)),
+      weak_factory_(this) {
+  DCHECK(profile_);
+  DCHECK(identity_manager_);
+  DCHECK(user_cloud_policy_manager_);
+  DCHECK(user_policy_signin_service_);
+
+  java_signin_manager_ = Java_SigninManagerImpl_create(
+      base::android::AttachCurrentThread(), reinterpret_cast<intptr_t>(this),
+      profile_->GetPrefs(), identity_manager_,
+      identity_manager_->GetIdentityMutatorJavaObject());
+}
+
+base::android::ScopedJavaLocalRef<jobject>
+SigninManagerAndroid::GetJavaObject() {
+  return base::android::ScopedJavaLocalRef<jobject>(java_signin_manager_);
+}
+
+SigninManagerAndroid::~SigninManagerAndroid() = default;
+
+void SigninManagerAndroid::Shutdown() {
+  Java_SigninManagerImpl_destroy(base::android::AttachCurrentThread(),
+                                 java_signin_manager_);
+}
+
+SigninManagerAndroid::ManagementCredentials::ManagementCredentials(
+    const std::string& dm_token,
+    const std::string& client_id,
+    const std::vector<std::string>& user_affiliation_ids)
+    : dm_token(dm_token),
+      client_id(client_id),
+      user_affiliation_ids(user_affiliation_ids) {}
+
+SigninManagerAndroid::ManagementCredentials::~ManagementCredentials() = default;
+
+// static
+bool SigninManagerAndroid::MatchesCachedIsAccountManagedEntry(
+    const CachedIsAccountManaged& cached_entry,
+    const CoreAccountInfo& account) {
+  return cached_entry.gaia_id == account.gaia &&
+         cached_entry.expiration_time > base::Time::Now();
+}
+
+void SigninManagerAndroid::StopApplyingCloudPolicy(JNIEnv* env) {
+  user_policy_signin_service_->ShutdownCloudPolicyManager();
+}
+
+void SigninManagerAndroid::RegisterPolicyWithAccount(
+    const CoreAccountInfo& account,
+    RegisterPolicyWithAccountCallback callback) {
+  if (!ShouldLoadPolicyForUser(account.email)) {
+    std::move(callback).Run(std::nullopt);
+    return;
+  }
+
+  bool user_accepted_account_management =
+      enterprise_util::UserAcceptedAccountManagement(profile_);
+  base::UmaHistogramBoolean(
+      "Signin.Android.AccountManagementAcceptedBeforeUserPolicyFetch",
+      user_accepted_account_management);
+
+  if (!user_accepted_account_management &&
+      base::FeatureList::IsEnabled(
+          switches::kUserPolicyFetchRequiresAcceptance)) {
+    std::move(callback).Run(std::nullopt);
+    return;
+  }
+
+  user_policy_signin_service_->RegisterForPolicyWithAccountId(
+      account.email, account.account_id,
+      /*is_registration_for_management_consistency_check=*/false,
+      base::BindOnce(
+          [](RegisterPolicyWithAccountCallback callback,
+             const std::string& dm_token, const std::string& client_id,
+             const std::vector<std::string>& user_affiliation_ids) {
+            std::optional<ManagementCredentials> credentials;
+            if (!dm_token.empty()) {
+              credentials.emplace(dm_token, client_id, user_affiliation_ids);
+            }
+            std::move(callback).Run(credentials);
+          },
+          std::move(callback)));
+}
+
+void SigninManagerAndroid::FetchAndApplyCloudPolicy(
+    JNIEnv* env,
+    const CoreAccountInfo& account,
+    const base::RepeatingClosure& callback) {
+  RegisterPolicyWithAccount(
+      account,
+      base::BindOnce(&SigninManagerAndroid::OnPolicyRegisterDone,
+                     weak_factory_.GetWeakPtr(), account, std::move(callback)));
+}
+
+void SigninManagerAndroid::OnPolicyRegisterDone(
+    const CoreAccountInfo& account,
+    base::OnceCallback<void()> policy_callback,
+    const std::optional<ManagementCredentials>& credentials) {
+  if (credentials) {
+    FetchPolicyBeforeSignIn(account, std::move(policy_callback),
+                            credentials.value());
+  } else {
+    // User's account does not have a policy to fetch.
+    std::move(policy_callback).Run();
+  }
+}
+
+void SigninManagerAndroid::FetchPolicyBeforeSignIn(
+    const CoreAccountInfo& account,
+    base::OnceCallback<void()> policy_callback,
+    const ManagementCredentials& credentials) {
+  scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory =
+      profile_->GetDefaultStoragePartition()
+          ->GetURLLoaderFactoryForBrowserProcess();
+  user_policy_signin_service_->FetchPolicyForSignedInUser(
+      AccountIdFromAccountInfo(account), credentials.dm_token,
+      credentials.client_id, credentials.user_affiliation_ids,
+      url_loader_factory,
+      base::BindOnce([](base::OnceCallback<void()> callback,
+                        bool success) { std::move(callback).Run(); },
+                     std::move(policy_callback)));
+}
+
+void SigninManagerAndroid::WipeProfileData(
+    JNIEnv* env,
+    const base::RepeatingClosure& callback) {
+  WipeData(profile_, ClearedTypes::kAllData, callback);
+}
+
+void SigninManagerAndroid::WipeGoogleServiceWorkerCaches(
+    JNIEnv* env,
+    const base::RepeatingClosure& callback) {
+  WipeData(profile_, ClearedTypes::kGoogleServiceWorkerCaches, callback);
+}
+
+void SigninManagerAndroid::SetUninstallAccountExtensionsOnSignout(
+    JNIEnv* env,
+    bool uninstall) {
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  extensions::AccountExtensionTracker* tracker =
+      extensions::AccountExtensionTracker::Get(profile_);
+  if (tracker) {
+    tracker->set_uninstall_account_extensions_on_signout(uninstall);
+  }
+#endif
+}
+
+bool SigninManagerAndroid::HasSignedInAccountExtensions(JNIEnv* env) {
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  extensions::AccountExtensionTracker* tracker =
+      extensions::AccountExtensionTracker::Get(profile_);
+  return tracker && !tracker->GetSignedInAccountExtensions().empty();
+#else
+  return false;
+#endif
+}
+
+// static
+void SigninManagerAndroid::WipeData(Profile* profile,
+                                    ClearedTypes cleared_types,
+                                    base::OnceClosure callback) {
+  // The ProfileDataRemover deletes itself once done.
+  new ProfileDataRemover(profile, cleared_types, std::move(callback));
+}
+
+static std::string JNI_SigninManagerImpl_ExtractDomainName(
+    JNIEnv* env,
+    const std::string& email) {
+  return gaia::ExtractDomainName(email);
+}
+
+void SigninManagerAndroid::SetUserAcceptedAccountManagement(
+    JNIEnv* env,
+    bool accepted_account_management) {
+  enterprise_util::SetUserAcceptedAccountManagement(
+      profile_, accepted_account_management);
+}
+
+bool SigninManagerAndroid::GetUserAcceptedAccountManagement(JNIEnv* env) {
+  return enterprise_util::UserAcceptedAccountManagement(profile_);
+}
+
+DEFINE_JNI(SigninManagerImpl)

@@ -1,0 +1,857 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "extensions/browser/api/webstore_private/extension_install_status.h"
+
+#include <vector>
+
+#include "base/json/json_reader.h"
+#include "base/json/values_util.h"
+#include "base/strings/stringprintf.h"
+#include "base/test/gmock_callback_support.h"
+#include "base/test/test_future.h"
+#include "base/time/time.h"
+#include "base/values.h"
+#include "chrome/browser/extensions/extension_management_internal.h"
+#include "chrome/browser/extensions/extension_service_test_with_install.h"
+#include "chrome/browser/policy/cloud/extension_install_policy_service.h"
+#include "chrome/browser/policy/cloud/extension_install_policy_service_factory.h"
+#include "chrome/browser/policy/cloud/mock_extension_install_policy_service.h"
+#include "chrome/browser/supervised_user/supervised_user_test_util.h"
+#include "components/enterprise/browser/reporting/common_pref_names.h"
+#include "components/policy/core/common/cloud/cloud_policy_client_types.h"
+#include "components/policy/core/common/features.h"
+#include "components/supervised_user/core/common/features.h"
+#include "components/supervised_user/core/common/pref_names.h"
+#include "components/sync_preferences/testing_pref_service_syncable.h"
+#include "content/public/test/browser_task_environment.h"
+#include "extensions/browser/api/management/management_api.h"
+#include "extensions/browser/disable_reason.h"
+#include "extensions/browser/event_router.h"
+#include "extensions/browser/event_router_factory.h"
+#include "extensions/browser/extension_prefs.h"
+#include "extensions/browser/extension_registry.h"
+#include "extensions/browser/pref_names.h"
+#include "extensions/buildflags/buildflags.h"
+#include "extensions/common/constants.h"
+#include "extensions/common/extension_builder.h"
+#include "extensions/common/manifest.h"
+#include "extensions/common/permissions/permission_set.h"
+#include "extensions/strings/grit/extensions_strings.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/l10n/l10n_util.h"
+
+static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
+
+using extensions::mojom::APIPermissionID;
+
+namespace extensions {
+namespace {
+constexpr char kExtensionId[] = "abcdefghijklmnopabcdefghijklmnop";
+
+constexpr char kExtensionSettingsWithUpdateUrlBlocking[] = R"({
+  "update_url:https://clients2.google.com/service/update2/crx": {
+    "installation_mode": "blocked"
+  }
+})";
+
+constexpr char kExtensionSettingsWithWildcardBlocking[] = R"({
+  "*": {
+    "installation_mode": "blocked"
+  }
+})";
+
+constexpr char kExtensionSettingsWithIdBlocked[] = R"({
+  "abcdefghijklmnopabcdefghijklmnop": {
+    "installation_mode": "blocked"
+  }
+})";
+
+struct StatusAndMessage {
+  ExtensionInstallStatus status;
+  std::u16string message;
+
+  // For EXPECT_EQ() comparisons.
+  bool operator==(const StatusAndMessage&) const = default;
+};
+
+std::unique_ptr<KeyedService> BuildManagementApi(
+    content::BrowserContext* context) {
+  return std::make_unique<ManagementAPI>(context);
+}
+
+std::unique_ptr<KeyedService> BuildEventRouter(
+    content::BrowserContext* context) {
+  return std::make_unique<EventRouter>(context, ExtensionPrefs::Get(context));
+}
+
+}  // namespace
+
+class ExtensionInstallStatusTest : public ExtensionServiceTestWithInstall {
+ public:
+  ExtensionInstallStatusTest() = default;
+
+  ExtensionInstallStatusTest(const ExtensionInstallStatusTest&) = delete;
+  ExtensionInstallStatusTest& operator=(const ExtensionInstallStatusTest&) =
+      delete;
+  ~ExtensionInstallStatusTest() override = default;
+
+  // testing::Test:
+  void SetUp() override {
+    ExtensionServiceTestWithInstall::SetUp();
+    InitializeExtensionService(GetExtensionServiceInitParams());
+    ManagementAPI::GetFactoryInstance()->SetTestingFactory(
+        profile(), base::BindRepeating(&BuildManagementApi));
+    EventRouterFactory::GetInstance()->SetTestingFactory(
+        profile(), base::BindRepeating(&BuildEventRouter));
+
+    // Create instance of ManagementAPI.
+    CHECK(ManagementAPI::GetFactoryInstance()->Get(profile()));
+  }
+
+  scoped_refptr<const Extension> CreateExtension(const ExtensionId& id) {
+    return ExtensionBuilder("extension").SetID(id).Build();
+  }
+
+  void SetExtensionSettings(const std::string& settings_string) {
+    std::optional<base::Value> settings = base::JSONReader::Read(
+        settings_string, base::JSON_PARSE_CHROMIUM_EXTENSIONS);
+    ASSERT_TRUE(settings);
+    SetPolicy(pref_names::kExtensionManagement,
+              base::Value::ToUniquePtrValue(std::move(*settings)));
+  }
+
+  void SetPolicy(const std::string& pref_name,
+                 std::unique_ptr<base::Value> value) {
+    testing_profile()->GetTestingPrefService()->SetManagedPref(
+        pref_name, std::move(value));
+  }
+
+  void SetPendingList(const std::vector<ExtensionId>& ids) {
+    base::DictValue id_values;
+    for (const auto& id : ids) {
+      base::DictValue request_data;
+      request_data.Set(extension_misc::kExtensionRequestTimestamp,
+                       ::base::TimeToValue(base::Time::Now()));
+      id_values.Set(id, std::move(request_data));
+    }
+    testing_profile()->GetTestingPrefService()->SetDict(
+        enterprise_reporting::kCloudExtensionRequestIds, std::move(id_values));
+  }
+
+  // Synchronous wrapper around GetWebstoreExtensionInstallStatus() to avoid
+  // callback hell.
+  StatusAndMessage GetInstallStatusAndMessageSynchronously(
+      const ExtensionId& extension_id,
+      Profile* profile,
+      base::Version extension_version,
+      const Manifest::Type manifest_type,
+      const PermissionSet& required_permission_set,
+      int manifest_version = 3) {
+    base::test::TestFuture<ExtensionInstallStatus, std::u16string> future;
+    GetWebstoreExtensionInstallStatus(extension_id, profile, extension_version,
+                                      manifest_type, required_permission_set,
+                                      manifest_version, future.GetCallback());
+    return {future.Get<ExtensionInstallStatus>(), future.Get<std::u16string>()};
+  }
+
+  // GetInstallStatusAndMessageSynchronously() wrapper for callers that don't
+  // care about `blocked_message`.
+  ExtensionInstallStatus GetInstallStatusSynchronously(
+      const ExtensionId& extension_id,
+      Profile* profile,
+      base::Version extension_version,
+      const Manifest::Type manifest_type,
+      const PermissionSet& required_permission_set,
+      int manifest_version = 3) {
+    return GetInstallStatusAndMessageSynchronously(
+               extension_id, profile, extension_version, manifest_type,
+               required_permission_set, manifest_version)
+        .status;
+  }
+
+  // Returns the initialization parameters for the extension service.
+  virtual ExtensionServiceInitParams GetExtensionServiceInitParams() {
+    return ExtensionServiceInitParams();
+  }
+
+  // Since this is testing the MV2 deprecation, we don't want to bypass the
+  // related disabling for testing.
+  bool ShouldAllowMV2Extensions() override { return false; }
+};
+
+TEST_F(ExtensionInstallStatusTest, ExtensionEnabled) {
+  ExtensionRegistry::Get(profile())->AddEnabled(CreateExtension(kExtensionId));
+  EXPECT_EQ(ExtensionInstallStatus::kEnabled,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionDisabled) {
+  ExtensionRegistry::Get(profile())->AddDisabled(CreateExtension(kExtensionId));
+  EXPECT_EQ(ExtensionInstallStatus::kDisabled,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionTerminated) {
+  ExtensionRegistry::Get(profile())->AddTerminated(
+      CreateExtension(kExtensionId));
+  EXPECT_EQ(ExtensionInstallStatus::kTerminated,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionBlocklisted) {
+  ExtensionRegistry::Get(profile())->AddBlocklisted(
+      CreateExtension(kExtensionId));
+  EXPECT_EQ(ExtensionInstallStatus::kBlocklisted,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionAllowed) {
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionInstalledButDisabledByPolicy) {
+  ExtensionRegistry::Get(profile())->AddDisabled(CreateExtension(kExtensionId));
+  SetExtensionSettings(kExtensionSettingsWithIdBlocked);
+  EXPECT_EQ(ExtensionInstallStatus::kBlockedByPolicy,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionForceInstalledByPolicy) {
+  SetExtensionSettings(R"({
+    "abcdefghijklmnopabcdefghijklmnop": {
+      "installation_mode": "force_installed",
+      "update_url":"https://clients2.google.com/service/update2/crx"
+    }
+  })");
+  ExtensionRegistry::Get(profile())->AddEnabled(CreateExtension(kExtensionId));
+  EXPECT_EQ(ExtensionInstallStatus::kForceInstalled,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionBlockedByUpdateUrl) {
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+  SetExtensionSettings(kExtensionSettingsWithUpdateUrlBlocking);
+  EXPECT_EQ(ExtensionInstallStatus::kBlockedByPolicy,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionBlockedByWildcard) {
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+  SetExtensionSettings(kExtensionSettingsWithWildcardBlocking);
+  EXPECT_EQ(ExtensionInstallStatus::kBlockedByPolicy,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionBlockedById) {
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+  SetExtensionSettings(kExtensionSettingsWithIdBlocked);
+  EXPECT_EQ(ExtensionInstallStatus::kBlockedByPolicy,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionBlockedWithCustomMessage) {
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+  SetExtensionSettings(R"({
+    "abcdefghijklmnopabcdefghijklmnop": {
+      "installation_mode": "blocked",
+      "blocked_install_message": "Custom Error Message"
+    }
+  })");
+  std::u16string expected_message = l10n_util::GetStringFUTF16(
+      IDS_EXTENSION_PROMPT_MESSAGE_FROM_ADMIN, u"Custom Error Message");
+
+  EXPECT_EQ(ExtensionInstallStatus::kBlockedByPolicy,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+
+  EXPECT_EQ(StatusAndMessage(ExtensionInstallStatus::kBlockedByPolicy,
+                             expected_message),
+            GetInstallStatusAndMessageSynchronously(
+                kExtensionId, profile(), base::Version(),
+                Manifest::Type::kExtension, PermissionSet()));
+}
+
+TEST_F(ExtensionInstallStatusTest,
+       ExtensionBlockByUpdateUrlWithRequestEnabled) {
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+  SetPolicy(enterprise_reporting::kCloudExtensionRequestEnabled,
+            std::make_unique<base::Value>(true));
+  SetExtensionSettings(kExtensionSettingsWithUpdateUrlBlocking);
+  EXPECT_EQ(ExtensionInstallStatus::kCanRequest,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionBlockByWildcardWithRequestEnabled) {
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+  SetPolicy(enterprise_reporting::kCloudExtensionRequestEnabled,
+            std::make_unique<base::Value>(true));
+  SetExtensionSettings(kExtensionSettingsWithWildcardBlocking);
+  EXPECT_EQ(ExtensionInstallStatus::kCanRequest,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionBlockByIdWithRequestEnabled) {
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+  SetPolicy(enterprise_reporting::kCloudExtensionRequestEnabled,
+            std::make_unique<base::Value>(true));
+  // An extension that is blocked by its ID can't be requested anymore.
+  SetExtensionSettings(kExtensionSettingsWithIdBlocked);
+  EXPECT_EQ(ExtensionInstallStatus::kBlockedByPolicy,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, PendingExtensionIsWaitingToBeReviewed) {
+  SetPolicy(enterprise_reporting::kCloudExtensionRequestEnabled,
+            std::make_unique<base::Value>(true));
+  std::vector<ExtensionId> ids = {kExtensionId};
+  SetPendingList(ids);
+
+  // The extension is blocked by wildcard and pending approval.
+  SetExtensionSettings(kExtensionSettingsWithWildcardBlocking);
+  EXPECT_EQ(ExtensionInstallStatus::kRequestPending,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, PendingExtensionIsApproved) {
+  // Extension is approved but not installed, returns as INSTALLABLE.
+  SetPolicy(enterprise_reporting::kCloudExtensionRequestEnabled,
+            std::make_unique<base::Value>(true));
+  std::vector<ExtensionId> ids = {kExtensionId};
+  SetExtensionSettings(R"({
+    "abcdefghijklmnopabcdefghijklmnop": {
+      "installation_mode": "allowed"
+    }
+  })");
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, PendingExtensionIsRejected) {
+  // Extension is rejected, it should be moved from the pending list soon.
+  SetPolicy(enterprise_reporting::kCloudExtensionRequestEnabled,
+            std::make_unique<base::Value>(true));
+  std::vector<ExtensionId> ids = {kExtensionId};
+  SetExtensionSettings(kExtensionSettingsWithIdBlocked);
+  EXPECT_EQ(ExtensionInstallStatus::kBlockedByPolicy,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+// If an existing, installed extension is disabled due to reason
+// DISABLE_CUSTODIAN_APPROVAL_REQUIRED, then GetWebstoreExtensionInstallStatus()
+// should return kCustodianApprovalRequired.
+TEST_F(ExtensionInstallStatusTest,
+       ExistingExtensionWithCustodianApprovalRequired) {
+  ExtensionRegistry::Get(profile())->AddDisabled(CreateExtension(kExtensionId));
+  ExtensionPrefs::Get(profile())->AddDisableReason(
+      kExtensionId,
+      extensions::disable_reason::DISABLE_CUSTODIAN_APPROVAL_REQUIRED);
+  ASSERT_TRUE(
+      ExtensionRegistry::Get(profile())->GetInstalledExtension(kExtensionId));
+
+  EXPECT_EQ(ExtensionInstallStatus::kCustodianApprovalRequired,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionBlockedByManifestType) {
+  // TYPE_EXTENSION is blocked by policy
+  // TYPE_THEME and TYPE_HOSTED_APP are allowed.
+  SetExtensionSettings(R"({
+    "*": {
+      "allowed_types": ["theme", "hosted_app"]
+    }
+  })");
+  EXPECT_EQ(ExtensionInstallStatus::kBlockedByPolicy,
+            GetInstallStatusSynchronously(
+                kExtensionId, profile(), base::Version(),
+                Manifest::Type::kExtension, PermissionSet()));
+  EXPECT_EQ(
+      ExtensionInstallStatus::kInstallable,
+      GetInstallStatusSynchronously(kExtensionId, profile(), base::Version(),
+                                    Manifest::Type::kTheme, PermissionSet()));
+
+  SetPolicy(enterprise_reporting::kCloudExtensionRequestEnabled,
+            std::make_unique<base::Value>(true));
+  EXPECT_EQ(ExtensionInstallStatus::kCanRequest,
+            GetInstallStatusSynchronously(
+                kExtensionId, profile(), base::Version(),
+                Manifest::Type::kExtension, PermissionSet()));
+  EXPECT_EQ(ExtensionInstallStatus::kCanRequest,
+            GetInstallStatusSynchronously(
+                kExtensionId, profile(), base::Version(),
+                Manifest::Type::kHostedApp, PermissionSet()));
+
+  // Request has been approved. Note that currently, manifest type blocking
+  // actually overrides per-id setup. We will find the right priority with
+  // crbug.com/40133200.
+  SetExtensionSettings(R"({
+    "*": {
+      "allowed_types": ["theme", "hosted_app"]
+    }, "abcdefghijklmnopabcdefghijklmnop": {
+      "installation_mode": "allowed"
+    }
+  })");
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetInstallStatusSynchronously(
+                kExtensionId, profile(), base::Version(),
+                Manifest::Type::kExtension, PermissionSet()));
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetInstallStatusSynchronously(
+                kExtensionId, profile(), base::Version(),
+                Manifest::Type::kHostedApp, PermissionSet()));
+
+  // Request has been rejected.
+  SetExtensionSettings(R"({
+    "*": {
+      "allowed_types": ["theme", "hosted_app"]
+    }, "abcdefghijklmnopabcdefghijklmnop": {
+      "installation_mode": "blocked"
+    }
+  })");
+  EXPECT_EQ(ExtensionInstallStatus::kBlockedByPolicy,
+            GetInstallStatusSynchronously(
+                kExtensionId, profile(), base::Version(),
+                Manifest::Type::kExtension, PermissionSet()));
+  EXPECT_EQ(ExtensionInstallStatus::kBlockedByPolicy,
+            GetInstallStatusSynchronously(
+                kExtensionId, profile(), base::Version(),
+                Manifest::Type::kHostedApp, PermissionSet()));
+
+  // Request has been forced installed.
+  SetExtensionSettings(R"({
+    "*": {
+      "allowed_types": ["theme", "hosted_app"]
+    }, "abcdefghijklmnopabcdefghijklmnop": {
+      "installation_mode": "force_installed",
+      "update_url":"https://clients2.google.com/service/update2/crx"
+    }
+  })");
+  EXPECT_EQ(ExtensionInstallStatus::kForceInstalled,
+            GetInstallStatusSynchronously(
+                kExtensionId, profile(), base::Version(),
+                Manifest::Type::kExtension, PermissionSet()));
+  EXPECT_EQ(ExtensionInstallStatus::kForceInstalled,
+            GetInstallStatusSynchronously(
+                kExtensionId, profile(), base::Version(),
+                Manifest::Type::kHostedApp, PermissionSet()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionWithoutPermissionInfo) {
+  SetExtensionSettings(R"({
+    "*": {
+      "blocked_permissions": ["storage"]
+    }
+  })");
+
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionWithoutManifestInfo) {
+  SetExtensionSettings(R"({
+    "*": {
+      "allowed_types": ["theme"]
+    }
+  })");
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionBlockedByPermissions) {
+  // Block 'storage' for all extensions.
+  SetExtensionSettings(R"({
+    "*": {
+      "blocked_permissions": ["storage"]
+    }
+  })");
+
+  // Extension with audio permission is still installable but not with storage.
+  APIPermissionSet api_permissions;
+  api_permissions.insert(APIPermissionID::kAudio);
+  EXPECT_EQ(
+      ExtensionInstallStatus::kInstallable,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+  api_permissions.insert(APIPermissionID::kStorage);
+  EXPECT_EQ(
+      ExtensionInstallStatus::kBlockedByPolicy,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+
+  // And they can be requested,
+  SetPolicy(enterprise_reporting::kCloudExtensionRequestEnabled,
+            std::make_unique<base::Value>(true));
+  EXPECT_EQ(
+      ExtensionInstallStatus::kCanRequest,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+
+  // Request has been approved.
+  SetExtensionSettings(R"({
+    "*": {
+      "blocked_permissions": ["storage"]
+    }, "abcdefghijklmnopabcdefghijklmnop": {
+      "installation_mode": "allowed"
+    }
+  })");
+  EXPECT_EQ(
+      ExtensionInstallStatus::kInstallable,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+
+  // Request has been rejected.
+  SetExtensionSettings(R"({
+    "*": {
+      "blocked_permissions": ["storage"]
+    }, "abcdefghijklmnopabcdefghijklmnop": {
+      "installation_mode": "blocked"
+    }
+  })");
+  EXPECT_EQ(
+      ExtensionInstallStatus::kBlockedByPolicy,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+
+  // Request has been force installed.
+  SetExtensionSettings(R"({
+    "*": {
+      "blocked_permissions": ["storage"]
+    }, "abcdefghijklmnopabcdefghijklmnop": {
+      "installation_mode": "force_installed",
+      "update_url":"https://clients2.google.com/service/update2/crx"
+    }
+  })");
+  EXPECT_EQ(
+      ExtensionInstallStatus::kForceInstalled,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+}
+
+TEST_F(ExtensionInstallStatusTest, ExtensionBlockedByPermissionsWithUpdateUrl) {
+  // Block 'downloads' for all extensions from web store.
+  SetExtensionSettings(R"({
+    "update_url:https://clients2.google.com/service/update2/crx": {
+      "blocked_permissions": ["downloads"]
+    }
+  })");
+
+  APIPermissionSet api_permissions;
+  api_permissions.insert(APIPermissionID::kAudio);
+  EXPECT_EQ(
+      ExtensionInstallStatus::kInstallable,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+  api_permissions.insert(APIPermissionID::kDownloads);
+  EXPECT_EQ(
+      ExtensionInstallStatus::kBlockedByPolicy,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+
+  // And they can be requested,
+  SetPolicy(enterprise_reporting::kCloudExtensionRequestEnabled,
+            std::make_unique<base::Value>(true));
+  EXPECT_EQ(
+      ExtensionInstallStatus::kCanRequest,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+
+  // Request has been approved.
+  SetExtensionSettings(R"({
+    "update_url:https://clients2.google.com/service/update2/crx": {
+      "blocked_permissions": ["downloads"]
+    }, "abcdefghijklmnopabcdefghijklmnop": {
+      "installation_mode": "allowed"
+    }
+  })");
+  EXPECT_EQ(
+      ExtensionInstallStatus::kInstallable,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+
+  // Request has been rejected.
+  SetExtensionSettings(R"({
+    "update_url:https://clients2.google.com/service/update2/crx": {
+      "blocked_permissions": ["downloads"]
+    }, "abcdefghijklmnopabcdefghijklmnop": {
+      "installation_mode": "blocked"
+    }
+  })");
+  EXPECT_EQ(
+      ExtensionInstallStatus::kBlockedByPolicy,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+
+  // Request has been force-installed.
+  SetExtensionSettings(R"({
+    "update_url:https://clients2.google.com/service/update2/crx": {
+      "blocked_permissions": ["downloads"]
+    }, "abcdefghijklmnopabcdefghijklmnop": {
+      "installation_mode": "force_installed",
+      "update_url":"https://clients2.google.com/service/update2/crx"
+    }
+  })");
+  EXPECT_EQ(
+      ExtensionInstallStatus::kForceInstalled,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+}
+
+TEST_F(ExtensionInstallStatusTest,
+       ExtensionBlockedByPermissionButAllowlistById) {
+  SetExtensionSettings(R"({
+    "*": {
+      "blocked_permissions": ["storage"]
+    }, "abcdefghijklmnopabcdefghijklmnop": {
+      "installation_mode": "allowed"
+  }})");
+
+  // Per-id allowlisted has higher priority than blocked permissions.
+  APIPermissionSet api_permissions;
+  api_permissions.insert(APIPermissionID::kStorage);
+  EXPECT_EQ(
+      ExtensionInstallStatus::kInstallable,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+}
+
+// Extension policies apply to non web store update url doesn't affect the
+// status here.
+TEST_F(ExtensionInstallStatusTest, NonWebstoreUpdateUrlPolicy) {
+  SetExtensionSettings(R"({
+    "update_url:https://other.extensions/webstore": {
+      "installation_mode": "blocked"
+    }
+  })");
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+
+  SetExtensionSettings(R"({
+    "update_url:https://other.extensions/webstore": {
+      "blocked_permissions": ["downloads"]
+    }
+  })");
+  APIPermissionSet api_permissions;
+  api_permissions.insert(APIPermissionID::kDownloads);
+  EXPECT_EQ(
+      ExtensionInstallStatus::kInstallable,
+      GetInstallStatusSynchronously(
+          kExtensionId, profile(), base::Version(), Manifest::Type::kExtension,
+          PermissionSet(api_permissions.Clone(), ManifestPermissionSet(),
+                        URLPatternSet(), URLPatternSet())));
+}
+
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+class ExtensionInstallStatusTestWithCloudPolicyChecks
+    : public ExtensionInstallStatusTest {
+ public:
+  ExtensionInstallStatusTestWithCloudPolicyChecks() {
+    feature_list_.InitAndEnableFeature(
+        policy::features::kEnableExtensionInstallPolicyFetching);
+  }
+
+  ExtensionInstallStatusTestWithCloudPolicyChecks(
+      const ExtensionInstallStatusTestWithCloudPolicyChecks&) = delete;
+  ExtensionInstallStatusTestWithCloudPolicyChecks& operator=(
+      const ExtensionInstallStatusTestWithCloudPolicyChecks&) = delete;
+  ~ExtensionInstallStatusTestWithCloudPolicyChecks() override = default;
+
+  void SetUp() override {
+    ExtensionInstallStatusTest::SetUp();
+    mock_extension_install_policy_service_ =
+        static_cast<policy::MockExtensionInstallPolicyService*>(
+            policy::ExtensionInstallPolicyServiceFactory::GetForBrowserContext(
+                profile()));
+    ASSERT_TRUE(mock_extension_install_policy_service_);
+  }
+
+  ExtensionServiceInitParams GetExtensionServiceInitParams() override {
+    TestingProfile::TestingFactories testing_factories = {
+        TestingProfile::TestingFactory{
+            policy::ExtensionInstallPolicyServiceFactory::GetInstance(),
+            base::BindRepeating([](content::BrowserContext* context) {
+              return base::WrapUnique<KeyedService>(
+                  new policy::MockExtensionInstallPolicyService());
+            })}};
+
+    ExtensionServiceInitParams params;
+    params.testing_factories = std::move(testing_factories);
+    return params;
+  }
+
+  void TearDown() override {
+    mock_extension_install_policy_service_ = nullptr;
+    ExtensionInstallStatusTest::TearDown();
+  }
+
+  policy::MockExtensionInstallPolicyService*
+  mock_extension_install_policy_service() {
+    return mock_extension_install_policy_service_.get();
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+
+  raw_ptr<policy::MockExtensionInstallPolicyService>
+      mock_extension_install_policy_service_ = nullptr;
+};
+
+TEST_F(ExtensionInstallStatusTestWithCloudPolicyChecks,
+       ExtensionBlockedByCloudPolicy) {
+  // Blocked by policy.
+  EXPECT_CALL(
+      *mock_extension_install_policy_service(),
+      CanInstallExtension(policy::ExtensionIdAndVersion(kExtensionId, "1.0.0"),
+                          testing::_))
+      .WillOnce(base::test::RunOnceCallback<1>(false, u"risk score"));
+  EXPECT_EQ(
+      StatusAndMessage(ExtensionInstallStatus::kBlockedByPolicy, u"risk score"),
+      GetInstallStatusAndMessageSynchronously(
+          kExtensionId, profile(), base::Version("1.0.0"),
+          Manifest::Type::kExtension, PermissionSet(),
+          /*manifest_version=*/3));
+  // Installable.
+  EXPECT_CALL(
+      *mock_extension_install_policy_service(),
+      CanInstallExtension(policy::ExtensionIdAndVersion(kExtensionId, "1.0.0"),
+                          testing::_))
+      .WillOnce(base::test::RunOnceCallback<1>(true, std::u16string()));
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetInstallStatusSynchronously(
+                kExtensionId, profile(), base::Version("1.0.0"),
+                Manifest::Type::kExtension, PermissionSet(),
+                /*manifest_version=*/3));
+  // Unknown version, this shouldn't call ExtensionInstallPolicyService.
+  EXPECT_CALL(
+      *mock_extension_install_policy_service(),
+      CanInstallExtension(policy::ExtensionIdAndVersion(kExtensionId, "1.0.0"),
+                          testing::_))
+      .Times(0);
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
+
+// If an existing, installed extension is disabled due to corruption, then
+// GetWebstoreExtensionInstallStatus() should return kCorrupted.
+TEST_F(ExtensionInstallStatusTest, ExtensionCorrupted) {
+  ExtensionRegistry::Get(profile())->AddDisabled(CreateExtension(kExtensionId));
+  ExtensionPrefs::Get(profile())->AddDisableReason(
+      kExtensionId, extensions::disable_reason::DISABLE_CORRUPTED);
+  EXPECT_EQ(ExtensionInstallStatus::kCorrupted,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+TEST_F(ExtensionInstallStatusTest, UnsupportedManifestVersion) {
+  const ExtensionId kTestId(32, 'a');
+  // Manifest V2 extensions are not installable.
+  EXPECT_EQ(
+      ExtensionInstallStatus::kDeprecatedManifestVersion,
+      GetInstallStatusSynchronously(kTestId, profile(), base::Version(),
+                                    Manifest::Type::kExtension, PermissionSet(),
+                                    /*manifest_version=*/2));
+}
+
+class SupervisedUserExtensionInstallStatusTest
+    : public ExtensionInstallStatusTest {};
+
+// If a supervised user requires parent approval to install a new extension that
+// has not received parental approval before, then
+// GetWebstoreExtensionInstallStatus() should return
+// kCustodianApprovalRequiredForInstallation.
+TEST_F(SupervisedUserExtensionInstallStatusTest,
+       NewExtensionWithCustodianApprovalRequiredForInstallation) {
+  testing_profile()->SetIsSupervisedProfile(true);
+  // The supervised user requires parent approval to install extensions.
+  supervised_user_test_util::SetSkipParentApprovalToInstallExtensionsPref(
+      profile(), false);
+
+  EXPECT_EQ(ExtensionInstallStatus::kCustodianApprovalRequiredForInstallation,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+// If a supervised user can skip parent permission to install extensions,
+// then for a new (uninstalled) extension GetWebstoreExtensionInstallStatus()
+// should return kInstallable.
+TEST_F(
+    SupervisedUserExtensionInstallStatusTest,
+    NewExtensionOnSkipApprovalModeDoesNotRequireCustodianApprovalForInstallation) {
+  testing_profile()->SetIsSupervisedProfile(true);
+  // The supervised user does not require parent approval to install extensions.
+  supervised_user_test_util::SetSkipParentApprovalToInstallExtensionsPref(
+      profile(), true);
+
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+// If a supervised user wants to install an extension that has been already
+// granted parent approval (e.g. via synced settings from another client),
+// then GetWebstoreExtensionInstallStatus() should return kInstallable.
+TEST_F(
+    SupervisedUserExtensionInstallStatusTest,
+    NewExtensionWithParentApprovalDoesNotRequireCustodianApprovalForInstallation) {
+  testing_profile()->SetIsSupervisedProfile(true);
+  // The supervised user requires parent approval to install extensions.
+  supervised_user_test_util::SetSkipParentApprovalToInstallExtensionsPref(
+      profile(), false);
+
+  // Grant approval to the extension.
+  base::DictValue approved_extensions;
+  approved_extensions.Set(kExtensionId, true);
+  profile()->GetPrefs()->SetDict(prefs::kSupervisedUserApprovedExtensions,
+                                 std::move(approved_extensions));
+
+  EXPECT_EQ(ExtensionInstallStatus::kInstallable,
+            GetWebstoreExtensionInstallStatus(kExtensionId, profile()));
+}
+
+// Themes do not require approval for supervised users.
+TEST_F(SupervisedUserExtensionInstallStatusTest,
+       NewThemeDoesNotRequireCustodianApprovalForInstallation) {
+  testing_profile()->SetIsSupervisedProfile(true);
+  // The supervised user requires parent approval to install extensions but
+  // themes are always allowed.
+  supervised_user_test_util::SetSkipParentApprovalToInstallExtensionsPref(
+      profile(), false);
+
+  EXPECT_EQ(
+      ExtensionInstallStatus::kInstallable,
+      GetInstallStatusSynchronously(kExtensionId, profile(), base::Version(),
+                                    Manifest::Type::kTheme, PermissionSet()));
+}
+
+}  // namespace extensions

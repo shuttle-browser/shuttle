@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2026 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="@dimen/bottom_bar_new_tab_background_size"
+        android:height="@dimen/bottom_bar_new_tab_background_size"
+        android:gravity="center">
+        <shape android:shape="rectangle">
+            <corners
+                android:radius="@dimen/bottom_bar_new_tab_background_radius" />
+            <solid android:color="@android:color/white" />
+        </shape>
+    </item>
+</layer-list>

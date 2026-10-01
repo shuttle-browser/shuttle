@@ -1,0 +1,6 @@
+bajones@chromium.org
+geofflang@chromium.org
+kainino@chromium.org
+kbr@chromium.org
+
+per-file *webgpu*=file://third_party/blink/renderer/modules/webgpu/OWNERS

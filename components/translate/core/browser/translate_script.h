@@ -1,0 +1,128 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_TRANSLATE_CORE_BROWSER_TRANSLATE_SCRIPT_H_
+#define COMPONENTS_TRANSLATE_CORE_BROWSER_TRANSLATE_SCRIPT_H_
+
+#include <memory>
+#include <string>
+
+#include "base/callback_list.h"
+#include "base/feature_list.h"
+#include "base/functional/callback_forward.h"
+#include "base/gtest_prod_util.h"
+#include "base/memory/weak_ptr.h"
+#include "base/time/time.h"
+#include "components/translate/core/browser/translate_prefs.h"
+
+class GURL;
+class PrefService;
+
+namespace translate {
+
+class TranslateScriptTest;
+class TranslateUrlFetcher;
+
+class TranslateScript {
+ public:
+  using RequestCallback = base::OnceCallback<void(bool)>;
+
+  TranslateScript();
+
+  TranslateScript(const TranslateScript&) = delete;
+  TranslateScript& operator=(const TranslateScript&) = delete;
+
+  virtual ~TranslateScript();
+
+  // Returns the fetched translate script.
+  const std::string& data() { return data_; }
+
+  // Used by unit-tests to override some defaults:
+  // Delay after which the translate script is fetched again from the
+  // translation server.
+  void set_expiration_delay(int delay_ms) {
+    expiration_delay_ = base::Milliseconds(delay_ms);
+  }
+
+  // Clears the translate script, so it will be fetched next time we translate.
+  void Clear() { data_.clear(); }
+
+  // Clears the translate script if the data region has changed.
+  void ClearIfDataRegionChanged(PrefService* prefs);
+
+  // Fetches the JS translate script (the script that is injected in the page
+  // to translate it). |is_incognito| is used during the fetch to determine
+  // which variations headers to add. |prefs| is used to retrieve the data
+  // region preference (which is set by the ChromeDataRegionSetting policy).
+  void Request(RequestCallback callback, bool is_incognito, PrefService* prefs);
+
+  // Returns the URL to be used to load the translate script.
+  static GURL GetTranslateScriptURL();
+
+ private:
+  friend class TranslateScriptTest;
+  FRIEND_TEST_ALL_PREFIXES(TranslateScriptTest, CheckScriptParameters);
+  FRIEND_TEST_ALL_PREFIXES(TranslateScriptTest,
+                           CheckScriptParameters_SimplifiedHindiDisabled);
+  FRIEND_TEST_ALL_PREFIXES(TranslateScriptTest,
+                           CheckScriptParameters_ElementExperimentFeatures);
+  FRIEND_TEST_ALL_PREFIXES(
+      TranslateScriptTest,
+      CheckScriptParameters_ElementExperimentFeaturesCoexistence);
+  FRIEND_TEST_ALL_PREFIXES(TranslateScriptTest, CheckScriptURL);
+
+  static const char kScriptURL[];
+  static const char kRequestHeaderName[];
+  static const char kRequestHeaderValue[];
+
+  // Used in kTranslateScriptURL to specify the experiment filter.
+  static const char kExperimentFilterQueryName[];
+  static const char kExperimentFilterQueryValue[];
+
+  // Used in kTranslateScriptURL to specify a callback function name.
+  static const char kCallbackQueryName[];
+  static const char kCallbackQueryValue[];
+
+  // Used in kTranslateScriptURL to specify a CSS loader callback function name.
+  static const char kCssLoaderCallbackQueryName[];
+  static const char kCssLoaderCallbackQueryValue[];
+
+  // Used in kTranslateScriptURL to specify a JavaScript loader callback
+  // function name.
+  static const char kJavascriptLoaderCallbackQueryName[];
+  static const char kJavascriptLoaderCallbackQueryValue[];
+
+  // Returns the active element features as a comma-separated string.
+  static std::string GetActiveElementFeatures();
+
+  // The callback when the script is fetched or a server error occured.
+  void OnScriptFetchComplete(bool success, const std::string& data);
+
+  // URL fetcher to fetch the translate script.
+  std::unique_ptr<TranslateUrlFetcher> fetcher_;
+
+  // The JS injected in the page to do the translation.
+  std::string data_;
+
+  // The starting time of fetching the translate script.
+  // Number of milliseconds since the epoch.
+  double script_fetch_start_time_;
+
+  // Delay after which the translate script is fetched again from the translate
+  // server.
+  base::TimeDelta expiration_delay_;
+
+  // The data region of the fetched script.
+  DataRegion fetched_data_region_ = DataRegion::kNoPreference;
+
+  // The callbacks called when the server sends a response.
+  using RequestCallbackList = base::OnceCallbackList<RequestCallback::RunType>;
+  RequestCallbackList callback_list_;
+
+  base::WeakPtrFactory<TranslateScript> weak_method_factory_{this};
+};
+
+}  // namespace translate
+
+#endif  // COMPONENTS_TRANSLATE_CORE_BROWSER_TRANSLATE_SCRIPT_H_

@@ -1,0 +1,99 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_ENTERPRISE_CLIENT_CERTIFICATES_CORE_PRIVATE_KEY_H_
+#define COMPONENTS_ENTERPRISE_CLIENT_CERTIFICATES_CORE_PRIVATE_KEY_H_
+
+#include <optional>
+#include <vector>
+
+#include "base/containers/span.h"
+#include "base/functional/callback.h"
+#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/values.h"
+#include "build/build_config.h"
+#include "components/enterprise/client_certificates/core/private_key_types.h"
+#include "components/enterprise/client_certificates/proto/client_certificates_database.pb.h"
+#include "crypto/signature_verifier.h"
+
+#if BUILDFLAG(IS_IOS)
+#include <Security/Security.h>
+#endif  // BUILDFLAG(IS_IOS)
+
+namespace net {
+class SSLPrivateKey;
+class X509Certificate;
+}  // namespace net
+
+namespace client_certificates {
+
+// Interface representing objects owning references to private keys loaded into
+// memory.
+class PrivateKey : public base::RefCountedThreadSafe<PrivateKey> {
+ public:
+  // Generates a signature over `data`. The `callback` will be invoked with the
+  // generated signature, or `std::nullopt` if no signature could be generated.
+  virtual void Sign(
+      base::span<const uint8_t> data,
+      base::OnceCallback<void(std::optional<std::vector<uint8_t>>)> callback)
+      const = 0;
+
+  // Returns the public key bytes in SPKI format.
+  virtual std::vector<uint8_t> GetSubjectPublicKeyInfo() const = 0;
+
+  // Returns the algorithm of the asymmetric key pair.
+  virtual crypto::SignatureVerifier::SignatureAlgorithm GetAlgorithm()
+      const = 0;
+
+  // Returns a proto representation of the current private key which can be
+  // serialized and loaded again through the PrivateKeyFactory.
+  virtual client_certificates_pb::PrivateKey ToProto() const = 0;
+
+  // Returns a dictionary representation of the current private key which can
+  // be serialized and loaded again through the PrivateKeyFactory.
+  virtual base::DictValue ToDict() const = 0;
+
+  // Returns the source from where the private key was created.
+  PrivateKeySource GetSource() const;
+
+  // Returns a version of this private key which can be used in TLS protocols.
+  // May be nullptr if not supported.
+  scoped_refptr<net::SSLPrivateKey> GetSSLPrivateKey();
+
+#if BUILDFLAG(IS_IOS)
+  // Returns Apple-specific reference to a Keychain key. This returns
+  // nullptr for all key types except unexportable keys on IOS, for
+  // which a Keychain-backed key reference is required for authentication.
+  virtual SecKeyRef GetSecKeyRef() const;
+#endif  // BUILDFLAG(IS_IOS)
+
+#if BUILDFLAG(IS_CHROMEOS)
+  // Returns the certificate bound to this key (matched by SubjectPublicKeyInfo
+  // when the key was loaded), or nullptr if no cert is bound yet. Lets the
+  // certificate store reuse the cert the key factory already located instead of
+  // listing Kcer's certs a second time. Non-Kcer keys return nullptr.
+  virtual scoped_refptr<net::X509Certificate> GetBoundCert() const;
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+ protected:
+  PrivateKey(PrivateKeySource source,
+             scoped_refptr<net::SSLPrivateKey> ssl_private_key);
+
+  // Builds a dictionary representation of a `key`.
+  base::DictValue BuildSerializedPrivateKey(std::vector<uint8_t> key) const;
+
+  virtual ~PrivateKey();
+
+  PrivateKeySource source_;
+
+  scoped_refptr<net::SSLPrivateKey> ssl_private_key_;
+
+ private:
+  friend class base::RefCountedThreadSafe<PrivateKey>;
+};
+
+}  // namespace client_certificates
+
+#endif  // COMPONENTS_ENTERPRISE_CLIENT_CERTIFICATES_CORE_PRIVATE_KEY_H_

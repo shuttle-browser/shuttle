@@ -1,0 +1,28 @@
+# Copyright 2018 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/channel.gni")
+import("//build/config/android/config.gni")
+import("//build/config/compiler/pgo/pgo.gni")
+
+declare_args() {
+  # Show a launcher icon to open WebView developer UI. This is enabled by
+  # default for all prestable builds.
+  webview_devui_show_icon = android_channel != "stable"
+}
+
+upstream_only_webview_deps = [
+  "//android_webview/nonembedded:devui_banner_resources",
+  "//android_webview/nonembedded:icon_resources",
+]
+
+webview_product_config_java_package = "org.chromium.android_webview"
+
+use_webview_pgo_profile = current_cpu == "arm64" && chrome_pgo_phase == 2
+use_webview_pgo_profile_default_toolchain =
+    target_cpu == "arm64" && chrome_pgo_phase_default_toolchain == 2
+
+if (use_webview_pgo_profile_default_toolchain) {
+  webview_toolchain = "//build/toolchain/android:android_clang_arm64_webview"
+}

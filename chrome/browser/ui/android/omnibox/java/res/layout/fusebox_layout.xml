@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2025 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+<merge
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <org.chromium.chrome.browser.omnibox.fusebox.FuseboxAttachmentRecyclerView
+        android:id="@+id/location_bar_attachments"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:orientation="horizontal"
+        android:requiresFadingEdge="horizontal"
+        android:fadingEdgeLength="8dp"
+        android:paddingStart="16dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="4dp"
+        android:focusable="false"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"/>
+
+    <ImageView
+        android:id="@+id/fusebox_plus_button"
+        android:foreground="@drawable/pill_button_focus_ring"
+        android:layout_width="@dimen/fusebox_button_size"
+        android:layout_height="@dimen/fusebox_button_size"
+        android:visibility="gone"
+        android:padding="@dimen/fusebox_button_padding"
+        android:contentDescription="@string/accessibility_omnibox_open_context_popup"
+        android:tooltipText="@string/ntp_compose_add_context_title"
+        android:src="@drawable/ic_add_round_20dp"
+        android:scaleType="centerInside"
+        android:clickable="true"
+        android:focusable="true"
+        android:clipToOutline="true"
+        android:layout_marginStart="?attr/fuseboxPlusButtonStartMargin"
+        android:layout_marginBottom="?attr/fuseboxPlusButtonBottomMargin"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/url_bar"
+        app:tint="@color/default_icon_color_tint_list"/>
+
+    <org.chromium.ui.widget.ButtonCompat
+        style="@style/TextButton"
+        android:id="@+id/fusebox_request_type"
+        android:layout_width="wrap_content"
+        android:layout_height="@dimen/min_touch_target_size"
+        android:visibility="gone"
+        android:contentDescription="@string/accessibility_omnibox_reset_mode"
+        android:drawableStart="@drawable/search_spark_black_24dp"
+        android:drawableEnd="@drawable/btn_close"
+        android:drawablePadding="8dp"
+        android:singleLine="true"
+        android:text="@string/ai_mode_entrypoint_label"
+        android:textAlignment="viewStart"
+        app:layout_constraintStart_toEndOf="@id/fusebox_plus_button"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/url_bar"
+        app:buttonColor="@color/interactable_chip_bg_color"
+        app:verticalInset="6dp"
+        app:rippleCornerRadius="36dp"/>
+
+    <ImageView
+        android:id="@+id/navigate_button"
+        android:layout_width="@dimen/min_touch_target_size"
+        android:layout_height="@dimen/min_touch_target_size"
+        android:layout_marginEnd="10dp"
+        android:visibility="gone"
+        android:src="@drawable/ic_arrow_forward_blue_24dp"
+        android:tooltipText="@string/ntp_compose_submit_button_a11y_label"
+        android:clickable="true"
+        android:focusable="true"
+        android:scaleType="centerInside"
+        android:background="@drawable/fusebox_popover_navigate_button_background"
+        android:foreground="@drawable/pill_button_focus_ring"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/margin_spacer"
+        app:layout_constraintTop_toBottomOf="@id/url_bar"/>
+
+    <org.chromium.components.browser_ui.widget.chips.ChipView
+        style="@style/AiModeChip"
+        android:id="@+id/fusebox_activation_chip"
+        android:visibility="gone"
+        android:tooltipText="@string/ntp_compose_entrypoint_a11y_label"
+        android:foreground="@drawable/activation_chip_focus_ring"
+        app:verticalInset="8dp"
+        app:horizontalInset="5dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+</merge>

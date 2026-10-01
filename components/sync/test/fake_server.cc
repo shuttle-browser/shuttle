@@ -1,0 +1,682 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/sync/test/fake_server.h"
+
+#include <algorithm>
+#include <limits>
+#include <set>
+#include <string_view>
+#include <utility>
+
+#include "base/command_line.h"
+#include "base/files/file_util.h"
+#include "base/hash/hash.h"
+#include "base/json/json_reader.h"
+#include "base/json/json_writer.h"
+#include "base/logging.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_split.h"
+#include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
+#include "base/test/test_file_util.h"
+#include "base/threading/thread_restrictions.h"
+#include "base/time/time.h"
+#include "base/values.h"
+#include "components/sync/base/client_tag_hash.h"
+#include "components/sync/base/data_type.h"
+#include "components/sync/engine/loopback_server/persistent_tombstone_entity.h"
+#include "components/sync/protocol/data_type_progress_marker.pb.h"
+#include "components/sync/protocol/proto_value_conversions.h"
+#include "components/sync/protocol/sync_entity.pb.h"
+#include "components/sync/protocol/sync_enums.pb.h"
+#include "components/sync_device_info/device_info_util.h"
+#include "net/http/http_status_code.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+using syncer::DataType;
+using syncer::DataTypeSet;
+using syncer::GetDataTypeFromSpecifics;
+using syncer::LoopbackServer;
+using syncer::LoopbackServerEntity;
+
+namespace fake_server {
+
+FakeServer::FakeServer(const base::FilePath& loopback_server_dir)
+    : fake_state_file_path_(
+          loopback_server_dir.AppendASCII("fake_state.json")) {
+  CHECK(!loopback_server_dir.empty());
+  // Needed by syncer::LoopbackServer.
+  base::ScopedAllowBlockingForTesting allow_blocking;
+  loopback_server_ = std::make_unique<syncer::LoopbackServer>(
+      loopback_server_dir.AppendASCII("profile.pb"));
+  loopback_server_->set_observer_for_tests(this);
+
+  SetUpdateMode(syncer::AUTOFILL_VALUABLE, UpdateMode::kFull);
+  SetUpdateMode(syncer::AUTOFILL_WALLET_DATA, UpdateMode::kFull);
+  SetUpdateMode(syncer::AUTOFILL_WALLET_OFFER, UpdateMode::kFull);
+
+  LoadFakeStateFromDisk();
+}
+
+FakeServer::FakeServer()
+    : FakeServer(base::CreateUniqueTempDirectoryScopedToTest()) {}
+
+FakeServer::~FakeServer() = default;
+
+void FakeServer::LoadFakeStateFromDisk() {
+  base::ScopedAllowBlockingForTesting allow_blocking;
+  std::string json_string;
+  if (!base::ReadFileToString(fake_state_file_path_, &json_string)) {
+    return;
+  }
+
+  std::optional<base::Value> json =
+      base::JSONReader::Read(json_string, base::JSON_PARSE_RFC);
+  if (!json || !json->is_dict()) {
+    ADD_FAILURE() << "Failed decode FakeServer state";
+    return;
+  }
+
+  const base::DictValue& dict = json->GetDict();
+  std::optional<int> http_error_status_code =
+      dict.FindInt("http_error_status_code");
+  if (http_error_status_code) {
+    http_error_status_code_ =
+        static_cast<net::HttpStatusCode>(*http_error_status_code);
+  }
+}
+
+void FakeServer::WriteFakeStateToDisk() const {
+  base::ScopedAllowBlockingForTesting allow_blocking;
+  base::DictValue dict;
+  if (http_error_status_code_) {
+    dict.Set("http_error_status_code",
+             static_cast<int>(*http_error_status_code_));
+  }
+
+  std::string json_string;
+  if (base::JSONWriter::Write(dict, &json_string)) {
+    base::WriteFile(fake_state_file_path_, json_string);
+  }
+}
+
+namespace {
+
+bool ClearProgressTokenIfExists(DataType data_type,
+                                sync_pb::ClientToServerMessage* message) {
+  google::protobuf::RepeatedPtrField<sync_pb::DataTypeProgressMarker>*
+      progress_markers =
+          message->mutable_get_updates()->mutable_from_progress_marker();
+  for (int index = 0; index < progress_markers->size(); ++index) {
+    if (syncer::GetDataTypeFromSpecificsFieldNumber(
+            progress_markers->Get(index).data_type_id()) == data_type) {
+      progress_markers->at(index).clear_token();
+      return true;
+    }
+  }
+  return false;
+}
+
+DataTypeSet ClearProgressTokensForTypes(
+    DataTypeSet data_types,
+    sync_pb::ClientToServerMessage* message) {
+  syncer::DataTypeSet removed_token_types;
+  if (message->message_contents() ==
+      sync_pb::ClientToServerMessage::GET_UPDATES) {
+    for (const syncer::DataType type : data_types) {
+      if (ClearProgressTokenIfExists(type, message)) {
+        removed_token_types.Put(type);
+      }
+    }
+  }
+  return removed_token_types;
+}
+
+void AddClearAllGCDirectives(syncer::DataTypeSet data_types,
+                             sync_pb::GetUpdatesResponse* gu_response) {
+  google::protobuf::RepeatedPtrField<sync_pb::DataTypeProgressMarker>*
+      progress_markers = gu_response->mutable_new_progress_marker();
+  for (sync_pb::DataTypeProgressMarker& progress_marker : *progress_markers) {
+    if (data_types.Has(syncer::GetDataTypeFromSpecificsFieldNumber(
+            progress_marker.data_type_id()))) {
+      progress_marker.mutable_gc_directive()->set_version_watermark(0);
+    }
+  }
+}
+
+std::string PrettyPrintValue(base::Value value) {
+  std::string message;
+  base::JSONWriter::WriteWithOptions(
+      value, base::JSONWriter::OPTIONS_PRETTY_PRINT, &message);
+  return message;
+}
+
+}  // namespace
+
+void FakeServer::HandleEvent(const sync_pb::EventRequest& request) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+
+  if (request.has_sync_disabled()) {
+    sync_pb::DeviceInfoSpecifics specifics;
+    specifics.set_cache_guid(request.sync_disabled().cache_guid());
+
+    InjectEntity(
+        syncer::PersistentTombstoneEntity::CreateNewForTest(  // IN-TEST
+            syncer::DEVICE_INFO,
+            syncer::DeviceInfoUtil::SpecificsToTag(specifics)));
+  }
+}
+
+net::HttpStatusCode FakeServer::HandleCommand(const std::string& request,
+                                              std::string* response) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  response->clear();
+
+  request_counter_++;
+
+  sync_pb::ClientToServerMessage message;
+  bool parsed = message.ParseFromString(request);
+  DCHECK(parsed) << "Unable to parse the ClientToServerMessage.";
+
+  LogForTestFailure(FROM_HERE, "REQUEST",
+                    PrettyPrintValue(syncer::ClientToServerMessageToValue(
+                        message, {.include_specifics = true,
+                                  .include_full_get_update_triggers = false})));
+
+  sync_pb::ClientToServerResponse response_proto;
+  net::HttpStatusCode http_status_code =
+      HandleParsedCommand(message, &response_proto);
+
+  LogForTestFailure(
+      FROM_HERE, "RESPONSE",
+      PrettyPrintValue(syncer::ClientToServerResponseToValue(
+          response_proto, {.include_specifics = true,
+                           .include_full_get_update_triggers = false})));
+
+  *response = response_proto.SerializeAsString();
+  return http_status_code;
+}
+
+net::HttpStatusCode FakeServer::HandleParsedCommand(
+    const sync_pb::ClientToServerMessage& message,
+    sync_pb::ClientToServerResponse* response) {
+  DCHECK(response);
+  response->Clear();
+
+  // Store last message from the client in any case.
+  switch (message.message_contents()) {
+    case sync_pb::ClientToServerMessage::GET_UPDATES:
+      last_getupdates_message_ = message;
+      for (Observer& observer : observers_) {
+        observer.OnWillGetUpdates(message);
+      }
+      break;
+    case sync_pb::ClientToServerMessage::COMMIT:
+      last_commit_message_ = message;
+      OnWillCommit();
+      break;
+    case sync_pb::ClientToServerMessage::CLEAR_SERVER_DATA:
+      // Don't care.
+      break;
+    case sync_pb::ClientToServerMessage::DEPRECATED_3:
+    case sync_pb::ClientToServerMessage::DEPRECATED_4:
+      NOTREACHED();
+  }
+
+  if (http_error_status_code_) {
+    return *http_error_status_code_;
+  }
+
+  if (message.message_contents() == sync_pb::ClientToServerMessage::COMMIT &&
+      commit_error_type_ != sync_pb::SyncEnums::SUCCESS &&
+      ShouldSendTriggeredError()) {
+    response->set_error_code(commit_error_type_);
+    return net::HTTP_OK;
+  }
+
+  if (error_type_ != sync_pb::SyncEnums::SUCCESS &&
+      ShouldSendTriggeredError()) {
+    response->set_error_code(error_type_);
+    return net::HTTP_OK;
+  }
+
+  if (triggered_actionable_error_.get() && ShouldSendTriggeredError()) {
+    *response->mutable_error() = *triggered_actionable_error_;
+    return net::HTTP_OK;
+  }
+
+  // The loopback server does not know how to handle Wallet or Offer requests
+  // -- and should not. The FakeServer is handling those instead. The
+  // loopback server has a strong expectations about how progress tokens are
+  // structured. To not interfere with this, we remove progress markers for
+  // full-update types before passing the request to the loopback server.
+  sync_pb::ClientToServerMessage message_for_loopback_server = message;
+
+  // If any of the data type progress markers are (simulated to be) too old,
+  // drop them from the message to the loopback server, so it'll respond with a
+  // full update.
+  syncer::DataTypeSet send_clear_all_directive_types =
+      ClearProgressTokensForTypes(old_progress_marker_types_,
+                                  &message_for_loopback_server);
+  old_progress_marker_types_.RemoveAll(send_clear_all_directive_types);
+
+  net::HttpStatusCode http_status_code =
+      SendToLoopbackServer(message_for_loopback_server, response);
+
+  if (response->has_get_updates() && disallow_sending_encryption_keys_) {
+    response->mutable_get_updates()->clear_encryption_keys();
+  }
+
+  if (http_status_code == net::HTTP_OK &&
+      message.message_contents() ==
+          sync_pb::ClientToServerMessage::GET_UPDATES) {
+
+    if (!send_clear_all_directive_types.empty()) {
+      AddClearAllGCDirectives(send_clear_all_directive_types,
+                              response->mutable_get_updates());
+    }
+
+    // Populate `active_collaboration_ids`.
+    for (sync_pb::DataTypeProgressMarker& progress_marker :
+         *response->mutable_get_updates()->mutable_new_progress_marker()) {
+      DataType type = syncer::GetDataTypeFromSpecificsFieldNumber(
+          progress_marker.data_type_id());
+      if (!syncer::SharedTypes().Has(type)) {
+        continue;
+      }
+      sync_pb::GarbageCollectionDirective::CollaborationGarbageCollection*
+          collaboration_gc = progress_marker.mutable_gc_directive()
+                                 ->mutable_collaboration_gc();
+      for (const syncer::CollaborationId& collaboration_id : collaborations_) {
+        collaboration_gc->add_active_collaboration_ids(
+            collaboration_id.value());
+      }
+    }
+  }
+
+  if (http_status_code == net::HTTP_OK &&
+      response->error_code() == sync_pb::SyncEnums::SUCCESS) {
+    DCHECK(!response->has_client_command());
+    *response->mutable_client_command() = client_command_;
+
+    if (message.has_get_updates()) {
+      for (Observer& observer : observers_) {
+        observer.OnSuccessfulGetUpdates();
+      }
+    }
+  }
+
+  return http_status_code;
+}
+
+net::HttpStatusCode FakeServer::SendToLoopbackServer(
+    const sync_pb::ClientToServerMessage& message,
+    sync_pb::ClientToServerResponse* response) {
+  base::ScopedAllowBlockingForTesting allow_blocking;
+  return loopback_server_->HandleCommand(message, response);
+}
+
+bool FakeServer::GetLastCommitMessage(sync_pb::ClientToServerMessage* message) {
+  if (!last_commit_message_.has_commit()) {
+    return false;
+  }
+
+  message->CopyFrom(last_commit_message_);
+  return true;
+}
+
+bool FakeServer::GetLastGetUpdatesMessage(
+    sync_pb::ClientToServerMessage* message) {
+  if (!last_getupdates_message_.has_get_updates()) {
+    return false;
+  }
+
+  message->CopyFrom(last_getupdates_message_);
+  return true;
+}
+
+void FakeServer::OverrideResponseType(
+    LoopbackServer::ResponseTypeProvider response_type_override) {
+  loopback_server_->OverrideResponseType(std::move(response_type_override));
+}
+
+void FakeServer::FlushToDisk() {
+  loopback_server_->FlushToDisk();
+}
+
+base::DictValue FakeServer::GetEntitiesAsDictForTesting() {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  return loopback_server_->GetEntitiesAsDictForTesting();
+}
+
+std::vector<sync_pb::SyncEntity> FakeServer::GetSyncEntitiesByDataType(
+    DataType data_type) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  return loopback_server_->GetSyncEntitiesByDataType(data_type);
+}
+
+std::vector<sync_pb::SyncEntity> FakeServer::GetPermanentSyncEntitiesByDataType(
+    DataType data_type) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  return loopback_server_->GetPermanentSyncEntitiesByDataType(data_type);
+}
+
+const std::vector<std::vector<uint8_t>>& FakeServer::GetKeystoreKeys() const {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  return loopback_server_->GetKeystoreKeysForTesting();
+}
+
+void FakeServer::TriggerKeystoreKeyRotation() {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  loopback_server_->AddNewKeystoreKeyForTesting();
+
+  std::vector<sync_pb::SyncEntity> nigori_entities =
+      loopback_server_->GetPermanentSyncEntitiesByDataType(syncer::NIGORI);
+
+  DCHECK_EQ(nigori_entities.size(), 1U);
+  const int version = loopback_server_->GetMigrationVersion(syncer::NIGORI);
+  bool success = ModifyEntitySpecifics(
+      LoopbackServerEntity::GetTopLevelId(syncer::NIGORI, version),
+      nigori_entities[0].specifics());
+  DCHECK(success);
+}
+
+void FakeServer::InjectEntity(std::unique_ptr<LoopbackServerEntity> entity) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  const DataType data_type = entity->GetDataType();
+
+  OnWillCommit();
+
+  {
+    base::ScopedAllowBlockingForTesting allow_blocking;
+    loopback_server_->SaveEntity(std::move(entity));
+    loopback_server_->ScheduleSaveStateToFile();
+  }
+
+  // Notify observers so invalidations are mimic-ed.
+  OnCommit(/*committed_data_types=*/{data_type});
+}
+
+
+
+
+
+bool FakeServer::ModifyEntitySpecifics(
+    const std::string& id,
+    const sync_pb::EntitySpecifics& updated_specifics) {
+  OnWillCommit();
+
+  {
+    base::ScopedAllowBlockingForTesting allow_blocking;
+    if (!loopback_server_->ModifyEntitySpecifics(id, updated_specifics)) {
+      return false;
+    }
+  }
+
+  // Notify observers so invalidations are mimic-ed.
+  OnCommit(
+      /*committed_data_types=*/{GetDataTypeFromSpecifics(updated_specifics)});
+
+  return true;
+}
+
+bool FakeServer::ModifyBookmarkEntity(
+    const std::string& id,
+    const std::string& parent_id,
+    const sync_pb::EntitySpecifics& updated_specifics) {
+  OnWillCommit();
+  {
+    base::ScopedAllowBlockingForTesting allow_blocking;
+    if (!loopback_server_->ModifyBookmarkEntity(id, parent_id,
+                                                updated_specifics)) {
+      return false;
+    }
+  }
+
+  // Notify observers so invalidations are mimic-ed.
+  OnCommit(/*committed_data_types=*/{syncer::BOOKMARKS});
+
+  return true;
+}
+
+void FakeServer::ClearServerData() {
+  DCHECK(thread_checker_.CalledOnValidThread());
+
+  OnWillCommit();
+  {
+    base::ScopedAllowBlockingForTesting allow_blocking;
+    loopback_server_->ClearServerData();
+  }
+
+  // Notify observers so invalidations are mimic-ed.
+  OnCommit(/*committed_data_types=*/{syncer::NIGORI});
+}
+
+void FakeServer::DeleteAllEntitiesForDataType(DataType data_type) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  base::ScopedAllowBlockingForTesting allow_blocking;
+  loopback_server_->DeleteAllEntitiesForDataType(data_type);
+}
+
+void FakeServer::SetHttpError(net::HttpStatusCode http_status_code) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK_GT(http_status_code, 0);
+  http_error_status_code_ = http_status_code;
+  WriteFakeStateToDisk();
+}
+
+void FakeServer::ClearHttpError() {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  http_error_status_code_ = std::nullopt;
+  WriteFakeStateToDisk();
+}
+
+std::optional<net::HttpStatusCode> FakeServer::GetHttpError() const {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  return http_error_status_code_;
+}
+
+void FakeServer::SetClientCommand(
+    const sync_pb::ClientCommand& client_command) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  client_command_ = client_command;
+}
+
+void FakeServer::TriggerCommitError(
+    const sync_pb::SyncEnums_ErrorType& error_type) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK(error_type == sync_pb::SyncEnums::SUCCESS || !HasTriggeredError());
+
+  commit_error_type_ = error_type;
+}
+
+void FakeServer::TriggerError(const sync_pb::SyncEnums_ErrorType& error_type) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK(error_type == sync_pb::SyncEnums::SUCCESS || !HasTriggeredError());
+
+  error_type_ = error_type;
+}
+
+void FakeServer::TriggerActionableProtocolError(
+    const sync_pb::SyncEnums_ErrorType& error_type,
+    const std::string& description,
+    const std::string& url,
+    const sync_pb::SyncEnums::Action& action) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  DCHECK(!HasTriggeredError());
+
+  auto error = std::make_unique<sync_pb::ClientToServerResponse_Error>();
+  error->set_error_type(error_type);
+  error->set_error_description(description);
+  error->set_action(action);
+  triggered_actionable_error_ = std::move(error);
+}
+
+void FakeServer::ClearActionableProtocolError() {
+  triggered_actionable_error_.reset();
+}
+
+bool FakeServer::EnableAlternatingTriggeredErrors() {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  if (error_type_ == sync_pb::SyncEnums::SUCCESS &&
+      !triggered_actionable_error_) {
+    DVLOG(1) << "No triggered error set. Alternating can't be enabled.";
+    return false;
+  }
+
+  alternate_triggered_errors_ = true;
+  // Reset the counter so that the the first request yields a triggered error.
+  request_counter_ = 0;
+  return true;
+}
+
+void FakeServer::SetRejectOldProgressMarkerForType(syncer::DataType data_type) {
+  old_progress_marker_types_.Put(data_type);
+}
+
+void FakeServer::SetUpdateMode(DataType data_type, UpdateMode update_mode) {
+  loopback_server_->SetUpdateMode(data_type, update_mode);
+}
+
+void FakeServer::DisallowSendingEncryptionKeys() {
+  disallow_sending_encryption_keys_ = true;
+}
+
+void FakeServer::SetThrottledTypes(syncer::DataTypeSet types) {
+  loopback_server_->SetThrottledTypesForTesting(types);
+}
+
+bool FakeServer::ShouldSendTriggeredError() const {
+  if (!alternate_triggered_errors_) {
+    return true;
+  }
+
+  // Check that the counter is odd so that we trigger an error on the first
+  // request after alternating is enabled.
+  return request_counter_ % 2 != 0;
+}
+
+bool FakeServer::HasTriggeredError() const {
+  return commit_error_type_ != sync_pb::SyncEnums::SUCCESS ||
+         error_type_ != sync_pb::SyncEnums::SUCCESS ||
+         triggered_actionable_error_;
+}
+
+void FakeServer::AddObserver(Observer* observer) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  observers_.AddObserver(observer);
+}
+
+void FakeServer::RemoveObserver(Observer* observer) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  observers_.RemoveObserver(observer);
+}
+
+void FakeServer::OnCommit(syncer::DataTypeSet committed_data_types) {
+  for (Observer& observer : observers_) {
+    observer.OnCommit(committed_data_types);
+  }
+}
+
+void FakeServer::OnCommittedDeletionOrigin(
+    syncer::DataType type,
+    const sync_pb::DeletionOrigin& deletion_origin) {
+  committed_deletion_origins_[type].push_back(deletion_origin);
+}
+
+void FakeServer::EnableStrongConsistencyWithConflictDetectionModel() {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  loopback_server_->EnableStrongConsistencyWithConflictDetectionModel();
+}
+
+void FakeServer::SetMaxGetUpdatesBatchSize(int batch_size) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  loopback_server_->SetMaxGetUpdatesBatchSize(batch_size);
+}
+
+void FakeServer::SetBagOfChips(const sync_pb::ChipBag& bag_of_chips) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  loopback_server_->SetBagOfChipsForTesting(bag_of_chips);
+}
+
+void FakeServer::TriggerMigrationDoneError(syncer::DataTypeSet types) {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  loopback_server_->TriggerMigrationForTesting(types);
+}
+
+void FakeServer::EnableGcDirectiveForMigration() {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  loopback_server_->EnableGcDirectiveForMigration();
+}
+
+int FakeServer::GetMigrationVersion(syncer::DataType type) const {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  return loopback_server_->GetMigrationVersion(type);
+}
+
+// static
+int FakeServer::GetProgressMarkerMigrationVersion(
+    const sync_pb::DataTypeProgressMarker& progress_marker) {
+  return syncer::LoopbackServer::GetMigrationVersionFromProgressTokenForTesting(
+      progress_marker.token());
+}
+
+void FakeServer::AddCollaboration(syncer::CollaborationId collaboration_id) {
+  collaborations_.insert(std::move(collaboration_id));
+  // TODO(b/325917757): update collaboration data type.
+}
+
+void FakeServer::RemoveCollaboration(
+    const syncer::CollaborationId& collaboration_id) {
+  collaborations_.erase(collaboration_id);
+  // TODO(b/325917757): update collaboration data type.
+}
+
+std::string FakeServer::GetStoreBirthday() const {
+  return loopback_server_->GetStoreBirthday();
+}
+
+const std::vector<sync_pb::DeletionOrigin>&
+FakeServer::GetCommittedDeletionOrigins(syncer::DataType type) const {
+  auto it = committed_deletion_origins_.find(type);
+  if (it == committed_deletion_origins_.end()) {
+    static const std::vector<sync_pb::DeletionOrigin> empty_result;
+    return empty_result;
+  }
+  return it->second;
+}
+
+base::WeakPtr<FakeServer> FakeServer::AsWeakPtr() {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  return weak_ptr_factory_.GetWeakPtr();
+}
+
+void FakeServer::LogForTestFailure(const base::Location& location,
+                                   const std::string& title,
+                                   const std::string& body) {
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kDisableFakeServerFailureOutput)) {
+    return;
+  }
+  if (gtest_scoped_traces_.empty()) {
+    gtest_scoped_traces_.push_back(std::make_unique<testing::ScopedTrace>(
+        location.file_name(), location.line_number(),
+        base::StringPrintf(
+            "Add --%s to hide verbose logs from the fake server.",
+            switches::kDisableFakeServerFailureOutput)));
+  }
+  gtest_scoped_traces_.push_back(std::make_unique<testing::ScopedTrace>(
+      location.file_name(), location.line_number(),
+      base::StringPrintf("--- %s %d (reverse chronological order) ---\n%s",
+                         title, request_counter_, body)));
+}
+
+void FakeServer::OnWillCommit() {
+  for (Observer& observer : observers_) {
+    observer.OnWillCommit();
+  }
+}
+
+}  // namespace fake_server

@@ -1,0 +1,94 @@
+# Copyright 2023 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("routines") {
+  sources = [
+    "diagnostic_routine.cc",
+    "diagnostic_routine.h",
+    "diagnostic_routine_converters.cc",
+    "diagnostic_routine_converters.h",
+    "diagnostic_routine_info.h",
+    "diagnostic_routine_observation.cc",
+    "diagnostic_routine_observation.h",
+  ]
+
+  deps = [
+    "//base",
+    "//chrome/common/chromeos/extensions/api",
+    "//chromeos/ash/services/cros_healthd/public/mojom",
+    "//content/public/browser",
+    "//extensions/common",
+    "//mojo/public/cpp/bindings",
+  ]
+
+  public_deps = [ "//extensions/browser" ]
+}
+
+source_set("routine_manager") {
+  sources = [
+    "diagnostic_routine_manager.cc",
+    "diagnostic_routine_manager.h",
+  ]
+
+  deps = [
+    ":routines",
+    "//base",
+    "//chrome/browser/chromeos/extensions/telemetry/api/common",
+    "//chrome/browser/chromeos/extensions/telemetry/api/common:util",
+    "//chrome/common/chromeos/extensions/api",
+    "//chromeos/ash/services/cros_healthd/public/cpp",
+    "//chromeos/ash/services/cros_healthd/public/mojom",
+    "//content/public/browser",
+  ]
+
+  public_deps = [
+    "//extensions/browser",
+    "//extensions/common",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "diagnostic_routine_converters_unittest.cc",
+    "diagnostic_routine_manager_unittest.cc",
+  ]
+
+  deps = [
+    ":routine_manager",
+    ":routines",
+    "//chrome/browser/ui",
+    "//chrome/browser/ui/tabs:tab_enums",
+    "//chrome/common/chromeos/extensions",
+    "//chrome/common/chromeos/extensions/api",
+    "//chrome/test:test_support",
+    "//chromeos/ash/components/mojo_service_manager:test_support",
+    "//chromeos/ash/services/cros_healthd/public/cpp:fakes",
+    "//extensions:test_support",
+    "//extensions/common",
+    "//net:test_support",
+    "//testing/gmock",
+    "//testing/gtest",
+  ]
+}
+
+source_set("browser_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+  sources = [ "diagnostic_routine_observation_browsertest.cc" ]
+
+  deps = [
+    ":routines",
+    "//base",
+    "//chrome/browser/chromeos/extensions/telemetry/api/common:test_support",
+    "//chrome/browser/profiles:profile",
+    "//chrome/common/chromeos/extensions/api",
+    "//chrome/test:test_support_ui",
+    "//extensions/common",
+    "//mojo/public/cpp/bindings",
+    "//testing/gtest",
+  ]
+
+  data = [ "//chrome/test/data" ]
+}

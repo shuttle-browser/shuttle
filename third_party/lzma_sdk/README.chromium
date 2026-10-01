@@ -1,0 +1,53 @@
+Name: LZMA SDK
+Short Name: lzma
+URL: http://www.7-zip.org/sdk.html
+Version: 26.03
+Date: 2026-09-03
+Update Mechanism: Manual
+License: LZMA-SDK-9.22
+License File: LICENSE
+Security Critical: yes
+Shipped: yes
+CPEPrefix: cpe:2.3:a:7-zip:7-zip:26.03:*:*:*:*:*:*:*
+
+Description:
+This contains a part of LZMA SDK 26.03. It builds only in single-threaded mode.
+
+Local Modifications:
+The original code can be found at https://www.7-zip.org/a/lzma2603.7z.
+
+The 7z binaries are installed via a 3pp CIPD package into bin/ if Windows is
+specified as a target OS in the .gclient file. There are two subdirectories in
+bin/: win64/ and host_platform/. win64/ contains 64-bit Windows binaries to be
+packaged in Chromium targets requiring it, and host_platform/ contains binaries
+for the platform of the host where the Chromium source code is checked out and
+built. host_platform/ binaries should be used for build scripts that call 7z
+binaries. Supported platforms are:
+
+* linux-amd64
+* mac-amd64
+* mac-rm64
+* windows-386
+* windows-amd64
+
+7za.exe and 7zr.exe are both standalone command-line utilities to archive and
+extract files. 7zr is "lightweight" and only handles 7zip extensions. 7za can
+handle a few more.
+
+The purposes of the patches in the patches/ directory are:
+
+* deterministic_build.patch: Shorten segment names in Asm/x86/LzmaDecOpt.asm to
+  make the build deterministic.
+* fix_casts.patch: Fix undefined behavior in CpuArch.h flagged by UBSan caused
+  by invalid pointer casts.
+* hardware_crc.patch: Add the ability to suppress CRC hardware acceleration for
+  fuzzing.
+* hwcap.patch: Fix compilation when <asm/hwcap.h> is unavailable (on Fuchsia).
+* large_archive.patch: Extend the search range for 7z archive signature to
+  accomodate increased sfx binary size in debug builds.
+* no_avx_sse41.patch: Remove AVX and SSE41 code in LzFind.
+
+Apply them by running the following command from within the directory holding
+this README.chromium file:
+
+cat patches/*.patch | patch -d src -p 1

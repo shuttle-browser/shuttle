@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<body>
+<script src="../resources/testharness.js"></script>
+<script src="../resources/testharnessreport.js"></script>
+<script src="resources/gamepad-helpers.js"></script>
+<script>
+
+promise_test(async (t) => {
+    disconnectGamepads();
+    testGamepadStateAllDisconnected();
+
+    let connectPromise = onGamepadEventWithIndex('gamepadconnected', 0);
+    connectGamepads(1);
+    await connectPromise;
+
+    // First button change.
+    let rawInputPromise1 = ongamepadrawinputchanged();
+    setButtonInput(0, 0, 0);
+    dispatchRawInputChanged(0);
+    let rawInputEvent1 = await rawInputPromise1;
+    assert_equals(rawInputEvent1.type, "gamepadrawinputchanged");
+    assert_equals(rawInputEvent1.buttonsValueChanged.length, 1);
+    assert_array_equals(rawInputEvent1.buttonsValueChanged, [0]);
+    assert_array_equals(rawInputEvent1.buttonsReleased, [0]);
+    assert_equals(rawInputEvent1.buttonsPressed.length, 0);
+
+    // Second button change.
+    let rawInputPromise2 = ongamepadrawinputchanged();
+    setButtonInput(0, 0, 1);
+    dispatchRawInputChanged(0);
+    let rawInputEvent2 = await rawInputPromise2;
+    assert_equals(rawInputEvent2.type, "gamepadrawinputchanged");
+    assert_equals(rawInputEvent2.buttonsValueChanged.length, 1);
+    assert_array_equals(rawInputEvent2.buttonsValueChanged, [0]);
+    assert_equals(rawInputEvent2.buttonsReleased.length, 0);
+    assert_array_equals(rawInputEvent2.buttonsPressed, [0]);
+}, "Two raw input changed events fire sequentially for a single connected gamepad (buttons only)");
+
+promise_test(async (t) => {
+    disconnectGamepads();
+    testGamepadStateAllDisconnected();
+
+    // Connect a gamepad first.
+    let connectPromise = onGamepadEventWithIndex('gamepadconnected', 0);
+
+    // sets up a mock gamepad with ID, buttons, axes.
+    connectGamepads(1);
+    await connectPromise;
+
+    // Test a series of axis value changes, and verify the event is fired with
+    // the correct data each time.
+    let axes_values = [1.0, 0.5, 0.3, 0.1];
+    for (let axis_value of axes_values) {
+        // Trigger the event by changing an axis.
+        let rawInputChangedPromise = ongamepadrawinputchanged();
+        // Change axis 0 value to trigger event.
+        setAxisInput(0, 0, axis_value);
+        dispatchRawInputChanged(0);
+        let event = await rawInputChangedPromise;
+        console.log(`Received event ${event.type} for axis value ${axis_value}`);
+        assert_equals(event.type, "gamepadrawinputchanged");
+
+        // Verify changed axes.
+        assert_array_equals(event.axesChanged, [0]);
+        assert_equals(event.gamepad.axes[0], axis_value);
+    }
+}, "Raw input change event fires when axis value changes");
+
+</script>
+</body>
+</html>

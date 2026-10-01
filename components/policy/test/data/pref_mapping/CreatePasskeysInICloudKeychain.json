@@ -1,0 +1,15 @@
+[
+  {
+    "os": [
+      "mac"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "webauthn.create_in_icloud_keychain",
+      "default_value": false,
+      "values_to_test": [
+        true,
+        false
+      ]
+    }
+  }
+]

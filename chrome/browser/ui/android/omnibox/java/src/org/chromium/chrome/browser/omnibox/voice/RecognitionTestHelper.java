@@ -1,0 +1,50 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.omnibox.voice;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+import android.os.Bundle;
+import android.speech.RecognizerIntent;
+
+import org.chromium.chrome.browser.omnibox.voice.VoiceRecognitionIntentHandler.VoiceResult;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+/**
+ * A helper class that simplifies creation of {@link VoiceRecognitionHandler}'s test dependencies
+ * and provides utility methods for tests.
+ */
+public class RecognitionTestHelper {
+    /**
+     * Creates a test bundle.
+     *
+     * @param texts the queries representing transcription results
+     * @param confidences confidence values for corresponding queries
+     * @return Bundle containing voice recognition test results and scores.
+     */
+    public static Bundle createPlaceholderBundle(String[] texts, float[] confidences) {
+        Bundle b = new Bundle();
+
+        b.putStringArrayList(RecognizerIntent.EXTRA_RESULTS, new ArrayList<>(Arrays.asList(texts)));
+        b.putFloatArray(RecognizerIntent.EXTRA_CONFIDENCE_SCORES, confidences);
+        return b;
+    }
+
+    public static void assertVoiceResultsAreEqual(
+            List<VoiceResult> results, String[] texts, float[] confidences) {
+        assertTrue(
+                "Invalid array sizes",
+                results.size() == texts.length && texts.length == confidences.length);
+        for (int i = 0; i < texts.length; ++i) {
+            VoiceResult result = results.get(i);
+            assertEquals("Match text is not equal", texts[i], result.getMatch());
+            assertEquals("Confidence is not equal", confidences[i], result.getConfidence(), 0);
+        }
+    }
+}

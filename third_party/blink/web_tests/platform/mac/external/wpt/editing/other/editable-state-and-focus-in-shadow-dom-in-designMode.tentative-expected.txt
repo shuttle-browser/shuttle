@@ -1,0 +1,11 @@
+This is a testharness.js-based test.
+[FAIL] SelectAll in the open shadow DOM
+  promise_test: Unhandled rejection with value: object "TypeError: Invalid web code."
+[FAIL] SelectAll in the <div contenteditable> in the open shadow DOM
+  promise_test: Unhandled rejection with value: object "TypeError: Invalid web code."
+[FAIL] SelectAll in the closed shadow DOM
+  promise_test: Unhandled rejection with value: object "TypeError: Invalid web code."
+[FAIL] SelectAll in the <div contenteditable> in the closed shadow DOM
+  promise_test: Unhandled rejection with value: object "TypeError: Invalid web code."
+Harness: the test ran to completion.
+

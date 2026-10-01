@@ -1,0 +1,72 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_WEBUI_ASH_SETTINGS_PAGES_A11Y_ACCESSIBILITY_HANDLER_H_
+#define CHROME_BROWSER_UI_WEBUI_ASH_SETTINGS_PAGES_A11Y_ACCESSIBILITY_HANDLER_H_
+
+#include "base/memory/raw_ptr.h"
+#include "base/scoped_observation.h"
+#include "base/timer/timer.h"
+#include "components/soda/soda_installer.h"
+#include "content/public/browser/web_ui_message_handler.h"
+
+class Profile;
+
+namespace ash::settings {
+
+class AccessibilityHandler : public content::WebUIMessageHandler,
+                             public speech::SodaInstaller::Observer {
+ public:
+  explicit AccessibilityHandler(Profile* profile);
+
+  AccessibilityHandler(const AccessibilityHandler&) = delete;
+  AccessibilityHandler& operator=(const AccessibilityHandler&) = delete;
+
+  ~AccessibilityHandler() override;
+
+  // content::WebUIMessageHandler implementation.
+  void RegisterMessages() override;
+  void OnJavascriptAllowed() override;
+  void OnJavascriptDisallowed() override;
+
+  // Callback which updates if startup sound is enabled. Visible for testing.
+  void HandleManageA11yPageReady(const base::ListValue& args);
+
+ private:
+  friend class AccessibilityHandlerTest;
+
+  void HandleShowBrowserAppearanceSettings(const base::ListValue& args);
+  void HandleShowChromeVoxTutorial(const base::ListValue& args);
+  void HandleSetStartupSoundEnabled(const base::ListValue& args);
+  void HandleUpdateBluetoothBrailleDisplayAddress(const base::ListValue& args);
+  void HandleGetStartupSoundEnabled(const base::ListValue& args);
+  void HandlePreviewFlashNotification(const base::ListValue& args);
+
+  void OpenExtensionOptionsPage(const char extension_id[]);
+
+  void MaybeAddSodaInstallerObserver();
+
+  // SodaInstaller::Observer:
+  void OnSodaInstalled(speech::LanguageCode language_code) override;
+  void OnSodaProgress(speech::LanguageCode language_code,
+                      int progress) override;
+  void OnSodaInstallError(speech::LanguageCode language_code,
+                          speech::SodaInstaller::ErrorCode error_code) override;
+
+  void MaybeAddDictationLocales();
+  speech::LanguageCode GetDictationLocale();
+  std::u16string GetDictationLocaleDisplayName();
+
+  raw_ptr<Profile> profile_;  // Weak pointer.
+
+  base::ScopedObservation<speech::SodaInstaller,
+                          speech::SodaInstaller::Observer>
+      soda_observation_{this};
+
+  base::WeakPtrFactory<AccessibilityHandler> weak_ptr_factory_{this};
+};
+
+}  // namespace ash::settings
+
+#endif  // CHROME_BROWSER_UI_WEBUI_ASH_SETTINGS_PAGES_A11Y_ACCESSIBILITY_HANDLER_H_

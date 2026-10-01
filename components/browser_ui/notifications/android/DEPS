@@ -1,0 +1,4 @@
+include_rules = [
+  "+components/cached_flags",
+  "+ui/android",
+]

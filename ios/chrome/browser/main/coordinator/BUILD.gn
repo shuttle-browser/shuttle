@@ -1,0 +1,44 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("coordinator") {
+  sources = [
+    "browser_layout_coordinator.h",
+    "browser_layout_coordinator.mm",
+  ]
+  deps = [
+    "//base",
+    "//ios/chrome/browser/browser_view/ui_bundled:safe_area_provider",
+    "//ios/chrome/browser/fullscreen/model",
+    "//ios/chrome/browser/fullscreen/ui_bundled",
+    "//ios/chrome/browser/main/ui",
+    "//ios/chrome/browser/overlays/ui_bundled",
+    "//ios/chrome/browser/shared/coordinator/chrome_coordinator",
+    "//ios/chrome/browser/shared/coordinator/scene:scene_state_header",
+    "//ios/chrome/browser/shared/coordinator/scene/state",
+    "//ios/chrome/browser/shared/model/browser",
+    "//ios/chrome/browser/shared/model/profile",
+    "//ios/chrome/browser/shared/public/features",
+    "//ios/chrome/browser/tab_switcher/tab_strip/coordinator",
+    "//ios/chrome/browser/tab_switcher/tab_strip/ui:utils",
+    "//ui/base",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "browser_layout_coordinator_unittest.mm" ]
+  deps = [
+    ":coordinator",
+    "//base/test:test_support",
+    "//ios/chrome/browser/browser_view/ui_bundled:test_support",
+    "//ios/chrome/browser/main/ui",
+    "//ios/chrome/browser/shared/coordinator/layout_guide:layout_guide_scene_agent",
+    "//ios/chrome/browser/shared/coordinator/scene:scene_state_header",
+    "//ios/chrome/browser/shared/model/browser/test:test_support",
+    "//ios/chrome/browser/shared/model/profile/test",
+    "//ios/web/public/test",
+    "//testing/gtest",
+  ]
+}

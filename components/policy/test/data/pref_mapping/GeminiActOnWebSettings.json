@@ -1,0 +1,19 @@
+[
+  {
+    "os": [
+      "android",
+      "linux",
+      "mac",
+      "win",
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "glic.actuation_on_web",
+      "default_value": 1,
+      "values_to_test": [
+        0,
+        1
+      ]
+    }
+  }
+]

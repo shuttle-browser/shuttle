@@ -1,0 +1,277 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module actor.mojom;
+
+import "components/actor/public/mojom/actor_types.mojom";
+import "mojo/public/mojom/base/time.mojom";
+import "mojo/public/mojom/base/unguessable_token.mojom";
+import "third_party/blink/public/mojom/content_extraction/ai_page_content.mojom";
+import "third_party/blink/public/mojom/content_extraction/script_tools.mojom";
+import "ui/gfx/geometry/mojom/geometry.mojom";
+
+// This interface is meant to largely mirror the
+// BrowserAction::ActionInformation proto.
+
+// Tool-specific target.
+union ToolTarget {
+  // DOMNodeId for the node this invocation should be applied to.
+  int32 dom_node_id;
+
+  // An x,y pair representing a location relative to the origin at the top-left
+  // corner of the local root frame (i.e. the blink::WebWidget/RenderWidget). In
+  // DIP.
+  //
+  // Note: Renderer-side hit testing uses BlinkSpace (device pixels). This
+  // coordinate is converted via WebFrameWidget::DIPsToBlinkSpace() before
+  // performing a hit test.
+  gfx.mojom.Point coordinate_dip;
+};
+
+// Attributes of the Node target returned from hit test on last observed APC.
+struct ObservedToolTarget {
+  blink.mojom.AIPageContentAttributes node_attribute;
+};
+
+// Corresponds to ClickAction.ClickType
+enum ClickType {
+  kLeft = 1,
+
+  kRight = 2,
+
+  // Left click on an element expected to be occluded by a modeless panel,
+  // such as a cookie banner or popup. This bypasses occluding elements on top
+  // of the target and directly activates the target element.
+  //
+  // Only use this with an ActionTarget that identifies a content_node_id, not
+  // a coordinate target. The action fails if the target is not actually
+  // occluded by an eligible modeless panel at execution time.
+  kLeftOnOccludedTarget = 3,
+};
+
+// Corresponds to ClickAction.ClickCount
+enum ClickCount {
+  kSingle = 1,
+  kDouble = 2,
+};
+
+// Information specific to a click action.
+struct ClickAction {
+  ClickType type;
+  ClickCount count;
+};
+
+// Information specific to a mouse move action.
+// Has no members because the target, included in ToolInvocation, is the only
+// needed parameter.
+struct MouseMoveAction {};
+
+// Information specific to a scroll-to action.
+// Has no members because the target, included in ToolInvocation, is the only
+// needed parameter.
+struct ScrollToAction {};
+
+// Information specific to the type (keyboard input) action.  Note: TypeAction
+// may be implemented in multiple steps (e.g.  individual key events). In some
+// situations, part of the action may complete while another part fails.
+// TypeAction currently returns failure if any part of the action fails.
+// TODO(crbug.com/409333494): Consider how to handle partial success cases like
+// this.
+struct TypeAction {
+  // How the text should be inserted into the target.
+  enum Mode {
+    kDeleteExisting = 0,
+    kPrepend = 1,
+    kAppend = 2,
+  };
+
+  Mode mode;
+  // text should be ASCII only for now.
+  string text;
+  bool follow_by_enter;
+};
+
+// Scroll action performs a scroll on the page's viewport or on a specified
+// target element.
+// It currently returns true even for a partial scroll to the given distance
+// and direction.
+// It will provide more precise information about how much it scrolls.
+struct ScrollAction {
+  // Corresponds to ScrollAction.ScrollDirection.
+  // This must be kept in sync with ScrollAction.ScrollDirection enum in
+  // components/optimization_guide/proto/features/actions_data.proto.
+  enum ScrollDirection {
+    // Scroll left.
+    kLeft = 1,
+    // Scroll right.
+    kRight = 2,
+    // Scroll up.
+    kUp = 3,
+    // Scroll down.
+    kDown = 4,
+  };
+
+  ScrollDirection direction;
+  // Scroll distance in DIPs, and it should always be positive.
+  float distance;
+};
+
+// Action for selecting an option from a <select> element.
+struct SelectAction {
+  // The value of the option to set as the currently selected option. The action
+  // fails if the given value doesn't match the value of one of the element's
+  // <option> children. Case-sensitive.
+  string value;
+};
+
+// Performs a left mouse button down on the from_target, then moves to and
+// releases on the to_target.
+struct DragAndReleaseAction {
+  ToolTarget to_target;
+};
+
+// Executes a script tool associated with the Document.
+struct ScriptToolAction {
+  string name;
+  string input_arguments;
+};
+
+// Union of tool-specific actions.
+union ToolAction {
+  ClickAction click;
+  DragAndReleaseAction drag_and_release;
+  MouseMoveAction mouse_move;
+  ScrollAction scroll;
+  SelectAction select;
+  TypeAction type;
+  ScriptToolAction script_tool;
+  ScrollToAction scroll_to;
+};
+
+// All information required to invoke a tool in the renderer.
+struct ToolInvocation {
+  // The task ID owning this invocation.
+  TaskId task_id;
+
+  // The execution ID for state tracking (e.g., across navigations).
+  // This is null for tools that do not require state tracking across
+  // navigations
+  // (e.g., PageTools). Currently, it is only set by ScriptToolHost to associate
+  // the tool invocation with any navigations it triggers.
+  mojo_base.mojom.UnguessableToken? execution_id;
+
+  // The action to carry out in this invocation.
+  ToolAction action;
+
+  // Target of this tool invocation.
+  ToolTarget target;
+
+  // Target from hit test on the last observed page content.
+  // This is optional and is used for checking if the action target has changed
+  // since last observation.
+  ObservedToolTarget? observed_target;
+};
+
+struct ScriptToolResponse {
+  // The input arguments provided to the script tool action.
+  string input_arguments;
+
+  // The corresponding tool declaration.
+  blink.mojom.ScriptTool tool;
+
+  // The result of executing the action. If not provided, the action resulted in
+  // a navigation and the result will be on the next Document.
+  string? result;
+};
+
+// Represents the outcome of tool initialization.
+// This union covers three possible outcomes:
+// 1. Success with a target: `success_point` is set to a valid Point.
+// 2. Success without a target: `success_point` is explicitly set to null.
+// 3. Failure: `error_result` is populated.
+union InitializeToolResult {
+  // Populated when the tool is successfully initialized.
+  // Contains the resolved target point in Blink (physical) pixels relative
+  // to the widget's origin.
+  //
+  // NOTE: Not all tools provide a point. In those success cases, this
+  // field will be null.
+  gfx.mojom.Point? success_point;
+
+  // Populated when initialization fails.
+  ActionResult error_result;
+};
+
+// LINT.IfChange(ScreenshotPolicy)
+// Options that can be used to influence whether a tab screenshot is taken
+// after a set of actions has completed. These votes are combined to help
+// determine the final decision about screenshots.
+enum ScreenshotPolicy {
+  // A screenshot should be skipped. Even if performed, the result will be
+  // unused.
+  kSkipped = 0,
+
+  // A screenshot should be taken, but it will not cause a task failure if it is
+  // skipped.
+  kRequested = 1,
+
+  // A screenshot must be taken, and a task failure will occur if it is not
+  // provided.
+  kRequired = 2,
+};
+// LINT.ThenChange(//chrome/browser/actor/tab_observation_strategy.h:ScreenshotPolicy)
+
+// LINT.IfChange(PageContentExtractionPolicy)
+// Options a client can use to influence whether a page content extraction
+// (i.e. the construction of `AiPageContent`) is done after a set of actions has
+// completed. These votes are combined to help determine the final decision
+// about page content extraction.
+enum PageContentExtractionPolicy {
+  // Page content extraction should be skipped. Even if performed, the result
+  // will be unused.
+  kSkipped = 0,
+
+  // Page content extraction should be done, but it will not cause a task
+  // failure if it is skipped.
+  kRequested = 1,
+
+  // Page content extraction must be done, and a task failure will occur if it
+  // is not.
+  kRequired = 2,
+};
+// LINT.ThenChange(//chrome/browser/actor/tab_observation_strategy.h:PageContentExtractionPolicy)
+
+// Represents the type of login attempted by an AttemptLoginTool.
+enum AttemptLoginStatus {
+  kPasswordManager = 0,
+  kFederated = 1,
+};
+
+struct ActionResult {
+  // A code with the outcome of the tool invocation.
+  ActionResultCode code;
+
+  // Whether any action was taken on the page. This is used to know if we need
+  // to wait for the page to settle.
+  bool requires_page_stabilization;
+
+  // If the code is not kOk, an English language message describing the error.
+  // If the code is kOk, an optional English language message providing details
+  // on the execution. This is only forwarded to the model for operations that
+  // have an extra_information attribute in the result data structure.
+  string message;
+
+  // If the action is a script tool, provides the result of that execution. This
+  // is only populated if the execution was successful.
+  ScriptToolResponse? script_tool_response;
+
+  // Time at which execution of the action was complete and page
+  // stabilization was started. This field may not be available if the action's
+  // execution did not fully complete.
+  mojo_base.mojom.TimeTicks? execution_end_time;
+
+  ScreenshotPolicy screenshot_policy = kRequested;
+  PageContentExtractionPolicy page_content_policy = kRequested;
+  AttemptLoginStatus? attempt_login_status;
+};

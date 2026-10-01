@@ -1,0 +1,201 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_POPUP_MENU_OVERFLOW_MENU_COORDINATOR_OVERFLOW_MENU_MEDIATOR_H_
+#define IOS_CHROME_BROWSER_POPUP_MENU_OVERFLOW_MENU_COORDINATOR_OVERFLOW_MENU_MEDIATOR_H_
+
+#import <UIKit/UIKit.h>
+
+#import "ios/chrome/browser/browser_content/ui_bundled/browser_content_consumer.h"
+#import "ios/chrome/browser/policy/model/browser_management_service.h"
+#import "ios/chrome/browser/popup_menu/overflow_menu/public/overflow_menu_action_provider.h"
+#import "ios/chrome/browser/popup_menu/overflow_menu/ui/ui_swift.h"
+
+namespace bookmarks {
+class BookmarkModel;
+}  // namespace bookmarks
+namespace feature_engagement {
+class Tracker;
+}  // namespace feature_engagement
+namespace image_fetcher {
+class ImageFetcher;
+}  // namespace image_fetcher
+namespace signin {
+class AvatarProvider;
+class IdentityManager;
+}  // namespace signin
+namespace syncer {
+class SyncService;
+}  // namespace syncer
+namespace web {
+class WebState;
+}  // namespace web
+
+@protocol ActivityServiceCommands;
+class AuthenticationService;
+@protocol BookmarksCommands;
+@protocol BrowserCoordinatorCommands;
+class BrowserPolicyConnectorIOS;
+@protocol CobaltCommands;
+@protocol FindInPageCommands;
+@protocol FullscreenCommands;
+@protocol GeminiCommands;
+@protocol HelpCommands;
+class HomeBackgroundCustomizationService;
+@class LayoutGuideCenter;
+@protocol LensOverlayCommands;
+@protocol LevelUpCommands;
+@protocol OverflowMenuCustomizationCommands;
+@class OverflowMenuOrderer;
+class OverlayPresenter;
+@protocol PageInfoCommands;
+@protocol PictureInPictureCommands;
+@protocol PopupMenuCommands;
+class PrefService;
+@protocol PriceTrackedItemsCommands;
+class PromosManager;
+@protocol QuickDeleteCommands;
+@protocol NewTabPageCommands;
+@protocol ReaderModeCommands;
+class ReadingListBrowserAgent;
+class ReadingListModel;
+@protocol ReminderNotificationsCommands;
+@protocol SceneCommands;
+@protocol SettingsCommands;
+class TabBasedIPHBrowserAgent;
+class TemplateURLService;
+@protocol TextZoomCommands;
+class UserUploadedImageManager;
+class WebNavigationBrowserAgent;
+class WebStateList;
+@protocol WhatsNewCommands;
+
+// Mediator for the overflow menu. This object is in charge of creating and
+// updating the items of the overflow menu.
+@interface OverflowMenuMediator
+    : NSObject <BrowserContentConsumer, OverflowMenuActionProvider>
+
+// The data model for the overflow menu.
+@property(nonatomic, weak) OverflowMenuModel* model;
+
+// The WebStateList that this mediator listens for any changes on the current
+// WebState.
+@property(nonatomic, assign) WebStateList* webStateList;
+
+// Command Handlers.
+@property(nonatomic, weak) id<ActivityServiceCommands> activityServiceHandler;
+@property(nonatomic, weak) id<SceneCommands> sceneHandler;
+@property(nonatomic, weak) id<SettingsCommands> settingsHandler;
+@property(nonatomic, weak) id<BookmarksCommands> bookmarksHandler;
+@property(nonatomic, weak) id<LensOverlayCommands> lensOverlayHandler;
+@property(nonatomic, weak) id<BrowserCoordinatorCommands>
+    browserCoordinatorHandler;
+@property(nonatomic, weak) id<FindInPageCommands> findInPageHandler;
+@property(nonatomic, weak) id<HelpCommands> helpHandler;
+@property(nonatomic, weak) id<OverflowMenuCustomizationCommands>
+    overflowMenuCustomizationHandler;
+@property(nonatomic, weak) id<PageInfoCommands> pageInfoHandler;
+@property(nonatomic, weak) id<PopupMenuCommands> popupMenuHandler;
+@property(nonatomic, weak) id<PriceTrackedItemsCommands>
+    priceNotificationHandler;
+@property(nonatomic, weak) id<ReminderNotificationsCommands>
+    reminderNotificationsHandler;
+@property(nonatomic, weak) id<TextZoomCommands> textZoomHandler;
+@property(nonatomic, weak) id<QuickDeleteCommands> quickDeleteHandler;
+@property(nonatomic, weak) id<WhatsNewCommands> whatsNewHandler;
+@property(nonatomic, weak) id<LevelUpCommands> levelUpHandler;
+@property(nonatomic, weak) id<ReaderModeCommands> readerModeHandler;
+@property(nonatomic, weak) id<FullscreenCommands> fullscreenHandler;
+@property(nonatomic, weak) id<GeminiCommands> geminiHandler;
+@property(nonatomic, weak) id<CobaltCommands> cobaltHandler;
+@property(nonatomic, weak) id<NewTabPageCommands> NTPCommandHandler;
+@property(nonatomic, weak) id<PictureInPictureCommands> pictureInPictureHandler;
+
+// Navigation agent for reloading pages.
+@property(nonatomic, assign) WebNavigationBrowserAgent* navigationAgent;
+
+// If the current session is off the record or not.
+@property(nonatomic, assign) bool incognito;
+
+// The Orderer to control the order of the overflow menu.
+@property(nonatomic, weak) OverflowMenuOrderer* menuOrderer;
+
+// BaseViewController for presenting some UI.
+@property(nonatomic, weak) UIViewController* baseViewController;
+
+// The LayoutGuideCenter to use to retrieve the layout guide.
+@property(nonatomic, strong) LayoutGuideCenter* layoutGuideCenter;
+
+// Bookmark model to know if the page is bookmarked.
+@property(nonatomic, assign) bookmarks::BookmarkModel* bookmarkModel;
+
+// Readinglist model to know if model has finished loading.
+@property(nonatomic, assign) ReadingListModel* readingListModel;
+
+// Service for NTP background customization.
+@property(nonatomic, assign)
+    HomeBackgroundCustomizationService* backgroundCustomizationService;
+
+// Manager for user-uploaded NTP background images.
+@property(nonatomic, assign) UserUploadedImageManager* userUploadedImageManager;
+
+// Fetcher for preset NTP background images.
+@property(nonatomic, assign) image_fetcher::ImageFetcher* imageFetcher;
+
+// Pref service to retrieve profile preference values.
+@property(nonatomic, assign) PrefService* profilePrefs;
+
+// Pref service to retrieve local state preference values.
+@property(nonatomic, assign) PrefService* localStatePrefs;
+
+// The overlay presenter for OverlayModality::kWebContentArea.  This mediator
+// listens for overlay presentation events to determine whether the "Add to
+// Reading List" button should be enabled.
+@property(nonatomic, assign) OverlayPresenter* webContentAreaOverlayPresenter;
+
+// Records events for the use of in-product help. The mediator does not take
+// ownership of tracker. Tracker must not be destroyed during lifetime of the
+// object.
+@property(nonatomic, assign) feature_engagement::Tracker* engagementTracker;
+
+// The current browser policy connector.
+@property(nonatomic, assign) BrowserPolicyConnectorIOS* browserPolicyConnector;
+
+// The Sync Service that provides the status of Sync.
+@property(nonatomic, assign) syncer::SyncService* syncService;
+
+// The Promos Manager to alert if the user uses What's New.
+@property(nonatomic, assign) PromosManager* promosManager;
+
+// The ReadingListBrowserAgent used to add urls to reading list.
+@property(nonatomic, assign) ReadingListBrowserAgent* readingListBrowserAgent;
+
+// The AuthenticationService to get sign-in info.
+@property(nonatomic, assign) AuthenticationService* authenticationService;
+
+// The IdentityManager to check account capabilities.
+@property(nonatomic, assign) signin::IdentityManager* identityManager;
+
+// The TabBasedIPHBrowserAgent to handle tab based in-product help bubbles.
+@property(nonatomic, assign) TabBasedIPHBrowserAgent* tabBasedIPHBrowserAgent;
+
+// TemplateURLService to observe default search engine change.
+@property(nonatomic, assign) TemplateURLService* templateURLService;
+
+// Browser management service to determine if the browser is managed.
+@property(nonatomic, assign)
+    policy::BrowserManagementService* browserManagementService;
+
+// If settings destination has a blue dot.
+@property(nonatomic, assign) bool hasSettingsBlueDot;
+
+// The AvatarProvider to get identity avatars.
+@property(nonatomic, assign) signin::AvatarProvider* identityAvatarProvider;
+
+// Disconnect the mediator.
+- (void)disconnect;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_POPUP_MENU_OVERFLOW_MENU_COORDINATOR_OVERFLOW_MENU_MEDIATOR_H_

@@ -1,0 +1,569 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/signin/public/identity_manager/account_info.h"
+
+#include "base/strings/string_util.h"
+#include "build/build_config.h"
+#include "components/signin/public/base/signin_buildflags.h"
+#include "components/signin/public/base/signin_metrics.h"
+#include "components/signin/public/base/signin_switches.h"
+#include "components/signin/public/identity_manager/signin_constants.h"
+#include "components/signin/public/identity_manager/tribool.h"
+#include "google_apis/gaia/gaia_auth_util.h"
+#include "google_apis/gaia/gaia_id.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "base/android/jni_string.h"
+#include "components/signin/public/android/jni_headers/AccountInfo_jni.h"
+#include "components/signin/public/android/jni_headers/CoreAccountInfo_jni.h"
+#include "ui/gfx/android/java_bitmap.h"
+#include "ui/gfx/image/image_skia.h"
+#endif
+
+using signin::constants::kNoHostedDomainFound;
+
+namespace {
+
+// Updates |field| with |new_value| if non-empty and different; if |new_value|
+// is equal to |default_value| then it won't override |field| unless it is not
+// set. Returns whether |field| was changed.
+bool UpdateField(std::string* field,
+                 const std::string& new_value,
+                 const char* default_value) {
+  if (*field == new_value || new_value.empty()) {
+    return false;
+  }
+
+  if (!field->empty() && default_value && new_value == default_value) {
+    return false;
+  }
+
+  *field = new_value;
+  return true;
+}
+
+// Updates |field| with |new_value| if different from the default value.
+// Returns whether |field| was changed.
+template <typename T>
+bool UpdateField(T* field, T new_value, T default_value) {
+  if (*field == new_value || new_value == default_value) {
+    return false;
+  }
+
+  *field = new_value;
+  return true;
+}
+
+// Updates |field| with |new_value| if non-empty. Returns whether |field| was
+// changed.
+bool UpdateField(GaiaId* field, const GaiaId& new_value) {
+  if (*field == new_value || new_value.empty()) {
+    return false;
+  }
+
+  *field = new_value;
+  return true;
+}
+
+// Updates |field| with |new_value| if true. Returns whether |field| was
+// changed.
+bool UpdateField(bool* field, bool new_value) {
+  return UpdateField<bool>(field, new_value, false);
+}
+
+// Updates |field| with |new_value| if true. Returns whether |field| was
+// changed.
+bool UpdateField(signin::Tribool* field, signin::Tribool new_value) {
+  return UpdateField<signin::Tribool>(field, new_value,
+                                      signin::Tribool::kUnknown);
+}
+
+}  // namespace
+
+// This must be a string which can never be a valid picture URL.
+const char kNoPictureURLFound[] = "NO_PICTURE_URL";
+
+CoreAccountInfo::CoreAccountInfo() = default;
+
+CoreAccountInfo::~CoreAccountInfo() = default;
+
+CoreAccountInfo::CoreAccountInfo(const CoreAccountInfo& other) = default;
+
+CoreAccountInfo::CoreAccountInfo(CoreAccountInfo&& other) noexcept = default;
+
+CoreAccountInfo& CoreAccountInfo::operator=(const CoreAccountInfo& other) =
+    default;
+
+CoreAccountInfo& CoreAccountInfo::operator=(CoreAccountInfo&& other) noexcept =
+    default;
+
+bool CoreAccountInfo::IsEmpty() const {
+  return account_id.empty() && email.empty() && gaia.empty();
+}
+
+AccountInfo::AccountInfo() = default;
+
+AccountInfo::~AccountInfo() = default;
+
+AccountInfo::AccountInfo(const AccountInfo& other) = default;
+
+AccountInfo::AccountInfo(AccountInfo&& other) noexcept = default;
+
+AccountInfo& AccountInfo::operator=(const AccountInfo& other) = default;
+
+AccountInfo& AccountInfo::operator=(AccountInfo&& other) noexcept = default;
+
+const CoreAccountId& AccountInfo::GetAccountId() const {
+  return account_id;
+}
+
+const GaiaId& AccountInfo::GetGaiaId() const {
+  return gaia;
+}
+
+std::string_view AccountInfo::GetEmail() const {
+  return email;
+}
+
+bool AccountInfo::IsUnderAdvancedProtection() const {
+  return is_under_advanced_protection;
+}
+
+std::optional<std::string_view> AccountInfo::GetFullName() const {
+  if (full_name_.empty()) {
+    return std::nullopt;
+  }
+  return full_name_;
+}
+
+std::optional<std::string_view> AccountInfo::GetGivenName() const {
+  if (given_name_.empty()) {
+    return std::nullopt;
+  }
+  return given_name_;
+}
+
+std::optional<std::string_view> AccountInfo::GetHostedDomain() const {
+  if (hosted_domain_.empty()) {
+    return std::nullopt;
+  }
+  if (hosted_domain_ == kNoHostedDomainFound) {
+    return base::EmptyString();
+  }
+  return hosted_domain_;
+}
+
+std::optional<std::string_view> AccountInfo::GetAvatarUrl() const {
+  if (picture_url_.empty()) {
+    return std::nullopt;
+  }
+  if (picture_url_ == kNoPictureURLFound) {
+    return base::EmptyString();
+  }
+  return picture_url_;
+}
+
+std::optional<std::string_view>
+AccountInfo::GetLastDownloadedAvatarUrlWithSize() const {
+  if (last_downloaded_image_url_with_size_.empty()) {
+    return std::nullopt;
+  }
+  return last_downloaded_image_url_with_size_;
+}
+
+std::optional<gfx::Image> AccountInfo::GetAvatarImage() const {
+  if (account_image_.IsEmpty()) {
+    return std::nullopt;
+  }
+  return account_image_;
+}
+
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+std::optional<signin_metrics::AccessPoint>
+AccountInfo::GetLastAuthenticationAccessPoint() const {
+  return access_point_;
+}
+#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
+
+const AccountCapabilities& AccountInfo::GetAccountCapabilities() const {
+  return capabilities_;
+}
+
+signin::Tribool AccountInfo::IsChildAccount() const {
+  return is_child_account_;
+}
+
+std::optional<std::string_view> AccountInfo::GetLocale() const {
+  if (locale_.empty()) {
+    return std::nullopt;
+  }
+  return locale_;
+}
+
+bool AccountInfo::IsEmpty() const {
+  return CoreAccountInfo::IsEmpty() && hosted_domain_.empty() &&
+         full_name_.empty() && given_name_.empty() && locale_.empty() &&
+         picture_url_.empty();
+}
+
+bool AccountInfo::IsValid() const {
+  return !account_id.empty() && !email.empty() && !gaia.empty() &&
+         !hosted_domain_.empty() && !full_name_.empty() &&
+         !given_name_.empty() && !picture_url_.empty();
+}
+
+bool AccountInfo::UpdateWith(const AccountInfo& other) {
+  if (account_id != other.account_id) {
+    // Only updates with a compatible AccountInfo.
+    return false;
+  }
+
+  bool modified = false;
+  modified |= UpdateField(&gaia, other.gaia);
+  modified |= UpdateField(&email, other.email, nullptr);
+  modified |= UpdateField(&full_name_, other.full_name_, nullptr);
+  modified |= UpdateField(&given_name_, other.given_name_, nullptr);
+  modified |=
+      UpdateField(&hosted_domain_, other.hosted_domain_, kNoHostedDomainFound);
+  modified |= UpdateField(&locale_, other.locale_, nullptr);
+  modified |=
+      UpdateField(&picture_url_, other.picture_url_, kNoPictureURLFound);
+  modified |= UpdateField(&is_child_account_, other.is_child_account_);
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+  modified |= UpdateField(&access_point_, other.access_point_,
+                          std::optional<signin_metrics::AccessPoint>());
+#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
+  modified |= UpdateField(&is_under_advanced_protection,
+                          other.is_under_advanced_protection);
+  modified |= capabilities_.UpdateWith(other.capabilities_);
+
+  return modified;
+}
+
+// static
+signin::Tribool AccountInfo::IsManaged(const std::string& hosted_domain) {
+  return hosted_domain.empty()
+             ? signin::Tribool::kUnknown
+             : signin::TriboolFromBool(hosted_domain != kNoHostedDomainFound);
+}
+
+bool AccountInfo::IsMemberOfFlexOrg() const {
+  return capabilities_.is_subject_to_enterprise_features() ==
+             signin::Tribool::kTrue &&
+         IsManaged(hosted_domain_) != signin::Tribool::kTrue;
+}
+
+signin::Tribool AccountInfo::IsManaged() const {
+  return IsManaged(hosted_domain_);
+}
+
+signin::Tribool AccountInfo::CanApplyAccountLevelEnterprisePolicies() const {
+  return IsManaged();
+}
+
+#if !BUILDFLAG(IS_IOS)
+bool AccountInfo::IsEduAccount() const {
+  return capabilities_.can_use_edu_features() == signin::Tribool::kTrue &&
+         IsManaged() == signin::Tribool::kTrue;
+}
+
+bool AccountInfo::CanHaveEmailAddressDisplayed() const {
+  return capabilities_.can_have_email_address_displayed() ==
+             signin::Tribool::kTrue ||
+         capabilities_.can_have_email_address_displayed() ==
+             signin::Tribool::kUnknown;
+}
+#endif  // !BUILDFLAG(IS_IOS)
+
+AccountInfo::Builder::Builder(const GaiaId& gaia_id, std::string_view email) {
+  CHECK(!gaia_id.empty());
+  CHECK(!email.empty());
+  account_info_.gaia = gaia_id;
+  account_info_.email = std::string(email);
+}
+
+AccountInfo::Builder::Builder(const CoreAccountInfo& core_account_info) {
+  // Ideally, this code should test that both gaia_id and email aren't empty
+  // but some flows (like `AccountFetcherService`) create `AccountInfo` objects
+  // with `account_id` only.
+  // Allow modifications of incomplete AccountInfo objects for now.
+  // TODO(crbug.com/40283608): verify that `gaia_id` and `email` aren't empty
+  // when the account fetcher case is fixed.
+  CHECK(!core_account_info.IsEmpty());
+  CHECK(!base::FeatureList::IsEnabled(switches::kGaiaAccountIdEnforcement) ||
+        !core_account_info.gaia.empty());
+  account_info_.account_id = core_account_info.account_id;
+  account_info_.gaia = core_account_info.gaia;
+  account_info_.email = core_account_info.email;
+  account_info_.is_under_advanced_protection =
+      core_account_info.is_under_advanced_protection;
+}
+
+AccountInfo::Builder::Builder(const AccountInfo& account_info)
+    : account_info_(account_info) {
+  // Ideally, this code should test that both gaia_id and email aren't empty
+  // but some flows (like `AccountFetcherService`) create `AccountInfo` objects
+  // with `account_id` only.
+  // Allow modifications of incomplete AccountInfo objects for now.
+  // TODO(crbug.com/40283608): verify that `gaia_id` and `email` aren't empty
+  // when the account fetcher case is fixed.
+  CHECK(!account_info.IsEmpty());
+}
+
+AccountInfo::Builder::~Builder() = default;
+
+AccountInfo AccountInfo::Builder::Build() {
+  if (base::FeatureList::IsEnabled(switches::kGaiaAccountIdEnforcement)) {
+    CHECK(!account_info_.gaia.empty());
+    account_info_.account_id = CoreAccountId::FromGaiaId(account_info_.gaia);
+  }
+  return std::move(account_info_);
+}
+
+AccountInfo::Builder& AccountInfo::Builder::SetEmail(std::string_view email) {
+  CHECK(!email.empty());
+  account_info_.email = std::string(email);
+  return *this;
+}
+
+AccountInfo::Builder& AccountInfo::Builder::SetAccountId(
+    const CoreAccountId& account_id) {
+  CHECK(!account_id.empty());
+  account_info_.account_id = account_id;
+  return *this;
+}
+
+AccountInfo::Builder& AccountInfo::Builder::SetIsUnderAdvancedProtection(
+    bool is_under_advanced_protection) {
+  account_info_.is_under_advanced_protection = is_under_advanced_protection;
+  return *this;
+}
+
+AccountInfo::Builder& AccountInfo::Builder::SetFullName(
+    std::string_view full_name) {
+  CHECK(!full_name.empty());
+  account_info_.full_name_ = std::string(full_name);
+  return *this;
+}
+
+AccountInfo::Builder& AccountInfo::Builder::SetGivenName(
+    std::string_view given_name) {
+  CHECK(!given_name.empty());
+  account_info_.given_name_ = std::string(given_name);
+  return *this;
+}
+
+AccountInfo::Builder& AccountInfo::Builder::SetLastDownloadedAvatarUrlWithSize(
+    std::string_view avatar_url_with_size) {
+  account_info_.last_downloaded_image_url_with_size_ =
+      std::string(avatar_url_with_size);
+  return *this;
+}
+
+AccountInfo::Builder& AccountInfo::Builder::SetAvatarImage(
+    const gfx::Image& avatar_image) {
+  account_info_.account_image_ = avatar_image;
+  return *this;
+}
+
+AccountInfo::Builder& AccountInfo::Builder::SetLocale(
+    std::string_view locale_val) {
+  CHECK(!locale_val.empty());
+  account_info_.locale_ = std::string(locale_val);
+  return *this;
+}
+
+AccountInfo::Builder& AccountInfo::Builder::SetHostedDomain(
+    std::string_view hosted_domain_val) {
+  account_info_.hosted_domain_ = hosted_domain_val.empty()
+                                     ? kNoHostedDomainFound
+                                     : std::string(hosted_domain_val);
+  return *this;
+}
+
+AccountInfo::Builder& AccountInfo::Builder::SetAvatarUrl(
+    std::string_view avatar_url) {
+  account_info_.picture_url_ =
+      avatar_url.empty() ? kNoPictureURLFound : std::string(avatar_url);
+  return *this;
+}
+
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+AccountInfo::Builder& AccountInfo::Builder::SetLastAuthenticationAccessPoint(
+    signin_metrics::AccessPoint access_point_val) {
+  account_info_.access_point_ = access_point_val;
+  return *this;
+}
+#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
+
+AccountInfo::Builder& AccountInfo::Builder::SetIsChildAccount(
+    signin::Tribool is_child_account) {
+  account_info_.is_child_account_ = is_child_account;
+  return *this;
+}
+
+AccountInfo::Builder& AccountInfo::Builder::UpdateAccountCapabilitiesWith(
+    const AccountCapabilities& other) {
+  account_info_.capabilities_.UpdateWith(other);
+  return *this;
+}
+
+AccountInfo::Builder& AccountInfo::Builder::SetAccountCapabilities(
+    const AccountCapabilities& capabilities) {
+  account_info_.capabilities_ = capabilities;
+  return *this;
+}
+
+AccountInfo::Builder::Builder() = default;
+
+// static
+AccountInfo::Builder AccountInfo::Builder::CreateWithPossiblyEmptyGaiaId(
+    const GaiaId& gaia_id,
+    std::string_view email) {
+  CHECK(!gaia_id.empty() ||
+        !base::FeatureList::IsEnabled(switches::kGaiaAccountIdEnforcement))
+      << "Creating AccountInfo with empty GaiaId is not allowed when "
+         "kGaiaAccountIdEnforcement is enabled";
+  CHECK(!email.empty());
+  AccountInfo::Builder builder;
+  builder.account_info_.gaia = gaia_id;
+  builder.account_info_.email = email;
+  return builder;
+}
+
+// static
+AccountInfo::Builder
+AccountInfo::Builder::CreateWithPossiblyEmptyGaiaIdAndEmail(
+    const GaiaId& gaia_id,
+    std::string_view email) {
+  CHECK(!gaia_id.empty() ||
+        !base::FeatureList::IsEnabled(switches::kGaiaAccountIdEnforcement))
+      << "Creating AccountInfo with empty GaiaId is not allowed when "
+         "kGaiaAccountIdEnforcement is enabled";
+  AccountInfo::Builder builder;
+  builder.account_info_.gaia = gaia_id;
+  builder.account_info_.email = email;
+  return builder;
+}
+
+bool operator==(const CoreAccountInfo& l, const CoreAccountInfo& r) {
+  return l.account_id == r.account_id && l.gaia == r.gaia &&
+         gaia::AreEmailsSame(l.email, r.email) &&
+         l.is_under_advanced_protection == r.is_under_advanced_protection;
+}
+
+std::ostream& operator<<(std::ostream& os, const CoreAccountInfo& account) {
+  os << "account_id: " << account.account_id << ", gaia: " << account.gaia
+     << ", email: " << account.email << ", adv_prot: " << std::boolalpha
+     << account.is_under_advanced_protection;
+  return os;
+}
+
+#if BUILDFLAG(IS_ANDROID)
+base::android::ScopedJavaLocalRef<jobject> ConvertToJavaCoreAccountInfo(
+    JNIEnv* env,
+    const CoreAccountInfo& account_info) {
+  CHECK(!account_info.IsEmpty());
+  return signin::Java_CoreAccountInfo_Constructor(
+      env, account_info.account_id, account_info.email, account_info.gaia);
+}
+
+base::android::ScopedJavaLocalRef<jobject> ConvertToJavaAccountInfo(
+    JNIEnv* env,
+    const AccountInfo& account_info) {
+  CHECK(!account_info.IsEmpty());
+  // Null domain means that the management status is unknown, which is
+  // represented by `null` hostedDomain on the Java side.
+  std::optional<std::string_view> maybe_hosted_domain =
+      account_info.GetHostedDomain();
+  base::android::ScopedJavaLocalRef<jstring> hosted_domain =
+      maybe_hosted_domain.has_value()
+          ? base::android::ConvertUTF8ToJavaString(
+                env, maybe_hosted_domain->empty() ? kNoHostedDomainFound
+                                                  : *maybe_hosted_domain)
+          : nullptr;
+  std::optional<gfx::Image> maybe_account_image = account_info.GetAvatarImage();
+  base::android::ScopedJavaLocalRef<jobject> account_image =
+      maybe_account_image.has_value()
+          ? gfx::ConvertToJavaBitmap(
+                *maybe_account_image->AsImageSkia().bitmap())
+          : nullptr;
+  return signin::Java_AccountInfo_Constructor(
+      env, account_info.GetAccountId(), std::string(account_info.GetEmail()),
+      account_info.GetGaiaId(),
+      std::string(account_info.GetFullName().value_or("")),
+      std::string(account_info.GetGivenName().value_or("")), hosted_domain,
+      account_image,
+      account_info.GetAccountCapabilities().ConvertToJavaAccountCapabilities(
+          env));
+}
+
+CoreAccountInfo ConvertFromJavaCoreAccountInfo(
+    JNIEnv* env,
+    const base::android::JavaRef<jobject>& j_core_account_info) {
+  CHECK(j_core_account_info);
+  CoreAccountInfo account;
+  account.account_id =
+      signin::Java_CoreAccountInfo_getId(env, j_core_account_info);
+  account.gaia =
+      signin::Java_CoreAccountInfo_getGaiaId(env, j_core_account_info);
+  account.email =
+      signin::Java_CoreAccountInfo_getEmail(env, j_core_account_info);
+  return account;
+}
+
+AccountInfo ConvertFromJavaAccountInfo(
+    JNIEnv* env,
+    const base::android::JavaRef<jobject>& j_account_info) {
+  CHECK(j_account_info);
+
+  AccountInfo::Builder builder(
+      signin::Java_CoreAccountInfo_getGaiaId(env, j_account_info),
+      signin::Java_CoreAccountInfo_getEmail(env, j_account_info));
+  builder.SetAccountId(signin::Java_CoreAccountInfo_getId(env, j_account_info));
+  if (std::string full_name =
+          signin::Java_AccountInfo_getFullName(env, j_account_info);
+      !full_name.empty()) {
+    builder.SetFullName(full_name);
+  }
+  if (std::string given_name =
+          signin::Java_AccountInfo_getGivenName(env, j_account_info);
+      !given_name.empty()) {
+    builder.SetGivenName(given_name);
+  }
+  // Unknown hosted domain is represented by a null Java string which is
+  // converted to an empty std::string. Do not call `SetHostedDomain()` in this
+  // case.
+  if (std::string hosted_domain = base::android::ConvertJavaStringToUTF8(
+          signin::Java_AccountInfo_getRawHostedDomain(env, j_account_info));
+      !hosted_domain.empty()) {
+    builder.SetHostedDomain(hosted_domain);
+  }
+  if (base::android::ScopedJavaLocalRef<jobject> account_image =
+          signin::Java_AccountInfo_getAccountImage(env, j_account_info);
+      !account_image.is_null()) {
+    const gfx::JavaBitmap account_image_bitmap(account_image);
+    SkBitmap avatar = gfx::CreateSkBitmapFromJavaBitmap(account_image_bitmap);
+    avatar.setImmutable();
+    const gfx::Image avatar_image = gfx::Image::CreateFrom1xBitmap(avatar);
+    builder.SetAvatarImage(avatar_image);
+  }
+  if (base::android::ScopedJavaLocalRef<jobject> j_capabilities =
+          signin::Java_AccountInfo_getAccountCapabilities(env, j_account_info);
+      !j_capabilities.is_null()) {
+    const AccountCapabilities capabilities =
+        AccountCapabilities::ConvertFromJavaAccountCapabilities(env,
+                                                                j_capabilities);
+    builder.UpdateAccountCapabilitiesWith(capabilities);
+  }
+  return builder.Build();
+}
+
+#endif
+
+#if BUILDFLAG(IS_ANDROID)
+DEFINE_JNI(AccountInfo)
+DEFINE_JNI(CoreAccountInfo)
+#endif

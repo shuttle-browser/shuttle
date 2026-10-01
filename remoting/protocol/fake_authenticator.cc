@@ -1,0 +1,202 @@
+// const  Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "remoting/protocol/fake_authenticator.h"
+
+#include <memory>
+#include <utility>
+
+#include "base/base64.h"
+#include "base/functional/bind.h"
+#include "base/rand_util.h"
+#include "base/strings/string_number_conversions.h"
+#include "net/base/io_buffer.h"
+#include "net/base/net_errors.h"
+#include "net/traffic_annotation/network_traffic_annotation_test_helper.h"
+#include "remoting/base/constants.h"
+#include "remoting/protocol/authenticator.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace remoting::protocol {
+
+FakeAuthenticator::Config::Config() = default;
+FakeAuthenticator::Config::Config(Action action) : action(action) {}
+FakeAuthenticator::Config::Config(int round_trips, Action action, bool async)
+    : round_trips(round_trips), action(action), async(async) {}
+
+FakeAuthenticator::FakeAuthenticator(Type type,
+                                     FakeAuthenticator::Config config,
+                                     const std::string& local_id,
+                                     const std::string& remote_id)
+    : type_(type), config_(config), local_id_(local_id), remote_id_(remote_id) {
+  EXPECT_TRUE((!local_id_.empty() && !remote_id_.empty()) ||
+              config.round_trips == 0);
+}
+
+FakeAuthenticator::FakeAuthenticator(Action action)
+    : FakeAuthenticator(CLIENT,
+                        FakeAuthenticator::Config(0, action, true),
+                        std::string(),
+                        std::string()) {}
+
+FakeAuthenticator::~FakeAuthenticator() = default;
+
+void FakeAuthenticator::set_messages_till_started(int messages) {
+  messages_till_started_ = messages;
+}
+
+void FakeAuthenticator::Resume() {
+  std::move(resume_closure_).Run();
+}
+
+CredentialsType FakeAuthenticator::credentials_type() const {
+  return config_.credentials_type;
+}
+
+const Authenticator& FakeAuthenticator::implementing_authenticator() const {
+  return *this;
+}
+
+Authenticator::State FakeAuthenticator::state() const {
+  EXPECT_LE(messages_, config_.round_trips * 2);
+
+  if (messages_ == pause_message_index_ && !resume_closure_.is_null()) {
+    return PROCESSING_MESSAGE;
+  }
+
+  if (messages_ >= config_.round_trips * 2) {
+    if (config_.action == REJECT) {
+      return REJECTED;
+    } else {
+      return ACCEPTED;
+    }
+  }
+
+  // Don't send the last message if this is a host that wants to
+  // reject a connection.
+  if (messages_ == config_.round_trips * 2 - 1 && type_ == HOST &&
+      config_.action == REJECT) {
+    return REJECTED;
+  }
+
+  // We are not done yet. process next message.
+  if ((messages_ % 2 == 0 && type_ == CLIENT) ||
+      (messages_ % 2 == 1 && type_ == HOST)) {
+    return MESSAGE_READY;
+  } else {
+    return WAITING_MESSAGE;
+  }
+}
+
+bool FakeAuthenticator::started() const {
+  return messages_ > messages_till_started_;
+}
+
+Authenticator::RejectionReason FakeAuthenticator::rejection_reason() const {
+  EXPECT_EQ(REJECTED, state());
+  return RejectionReason::INVALID_CREDENTIALS;
+}
+
+Authenticator::RejectionDetails FakeAuthenticator::rejection_details() const {
+  EXPECT_EQ(REJECTED, state());
+  return {};
+}
+
+void FakeAuthenticator::ProcessMessage(const JingleAuthentication& message,
+                                       base::OnceClosure resume_callback) {
+  EXPECT_EQ(WAITING_MESSAGE, state());
+  // |test_id| is used for sequence tracking in FakeAuthenticator to avoid
+  // conflicting with the |id| field which may be used for JIDs or other
+  // purposes by authenticators which wrap this one.
+  EXPECT_EQ(message.test_id, base::NumberToString(messages_));
+
+  // On the client receive the key in the last message.
+  if (type_ == CLIENT && messages_ == config_.round_trips * 2 - 1) {
+    EXPECT_FALSE(message.test_key.empty());
+    auth_key_.assign(reinterpret_cast<const char*>(message.test_key.data()),
+                     message.test_key.size());
+  }
+
+  // Receive peer's id.
+  if (messages_ < 2) {
+    EXPECT_EQ(remote_id_, message.id);
+  }
+
+  ++messages_;
+  SubscribeRejectedAfterAcceptedIfNecessary();
+  if (messages_ == pause_message_index_) {
+    resume_closure_ = std::move(resume_callback);
+    return;
+  }
+  std::move(resume_callback).Run();
+}
+
+JingleAuthentication FakeAuthenticator::GetNextMessage() {
+  EXPECT_EQ(MESSAGE_READY, state());
+
+  JingleAuthentication result;
+  result.test_id = base::NumberToString(messages_);
+
+  // Send local id in the first outgoing message.
+  if (messages_ < 2) {
+    result.id = local_id_;
+  }
+
+  // Add authentication key in the last message sent from host to client.
+  if (type_ == HOST && messages_ == config_.round_trips * 2 - 1) {
+    auth_key_ = base::RandBytesAsString(16);
+    result.test_key.assign(auth_key_.begin(), auth_key_.end());
+  }
+
+  ++messages_;
+  SubscribeRejectedAfterAcceptedIfNecessary();
+  return result;
+}
+
+const std::string& FakeAuthenticator::GetAuthKey() const {
+  EXPECT_EQ(ACCEPTED, state());
+  DCHECK(!auth_key_.empty());
+  return auth_key_;
+}
+
+const SessionPolicies* FakeAuthenticator::GetSessionPolicies() const {
+  EXPECT_EQ(ACCEPTED, state());
+  return nullptr;
+}
+
+void FakeAuthenticator::SubscribeRejectedAfterAcceptedIfNecessary() {
+  if (state() == ACCEPTED && config_.reject_after_accepted) {
+    reject_after_accepted_subscription_ =
+        config_.reject_after_accepted->Add(base::BindRepeating(
+            [](FakeAuthenticator* self) {
+              self->config_.action = REJECT;
+              self->NotifyStateChangeAfterAccepted();
+            },
+            base::Unretained(this)));
+  }
+}
+
+FakeHostAuthenticatorFactory::FakeHostAuthenticatorFactory(
+    int messages_till_started,
+    FakeAuthenticator::Config config)
+    : messages_till_started_(messages_till_started), config_(config) {}
+FakeHostAuthenticatorFactory::~FakeHostAuthenticatorFactory() = default;
+
+std::unique_ptr<Authenticator>
+FakeHostAuthenticatorFactory::CreateAuthenticator(
+    const std::string& local_jid,
+    const std::string& remote_jid) {
+  std::unique_ptr<FakeAuthenticator> authenticator(new FakeAuthenticator(
+      FakeAuthenticator::HOST, config_, local_jid, remote_jid));
+  authenticator->set_messages_till_started(messages_till_started_);
+  return std::move(authenticator);
+}
+
+std::unique_ptr<AuthenticatorFactory> FakeHostAuthenticatorFactory::Clone()
+    const {
+  return std::make_unique<FakeHostAuthenticatorFactory>(messages_till_started_,
+                                                        config_);
+}
+
+}  // namespace remoting::protocol

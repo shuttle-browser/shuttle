@@ -1,0 +1,579 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "services/on_device_model/fake/fake_chrome_ml_api.h"
+
+#include "base/files/file.h"
+#include "base/files/file_util.h"
+#include "base/logging.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/stringprintf.h"
+#include "services/on_device_model/ml/chrome_ml.h"
+#include "services/on_device_model/ml/chrome_ml_api.h"
+#include "third_party/abseil-cpp/absl/functional/overload.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+
+namespace fake_ml {
+namespace {
+
+constexpr std::string_view kEos = "<eos>";
+
+ChromeMLConstraintFns g_constraint_fns;
+
+std::string PieceToString(const ml::InputPiece& piece) {
+  return std::visit(
+      absl::Overload{
+          [](const std::string& text) -> std::string { return text; },
+          [](ml::Token token) -> std::string {
+            switch (token) {
+              case ml::Token::kSystem:
+                return "System: ";
+              case ml::Token::kModel:
+                return "Model: ";
+              case ml::Token::kUser:
+                return "User: ";
+              case ml::Token::kEnd:
+                return " End.";
+              case ml::Token::kToolCall:
+                return "ToolCall: ";
+              case ml::Token::kToolResponse:
+                return "ToolResponse: ";
+            }
+          },
+          [](const SkBitmap& bitmap) -> std::string {
+            return base::StringPrintf("[Bitmap of size %dx%d]", bitmap.width(),
+                                      bitmap.height());
+          },
+          [](const ml::AudioBuffer&) -> std::string { return "<audio>"; },
+          [](const ml::ToolDeclaration& decl) -> std::string {
+            return base::StrCat({kToolDeclPrefix, decl.name, "]"});
+          },
+          [](const ml::ToolCall& call) -> std::string {
+            return base::StrCat({kToolCallPrefix, call.call_id, ":", call.name,
+                                 "=", call.arguments_json, "]"});
+          },
+          [](const ml::ToolResponse& resp) -> std::string {
+            return base::StrCat(
+                {kToolRespPrefix, resp.name, "=", resp.result_json, "]"});
+          },
+          [](bool) -> std::string { NOTREACHED(); },
+      },
+      piece);
+}
+
+std::string ReadFile(PlatformFile api_file) {
+  base::File file(static_cast<base::PlatformFile>(api_file));
+  std::vector<uint8_t> contents;
+  contents.resize(file.GetLength());
+  if (!file.ReadAndCheck(0, contents)) {
+    return std::string();
+  }
+  return std::string(contents.begin(), contents.end());
+}
+
+std::string GenerateConstraintString(ChromeMLConstraint constraint) {
+  // Prefer tokens in this order to try to keep output as short as possible.
+  const std::vector<char> preferred = {
+      '"', '}', ']', '{', '[', ':', ',',
+  };
+  ChromeMLConstraintMask mask;
+  auto is_valid = [&](int i) {
+    return !isspace(i) &&
+           // SAFETY: Follows a C-API, sample mask will have vocab_size bits,
+           // test-only code.
+           UNSAFE_BUFFERS(mask.sample_mask[i / 32] & (1 << (i % 32)));
+  };
+  std::string result;
+  // Breakk the loop if result is getting too long.
+  while (result.size() < 100) {
+    CHECK(g_constraint_fns.ComputeMask(constraint, mask))
+        << g_constraint_fns.GetError(constraint);
+    if (mask.is_stop) {
+      break;
+    }
+
+    std::optional<uint32_t> token;
+    // Try to grab a preferred token.
+    for (char t : preferred) {
+      if (is_valid(t)) {
+        token = t;
+        break;
+      }
+    }
+    // If no preferred tokens are available, grab first valid token.
+    if (!token) {
+      for (int i = 0; i < 256; ++i) {
+        if (is_valid(i)) {
+          token = i;
+          break;
+        }
+      }
+    }
+    g_constraint_fns.CommitToken(constraint, *token);
+    result += std::string(1, static_cast<char>(*token));
+  }
+  return result;
+}
+
+// Simple tokenize fn for a single byte tokenizer which just passes through the
+// bytes.
+size_t TokenizeBytes(const void* user_data,
+                     const uint8_t* bytes,
+                     size_t bytes_len,
+                     uint32_t* output_tokens,
+                     size_t output_tokens_len) {
+  for (size_t i = 0; i < std::min(bytes_len, output_tokens_len); ++i) {
+    // SAFETY: Follows a C-API, test-only code. Bounds are length checked by the
+    // loop.
+    UNSAFE_BUFFERS(output_tokens[i]) = UNSAFE_BUFFERS(bytes[i]);
+  }
+  return bytes_len;
+}
+
+// TODO(crbug.com/540118700): Remove once the legacy engine has been removed and
+// all of these unittests use context_usage by default.
+bool g_calculate_tokens_decoded = false;
+
+}  // namespace
+
+void InitDawnProcs(const DawnProcTable& procs) {}
+
+void SetMetricsFns(const ChromeMLMetricsFns* fns) {}
+
+void SetFatalErrorFn(ChromeMLFatalErrorFn error_fn) {}
+
+void SetFatalErrorNonGpuFn(ChromeMLFatalErrorFn error_fn) {}
+
+bool GetEstimatedPerformance(ChromeMLPerformanceInfo* performance_info) {
+  return false;
+}
+
+bool QueryGPUAdapter(void (*adapter_callback_fn)(WGPUAdapter adapter,
+                                                 void* userdata),
+                     void* userdata) {
+  // Some tests depend on this always returning false to block the GPU.
+  return false;
+}
+
+bool GetCapabilities(PlatformFile file, ChromeMLCapabilities& capabilities) {
+  std::string contents = ReadFile(file);
+  capabilities.image_input = contents.find("image") != std::string::npos;
+  capabilities.audio_input = contents.find("audio") != std::string::npos;
+  return true;
+}
+
+struct FakeModelInstance {
+  ml::ModelBackendType backend_type;
+  ml::ModelPerformanceHint performance_hint;
+  std::string model_data;
+};
+
+struct FakeSessionInstance {
+  raw_ptr<FakeModelInstance> model_instance;
+  std::string adaptation_data;
+  std::optional<uint32_t> adaptation_file_id;
+  std::vector<std::string> context;
+  bool cloned;
+  bool enable_image_input;
+  bool enable_audio_input;
+  uint32_t top_k;
+  float temperature;
+  // Whether tool declarations have been appended in a system prompt.
+  bool has_tool_declarations = false;
+  // Whether tool calls have been emitted and tool responses are expected.
+  bool awaiting_tool_responses = false;
+};
+
+struct FakeCancelInstance {
+  bool cancelled = false;
+};
+
+ChromeMLModel SessionCreateModel(const ChromeMLModelDescriptor* descriptor,
+                                 uintptr_t context,
+                                 ChromeMLScheduleFn schedule) {
+  return reinterpret_cast<ChromeMLModel>(new FakeModelInstance{
+      .backend_type = descriptor->backend_type,
+      .performance_hint = descriptor->performance_hint,
+  });
+}
+
+void DestroyModel(ChromeMLModel model) {
+  auto* instance = reinterpret_cast<FakeModelInstance*>(model);
+  delete instance;
+}
+
+ChromeMLSession CreateSession(ChromeMLModel model,
+                              const ChromeMLAdaptationDescriptor* descriptor) {
+  auto* model_instance = reinterpret_cast<FakeModelInstance*>(model);
+  auto* instance = new FakeSessionInstance{};
+  instance->model_instance = model_instance;
+  if (descriptor) {
+    instance->enable_image_input = descriptor->enable_image_input;
+    instance->enable_audio_input = descriptor->enable_audio_input;
+    instance->top_k = descriptor->top_k;
+    instance->temperature = descriptor->temperature;
+    if (descriptor->model_data) {
+      instance->adaptation_file_id = descriptor->model_data->file_id;
+      if (model_instance->backend_type == ml::ModelBackendType::kGpuBackend) {
+        instance->adaptation_data =
+            ReadFile(descriptor->model_data->weights_file);
+      } else if (model_instance->backend_type ==
+                 ml::ModelBackendType::kApuBackend) {
+        base::ReadFileToString(
+            base::FilePath::FromUTF8Unsafe(descriptor->model_data->model_path),
+            &instance->adaptation_data);
+      }
+    }
+  }
+  return reinterpret_cast<ChromeMLSession>(instance);
+}
+
+ChromeMLSession CloneSession(ChromeMLSession session) {
+  auto* instance = reinterpret_cast<FakeSessionInstance*>(session);
+  return reinterpret_cast<ChromeMLSession>(new FakeSessionInstance{
+      .model_instance = instance->model_instance,
+      .adaptation_data = instance->adaptation_data,
+      .adaptation_file_id = instance->adaptation_file_id,
+      .context = instance->context,
+      .cloned = true,
+      .enable_image_input = instance->enable_image_input,
+      .enable_audio_input = instance->enable_audio_input,
+      .top_k = instance->top_k,
+      .temperature = instance->temperature,
+      .has_tool_declarations = instance->has_tool_declarations,
+      .awaiting_tool_responses = instance->awaiting_tool_responses,
+  });
+}
+
+void DestroySession(ChromeMLSession session) {
+  auto* instance = reinterpret_cast<FakeSessionInstance*>(session);
+  delete instance;
+}
+
+bool SessionAppend(ChromeMLSession session,
+                   const ChromeMLAppendOptions* options,
+                   ChromeMLCancel cancel) {
+  auto* instance = reinterpret_cast<FakeSessionInstance*>(session);
+  std::string text;
+  bool in_system_prompt = false;
+  for (size_t i = 0; i < options->input_size; i++) {
+    // SAFETY: `options->input_size` describes how big `options->input` is.
+    const ml::InputPiece& piece = UNSAFE_BUFFERS(options->input[i]);
+    std::visit(
+        absl::Overload{
+            [&](ml::Token token) {
+              if (token == ml::Token::kSystem) {
+                in_system_prompt = true;
+              } else if (token == ml::Token::kUser ||
+                         token == ml::Token::kModel ||
+                         token == ml::Token::kEnd) {
+                in_system_prompt = false;
+              }
+            },
+            [&](const SkBitmap&) { CHECK(instance->enable_image_input); },
+            [&](const ml::AudioBuffer&) {
+              CHECK(instance->enable_audio_input);
+            },
+            [&](const ml::ToolDeclaration&) {
+              if (in_system_prompt) {
+                instance->has_tool_declarations = true;
+              } else {
+                LOG(WARNING)
+                    << "Tool declaration ignored outside system prompt.";
+              }
+            },
+            [](const ml::ToolCall&) {},
+            [&](const ml::ToolResponse&) {
+              instance->awaiting_tool_responses = false;
+            },
+            [](const std::string&) {},
+            [](bool) {},
+        },
+        piece);
+    text += PieceToString(piece);
+  }
+  if (options->max_tokens < text.size()) {
+    text.resize(options->max_tokens);
+  }
+
+  if (!text.empty()) {
+    instance->context.push_back(text);
+  }
+  if (options->context_saved_fn) {
+    (*options->context_saved_fn)(static_cast<int>(text.size()));
+  }
+  return true;
+}
+
+bool SessionGenerate(ChromeMLSession session,
+                     const ChromeMLGenerateOptions* options,
+                     ChromeMLCancel cancel) {
+  auto* instance = reinterpret_cast<FakeSessionInstance*>(session);
+  int output_chunks = 0;
+  auto OutputChunk = [&](const std::string& chunk) {
+    ChromeMLExecutionOutput output = {};
+    if (chunk.empty()) {
+      output.status = ChromeMLExecutionStatus::kComplete;
+      if (g_calculate_tokens_decoded) {
+        constexpr int kEosTokenCount = 1;
+        output.tokens_decoded = output_chunks + kEosTokenCount;
+      }
+      (*options->output_fn)(&output);
+      return;
+    }
+    output.status = ChromeMLExecutionStatus::kInProgress;
+    output.text = chunk.c_str();
+    output_chunks++;
+    (*options->output_fn)(&output);
+  };
+
+  if (instance->model_instance->backend_type ==
+      ml::ModelBackendType::kCpuBackend) {
+    OutputChunk("CPU backend");
+  }
+  if (instance->model_instance->performance_hint ==
+      ml::ModelPerformanceHint::kFastestInference) {
+    OutputChunk("Fastest inference");
+  }
+  if (!instance->adaptation_data.empty()) {
+    std::string adaptation_str = "Adaptation: " + instance->adaptation_data;
+    if (instance->adaptation_file_id) {
+      adaptation_str +=
+          " (" + base::NumberToString(*instance->adaptation_file_id) + ")";
+    }
+    OutputChunk(adaptation_str);
+  }
+
+  // Only include sampling params if they're not the respective default values.
+  if (instance->top_k != 1 || instance->temperature != 0) {
+    OutputChunk(base::StrCat(
+        {"TopK: ", base::NumberToString(instance->top_k),
+         ", Temp: ", base::NumberToString(instance->temperature)}));
+  }
+
+  if (!instance->context.empty()) {
+    for (const std::string& context : instance->context) {
+      OutputChunk(context);
+    }
+  }
+  if (options->constraint) {
+    OutputChunk(GenerateConstraintString(options->constraint));
+    g_constraint_fns.Delete(options->constraint);
+  }
+
+  // Simulate tool calls when tool declarations were appended.
+  if (instance->has_tool_declarations) {
+    instance->awaiting_tool_responses = true;
+    ChromeMLToolCall fake_call = {
+        .call_id = kFakeToolCallId,
+        .name = kFakeToolName,
+        .arguments_json = R"({"arg":"value"})",
+    };
+    ChromeMLExecutionOutput tool_output = {};
+    tool_output.status = ChromeMLExecutionStatus::kInProgress;
+    tool_output.tool_calls = &fake_call;
+    tool_output.tool_calls_size = 1;
+    (*options->output_fn)(&tool_output);
+    OutputChunk("");
+    return true;
+  }
+
+  OutputChunk("");
+  return true;
+}
+
+bool SessionExecuteModel(ChromeMLSession session,
+                         ChromeMLModel model,
+                         const ChromeMLExecuteOptions* options,
+                         ChromeMLCancel cancel) {
+  ChromeMLAppendOptions append_opts{
+      .input = options->input,
+      .input_size = options->input_size,
+      .max_tokens = options->max_tokens,
+      .context_saved_fn = options->context_saved_fn,
+  };
+  if (!SessionAppend(session, &append_opts, cancel)) {
+    return false;
+  }
+  if (!options->execution_output_fn) {
+    return true;
+  }
+  ChromeMLGenerateOptions gen_opts{
+      .max_output_tokens = options->max_output_tokens,
+      .constraint = options->constraint,
+      .output_fn = options->execution_output_fn,
+  };
+  return SessionGenerate(session, &gen_opts, cancel);
+}
+
+void SessionSizeInTokensInputPiece(ChromeMLSession session,
+                                   ChromeMLModel model,
+                                   const ml::InputPiece* input,
+                                   size_t input_size,
+                                   const ChromeMLSizeInTokensFn& fn) {
+  std::string text;
+  for (size_t i = 0; i < input_size; i++) {
+    // SAFETY: `input_size` describes how big `input` is.
+    const ml::InputPiece& piece = UNSAFE_BUFFERS(input[i]);
+    if (!std::holds_alternative<std::string>(piece) &&
+        !std::holds_alternative<ml::Token>(piece) &&
+        !std::holds_alternative<ml::ToolCall>(piece)) {
+      continue;
+    }
+
+    text += PieceToString(piece);
+  }
+  fn(text.size());
+}
+
+void SessionScore(ChromeMLSession session,
+                  const std::string& text,
+                  const ChromeMLScoreFn& fn) {
+  fn(static_cast<float>(text[0]));
+}
+
+ChromeMLCancel CreateCancel() {
+  return reinterpret_cast<ChromeMLCancel>(new FakeCancelInstance());
+}
+
+void DestroyCancel(ChromeMLCancel cancel) {
+  delete reinterpret_cast<FakeCancelInstance*>(cancel);
+}
+
+void CancelExecuteModel(ChromeMLCancel cancel) {
+  auto* instance = reinterpret_cast<FakeCancelInstance*>(cancel);
+  instance->cancelled = true;
+}
+
+void SetConstraintFns(const ChromeMLConstraintFns* fns) {
+  g_constraint_fns = *fns;
+}
+
+// TODO(crbug.com/500473306): Remove this once we switch over to
+// GetTokenizerParamsV3.
+bool GetTokenizerParams(ChromeMLModel model,
+                        ChromeMLSession session,
+                        const ChromeMLGetTokenizerParamsFn& fn,
+                        bool use_optimization) {
+  // Create a simple tokenizer mapping each byte to itself.
+  std::string tokens;
+  std::vector<uint32_t> token_lens;
+  for (int i = 0; i < 256; ++i) {
+    tokens += std::string(1, static_cast<char>(i));
+    token_lens.push_back(1);
+  }
+  tokens += kEos;
+  token_lens.push_back(kEos.size());
+  ChromeMLTokenizerParams params{
+      .vocab_size = static_cast<uint32_t>(token_lens.size()),
+      .eos_token_id = static_cast<uint32_t>(token_lens.size() - 1),
+      .token_lens = token_lens.data(),
+      .token_bytes = reinterpret_cast<const uint8_t*>(tokens.data()),
+      .tokenize_fn = &TokenizeBytes,
+  };
+  fn(params);
+  return true;
+}
+
+// TODO(crbug.com/500473306): Remove this once we switch over to
+// GetTokenizerParamsV3. This was a temporary transition function to test out an
+// optimization, but is now abandoned since the optimization is unlikely to have
+// much of an impact.
+bool GetTokenizerParamsV2(ChromeMLModel model,
+                          ChromeMLSession session,
+                          const ChromeMLGetTokenizerParamsFn& fn) {
+  return GetTokenizerParams(session, model, fn, /*use_optimization=*/true);
+}
+
+// TODO(crbug.com/500473306): Rename this to `GetTokenizerParams` once the other
+// versions of this function have been removed.
+bool GetTokenizerParamsV3(ChromeMLModel model,
+                          ChromeMLSession session,
+                          const ChromeMLGetTokenizerParamsV3Fn& fn) {
+  return GetTokenizerParamsV2(
+      model, session, [fn](const ChromeMLTokenizerParams& params) {
+        ChromeMLTokenizerParamsV3 paramsV3{
+            // TODO(crbug.com/531814326): Support multiple tokens.
+            .vocab_size = params.vocab_size,
+            .eos_token_ids_size = 1u,
+            .eos_token_ids = &params.eos_token_id,
+            .token_lens = params.token_lens,
+            .token_bytes = params.token_bytes,
+            .tokenize_fn = params.tokenize_fn,
+            .tokenize_user_data = params.tokenize_user_data,
+        };
+        fn(paramsV3);
+      });
+}
+
+TfLiteDelegate* CreateGpuDelegate() {
+  return nullptr;
+}
+
+TfLiteDelegate* CreateGpuDelegateWithPrecision(GpuDelegatePrecision precision) {
+  return nullptr;
+}
+
+void DestroyGpuDelegate(TfLiteDelegate* delegate) {}
+
+ChromeMLASRStream ASRCreateStream(ChromeMLSession session,
+                                  const ChromeMLASRStreamOptions* options) {
+  if (options->sample_rate_hz == 0) {
+    return 0;
+  }
+  return 1;
+}
+
+void ASRAddAudioChunk(ChromeMLASRStream stream, ml::AudioBuffer* audio_buffer) {
+}
+
+void ASRDestroyStream(ChromeMLASRStream stream) {}
+
+const ChromeMLAPI g_api = {
+    .InitDawnProcs = &InitDawnProcs,
+    .SetMetricsFns = &SetMetricsFns,
+    .SetFatalErrorFn = &SetFatalErrorFn,
+    .DestroyModel = &DestroyModel,
+    .GetEstimatedPerformance = &GetEstimatedPerformance,
+    .QueryGPUAdapter = &QueryGPUAdapter,
+    .GetCapabilities = &GetCapabilities,
+    .SetFatalErrorNonGpuFn = &SetFatalErrorNonGpuFn,
+    .SessionCreateModel = &SessionCreateModel,
+    .SessionAppend = &SessionAppend,
+    .SessionGenerate = &SessionGenerate,
+    .SessionExecuteModel = &SessionExecuteModel,
+    .SessionSizeInTokensInputPiece = &SessionSizeInTokensInputPiece,
+    .SessionScore = &SessionScore,
+    .CreateSession = &CreateSession,
+    .CloneSession = &CloneSession,
+    .DestroySession = &DestroySession,
+    .CreateCancel = &CreateCancel,
+    .DestroyCancel = &DestroyCancel,
+    .CancelExecuteModel = &CancelExecuteModel,
+    .SetConstraintFns = &SetConstraintFns,
+    .GetTokenizerParams = &GetTokenizerParams,
+    .GetTokenizerParamsV2 = &GetTokenizerParamsV2,
+    .GetTokenizerParamsV3 = &GetTokenizerParamsV3,
+    .CreateGpuDelegate = &CreateGpuDelegate,
+    .CreateGpuDelegateWithPrecision = &CreateGpuDelegateWithPrecision,
+    .DestroyGpuDelegate = &DestroyGpuDelegate,
+    .asr_api =
+        {
+            .CreateStream = &ASRCreateStream,
+            .AddAudioChunk = &ASRAddAudioChunk,
+            .DestroyStream = &ASRDestroyStream,
+        },
+};
+
+const ChromeMLAPI* GetFakeMlApi() {
+  g_api.SetConstraintFns(ml::GetConstraintFns());
+  return &g_api;
+}
+
+base::AutoReset<bool> EnableCalculateTokensDecodedForTesting() {
+  return {&g_calculate_tokens_decoded, true};
+}
+
+}  // namespace fake_ml

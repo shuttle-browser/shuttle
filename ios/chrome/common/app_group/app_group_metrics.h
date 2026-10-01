@@ -1,0 +1,52 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_COMMON_APP_GROUP_APP_GROUP_METRICS_H_
+#define IOS_CHROME_COMMON_APP_GROUP_APP_GROUP_METRICS_H_
+
+#import <Foundation/Foundation.h>
+
+#include "ios/chrome/common/app_group/app_group_constants.h"
+
+namespace app_group {
+
+
+// An app_group key to the number of times Credential Extension user
+// selected a Password from the list since last Chrome launch.
+extern NSString* const kCredentialExtensionPasswordUseCount;
+
+// An app_group key to the number of times Credential Extension user
+// selected a Passkey from the list since last Chrome launch.
+extern NSString* const kCredentialExtensionPasskeyUseCount;
+
+// An app_group key to the number of times Credential Extension returned
+// a Password to the context without direct user intervention.
+extern NSString* const kCredentialExtensionQuickPasswordUseCount;
+
+// An app_group key to the number of times Credential Extension returned
+// a Passkey to the context without direct user intervention.
+extern NSString* const kCredentialExtensionQuickPasskeyUseCount;
+
+// An app_group key to the number of times Credential Extension couldn't
+// find a password in the keychain.
+extern NSString* const kCredentialExtensionFetchPasswordFailureCount;
+
+// An app_group key to the number of times Credential Extension was queried
+// for a password with a nil argument.
+extern NSString* const kCredentialExtensionFetchPasswordNilArgumentCount;
+
+// An app_group key for the number of times saving a newly generated password
+// to the keychain failed.
+extern NSString* const kCredentialExtensionKeychainSavePasswordFailureCount;
+
+// An app_group key for the number of times saving a new credential failed.
+extern NSString* const kCredentialExtensionSaveCredentialFailureCount;
+
+// Returns the app_group key containing the number of times the given histogram
+// bucket was fired.
+NSString* HistogramCountKey(NSString* histogram, int bucket);
+
+}  // namespace app_group
+
+#endif  // IOS_CHROME_COMMON_APP_GROUP_APP_GROUP_METRICS_H_

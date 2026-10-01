@@ -1,0 +1,89 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module contextual_tasks_internals.mojom;
+
+import "chrome/browser/contextual_tasks/contextual_tasks_types.mojom";
+import "mojo/public/mojom/base/time.mojom";
+import "url/mojom/url.mojom";
+
+struct GetRelevantContextRequest {
+  // The query to get relevant context for.
+  string query;
+  // The mode to use for tab selection.
+  contextual_tasks.mojom.TabSelectionMode tab_selection_mode;
+  // The minimum model score to use for tab selection. Must be a value between 0
+  // and 1, inclusive.
+  float min_model_score;
+};
+
+// Represents the tab.
+struct Tab {
+  // Tab title.
+  string title;
+  // Tab URL.
+  url.mojom.Url url;
+};
+
+struct GetRelevantContextResponse {
+  // The list of open tabs that are relevant to the query.
+  array<Tab> relevant_tabs;
+};
+
+// Lives in the browser process. A renderer uses this to link itself with
+// a page handler.
+interface ContextualTasksInternalsPageHandlerFactory {
+  // Create a page handler and link it to the UI.
+  CreatePageHandler(
+      pending_remote<ContextualTasksInternalsPage> page,
+      pending_receiver<ContextualTasksInternalsPageHandler> handler);
+};
+
+// Represents the state of the entry point eligibility checks for Contextual Tasks.
+struct EligibilityState {
+  // Overall eligibility state.
+  bool is_eligible;
+  // Whether the contextual tasks feature flag is enabled.
+  bool is_contextual_tasks_enabled;
+  // Whether the user is signed into the browser with valid credentials.
+  bool is_signed_in;
+  // Whether the cookie jar contains the primary account.
+  bool primary_account_in_cookie_jar;
+  // Whether AIM is allowed by enterprise policy.
+  bool is_aim_allowed_by_policy;
+  // Whether AIM is eligible globally.
+  bool is_aim_eligible;
+  // Whether the user is eligible for Co-Browse.
+  bool is_cobrowse_eligible;
+  // Whether page context sharing is enabled by the user or policy.
+  bool is_context_sharing_enabled;
+  // Whether the default search engine is Google.
+  bool is_default_search_engine_google;
+};
+
+// PageHandler for ContextualTasksInternals page.
+interface ContextualTasksInternalsPageHandler {
+  // Returns the relevant context for the given request.
+  GetRelevantContext(GetRelevantContextRequest request) =>
+      (GetRelevantContextResponse response);
+
+  // Sets the forced embedded page host.
+  SetForcedEmbeddedPageHost(url.mojom.Url host);
+  // Gets the forced embedded page host.
+  GetForcedEmbeddedPageHost() => (url.mojom.Url host);
+
+  // Gets the current eligibility state for entering AI mode / cobrowsing.
+  GetEligibilityState() => (EligibilityState state);
+};
+
+// Renderer-side handler for internals WebUI page to process the updates from
+// the service.
+interface ContextualTasksInternalsPage {
+  // Notifies the page of a contextual tasks context log event from the
+  // Optimization Guide service.
+  OnLogMessageAdded(mojo_base.mojom.Time event_time,
+                    string source_file,
+                    int64 source_line,
+                    string message);
+};

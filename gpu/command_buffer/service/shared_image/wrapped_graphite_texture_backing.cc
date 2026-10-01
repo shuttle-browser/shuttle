@@ -1,0 +1,481 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "gpu/command_buffer/service/shared_image/wrapped_graphite_texture_backing.h"
+
+#include <utility>
+
+#include "base/functional/callback_helpers.h"
+#include "base/logging.h"
+#include "components/viz/common/resources/shared_image_format_utils.h"
+#include "gpu/command_buffer/common/shared_image_info.h"
+#include "gpu/command_buffer/common/shared_image_usage.h"
+#include "gpu/command_buffer/service/graphite_shared_context.h"
+#include "gpu/command_buffer/service/shared_image/compound_image_backing.h"
+#include "gpu/command_buffer/service/shared_image/copy_image_plane.h"
+#include "gpu/command_buffer/service/shared_image/gl_texture_passthrough_fallback_image_representation.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_format_service_utils.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_representation.h"
+#include "gpu/command_buffer/service/shared_image/skia_gl_image_representation.h"
+#include "gpu/config/gpu_finch_features.h"
+#include "third_party/skia/include/core/SkRefCnt.h"
+#include "third_party/skia/include/core/SkSurface.h"
+#include "third_party/skia/include/core/SkSurfaceProps.h"
+#include "third_party/skia/include/gpu/graphite/BackendTexture.h"
+#include "third_party/skia/include/gpu/graphite/Context.h"
+#include "third_party/skia/include/gpu/graphite/Image.h"
+#include "third_party/skia/include/gpu/graphite/Recorder.h"
+#include "third_party/skia/include/gpu/graphite/Recording.h"
+#include "third_party/skia/include/gpu/graphite/Surface.h"
+#include "third_party/skia/include/gpu/graphite/TextureInfo.h"
+#include "ui/gfx/geometry/skia_conversions.h"
+
+#if BUILDFLAG(SKIA_USE_DAWN)
+#include "gpu/command_buffer/service/dawn_context_provider.h"
+#include "gpu/command_buffer/service/shared_image/dawn_fallback_image_representation.h"
+#endif
+
+namespace gpu {
+namespace {
+using GraphiteTextureHolder = SkiaImageRepresentation::GraphiteTextureHolder;
+
+struct ReadPixelsContext {
+  std::unique_ptr<const SkImage::AsyncReadResult> async_result;
+  bool finished = false;
+};
+
+void OnReadPixelsDone(
+    void* raw_ctx,
+    std::unique_ptr<const SkImage::AsyncReadResult> async_result) {
+  ReadPixelsContext* context = reinterpret_cast<ReadPixelsContext*>(raw_ctx);
+  context->async_result = std::move(async_result);
+  context->finished = true;
+}
+}  // namespace
+
+class WrappedGraphiteTextureBacking::SkiaGraphiteImageRepresentationImpl
+    : public SkiaGraphiteImageRepresentation {
+ public:
+  SkiaGraphiteImageRepresentationImpl(
+      SharedImageManager* manager,
+      SharedImageBacking* backing,
+      MemoryTypeTracker* tracker,
+      scoped_refptr<SharedContextState> context_state)
+      : SkiaGraphiteImageRepresentation(manager, backing, tracker),
+        context_state_(std::move(context_state)) {}
+
+  ~SkiaGraphiteImageRepresentationImpl() override {
+    CHECK(write_surfaces_.empty());
+  }
+
+  std::vector<sk_sp<SkSurface>> BeginWriteAccess(
+      const SkSurfaceProps& surface_props,
+      const gfx::Rect& update_rect) override {
+    const auto& texture_holders =
+        backing_impl()->GetWrappedGraphiteTextureHolders();
+    CHECK(write_surfaces_.empty());
+    write_surfaces_.reserve(texture_holders.size());
+    for (int plane = 0; plane < format().NumberOfPlanes(); ++plane) {
+      auto color_type = viz::ToClosestSkColorType(format(), plane);
+      void* release_context =
+          scoped_refptr<GraphiteTextureHolder>(texture_holders[plane])
+              .release();
+      auto release_proc = [](void* context) {
+        static_cast<GraphiteTextureHolder*>(context)->Release();
+      };
+      auto surface = SkSurfaces::WrapBackendTexture(
+          context_state_->gpu_main_graphite_recorder(),
+          texture_holders[plane]->texture(), color_type,
+          color_space().ToSkColorSpace(), &surface_props, release_proc,
+          release_context, WrappedTextureDebugLabel(plane));
+      if (!surface) {
+        LOG(ERROR) << "BeginWriteAccess() failed.";
+        write_surfaces_.clear();
+        return {};
+      }
+      write_surfaces_.push_back(std::move(surface));
+    }
+    return write_surfaces_;
+  }
+
+  std::vector<scoped_refptr<GraphiteTextureHolder>> BeginWriteAccess()
+      override {
+    return backing_impl()->GetWrappedGraphiteTextureHolders();
+  }
+
+  void EndWriteAccess() override {
+    for (auto& write_surface : write_surfaces_) {
+      CHECK(write_surface->unique());
+    }
+    write_surfaces_.clear();
+  }
+
+  std::vector<scoped_refptr<GraphiteTextureHolder>> BeginReadAccess() override {
+    CHECK(write_surfaces_.empty());
+    return backing_impl()->GetWrappedGraphiteTextureHolders();
+  }
+
+  void EndReadAccess() override { CHECK(write_surfaces_.empty()); }
+
+  bool SupportsMultipleConcurrentReadAccess() override { return true; }
+
+  // Graphite context submit is done only once per frame for Dawn D3D backend.
+  bool SupportsDeferredGraphiteSubmit() override {
+    return context_state_->IsGraphiteDawnD3D();
+  }
+
+ private:
+  WrappedGraphiteTextureBacking* backing_impl() {
+    return static_cast<WrappedGraphiteTextureBacking*>(backing());
+  }
+
+  std::vector<sk_sp<SkSurface>> write_surfaces_;
+  scoped_refptr<SharedContextState> context_state_;
+};
+
+WrappedGraphiteTextureBacking::WrappedGraphiteTextureBacking(
+    base::PassKey<WrappedSkImageBackingFactory>,
+    const Mailbox& mailbox,
+    const SharedImageInfo& si_info,
+    scoped_refptr<SharedContextState> context_state,
+    const bool thread_safe)
+    : ClearTrackingSharedImageBacking(
+          mailbox,
+          si_info,
+          si_info.format.EstimatedSizeInBytes(si_info.size),
+          thread_safe),
+      context_state_(std::move(context_state)) {
+  CHECK(context_state_);
+  CHECK(context_state_->graphite_shared_context());
+
+  // TODO:crbug.com/427657657 - Implement a generic solution to handle all
+  // SkImage release callbacks through GraphiteSharedContext.
+  if (is_thread_safe() || (context_state_->is_drdc_enabled() &&
+                           features::IsGraphiteContextThreadSafe())) {
+    // If the backing is thread safe then it may be destroyed on a different
+    // thread. Store the task runner so textures can be destroyed on the same
+    // thread they were created on.
+    CHECK(base::SingleThreadTaskRunner::HasCurrentDefault());
+    created_task_runner_ = base::SingleThreadTaskRunner::GetCurrentDefault();
+  }
+}
+
+WrappedGraphiteTextureBacking::~WrappedGraphiteTextureBacking() {
+  if (created_task_runner_ && !created_task_runner_->BelongsToCurrentThread()) {
+    // The `context_state_` ref needs to be dropped on original thread for cases
+    // like DrDC with Android.
+    created_task_runner_->PostTask(
+        FROM_HERE, base::DoNothingWithBoundArgs(std::move(context_state_)));
+  }
+}
+
+bool WrappedGraphiteTextureBacking::Initialize() {
+  CHECK(!format().IsCompressed());
+  const bool mipmapped = usage().Has(SHARED_IMAGE_USAGE_MIPMAP);
+  const int num_planes = format().NumberOfPlanes();
+  texture_holders_.resize(num_planes);
+  for (int plane = 0; plane < num_planes; ++plane) {
+    // is_yuv_plane is false here because the planes are separate single plane
+    // textures, not planes of a multi-planar YUV texture.
+    constexpr bool is_yuv_plane = false;
+    skgpu::graphite::TextureInfo texture_info = gpu::GraphiteBackendTextureInfo(
+        context_state_->gr_context_type(), format(), plane, is_yuv_plane,
+        mipmapped, /*scanout_dcomp_surface=*/false);
+    auto sk_size = gfx::SizeToSkISize(format().GetPlaneSize(plane, size()));
+    auto texture = recorder()->createBackendTexture(sk_size, texture_info);
+    if (!texture.isValid()) {
+      LOG(ERROR) << "createBackendTexture() failed with format:"
+                 << format().ToString();
+      texture_holders_.clear();
+      return false;
+    }
+    texture_holders_[plane] =
+        base::MakeRefCounted<WrappedGraphiteTextureHolder>(
+            std::move(texture), context_state_, created_task_runner_);
+  }
+  return true;
+}
+
+bool WrappedGraphiteTextureBacking::InitializeWithData(
+    base::span<const uint8_t> pixels) {
+  CHECK(format().is_single_plane());
+  CHECK(pixels.data());
+
+  skgpu::graphite::TextureInfo texture_info = gpu::GraphiteBackendTextureInfo(
+      context_state_->gr_context_type(), format(),
+      /*plane_index=*/0, /*is_yuv_plane=*/false,
+      /*mipmapped=*/false, /*scanout_dcomp_surface=*/false);
+  skgpu::graphite::BackendTexture texture = recorder()->createBackendTexture(
+      gfx::SizeToSkISize(size()), texture_info);
+  if (!texture.isValid()) {
+    LOG(ERROR) << "Graphite createBackendTexture() failed with format: "
+               << format().ToString();
+    return false;
+  }
+
+  // Create `texture_holder_` so that on backing construction failure, the
+  // texture will be deleted as well.
+  texture_holders_ = std::vector<scoped_refptr<GraphiteTextureHolder>>{
+      base::MakeRefCounted<WrappedGraphiteTextureHolder>(
+          texture, context_state_, created_task_runner_)};
+
+  if (format().IsCompressed()) {
+    if (!recorder()->updateCompressedBackendTexture(texture, pixels.data(),
+                                                    pixels.size())) {
+      LOG(ERROR) << "updateCompressedBackendTexture() failed for "
+                 << format().ToString();
+      return false;
+    }
+  } else {
+    auto image_info = AsSkImageInfo();
+    if (pixels.size() != image_info.computeMinByteSize()) {
+      LOG(ERROR) << "Invalid initial pixel data size";
+      return false;
+    }
+
+    SkPixmap pixmap(image_info, pixels.data(), image_info.minRowBytes());
+    if (!recorder()->updateBackendTexture(texture, &pixmap, /*numLevels=*/1)) {
+      LOG(ERROR) << "updateBackendTexture() failed for " << format().ToString();
+      return false;
+    }
+  }
+
+  if (!InsertRecordingAndSubmit()) {
+    return false;
+  }
+
+  SetCleared();
+  return true;
+}
+
+SharedImageBackingType WrappedGraphiteTextureBacking::GetType() const {
+  return SharedImageBackingType::kWrappedGraphiteTexture;
+}
+
+void WrappedGraphiteTextureBacking::Update(
+    std::unique_ptr<gfx::GpuFence> in_fence) {
+  NOTREACHED();
+}
+
+bool WrappedGraphiteTextureBacking::UploadFromMemory(
+    const std::vector<SkPixmap>& pixmaps) {
+  // Using `context_state_` isn't compatible with a thread safe backing.
+  CHECK(!is_thread_safe() || created_task_runner_->BelongsToCurrentThread());
+  CHECK_EQ(pixmaps.size(), texture_holders_.size());
+
+  if (context_state_->context_lost()) {
+    return false;
+  }
+
+  bool updated = true;
+  for (size_t i = 0; i < texture_holders_.size(); ++i) {
+    updated = updated && recorder()->updateBackendTexture(
+                             texture_holders_[i]->texture(), &pixmaps[i],
+                             /*numLevels=*/1);
+  }
+  if (!updated) {
+    LOG(ERROR) << "Graphite updateBackendTexture() failed";
+    return false;
+  }
+
+  return InsertRecordingAndSubmit();
+}
+
+bool WrappedGraphiteTextureBacking::ReadbackToMemory(
+    const std::vector<SkPixmap>& pixmaps) {
+  // Using `context_state_` isn't compatible with a thread safe backing.
+  CHECK(!is_thread_safe() || created_task_runner_->BelongsToCurrentThread());
+  CHECK_EQ(pixmaps.size(), texture_holders_.size());
+
+  if (context_state_->context_lost()) {
+    return false;
+  }
+
+  std::vector<ReadPixelsContext> contexts(format().NumberOfPlanes());
+  for (int i = 0; i < format().NumberOfPlanes(); i++) {
+    const auto color_type = viz::ToClosestSkColorType(format(), i);
+
+    // When wrapping the backend texture for readback, we must use the backing's
+    // actual color space. If we use nullptr (defaulting to sRGB), Skia will
+    // perform an incorrect color conversion if the destination pixmap has a
+    // non-sRGB color space. This happens in the dynamic allocation path where
+    // CPUReadbackUploadCopyStrategy uses the backing's real color space for
+    // the sync copy. In the legacy fallback path, nullptr was "correct" only
+    // because the destination pixmaps also used nullptr, resulting in a raw
+    // copy. We only apply this fix when dynamic allocation is enabled to
+    // maintain parity with the legacy path's raw-copy behavior for now.
+    sk_sp<SkColorSpace> src_color_space = nullptr;
+    if (base::FeatureList::IsEnabled(features::kUseDynamicBackingAllocations)) {
+      src_color_space = color_space().ToSkColorSpace();
+    }
+
+    sk_sp<SkImage> sk_image =
+        SkImages::WrapTexture(context_state_->gpu_main_graphite_recorder(),
+                              texture_holders_[i]->texture(), color_type,
+                              kOpaque_SkAlphaType, std::move(src_color_space));
+    if (!sk_image) {
+      return false;
+    }
+    const gfx::Size plane_size = format().GetPlaneSize(i, size());
+    const SkIRect src_rect =
+        SkIRect::MakeWH(plane_size.width(), plane_size.height());
+    if (!context_state_->graphite_shared_context()
+             ->asyncRescaleAndReadPixelsAndSubmit(
+                 sk_image.get(), pixmaps[i].info(), src_rect,
+                 SkImage::RescaleGamma::kSrc,
+                 SkImage::RescaleMode::kRepeatedLinear,
+                 base::BindOnce(&OnReadPixelsDone), &contexts[i])) {
+      LOG(ERROR) << "Graphite context submit() failed";
+      return false;
+    }
+  }
+
+  for (int i = 0; i < format().NumberOfPlanes(); i++) {
+    CHECK(contexts[i].finished);
+    const gfx::Size plane_size = format().GetPlaneSize(i, size());
+    CopyImagePlane(
+        static_cast<const uint8_t*>(contexts[i].async_result->data(0)),
+        contexts[i].async_result->rowBytes(0),
+        static_cast<uint8_t*>(pixmaps[i].writable_addr()),
+        pixmaps[i].rowBytes(), pixmaps[i].info().minRowBytes(),
+        plane_size.height());
+  }
+
+  return true;
+}
+
+bool WrappedGraphiteTextureBacking::CheckSupportForAccessStream(
+    SharedImageAccessStream stream,
+    viz::SharedImageFormat format,
+    const AccessParams& params) {
+  if (base::FeatureList::IsEnabled(features::kUseDynamicBackingAllocations)) {
+    // When kUseDynamicBackingAllocations is enabled, we don't support GL access
+    // directly in this backing. Instead, we want CompoundImageBacking to
+    // allocate a GLTextureImageBacking which provides native GL support.
+    if (stream == SharedImageAccessStream::kGL) {
+      return false;
+    }
+    // Similarly for Skia access with GL context (Ganesh), we want to use the
+    // GLTextureImageBacking via CompoundImageBacking instead of the fallback
+    // path in this backing.
+    if (stream == SharedImageAccessStream::kSkia && params.context_state &&
+        params.context_state->IsUsingGL()) {
+      return false;
+    }
+    // For Dawn access, we want CompoundImageBacking to allocate a
+    // DawnImageBacking which provides native Dawn support instead of using the
+    // fallback path in this backing.
+    if (stream == SharedImageAccessStream::kDawn) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool WrappedGraphiteTextureBacking::SupportsAccess(
+    SharedImageAccessStream stream,
+    const AccessParams& params) const {
+  return CheckSupportForAccessStream(stream, format(), params);
+}
+
+bool WrappedGraphiteTextureBacking::InsertRecordingAndSubmit() {
+  auto recording = recorder()->snap();
+  if (!recording) {
+    LOG(ERROR) << "Graphite failed to snap recording from GPU main recorder";
+    return false;
+  }
+  skgpu::graphite::InsertRecordingInfo info = {};
+  info.fRecording = recording.get();
+  if (!context_state_->graphite_shared_context()->insertRecording(info)) {
+    LOG(ERROR) << "Graphite insertRecording() failed";
+    return false;
+  }
+  context_state_->graphite_shared_context()->submit();
+  return true;
+}
+
+const std::vector<scoped_refptr<GraphiteTextureHolder>>&
+WrappedGraphiteTextureBacking::GetWrappedGraphiteTextureHolders() {
+  return texture_holders_;
+}
+
+std::unique_ptr<SkiaGraphiteImageRepresentation>
+WrappedGraphiteTextureBacking::ProduceSkiaGraphite(
+    SharedImageManager* manager,
+    MemoryTypeTracker* tracker,
+    scoped_refptr<SharedContextState> context_state) {
+  if (context_state->context_lost()) {
+    return nullptr;
+  }
+  return std::make_unique<SkiaGraphiteImageRepresentationImpl>(
+      manager, this, tracker, std::move(context_state));
+}
+
+std::unique_ptr<SkiaGaneshImageRepresentation>
+WrappedGraphiteTextureBacking::ProduceSkiaGanesh(
+    SharedImageManager* manager,
+    MemoryTypeTracker* tracker,
+    scoped_refptr<SharedContextState> context_state) {
+  // When kUseDynamicBackingAllocations is enabled, this method should not be
+  // called. CompoundImageBacking will instead allocate a
+  // GLTextureImageBacking.
+  CHECK(!base::FeatureList::IsEnabled(features::kUseDynamicBackingAllocations));
+
+  // Used with Graphite-Vulkan-Swiftshader backend for testing, but the context
+  // passed in is GLContext for passthrough command decoder. See
+  // crbug.com/394385381 for more details.
+  CHECK(context_state->IsUsingGL());
+  CHECK(usage().Has(SHARED_IMAGE_USAGE_GLES2_READ));
+  auto gl_representation = ProduceGLTexturePassthrough(manager, tracker);
+  if (!gl_representation) {
+    return nullptr;
+  }
+  return SkiaGLImageRepresentation::Create(std::move(gl_representation),
+                                           std::move(context_state), manager,
+                                           this, tracker);
+}
+
+#if BUILDFLAG(SKIA_USE_DAWN)
+std::unique_ptr<GLTexturePassthroughImageRepresentation>
+WrappedGraphiteTextureBacking::ProduceGLTexturePassthrough(
+    SharedImageManager* manager,
+    MemoryTypeTracker* tracker) {
+  // When kUseDynamicBackingAllocations is enabled, this method should not be
+  // called. CompoundImageBacking will instead allocate a
+  // GLTextureImageBacking.
+  CHECK(!base::FeatureList::IsEnabled(features::kUseDynamicBackingAllocations));
+
+  CHECK(context_state_->IsGraphiteDawnVulkan());
+  if (context_state_->context_lost()) {
+    return nullptr;
+  }
+  return std::make_unique<GLTexturePassthroughFallbackImageRepresentation>(
+      manager, this, tracker, context_state_->progress_reporter(),
+      context_state_->GetGLFormatCaps());
+}
+
+std::unique_ptr<DawnImageRepresentation>
+WrappedGraphiteTextureBacking::ProduceDawn(
+    SharedImageManager* manager,
+    MemoryTypeTracker* tracker,
+    const wgpu::Device& device,
+    wgpu::BackendType backend_type,
+    std::vector<wgpu::TextureFormat> view_formats,
+    scoped_refptr<SharedContextState> context_state) {
+  // If kUseDynamicBackingAllocations is enabled, we don't support Dawn access
+  // directly in this backing. Instead, we want CompoundImageBacking to
+  // allocate a DawnImageBacking which provides native Dawn support.
+  CHECK(!base::FeatureList::IsEnabled(features::kUseDynamicBackingAllocations));
+
+  CHECK(context_state_->IsGraphiteDawnVulkan());
+  if (context_state_->context_lost()) {
+    return nullptr;
+  }
+  return std::make_unique<DawnFallbackImageRepresentation>(
+      manager, this, tracker, device, ToDawnFormat(format()),
+      std::move(view_formats));
+}
+#endif  // BUILDFLAG(SKIA_USE_DAWN)
+
+}  // namespace gpu

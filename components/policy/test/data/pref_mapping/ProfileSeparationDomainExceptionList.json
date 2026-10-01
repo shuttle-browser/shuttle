@@ -1,0 +1,19 @@
+[
+  {
+    "os": [
+      "win",
+      "linux",
+      "mac"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "profile_separation.domain_exception_list",
+      "default_value": [],
+      "values_to_test": [
+        [
+          "domain",
+          "otherdomain"
+        ]
+      ]
+    }
+  }
+]

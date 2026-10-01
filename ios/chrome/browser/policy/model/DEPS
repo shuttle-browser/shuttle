@@ -1,0 +1,35 @@
+include_rules = [
+  # keep-sorted start
+  "+components/collaboration/public/pref_names.h",
+  "+components/contextual_search/pref_names.h",
+  "+components/contextual_search/search_content_sharing_policy_handler.h",
+  "+components/device_signals/core/common",
+  "+components/lens",
+  "+components/themes",
+  "+ios/chrome/browser/enterprise/client_certificates",
+  "+ios/chrome/browser/enterprise/groups/model",
+  "+ios/chrome/browser/enterprise/identifiers",
+  "+ios/chrome/browser/enterprise/signals/model",
+  "+ios/chrome/browser/policy_url_blocking/model",
+  "+ios/chrome/browser/signin/model",
+  # keep-sorted end
+]
+
+specific_include_rules = {
+  # TODO(crbug.com/40820398): Remove this dependency.
+  "^policy_watcher_browser_agent.mm": [
+    "+ios/chrome/browser/authentication/ui_bundled/signin/signin_utils.h",
+    "+ios/chrome/browser/shared/coordinator/scene/scene_state.h",
+  ],
+  "^policy_egtest.mm": [
+    "+components/policy/test_support",
+  ],
+  "^user_policy_egtest.mm": [
+    "+components/policy/proto",
+    "+components/policy/test_support",
+  ],
+  "^enterprise_policy_test_helper.cc": [
+    "+ios/chrome/browser/prefs/model/ios_chrome_pref_service_factory.h",
+  ]
+}
+

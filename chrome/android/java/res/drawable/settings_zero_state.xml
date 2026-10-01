@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2025 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="100dp"
+    android:height="100dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <group
+        android:translateX="-50"
+        android:translateY="-50">
+    <path
+        android:pathData="M81.1438 54.6408C91.6474 44.4531 108.353 44.4531 118.856 54.6408C122.07 57.7582 126.008 60.03 130.317 61.2526C144.398 65.2484 152.751 79.7047 149.173 93.8882C148.078 98.2282 148.078 102.772 149.173 107.112C152.751 121.295 144.398 135.752 130.317 139.747C126.008 140.97 122.07 143.242 118.856 146.359C108.353 156.547 91.6474 156.547 81.1438 146.359C77.9297 143.242 73.9919 140.97 69.6831 139.747C55.6019 135.752 47.2492 121.295 50.8269 107.112C51.9216 102.772 51.9216 98.2282 50.8269 93.8882C47.2492 79.7047 55.6019 65.2484 69.6831 61.2526C73.9919 60.03 77.9297 57.7582 81.1438 54.6408Z"
+        android:fillColor="@color/settings_search_logo_color_1" />
+    <path
+        android:pathData="M73.4688 72.4688C83.4271 62.5104 99.5729 62.5104 109.531 72.4688C119.49 82.4271 119.49 98.5729 109.531 108.531C99.5729 118.49 83.4271 118.49 73.4688 108.531C63.5104 98.5729 63.5104 82.4271 73.4688 72.4688Z"
+        android:strokeColor="@color/settings_search_logo_color_3"
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M108.631 114.288C107.069 112.726 107.069 110.194 108.631 108.631C110.194 107.069 112.726 107.069 114.288 108.631L135.284 129.627C136.846 131.19 136.846 133.722 135.284 135.284C133.722 136.846 131.19 136.846 129.627 135.284L108.631 114.288Z"
+        android:fillColor="@color/settings_search_logo_color_3" />
+    <path
+        android:pathData="M83 77H99A4 4 0 0 1 103 81V81A4 4 0 0 1 99 85H83A4 4 0 0 1 79 81V81A4 4 0 0 1 83 77Z"
+        android:fillColor="@color/settings_search_logo_color_2" />
+    <path
+        android:pathData="M83 87H99A4 4 0 0 1 103 91V91A4 4 0 0 1 99 95H83A4 4 0 0 1 79 91V91A4 4 0 0 1 83 87Z"
+        android:fillColor="@color/settings_search_logo_color_2" />
+    <path
+        android:pathData="M83 97H99A4 4 0 0 1 103 101V101A4 4 0 0 1 99 105H83A4 4 0 0 1 79 101V101A4 4 0 0 1 83 97Z"
+        android:fillColor="@color/settings_search_logo_color_2" />
+    </group>
+</vector>

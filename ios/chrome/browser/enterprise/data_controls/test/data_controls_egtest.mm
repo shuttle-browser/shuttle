@@ -1,0 +1,758 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "base/strings/sys_string_conversions.h"
+#import "components/enterprise/connectors/core/cloud_content_scanning/upload_request_test_server.h"
+#import "components/enterprise/data_controls/core/browser/features.h"
+#import "components/safe_browsing/core/common/safebrowsing_switches.h"
+#import "components/strings/grit/components_strings.h"
+#import "ios/chrome/browser/browser_content/ui_bundled/edit_menu_app_interface.h"
+#import "ios/chrome/browser/browser_content/ui_bundled/edit_menu_matchers.h"
+#import "ios/chrome/browser/enterprise/connectors/analysis/test/analysis_connectors_app_interface.h"
+#import "ios/chrome/browser/enterprise/data_controls/test/data_controls_app_interface.h"
+#import "ios/chrome/browser/reader_mode/model/features.h"
+#import "ios/chrome/browser/reader_mode/ui/constants.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "ios/chrome/test/earl_grey/chrome_actions.h"
+#import "ios/chrome/test/earl_grey/chrome_earl_grey.h"
+#import "ios/chrome/test/earl_grey/chrome_earl_grey_ui.h"
+#import "ios/chrome/test/earl_grey/chrome_matchers.h"
+#import "ios/chrome/test/earl_grey/chrome_test_case.h"
+#import "ios/components/enterprise/analysis/features.h"
+#import "ios/testing/earl_grey/earl_grey_test.h"
+#import "ios/web/public/test/element_selector.h"
+#import "net/test/embedded_test_server/default_handlers.h"
+#import "ui/base/l10n/l10n_util.h"
+
+using chrome_test_util::ContextMenuItemWithAccessibilityLabelId;
+
+namespace {
+
+NSString* const kCopyConditionName = @"Link copied condition";
+NSString* const kLoadReaderModeFailedMessage =
+    @"Reader mode content could not be loaded";
+NSString* const kCopyLinkFailedMessage = @"Copying link failed";
+NSString* const kBlockCopyingLinkFailedMessage =
+    @"Link should not have been copied";
+
+// The text for testing paste event.
+NSString* const kCopiedText = @"Text to copy";
+
+// Path to a page compatible with reader mode.
+const char kArticlePath[] = "/article.html";
+// URL to a page with a static message.
+const char kDestinationPageUrl[] = "/destination";
+// Path to a page containing the chromium logo and the text `kLogoPageText`.
+const char kLogoPagePath[] = "/chromium_logo_page.html";
+// The DOM element ID of the chromium image on the logo page.
+const char kLogoPageChromiumImageId[] = "chromium_image";
+// The text of the message on the logo page.
+const char kLogoPageText[] = "Page with some text and the chromium logo image.";
+
+// URL to a page with selectable text and pastebin.
+const char kPastebinPath[] = "/pastebin_page.html";
+// The DOM element ID of the selectable text.
+const char kSensitiveInformationId[] = "sensitive_information";
+// The text of the pastebin page
+const char kSensitiveInformationText[] = "SensitiveInformation";
+// The DOM element ID of the pastebin.
+const char kPastebinId[] = "pastebin";
+
+// Returns an ElementSelector for long pressing the first link in the page.
+ElementSelector* ElementSelectorToLongPressLink() {
+  return [ElementSelector selectorWithCSSSelector:"a"];
+}
+
+// Returns an ElementSelector for the chromium image on the logo page.
+ElementSelector* LogoPageChromiumImageIdSelector() {
+  return [ElementSelector selectorWithElementID:kLogoPageChromiumImageId];
+}
+
+// Returns an ElementSelector for the sensitive information text.
+ElementSelector* SensitiveInformationIDSelector() {
+  return [ElementSelector selectorWithElementID:kSensitiveInformationId];
+}
+
+// Matcher for the copy link button in the context menu.
+id<GREYMatcher> CopyLinkButton() {
+  return ContextMenuItemWithAccessibilityLabelId(
+      IDS_IOS_COPY_LINK_ACTION_TITLE);
+}
+
+// Matcher for the open link in group button in the context menu.
+id<GREYMatcher> CopyImageButton() {
+  return ContextMenuItemWithAccessibilityLabelId(
+      IDS_IOS_CONTENT_CONTEXT_COPYIMAGE);
+}
+
+// Taps on `context_menu_item_button` context menu item.
+void TapOnContextMenuButton(id<GREYMatcher> context_menu_item_button) {
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:context_menu_item_button];
+  [[EarlGrey selectElementWithMatcher:context_menu_item_button]
+      performAction:grey_tap()];
+}
+
+}  // namespace
+
+@interface DataControlsTestCase : ChromeTestCase
+@end
+
+@implementation DataControlsTestCase {
+  std::unique_ptr<enterprise_connectors::test::UploadRequestTestServer>
+      _uploadServer;
+}
+
+- (AppLaunchConfiguration)appConfigurationForTestCase {
+  AppLaunchConfiguration config;
+
+  if ([self isRunningTest:@selector(testSearchWithBlocked)] ||
+      [self isRunningTest:@selector(testSearchWithWarnProceed)] ||
+      [self isRunningTest:@selector(testSearchWithWarnCancel)] ||
+      [self isRunningTest:@selector(testSearchWithReport)]) {
+    config.features_enabled.push_back(data_controls::kDataControlsSearchWith);
+  }
+
+  if ([self isContentAnalysisTest]) {
+    config.features_enabled.push_back(
+        enterprise_connectors::kEnableBulkDataEntryConnectorIOS);
+    config.additional_args.push_back(base::StrCat(
+        {"--", safe_browsing::switches::kCloudBinaryUploadServiceUrlFlag, "=",
+         _uploadServer->GetServiceURL().spec()}));
+  }
+
+  if ([self isContentAnalysisAllowTest]) {
+    _uploadServer->SetScanResultSuccess();
+  } else if ([self isContentAnalysisWarnTest]) {
+    _uploadServer->SetScanResultWarn();
+  } else if ([self isContentAnalysisBlockTest]) {
+    _uploadServer->SetScanResultBlock();
+  }
+
+  return config;
+}
+
+- (void)setUp {
+  if ([self isContentAnalysisTest]) {
+    _uploadServer = std::make_unique<
+        enterprise_connectors::test::UploadRequestTestServer>();
+    // `Start` must be called before `setUp` as the server URL is passed in the
+    // `AppLaunchConfiguration`.
+    if (!_uploadServer->Start()) {
+      // Use `NOTREACHED()` instead of `GREYAssertTrue` because `GREYAssertTrue`
+      // can only be used after calling the `-setUp` method of the super class.
+      NOTREACHED();
+    }
+  }
+  [super setUp];
+  GREYAssertTrue(self.testServer->Start(), @"Server did not start.");
+}
+
+- (void)tearDownHelper {
+  [ChromeEarlGrey clearPasteboard];
+  [AnalysisConnectorsAppInterface clearBrowserDMToken];
+  [AnalysisConnectorsAppInterface clearBulkDataEntryRules];
+  _uploadServer.reset();
+  [super tearDownHelper];
+}
+
+- (BOOL)isContentAnalysisTest {
+  return [self isContentAnalysisAllowTest] ||
+         [self isContentAnalysisWarnTest] || [self isContentAnalysisBlockTest];
+}
+
+- (BOOL)isContentAnalysisAllowTest {
+  return [self isRunningTest:@selector(testPasteAllowIfContentAnalysisSuccess)];
+}
+
+- (BOOL)isContentAnalysisWarnTest {
+  return
+      [self
+          isRunningTest:@selector(testPasteAllowIfContentAnalysisWarnBypass)] ||
+      [self isRunningTest:@selector(testPasteBlockIfContentAnalysisWarnCancel)];
+}
+
+- (BOOL)isContentAnalysisBlockTest {
+  return [self isRunningTest:@selector(testPasteBlockIfContentAnalysisFailure)];
+}
+
+#pragma mark - Helpers
+
+// Navigate to the test page for Paste Content Analysis then write `kCopiedText`
+// to clipboard.
+- (void)setupPasteContentAnalysis {
+  [AnalysisConnectorsAppInterface setBulkDataEntryRules];
+  [AnalysisConnectorsAppInterface setBrowserDMToken];
+
+  [ChromeEarlGrey clearPasteboard];
+  const GURL initialURL = self.testServer->GetURL(kPastebinPath);
+  [ChromeEarlGrey loadURL:initialURL];
+  [ChromeEarlGrey waitForWebStateContainingText:kSensitiveInformationText];
+
+  [ChromeEarlGrey copyTextToPasteboard:kCopiedText];
+}
+
+// Focus and longpress on the Pastebin in the test page and tap the `paste`
+// button in the edit menu.
+- (void)triggerPasteOnPastebin {
+  // Using JavaScript to focus on the pastebin first then longpress because
+  // edit menu does not always show up if simply tapping on the pastebin.
+  [ChromeEarlGrey
+      evaluateJavaScriptForSideEffect:
+          [NSString stringWithFormat:@"document.getElementById('%@').focus();",
+                                     base::SysUTF8ToNSString(kPastebinId)]];
+  [ChromeEarlGreyUI
+      longPressElementOnWebView:[ElementSelector
+                                    selectorWithElementID:kPastebinId]];
+
+  // Tap the paste button in the edit menu.
+  [ChromeEarlGrey
+      waitForUIElementToAppearWithMatcher:[EditMenuAppInterface
+                                              editMenuPasteButtonMatcher]];
+  [[EarlGrey selectElementWithMatcher:[EditMenuAppInterface
+                                          editMenuPasteButtonMatcher]]
+      performAction:grey_tap()];
+}
+
+// Return the test page pasted text in the pastebin as a `NSString`.
+- (NSString*)pastedText {
+  return base::SysUTF8ToNSString(
+      [ChromeEarlGrey
+          evaluateJavaScript:
+              [NSString
+                  stringWithFormat:@"document.getElementById('%@').value;",
+                                   base::SysUTF8ToNSString(kPastebinId)]]
+          .GetString());
+}
+
+#pragma mark - Tests
+
+// Tests that copying an image via context menu is blocked when a "BLOCK" is set
+// in DataControls policy.
+- (void)testCopyBlocked {
+  [DataControlsAppInterface setBlockCopyRule];
+
+  [ChromeEarlGrey clearPasteboard];
+  [ChromeEarlGrey loadURL:self.testServer->GetURL(kLogoPagePath)];
+  [ChromeEarlGrey waitForWebStateContainingText:kLogoPageText];
+
+  [ChromeEarlGreyUI
+      longPressElementOnWebView:LogoPageChromiumImageIdSelector()];
+  TapOnContextMenuButton(CopyImageButton());
+
+  // Check that the snackbar is shown.
+  id<GREYMatcher> snackbarMessage = grey_text(
+      l10n_util::GetNSString(IDS_POLICY_ACTION_BLOCKED_BY_ORGANIZATION));
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:snackbarMessage];
+
+  // Check that the image was not copied.
+  GREYAssertFalse([ChromeEarlGrey pasteboardHasImages],
+                  @"Image should not have been copied");
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that copying an image via context menu is allowed after the user
+// proceeds through the warning triggered by DataControlRules policy.
+- (void)testCopyWarnProceed {
+  [DataControlsAppInterface setWarnCopyRule];
+
+  [ChromeEarlGrey clearPasteboard];
+  [ChromeEarlGrey loadURL:self.testServer->GetURL(kLogoPagePath)];
+  [ChromeEarlGrey waitForWebStateContainingText:kLogoPageText];
+
+  [ChromeEarlGreyUI
+      longPressElementOnWebView:LogoPageChromiumImageIdSelector()];
+  TapOnContextMenuButton(CopyImageButton());
+
+  // Tap the "Copy anyways" button on the warning dialog.
+  [[EarlGrey selectElementWithMatcher:
+                 chrome_test_util::AlertItemWithAccessibilityLabelId(
+                     IDS_DATA_CONTROLS_COPY_WARN_CONTINUE_BUTTON)]
+      performAction:grey_tap()];
+
+  // Check that the image was copied.
+  GREYCondition* copyCondition =
+      [GREYCondition conditionWithName:@"Image copied condition"
+                                 block:^BOOL {
+                                   return [ChromeEarlGrey pasteboardHasImages];
+                                 }];
+  GREYAssertTrue([copyCondition waitWithTimeout:5], @"Copying image failed");
+  [ChromeEarlGrey clearPasteboard];
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that copying an image via context menu is cancelled when the user
+// cancels on the warning triggered by DataControlRules policy.
+- (void)testCopyWarnCancel {
+  [DataControlsAppInterface setWarnCopyRule];
+
+  [ChromeEarlGrey clearPasteboard];
+  [ChromeEarlGrey loadURL:self.testServer->GetURL(kLogoPagePath)];
+  [ChromeEarlGrey waitForWebStateContainingText:kLogoPageText];
+
+  [ChromeEarlGreyUI
+      longPressElementOnWebView:LogoPageChromiumImageIdSelector()];
+  TapOnContextMenuButton(CopyImageButton());
+
+  // Tap the "cancel" button on the warning dialog.
+  [[EarlGrey selectElementWithMatcher:
+                 chrome_test_util::AlertItemWithAccessibilityLabelId(
+                     IDS_DATA_CONTROLS_COPY_WARN_CANCEL_BUTTON)]
+      performAction:grey_tap()];
+  // Check that the image was not copied.
+  GREYAssertFalse([ChromeEarlGrey pasteboardHasImages],
+                  @"Image should not have been copied");
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that copying a link is blocked in reader mode when the DataControlsRule
+// policy is set to do so.
+- (void)testCopyBlockedOnReaderMode {
+  [DataControlsAppInterface setBlockCopyRule];
+
+  [ChromeEarlGrey clearPasteboard];
+  const GURL initialURL = self.testServer->GetURL(kArticlePath);
+  [ChromeEarlGrey loadURL:initialURL];
+  [ChromeEarlGrey waitForPageToFinishLoading];
+
+  // Open Reader Mode UI.
+  GREYAssertTrue(
+      [ChromeEarlGrey showReaderModeAndWaitUntilReaderModeWebStateIsReady],
+      kLoadReaderModeFailedMessage);
+
+  // Wait for Reader Mode UI to appear on-screen.
+  [ChromeEarlGrey
+      waitForSufficientlyVisibleElementWithMatcher:
+          grey_accessibilityID(kReaderModeViewAccessibilityIdentifier)];
+  [ChromeEarlGrey
+      waitForWebStateContainingElement:ElementSelectorToLongPressLink()];
+
+  // Open the context menu and tap on an action.
+  [ChromeEarlGreyUI longPressElementOnWebView:ElementSelectorToLongPressLink()];
+  TapOnContextMenuButton(CopyLinkButton());
+
+  // Check that the snackbar is shown.
+  id<GREYMatcher> snackbarMessage = grey_text(
+      l10n_util::GetNSString(IDS_POLICY_ACTION_BLOCKED_BY_ORGANIZATION));
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:snackbarMessage];
+
+  // Check that the link was not copied.
+  GREYAssertTrue([ChromeEarlGrey pasteboardURL].is_empty(),
+                 kBlockCopyingLinkFailedMessage);
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that copying a link is allowed in reader mode after the user proceeds
+// through the warning triggered by DataControlRules policy.
+- (void)testCopyLinkWarnProceedOnReaderMode {
+  [DataControlsAppInterface setWarnCopyRule];
+
+  [ChromeEarlGrey clearPasteboard];
+  const GURL initialURL = self.testServer->GetURL(kArticlePath);
+  [ChromeEarlGrey loadURL:initialURL];
+  [ChromeEarlGrey waitForPageToFinishLoading];
+
+  // Open Reader Mode UI.
+  GREYAssertTrue(
+      [ChromeEarlGrey showReaderModeAndWaitUntilReaderModeWebStateIsReady],
+      kLoadReaderModeFailedMessage);
+
+  // Wait for Reader Mode UI to appear on-screen.
+  [ChromeEarlGrey
+      waitForSufficientlyVisibleElementWithMatcher:
+          grey_accessibilityID(kReaderModeViewAccessibilityIdentifier)];
+  [ChromeEarlGrey
+      waitForWebStateContainingElement:ElementSelectorToLongPressLink()];
+
+  // Open the context menu and tap on an action.
+  [ChromeEarlGreyUI longPressElementOnWebView:ElementSelectorToLongPressLink()];
+  TapOnContextMenuButton(CopyLinkButton());
+
+  // Tap the "Copy anyways" button on the warning dialog.
+  [[EarlGrey selectElementWithMatcher:
+                 chrome_test_util::AlertItemWithAccessibilityLabelId(
+                     IDS_DATA_CONTROLS_COPY_WARN_CONTINUE_BUTTON)]
+      performAction:grey_tap()];
+
+  // Check that the link was copied.
+  const GURL destinationURL = self.testServer->GetURL(kDestinationPageUrl);
+  GREYCondition* copyCondition = [GREYCondition
+      conditionWithName:kCopyConditionName
+                  block:^BOOL {
+                    return [ChromeEarlGrey pasteboardURL] == destinationURL;
+                  }];
+  GREYAssertTrue([copyCondition waitWithTimeout:5], kCopyLinkFailedMessage);
+  [ChromeEarlGrey clearPasteboard];
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that copying a link is cancelled in reader mode when the user cancels
+// on the warning triggered by DataControlRules policy.
+- (void)testCopyLinkWarnCancelOnReaderMode {
+  [DataControlsAppInterface setWarnCopyRule];
+
+  [ChromeEarlGrey clearPasteboard];
+  const GURL initialURL = self.testServer->GetURL(kArticlePath);
+  [ChromeEarlGrey loadURL:initialURL];
+  [ChromeEarlGrey waitForPageToFinishLoading];
+
+  // Open Reader Mode UI.
+  GREYAssertTrue(
+      [ChromeEarlGrey showReaderModeAndWaitUntilReaderModeWebStateIsReady],
+      kLoadReaderModeFailedMessage);
+
+  // Wait for Reader Mode UI to appear on-screen.
+  [ChromeEarlGrey
+      waitForSufficientlyVisibleElementWithMatcher:
+          grey_accessibilityID(kReaderModeViewAccessibilityIdentifier)];
+  [ChromeEarlGrey
+      waitForWebStateContainingElement:ElementSelectorToLongPressLink()];
+
+  // Open the context menu and tap on an action.
+  [ChromeEarlGreyUI longPressElementOnWebView:ElementSelectorToLongPressLink()];
+  TapOnContextMenuButton(CopyLinkButton());
+
+  // Tap the "cancel" button on the warning dialog.
+  [[EarlGrey selectElementWithMatcher:
+                 chrome_test_util::AlertItemWithAccessibilityLabelId(
+                     IDS_DATA_CONTROLS_COPY_WARN_CANCEL_BUTTON)]
+      performAction:grey_tap()];
+  // Check that the link was not copied.
+  GREYAssertTrue([ChromeEarlGrey pasteboardURL].is_empty(),
+                 kBlockCopyingLinkFailedMessage);
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that by DataControlsRules policy, copying a link is blocked when using
+// the JavaScript Clipboard API to directly write text to clipboard.
+- (void)testCopyBlockedOnJSClipboardAPI {
+  [DataControlsAppInterface setBlockCopyRule];
+
+  [ChromeEarlGrey clearPasteboard];
+  const GURL initialURL = self.testServer->GetURL(kArticlePath);
+  [ChromeEarlGrey loadURL:initialURL];
+  [ChromeEarlGrey waitForPageToFinishLoading];
+
+  const GURL destinationURL = self.testServer->GetURL(kDestinationPageUrl);
+  NSString* script =
+      [NSString stringWithFormat:
+                    @"navigator.clipboard.writeText('%@').then(() => { return "
+                    @"'SUCCESS'; }).catch(() => { return 'FAILURE'; });",
+                    base::SysUTF8ToNSString(destinationURL.spec())];
+
+  [ChromeEarlGrey evaluateJavaScriptWithPotentialError:script];
+
+  // Check that the snackbar is shown.
+  id<GREYMatcher> snackbarMessage = grey_text(
+      l10n_util::GetNSString(IDS_POLICY_ACTION_BLOCKED_BY_ORGANIZATION));
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:snackbarMessage];
+  // Check that the link was not copied.
+  GREYAssertTrue([ChromeEarlGrey pasteboardURL].is_empty(),
+                 kBlockCopyingLinkFailedMessage);
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that by DataControlsRules policy, copying a link is warned and ignored
+// by the user when using the JavaScript Clipboard API to directly write text to
+// clipboard, and link is indeed copied to clipboard.
+- (void)testCopyWarndOnJSClipboardAPIProceed {
+  [DataControlsAppInterface setWarnCopyRule];
+
+  [ChromeEarlGrey clearPasteboard];
+  const GURL initialURL = self.testServer->GetURL(kArticlePath);
+  [ChromeEarlGrey loadURL:initialURL];
+  [ChromeEarlGrey waitForPageToFinishLoading];
+
+  const GURL destinationURL = self.testServer->GetURL(kDestinationPageUrl);
+  NSString* script =
+      [NSString stringWithFormat:
+                    @"navigator.clipboard.writeText('%@').then(() => { return "
+                    @"'SUCCESS'; }).catch(() => { return 'FAILURE'; });",
+                    base::SysUTF8ToNSString(destinationURL.spec())];
+
+  [ChromeEarlGrey evaluateJavaScriptWithPotentialError:script];
+
+  // Tap the "Copy anyways" button on the warning dialog.
+  [[EarlGrey selectElementWithMatcher:
+                 chrome_test_util::AlertItemWithAccessibilityLabelId(
+                     IDS_DATA_CONTROLS_COPY_WARN_CONTINUE_BUTTON)]
+      performAction:grey_tap()];
+
+  // Check that the link was copied.
+  GREYCondition* copyCondition = [GREYCondition
+      conditionWithName:kCopyConditionName
+                  block:^BOOL {
+                    return [ChromeEarlGrey pasteboardURL] == destinationURL;
+                  }];
+  GREYAssertTrue([copyCondition waitWithTimeout:5], kCopyLinkFailedMessage);
+  [ChromeEarlGrey clearPasteboard];
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that by DataControlsRules policy, copying a link is warned and
+// cancelled by the user when using the JavaScript Clipboard API to directly
+// write text to clipboard, and clipboard remains empty.
+- (void)testCopyWarndOnJSClipboardAPICancel {
+  [DataControlsAppInterface setWarnCopyRule];
+
+  [ChromeEarlGrey clearPasteboard];
+  const GURL initialURL = self.testServer->GetURL(kArticlePath);
+  [ChromeEarlGrey loadURL:initialURL];
+  [ChromeEarlGrey waitForPageToFinishLoading];
+
+  const GURL destinationURL = self.testServer->GetURL(kDestinationPageUrl);
+  NSString* script =
+      [NSString stringWithFormat:
+                    @"navigator.clipboard.writeText('%@').then(() => { return "
+                    @"'SUCCESS'; }).catch(() => { return 'FAILURE'; });",
+                    base::SysUTF8ToNSString(destinationURL.spec())];
+
+  [ChromeEarlGrey evaluateJavaScriptWithPotentialError:script];
+
+  // Tap the "cancel" button on the warning dialog.
+  [[EarlGrey selectElementWithMatcher:
+                 chrome_test_util::AlertItemWithAccessibilityLabelId(
+                     IDS_DATA_CONTROLS_COPY_WARN_CANCEL_BUTTON)]
+      performAction:grey_tap()];
+
+  // Check that the link was not copied.
+  GREYAssertTrue([ChromeEarlGrey pasteboardURL].is_empty(),
+                 kBlockCopyingLinkFailedMessage);
+  [ChromeEarlGrey clearPasteboard];
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that when pasting is warned, clipboard content change will dismiss the
+// current Warning Dialog.
+- (void)testPasteCancelIfClipboardContentChanged {
+  [DataControlsAppInterface setWarnPasteRule];
+
+  [ChromeEarlGrey clearPasteboard];
+  const GURL initialURL = self.testServer->GetURL(kPastebinPath);
+  [ChromeEarlGrey loadURL:initialURL];
+  [ChromeEarlGrey waitForWebStateContainingText:kSensitiveInformationText];
+
+  [ChromeEarlGreyUI longPressElementOnWebView:SensitiveInformationIDSelector()];
+  id<GREYMatcher> copyButton =
+      grey_allOf([EditMenuAppInterface editMenuCopyButtonMatcher],
+                 grey_sufficientlyVisible(), nil);
+  [[EarlGrey selectElementWithMatcher:copyButton] performAction:grey_tap()];
+
+  // Using JavaScript to focus on the pastebin first then longpress because
+  // edit menu does not always show up if simply tapping on the pastebin.
+  [ChromeEarlGrey
+      evaluateJavaScriptForSideEffect:
+          [NSString stringWithFormat:@"document.getElementById('%@').focus();",
+                                     base::SysUTF8ToNSString(kPastebinId)]];
+  [ChromeEarlGreyUI
+      longPressElementOnWebView:[ElementSelector
+                                    selectorWithElementID:kPastebinId]];
+
+  // Tap the paste button in the edit menu.
+  [ChromeEarlGrey
+      waitForUIElementToAppearWithMatcher:[EditMenuAppInterface
+                                              editMenuPasteButtonMatcher]];
+  [[EarlGrey selectElementWithMatcher:[EditMenuAppInterface
+                                          editMenuPasteButtonMatcher]]
+      performAction:grey_tap()];
+
+  // Test that the alert is shown by waiting.
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:
+                      chrome_test_util::AlertItemWithAccessibilityLabelId(
+                          IDS_DATA_CONTROLS_PASTE_WARN_CONTINUE_BUTTON)];
+
+  // Simulate a new Copy action by updating the clipboard content.
+  [ChromeEarlGrey copyTextToPasteboard:@"Text"];
+
+  // Test that the alert is dismissed by waiting.
+  [ChromeEarlGrey waitForUIElementToDisappearWithMatcher:
+                      chrome_test_util::AlertItemWithAccessibilityLabelId(
+                          IDS_DATA_CONTROLS_PASTE_WARN_CONTINUE_BUTTON)];
+
+  [ChromeEarlGrey clearPasteboard];
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that Search With via context menu is blocked when a "BLOCK" is set
+// in DataControls policy.
+- (void)testSearchWithBlocked {
+  [DataControlsAppInterface setBlockCopyRule];
+
+  [ChromeEarlGrey loadURL:self.testServer->GetURL(kLogoPagePath)];
+  [ChromeEarlGrey waitForWebStateContainingText:kLogoPageText];
+
+  NSString* script =
+      @"var el = document.createElement('em'); el.id = 'search_text'; "
+      @"el.innerText = 'searchable'; document.body.appendChild(el);";
+  [ChromeEarlGrey evaluateJavaScriptWithPotentialError:script];
+
+  [ChromeEarlGreyUI
+      triggerEditMenu:[ElementSelector selectorWithElementID:"search_text"]];
+
+  id<GREYMatcher> matcher =
+      FindEditMenuActionWithAccessibilityLabel(@"Search with Google");
+  GREYAssertNil(matcher, @"Search with Google button should not be found");
+
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that Search With via context menu is allowed after the user
+// proceeds through the warning triggered by DataControlRules policy.
+- (void)testSearchWithWarnProceed {
+  [DataControlsAppInterface setWarnCopyRule];
+
+  [ChromeEarlGrey loadURL:self.testServer->GetURL(kLogoPagePath)];
+  [ChromeEarlGrey waitForWebStateContainingText:kLogoPageText];
+
+  NSString* script =
+      @"var el = document.createElement('em'); el.id = 'search_text'; "
+      @"el.innerText = 'searchable'; document.body.appendChild(el);";
+  [ChromeEarlGrey evaluateJavaScriptWithPotentialError:script];
+
+  [ChromeEarlGreyUI
+      triggerEditMenu:[ElementSelector selectorWithElementID:"search_text"]];
+
+  id<GREYMatcher> matcher =
+      FindEditMenuActionWithAccessibilityLabel(@"Search with Google");
+  GREYAssertNotNil(matcher, @"Search with Google button not found");
+  [[EarlGrey selectElementWithMatcher:matcher] performAction:grey_tap()];
+
+  // Tap the "Continue" button on the warning dialog.
+  [[EarlGrey selectElementWithMatcher:
+                 chrome_test_util::AlertItemWithAccessibilityLabelId(
+                     IDS_CONTINUE)] performAction:grey_tap()];
+
+  // Check that the search opened in a new tab.
+  [ChromeEarlGrey waitForMainTabCount:2];
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that Search With via context menu is cancelled when the user
+// cancels on the warning triggered by DataControlRules policy.
+- (void)testSearchWithWarnCancel {
+  [DataControlsAppInterface setWarnCopyRule];
+
+  [ChromeEarlGrey loadURL:self.testServer->GetURL(kLogoPagePath)];
+  [ChromeEarlGrey waitForWebStateContainingText:kLogoPageText];
+
+  NSString* script =
+      @"var el = document.createElement('em'); el.id = 'search_text'; "
+      @"el.innerText = 'searchable'; document.body.appendChild(el);";
+  [ChromeEarlGrey evaluateJavaScriptWithPotentialError:script];
+
+  [ChromeEarlGreyUI
+      triggerEditMenu:[ElementSelector selectorWithElementID:"search_text"]];
+
+  id<GREYMatcher> matcher =
+      FindEditMenuActionWithAccessibilityLabel(@"Search with Google");
+  GREYAssertNotNil(matcher, @"Search with Google button not found");
+  [[EarlGrey selectElementWithMatcher:matcher] performAction:grey_tap()];
+
+  // Tap the "Cancel" button on the warning dialog.
+  [[EarlGrey selectElementWithMatcher:
+                 chrome_test_util::AlertItemWithAccessibilityLabelId(
+                     IDS_CANCEL)] performAction:grey_tap()];
+
+  // Check that no new tab was opened.
+  GREYAssertEqual(1UL, [ChromeEarlGrey mainTabCount],
+                  @"Search should not have opened a new tab");
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that Search With via context menu is allowed and executes when
+// a "REPORT" is set in DataControls policy.
+- (void)testSearchWithReport {
+  [DataControlsAppInterface setReportCopyRule];
+
+  [ChromeEarlGrey loadURL:self.testServer->GetURL(kLogoPagePath)];
+  [ChromeEarlGrey waitForWebStateContainingText:kLogoPageText];
+
+  NSString* script =
+      @"var el = document.createElement('em'); el.id = 'search_text'; "
+      @"el.innerText = 'searchable'; document.body.appendChild(el);";
+  [ChromeEarlGrey evaluateJavaScriptWithPotentialError:script];
+
+  [ChromeEarlGreyUI
+      triggerEditMenu:[ElementSelector selectorWithElementID:"search_text"]];
+
+  id<GREYMatcher> matcher =
+      FindEditMenuActionWithAccessibilityLabel(@"Search with Google");
+  GREYAssertNotNil(matcher, @"Search with Google button not found");
+  [[EarlGrey selectElementWithMatcher:matcher] performAction:grey_tap()];
+
+  // Check that the search opened in a new tab without any dialog interruption.
+  [ChromeEarlGrey waitForMainTabCount:2];
+  [DataControlsAppInterface clearDataControlRules];
+}
+
+// Tests that when Pasteboard Content Analysis is turned on and scan result is
+// SUCCESS, paste is allowed.
+- (void)testPasteAllowIfContentAnalysisSuccess {
+  [self setupPasteContentAnalysis];
+
+  [self triggerPasteOnPastebin];
+
+  // Taps on the WebState scroll view to shift focus away from the text box.
+  [[EarlGrey
+      selectElementWithMatcher:chrome_test_util::WebStateScrollViewMatcher()]
+      performAction:grey_tap()];
+
+  // Check that the text is correctly pasted into the textbox.
+  GREYAssertEqualObjects([self pastedText], kCopiedText,
+                         @"Fail to paste the correct text.");
+}
+
+// Tests that when Pasteboard Content Analysis is turned on and scan result is
+// FAILURE, paste is blocked.
+- (void)testPasteBlockIfContentAnalysisFailure {
+  [self setupPasteContentAnalysis];
+
+  [self triggerPasteOnPastebin];
+
+  // Check that the snackbar is shown.
+  id<GREYMatcher> snackbarMessage = grey_text(l10n_util::GetNSString(
+      IDS_ENTERPRISE_CONTENT_ANALYSIS_PASTE_BLOCKED_MESSAGE));
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:snackbarMessage];
+
+  // Check that text is not pasted into the textbox.
+  GREYAssertEqualObjects([self pastedText], @"",
+                         @"Fail to block paste on Content Analysis Failure.");
+}
+
+// Tests that when Pasteboard Content Analysis is turned on and scan result is
+// WARN, if the user chooses to bypass, paste is allowed.
+- (void)testPasteAllowIfContentAnalysisWarnBypass {
+  [self setupPasteContentAnalysis];
+
+  [self triggerPasteOnPastebin];
+
+  // Tap the "Continue" button on the warning dialog.
+  [[EarlGrey
+      selectElementWithMatcher:
+          chrome_test_util::AlertItemWithAccessibilityLabelId(
+              IDS_ENTERPRISE_CONTENT_ANALYSIS_PASTE_WARN_CONTINUE_BUTTON)]
+      performAction:grey_tap()];
+
+  // Check that the text is correctly pasted into the textbox.
+  GREYAssertEqualObjects([self pastedText], kCopiedText,
+                         @"Fail to paste the correct text.");
+}
+
+// Tests that when Pasteboard Content Analysis is turned on and scan result is
+// WARN, if the user chooses to cancel, paste is blocked.
+- (void)testPasteBlockIfContentAnalysisWarnCancel {
+  [self setupPasteContentAnalysis];
+
+  [self triggerPasteOnPastebin];
+
+  // Tap the "Cancel" button on the warning dialog.
+  [[EarlGrey selectElementWithMatcher:
+                 chrome_test_util::AlertItemWithAccessibilityLabelId(
+                     IDS_CANCEL)] performAction:grey_tap()];
+
+  // Check that text is not pasted into the textbox.
+  GREYAssertEqualObjects(
+      [self pastedText], @"",
+      @"Fail to block paste on Content Analysis Warn Cancel.");
+}
+@end

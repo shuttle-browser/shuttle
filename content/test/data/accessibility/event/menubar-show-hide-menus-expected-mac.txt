@@ -1,0 +1,16 @@
+AXExpandedChanged on AXMenuItem AXDescription='File' AXTitle='File'
+AXMenuOpened on AXMenu AXDescription='File' AXTitle='File'
+AXMenuOpened on AXMenu AXDescription='New' AXTitle='New'
+=== Start Continuation ===
+AXExpandedChanged on AXMenuItem AXDescription='File' AXTitle='File'
+AXMenuClosed on AXWebArea
+AXMenuClosed on AXWebArea
+=== Start Continuation ===
+=== Start Continuation ===
+AXExpandedChanged on AXMenuItem AXDescription='File' AXTitle='File'
+AXMenuOpened on AXMenu AXDescription='File' AXTitle='File'
+AXMenuOpened on AXMenu AXDescription='New' AXTitle='New'
+=== Start Continuation ===
+AXMenuClosed on AXWebArea
+AXMenuClosed on AXWebArea
+=== Start Continuation ===

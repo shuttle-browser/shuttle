@@ -1,0 +1,18 @@
+UNKNOWN focusable has_input_focus
+++UNKNOWN hidden
+++++UNKNOWN
+++++++UNKNOWN focusable actions='{DEFAULT, SET_VALUE}'
+++++++++UNKNOWN hidden
+++++++++++UNKNOWN
+++++++++++++UNKNOWN
+++++++++++++++STATIC_TEXT label='Week '
+++++++++++++++++UNKNOWN label='Week '
+++++++++++++++UNKNOWN label='Week' actions='{SET_VALUE}'
+++++++++++++++++STATIC_TEXT label='--'
+++++++++++++++++++UNKNOWN label='--'
+++++++++++++++STATIC_TEXT label=', '
+++++++++++++++++UNKNOWN label=', '
+++++++++++++++UNKNOWN label='Year' actions='{SET_VALUE}'
+++++++++++++++++STATIC_TEXT label='----'
+++++++++++++++++++UNKNOWN label='----'
+++++++++++UNKNOWN label='Show week picker' actions='{DEFAULT}'

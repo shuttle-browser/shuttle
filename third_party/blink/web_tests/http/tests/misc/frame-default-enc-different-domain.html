@@ -1,0 +1,22 @@
+<html>
+<meta http-equiv="content-type" content="text/html; charset=x-mac-cyrillic">
+<title>Frames and encodings</title>
+<script>
+if (window.testRunner) {
+  testRunner.dumpAsText();
+  testRunner.waitUntilDone();
+}
+
+var framesLoaded = 0;
+function frameLoaded() {
+    framesLoaded++;
+    if (framesLoaded == 2 && window.testRunner) {
+        testRunner.notifyDone();
+    }
+}
+</script>
+
+<frameset rows="0,*">
+    <frame src="about:" scrolling=no marginwidth=0 marginheight=0 onload="frameLoaded()">
+    <frame src="http://localhost:8000/misc/resources/frame-default-enc-frame.html" onload="frameLoaded()">
+</frameset>

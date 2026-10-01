@@ -1,0 +1,740 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/tabs/tab/tab_icon.h"
+
+#include "base/check.h"
+#include "base/i18n/rtl.h"
+#include "base/memory/raw_ptr.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/time/default_tick_clock.h"
+#include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/favicon/favicon_utils.h"
+#include "chrome/browser/ui/browser_element_identifiers.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "chrome/browser/ui/color/chrome_color_id.h"
+#include "chrome/browser/ui/interaction/browser_elements.h"
+#include "chrome/browser/ui/tabs/tab_data.h"
+#include "chrome/browser/ui/tabs/tab_favicon_theming.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
+#include "chrome/browser/ui/views/dotted_icon.h"
+#include "components/feature_engagement/public/feature_constants.h"
+#include "components/grit/components_scaled_resources.h"
+#include "components/performance_manager/public/user_tuning/prefs.h"
+#include "components/prefs/pref_service.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/base/resource/resource_bundle.h"
+#include "ui/base/theme_provider.h"
+#include "ui/color/color_provider.h"
+#include "ui/compositor/layer.h"
+#include "ui/compositor/layer_animation_element.h"
+#include "ui/compositor/layer_animation_sequence.h"
+#include "ui/compositor/layer_animator.h"
+#include "ui/compositor/paint_recorder.h"
+#include "ui/gfx/animation/animation_delegate.h"
+#include "ui/gfx/animation/linear_animation.h"
+#include "ui/gfx/animation/tween.h"
+#include "ui/gfx/canvas.h"
+#include "ui/gfx/favicon_size.h"
+#include "ui/gfx/geometry/transform_util.h"
+#include "ui/gfx/image/image_skia_operations.h"
+#include "ui/gfx/interpolated_transform.h"
+#include "ui/gfx/paint_throbber.h"
+#include "ui/gfx/scoped_canvas.h"
+#include "ui/native_theme/native_theme.h"
+#include "ui/views/border.h"
+#include "ui/views/cascading_property.h"
+#include "ui/views/interaction/element_tracker_views.h"
+#include "ui/views/property_effects.h"
+#include "ui/views/view_class_properties.h"
+#include "ui/views/widget/widget.h"
+
+namespace {
+
+constexpr int kAttentionIndicatorRadius = 3;
+constexpr int kLoadingAnimationStrokeWidthDp = 2;
+
+bool NetworkStateIsAnimated(tabs::TabNetworkState network_state) {
+  return network_state != tabs::TabNetworkState::kNone &&
+         network_state != tabs::TabNetworkState::kError;
+}
+
+// Helper class that manages the compositor-driven throbber animation.
+// This view is promoted to its own layer and receives a transform animation,
+// allowing the spinner to rotate without triggering any UI-thread repaints.
+class ThrobberView : public views::View {
+  METADATA_HEADER(ThrobberView, views::View)
+
+ public:
+  ThrobberView() {
+    SetPaintToLayer();
+    layer()->SetFillsBoundsOpaquely(false);
+    layer()->SetName("TabIconThrobberLayer");
+  }
+
+  void OnPaint(gfx::Canvas* canvas) override {
+    const SkColor spinning_color = views::GetCascadingAccentColor(this);
+
+    // We paint a static ~270 degree arc. The rotation is handled by the
+    // compositor via a transform animation on the layer. We use a fixed
+    // time of 1500ms to ensure the arc length is visually consistent.
+    gfx::PaintThrobberSpinning(canvas, GetLocalBounds(), spinning_color,
+                               base::Milliseconds(1500),
+                               kLoadingAnimationStrokeWidthDp);
+  }
+};
+
+BEGIN_METADATA(ThrobberView)
+END_METADATA
+
+}  // namespace
+
+DEFINE_CUSTOM_ELEMENT_EVENT_TYPE(kDiscardAnimationFinishes);
+
+// Helper class that manages the favicon crash animation.
+class TabIcon::CrashAnimation : public gfx::LinearAnimation,
+                                public gfx::AnimationDelegate {
+ public:
+  explicit CrashAnimation(TabIcon* target)
+      : gfx::LinearAnimation(base::Seconds(1), 25, this), target_(target) {}
+  CrashAnimation(const CrashAnimation&) = delete;
+  CrashAnimation& operator=(const CrashAnimation&) = delete;
+  ~CrashAnimation() override = default;
+
+  // gfx::Animation overrides:
+  void AnimateToState(double state) override {
+    if (state < .5) {
+      // Animate the normal icon down.
+      target_->hiding_fraction_ = state * 2.0;
+    } else {
+      // Animate the crashed icon up.
+      target_->should_display_crashed_favicon_ = true;
+      target_->hiding_fraction_ = 1.0 - (state - 0.5) * 2.0;
+    }
+    target_->UpdateThrobber();
+    target_->SchedulePaint();
+  }
+
+ private:
+  raw_ptr<TabIcon> target_;
+};
+
+TabIcon::TabIcon()
+    : AnimationDelegateViews(this),
+      clock_(base::DefaultTickClock::GetInstance()),
+      favicon_size_animation_(this),
+      tab_discard_animation_(this) {
+  SetCanProcessEventsWithinSubtree(false);
+
+  // Add padding to avoid clipping the attention indicator and the increased
+  // discard ring radius. Padding must be symmetric on each side so that
+  // elements will anchor to the center of the favicon.
+  SetBorder(views::CreateEmptyBorder(kAttentionIndicatorRadius));
+
+  const int preferred_width = gfx::kFaviconSize + GetInsets().width();
+  SetPreferredSize(gfx::Size(preferred_width, preferred_width));
+
+  // Initial state (before any data) should not be animating.
+  DCHECK(!GetShowingLoadingAnimation());
+
+  SetProperty(views::kElementIdentifierKey, kTabIconElementId);
+
+  local_state_registrar_.Init(g_browser_process->local_state());
+  local_state_registrar_.Add(
+      performance_manager::user_tuning::prefs::kDiscardRingTreatmentEnabled,
+      base::BindRepeating(&TabIcon::OnDiscardRingTreatmentEnabledChanged,
+                          base::Unretained(this)));
+  OnDiscardRingTreatmentEnabledChanged();
+}
+
+TabIcon::~TabIcon() = default;
+
+void TabIcon::SetData(const tabs::TabData& data) {
+  const bool was_showing_load = GetShowingLoadingAnimation();
+
+  inhibit_loading_animation_ = data.should_hide_throbber;
+  is_monochrome_favicon_ = data.is_monochrome_favicon;
+  SetIcon(data.favicon, data.should_themify_favicon);
+  SetNetworkState(data.network_state);
+  SetCrashed(data.is_crashed);
+  SetDiscarded(data.should_show_discard_status);
+  has_tab_data_ = true;
+
+  UpdateThrobber();
+
+  const bool showing_load = GetShowingLoadingAnimation();
+
+  if (was_showing_load && !showing_load) {
+    // Loading animation transitioning from on to off.
+    loading_animation_start_time_ = base::TimeTicks();
+    SchedulePaint();
+  } else if (!was_showing_load && showing_load) {
+    // Loading animation transitioning from off to on. The animation painting
+    // function will lazily initialize the data.
+    SchedulePaint();
+  }
+}
+
+void TabIcon::SetActiveState(bool is_active) {
+  if (is_active_tab_ != is_active) {
+    is_active_tab_ = is_active;
+    UpdateThemedFavicon();
+  }
+}
+
+void TabIcon::SetAttention(AttentionType type, bool enabled) {
+  int previous_attention_type = attention_types_;
+  if (enabled) {
+    attention_types_ |= static_cast<int>(type);
+  } else {
+    attention_types_ &= ~static_cast<int>(type);
+  }
+
+  if (attention_types_ != previous_attention_type) {
+    SchedulePaint();
+  }
+}
+
+bool TabIcon::GetShowingLoadingAnimation() const {
+  if (inhibit_loading_animation_) {
+    return false;
+  }
+
+  return NetworkStateIsAnimated(network_state_);
+}
+
+bool TabIcon::GetShowingAttentionIndicator() const {
+  return attention_types_ > 0;
+}
+
+bool TabIcon::GetShowingDiscardIndicator() const {
+  return was_discard_indicator_shown_;
+}
+
+void TabIcon::SetCanPaintToLayer(bool can_paint_to_layer) {
+  if (can_paint_to_layer == can_paint_to_layer_) {
+    return;
+  }
+  can_paint_to_layer_ = can_paint_to_layer;
+  UpdateThrobber();
+}
+
+void TabIcon::StepLoadingAnimation(const base::TimeDelta& elapsed_time) {
+  // If the compositor-driven throbber is active, we don't need to trigger
+  // periodic SchedulePaint() calls. The throbber is rotating smoothly on
+  // the compositor thread, and the UI thread can remain idle.
+  if (throbber_view_) {
+    return;
+  }
+  if (GetShowingLoadingAnimation()) {
+    SchedulePaint();
+  }
+}
+
+void TabIcon::ResizeDiscardIndicatorRadiusForWidth(int width) {
+  increased_discard_indicator_radius_ =
+      width >= gfx::kFaviconSize + 2 * kIncreasedDiscardIndicatorRadiusDp
+          ? kIncreasedDiscardIndicatorRadiusDp
+          : 0;
+}
+
+void TabIcon::OnDiscardRingTreatmentEnabledChanged() {
+  discard_ring_treatment_enabled_ =
+      g_browser_process->local_state()->GetBoolean(
+          performance_manager::user_tuning::prefs::
+              kDiscardRingTreatmentEnabled);
+  bool show_discard_indicator =
+      is_discarded_ && discard_ring_treatment_enabled_;
+  if (was_discard_indicator_shown_ != show_discard_indicator) {
+    was_discard_indicator_shown_ = show_discard_indicator;
+
+    // Directly set animations to their end states and do not animate.
+    if (show_discard_indicator) {
+      tab_discard_animation_.SetCurrentValue(1);
+      favicon_size_animation_.Reset(0);
+    } else {
+      tab_discard_animation_.SetCurrentValue(0);
+      favicon_size_animation_.Reset(1);
+    }
+    SchedulePaint();
+  }
+}
+
+void TabIcon::OnPaint(gfx::Canvas* canvas) {
+  // Compute the bounds adjusted for the hiding fraction.
+  gfx::Rect contents_bounds = GetContentsBounds();
+
+  if (contents_bounds.IsEmpty()) {
+    return;
+  }
+
+  gfx::Rect icon_bounds(
+      GetMirroredXWithWidthInView(contents_bounds.x(), gfx::kFaviconSize),
+      contents_bounds.y() +
+          static_cast<int>(contents_bounds.height() * hiding_fraction_),
+      std::min(gfx::kFaviconSize, contents_bounds.width()),
+      std::min(gfx::kFaviconSize, contents_bounds.height()));
+
+  // Don't paint the attention indicator during the loading animation.
+  if (!GetShowingLoadingAnimation() && GetShowingAttentionIndicator() &&
+      !should_display_crashed_favicon_) {
+    PaintAttentionIndicatorAndIcon(canvas, GetIconToPaint(), icon_bounds);
+  } else if (was_discard_indicator_shown_) {
+    PaintDiscardRingAndIcon(canvas, GetIconToPaint(), icon_bounds);
+  } else {
+    MaybePaintFavicon(canvas, GetIconToPaint(), icon_bounds);
+  }
+
+  // If the compositor optimization is disable, we paint the
+  // throbber arc here on the UI thread.
+  if (GetShowingLoadingAnimation() && !throbber_view_) {
+    PaintLoadingAnimation(canvas, icon_bounds);
+  }
+}
+
+void TabIcon::OnBoundsChanged(const gfx::Rect& previous_bounds) {
+  UpdateThrobber();
+}
+
+void TabIcon::ViewHierarchyChanged(
+    const views::ViewHierarchyChangedDetails& details) {
+  if (details.is_add && details.child == this) {
+    UpdateThrobber();
+  }
+}
+
+void TabIcon::AddedToWidget() {
+  UpdateThrobber();
+}
+
+views::PaintInfo::ScaleType TabIcon::GetPaintScaleType() const {
+  return views::PaintInfo::ScaleType::kUniformScaling;
+}
+
+void TabIcon::OnThemeChanged() {
+  views::View::OnThemeChanged();
+  crashed_icon_ = gfx::ImageSkia();  // Force recomputation if crashed.
+  UpdateThemedFavicon();
+}
+
+void TabIcon::AnimationProgressed(const gfx::Animation* animation) {
+  UpdateThrobber();
+  SchedulePaint();
+}
+
+void TabIcon::AnimationEnded(const gfx::Animation* animation) {
+  UpdateThrobber();
+  SchedulePaint();
+}
+
+void TabIcon::PaintAttentionIndicatorAndIcon(gfx::Canvas* canvas,
+                                             const gfx::ImageSkia& icon,
+                                             const gfx::Rect& bounds) {
+  TRACE_EVENT0("views", "TabIcon::PaintAttentionIndicatorAndIcon");
+
+  gfx::Point circle_center(
+      bounds.x() + (base::i18n::IsRTL() ? 0 : gfx::kFaviconSize),
+      bounds.y() + gfx::kFaviconSize);
+
+  // The attention indicator consists of two parts:
+  // . a clear (totally transparent) part over the bottom right (or left in rtl)
+  //   of the favicon. This is done by drawing the favicon to a layer, then
+  //   drawing the clear part on top of the favicon.
+  // . a circle in the bottom right (or left in rtl) of the favicon.
+  if (!icon.isNull()) {
+    canvas->SaveLayerAlpha(0xff);
+    canvas->DrawImageInt(icon, 0, 0, bounds.width(), bounds.height(),
+                         bounds.x(), bounds.y(), bounds.width(),
+                         bounds.height(), false);
+    cc::PaintFlags clear_flags;
+    clear_flags.setAntiAlias(true);
+    clear_flags.setBlendMode(SkBlendMode::kClear);
+    const float kIndicatorCropRadius = 4.5f;
+    canvas->DrawCircle(circle_center, kIndicatorCropRadius, clear_flags);
+    canvas->Restore();
+  }
+
+  // Draws the actual attention indicator.
+  cc::PaintFlags indicator_flags;
+  indicator_flags.setColor(views::GetCascadingAccentColor(this));
+  indicator_flags.setAntiAlias(true);
+  canvas->DrawCircle(circle_center, kAttentionIndicatorRadius, indicator_flags);
+}
+
+void TabIcon::PaintDiscardRingAndIcon(gfx::Canvas* canvas,
+                                      const gfx::ImageSkia& icon,
+                                      const gfx::Rect& icon_bounds) {
+  // Fades in the discard ring and smaller favicon
+  MaybePaintFavicon(canvas, icon, icon_bounds);
+
+  // Increase the bounds of the discard ring beyond the icon bounds if there is
+  // enough space in the tab. This is safe because in the constructor, we have
+  // already added insets so that the larger discard ring can expand into them
+  // and won't be clipped, and the icon bounds will be inside those insets.
+  gfx::Rect discard_ring_bounds = icon_bounds;
+  discard_ring_bounds.Outset(increased_discard_indicator_radius_);
+
+  const ui::ColorProvider* color_provider = GetColorProvider();
+  const views::Widget* widget = GetWidget();
+  SkColor ring_color =
+      color_provider->GetColor(widget && widget->ShouldPaintAsActive()
+                                   ? kColorTabDiscardRingFrameActive
+                                   : kColorTabDiscardRingFrameInactive);
+
+  // Painting Discard Ring
+  PaintRingDottedPath(
+      canvas, discard_ring_bounds, ring_color,
+      /*opacity_ratio=*/tab_discard_animation_.GetCurrentValue());
+}
+
+void TabIcon::PaintLoadingAnimation(gfx::Canvas* canvas, gfx::Rect bounds) {
+  TRACE_EVENT0("views", "TabIcon::PaintLoadingAnimation");
+
+  const SkColor spinning_color = views::GetCascadingAccentColor(this);
+  const base::TimeTicks current_time = clock_->NowTicks();
+  if (loading_animation_start_time_.is_null()) {
+    loading_animation_start_time_ = current_time;
+  }
+
+  gfx::PaintThrobberSpinningWithSweepEasedIn(
+      canvas, bounds, spinning_color,
+      current_time - loading_animation_start_time_,
+      kLoadingAnimationStrokeWidthDp);
+}
+
+gfx::ImageSkia TabIcon::GetIconToPaint() {
+  CHECK(GetWidget());
+  if (should_display_crashed_favicon_) {
+    if (crashed_icon_.isNull()) {
+      // Lazily create a themed sad tab icon.
+      ui::ResourceBundle& rb = ui::ResourceBundle::GetSharedInstance();
+      crashed_icon_ = tabs::ThemeFaviconForTab(
+          *rb.GetImageSkiaNamed(IDR_CRASH_SAD_FAVICON), *GetColorProvider());
+    }
+    return crashed_icon_;
+  }
+
+  return themed_favicon_.isNull() ? favicon_.Rasterize(GetColorProvider())
+                                  : themed_favicon_;
+}
+
+void TabIcon::MaybePaintFavicon(gfx::Canvas* canvas,
+                                const gfx::ImageSkia& icon,
+                                const gfx::Rect& bounds) {
+  TRACE_EVENT0("views", "TabIcon::MaybePaintFavicon");
+
+  if (icon.isNull()) {
+    return;
+  }
+
+  if (GetShowingLoadingAnimation()) {
+    // Never paint the favicon during the waiting animation.
+    if (network_state_ == tabs::TabNetworkState::kWaiting) {
+      return;
+    }
+    // Don't paint the default favicon while we're still loading.
+    if (!GetNonDefaultFavicon()) {
+      return;
+    }
+  }
+
+  std::unique_ptr<gfx::ScopedCanvas> scoped_canvas;
+
+  if (GetShowingLoadingAnimation() || favicon_size_animation_.is_animating() ||
+      was_discard_indicator_shown_) {
+    scoped_canvas = std::make_unique<gfx::ScopedCanvas>(canvas);
+    // The favicon is initially inset with the width of the loading-animation
+    // stroke + an additional dp to create some visual separation.
+    const float kInitialFaviconInsetDp = 1 + kLoadingAnimationStrokeWidthDp;
+    const float kInitialFaviconDiameterDp =
+        gfx::kFaviconSize - 2 * kInitialFaviconInsetDp +
+        (was_discard_indicator_shown_ ? 2 * increased_discard_indicator_radius_
+                                      : 0);
+    // This a full outset circle of the favicon square. The animation ends with
+    // the entire favicon shown.
+    const float kFinalFaviconDiameterDp = sqrt(2) * gfx::kFaviconSize;
+
+    SkScalar diameter = kInitialFaviconDiameterDp;
+    if (was_discard_indicator_shown_ ||
+        favicon_size_animation_.is_animating()) {
+      // Animate the icon based on the favicon size animation.
+      diameter = gfx::Tween::FloatValueBetween(
+          gfx::Tween::CalculateValue(gfx::Tween::EASE_IN,
+                                     favicon_size_animation_.GetCurrentValue()),
+          kInitialFaviconDiameterDp, kFinalFaviconDiameterDp);
+    }
+    gfx::PointF center = gfx::RectF(bounds).CenterPoint();
+    const SkPath path = SkPath::Circle(center.x(), center.y(), diameter / 2);
+    canvas->ClipPath(path, true);
+    // This scales and offsets painting so that the drawn favicon is downscaled
+    // to fit in the cropping area.
+    const float offset =
+        (gfx::kFaviconSize -
+         std::min(diameter, SkFloatToScalar(gfx::kFaviconSize))) /
+        2;
+    const float scale = std::min(diameter, SkFloatToScalar(gfx::kFaviconSize)) /
+                        gfx::kFaviconSize;
+    // Translating to/from bounds offset is done to scale around the center
+    // point. This fixes RTL issues where bounds.x() is non-zero. See
+    // https://crbug.com/40730696
+    canvas->Translate(gfx::Vector2d(bounds.x(), bounds.y()));
+    canvas->Translate(gfx::Vector2d(offset, offset));
+    canvas->Scale(scale, scale);
+    canvas->Translate(gfx::Vector2d(-bounds.x(), -bounds.y()));
+  }
+
+  canvas->DrawImageInt(icon, 0, 0, bounds.width(), bounds.height(), bounds.x(),
+                       bounds.y(), bounds.width(), bounds.height(),
+                       /*filter=*/true);
+
+  // Emits a custom event when the favicon finishes shrinking and the discard
+  // ring gets painted
+  if (favicon_size_animation_.GetCurrentValue() == 0.0 &&
+      tab_discard_animation_.GetCurrentValue() == 1.0) {
+    views::ElementTrackerViews::GetInstance()->NotifyCustomEvent(
+        kDiscardAnimationFinishes, this);
+  }
+}
+
+bool TabIcon::GetNonDefaultFavicon() const {
+  const auto default_favicon =
+      favicon::GetDefaultFaviconModel(kColorTabBackgroundActiveFrameActive);
+  return !favicon_.IsEmpty() && favicon_ != default_favicon;
+}
+
+void TabIcon::SetIcon(const ui::ImageModel& icon, bool should_themify_favicon) {
+  // Detect when updating to the same icon. This avoids re-theming and
+  // re-painting.
+  if (favicon_ == icon) {
+    return;
+  }
+
+  favicon_ = icon;
+  should_themify_favicon_ = should_themify_favicon;
+  UpdateThemedFavicon();
+}
+
+void TabIcon::SetDiscarded(bool discarded) {
+  is_discarded_ = discarded;
+  bool show_discard_indicator =
+      is_discarded_ && discard_ring_treatment_enabled_;
+  if (was_discard_indicator_shown_ != show_discard_indicator) {
+    was_discard_indicator_shown_ = show_discard_indicator;
+    favicon_size_animation_.SetSlideDuration(
+        gfx::Animation::RichAnimationDuration(base::Milliseconds(250)));
+    if (show_discard_indicator) {
+      tab_discard_animation_.SetDuration(
+          gfx::Animation::RichAnimationDuration(base::Seconds(1)));
+      tab_discard_animation_.Start();
+      favicon_size_animation_.Hide();
+
+      // Potentially show an IPH if a tab was discarded.
+      const ui::ElementContext context =
+          views::ElementTrackerViews::GetInstance()->GetContextForView(this);
+      BrowserWindowInterface* browser = nullptr;
+      ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+          [&](BrowserWindowInterface* current_browser) {
+            if (BrowserElements::From(current_browser)->GetContext() ==
+                context) {
+              browser = current_browser;
+            }
+            return !browser;
+          });
+      BrowserUserEducationInterface::From(browser)->MaybeShowFeaturePromo(
+          feature_engagement::kIPHDiscardRingFeature);
+    } else {
+      tab_discard_animation_.Stop();
+      favicon_size_animation_.Show();
+    }
+  }
+}
+
+void TabIcon::SetNetworkState(tabs::TabNetworkState network_state) {
+  const bool was_animated = NetworkStateIsAnimated(network_state_);
+  network_state_ = network_state;
+  const bool is_animated = NetworkStateIsAnimated(network_state_);
+  if (was_animated != is_animated) {
+    favicon_size_animation_.SetSlideDuration(
+        gfx::Animation::RichAnimationDuration(base::Milliseconds(250)));
+    if (was_animated && GetNonDefaultFavicon()) {
+      favicon_size_animation_.Show();
+    } else {
+      favicon_size_animation_.Hide();
+    }
+  }
+}
+
+void TabIcon::SetCrashed(bool crashed) {
+  if (crashed == crashed_) {
+    return;
+  }
+  crashed_ = crashed;
+
+  if (!crashed_) {
+    // Transitioned from crashed to non-crashed.
+    if (crash_animation_) {
+      crash_animation_->Stop();
+    }
+    should_display_crashed_favicon_ = false;
+    hiding_fraction_ = 0.0;
+  } else {
+    // Transitioned from non-crashed to crashed.
+    if (!has_tab_data_) {
+      // This is the initial SetData(), so show the crashed icon directly
+      // without animating.
+      should_display_crashed_favicon_ = true;
+    } else {
+      if (!crash_animation_) {
+        crash_animation_ = std::make_unique<CrashAnimation>(this);
+      }
+      if (!crash_animation_->is_animating()) {
+        crash_animation_->Start();
+      }
+    }
+  }
+  OnPropertyChanged(&crashed_, views::PropertyEffects::kPaint);
+}
+
+bool TabIcon::GetCrashed() const {
+  return crashed_;
+}
+
+void TabIcon::UpdateThrobber() {
+  TRACE_EVENT0("ui", "TabIcon::UpdateThrobber");
+  base::ScopedUmaHistogramTimer timer(
+      "Tab.Icon.UpdateThrobber.Time",
+      base::ScopedUmaHistogramTimer::ScopedHistogramTiming::kMicrosecondTimes);
+
+  // Since the loading animation can run for a long time, paint to a
+  // separate layer when possible to reduce repaint overhead.
+  bool should_paint_to_layer =
+      can_paint_to_layer_ &&
+      (GetShowingLoadingAnimation() || favicon_size_animation_.is_animating() ||
+       tab_discard_animation_.is_animating());
+  // SetData() can update loading state before layout assigns icon bounds. Avoid
+  // allocating compositor resources for a layer that cannot paint while still
+  // updating the lifecycle of an existing layer.
+  if (GetContentsBounds().IsEmpty() && should_paint_to_layer && !layer()) {
+    should_paint_to_layer = false;
+  }
+  if (should_paint_to_layer != !!layer()) {
+    TRACE_EVENT0("ui", "TabIcon::UpdateThrobber (Toggle Layer)");
+    std::optional<base::ScopedUmaHistogramTimer> not_cached_timer;
+    not_cached_timer.emplace("Tab.Icon.UpdateThrobber.Time.NotCached",
+                             base::ScopedUmaHistogramTimer::
+                                 ScopedHistogramTiming::kMicrosecondTimes);
+    // Change layer mode. Promoting to a layer reduces composition cost
+    // regardless of whether we use the compositor-driven throbber or not.
+    if (should_paint_to_layer) {
+      SetPaintToLayer();
+      layer()->SetFillsBoundsOpaquely(false);
+    } else {
+      DestroyLayer();
+    }
+  }
+
+  // Use a compositor-driven throbber animation if enabled.
+  const bool use_compositor_throbber =
+      base::FeatureList::IsEnabled(features::kCompositorLoadingThrobber) &&
+      GetShowingLoadingAnimation();
+
+  if (use_compositor_throbber) {
+    const gfx::Rect contents_bounds = GetContentsBounds();
+    if (contents_bounds.IsEmpty()) {
+      if (throbber_view_) {
+        RemoveChildViewT(std::exchange(throbber_view_, nullptr));
+      }
+      return;
+    }
+
+    if (!throbber_view_) {
+      throbber_view_ = AddChildView(std::make_unique<ThrobberView>());
+    }
+    CHECK(throbber_view_);
+
+    // Calculate and update the icon's visual bounds.
+    gfx::Rect icon_bounds(
+        GetMirroredXWithWidthInView(contents_bounds.x(), gfx::kFaviconSize),
+        contents_bounds.y() +
+            static_cast<int>(contents_bounds.height() * hiding_fraction_),
+        std::min(gfx::kFaviconSize, contents_bounds.width()),
+        std::min(gfx::kFaviconSize, contents_bounds.height()));
+
+    if (throbber_view_->bounds() != icon_bounds) {
+      throbber_view_->SetBoundsRect(icon_bounds);
+    }
+
+    // Ensure the throbber is positioned at the front.
+    ReorderChildView(throbber_view_, -1);
+
+    // Apply or refresh the compositor-driven rotation animation.
+    ui::Layer* throbber_layer = throbber_view_->layer();
+    CHECK(throbber_layer);
+    if (!throbber_layer->GetAnimator()->IsAnimatingProperty(
+            ui::LayerAnimationElement::TRANSFORM)) {
+      throbber_layer->SetTransform(gfx::Transform());
+
+      // Calculate the rotation center (the center of the throbber view).
+      gfx::Point center(throbber_layer->bounds().width() / 2,
+                        throbber_layer->bounds().height() / 2);
+
+      // Create a 360-degree rotation that repeats indefinitely.
+      // ui::InterpolatedRotation ensures the compositor handles the math.
+      std::unique_ptr<ui::InterpolatedTransform> rotation =
+          std::make_unique<ui::InterpolatedRotation>(0, 360);
+      std::unique_ptr<ui::InterpolatedTransform> rotation_about_pivot =
+          std::make_unique<ui::InterpolatedTransformAboutPivot>(
+              center, std::move(rotation));
+
+      auto sequence = std::make_unique<ui::LayerAnimationSequence>();
+      // 1568ms matches the legacy throbber's rotation time
+      // (gfx::kRotationTime).
+      static constexpr base::TimeDelta kRotationTime = base::Milliseconds(1568);
+      auto element =
+          ui::LayerAnimationElement::CreateInterpolatedTransformElement(
+              std::move(rotation_about_pivot), kRotationTime);
+
+      if (!element->duration().is_zero()) {
+        sequence->set_is_repeating(true);
+        sequence->AddElement(std::move(element));
+        throbber_layer->GetAnimator()->StartAnimation(sequence.release());
+      }
+    }
+  } else if (throbber_view_) {
+    // If we can no longer use the compositor throbber,
+    // destroy the helper view. TabIcon::OnPaint will automatically fall back
+    // to the legacy UI-thread painting.
+    RemoveChildViewT(std::exchange(throbber_view_, nullptr));
+  }
+}
+
+void TabIcon::UpdateThemedFavicon() {
+  if (!GetWidget()) {
+    return;
+  }
+
+  if (!GetNonDefaultFavicon() || should_themify_favicon_) {
+    themed_favicon_ = tabs::ThemeFaviconForTab(
+        favicon_.Rasterize(GetColorProvider()), *GetColorProvider());
+  } else if (is_monochrome_favicon_) {
+    themed_favicon_ = tabs::ThemeMonochromeFaviconForTab(
+        favicon_.Rasterize(GetColorProvider()), *GetColorProvider(),
+        is_active_tab_);
+  } else {
+    themed_favicon_ = gfx::ImageSkia();
+  }
+
+  SchedulePaint();
+}
+
+BEGIN_METADATA(TabIcon)
+ADD_READONLY_PROPERTY_METADATA(bool, ShowingLoadingAnimation)
+ADD_READONLY_PROPERTY_METADATA(bool, ShowingAttentionIndicator)
+ADD_READONLY_PROPERTY_METADATA(bool, NonDefaultFavicon)
+ADD_PROPERTY_METADATA(bool, Crashed)
+END_METADATA

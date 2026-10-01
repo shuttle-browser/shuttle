@@ -1,0 +1,1153 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/lens/lens_query_flow_router.h"
+
+#include "base/rand_util.h"
+#include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/contextual_search/contextual_search_service_factory.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_context_service_factory.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_panel_controller.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_service_factory.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_ui_service.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
+#include "chrome/browser/lens/core/mojom/lens.mojom.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/contextual_search/tab_contextualization_controller.h"
+#include "chrome/browser/ui/lens/lens_overlay_controller.h"
+#include "chrome/browser/ui/lens/lens_overlay_gen204_controller.h"
+#include "chrome/browser/ui/lens/lens_overlay_image_helper.h"
+#include "chrome/browser/ui/lens/lens_overlay_proto_converter.h"
+#include "chrome/browser/ui/lens/lens_overlay_query_controller.h"
+#include "chrome/browser/ui/lens/lens_overlay_url_builder.h"
+#include "chrome/browser/ui/lens/lens_search_contextualization_controller.h"
+#include "chrome/browser/ui/lens/lens_search_feature_flag_utils.h"
+#include "chrome/browser/ui/webui/new_tab_page/composebox/variations/composebox_fieldtrial.h"
+#include "components/contextual_search/contextual_search_context_controller.h"
+#include "components/contextual_search/contextual_search_service.h"
+#include "components/contextual_tasks/public/features.h"
+#include "components/lens/lens_features.h"
+#include "components/lens/lens_overlay_metrics.h"
+#include "components/lens/lens_overlay_mime_type.h"
+#include "components/lens/lens_url_utils.h"
+#include "components/lens/ref_counted_lens_overlay_client_logs.h"
+#include "components/omnibox/browser/aim_eligibility_service.h"
+#include "components/omnibox/browser/lens_suggest_inputs_utils.h"
+#include "components/omnibox/common/composebox_features.h"
+#include "components/omnibox/common/logger.h"
+#include "components/omnibox/common/omnibox_features.h"
+#include "components/sessions/content/session_tab_helper.h"
+#include "mojo/public/cpp/bindings/clone_traits.h"
+#include "net/base/url_util.h"
+#include "third_party/lens_server_proto/lens_overlay_server.pb.h"
+#include "third_party/omnibox_proto/chrome_aim_entry_point.pb.h"
+
+namespace {
+bool IsVisualSelectionType(lens::LensOverlaySelectionType selection_type) {
+  return selection_type == lens::REGION_SEARCH ||
+         selection_type == lens::TAP_ON_EMPTY ||
+         selection_type == lens::TAP_ON_REGION_GLEAM ||
+         selection_type == lens::TAP_ON_OBJECT ||
+         selection_type == lens::INJECTED_IMAGE;
+}
+
+std::vector<lens::ContextualInput> ConvertPageContentToContextualInput(
+    base::span<const lens::PageContent> underlying_page_contents) {
+  std::vector<lens::ContextualInput> contextual_inputs;
+  contextual_inputs.reserve(underlying_page_contents.size());
+  for (const auto& page_content : underlying_page_contents) {
+    lens::ContextualInput contextual_input;
+    contextual_input.bytes_ = page_content.bytes_;
+    contextual_input.content_type_ = page_content.content_type_;
+    contextual_inputs.push_back(contextual_input);
+  }
+  return contextual_inputs;
+}
+
+omnibox::ChromeAimEntryPoint AimEntryPointFromInvocationSource(
+    lens::LensOverlayInvocationSource invocation_source) {
+  // TODO(crbug.com/483805922): Create individual AIM entry points for each
+  // Lens invocation source.
+  if (invocation_source ==
+      lens::LensOverlayInvocationSource::kOmniboxPopupButton) {
+    return omnibox::DESKTOP_CHROME_COBROWSE_OMNIBOX_POPUP_BUTTON;
+  }
+  if (invocation_source ==
+      lens::LensOverlayInvocationSource::kOmniboxContextualSuggestion) {
+    if (base::FeatureList::IsEnabled(omnibox::kWebUIOmniboxAskGAboutThisPage)) {
+      return omnibox::DESKTOP_CHROME_COBROWSE_OMNIBOX_CONTEXTUAL_SUGGESTION;
+    }
+    return omnibox::DESKTOP_CHROME_OTHER_OMNIBOX_COMPOSEBOX_ENTRY_POINT;
+  }
+  return omnibox::DESKTOP_CHROME_LENS_CONTEXTUAL_SEARCHBOX_ENTRY_POINT;
+}
+
+}  // namespace
+
+namespace lens {
+
+bool IsOmniboxInvocationSource(
+    std::optional<lens::LensOverlayInvocationSource> invocation_source) {
+  if (!invocation_source.has_value()) {
+    return false;
+  }
+  switch (invocation_source.value()) {
+    case lens::LensOverlayInvocationSource::kOmnibox:
+    case lens::LensOverlayInvocationSource::kOmniboxPageAction:
+    case lens::LensOverlayInvocationSource::kOmniboxContextualSuggestion:
+    case lens::LensOverlayInvocationSource::kOmniboxContextualQuery:
+    case lens::LensOverlayInvocationSource::kOmniboxPopupButton:
+      return true;
+    // Note: kOmniboxEverywhereComposebox is intentionally excluded for now
+    // to restrict non-blocking navigation strictly to standard Omnibox entry
+    // points.
+    default:
+      return false;
+  }
+}
+
+bool ShouldFetchActiveTabForInvocationSource(
+    std::optional<lens::LensOverlayInvocationSource> invocation_source,
+    const contextual_search::ContextualSearchSessionHandle* session_handle) {
+  // Omnibox contextual compose queries upload tab context before submission,
+  // so forcing a second fetch would be redundant. That only holds while the
+  // query is issued on the session that context was uploaded to. When the
+  // query is fulfilled on a session of its own, as happens when it is routed
+  // to the Lens side panel, the pre-uploaded context is unreachable and the
+  // active tab must still be contextualized.
+  if (invocation_source ==
+          lens::LensOverlayInvocationSource::kOmniboxContextualQuery &&
+      session_handle &&
+      (!session_handle->GetUploadedContextTokens().empty() ||
+       !session_handle->GetSubmittedContextTokens().empty())) {
+    return false;
+  }
+  return true;
+}
+
+LensQueryFlowRouter::LensQueryFlowRouter(
+    LensSearchController* lens_search_controller)
+    : lens_search_controller_(lens_search_controller) {
+  contextualizer_delegate_ =
+      std::make_unique<contextual_tasks::DesktopQueryContextualizerDelegate>(
+          base::BindRepeating(&LensQueryFlowRouter::GetOrCreateSessionHandle,
+                              base::Unretained(this)),
+          base::BindRepeating(&LensQueryFlowRouter::GetViewportEncodingOptions,
+                              base::Unretained(this)),
+          contextual_tasks::ContextualTasksContextServiceFactory::GetForProfile(
+              profile()),
+          base::BindRepeating(&LensQueryFlowRouter::browser_window_interface,
+                              base::Unretained(this)));
+  auto* contextual_tasks_service =
+      contextual_tasks::ContextualTasksServiceFactory::GetForProfile(profile());
+  if (contextual_tasks_service) {
+    query_contextualizer_ =
+        std::make_unique<contextual_tasks::QueryContextualizer>(
+            contextual_tasks_service, contextualizer_delegate_.get());
+  }
+}
+
+LensQueryFlowRouter::~LensQueryFlowRouter() {
+  if (ShouldRouteToContextualTasks()) {
+    gen204_controller()->OnQueryFlowEnd();
+  }
+}
+
+bool LensQueryFlowRouter::IsOff() const {
+  if (ShouldRouteToContextualTasks()) {
+    return !GetContextualSearchSessionHandle();
+  }
+  return lens_overlay_query_controller()->IsOff();
+}
+
+void LensQueryFlowRouter::StartQueryFlow(
+    const SkBitmap& screenshot,
+    const SkBitmap& initial_image,
+    GURL page_url,
+    std::optional<std::string> page_title,
+    std::vector<lens::mojom::CenterRotatedBoxPtr> significant_region_boxes,
+    base::span<const PageContent> underlying_page_contents,
+    lens::MimeType primary_content_type,
+    std::optional<uint32_t> pdf_current_page,
+    float ui_scale_factor,
+    base::TimeTicks invocation_time) {
+  if (ShouldRouteToContextualTasks()) {
+    CHECK(lens_search_controller_->invocation_source().has_value());
+    gen204_id_ = base::RandUint64();
+    gen204_controller()->OnQueryFlowStart(
+        lens_search_controller_->invocation_source().value(), profile(),
+        gen204_id_);
+
+    // Create a contextual session for this WebContents if one does not exist.
+    CHECK(!pending_session_handle_);
+
+    // If a session handle is already being observed (e.g. from the side panel),
+    // remove the observer before creating a new session handle.
+    context_upload_status_observation_.Reset();
+
+    // The page content should only be uploaded if the overlay was not opened by
+    // the contextual tasks composebox.
+    bool should_upload_page_content =
+        lens_search_controller_->invocation_source() !=
+        lens::LensOverlayInvocationSource::kContextualTasksComposebox;
+
+    if (!GetContextualSearchSessionHandle()) {
+      pending_session_handle_ = CreateContextualSearchSessionHandle();
+      pending_session_handle_->NotifySessionStarted();
+      // Add observer to listen for context upload status changes. This is only
+      // needed when a new session handle is created as part of this flow as
+      // the response is not used by the overlay otherwise.
+      context_upload_status_observation_.Observe(
+          GetContextualSearchSessionHandle()->GetController());
+    }
+
+    initial_context_params_ = InitialContextParams{
+        .screenshot = screenshot,
+        .page_url = page_url,
+        .page_title = page_title,
+        .significant_region_boxes = mojo::Clone(significant_region_boxes),
+        .underlying_page_contents = std::vector<lens::PageContent>(
+            underlying_page_contents.begin(), underlying_page_contents.end()),
+        .primary_content_type = primary_content_type,
+        .pdf_current_page = pdf_current_page,
+        .ui_scale_factor = ui_scale_factor,
+        .invocation_time = invocation_time,
+    };
+
+    if (lens_search_controller_->invocation_source() ==
+        lens::LensOverlayInvocationSource::kOmniboxPopupButton) {
+      context_upload_mode_ = ContextUploadMode::kSelectedRegionOnly;
+      // For region-only uploads, page context is not uploaded, but page context
+      // eligibility is evaluated to ensure protected pages are blocked.
+      lens_search_contextualization_controller()
+          ->CheckPageContextEligibilityOnly();
+      return;
+    }
+
+    ContextUploadMode initial_mode = ShouldPopulateFullPageContext()
+                                         ? ContextUploadMode::kFullPage
+                                         : ContextUploadMode::kViewportOnly;
+
+    auto upload_task = base::BindOnce(
+        &LensQueryFlowRouter::UploadContextualInputData,
+        weak_factory_.GetWeakPtr(), initial_mode,
+        CreateContextualInputData(
+            initial_mode, screenshot,
+            should_upload_page_content ? page_url : GURL(),
+            should_upload_page_content ? page_title : std::nullopt,
+            should_upload_page_content ? underlying_page_contents
+                                       : base::span<const PageContent>(),
+            should_upload_page_content ? primary_content_type
+                                       : lens::MimeType::kImage,
+            pdf_current_page));
+
+    if (lens::features::IsLensOverlayNonBlockingPrivacyNoticeEnabled() &&
+        !lens::DidUserGrantLensOverlayNeededPermissions(profile())) {
+      pending_upload_request_ = std::move(upload_task);
+    } else {
+      std::move(upload_task).Run();
+    }
+    return;
+  }
+
+  lens_overlay_query_controller()->StartQueryFlow(
+      screenshot, initial_image, page_url, page_title,
+      std::move(significant_region_boxes), underlying_page_contents,
+      primary_content_type, pdf_current_page, ui_scale_factor, invocation_time);
+}
+
+void LensQueryFlowRouter::MaybeResumeQueryFlow() {
+  if (ShouldRouteToContextualTasks() && pending_upload_request_) {
+    std::move(pending_upload_request_).Run();
+  }
+}
+
+void LensQueryFlowRouter::MaybeRestartQueryFlow() {
+  if (ShouldRouteToContextualTasks()) {
+    return;
+  }
+  lens_overlay_query_controller()->MaybeRestartQueryFlow();
+}
+
+void LensQueryFlowRouter::SendTaskCompletionGen204IfEnabled(
+    lens::mojom::UserAction user_action) {
+  if (ShouldRouteToContextualTasks()) {
+    auto* session_handle = GetContextualSearchSessionHandle();
+    if (!session_handle || !session_handle->GetController() ||
+        !overlay_tab_context_file_token_.has_value()) {
+      return;
+    }
+    auto* file_info = session_handle->GetController()->GetFileInfo(
+        overlay_tab_context_file_token_.value());
+    if (!file_info || !file_info->request_id.has_value()) {
+      return;
+    }
+
+    gen204_controller()->SendTaskCompletionGen204IfEnabled(
+        /*encoded_analytics_id=*/file_info->request_id->analytics_id(),
+        user_action,
+        /*request_id=*/file_info->request_id.value());
+    return;
+  }
+  lens_overlay_query_controller()->SendTaskCompletionGen204IfEnabled(
+      user_action);
+}
+
+void LensQueryFlowRouter::SendSemanticEventGen204IfEnabled(
+    lens::mojom::SemanticEvent event) {
+  if (ShouldRouteToContextualTasks()) {
+    auto* session_handle = GetContextualSearchSessionHandle();
+    if (!session_handle || !session_handle->GetController() ||
+        !overlay_tab_context_file_token_.has_value()) {
+      return;
+    }
+    auto* file_info = session_handle->GetController()->GetFileInfo(
+        overlay_tab_context_file_token_.value());
+    if (!file_info || !file_info->request_id.has_value()) {
+      return;
+    }
+
+    gen204_controller()->SendSemanticEventGen204IfEnabled(
+        event, /*request_id=*/file_info->request_id);
+    return;
+  }
+  lens_overlay_query_controller()->SendSemanticEventGen204IfEnabled(event);
+}
+
+std::optional<lens::proto::LensOverlaySuggestInputs>
+LensQueryFlowRouter::GetSuggestInputs() {
+  if (IsOff()) {
+    return std::nullopt;
+  }
+
+  if (ShouldRouteToContextualTasks()) {
+    auto* session_handle = GetContextualSearchSessionHandle();
+    if (session_handle) {
+      return session_handle->GetSuggestInputs();
+    }
+    return std::nullopt;
+  }
+
+  return std::make_optional(
+      lens_overlay_query_controller()->GetLensSuggestInputs());
+}
+
+std::optional<base::UnguessableToken>
+LensQueryFlowRouter::overlay_tab_context_file_token() const {
+  return overlay_tab_context_file_token_;
+}
+
+void LensQueryFlowRouter::SetSuggestInputsReadyCallback(
+    base::RepeatingClosure callback) {
+  // Return the callback immediately if the suggest inputs are already ready.
+  if (AreLensSuggestInputsReady(GetSuggestInputs())) {
+    callback.Run();
+    return;
+  }
+
+  if (ShouldRouteToContextualTasks()) {
+    suggest_inputs_ready_callback_ = std::move(callback);
+
+    // If the session handle doesn't exist yet, the observer will be added
+    // once it is created.
+    if (pending_session_handle_ && pending_session_handle_->GetController() &&
+        !context_upload_status_observation_.IsObserving()) {
+      context_upload_status_observation_.Observe(
+          pending_session_handle_->GetController());
+    }
+    return;
+  }
+  lens_overlay_query_controller()->SetSuggestInputsReadyCallback(
+      std::move(callback));
+}
+
+void LensQueryFlowRouter::RecordQueryEligibility(
+    std::optional<lens::LensOverlayInvocationSource> invocation_source) {
+  AimEligibilityService* aim_service =
+      AimEligibilityServiceFactory::GetForProfile(profile());
+  if (!aim_service) {
+    return;
+  }
+
+  lens::LensContextualTasksQueryEligibility eligibility =
+      lens::LensContextualTasksQueryEligibility::kEligible;
+  if (!aim_service->IsAimEligible()) {
+    eligibility = lens::LensContextualTasksQueryEligibility::kAimIneligible;
+  } else if (!aim_service->IsCobrowseEligible()) {
+    eligibility =
+        lens::LensContextualTasksQueryEligibility::kCobrowseIneligible;
+  }
+
+  lens::RecordContextualTasksQueryEligibility(eligibility, invocation_source);
+}
+
+void LensQueryFlowRouter::SendRegionSearch(
+    base::Time query_start_time,
+    lens::mojom::CenterRotatedBoxPtr region,
+    lens::LensOverlaySelectionType lens_selection_type,
+    std::map<std::string, std::string> additional_search_query_params,
+    std::optional<SkBitmap> region_bytes,
+    lens::LensOverlayInvocationSource invocation_source) {
+  if (!IsActiveTabContextEligible()) {
+    if (ShouldRouteToContextualTasks()) {
+      ShowContextualTasksErrorPage();
+    }
+    return;
+  }
+
+  if (ShouldRouteToContextualTasks()) {
+    MaybeResumeQueryFlow();
+    std::optional<SkBitmap> region_bytes_to_send = region_bytes;
+    lens::mojom::CenterRotatedBoxPtr region_to_send =
+        region ? region->Clone() : nullptr;
+
+    if (context_upload_mode_ == ContextUploadMode::kSelectedRegionOnly) {
+      // For region-only uploads, the selected region must be cropped out of the
+      // viewport screenshot each time a region selection is made.
+      SkBitmap region_bitmap;
+      if (region_bytes.has_value()) {
+        region_bitmap = *region_bytes;
+      } else if (region) {
+        region_bitmap =
+            lens::CropBitmapToRegion(GetViewportScreenshot(), region->Clone());
+      }
+      // Upload the cropped region image as the context payload for this region
+      // selection (with page URL, title, tab ID, and DOM context stripped).
+      UploadContextualInputData(
+          ContextUploadMode::kSelectedRegionOnly,
+          CreateContextualInputData(ContextUploadMode::kSelectedRegionOnly,
+                                    region_bitmap, GURL(), std::nullopt,
+                                    base::span<const PageContent>(),
+                                    lens::MimeType::kImage, std::nullopt));
+      // Set the region bounds to indicate that the selected region is the
+      // entirety of the context image.
+      region_bytes_to_send = region_bitmap;
+      region_to_send = lens::mojom::CenterRotatedBox::New();
+      region_to_send->box = gfx::RectF(0.5f, 0.5f, 1.0f, 1.0f);
+      region_to_send->coordinate_type =
+          lens::mojom::CenterRotatedBox_CoordinateType::kNormalized;
+    }
+
+    SendInteractionToContextualTasks(CreateSearchUrlRequestInfoFromInteraction(
+        std::move(region_to_send), std::move(region_bytes_to_send),
+        /*query_text=*/std::nullopt, lens_selection_type,
+        additional_search_query_params, query_start_time, invocation_source));
+    return;
+  }
+
+  lens_overlay_query_controller()->SendRegionSearch(
+      query_start_time, std::move(region), lens_selection_type,
+      additional_search_query_params, region_bytes);
+}
+
+void LensQueryFlowRouter::SendTextOnlyQuery(
+    base::Time query_start_time,
+    const std::string& query_text,
+    lens::LensOverlaySelectionType lens_selection_type,
+    std::map<std::string, std::string> additional_search_query_params,
+    lens::LensOverlayInvocationSource invocation_source) {
+  if (!IsActiveTabContextEligible()) {
+    if (ShouldRouteToContextualTasks()) {
+      ShowContextualTasksErrorPage();
+    }
+    return;
+  }
+
+  if (ShouldRouteToContextualTasks()) {
+    SendInteractionToContextualTasks(CreateSearchUrlRequestInfoFromInteraction(
+        /*region=*/nullptr, /*region_bytes=*/std::nullopt, query_text,
+        lens_selection_type, additional_search_query_params, query_start_time,
+        invocation_source));
+    return;
+  }
+
+  lens_overlay_query_controller()->SendTextOnlyQuery(
+      query_start_time, query_text, lens_selection_type,
+      additional_search_query_params);
+}
+
+void LensQueryFlowRouter::SendContextualTextQuery(
+    base::Time query_start_time,
+    const std::string& query_text,
+    lens::LensOverlaySelectionType lens_selection_type,
+    std::map<std::string, std::string> additional_search_query_params,
+    lens::LensOverlayInvocationSource invocation_source) {
+  if (!IsActiveTabContextEligible()) {
+    if (ShouldRouteToContextualTasks()) {
+      ShowContextualTasksErrorPage();
+    }
+    return;
+  }
+
+  if (ShouldRouteToContextualTasks()) {
+    // Upgrade context upload mode to full page if it was previously
+    // viewport-only and full page context population is eligible and permitted.
+    // This lazily uploads full page context only when a contextual text query
+    // is issued.
+    if (context_upload_mode_ != ContextUploadMode::kFullPage &&
+        context_upload_mode_ != ContextUploadMode::kSelectedRegionOnly &&
+        ShouldPopulateFullPageContext() && initial_context_params_) {
+      UploadContextualInputData(
+          ContextUploadMode::kFullPage,
+          CreateContextualInputData(
+              ContextUploadMode::kFullPage, initial_context_params_->screenshot,
+              initial_context_params_->page_url,
+              initial_context_params_->page_title,
+              initial_context_params_->underlying_page_contents,
+              initial_context_params_->primary_content_type,
+              initial_context_params_->pdf_current_page));
+    }
+
+    auto request_info = CreateSearchUrlRequestInfoFromInteraction(
+        /*region=*/nullptr, /*region_bytes=*/std::nullopt, query_text,
+        lens_selection_type, additional_search_query_params, query_start_time,
+        invocation_source);
+    request_info->search_url_type = SearchUrlType::kAim;
+    SendInteractionToContextualTasks(std::move(request_info));
+    return;
+  }
+
+  lens_overlay_query_controller()->SendContextualTextQuery(
+      query_start_time, query_text, lens_selection_type,
+      additional_search_query_params);
+}
+
+void LensQueryFlowRouter::SendMultimodalRequest(
+    base::Time query_start_time,
+    lens::mojom::CenterRotatedBoxPtr region,
+    const std::string& query_text,
+    lens::LensOverlaySelectionType lens_selection_type,
+    std::map<std::string, std::string> additional_search_query_params,
+    std::optional<SkBitmap> region_bytes,
+    lens::LensOverlayInvocationSource invocation_source) {
+  if (!IsActiveTabContextEligible()) {
+    if (ShouldRouteToContextualTasks()) {
+      ShowContextualTasksErrorPage();
+    }
+    return;
+  }
+
+  if (ShouldRouteToContextualTasks()) {
+    SendInteractionToContextualTasks(CreateSearchUrlRequestInfoFromInteraction(
+        std::move(region), std::move(region_bytes), query_text,
+        lens_selection_type, additional_search_query_params, query_start_time,
+        invocation_source));
+    return;
+  }
+
+  lens_overlay_query_controller()->SendMultimodalRequest(
+      query_start_time, std::move(region), query_text, lens_selection_type,
+      additional_search_query_params, region_bytes);
+}
+
+std::unique_ptr<contextual_search::ContextualSearchSessionHandle>
+LensQueryFlowRouter::CreateContextualSearchSessionHandle() {
+  auto* contextual_search_service =
+      ContextualSearchServiceFactory::GetForProfile(profile());
+  // TODO(crbug.com/463400248): Use contextual tasks config params for Lens
+  // requests.
+  auto session_handle = contextual_search_service->CreateSession(
+      ntp_composebox::CreateQueryControllerConfigParams(),
+      contextual_search::ContextualSearchSource::kLens,
+      lens_search_controller_->invocation_source());
+  // TODO(crbug.com/469875837): Determine what to do with the return value
+  // of this call, or move this call to a different location.
+  session_handle->CheckSearchContentSharingSettings(profile()->GetPrefs());
+  return session_handle;
+}
+
+const SkBitmap& LensQueryFlowRouter::GetViewportScreenshot() const {
+  return lens_overlay_controller()->initial_screenshot();
+}
+
+TabContextualizationController*
+LensQueryFlowRouter::GetTabContextualizationController() const {
+  return TabContextualizationController::From(tab_interface());
+}
+
+void LensQueryFlowRouter::OnContextUploadStatusChangedForTesting(
+    const base::UnguessableToken& context_token,
+    lens::MimeType mime_type,
+    contextual_search::ContextUploadStatus context_upload_status,
+    const std::optional<contextual_search::ContextUploadErrorType>&
+        error_type) {
+  OnContextUploadStatusChanged(context_token, mime_type, context_upload_status,
+                               error_type);
+}
+
+void LensQueryFlowRouter::HandleInteractionResponse(
+    std::optional<lens::ImageCrop> image_crop,
+    lens::LensOverlayInteractionResponse interaction_response) {
+  if (interaction_response.has_text()) {
+    lens::ZoomedCrop zoomed_crop;
+    if (image_crop.has_value()) {
+      zoomed_crop.CopyFrom(image_crop->zoomed_crop());
+    }
+    // TODO(crbug.com/469836056): Verify that this is the correct resized bitmap
+    // to be using to generate the text once the interaction response returns
+    // text.
+    lens_search_controller_->HandleInteractionResponse(
+        lens::CreateTextMojomFromInteractionResponse(
+            interaction_response, zoomed_crop,
+            gfx::Size(GetViewportScreenshot().width(),
+                      GetViewportScreenshot().height())));
+  }
+}
+
+void LensQueryFlowRouter::RemoveContextualSearchContextIfNecessary(
+    bool has_region_selection) {
+  // If context management is handled by the composebox, do not let Lens
+  // unilaterally delete the tab context when closing.
+  if (base::FeatureList::IsEnabled(omnibox::kContextManagementInComposebox)) {
+    return;
+  }
+
+  if (ShouldRouteToContextualTasks() &&
+      overlay_tab_context_file_token_.has_value() && !has_region_selection) {
+    auto* session_handle = GetContextualSearchSessionHandle();
+    if (session_handle) {
+      session_handle->DeleteFile(overlay_tab_context_file_token_.value());
+    }
+  }
+}
+
+contextual_search::ContextualSearchSessionHandle*
+LensQueryFlowRouter::GetOrCreateSessionHandle() {
+  return GetContextualSearchSessionHandle();
+}
+
+std::optional<lens::ImageEncodingOptions>
+LensQueryFlowRouter::GetViewportEncodingOptions() {
+  const auto& image_upload_config =
+      ntp_composebox::FeatureConfig::Get().config.composebox().image_upload();
+  return lens::ImageEncodingOptions{
+      .max_size = image_upload_config.downscale_max_image_size(),
+      .max_height = image_upload_config.downscale_max_image_height(),
+      .max_width = image_upload_config.downscale_max_image_width(),
+      .compression_quality = image_upload_config.image_compression_quality()};
+}
+
+void LensQueryFlowRouter::OnContextualizedComplete(
+    base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
+        session_handle) {
+  // The session_handle parameter is either null or evaluates to the exact same
+  // handle as GetContextualSearchSessionHandle(). We ignore it to reduce
+  // complexity.
+  auto* effective_session_handle = GetContextualSearchSessionHandle();
+
+  if (!effective_session_handle) {
+    return;
+  }
+
+  if (pending_search_url_request_) {
+    auto request_info = std::move(pending_search_url_request_);
+    auto lens_selection_type = request_info->lens_overlay_selection_type;
+    bool is_contextual_text_query =
+        !request_info->image_crop.has_value() &&
+        request_info->search_url_type == SearchUrlType::kAim;
+
+    if (is_contextual_text_query) {
+      effective_session_handle->set_is_contextual_lens_session(true);
+    }
+
+    // We do not add the token to file_tokens here because
+    // CreateSearchUrl will automatically add all uploaded context tokens from
+    // the session if file_tokens is empty.
+
+    effective_session_handle->CreateSearchUrl(
+        std::move(request_info),
+        base::BindOnce(&LensQueryFlowRouter::OpenContextualTasksPanel,
+                       weak_factory_.GetWeakPtr(), lens_selection_type,
+                       is_contextual_text_query));
+  }
+}
+
+void LensQueryFlowRouter::OnContextUploadStatusChanged(
+    const base::UnguessableToken& context_token,
+    lens::MimeType mime_type,
+    contextual_search::ContextUploadStatus context_upload_status,
+    const std::optional<contextual_search::ContextUploadErrorType>&
+        error_type) {
+  const auto& suggest_inputs = GetSuggestInputs();
+  if (suggest_inputs.has_value() &&
+      AreLensSuggestInputsReady(*suggest_inputs)) {
+    if (suggest_inputs_ready_callback_) {
+      suggest_inputs_ready_callback_.Run();
+    }
+  }
+
+  auto* session_handle = GetContextualSearchSessionHandle();
+  if (session_handle && overlay_tab_context_file_token_.has_value() &&
+      context_token == overlay_tab_context_file_token_.value() &&
+      context_upload_status ==
+          contextual_search::ContextUploadStatus::kUploadSuccessful) {
+    // Pass any text that was returned as part of the file upload response to
+    // to the overlay.
+    auto* file_info =
+        session_handle->GetController()->GetFileInfo(context_token);
+    std::vector<lens::mojom::OverlayObjectPtr> objects;
+    lens::mojom::TextPtr text = nullptr;
+    if (file_info) {
+      for (const auto& response_body : file_info->response_bodies) {
+        lens::LensOverlayServerResponse server_response;
+        if (server_response.ParseFromString(response_body) &&
+            server_response.has_objects_response()) {
+          text = lens::CreateTextMojomFromServerResponse(
+              server_response, gfx::Size(GetViewportScreenshot().width(),
+                                         GetViewportScreenshot().height()));
+          objects =
+              lens::CreateObjectsMojomArrayFromServerResponse(server_response);
+        }
+      }
+    }
+    lens_overlay_controller()->HandleStartQueryResponse(
+        std::move(objects), std::move(text), /*is_error=*/false);
+  }
+}
+
+void LensQueryFlowRouter::SendInteractionToContextualTasks(
+    std::unique_ptr<CreateSearchUrlRequestInfo> request_info) {
+  if (!eligibility_logged_in_session_) {
+    RecordQueryEligibility(request_info->invocation_source);
+    eligibility_logged_in_session_ = true;
+  }
+  // If there is no existing session handle, then the search URL request will
+  // need to wait for the tab context to be added before being sent.
+  if (!GetContextualSearchSessionHandle()) {
+    pending_session_handle_ = CreateContextualSearchSessionHandle();
+    pending_session_handle_->NotifySessionStarted();
+  }
+
+  // If we don't have the token yet (e.g., privacy notice pending),
+  // stash the query and wait for StartQueryFlow to push it through!
+  if (request_info->search_url_type != SearchUrlType::kAim &&
+      !overlay_tab_context_file_token_.has_value()) {
+    pending_search_url_request_ = std::move(request_info);
+    return;
+  }
+  // Standard searches skip QueryContextualizer processing pipeline.
+  // We do not add the token to file_tokens here because
+  // CreateSearchUrl will automatically add all uploaded context tokens from the
+  // session if file_tokens is empty.
+  if (request_info->search_url_type != SearchUrlType::kAim) {
+    // If the request is not going to load in AIM, start the task ui right away
+    // to show the ghost loader while the request is being uploaded.
+    if (request_info->invocation_source !=
+            lens::LensOverlayInvocationSource::kContextualTasksComposebox &&
+        pending_session_handle_) {
+      auto* service = contextual_tasks::ContextualTasksUiServiceFactory::
+          GetForBrowserContext(web_contents()->GetBrowserContext());
+      service->InitSidePanelWithGhostLoader(
+          browser_window_interface(), tab_interface(),
+          std::move(pending_session_handle_),
+          AimEntryPointFromInvocationSource(
+              request_info->invocation_source.value_or(
+                  lens::LensOverlayInvocationSource::kAppMenu)));
+    }
+
+    auto lens_selection_type = request_info->lens_overlay_selection_type;
+    GetContextualSearchSessionHandle()->CreateSearchUrl(
+        std::move(request_info),
+        base::BindOnce(&LensQueryFlowRouter::OpenContextualTasksPanel,
+                       weak_factory_.GetWeakPtr(), lens_selection_type,
+                       /*is_contextual_text_query=*/false));
+    return;
+  }
+
+  // AIM searches MUST go through QueryContextualizer gatekeeper.
+  pending_search_url_request_ = std::move(request_info);
+  if (query_contextualizer_) {
+    // Force contextualization of the active tab only if the overlay token was
+    // never fetched and the invocation source requires tab contextualization.
+    // Certain entry points (such as the Omnibox compose flow) handle tab
+    // context prior to submission, but only when the query is issued on the
+    // session that context was uploaded to.
+    std::vector<contextual_tasks::QueryContextualizer::TabId> force_tabs;
+    if (!overlay_tab_context_file_token_.has_value() &&
+        ShouldFetchActiveTabForInvocationSource(
+            pending_search_url_request_->invocation_source,
+            GetContextualSearchSessionHandle())) {
+      force_tabs.push_back(tab_interface()->GetHandle().raw_value());
+    }
+    contextual_tasks::QueryContextualizer::ContextualizeParams params;
+    params.task_id = std::nullopt;
+    params.query_text = pending_search_url_request_->query_text;
+    params.tabs_for_contextual_searchbox_first_turn = force_tabs;
+    params.on_ineligible_callback =
+        base::BindRepeating(&LensQueryFlowRouter::ShowContextualTasksErrorPage,
+                            weak_factory_.GetWeakPtr());
+    params.on_processed_callback = base::DoNothing();
+    const bool is_omnibox = IsOmniboxInvocationSource(
+        pending_search_url_request_->invocation_source);
+    if (contextual_tasks::
+            GetIsContextualTasksNonBlockingUrlNavigationEnabled() &&
+        is_omnibox) {
+      params.on_uploads_started_callback =
+          base::BindOnce(&LensQueryFlowRouter::OnContextualizedComplete,
+                         weak_factory_.GetWeakPtr());
+      params.complete_callback = base::DoNothing();
+    } else {
+      params.complete_callback =
+          base::BindOnce(&LensQueryFlowRouter::OnContextualizedComplete,
+                         weak_factory_.GetWeakPtr());
+    }
+    params.enable_smart_tab_selection = false;
+    query_contextualizer_->Contextualize(std::move(params));
+    return;
+  }
+
+  // Fallback if QueryContextualizer is null!
+  // Treat it effectively like a standard search but preserve AIM intent where
+  // possible.
+  auto* session_handle = GetContextualSearchSessionHandle();
+  if (session_handle) {
+    auto req = std::move(pending_search_url_request_);
+    auto lens_selection_type = req->lens_overlay_selection_type;
+    bool is_contextual_text_query = !req->image_crop.has_value() &&
+                                    req->search_url_type == SearchUrlType::kAim;
+
+    session_handle->CreateSearchUrl(
+        std::move(req),
+        base::BindOnce(&LensQueryFlowRouter::OpenContextualTasksPanel,
+                       weak_factory_.GetWeakPtr(), lens_selection_type,
+                       is_contextual_text_query));
+  }
+}
+
+void LensQueryFlowRouter::OpenContextualTasksPanel(
+    std::optional<lens::LensOverlaySelectionType> lens_selection_type,
+    bool is_contextual_text_query,
+    GURL url) {
+  // If the invocation source was the contextual tasks composebox, avoid
+  // navigating the side panel URL for visual selections to preserve the current
+  // conversation (the panel should already be open). Text selections like
+  // translate should still navigate.
+  if (lens_search_controller_->invocation_source() ==
+          lens::LensOverlayInvocationSource::kContextualTasksComposebox &&
+      lens_selection_type.has_value() &&
+      IsVisualSelectionType(lens_selection_type.value())) {
+    return;
+  }
+
+  // Log the URL the debug omnibox webui page. Do this first so it makes
+  // chronological sense in the logs.
+  OMNIBOX_LOG("lens_results_nav") << url.spec();
+
+  // Check if the active tab is context eligible before opening the side panel.
+  // If not, show the error page.
+  if (!IsActiveTabContextEligible()) {
+    ShowContextualTasksErrorPage();
+    return;
+  }
+
+  // Show the side panel. This will create a new task and associate it with the
+  // active tab.
+  auto entry_point = AimEntryPointFromInvocationSource(
+      lens_search_controller_->invocation_source().value_or(
+          lens::LensOverlayInvocationSource::kAppMenu));
+
+  contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
+      web_contents()->GetBrowserContext())
+      ->StartTaskUiInSidePanel(browser_window_interface(), tab_interface(), url,
+                               std::move(pending_session_handle_),
+                               contextual_tasks::StartTaskUiOptions{
+                                   .entry_point = entry_point,
+                               });
+  // Notify the overlay controller that the side panel was opened so it can
+  // update its UI state.
+  lens_overlay_controller()->NotifyResultsPanelOpened();
+
+  if (is_contextual_text_query &&
+      lens_overlay_controller()->IsOverlayShowing()) {
+    // Wait until the URL generation concludes and the panel is successfully
+    // opened to avoid interrupting the flow by closing Lens too early. Close
+    // the overlay by posting a task to avoid destroying the searchbox handler
+    // while it is still on the stack.
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(
+            &LensSearchController::CloseLensSync,
+            lens_search_controller_->GetWeakPtr(),
+            lens::LensOverlayDismissalSource::kContextualTasksQuerySubmitted));
+  }
+}
+
+void LensQueryFlowRouter::ShowContextualTasksErrorPage() {
+  auto entry_point = AimEntryPointFromInvocationSource(
+      lens_search_controller_->invocation_source().value_or(
+          lens::LensOverlayInvocationSource::kAppMenu));
+  contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
+      web_contents()->GetBrowserContext())
+      ->StartTaskUiInSidePanelWithErrorPage(
+          browser_window_interface(), tab_interface(),
+          std::move(pending_session_handle_), entry_point);
+  // Notify the overlay controller that the side panel was opened so it can
+  // update its UI state.
+  lens_overlay_controller()->NotifyResultsPanelOpened();
+}
+
+void LensQueryFlowRouter::UploadContextualInputData(
+    ContextUploadMode upload_mode,
+    std::unique_ptr<lens::ContextualInputData> contextual_input_data) {
+  context_upload_mode_ = upload_mode;
+  auto* session_handle = GetContextualSearchSessionHandle();
+  auto token = GetContextualSearchSessionHandle()->CreateContextToken();
+  overlay_tab_context_file_token_ = token;
+  // TODO(crbug.com/463400248): Use contextual tasks image upload config params
+  // for Lens requests.
+  auto image_upload_config =
+      ntp_composebox::FeatureConfig::Get().config.composebox().image_upload();
+  auto image_options = lens::ImageEncodingOptions{
+      .max_size = image_upload_config.downscale_max_image_size(),
+      .max_height = image_upload_config.downscale_max_image_height(),
+      .max_width = image_upload_config.downscale_max_image_width(),
+      .compression_quality = image_upload_config.image_compression_quality()};
+
+  session_handle->StartTabContextUploadFlow(
+      token, std::move(contextual_input_data), std::move(image_options));
+
+  // While a pending search URL request does not need to wait for the tab
+  // context to upload, it does need to wait for tab context to be added to the
+  // session handle before creating the search URL so it is properly
+  // contextualized.
+  if (pending_search_url_request_) {
+    // We do not add the token to file_tokens here because
+    // CreateSearchUrl will automatically add all uploaded context tokens from
+    // the session if file_tokens is empty.
+    auto lens_selection_type =
+        pending_search_url_request_->lens_overlay_selection_type;
+    bool is_contextual_text_query =
+        !pending_search_url_request_->image_crop.has_value() &&
+        pending_search_url_request_->search_url_type == SearchUrlType::kAim;
+
+    if (is_contextual_text_query && query_contextualizer_) {
+      contextual_tasks::QueryContextualizer::ContextualizeParams params;
+      params.task_id = std::nullopt;
+      params.query_text = pending_search_url_request_->query_text;
+      params.on_ineligible_callback = base::BindRepeating(
+          &LensQueryFlowRouter::ShowContextualTasksErrorPage,
+          weak_factory_.GetWeakPtr());
+      params.on_processed_callback = base::DoNothing();
+      const bool is_omnibox = IsOmniboxInvocationSource(
+          pending_search_url_request_->invocation_source);
+      if (contextual_tasks::
+              GetIsContextualTasksNonBlockingUrlNavigationEnabled() &&
+          is_omnibox) {
+        params.on_uploads_started_callback =
+            base::BindOnce(&LensQueryFlowRouter::OnContextualizedComplete,
+                           weak_factory_.GetWeakPtr());
+        params.complete_callback = base::DoNothing();
+      } else {
+        params.complete_callback =
+            base::BindOnce(&LensQueryFlowRouter::OnContextualizedComplete,
+                           weak_factory_.GetWeakPtr());
+      }
+      params.enable_smart_tab_selection = true;
+      query_contextualizer_->Contextualize(std::move(params));
+      return;
+    }
+
+    session_handle->CreateSearchUrl(
+        std::move(pending_search_url_request_),
+        base::BindOnce(&LensQueryFlowRouter::OpenContextualTasksPanel,
+                       weak_factory_.GetWeakPtr(), lens_selection_type,
+                       is_contextual_text_query));
+  }
+}
+
+bool LensQueryFlowRouter::ShouldPopulateFullPageContext() const {
+  if (!profile()) {
+    return false;
+  }
+  // Since ShouldPopulateFullPageContext() may be called prior to
+  // StartQueryFlow(), context_upload_mode_ may not be set yet, so also check
+  // if the invocation source is one where page context is blocked.
+  if (context_upload_mode_ == ContextUploadMode::kSelectedRegionOnly ||
+      (lens_search_controller_ &&
+       lens_search_controller_->invocation_source() ==
+           lens::LensOverlayInvocationSource::kOmniboxPopupButton)) {
+    return false;
+  }
+  const bool can_add_page_content_to_query =
+      lens::IsLensOverlayContextualSearchboxEnabled(profile());
+  const bool is_permitted =
+      lens::DidUserGrantLensOverlayNeededPermissions(profile()) ||
+      (lens_overlay_query_controller() &&
+       lens_overlay_query_controller()->HasPermissionForSession());
+  return can_add_page_content_to_query && is_permitted;
+}
+
+std::unique_ptr<lens::ContextualInputData>
+LensQueryFlowRouter::CreateContextualInputData(
+    ContextUploadMode upload_mode,
+    const SkBitmap& screenshot,
+    GURL page_url,
+    std::optional<std::string> page_title,
+    base::span<const PageContent> underlying_page_contents,
+    lens::MimeType primary_content_type,
+    std::optional<uint32_t> pdf_current_page) {
+  auto contextual_input_data = std::make_unique<lens::ContextualInputData>();
+  contextual_input_data->primary_content_type = primary_content_type;
+  contextual_input_data->pdf_current_page = pdf_current_page;
+  contextual_input_data->viewport_screenshot = screenshot;
+  contextual_input_data->is_implicit_upload = true;
+  // LensOverlay full-page uploads specifically do not have Lens user intent.
+  // The context upload needs to occur immediately in order to receive CSB
+  // suggestions, but the user intent is signaled to the server via the
+  // presence of a follow-up interaction request instead of this bit in the
+  // context upload request.
+  contextual_input_data->has_lens_usage_intent = false;
+  contextual_input_data->upload_type =
+      lens::LensOverlayContextualInputUploadType::
+          CONTEXTUAL_INPUT_UPLOAD_TYPE_CONTEXTUAL_SEARCHBOX_INITIAL_QUERY;
+  contextual_input_data->is_page_context_eligible =
+      lens_search_contextualization_controller()
+          ->GetCurrentPageContextEligibility();
+
+  // In region-only or viewport-only mode, strip all page-level context (page
+  // URL, page title, tab session ID, and DOM text content) from the upload
+  // payload.
+  if (upload_mode == ContextUploadMode::kSelectedRegionOnly ||
+      upload_mode == ContextUploadMode::kViewportOnly ||
+      !ShouldPopulateFullPageContext()) {
+    contextual_input_data->primary_content_type = lens::MimeType::kImage;
+    contextual_input_data->tab_session_id = std::nullopt;
+    contextual_input_data->page_url = GURL();
+    contextual_input_data->page_title = std::nullopt;
+    contextual_input_data->context_input = std::vector<lens::ContextualInput>();
+  } else {
+    contextual_input_data->tab_session_id =
+        sessions::SessionTabHelper::IdForTab(web_contents());
+    contextual_input_data->page_url = page_url;
+    contextual_input_data->page_title = page_title;
+    contextual_input_data->context_input =
+        ConvertPageContentToContextualInput(underlying_page_contents);
+  }
+
+  return contextual_input_data;
+}
+
+std::unique_ptr<CreateSearchUrlRequestInfo>
+LensQueryFlowRouter::CreateSearchUrlRequestInfoFromInteraction(
+    lens::mojom::CenterRotatedBoxPtr region,
+    std::optional<SkBitmap> region_bytes,
+    std::optional<std::string> query_text,
+    lens::LensOverlaySelectionType lens_selection_type,
+    std::map<std::string, std::string> additional_search_query_params,
+    base::Time query_start_time,
+    lens::LensOverlayInvocationSource invocation_source) {
+  auto request_info = std::make_unique<CreateSearchUrlRequestInfo>();
+  request_info->search_url_type = SearchUrlType::kStandard;
+  if (query_text.has_value()) {
+    request_info->query_text = query_text.value();
+  }
+  request_info->query_start_time = query_start_time;
+  request_info->lens_overlay_selection_type = lens_selection_type;
+  // Explicitly add the saved overlay token if present to maintain context
+  // for follow-up searches, as CreateSearchUrl will clear it from the handle's
+  // list.
+  if (overlay_tab_context_file_token_.has_value()) {
+    request_info->file_tokens.push_back(
+        overlay_tab_context_file_token_.value());
+  }
+
+  // We do not add the token to file_tokens here because
+  // ContextualSearchSessionHandle::CreateSearchUrl will automatically add all
+  // uploaded context tokens from the session if file_tokens is empty.
+
+  // Add mandatory Lens specific query parameters if not already present.
+  const bool has_text = query_text.has_value() && !query_text->empty();
+  const bool has_image = region || region_bytes.has_value();
+  lens::AppendLensOverlaySidePanelParams(additional_search_query_params,
+                                         gen204_id_, has_text, has_image);
+
+  request_info->additional_params = additional_search_query_params;
+  request_info->invocation_source = invocation_source;
+  request_info->aim_entry_point =
+      AimEntryPointFromInvocationSource(invocation_source);
+
+  if (region) {
+    auto client_logs =
+        base::MakeRefCounted<lens::RefCountedLensOverlayClientLogs>();
+    auto image_crop_and_bitmap = lens::DownscaleAndEncodeBitmapRegionIfNeeded(
+        GetViewportScreenshot(), region->Clone(), region_bytes,
+        std::move(client_logs));
+    if (image_crop_and_bitmap) {
+      lens_search_controller_->HandleThumbnailCreated(
+          image_crop_and_bitmap->image_crop.image().image_content(),
+          image_crop_and_bitmap->region_bitmap);
+      request_info->image_crop = std::move(image_crop_and_bitmap->image_crop);
+    }
+  }
+  request_info->interaction_response_callback =
+      base::BindOnce(&LensQueryFlowRouter::HandleInteractionResponse,
+                     weak_factory_.GetWeakPtr(), request_info->image_crop);
+  return request_info;
+}
+
+contextual_search::ContextualSearchSessionHandle*
+LensQueryFlowRouter::GetContextualSearchSessionHandle() const {
+  if (pending_session_handle_) {
+    return pending_session_handle_.get();
+  }
+
+  auto* controller = contextual_tasks::ContextualTasksPanelController::From(
+      browser_window_interface());
+  if (!controller || !controller->IsPanelOpenForContextualTask()) {
+    return nullptr;
+  }
+
+  return controller->GetContextualSearchSessionHandleForPanel();
+}
+
+void LensQueryFlowRouter::SetQueryContextualizerForTesting(
+    std::unique_ptr<contextual_tasks::QueryContextualizer> contextualizer) {
+  query_contextualizer_ = std::move(contextualizer);
+}
+
+bool LensQueryFlowRouter::IsActiveTabContextEligible() const {
+  if (ShouldRouteToContextualTasks()) {
+    if (context_upload_mode_ == ContextUploadMode::kSelectedRegionOnly) {
+      // In region-only mode, the tab context will never be uploaded, so check
+      // page context eligibility directly instead of relying on the upload
+      // status.
+      return lens_search_contextualization_controller()
+          ->GetCurrentPageContextEligibility();
+    }
+
+    // If the overlay tab context has not been uploaded yet, then the page is
+    // considered eligible for contextual tasks. However, the overlay tab
+    // context should be checked for eligibility again if it is later uploaded.
+    if (!overlay_tab_context_file_token_.has_value()) {
+      return true;
+    }
+
+    auto* session_handle = GetContextualSearchSessionHandle();
+    if (session_handle && session_handle->GetController()) {
+      auto* file_info = session_handle->GetController()->GetFileInfo(
+          overlay_tab_context_file_token_.value());
+      bool is_eligible =
+          file_info &&
+          file_info->upload_status !=
+              contextual_search::ContextUploadStatus::kValidationFailed;
+      if (is_eligible) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  return lens_search_contextualization_controller()
+      ->GetCurrentPageContextEligibility();
+}
+
+Profile* LensQueryFlowRouter::profile() const {
+  return web_contents()
+             ? Profile::FromBrowserContext(web_contents()->GetBrowserContext())
+             : nullptr;
+}
+
+}  // namespace lens

@@ -1,0 +1,42 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/signin/core/browser/account_preview_data_service.h"
+
+#include "components/prefs/pref_registry_simple.h"
+#include "components/signin/public/base/signin_pref_names.h"
+
+namespace signin {
+
+std::optional<SyncDataQuartile> SyncDataQuartileFromValue(int value) {
+  if (value < 0 || value > static_cast<int>(SyncDataQuartile::kMaxValue)) {
+    return std::nullopt;
+  }
+  return static_cast<SyncDataQuartile>(value);
+}
+
+int SyncDataQuartileToValue(SyncDataQuartile quartile) {
+  return static_cast<int>(quartile);
+}
+
+// static
+void AccountPreviewDataService::RegisterProfilePrefs(
+    PrefRegistrySimple* registry) {
+  registry->RegisterListPref(prefs::kAccountPreviewDataLastFetchAccounts);
+  registry->RegisterTimePref(prefs::kAccountPreviewDataLastUpdatePref,
+                             base::Time());
+  registry->RegisterDictionaryPref(prefs::kAccountPreviewPreference);
+  registry->RegisterIntegerPref(prefs::kAccountPreviewNonPeriodicFetchCountPref,
+                                0);
+  registry->RegisterTimePref(prefs::kAccountPreviewDataLast429TimePref,
+                             base::Time());
+  registry->RegisterTimePref(
+      prefs::kAccountPreviewSelectionHeuristicScoresLastRecordedPref,
+      base::Time());
+#if BUILDFLAG(IS_ANDROID)
+  registry->RegisterDictionaryPref(prefs::kAccountPreviewExternalAppAccount);
+#endif
+}
+
+}  // namespace signin

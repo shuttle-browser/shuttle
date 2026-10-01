@@ -1,0 +1,923 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "gpu/command_buffer/service/shared_image/compound_image_backing.h"
+
+#include <cstdint>
+#include <limits>
+
+#include "base/functional/bind.h"
+#include "base/test/scoped_feature_list.h"
+#include "components/viz/common/resources/shared_image_format.h"
+#include "components/viz/common/resources/shared_image_format_utils.h"
+#include "gpu/command_buffer/common/shared_image_info.h"
+#include "gpu/command_buffer/common/shared_image_usage.h"
+#include "gpu/command_buffer/service/memory_tracking.h"
+#include "gpu/command_buffer/service/shared_context_state.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_backing.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_backing_factory.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_copy_manager.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_factory.h"
+#include "gpu/command_buffer/service/shared_image/shared_image_manager.h"
+#include "gpu/command_buffer/service/shared_image/shared_memory_copy_strategy.h"
+#include "gpu/command_buffer/service/shared_image/shared_memory_image_backing.h"
+#include "gpu/command_buffer/service/shared_image/test_image_backing.h"
+#include "gpu/config/gpu_driver_bug_workarounds.h"
+#include "gpu/config/gpu_feature_info.h"
+#include "gpu/config/gpu_finch_features.h"
+#include "gpu/config/gpu_preferences.h"
+#include "gpu/ipc/common/surface_handle.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/skia/include/core/SkAlphaType.h"
+#include "third_party/skia/include/gpu/ganesh/GrBackendSemaphore.h"
+#include "third_party/skia/include/gpu/ganesh/GrTypes.h"
+#include "ui/gfx/buffer_types.h"
+#include "ui/gl/gl_implementation.h"
+
+namespace gpu {
+namespace {
+
+constexpr uint32_t kTestBackingSize = 40000;
+
+// Reports GL as disabled for the duration of the test. SharedImageFactory's
+// constructor returns early in that case, which is what lets it be built here
+// without a GL context or a SharedContextState.
+class ScopedGLDisabled {
+ public:
+  ScopedGLDisabled() : previous_(gl::GetGLImplementationParts()) {
+    gl::SetGLImplementationParts(
+        gl::GLImplementationParts(gl::kGLImplementationDisabled));
+  }
+  ~ScopedGLDisabled() { gl::SetGLImplementationParts(previous_); }
+
+ private:
+  const gl::GLImplementationParts previous_;
+};
+
+// A TestImageBacking that refuses one access stream. This is what drives
+// GetOrAllocateBacking() past the existing element and into dynamically
+// allocating an additional one, the same way a real backing that can't service
+// a given stream would.
+class TestImageBackingWithUnsupportedStream : public TestImageBacking {
+ public:
+  TestImageBackingWithUnsupportedStream(const Mailbox& mailbox,
+                                        const SharedImageInfo& si_info,
+                                        size_t estimated_size,
+                                        SharedImageAccessStream unsupported)
+      : TestImageBacking(mailbox, si_info, estimated_size),
+        unsupported_(unsupported) {}
+
+  bool SupportsAccess(SharedImageAccessStream stream,
+                      const AccessParams& params) const override {
+    return stream != unsupported_;
+  }
+
+ private:
+  const SharedImageAccessStream unsupported_;
+};
+
+class TestSharedImageBackingFactory : public SharedImageBackingFactory {
+ public:
+  TestSharedImageBackingFactory() : SharedImageBackingFactory(kUsageAll) {}
+
+  // SharedImageBackingFactory implementation.
+  std::unique_ptr<SharedImageBacking> CreateSharedImage(
+      const Mailbox& mailbox,
+      const SharedImageInfo& si_info,
+      SurfaceHandle surface_handle,
+      bool is_thread_safe) override {
+    if (allocations_should_fail_)
+      return nullptr;
+
+    if (unsupported_stream_for_next_backing_.has_value()) {
+      auto unsupported = *unsupported_stream_for_next_backing_;
+      unsupported_stream_for_next_backing_.reset();
+      return std::make_unique<TestImageBackingWithUnsupportedStream>(
+          mailbox, si_info, kTestBackingSize, unsupported);
+    }
+
+    return std::make_unique<TestImageBacking>(mailbox, si_info,
+                                              kTestBackingSize);
+  }
+  std::unique_ptr<SharedImageBacking> CreateSharedImage(
+      const Mailbox& mailbox,
+      const SharedImageInfo& si_info,
+      bool is_thread_safe,
+      base::span<const uint8_t> pixel_data) override {
+    return nullptr;
+  }
+  std::unique_ptr<SharedImageBacking> CreateSharedImage(
+      const Mailbox& mailbox,
+      const SharedImageInfo& si_info,
+      bool is_thread_safe,
+      gfx::GpuMemoryBufferHandle handle) override {
+    return nullptr;
+  }
+  bool IsSupported(SharedImageUsageSet usage,
+                   viz::SharedImageFormat format,
+                   const gfx::Size& size,
+                   bool thread_safe,
+                   gfx::GpuMemoryBufferType gmb_type,
+                   GrContextType gr_context_type,
+                   base::span<const uint8_t> pixel_data) override {
+    return true;
+  }
+  SharedImageBackingType GetBackingType() override {
+    return SharedImageBackingType::kTest;
+  }
+  using SharedImageBackingFactory::InvalidateWeakPtrsForTesting;
+
+  void SetAllocationsShouldFail(bool allocations_should_fail) {
+    allocations_should_fail_ = allocations_should_fail;
+  }
+
+  // Makes only the next backing created by this factory refuse `stream`. Used
+  // to force GetOrAllocateBacking() to dynamically allocate a second element,
+  // while leaving that second element able to service the stream.
+  void SetUnsupportedAccessStreamForNextBacking(
+      SharedImageAccessStream stream) {
+    unsupported_stream_for_next_backing_ = stream;
+  }
+
+ private:
+  bool allocations_should_fail_ = false;
+  std::optional<SharedImageAccessStream> unsupported_stream_for_next_backing_;
+};
+
+}  // namespace
+
+class CompoundImageBackingTest : public testing::Test {
+ public:
+  CompoundImageBackingTest()
+      : memory_tracker_(base::MakeRefCounted<MemoryTracker>()),
+        memory_type_tracker_(memory_tracker_),
+        copy_manager_(base::MakeRefCounted<SharedImageCopyManager>()) {
+    copy_manager_->AddStrategy(std::make_unique<SharedMemoryCopyStrategy>());
+  }
+
+  bool HasGpuBacking(CompoundImageBacking* backing) NO_THREAD_SAFETY_ANALYSIS {
+    for (const auto& element : backing->elements_) {
+      if (!element.access_streams.Has(SharedImageAccessStream::kMemory)) {
+        return !!element.backing;
+      }
+    }
+    return false;
+  }
+
+  bool HasGpuCreateBackingCallback(CompoundImageBacking* backing)
+      NO_THREAD_SAFETY_ANALYSIS {
+    for (const auto& element : backing->elements_) {
+      if (!element.access_streams.Has(SharedImageAccessStream::kMemory)) {
+        return !element.create_callback.is_null();
+      }
+    }
+    return false;
+  }
+
+  TestImageBacking* GetGpuBacking(CompoundImageBacking* backing)
+      NO_THREAD_SAFETY_ANALYSIS {
+    for (auto& element : backing->elements_) {
+      if (!element.access_streams.Has(SharedImageAccessStream::kMemory)) {
+        auto* gpu_backing = element.backing.get();
+        DCHECK_EQ(gpu_backing->GetType(), SharedImageBackingType::kTest);
+        return static_cast<TestImageBacking*>(gpu_backing);
+      }
+    }
+    return nullptr;
+  }
+
+  // Returns every allocated GPU (non-memory) backing, in element order.
+  std::vector<TestImageBacking*> GetGpuBackings(CompoundImageBacking* backing)
+      NO_THREAD_SAFETY_ANALYSIS {
+    std::vector<TestImageBacking*> gpu_backings;
+    for (auto& element : backing->elements_) {
+      if (element.access_streams.Has(SharedImageAccessStream::kMemory) ||
+          !element.backing) {
+        continue;
+      }
+      CHECK_EQ(element.backing->GetType(), SharedImageBackingType::kTest);
+      gpu_backings.push_back(
+          static_cast<TestImageBacking*>(element.backing.get()));
+    }
+    return gpu_backings;
+  }
+
+  SharedMemoryImageBacking* GetShmImageBacking(CompoundImageBacking* backing) {
+    auto* shm_backing = backing->GetShmElement().backing.get();
+    CHECK_EQ(shm_backing->GetType(), SharedImageBackingType::kSharedMemory);
+    return static_cast<SharedMemoryImageBacking*>(shm_backing);
+  }
+
+  bool GetShmHasLatestContent(CompoundImageBacking* backing) {
+    return backing->HasLatestContent(backing->GetShmElement());
+  }
+
+  bool GetGpuHasLatestContent(CompoundImageBacking* backing)
+      NO_THREAD_SAFETY_ANALYSIS {
+    for (auto& element : backing->elements_) {
+      if (!element.access_streams.Has(SharedImageAccessStream::kMemory)) {
+        return backing->HasLatestContent(element);
+      }
+    }
+    return false;
+  }
+
+  // Advances the latest content id, keeping the shared memory element as the
+  // one holding the latest content. Used to exercise content id values that
+  // would otherwise require many Update() calls to reach.
+  void AdvanceShmContentId(CompoundImageBacking* backing,
+                           uint64_t content_id) NO_THREAD_SAFETY_ANALYSIS {
+    backing->latest_content_id_ = content_id;
+    backing->GetShmElement().content_id_ = content_id;
+  }
+
+  // Construct a CompoundImageBacking via the WrapExternalBacking constructor
+  // (private). This mirrors CompoundImageBacking::WrapExternalBacking exactly,
+  // minus the SharedImageFactory consultation.
+  std::unique_ptr<CompoundImageBacking> WrapExternal(
+      std::unique_ptr<SharedImageBacking> backing) {
+    backing->SetNotRefCounted();
+    return std::unique_ptr<CompoundImageBacking>(new CompoundImageBacking(
+        /*buffer_usage=*/std::nullopt, std::move(backing), copy_manager_,
+        /*shared_image_factory=*/nullptr));
+  }
+
+  const std::vector<SkPixmap>& CallGetSharedMemoryPixmaps(
+      CompoundImageBacking* backing) {
+    return backing->GetSharedMemoryPixmaps();
+  }
+
+  // Creates a compound backing wired to `shared_image_factory`, which is what
+  // allows it to dynamically allocate additional elements. Lives here rather
+  // than in a subclass because CreateSharedMemoryForTesting() is private and
+  // only this fixture is a friend of CompoundImageBacking.
+  std::unique_ptr<SharedImageBacking> CreateCompoundBackingWithFactory(
+      SharedImageUsageSet usage,
+      scoped_refptr<SharedImageFactoryRef> shared_image_factory) {
+    constexpr gfx::Size size(100, 100);
+    constexpr gfx::BufferUsage buffer_usage =
+        gfx::BufferUsage::SCANOUT_CPU_READ_WRITE;
+
+    return CompoundImageBacking::CreateSharedMemoryForTesting(
+        &test_factory_, copy_manager_, Mailbox::Generate(),
+        SharedImageInfo(viz::SinglePlaneFormat::kRGBA_8888, size,
+                        gfx::ColorSpace(), kTopLeft_GrSurfaceOrigin,
+                        kOpaque_SkAlphaType, usage, "TestLabel"),
+        buffer_usage, std::move(shared_image_factory));
+  }
+
+  // Create a compound backing containing shared memory + GPU backing.
+  std::unique_ptr<SharedImageBacking> CreateCompoundBacking(
+      SharedImageUsageSet usage) {
+    constexpr gfx::Size size(100, 100);
+    constexpr gfx::BufferUsage buffer_usage =
+        gfx::BufferUsage::SCANOUT_CPU_READ_WRITE;
+
+    return CompoundImageBacking::CreateSharedMemoryForTesting(
+        &test_factory_, copy_manager_, Mailbox::Generate(),
+        SharedImageInfo(viz::SinglePlaneFormat::kRGBA_8888, size,
+                        gfx::ColorSpace(), kTopLeft_GrSurfaceOrigin,
+                        kOpaque_SkAlphaType, usage, "TestLabel"),
+        buffer_usage);
+  }
+
+  std::unique_ptr<SharedImageBacking> CreateMultiplanarCompoundBacking() {
+    constexpr gfx::Size size(100, 100);
+    constexpr gfx::BufferUsage buffer_usage =
+        gfx::BufferUsage::SCANOUT_CPU_READ_WRITE;
+
+    return CompoundImageBacking::CreateSharedMemoryForTesting(
+        &test_factory_, copy_manager_, Mailbox::Generate(),
+        SharedImageInfo(
+            viz::MultiPlaneFormat::kNV12, size, gfx::ColorSpace(),
+            kTopLeft_GrSurfaceOrigin, kOpaque_SkAlphaType,
+            {SHARED_IMAGE_USAGE_DISPLAY_READ, SHARED_IMAGE_USAGE_SCANOUT},
+            "TestLabel"),
+        buffer_usage);
+  }
+
+ protected:
+  scoped_refptr<MemoryTracker> memory_tracker_;
+  MemoryTypeTracker memory_type_tracker_;
+  SharedImageManager manager_;
+  TestSharedImageBackingFactory test_factory_;
+  scoped_refptr<SharedImageCopyManager> copy_manager_;
+};
+
+// Fixture for the CopyToGpuMemoryBuffer() readback source selection tests.
+//
+// One of these needs CompoundImageBacking to dynamically allocate an extra
+// element, which requires a real SharedImageFactory. SharedImageFactory can
+// only be constructed without a SharedContextState while GL reports as
+// disabled, so that process-global override is scoped to this fixture instead
+// of applying to every CompoundImageBacking test.
+class CompoundImageBackingCopyToGpuMemoryBufferTest
+    : public CompoundImageBackingTest {
+ public:
+  CompoundImageBackingCopyToGpuMemoryBufferTest() {
+    feature_list_.InitAndEnableFeature(features::kUseDynamicBackingAllocations);
+  }
+
+  // Creates a compound backing that can dynamically allocate additional
+  // elements. With `test_factory_` registered as the testing factory,
+  // GetFactoryByUsage() hands back TestImageBackings for those allocations.
+  std::unique_ptr<SharedImageBacking>
+  CreateCompoundBackingWithDynamicAllocation(SharedImageUsageSet usage) {
+    CHECK_EQ(gl::GetGLImplementation(), gl::kGLImplementationDisabled);
+    shared_image_factory_ = std::make_unique<SharedImageFactory>(
+        GpuPreferences(), GpuDriverBugWorkarounds(), GpuFeatureInfo(),
+        /*context_state=*/nullptr, &manager_, memory_tracker_,
+        /*is_for_display_compositor=*/false);
+    shared_image_factory_->RegisterSharedImageBackingFactoryForTesting(
+        &test_factory_);
+    return CreateCompoundBackingWithFactory(
+        usage, shared_image_factory_->GetFactoryRef());
+  }
+
+ protected:
+  base::test::ScopedFeatureList feature_list_;
+  // Declared before `shared_image_factory_` so that GL is still reported as
+  // disabled while the factory is destroyed.
+  ScopedGLDisabled gl_disabled_;
+  std::unique_ptr<SharedImageFactory> shared_image_factory_;
+};
+
+TEST_F(CompoundImageBackingTest, References) {
+  auto backing = CreateCompoundBacking(
+      {SHARED_IMAGE_USAGE_DISPLAY_READ, SHARED_IMAGE_USAGE_SCANOUT});
+
+  auto* compound_backing = static_cast<CompoundImageBacking*>(backing.get());
+  EXPECT_NE(compound_backing, nullptr);
+
+  // The compound backing hasn't been added to the manager yet so it should
+  // have zero references.
+  EXPECT_FALSE(compound_backing->HasAnyRefs());
+  EXPECT_FALSE(HasGpuBacking(compound_backing));
+
+  auto factory_rep =
+      manager_.Register(std::move(backing), &memory_type_tracker_);
+
+  // When the compound backing is first registered it will get a reference
+  // and add shared memory backing size to the memory tracker.
+  EXPECT_EQ(memory_tracker_->GetSize(), kTestBackingSize);
+
+  // After register compound backing it should have a reference. The GPU
+  // backing should never have any reference as it's owned by the compound
+  // backing and isn't reference counted.
+  EXPECT_TRUE(compound_backing->HasAnyRefs());
+  EXPECT_FALSE(HasGpuBacking(compound_backing));
+
+  auto overlay_rep = manager_.ProduceOverlay(compound_backing->mailbox(),
+                                             &memory_type_tracker_);
+
+#if !BUILDFLAG(IS_WIN)
+  // On overlay access a GPU backing will be allocated and the recorded size
+  // will increase.
+  EXPECT_EQ(memory_tracker_->GetSize(), kTestBackingSize * 2);
+
+  ASSERT_TRUE(HasGpuBacking(compound_backing));
+  auto* gpu_backing = GetGpuBacking(compound_backing);
+  // GPU backing still shouldn't have any references after a wrapped
+  // representation is created.
+  EXPECT_TRUE(compound_backing->HasAnyRefs());
+  EXPECT_FALSE(gpu_backing->HasAnyRefs());
+#else
+  // On Windows, no GPU backing is needed for overlays.
+  EXPECT_EQ(memory_tracker_->GetSize(), kTestBackingSize);
+  EXPECT_FALSE(HasGpuBacking(compound_backing));
+  {
+    auto access = overlay_rep->BeginScopedReadAccess();
+    std::optional<gl::DCLayerOverlayImage> overlay_image =
+        access->GetDCLayerOverlayImage();
+    ASSERT_TRUE(overlay_image);
+    EXPECT_EQ(overlay_image->type(), gl::DCLayerOverlayType::kShMemPixmap);
+  }
+#endif
+
+  overlay_rep.reset();
+  EXPECT_TRUE(compound_backing->HasAnyRefs());
+
+  // All the backings will be destroyed after this point.
+  factory_rep.reset();
+
+  // When all references are dropped the total size of shared memory and gpu
+  // backings will be subtracted from memory tracker.
+  EXPECT_EQ(memory_tracker_->GetSize(), 0u);
+}
+
+TEST_F(CompoundImageBackingTest, UploadOnAccess) {
+  auto backing = CreateCompoundBacking(
+      {SHARED_IMAGE_USAGE_SCANOUT, SHARED_IMAGE_USAGE_GLES2_READ,
+       SHARED_IMAGE_USAGE_DISPLAY_READ, SHARED_IMAGE_USAGE_DISPLAY_WRITE});
+  auto* compound_backing = static_cast<CompoundImageBacking*>(backing.get());
+
+  auto factory_rep =
+      manager_.Register(std::move(backing), &memory_type_tracker_);
+
+  auto overlay_rep = manager_.ProduceOverlay(compound_backing->mailbox(),
+                                             &memory_type_tracker_);
+
+  if constexpr (!BUILDFLAG(IS_WIN)) {
+    ASSERT_TRUE(HasGpuBacking(compound_backing));
+    auto* gpu_backing = GetGpuBacking(compound_backing);
+
+    // The compound backing hasn't been accessed yet.
+    EXPECT_FALSE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+
+    // Only shared memory should have latest content initially.
+    EXPECT_TRUE(GetShmHasLatestContent(compound_backing));
+    EXPECT_FALSE(GetGpuHasLatestContent(compound_backing));
+
+    // First access should trigger upload from memory to GPU.
+    overlay_rep->BeginScopedReadAccess();
+    EXPECT_TRUE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+
+    // After GPU read access both should have latest content.
+    EXPECT_TRUE(GetShmHasLatestContent(compound_backing));
+    EXPECT_TRUE(GetGpuHasLatestContent(compound_backing));
+
+    // Second access shouldn't trigger upload since no shared memory updates
+    // happened.
+    overlay_rep->BeginScopedReadAccess();
+    EXPECT_FALSE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+
+    // Notify compound backing of shared memory update. Next access should
+    // trigger a new upload.
+    compound_backing->Update(nullptr);
+    overlay_rep->BeginScopedReadAccess();
+    EXPECT_TRUE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+  } else {
+    // On Windows, no GPU backing is needed for overlays.
+    EXPECT_FALSE(HasGpuBacking(compound_backing));
+
+    // Shared memory should have the latest content initially.
+    EXPECT_TRUE(GetShmHasLatestContent(compound_backing));
+    EXPECT_FALSE(GetGpuHasLatestContent(compound_backing));
+
+    // Access does not change that.
+    overlay_rep->BeginScopedReadAccess();
+    EXPECT_TRUE(GetShmHasLatestContent(compound_backing));
+    EXPECT_FALSE(GetGpuHasLatestContent(compound_backing));
+  }
+
+  // Test that GLTexturePassthrough access causes upload.
+  auto gl_passthrough_rep = manager_.ProduceGLTexturePassthrough(
+      compound_backing->mailbox(), &memory_type_tracker_);
+  compound_backing->Update(nullptr);
+  gl_passthrough_rep->BeginScopedAccess(
+      0, SharedImageRepresentation::AllowUnclearedAccess::kNo);
+  ASSERT_TRUE(HasGpuBacking(compound_backing));
+  auto* gpu_backing = GetGpuBacking(compound_backing);
+  EXPECT_TRUE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+
+  // Test that GLTexture access causes upload.
+  auto gl_rep = manager_.ProduceGLTexture(compound_backing->mailbox(),
+                                          &memory_type_tracker_);
+  compound_backing->Update(nullptr);
+  gl_rep->BeginScopedAccess(
+      0, SharedImageRepresentation::AllowUnclearedAccess::kNo);
+  EXPECT_TRUE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+
+  // Test that both read and write access by Skia triggers upload.
+  std::vector<GrBackendSemaphore> begin_semaphores;
+  std::vector<GrBackendSemaphore> end_semaphores;
+  auto skia_rep =
+      manager_.ProduceSkia(compound_backing->mailbox(), &memory_type_tracker_,
+                           nullptr, /*required_usages=*/{});
+
+  compound_backing->Update(nullptr);
+
+  // After Update() only shared memory should have latest content.
+  EXPECT_TRUE(GetShmHasLatestContent(compound_backing));
+  EXPECT_FALSE(GetGpuHasLatestContent(compound_backing));
+
+  skia_rep->BeginScopedWriteAccess(
+      &begin_semaphores, &end_semaphores,
+      SharedImageRepresentation::AllowUnclearedAccess::kNo);
+  EXPECT_TRUE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+
+  // On GPU write access only GPU should have latest content.
+  EXPECT_FALSE(GetShmHasLatestContent(compound_backing));
+  EXPECT_TRUE(GetGpuHasLatestContent(compound_backing));
+
+  compound_backing->Update(nullptr);
+  skia_rep->BeginScopedReadAccess(&begin_semaphores, &end_semaphores);
+  EXPECT_TRUE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+}
+
+TEST_F(CompoundImageBackingTest, UploadOnFirstAccessAfterManyUpdates) {
+  auto backing = CreateCompoundBacking(
+      {SHARED_IMAGE_USAGE_GLES2_READ, SHARED_IMAGE_USAGE_DISPLAY_READ});
+  auto* compound_backing = static_cast<CompoundImageBacking*>(backing.get());
+
+  auto factory_rep =
+      manager_.Register(std::move(backing), &memory_type_tracker_);
+
+  // Simulate the state reached after a very large number of shared memory
+  // updates before any GPU access has occurred.
+  AdvanceShmContentId(compound_backing,
+                      std::numeric_limits<uint32_t>::max() - 1);
+
+  EXPECT_TRUE(GetShmHasLatestContent(compound_backing));
+  EXPECT_FALSE(GetGpuHasLatestContent(compound_backing));
+
+  // A further update should keep the shared memory element as the sole holder
+  // of the latest content and never mark the untouched GPU element as current.
+  compound_backing->Update(nullptr);
+  EXPECT_TRUE(GetShmHasLatestContent(compound_backing));
+  EXPECT_FALSE(GetGpuHasLatestContent(compound_backing));
+
+  compound_backing->Update(nullptr);
+  EXPECT_TRUE(GetShmHasLatestContent(compound_backing));
+  EXPECT_FALSE(GetGpuHasLatestContent(compound_backing));
+
+  // The first GPU read access must still trigger an upload from shared memory.
+  auto gl_rep = manager_.ProduceGLTexturePassthrough(
+      compound_backing->mailbox(), &memory_type_tracker_);
+  ASSERT_TRUE(gl_rep);
+  {
+    auto access = gl_rep->BeginScopedAccess(
+        GLTextureImageRepresentationBase::kReadAccessMode,
+        SharedImageRepresentation::AllowUnclearedAccess::kNo);
+    EXPECT_TRUE(access);
+  }
+
+  ASSERT_TRUE(HasGpuBacking(compound_backing));
+  auto* gpu_backing = GetGpuBacking(compound_backing);
+  EXPECT_TRUE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+  EXPECT_TRUE(GetGpuHasLatestContent(compound_backing));
+}
+
+TEST_F(CompoundImageBackingTest, ReadbackToMemory) {
+  auto backing = CreateCompoundBacking({SHARED_IMAGE_USAGE_GLES2_READ});
+  auto* compound_backing = static_cast<CompoundImageBacking*>(backing.get());
+
+  auto factory_rep =
+      manager_.Register(std::move(backing), &memory_type_tracker_);
+
+  auto gl_passthrough_rep = manager_.ProduceGLTexturePassthrough(
+      compound_backing->mailbox(), &memory_type_tracker_);
+  compound_backing->Update(nullptr);
+  gl_passthrough_rep->BeginScopedAccess(
+      0, SharedImageRepresentation::AllowUnclearedAccess::kNo);
+
+  ASSERT_TRUE(HasGpuBacking(compound_backing));
+  auto* gpu_backing = GetGpuBacking(compound_backing);
+
+  // On write access UploadFromMemory() should be called and then only GPU
+  // texture has latest.
+  EXPECT_TRUE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+  EXPECT_FALSE(GetShmHasLatestContent(compound_backing));
+  EXPECT_TRUE(GetGpuHasLatestContent(compound_backing));
+
+  compound_backing->CopyToGpuMemoryBuffer();
+
+  // On CopyToGpuMemoryBuffer() ReadbackToMemory() should have been called and
+  // shared memory has latest content again.
+  EXPECT_TRUE(gpu_backing->GetReadbackToMemoryCalledAndReset());
+  EXPECT_TRUE(GetShmHasLatestContent(compound_backing));
+  EXPECT_TRUE(GetGpuHasLatestContent(compound_backing));
+}
+
+TEST_F(CompoundImageBackingTest, AccessFailsOnCopyFailure) {
+  auto backing = CreateCompoundBacking(
+      {SHARED_IMAGE_USAGE_GLES2_READ, SHARED_IMAGE_USAGE_DISPLAY_READ});
+  auto* compound_backing = static_cast<CompoundImageBacking*>(backing.get());
+
+  auto factory_rep =
+      manager_.Register(std::move(backing), &memory_type_tracker_);
+
+  auto gl_rep = manager_.ProduceGLTexturePassthrough(
+      compound_backing->mailbox(), &memory_type_tracker_);
+  ASSERT_TRUE(gl_rep);
+  ASSERT_TRUE(HasGpuBacking(compound_backing));
+
+  auto* gpu_backing = GetGpuBacking(compound_backing);
+  gpu_backing->set_upload_from_memory_succeeds(false);
+
+  // Read access should fail since the GPU backing could not be updated with
+  // the latest content from shared memory.
+  {
+    auto gl_access = gl_rep->BeginScopedAccess(
+        GLTextureImageRepresentationBase::kReadAccessMode,
+        SharedImageRepresentation::AllowUnclearedAccess::kNo);
+    EXPECT_FALSE(gl_access);
+  }
+  EXPECT_TRUE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+  EXPECT_FALSE(GetGpuHasLatestContent(compound_backing));
+
+  // The Skia read path should also fail.
+  std::vector<GrBackendSemaphore> begin_semaphores;
+  std::vector<GrBackendSemaphore> end_semaphores;
+  auto skia_rep = manager_.ProduceSkia(compound_backing->mailbox(),
+                                       &memory_type_tracker_, nullptr, {});
+  {
+    auto skia_read =
+        skia_rep->BeginScopedReadAccess(&begin_semaphores, &end_semaphores);
+    EXPECT_FALSE(skia_read);
+  }
+
+  // Write access should also fail since the GPU backing could not be
+  // initialized from shared memory ahead of a partial write.
+  {
+    auto skia_write = skia_rep->BeginScopedWriteAccess(
+        &begin_semaphores, &end_semaphores,
+        SharedImageRepresentation::AllowUnclearedAccess::kNo);
+    EXPECT_FALSE(skia_write);
+  }
+  EXPECT_FALSE(GetGpuHasLatestContent(compound_backing));
+  EXPECT_TRUE(GetShmHasLatestContent(compound_backing));
+
+  // Once the copy succeeds again, read access should succeed.
+  gpu_backing->set_upload_from_memory_succeeds(true);
+  {
+    auto gl_access = gl_rep->BeginScopedAccess(
+        GLTextureImageRepresentationBase::kReadAccessMode,
+        SharedImageRepresentation::AllowUnclearedAccess::kNo);
+    EXPECT_TRUE(gl_access);
+  }
+  EXPECT_TRUE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+  EXPECT_TRUE(GetGpuHasLatestContent(compound_backing));
+}
+
+TEST_F(CompoundImageBackingTest, AccessFailsWhenLatestContentUnavailable) {
+  auto backing = CreateCompoundBacking(
+      {SHARED_IMAGE_USAGE_GLES2_READ, SHARED_IMAGE_USAGE_DISPLAY_READ});
+  auto* compound_backing = static_cast<CompoundImageBacking*>(backing.get());
+
+  auto factory_rep =
+      manager_.Register(std::move(backing), &memory_type_tracker_);
+
+  auto gl_rep = manager_.ProduceGLTexturePassthrough(
+      compound_backing->mailbox(), &memory_type_tracker_);
+  ASSERT_TRUE(gl_rep);
+  ASSERT_TRUE(HasGpuBacking(compound_backing));
+  auto* gpu_backing = GetGpuBacking(compound_backing);
+
+  // Simulate a write to a transient backing that is not stored as a permanent
+  // element. Begin access syncs it from shared memory and advances the content
+  // version.
+  auto transient = std::make_unique<TestImageBacking>(
+      compound_backing->mailbox(),
+      SharedImageInfo(compound_backing->format(), compound_backing->size(),
+                      compound_backing->color_space(),
+                      compound_backing->surface_origin(),
+                      compound_backing->alpha_type(), compound_backing->usage(),
+                      "Transient"),
+      kTestBackingSize);
+  EXPECT_TRUE(compound_backing->NotifyBeginAccess(
+      transient.get(), RepresentationAccessMode::kWrite,
+      SharedImageAccessStream::kSkia));
+  EXPECT_TRUE(transient->GetUploadFromMemoryCalledAndReset());
+
+  // End access without the transient content being synced back to any
+  // permanent element (as happens when the proactive copy in end access
+  // fails), so no element holds the latest content version.
+  compound_backing->NotifyEndAccess(transient.get(),
+                                    RepresentationAccessMode::kWrite);
+  transient.reset();
+
+  EXPECT_FALSE(GetShmHasLatestContent(compound_backing));
+  EXPECT_FALSE(GetGpuHasLatestContent(compound_backing));
+
+  // A subsequent read on the GPU backing must not proceed since there is no
+  // element to sync content from and the GPU backing was never initialized.
+  {
+    auto gl_access = gl_rep->BeginScopedAccess(
+        GLTextureImageRepresentationBase::kReadAccessMode,
+        SharedImageRepresentation::AllowUnclearedAccess::kNo);
+    EXPECT_FALSE(gl_access);
+  }
+  EXPECT_FALSE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+  EXPECT_FALSE(GetGpuHasLatestContent(compound_backing));
+
+  // After the shared memory element is marked as the latest via Update(),
+  // access should succeed again.
+  compound_backing->Update(nullptr);
+  EXPECT_TRUE(GetShmHasLatestContent(compound_backing));
+  {
+    auto gl_access = gl_rep->BeginScopedAccess(
+        GLTextureImageRepresentationBase::kReadAccessMode,
+        SharedImageRepresentation::AllowUnclearedAccess::kNo);
+    EXPECT_TRUE(gl_access);
+  }
+  EXPECT_TRUE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+  EXPECT_TRUE(GetGpuHasLatestContent(compound_backing));
+}
+
+TEST_F(CompoundImageBackingTest, LazyAllocationFailsCreate) {
+  auto backing = CreateCompoundBacking({SHARED_IMAGE_USAGE_GLES2_READ});
+  auto* compound_backing = static_cast<CompoundImageBacking*>(backing.get());
+
+  auto factory_rep =
+      manager_.Register(std::move(backing), &memory_type_tracker_);
+
+  // The compound backing shouldn't have GPU backing yet and should have
+  // a valid factory to create one.
+  EXPECT_FALSE(HasGpuBacking(compound_backing));
+  EXPECT_TRUE(HasGpuCreateBackingCallback(compound_backing));
+
+  test_factory_.SetAllocationsShouldFail(true);
+
+  auto gl_passthrough_rep = manager_.ProduceGLTexturePassthrough(
+      compound_backing->mailbox(), &memory_type_tracker_);
+
+  // Creating the GPU backing should fail so representation should be null.
+  EXPECT_FALSE(gl_passthrough_rep);
+  EXPECT_FALSE(HasGpuBacking(compound_backing));
+
+  // The backing factory to create GPU backing should be reset so creation is
+  // not retried.
+  EXPECT_FALSE(HasGpuCreateBackingCallback(compound_backing));
+}
+
+TEST_F(CompoundImageBackingTest, LazyAllocationFailsFactoryInvalidated) {
+  auto backing = CreateCompoundBacking({SHARED_IMAGE_USAGE_GLES2_READ});
+  auto* compound_backing = static_cast<CompoundImageBacking*>(backing.get());
+
+  auto factory_rep =
+      manager_.Register(std::move(backing), &memory_type_tracker_);
+
+  // The compound backing shouldn't have GPU backing yet and should have
+  // a valid factory to create one.
+  EXPECT_FALSE(HasGpuBacking(compound_backing));
+  EXPECT_TRUE(HasGpuCreateBackingCallback(compound_backing));
+
+  test_factory_.InvalidateWeakPtrsForTesting();
+
+  auto gl_passthrough_rep = manager_.ProduceGLTexturePassthrough(
+      compound_backing->mailbox(), &memory_type_tracker_);
+
+  // Creating the GPU backing should fail so representation should be null.
+  EXPECT_FALSE(gl_passthrough_rep);
+  EXPECT_FALSE(HasGpuBacking(compound_backing));
+
+  // The backing factory to create GPU backing should be reset to avoid logging
+  // about destroyed image multiple times.
+  EXPECT_FALSE(HasGpuCreateBackingCallback(compound_backing));
+}
+
+TEST_F(CompoundImageBackingTest,
+       GetSharedMemoryPixmaps_ChecksOnWrongBackingType) {
+  auto tiny = std::make_unique<TestImageBacking>(
+      Mailbox::Generate(),
+      SharedImageInfo(viz::SinglePlaneFormat::kRGBA_8888, gfx::Size(10, 10),
+                      gfx::ColorSpace(), kTopLeft_GrSurfaceOrigin,
+                      kOpaque_SkAlphaType, {SHARED_IMAGE_USAGE_DISPLAY_READ},
+                      "TestLabel"),
+      kTestBackingSize);
+
+  // WrapExternalBacking constructor sets elements_[0].access_streams =
+  // AccessStreamSet::All(), which includes kMemory. GetSharedMemoryPixmaps()
+  // then performs an unchecked static_cast to SharedMemoryImageBacking*.
+  auto compound = WrapExternal(std::move(tiny));
+
+  // Verify that the security fix correctly triggers a CHECK failure when
+  // the backing is not of type SharedMemoryImageBacking.
+  EXPECT_DEATH_IF_SUPPORTED(CallGetSharedMemoryPixmaps(compound.get()), "");
+}
+
+TEST_F(CompoundImageBackingTest, Multiplanar) {
+  auto backing = CreateMultiplanarCompoundBacking();
+  auto* compound_backing = static_cast<CompoundImageBacking*>(backing.get());
+
+  auto factory_rep =
+      manager_.Register(std::move(backing), &memory_type_tracker_);
+
+  // There should be two planes stored in shared memory backing.
+  auto* shm_backing = GetShmImageBacking(compound_backing);
+  EXPECT_EQ(shm_backing->pixmaps().size(), 2u);
+
+  auto overlay_rep = manager_.ProduceOverlay(compound_backing->mailbox(),
+                                             &memory_type_tracker_);
+  if constexpr (!BUILDFLAG(IS_WIN)) {
+    ASSERT_TRUE(HasGpuBacking(compound_backing));
+    auto* gpu_backing = GetGpuBacking(compound_backing);
+
+    // The compound backing hasn't been accessed yet.
+    EXPECT_FALSE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+
+    // First access should trigger upload from memory to GPU.
+    overlay_rep->BeginScopedReadAccess();
+    EXPECT_TRUE(gpu_backing->GetUploadFromMemoryCalledAndReset());
+  } else {
+    // On Windows, no GPU backing is needed for overlays.
+    auto access = overlay_rep->BeginScopedReadAccess();
+    EXPECT_FALSE(HasGpuBacking(compound_backing));
+  }
+}
+
+TEST_F(CompoundImageBackingCopyToGpuMemoryBufferTest,
+       SelectsLatestContentGpuBacking) {
+  // The first backing the factory produces is the compound backing's initial,
+  // lazily created GPU element. Make that one refuse Skia access so
+  // GetOrAllocateBacking() is forced to dynamically allocate a second GPU
+  // element for the Skia stream.
+  test_factory_.SetUnsupportedAccessStreamForNextBacking(
+      SharedImageAccessStream::kSkia);
+
+  auto backing = CreateCompoundBackingWithDynamicAllocation(
+      {SHARED_IMAGE_USAGE_GLES2_READ});
+  auto* compound_backing = static_cast<CompoundImageBacking*>(backing.get());
+  auto factory_rep =
+      manager_.Register(std::move(backing), &memory_type_tracker_);
+
+  // ProduceSkia() resolves the initial GPU element, rejects it via
+  // SupportsAccess(), and then dynamically allocates a second one. The first
+  // element is left behind allocated and marked cleared (a shm backing is
+  // present) but holding no content, i.e. uninitialized VRAM.
+  std::vector<GrBackendSemaphore> begin_semaphores;
+  std::vector<GrBackendSemaphore> end_semaphores;
+  auto skia_rep =
+      manager_.ProduceSkia(compound_backing->mailbox(), &memory_type_tracker_,
+                           nullptr, /*required_usages=*/{});
+  ASSERT_TRUE(skia_rep);
+
+  auto gpu_backings = GetGpuBackings(compound_backing);
+  ASSERT_EQ(gpu_backings.size(), 2u);
+  auto* stale_gpu_backing = gpu_backings[0];
+  auto* active_gpu_backing = gpu_backings[1];
+  EXPECT_TRUE(stale_gpu_backing->IsCleared());
+  EXPECT_FALSE(stale_gpu_backing->GetUploadFromMemoryCalledAndReset());
+  EXPECT_FALSE(GetGpuHasLatestContent(compound_backing));
+  EXPECT_TRUE(GetShmHasLatestContent(compound_backing));
+
+  // A write access on the Skia representation goes to the dynamically
+  // allocated element, which uploads from shared memory and takes ownership of
+  // the latest content.
+  {
+    auto skia_write = skia_rep->BeginScopedWriteAccess(
+        &begin_semaphores, &end_semaphores,
+        SharedImageRepresentation::AllowUnclearedAccess::kNo);
+    EXPECT_TRUE(skia_write);
+  }
+  EXPECT_TRUE(active_gpu_backing->GetUploadFromMemoryCalledAndReset());
+  EXPECT_FALSE(stale_gpu_backing->GetUploadFromMemoryCalledAndReset());
+  EXPECT_FALSE(GetShmHasLatestContent(compound_backing));
+
+  // CopyToGpuMemoryBuffer() must read back from active_gpu_backing (which has
+  // latest_content_id_) and NOT from stale_gpu_backing.
+  EXPECT_TRUE(compound_backing->CopyToGpuMemoryBuffer());
+  EXPECT_FALSE(stale_gpu_backing->GetReadbackToMemoryCalledAndReset());
+  EXPECT_TRUE(active_gpu_backing->GetReadbackToMemoryCalledAndReset());
+  EXPECT_TRUE(GetShmHasLatestContent(compound_backing));
+}
+
+TEST_F(CompoundImageBackingCopyToGpuMemoryBufferTest,
+       FailsWhenNoGpuBackingHasLatestContent) {
+  // No SharedImageFactory here, so this backing never dynamically allocates.
+  auto backing = CreateCompoundBacking({SHARED_IMAGE_USAGE_GLES2_READ});
+  auto* compound_backing = static_cast<CompoundImageBacking*>(backing.get());
+  auto factory_rep =
+      manager_.Register(std::move(backing), &memory_type_tracker_);
+
+  // Resolve the initial GPU element via the public API without accessing it,
+  // so it exists but holds no content.
+  auto skia_rep =
+      manager_.ProduceSkia(compound_backing->mailbox(), &memory_type_tracker_,
+                           nullptr, /*required_usages=*/{});
+  ASSERT_TRUE(skia_rep);
+  auto* stale_gpu_backing = GetGpuBacking(compound_backing);
+  ASSERT_TRUE(stale_gpu_backing);
+
+  // Simulate a write to a transient backing that does not sync back to any
+  // permanent element on end access, leaving no element with
+  // latest_content_id_.
+  auto transient = std::make_unique<TestImageBacking>(
+      compound_backing->mailbox(),
+      SharedImageInfo(compound_backing->format(), compound_backing->size(),
+                      compound_backing->color_space(),
+                      compound_backing->surface_origin(),
+                      compound_backing->alpha_type(), compound_backing->usage(),
+                      "Transient"),
+      kTestBackingSize);
+  EXPECT_TRUE(compound_backing->NotifyBeginAccess(
+      transient.get(), RepresentationAccessMode::kWrite,
+      SharedImageAccessStream::kSkia));
+  compound_backing->NotifyEndAccess(transient.get(),
+                                    RepresentationAccessMode::kWrite);
+  transient.reset();
+
+  EXPECT_FALSE(GetShmHasLatestContent(compound_backing));
+
+  // Both synchronous and asynchronous CopyToGpuMemoryBuffer must fail safely
+  // rather than reading back from stale_gpu_backing or dereferencing nullptr.
+  EXPECT_FALSE(compound_backing->CopyToGpuMemoryBuffer());
+  EXPECT_FALSE(stale_gpu_backing->GetReadbackToMemoryCalledAndReset());
+  EXPECT_FALSE(GetShmHasLatestContent(compound_backing));
+
+  bool async_callback_called = false;
+  bool async_success = true;
+  compound_backing->CopyToGpuMemoryBufferAsync(base::BindOnce(
+      [](bool* called, bool* out_success, bool success) {
+        *called = true;
+        *out_success = success;
+      },
+      &async_callback_called, &async_success));
+  EXPECT_TRUE(async_callback_called);
+  EXPECT_FALSE(async_success);
+  EXPECT_FALSE(stale_gpu_backing->GetReadbackToMemoryCalledAndReset());
+}
+
+}  // namespace gpu

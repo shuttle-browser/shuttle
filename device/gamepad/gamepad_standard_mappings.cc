@@ -1,0 +1,148 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "device/gamepad/gamepad_standard_mappings.h"
+
+#include <algorithm>
+
+namespace device {
+
+namespace {
+
+const float kButtonAxisDeadzone = 0.01f;
+
+GamepadButton ValueToButton(float value) {
+  bool pressed = value > GamepadButton::kDefaultButtonPressedThreshold;
+  bool touched = value > 0.f;
+  return GamepadButton(pressed, touched, value);
+}
+
+}  // namespace
+
+GamepadButton AxisToButton(float input) {
+  float value = (input + 1.f) / 2.f;
+  return ValueToButton(value);
+}
+
+GamepadButton AxisNegativeAsButton(float input) {
+  float value = input < -kButtonAxisDeadzone ? -input : 0.f;
+  return ValueToButton(value);
+}
+
+GamepadButton AxisPositiveAsButton(float input) {
+  float value = input > kButtonAxisDeadzone ? input : 0.f;
+  return ValueToButton(value);
+}
+
+GamepadButton ButtonFromButtonAndAxis(GamepadButton button, float axis) {
+  float value = (axis + 1.f) / 2.f;
+  return GamepadButton(button.pressed, button.touched, value);
+}
+
+GamepadButton NullButton() {
+  return GamepadButton();
+}
+
+void DpadFromAxis(Gamepad* mapped, float dir) {
+  bool up = false;
+  bool right = false;
+  bool down = false;
+  bool left = false;
+
+  // Dpad is mapped as a direction on one axis, where -1 is up and it
+  // increases clockwise to 1, which is up + left. It's set to a large (> 1.f)
+  // number when nothing is depressed, except on start up, sometimes it's 0.0
+  // for no data, rather than the large number.
+  if (dir != 0.0f) {
+    up = (dir >= -1.f && dir < -0.7f) || (dir >= .95f && dir <= 1.f);
+    right = dir >= -.75f && dir < -.1f;
+    down = dir >= -.2f && dir < .45f;
+    left = dir >= .4f && dir <= 1.f;
+  }
+
+  mapped->buttons[BUTTON_INDEX_DPAD_UP] = GamepadButton(up, up, up ? 1.f : 0.f);
+  mapped->buttons[BUTTON_INDEX_DPAD_RIGHT] =
+      GamepadButton(right, right, right ? 1.f : 0.f);
+  mapped->buttons[BUTTON_INDEX_DPAD_DOWN] =
+      GamepadButton(down, down, down ? 1.f : 0.f);
+  mapped->buttons[BUTTON_INDEX_DPAD_LEFT] =
+      GamepadButton(left, left, left ? 1.f : 0.f);
+}
+
+void SetStandardGamepadButtonTypes(Gamepad* gamepad) {
+  if (gamepad->mapping != GamepadMapping::kStandard) {
+    return;
+  }
+
+  // Only the canonical button indices from the Standard Gamepad layout can have
+  // type "standard". Slots intentionally filled with NullButton() represent
+  // absent controls and must remain "non-standard".
+  const size_t length =
+      std::min<size_t>(gamepad->buttons_length, BUTTON_INDEX_COUNT);
+  for (size_t i = 0; i < length; ++i) {
+    gamepad->buttons[i].type = gamepad->buttons[i].used
+                                   ? GamepadButtonType::kStandard
+                                   : GamepadButtonType::kNonStandard;
+  }
+}
+
+float RenormalizeAndClampAxis(float value, float min, float max) {
+  value = (2.f * (value - min) / (max - min)) - 1.f;
+  return value < -1.f ? -1.f : (value > 1.f ? 1.f : value);
+}
+
+void MapperSwitchPro(const Gamepad& input, Gamepad* mapped) {
+  *mapped = input;
+  mapped->buttons_length = SWITCH_PRO_BUTTON_COUNT;
+  mapped->axes_length = AXIS_INDEX_COUNT;
+}
+
+void MapperSwitchJoyCon(const Gamepad& input, Gamepad* mapped) {
+  *mapped = input;
+  mapped->buttons_length = BUTTON_INDEX_COUNT;
+  mapped->axes_length = 2;
+}
+
+void MapperSwitchComposite(const Gamepad& input, Gamepad* mapped) {
+  // In composite mode, the inputs from two Joy-Cons are combined to form one
+  // virtual gamepad. Some buttons do not have equivalents in the Standard
+  // Gamepad and are exposed as extra buttons:
+  // * Capture button (Joy-Con L):  BUTTON_INDEX_COUNT
+  // * SL (Joy-Con L):              BUTTON_INDEX_COUNT + 1
+  // * SR (Joy-Con L):              BUTTON_INDEX_COUNT + 2
+  // * SL (Joy-Con R):              BUTTON_INDEX_COUNT + 3
+  // * SR (Joy-Con R):              BUTTON_INDEX_COUNT + 4
+  constexpr size_t kSwitchCompositeExtraButtonCount = 5;
+  *mapped = input;
+  mapped->buttons_length =
+      BUTTON_INDEX_COUNT + kSwitchCompositeExtraButtonCount;
+  mapped->axes_length = AXIS_INDEX_COUNT;
+}
+
+// Mapper function for gamepads built on "DragonRise" firmware which exposes 8
+// buttons and 2 axes for the D-pad.
+void Mapper2Axes8Keys(const Gamepad& input, Gamepad* mapped) {
+  *mapped = input;
+  mapped->buttons[BUTTON_INDEX_PRIMARY] = input.buttons[2];
+  mapped->buttons[BUTTON_INDEX_SECONDARY] = input.buttons[1];
+  mapped->buttons[BUTTON_INDEX_TERTIARY] = input.buttons[3];
+  mapped->buttons[BUTTON_INDEX_QUATERNARY] = input.buttons[0];
+  mapped->buttons[BUTTON_INDEX_DPAD_UP] = AxisNegativeAsButton(input.axes[1]);
+  mapped->buttons[BUTTON_INDEX_DPAD_DOWN] = AxisPositiveAsButton(input.axes[1]);
+  mapped->buttons[BUTTON_INDEX_DPAD_LEFT] = AxisNegativeAsButton(input.axes[0]);
+  mapped->buttons[BUTTON_INDEX_DPAD_RIGHT] =
+      AxisPositiveAsButton(input.axes[0]);
+
+  // Missing buttons
+  mapped->buttons[BUTTON_INDEX_LEFT_TRIGGER] = NullButton();
+  mapped->buttons[BUTTON_INDEX_RIGHT_TRIGGER] = NullButton();
+  mapped->buttons[BUTTON_INDEX_LEFT_THUMBSTICK] = NullButton();
+  mapped->buttons[BUTTON_INDEX_RIGHT_THUMBSTICK] = NullButton();
+  mapped->buttons[BUTTON_INDEX_META] = NullButton();
+
+  mapped->buttons_length = BUTTON_INDEX_COUNT - 1;
+  mapped->axes_length = 0;
+}
+
+}  // namespace device

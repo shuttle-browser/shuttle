@@ -1,0 +1,89 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module network.mojom;
+
+import "mojo/public/mojom/base/unguessable_token.mojom";
+import "url/mojom/url.mojom";
+
+// `Connection-Allowlist` headers govern the set of connections which can be
+// established from a given context. The design is in flux, and the
+// implementation here should be considered a flag-guarded prototype as
+// discussions continue.
+
+// Possible issues which can occur during parsing.
+enum ConnectionAllowlistIssue {
+  kInvalidHeader,
+  kMoreThanOneList,
+  kItemNotInnerList,
+  kInvalidAllowlistItemType,
+  kReportingEndpointNotToken,
+  kInvalidUrlPattern,
+};
+
+// Global behavior for redirects when an allowlist is active.
+enum RedirectBehavior {
+  kAllow,
+  kBlock,
+};
+
+// Global behavior for WebRTC when an allowlist is active.
+enum WebRtcBehavior {
+  kAllow,
+  kBlock,
+};
+
+// The result of parsing an allowlist header,
+//
+// https://github.com/mikewest/anti-exfil
+struct ConnectionAllowlist {
+  // A list of `URLPattern` strings representing the asserted allowlist.
+  // If the allowlist specifies the `response-origin` token, we'll add the
+  // serialization of the response's origin to this list.
+  //
+  // Unparsable headers will result in an empty allowlist, which, in turn,
+  // will result in fairly complete breakage.
+  //
+  // TODO(crbug.com/447954811): It would be ideal for us to have a URLPattern
+  // representation in mojo rather than using a string here. Moving
+  // `blink::SafeUrlPattern` somewhere usable by both the network service
+  // and Blink might be a reasonable approach in the future.
+  array<string> allowlist;
+  string? reporting_endpoint;
+  array<ConnectionAllowlistIssue> issues;
+  RedirectBehavior redirect_behavior;
+  WebRtcBehavior webrtc_behavior;
+
+  // True when the allowlist carried the `response-origin` token but its
+  // resolution was deferred rather than added to `allowlist`. This happens when
+  // the allowlist is parsed without knowing the response origin it should
+  // resolve against -- e.g. parsed in the renderer for an iframe's
+  // `connectionallowlist` attribute, where the framed document's response
+  // origin isn't known yet. The browser resolves this against the actual
+  // response origin before the allowlist is enforced. When parsing a response
+  // header (where the origin is known), `response-origin` is resolved eagerly
+  // into `allowlist` and this stays false.
+  bool match_response_origin;
+
+  // The original serialized value this allowlist was parsed from (e.g. the
+  // iframe `connectionallowlist` attribute string), retained so the browser can
+  // re-emit it in the `Sec-Required-Connection-Allowlist` request header. Empty
+  // unless populated by the producer (the iframe attribute parser).
+  string serialized_value;
+};
+
+// The set of allowlists associated with a given response.
+struct ConnectionAllowlists {
+  url.mojom.Url response_url;
+  ConnectionAllowlist? enforced;
+  ConnectionAllowlist? report_only;
+
+  // We should always have a reporting_source token when Connection Allowlists
+  // are applied to a document. We do not, however, have access to that token
+  // when we're originally parsing the headers, as the source isn't created
+  // until the document commits. This will therefore be empty until it's
+  // populated lower in the stack.
+  mojo_base.mojom.UnguessableToken? reporting_source;
+};
+

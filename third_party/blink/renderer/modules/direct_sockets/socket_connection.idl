@@ -1,0 +1,26 @@
+dictionary SocketOpenInfo {
+  // A readable stream of Uint8Array chunks (for TCPSocket) or UDPMessage chunks (for UDPSocket).
+  required ReadableStream readable;
+  // A writable stream of BufferSource chunks (for TCPSocket) or UDPMessage chunks (for UDPSocket).
+  required WritableStream writable;
+
+  DOMString remoteAddress;
+  unsigned short remotePort;
+
+  DOMString localAddress;
+  unsigned short localPort;
+};
+
+dictionary TCPSocketOpenInfo : SocketOpenInfo {};
+
+dictionary UDPSocketOpenInfo : SocketOpenInfo {
+  MulticastController multicastController;
+};
+
+dictionary TCPServerSocketOpenInfo {
+  // A readable stream of TCPSocket objects.
+  required ReadableStream readable;
+
+  required DOMString localAddress;
+  required unsigned short localPort;
+};

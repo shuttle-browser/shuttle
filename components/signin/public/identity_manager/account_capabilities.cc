@@ -1,0 +1,440 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/signin/public/identity_manager/account_capabilities.h"
+
+#include <array>
+#include <map>
+#include <string>
+#include <vector>
+
+#include "base/containers/heap_array.h"
+#include "base/containers/span.h"
+#include "base/logging.h"
+#include "base/no_destructor.h"
+#include "base/notreached.h"
+#include "build/build_config.h"
+#include "components/signin/internal/identity_manager/account_capabilities_constants.h"
+#include "components/signin/public/base/signin_switches.h"
+#include "components/signin/public/identity_manager/tribool.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "base/android/jni_array.h"
+#include "base/android/jni_string.h"
+#include "components/signin/public/android/jni_headers/AccountCapabilities_jni.h"
+#endif
+
+AccountCapabilities::AccountCapabilities() = default;
+AccountCapabilities::~AccountCapabilities() = default;
+AccountCapabilities::AccountCapabilities(const AccountCapabilities& other) =
+    default;
+AccountCapabilities::AccountCapabilities(AccountCapabilities&& other) noexcept =
+    default;
+AccountCapabilities& AccountCapabilities::operator=(
+    const AccountCapabilities& other) = default;
+AccountCapabilities& AccountCapabilities::operator=(
+    AccountCapabilities&& other) noexcept = default;
+
+namespace {
+std::optional<std::vector<std::string_view>>& GetSupportedCapabilitiesCache() {
+  static base::NoDestructor<std::optional<std::vector<std::string_view>>> cache;
+  return *cache;
+}
+}  // namespace
+
+// static
+base::span<const std::string_view>
+AccountCapabilities::GetSupportedAccountCapabilityNames() {
+  auto& cache = GetSupportedCapabilitiesCache();
+  if (!cache.has_value()) {
+    cache = GetSupportedAccountCapabilityNamesInternal();
+  }
+  return *cache;
+}
+
+// static
+std::string AccountCapabilities::GetCapabilityDisplayName(
+    std::string_view name) {
+  std::string label = std::string(name);
+#define ACCOUNT_CAPABILITY(cpp_label, java_label, value) \
+  if (name == value) {                                   \
+    return #cpp_label;                                   \
+  }
+#define ACCOUNT_CAPABILITY_F(cpp_label, java_label, value, feature) \
+  if (name == value) {                                              \
+    return #cpp_label;                                              \
+  }
+#include "components/signin/internal/identity_manager/account_capabilities_list.h"
+#undef ACCOUNT_CAPABILITY
+#undef ACCOUNT_CAPABILITY_F
+  NOTREACHED() << "Unknown capability: " << name;
+}
+
+// static
+void AccountCapabilities::ResetSupportedAccountCapabilityNamesForTesting() {
+  GetSupportedCapabilitiesCache().reset();
+}
+
+// static
+std::vector<std::string_view>
+AccountCapabilities::GetSupportedAccountCapabilityNamesInternal() {
+  std::vector<std::string_view> capabilities;
+#define ACCOUNT_CAPABILITY(cpp_label, java_label, value) \
+  capabilities.push_back(cpp_label);
+#define ACCOUNT_CAPABILITY_F(cpp_label, java_label, value, feature) \
+  if (base::FeatureList::IsEnabled(feature)) {                      \
+    capabilities.push_back(cpp_label);                              \
+  }
+#include "components/signin/internal/identity_manager/account_capabilities_list.h"
+#undef ACCOUNT_CAPABILITY
+#undef ACCOUNT_CAPABILITY_F
+  return capabilities;
+}
+
+bool AccountCapabilities::AreAnyCapabilitiesKnown() const {
+  for (std::string_view capability_name :
+       GetSupportedAccountCapabilityNames()) {
+    if (GetCapabilityByName(capability_name) != signin::Tribool::kUnknown) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool AccountCapabilities::AreAllCapabilitiesKnown() const {
+  for (std::string_view capability_name :
+       GetSupportedAccountCapabilityNames()) {
+    if (GetCapabilityByName(capability_name) == signin::Tribool::kUnknown) {
+      return false;
+    }
+  }
+  return true;
+}
+
+signin::Tribool AccountCapabilities::GetCapabilityByName(
+    std::string_view name) const {
+  if (auto it = capabilities_overrides_.find(name);
+      it != capabilities_overrides_.end()) {
+    return it->second;
+  }
+  return GetFetchedCapabilityByName(name);
+}
+
+signin::Tribool AccountCapabilities::GetFetchedCapabilityByName(
+    std::string_view name) const {
+  const auto iterator = capabilities_map_.find(name);
+  if (iterator == capabilities_map_.end()) {
+    return signin::Tribool::kUnknown;
+  }
+  return iterator->second ? signin::Tribool::kTrue : signin::Tribool::kFalse;
+}
+
+const base::flat_map<std::string, signin::Tribool>&
+AccountCapabilities::GetCapabilityOverrides() const {
+  return capabilities_overrides_;
+}
+
+// clang-format off
+// keep-sorted start newline_separated=yes sticky_prefixes=#if,BUILDFLAG group_prefixes=AccountCapabilities,#endif block=yes
+// clang-format on
+signin::Tribool AccountCapabilities::can_fetch_family_member_info() const {
+  return GetCapabilityByName(kCanFetchFamilyMemberInfoCapabilityName);
+}
+
+#if !BUILDFLAG(IS_IOS)
+signin::Tribool AccountCapabilities::can_have_email_address_displayed() const {
+  return GetCapabilityByName(kCanHaveEmailAddressDisplayedCapabilityName);
+}
+#endif
+
+#if !BUILDFLAG(IS_ANDROID)
+signin::Tribool
+AccountCapabilities::can_make_chrome_search_engine_choice_screen_choice()
+    const {
+  return GetCapabilityByName(kCanMakeChromeSearchEngineChoiceScreenChoice);
+}
+#endif
+
+signin::Tribool
+AccountCapabilities::can_override_account_info() const {
+  return GetCapabilityByName(kCanOverrideAccountInfoCapabilityName);
+}
+
+#if !BUILDFLAG(IS_IOS)
+signin::Tribool AccountCapabilities::can_run_chrome_privacy_sandbox_trials()
+    const {
+  return GetCapabilityByName(kCanRunChromePrivacySandboxTrialsCapabilityName);
+}
+#endif
+
+signin::Tribool AccountCapabilities::
+    can_show_history_sync_opt_ins_without_minor_mode_restrictions() const {
+#if BUILDFLAG(IS_IOS)
+  // If the flag is enabled, read the contextual capability. If the contextual
+  // capability is unknown, fall back to the non-contextual capability - this
+  // is because when the flag is first enabled the new capability may not yet
+  // have been fetched.
+  // TODO(crbug.com/481654422): Remove the unknown fallback once contextual
+  // capabilities are fully rolled out.
+  if (base::FeatureList::IsEnabled(
+          switches::kReadContextualAccountCapabilities) &&
+      GetCapabilityByName(
+          kCanContextuallyShowHistorySyncOptInsWithoutMinorModeRestrictionsCapabilityName) !=
+          signin::Tribool::kUnknown) {
+    return GetCapabilityByName(
+        kCanContextuallyShowHistorySyncOptInsWithoutMinorModeRestrictionsCapabilityName);
+  }
+#endif
+  return GetCapabilityByName(
+      kCanShowHistorySyncOptInsWithoutMinorModeRestrictionsCapabilityName);
+}
+
+#if BUILDFLAG(IS_IOS)
+signin::Tribool AccountCapabilities::can_sign_in_to_chrome() const {
+  return GetCapabilityByName(kCanSignInToChromeCapabilityName);
+}
+#endif
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_IOS)
+signin::Tribool AccountCapabilities::can_submit_feedback() const {
+  return GetCapabilityByName(kCanSubmitFeedbackInChromeCapabilityName);
+}
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
+signin::Tribool AccountCapabilities::can_toggle_auto_updates() const {
+  return GetCapabilityByName(kCanToggleAutoUpdatesName);
+}
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
+signin::Tribool AccountCapabilities::can_use_chromeos_generative_ai() const {
+  return GetCapabilityByName(kCanUseChromeOSGenerativeAi);
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+#if !BUILDFLAG(IS_IOS)
+signin::Tribool AccountCapabilities::can_use_devtools_generative_ai_features()
+    const {
+  return GetCapabilityByName(kCanUseDevToolsGenerativeAiFeaturesCapabilityName);
+}
+#endif
+
+#if !BUILDFLAG(IS_IOS)
+signin::Tribool AccountCapabilities::can_use_edu_features() const {
+  return GetCapabilityByName(kCanUseEduFeaturesCapabilityName);
+}
+#endif
+
+signin::Tribool AccountCapabilities::can_use_gemini_in_chrome() const {
+#if BUILDFLAG(IS_IOS)
+  // If the flag is enabled, read the contextual capability. If the contextual
+  // capability is unknown, fall back to the non-contextual capability - this
+  // is because when the flag is first enabled the new capability may not yet
+  // have been fetched.
+  // TODO(crbug.com/489360851): Remove the unknown fallback once contextual
+  // capabilities are fully rolled out.
+  if (base::FeatureList::IsEnabled(
+          switches::kReadContextualAccountCapabilities) &&
+      GetCapabilityByName(kCanContextuallyUseGeminiInChromeCapabilityName) !=
+          signin::Tribool::kUnknown) {
+    return GetCapabilityByName(kCanContextuallyUseGeminiInChromeCapabilityName);
+  }
+#endif
+  return GetCapabilityByName(kCanUseGeminiInChromeCapabilityName);
+}
+
+#if BUILDFLAG(IS_CHROMEOS)
+signin::Tribool AccountCapabilities::can_use_generative_ai_in_recorder_app()
+    const {
+  return GetCapabilityByName(kCanUseGenerativeAiInRecorderApp);
+}
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
+signin::Tribool AccountCapabilities::can_use_generative_ai_photo_editing()
+    const {
+  return GetCapabilityByName(kCanUseGenerativeAiPhotoEditing);
+}
+#endif
+
+signin::Tribool AccountCapabilities::can_use_manta_service() const {
+  return GetCapabilityByName(kCanUseMantaServiceName);
+}
+
+signin::Tribool AccountCapabilities::can_use_model_execution_features() const {
+#if BUILDFLAG(IS_IOS)
+  // If the flag is enabled, read the contextual capability. If the contextual
+  // capability is unknown, fall back to the non-contextual capability - this
+  // is because when the flag is first enabled the new capability may not yet
+  // have been fetched.
+  // TODO(crbug.com/481654422): Remove the unknown fallback once contextual
+  // capabilities are fully rolled out.
+  if (base::FeatureList::IsEnabled(
+          switches::kReadContextualAccountCapabilities) &&
+      GetCapabilityByName(kCanContextuallyUseModelExecutionFeaturesName) !=
+          signin::Tribool::kUnknown) {
+    return GetCapabilityByName(kCanContextuallyUseModelExecutionFeaturesName);
+  }
+#endif
+  return GetCapabilityByName(kCanUseModelExecutionFeaturesName);
+}
+
+signin::Tribool AccountCapabilities::can_use_speaker_label_in_recorder_app()
+    const {
+  return GetCapabilityByName(kCanUseSpeakerLabelInRecorderApp);
+}
+
+signin::Tribool AccountCapabilities::is_allowed_for_machine_learning() const {
+  return GetCapabilityByName(kIsAllowedForMachineLearningCapabilityName);
+}
+
+signin::Tribool AccountCapabilities::is_opted_in_to_parental_supervision()
+    const {
+  return GetCapabilityByName(kIsOptedInToParentalSupervisionCapabilityName);
+}
+
+signin::Tribool
+AccountCapabilities::is_subject_to_account_level_enterprise_policies() const {
+  return GetCapabilityByName(
+      kIsSubjectToAccountLevelEnterprisePoliciesCapabilityName);
+}
+
+signin::Tribool AccountCapabilities::
+    is_subject_to_chrome_privacy_sandbox_restricted_measurement_notice() const {
+  return GetCapabilityByName(
+      kIsSubjectToChromePrivacySandboxRestrictedMeasurementNotice);
+}
+
+signin::Tribool AccountCapabilities::is_subject_to_enterprise_features() const {
+  return GetCapabilityByName(kIsSubjectToEnterprisePoliciesCapabilityName);
+}
+
+signin::Tribool AccountCapabilities::is_subject_to_parental_controls() const {
+  return GetCapabilityByName(kIsSubjectToParentalControlsCapabilityName);
+}
+
+signin::Tribool AccountCapabilities::is_subject_to_universal_opt_out() const {
+  return GetCapabilityByName(kIsSubjectToUniversalOptOutCapabilityName);
+}
+
+#if BUILDFLAG(IS_IOS)
+signin::Tribool AccountCapabilities::must_fetch_apple_age_range_in_chrome()
+    const {
+  return GetCapabilityByName(kMustFetchAppleAgeRangeInChromeCapabilityName);
+}
+#endif
+
+#if BUILDFLAG(IS_IOS)
+signin::Tribool AccountCapabilities::must_skip_apple_age_range_in_chrome()
+    const {
+  return GetCapabilityByName(kMustSkipAppleAgeRangeInChromeCapabilityName);
+}
+#endif
+
+signin::Tribool
+AccountCapabilities::supports_wallet_private_passes_in_autofill() const {
+  return GetCapabilityByName(
+      kSupportsWalletPrivatePassesInAutofillCapabilityName);
+}
+
+// keep-sorted end
+
+bool AccountCapabilities::UpdateWith(const AccountCapabilities& other) {
+  bool modified = false;
+
+  for (std::string_view name : GetSupportedAccountCapabilityNames()) {
+    signin::Tribool other_capability = other.GetFetchedCapabilityByName(name);
+    signin::Tribool current_capability = GetFetchedCapabilityByName(name);
+    if (other_capability != signin::Tribool::kUnknown &&
+        other_capability != current_capability) {
+      capabilities_map_[std::string(name)] =
+          other_capability == signin::Tribool::kTrue;
+      modified = true;
+    }
+  }
+
+  for (const auto& [name, value] : other.capabilities_overrides_) {
+    auto iterator = capabilities_overrides_.find(name);
+    if (iterator == capabilities_overrides_.end() ||
+        iterator->second != value) {
+      capabilities_overrides_[name] = value;
+      modified = true;
+    }
+  }
+
+  return modified;
+}
+
+void AccountCapabilities::SetCapabilityOverride(
+    std::string_view name,
+    std::optional<signin::Tribool> value) {
+  if (value.has_value()) {
+    capabilities_overrides_[std::string(name)] = *value;
+  } else {
+    capabilities_overrides_.erase(std::string(name));
+  }
+}
+
+bool AccountCapabilities::operator==(const AccountCapabilities& other) const {
+  for (std::string_view name : GetSupportedAccountCapabilityNames()) {
+    if (GetFetchedCapabilityByName(name) != other.GetFetchedCapabilityByName(name)) {
+      return false;
+    }
+  }
+  return capabilities_overrides_ == other.capabilities_overrides_;
+}
+
+#if BUILDFLAG(IS_ANDROID)
+// static
+AccountCapabilities AccountCapabilities::ConvertFromJavaAccountCapabilities(
+    JNIEnv* env,
+    const base::android::JavaRef<jobject>& account_capabilities) {
+  AccountCapabilities capabilities;
+  for (std::string_view name : GetSupportedAccountCapabilityNames()) {
+    signin::Tribool capability_state = static_cast<signin::Tribool>(
+        signin::Java_AccountCapabilities_getCapabilityByName(
+            env, account_capabilities,
+            base::android::ConvertUTF8ToJavaString(env, name)));
+    if (capability_state != signin::Tribool::kUnknown) {
+      capabilities.capabilities_map_[std::string(name)] =
+          capability_state == signin::Tribool::kTrue;
+    }
+  }
+  return capabilities;
+}
+
+base::android::ScopedJavaLocalRef<jobject>
+AccountCapabilities::ConvertToJavaAccountCapabilities(JNIEnv* env) const {
+  const size_t num_caps = capabilities_map_.size();
+  std::vector<std::string> capability_names;
+  capability_names.reserve(num_caps);
+  auto capability_values = base::HeapArray<bool>::WithSize(num_caps);
+  size_t value_iterator = 0u;
+  for (const auto& [name, value] : capabilities_map_) {
+    capability_names.push_back(name);
+    capability_values[value_iterator] = value;
+    value_iterator++;
+  }
+  return signin::Java_AccountCapabilities_Constructor(
+      env, base::android::ToJavaArrayOfStrings(env, capability_names),
+      base::android::ToJavaBooleanArray(env, capability_values));
+}
+#endif
+
+AccountCapabilities::AccountCapabilities(
+    base::flat_map<std::string, bool> capabilities)
+    : capabilities_map_(std::move(capabilities)) {}
+
+#if BUILDFLAG(IS_IOS)
+const base::flat_map<std::string, bool>&
+AccountCapabilities::ConvertToAccountCapabilitiesIOS() {
+  return capabilities_map_;
+}
+#endif
+
+#if BUILDFLAG(IS_ANDROID)
+DEFINE_JNI(AccountCapabilities)
+#endif

@@ -1,0 +1,85 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/windows_services/service_program/test_support/service_environment.h"
+
+#include <windows.h>
+
+#include <string>
+#include <string_view>
+#include <utility>
+
+#include "base/base_paths.h"
+#include "base/command_line.h"
+#include "base/containers/span.h"
+#include "base/environment.h"
+#include "base/path_service.h"
+#include "chrome/common/env_vars.h"
+#include "chrome/windows_services/service_program/switches.h"
+#include "chrome/windows_services/service_program/test_support/scoped_install_service.h"
+#include "chrome/windows_services/service_program/test_support/scoped_log_grabber.h"
+
+namespace {
+
+// Adds the --unattended-test switch to the service's command line if the test
+// is running with CHROME_HEADLESS in its environment block.
+void AddUnattendedTestSwitch(base::CommandLine& command_line) {
+  if (auto env = base::Environment::Create();
+      env->HasVar(env_vars::kHeadless)) {
+    command_line.AppendSwitch(switches::kUnattendedTest);
+  }
+}
+
+}  // namespace
+
+ServiceEnvironment::ServiceEnvironment(
+    std::wstring_view display_name,
+    base::FilePath::StringViewType service_exe_name,
+    base::span<const std::string_view> testing_switches,
+    const CLSID& clsid,
+    const IID& iid) {
+  std::wstring service_name(display_name);
+  std::erase(service_name, L' ');
+
+  const std::wstring mutex_name =
+      base::StrCat({L"Global\\", service_name, L"Mutex"});
+  mutex_.Set(::CreateMutexW(nullptr, FALSE, mutex_name.c_str()));
+  if (mutex_.is_valid()) {
+    ::WaitForSingleObject(mutex_.get(), INFINITE);
+  }
+
+  base::CommandLine service_command(
+      base::PathService::CheckedGet(base::DIR_EXE).Append(service_exe_name));
+
+  AddUnattendedTestSwitch(service_command);
+
+  for (const auto& testing_switch : testing_switches) {
+    service_command.AppendSwitch(testing_switch);
+  }
+  log_grabber_.AddLoggingSwitches(service_command);
+
+  service_.emplace(service_name, display_name, /*description=*/display_name,
+                   std::move(service_command), clsid, iid);
+  if (!service_->is_valid()) {
+    service_.reset();
+  }
+}
+
+ServiceEnvironment::~ServiceEnvironment() {
+  service_.reset();
+  if (mutex_.is_valid()) {
+    ::ReleaseMutex(mutex_.get());
+    mutex_.Close();
+  }
+}
+
+base::Process ServiceEnvironment::GetRunningService() {
+  return is_valid() && service_->is_valid() ? service_->GetRunningService()
+                                            : base::Process();
+}
+
+void ServiceEnvironment::SetLogMessageCallback(
+    ScopedLogGrabber::LogMessageCallback callback) {
+  log_grabber_.SetLogMessageCallback(std::move(callback));
+}

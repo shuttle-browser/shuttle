@@ -1,0 +1,95 @@
+{%  for constant in struct.constants %}
+/**
+ * @const { {{constant.kind|lite_closure_type_with_nullability}} }
+ * @export
+ */
+{{module.namespace}}.{{struct.name}}_{{constant.name}} =
+    {{constant|constant_value}};
+{%  endfor %}
+
+{%- from "lite/enum_definition.tmpl" import enum_def with context %}
+{%  for enum in struct.enums %}
+{{enum_def("%s.%sSpec"|format(module.namespace, struct.name),
+           "%s.%s"|format(module.namespace, struct.name), enum)}}
+{%  endfor %}
+
+mojo.internal.Struct(
+    {{module.namespace}}.{{struct.name}}Spec.$,
+    '{{struct.name}}',
+    [
+{%- for packed_field in struct.packed.packed_fields_in_ordinal_order %}
+      mojo.internal.StructField(
+        '{{packed_field.field.name}}', {{packed_field.offset}},
+        {% if packed_field.field.kind|is_bool_kind %}{{packed_field.bit}}
+        {%- else %}0{% endif %},
+        {{packed_field.field.kind|lite_js_type}},
+        {{packed_field.field|lite_default_value}},
+{%-   if packed_field.field.kind.is_nullable %}
+        true, /* nullable */
+{%-   else %}
+        false, /* nullable */
+{%-   endif %}
+        0 /* minVersion */,
+{%-   if packed_field|is_nullable_value_kind_packed_field %}
+{%-     set name = packed_field.original_field.name %}
+{%-     set isPrimary = packed_field|is_primary_nullable_value_kind_packed_field %}
+        {
+{%-     if isPrimary %}
+          isPrimary: true,
+          linkedValueFieldName: "{{packed_field.linked_value_packed_field.field.name}}",
+{%-     else %}
+          isPrimary: false,
+{%-     endif %}
+          originalFieldName: "{{name}}",
+        }
+{%-   endif %}
+      ),{%- endfor %}
+    ],
+    [
+{%-   for info in struct.versions -%}
+      [{{info.version}}, {{info.num_bytes}}],
+{%-   endfor -%}
+    ]);
+
+{% if generate_struct_deserializers %}
+{{module.namespace}}.{{struct.name}}_Deserialize =
+    mojo.internal.createStructDeserializer({{module.namespace}}.{{struct.name}}Spec.$);
+{% endif %}
+
+{%  if generate_closure_exports -%}
+goog.provide('{{module.namespace}}.{{struct.name}}');
+{%- endif %}
+
+/** @record */
+{{module.namespace}}.{{struct.name}} = class {
+{%- set fields = [] %}
+{%- for packed_field in struct.packed.packed_fields_in_ordinal_order %}
+{%-   if packed_field|is_nullable_value_kind_packed_field %}
+{%-     if packed_field|is_primary_nullable_value_kind_packed_field %}
+{%-       set original_field = packed_field.original_field %}
+{%-       set _ = fields.append({'name': original_field.name, 'kind': original_field.kind}) %}
+{%-     endif %}
+{%-   else %}
+{%-     set _ = fields.append({'name': packed_field.field.name, 'kind': packed_field.field.kind}) %}
+{%-   endif %}
+{%- endfor %}
+{#--- Fuzzing #}
+{%- if generate_fuzzing %}
+  constructor(
+{%-   for param in fields%}
+    {{param.name|sanitize_identifier}}{%- if not loop.last %},{% endif %}
+{%-   endfor -%}) {
+{%-   for param in fields%}
+    /** @export { {{param.kind|lite_closure_field_type}} } */
+    this.{{param.name}} = {{param.name|sanitize_identifier}};
+{%-   endfor -%}
+  }
+{%- else %}
+  constructor() {
+{%-   for param in fields%}
+    /** @export { {{param.kind|lite_closure_field_type}} } */
+    this.{{param.name}};
+{%-   endfor -%}
+  }
+{%- endif %}
+};

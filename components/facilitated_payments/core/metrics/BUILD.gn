@@ -1,0 +1,45 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+static_library("metrics") {
+  sources = [
+    "facilitated_payments_metrics.cc",
+    "facilitated_payments_metrics.h",
+  ]
+  deps = [
+    "//base",
+    "//components/facilitated_payments/core/mojom:pix_code_validator_mojom",
+    "//components/facilitated_payments/core/utils",
+    "//components/facilitated_payments/core/validation",
+    "//services/metrics/public/cpp:metrics_cpp",
+    "//services/metrics/public/cpp:ukm_builders",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "facilitated_payments_metrics_unittest.cc" ]
+  deps = [
+    ":metrics",
+    "//base",
+    "//base/test:test_support",
+    "//components/facilitated_payments/core/utils",
+    "//components/ukm:test_support",
+    "//testing/gtest",
+  ]
+}
+
+if (is_android) {
+  import("//build/config/android/rules.gni")
+
+  android_library("facilitated_payments_metrics_enums_java") {
+    deps = [ "//third_party/androidx:androidx_annotation_annotation_java" ]
+
+    srcjar_deps = [ ":facilitated_payments_metrics_enums_javagen" ]
+  }
+
+  java_cpp_enum("facilitated_payments_metrics_enums_javagen") {
+    sources = [ "facilitated_payments_metrics.h" ]
+  }
+}

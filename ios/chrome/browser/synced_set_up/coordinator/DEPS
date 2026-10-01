@@ -1,0 +1,13 @@
+include_rules = [
+  # keep-sorted start
+  "+ios/chrome/browser/ntp/model",
+  "+ios/chrome/browser/signin/model",
+  "+ios/chrome/browser/sync/model",
+  # keep-sorted end
+]
+
+specific_include_rules = {
+  ".*unittest\\.mm": [
+    "+components/desktop_to_mobile_promos/features.h",
+  ],
+}

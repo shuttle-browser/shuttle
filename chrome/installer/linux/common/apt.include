@@ -1,0 +1,143 @@
+@@include@@repo_variables.include
+@@include@@key.include
+
+APT_CONFIG="$(command -v apt-config 2>/dev/null)"
+
+GPG_FILE="/usr/share/keyrings/@@PACKAGE.gpg"
+
+# Set variables for the locations of the apt trusted keyrings.
+find_apt_trusted() {
+  eval $("$APT_CONFIG" shell APT_TRUSTEDDIR 'Dir::Etc::trustedparts/d')
+}
+
+# Set variables for the locations of the apt sources lists.
+find_apt_sources() {
+  eval $("$APT_CONFIG" shell APT_SOURCESDIR 'Dir::Etc::sourceparts/d')
+  SOURCES_FILE="$APT_SOURCESDIR/@@PACKAGE.sources"
+}
+
+# Install the repository/package signing keys. The key cannot be part of the
+# package since it's still needed if the package is removed but not purged.
+install_key() {
+  if [ ! -e /usr/share/keyrings ]; then
+    mkdir -p /usr/share/keyrings
+    chmod 755 /usr/share/keyrings
+  fi
+
+  # Use a temporary file to ensure atomic updates
+  echo "$PGP_KEY_DATA" | base64 -d >"$GPG_FILE.$$.tmp"
+  chmod 644 "$GPG_FILE.$$.tmp"
+  mv "$GPG_FILE.$$.tmp" "$GPG_FILE"
+}
+
+uninstall_key() {
+  rm -f "$GPG_FILE"
+}
+
+remove_legacy_key() {
+  find_apt_trusted
+  rm -f "$APT_TRUSTEDDIR/@@PACKAGE.gpg"
+}
+
+remove_legacy_list() {
+  find_apt_sources
+  LEGACY_LIST="$APT_SOURCESDIR/@@PACKAGE.list"
+  if [ ! -f "$LEGACY_LIST" ]; then
+    return
+  fi
+
+  # Check for other sources (strict check for 'ours')
+  # If there are any lines starting with 'deb' (commented or not) that do NOT
+  # match our strict regex, keep the file.
+  if grep -E "^[[:space:]]*#?[[:space:]]*deb" "$LEGACY_LIST" |
+    grep -v -E \
+    "^[[:space:]]*#?[[:space:]]*$REPOCONFIGREGEX" >/dev/null;
+  then
+    # Other sources exist, comment out ours (strict match)
+    sed -i -E "s|^[[:space:]]*($REPOCONFIGREGEX)|# \1|" "$LEGACY_LIST"
+  else
+    # No other sources, safe to remove
+    rm -f "$LEGACY_LIST"
+  fi
+}
+
+# Generate the content of the .sources file
+gen_sources_content() {
+  cat <<EOF
+### THIS FILE IS AUTOMATICALLY CONFIGURED ###
+# Changes to this file will not be preserved.
+# This file will not be recreated if removed.
+X-Repolib-Name: @@MENUNAME
+Types: deb
+URIs: https://dl.google.com/linux/chrome-@@channel/deb/
+Suites: stable
+Components: main
+Architectures: @@architecture
+Signed-By: $GPG_FILE
+EOF
+}
+
+# Add the Google repository to the apt sources. The sources cannot be part of
+# the package since it's still needed if the package is removed but not purged.
+create_sources_lists() {
+  find_apt_sources
+
+  gen_sources_content >"$SOURCES_FILE.$$.tmp"
+  chmod 644 "$SOURCES_FILE.$$.tmp"
+  mv "$SOURCES_FILE.$$.tmp" "$SOURCES_FILE"
+
+  if [ -r "$DEFAULTS_FILE" ]; then
+    if grep -q "^[[:space:]]*repo_add_once=" "$DEFAULTS_FILE"; then
+      sed -i -e \
+        's/^[[:space:]]*repo_add_once=.*/repo_add_once="false"/' \
+        "$DEFAULTS_FILE"
+    else
+      echo 'repo_add_once="false"' >>"$DEFAULTS_FILE"
+    fi
+  fi
+}
+
+# Remove our custom sources file.
+clean_sources_lists() {
+  find_apt_sources
+  rm -f "$SOURCES_FILE"
+}
+
+install_deb822_sources() {
+  find_apt_sources
+  LEGACY_LIST="$APT_SOURCESDIR/@@PACKAGE.list"
+
+  SHOULD_INSTALL_SOURCES=0
+  # Detect new installs.
+  if [ -r "$DEFAULTS_FILE" ]; then
+    if grep -E -q \
+      '^[[:space:]]*repo_add_once=[[:space:]]*["'\'']?true["'\'']?' \
+      "$DEFAULTS_FILE"; then
+      SHOULD_INSTALL_SOURCES=1
+    fi
+  else
+    SHOULD_INSTALL_SOURCES=1
+    echo 'repo_add_once="true"' >"$DEFAULTS_FILE"
+    echo 'repo_reenable_on_distupgrade="true"' >>"$DEFAULTS_FILE"
+  fi
+
+  if [ -f "$SOURCES_FILE" ]; then
+    # The new .sources file already exists. Recreate it in case it got disabled
+    # during a dist upgrade.
+    SHOULD_INSTALL_SOURCES=1
+  elif [ -f "$LEGACY_LIST" ]; then
+    # Migrate a legacy .list file to the new .sources format.
+    if grep -E -q "^[[:space:]]*$REPOCONFIGREGEX" "$LEGACY_LIST"; then
+      SHOULD_INSTALL_SOURCES=1
+    elif grep -E -q \
+      "^[[:space:]]*#[[:space:]]*$REPOCONFIGREGEX[[:space:]]*# disabled on \
+upgrade to .*" \
+      "$LEGACY_LIST"; then
+      SHOULD_INSTALL_SOURCES=1
+    fi
+  fi
+
+  if [ "$SHOULD_INSTALL_SOURCES" -eq 1 ]; then
+    create_sources_lists
+  fi
+}

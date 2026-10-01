@@ -1,0 +1,206 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/sharing/sharing_browsertest.h"
+
+#include <map>
+#include <string_view>
+
+#include "base/functional/bind.h"
+#include "base/memory/ptr_util.h"
+#include "base/run_loop.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/test/bind.h"
+#include "build/build_config.h"
+#include "chrome/app/chrome_command_ids.h"
+#include "chrome/browser/sharing/sharing_service_factory.h"
+#include "chrome/browser/sync/device_info_sync_service_factory.h"
+#include "chrome/browser/sync/test/integration/sessions_helper.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
+#include "components/gcm_driver/fake_gcm_profile_service.h"
+#include "components/sharing_message/proto/sharing_message.pb.h"
+#include "components/sharing_message/sharing_channel_sender.h"
+#include "components/sharing_message/sharing_device_registration_result.h"
+#include "components/sharing_message/sharing_device_source_sync.h"
+#include "components/sharing_message/sharing_message_sender.h"
+#include "components/sharing_message/sharing_utils.h"
+#include "components/sync/model/client_tag_based_data_type_processor.h"
+#include "components/sync/protocol/sync_enums.pb.h"
+#include "components/sync_device_info/device_info.h"
+#include "components/sync_device_info/device_info_sync_service.h"
+#include "components/sync_device_info/test_device_info_builder.h"
+#include "content/public/test/browser_test_utils.h"
+#include "net/dns/mock_host_resolver.h"
+#include "third_party/blink/public/mojom/context_menu/context_menu.mojom.h"
+#include "ui/base/mojom/menu_source_type.mojom.h"
+
+void FakeSharingMessageBridge::SendSharingMessage(
+    std::unique_ptr<sync_pb::SharingMessageSpecifics> specifics,
+    CommitFinishedCallback on_commit_callback) {
+  specifics_ = std::move(*specifics);
+  sync_pb::SharingMessageCommitError commit_error;
+  commit_error.set_error_code(sync_pb::SharingMessageCommitError::NONE);
+  std::move(on_commit_callback).Run(commit_error);
+}
+
+base::WeakPtr<syncer::DataTypeControllerDelegate>
+FakeSharingMessageBridge::GetControllerDelegate() {
+  return nullptr;
+}
+
+SharingBrowserTest::SharingBrowserTest()
+    : SyncTest(TWO_CLIENT),
+      scoped_testing_factory_installer_(
+          base::BindRepeating(&gcm::FakeGCMProfileService::Build)),
+      sharing_service_(nullptr) {}
+
+SharingBrowserTest::~SharingBrowserTest() = default;
+
+void SharingBrowserTest::SetUpOnMainThread() {
+  SyncTest::SetUpOnMainThread();
+  host_resolver()->AddRule("mock.http", "127.0.0.1");
+  host_resolver()->AddRule("mock2.http", "127.0.0.1");
+}
+
+void SharingBrowserTest::Init(
+    syncer::DeviceInfo::SharingFeature device_feature) {
+  ASSERT_TRUE(SetupSync());
+
+  GURL url = embedded_test_server()->GetURL("mock.http", GetTestPageURL());
+  ASSERT_TRUE(sessions_helper::OpenTab(0, url));
+
+  web_contents_ = GetBrowser(0)->GetTabStripModel()->GetWebContentsAt(0);
+  ASSERT_TRUE(NavigateToURL(web_contents_, url));
+
+  sharing_service_ = SharingServiceFactory::GetForBrowserContext(GetProfile(0));
+
+  SharingChannelSender* sharing_channel_sender =
+      sharing_service_->GetMessageSenderForTesting()
+          ->GetChannelSenderForTesting();
+  sharing_channel_sender->SetSharingMessageBridgeForTesting(
+      &fake_sharing_message_bridge_);
+
+  SetUpDevices(device_feature, device_feature);
+}
+
+void SharingBrowserTest::SetUpDevices(
+    syncer::DeviceInfo::SharingFeature first_device_feature,
+    syncer::DeviceInfo::SharingFeature second_device_feature) {
+  ASSERT_EQ(2u, GetSyncClients().size());
+
+  RegisterDevice(0, first_device_feature);
+  RegisterDevice(1, second_device_feature);
+
+  syncer::DeviceInfoTracker* original_device_info_tracker =
+      DeviceInfoSyncServiceFactory::GetForProfile(GetProfile(0))
+          ->GetDeviceInfoTracker();
+  std::vector<const syncer::DeviceInfo*> original_devices =
+      original_device_info_tracker->GetAllDeviceInfo();
+  ASSERT_EQ(2u, original_devices.size());
+
+  for (size_t i = 0; i < original_devices.size(); i++) {
+    AddDeviceInfo(*original_devices[i], i);
+  }
+  const absl::flat_hash_map<syncer::DeviceInfo::FormFactor, int>
+      device_count_by_type =
+          fake_device_info_tracker_.CountActiveDevicesByType();
+  int total = 0;
+  for (const auto& type_and_count : device_count_by_type) {
+    total += type_and_count.second;
+  }
+  ASSERT_EQ(2, total);
+}
+
+void SharingBrowserTest::RegisterDevice(
+    int profile_index,
+    syncer::DeviceInfo::SharingFeature feature) {
+  SharingService* service =
+      SharingServiceFactory::GetForBrowserContext(GetProfile(profile_index));
+  static_cast<SharingDeviceSourceSync*>(service->GetDeviceSource())
+      ->SetDeviceInfoTrackerForTesting(&fake_device_info_tracker_);
+
+  base::RunLoop run_loop;
+  service->RegisterDeviceInTesting(
+      std::set<syncer::DeviceInfo::SharingFeature>{feature},
+      base::BindLambdaForTesting([&](SharingDeviceRegistrationResult r) {
+        ASSERT_EQ(SharingDeviceRegistrationResult::kSuccess, r);
+        run_loop.Quit();
+      }));
+  run_loop.Run();
+  ASSERT_TRUE(AwaitQuiescence());
+}
+
+void SharingBrowserTest::AddDeviceInfo(
+    const syncer::DeviceInfo& original_device,
+    int fake_device_id) {
+  syncer::TestDeviceInfoBuilder builder(original_device);
+  builder.WithClientName(
+      base::StrCat({"testing_device_", base::NumberToString(fake_device_id)}));
+  builder.WithManufacturerName("Google");
+  builder.WithModelName(
+      base::StrCat({"model", base::NumberToString(fake_device_id)}));
+
+  fake_device_info_tracker_.Add(builder.Build());
+}
+
+std::unique_ptr<TestRenderViewContextMenu> SharingBrowserTest::InitContextMenu(
+    const GURL& url,
+    std::string_view link_text,
+    std::string_view selection_text) {
+  content::ContextMenuParams params;
+  params.selection_text = base::ASCIIToUTF16(selection_text);
+  params.media_type = blink::mojom::ContextMenuDataMediaType::kNone;
+  params.unfiltered_link_url = url;
+  params.link_url = url;
+  params.src_url = url;
+  params.link_text = base::ASCIIToUTF16(link_text);
+  params.page_url = web_contents_->GetVisibleURL();
+  params.source_type = ui::mojom::MenuSourceType::kMouse;
+#if BUILDFLAG(IS_MAC)
+  params.writing_direction_default = 0;
+  params.writing_direction_left_to_right = 0;
+  params.writing_direction_right_to_left = 0;
+#endif
+  auto menu = std::make_unique<TestRenderViewContextMenu>(
+      *web_contents_->GetPrimaryMainFrame(), params);
+  menu->Init();
+  return menu;
+}
+
+void SharingBrowserTest::CheckLastReceiver(
+    const SharingTargetDeviceInfo& device) const {
+  const syncer::DeviceInfo* device_info =
+      fake_device_info_tracker_.GetDeviceInfo(device.guid());
+  ASSERT_TRUE(device_info);
+
+  auto fcm_configuration = GetFCMChannel(*device_info);
+  ASSERT_TRUE(fcm_configuration);
+
+  EXPECT_EQ(fcm_configuration->sender_id_fcm_token(),
+            fake_sharing_message_bridge_.specifics()
+                .channel_configuration()
+                .fcm()
+                .token());
+}
+
+components_sharing_message::SharingMessage
+SharingBrowserTest::GetLastSharingMessageSent() const {
+  components_sharing_message::SharingMessage sharing_message;
+
+  sharing_message.ParseFromString(
+      fake_sharing_message_bridge_.specifics().payload());
+  return sharing_message;
+}
+
+SharingService* SharingBrowserTest::sharing_service() const {
+  return sharing_service_;
+}
+
+content::WebContents* SharingBrowserTest::web_contents() const {
+  return web_contents_;
+}

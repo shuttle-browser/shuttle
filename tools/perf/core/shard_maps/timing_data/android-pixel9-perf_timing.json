@@ -1,0 +1,74 @@
+[
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/aquarium_20k"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/balls_css_key_frame_animations_composited_transform"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/famo_us_twitter_demo"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/microsoft_fireflies"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/motionmark_fixed_2_seconds_canvas_arcs"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/motionmark_fixed_2_seconds_canvas_lines"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/motionmark_fixed_2_seconds_design"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/motionmark_fixed_2_seconds_images"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/motionmark_fixed_2_seconds_leaves"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/motionmark_fixed_2_seconds_multiply"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/motionmark_fixed_2_seconds_paths"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/motionmark_fixed_2_seconds_suits"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/text_scrollbar_100_pixels_per_second"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/text_scrollbar_1200_pixels_per_second"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/text_scrollbar_200_pixels_per_second"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/text_scrollbar_2300_pixels_per_second"
+    },
+    {
+        "duration": "2.0",
+        "name": "rendering.mobile/text_scrollbar_700_pixels_per_second"
+    },
+    {
+        "duration": "60.0",
+        "name": "components_perftests/_gtest_"
+    }
+]

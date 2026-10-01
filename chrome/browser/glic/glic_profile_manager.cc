@@ -1,0 +1,229 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/glic/glic_profile_manager.h"
+
+#include "base/command_line.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/notimplemented.h"
+#include "base/task/sequenced_task_runner.h"
+#include "build/build_config.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/glic/glic_pref_names.h"
+#include "chrome/browser/glic/host/host.h"
+#include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
+#include "chrome/browser/glic/public/service/glic_instance_coordinator.h"
+#include "chrome/browser/global_features.h"
+#include "chrome/browser/lifetime/termination_notification.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/ui/browser_window/public/browser_collection.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
+#include "chrome/common/chrome_features.h"
+#include "chrome/common/chrome_switches.h"
+#include "components/prefs/pref_service.h"
+#include "url/gurl.h"
+
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/browser_tabstrip.h"
+#include "chrome/browser/ui/profiles/profile_picker.h"
+#include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
+#endif
+
+namespace {
+std::optional<Profile*> g_forced_profile_for_launch_;
+}  // namespace
+
+namespace glic {
+namespace {
+
+void AutoOpenGlicPanel() {
+  Profile* profile = GlicProfileManager::GetInstance()->GetProfileForLaunch();
+  if (!profile) {
+    return;
+  }
+
+  // TODO(379166075): Remove after updating GetProfileForLaunch.
+  if (!GlicEnabling::IsEnabledForProfile(profile)) {
+    return;
+  }
+
+  BrowserWindowInterface* last_active = nullptr;
+  mojom::InvocationSource pretend_source = mojom::InvocationSource::kOsButton;
+  if (base::CommandLine::ForCurrentProcess()->GetSwitchValueASCII(
+          ::switches::kGlicOpenOnStartup) == "attached") {
+    // Attachment is best effort; GetLastActiveBrowser() may return null here.
+    last_active = ProfileBrowserCollection::GetForProfile(profile)
+                      ->GetLastActiveBrowser();
+    pretend_source = mojom::InvocationSource::kTopChromeButton;
+  }
+  GlicKeyedServiceFactory::GetGlicKeyedService(profile)->ShowUI(last_active,
+                                                                pretend_source);
+}
+
+}  // namespace
+
+GlicProfileManager* GlicProfileManager::GetInstance() {
+  return g_browser_process->GetFeatures()->glic_profile_manager();
+}
+
+GlicProfileManager::GlicProfileManager() {
+  ProfileManager* profile_manager = g_browser_process->profile_manager();
+  if (profile_manager) {
+    profile_manager->AddObserver(this);
+    for (Profile* profile : profile_manager->GetLoadedProfiles()) {
+      profile_observations_.AddObservation(profile);
+    }
+  }
+}
+
+GlicProfileManager::~GlicProfileManager() = default;
+
+Profile* GlicProfileManager::GetProfileForLaunch() const {
+  if (g_forced_profile_for_launch_) {
+    return *g_forced_profile_for_launch_;
+  }
+
+  // If the glic window is currently showing detached use that profile. This
+  // profile is the one where a detached instance was most recently used.
+  if (current_detached_glic_) {
+    return current_detached_glic_->profile();
+  }
+
+  // Look for a profile to use based on most recently used browser windows
+  Profile* profile_from_browser_window = nullptr;
+  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+      [&](BrowserWindowInterface* browser) {
+        if (GlicEnabling::IsEnabledAndConsentForProfile(
+                browser->GetProfile())) {
+          profile_from_browser_window = browser->GetProfile();
+          return false;  // stop iterating
+        }
+        return true;  // continue iterating
+      });
+  if (profile_from_browser_window != nullptr) {
+    return profile_from_browser_window;
+  }
+
+  // TODO(https://crbug.com/379166075) Remove loaded profile look up once the
+  // pinned profile is implemented.
+  // Look at the list of loaded profiles to use for glic
+  if (g_browser_process->profile_manager()) {
+    for (Profile* profile :
+         g_browser_process->profile_manager()->GetLoadedProfiles()) {
+      if (GlicEnabling::IsEnabledAndConsentForProfile(profile)) {
+        return profile;
+      }
+    }
+  }
+
+  // TODO(https://crbug.com/379166075): Implement profile choice logic.
+  return nullptr;
+}
+
+void GlicProfileManager::SetCurrentDetachedGlic(Profile* profile) {
+  if (!profile) {
+    current_detached_glic_.reset();
+    return;
+  }
+  if (current_detached_glic_ && current_detached_glic_->profile() != profile) {
+    current_detached_glic_->instance_coordinator().Close({});
+  }
+  current_detached_glic_ = GlicKeyedService::Get(profile)->GetWeakPtr();
+}
+
+void GlicProfileManager::Shutdown() {
+  g_browser_process->profile_manager()->RemoveObserver(this);
+}
+
+void GlicProfileManager::MaybeAutoOpenGlicPanel() {
+  if (did_auto_open_ || !base::CommandLine::ForCurrentProcess()->HasSwitch(
+                            ::switches::kGlicOpenOnStartup)) {
+    return;
+  }
+
+  // TODO(391948342): Figure out why the FRE modal doesn't show when triggered
+  // too early, and wait for that condition rather than delaying.
+  base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE, base::BindOnce(&AutoOpenGlicPanel), base::Seconds(30));
+
+  did_auto_open_ = true;
+}
+
+void GlicProfileManager::ShowProfilePicker() {
+  base::OnceCallback<void(Profile*)> callback = base::BindOnce(
+      &GlicProfileManager::DidSelectProfile, weak_ptr_factory_.GetWeakPtr());
+  // If the panel is not closed it will be on top of the profile picker.
+  if (current_detached_glic_) {
+    current_detached_glic_->instance_coordinator().Close({});
+  }
+
+  // TODO(crbug.com/450679848): Profile Picker doesn't make sense on ChromeOS.
+#if !BUILDFLAG(IS_CHROMEOS)
+// Profile picker won't be used on Android.
+#if !BUILDFLAG(IS_ANDROID)
+  ProfilePicker::Show(
+      ProfilePicker::Params::ForGlicManager(std::move(callback)));
+#endif
+#endif
+}
+
+void GlicProfileManager::DidSelectProfile(Profile* profile) {
+  if (!GlicEnabling::IsEnabledForProfile(profile)) {
+    return;
+  }
+
+  GlicKeyedService* service =
+      GlicKeyedServiceFactory::GetGlicKeyedService(profile);
+
+  // Show glic for the selected profile.
+  service->ShowUI(nullptr, mojom::InvocationSource::kProfilePicker);
+}
+
+void GlicProfileManager::OnProfileAdded(Profile* profile) {
+  GlicEnabling::RecordProfileIneligibilityMetricsAtStartup(profile);
+  profile_observations_.AddObservation(profile);
+}
+
+void GlicProfileManager::OnProfileMarkedForPermanentDeletion(Profile* profile) {
+  GlicKeyedService* glic_keyed_service =
+      glic::GlicKeyedServiceFactory::GetGlicKeyedService(profile);
+  if (!glic_keyed_service) {
+    return;
+  }
+  glic_keyed_service->Shutdown();
+}
+
+void GlicProfileManager::OnOffTheRecordProfileCreated(Profile* profile) {
+  // Guest and System profiles are managed by their own "backing" parent
+  // profiles. The creation of these parent profiles is already captured by
+  // `OnProfileAdded`. Thus, avoid logging again here.
+  if (profile->IsGuestSession() || profile->IsSystemProfile()) {
+    return;
+  }
+  GlicEnabling::RecordProfileIneligibilityMetricsAtStartup(profile);
+}
+
+void GlicProfileManager::OnProfileWillBeDestroyed(Profile* profile) {
+  if (current_detached_glic_ && current_detached_glic_->profile() == profile) {
+    current_detached_glic_.reset();
+  }
+  profile_observations_.RemoveObservation(profile);
+}
+
+// static
+void GlicProfileManager::ForceProfileForLaunchForTesting(
+    std::optional<Profile*> profile) {
+  g_forced_profile_for_launch_ = profile;
+}
+
+base::WeakPtr<GlicProfileManager> GlicProfileManager::GetWeakPtr() {
+  return weak_ptr_factory_.GetWeakPtr();
+}
+
+}  // namespace glic

@@ -1,0 +1,208 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/sync/engine/net/server_connection_manager.h"
+
+#include <errno.h>
+
+#include <ostream>
+
+#include "base/check_is_test.h"
+#include "base/feature_list.h"
+#include "base/metrics/histogram.h"
+#include "base/observer_list.h"
+#include "build/build_config.h"
+#include "components/sync/base/features.h"
+#include "components/sync/engine/cancelation_signal.h"
+#include "components/sync/engine/net/url_translator.h"
+#include "components/sync/engine/syncer.h"
+#include "net/http/http_status_code.h"
+#include "url/gurl.h"
+
+namespace syncer {
+namespace {
+
+#define ENUM_CASE(x)    \
+  case HttpResponse::x: \
+    return #x;          \
+    break
+
+const char* GetServerConnectionCodeString(
+    HttpResponse::ServerConnectionCode code) {
+  switch (code) {
+    ENUM_CASE(NONE);
+    ENUM_CASE(CONNECTION_UNAVAILABLE);
+    ENUM_CASE(SYNC_SERVER_ERROR);
+    ENUM_CASE(SYNC_AUTH_ERROR);
+    ENUM_CASE(SERVER_CONNECTION_OK);
+  }
+  NOTREACHED();
+}
+
+#undef ENUM_CASE
+
+}  // namespace
+
+HttpResponse::HttpResponse()
+    : server_status(NONE),
+      net_error_code(-1),
+      http_status_code(-1),
+      content_length(-1) {}
+
+// static
+HttpResponse HttpResponse::Uninitialized() {
+  return HttpResponse();
+}
+
+// static
+HttpResponse HttpResponse::ForNetError(int net_error_code) {
+  HttpResponse response;
+  response.server_status = CONNECTION_UNAVAILABLE;
+  response.net_error_code = net_error_code;
+  return response;
+}
+
+// static
+HttpResponse HttpResponse::ForUnspecifiedError() {
+  HttpResponse response;
+  response.server_status = CONNECTION_UNAVAILABLE;
+  return response;
+}
+
+// static
+HttpResponse HttpResponse::ForHttpStatusCode(int http_status_code) {
+  HttpResponse response;
+  if (http_status_code == net::HTTP_OK) {
+    response.server_status = SERVER_CONNECTION_OK;
+  } else if (http_status_code == net::HTTP_UNAUTHORIZED) {
+    response.server_status = SYNC_AUTH_ERROR;
+  } else {
+    response.server_status = SYNC_SERVER_ERROR;
+  }
+  response.http_status_code = http_status_code;
+  return response;
+}
+
+// static
+HttpResponse HttpResponse::ForSuccessForTest() {
+  CHECK_IS_TEST();
+  HttpResponse response;
+  response.server_status = SERVER_CONNECTION_OK;
+  response.http_status_code = net::HTTP_OK;
+  return response;
+}
+
+ServerConnectionManager::ServerConnectionManager()
+    : server_response_(HttpResponse::Uninitialized()) {}
+
+ServerConnectionManager::~ServerConnectionManager() = default;
+
+bool ServerConnectionManager::SetAccessTokenInfo(
+    const signin::AccessTokenInfo& access_token_info) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  CHECK(!base::FeatureList::IsEnabled(kSyncUsePropagatedAccessToken));
+
+  cached_access_token_info_ = access_token_info;
+  if (IsAccessTokenInfoValid(cached_access_token_info_)) {
+    return true;
+  }
+
+  ClearCachedAccessToken();
+
+  // The token was probably expired. Notify sync frontend again to request new
+  // token, otherwise backend will stay in SYNC_AUTH_ERROR state while frontend
+  // thinks everything is fine and takes no actions.
+  SetServerResponse(HttpResponse::ForHttpStatusCode(net::HTTP_UNAUTHORIZED));
+  return false;
+}
+
+bool ServerConnectionManager::HasCachedAccessToken() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  CHECK(!base::FeatureList::IsEnabled(kSyncUsePropagatedAccessToken));
+  return !cached_access_token_info_.token.empty();
+}
+
+void ServerConnectionManager::ClearCachedAccessToken() {
+  cached_access_token_info_ = signin::AccessTokenInfo();
+}
+
+// static
+bool ServerConnectionManager::IsAccessTokenInfoValid(
+    const signin::AccessTokenInfo& access_token_info) {
+  if (access_token_info.token.empty()) {
+    return false;
+  }
+
+  // Assume the token is valid if the expiration time is not set or the
+  // validation feature is disabled.
+  if (access_token_info.expiration_time.is_null() ||
+      !base::FeatureList::IsEnabled(kSyncValidateAccessToken)) {
+    return true;
+  }
+
+  return access_token_info.expiration_time > base::Time::Now();
+}
+
+void ServerConnectionManager::SetServerResponse(
+    const HttpResponse& server_response) {
+  // Notify only if the server status changed, except for SYNC_AUTH_ERROR: In
+  // that case, always notify in order to poke observers to do something about
+  // it.
+  bool notify =
+      (server_response.server_status == HttpResponse::SYNC_AUTH_ERROR ||
+       server_response_.server_status != server_response.server_status);
+  server_response_ = server_response;
+  if (notify) {
+    NotifyStatusChanged();
+  }
+}
+
+void ServerConnectionManager::NotifyStatusChanged() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  for (ServerConnectionEventListener& observer : listeners_) {
+    observer.OnServerConnectionEvent(
+        ServerConnectionEvent(server_response_.server_status));
+  }
+}
+
+HttpResponse ServerConnectionManager::PostBufferWithAccessToken(
+    const std::string& buffer_in,
+    std::string* buffer_out,
+    const signin::AccessTokenInfo& access_token_info) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  HttpResponse http_response =
+      PostBuffer(buffer_in, buffer_out, access_token_info);
+  SetServerResponse(http_response);
+  return server_response_;
+}
+
+HttpResponse ServerConnectionManager::PostBufferWithCachedAuth(
+    const std::string& buffer_in,
+    std::string* buffer_out) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  CHECK(!base::FeatureList::IsEnabled(kSyncUsePropagatedAccessToken));
+  return PostBufferWithAccessToken(buffer_in, buffer_out,
+                                   cached_access_token_info_);
+}
+
+void ServerConnectionManager::AddListener(
+    ServerConnectionEventListener* listener) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  listeners_.AddObserver(listener);
+}
+
+void ServerConnectionManager::RemoveListener(
+    ServerConnectionEventListener* listener) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  listeners_.RemoveObserver(listener);
+}
+
+std::ostream& operator<<(std::ostream& s, const struct HttpResponse& hr) {
+  s << " Response Code (bogus on error): " << hr.http_status_code;
+  s << " Content-Length (bogus on error): " << hr.content_length;
+  s << " Server Status: " << GetServerConnectionCodeString(hr.server_status);
+  return s;
+}
+
+}  // namespace syncer

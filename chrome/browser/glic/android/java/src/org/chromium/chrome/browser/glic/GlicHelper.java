@@ -1,0 +1,225 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.glic;
+
+import android.Manifest;
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
+import android.provider.Settings;
+
+import androidx.annotation.IntDef;
+
+import org.jni_zero.CalledByNative;
+import org.jni_zero.JNINamespace;
+
+import org.chromium.base.ContextUtils;
+import org.chromium.base.IntentUtils;
+import org.chromium.base.metrics.RecordUserAction;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.actor.ActorKeyedService;
+import org.chromium.chrome.browser.actor.ActorKeyedServiceFactory;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.ui.messages.snackbar.Snackbar;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager.SnackbarController;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager.SnackbarManageable;
+import org.chromium.ui.base.WindowAndroid;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.util.WeakHashMap;
+
+/** Utility class for Glic-related UI actions. */
+@JNINamespace("glic")
+@NullMarked
+public class GlicHelper {
+    @IntDef({Caller.SETTINGS_ACTIVITY, Caller.SNACKBAR_ACTIVITY, Caller.NEW_TAB_PAGE})
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface Caller {
+        int SETTINGS_ACTIVITY = 0;
+        int SNACKBAR_ACTIVITY = 1;
+        int NEW_TAB_PAGE = 2;
+    }
+
+    private static final WeakHashMap<SnackbarManageable, Boolean> sShownSnackbars =
+            new WeakHashMap<>();
+
+    /**
+     * Shows a snackbar indicating the microphone is disabled, with a settings action button.
+     *
+     * @param windowAndroid The window hosting the activity.
+     */
+    @CalledByNative
+    static void showMicDisabledSnackbar(WindowAndroid windowAndroid) {
+        if (windowAndroid.hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            return;
+        }
+        Activity activity = windowAndroid.getActivity().get();
+        if (activity == null || !(activity instanceof SnackbarManageable)) {
+            return;
+        }
+        SnackbarManager snackbarManager = ((SnackbarManageable) activity).getSnackbarManager();
+        if (snackbarManager == null) {
+            return;
+        }
+
+        SnackbarController controller =
+                new SnackbarController() {
+                    @Override
+                    public void onAction(@Nullable Object actionData) {
+                        RecordUserAction.record(
+                                "Glic.Interaction.MicDisabledSnackbar.SettingsClicked");
+                        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                        intent.setData(
+                                Uri.parse(
+                                        "package:"
+                                                + ContextUtils.getApplicationContext()
+                                                        .getPackageName()));
+                        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        IntentUtils.safeStartActivity(ContextUtils.getApplicationContext(), intent);
+                    }
+
+                    @Override
+                    public void onDismissNoAction(@Nullable Object actionData) {}
+                };
+        snackbarManager.showSnackbar(
+                Snackbar.make(
+                                activity.getString(R.string.glic_mic_disabled_snackbar),
+                                controller,
+                                Snackbar.TYPE_ACTION,
+                                Snackbar.UMA_GLIC_MIC_DISABLED)
+                        .setAction(activity.getString(R.string.settings), null));
+    }
+
+    /**
+     * Shows a snackbar indicating Glic is not available in Incognito mode.
+     *
+     * @param activity The Android activity.
+     */
+    public static void showNotAvailableInIncognitoSnackbar(Activity activity) {
+        if (activity instanceof SnackbarManageable) {
+            SnackbarManager snackbarManager = ((SnackbarManageable) activity).getSnackbarManager();
+            if (snackbarManager != null) {
+                snackbarManager.showSnackbar(
+                        Snackbar.make(
+                                activity.getString(R.string.glic_incognito_not_available),
+                                null,
+                                Snackbar.TYPE_NOTIFICATION,
+                                Snackbar.UMA_GLIC));
+            }
+        }
+    }
+
+    /**
+     * Shows a snackbar indicating Glic is unavailable.
+     *
+     * @param activity The Android activity.
+     */
+    public static void showUnavailableSnackbar(Activity activity) {
+        if (activity instanceof SnackbarManageable) {
+            SnackbarManager snackbarManager = ((SnackbarManageable) activity).getSnackbarManager();
+            if (snackbarManager != null) {
+                snackbarManager.showSnackbar(
+                        Snackbar.make(
+                                activity.getString(
+                                        R.string.signin_generic_error_dialog_description),
+                                null,
+                                Snackbar.TYPE_NOTIFICATION,
+                                Snackbar.UMA_GLIC));
+            }
+        }
+    }
+
+    /**
+     * Shows a snackbar indicating the Glic button was unpinned, with an undo action button.
+     *
+     * @param activity The Android {@link Activity}.
+     * @param profile The current {@link Profile}.
+     */
+    public static void showUnpinnedSnackbar(Activity activity, Profile profile) {
+        if (activity instanceof SnackbarManageable) {
+            SnackbarManager snackbarManager = ((SnackbarManageable) activity).getSnackbarManager();
+            if (snackbarManager != null) {
+                showUnpinnedSnackbar(snackbarManager, activity, profile);
+            }
+        }
+    }
+
+    /**
+     * Shows a snackbar indicating the Glic button was unpinned, with an undo action button.
+     *
+     * @param snackbarManager The {@link SnackbarManager} used to show the snackbar.
+     * @param context The Android {@link Context}.
+     * @param profile The current {@link Profile}.
+     */
+    public static void showUnpinnedSnackbar(
+            SnackbarManager snackbarManager, Context context, Profile profile) {
+        SnackbarController controller =
+                new SnackbarController() {
+                    @Override
+                    public void onAction(@Nullable Object actionData) {
+                        RecordUserAction.record("Glic.Interaction.TabStripButton.UndoUnpin");
+                        GlicUtils.setButtonPinnedToTabStrip(profile, true);
+                    }
+
+                    @Override
+                    public void onDismissNoAction(@Nullable Object actionData) {}
+                };
+        snackbarManager.showSnackbar(
+                Snackbar.make(
+                                context.getString(R.string.glic_button_unpinned),
+                                controller,
+                                Snackbar.TYPE_ACTION,
+                                Snackbar.UMA_GLIC_UNPIN_UNDO)
+                        .setAction(context.getString(R.string.undo), null));
+    }
+
+    /**
+     * Shows a snackbar if there are any active Glic tasks for the given profile.
+     *
+     * @param snackbarManageable The activity or component that can manage snackbars.
+     * @param profile The current profile.
+     * @param context The Android context.
+     * @param caller The caller context invoking this method.
+     */
+    public static void maybeShowGlicTaskInProgressSnackbar(
+            SnackbarManageable snackbarManageable,
+            Profile profile,
+            Context context,
+            @Caller int caller) {
+        boolean limitFrequency = caller != Caller.NEW_TAB_PAGE;
+        if (limitFrequency && sShownSnackbars.containsKey(snackbarManageable)) {
+            return;
+        }
+
+        if (maybeShowGlicTaskInProgressSnackbarInternal(snackbarManageable, profile, context)) {
+            if (limitFrequency) {
+                sShownSnackbars.put(snackbarManageable, true);
+            }
+        }
+    }
+
+    private static boolean maybeShowGlicTaskInProgressSnackbarInternal(
+            SnackbarManageable snackbarManageable, Profile profile, Context context) {
+        if (profile.isOffTheRecord()) return false;
+
+        ActorKeyedService actorService = ActorKeyedServiceFactory.getForProfile(profile);
+        if (actorService != null && actorService.getActiveTasksCount() > 0) {
+            snackbarManageable
+                    .getSnackbarManager()
+                    .showSnackbar(
+                            Snackbar.make(
+                                    context.getString(R.string.glic_actor_task_in_progress),
+                                    null,
+                                    Snackbar.TYPE_NOTIFICATION,
+                                    Snackbar.UMA_UNKNOWN));
+            return true;
+        }
+        return false;
+    }
+}

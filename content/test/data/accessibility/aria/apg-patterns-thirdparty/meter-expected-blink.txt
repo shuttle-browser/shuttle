@@ -1,0 +1,15 @@
+rootWebArea name='Meter Example'
+++genericContainer ignored
+++++genericContainer ignored
+++++++genericContainer
+++++++++paragraph
+++++++++++staticText name='The value of this meter changes every 5 seconds. Use the pause button to stop changes.'
+++++++++++++inlineTextBox name='The value of this meter changes every 5 seconds. Use the pause button to stop changes.'
+++++++++heading name='Central Processing Unit (CPU) Usage'
+++++++++++staticText name='Central Processing Unit (CPU) Usage'
+++++++++++++inlineTextBox name='Central Processing Unit (CPU) Usage'
+++++++++paragraph
+++++++++++button name='Pause Updates'
+++++++++++++staticText name='Pause Updates'
+++++++++++++++inlineTextBox name='Pause Updates'
+++++++++meter name='Central Processing Unit (CPU) Usage' valueForRange=90.00 minValueForRange=0.00 maxValueForRange=100.00

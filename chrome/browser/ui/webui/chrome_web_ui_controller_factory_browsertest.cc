@@ -1,0 +1,116 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webui/chrome_web_ui_controller_factory.h"
+
+#include "base/run_loop.h"
+#include "base/strings/strcat.h"
+#include "base/strings/utf_string_conversions.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "chrome/test/base/ui_test_utils.h"
+#include "components/favicon_base/favicon_types.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/web_ui_browsertest_util.h"
+
+namespace {
+
+// Helper function to synchronously fetch the favicon raw bitmap results for a
+// given WebUI page URL.
+std::vector<favicon_base::FaviconRawBitmapResult> GetFaviconForURL(
+    Profile* profile,
+    const GURL& page_url) {
+  base::RunLoop run_loop;
+  std::vector<favicon_base::FaviconRawBitmapResult> results;
+  ChromeWebUIControllerFactory::GetInstance()->GetFaviconForURL(
+      profile, page_url, {16},
+      base::BindOnce(
+          [](base::RunLoop* run_loop,
+             std::vector<favicon_base::FaviconRawBitmapResult>* out_results,
+             const std::vector<favicon_base::FaviconRawBitmapResult>&
+                 favicon_results) {
+            *out_results = favicon_results;
+            run_loop->Quit();
+          },
+          &run_loop, &results));
+  run_loop.Run();
+  return results;
+}
+
+}  // namespace
+
+using ChromeWebUIControllerFactoryBrowserTest = InProcessBrowserTest;
+
+// Verify that if there is a chrome-untrusted:// URLDataSource with the same
+// host as a chrome:// WebUI, we serve the right resources and we don't use the
+// wrong WebUI object.
+IN_PROC_BROWSER_TEST_F(ChromeWebUIControllerFactoryBrowserTest,
+                       ChromeUntrustedSameHost) {
+  content::AddUntrustedDataSource(browser()->GetProfile(),
+                                  chrome::kChromeUIVersionHost);
+  EXPECT_TRUE(ui_test_utils::NavigateToURL(
+      browser(),
+      GURL(base::StrCat({"chrome-untrusted://", chrome::kChromeUIVersionHost,
+                         "/title2.html"}))));
+  auto* web_contents = browser()->tab_strip_model()->GetActiveWebContents();
+  EXPECT_EQ(u"Title Of Awesomeness", web_contents->GetTitle());
+  EXPECT_FALSE(web_contents->GetWebUI());
+
+  // Check that we can navigate to chrome://version and that it serves the right
+  // resources and has a WebUI.
+  EXPECT_TRUE(ui_test_utils::NavigateToURL(
+      browser(),
+      GURL(base::StrCat({"chrome://", chrome::kChromeUIVersionHost}))));
+  EXPECT_EQ(u"About Version", web_contents->GetTitle());
+  EXPECT_TRUE(web_contents->GetWebUI());
+}
+
+IN_PROC_BROWSER_TEST_F(ChromeWebUIControllerFactoryBrowserTest,
+                       NoWebUiNtpInIncognitoProfile) {
+  auto* incognito_browser = CreateIncognitoBrowser();
+  auto* web_contents =
+      incognito_browser->tab_strip_model()->GetActiveWebContents();
+
+  EXPECT_TRUE(ui_test_utils::NavigateToURL(
+      incognito_browser, chrome::ChromeUINewTabPageURLAsGURL()));
+  EXPECT_FALSE(web_contents->GetWebUI());
+
+  EXPECT_TRUE(ui_test_utils::NavigateToURL(
+      incognito_browser, GURL(chrome::kChromeUINewTabPageThirdPartyURL)));
+  EXPECT_FALSE(web_contents->GetWebUI());
+}
+
+IN_PROC_BROWSER_TEST_F(ChromeWebUIControllerFactoryBrowserTest,
+                       WebUiNtpInNormalProfile) {
+  auto* web_contents = browser()->tab_strip_model()->GetActiveWebContents();
+
+  EXPECT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), chrome::ChromeUINewTabPageURLAsGURL()));
+  EXPECT_TRUE(web_contents->GetWebUI());
+
+  EXPECT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), GURL(chrome::kChromeUINewTabPageThirdPartyURL)));
+  EXPECT_TRUE(web_contents->GetWebUI());
+}
+
+IN_PROC_BROWSER_TEST_F(ChromeWebUIControllerFactoryBrowserTest,
+                       GetFaviconForURLSettings) {
+  std::vector<favicon_base::FaviconRawBitmapResult> results = GetFaviconForURL(
+      browser()->GetProfile(), GURL(chrome::kChromeUISettingsURL));
+  ASSERT_EQ(1u, results.size());
+  EXPECT_TRUE(results[0].bitmap_data);
+  EXPECT_GT(results[0].bitmap_data->size(), 0u);
+}
+
+IN_PROC_BROWSER_TEST_F(ChromeWebUIControllerFactoryBrowserTest,
+                       GetFaviconForURLDownloads) {
+  std::vector<favicon_base::FaviconRawBitmapResult> results = GetFaviconForURL(
+      browser()->GetProfile(), GURL(chrome::kChromeUIDownloadsURL));
+  ASSERT_EQ(1u, results.size());
+  EXPECT_TRUE(results[0].bitmap_data);
+  EXPECT_GT(results[0].bitmap_data->size(), 0u);
+}

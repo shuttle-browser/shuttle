@@ -1,0 +1,20 @@
+{% macro declare_struct(name, struct, is_pub) -%}
+
+{%- set pub = "pub " if is_pub else "" -%}
+
+{# Debug and PartialEq are included for convenience, testing, and debugging. -#}
+#[derive(Debug, PartialEq, MojomParse)]
+{%- if struct|should_derive_clone %}
+#[derive(Clone)]
+{%- endif %}
+{{pub}}struct {{name}} {
+{%- for field in struct.fields %}
+  {%- set parse_as = field.kind|get_parse_as_type %}
+  {%- if parse_as %}
+  #[mojom(parse_as = "{{parse_as}}")]
+  {%- endif %}
+  {{pub}}{{field.name}}: {{field.kind|to_rust_type}},
+{%- endfor %}
+}
+
+{%- endmacro -%}

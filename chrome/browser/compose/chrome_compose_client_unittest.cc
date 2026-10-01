@@ -1,0 +1,3368 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/compose/chrome_compose_client.h"
+
+#include <memory>
+#include <utility>
+
+#include "base/functional/callback_helpers.h"
+#include "base/memory/raw_ptr.h"
+#include "base/run_loop.h"
+#include "base/strings/strcat.h"
+#include "base/strings/utf_string_conversion_utils.h"
+#include "base/test/bind.h"
+#include "base/test/gmock_callback_support.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/metrics/user_action_tester.h"
+#include "base/test/mock_callback.h"
+#include "base/test/protobuf_matchers.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/task_environment.h"
+#include "base/test/test_future.h"
+#include "base/time/time.h"
+#include "chrome/browser/compose/compose_enabling.h"
+#include "chrome/browser/optimization_guide/mock_optimization_guide_keyed_service.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
+#include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
+#include "chrome/browser/segmentation_platform/segmentation_platform_service_factory.h"
+#include "chrome/browser/ui/hats/hats_service_factory.h"
+#include "chrome/browser/ui/hats/mock_hats_service.h"
+#include "chrome/browser/ui/hats/survey_config.h"
+#include "chrome/common/compose/compose.mojom.h"
+#include "chrome/common/pref_names.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chrome/test/base/chrome_render_view_host_test_harness.h"
+#include "chrome/test/base/testing_browser_process.h"
+#include "chrome/test/base/testing_profile_manager.h"
+#include "chrome/test/base/ui_test_utils.h"
+#include "components/autofill/content/browser/content_autofill_client.h"
+#include "components/autofill/content/browser/content_autofill_driver.h"
+#include "components/autofill/content/browser/test_autofill_client_injector.h"
+#include "components/autofill/content/browser/test_autofill_manager_injector.h"
+#include "components/autofill/content/browser/test_content_autofill_client.h"
+#include "components/autofill/core/browser/filling/filling_product.h"
+#include "components/autofill/core/browser/foundations/autofill_manager_test_api.h"
+#include "components/autofill/core/browser/foundations/test_autofill_manager_waiter.h"
+#include "components/autofill/core/browser/foundations/test_browser_autofill_manager.h"
+#include "components/autofill/core/browser/suggestions/suggestion.h"
+#include "components/autofill/core/browser/suggestions/suggestion_type.h"
+#include "components/autofill/core/browser/test_utils/autofill_form_test_util.h"
+#include "components/autofill/core/browser/test_utils/autofill_test_util.h"
+#include "components/autofill/core/common/aliases.h"
+#include "components/autofill/core/common/autofill_test_util.h"
+#include "components/autofill/core/common/form_data.h"
+#include "components/autofill/core/common/form_data_test_api.h"
+#include "components/autofill/core/common/form_field_data.h"
+#include "components/autofill/core/common/unique_ids.h"
+#include "components/compose/core/browser/compose_features.h"
+#include "components/compose/core/browser/compose_hats_utils.h"
+#include "components/compose/core/browser/compose_metrics.h"
+#include "components/compose/core/browser/config.h"
+#include "components/optimization_guide/core/model_execution/remote_model_executor.h"
+#include "components/optimization_guide/core/model_execution/test/mock_remote_model_executor.h"
+#include "components/optimization_guide/core/model_quality/model_quality_log_entry.h"
+#include "components/optimization_guide/core/model_quality/test_model_quality_logs_uploader_service.h"
+#include "components/optimization_guide/core/optimization_guide_features.h"
+#include "components/optimization_guide/core/optimization_guide_proto_util.h"
+#include "components/optimization_guide/proto/features/compose.pb.h"
+#include "components/optimization_guide/proto/model_execution.pb.h"
+#include "components/optimization_guide/proto/model_quality_metadata.pb.h"
+#include "components/optimization_guide/proto/model_quality_service.pb.h"
+#include "components/prefs/pref_service.h"
+#include "components/segmentation_platform/public/constants.h"
+#include "components/segmentation_platform/public/testing/mock_segmentation_platform_service.h"
+#include "components/ukm/test_ukm_recorder.h"
+#include "components/unified_consent/pref_names.h"
+#include "content/public/browser/navigation_entry.h"
+#include "content/public/browser/web_contents_user_data.h"
+#include "content/public/test/test_renderer_host.h"
+#include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "mojo/public/cpp/bindings/pending_remote.h"
+#include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "services/metrics/public/cpp/ukm_builders.h"
+#include "services/network/test/test_network_connection_tracker.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace {
+
+using ::base::test::EqualsProto;
+using ::base::test::RunOnceCallback;
+using ::testing::_;
+using ::testing::NiceMock;
+using ComposeCallback = ::base::OnceCallback<void(const std::u16string&)>;
+using ::optimization_guide::ModelQualityLogEntry;
+using ::optimization_guide::OptimizationGuideModelExecutionError;
+using ::optimization_guide::OptimizationGuideModelExecutionResult;
+using ::optimization_guide::TestModelQualityLogsUploaderService;
+using ::optimization_guide::proto::LogAiDataRequest;
+using ::optimization_guide::proto::ModelExecutionInfo;
+using ::segmentation_platform::MockSegmentationPlatformService;
+
+const uint64_t kSessionIdHigh = 1234;
+const uint64_t kSessionIdLow = 5678;
+const segmentation_platform::TrainingRequestId kTrainingRequestId =
+    segmentation_platform::TrainingRequestId(456);
+
+class MockInnerText : public InnerTextProvider {
+ public:
+  MOCK_METHOD(void,
+              GetInnerText,
+              (content::RenderFrameHost & host,
+               std::optional<int> node_id,
+               content_extraction::InnerTextCallback callback));
+};
+
+class MockComposeDialog : public compose::mojom::ComposeUntrustedDialog {
+ public:
+  MOCK_METHOD(void,
+              ResponseReceived,
+              (compose::mojom::ComposeResponsePtr response));
+  MOCK_METHOD(void,
+              PartialResponseReceived,
+              (compose::mojom::PartialComposeResponsePtr response));
+};
+
+}  // namespace
+
+class ChromeComposeClientTest : public ChromeRenderViewHostTestHarness {
+ public:
+  ChromeComposeClientTest()
+      : ChromeRenderViewHostTestHarness(
+            base::test::TaskEnvironment::TimeSource::MOCK_TIME) {
+    // Allows early registration of an override of the factory that instantiates
+    // OptimizationGuideKeyedService and SegmentationPlatformService.
+    subscription_ =
+        BrowserContextDependencyManager::GetInstance()
+            ->RegisterCreateServicesCallbackForTesting(base::BindRepeating(
+                &ChromeComposeClientTest::SetTestingFactories,
+                base::Unretained(this)));
+  }
+
+  void SetTestingFactories(content::BrowserContext* context) {
+    segmentation_platform::SegmentationPlatformServiceFactory::GetInstance()
+        ->SetTestingFactory(
+            context, base::BindRepeating([](content::BrowserContext* context)
+                                             -> std::unique_ptr<KeyedService> {
+              return std::make_unique<
+                  testing::NiceMock<MockSegmentationPlatformService>>();
+            }));
+    OptimizationGuideKeyedServiceFactory::GetInstance()->SetTestingFactory(
+        context, base::BindRepeating([](content::BrowserContext* context)
+                                         -> std::unique_ptr<KeyedService> {
+          return std::make_unique<
+              testing::NiceMock<MockOptimizationGuideKeyedService>>();
+        }));
+  }
+
+  void SetUp() override {
+    scoped_compose_enabled_ = ComposeEnabling::ScopedEnableComposeForTesting();
+    ChromeRenderViewHostTestHarness::SetUp();
+
+    mock_hats_service_ = static_cast<MockHatsService*>(
+        HatsServiceFactory::GetInstance()->SetTestingFactoryAndUse(
+            profile(), base::BindRepeating(&BuildMockHatsService)));
+    EXPECT_CALL(*mock_hats_service(), CanShowAnySurvey(_))
+        .WillRepeatedly(testing::Return(true));
+
+    scoped_feature_list_.InitWithFeatures(
+        {compose::features::kEnableCompose,
+         optimization_guide::features::kOptimizationGuideModelExecution},
+        {});
+    // Needed for feature params to reset.
+    compose::ResetConfigForTesting();
+    ukm_recorder_ = std::make_unique<ukm::TestAutoSetUkmRecorder>();
+
+    GetOptimizationGuide().SetModelQualityLogsUploaderServiceForTesting(
+        std::make_unique<TestModelQualityLogsUploaderService>(
+            TestingBrowserProcess::GetGlobal()->local_state()));
+
+    profile()->GetPrefs()->SetBoolean(prefs::kPrefHasCompletedComposeFRE, true);
+    SetPrefsForComposeMSBBState(true);
+    NavigateAndCommit(GetPageUrl());
+    ChromeComposeClient::CreateForWebContents(web_contents());
+
+    client_ = ChromeComposeClient::FromWebContents(web_contents());
+    client_->SetModelExecutorForTest(&model_executor_);
+    client_->SetModelQualityLogsUploaderServiceForTest(
+        GetOptimizationGuide().GetModelQualityLogsUploaderService());
+    client_->SetInnerTextProviderForTest(&model_inner_text_);
+    client_->SetSkipShowDialogForTest(true);
+    client_->SetSessionIdForTest(base::Token(kSessionIdHigh, kSessionIdLow));
+
+    ON_CALL(model_inner_text(), GetInnerText(_, _, _))
+        .WillByDefault(testing::WithArg<2>(
+            [&](content_extraction::InnerTextCallback callback) {
+              std::unique_ptr<content_extraction::InnerTextResult>
+                  expected_inner_text =
+                      std::make_unique<content_extraction::InnerTextResult>("",
+                                                                            0);
+              std::move(callback).Run(std::move(expected_inner_text));
+            }));
+    ON_CALL(model_executor_, ExecuteModel(_, _, _, _))
+        .WillByDefault(testing::WithArg<3>(
+            [&](optimization_guide::
+                    OptimizationGuideModelExecutionResultCallback callback) {
+              base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+                  FROM_HERE,
+                  base::BindOnce(
+                      std::move(callback),
+                      OptimizationGuideModelExecutionResult(
+                          base::ok(optimization_guide::AnyWrapProto(
+                              ComposeResponse(true, "Cucumbers"))),
+                          std::make_unique<
+                              optimization_guide::proto::ModelExecutionInfo>()),
+                      /*model_quality_log_entry=*/nullptr));
+            }));
+
+    ON_CALL(GetSegmentationPlatformService(),
+            GetClassificationResult(_, _, _, _))
+        .WillByDefault(testing::WithArg<3>(
+            [](segmentation_platform::ClassificationResultCallback callback) {
+              auto result = segmentation_platform::ClassificationResult(
+                  segmentation_platform::PredictionStatus::kSucceeded);
+              result.request_id = kTrainingRequestId;
+              result.ordered_labels = {
+                  segmentation_platform::kComposePrmotionLabelShow};
+              base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+                  FROM_HERE, base::BindOnce(std::move(callback), result));
+            }));
+
+    ON_CALL(GetOptimizationGuide(),
+            CanApplyOptimization(
+                _, optimization_guide::proto::OptimizationType::COMPOSE,
+                testing::An<optimization_guide::OptimizationMetadata*>()))
+        .WillByDefault(
+            [](const GURL& url,
+               optimization_guide::proto::OptimizationType optimization_type,
+               optimization_guide::OptimizationMetadata* metadata)
+                -> optimization_guide::OptimizationGuideDecision {
+              *metadata = {};
+              compose::ComposeHintMetadata compose_hint_metadata;
+              compose_hint_metadata.set_decision(
+                  compose::ComposeHintDecision::COMPOSE_HINT_DECISION_ENABLED);
+              metadata->set_any_metadata(
+                  optimization_guide::AnyWrapProto(compose_hint_metadata));
+              return optimization_guide::OptimizationGuideDecision::kTrue;
+            });
+  }
+
+  void TearDown() override {
+    // Clear default actions for safe teardown.
+    mock_hats_service_ = nullptr;
+    testing::Mock::VerifyAndClear(&GetSegmentationPlatformService());
+    client_ = nullptr;
+    scoped_feature_list_.Reset();
+    ukm_recorder_.reset();
+    // Needed for feature params to reset.
+    compose::ResetConfigForTesting();
+    ChromeRenderViewHostTestHarness::TearDown();
+  }
+
+  void SetPrefsForComposeMSBBState(bool msbb_state) {
+    PrefService* prefs = profile()->GetPrefs();
+    prefs->SetBoolean(
+        unified_consent::prefs::kUrlKeyedAnonymizedDataCollectionEnabled,
+        msbb_state);
+  }
+
+  void EnableAutoCompose() {
+    scoped_feature_list_.Reset();
+    scoped_feature_list_.InitWithFeatures(
+        /*enabled_features=*/{compose::features::kEnableCompose,
+                              optimization_guide::features::
+                                  kOptimizationGuideModelExecution,
+                              compose::features::kComposeAutoSubmit},
+        /*disabled_features=*/{});
+    // Needed for feature params to apply.
+    compose::ResetConfigForTesting();
+  }
+
+  void ShowDialogAndBindMojo(ComposeCallback callback = base::NullCallback()) {
+    ShowDialogAndBindMojoWithFieldData(field_data(), std::move(callback));
+  }
+
+  void ShowDialogAndBindMojoWithFieldData(
+      autofill::FormFieldData field_data,
+      ComposeCallback callback = base::NullCallback(),
+      autofill::AutofillComposeDelegate::UiEntryPoint entry_point =
+          autofill::AutofillComposeDelegate::UiEntryPoint::kContextMenu) {
+    client().ShowComposeDialog(entry_point, field_data, std::move(callback));
+
+    BindMojo();
+  }
+
+  void BindMojo() {
+    client_page_handler_.reset();
+    page_handler_.reset();
+    // Setup Dialog Page Handler.
+    mojo::PendingReceiver<compose::mojom::ComposeClientUntrustedPageHandler>
+        client_page_handler_pending_receiver =
+            client_page_handler_.BindNewPipeAndPassReceiver();
+    mojo::PendingReceiver<compose::mojom::ComposeSessionUntrustedPageHandler>
+        page_handler_pending_receiver =
+            page_handler_.BindNewPipeAndPassReceiver();
+
+    // Setup Compose Dialog.
+    callback_router_.reset();
+    callback_router_ = std::make_unique<
+        mojo::Receiver<compose::mojom::ComposeUntrustedDialog>>(
+        &compose_dialog());
+    mojo::PendingRemote<compose::mojom::ComposeUntrustedDialog>
+        callback_router_pending_remote =
+            callback_router_->BindNewPipeAndPassRemote();
+
+    // Bind mojo to client.
+    client_->BindComposeDialog(std::move(client_page_handler_pending_receiver),
+                               std::move(page_handler_pending_receiver),
+                               std::move(callback_router_pending_remote));
+  }
+
+  void FlushMojo() {
+    client_page_handler().FlushForTesting();
+    page_handler().FlushForTesting();
+  }
+
+  ChromeComposeClient& client() { return *client_; }
+  optimization_guide::MockRemoteModelExecutor& model_executor() {
+    return model_executor_;
+  }
+  MockInnerText& model_inner_text() { return model_inner_text_; }
+
+  MockComposeDialog& compose_dialog() { return compose_dialog_; }
+  autofill::FormFieldData& field_data() { return field_data_; }
+
+  mojo::Remote<compose::mojom::ComposeClientUntrustedPageHandler>&
+  client_page_handler() {
+    return client_page_handler_;
+  }
+
+  ukm::TestAutoSetUkmRecorder& ukm_recorder() { return *ukm_recorder_; }
+
+  mojo::Remote<compose::mojom::ComposeSessionUntrustedPageHandler>&
+  page_handler() {
+    return page_handler_;
+  }
+
+  GURL GetPageUrl() { return GURL("http://foo/1"); }
+
+  void SetSelection(const std::u16string& selection) {
+    field_data().set_selected_text(selection);
+  }
+
+  // Emulate selected text truncation performed by Autofill.
+  void SetSelectionWithTruncation(const std::u16string& selection,
+                                  size_t max_length) {
+    field_data().set_selected_text(selection.substr(0, max_length));
+  }
+
+  MockSegmentationPlatformService& GetSegmentationPlatformService() {
+    return *static_cast<MockSegmentationPlatformService*>(
+        segmentation_platform::SegmentationPlatformServiceFactory::
+            GetForProfile(profile()));
+  }
+
+  MockOptimizationGuideKeyedService& GetOptimizationGuide() {
+    return *static_cast<MockOptimizationGuideKeyedService*>(
+        OptimizationGuideKeyedServiceFactory::GetForProfile(profile()));
+  }
+
+ protected:
+  optimization_guide::proto::ComposePageMetadata ComposePageMetadata() {
+    optimization_guide::proto::ComposePageMetadata page_metadata;
+    page_metadata.set_page_url(GetPageUrl().spec());
+    page_metadata.set_page_title(base::UTF16ToUTF8(web_contents()->GetTitle()));
+    return page_metadata;
+  }
+
+  optimization_guide::proto::ComposeRequest ComposeRequest(
+      std::string user_input,
+      optimization_guide::proto::ComposeUpfrontInputMode mode) {
+    optimization_guide::proto::ComposeRequest request;
+    request.mutable_generate_params()->set_user_input(user_input);
+    request.mutable_generate_params()->set_upfront_input_mode(mode);
+    request.mutable_page_metadata()->set_page_url("http://foo/1");
+    request.mutable_page_metadata()->set_page_title("foo/1");
+    return request;
+  }
+
+  optimization_guide::proto::ComposeRequest RegenerateRequest(
+      std::string previous_response) {
+    optimization_guide::proto::ComposeRequest request;
+    request.mutable_rewrite_params()->set_regenerate(true);
+    request.mutable_rewrite_params()->set_previous_response(previous_response);
+    request.mutable_page_metadata()->set_page_url("http://foo/1");
+    request.mutable_page_metadata()->set_page_title("foo/1");
+    return request;
+  }
+
+  optimization_guide::proto::ComposeResponse ComposeResponse(
+      bool ok,
+      std::string output) {
+    optimization_guide::proto::ComposeResponse response;
+    response.set_output(ok ? output : "");
+    return response;
+  }
+
+  const base::HistogramTester& histograms() const { return histogram_tester_; }
+
+  const base::UserActionTester& user_action_tester() const {
+    return user_action_tester_;
+  }
+
+  TestModelQualityLogsUploaderService& logs_uploader() {
+    return *static_cast<TestModelQualityLogsUploaderService*>(
+        GetOptimizationGuide().GetModelQualityLogsUploaderService());
+  }
+
+  const std::vector<std::unique_ptr<LogAiDataRequest>>& uploaded_logs() {
+    return logs_uploader().uploaded_logs();
+  }
+
+  // This helper function is a shortcut to adding a test future to listen for
+  // compose responses.
+  void BindComposeFutureToOnResponseReceived(
+      base::test::TestFuture<compose::mojom::ComposeResponsePtr>&
+          compose_future) {
+    ON_CALL(compose_dialog(), ResponseReceived(_))
+        .WillByDefault([&](compose::mojom::ComposeResponsePtr response) {
+          compose_future.SetValue(std::move(response));
+        });
+  }
+
+  autofill::TestBrowserAutofillManager* autofill_manager() {
+    return autofill_manager_injector_[web_contents()];
+  }
+
+  autofill::TestContentAutofillClient* autofill_client() {
+    return autofill_client_injector_[web_contents()];
+  }
+
+  base::test::ScopedFeatureList scoped_feature_list_;
+  base::CallbackListSubscription subscription_;
+
+  MockHatsService* mock_hats_service() { return mock_hats_service_; }
+
+ private:
+  base::ScopedMockElapsedTimersForTest test_timer_;
+  raw_ptr<ChromeComposeClient> client_;
+  testing::NiceMock<optimization_guide::MockRemoteModelExecutor>
+      model_executor_;
+  testing::NiceMock<MockInnerText> model_inner_text_;
+  testing::NiceMock<MockComposeDialog> compose_dialog_;
+  autofill::FormFieldData field_data_;
+  raw_ptr<content::WebContents> contents_;
+  base::HistogramTester histogram_tester_;
+  base::UserActionTester user_action_tester_;
+  autofill::test::AutofillUnitTestEnvironment autofill_test_environment_;
+  autofill::TestAutofillClientInjector<autofill::TestContentAutofillClient>
+      autofill_client_injector_;
+  autofill::TestAutofillManagerInjector<autofill::TestBrowserAutofillManager>
+      autofill_manager_injector_;
+
+  std::unique_ptr<mojo::Receiver<compose::mojom::ComposeUntrustedDialog>>
+      callback_router_;
+  std::unique_ptr<ukm::TestAutoSetUkmRecorder> ukm_recorder_;
+  mojo::Remote<compose::mojom::ComposeClientUntrustedPageHandler>
+      client_page_handler_;
+  mojo::Remote<compose::mojom::ComposeSessionUntrustedPageHandler>
+      page_handler_;
+  ComposeEnabling::ScopedOverride scoped_compose_enabled_;
+  raw_ptr<MockHatsService> mock_hats_service_;
+};
+
+TEST_F(ChromeComposeClientTest, TestComposeServerResponses) {
+  ShowDialogAndBindMojo();
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+  BindComposeFutureToOnResponseReceived(test_future);
+  page_handler()->Compose("", compose::mojom::InputMode::kPolish, false);
+
+  compose::mojom::ComposeResponsePtr result = test_future.Take();
+  EXPECT_EQ(compose::mojom::ComposeStatus::kOk, result->status);
+  EXPECT_EQ("Cucumbers", result->result);
+  EXPECT_FALSE(result->on_device_evaluation_used);
+
+  // Simulate rewrite.
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Tomatoes"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+
+  page_handler()->Rewrite(compose::mojom::StyleModifier::kRetry);
+
+  // Simulate insert call from Compose dialog.
+  page_handler()->AcceptComposeResult(base::NullCallback());
+  client_page_handler()->CloseUI(compose::mojom::CloseReason::kInsertButton);
+  FlushMojo();
+
+  histograms().ExpectUniqueSample("Compose.Session.EvalLocation",
+                                  compose::SessionEvalLocation::kServer, 1);
+
+  histograms().ExpectBucketCount(
+      compose::kComposeRequestReason,
+      compose::ComposeRequestReason::kFirstRequestPolishMode, 1);
+  histograms().ExpectBucketCount(
+      "Compose.Server.Request.Reason",
+      compose::ComposeRequestReason::kFirstRequestPolishMode, 1);
+  histograms().ExpectBucketCount(compose::kComposeRequestReason,
+                                 compose::ComposeRequestReason::kRetryRequest,
+                                 1);
+  histograms().ExpectBucketCount("Compose.Server.Request.Reason",
+                                 compose::ComposeRequestReason::kRetryRequest,
+                                 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kMainDialogShown, 1);
+  histograms().ExpectBucketCount(
+      "Compose.Server.Session.EventCounts",
+      compose::ComposeSessionEventTypes::kMainDialogShown, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kComposeDialogOpened, 1);
+  histograms().ExpectBucketCount(
+      "Compose.Server.Session.EventCounts",
+      compose::ComposeSessionEventTypes::kComposeDialogOpened, 1);
+}
+
+TEST_F(ChromeComposeClientTest, TestComposeEmptySession) {
+  ShowDialogAndBindMojo();
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+  BindComposeFutureToOnResponseReceived(test_future);
+  client_page_handler()->CloseUI(compose::mojom::CloseReason::kInsertButton);
+  FlushMojo();
+
+  histograms().ExpectUniqueSample("Compose.Session.EvalLocation",
+                                  compose::SessionEvalLocation::kNone, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kMainDialogShown, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kComposeDialogOpened, 1);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+TEST_F(ChromeComposeClientTest, TestProactiveNudgeMSBBDisabled) {
+  SetPrefsForComposeMSBBState(false);
+  autofill::FormData form_data;
+  form_data.set_url(
+      web_contents()->GetPrimaryMainFrame()->GetLastCommittedURL());
+  form_data.set_fields({autofill::test::CreateTestFormField(
+      "label0", "name0", "value0", autofill::FormControlType::kTextArea)});
+
+  autofill::FormFieldData& selected_field_data = test_api(form_data).field(0);
+  selected_field_data.set_origin(
+      web_contents()->GetPrimaryMainFrame()->GetLastCommittedOrigin());
+  const autofill::AutofillSuggestionTriggerSource trigger_source =
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged;
+
+  // Will fail because MSBB is not set
+  EXPECT_FALSE(client().ShouldTriggerPopup(form_data, selected_field_data,
+                                           trigger_source));
+
+  histograms().ExpectBucketCount(
+      compose::kComposeProactiveNudgeShowStatus,
+      compose::ComposeShowStatus::kProactiveNudgeDisabledByMSBB, 1);
+}
+
+
+
+TEST_F(ChromeComposeClientTest, TestComposeRequestTimeout) {
+  // Set config such that requests time out immediately.
+  compose::Config& config = compose::GetMutableConfigForTesting();
+  config.request_latency_timeout = base::Seconds(0);
+
+  ShowDialogAndBindMojo();
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+  BindComposeFutureToOnResponseReceived(test_future);
+  page_handler()->Compose("", compose::mojom::InputMode::kPolish, false);
+
+  compose::mojom::ComposeResponsePtr result = test_future.Take();
+  EXPECT_EQ(compose::mojom::ComposeStatus::kRequestTimeout, result->status);
+  histograms().ExpectUniqueSample(
+      compose::kComposeRequestStatus,
+      compose::mojom::ComposeStatus::kRequestTimeout, 1);
+  histograms().ExpectUniqueSample(
+      "Compose.Server.Request.Status",
+      compose::mojom::ComposeStatus::kRequestTimeout, 1);
+}
+
+TEST_F(ChromeComposeClientTest, TestComposeParams) {
+  ShowDialogAndBindMojo();
+  std::string user_input = "a user typed this";
+  auto matcher = EqualsProto(ComposeRequest(
+      user_input,
+      optimization_guide::proto::ComposeUpfrontInputMode::COMPOSE_POLISH_MODE));
+  EXPECT_CALL(model_executor(), ExecuteModel(_, matcher, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Cucumbers"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+  EXPECT_CALL(compose_dialog(), ResponseReceived(_))
+      .WillOnce([&](compose::mojom::ComposeResponsePtr response) {
+        test_future.SetValue(std::move(response));
+      });
+
+  page_handler()->Compose(user_input, compose::mojom::InputMode::kPolish,
+                          false);
+
+  compose::mojom::ComposeResponsePtr result = test_future.Take();
+  EXPECT_EQ(compose::mojom::ComposeStatus::kOk, result->status);
+
+  NavigateAndCommit(GURL("about:blank"));
+}
+
+
+
+TEST_F(ChromeComposeClientTest, TestComposeSetTriggeredFromModifierOnError) {
+  ShowDialogAndBindMojo();
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+  BindComposeFutureToOnResponseReceived(test_future);
+  page_handler()->Compose("", compose::mojom::InputMode::kPolish, false);
+  compose::mojom::ComposeResponsePtr result = test_future.Take();
+
+  // Simulate rewrite producing an error response.
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::unexpected(
+                        OptimizationGuideModelExecutionError::
+                            FromModelExecutionError(
+                                OptimizationGuideModelExecutionError::
+                                    ModelExecutionError::kGenericFailure)),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+  page_handler()->Rewrite(compose::mojom::StyleModifier::kRetry);
+
+  result = test_future.Take();
+  EXPECT_EQ(compose::mojom::ComposeStatus::kServerError, result->status);
+  EXPECT_TRUE(result->triggered_from_modifier);
+
+  client_page_handler()->CloseUI(compose::mojom::CloseReason::kCloseButton);
+}
+
+// Tests that we return an error if Optimization Guide is unable to parse the
+// response. In this case the response will be std::nullopt.
+
+
+TEST_F(ChromeComposeClientTest, TestOptimizationGuideDisabled) {
+  scoped_feature_list_.Reset();
+
+  // Enable Compose and disable optimization guide model execution.
+  scoped_feature_list_.InitWithFeatures(
+      {compose::features::kEnableCompose},
+      {optimization_guide::features::kOptimizationGuideModelExecution});
+
+  ShowDialogAndBindMojo();
+
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _)).Times(0);
+
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+  EXPECT_CALL(compose_dialog(), ResponseReceived(_))
+      .WillOnce([&](compose::mojom::ComposeResponsePtr response) {
+        test_future.SetValue(std::move(response));
+      });
+
+  page_handler()->Compose("a user typed this",
+                          compose::mojom::InputMode::kPolish, false);
+
+  compose::mojom::ComposeResponsePtr result = test_future.Take();
+  EXPECT_EQ(compose::mojom::ComposeStatus::kMisconfiguration, result->status);
+}
+
+TEST_F(ChromeComposeClientTest, TestNoModelExecutor) {
+  client().SetModelExecutorForTest(nullptr);
+  ShowDialogAndBindMojo();
+
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _)).Times(0);
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+  EXPECT_CALL(compose_dialog(), ResponseReceived(_))
+      .WillOnce([&](compose::mojom::ComposeResponsePtr response) {
+        test_future.SetValue(std::move(response));
+      });
+
+  page_handler()->Compose("a user typed this",
+                          compose::mojom::InputMode::kPolish, false);
+
+  compose::mojom::ComposeResponsePtr result = test_future.Take();
+  EXPECT_EQ(compose::mojom::ComposeStatus::kMisconfiguration, result->status);
+}
+
+TEST_F(ChromeComposeClientTest, TestRestoreStateAfterRequestResponse) {
+  ShowDialogAndBindMojo();
+
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Cucumbers"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+  EXPECT_CALL(compose_dialog(), ResponseReceived(_))
+      .WillOnce([&](compose::mojom::ComposeResponsePtr response) {
+        test_future.SetValue(std::move(response));
+      });
+
+  page_handler()->Compose("a user typed this",
+                          compose::mojom::InputMode::kPolish, false);
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_EQ("", result->compose_state->webui_state);
+  EXPECT_FALSE(result->compose_state->response.is_null());
+  EXPECT_EQ(compose::mojom::ComposeStatus::kOk,
+            result->compose_state->response->status);
+  EXPECT_EQ("Cucumbers", result->compose_state->response->result);
+  EXPECT_FALSE(result->compose_state->has_pending_request);
+}
+
+TEST_F(ChromeComposeClientTest, TestRestoreEmptyState) {
+  ShowDialogAndBindMojo();
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_EQ("", result->compose_state->webui_state);
+  EXPECT_TRUE(result->compose_state->response.is_null());
+  EXPECT_FALSE(result->compose_state->has_pending_request);
+}
+
+// Tests that a saved WebUI state is properly returned.
+TEST_F(ChromeComposeClientTest, TestSaveAndRestoreWebUIState) {
+  ShowDialogAndBindMojo();
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> test_future;
+
+  page_handler()->SaveWebUIState("web ui state");
+  page_handler()->RequestInitialState(test_future.GetCallback());
+
+  compose::mojom::OpenMetadataPtr result = test_future.Take();
+  EXPECT_EQ("web ui state", result->compose_state->webui_state);
+}
+
+// Tests that the same saved WebUI state is returned after compose().
+TEST_F(ChromeComposeClientTest, TestSaveThenComposeThenRestoreWebUIState) {
+  ShowDialogAndBindMojo();
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Cucumbers"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr>
+      compose_test_future;
+  EXPECT_CALL(compose_dialog(), ResponseReceived(_))
+      .WillOnce([&](compose::mojom::ComposeResponsePtr response) {
+        compose_test_future.SetValue(std::move(response));
+      });
+
+  page_handler()->SaveWebUIState("web ui state");
+  page_handler()->Compose("", compose::mojom::InputMode::kPolish, false);
+
+  compose::mojom::ComposeResponsePtr response = compose_test_future.Take();
+  EXPECT_FALSE(response->undo_available)
+      << "First Compose() response should say undo not available.";
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> test_future;
+  page_handler()->RequestInitialState(test_future.GetCallback());
+  compose::mojom::OpenMetadataPtr open_metadata = test_future.Take();
+  EXPECT_EQ("web ui state", open_metadata->compose_state->webui_state);
+}
+
+TEST_F(ChromeComposeClientTest, NoStateWorksAtChromeCompose) {
+  NavigateAndCommit(GURL(chrome::kChromeUIUntrustedComposeUrl));
+  // We skip showing the dialog here as there is no dialog required at this URL.
+  BindMojo();
+
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Cucumbers"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+  EXPECT_CALL(compose_dialog(), ResponseReceived(_))
+      .WillOnce([&](compose::mojom::ComposeResponsePtr response) {
+        test_future.SetValue(std::move(response));
+      });
+
+  page_handler()->Compose("a user typed this",
+                          compose::mojom::InputMode::kPolish, false);
+
+  compose::mojom::ComposeResponsePtr result = test_future.Take();
+
+  EXPECT_EQ(compose::mojom::ComposeStatus::kOk, result->status);
+  EXPECT_EQ("Cucumbers", result->result);
+}
+
+// Tests that closing after showing the dialog does not crash the browser.
+TEST_F(ChromeComposeClientTest, TestCloseUI) {
+  ShowDialogAndBindMojo();
+  client_page_handler()->CloseUI(compose::mojom::CloseReason::kCloseButton);
+}
+
+
+
+// Tests that closing the session at chrome-untrusted://compose does not crash
+// the browser, even though there is no dialog shown at that URL.
+TEST_F(ChromeComposeClientTest, TestCloseUIAtChromeCompose) {
+  NavigateAndCommit(GURL(chrome::kChromeUIUntrustedComposeUrl));
+  // We skip showing the dialog here as there is no dialog required at this
+  // URL.
+  BindMojo();
+  client_page_handler()->CloseUI(compose::mojom::CloseReason::kCloseButton);
+}
+
+// Tests that an unpaired high surrogate resulting from truncation by substr is
+// properly removed.
+TEST_F(ChromeComposeClientTest, TestOpenDialogWithTruncatedSelectedText) {
+  std::u16string input(u".🦄🦄🦄");
+  field_data().set_value(input);
+  SetSelectionWithTruncation(input, 6);
+  ShowDialogAndBindMojo();
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_EQ(".🦄🦄", result->initial_input);
+}
+
+// Tests that opening the dialog with user selected text will return that text
+// when the WebUI requests initial state.
+TEST_F(ChromeComposeClientTest, TestOpenDialogWithSelectedText) {
+  field_data().set_value(u"user selected text");
+  SetSelection(u"selected text");
+  ShowDialogAndBindMojo();
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_EQ("selected text", result->initial_input);
+
+  // Close session to record UMA
+  client().CloseUI(compose::mojom::CloseReason::kInsertButton);
+
+  // Check Compose Session Event Counts.
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kMainDialogShown, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kStartedWithSelection, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kInsertClicked, 1);
+}
+
+// Tests that opening the dialog with selected text from the proactive nudge
+// will send that text to the WebUI dialog.
+TEST_F(ChromeComposeClientTest,
+       TestOpenDialogWithSelectedTextFromProactiveNudge) {
+  field_data().set_value(u"user selected text");
+  SetSelection(u"selected text");
+  ShowDialogAndBindMojoWithFieldData(
+      field_data(), base::NullCallback(),
+      autofill::AutofillComposeDelegate::UiEntryPoint::kAutofillPopup);
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_EQ("selected text", result->initial_input);
+
+  // Close session to record UMA
+  client().CloseUI(compose::mojom::CloseReason::kInsertButton);
+
+  // Check that the session entry point histogram is recorded.
+  histograms().ExpectUniqueSample(compose::kComposeStartSessionEntryPoint,
+                                  compose::ComposeEntryPoint::kProactiveNudge,
+                                  1);
+  EXPECT_EQ(1, user_action_tester().GetActionCount(
+                   "Compose.StartedSession.ProactiveNudge"));
+
+  // Check Compose Session Event Counts.
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kMainDialogShown, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kStartedWithSelection, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kInsertClicked, 1);
+
+  // Check Compose.ProactiveNudge.CTR metrics.
+  histograms().ExpectBucketCount(compose::kComposeProactiveNudgeCtr,
+                                 compose::ComposeNudgeCtrEvent::kDialogOpened,
+                                 1);
+}
+
+// Test that opening the saved state dialog with selected text does not start
+// a new session or update the initial selection.
+TEST_F(ChromeComposeClientTest, TestSelectedTextWithSavedStateNudge) {
+  field_data().set_value(u"this text is first and this text is second");
+  SetSelection(u"text is first");
+  ShowDialogAndBindMojo();
+  page_handler()->SaveWebUIState("web ui state");
+  // Flush mojo before next dialog open call so that web ui state is preserved.
+  FlushMojo();
+
+  // Change selection and re-open dialog from saved state popup. The new
+  // selection should be ignored.
+  SetSelection(u"text is second");
+  ShowDialogAndBindMojoWithFieldData(
+      field_data(), base::NullCallback(),
+      autofill::AutofillComposeDelegate::UiEntryPoint::kAutofillPopup);
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_EQ("web ui state", result->compose_state->webui_state);
+  EXPECT_EQ("text is first", result->initial_input);
+  EXPECT_TRUE(result->text_selected);
+
+  // Check that the session entry point histogram is recorded.
+  histograms().ExpectUniqueSample(compose::kComposeStartSessionEntryPoint,
+                                  compose::ComposeEntryPoint::kContextMenu, 1);
+  histograms().ExpectUniqueSample(compose::kComposeResumeSessionEntryPoint,
+                                  compose::ComposeEntryPoint::kSavedStateNudge,
+                                  1);
+  EXPECT_EQ(1, user_action_tester().GetActionCount(
+                   "Compose.StartedSession.ContextMenu"));
+}
+
+TEST_F(ChromeComposeClientTest,
+       TestMultipleDialogOpensWithChangingSelectedText) {
+  field_data().set_value(u"this text is first and this text is second");
+  SetSelection(u"text is first");
+  ShowDialogAndBindMojo();
+  page_handler()->SaveWebUIState("web ui state");
+  // Flush mojo before next dialog open call so that web ui state is preserved.
+  FlushMojo();
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+
+  EXPECT_EQ("web ui state", result->compose_state->webui_state);
+  EXPECT_EQ("text is first", result->initial_input);
+  EXPECT_TRUE(result->text_selected);
+
+  // Clear selection and re-open dialog from saved state popup.
+  SetSelection(u"");
+  ShowDialogAndBindMojoWithFieldData(
+      field_data(), base::NullCallback(),
+      autofill::AutofillComposeDelegate::UiEntryPoint::kAutofillPopup);
+
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+  result = open_test_future.Take();
+
+  EXPECT_EQ("web ui state", result->compose_state->webui_state);
+  EXPECT_EQ("text is first", result->initial_input);
+  // Web UI should now show that no text was selected when the dialog opened.
+  EXPECT_FALSE(result->text_selected);
+}
+
+// Tests that opening the dialog with selected text clears existing state.
+TEST_F(ChromeComposeClientTest, TestClearStateWhenOpenWithSelectedText) {
+  ShowDialogAndBindMojo();
+  page_handler()->SaveWebUIState("web ui state");
+  // Flush mojo before next dialog open call so that web ui state is preserved.
+  FlushMojo();
+
+  field_data().set_value(u"user selected text");
+  SetSelection(u"selected text");
+  ShowDialogAndBindMojo();
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_EQ("", result->compose_state->webui_state);
+  EXPECT_EQ(1, user_action_tester().GetActionCount(
+                   "Compose.EndedSession.NewSessionWithSelectedText"));
+  histograms().ExpectUniqueSample(
+      compose::kComposeSessionCloseReason,
+      compose::ComposeSessionCloseReason::kReplacedWithNewSession, 1);
+}
+
+
+
+// Checks proper propagation of Compose config params.
+TEST_F(ChromeComposeClientTest, TestInputParams) {
+  compose::Config& config = compose::GetMutableConfigForTesting();
+  config.input_min_words = 5;
+  config.input_max_words = 20;
+  config.input_max_chars = 100;
+  ShowDialogAndBindMojo();
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_EQ(5, result->configurable_params->min_word_limit);
+  EXPECT_EQ(20, result->configurable_params->max_word_limit);
+  EXPECT_EQ(100, result->configurable_params->max_character_limit);
+}
+
+
+
+// Tests that the corresponding callback is run when AcceptComposeResponse is
+// called.
+TEST_F(ChromeComposeClientTest, TestAcceptComposeResultCallback) {
+  base::test::TestFuture<const std::u16string&> accept_callback;
+  ShowDialogAndBindMojo(accept_callback.GetCallback());
+
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Cucumbers"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+  EXPECT_CALL(compose_dialog(), ResponseReceived(_));
+
+  // Before Compose is called AcceptComposeResult will return false.
+  base::test::TestFuture<bool> accept_future_1;
+  page_handler()->AcceptComposeResult(accept_future_1.GetCallback());
+  EXPECT_EQ(false, accept_future_1.Take());
+
+  page_handler()->Compose("a user typed this",
+                          compose::mojom::InputMode::kPolish, false);
+
+  base::test::TestFuture<bool> accept_future_2;
+  page_handler()->AcceptComposeResult(accept_future_2.GetCallback());
+  EXPECT_EQ(true, accept_future_2.Take());
+
+  // Check that the original callback from Autofill was called correctly.
+  EXPECT_EQ(u"Cucumbers", accept_callback.Take());
+}
+
+
+
+
+
+
+
+// Tests that all ComposeSessions are deleted on page navigation.
+TEST_F(ChromeComposeClientTest, ResetClientOnNavigation) {
+  ShowDialogAndBindMojo();
+
+  page_handler()->SaveWebUIState("first state");
+  page_handler()->Compose("", compose::mojom::InputMode::kPolish, false);
+
+  autofill::FormFieldData field_2;
+  field_2.set_renderer_id(autofill::FieldRendererId(2));
+  ShowDialogAndBindMojoWithFieldData(field_2);
+
+  // There should be two sessions.
+  EXPECT_EQ(2, client().GetSessionCountForTest());
+
+  // Navigate to a new page.
+  GURL next_page("http://example.com/a.html");
+  NavigateAndCommit(next_page);
+
+  // All sessions should be deleted.
+  EXPECT_EQ(0, client().GetSessionCountForTest());
+}
+
+TEST_F(ChromeComposeClientTest, ExpiredSessionBlocksSavedStateNudgeTest) {
+  compose::Config& config = compose::GetMutableConfigForTesting();
+
+  autofill::FormData form_data;
+  form_data.set_url(GetPageUrl());
+  form_data.set_fields({autofill::test::CreateTestFormField(
+      "label0", "name0", "value0", autofill::FormControlType::kTextArea)});
+
+  const autofill::FormFieldData& selected_field_data =
+      test_api(form_data).field(0);
+  const autofill::AutofillSuggestionTriggerSource trigger_source =
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged;
+
+  // Start a Compose session on selected field.
+  ShowDialogAndBindMojoWithFieldData(selected_field_data);
+  EXPECT_TRUE(client().ShouldTriggerPopup(form_data, selected_field_data,
+                                          trigger_source));
+
+  // ElapsedTimer in test will return an elapsed time of 1337ms by default.
+  // Set the session lifetime threshold to be shorter than this to simulate
+  // expiry.
+  config.session_max_allowed_lifetime = base::Seconds(1);
+  ShowDialogAndBindMojoWithFieldData(selected_field_data);
+  // By default the saved state nudge is shown.
+  EXPECT_FALSE(client().ShouldTriggerPopup(form_data, selected_field_data,
+                                           trigger_source));
+}
+
+
+
+
+
+TEST_F(ChromeComposeClientTest, CompleteFirstRunTest) {
+  // Enable FRE and show the dialog.
+  PrefService* prefs = profile()->GetPrefs();
+  prefs->SetBoolean(prefs::kPrefHasCompletedComposeFRE, false);
+
+  ShowDialogAndBindMojo();
+  client().CompleteFirstRun();
+
+  EXPECT_TRUE(prefs->GetBoolean(prefs::kPrefHasCompletedComposeFRE));
+
+  // Make sure the async calls complete before naviagating away.
+  FlushMojo();
+  // Navigate page away to upload session close metrics.
+  NavigateAndCommit(GURL("about:blank"));
+
+  // Check the expected event count metrics.
+  std::vector<std::pair<compose::ComposeSessionEventTypes, int>> event_counts =
+      {
+          {compose::ComposeSessionEventTypes::kComposeDialogOpened, 1},
+          {compose::ComposeSessionEventTypes::kMainDialogShown, 1},
+          {compose::ComposeSessionEventTypes::kFREShown, 1},
+          {compose::ComposeSessionEventTypes::kMSBBShown, 0},
+          {compose::ComposeSessionEventTypes::kCreateClicked, 0},
+      };
+
+  for (auto [event_type, count] : event_counts) {
+    histograms().ExpectBucketCount(compose::kComposeSessionEventCounts,
+                                   event_type, count);
+    histograms().ExpectBucketCount("Compose.Server.Session.EventCounts",
+                                   event_type, 0);
+    histograms().ExpectBucketCount("Compose.OnDevice.Session.EventCounts",
+                                   event_type, 0);
+  }
+}
+
+TEST_F(ChromeComposeClientTest,
+       AddSiteToNeverPromptListBlocksProactiveNudgeTest) {
+  compose::Config& config = compose::GetMutableConfigForTesting();
+  config.proactive_nudge_enabled = true;
+  config.proactive_nudge_show_probability = 1.0;
+  config.proactive_nudge_field_per_navigation = false;
+  config.proactive_nudge_focus_delay = base::Microseconds(4);
+  config.proactive_nudge_segmentation = false;
+
+  PrefService* prefs = profile()->GetPrefs();
+
+  auto test_url = GURL("http://foo");
+  auto test_origin = url::Origin::Create(test_url);
+
+  autofill::FormData form_data;
+  form_data.set_url(test_url);
+  form_data.set_fields({autofill::test::CreateTestFormField(
+      "label0", "name0", "value0", autofill::FormControlType::kTextArea)});
+
+  autofill::FormFieldData& selected_field_data = test_api(form_data).field(0);
+  selected_field_data.set_origin(test_origin);
+  const autofill::AutofillSuggestionTriggerSource trigger_source =
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged;
+
+  EXPECT_FALSE(client().ShouldTriggerPopup(form_data, selected_field_data,
+                                           trigger_source));
+  task_environment()->FastForwardBy(config.proactive_nudge_focus_delay);
+  EXPECT_TRUE(client().ShouldTriggerPopup(form_data, selected_field_data,
+                                          trigger_source));
+
+  client().AddSiteToNeverPromptList(test_origin);
+
+  EXPECT_TRUE(prefs->GetDict(prefs::kProactiveNudgeDisabledSitesWithTime)
+                  .Find(test_origin.Serialize()));
+  EXPECT_FALSE(client().ShouldTriggerPopup(form_data, selected_field_data,
+                                           trigger_source));
+  NavigateAndCommit(GURL("about:blank"));
+
+  histograms().ExpectBucketCount(
+      compose::kComposeProactiveNudgeCtr,
+      compose::ComposeNudgeCtrEvent::kUserDisabledSite, 1);
+  histograms().ExpectBucketCount(compose::kComposeProactiveNudgeCtr,
+                                 compose::ComposeNudgeCtrEvent::kNudgeDisplayed,
+                                 1);
+  histograms().ExpectTotalCount(compose::kComposeSelectionNudgeCtr, 0);
+
+  auto ukm_entries = ukm_recorder().GetEntries(
+      ukm::builders::Compose_PageEvents::kEntryName,
+      {ukm::builders::Compose_PageEvents::kProactiveNudgeDisabledGloballyName,
+       ukm::builders::Compose_PageEvents::kProactiveNudgeDisabledForSiteName});
+  ASSERT_EQ(ukm_entries.size(), 1UL);
+  EXPECT_THAT(ukm_entries[0].metrics,
+              testing::UnorderedElementsAre(
+                  testing::Pair(ukm::builders::Compose_PageEvents::
+                                    kProactiveNudgeDisabledGloballyName,
+                                0),
+                  testing::Pair(ukm::builders::Compose_PageEvents::
+                                    kProactiveNudgeDisabledForSiteName,
+                                1)));
+}
+
+TEST_F(ChromeComposeClientTest,
+       AddSiteToNeverPromptListBlocksSelectionNudgeTest) {
+  compose::Config& config = compose::GetMutableConfigForTesting();
+  config.proactive_nudge_enabled = true;
+  config.proactive_nudge_field_per_navigation = false;
+  config.proactive_nudge_show_probability = 1.0;
+  config.proactive_nudge_focus_delay = base::Microseconds(4);
+  config.proactive_nudge_segmentation = false;
+
+  PrefService* prefs = profile()->GetPrefs();
+
+  auto test_url = GURL("http://foo");
+  auto test_origin = url::Origin::Create(test_url);
+
+  autofill::FormData form_data;
+  form_data.set_url(test_url);
+  form_data.set_fields({autofill::test::CreateTestFormField(
+      "label0", "name0", "value0", autofill::FormControlType::kTextArea)});
+
+  autofill::FormFieldData& selected_field_data = test_api(form_data).field(0);
+  selected_field_data.set_origin(test_origin);
+  const autofill::AutofillSuggestionTriggerSource trigger_source =
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged;
+
+  EXPECT_FALSE(client().ShouldTriggerPopup(form_data, selected_field_data,
+                                           trigger_source));
+  task_environment()->FastForwardBy(config.proactive_nudge_focus_delay);
+  // Set the most recent nudge to the selection nudge.
+  client().ShowProactiveNudge(form_data.global_id(),
+                              selected_field_data.global_id(),
+                              compose::ComposeEntryPoint::kSelectionNudge);
+  EXPECT_TRUE(client().ShouldTriggerPopup(form_data, selected_field_data,
+                                          trigger_source));
+
+  client().AddSiteToNeverPromptList(test_origin);
+
+  EXPECT_TRUE(prefs->GetDict(prefs::kProactiveNudgeDisabledSitesWithTime)
+                  .Find(test_origin.Serialize()));
+  EXPECT_FALSE(client().ShouldTriggerPopup(form_data, selected_field_data,
+                                           trigger_source));
+  NavigateAndCommit(GURL("about:blank"));
+
+  histograms().ExpectUniqueSample(
+      compose::kComposeSelectionNudgeCtr,
+      compose::ComposeNudgeCtrEvent::kUserDisabledSite, 1);
+  histograms().ExpectUniqueSample(
+      compose::kComposeProactiveNudgeCtr,
+      compose::ComposeNudgeCtrEvent::kNudgeDisplayed, 1);
+
+  auto ukm_entries = ukm_recorder().GetEntries(
+      ukm::builders::Compose_PageEvents::kEntryName,
+      {ukm::builders::Compose_PageEvents::kProactiveNudgeDisabledGloballyName,
+       ukm::builders::Compose_PageEvents::kProactiveNudgeDisabledForSiteName});
+  ASSERT_EQ(ukm_entries.size(), 1UL);
+  EXPECT_THAT(ukm_entries[0].metrics,
+              testing::UnorderedElementsAre(
+                  testing::Pair(ukm::builders::Compose_PageEvents::
+                                    kProactiveNudgeDisabledGloballyName,
+                                0),
+                  testing::Pair(ukm::builders::Compose_PageEvents::
+                                    kProactiveNudgeDisabledForSiteName,
+                                0)));
+}
+
+TEST_F(ChromeComposeClientTest, DisableComposeBlocksProactiveNudgeTest) {
+  compose::Config& config = compose::GetMutableConfigForTesting();
+  config.proactive_nudge_enabled = true;
+  config.proactive_nudge_field_per_navigation = false;
+  config.proactive_nudge_show_probability = 1.0;
+  config.proactive_nudge_focus_delay = base::Microseconds(4);
+  config.proactive_nudge_segmentation = false;
+
+  PrefService* prefs = profile()->GetPrefs();
+  EXPECT_TRUE(prefs->GetBoolean(prefs::kEnableProactiveNudge));
+
+  autofill::FormData form_data;
+  form_data.set_url(
+      web_contents()->GetPrimaryMainFrame()->GetLastCommittedURL());
+  form_data.set_fields({autofill::test::CreateTestFormField(
+      "label0", "name0", "value0", autofill::FormControlType::kTextArea)});
+
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  field_data.set_origin(
+      web_contents()->GetPrimaryMainFrame()->GetLastCommittedOrigin());
+  const autofill::AutofillSuggestionTriggerSource trigger_source =
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged;
+
+  EXPECT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data, trigger_source));
+  task_environment()->FastForwardBy(config.proactive_nudge_focus_delay);
+  EXPECT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data, trigger_source));
+
+  client().DisableProactiveNudge();
+
+  EXPECT_FALSE(prefs->GetBoolean(prefs::kEnableProactiveNudge));
+
+  EXPECT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data, trigger_source));
+
+  NavigateAndCommit(GURL("about:blank"));
+
+  histograms().ExpectBucketCount(
+      compose::kComposeProactiveNudgeCtr,
+      compose::ComposeNudgeCtrEvent::kUserDisabledProactiveNudge, 1);
+  histograms().ExpectBucketCount(compose::kComposeProactiveNudgeCtr,
+                                 compose::ComposeNudgeCtrEvent::kNudgeDisplayed,
+                                 1);
+  histograms().ExpectTotalCount(compose::kComposeSelectionNudgeCtr, 0);
+
+  auto ukm_entries = ukm_recorder().GetEntries(
+      ukm::builders::Compose_PageEvents::kEntryName,
+      {ukm::builders::Compose_PageEvents::kProactiveNudgeDisabledGloballyName,
+       ukm::builders::Compose_PageEvents::kProactiveNudgeDisabledForSiteName});
+  ASSERT_EQ(ukm_entries.size(), 1UL);
+  EXPECT_THAT(ukm_entries[0].metrics,
+              testing::UnorderedElementsAre(
+                  testing::Pair(ukm::builders::Compose_PageEvents::
+                                    kProactiveNudgeDisabledGloballyName,
+                                1),
+                  testing::Pair(ukm::builders::Compose_PageEvents::
+                                    kProactiveNudgeDisabledForSiteName,
+                                0)));
+}
+
+TEST_F(ChromeComposeClientTest, DisableComposeBlocksSelectionNudgeTest) {
+  compose::Config& config = compose::GetMutableConfigForTesting();
+  config.proactive_nudge_enabled = true;
+  config.proactive_nudge_field_per_navigation = false;
+  config.proactive_nudge_show_probability = 1.0;
+  config.proactive_nudge_focus_delay = base::Microseconds(4);
+  config.proactive_nudge_segmentation = false;
+
+  PrefService* prefs = profile()->GetPrefs();
+  EXPECT_TRUE(prefs->GetBoolean(prefs::kEnableProactiveNudge));
+
+  autofill::FormData form_data;
+  form_data.set_url(
+      web_contents()->GetPrimaryMainFrame()->GetLastCommittedURL());
+  form_data.set_fields({autofill::test::CreateTestFormField(
+      "label0", "name0", "value0", autofill::FormControlType::kTextArea)});
+
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  field_data.set_origin(
+      web_contents()->GetPrimaryMainFrame()->GetLastCommittedOrigin());
+  const autofill::AutofillSuggestionTriggerSource trigger_source =
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged;
+
+  EXPECT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data, trigger_source));
+  task_environment()->FastForwardBy(config.proactive_nudge_focus_delay);
+  // Set the most recent nudge to the selection nudge.
+  client().ShowProactiveNudge(form_data.global_id(), field_data.global_id(),
+                              compose::ComposeEntryPoint::kSelectionNudge);
+  EXPECT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data, trigger_source));
+
+  client().DisableProactiveNudge();
+
+  EXPECT_FALSE(prefs->GetBoolean(prefs::kEnableProactiveNudge));
+
+  EXPECT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data, trigger_source));
+
+  NavigateAndCommit(GURL("about:blank"));
+
+  histograms().ExpectUniqueSample(
+      compose::kComposeSelectionNudgeCtr,
+      compose::ComposeNudgeCtrEvent::kUserDisabledProactiveNudge, 1);
+  histograms().ExpectUniqueSample(
+      compose::kComposeProactiveNudgeCtr,
+      compose::ComposeNudgeCtrEvent::kNudgeDisplayed, 1);
+  auto ukm_entries = ukm_recorder().GetEntries(
+      ukm::builders::Compose_PageEvents::kEntryName,
+      {ukm::builders::Compose_PageEvents::kProactiveNudgeDisabledGloballyName,
+       ukm::builders::Compose_PageEvents::kProactiveNudgeDisabledForSiteName});
+  ASSERT_EQ(ukm_entries.size(), 1UL);
+  EXPECT_THAT(ukm_entries[0].metrics,
+              testing::UnorderedElementsAre(
+                  testing::Pair(ukm::builders::Compose_PageEvents::
+                                    kProactiveNudgeDisabledGloballyName,
+                                0),
+                  testing::Pair(ukm::builders::Compose_PageEvents::
+                                    kProactiveNudgeDisabledForSiteName,
+                                0)));
+}
+
+
+
+
+
+
+
+
+
+TEST_F(ChromeComposeClientTest, TestAutoCompose) {
+  EnableAutoCompose();
+  base::test::TestFuture<void> execute_model_future;
+  // Make model execution hang.
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _))
+      .WillOnce(base::test::RunOnceClosure(execute_model_future.GetCallback()));
+
+  std::u16string selected_text = u"ŧëśŧĩňĝ âľpħâ ƅřâɤō ĉħâŗľĩë";
+  std::string selected_text_utf8 = base::UTF16ToUTF8(selected_text);
+  SetSelection(selected_text);
+  ShowDialogAndBindMojo();
+  FlushMojo();
+
+  // Check that the UTF8 byte length has zero counts.
+  histograms().ExpectBucketCount(compose::kComposeDialogSelectionLength,
+                                 base::UTF16ToUTF8(selected_text).size(), 0);
+  // Check that the number of UTF8 code points has one count.
+  histograms().ExpectBucketCount(
+      compose::kComposeDialogSelectionLength,
+      base::CountUnicodeCharacters(selected_text_utf8).value(), 1);
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_TRUE(result->compose_state->has_pending_request);
+
+  EXPECT_TRUE(execute_model_future.Wait());
+
+  // Check that opening from the context menu with an empty selection resumes
+  // without autocompose.
+  SetSelection(u"");
+  // Would crash if Compose is called again since we expect ExecuteModel to run
+  // just once.
+  ShowDialogAndBindMojo();
+  FlushMojo();
+
+  // Check opening from the saved state menu with a selection resumes without
+  // autocompose.
+  SetSelection(u"Some new selected text");
+  // Would crash if Compose is called again since we expect ExecuteModel to run
+  // just once.
+  ShowDialogAndBindMojoWithFieldData(
+      field_data(), base::NullCallback(),
+      autofill::AutofillComposeDelegate::UiEntryPoint::kAutofillPopup);
+}
+
+TEST_F(ChromeComposeClientTest, TestAutoComposeTooLong) {
+  EnableAutoCompose();
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _)).Times(0);
+
+  std::u16string words(compose::GetComposeConfig().input_max_chars - 3, u'a');
+  words += u" b c";
+  SetSelection(words);
+  ShowDialogAndBindMojo();
+
+  histograms().ExpectUniqueSample(compose::kComposeDialogSelectionLength,
+                                  base::UTF16ToUTF8(words).size(), 1);
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_FALSE(result->compose_state->has_pending_request);
+}
+
+TEST_F(ChromeComposeClientTest, TestAutoComposeTooFewWords) {
+  EnableAutoCompose();
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _)).Times(0);
+  std::u16string words(40, u'a');
+  words += u" b";
+  SetSelection(words);
+  ShowDialogAndBindMojo();
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_FALSE(result->compose_state->has_pending_request);
+}
+
+TEST_F(ChromeComposeClientTest, TestAutoComposeTooManyWords) {
+  EnableAutoCompose();
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _)).Times(0);
+
+  std::u16string words = u"b";
+  // Words should be the max plus 1.
+  for (uint32_t i = 0; i < compose::GetComposeConfig().input_max_words; ++i) {
+    words += u" b";
+  }
+  SetSelection(words);
+  ShowDialogAndBindMojo();
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_FALSE(result->compose_state->has_pending_request);
+}
+
+TEST_F(ChromeComposeClientTest, TestAutoComposeDisabled) {
+  // Auto compose is disabled by default.
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _)).Times(0);
+
+  SetSelection(u"testing alpha bravo charlie");
+  ShowDialogAndBindMojo();
+}
+
+TEST_F(ChromeComposeClientTest, TestNoAutoComposeWithPopup) {
+  EnableAutoCompose();
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _)).Times(0);
+  SetSelection(u"a");  // Too short to cause auto compose.
+
+  ShowDialogAndBindMojo();
+
+  SetSelection(u"testing alpha bravo charlie");
+
+  // Show again.
+  ShowDialogAndBindMojoWithFieldData(
+      field_data(), base::NullCallback(),
+      autofill::AutofillComposeDelegate::UiEntryPoint::kAutofillPopup);
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_FALSE(result->compose_state->has_pending_request);
+}
+
+TEST_F(ChromeComposeClientTest, TestAutoComposeWithRepeatedRightClick) {
+  EnableAutoCompose();
+  base::test::TestFuture<void> execute_model_future;
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _))
+      .WillOnce(base::test::RunOnceClosure(execute_model_future.GetCallback()));
+
+  SetSelection(u"a");  // Too short to cause auto compose.
+
+  ShowDialogAndBindMojo();
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_FALSE(result->compose_state->has_pending_request);
+
+  std::u16string selection = u"testing alpha bravo charlie";
+  SetSelection(selection);
+
+  // Show again.
+  ShowDialogAndBindMojo();
+
+  EXPECT_TRUE(execute_model_future.Wait());
+
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+  result = open_test_future.Take();
+  EXPECT_TRUE(result->compose_state->has_pending_request);
+  EXPECT_EQ(base::UTF16ToUTF8(selection), result->initial_input);
+}
+
+TEST_F(ChromeComposeClientTest, TestNoAutoComposeBeforeFirstRun) {
+  EnableAutoCompose();
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _)).Times(0);
+
+  // Enable FRE and show the dialog.
+  profile()->GetPrefs()->SetBoolean(prefs::kPrefHasCompletedComposeFRE, false);
+  // Valid selection for auto compose to use.
+  std::u16string selection = u"testing alpha bravo charlie";
+  SetSelection(selection);
+  ShowDialogAndBindMojo();
+
+  // Without FRE completion auto compose should not execute.
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_FALSE(result->compose_state->has_pending_request);
+}
+
+TEST_F(ChromeComposeClientTest, TestRegenerate) {
+  ShowDialogAndBindMojo();
+  std::string user_input = "a user typed this";
+  auto matcher = EqualsProto(ComposeRequest(
+      user_input,
+      optimization_guide::proto::ComposeUpfrontInputMode::COMPOSE_POLISH_MODE));
+  EXPECT_CALL(model_executor(), ExecuteModel(_, matcher, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Cucumbers"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+  auto regen_matcher =
+      EqualsProto(RegenerateRequest(/*previous_response=*/"Cucumbers"));
+  EXPECT_CALL(model_executor(), ExecuteModel(_, regen_matcher, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Tomatoes"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+  EXPECT_CALL(compose_dialog(), ResponseReceived(_))
+      .WillRepeatedly([&](compose::mojom::ComposeResponsePtr response) {
+        test_future.SetValue(std::move(response));
+      });
+
+  page_handler()->Compose(user_input, compose::mojom::InputMode::kPolish,
+                          false);
+  compose::mojom::ComposeResponsePtr result = test_future.Take();
+  EXPECT_EQ(compose::mojom::ComposeStatus::kOk, result->status);
+  EXPECT_EQ("Cucumbers", result->result);
+
+  page_handler()->Rewrite(compose::mojom::StyleModifier::kRetry);
+  result = test_future.Take();
+  EXPECT_EQ(compose::mojom::ComposeStatus::kOk, result->status);
+  EXPECT_EQ("Tomatoes", result->result);
+
+  histograms().ExpectBucketCount(compose::kComposeRequestReason,
+                                 compose::ComposeRequestReason::kRetryRequest,
+                                 1);
+  histograms().ExpectBucketCount("Compose.Server.Request.Reason",
+                                 compose::ComposeRequestReason::kRetryRequest,
+                                 1);
+
+  client_page_handler()->CloseUI(compose::mojom::CloseReason::kCloseButton);
+
+  // Make sure the async call to CloseUI completes before navigating away.
+  FlushMojo();
+
+  // Check Compose Session Event Counts.
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kMainDialogShown, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kRetryClicked, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kCloseClicked, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kAnyModifierUsed, 0);
+
+  // Navigate page away to upload UKM metrics to the collector.
+  NavigateAndCommit(GURL("about:blank"));
+
+  // Check session level UKM metrics.
+  auto session_ukm_entries = ukm_recorder().GetEntries(
+      ukm::builders::Compose_SessionProgress::kEntryName,
+      {ukm::builders::Compose_SessionProgress::kRegenerateCountName});
+
+  EXPECT_EQ(session_ukm_entries.size(), 1UL);
+
+  EXPECT_THAT(
+      session_ukm_entries[0].metrics,
+      testing::UnorderedElementsAre(testing::Pair(
+          ukm::builders::Compose_SessionProgress::kRegenerateCountName, 1)));
+}
+
+TEST_F(ChromeComposeClientTest, TestToneChange) {
+  ShowDialogAndBindMojo();
+  std::string user_input = "a user typed this";
+  auto compose_matcher = EqualsProto(ComposeRequest(
+      user_input,
+      optimization_guide::proto::ComposeUpfrontInputMode::COMPOSE_POLISH_MODE));
+  EXPECT_CALL(model_executor(), ExecuteModel(_, compose_matcher, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Cucumbers"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+  // Rewrite with Formal.
+  optimization_guide::proto::ComposeRequest request;
+  request.mutable_rewrite_params()->set_previous_response("Cucumbers");
+  request.mutable_rewrite_params()->set_tone(
+      optimization_guide::proto::ComposeTone::COMPOSE_FORMAL);
+  request.mutable_page_metadata()->set_page_url("http://foo/1");
+  request.mutable_page_metadata()->set_page_title("foo/1");
+  auto rewrite_matcher = EqualsProto(request);
+  EXPECT_CALL(model_executor(), ExecuteModel(_, rewrite_matcher, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Tomatoes"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+  // Rewrite with Casual.
+  request.mutable_rewrite_params()->set_previous_response("Tomatoes");
+  request.mutable_rewrite_params()->set_tone(
+      optimization_guide::proto::ComposeTone::COMPOSE_INFORMAL);
+  auto rewrite_matcher_informal = EqualsProto(request);
+  EXPECT_CALL(model_executor(), ExecuteModel(_, rewrite_matcher_informal, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Potatoes"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+  EXPECT_CALL(compose_dialog(), ResponseReceived(_))
+      .WillRepeatedly([&](compose::mojom::ComposeResponsePtr response) {
+        test_future.SetValue(std::move(response));
+      });
+
+  page_handler()->Compose(user_input, compose::mojom::InputMode::kPolish,
+                          false);
+  compose::mojom::ComposeResponsePtr result = test_future.Take();
+  EXPECT_EQ(compose::mojom::ComposeStatus::kOk, result->status);
+  EXPECT_EQ("Cucumbers", result->result);
+
+  page_handler()->Rewrite(compose::mojom::StyleModifier::kFormal);
+  result = test_future.Take();
+  EXPECT_EQ(compose::mojom::ComposeStatus::kOk, result->status);
+  EXPECT_EQ("Tomatoes", result->result);
+  histograms().ExpectBucketCount(
+      compose::kComposeRequestReason,
+      compose::ComposeRequestReason::kToneFormalRequest, 1);
+  histograms().ExpectBucketCount(
+      "Compose.Server.Request.Reason",
+      compose::ComposeRequestReason::kToneFormalRequest, 1);
+
+  page_handler()->Rewrite(compose::mojom::StyleModifier::kCasual);
+  result = test_future.Take();
+  histograms().ExpectBucketCount(
+      compose::kComposeRequestReason,
+      compose::ComposeRequestReason::kToneCasualRequest, 1);
+  histograms().ExpectBucketCount(
+      "Compose.Server.Request.Reason",
+      compose::ComposeRequestReason::kToneCasualRequest, 1);
+
+  // Make sure the async call to CloseUI completes before navigating away.
+  FlushMojo();
+
+  // Navigate page away to upload UKM metrics to the collector.
+  NavigateAndCommit(GURL("about:blank"));
+
+  // Check Compose Session Event Counts.
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kMainDialogShown, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kFormalClicked, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kCasualClicked, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kElaborateClicked, 0);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kShortenClicked, 0);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kAnyModifierUsed, 1);
+
+  // Check session level UKM metrics.
+  auto session_ukm_entries = ukm_recorder().GetEntries(
+      ukm::builders::Compose_SessionProgress::kEntryName,
+      {ukm::builders::Compose_SessionProgress::kCasualCountName,
+       ukm::builders::Compose_SessionProgress::kFormalCountName});
+
+  EXPECT_EQ(session_ukm_entries.size(), 1UL);
+
+  EXPECT_THAT(
+      session_ukm_entries[0].metrics,
+      testing::UnorderedElementsAre(
+          testing::Pair(
+              ukm::builders::Compose_SessionProgress::kCasualCountName, 1),
+          testing::Pair(
+              ukm::builders::Compose_SessionProgress::kFormalCountName, 1)));
+}
+
+TEST_F(ChromeComposeClientTest, TestLengthChange) {
+  ShowDialogAndBindMojo();
+  std::string user_input = "a user typed this";
+  auto compose_matcher = EqualsProto(ComposeRequest(
+      user_input,
+      optimization_guide::proto::ComposeUpfrontInputMode::COMPOSE_POLISH_MODE));
+  EXPECT_CALL(model_executor(), ExecuteModel(_, compose_matcher, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Cucumbers"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+
+  // Rewrite with Elaborate.
+  optimization_guide::proto::ComposeRequest request;
+  request.mutable_rewrite_params()->set_previous_response("Cucumbers");
+  request.mutable_rewrite_params()->set_length(
+      optimization_guide::proto::ComposeLength::COMPOSE_LONGER);
+  request.mutable_page_metadata()->set_page_url("http://foo/1");
+  request.mutable_page_metadata()->set_page_title("foo/1");
+  auto rewrite_matcher = EqualsProto(request);
+  EXPECT_CALL(model_executor(), ExecuteModel(_, rewrite_matcher, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Tomatoes"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+
+  // Rewrite with Shorten.
+  request.mutable_rewrite_params()->set_previous_response("Tomatoes");
+  request.mutable_rewrite_params()->set_length(
+      optimization_guide::proto::ComposeLength::COMPOSE_SHORTER);
+  request.mutable_page_metadata()->set_page_url("http://foo/1");
+  request.mutable_page_metadata()->set_page_title("foo/1");
+  auto rewrite_shorten_matcher = EqualsProto(request);
+  EXPECT_CALL(model_executor(), ExecuteModel(_, rewrite_shorten_matcher, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "Potatoes"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+  EXPECT_CALL(compose_dialog(), ResponseReceived(_))
+      .WillRepeatedly([&](compose::mojom::ComposeResponsePtr response) {
+        test_future.SetValue(std::move(response));
+      });
+
+  page_handler()->Compose(user_input, compose::mojom::InputMode::kPolish,
+                          false);
+  compose::mojom::ComposeResponsePtr result = test_future.Take();
+  EXPECT_EQ(compose::mojom::ComposeStatus::kOk, result->status);
+  EXPECT_EQ("Cucumbers", result->result);
+
+  page_handler()->Rewrite(compose::mojom::StyleModifier::kLonger);
+  result = test_future.Take();
+  EXPECT_EQ(compose::mojom::ComposeStatus::kOk, result->status);
+  EXPECT_EQ("Tomatoes", result->result);
+  histograms().ExpectBucketCount(
+      compose::kComposeRequestReason,
+      compose::ComposeRequestReason::kLengthElaborateRequest, 1);
+  histograms().ExpectBucketCount(
+      "Compose.Server.Request.Reason",
+      compose::ComposeRequestReason::kLengthElaborateRequest, 1);
+
+  page_handler()->Rewrite(compose::mojom::StyleModifier::kShorter);
+  result = test_future.Take();
+  histograms().ExpectBucketCount(
+      compose::kComposeRequestReason,
+      compose::ComposeRequestReason::kLengthShortenRequest, 1);
+  histograms().ExpectBucketCount(
+      "Compose.Server.Request.Reason",
+      compose::ComposeRequestReason::kLengthShortenRequest, 1);
+
+  // Make sure the async call to CloseUI completes before navigating away.
+  FlushMojo();
+
+  // Navigate page away to upload UKM metrics to the collector.
+  NavigateAndCommit(GURL("about:blank"));
+
+  // Check Compose Session Event Counts.
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kMainDialogShown, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kFormalClicked, 0);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kCasualClicked, 0);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kElaborateClicked, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kShortenClicked, 1);
+  histograms().ExpectBucketCount(
+      compose::kComposeSessionEventCounts,
+      compose::ComposeSessionEventTypes::kAnyModifierUsed, 1);
+
+  // Check session level UKM metrics.
+  auto session_ukm_entries = ukm_recorder().GetEntries(
+      ukm::builders::Compose_SessionProgress::kEntryName,
+      {ukm::builders::Compose_SessionProgress::kLengthenCountName,
+       ukm::builders::Compose_SessionProgress::kShortenCountName});
+
+  EXPECT_EQ(session_ukm_entries.size(), 1UL);
+
+  EXPECT_THAT(
+      session_ukm_entries[0].metrics,
+      testing::UnorderedElementsAre(
+          testing::Pair(
+              ukm::builders::Compose_SessionProgress::kLengthenCountName, 1),
+          testing::Pair(
+              ukm::builders::Compose_SessionProgress::kShortenCountName, 1)));
+}
+
+TEST_F(ChromeComposeClientTest, TestOfflineError) {
+  ShowDialogAndBindMojo();
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::unexpected(
+                        OptimizationGuideModelExecutionError::
+                            FromModelExecutionError(
+                                OptimizationGuideModelExecutionError::
+                                    ModelExecutionError::kGenericFailure)),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+  EXPECT_CALL(compose_dialog(), ResponseReceived(_))
+      .WillOnce([&](compose::mojom::ComposeResponsePtr response) {
+        test_future.SetValue(std::move(response));
+      });
+
+  // Go offline and then run Compose.
+  network::TestNetworkConnectionTracker::GetInstance()->SetConnectionType(
+      net::NetworkChangeNotifier::ConnectionType::CONNECTION_NONE);
+  page_handler()->Compose("a user typed this",
+                          compose::mojom::InputMode::kPolish, false);
+
+  compose::mojom::ComposeResponsePtr result = test_future.Take();
+  EXPECT_EQ(compose::mojom::ComposeStatus::kOffline, result->status);
+}
+
+TEST_F(ChromeComposeClientTest, TestInnerText) {
+  EXPECT_CALL(model_inner_text(), GetInnerText(_, _, _))
+      .WillOnce(testing::WithArg<2>(
+          [&](content_extraction::InnerTextCallback callback) {
+            std::unique_ptr<content_extraction::InnerTextResult>
+                expected_inner_text =
+                    std::make_unique<content_extraction::InnerTextResult>(
+                        "inner_text", 123);
+            std::move(callback).Run(std::move(expected_inner_text));
+          }));
+
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+
+  optimization_guide::proto::ComposeRequest request;
+  request.mutable_generate_params()->set_user_input("a user typed this");
+  request.mutable_generate_params()->set_upfront_input_mode(
+      optimization_guide::proto::ComposeUpfrontInputMode::COMPOSE_POLISH_MODE);
+  request.mutable_page_metadata()->set_page_url("http://foo/1");
+  request.mutable_page_metadata()->set_page_title("foo/1");
+  request.mutable_page_metadata()->set_page_inner_text("inner_text");
+  request.mutable_page_metadata()->set_page_inner_text_offset(123);
+  request.mutable_page_metadata()->set_trimmed_page_inner_text("inner_text");
+
+  auto matcher = EqualsProto(request);
+  EXPECT_CALL(model_executor(), ExecuteModel(_, matcher, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "cucumbers"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+  EXPECT_CALL(compose_dialog(), ResponseReceived(_))
+      .WillOnce([&](compose::mojom::ComposeResponsePtr response) {
+        test_future.SetValue(std::move(response));
+      });
+
+  ShowDialogAndBindMojo();
+  page_handler()->Compose("a user typed this",
+                          compose::mojom::InputMode::kPolish, false);
+  compose::mojom::ComposeResponsePtr result = test_future.Take();
+
+  std::string result_string;
+  EXPECT_TRUE(result);
+}
+
+TEST_F(ChromeComposeClientTest, TestInnerTextNodeOffsetNotFound) {
+  EXPECT_CALL(model_inner_text(), GetInnerText(_, _, _))
+      .WillOnce(testing::WithArg<2>(
+          [&](content_extraction::InnerTextCallback callback) {
+            std::unique_ptr<content_extraction::InnerTextResult>
+                expected_inner_text =
+                    std::make_unique<content_extraction::InnerTextResult>(
+                        "inner_text", std::nullopt);
+            std::move(callback).Run(std::move(expected_inner_text));
+          }));
+
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> test_future;
+
+  optimization_guide::proto::ComposeRequest request;
+  request.mutable_generate_params()->set_user_input("a user typed this");
+  request.mutable_generate_params()->set_upfront_input_mode(
+      optimization_guide::proto::ComposeUpfrontInputMode::COMPOSE_POLISH_MODE);
+  request.mutable_page_metadata()->set_page_url("http://foo/1");
+  request.mutable_page_metadata()->set_page_title("foo/1");
+  request.mutable_page_metadata()->set_page_inner_text("inner_text");
+  request.mutable_page_metadata()->set_trimmed_page_inner_text("inner_text");
+
+  auto matcher = EqualsProto(request);
+  EXPECT_CALL(model_executor(), ExecuteModel(_, matcher, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            std::move(callback).Run(
+                OptimizationGuideModelExecutionResult(
+                    base::ok(optimization_guide::AnyWrapProto(
+                        ComposeResponse(true, "cucumbers"))),
+                    std::make_unique<
+                        optimization_guide::proto::ModelExecutionInfo>()),
+                /*model_quality_log_entry=*/nullptr);
+          }));
+  EXPECT_CALL(compose_dialog(), ResponseReceived(_))
+      .WillOnce([&](compose::mojom::ComposeResponsePtr response) {
+        test_future.SetValue(std::move(response));
+      });
+
+  ShowDialogAndBindMojo();
+  page_handler()->Compose("a user typed this",
+                          compose::mojom::InputMode::kPolish, false);
+  compose::mojom::ComposeResponsePtr result = test_future.Take();
+
+  std::string result_string;
+  EXPECT_TRUE(result);
+  histograms().ExpectUniqueSample(
+      compose::kInnerTextNodeOffsetFound,
+      compose::ComposeInnerTextNodeOffset::kNoOffsetFound, 1);
+}
+
+TEST_F(ChromeComposeClientTest, TestCloseReasonCanceledWhileWaiting) {
+  ShowDialogAndBindMojo();
+  EXPECT_CALL(model_executor(), ExecuteModel(_, _, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [&](optimization_guide::OptimizationGuideModelExecutionResultCallback
+                  callback) {
+            // This is a no-op.
+          }));
+
+  page_handler()->Compose("a user typed this",
+                          compose::mojom::InputMode::kPolish, false);
+
+  base::test::TestFuture<compose::mojom::OpenMetadataPtr> open_test_future;
+  page_handler()->RequestInitialState(open_test_future.GetCallback());
+  compose::mojom::OpenMetadataPtr result = open_test_future.Take();
+  EXPECT_TRUE(result->compose_state->has_pending_request);
+
+  client().CloseUI(compose::mojom::CloseReason::kCloseButton);
+
+  histograms().ExpectUniqueSample(
+      compose::kComposeSessionCloseReason,
+      compose::ComposeSessionCloseReason::kCanceledBeforeResponseReceived, 1);
+}
+
+TEST_F(ChromeComposeClientTest, LaunchHatsSurveyDisabled) {
+  // Add something for the test to wait on after the close event is finished
+  // so we dont tear down too early.
+  base::test::TestFuture<void> log_uploaded_signal;
+  logs_uploader().WaitForLogUpload(log_uploaded_signal.GetCallback());
+
+  ShowDialogAndBindMojo();
+  base::test::ScopedFeatureList features;
+
+  base::test::TestFuture<compose::mojom::ComposeResponsePtr> compose_future;
+  BindComposeFutureToOnResponseReceived(compose_future);
+
+  page_handler()->Compose("a user typed this",
+                          compose::mojom::InputMode::kPolish, false);
+  ASSERT_TRUE(compose_future.Take());
+
+  EXPECT_CALL(*mock_hats_service(),
+              LaunchSurveyForWebContents(kHatsSurveyTriggerComposeAcceptance, _,
+                                         _, _, _, _, _, _))
+      .Times(0);
+  client_page_handler()->CloseUI(compose::mojom::CloseReason::kInsertButton);
+
+  EXPECT_TRUE(log_uploaded_signal.Wait());
+}
+
+TEST_F(ChromeComposeClientTest, LaunchHatsSurveyEnabled) {
+  {
+    scoped_feature_list_.Reset();
+    scoped_feature_list_.InitWithFeatures(
+        /*enabled_features=*/
+        {compose::features::kHappinessTrackingSurveysForComposeAcceptance},
+        /*disabled_features=*/{});
+    compose::ResetConfigForTesting();
+
+    // Add something for the test to wait on after the close event is finished
+    // so we dont tear down too early.
+    base::test::TestFuture<void> log_uploaded_signal;
+    logs_uploader().WaitForLogUpload(log_uploaded_signal.GetCallback());
+
+    ShowDialogAndBindMojo();
+
+    base::test::TestFuture<compose::mojom::ComposeResponsePtr> compose_future;
+    BindComposeFutureToOnResponseReceived(compose_future);
+
+    page_handler()->Compose("a user typed this",
+                            compose::mojom::InputMode::kPolish, false);
+    ASSERT_TRUE(compose_future.Take());
+
+    const SurveyBitsData product_specific_bits_data = {
+        {compose::hats::HatsFields::kResponseModified, false},
+        {compose::hats::HatsFields::kSessionContainedFilteredResponse, false},
+        {compose::hats::HatsFields::kSessionContainedError, false},
+        {compose::hats::HatsFields::kSessionBeganWithNudge, false}};
+
+    EXPECT_CALL(
+        *mock_hats_service(),
+        LaunchSurveyForWebContents(kHatsSurveyTriggerComposeAcceptance, _,
+                                   product_specific_bits_data, _, _, _, _, _))
+        .Times(1);
+
+    client_page_handler()->CloseUI(compose::mojom::CloseReason::kInsertButton);
+
+    EXPECT_TRUE(log_uploaded_signal.Wait());
+  }
+}
+
+#if defined(GTEST_HAS_DEATH_TEST)
+// Tests that the Compose client crashes the browser if a webcontents
+// tries to bind mojo without opening the dialog at a non Compose URL.
+TEST_F(ChromeComposeClientTest, NoStateCrashesAtOtherUrls) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  // We skip showing the dialog here to validate that non special URLs check.
+  EXPECT_DEATH(BindMojo(), "");
+}
+
+// Tests that the Compose client crashes the browser if a webcontents
+// sends any message when the dialog has not been shown.
+TEST_F(ChromeComposeClientTest, TestCannotSendMessagesToNotShownDialog) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  EXPECT_DEATH(page_handler()->SaveWebUIState(""), "");
+}
+
+// Tests that the Compose client crashes the browser if a webcontents
+// tries to close the dialog when the dialog has not been shown.
+TEST_F(ChromeComposeClientTest, TestCannotCloseNotShownDialog) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  EXPECT_DEATH(
+      client_page_handler()->CloseUI(compose::mojom::CloseReason::kCloseButton),
+      "");
+}
+
+// Tests that the Compose client crashes the browser if a webcontents
+// tries to close the dialog when the dialog has not been shown.
+TEST_F(ChromeComposeClientTest, TestCannotSendMessagesAfterClosingDialog) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  ShowDialogAndBindMojo();
+  client_page_handler()->CloseUI(compose::mojom::CloseReason::kCloseButton);
+  // Any message after closing the session will crash.
+  EXPECT_DEATH(page_handler()->SaveWebUIState(""), "");
+}
+
+// Tests that the Compose client crashes the browser if a webcontents
+// sends any more messages after closing the dialog at
+// chrome-untrusted://compose.
+TEST_F(ChromeComposeClientTest,
+       TestCannotSendMessagesAfterClosingDialogAtChromeCompose) {
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  NavigateAndCommit(GURL(chrome::kChromeUIUntrustedComposeUrl));
+  // We skip the dialog showing here, as there is no dialog required at this
+  // URL.
+  BindMojo();
+  client_page_handler()->CloseUI(compose::mojom::CloseReason::kCloseButton);
+  // Any message after closing the session will crash.
+  EXPECT_DEATH(page_handler()->SaveWebUIState(""), "");
+}
+
+#endif  // GTEST_HAS_DEATH_TEST
+
+class ComposePopupAutofillDriverTest : public ChromeComposeClientTest {
+ public:
+  void SetUp() override {
+    ChromeComposeClientTest::SetUp();
+
+    compose::Config& config = compose::GetMutableConfigForTesting();
+    config.proactive_nudge_enabled = true;
+    config.proactive_nudge_show_probability = 1.0;
+    config.proactive_nudge_field_per_navigation = true;
+    config.proactive_nudge_segmentation = false;
+    config.proactive_nudge_focus_delay = base::Microseconds(8);
+    config.proactive_nudge_text_settled_delay = base::Microseconds(16);
+    config.proactive_nudge_text_change_count = 3;
+
+    config.selection_nudge_delay = base::Microseconds(4);
+    config.selection_nudge_enabled = true;
+    config.selection_nudge_length = 5;
+  }
+
+  // Creates a mock form  with `num_fields`.
+  autofill::FormData CreateTestFormData(int num_fields = 1) {
+    return autofill::test::GetFormData({
+        .fields = std::vector<autofill::test::FieldDescription>(
+            num_fields,
+            {.form_control_type = autofill::FormControlType::kTextArea}),
+        .url =
+            web_contents()->GetPrimaryMainFrame()->GetLastCommittedURL().spec(),
+        .main_frame_origin =
+            web_contents()->GetPrimaryMainFrame()->GetLastCommittedOrigin(),
+    });
+  }
+
+  autofill::ContentAutofillDriver* CreateAutofillDriver(
+      autofill::FormData form_data) {
+    autofill::ContentAutofillDriver* autofill_driver =
+        autofill::ContentAutofillDriver::GetForRenderFrameHost(
+            web_contents()->GetPrimaryMainFrame());
+    EXPECT_TRUE(autofill_driver);
+
+    {
+      autofill::TestAutofillManagerWaiter waiter(
+          autofill_driver->GetAutofillManager(),
+          {autofill::AutofillManagerEvent::kFormsSeen});
+      autofill_driver->renderer_events().FormsSeen(
+          /*updated_forms=*/{form_data},
+          /*removed_forms=*/{});
+      EXPECT_TRUE(waiter.Wait(/*num_awaiting_calls=*/1));
+    }
+
+    return autofill_driver;
+  }
+};
+
+TEST_F(ComposePopupAutofillDriverTest, TestSelectionNudgeNoProactiveNudge) {
+  compose::Config& config = compose::GetMutableConfigForTesting();
+  config.proactive_nudge_enabled = false;
+
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker with
+  // only the selection nudge enabled.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+  // No timer should be running since the proactive nudge is disabled.
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Wait for when the timer would finish and ShouldTriggerPopup still fails.
+  task_environment()->FastForwardBy(base::Microseconds(9));
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Begin showing the selection nudge.
+  // Signal that the caret moved in the field with a valid selection.
+  field_data.set_selected_text(u"12345");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(), /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should now be running.
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Move forward until timer should expire.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will now succeed.
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+}
+
+TEST_F(ComposePopupAutofillDriverTest, TestSelectionNudgeEnabled) {
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker timers.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(7));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // The trigger will now succeed.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Begin showing the selection nudge.
+  // Signal that the caret moved in the field with a valid selection.
+  field_data.set_selected_text(u"12345");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(), /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should now be running.
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Extending the selection extends the timer.
+  field_data.set_selected_text(u"123456");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should still be running.
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Move forward until timer should expire.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will now succeed.
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  histograms().ExpectUniqueSample(
+      compose::kComposeSelectionNudgeCtr,
+      compose::ComposeNudgeCtrEvent::kNudgeDisplayed, 1);
+  histograms().ExpectUniqueSample(
+      compose::kComposeProactiveNudgeCtr,
+      compose::ComposeNudgeCtrEvent::kNudgeDisplayed, 1);
+}
+
+TEST_F(ComposePopupAutofillDriverTest, TestSelectionTooShort) {
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker timers.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(7));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // The trigger will now succeed.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // A selection that is to short will not trigger the nudge
+  field_data.set_selected_text(u"1234");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since the selection was not long enough.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // But it can be shown again if the selection is long enough.
+  field_data.set_selected_text(u"some text was selected");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should now be running.
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // A selection that is now too short will cancel the nudge timer.
+  field_data.set_selected_text(u"one");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should be canceled.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // The selection nudge will not trigger.
+  task_environment()->FastForwardBy(base::Microseconds(5));
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Confirm that after a the selection timer is canceled it can be started
+  // again with a valid selection.
+  field_data.set_selected_text(u"some text was selected");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should now be running.
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Move forward until timer should expire.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will now succeed.
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+}
+
+TEST_F(ComposePopupAutofillDriverTest, TestSelectionNudgeLostFocus) {
+  autofill::FormData form_data = CreateTestFormData(2);
+  autofill::FormFieldData& field_data0 = test_api(form_data).field(0);
+  autofill::FormFieldData& field_data1 = test_api(form_data).field(1);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+  // The first call to ShouldTriggerPopup starts the nudge tracker timers.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data0,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(7));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data0,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // The trigger will now succeed.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data0,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Test that losing focus and returning to a field will still show the
+  // selection nudge.
+  // Trigger the popup on field 1 losing focus on field 0.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data1,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+  task_environment()->FastForwardBy(base::Microseconds(7));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data1,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Now trigger on field 0 again. This will fail and not start a timer since
+  // proactive_nudge_field_per_navigation = true.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data0,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+  // Wait for when the timer would finish and ShouldTriggerPopup still fails.
+  task_environment()->FastForwardBy(base::Microseconds(9));
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data0,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Trigger a valid selection and confirm that the selection nudge can still be
+  // shown.
+  field_data0.set_selected_text(u"some text was selected");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data0.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should now be running.
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data0,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Move forward until timer should expire.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will now succeed.
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data0,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+}
+
+TEST_F(ComposePopupAutofillDriverTest,
+       TestSelectionNudgeBlockedBySegmentation) {
+  compose::Config& config = compose::GetMutableConfigForTesting();
+  config.proactive_nudge_segmentation = true;
+
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  EXPECT_CALL(GetSegmentationPlatformService(),
+              GetClassificationResult(_, _, _, _))
+      .WillOnce(testing::WithArg<3>(
+          [](segmentation_platform::ClassificationResultCallback callback) {
+            auto result = segmentation_platform::ClassificationResult(
+                segmentation_platform::PredictionStatus::kSucceeded);
+            result.request_id = kTrainingRequestId;
+            result.ordered_labels = {
+                segmentation_platform::kComposePrmotionLabelDontShow};
+            base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+                FROM_HERE, base::BindOnce(std::move(callback), result));
+          }));
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker timers.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(7));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // The trigger will now be blocked by segmentation.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Signal that the caret moved in the field with a valid selection.
+  field_data.set_selected_text(u"12345");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should not be running since the segmentation blocked the nudge.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Move forward until the timer would be complete if it were running.
+  task_environment()->FastForwardBy(base::Microseconds(4));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since the selection nudge was blocked.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+}
+
+TEST_F(ComposePopupAutofillDriverTest, TestCaretMovementExtendsNudgeDelay) {
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker timers.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(7));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Signal that the caret moved in the field with no selection.
+  field_data.set_selected_text(u"");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // Moving the caret should extend the timer so it is still running.
+  task_environment()->FastForwardBy(base::Microseconds(7));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Move forward until timer should expire.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will now succeed.
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+}
+
+TEST_F(ComposePopupAutofillDriverTest, TestSelectionNudgeNoDelay) {
+  compose::Config& config = compose::GetMutableConfigForTesting();
+  config.selection_nudge_delay = base::Microseconds(0);
+
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker timers.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(7));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // The trigger will now succeed.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Signal that the caret moved in the field with a valid selection.
+  field_data.set_selected_text(u"12345");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should not be running since there is no delay.
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  task_environment()->FastForwardBy(base::Microseconds(1));
+
+  // Should trigger will not succeed since a delay of zero disabled the nudge.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+}
+
+TEST_F(ComposePopupAutofillDriverTest, TestSelectionNudgeDisabled) {
+  compose::Config& config = compose::GetMutableConfigForTesting();
+  config.selection_nudge_enabled = false;
+
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker timers.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(7));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // The trigger will now succeed.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Signal that the caret moved in the field with a valid selection.
+  field_data.set_selected_text(u"12345");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should not be running since the selection nudge is disabled.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since the selection nudge is disabled.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Move forward until the timer would be complete if it were running.
+  task_environment()->FastForwardBy(base::Microseconds(4));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since the selection nudge is disabled.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+}
+
+TEST_F(ComposePopupAutofillDriverTest, TestSelectionNudgeOncePerFocus) {
+  compose::Config& config = compose::GetMutableConfigForTesting();
+  config.proactive_nudge_enabled = false;
+  config.selection_nudge_once_per_focus = true;
+
+  autofill::FormData form_data = CreateTestFormData(2);
+  autofill::FormFieldData& field_data0 = test_api(form_data).field(0);
+  autofill::FormFieldData& field_data1 = test_api(form_data).field(1);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker for field 0
+  // with only the selection nudge enabled.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data0,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+  // No timer should be running since the proactive nudge is disabled.
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Trigger the selection nudge on field 0
+  field_data0.set_selected_text(u"some text was selected");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data0.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should now be running.
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data0,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Move forward until timer should expire.
+  task_environment()->FastForwardBy(base::Microseconds(2));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will now succeed.
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data0,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Trigger the selection nudge on field 0 for a second time.
+  field_data0.set_selected_text(u"some text was selected");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data0.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // Timer should not be running since the selection nudge was already shown.
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Move forward until timer should expire.
+  task_environment()->FastForwardBy(base::Microseconds(2));
+  // Make sure should trigger does not succeed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data0,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Test that losing focus and returning to a field will still show the
+  // selection nudge.
+  // Trigger the popup on field 1 losing focus on field 0.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data1,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data1,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Now trigger on field 0 again. This will fail and not start a timer since
+  // the proactive nudge is not enabled.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data0,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+  // Wait for when the timer would finish and ShouldTriggerPopup still fails.
+  task_environment()->FastForwardBy(base::Microseconds(4));
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data0,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Trigger a selection and confirm that the selection nudge can be shown.
+  field_data0.set_selected_text(u"some text was selected");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data0.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should now be running.
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data0,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Move forward until timer should expire.
+  task_environment()->FastForwardBy(base::Microseconds(2));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will now succeed.
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data0,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+}
+
+TEST_F(ComposePopupAutofillDriverTest,
+       TestFocusNudgeExtendedToTextChangeNudge) {
+  compose::Config& config = compose::GetMutableConfigForTesting();
+
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker timers.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Simulate engough text change events to trigger the text change nudge.
+  // A text change consists of both |AfterTextFieldValueChanged| and
+  // |AfterCaretMovedInFormField| (since typing also moves the caret).
+  for (int i = 0; i < config.proactive_nudge_text_change_count; ++i) {
+    field_data.set_value(u"new text value");
+    autofill_driver->GetAutofillManager().OnTextFieldValueChanged(
+        form_data, field_data.global_id(), /*timestamp=*/{},
+        autofill::AutofillManagerTestApi::pass_key());
+    field_data.set_selected_text(u"");
+    autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+        form_data, field_data.global_id(),
+        /*caret_bounds=*/gfx::Rect(),
+        autofill::AutofillManagerTestApi::pass_key());
+    task_environment()->FastForwardBy(base::Microseconds(1));
+  }
+
+  task_environment()->FastForwardBy(config.proactive_nudge_text_settled_delay -
+                                    base::Microseconds(2));
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  task_environment()->FastForwardBy(base::Microseconds(1));
+
+  // Should trigger will succeed since the text input delay has passed.
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+}
+
+TEST_F(ComposePopupAutofillDriverTest, TestFocusNudgeExtendedToSelectionNudge) {
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker timers.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Begin showing the selection nudge.
+  // Signal that the caret moved in the field with a valid selection.
+  field_data.set_selected_text(u"12345");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(), /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should now be running.
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Move forward until timer should expire.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will now succeed.
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+}
+
+TEST_F(ComposePopupAutofillDriverTest, TestFocusNudgeCanceledBySelectionNudge) {
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker timers.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Begin showing the selection nudge.
+  // Signal that the caret moved in the field with a valid selection.
+  field_data.set_selected_text(u"12345");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(), /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should now be running.
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // A selection that is now too short will cancel the nudge timer.
+  field_data.set_selected_text(u"one");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(),
+      /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should be canceled.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // The selection nudge will not trigger.
+  task_environment()->FastForwardBy(base::Microseconds(5));
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+}
+
+TEST_F(ComposePopupAutofillDriverTest,
+       TestFocusNudgeDisabledTextChangeNudgeEnabled) {
+  compose::Config& config = compose::GetMutableConfigForTesting();
+  config.proactive_nudge_focus_delay = base::Seconds(0);
+
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  // The first call to ShouldTriggerPopup does not start the timmer since the
+  // focus nudge is disabled.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  task_environment()->FastForwardBy(base::Microseconds(2));
+
+  // Should trigger will fail since the focus nudge did not start.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Simulate engough text change events to trigger the text change nudge.
+  // A text change consists of both |AfterTextFieldValueChanged| and
+  // |AfterCaretMovedInFormField| (since typing also moves the caret).
+  for (int i = 0; i < config.proactive_nudge_text_change_count; ++i) {
+    field_data.set_value(u"new text value");
+    autofill_driver->GetAutofillManager().OnTextFieldValueChanged(
+        form_data, field_data.global_id(), /*timestamp=*/{},
+        autofill::AutofillManagerTestApi::pass_key());
+    field_data.set_selected_text(u"");
+    autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+        form_data, field_data.global_id(),
+        /*caret_bounds=*/gfx::Rect(),
+        autofill::AutofillManagerTestApi::pass_key());
+    task_environment()->FastForwardBy(base::Microseconds(1));
+  }
+
+  task_environment()->FastForwardBy(config.proactive_nudge_text_settled_delay -
+                                    base::Microseconds(2));
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  task_environment()->FastForwardBy(base::Microseconds(1));
+
+  // Should trigger will succeed since the text input delay has passed.
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+}
+
+TEST_F(ComposePopupAutofillDriverTest, TestCloseSessionResetsNudgeTracker) {
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker timers.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(8));
+
+  // The trigger will succeed since enough time passed.
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Simiulate closing the session with the "X" button.
+  compose::ComposeSessionEvents events{};
+  client().OnSessionComplete(
+      field_data.global_id(),
+      compose::ComposeSessionCloseReason::kCloseButtonPressed, events);
+
+  // Signal that the caret moved in the field with a valid selection.
+  field_data.set_selected_text(u"12345");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(), /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should not be running since closing the session resets the nudge
+  // tracker.
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Move forward until timer should expire.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will not succeed since the timer never started.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+}
+
+TEST_F(ComposePopupAutofillDriverTest, TestSelectionNudgeEntryPointMetrics) {
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+  autofill::ContentAutofillDriver* autofill_driver =
+      CreateAutofillDriver(form_data);
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker timers.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(7));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Signal that the caret moved in the field with a valid selection.
+  field_data.set_selected_text(u"12345");
+  autofill_driver->GetAutofillManager().OnCaretMovedInFormField(
+      form_data, field_data.global_id(), /*caret_bounds=*/gfx::Rect(),
+      autofill::AutofillManagerTestApi::pass_key());
+
+  // The timer should now be running.
+  task_environment()->FastForwardBy(base::Microseconds(3));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Move forward until timer should expire.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Should trigger will now succeed.
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+
+  // Simulate clicking on the nudge to open compose.
+  ShowDialogAndBindMojoWithFieldData(
+      field_data, base::NullCallback(),
+      autofill::AutofillComposeDelegate::UiEntryPoint::kAutofillPopup);
+
+  // Close session to record UMA
+  client().CloseUI(compose::mojom::CloseReason::kInsertButton);
+
+  // Check that the session entry point histogram is recorded.
+  histograms().ExpectUniqueSample(compose::kComposeStartSessionEntryPoint,
+                                  compose::ComposeEntryPoint::kSelectionNudge,
+                                  1);
+  EXPECT_EQ(1, user_action_tester().GetActionCount(
+                   "Compose.StartedSession.SelectionNudge"));
+}
+
+TEST_F(ComposePopupAutofillDriverTest, TestProactiveNudgeEntryPointMetrics) {
+  autofill::FormData form_data = CreateTestFormData();
+  autofill::FormFieldData& field_data = test_api(form_data).field(0);
+
+  // The first call to ShouldTriggerPopup starts the nudge tracker timers.
+  ASSERT_FALSE(client().ShouldTriggerPopup(
+      form_data, field_data,
+      autofill::AutofillSuggestionTriggerSource::kTextFieldValueChanged));
+
+  task_environment()->FastForwardBy(base::Microseconds(7));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // Should trigger will fail since not enough time has passed.
+  ASSERT_FALSE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_TRUE(client().IsPopupTimerRunning());
+
+  // The trigger will now succeed.
+  task_environment()->FastForwardBy(base::Microseconds(1));
+  ASSERT_TRUE(
+      client().ShouldTriggerPopup(form_data, field_data,
+                                  autofill::AutofillSuggestionTriggerSource::
+                                      kComposeDelayedProactiveNudge));
+  ASSERT_FALSE(client().IsPopupTimerRunning());
+
+  // Simulate clicking on the nudge to open compose.
+  ShowDialogAndBindMojoWithFieldData(
+      field_data, base::NullCallback(),
+      autofill::AutofillComposeDelegate::UiEntryPoint::kAutofillPopup);
+
+  // Close session to record UMA
+  client().CloseUI(compose::mojom::CloseReason::kInsertButton);
+
+  // Check that the session entry point histogram is recorded.
+  histograms().ExpectUniqueSample(compose::kComposeStartSessionEntryPoint,
+                                  compose::ComposeEntryPoint::kProactiveNudge,
+                                  1);
+  EXPECT_EQ(1, user_action_tester().GetActionCount(
+                   "Compose.StartedSession.ProactiveNudge"));
+}

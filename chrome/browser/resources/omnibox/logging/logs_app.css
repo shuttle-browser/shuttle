@@ -1,0 +1,135 @@
+/* Copyright 2026 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file.
+ */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=//resources/cr_elements/cr_hidden_style_lit.css.js
+ * #import=//resources/cr_elements/cr_shared_vars.css.js
+ * #scheme=relative
+ * #include=cr-hidden-style-lit
+ * #css_wrapper_metadata_end */
+
+:host {
+  display: block;
+  margin: auto;
+  padding: 20px;
+}
+
+h1 {
+  margin-bottom: 20px;
+  margin-top: 0;
+  padding-top: 40px;
+  text-align: center;
+}
+
+.header-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+}
+
+.header-container button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+}
+
+.dropdown-content {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background-color: white;
+  border: 1px solid var(--google-grey-300);
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  z-index: 10;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 200px;
+  overflow-y: auto;
+  min-width: 150px;
+}
+
+th.proto .dropdown-content {
+  left: auto;
+  right: 0;
+}
+
+.dropdown-content label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: normal;
+  white-space: nowrap;
+}
+
+@media (prefers-color-scheme: dark) {
+  .dropdown-content {
+    background-color: var(--google-grey-800);
+    color: var(--google-grey-200);
+    border-color: var(--google-grey-700);
+  }
+}
+
+table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+}
+
+th,
+td {
+  border: 1px solid var(--google-grey-300);
+  padding: 4px;
+  text-align: left;
+}
+
+.header-cell {
+  background-color: var(--google-grey-100);
+  position: relative;
+}
+
+.time {
+  width: 80px;
+}
+
+.tag {
+  width: 200px;
+  word-wrap: break-word;
+}
+
+.source-location {
+  width: 200px;
+  word-wrap: break-word;
+}
+
+.message {
+  word-wrap: break-word;
+}
+
+.proto {
+  width: 150px;
+  word-wrap: break-word;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    color: var(--google-grey-200);
+  }
+
+  .header-cell {
+    background-color: var(--google-grey-800);
+  }
+
+  th,
+  td {
+    border-color: var(--google-grey-700);
+  }
+}

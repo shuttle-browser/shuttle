@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="timeout" content="long"/>
+  <title>
+    AudioParam automateRate property change - crbug.com/357391257
+  </title>
+  <script src="../../resources/testharness.js"></script>
+  <script src="../../resources/testharnessreport.js"></script>
+</head>
+<body>
+  <script>
+    const t = async_test('audio-param-rate-change-357391257');
+
+    // The problematic value used in the reproduction code.
+    const testValue = 5;
+
+    // Number of iterations for triggering the issue. A high value can strain
+    // testing resources. Empirically determined: the reported repro case was
+    // able to crash in 3 iterations on average.
+    const maxIteration = 3;
+
+    // The original repro only has setValueAtTime() but the fix/test covers
+    // all methods.
+    const subtestTypes = [
+      'setValueAtTime',
+      'linearRampToValueAtTime',
+      'exponentialRampToValueAtTime',
+      'setTargetAtTime',
+      'setValueCurveAtTime',
+    ];
+
+    const runTest = async (iteration, subtestType) => {
+      const context = new AudioContext({sampleRate: 768000});
+      const scriptNode = context.createScriptProcessor(256, 1, 1);
+      const delayNode = context.createDelay(1);
+
+      const completionPromise = new Promise((resolve) => {
+        let callbacksHandled = 0;
+        scriptNode.onaudioprocess = () => {
+          delayNode.delayTime.automationRate = 'k-rate';
+          delayNode.delayTime.automationRate = 'a-rate';
+          // Wait for ~100ms of audio processing (300 callbacks * 256 frames /
+          // 768000 Hz).  This matches the probability of hitting the race
+          // condition in the original test.
+          if (++callbacksHandled >= 300) {
+            resolve();
+          }
+        };
+      });
+
+      delayNode.delayTime.linearRampToValueAtTime(1, 2);
+      scriptNode.connect(delayNode).connect(context.destination);
+
+      switch (subtestType) {
+        case 'setValueAtTime':
+          delayNode.delayTime.setValueAtTime(testValue, context.currentTime);
+          break;
+        case 'linearRampToValueAtTime':
+          delayNode.delayTime.linearRampToValueAtTime(
+              testValue, context.currentTime);
+          break;
+        case 'exponentialRampToValueAtTime':
+          delayNode.delayTime.exponentialRampToValueAtTime(
+              testValue, context.currentTime);
+          break;
+        case 'setTargetAtTime':
+          delayNode.delayTime.setTargetAtTime(
+              testValue, context.currentTime, 0);
+          break;
+        case 'setValueCurveAtTime':
+          const curve = new Float32Array(2);
+          curve[0] = testValue;
+          curve[1] = 0;
+          // To avoid the schedule overlap with setValueAtTime() above, start
+          // the automation at 2.5s.
+          delayNode.delayTime.setValueCurveAtTime(curve, 2.5, 1);
+          break;
+        default:
+          assert_unreached('invalid method test type');
+      }
+
+      await completionPromise;
+      scriptNode.onaudioprocess = null;
+      scriptNode.disconnect();
+      delayNode.disconnect();
+      await context.close();
+    };
+
+    const runAllTests = async () => {
+      try {
+        for (const type of subtestTypes) {
+          for (let i = 0; i < maxIteration; i++) {
+            await runTest(i, type);
+          }
+        }
+        t.done();
+      } catch (e) {
+        // Ensure the test fails if any iteration throws
+        t.step(() => {
+          assert_unreached(`Test failed: ${e.message}`);
+        });
+        t.done();
+      }
+    };
+
+    runAllTests();
+  </script>
+</body>
+</html>

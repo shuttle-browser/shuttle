@@ -1,0 +1,179 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/autofill/core/browser/payments/payments_data_cleaner.h"
+
+#include "base/containers/to_vector.h"
+#include "base/i18n/time_formatting.h"
+#include "base/strings/stringprintf.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/test/task_environment.h"
+#include "base/time/time.h"
+#include "base/uuid.h"
+#include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
+#include "components/autofill/core/browser/data_manager/payments/payments_data_manager_test_base.h"
+#include "components/autofill/core/browser/data_manager/personal_data_manager.h"
+#include "components/autofill/core/browser/data_manager/personal_data_manager_test_util.h"
+#include "components/autofill/core/browser/suggestions/payments/payments_suggestion_generator_util.h"
+#include "components/autofill/core/browser/test_utils/autofill_test_util.h"
+#include "components/autofill/core/common/autofill_constants.h"
+#include "components/autofill/core/common/credit_card_network_identifiers.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/icu/source/i18n/unicode/timezone.h"
+
+namespace autofill {
+
+using ::testing::UnorderedElementsAre;
+
+class PaymentsDataCleanerTest : public PaymentsDataManagerTestBase,
+                                public testing::TestWithParam<bool> {
+ public:
+  PaymentsDataCleanerTest() = default;
+  ~PaymentsDataCleanerTest() override = default;
+
+  void SetUp() override {
+    SetUpTest();
+    MakePrimaryAccountAvailable(UseSyncTransportMode(), identity_test_env_,
+                                sync_service_);
+    personal_data_ = std::make_unique<PersonalDataManager>(
+        profile_database_service_, account_database_service_, prefs_.get(),
+        prefs_.get(), identity_test_env_.identity_manager(),
+        /*history_service=*/nullptr, &sync_service_,
+        /*strike_database=*/nullptr,
+        /*image_fetcher=*/nullptr, "en-US", "US",
+        /*autofill_optimization_guide=*/nullptr);
+    PersonalDataChangedWaiter(*personal_data_).Wait();
+    payments_data_cleaner_ = std::make_unique<PaymentsDataCleaner>(
+        &personal_data_->payments_data_manager());
+  }
+
+  void TearDown() override {
+    payments_data_cleaner_.reset();
+    if (personal_data_) {
+      personal_data_->Shutdown();
+    }
+    personal_data_.reset();
+    TearDownTest();
+  }
+
+  bool UseSyncTransportMode() { return GetParam(); }
+
+ protected:
+  void SetServerCards(const std::vector<CreditCard>& server_cards) {
+    test::SetServerCreditCards(
+        personal_data_->payments_data_manager()
+                .IsSyncFeatureEnabledForPaymentsServerMetrics()
+            ? profile_autofill_table_.get()
+            : account_autofill_table_.get(),
+        server_cards);
+  }
+
+  bool DeleteDisusedCreditCards() {
+    return payments_data_cleaner_->DeleteDisusedCreditCards();
+  }
+
+  PersonalDataManager& personal_data() { return *personal_data_.get(); }
+
+  PaymentsDataManager& paydm() {
+    return personal_data_->payments_data_manager();
+  }
+
+ private:
+  std::unique_ptr<PersonalDataManager> personal_data_;
+  std::unique_ptr<PaymentsDataCleaner> payments_data_cleaner_;
+};
+
+INSTANTIATE_TEST_SUITE_P(,
+                         PaymentsDataCleanerTest,
+                         testing::Bool(),
+                         [](const testing::TestParamInfo<bool>& info) {
+                           return info.param ? "SyncTransportMode"
+                                             : "SyncFeatureEnabled";
+                         });
+
+// Tests that DeleteDisusedCreditCards deletes desired credit cards only.
+TEST_P(PaymentsDataCleanerTest,
+       DeleteDisusedCreditCards_OnlyDeleteExpiredDisusedLocalCards) {
+  // Move the time to 20XX.
+  task_environment_.FastForwardBy(base::Days(365) * 31);
+  const char kHistogramName[] = "Autofill.CreditCardsDeletedForDisuse";
+  auto now = base::Time::Now();
+
+  // Create a recently used local card, it is expected to remain.
+  CreditCard credit_card1(base::Uuid::GenerateRandomV4().AsLowercaseString());
+  test::SetCreditCardInfo(&credit_card1, "Alice",
+                          "378282246310005" /* American Express */, "04",
+                          "2999", "1");
+  credit_card1.usage_history().set_use_date(now - base::Days(4));
+
+  // Create a local card that was expired 400 days ago, but recently used.
+  // It is expected to remain.
+  CreditCard credit_card2(base::Uuid::GenerateRandomV4().AsLowercaseString());
+  test::SetCreditCardInfo(&credit_card2, "Bob",
+                          "378282246310006" /* American Express */, "04",
+                          "1999", "1");
+  credit_card2.usage_history().set_use_date(now - base::Days(4));
+
+  // Create a local card expired recently, and last used 400 days ago.
+  // It is expected to remain.
+  CreditCard credit_card3(base::Uuid::GenerateRandomV4().AsLowercaseString());
+  const base::Time expiry_date = now - base::Days(32);
+  base::Time::Exploded exploded;
+  expiry_date.UTCExplode(&exploded);
+  const std::string month = base::StringPrintf("%02d", exploded.month);
+  const std::string year = base::StringPrintf("%04d", exploded.year);
+  test::SetCreditCardInfo(&credit_card3, "Clyde", "4111111111111111" /* Visa */,
+                          month.c_str(), year.c_str(), "1");
+  credit_card3.usage_history().set_use_date(now - base::Days(400));
+
+  // Create a local card expired 400 days ago, and last used 400 days ago.
+  // It is expected to be deleted.
+  CreditCard credit_card4(base::Uuid::GenerateRandomV4().AsLowercaseString());
+  test::SetCreditCardInfo(&credit_card4, "David",
+                          "5105105105105100" /* Mastercard */, "04", "1999",
+                          "1");
+  credit_card4.usage_history().set_use_date(now - base::Days(400));
+  paydm().AddCreditCard(credit_card1);
+  paydm().AddCreditCard(credit_card2);
+  paydm().AddCreditCard(credit_card3);
+  paydm().AddCreditCard(credit_card4);
+
+  // Create masked server card expired 400 days ago, and last used 400 days ago.
+  // It is expected to remain because we do not delete server cards.
+  CreditCard credit_card5(CreditCard::RecordType::kMaskedServerCard, "c987");
+  test::SetCreditCardInfo(&credit_card5, "Frank", "6543", "01", "1998", "1");
+  credit_card5.usage_history().set_use_date(now - base::Days(400));
+  credit_card5.SetNetworkForMaskedCard(kVisaCard);
+
+  // Save the server card and set used_date to desired date.
+  std::vector<CreditCard> server_cards;
+  server_cards.push_back(credit_card5);
+  SetServerCards(server_cards);
+  paydm().UpdateServerCardsMetadata({credit_card5});
+
+  PersonalDataChangedWaiter(personal_data()).Wait();
+  EXPECT_EQ(5U, paydm().GetCreditCards().size());
+
+  // Setup histograms capturing.
+  base::HistogramTester histogram_tester;
+
+  // DeleteDisusedCreditCards should return true to indicate it was run.
+  EXPECT_TRUE(DeleteDisusedCreditCards());
+
+  // Wait for the data to be refreshed.
+  PersonalDataChangedWaiter(personal_data()).Wait();
+
+  EXPECT_THAT(base::ToVector(paydm().GetCreditCards(),
+                             [](const CreditCard* card) {
+                               return card->GetRawInfo(CREDIT_CARD_NAME_FULL);
+                             }),
+              UnorderedElementsAre(u"Alice", u"Bob", u"Clyde", u"Frank"));
+
+  // Verify histograms are logged.
+  histogram_tester.ExpectTotalCount(kHistogramName, 1);
+  histogram_tester.ExpectBucketCount(kHistogramName, 1, 1);
+}
+
+}  // namespace autofill

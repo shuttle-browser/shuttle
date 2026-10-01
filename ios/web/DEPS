@@ -1,0 +1,35 @@
+include_rules = [
+  # go/keep-sorted start
+  "+components/leveldb_proto/public",
+  "+components/security_interstitials/core/insecure_form_util.h",
+  "+components/security_state",
+  "+components/sessions/core/session_id.h",
+  "+components/shared_highlighting/core/common",
+  "+components/url_formatter",
+  "+crypto",
+  "+ios/components/enterprise/data_controls",
+  "+ios/components/security_interstitials/https_only_mode/feature.h",
+  "+ios/net",
+  "+ios/public/provider/web",
+  "+ios/web",
+  "+mojo/public",
+  "+net",
+  "+services/metrics/public/cpp",
+  "+services/network/network_context.h",
+  "+services/network/public/cpp",
+  "+services/network/public/mojom",
+  "+ui",
+  # go/keep-sorted end
+
+  # For tests.
+  "+components/crash/core/common/objc_zombie.h",
+  "+components/ukm/test_ukm_recorder.h",
+  "+ios/testing",
+
+  # TODO(crbug.com/40138188): Disallow direct import of eg2 headers.
+  "+ios/third_party/earl_grey2/src/CommonLib",
+  "+ios/third_party/earl_grey2/src/TestLib",
+  "+mojo/core/embedder/embedder.h",
+]
+
+new_usages_require_review = True

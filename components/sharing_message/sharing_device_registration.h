@@ -1,0 +1,59 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_SHARING_MESSAGE_SHARING_DEVICE_REGISTRATION_H_
+#define COMPONENTS_SHARING_MESSAGE_SHARING_DEVICE_REGISTRATION_H_
+
+#include <optional>
+#include <string>
+
+#include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
+#include "components/gcm_driver/instance_id/instance_id.h"
+#include "components/sync_device_info/device_info.h"
+
+enum class SharingDeviceRegistrationResult;
+
+// Responsible for registering and unregistering device with
+// SharingSyncPreference.
+class SharingDeviceRegistration {
+ public:
+  using RegistrationCallback =
+      base::OnceCallback<void(SharingDeviceRegistrationResult)>;
+
+  virtual ~SharingDeviceRegistration() = default;
+
+  // Registers device with sharing sync preferences. Takes a |callback| function
+  // which receives the result of FCM registration for device.
+  virtual void RegisterDevice(RegistrationCallback callback) = 0;
+
+  // Un-registers device with sharing sync preferences.
+  virtual void UnregisterDevice(RegistrationCallback callback) = 0;
+
+  // Returns if device can handle receiving of sms fetcher requests.
+  virtual bool IsSmsFetcherSupported() const = 0;
+
+  // Returns if device can handle receiving of remote copy contents.
+  virtual bool IsRemoteCopySupported() const = 0;
+
+  // Returns if device can handle receiving of optimization guide push
+  // notification.
+  virtual bool IsOptimizationGuidePushNotificationSupported() const = 0;
+
+  // Returns if device can handle receiving notifications about new one time
+  // tokens.
+  virtual bool IsOneTimeTokenBackendNotificationSupported() const = 0;
+
+  // Returns if device can handle receiving of glic experimental triggering.
+  virtual bool IsGlicExperimentalTriggeringSupported() const = 0;
+
+  // Returns if device can handle receiving of browser actuator.
+  virtual bool IsBrowserActuatorSupported() const = 0;
+
+  // For testing
+  virtual void SetEnabledFeaturesForTesting(
+      std::set<syncer::DeviceInfo::SharingFeature> enabled_features) = 0;
+};
+
+#endif  // COMPONENTS_SHARING_MESSAGE_SHARING_DEVICE_REGISTRATION_H_

@@ -1,0 +1,307 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/metrics/metrics_service_client.h"
+
+#include <algorithm>
+#include <optional>
+#include <string>
+
+#include "base/command_line.h"
+#include "base/logging.h"
+#include "base/metrics/field_trial_params.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/strings/string_util.h"
+#include "build/build_config.h"
+#include "components/metrics/metrics_features.h"
+#include "components/metrics/metrics_switches.h"
+#include "components/metrics/server_urls.h"
+#include "components/regional_capabilities/regional_capabilities_country_id.h"
+
+namespace metrics {
+
+namespace {
+
+// Dictates default limits applied to UMA log queues and log sizes.
+// We use raised limits for Android Chrome and Desktop (Windows, Mac, Linux,
+// ChromeOS) per experiment results that show these reduce data loss. Other
+// platforms (such as iOS) have not yet been tested with raised limits and
+// retain the baseline limits.
+//
+// Note: Android WebView does not use these limits, per the implementation in
+// android_webview/browser/metrics/aw_metrics_service_client.cc.
+struct LogTrimmingDefaults {
+  size_t initial_log_count_trim_threshold;
+  size_t ongoing_log_count_trim_threshold;
+  size_t log_bytes_trim_threshold;
+  size_t max_ongoing_log_size_bytes;
+};
+
+constexpr LogTrimmingDefaults GetLogTrimmingDefaults() {
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+  return {
+      .initial_log_count_trim_threshold = 20,
+      .ongoing_log_count_trim_threshold = 8,
+      .log_bytes_trim_threshold = 3 * 1024 * 1024,  // 3 MiB
+      .max_ongoing_log_size_bytes = 1024 * 1024,    // 1 MiB
+  };
+#elif BUILDFLAG(IS_CHROMEOS)
+  // ChromeOS has higher limits to reduce data loss, but the trim threshold is
+  // standard for historical reasons, see crrev.com/c/2904327.
+  return {
+      .initial_log_count_trim_threshold = 20,
+      .ongoing_log_count_trim_threshold = 8,
+      .log_bytes_trim_threshold = 300 * 1024,     // 300 KiB
+      .max_ongoing_log_size_bytes = 1024 * 1024,  // 1 MiB
+  };
+#elif BUILDFLAG(IS_ANDROID)
+  return {
+      .initial_log_count_trim_threshold = 40,
+      .ongoing_log_count_trim_threshold = 16,
+      .log_bytes_trim_threshold = 600 * 1024,    // 600 KiB
+      .max_ongoing_log_size_bytes = 200 * 1024,  // 200 KiB
+  };
+#else
+  return {
+      .initial_log_count_trim_threshold = 20,
+      .ongoing_log_count_trim_threshold = 8,
+      .log_bytes_trim_threshold = 300 * 1024,    // 300 KiB
+      .max_ongoing_log_size_bytes = 100 * 1024,  // 100 KiB
+  };
+#endif
+}
+
+// The number of initial/ongoing logs to persist in the queue before logs are
+// dropped.
+// Note: Both the count threshold and the bytes threshold (see
+// `kLogBytesTrimThreshold` below) must be reached for logs to be
+// dropped/trimmed.
+//
+// Note that each ongoing log may be pretty large, since "initial" logs must
+// first be sent before any ongoing logs are transmitted. "Initial" logs will
+// not be sent if a user is offline. As a result, the current ongoing log will
+// accumulate until the "initial" log can be transmitted. We don't want to save
+// too many of these mega-logs (this should be capped by
+// kLogBytesTrimThreshold).
+//
+// A "standard shutdown" will create a small log, including just the data that
+// was not yet been transmitted, and that is normal (to have exactly one
+// ongoing log at startup).
+//
+// Refer to //components/metrics/unsent_log_store.h for more details on when
+// logs are dropped.
+const base::FeatureParam<size_t> kInitialLogCountTrimThreshold{
+    &features::kMetricsLogTrimming, "initial_log_count_trim_threshold",
+    GetLogTrimmingDefaults().initial_log_count_trim_threshold};
+const base::FeatureParam<size_t> kOngoingLogCountTrimThreshold{
+    &features::kMetricsLogTrimming, "ongoing_log_count_trim_threshold",
+    GetLogTrimmingDefaults().ongoing_log_count_trim_threshold};
+
+// The number bytes of the queue to be persisted before logs are dropped. This
+// will be applied to both log queues (initial/ongoing). This ensures that a
+// reasonable amount of history will be stored even if there is a long series of
+// very small logs.
+// Note: Both the count threshold (see `kInitialLogCountTrimThreshold` and
+// `kOngoingLogCountTrimThreshold` above) and the bytes threshold must be
+// reached for logs to be dropped/trimmed.
+//
+// Refer to //components/metrics/unsent_log_store.h for more details on when
+// logs are dropped.
+const base::FeatureParam<size_t> kLogBytesTrimThreshold{
+    &features::kMetricsLogTrimming, "log_bytes_trim_threshold",
+    GetLogTrimmingDefaults().log_bytes_trim_threshold};
+
+// If an initial/ongoing metrics log upload fails, and the transmission is over
+// this byte count, then we will discard the log, and not try to retransmit it.
+// We also don't persist the log to the prefs for transmission during the next
+// chrome session if this limit is exceeded.
+const base::FeatureParam<size_t> kMaxInitialLogSizeBytes{
+    &features::kMetricsLogTrimming, "max_initial_log_size_bytes",
+    0  // Initial logs can be of any size.
+};
+const base::FeatureParam<size_t> kMaxOngoingLogSizeBytes{
+    &features::kMetricsLogTrimming, "max_ongoing_log_size_bytes",
+    GetLogTrimmingDefaults().max_ongoing_log_size_bytes};
+
+// The minimum time in seconds between consecutive metrics report uploads.
+constexpr int kMetricsUploadIntervalSecMinimum = 20;
+
+}  // namespace
+
+MetricsServiceClient::MetricsServiceClient() = default;
+
+MetricsServiceClient::~MetricsServiceClient() = default;
+
+ukm::UkmService* MetricsServiceClient::GetUkmService() {
+  return nullptr;
+}
+
+metrics::dwa::DwaService* MetricsServiceClient::GetDwaService() {
+  return nullptr;
+}
+
+metrics::private_metrics::PumaService* MetricsServiceClient::GetPumaService() {
+  return nullptr;
+}
+
+structured::StructuredMetricsService*
+MetricsServiceClient::GetStructuredMetricsService() {
+  return nullptr;
+}
+
+
+GURL MetricsServiceClient::GetMetricsServerUrl() {
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  if (command_line->HasSwitch(switches::kUmaServerUrl)) {
+    return GURL(command_line->GetSwitchValueASCII(switches::kUmaServerUrl));
+  }
+  // Explicitly prefix with metrics namespace due to name collision.
+  return metrics::GetMetricsServerUrl();
+}
+
+GURL MetricsServiceClient::GetInsecureMetricsServerUrl() {
+  base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
+  if (command_line->HasSwitch(switches::kUmaInsecureServerUrl)) {
+    return GURL(
+        command_line->GetSwitchValueASCII(switches::kUmaInsecureServerUrl));
+  }
+  // Explicitly prefix with metrics namespace due to name collision.
+  return metrics::GetInsecureMetricsServerUrl();
+}
+
+#if BUILDFLAG(IS_ANDROID)
+bool MetricsServiceClient::IsJobSchedulerSupported() const {
+  return base::FeatureList::IsEnabled(features::kMetricsLogJobSchedulerUpload);
+}
+#endif  // BUILDFLAG(IS_ANDROID)
+
+base::TimeDelta MetricsServiceClient::GetUploadInterval() {
+  const base::CommandLine* command_line =
+      base::CommandLine::ForCurrentProcess();
+  // If an upload interval is set from the command line, use that value but
+  // subject it to a minimum threshold to mitigate the risk of DDoS attack.
+  if (command_line->HasSwitch(metrics::switches::kMetricsUploadIntervalSec)) {
+    const std::string switch_value = command_line->GetSwitchValueASCII(
+        metrics::switches::kMetricsUploadIntervalSec);
+    int custom_upload_interval;
+    if (base::StringToInt(switch_value, &custom_upload_interval)) {
+      return base::Seconds(
+          std::max(custom_upload_interval, kMetricsUploadIntervalSecMinimum));
+    }
+    LOG(DFATAL) << "Malformed value for --metrics-upload-interval. "
+                << "Expected int, got: " << switch_value;
+  }
+
+  // Use a custom interval if available.
+  if (auto custom_interval = GetCustomUploadInterval();
+      custom_interval.has_value()) {
+    return *custom_interval;
+  }
+
+  return GetStandardUploadInterval();
+}
+
+std::optional<base::TimeDelta> MetricsServiceClient::GetCustomUploadInterval()
+    const {
+  return std::nullopt;
+}
+
+bool MetricsServiceClient::ShouldStartUpFast() const {
+  return false;
+}
+
+bool MetricsServiceClient::IsReportingPolicyManaged() {
+  return false;
+}
+
+EnableMetricsDefault MetricsServiceClient::GetMetricsReportingDefaultState() {
+  return EnableMetricsDefault::DEFAULT_UNKNOWN;
+}
+
+bool MetricsServiceClient::IsOnCellularConnection() {
+  return false;
+}
+
+bool MetricsServiceClient::IsUkmAllowedForAllProfiles() {
+  return false;
+}
+
+bool MetricsServiceClient::IsDwaAllowedForAllProfiles() {
+  return false;
+}
+
+bool MetricsServiceClient::AreNotificationListenersEnabledOnAllProfiles() {
+  return false;
+}
+
+std::string MetricsServiceClient::GetAppPackageNameIfLoggable() {
+  return std::string();
+}
+
+std::string MetricsServiceClient::GetUploadSigningKey() {
+  return std::string();
+}
+
+bool MetricsServiceClient::ShouldResetClientIdsOnClonedInstall() {
+  return false;
+}
+
+base::CallbackListSubscription
+MetricsServiceClient::AddOnClonedInstallDetectedCallback(
+    base::OnceClosure callback) {
+  return base::CallbackListSubscription();
+}
+
+MetricsLogStore::StorageLimits MetricsServiceClient::GetStorageLimits() const {
+  return {
+      .initial_log_queue_limits =
+          UnsentLogStore::UnsentLogStoreLimits{
+              .min_log_count = kInitialLogCountTrimThreshold.Get(),
+              .min_queue_size_bytes = kLogBytesTrimThreshold.Get(),
+              .max_log_size_bytes = kMaxInitialLogSizeBytes.Get(),
+          },
+      .ongoing_log_queue_limits =
+          UnsentLogStore::UnsentLogStoreLimits{
+              .min_log_count = kOngoingLogCountTrimThreshold.Get(),
+              .min_queue_size_bytes = kLogBytesTrimThreshold.Get(),
+              .max_log_size_bytes = kMaxOngoingLogSizeBytes.Get(),
+          },
+  };
+}
+
+void MetricsServiceClient::SetUpdateRunningServicesCallback(
+    const base::RepeatingClosure& callback) {
+  update_running_services_ = callback;
+}
+
+void MetricsServiceClient::UpdateRunningServices() {
+  if (update_running_services_) {
+    update_running_services_.Run();
+  }
+}
+
+bool MetricsServiceClient::IsMetricsReportingForceEnabled() const {
+  return ::metrics::IsMetricsReportingForceEnabled();
+}
+
+#if BUILDFLAG(IS_CHROMEOS)
+bool MetricsServiceClient::ShouldUploadMetricsForUserId(uint64_t user_id) {
+  return true;
+}
+
+std::optional<bool> MetricsServiceClient::GetCurrentUserMetricsChoice() const {
+  return std::nullopt;
+}
+
+std::optional<std::string> MetricsServiceClient::GetCurrentUserId() const {
+  return std::nullopt;
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+std::optional<regional_capabilities::CountryIdHolder>
+MetricsServiceClient::GetProfileCountryIdForPrivateMetricsReporting() {
+  return std::nullopt;
+}
+
+}  // namespace metrics

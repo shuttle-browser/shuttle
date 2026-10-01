@@ -1,0 +1,242 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CONTENT_PUBLIC_BROWSER_NAVIGATION_HANDLE_TIMING_H_
+#define CONTENT_PUBLIC_BROWSER_NAVIGATION_HANDLE_TIMING_H_
+
+#include <optional>
+
+#include "base/time/time.h"
+#include "content/common/content_export.h"
+#include "net/base/load_timing_internal_info.h"
+#include "net/dns/public/resolution_details.h"
+#include "net/http/alternate_protocol_usage.h"
+#include "net/spdy/multiplexed_session_creation_initiator.h"
+
+namespace content {
+
+// NavigationHandleTiming contains timing information of loading for navigation
+// recorded in NavigationHandle. This is used for UMAs, not exposed to
+// JavaScript via Navigation Timing API etc unlike mojom::NavigationTiming. See
+// the design doc for details.
+// https://docs.google.com/document/d/16oqu9lyPbfgZIjQsRaCfaKE8r1Cdlb3d4GVSdth4AN8/edit?usp=sharing
+struct CONTENT_EXPORT NavigationHandleTiming {
+  // Represents details about the network session used for the navigation.
+  struct SessionDetails {
+    // Session source information.
+    std::optional<net::SessionSource> session_source;
+    // The state of the advertised alternative service for the navigation.
+    net::AdvertisedAltSvcState advertised_alt_svc_state =
+        net::AdvertisedAltSvcState::kUnknown;
+    // Whether QUIC is enabled in the HttpNetworkSession for the navigation.
+    bool http_network_session_quic_enabled = false;
+    // The time taken for a SPDY/QUIC session to create an active stream due to
+    // max stream limits.
+    std::optional<base::TimeDelta> max_stream_limit_pending_delay;
+    // The details of the host resolution result.
+    std::optional<net::ResolutionDetails> resolution_details;
+    // Details about why a QUIC connection was established or not reused.
+    std::optional<net::QuicConnectionReuseDetails>
+        quic_connection_reuse_details;
+    // Indicates the initiator of the multiplexed session (e.g. preconnect).
+    std::optional<net::MultiplexedSessionCreationInitiator>
+        session_creation_initiator;
+  };
+
+  NavigationHandleTiming();
+  NavigationHandleTiming(const NavigationHandleTiming& timing);
+  NavigationHandleTiming& operator=(const NavigationHandleTiming& timing);
+  NavigationHandleTiming(NavigationHandleTiming&& timing);
+  NavigationHandleTiming& operator=(NavigationHandleTiming&& timing);
+  ~NavigationHandleTiming();
+
+  // The time the URLLoader for the navigation started.
+  base::TimeTicks loader_start_time;
+
+  // The time the browser is ready to fetch the first HTTP request.
+  // This is filled with URLResponseHead::request_start during navigation.
+  std::optional<base::TimeTicks> first_fetch_start_time;
+
+  // The time the first HTTP request was sent. This is filled with
+  // net::LoadTimingInfo::send_start during navigation.
+  //
+  // In some cases, this can be the time an internal request started that did
+  // not go to the networking layer. For example,
+  // - Service Worker: the time the fetch event was ready to be dispatched, see
+  //   content::ServiceWorkerMainResourceLoader::DidPrepareFetchEvent()).
+  // - HSTS: the time the internal redirect was handled.
+  // - Signed Exchange: the time the SXG was handled.
+  base::TimeTicks first_request_start_time;
+
+  // The time the headers of the first HTTP response were received. This is
+  // filled with net::LoadTimingInfo::receive_headers_start on the first HTTP
+  // response during navigation. The response can be informational (1xx).
+  //
+  // In some cases, this can be the time an internal response was received that
+  // did not come from the networking layer. For example,
+  // - Service Worker: the time the response from the service worker was
+  //   received, see content::ServiceWorkerMainResourceLoader::StartResponse().
+  // - HSTS: the time the internal redirect was handled.
+  // - Signed Exchange: the time the SXG was handled.
+  base::TimeTicks first_response_start_time;
+
+  // The time a callback for the navigation loader was first invoked. The time
+  // between this and |first_response_start_time| includes any throttling or
+  // process/thread hopping between the network stack receiving the response and
+  // the navigation loader receiving it.
+  base::TimeTicks first_loader_callback_time;
+
+  // The time the final HTTP request was sent. This is filled with
+  // net::LoadTimingInfo::send_start during navigation.
+  //
+  // Note that if this value is checked before the navigation received the
+  // final non-redirect response, this might be set to a "non-final" request
+  // time, which can still result in a redirect. This is because the value is
+  // updated every time we get a response, which can be a redirect response. See
+  // also `non_redirected_request_start_time`.
+  //
+  // In some cases, this can be the time an internal request started that did
+  // not go to the networking layer. See the comment for
+  // |first_request_start_time|.
+  //
+  // This is equal to |first_request_start_time| if there is no redirection.
+  //
+  // TODO(https://crbug.com/347706997): Consider renaming or not setting this
+  // until we get a non-redirect response, to avoid confusion.
+  base::TimeTicks final_request_start_time;
+
+  // The time the headers of the final HTTP response were received. This is
+  // filled with net::LoadTimingInfo::receive_headers_start on the final HTTP
+  // response during navigation. The response can be informational (1xx).
+  //
+  // Note that if this value is checked before the navigation received the
+  // final non-redirect response, this might be set to a "non-final" redirect
+  // response time. This is because the value is updated every time we get a
+  // response, which can be a redirect response. See also
+  // `non_redirect_response_start_time`.
+  //
+  // In some cases, this can be the time an internal response was received that
+  // did not come from the networking layer. See the comment for
+  // |first_response_start_time|.
+  //
+  // This is equal to |first_response_start_time| if there is no redirection.
+  //
+  // TODO(https://crbug.com/347706997): Consider renaming or not setting this
+  // until we get a non-redirect response, to avoid confusion.
+  base::TimeTicks final_response_start_time;
+
+  // Similar to `final_request_start_time`, `final_response_start_time`, and
+  // `first_loader_callback_time`, but only set when we get the final
+  // non-redirect response for the navigation.
+  base::TimeTicks non_redirected_request_start_time;
+  base::TimeTicks non_redirect_response_start_time;
+  base::TimeTicks non_redirect_response_loader_callback_time;
+
+  // The time the headers of the final non-informational (non-1xx) HTTP response
+  // were received. This is filled with
+  // net::LoadTimingInfo::receive_non_informational_headers_start on the final
+  // non-informational HTTP response during navigation. If no informational
+  // responses are received, this is equal to |final_response_start_time|.
+  base::TimeTicks final_non_informational_response_start_time;
+
+  // The time a callback for the navigation loader was last invoked. The time
+  // between this and |final_response_start_time| includes any throttling or
+  // process/thread hopping between the network stack receiving the response and
+  // the navigation loader receiving it.
+  //
+  // This is equal to |first_loader_callback_time| if there is no redirection.
+  base::TimeTicks final_loader_callback_time;
+
+  // The time the navigation request is determined to be failed and turned to
+  // commit an error page.
+  base::TimeTicks request_failed_time;
+
+  // The time the navigation commit message was sent to a renderer process.
+  base::TimeTicks navigation_commit_sent_time;
+
+  // The time the navigation commit message was received in the renderer
+  // process.
+  base::TimeTicks navigation_commit_received_time;
+
+  // The time at which the renderer responded to the browser's CommitNavigation
+  // IPC.
+  base::TimeTicks navigation_commit_reply_sent_time;
+
+  // The time the DidCommit navigation message was received in the browser
+  // process.
+  base::TimeTicks navigation_did_commit_time;
+
+  // ConnectTiming related delay information for the first HTTP response.
+  base::TimeDelta first_request_domain_lookup_delay;
+  base::TimeDelta first_request_connect_delay;
+  base::TimeDelta first_request_ssl_delay;
+
+  // ConnectTiming related delay information for the final HTTP response.
+  base::TimeDelta final_request_domain_lookup_delay;
+  base::TimeDelta final_request_connect_delay;
+  base::TimeDelta final_request_ssl_delay;
+
+  // Absolute timestamps for the first HTTP response ConnectTiming.
+  base::TimeTicks first_request_domain_lookup_start_time;
+  base::TimeTicks first_request_domain_lookup_end_time;
+  base::TimeTicks first_request_connect_start_time;
+  base::TimeTicks first_request_connect_end_time;
+  base::TimeTicks first_request_ssl_start_time;
+
+  // Absolute timestamps for the final HTTP response ConnectTiming.
+  base::TimeTicks final_request_domain_lookup_start_time;
+  base::TimeTicks final_request_domain_lookup_end_time;
+  base::TimeTicks final_request_connect_start_time;
+  base::TimeTicks final_request_connect_end_time;
+  base::TimeTicks final_request_ssl_start_time;
+
+  // CreateStream related delay information.
+  base::TimeDelta create_stream_delay;
+
+  // HttpNetwork::Transaction connected callback delay information.
+  base::TimeDelta connected_callback_delay;
+
+  // Whether the Accept-CH frame was received.
+  bool accept_ch_frame_received = false;
+
+  // InitializeStream related delay information.
+  base::TimeDelta initialize_stream_delay;
+
+  // The OS-level timestamp of the user input event leading to the navigation.
+  // This timestamp can be empty if the navigation is started without user
+  // input, or this might be null if the navigation started and synchronously
+  // committed in the renderer, such as for renderer-initiated same-document
+  // navigations or synchronous about:blank navigations.
+  base::TimeTicks user_interaction;
+
+  // The time at which the navigation starts, as accurately as we can
+  // determine. Note that for renderer-initiated navigations, this will be the
+  // time when the navigation starts in the renderer.
+  //
+  // Note that this may not be the start time used by many current navigation
+  // related metrics, such as FCP, since those often use `common_params_start`
+  // to avoid including beforeunload durations.
+  // TODO(crbug.com/385170155): Update these metrics to have a more consistent
+  // and representative start time and duration.
+  //
+  // (See: NavigationRequest::Timeline::start)
+  base::TimeTicks actual_navigation_start;
+
+  // The duration the beforeunload dialog was shown. This includes the time
+  // spent waiting for user interaction. This is zero if no dialog was shown.
+  base::TimeDelta before_unload_dialog_duration;
+
+  // Details about the network session used for the navigation, if available.
+  std::optional<SessionDetails> session_details;
+
+  // The time when Fast Fetch eligibility check was run.
+  base::TimeTicks fast_fetch_eligibility_check_time;
+
+  // Whether the navigation was eligible for Fast Fetch.
+  bool is_fast_fetch_eligible = false;
+};
+
+}  // namespace content
+
+#endif  // CONTENT_PUBLIC_BROWSER_NAVIGATION_HANDLE_TIMING_H_

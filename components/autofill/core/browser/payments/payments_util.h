@@ -1,0 +1,69 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_AUTOFILL_CORE_BROWSER_PAYMENTS_PAYMENTS_UTIL_H_
+#define COMPONENTS_AUTOFILL_CORE_BROWSER_PAYMENTS_PAYMENTS_UTIL_H_
+
+#include <stdint.h>
+
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "components/autofill/core/browser/autofill_trigger_source.h"
+#include "components/autofill/core/browser/suggestions/suggestion.h"
+#include "components/autofill/core/browser/suggestions/suggestion_type.h"
+#include "components/autofill/core/common/mojom/autofill_types.mojom-shared.h"
+#include "components/autofill/core/common/unique_ids.h"
+
+namespace autofill {
+
+class BrowserAutofillManager;
+class PaymentsDataManager;
+
+namespace payments {
+
+// Controls the visibility of payment actions in the Touch To Fill bottom sheet.
+struct TouchToFillDisplayOptions {
+  // When true, displays the 'Scan card' button to allow manual entry via
+  // camera.
+  bool show_scan_credit_card = false;
+
+  // When true, displays the Google Pay branding logo.
+  bool show_gpay_logo = false;
+
+  friend bool operator==(const TouchToFillDisplayOptions&,
+                         const TouchToFillDisplayOptions&) = default;
+};
+
+// Returns the billing customer ID (a.k.a. the customer number) for the Google
+// Payments account for this user. Obtains it from the synced data. Returns 0
+// if the customer ID was not found.
+int64_t GetBillingCustomerId(const PaymentsDataManager& payments_data_manager);
+
+// Returns if the customer has an existing Google payments account.
+bool HasGooglePaymentsAccount(const PaymentsDataManager& payments_data_manager);
+
+// Checks if |card_number| matches one of the ranges in
+// |supported_card_bin_ranges|, inclusive of the start and end boundaries.
+// For example, if the range consists of std::pair<34, 36>, then all cards
+// with first two digits of 34, 35 and 36 are supported.
+bool IsCreditCardNumberSupported(
+    const std::u16string& card_number,
+    const std::vector<std::pair<int, int>>& supported_card_bin_ranges);
+
+// Fills or previews the credit card corresponding to `payload` into the form
+// and field corresponding to `form_id` and `field_id`.
+void FillOrPreviewCard(mojom::ActionPersistence action_persistence,
+                       SuggestionType suggestion_type,
+                       const Suggestion::Payload& payload,
+                       BrowserAutofillManager& manager,
+                       const FormGlobalId& form_id,
+                       const FieldGlobalId& field_id,
+                       AutofillTriggerSource trigger_source);
+
+}  // namespace payments
+}  // namespace autofill
+
+#endif  // COMPONENTS_AUTOFILL_CORE_BROWSER_PAYMENTS_PAYMENTS_UTIL_H_

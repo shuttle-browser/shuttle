@@ -1,0 +1,10 @@
+{
+  "name": "chrome.bookmarks root node ID",
+  "version": "0.1",
+  "manifest_version": 3,
+  "description": "Check that the root node ID is exposed by the chrome.bookmarks API",
+  "background": {
+    "service_worker": "test.js"
+  },
+  "permissions": ["bookmarks"]
+}

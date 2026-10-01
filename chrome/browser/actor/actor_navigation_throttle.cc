@@ -1,0 +1,304 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/actor/actor_navigation_throttle.h"
+
+#include <algorithm>
+
+#include "base/types/pass_key.h"
+#include "chrome/browser/actor/actor_keyed_service.h"
+#include "chrome/browser/actor/actor_task.h"
+#include "chrome/browser/actor/execution_engine.h"
+#include "chrome/browser/actor/site_policy.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/common/actor_webui.mojom.h"
+#include "chrome/common/chrome_features.h"
+#include "components/actor/core/actor_features.h"
+#include "components/actor/core/journal_details_builder.h"
+#include "components/actor/public/mojom/actor_types.mojom.h"
+#include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/navigation_throttle.h"
+#include "content/public/browser/navigation_throttle_registry.h"
+#include "content/public/browser/web_contents.h"
+#include "ui/base/page_transition_types.h"
+
+namespace actor {
+
+// static
+void ActorNavigationThrottle::MaybeCreateAndAdd(
+    content::NavigationThrottleRegistry& registry) {
+#if BUILDFLAG(IS_ANDROID)
+  if (!base::FeatureList::IsEnabled(features::kGlicActor)) {
+    return;
+  }
+#endif
+
+  content::NavigationHandle& navigation_handle = registry.GetNavigationHandle();
+
+  if (!navigation_handle.IsInPrimaryMainFrame() &&
+      !navigation_handle.IsInPrerenderedMainFrame()) {
+    return;
+  }
+
+  content::WebContents* web_contents = navigation_handle.GetWebContents();
+
+  const auto* tab = tabs::TabInterface::MaybeGetFromContents(web_contents);
+  if (!tab) {
+    return;
+  }
+
+  Profile* profile =
+      Profile::FromBrowserContext(web_contents->GetBrowserContext());
+  if (!profile) {
+    return;
+  }
+
+  auto* actor_service = actor::ActorKeyedService::Get(profile);
+  if (!actor_service) {
+    return;
+  }
+
+  const ActorTask* task = actor_service->GetTaskFromTab(*tab);
+  if (!task) {
+    return;
+  }
+
+  if (!base::FeatureList::IsEnabled(
+          kGlicAttachNavigationThrottleToPausedTasks) &&
+      !task->IsActingOnTab(tab->GetHandle())) {
+    return;
+  }
+
+  registry.AddThrottle(std::make_unique<ActorNavigationThrottle>(
+      base::PassKey<ActorNavigationThrottle>(), registry, *task));
+}
+
+ActorNavigationThrottle ActorNavigationThrottle::CreateForTesting(
+    content::NavigationThrottleRegistry& registry,
+    const ActorTask& task) {
+  return ActorNavigationThrottle(base::PassKey<ActorNavigationThrottle>(),
+                                 registry, task);
+}
+
+ActorNavigationThrottle::ActorNavigationThrottle(
+    base::PassKey<ActorNavigationThrottle>,
+    content::NavigationThrottleRegistry& registry,
+    const ActorTask& task)
+    : content::NavigationThrottle(registry),
+      task_id_(task.id()),
+      execution_engine_(task.GetExecutionEngine().GetWeakPtr()) {}
+
+ActorNavigationThrottle::~ActorNavigationThrottle() = default;
+
+content::NavigationThrottle::ThrottleCheckResult
+ActorNavigationThrottle::WillStartRequest() {
+  return WillStartOrRedirectRequest(/*is_redirection=*/false);
+}
+
+content::NavigationThrottle::ThrottleCheckResult
+ActorNavigationThrottle::WillRedirectRequest() {
+  return WillStartOrRedirectRequest(/*is_redirection=*/true);
+}
+
+content::NavigationThrottle::ThrottleCheckResult
+ActorNavigationThrottle::WillProcessResponse() {
+  if (!execution_engine_) {
+    return content::NavigationThrottle::PROCEED;
+  }
+  execution_engine_->ShouldNavigationCommit(
+      *navigation_handle(),
+      base::BindOnce(&ActorNavigationThrottle::OnNavigationConfirmationDecision,
+                     weak_factory_.GetWeakPtr()));
+  return content::NavigationThrottle::DEFER;
+}
+
+void ActorNavigationThrottle::OnNavigationConfirmationDecision(
+    MayActOnUrlBlockReason block_reason) {
+  if (block_reason == MayActOnUrlBlockReason::kAllowed) {
+    Resume();
+    return;
+  }
+  AggregatedJournal& journal = GetJournal();
+  journal.Log(
+      navigation_handle()->GetURL(), task_id_, "NavThrottle",
+      JournalDetailsBuilder().AddError("Navigate cross origin").Build());
+  // If the navigation we're about to cancel is attributable to the actor's
+  // tool usage, consider the action a failure.
+  if (navigation_handle()->IsInPrimaryMainFrame() && execution_engine_) {
+    execution_engine_->FailCurrentTool(
+        BlockReasonToResultCode(block_reason, /*for_navigation=*/true));
+  }
+  CancelDeferredNavigation(CANCEL_AND_IGNORE);
+}
+
+void ActorNavigationThrottle::OnUserLeaveDialogDecision(bool may_continue) {
+  CHECK(!navigation_handle()->IsInPrerenderedMainFrame())
+      << "We should not be prompting for pre-rendered frame navigations.";
+
+  AggregatedJournal& journal = GetJournal();
+  if (may_continue) {
+    // User agreed to navigate away. Resume navigation, and stop Actor task.
+    journal.Log(navigation_handle()->GetURL(), task_id_, "NavThrottle",
+                JournalDetailsBuilder()
+                    .Add("navigate", "User allowed navigation (Leaving task)")
+                    .Build());
+
+    // Mark the fact that the user confirmed to leave so the throttle doesn't
+    // trigger this again during resume.
+    was_user_confirmed_leave_ = true;
+
+    // Stop the task BEFORE resuming the navigation. This ensures that the task
+    // is fully cleaned up and Java receives the "clear UI" signal while the
+    // page is still active, preventing any post-resume cleanup from killing the
+    // navigation or missing the UI cleanup signal due to page unloading.
+    if (auto* service = ActorKeyedService::Get(GetProfile())) {
+      service->StopTask(task_id_, ActorTask::StoppedReason::kUserNavigatedAway);
+    }
+
+    Resume();
+    return;
+  }
+  // User refused to leave (stayed). Cancel navigation, do NOT fail tool.
+  journal.Log(navigation_handle()->GetURL(), task_id_, "NavThrottle",
+              JournalDetailsBuilder()
+                  .AddError("User cancelled navigation (Stayed)")
+                  .Build());
+  CancelDeferredNavigation(CANCEL_AND_IGNORE);
+}
+
+content::NavigationThrottle::ThrottleCheckResult
+ActorNavigationThrottle::WillStartOrRedirectRequest(bool is_redirection) {
+  const GURL& navigation_url = navigation_handle()->GetURL();
+  AggregatedJournal& journal = GetJournal();
+
+  actor::ActorTask* task =
+      ActorKeyedService::Get(GetProfile())->GetTask(task_id_);
+  if (!task) {
+    if (was_user_confirmed_leave_) {
+      journal.Log(
+          navigation_url, task_id_, "NavThrottle",
+          JournalDetailsBuilder()
+              .Add("navigate", "User allowed navigation (Task cancelled)")
+              .Build());
+      return content::NavigationThrottle::PROCEED;
+    }
+
+    journal.Log(navigation_url, task_id_, "NavThrottle",
+                JournalDetailsBuilder().AddError("TaskWentAway").Build());
+    return content::NavigationThrottle::CANCEL_AND_IGNORE;
+  }
+
+  if (!is_redirection && !navigation_handle()->IsRendererInitiated()) {
+    journal.Log(navigation_url, task_id_, "NavThrottle",
+                JournalDetailsBuilder()
+                    .Add("navigate", "Not triggered by page")
+                    .Build());
+    // This is a browser-initiated navigation. It could be a user action in the
+    // Chrome UI (Home button, Omnibox, bookmarks) OR a navigation initiated by
+    // the Glic Actor itself via its tools.
+    //
+    // We want to intercept only explicit user-initiated UI navigations that
+    // take the user away from the active task, while allowing Glic's own
+    // background navigations (which do not carry these user UI transition
+    // qualifiers) to proceed without prompting.
+    ::ui::PageTransition transition = navigation_handle()->GetPageTransition();
+    // We explicitly list the transition types to intercept. We cannot use
+    // !::ui::PageTransitionIsWebTriggerable(transition) here because that
+    // would also include PAGE_TRANSITION_AUTO_TOPLEVEL (which is
+    // browser-initiated). Since Actor's own programmatic navigations use
+    // AUTO_TOPLEVEL, using !IsWebTriggerable would cause Actor's own
+    // navigations to be intercepted and deferred!
+    // TODO(crbug.com/500826418): Consider ignoring same-origin/same-site
+    // navigations here since they are less disruptive to active tasks.
+    bool is_user_ui_navigation =
+        ::ui::PageTransitionCoreTypeIs(transition,
+                                       ::ui::PAGE_TRANSITION_TYPED) ||
+        ::ui::PageTransitionCoreTypeIs(transition,
+                                       ::ui::PAGE_TRANSITION_GENERATED) ||
+        ::ui::PageTransitionCoreTypeIs(transition,
+                                       ::ui::PAGE_TRANSITION_AUTO_BOOKMARK) ||
+        (transition & ::ui::PAGE_TRANSITION_HOME_PAGE);
+
+    if (!is_user_ui_navigation) {
+      return content::NavigationThrottle::PROCEED;
+    }
+
+    if (task->navigation_delegate()) {
+      if (task->navigation_delegate()->MaybeDeferNavigation(
+              navigation_url,
+              base::BindOnce(
+                  &ActorNavigationThrottle::OnUserLeaveDialogDecision,
+                  weak_factory_.GetWeakPtr()))) {
+        journal.Log(navigation_url, task_id_, "NavThrottle",
+                    JournalDetailsBuilder()
+                        .Add("navigate", "Deferred by delegate")
+                        .Build());
+        return content::NavigationThrottle::DEFER;
+      }
+    }
+    return content::NavigationThrottle::PROCEED;
+  }
+
+  auto journal_entry = journal.CreatePendingAsyncEntry(
+      navigation_url, task_id_, MakeBrowserTrackUUID(task_id_), "NavThrottle",
+      JournalDetailsBuilder()
+          .Add("defer", is_redirection ? "Check redirect safety"
+                                       : "Check navigation safety")
+          .Build());
+
+  if (!execution_engine_) {
+    return content::NavigationThrottle::CANCEL_AND_IGNORE;
+  }
+
+  execution_engine_->IsAcceptableNavigationDestination(
+      navigation_url,
+      base::BindOnce(
+          &ActorNavigationThrottle::OnIsAcceptableNavigationDestinationResult,
+          weak_factory_.GetWeakPtr(), std::move(journal_entry)));
+
+  return content::NavigationThrottle::DEFER;
+}
+
+void ActorNavigationThrottle::OnIsAcceptableNavigationDestinationResult(
+    std::unique_ptr<AggregatedJournal::PendingAsyncEntry> journal_entry,
+    MayActOnUrlBlockReason block_reason) {
+  if (block_reason == MayActOnUrlBlockReason::kAllowed) {
+    journal_entry->EndEntry(
+        JournalDetailsBuilder().Add("result", "Resume").Build());
+    Resume();
+    return;
+  }
+
+  journal_entry->EndEntry(JournalDetailsBuilder().AddError("Cancel").Build());
+  // If the navigation we're about to cancel is attributable to the actor's tool
+  // usage, consider the action a failure. But we don't consider canceled
+  // prerenders to be an error.
+  if (execution_engine_ && navigation_handle()->IsInPrimaryMainFrame()) {
+    mojom::ActionResultCode tool_failure_code =
+        BlockReasonToResultCode(block_reason, /*for_navigation=*/true);
+
+    // As the effect of FailCurrentTool w.r.t. CancelDeferredNavigation is
+    // asynchronous, order doesn't matter.
+    execution_engine_->FailCurrentTool(tool_failure_code);
+  }
+  // Regardless of whether the action is considered a failure, we cancel the
+  // navigation itself.
+  CancelDeferredNavigation(CANCEL_AND_IGNORE);
+}
+
+Profile* ActorNavigationThrottle::GetProfile() {
+  return Profile::FromBrowserContext(
+      navigation_handle()->GetWebContents()->GetBrowserContext());
+}
+
+AggregatedJournal& ActorNavigationThrottle::GetJournal() {
+  return ActorKeyedService::Get(GetProfile())->GetJournal();
+}
+
+const char* ActorNavigationThrottle::GetNameForLogging() {
+  return "ActorNavigationThrottle";
+}
+
+}  // namespace actor

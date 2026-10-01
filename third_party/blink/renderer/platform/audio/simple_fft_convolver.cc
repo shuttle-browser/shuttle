@@ -1,0 +1,58 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/platform/audio/simple_fft_convolver.h"
+
+#include "base/compiler_specific.h"
+#include "third_party/blink/renderer/platform/audio/vector_math.h"
+
+namespace blink {
+
+SimpleFFTConvolver::SimpleFFTConvolver(
+    unsigned input_block_size,
+    const AudioFloatArray& convolution_kernel)
+    : convolution_kernel_size_(convolution_kernel.size()),
+      fft_kernel_(2 * input_block_size),
+      frame_(2 * input_block_size),
+      input_buffer_(2 *
+                    input_block_size),  // 2nd half of buffer is always zeroed
+      output_buffer_(2 * input_block_size),
+      last_overlap_buffer_(input_block_size) {
+  CHECK_LE(convolution_kernel_size_, FftSize() / 2);
+  // Do padded FFT to get frequency-domain version of the convolution kernel.
+  // This FFT and caching is done once in here so that it does not have to be
+  // done repeatedly in |Process|.
+  fft_kernel_.DoPaddedFFT(convolution_kernel.as_span());
+}
+
+void SimpleFFTConvolver::Process(base::span<const float> source,
+                                 base::span<float> dest) {
+  const unsigned half_size = FftSize() / 2;
+  DCHECK_LE(half_size, source.size());
+  DCHECK_LE(half_size, dest.size());
+
+  // Do padded FFT (get frequency-domain version) by copying samples to the 1st
+  // half of the input buffer (the second half is always zero), multiply in
+  // frequency-domain and do inverse FFT to get output samples.
+  base::span<float> input_buffer_span = input_buffer_.as_span();
+  input_buffer_span.first(half_size).copy_from(source.first(half_size));
+  frame_.DoFFT(input_buffer_span);
+  frame_.Multiply(fft_kernel_);
+  frame_.DoInverseFFT(output_buffer_.as_span());
+
+  // Overlap-add 1st half with 2nd half from previous time and write
+  // to destination.
+  vector_math::Vadd(output_buffer_.as_span(), last_overlap_buffer_.as_span(),
+                    dest, half_size);
+
+  // Finally, save 2nd half for the next time.
+  last_overlap_buffer_.as_span().copy_from(
+      output_buffer_.as_span().subspan(half_size, half_size));
+}
+
+void SimpleFFTConvolver::Reset() {
+  last_overlap_buffer_.Zero();
+}
+
+}  // namespace blink

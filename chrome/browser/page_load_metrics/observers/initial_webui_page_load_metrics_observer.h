@@ -1,0 +1,227 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_PAGE_LOAD_METRICS_OBSERVERS_INITIAL_WEBUI_PAGE_LOAD_METRICS_OBSERVER_H_
+#define CHROME_BROWSER_PAGE_LOAD_METRICS_OBSERVERS_INITIAL_WEBUI_PAGE_LOAD_METRICS_OBSERVER_H_
+
+#include <optional>
+#include <string_view>
+
+#include "base/callback_list.h"
+#include "base/time/time.h"
+#include "components/page_load_metrics/browser/page_load_metrics_observer.h"
+#include "components/page_load_metrics/common/page_load_metrics.mojom.h"
+#include "content/public/browser/navigation_handle_timing.h"
+#include "content/public/browser/site_instance_process_assignment.h"
+#include "ui/base/page_transition_types.h"
+#include "url/gurl.h"
+
+class MetricsReporter;
+class WaapUIMetricsService;
+class InitialWebUIWindowMetricsManager;
+
+namespace content {
+class NavigationHandle;
+}  // namespace content
+
+namespace ukm::builders {
+class InitialWebUIPageLoad;
+}  // namespace ukm::builders
+
+// The metrics observer for page loads of InitialWebUI.
+//
+// A InitialWebUI is a WebUI shown in the top chrome UI, e.g. toolbar. It is
+// different from the normal WebUI which is shown in the content area, e.g.
+// New Tab Page.
+//
+// See
+// https://docs.google.com/document/d/13nVm0v4hKFfTjbsE0n7loh3seBdRmqyLXByZqjlpc8Q/edit?tab=t.0
+class InitialWebUIPageLoadMetricsObserver
+    : public page_load_metrics::PageLoadMetricsObserver {
+ public:
+  // LINT.IfChange(InitialWebUIWindowMetricsManagerBindingStatus)
+  enum class WindowMetricsManagerBindingStatus {
+    kBoundAtStart = 0,
+    kBoundDeferred = 1,
+    kNeverBound = 2,
+    kMaxValue = kNeverBound,
+  };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/ui/enums.xml:InitialWebUIWindowMetricsManagerBindingStatus)
+
+  InitialWebUIPageLoadMetricsObserver();
+
+  // Not movable or copyable.
+  InitialWebUIPageLoadMetricsObserver(
+      const InitialWebUIPageLoadMetricsObserver&) = delete;
+  InitialWebUIPageLoadMetricsObserver& operator=(
+      const InitialWebUIPageLoadMetricsObserver&) = delete;
+
+  ~InitialWebUIPageLoadMetricsObserver() override;
+
+  // page_load_metrics::PageLoadMetricsObserver:
+  const char* GetObserverName() const override;
+  ObservePolicy OnStart(content::NavigationHandle* navigation_handle,
+                        const GURL& currently_committed_url,
+                        bool started_in_foreground) override;
+  void OnMonotonicFirstPaintInPage(
+      const page_load_metrics::mojom::PageLoadTiming& timing) override;
+  void OnMonotonicFirstContentfulPaintInPage(
+      const page_load_metrics::mojom::PageLoadTiming& timing) override;
+  void OnFirstContentfulPaintInPage(
+      const page_load_metrics::mojom::PageLoadTiming& timing) override;
+
+  ObservePolicy OnFencedFramesStart(
+      content::NavigationHandle* navigation_handle,
+      const GURL& currently_committed_url) override;
+  ObservePolicy OnPrerenderStart(content::NavigationHandle* navigation_handle,
+                                 const GURL& currently_committed_url) override;
+  ObservePolicy OnCommit(content::NavigationHandle* navigation_handle) override;
+  ObservePolicy ShouldObserveScheme(const GURL& url) const override;
+  void OnComplete(
+      const page_load_metrics::mojom::PageLoadTiming& timing) override;
+  void OnFailedProvisionalLoad(
+      const page_load_metrics::FailedProvisionalLoadInfo& failed_load_info)
+      override;
+  void OnCpuTimingUpdate(
+      content::RenderFrameHost* subframe_rfh,
+      const page_load_metrics::mojom::CpuTiming& timing) override;
+  ObservePolicy OnHidden(
+      const page_load_metrics::mojom::PageLoadTiming& timing) override;
+  ObservePolicy OnShown() override;
+  ObservePolicy FlushMetricsOnAppEnterBackground(
+      const page_load_metrics::mojom::PageLoadTiming& timing) override;
+
+ private:
+  void RecordNavigationTimingMetrics();
+  void RecordTimingMetrics(
+      const page_load_metrics::mojom::PageLoadTiming& timing);
+  void RecordPageLoadMetrics(base::TimeTicks app_background_time);
+  void RecordRendererUsageMetrics();
+  void RecordPageLoadTimestampMetrics(
+      ukm::builders::InitialWebUIPageLoad& builder);
+  void RecordPageEndMetrics(
+      const page_load_metrics::mojom::PageLoadTiming* timing,
+      base::TimeTicks page_end_time,
+      bool app_entered_background);
+  void RecordAbortMetrics(
+      const page_load_metrics::mojom::PageLoadTiming& timing,
+      base::TimeTicks page_end_time,
+      ukm::builders::InitialWebUIPageLoad* builder);
+
+  // Returns the service for the current profile.
+  // The service is guaranteed to be non-null.
+  WaapUIMetricsService* service() const;
+
+  MetricsReporter& GetMetricsReporter();
+
+  // Returns the MetricsManager for the current window.
+  InitialWebUIWindowMetricsManager* GetMetricsManager() const;
+
+  // Sometimes metrics are recorded before the `BrowserWindowInterface` is
+  // available. These metrics are held and all held metrics are recorded when
+  // `FlushMetricsToManager` is called (e.g. process launch, first paint, first
+  // contentful paint). If the manager is not yet available, this subscribes to
+  // `BrowserWindowInterface` changes to flush once it becomes available.
+  void FlushMetricsToManager();
+
+  // Initiates an asynchronous query chain to fetch WebUI frontend timing data
+  // (marked in JS via user timing marks) and records them to UKM once all are
+  // collected.
+  void RecordRendererMilestones();
+
+  // Temporary container to accumulate WebUI timing data during the
+  // asynchronous fetching sequence.
+  struct TimingData;
+
+  // Queries each timing mark in `mark_names` in parallel. Uses a BarrierClosure
+  // to invoke `OnRendererMilestonesRecorded` once all marks have been checked
+  // and measured.
+  void FetchMarks(std::unique_ptr<TimingData> data,
+                  const std::vector<std::string>& mark_names,
+                  base::TimeTicks navigation_start);
+
+  void FetchMark(const std::string& mark_name,
+                 TimingData* data_ptr,
+                 base::TimeTicks navigation_start,
+                 base::OnceClosure barrier);
+
+  // Callback triggered after checking for the existence of `mark_name`.
+  // If the mark is found, initiates the measurement; otherwise, invokes the
+  // barrier closure.
+  void OnMarkChecked(const std::string& mark_name,
+                     TimingData* data_ptr,
+                     base::TimeTicks navigation_start,
+                     base::OnceClosure barrier,
+                     bool has_mark);
+
+  // Callback triggered after measuring the timing duration for `mark_name`.
+  // Saves the duration value and invokes the barrier closure.
+  void OnMarkMeasured(const std::string& mark_name,
+                      TimingData* data_ptr,
+                      base::OnceClosure barrier,
+                      base::TimeDelta delta);
+
+  // Writes all successfully fetched WebUI timing marks from `data` to UKM.
+  void OnRendererMilestonesRecorded(std::unique_ptr<TimingData> data);
+
+  // Total CPU wall time used by the page while in the foreground.
+  base::TimeDelta total_foreground_cpu_time_;
+
+  // Load timing metrics of the main frame resource request.
+  content::NavigationHandleTiming navigation_handle_timing_;
+
+  // How the SiteInstance for the committed page was assigned a renderer.
+  std::optional<content::SiteInstanceProcessAssignment>
+      render_process_assignment_;
+
+  // PAGE_TRANSITION_LINK is the default PageTransition value.
+  ui::PageTransition page_transition_ = ui::PAGE_TRANSITION_LINK;
+
+  // True if the page started hidden, or ever became hidden.
+  bool was_hidden_ = false;
+
+  // True if the page main resource was served from disk cache.
+  bool was_cached_ = false;
+
+  // Set to true if the main frame resource has a 'Cache-control: no-store'
+  // response header and set to false otherwise. Not set if there is no response
+  // header present.
+  std::optional<bool> main_frame_resource_has_no_store_;
+
+  bool currently_in_foreground_ = false;
+  // The last time the page became foregrounded, or navigation start if the page
+  // started in the foreground and has not been backgrounded.
+  base::TimeTicks last_time_shown_;
+  base::TimeDelta total_foreground_duration_;
+
+  // The navigation start timestamp.
+  base::Time navigation_start_time_;
+
+  // True if we have already recorded the one-time metrics.
+  bool metrics_recorded_ = false;
+
+  // The binding status of the InitialWebUIWindowMetricsManager.
+  WindowMetricsManagerBindingStatus manager_binding_status_ =
+      WindowMetricsManagerBindingStatus::kNeverBound;
+
+  // The timestamp when this observer was constructed.
+  base::TimeTicks creation_time_ = base::TimeTicks::Now();
+
+  struct RendererProcessTimes {
+    base::TimeTicks init_time;
+    base::TimeTicks launched_time;
+  };
+
+  std::optional<base::TimeTicks> first_paint_time_;
+  std::optional<base::TimeTicks> first_contentful_paint_time_;
+  std::optional<RendererProcessTimes> renderer_process_times_;
+  // Subscription to BrowserWindowInterface changes. Once set, this ensures
+  // buffered metrics are flushed as soon as the BrowserWindowInterface becomes
+  // available.
+  base::CallbackListSubscription bwi_subscription_;
+
+  base::WeakPtrFactory<InitialWebUIPageLoadMetricsObserver> weak_factory_{this};
+};
+
+#endif  // CHROME_BROWSER_PAGE_LOAD_METRICS_OBSERVERS_INITIAL_WEBUI_PAGE_LOAD_METRICS_OBSERVER_H_

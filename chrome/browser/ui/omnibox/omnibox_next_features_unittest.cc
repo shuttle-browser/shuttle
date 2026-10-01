@@ -1,0 +1,503 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
+
+#include <memory>
+#include <string>
+
+#include "base/base64.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
+#include "build/build_config.h"
+#include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
+#include "chrome/browser/autocomplete/chrome_aim_eligibility_service.h"
+#include "chrome/browser/search_engines/ai_mode_button_service_factory.h"
+#include "chrome/browser/search_engines/template_url_service_factory_test_util.h"
+#include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_prefs.h"
+#include "chrome/grit/generated_resources.h"
+#include "chrome/test/base/testing_browser_process.h"
+#include "chrome/test/base/testing_profile.h"
+#include "components/omnibox/browser/aim_eligibility_service_features.h"
+#include "components/omnibox/browser/omnibox_prefs.h"
+#include "components/omnibox/common/omnibox_features.h"
+#include "components/prefs/pref_service.h"
+#include "components/search_engines/template_url.h"
+#include "components/search_engines/template_url_service.h"
+#include "components/search_engines/test_ai_mode_button_service.h"
+#include "content/public/test/browser_task_environment.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/omnibox_proto/ntp_composebox_config.pb.h"
+#include "ui/base/l10n/l10n_util.h"
+
+namespace omnibox {
+
+namespace {
+
+std::string SerializeAndBase64EncodeProto(
+    const google::protobuf::MessageLite& proto) {
+  std::string serialized_proto;
+  proto.SerializeToString(&serialized_proto);
+  return base::Base64Encode(serialized_proto);
+}
+
+const char kConfigParamParseSuccessHistogram[] =
+    "ContextualSearch.ConfigParseSuccess.Omnibox";
+
+}  // namespace
+
+class OmniboxNextFeaturesTest : public testing::Test {
+ public:
+  ScopedFeatureConfigForTesting scoped_config_;
+};
+
+// Tests the configuration when the feature is disabled.
+TEST_F(OmniboxNextFeaturesTest, ComposeboxConfigDisabled) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(internal::kWebUIOmniboxAimPopup);
+
+  base::HistogramTester histogram_tester;
+  scoped_config_.Reset();
+
+  omnibox::NTPComposeboxConfig config = scoped_config_.Get().config;
+  EXPECT_EQ(config.entry_point().num_page_load_animations(), 3);
+
+  histogram_tester.ExpectTotalCount(kConfigParamParseSuccessHistogram, 0);
+}
+
+// Tests the configuration when the feature is enabled with the
+// default parameter.
+TEST_F(OmniboxNextFeaturesTest, ComposeboxConfigEnabled_DefaultConfiguration) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(internal::kWebUIOmniboxAimPopup);
+
+  base::HistogramTester histogram_tester;
+  scoped_config_.Reset();
+
+  omnibox::NTPComposeboxConfig config = scoped_config_.Get().config;
+  EXPECT_EQ(config.entry_point().num_page_load_animations(), 3);
+
+  auto composebox = config.composebox();
+
+  auto image_upload = config.composebox().image_upload();
+  EXPECT_EQ(image_upload.downscale_max_image_size(), 1500000);
+  EXPECT_EQ(image_upload.downscale_max_image_width(), 1600);
+  EXPECT_EQ(image_upload.downscale_max_image_height(), 1600);
+  EXPECT_EQ(image_upload.image_compression_quality(), 40);
+  EXPECT_THAT(image_upload.mime_types_allowed(),
+              "image/avif,image/bmp,image/jpeg,image/png,image/webp,image/"
+              "heif,image/heic");
+
+  auto attachment_upload = config.composebox().attachment_upload();
+  // File upload size limit: 100 MiB.
+  EXPECT_EQ(attachment_upload.max_size_bytes(), 100 * 1024 * 1024);
+  EXPECT_THAT(attachment_upload.mime_types_allowed(), ".pdf,application/pdf");
+
+  EXPECT_EQ(composebox.input_placeholder_text(),
+            l10n_util::GetStringUTF8(IDS_NTP_COMPOSE_PLACEHOLDER_TEXT));
+  EXPECT_EQ(composebox.is_pdf_upload_enabled(), true);
+
+  auto placeholder_config = composebox.placeholder_config();
+  EXPECT_EQ(placeholder_config.change_text_animation_interval_ms(), 4000u);
+  EXPECT_EQ(placeholder_config.fade_text_animation_duration_ms(), 250u);
+  EXPECT_EQ(placeholder_config.placeholders().size(), 6);
+
+  histogram_tester.ExpectTotalCount(kConfigParamParseSuccessHistogram, 0);
+}
+
+// Tests the configuration when the feature is enabled with an
+// invalid Base64-encoded proto parameter.
+TEST_F(OmniboxNextFeaturesTest, ComposeboxConfigEnabled_Invalid_Configuration) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      internal::kWebUIOmniboxAimPopup, {{kConfigParam.name, "hello world"}});
+
+  base::HistogramTester histogram_tester;
+  scoped_config_.Reset();
+
+  omnibox::NTPComposeboxConfig config = scoped_config_.Get().config;
+  EXPECT_EQ(config.entry_point().num_page_load_animations(), 3);
+
+  histogram_tester.ExpectTotalCount(kConfigParamParseSuccessHistogram, 1);
+  histogram_tester.ExpectBucketCount(kConfigParamParseSuccessHistogram, false,
+                                     1);
+}
+
+// Tests the configuration when the feature is enabled with a
+// valid Base64-encoded proto parameter that does not set a value.
+TEST_F(OmniboxNextFeaturesTest,
+       ComposeboxConfigEnabled_Valid_Unset_Configuration) {
+  omnibox::NTPComposeboxConfig fieldtrial_config;
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      internal::kWebUIOmniboxAimPopup,
+      {{kConfigParam.name, SerializeAndBase64EncodeProto(fieldtrial_config)}});
+
+  base::HistogramTester histogram_tester;
+  scoped_config_.Reset();
+
+  omnibox::NTPComposeboxConfig config = scoped_config_.Get().config;
+  EXPECT_EQ(config.entry_point().num_page_load_animations(), 3);
+
+  histogram_tester.ExpectTotalCount(kConfigParamParseSuccessHistogram, 0);
+}
+
+// Tests the configuration when the feature is enabled with a
+// valid Base64-encoded proto parameter that sets a value.
+TEST_F(OmniboxNextFeaturesTest,
+       ComposeboxConfigEnabled_Valid_Set_Configuration) {
+  omnibox::NTPComposeboxConfig fieldtrial_config;
+  fieldtrial_config.mutable_entry_point()->set_num_page_load_animations(5);
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      internal::kWebUIOmniboxAimPopup,
+      {{kConfigParam.name, SerializeAndBase64EncodeProto(fieldtrial_config)}});
+
+  base::HistogramTester histogram_tester;
+  scoped_config_.Reset();
+
+  omnibox::NTPComposeboxConfig config = scoped_config_.Get().config;
+  EXPECT_EQ(config.entry_point().num_page_load_animations(), 5);
+
+  histogram_tester.ExpectTotalCount(kConfigParamParseSuccessHistogram, 1);
+  histogram_tester.ExpectBucketCount(kConfigParamParseSuccessHistogram, true,
+                                     1);
+}
+
+// Tests that setting `mime_types_allowed` for images in the `fieldtrial_config`
+// overrides the default image mime types.
+TEST_F(OmniboxNextFeaturesTest,
+       ComposeboxConfigEnabled_Valid_OverrideImageMimeTypes) {
+  omnibox::NTPComposeboxConfig fieldtrial_config;
+  fieldtrial_config.mutable_composebox()
+      ->mutable_image_upload()
+      ->set_mime_types_allowed("image/png");
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      internal::kWebUIOmniboxAimPopup,
+      {{kConfigParam.name, SerializeAndBase64EncodeProto(fieldtrial_config)}});
+
+  base::HistogramTester histogram_tester;
+  scoped_config_.Reset();
+
+  omnibox::NTPComposeboxConfig config = scoped_config_.Get().config;
+  // Check that the image mime types were overridden.
+  EXPECT_THAT(config.composebox().image_upload().mime_types_allowed(),
+              "image/png");
+
+  histogram_tester.ExpectUniqueSample(kConfigParamParseSuccessHistogram, true,
+                                      1);
+}
+
+// Tests that setting `mime_types_allowed` for attachments in the
+// `fieldtrial_config` overrides the default attachment mime types.
+TEST_F(OmniboxNextFeaturesTest,
+       ComposeboxConfigEnabled_Valid_OverrideAttachmentMimeTypes) {
+  omnibox::NTPComposeboxConfig fieldtrial_config;
+  fieldtrial_config.mutable_composebox()
+      ->mutable_attachment_upload()
+      ->set_mime_types_allowed("text/plain");
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      internal::kWebUIOmniboxAimPopup,
+      {{kConfigParam.name, SerializeAndBase64EncodeProto(fieldtrial_config)}});
+
+  base::HistogramTester histogram_tester;
+  scoped_config_.Reset();
+
+  omnibox::NTPComposeboxConfig config = scoped_config_.Get().config;
+  // Check that the attachment mime types were overridden.
+  EXPECT_THAT(config.composebox().attachment_upload().mime_types_allowed(),
+              "text/plain");
+
+  histogram_tester.ExpectUniqueSample(kConfigParamParseSuccessHistogram, true,
+                                      1);
+}
+
+// Tests that providing an empty `mime_types_allowed` value in the fieldtrial
+// config does not clear the default value.
+TEST_F(OmniboxNextFeaturesTest, ComposeboxConfigEnabled_Valid_ClearMimeTypes) {
+  omnibox::NTPComposeboxConfig fieldtrial_config;
+  // Providing an empty `mime_types_allowed`, will not clear the default
+  // config.
+  fieldtrial_config.mutable_composebox()
+      ->mutable_image_upload()
+      ->mime_types_allowed();
+  fieldtrial_config.mutable_composebox()
+      ->mutable_attachment_upload()
+      ->mime_types_allowed();
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      internal::kWebUIOmniboxAimPopup,
+      {{kConfigParam.name, SerializeAndBase64EncodeProto(fieldtrial_config)}});
+
+  base::HistogramTester histogram_tester;
+  scoped_config_.Reset();
+
+  omnibox::NTPComposeboxConfig config = scoped_config_.Get().config;
+  // Check that both default mime type lists were cleared.
+  EXPECT_THAT(config.composebox().image_upload().mime_types_allowed(),
+              "image/avif,image/bmp,image/jpeg,image/png,image/webp,image/"
+              "heif,image/heic");
+  EXPECT_THAT(config.composebox().attachment_upload().mime_types_allowed(),
+              ".pdf,application/pdf");
+
+  histogram_tester.ExpectUniqueSample(kConfigParamParseSuccessHistogram, true,
+                                      1);
+}
+
+class TestingAimEligibilityService : public ChromeAimEligibilityService {
+ public:
+  TestingAimEligibilityService(Profile* profile, bool is_aim_eligible)
+      : ChromeAimEligibilityService(*profile->GetPrefs(),
+                                    /*template_url_service=*/nullptr,
+                                    /*url_loader_factory=*/nullptr,
+                                    /*identity_manager=*/nullptr,
+                                    /*configuration=*/{}),
+        is_aim_eligible_(is_aim_eligible) {}
+
+  variations::VariationsService* GetVariationsService() const override {
+    return nullptr;
+  }
+
+  bool IsAimEligible() const override { return is_aim_eligible_; }
+  bool IsFuseboxEligible() const override { return is_aim_eligible_; }
+  bool IsAimAllowedByDse() const override { return is_aim_eligible_; }
+
+ private:
+  const bool is_aim_eligible_;
+};
+
+class OmniboxNextAimEligibilityTest : public testing::Test {
+ public:
+  OmniboxNextAimEligibilityTest() = default;
+
+  void SetUp() override {
+    testing::Test::SetUp();
+    template_url_service_test_util_ =
+        std::make_unique<TemplateURLServiceFactoryTestUtil>(&profile_);
+    template_url_service_test_util_->VerifyLoad();
+
+    TemplateURLData template_url_data;
+    template_url_data.SetShortName(u"Google");
+    template_url_data.SetKeyword(u"google.com");
+    template_url_data.SetURL("https://www.google.com/search?q={searchTerms}");
+    auto template_url = std::make_unique<TemplateURL>(template_url_data);
+    auto* template_url_ptr =
+        template_url_service_test_util_->model()->Add(std::move(template_url));
+    template_url_service_test_util_->model()
+        ->SetUserSelectedDefaultSearchProvider(template_url_ptr);
+  }
+
+ protected:
+  void SetUpAimEligibilityService(bool is_aim_eligible) {
+    AimEligibilityServiceFactory::GetInstance()->SetTestingFactory(
+        &profile_, base::BindOnce(
+                       [](bool is_eligible, content::BrowserContext* context)
+                           -> std::unique_ptr<KeyedService> {
+                         return std::make_unique<TestingAimEligibilityService>(
+                             static_cast<TestingProfile*>(context),
+                             is_eligible);
+                       },
+                       is_aim_eligible));
+  }
+
+  void SetUpAiModeButtonService() {
+    AiModeButtonServiceFactory::GetInstance()->SetTestingFactory(
+        &profile_, base::BindOnce([](content::BrowserContext* context)
+                                      -> std::unique_ptr<KeyedService> {
+          auto service = std::make_unique<TestAiModeButtonService>(
+              /*template_url_service=*/nullptr);
+          AiModeButtonUiConfig test_config(
+              SearchEngineType::SEARCH_ENGINE_GOOGLE, u"AI Mode", u"Google",
+              /*favicon_url=*/"", /*navigation_url=*/"",
+              /*navigation_url_empty=*/"");
+          service->current_ui_config_ = test_config;
+          return service;
+        }));
+  }
+
+  TestingProfile* profile() { return &profile_; }
+
+  content::BrowserTaskEnvironment task_environment_;
+  TestingProfile profile_;
+  std::unique_ptr<TemplateURLServiceFactoryTestUtil>
+      template_url_service_test_util_;
+};
+
+TEST_F(OmniboxNextAimEligibilityTest, IsAimPopupEnabled) {
+  const struct {
+    bool feature_enabled;
+    bool is_aim_eligible;
+    bool expected_popup_enabled;
+  } test_cases[] = {
+      {true, true, true},
+      {true, false, false},
+      {false, true, false},
+      {false, false, false},
+  };
+
+  for (const auto& test_case : test_cases) {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeatureState(internal::kWebUIOmniboxAimPopup,
+                                      test_case.feature_enabled);
+
+    SetUpAimEligibilityService(test_case.is_aim_eligible);
+
+    EXPECT_EQ(omnibox::IsAimPopupEnabled(profile()),
+              test_case.expected_popup_enabled);
+  }
+}
+
+TEST_F(OmniboxNextAimEligibilityTest, ShouldShowAimContextMenuOption) {
+  profile_.GetPrefs()->SetInteger(omnibox::kAIModeSettings, 0);
+  SetUpAiModeButtonService();
+  struct TestCase {
+    bool is_aim_eligible;
+    bool aim_enabled;
+    bool webui_aim_popup_enabled;
+    const char* context_button_variant;
+    bool expected_should_show;
+  };
+  std::vector<TestCase> test_cases = {
+      // If either feature is enabled, the menu option should be shown.
+      {true, true, false, "below_results", true},
+      {true, false, true, "below_results", true},
+      // If the user is AIM ineligible, then the menu option should be hidden:
+      {false, true, true, "below_results", false},
+  };
+
+  for (size_t i = 0; i < test_cases.size(); ++i) {
+    const auto& test_case = test_cases[i];
+
+    SetUpAimEligibilityService(test_case.is_aim_eligible);
+    base::test::ScopedFeatureList feature_list;
+    std::vector<base::test::FeatureRefAndParams> features_with_params;
+    std::vector<base::test::FeatureRef> disabled_features;
+
+    if (test_case.aim_enabled) {
+      features_with_params.push_back({omnibox::kAimEnabled, {}});
+    } else {
+      disabled_features.push_back(omnibox::kAimEnabled);
+    }
+
+    if (test_case.webui_aim_popup_enabled) {
+      base::FieldTrialParams params;
+      params[omnibox::kWebUIOmniboxAimPopupAddContextButtonVariantParam.name] =
+          test_case.context_button_variant;
+      features_with_params.emplace_back(internal::kWebUIOmniboxAimPopup,
+                                        params);
+    } else {
+      disabled_features.push_back(internal::kWebUIOmniboxAimPopup);
+    }
+
+    feature_list.InitWithFeaturesAndParameters(features_with_params,
+                                               disabled_features);
+
+    EXPECT_EQ(ShouldShowAimContextMenuOption(profile()),
+              test_case.expected_should_show)
+        << " case " << i;
+  }
+}
+
+TEST_F(OmniboxNextAimEligibilityTest, IsOmniboxEverywhereEligibleAndEnabled) {
+  // Test with null profile.
+  EXPECT_FALSE(omnibox::IsOmniboxEverywhereEligible(nullptr));
+  EXPECT_FALSE(omnibox::IsOmniboxEverywhereEnabled(nullptr));
+
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+  // Test with Google DSE and feature enabled on macOS / Windows.
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndEnableFeature(omnibox::kOmniboxEverywhere);
+    EXPECT_TRUE(omnibox::IsOmniboxEverywhereEligible(profile()));
+    EXPECT_TRUE(omnibox::IsOmniboxEverywhereEnabled(profile()));
+
+    // When disabled via user preference, eligible remains true but enabled
+    // is false.
+    if (PrefService* local_state =
+            TestingBrowserProcess::GetGlobal()->local_state()) {
+      local_state->SetBoolean(
+          omnibox_everywhere::prefs::kOmniboxEverywhereEnabled, false);
+      EXPECT_TRUE(omnibox::IsOmniboxEverywhereEligible(profile()));
+      EXPECT_FALSE(omnibox::IsOmniboxEverywhereEnabled(profile()));
+      local_state->SetBoolean(
+          omnibox_everywhere::prefs::kOmniboxEverywhereEnabled, true);
+      EXPECT_TRUE(omnibox::IsOmniboxEverywhereEnabled(profile()));
+    }
+  }
+#else
+  // On unsupported platforms (non-Mac / non-Windows), Omnibox Everywhere is
+  // never eligible or enabled even when the feature is enabled and Google is
+  // DSE.
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndEnableFeature(omnibox::kOmniboxEverywhere);
+    EXPECT_FALSE(omnibox::IsOmniboxEverywhereEligible(profile()));
+    EXPECT_FALSE(omnibox::IsOmniboxEverywhereEnabled(profile()));
+  }
+#endif
+
+  // Test with Google DSE and feature disabled.
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndDisableFeature(omnibox::kOmniboxEverywhere);
+    EXPECT_FALSE(omnibox::IsOmniboxEverywhereEligible(profile()));
+    EXPECT_FALSE(omnibox::IsOmniboxEverywhereEnabled(profile()));
+  }
+
+  // Set non-Google default search provider.
+  TemplateURLData non_google_data;
+  non_google_data.SetShortName(u"Other");
+  non_google_data.SetKeyword(u"other.com");
+  non_google_data.SetURL("https://www.other.com/search?q={searchTerms}");
+  auto non_google_url = std::make_unique<TemplateURL>(non_google_data);
+  auto* non_google_ptr =
+      template_url_service_test_util_->model()->Add(std::move(non_google_url));
+  template_url_service_test_util_->model()
+      ->SetUserSelectedDefaultSearchProvider(non_google_ptr);
+
+  // Test with non-Google DSE and feature enabled.
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndEnableFeature(omnibox::kOmniboxEverywhere);
+    EXPECT_FALSE(omnibox::IsOmniboxEverywhereEligible(profile()));
+    EXPECT_FALSE(omnibox::IsOmniboxEverywhereEnabled(profile()));
+  }
+
+  // Test with non-Google DSE and feature disabled.
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndDisableFeature(omnibox::kOmniboxEverywhere);
+    EXPECT_FALSE(omnibox::IsOmniboxEverywhereEligible(profile()));
+    EXPECT_FALSE(omnibox::IsOmniboxEverywhereEnabled(profile()));
+  }
+}
+
+TEST_F(OmniboxNextAimEligibilityTest,
+       OmniboxEverywherePlatformEligibilityRestriction) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(omnibox::kOmniboxEverywhere);
+
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+  // On macOS and Windows, Omnibox Everywhere is eligible and enabled when
+  // Google is the default search provider.
+  EXPECT_TRUE(omnibox::IsOmniboxEverywhereEligible(profile()));
+  EXPECT_TRUE(omnibox::IsOmniboxEverywhereEnabled(profile()));
+#else
+  // On other platforms (e.g. Linux, ChromeOS, Android), Omnibox Everywhere is
+  // always ineligible and disabled.
+  EXPECT_FALSE(omnibox::IsOmniboxEverywhereEligible(profile()));
+  EXPECT_FALSE(omnibox::IsOmniboxEverywhereEnabled(profile()));
+#endif
+}
+
+}  // namespace omnibox

@@ -1,0 +1,494 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/webui/web_ui_impl.h"
+
+#include <stddef.h>
+
+#include <string>
+#include <string_view>
+#include <utility>
+
+#include "base/containers/flat_map.h"
+#include "base/debug/dump_without_crashing.h"
+#include "base/feature_list.h"
+#include "base/functional/callback_helpers.h"
+#include "base/json/json_writer.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_util.h"
+#include "base/strings/utf_string_conversions.h"
+#include "base/values.h"
+#include "build/build_config.h"
+#include "content/browser/renderer_host/dip_util.h"
+#include "content/browser/renderer_host/frame_tree.h"
+#include "content/browser/renderer_host/navigation_request.h"
+#include "content/browser/renderer_host/render_frame_host_impl.h"
+#include "content/browser/renderer_host/render_process_host_impl.h"
+#include "content/browser/security/cpsp/child_process_security_policy_impl.h"
+#include "content/browser/web_contents/web_contents_impl.h"
+#include "content/browser/web_contents/web_contents_view.h"
+#include "content/browser/webui/url_data_manager_backend.h"
+#include "content/browser/webui/web_ui_controller_factory_registry.h"
+#include "content/browser/webui/web_ui_data_source_impl.h"
+#include "content/browser/webui/web_ui_main_frame_observer.h"
+#include "content/common/features.h"
+#include "content/public/browser/content_browser_client.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/render_view_host.h"
+#include "content/public/browser/web_contents_observer.h"
+#include "content/public/browser/web_ui_browser_interface_broker_registry.h"
+#include "content/public/browser/web_ui_controller.h"
+#include "content/public/browser/web_ui_message_handler.h"
+#include "content/public/browser/webui_config.h"
+#include "content/public/browser/webui_config_map.h"
+#include "content/public/common/bindings_policy.h"
+#include "content/public/common/content_client.h"
+#include "content/public/common/content_features.h"
+#include "content/public/common/content_switches.h"
+#include "content/public/common/url_constants.h"
+#include "services/service_manager/public/cpp/interface_provider.h"
+#include "third_party/blink/public/mojom/loader/local_resource_loader_config.mojom.h"
+#include "ui/base/webui/jstemplate_builder.h"
+
+namespace content {
+
+namespace {
+
+template <typename Range>
+std::u16string GetJavascriptCallImpl(std::string_view function_name,
+                                     const Range& args) {
+  std::vector<std::u16string> json_args;
+  for (const auto& arg : args) {
+    json_args.push_back(base::UTF8ToUTF16(*base::WriteJson(arg)));
+  }
+
+  std::u16string result(base::ASCIIToUTF16(function_name));
+  result.push_back('(');
+  result.append(base::JoinString(json_args, u","));
+  result.push_back(')');
+  result.push_back(';');
+  return result;
+}
+
+// Populates `path_to_resource_map` with resources from `webui_data_source`.
+// This includes both IDR resources (mapped to resource IDs) and generated
+// resources (mapped to response bodies).
+void PopulateLocalResourceMap(
+    const WebUIDataSourceImpl& webui_data_source,
+    base::flat_map<std::string, blink::mojom::LocalResourceValuePtr>&
+        path_to_resource_map,
+    bool enable_in_process_loading_v2) {
+  // Add IDR resources.
+  for (const auto& [path, resource_id] : webui_data_source.path_to_idr_map()) {
+    path_to_resource_map[path] =
+        blink::mojom::LocalResourceValue::NewResourceId(resource_id);
+  }
+
+  if (!enable_in_process_loading_v2) {
+    return;
+  }
+
+  // Add generated resources.
+  base::flat_map<std::string, std::string> generated_resources;
+  webui_data_source.PopulateWebUIResources(generated_resources);
+
+  for (auto& [path, content] : generated_resources) {
+    // Ensures dynamic resources, e.g., string.m.js, do not have a resource id.
+    CHECK(path_to_resource_map.find(path) == path_to_resource_map.end());
+    path_to_resource_map[path] =
+        blink::mojom::LocalResourceValue::NewResponseBody(std::move(content));
+  }
+}
+
+// Returns true if the data source from `origin` should be included for a WebUI
+// with `current_origin`.
+// For performance, a WebUI page should only receives data from its own data
+// sources and shared resources.
+// TODO(crbug.com/459528908): Allow configuring this from URLDataSource.
+bool ShouldIncludeDataSource(const url::Origin& origin,
+                             const url::Origin& current_origin,
+                             bool enable_in_process_loading_v2) {
+  // We only support data sources that serve URLs of the form: chrome://*
+  if (origin.scheme() != kChromeUIScheme) {
+    return false;
+  }
+
+  if (!enable_in_process_loading_v2) {
+    return true;
+  }
+
+  return origin == current_origin || origin.host() == kChromeUIResourcesHost ||
+         origin.host() == kChromeUIThemeHost;
+}
+
+// Helper to add a single data source to the config.
+void AddDataSourceToConfig(
+    WebUIDataSourceImpl* webui_data_source,
+    const url::Origin& current_origin,
+    blink::mojom::LocalResourceLoaderConfig* loader_config,
+    bool enable_in_process_loading_v2) {
+  url::Origin origin = webui_data_source->GetOrigin();
+
+  if (!ShouldIncludeDataSource(origin, current_origin,
+                               enable_in_process_loading_v2)) {
+    return;
+  }
+
+  auto loader_source = blink::mojom::LocalResourceSource::New();
+  webui_data_source->EnsureLoadTimeDataDefaultsAdded();
+  loader_source->headers =
+      URLDataManagerBackend::GetHeaders(webui_data_source, GURL("/"), "")
+          ->raw_headers();
+  loader_source->should_replace_i18n_in_js =
+      webui_data_source->source()->ShouldReplaceI18nInJS();
+  PopulateLocalResourceMap(*webui_data_source,
+                           loader_source->path_to_resource_map,
+                           enable_in_process_loading_v2);
+  loader_source->replacement_strings.insert(
+      webui_data_source->GetReplacements()->begin(),
+      webui_data_source->GetReplacements()->end());
+  loader_config->sources[origin] = std::move(loader_source);
+}
+
+blink::mojom::LocalResourceLoaderConfigPtr CreateLocalResourceLoaderConfig(
+    BrowserContext* browser_context,
+    URLDataManagerBackend* data_backend,
+    const url::Origin& current_origin,
+    WebUIController* controller) {
+  auto loader_config = blink::mojom::LocalResourceLoaderConfig::New();
+  bool enable_in_process_loading_v2 = false;
+  if (base::FeatureList::IsEnabled(
+          features::kWebUIInProcessResourceLoadingV2)) {
+    WebUIConfig* config = WebUIConfigMap::GetInstance().GetConfig(
+        browser_context, current_origin.GetURL());
+    if (config && config->SupportsInProcessResourceLoadingV2()) {
+      enable_in_process_loading_v2 = true;
+    }
+  }
+
+  // 1. Process data sources from the backend.
+  for (auto const& [source_name, data_source] : data_backend->data_sources()) {
+    // For a data source to be useful in the renderer process, it must have a
+    // map from path to resource ID. Only WebUIDataSourceImpls have a map from
+    // path to resource ID or a map from path to response.
+    // Most URLDataSources are not WebUIDataSourceImpls, e.g. favicon, image,
+    // etc.
+    if (!data_source->IsWebUIDataSourceImpl()) {
+      continue;
+    }
+    auto* webui_data_source =
+        static_cast<WebUIDataSourceImpl*>(data_source.get());
+    AddDataSourceToConfig(webui_data_source, current_origin,
+                          loader_config.get(), enable_in_process_loading_v2);
+  }
+
+  // 2. Process shared data sources provided by the controller.
+  if (enable_in_process_loading_v2 && controller) {
+    controller->PopulateLocalResourceLoaderConfig(loader_config.get(),
+                                                  current_origin);
+  }
+
+  return loader_config;
+}
+
+bool IsForTestMessage(const std::string& message) {
+  return base::EndsWith(message, "ForTest") ||
+         base::EndsWith(message, "ForTesting");
+}
+
+}  // namespace
+
+const WebUI::TypeID WebUI::kNoWebUI = nullptr;
+
+// static
+std::u16string WebUI::GetJavascriptCall(
+    std::string_view function_name,
+    base::span<const base::ValueView> arg_list) {
+  return GetJavascriptCallImpl(function_name, arg_list);
+}
+
+// static
+std::u16string WebUI::GetJavascriptCall(std::string_view function_name,
+                                        const base::ListValue& arg_list) {
+  return GetJavascriptCallImpl(function_name, arg_list);
+}
+
+WebUIImpl::WebUIImpl(WebContents* web_contents)
+    : web_contents_(web_contents),
+      web_contents_observer_(
+          std::make_unique<WebUIMainFrameObserver>(this, web_contents_)) {
+  CHECK(web_contents_, base::NotFatalUntil::M158);
+}
+
+WebUIImpl::WebUIImpl(NavigationRequest* request)
+    : WebUIImpl(
+          WebContents::FromFrameTreeNodeId(request->GetFrameTreeNodeId())) {}
+
+WebUIImpl::~WebUIImpl() {
+  // Delete the controller first, since it may also be keeping a pointer to some
+  // of the handlers and can call them at destruction.
+  // Note: Calling this might delete |web_content_| and |frame_host_|. The two
+  // pointers are now potentially dangling.
+  // See https://crbug.com/1308391
+  broker_.reset();
+  controller_.reset();
+
+  remote_.reset();
+  receiver_.reset();
+}
+
+void WebUIImpl::SetProperty(const std::string& name, const std::string& value) {
+  CHECK(remote_, base::NotFatalUntil::M158);
+  remote_->SetProperty(name, value);
+}
+
+void WebUIImpl::Send(const std::string& message, base::ListValue args) {
+  const GURL& source_url = frame_host_->GetLastCommittedURL();
+  if (!ChildProcessSecurityPolicyImpl::GetInstance()->HasWebUIBindings(
+          frame_host_->GetProcess()->GetDeprecatedID()) ||
+      !WebUIControllerFactoryRegistry::GetInstance()->IsURLAcceptableForWebUI(
+          web_contents_->GetBrowserContext(), source_url)) {
+    bad_message::ReceivedBadMessage(
+        frame_host_->GetProcess(),
+        bad_message::WEBUI_SEND_FROM_UNAUTHORIZED_PROCESS);
+    return;
+  }
+
+  if (base::EndsWith(message, "RequiringGesture",
+                     base::CompareCase::SENSITIVE) &&
+      !web_contents_->HasRecentInteraction()) {
+    LOG(ERROR) << message << " received without recent user interaction";
+    return;
+  }
+
+  ProcessWebUIMessage(source_url, message, std::move(args));
+}
+
+void WebUIImpl::SetRenderFrameHost(RenderFrameHost* render_frame_host) {
+  frame_host_ =
+      static_cast<RenderFrameHostImpl*>(render_frame_host)->GetWeakPtr();
+  // Assert that we can only open WebUI for the active or speculative pages.
+  CHECK(frame_host_->lifecycle_state() ==
+                RenderFrameHostImpl::LifecycleStateImpl::kActive ||
+            frame_host_->lifecycle_state() ==
+                RenderFrameHostImpl::LifecycleStateImpl::kSpeculative,
+        base::NotFatalUntil::M158);
+}
+
+void WebUIImpl::WebUIRenderFrameCreated(RenderFrameHost* render_frame_host,
+                                        const url::Origin& origin_to_commit) {
+  controller_->WebUIRenderFrameCreated(render_frame_host);
+
+#if BUILDFLAG(LOAD_WEBUI_FROM_DISK)
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kLoadWebUIfromDisk)) {
+    return;
+  }
+#endif
+
+  if (base::FeatureList::IsEnabled(features::kWebUIInProcessResourceLoading)) {
+    CHECK(frame_host_);
+    frame_host_->UpdateLocalResourceLoader(
+        GetLocalResourceLoaderConfig(origin_to_commit));
+  }
+}
+
+void WebUIImpl::RenderFrameHostUnloading() {
+  DisallowJavascriptOnAllHandlers();
+}
+
+void WebUIImpl::RenderFrameDeleted() {
+  DisallowJavascriptOnAllHandlers();
+}
+
+void WebUIImpl::SetUpMojoConnection() {
+  // TODO(nasko): WebUI mojo might be useful to be registered for
+  // subframes as well, though at this time there is no such usage but currently
+  // this is expected to be called only for outermost main frames.
+  if (frame_host_->GetParentOrOuterDocument())
+    return;
+
+  frame_host_->GetFrameBindingsControl()->BindWebUI(
+      remote_.BindNewEndpointAndPassReceiver(),
+      receiver_.BindNewEndpointAndPassRemote());
+}
+
+WebUIBrowserInterfaceBrokerRegistry& GetRegistryFor(
+    WebUIController& controller) {
+  switch (controller.GetTrustPolicy()) {
+    case WebUIController::TrustPolicy::kTrusted:
+      return WebUIBrowserInterfaceBrokerRegistry::GetTrustedRegistry();
+    case WebUIController::TrustPolicy::kUntrusted:
+      return WebUIBrowserInterfaceBrokerRegistry::GetUntrustedRegistry();
+  }
+}
+
+void WebUIImpl::SetUpMojoInterfaceBroker() {
+  CHECK(GetController()) << "controller has not been set yet";
+
+  broker_ =
+      GetRegistryFor(*GetController()).CreateInterfaceBroker(*GetController());
+  if (broker_) {
+    RenderFrameHostImpl* rfh =
+        static_cast<RenderFrameHostImpl*>(GetRenderFrameHost());
+    // If this WebUIController has a per-WebUI interface broker, create the
+    // broker's remote and ask renderer to use it.
+    rfh->EnableMojoJsBindingsWithBroker(broker_->BindNewPipeAndPassRemote());
+  }
+}
+
+void WebUIImpl::TearDownMojoConnection() {
+  // This is expected to be called only for outermost main frames.
+  if (frame_host_->GetParentOrOuterDocument())
+    return;
+
+  remote_.reset();
+  receiver_.reset();
+}
+
+WebUIConfig* WebUIImpl::GetWebUIConfig() {
+  return WebUIConfigMap::GetInstance().GetConfig(
+      web_contents_->GetBrowserContext(), web_contents_->GetLastCommittedURL());
+}
+
+WebContents* WebUIImpl::GetWebContents() {
+  return web_contents_;
+}
+
+float WebUIImpl::GetDeviceScaleFactor() {
+  return GetScaleFactorForView(web_contents_->GetRenderWidgetHostView());
+}
+
+const std::u16string& WebUIImpl::GetOverriddenTitle() {
+  return overridden_title_;
+}
+
+void WebUIImpl::OverrideTitle(const std::u16string& title) {
+  overridden_title_ = title;
+}
+
+BindingsPolicySet WebUIImpl::GetBindings() {
+  return bindings_;
+}
+
+void WebUIImpl::SetBindings(BindingsPolicySet bindings) {
+  bindings_ = bindings;
+}
+
+const std::vector<std::string>& WebUIImpl::GetRequestableSchemes() {
+  return requestable_schemes_;
+}
+
+void WebUIImpl::AddRequestableScheme(const char* scheme) {
+  requestable_schemes_.push_back(scheme);
+}
+
+WebUIController* WebUIImpl::GetController() {
+  return controller_.get();
+}
+
+RenderFrameHost* WebUIImpl::GetRenderFrameHost() {
+  return frame_host_.get();
+}
+
+bool WebUIImpl::HasRenderFrameHost() const {
+  return !!frame_host_;
+}
+
+void WebUIImpl::SetController(std::unique_ptr<WebUIController> controller) {
+  CHECK(controller);
+  CHECK(!controller_) << "controller cannot be set twice";
+  controller_ = std::move(controller);
+}
+
+bool WebUIImpl::CanCallJavascript() {
+  return (ChildProcessSecurityPolicyImpl::GetInstance()->HasWebUIBindings(
+              frame_host_->GetProcess()->GetDeprecatedID()) ||
+          // It's possible to load about:blank in a Web UI renderer.
+          // See http://crbug.com/42547
+          frame_host_->GetLastCommittedURL().spec() == url::kAboutBlankURL);
+}
+
+void WebUIImpl::CallJavascriptFunctionUnsafe(
+    std::string_view function_name,
+    base::span<const base::ValueView> args) {
+  CHECK(base::IsStringASCII(function_name), base::NotFatalUntil::M158);
+  ExecuteJavascript(GetJavascriptCall(function_name, args));
+}
+
+void WebUIImpl::RegisterMessageCallback(std::string_view message,
+                                        MessageCallback callback) {
+  message_callbacks_.emplace(message, std::move(callback));
+}
+
+void WebUIImpl::ProcessWebUIMessage(const GURL& source_url,
+                                    const std::string& message,
+                                    base::ListValue args) {
+  if (controller_->OverrideHandleWebUIMessage(source_url, message, args))
+    return;
+
+  auto callback_pair = message_callbacks_.find(message);
+  if (callback_pair != message_callbacks_.end()) {
+    // Forward this message and content on.
+    callback_pair->second.Run(args);
+    return;
+  }
+
+  if (!IsForTestMessage(message)) {
+    DUMP_WILL_BE_NOTREACHED() << "Unhandled chrome.send(\"" << message << "\", "
+                              << args << "); from " << source_url;
+  }
+}
+
+std::vector<std::unique_ptr<WebUIMessageHandler>>*
+WebUIImpl::GetHandlersForTesting() {
+  return &handlers_;
+}
+
+// WebUIImpl, protected: -------------------------------------------------------
+
+void WebUIImpl::AddMessageHandler(
+    std::unique_ptr<WebUIMessageHandler> handler) {
+  CHECK(!handler->web_ui(), base::NotFatalUntil::M158);
+  handler->set_web_ui(this);
+  handler->RegisterMessages();
+  handlers_.push_back(std::move(handler));
+}
+
+void WebUIImpl::ExecuteJavascript(const std::u16string& javascript) {
+  // Silently ignore the request. Would be nice to clean-up WebUI so we
+  // could turn this into a CHECK(). http://crbug.com/516690.
+  if (!CanCallJavascript())
+    return;
+
+  frame_host_->ExecuteJavaScript(javascript, base::NullCallback());
+}
+
+void WebUIImpl::DisallowJavascriptOnAllHandlers() {
+  for (const std::unique_ptr<WebUIMessageHandler>& handler : handlers_)
+    handler->DisallowJavascript();
+}
+
+blink::mojom::LocalResourceLoaderConfigPtr
+WebUIImpl::GetLocalResourceLoaderConfig(const url::Origin& origin_to_commit) {
+  URLDataManagerBackend* data_backend =
+      URLDataManagerBackend::GetForBrowserContext(
+          web_contents_->GetBrowserContext());
+  return CreateLocalResourceLoaderConfig(web_contents_->GetBrowserContext(),
+                                         data_backend, origin_to_commit,
+                                         controller_.get());
+}
+
+// static
+blink::mojom::LocalResourceLoaderConfigPtr
+WebUIImpl::GetLocalResourceLoaderConfigForTesting(
+    BrowserContext* browser_context,
+    URLDataManagerBackend* data_backend,
+    const url::Origin& current_origin,
+    WebUIController* controller) {
+  return CreateLocalResourceLoaderConfig(browser_context, data_backend,
+                                         current_origin, controller);
+}
+
+}  // namespace content

@@ -1,0 +1,45 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_WEBUI_WEBUI_TOOLBAR_UTILS_TOOLBAR_BUTTON_UTILS_H_
+#define CHROME_BROWSER_UI_WEBUI_WEBUI_TOOLBAR_UTILS_TOOLBAR_BUTTON_UTILS_H_
+
+#include <optional>
+
+#include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom.h"
+#include "ui/actions/action_id.h"
+#include "ui/base/interaction/element_identifier.h"
+
+namespace actions {
+class ActionItem;
+}  // namespace actions
+
+namespace webui_toolbar {
+
+// Get the list of ElementIdentifiers for the WebUI-specific pinned toolbar
+// actions.
+std::vector<ui::ElementIdentifier> GetPinnedToolbarActionElementIds();
+
+// Convert Pinned Toolbar Action `action` into an ElementIdentifier.
+ui::ElementIdentifier ActionIdToElementIdentifier(actions::ActionId action);
+
+// Convert Pinned Toolbar Action `item` to a mojo'able enum value.
+std::optional<toolbar_ui_api::mojom::PinnedToolbarAction>
+ActionItemToPinnedToolbarAction(actions::ActionItem* item);
+
+// Convert Pinned Toolbar Action `action` from a mojo'able enum value.
+std::optional<actions::ActionId> PinnedToolbarActionToActionId(
+    toolbar_ui_api::mojom::PinnedToolbarAction action);
+
+// Convert Page Action Action `action` to a mojo'able enum value.
+toolbar_ui_api::mojom::PageActionId ActionIdToMojomPageActionId(
+    actions::ActionId action_id);
+
+// Convert Page Action Action `action` from a mojo'able enum value.
+actions::ActionId MojomPageActionIdToActionId(
+    toolbar_ui_api::mojom::PageActionId page_action_id);
+
+}  // namespace webui_toolbar
+
+#endif  // CHROME_BROWSER_UI_WEBUI_WEBUI_TOOLBAR_UTILS_TOOLBAR_BUTTON_UTILS_H_

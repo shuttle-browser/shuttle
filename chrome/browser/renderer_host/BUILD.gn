@@ -1,0 +1,109 @@
+# Copyright 2022 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//extensions/buildflags/buildflags.gni")
+
+source_set("renderer_host") {
+  sources = [
+    "chrome_navigation_ui_data.cc",
+    "chrome_navigation_ui_data.h",
+  ]
+  public_deps = [
+    "//chrome/common",
+    "//components/actor/core:task_id",
+    "//components/offline_pages/buildflags",
+    "//components/offline_pages/core/request_header",
+    "//content/public/browser",
+    "//extensions/buildflags",
+  ]
+  deps = [
+    "//chrome/browser/actor",
+    "//chrome/browser/preloading/prefetch/no_state_prefetch",
+  ]
+
+  if (enable_extensions) {
+    public_deps += [ "//extensions/browser" ]
+  }
+
+  if (is_android) {
+    sources += [ "android/chrome_navigation_ui_data_android.cc" ]
+    deps += [ "//chrome/android:chrome_jni_headers" ]
+  }
+}
+
+if (is_mac) {
+  import("//build/config/mac/rules.gni")
+  import("//build/util/branding.gni")
+
+  # Because browser and PWA share the same history swiper code.
+  # Add a new target so that browser and PWA can have the same DEPS.
+  source_set("history_swiper") {
+    sources = [
+      "chrome_render_widget_host_view_mac_history_swiper.h",
+      "chrome_render_widget_host_view_mac_history_swiper.mm",
+    ]
+
+    frameworks = [ "Cocoa.framework" ]
+
+    deps = [
+      "//chrome/browser/ui",
+      "//chrome/browser/ui/cocoa",
+      "//third_party/blink/public/common:headers",
+    ]
+  }
+
+  source_set("history_swiping_control") {
+    sources = [
+      "chrome_render_widget_host_view_mac_history_swiping_control.cc",
+      "chrome_render_widget_host_view_mac_history_swiping_control.h",
+    ]
+    deps = [
+      "//base",
+      "//content/public/browser",
+    ]
+  }
+
+  source_set("delegate") {
+    sources = [ "chrome_render_widget_host_view_mac_delegate.h" ]
+    public_deps = [ "//content/public/browser" ]
+  }
+
+  # TODO(crbug.com/479890756): Merge :delegate and :delegate_impl targets when
+  # c/b/ui/views/tab_contents/chrome_web_contents_view_delegate_views_mac.mm
+  # gets componentized.
+  source_set("delegate_impl") {
+    sources = [ "chrome_render_widget_host_view_mac_delegate.mm" ]
+    deps = [
+      ":delegate",
+      ":history_swiper",
+      ":history_swiping_control",
+      "//base",
+      "//chrome/browser/actor/ui:actor_overlay",
+      "//chrome/browser/devtools",
+      "//chrome/browser/glic",
+      "//chrome/browser/ui",
+      "//components/spellcheck/browser",
+    ]
+  }
+}
+
+if (!is_android) {
+  source_set("browser_tests") {
+    testonly = true
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+    sources = [ "render_process_host_chrome_browsertest.cc" ]
+    deps = [
+      "//chrome/browser/devtools",
+      "//chrome/browser/extensions",
+      "//chrome/browser/preloading:test_support",
+      "//chrome/browser/search",
+      "//chrome/browser/ui",
+      "//chrome/common:constants",
+      "//chrome/test:test_support",
+      "//chrome/test:test_support_ui",
+      "//components/performance_manager",
+      "//content/test:test_support",
+    ]
+  }
+}

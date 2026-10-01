@@ -1,0 +1,165 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_VIEWS_WEB_APPS_FRAME_TOOLBAR_WEB_APP_FRAME_TOOLBAR_VIEW_H_
+#define CHROME_BROWSER_UI_VIEWS_WEB_APPS_FRAME_TOOLBAR_WEB_APP_FRAME_TOOLBAR_VIEW_H_
+
+#include <optional>
+#include <utility>
+#include <vector>
+
+#include "base/memory/raw_ptr.h"
+#include "build/build_config.h"
+#include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/metadata/metadata_header_macros.h"
+#include "ui/gfx/color_palette.h"
+#include "ui/views/accessible_pane_view.h"
+#include "ui/views/view_targeter_delegate.h"
+
+namespace {
+class WebAppFrameViewChromeOSTest;
+class LocationBarViewQuietNotificationInteractiveUITest;
+}  // namespace
+
+namespace views {
+class View;
+}  // namespace views
+
+class BrowserView;
+class ExtensionsContainerViews;
+class ContentSettingImageView;
+class WebAppNavigationButtonContainer;
+class WebAppToolbarButtonContainer;
+class WebAppFrameToolbarView;
+
+// A container for web app buttons in the title bar.
+class WebAppFrameToolbarView : public views::AccessiblePaneView,
+                               public ToolbarButtonProvider {
+  METADATA_HEADER(WebAppFrameToolbarView, views::AccessiblePaneView)
+
+ public:
+  explicit WebAppFrameToolbarView(BrowserView* browser_view);
+  WebAppFrameToolbarView(const WebAppFrameToolbarView&) = delete;
+  WebAppFrameToolbarView& operator=(const WebAppFrameToolbarView&) = delete;
+  ~WebAppFrameToolbarView() override;
+
+  void UpdateStatusIconsVisibility();
+
+  // Called when the caption colors may have changed; updates the local values
+  // and triggers a repaint if necessary.
+  void UpdateCaptionColors();
+
+  // Sets the container to paints its buttons the active/inactive color.
+  void SetPaintAsActive(bool active);
+  bool GetPaintAsActive() const;
+
+  // Sets own bounds equal to the available space and returns the bounds of the
+  // remaining inner space as a pair of (leading x, trailing x).
+  std::pair<int, int> LayoutInContainer(int leading_x,
+                                        int trailing_x,
+                                        int y,
+                                        int available_height);
+  gfx::Rect LayoutInContainer(gfx::Rect available_space);
+
+  // Determines how big the center container would be in a toolbar of
+  // `available_size` - this is the space in which elements like the title can
+  // be laid out.
+  gfx::Rect GetCenterContainerForSize(const gfx::Size& available_size) const;
+
+  // Sets own bounds within the available_space.
+  void LayoutForWindowControlsOverlay(gfx::Rect available_space);
+
+  std::optional<SkColor> active_color_for_testing() const {
+    return active_foreground_color_;
+  }
+
+  // ToolbarButtonProvider:
+  ExtensionsContainerViews* GetExtensionsContainerViews() override;
+  PinnedToolbarActions* GetPinnedToolbarActions() override;
+  gfx::Size GetToolbarButtonSize() const override;
+  views::BubbleAnchor GetDefaultExtensionDialogAnchor() override;
+  page_actions::PageActionViewInterface* GetPageActionViewInterface(
+      actions::ActionId action_id) override;
+  AppMenuControl* GetAppMenuControl() override;
+  gfx::Rect GetFindBarBoundingBox(int contents_bottom) override;
+  void FocusToolbar() override;
+  views::AccessiblePaneView* GetAsAccessiblePaneView() override;
+  views::BubbleAnchor GetBubbleAnchor(
+      std::optional<actions::ActionId> action_id) override;
+  views::BubbleAnchor GetPageActionBubbleAnchor(
+      actions::ActionId action_id) override;
+  void ZoomChangedForActiveTab(bool can_show_bubble) override;
+  AvatarToolbarButtonInterface* GetAvatarToolbarButtonInterface() override;
+  ToolbarButton* GetBackButton() override;
+  ReloadControl* GetReloadButton() override;
+  ToolbarButton* GetDownloadButton() override;
+  WebUIToolbarWebView* GetWebUIToolbarViewForTesting() override;
+
+  void OnWindowControlsOverlayEnabledChanged();
+  void UpdateUnframedModeEnabled();
+  void SetWindowControlsOverlayToggleVisible(bool visible);
+
+  WebAppNavigationButtonContainer* get_left_container_for_testing() {
+    return left_container_;
+  }
+  WebAppToolbarButtonContainer* get_right_container_for_testing() {
+    return right_container_;
+  }
+
+ protected:
+  // views::AccessiblePaneView:
+  // Adds logic to ensure that the buttons to be focused follow these rules
+  // when the toolbar is focused:
+  // 1. Any content settings based buttons are focused first, falling back to
+  //    the three-dot menu if not found.
+  // 2. For minimal-ui, focus on the leftmost navigation control (e.g. reload or
+  //    back button) on the frame.
+  views::View* GetDefaultFocusableChild() override;
+  void ChildPreferredSizeChanged(views::View* child) override;
+  void OnThemeChanged() override;
+
+ private:
+  class ViewTargeter;
+  friend class WebAppFrameToolbarViewTargeter;
+  friend class ImmersiveModeControllerChromeosWebAppBrowserTest;
+  friend class WebAppAshInteractiveUITest;
+  friend class WebAppFrameViewChromeOSTest;
+  friend class LocationBarViewQuietNotificationInteractiveUITest;
+
+  views::View* GetContentSettingContainerForTesting();
+
+  const std::vector<raw_ptr<ContentSettingImageView, VectorExperimental>>&
+  GetContentSettingViewsForTesting() const;
+
+  void UpdateCachedColors();
+
+  // `color_changed` is true if this is called after an update to the window's
+  // color. It will be false if this is called when the color is initially set
+  // for the window.
+  void UpdateChildrenColor(bool color_changed);
+
+  // The containing browser view.
+  const raw_ptr<BrowserView> browser_view_;
+  ui::ScopedUnownedUserData<ToolbarButtonProvider> scoped_unowned_user_data_;
+
+  // Button and text colors.
+  bool paint_as_active_ = true;
+  std::optional<SkColor> active_background_color_;
+  std::optional<SkColor> active_foreground_color_;
+  std::optional<SkColor> inactive_background_color_;
+  std::optional<SkColor> inactive_foreground_color_;
+
+  // All remaining members are owned by the views hierarchy.
+
+  // The navigation container is only created when display mode is minimal-ui.
+  raw_ptr<WebAppNavigationButtonContainer> left_container_ = nullptr;
+
+  // Empty container used by the parent frame to layout additional elements.
+  raw_ptr<views::View> center_container_ = nullptr;
+
+  raw_ptr<WebAppToolbarButtonContainer> right_container_ = nullptr;
+};
+
+#endif  // CHROME_BROWSER_UI_VIEWS_WEB_APPS_FRAME_TOOLBAR_WEB_APP_FRAME_TOOLBAR_VIEW_H_

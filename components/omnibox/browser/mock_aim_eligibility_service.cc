@@ -1,0 +1,51 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/omnibox/browser/mock_aim_eligibility_service.h"
+
+#include "services/network/public/cpp/shared_url_loader_factory.h"
+
+MockAimEligibilityService::MockAimEligibilityService(
+    PrefService& pref_service,
+    TemplateURLService* template_url_service,
+    scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
+    signin::IdentityManager* identity_manager,
+    Configuration configuration)
+    : AimEligibilityService(pref_service,
+                            template_url_service,
+                            url_loader_factory,
+                            identity_manager,
+                            "en-US",
+                            std::move(configuration)) {
+  ON_CALL(*this, IsServerEligibilityEnabled())
+      .WillByDefault(testing::Return(true));
+  ON_CALL(*this, IsAimAllowedByDse()).WillByDefault(testing::Return(true));
+  ON_CALL(*this, IsAimAllowedByFeatureAndPolicy())
+      .WillByDefault(testing::Return(true));
+  ON_CALL(*this, IsAimLocallyEligible()).WillByDefault(testing::Return(true));
+  ON_CALL(*this, IsAimEligible()).WillByDefault(testing::Return(true));
+  ON_CALL(*this, IsCanvasEligible()).WillByDefault(testing::Return(true));
+  ON_CALL(*this, IsCobrowseServerEligible())
+      .WillByDefault(testing::Invoke(
+          this, &MockAimEligibilityService::IsCobrowseEligible));
+  ON_CALL(*this, IsCobrowseEligible()).WillByDefault(testing::Return(true));
+  ON_CALL(*this, IsDeepSearchEligible()).WillByDefault(testing::Return(true));
+  ON_CALL(*this, IsCreateImagesEligible()).WillByDefault(testing::Return(true));
+  ON_CALL(*this, IsFuseboxEligible()).WillByDefault(testing::Return(true));
+  ON_CALL(*this, IsCsbEligible()).WillByDefault(testing::Return(true));
+  ON_CALL(*this, IsAimUrl(testing::_, testing::_))
+      .WillByDefault(testing::Return(true));
+  ON_CALL(*this, IsAimHost(testing::_, testing::_))
+      .WillByDefault(testing::Return(true));
+  ON_CALL(*this, HasNoCobrowseParams(testing::_))
+      .WillByDefault(testing::Return(false));
+  ON_CALL(*this, HasAimUrlParams(testing::_))
+      .WillByDefault(testing::Return(true));
+  ON_CALL(*this, GetSearchboxConfig())
+      .WillByDefault(testing::Return(&mock_config));
+  ON_CALL(*this, GetVariationsService())
+      .WillByDefault(testing::Return(nullptr));
+}
+
+MockAimEligibilityService::~MockAimEligibilityService() = default;

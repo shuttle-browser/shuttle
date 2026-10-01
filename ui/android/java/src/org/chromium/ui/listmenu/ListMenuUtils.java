@@ -1,0 +1,280 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.ui.listmenu;
+
+import static org.chromium.ui.listmenu.ListMenuItemProperties.CLICK_LISTENER;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.ENABLED;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.HOVER_LISTENER;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.IS_HIGHLIGHTED;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.KEY_LISTENER;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.TITLE;
+import static org.chromium.ui.listmenu.ListMenuItemProperties.TITLE_ID;
+import static org.chromium.ui.listmenu.ListMenuSubmenuItemProperties.IS_EXPANDED;
+import static org.chromium.ui.listmenu.ListMenuSubmenuItemProperties.SUBMENU_PROVIDER;
+
+import android.content.Context;
+import android.content.res.ColorStateList;
+import android.content.res.Resources;
+import android.graphics.Rect;
+import android.graphics.drawable.GradientDrawable;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.CompoundButton;
+import android.widget.ImageView;
+import android.widget.ListView;
+
+import androidx.annotation.AttrRes;
+import androidx.annotation.ColorRes;
+import androidx.core.widget.CompoundButtonCompat;
+import androidx.core.widget.ImageViewCompat;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.ui.R;
+import org.chromium.ui.hierarchicalmenu.HierarchicalMenuController;
+import org.chromium.ui.hierarchicalmenu.HierarchicalMenuController.SubmenuHeaderFactory;
+import org.chromium.ui.hierarchicalmenu.HierarchicalMenuKeyProvider;
+import org.chromium.ui.modelutil.LayoutViewBuilder;
+import org.chromium.ui.modelutil.MVCListAdapter.ListItem;
+import org.chromium.ui.modelutil.MVCListAdapter.ModelList;
+import org.chromium.ui.modelutil.ModelListAdapter;
+import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.ui.modelutil.PropertyModel.WritableBooleanPropertyKey;
+import org.chromium.ui.modelutil.PropertyModel.WritableIntPropertyKey;
+import org.chromium.ui.modelutil.PropertyModel.WritableObjectPropertyKey;
+import org.chromium.ui.util.AttrUtils;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Supplier;
+
+@NullMarked
+public class ListMenuUtils {
+    /**
+     * Creates and configures a {@link ModelListAdapter} for the context menu.
+     *
+     * <p>This adapter handles different {@link ListItemType}s for context menu items, dividers, and
+     * headers, and provides custom logic for determining item enabled status and retrieving item
+     * IDs.
+     *
+     * @param listItems The {@link ModelList} containing the items to be displayed in the menu.
+     * @return A configured {@link ModelListAdapter} ready to be set on the {@link ListView}.
+     */
+    public static ModelListAdapter createAdapter(ModelList listItems) {
+        return createAdapter(listItems, Set.of(), /* delegate= */ null);
+    }
+
+    /**
+     * Creates and configures a {@link ModelListAdapter} for the context menu.
+     *
+     * <p>This adapter handles different {@link ListItemType}s for context menu items, dividers, and
+     * headers, and provides custom logic for determining item enabled status and retrieving item
+     * IDs.
+     *
+     * @param listItems The {@link ModelList} containing the items to be displayed in the menu.
+     * @param disabledTypes Additional integer types which should not be enabled in the adapter.
+     * @param delegate The {@link ListMenu.Delegate} used to handle menu clicks. If not provided,
+     *     the item's CLICK_LISTENER or listMenu's onMenuItemSelected method will be used.
+     * @return A configured {@link ModelListAdapter} ready to be set on the {@link ListView}.
+     */
+    public static ListMenuItemAdapter createAdapter(
+            ModelList listItems,
+            Collection<Integer> disabledTypes,
+            ListMenu.@Nullable Delegate delegate) {
+        ListMenuItemAdapter adapter = new ListMenuItemAdapter(listItems, disabledTypes, delegate);
+
+        adapter.registerType(
+                ListItemType.DIVIDER,
+                new LayoutViewBuilder<>(R.layout.list_section_divider),
+                ListSectionDividerViewBinder::bind);
+        adapter.registerType(
+                ListItemType.MENU_ITEM,
+                new LayoutViewBuilder<>(R.layout.list_menu_item),
+                ListMenuItemViewBinder::binder);
+        adapter.registerType(
+                ListItemType.MENU_ITEM_WITH_CHECKBOX,
+                new LayoutViewBuilder<>(R.layout.list_menu_checkbox),
+                ListMenuItemWithCheckboxViewBinder::bind);
+        adapter.registerType(
+                ListItemType.MENU_ITEM_WITH_RADIO_BUTTON,
+                new LayoutViewBuilder<>(R.layout.list_menu_radio_button),
+                ListMenuItemWithRadioButtonViewBinder::bind);
+        adapter.registerType(
+                ListItemType.MENU_ITEM_WITH_SUBMENU,
+                new LayoutViewBuilder<>(R.layout.list_menu_submenu_parent_row),
+                ListMenuItemWithSubmenuViewBinder::bind);
+        adapter.registerType(
+                ListItemType.SUBMENU_HEADER,
+                new LayoutViewBuilder<>(R.layout.list_menu_submenu_header),
+                ListMenuSubmenuHeaderViewBinder::bind);
+
+        return adapter;
+    }
+
+    /** Returns whether {@code item} has a click listener. */
+    public static boolean hasClickListener(ListItem item) {
+        return item.model != null
+                && item.model.containsKey(CLICK_LISTENER)
+                && item.model.get(CLICK_LISTENER) != null;
+    }
+
+    /**
+     * Calculates the Rect of a given View in the coordinate space of a root View. This is useful
+     * when you need to position a UI element (like a popup) relative to a specific view, but need
+     * the coordinates to be based on the root view's visible area, which accounts for when the
+     * window is not placed in the origin of the screen.
+     *
+     * @param view The View whose position and size are to be calculated.
+     * @return A new {@link Rect} containing the coordinates and dimensions of the {@code view}
+     *     relative to the visible frame of the {@code rootView}.
+     */
+    public static Rect getViewRectRelativeToItsRootView(View view) {
+        Rect rootViewRect = new Rect();
+        view.getRootView().getWindowVisibleDisplayFrame(rootViewRect);
+        int[] viewCoordinates = new int[2];
+        view.getLocationOnScreen(viewCoordinates);
+
+        int left = viewCoordinates[0] - rootViewRect.left;
+        int top = viewCoordinates[1] - rootViewRect.top;
+
+        return new Rect(left, top, left + view.getWidth(), top + view.getHeight());
+    }
+
+    /**
+     * Clips the content view to a rounded outline defined by a theme attribute.
+     *
+     * @param contentView The view to be clipped.
+     * @param cornerRadiusAttr The attribute ID (e.g., R.attr.popupBgCornerRadius) defining the
+     *     radius.
+     */
+    public static void clipContentViewOutline(View contentView, @AttrRes int cornerRadiusAttr) {
+        GradientDrawable outlineDrawable = new GradientDrawable();
+        outlineDrawable.setShape(GradientDrawable.RECTANGLE);
+        outlineDrawable.setCornerRadius(
+                AttrUtils.getDimensionPixelSize(contentView.getContext(), cornerRadiusAttr));
+        contentView.setBackground(outlineDrawable);
+        contentView.setClipToOutline(true);
+    }
+
+    /**
+     * Creates an instance of {@link HierarchicalMenuController} for {@link ListMenu}.
+     *
+     * @param <T> The type of the popup window managed by the controller's {@link FlyoutHandler}.
+     * @param context The {@link Context} for the controller to use.
+     * @return A new {@link HierarchicalMenuController} instance.
+     */
+    public static <T> HierarchicalMenuController<T> createHierarchicalMenuController(
+            Context context) {
+        HierarchicalMenuKeyProvider keyProvider = new ListMenuUtils.ListMenuKeyProvider();
+        SubmenuHeaderFactory headerFactory =
+                (clickedItem, backRunnable) -> {
+                    PropertyModel.Builder builder =
+                            new PropertyModel.Builder(ListMenuSubmenuItemProperties.ALL_KEYS);
+                    HierarchicalMenuController.populateDefaultHeaderProperties(
+                            builder,
+                            keyProvider,
+                            clickedItem.model.get(ListMenuItemProperties.TITLE),
+                            backRunnable);
+
+                    if (clickedItem.model.containsKey(ListMenuItemProperties.TEXT_APPEARANCE_ID)) {
+                        builder.with(
+                                ListMenuItemProperties.TEXT_APPEARANCE_ID,
+                                clickedItem.model.get(ListMenuItemProperties.TEXT_APPEARANCE_ID));
+                    }
+                    if (clickedItem.model.containsKey(
+                            ListMenuItemProperties.ICON_TINT_COLOR_STATE_LIST_ID)) {
+                        builder.with(
+                                ListMenuItemProperties.ICON_TINT_COLOR_STATE_LIST_ID,
+                                clickedItem.model.get(
+                                        ListMenuItemProperties.ICON_TINT_COLOR_STATE_LIST_ID));
+                    }
+
+                    return new ListItem(ListItemType.SUBMENU_HEADER, builder.build());
+                };
+        return new HierarchicalMenuController<>(context, keyProvider, headerFactory);
+    }
+
+    public static class ListMenuKeyProvider implements HierarchicalMenuKeyProvider {
+        @Override
+        public WritableObjectPropertyKey<View.@Nullable OnClickListener> getClickListenerKey() {
+            return CLICK_LISTENER;
+        }
+
+        @Override
+        public WritableBooleanPropertyKey getEnabledKey() {
+            return ENABLED;
+        }
+
+        @Override
+        public WritableObjectPropertyKey<View.@Nullable OnHoverListener> getHoverListenerKey() {
+            return HOVER_LISTENER;
+        }
+
+        @Override
+        public WritableObjectPropertyKey<CharSequence> getTitleKey() {
+            return TITLE;
+        }
+
+        @Override
+        public WritableIntPropertyKey getTitleIdKey() {
+            return TITLE_ID;
+        }
+
+        @Override
+        public WritableObjectPropertyKey<View.OnKeyListener> getKeyListenerKey() {
+            return KEY_LISTENER;
+        }
+
+        @Override
+        public WritableObjectPropertyKey<Supplier<List<ListItem>>> getSubmenuProviderKey() {
+            return SUBMENU_PROVIDER;
+        }
+
+        @Override
+        public WritableBooleanPropertyKey getIsHighlightedKey() {
+            return IS_HIGHLIGHTED;
+        }
+
+        @Override
+        public WritableBooleanPropertyKey getIsExpandedKey() {
+            return IS_EXPANDED;
+        }
+    }
+
+    /**
+     * Iterates through the view hierarchy and applies the specified tint to all ImageViews.
+     *
+     * @param view The root view to start the iteration from.
+     * @param tintList The tint color state list to apply.
+     */
+    public static void applyTintToAllIcons(View view, @Nullable ColorStateList tintList) {
+        if (view instanceof ImageView imageView) {
+            // General icons and submenu arrows are usually ImageViews.
+            ImageViewCompat.setImageTintList(imageView, tintList);
+        } else if (view instanceof CompoundButton compoundButton) {
+            // Checkboxes and radio buttons are CompoundButtons.
+            CompoundButtonCompat.setButtonTintList(compoundButton, tintList);
+        } else if (view instanceof ViewGroup viewGroup) {
+            for (int i = 0; i < viewGroup.getChildCount(); i++) {
+                applyTintToAllIcons(viewGroup.getChildAt(i), tintList);
+            }
+        }
+    }
+
+    /**
+     * Resolves the color resource ID to a ColorStateList and applies it to all icons in the view.
+     *
+     * @param view The root view.
+     * @param colorResId The color resource ID.
+     */
+    public static void applyTintToAllIcons(View view, @ColorRes int colorResId) {
+        ColorStateList tintList =
+                colorResId != Resources.ID_NULL
+                        ? view.getContext().getColorStateList(colorResId)
+                        : null;
+        applyTintToAllIcons(view, tintList);
+    }
+}

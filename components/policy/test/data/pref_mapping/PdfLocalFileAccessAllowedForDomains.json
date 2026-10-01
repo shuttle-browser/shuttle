@@ -1,0 +1,20 @@
+[
+  {
+    "os": [
+      "win",
+      "linux",
+      "mac",
+      "chromeos",
+      "fuchsia"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "pdf_local_file_access_allowed_for_domains",
+      "default_value": [],
+      "values_to_test": [
+        [
+          "google.com"
+        ]
+      ]
+    }
+  }
+]

@@ -1,0 +1,40 @@
+include_rules = [
+  # ChromeOS should not depend on //chrome. See //docs/chromeos/code.md for
+  # details.
+  "-chrome",
+
+  # This directory is in //chrome, which violates the rule above. Allow this
+  # directory to #include its own files.
+  "+chrome/browser/ash/power/ml",
+
+  # Existing dependencies within //chrome. There is an active effort to
+  # refactor //chrome/browser/ash to break these dependencies; see b/332804822.
+  # Whenever possible, avoid adding new //chrome dependencies to this list.
+  #
+  # Files residing in certain directories (e.g., //chrome/browser) are listed
+  # individually. Other dependencies within //chrome are listed on a per-
+  # directory basis. See //tools/chromeos/gen_deps.sh for details.
+  "+chrome/browser/ash/accessibility",
+  "+chrome/browser/ash/browser_delegate/browser_controller.h",
+  "+chrome/browser/ash/browser_delegate/browser_delegate.h",
+  "+chrome/browser/ash/login/users",
+  "+chrome/browser/component_updater",
+  "+chrome/browser/profiles",
+  "+chrome/browser/tab_contents",
+  "+chrome/common/chrome_features.h",
+  "+chrome/grit",
+]
+
+specific_include_rules = {
+  ".*test\\.cc": [
+    "+chrome/browser/ash/browser_delegate/browser_controller_impl.h",
+    "+chrome/browser/ash/settings/scoped_cros_settings_test_helper.h",
+    "+chrome/browser/ui/browser_window/public/browser_window_interface.h",
+    "+chrome/browser/ui/browser_window/public/create_browser_window.h",
+    "+chrome/browser/ui/browser_window.h",
+    "+chrome/browser/ui/tabs/tab_activity_simulator.h",
+    "+chrome/browser/ui/tabs/tab_strip_model.h",
+    "+chrome/browser/ui/tabs/tab_ukm_test_helper.h",
+    "+chrome/test/base",
+  ],
+}

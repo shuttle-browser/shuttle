@@ -1,0 +1,192 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/glic/host/context/glic_sharing_utils.h"
+
+#include <algorithm>
+#include <vector>
+
+#include "base/no_destructor.h"
+#include "build/build_config.h"
+#include "chrome/browser/glic/common/future_browser_features.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/tab_list/tab_list_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+#include "chrome/common/webui_url_constants.h"
+#include "content/public/browser/web_contents.h"
+#include "url/gurl.h"
+#include "url/url_constants.h"
+
+namespace glic {
+
+namespace {
+
+const std::vector<GURL>& GetUrlAllowList() {
+  static const base::NoDestructor<std::vector<GURL>> kUrlAllowList{
+      {GURL(), GURL(url::kAboutBlankURL),
+       GURL(chrome::kChromeUINewTabPageThirdPartyURL),
+       chrome::ChromeUINewTabPageURLAsGURL(), chrome::ChromeUINewTabURLAsGURL(),
+#if BUILDFLAG(IS_ANDROID)
+       GURL(chrome::kChromeUINativeNewTabURL),
+#endif
+#if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
+       // NEEDS_ANDROID_IMPL: what's new page
+       // "What's New" does not exist in the form of a tab on ChromeOS.
+       GURL(chrome::kChromeUIWhatsNewURL)
+#endif
+      }};
+  return *kUrlAllowList;
+}
+
+}  // namespace
+
+bool IsBrowserValidForSharingInProfile(
+    BrowserWindowInterface* browser_interface,
+    Profile* profile) {
+  return browser_interface && profile &&
+         browser_interface->GetProfile() == profile &&
+         !profile->IsOffTheRecord();
+}
+
+bool IsTabValidForPinningInProfile(tabs::TabInterface* tab, Profile* profile) {
+  return tab && profile && tab->GetProfile() == profile &&
+         !profile->IsOffTheRecord();
+}
+
+bool IsTabValidForSharing(content::WebContents* web_contents) {
+  if (!web_contents) {
+    return false;
+  }
+  const GURL& url = web_contents->GetLastCommittedURL();
+  return url.SchemeIsHTTPOrHTTPS() || url.SchemeIsFile() ||
+         std::ranges::contains(GetUrlAllowList(), url);
+}
+
+bool IsTabValidForSharing(tabs::TabInterface* tab) {
+  if (!tab) {
+    return false;
+  }
+  const GURL url = tab->GetURL();
+  return url.SchemeIsHTTPOrHTTPS() || url.SchemeIsFile() ||
+         std::ranges::contains(GetUrlAllowList(), url);
+}
+
+tabs::TabInterface* GetMostRecentlyActiveTab(
+    const std::vector<tabs::TabInterface*>& tabs) {
+  CHECK(!tabs.empty());
+  auto it = std::max_element(
+      tabs.begin(), tabs.end(),
+      [](const tabs::TabInterface* a, const tabs::TabInterface* b) {
+        return a->GetLastActiveTime() < b->GetLastActiveTime();
+      });
+  return *it;
+}
+
+GlicPinEvent GetEmptyPinEvent() {
+  return GlicPinEvent(GlicPinTrigger::kUnknown, base::TimeTicks::Now());
+}
+
+GlicPinnedTabUsage GetEmptyPinnedTabUsage() {
+  return GlicPinnedTabUsage(GetEmptyPinEvent());
+}
+
+GlicUnpinEvent GetEmptyUnpinEvent() {
+  return GlicUnpinEvent(GlicUnpinTrigger::kUnknown, GetEmptyPinnedTabUsage(),
+                        base::TimeTicks::Now());
+}
+
+GlicActiveTabForProfileTracker::GlicActiveTabForProfileTracker(Profile* profile)
+    : active_tab_changed_callback_list_(), profile_(profile) {
+  browser_collection_observation_.Observe(
+      GlobalBrowserCollection::GetInstance());
+  // If we already have an active browser, set up active tab subscription.
+  UpdateActiveTabSubscription(
+      GetLastActiveBrowserWindowInterfaceWithAnyProfile());
+
+  // Trigger an update now, even though we have no subscribers, so that
+  // GetActiveTab works correctly.
+  UpdateActiveTab();
+}
+
+GlicActiveTabForProfileTracker::~GlicActiveTabForProfileTracker() = default;
+
+bool GlicActiveTabForProfileTracker::IsBrowserActiveForProfile(
+    BrowserWindowInterface* browser) {
+  return browser && browser->GetProfile() == profile_ && IsActive(browser);
+}
+
+void GlicActiveTabForProfileTracker::UpdateActiveTabSubscription(
+    BrowserWindowInterface* browser) {
+  tab_list_observation_.Reset();
+  if (IsBrowserActiveForProfile(browser)) {
+    tab_list_observation_.Observe(TabListInterface::From(browser));
+  }
+}
+
+void GlicActiveTabForProfileTracker::OnBrowserActivated(
+    BrowserWindowInterface* browser) {
+  UpdateActiveTabSubscription(browser);
+  UpdateActiveTab();
+}
+
+void GlicActiveTabForProfileTracker::OnBrowserDeactivated(
+    BrowserWindowInterface* browser) {
+  // Prevent a race condition during window drag-and-drop where a delayed
+  // OnBrowserDeactivated event from the old window could inadvertently reset
+  // the observation that was already set up for the newly activated window.
+  if (tab_list_observation_.IsObservingSource(
+          TabListInterface::From(browser))) {
+    tab_list_observation_.Reset();
+  }
+
+  UpdateActiveTab();
+}
+
+void GlicActiveTabForProfileTracker::OnActiveTabChanged(
+    TabListInterface& tab_list,
+    tabs::TabInterface* tab) {
+  UpdateActiveTab();
+}
+
+void GlicActiveTabForProfileTracker::OnTabListDestroyed(
+    TabListInterface& tab_list) {
+  tab_list_observation_.Reset();
+  UpdateActiveTab();
+}
+
+void GlicActiveTabForProfileTracker::UpdateActiveTab() {
+  tabs::TabInterface* active_tab = nullptr;
+
+  BrowserWindowInterface* const browser =
+      GetLastActiveBrowserWindowInterfaceWithAnyProfile();
+  if (IsBrowserActiveForProfile(browser)) {
+    active_tab = TabListInterface::From(browser)->GetActiveTab();
+  }
+
+  if (last_notified_tab_.WasInvalidated() ||
+      last_notified_tab_.get() != active_tab) {
+    last_notified_tab_ = active_tab ? active_tab->GetWeakPtr()
+                                    : base::WeakPtr<tabs::TabInterface>();
+    NotifyActiveTabChanged(last_notified_tab_.get());
+  }
+}
+
+base::CallbackListSubscription
+GlicActiveTabForProfileTracker::AddActiveTabChangedCallback(
+    base::RepeatingCallback<void(tabs::TabInterface*)> callback) {
+  return active_tab_changed_callback_list_.Add(std::move(callback));
+}
+
+tabs::TabInterface* GlicActiveTabForProfileTracker::GetActiveTab() const {
+  return last_notified_tab_.get();
+}
+
+void GlicActiveTabForProfileTracker::NotifyActiveTabChanged(
+    tabs::TabInterface* active_tab) {
+  active_tab_changed_callback_list_.Notify(active_tab);
+}
+
+}  // namespace glic

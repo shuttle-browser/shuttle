@@ -1,0 +1,55 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("tab_strip_api") {
+  sources = [ "tab_strip_service_feature.h" ]
+
+  public_deps = [
+    "//components/browser_apis/tab_strip:mojom_experiment",
+    "//components/browser_apis/tab_strip:service",
+    "//ui/base/unowned_user_data",
+  ]
+}
+
+source_set("impl") {
+  sources = [ "tab_strip_service_feature.cc" ]
+
+  deps = [
+    ":tab_strip_api",
+    "//chrome/browser/ui/browser_window",
+    "//components/browser_apis/tab_strip:service",
+    "//components/browser_apis/tab_strip/adapters",
+  ]
+}
+
+if (!is_android) {
+  source_set("unit_tests") {
+    testonly = true
+
+    deps = [
+      ":impl",
+      ":tab_strip_api",
+      "controllers:unit_tests",
+      "tab_strip_model_impl:unit_tests",
+      "//chrome/test:test_support",
+    ]
+  }
+
+  source_set("browser_tests") {
+    testonly = true
+
+    deps = [
+      "controllers:browser_tests",
+      "tab_strip_model_impl:browser_tests",
+    ]
+  }
+}
+
+if (is_android) {
+  source_set("browser_tests") {
+    testonly = true
+
+    deps = [ "android_tab_model_impl:browser_tests" ]
+  }
+}

@@ -1,0 +1,405 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "base/functional/bind.h"
+#import "base/ios/ios_util.h"
+#import "base/path_service.h"
+#import "base/strings/strcat.h"
+#import "base/strings/sys_string_conversions.h"
+#import "base/test/ios/wait_util.h"
+#import "base/time/time.h"
+#import "components/browser_sync/browser_sync_switches.h"
+#import "components/sync/base/command_line_switches.h"
+#import "components/sync/base/data_type.h"
+#import "components/sync/base/features.h"
+#import "ios/chrome/browser/authentication/test/signin_earl_grey.h"
+#import "ios/chrome/browser/authentication/test/signin_earl_grey_ui_test_util.h"
+#import "ios/chrome/browser/bookmarks/model/bookmark_storage_type.h"
+#import "ios/chrome/browser/bookmarks/test/bookmark_earl_grey.h"
+#import "ios/chrome/browser/ntp/ui_bundled/new_tab_page_feature.h"
+#import "ios/chrome/browser/reading_list/ui_bundled/reading_list_app_interface.h"
+#import "ios/chrome/browser/reading_list/ui_bundled/reading_list_egtest_utils.h"
+#import "ios/chrome/browser/settings/manage_sync/public/manage_sync_settings_constants.h"
+#import "ios/chrome/browser/settings/ui_bundled/password/password_manager_egtest_utils.h"
+#import "ios/chrome/browser/settings/ui_bundled/password/password_settings_app_interface.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/shared/ui/table_view/table_view_navigation_controller_constants.h"
+#import "ios/chrome/browser/signin/model/fake_system_identity.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "ios/chrome/test/earl_grey/chrome_actions.h"
+#import "ios/chrome/test/earl_grey/chrome_earl_grey.h"
+#import "ios/chrome/test/earl_grey/chrome_earl_grey_ui.h"
+#import "ios/chrome/test/earl_grey/chrome_matchers.h"
+#import "ios/chrome/test/earl_grey/chrome_test_case.h"
+#import "ios/chrome/test/earl_grey/test_switches.h"
+#import "ios/testing/earl_grey/app_launch_manager.h"
+#import "ios/testing/earl_grey/earl_grey_test.h"
+#import "net/base/apple/url_conversions.h"
+#import "net/test/embedded_test_server/embedded_test_server.h"
+#import "net/test/embedded_test_server/http_request.h"
+#import "net/test/embedded_test_server/http_response.h"
+#import "ui/base/l10n/l10n_util.h"
+
+namespace {
+
+// Constant for timeout while waiting for asynchronous sync operations.
+constexpr base::TimeDelta kSyncOperationTimeout = base::Seconds(10);
+
+constexpr NSString* kBookmarkUrl = @"https://www.goo.com/";
+constexpr NSString* kBookmarkTitle = @"Goo";
+
+constexpr NSString* kReadingListUrl = @"https://www.rl.com/";
+constexpr NSString* kReadingListTitle = @"RL";
+
+constexpr NSString* kPassphrase = @"passphrase";
+
+// Waits for `entity_count` entities of type `entity_type` on the fake server,
+// and fails with a GREYAssert if the condition is not met, within a short
+// period of time.
+void WaitForEntitiesOnFakeServer(int entity_count,
+                                 syncer::DataType entity_type) {
+  ConditionBlock condition = ^{
+    return [ChromeEarlGrey numberOfSyncEntitiesWithType:entity_type] ==
+           entity_count;
+  };
+  GREYAssert(base::test::ios::WaitUntilConditionOrTimeout(kSyncOperationTimeout,
+                                                          condition),
+             @"Expected %d %s entities but found %d", entity_count,
+             std::string(syncer::DataTypeToDebugString(entity_type)).c_str(),
+             [ChromeEarlGrey numberOfSyncEntitiesWithType:entity_type]);
+}
+
+void ClearRelevantData() {
+  [BookmarkEarlGrey clearBookmarks];
+  GREYAssertNil([ReadingListAppInterface clearEntries],
+                @"Unable to clear Reading List entries");
+  [PasswordSettingsAppInterface clearPasswordStores];
+
+  [ChromeEarlGrey clearFakeSyncServerData];
+  WaitForEntitiesOnFakeServer(0, syncer::BOOKMARKS);
+  WaitForEntitiesOnFakeServer(0, syncer::HISTORY);
+  WaitForEntitiesOnFakeServer(0, syncer::PASSWORDS);
+  WaitForEntitiesOnFakeServer(0, syncer::READING_LIST);
+
+  // Ensure that all of the changes made are flushed to disk before the app is
+  // terminated.
+  [ChromeEarlGrey flushFakeSyncServerToDisk];
+  [ChromeEarlGrey commitPendingUserPrefsWrite];
+  [BookmarkEarlGrey commitPendingWrite];
+  // Note that the ReadingListModel immediately writes pending changes to disk,
+  // so no need for an explicit "flush" there.
+}
+
+}  // namespace
+
+// Hermetic sync tests, which use the fake sync server.
+@interface SyncFakeServerTestCase : ChromeTestCase {
+  std::map<std::string, std::string> _responses;
+}
+@end
+
+@implementation SyncFakeServerTestCase
+
++ (void)setUpForTestCase {
+  [super setUpForTestCase];
+
+  [BookmarkEarlGrey waitForBookmarkModelLoaded];
+
+  // Normally there shouldn't be any data (locally or on the fake server) at
+  // this point, but just in case some other test case didn't clean up after
+  // itself, clear everything here.
+  ClearRelevantData();
+}
+
+- (void)setUp {
+  [super setUp];
+
+  auto* responses = &_responses;
+  self.testServer->RegisterRequestHandler(base::BindRepeating(
+      [](std::map<std::string, std::string>* responses,
+         const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        auto it = responses->find(request.relative_url);
+        if (it != responses->end()) {
+          auto response =
+              std::make_unique<net::test_server::BasicHttpResponse>();
+          response->set_code(net::HTTP_OK);
+          response->set_content_type("text/html");
+          response->set_content(it->second);
+          return response;
+        }
+        return nullptr;
+      },
+      responses));
+
+  self.testServer->ServeFilesFromDirectory(
+      base::PathService::CheckedGet(base::DIR_ASSETS)
+          .AppendASCII("ios/testing/data/http_server_files/"));
+
+  GREYAssertTrue(self.testServer->Start(), @"Server did not start.");
+}
+
+- (void)tearDownHelper {
+  ClearRelevantData();
+
+  [super tearDownHelper];
+}
+
+- (AppLaunchConfiguration)appConfigurationForTestCase {
+  AppLaunchConfiguration config = [super appConfigurationForTestCase];
+  config.additional_args.push_back(std::string("--") +
+                                   syncer::kSyncShortNudgeDelayForTest);
+  return config;
+}
+
+- (void)relaunchWithIdentity:(FakeSystemIdentity*)identity
+             enabledFeatures:(const std::vector<base::test::FeatureRef>&)enabled
+            disabledFeatures:
+                (const std::vector<base::test::FeatureRef>&)disabled {
+  // Before restarting, ensure that the FakeServer has written all its pending
+  // state to disk.
+  [ChromeEarlGrey flushFakeSyncServerToDisk];
+  // Also make sure any pending prefs and bookmarks changes are written to disk.
+  [ChromeEarlGrey commitPendingUserPrefsWrite];
+  [BookmarkEarlGrey commitPendingWrite];
+
+  AppLaunchConfiguration config = [self appConfigurationForTestCase];
+  config.relaunch_policy = ForceRelaunchByCleanShutdown;
+  config.features_enabled = enabled;
+  config.features_disabled = disabled;
+  config.additional_args.push_back(base::StrCat({
+    "-", test_switches::kAddFakeIdentitiesAtStartup, "=",
+        [FakeSystemIdentity encodeIdentitiesToBase64:@[ identity ]]
+  }));
+  [[AppLaunchManager sharedManager] ensureAppLaunchedWithConfiguration:config];
+
+  // After the relaunch, wait for Sync-the-transport to become active again
+  // (which should always happen if there's a signed-in account).
+  [ChromeEarlGrey
+      waitForSyncTransportStateActiveWithTimeout:kSyncOperationTimeout];
+}
+
+// Tests that a bookmark added on the client is uploaded to the Sync server.
+- (void)testSyncUploadBookmark {
+  FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
+  [SigninEarlGrey addFakeIdentity:fakeIdentity];
+  [SigninEarlGreyUI signinWithFakeIdentity:fakeIdentity];
+
+  // Add a bookmark after sync is active.
+  [ChromeEarlGrey
+      waitForSyncTransportStateActiveWithTimeout:kSyncOperationTimeout];
+  [BookmarkEarlGrey addBookmarkWithTitle:@"goo"
+                                     URL:@"https://www.goo.com"
+                               inStorage:BookmarkStorageType::kAccount];
+  WaitForEntitiesOnFakeServer(1, syncer::BOOKMARKS);
+}
+
+// Tests that a bookmark injected in the FakeServer is synced down to the
+// client.
+- (void)testSyncDownloadBookmark {
+  [BookmarkEarlGrey verifyBookmarksWithTitle:@"hoo"
+                               expectedCount:0
+                                   inStorage:BookmarkStorageType::kAccount];
+  const GURL URL = self.testServer->GetURL("/hoo.com");
+  [ChromeEarlGrey addFakeSyncServerBookmarkWithURL:URL title:"hoo"];
+
+  // Sign in to sync, after a bookmark has been injected in the sync server.
+  FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
+  [SigninEarlGrey addFakeIdentity:fakeIdentity];
+  [SigninEarlGrey signinWithFakeIdentity:fakeIdentity];
+
+  [BookmarkEarlGrey verifyBookmarksWithTitle:@"hoo"
+                               expectedCount:1
+                                   inStorage:BookmarkStorageType::kAccount];
+}
+
+// Tests that the local cache guid is reused when the user signs out and then
+// signs back in with the same account.
+- (void)testSyncCheckSameCacheGuid_SignOutAndSignIn {
+  // Sign in a fake identity, and store the initial sync guid.
+  FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
+  [SigninEarlGrey signinWithFakeIdentity:fakeIdentity];
+  std::string original_guid = [ChromeEarlGrey syncCacheGUID];
+
+  [SigninEarlGrey verifySignedInWithFakeIdentity:fakeIdentity];
+  [SigninEarlGrey signOut];
+
+  // Sign the user back in, and verify the guid has *not* changed.
+  [SigninEarlGrey signinWithFakeIdentity:fakeIdentity];
+  GREYAssertTrue([ChromeEarlGrey syncCacheGUID] == original_guid,
+                 @"guid changed after user signed out and signed back in");
+}
+
+// Tests that the local cache guid changes when the user signs out and then
+// signs back in with a different account.
+- (void)testSyncCheckDifferentCacheGuid_SignOutAndSignInWithDifferentAccount {
+  // Sign in a fake identity, and store the initial sync guid.
+  FakeSystemIdentity* fakeIdentity1 = [FakeSystemIdentity fakeIdentity1];
+  [SigninEarlGrey signinWithFakeIdentity:fakeIdentity1];
+  std::string original_guid = [ChromeEarlGrey syncCacheGUID];
+
+  [SigninEarlGrey verifySignedInWithFakeIdentity:fakeIdentity1];
+  [SigninEarlGrey signOut];
+
+  // Sign a different user in, and verify the guid has changed.
+  FakeSystemIdentity* fakeIdentity2 = [FakeSystemIdentity fakeIdentity2];
+  [SigninEarlGrey signinWithFakeIdentity:fakeIdentity2];
+  GREYAssertTrue(
+      [ChromeEarlGrey syncCacheGUID] != original_guid,
+      @"guid didn't change after user signed out and different user signed in");
+}
+
+// Tests that tabs opened on this client are committed to the Sync server and
+// that the created sessions entities are correct.
+- (void)testSyncUploadOpenTabs {
+  // Create map of canned responses and set up the test HTML server.
+  const GURL URL1 = self.testServer->GetURL("/page1");
+  const GURL URL2 = self.testServer->GetURL("/page2");
+  _responses["/page1"] = "page 1";
+  _responses["/page2"] = "page 2";
+
+  // Load both URLs in separate tabs.
+  [ChromeEarlGrey loadURL:URL1];
+  [ChromeEarlGrey openNewTab];
+  [ChromeEarlGrey loadURL:URL2];
+
+  // Sign in to sync, after opening two tabs.
+  FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
+  [SigninEarlGrey addFakeIdentity:fakeIdentity];
+  [SigninEarlGreyUI signinWithFakeIdentity:fakeIdentity enableHistorySync:YES];
+
+  // Verify the sessions on the sync server.
+  [ChromeEarlGrey
+      waitForSyncTransportStateActiveWithTimeout:kSyncOperationTimeout];
+  WaitForEntitiesOnFakeServer(3, syncer::SESSIONS);
+
+  NSArray<NSString*>* specs = @[
+    base::SysUTF8ToNSString(URL1.spec()),
+    base::SysUTF8ToNSString(URL2.spec()),
+  ];
+  [ChromeEarlGrey verifySyncServerSessionURLs:specs];
+}
+
+// Tests that browsing history is uploaded to the Sync server.
+- (void)testSyncHistoryUpload {
+  const GURL preSyncURL = self.testServer->GetURL("/console.html");
+  const GURL whileSyncURL = self.testServer->GetURL("/pony.html");
+  const GURL postSyncURL = self.testServer->GetURL("/destination.html");
+
+  if (![ChromeTestCase forceRestartAndWipe]) {
+    [ChromeEarlGrey clearBrowsingHistory];
+    [self setTearDownHandler:^{
+      [ChromeEarlGrey clearBrowsingHistory];
+    }];
+  }
+
+  // Visit a URL before turning on Sync.
+  [ChromeEarlGrey loadURL:preSyncURL];
+  [ChromeEarlGrey waitForPageToFinishLoading];
+
+  // Navigate away from that URL.
+  [ChromeEarlGrey loadURL:whileSyncURL];
+  [ChromeEarlGrey waitForWebStateContainingText:"pony"];
+
+  // Sign in and wait for sync to become active.
+  FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
+  [SigninEarlGrey addFakeIdentity:fakeIdentity];
+  [SigninEarlGreyUI signinWithFakeIdentity:fakeIdentity enableHistorySync:YES];
+
+  [ChromeEarlGrey
+      waitForSyncTransportStateActiveWithTimeout:kSyncOperationTimeout];
+
+  // Navigate again. This URL, plus the URL that was currently open when Sync
+  // was turned on, should arrive on the Sync server.
+  [ChromeEarlGrey loadURL:postSyncURL];
+
+  // This URL, plus the URL that was currently open when Sync was turned on,
+  // should arrive on the Sync server.
+  NSArray<NSURL*>* URLs = @[
+    net::NSURLWithGURL(whileSyncURL),
+    net::NSURLWithGURL(postSyncURL),
+  ];
+  [ChromeEarlGrey waitForSyncServerHistoryURLs:URLs
+                                       timeout:kSyncOperationTimeout];
+}
+
+// Tests that history is downloaded from the sync server.
+- (void)testSyncHistoryDownload {
+  const GURL mockURL("http://not-a-real-site/");
+
+  if (![ChromeTestCase forceRestartAndWipe]) {
+    [ChromeEarlGrey clearBrowsingHistory];
+    [self setTearDownHandler:^{
+      [ChromeEarlGrey clearBrowsingHistory];
+    }];
+  }
+
+  // Inject a history visit on the server.
+  [ChromeEarlGrey addFakeSyncServerHistoryVisit:mockURL];
+
+  // Sign in and wait for sync to become active.
+  FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
+  [SigninEarlGrey addFakeIdentity:fakeIdentity];
+  [SigninEarlGreyUI signinWithFakeIdentity:fakeIdentity enableHistorySync:YES];
+
+  [ChromeEarlGrey
+      waitForSyncTransportStateActiveWithTimeout:kSyncOperationTimeout];
+
+  // Wait for the visit to appear on the client.
+  [ChromeEarlGrey waitForHistoryURL:mockURL
+                      expectPresent:YES
+                            timeout:kSyncOperationTimeout];
+}
+
+// Tests download of two legacy bookmarks with the same item id.
+- (void)testDownloadTwoPre2015BookmarksWithSameItemId {
+  const GURL URL1 = self.testServer->GetURL("/page1.com");
+  const GURL URL2 = self.testServer->GetURL("/page2.com");
+  NSString* title1 = @"title1";
+  NSString* title2 = @"title2";
+
+  [BookmarkEarlGrey verifyBookmarksWithTitle:title1
+                               expectedCount:0
+                                   inStorage:BookmarkStorageType::kAccount];
+  [BookmarkEarlGrey verifyBookmarksWithTitle:title2
+                               expectedCount:0
+                                   inStorage:BookmarkStorageType::kAccount];
+
+  // Mimic the creation of two bookmarks from two different devices, with the
+  // same client item ID.
+  [ChromeEarlGrey
+      addFakeSyncServerLegacyBookmarkWithURL:URL1
+                                       title:base::SysNSStringToUTF8(title1)
+                   originator_client_item_id:"1"];
+  [ChromeEarlGrey
+      addFakeSyncServerLegacyBookmarkWithURL:URL2
+                                       title:base::SysNSStringToUTF8(title2)
+                   originator_client_item_id:"1"];
+
+  // Sign in to sync.
+  FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
+  [SigninEarlGrey addFakeIdentity:fakeIdentity];
+  [SigninEarlGrey signinWithFakeIdentity:fakeIdentity];
+
+  [BookmarkEarlGrey verifyBookmarksWithTitle:title1
+                               expectedCount:1
+                                   inStorage:BookmarkStorageType::kAccount];
+  [BookmarkEarlGrey verifyBookmarksWithTitle:title2
+                               expectedCount:1
+                                   inStorage:BookmarkStorageType::kAccount];
+}
+
+- (void)testSyncInvalidationsEnabled {
+  // Sign in to sync.
+  FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
+  [SigninEarlGrey addFakeIdentity:fakeIdentity];
+  [SigninEarlGrey signinWithFakeIdentity:fakeIdentity];
+
+  [ChromeEarlGrey
+      waitForSyncTransportStateActiveWithTimeout:kSyncOperationTimeout];
+  WaitForEntitiesOnFakeServer(1, syncer::DEVICE_INFO);
+  [ChromeEarlGrey waitForSyncInvalidationFields];
+}
+
+@end

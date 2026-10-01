@@ -1,0 +1,45 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_SESSIONS_CORE_SESSION_CONSTANTS_H_
+#define COMPONENTS_SESSIONS_CORE_SESSION_CONSTANTS_H_
+
+#include "base/files/file_path.h"
+#include "components/sessions/core/sessions_export.h"
+
+namespace sessions {
+
+// Directory under the profile directory to store cleartext session data.
+// Added in Chrome 85.
+extern const base::FilePath::StringViewType SESSIONS_EXPORT kSessionsDirectory;
+
+// Directory under the profile directory to store encrypted session data.
+// Added in Chrome 148 for crbug.com/479420496.
+extern const base::FilePath::StringViewType SESSIONS_EXPORT
+    kEncryptedSessionsDirectory;
+
+// File name prefix for a type of TAB.
+// Added in Chrome 85.
+extern const base::FilePath::CharType SESSIONS_EXPORT
+    kTabSessionFileNamePrefix[];
+
+// File name prefix for a type of SESSION.
+// Added in Chrome 85.
+extern const base::FilePath::CharType SESSIONS_EXPORT kSessionFileNamePrefix[];
+
+// File name prefix for a type of APP.
+// Added in Chrome 91.
+extern const base::FilePath::CharType SESSIONS_EXPORT
+    kAppSessionFileNamePrefix[];
+
+// Separator between the file name (such as `kSessionFileNamePrefix`) and the
+// timestamp.
+extern const base::FilePath::CharType SESSIONS_EXPORT kTimestampSeparator[];
+
+// The maximum number of navigation entries in each direction to persist.
+extern const int SESSIONS_EXPORT gMaxPersistNavigationCount;
+
+}  // namespace sessions
+
+#endif  // COMPONENTS_SESSIONS_CORE_SESSION_CONSTANTS_H_

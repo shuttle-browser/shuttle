@@ -1,0 +1,326 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.h"
+
+#include <utility>
+
+#include "base/feature_list.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/trace_event/trace_event.h"
+#include "components/viz/common/quads/compositor_frame.h"
+#include "components/viz/common/quads/texture_draw_quad.h"
+#include "components/viz/common/resources/release_callback.h"
+#include "services/viz/public/mojom/compositing/frame_timing_details.mojom-blink.h"
+#include "services/viz/public/mojom/hit_test/hit_test_region_list.mojom-blink.h"
+#include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
+#include "third_party/blink/public/mojom/frame_sinks/embedded_frame_sink.mojom-blink.h"
+#include "third_party/blink/public/platform/platform.h"
+#include "third_party/blink/public/platform/web_graphics_context_3d_provider.h"
+#include "third_party/blink/renderer/platform/graphics/canvas_resource.h"
+#include "third_party/blink/renderer/platform/graphics/exported_canvas_resource.h"
+#include "third_party/blink/renderer/platform/graphics/gpu/shared_gpu_context.h"
+#include "third_party/blink/renderer/platform/graphics/offscreen_canvas_placeholder.h"
+#include "third_party/blink/renderer/platform/graphics/resource_id_traits.h"
+#include "third_party/blink/renderer/platform/instrumentation/histogram.h"
+#include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
+#include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_copier_base.h"
+#include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
+#include "ui/gfx/geometry/point_f.h"
+#include "ui/gfx/geometry/size_f.h"
+#include "ui/gfx/mojom/presentation_feedback.mojom-blink.h"
+
+namespace {
+// Frame delay for synthetic frame timing.
+// TODO(crbug.com/325532633): match this to the requested capture rate.
+constexpr base::TimeDelta kSyntheticFrameDelay = base::Hertz(60);
+}  // namespace
+
+namespace blink {
+
+BASE_FEATURE(kVerifySyncTokensInCRD, base::FEATURE_ENABLED_BY_DEFAULT);
+
+CanvasResourceDispatcher::CanvasResourceDispatcher(
+    CanvasResourceDispatcherClient* client,
+    scoped_refptr<base::SingleThreadTaskRunner> task_runner,
+    uint32_t client_id,
+    uint32_t sink_id,
+    const gfx::Size& size)
+    : frame_sink_id_(viz::FrameSinkId(client_id, sink_id)),
+      size_(size),
+      change_size_for_next_commit_(false),
+      client_(client),
+      fake_frame_timer_(std::move(task_runner),
+                        this,
+                        &CanvasResourceDispatcher::OnFakeFrameTimer) {
+  // Frameless canvas pass an invalid |frame_sink_id_|; don't create mojo
+  // channel for this special case.
+  if (frame_sink_id_.is_valid()) {
+    DCHECK(!sink_.is_bound());
+    mojo::Remote<mojom::blink::EmbeddedFrameSinkProvider> provider;
+    Platform::Current()->GetBrowserInterfaceBroker()->GetInterface(
+        provider.BindNewPipeAndPassReceiver());
+
+    DCHECK(provider);
+    provider->CreateCompositorFrameSink(frame_sink_id_,
+                                        receiver_.BindNewPipeAndPassRemote(),
+                                        sink_.BindNewPipeAndPassReceiver());
+    provider->ConnectToEmbedder(frame_sink_id_,
+                                surface_embedder_.BindNewPipeAndPassReceiver());
+  }
+}
+
+CanvasResourceDispatcher::~CanvasResourceDispatcher() = default;
+
+void CanvasResourceDispatcher::DispatchFrame(
+    scoped_refptr<ExportedCanvasResource>&& exported_resource,
+    const gfx::Rect& damage_rect,
+    bool is_opaque) {
+  TRACE_EVENT0("blink", "CanvasResourceDispatcher::DispatchFrame");
+
+  // For frameless canvas, we don't get a valid frame_sink_id and should drop.
+  if (!frame_sink_id_.is_valid()) {
+    return;
+  }
+
+  viz::CompositorFrame frame;
+  PrepareFrame(std::move(exported_resource), damage_rect, is_opaque, &frame);
+
+  pending_compositor_frames_++;
+  sink_->SubmitCompositorFrame(
+      parent_local_surface_id_allocator_.GetCurrentLocalSurfaceId(),
+      std::move(frame), std::nullopt, 0);
+}
+
+void CanvasResourceDispatcher::PrepareFrame(
+    scoped_refptr<ExportedCanvasResource>&& exported_resource,
+    const gfx::Rect& damage_rect,
+    bool is_opaque,
+    viz::CompositorFrame* frame) {
+  TRACE_EVENT0("blink", "CanvasResourceDispatcher::PrepareFrame");
+
+  // TODO(crbug.com/652931): update the device_scale_factor
+  frame->metadata.device_scale_factor = 1.0f;
+  if (!current_begin_frame_ack_.frame_id.IsSequenceValid()) {
+    // TODO(eseckler): This shouldn't be necessary when OffscreenCanvas no
+    // longer submits CompositorFrames without prior BeginFrame.
+    current_begin_frame_ack_ = viz::BeginFrameAck::CreateManualAckWithDamage();
+  } else {
+    current_begin_frame_ack_.has_damage = true;
+  }
+  frame->metadata.begin_frame_ack = current_begin_frame_ack_;
+
+  frame->metadata.frame_token = ++next_frame_token_;
+
+  // Ask viz not to throttle us if we've not voluntarily suspended animation.
+  // Typically, we'll suspend if we're hidden, unless we're hidden-but-painting.
+  // In that case, we can still submit frames that will contribute, possibly
+  // indirectly, to picture-in-picture content even if those frames are not
+  // consumed by a viz frame sink directly.  In those cases, it might choose to
+  // throttle us, incorrectly if we don't request otherwise.
+  frame->metadata.may_throttle_if_undrawn_frames = IsAnimationSuspended();
+
+  const gfx::Rect bounds(size_.width(), size_.height());
+  constexpr viz::CompositorRenderPassId kRenderPassId{1};
+  auto pass =
+      viz::CompositorRenderPass::Create(/*shared_quad_state_list_size=*/1u,
+                                        /*quad_list_size=*/1u);
+  pass->SetNew(kRenderPassId, bounds, damage_rect, gfx::Transform());
+
+  viz::SharedQuadState* sqs = pass->CreateAndAppendSharedQuadState();
+  sqs->SetAll(gfx::Transform(), bounds, bounds, gfx::MaskFilterInfo(),
+              /*clip=*/std::nullopt, is_opaque, /*opacity_f=*/1.f,
+              SkBlendMode::kSrcOver, /*sorting_context=*/0, /*layer_id=*/0u,
+              /*fast_rounded_corner=*/false);
+
+  viz::TransferableResource resource;
+
+  // This property will be overridden by the embedding SurfaceLayer, so this
+  // value will have no effect.
+  const bool nearest_neighbor = false;
+
+  if (base::FeatureList::IsEnabled(kVerifySyncTokensInCRD)) {
+    exported_resource->PrepareTransferableResource(
+        &resource,
+        /*needs_verified_synctoken=*/false);
+
+    gpu::SharedImageInterface* sii = nullptr;
+
+    if (SharedGpuContext::IsGpuCompositingEnabled()) {
+      if (auto wrapper = SharedGpuContext::ContextProviderWrapper()) {
+        sii = wrapper->ContextProvider().SharedImageInterface();
+      }
+    } else {
+      if (auto* provider = SharedGpuContext::SharedImageInterfaceProvider()) {
+        sii = provider->SharedImageInterface();
+      }
+    }
+
+    if (sii) {
+      sii->VerifySyncToken(resource.mutable_sync_token());
+    }
+  } else {
+    exported_resource->PrepareTransferableResource(
+        &resource,
+        /*needs_verified_synctoken=*/true);
+  }
+
+  const viz::ResourceId resource_id = id_generator_.GenerateNextId();
+  resource.id = resource_id;
+
+  const gfx::Size resource_size = resource.GetSize();
+
+  // Now store our ref to ensure that the resource remains valid for the
+  // duration of the compositor's usage (we'll drop our ref when the compositor
+  // notifies us that it is no longer using the resource via
+  // `ReclaimResources()`).
+  exported_resources_.insert(resource_id, std::move(exported_resource));
+
+  frame->resource_list.push_back(std::move(resource));
+
+  viz::TextureDrawQuad* quad =
+      pass->CreateAndAppendDrawQuad<viz::TextureDrawQuad>();
+
+  const bool needs_blending = !is_opaque;
+  constexpr gfx::PointF uv_top_left(0.f, 0.f);
+  quad->SetAll(sqs, bounds, bounds, needs_blending, resource_id, uv_top_left,
+               gfx::PointF(resource_size.width(), resource_size.height()),
+               SkColors::kTransparent, nearest_neighbor,
+               /*secure_output=*/false, gfx::ProtectedVideoType::kClear,
+               /*is_tex_coords_normalized=*/false);
+
+  frame->render_pass_list.push_back(std::move(pass));
+
+  if (change_size_for_next_commit_ ||
+      !parent_local_surface_id_allocator_.HasValidLocalSurfaceId()) {
+    parent_local_surface_id_allocator_.GenerateId();
+    surface_embedder_->SetLocalSurfaceId(
+        parent_local_surface_id_allocator_.GetCurrentLocalSurfaceId());
+    change_size_for_next_commit_ = false;
+  }
+}
+
+void CanvasResourceDispatcher::DidReceiveCompositorFrameAck(
+    Vector<viz::ReturnedResource> resources) {
+  ReclaimResources(std::move(resources));
+  pending_compositor_frames_--;
+  DCHECK_GE(pending_compositor_frames_, 0u);
+}
+
+void CanvasResourceDispatcher::SetNeedsBeginFrame(bool needs_begin_frame) {
+  if (needs_begin_frame_ == needs_begin_frame) {
+    return;
+  }
+  needs_begin_frame_ = needs_begin_frame;
+  UpdateBeginFrameSource();
+}
+
+void CanvasResourceDispatcher::SetAnimationState(
+    OffscreenCanvasPlaceholder::AnimationState animation_state) {
+  if (animation_state_ == animation_state) {
+    return;
+  }
+  animation_state_ = animation_state;
+  UpdateBeginFrameSource();
+
+  if (client_) {
+    client_->SetParentVisibility(!IsAnimationSuspended());
+  }
+}
+
+void CanvasResourceDispatcher::UpdateBeginFrameSource() {
+  if (!sink_) {
+    fake_frame_timer_.Stop();
+    return;
+  }
+
+  bool needs_begin_frame = needs_begin_frame_ && !IsAnimationSuspended();
+  if (needs_begin_frame && animation_state_ ==
+                               OffscreenCanvasPlaceholder::AnimationState::
+                                   kActiveWithSyntheticTiming) {
+    // Generate a synthetic OBF instead of asking viz, if we aren't already.
+    sink_->SetNeedsBeginFrame(false);
+    if (!fake_frame_timer_.IsActive()) {
+      fake_frame_timer_.StartRepeating(kSyntheticFrameDelay, FROM_HERE);
+    }
+  } else {
+    sink_->SetNeedsBeginFrame(needs_begin_frame);
+    fake_frame_timer_.Stop();
+  }
+}
+
+bool CanvasResourceDispatcher::HasTooManyPendingFrames() const {
+  return pending_compositor_frames_ >= kMaxPendingCompositorFrames;
+}
+
+void CanvasResourceDispatcher::OnBeginFrame(
+    const viz::BeginFrameArgs& begin_frame_args,
+    const HashMap<uint32_t, viz::FrameTimingDetails>&,
+    Vector<viz::ReturnedResource> resources) {
+  if (!resources.empty()) {
+    ReclaimResources(std::move(resources));
+  }
+  current_begin_frame_ack_ = viz::BeginFrameAck(begin_frame_args, false);
+  if (HasTooManyPendingFrames() ||
+      (begin_frame_args.type == viz::BeginFrameArgs::MISSED &&
+       base::TimeTicks::Now() > begin_frame_args.deadline)) {
+    sink_->DidNotProduceFrame(current_begin_frame_ack_);
+    return;
+  }
+
+  // TODO(fserb): should EnqueueMicrotask BeginFrame().
+  // We usually never get to BeginFrame if we are on RAF mode. But it could
+  // still happen that begin frame gets requested and we don't have a frame
+  // anymore, so we shouldn't let the compositor wait.
+  const bool submitted_frame = Client() && Client()->BeginFrame();
+
+  if (!submitted_frame) {
+    sink_->DidNotProduceFrame(current_begin_frame_ack_);
+  }
+
+  // TODO(fserb): Update this with the correct value if we are on RAF submit.
+  current_begin_frame_ack_.frame_id.sequence_number =
+      viz::BeginFrameArgs::kInvalidFrameNumber;
+}
+
+void CanvasResourceDispatcher::OnFakeFrameTimer(TimerBase* timer) {
+  viz::BeginFrameArgs begin_frame_args;
+  if (HasTooManyPendingFrames() || !Client()) {
+    return;
+  }
+
+  // Since this is a synthetic OBF, create a manual ack to go with it.
+  current_begin_frame_ack_ = viz::BeginFrameAck::CreateManualAckWithDamage();
+  // It doesn't matter if this succeeds or fails, because viz didn't ask for a
+  // frame from us.
+  Client()->BeginFrame();
+  current_begin_frame_ack_.frame_id.sequence_number =
+      viz::BeginFrameArgs::kInvalidFrameNumber;
+}
+
+void CanvasResourceDispatcher::ReclaimResources(
+    Vector<viz::ReturnedResource> resources) {
+  for (auto& resource : resources) {
+    auto it = exported_resources_.find(resource.id);
+
+    CHECK(it != exported_resources_.end());
+    if (it == exported_resources_.end()) {
+      continue;
+    }
+
+    it->value->EndDisplayCompositorAccess(
+        std::move(resource.shared_image_export_result), resource.lost);
+    exported_resources_.erase(it);
+  }
+}
+
+void CanvasResourceDispatcher::Reshape(const gfx::Size& size) {
+  if (size_ != size) {
+    size_ = size;
+    change_size_for_next_commit_ = true;
+  }
+}
+
+}  // namespace blink

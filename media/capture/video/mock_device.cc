@@ -1,0 +1,70 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "media/capture/video/mock_device.h"
+
+namespace media {
+
+MockDevice::MockDevice() = default;
+
+MockDevice::~MockDevice() = default;
+
+void MockDevice::SendStubFrame(const media::VideoCaptureFormat& format,
+                               int rotation,
+                               int frame_feedback_id) {
+  auto stub_frame = media::VideoFrame::CreateZeroInitializedFrame(
+      format.pixel_format, format.frame_size,
+      gfx::Rect(format.frame_size.width(), format.frame_size.height()),
+      format.frame_size, base::TimeDelta());
+  // SAFETY: VideoFrame allocates a single contiguous buffer across all planes
+  // starting at data(0). AllocationSize is used instead of data_span(0) to
+  // encompass the full contiguous buffer across all planes (e.g., Y, U, and V)
+  // rather than just plane 0.
+  auto data_span = UNSAFE_BUFFERS(
+      base::span(stub_frame->data(0),
+                 media::VideoFrame::AllocationSize(stub_frame->format(),
+                                                   stub_frame->coded_size())));
+  client_->OnIncomingCapturedData(data_span, format, gfx::ColorSpace(),
+                                  rotation, false /* flip_y */,
+                                  base::TimeTicks(), base::TimeDelta(),
+                                  /*capture_begin_timestamp=*/std::nullopt,
+                                  /*metadata=*/std::nullopt, frame_feedback_id);
+}
+
+void MockDevice::SendOnStarted() {
+  client_->OnStarted();
+}
+
+void MockDevice::AllocateAndStart(const media::VideoCaptureParams& params,
+                                  std::unique_ptr<Client> client) {
+  client_ = std::move(client);
+  DoAllocateAndStart(params, &client_);
+}
+
+void MockDevice::StopAndDeAllocate() {
+  DoStopAndDeAllocate();
+  client_.reset();
+}
+
+void MockDevice::GetPhotoState(GetPhotoStateCallback callback) {
+  DoGetPhotoState(&callback);
+}
+
+void MockDevice::SetPhotoOptions(media::mojom::PhotoSettingsPtr settings,
+                                 SetPhotoOptionsCallback callback) {
+  DoSetPhotoOptions(&settings, &callback);
+}
+
+void MockDevice::TakePhoto(TakePhotoCallback callback) {
+  DoTakePhoto(&callback);
+}
+
+}  // namespace media
+
+namespace media {
+void MockDevice::InvalidateBuffers() {
+  client_->InvalidateBuffers();
+}
+
+}  // namespace media

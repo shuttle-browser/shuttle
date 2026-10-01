@@ -1,0 +1,13 @@
+include_rules = [
+  "+components/glic",
+  "+components/origin_matcher",
+]
+
+specific_include_rules = {
+  "glic_actor_attempt_otp_filling_.*": [
+    "+components/one_time_tokens/core/browser",
+  ],
+  ".*_browsertest\\.cc": [
+    "+chrome/browser/performance_manager",
+  ]
+}

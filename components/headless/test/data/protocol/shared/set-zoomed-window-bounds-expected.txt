@@ -1,0 +1,11 @@
+Tests maximized/fullscreen window setWindowBounds() result.
+Initial state:
+Window: 10,10 700x500 normal
+Setting 'maximized' state
+Window: 0,0 1600x1200 maximized
+Restoring to normal state:
+Window: 10,10 700x500 normal
+Setting 'fullscreen' state
+Window: 0,0 1600x1200 fullscreen
+Restoring to normal state:
+Window: 10,10 700x500 normal

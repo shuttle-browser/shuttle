@@ -1,0 +1,233 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/page_action/multi_icon_button.h"
+
+#include <algorithm>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "base/i18n/number_formatting.h"
+#include "base/i18n/rtl.h"
+#include "base/memory/raw_ptr.h"
+#include "chrome/browser/ui/views/toolbar/toolbar_ink_drop_util.h"
+#include "third_party/skia/include/core/SkCanvas.h"
+#include "third_party/skia/include/core/SkClipOp.h"
+#include "third_party/skia/include/core/SkPathBuilder.h"
+#include "third_party/skia/include/core/SkRRect.h"
+#include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/color/color_id.h"
+#include "ui/color/color_provider.h"
+#include "ui/gfx/canvas.h"
+#include "ui/gfx/color_utils.h"
+#include "ui/gfx/geometry/insets.h"
+#include "ui/gfx/geometry/size.h"
+#include "ui/gfx/geometry/skia_conversions.h"
+#include "ui/views/accessibility/view_accessibility.h"
+#include "ui/views/background.h"
+#include "ui/views/controls/focus_ring.h"
+#include "ui/views/controls/highlight_path_generator.h"
+#include "ui/views/controls/image_view.h"
+#include "ui/views/layout/box_layout.h"
+#include "ui/views/view_class_properties.h"
+#include "ui/views/view_utils.h"
+
+namespace page_actions {
+
+namespace {
+
+constexpr int kAnchoredMessageIconSize = 16;
+constexpr size_t kAnchoredMessageMaxExpandButtonIcons = 3;
+
+// An ImageView that clips its content to a rounded rectangle and also clips out
+// the area of a specified "clipper" view to create a cutout effect for
+// overlapping icons. The alternative is putting colored rects behind each icon,
+// but then the button's background won't show through properly on hover
+// effects, etc.
+class ClippingImageView : public views::ImageView {
+  METADATA_HEADER(ClippingImageView, views::ImageView)
+ public:
+  ClippingImageView() = default;
+
+  // Sets the view that should be clipped out from this view's canvas.
+  void SetClipperView(ClippingImageView* view) { clipper_view_ = view; }
+
+  // views::ImageView:
+  void OnPaint(gfx::Canvas* canvas) override {
+    canvas->Save();
+
+    constexpr int kIconCornerRadius = 2;
+    constexpr int kBorder = 2;
+    constexpr int kBorderRadius = kIconCornerRadius + kBorder;
+
+    // Clip this image into a rounded rect.
+    SkPathBuilder self_path_builder;
+    self_path_builder.addRRect(
+        SkRRect::MakeRectXY(gfx::RectToSkRect(GetLocalBounds()),
+                            kIconCornerRadius, kIconCornerRadius));
+    canvas->ClipPath(self_path_builder.detach(), true);
+
+    // Clip out any other regions that should occlude this image. In its initial
+    // use-case, that means the border around the icon stacked directly on top
+    // of this one. Ensure that it supports RTL layout.
+    if (clipper_view_) {
+      gfx::Rect clipper_bounds = clipper_view_->GetMirroredBounds();
+      gfx::Rect self_bounds = GetMirroredBounds();
+      gfx::Vector2d offset = clipper_bounds.origin() - self_bounds.origin();
+      clipper_bounds.set_origin(gfx::Point() + offset);
+
+      // Account for the other icon's border.
+      clipper_bounds.Inset(-kBorder);
+
+      SkRRect rrect;
+      rrect.setRectXY(gfx::RectToSkRect(clipper_bounds), kBorderRadius,
+                      kBorderRadius);
+
+      // Apply difference clip to cut out the overlapping area.
+      canvas->sk_canvas()->clipRRect(rrect, SkClipOp::kDifference, true);
+    }
+
+    views::ImageView::OnPaint(canvas);
+    canvas->Restore();
+  }
+
+ private:
+  // View that is "above" this view in Z-order and should be clipped out.
+  // Dangling pointer detection disabled because the Views are destroyed
+  // in order, and the clip is irrelevant at that time.
+  raw_ptr<ClippingImageView, DisableDanglingPtrDetection> clipper_view_ =
+      nullptr;
+};
+
+BEGIN_METADATA(ClippingImageView)
+END_METADATA
+
+class IconContainerView : public views::View {
+  METADATA_HEADER(IconContainerView, views::View)
+ public:
+  IconContainerView() = default;
+  ~IconContainerView() override = default;
+
+  views::View::Views GetChildrenInZOrder() override {
+    auto children = views::View::GetChildrenInZOrder();
+    std::reverse(children.begin(), children.end());
+    return children;
+  }
+};
+
+BEGIN_METADATA(IconContainerView)
+END_METADATA
+
+}  // namespace
+
+MultiIconButton::MultiIconButton(PressedCallback callback)
+    : views::Button(std::move(callback)) {
+  SetLayoutManager(
+      std::make_unique<views::BoxLayout>(
+          views::BoxLayout::Orientation::kHorizontal, gfx::Insets::VH(6, 6), 0))
+      ->set_cross_axis_alignment(views::BoxLayout::CrossAxisAlignment::kCenter);
+  SetBorder(nullptr);
+  SetInstallFocusRingOnFocus(true);
+  SetFocusBehavior(FocusBehavior::ALWAYS);
+  ConfigureInkDrop(this,
+                   std::make_unique<views::RoundRectHighlightPathGenerator>(
+                       gfx::Insets(), 8));
+  views::FocusRing::Get(this)->SetOutsetFocusRingDisabled(true);
+}
+
+MultiIconButton::~MultiIconButton() = default;
+
+void MultiIconButton::OnThemeChanged() {
+  views::Button::OnThemeChanged();
+  UpdateBackground();
+}
+
+void MultiIconButton::StateChanged(ButtonState old_state) {
+  views::Button::StateChanged(old_state);
+  UpdateBackground();
+}
+
+void MultiIconButton::UpdateBackground() {
+  const auto* color_provider = GetColorProvider();
+  if (color_provider) {
+    SkColor background_color =
+        color_provider->GetColor(ui::kColorSysBaseContainer);
+    if (GetState() == ButtonState::STATE_HOVERED ||
+        GetState() == ButtonState::STATE_PRESSED) {
+      background_color = color_utils::GetResultingPaintColor(
+          color_provider->GetColor(ui::kColorSysStateHoverOnSubtle),
+          background_color);
+    }
+    SetBackground(views::CreateRoundedRectBackground(background_color, 8));
+  }
+}
+
+void MultiIconButton::Update(
+    const std::vector<std::reference_wrapper<const ui::ImageModel>>& icons) {
+  if (content_container_) {
+    views::View* container = content_container_;
+    content_container_ = nullptr;
+    RemoveChildViewT(container);
+  }
+
+  auto container = std::make_unique<IconContainerView>();
+  container
+      ->SetLayoutManager(std::make_unique<views::BoxLayout>(
+          views::BoxLayout::Orientation::kHorizontal, gfx::Insets(), -6))
+      ->set_cross_axis_alignment(views::BoxLayout::CrossAxisAlignment::kCenter);
+
+  // When adding each icon, clip it using the previous icon.
+  ClippingImageView* previous_icon = nullptr;
+  const size_t num_icons =
+      std::min(icons.size(), kAnchoredMessageMaxExpandButtonIcons);
+  for (size_t i = 0; i < num_icons; ++i) {
+    const ui::ImageModel& icon = icons[i];
+    if (!icon.IsEmpty()) {
+      auto* icon_view =
+          container->AddChildView(std::make_unique<ClippingImageView>());
+      icon_view->SetImage(icon);
+      icon_view->SetImageSize(
+          gfx::Size(kAnchoredMessageIconSize, kAnchoredMessageIconSize));
+      if (previous_icon) {
+        icon_view->SetClipperView(previous_icon);
+      }
+      previous_icon = icon_view;
+    }
+  }
+
+  if (icons.size() > kAnchoredMessageMaxExpandButtonIcons) {
+    const std::u16string count =
+        base::FormatNumber(icons.size() - kAnchoredMessageMaxExpandButtonIcons);
+    // Because this is a pure numeric string paired with a literal symbol, we
+    // can reverse the order programmatically for RTL without requiring a
+    // localized placeholder template.
+    const std::u16string label_text = base::i18n::IsRTL()
+                                          ? base::StrCat({count, u"+"})
+                                          : base::StrCat({u"+", count});
+    auto* plus_more_label =
+        container->AddChildView(std::make_unique<views::Label>(label_text));
+    plus_more_label->SetTextStyle(views::style::STYLE_BODY_5);
+    plus_more_label->SetProperty(views::kMarginsKey,
+                                 gfx::Insets::TLBR(0, 8, 0, 0));
+    plus_more_label->SetEnabledColor(ui::kColorSysOnSurfaceSubtle);
+    plus_more_label->SetLineHeight(kAnchoredMessageIconSize);
+  }
+
+  // Enforce that the icon row doesn't grow larger than the icon size, even if a
+  // font tries to push the line height up (ie. 17px line height vs 16px icons).
+  container->SetPreferredSize(gfx::Size(container->GetPreferredSize().width(),
+                                        kAnchoredMessageIconSize));
+
+  content_container_ = AddChildView(std::move(container));
+  content_container_->SetCanProcessEventsWithinSubtree(false);
+
+  // Hide the decorative internal icons and "+N" label from screen readers.
+  content_container_->GetViewAccessibility().SetIsIgnored(true);
+}
+
+BEGIN_METADATA(MultiIconButton)
+END_METADATA
+
+}  // namespace page_actions

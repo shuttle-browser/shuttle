@@ -1,0 +1,52 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "services/proxy_resolver/public/cpp/mojo_host_mojom_traits.h"
+
+#include <utility>
+
+#include "base/notreached.h"
+#include "net/base/address_list.h"
+
+namespace mojo {
+
+// static
+proxy_resolver::mojom::HostResolveOperation
+EnumTraits<proxy_resolver::mojom::HostResolveOperation,
+           net::ProxyResolveDnsOperation>::ToMojom(net::ProxyResolveDnsOperation
+                                                       input) {
+  switch (input) {
+    case net::ProxyResolveDnsOperation::DNS_RESOLVE:
+      return proxy_resolver::mojom::HostResolveOperation::DNS_RESOLVE;
+    case net::ProxyResolveDnsOperation::DNS_RESOLVE_EX:
+      return proxy_resolver::mojom::HostResolveOperation::DNS_RESOLVE_EX;
+    case net::ProxyResolveDnsOperation::MY_IP_ADDRESS:
+      return proxy_resolver::mojom::HostResolveOperation::MY_IP_ADDRESS;
+    case net::ProxyResolveDnsOperation::MY_IP_ADDRESS_EX:
+      return proxy_resolver::mojom::HostResolveOperation::MY_IP_ADDRESS_EX;
+  }
+
+  NOTREACHED();
+}
+
+// static
+net::ProxyResolveDnsOperation
+EnumTraits<proxy_resolver::mojom::HostResolveOperation,
+           net::ProxyResolveDnsOperation>::
+    FromMojom(proxy_resolver::mojom::HostResolveOperation input) {
+  switch (input) {
+    case proxy_resolver::mojom::HostResolveOperation::DNS_RESOLVE:
+      return net::ProxyResolveDnsOperation::DNS_RESOLVE;
+    case proxy_resolver::mojom::HostResolveOperation::DNS_RESOLVE_EX:
+      return net::ProxyResolveDnsOperation::DNS_RESOLVE_EX;
+    case proxy_resolver::mojom::HostResolveOperation::MY_IP_ADDRESS:
+      return net::ProxyResolveDnsOperation::MY_IP_ADDRESS;
+    case proxy_resolver::mojom::HostResolveOperation::MY_IP_ADDRESS_EX:
+      return net::ProxyResolveDnsOperation::MY_IP_ADDRESS_EX;
+  }
+
+  NOTREACHED();
+}
+
+}  // namespace mojo

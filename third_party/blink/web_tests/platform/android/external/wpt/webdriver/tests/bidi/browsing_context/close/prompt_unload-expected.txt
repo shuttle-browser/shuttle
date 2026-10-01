@@ -1,0 +1,7 @@
+This is a wdspec test.
+[FAIL] test_prompt_unload_triggering_dialog[window]
+  asyncio.exceptions.CancelledError
+[FAIL] test_prompt_unload_triggering_dialog[tab]
+  asyncio.exceptions.CancelledError
+Harness: the test ran to completion.
+

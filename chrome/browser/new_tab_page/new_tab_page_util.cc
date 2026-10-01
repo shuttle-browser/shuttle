@@ -1,0 +1,558 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/new_tab_page/new_tab_page_util.h"
+
+#include "base/command_line.h"
+#include "base/hash/hash.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/strings/strcat.h"
+#include "base/time/time.h"
+#include "build/build_config.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/new_tab_page/modules/modules_constants.h"
+#include "chrome/browser/new_tab_page/modules/modules_switches.h"
+#include "chrome/browser/new_tab_page/prefs/ntp_pref_names.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/sync/sync_service_factory.h"
+#include "chrome/common/pref_names.h"
+#include "components/ntp_tiles/features.h"
+#include "components/ntp_tiles/pref_names.h"
+#include "components/optimization_guide/core/optimization_guide_logger.h"
+#include "components/page_content_annotations/core/page_content_annotations_features.h"
+#include "components/prefs/pref_service.h"
+#include "components/prefs/scoped_user_pref_update.h"
+#include "components/search/ntp_features.h"
+#include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/sync/base/user_selectable_type.h"
+#include "components/sync/service/sync_service.h"
+#include "components/sync/service/sync_user_settings.h"
+#include "components/variations/service/variations_service.h"
+
+namespace {
+
+constexpr char kModulesAutoRemovalReasonManagedPreference[] =
+    "NewTabPage.Modules.AutoRemovalSkipped.ManagedPreference";
+constexpr char kModulesAutoRemovalReasonDisabledAllModules[] =
+    "NewTabPage.Modules.AutoRemovalSkipped.DisabledAllModules";
+constexpr char kModulesAutoRemovalReasonDisabled[] =
+    "NewTabPage.Modules.AutoRemovalSkipped.Disabled";
+constexpr char kModulesAutoRemovalReasonStaleDaysCount[] =
+    "NewTabPage.Modules.AutoRemovalSkipped.StaleDaysCount";
+
+constexpr char kShortcutsAutoRemovalReasonHistogram[] =
+    "NewTabPage.MostVisited.AutoRemovalSkipped";
+
+bool IsOsSupportedForCart() {
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+  return true;
+#else
+  return false;
+#endif
+}
+
+bool IsOsSupportedForDrive() {
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
+  return false;
+#else
+  return true;
+#endif
+}
+
+bool IsInUS() {
+  return g_browser_process->GetApplicationLocale() == "en-US" &&
+         GetVariationsServiceCountryCode(
+             g_browser_process->variations_service()) == "us";
+}
+
+}  // namespace
+
+// If feature is overridden manually or by finch, read the feature flag value.
+// Otherwise filter by os, locale and country code.
+bool IsCartModuleEnabled() {
+  if (base::FeatureList::GetInstance()->IsFeatureOverridden(
+          ntp_features::kNtpChromeCartModule.name)) {
+    return base::FeatureList::IsEnabled(ntp_features::kNtpChromeCartModule);
+  }
+  return IsOsSupportedForCart() && IsInUS();
+}
+
+bool IsDriveModuleEnabled() {
+  if (base::FeatureList::GetInstance()->IsFeatureOverridden(
+          ntp_features::kNtpDriveModule.name)) {
+    return IsFeatureForceEnabled(ntp_features::kNtpDriveModule);
+  }
+  const bool default_enabled = IsOsSupportedForDrive();
+  LogModuleEnablement(ntp_features::kNtpDriveModule, default_enabled,
+                      "default feature flag value");
+  return default_enabled;
+}
+
+bool IsDriveModuleEnabledForProfile(bool is_managed_profile, Profile* profile) {
+  if (!IsDriveModuleEnabled()) {
+    return false;
+  }
+
+  // Allow loading fake data in test environments.
+  if (!base::GetFieldTrialParamValueByFeature(
+           ntp_features::kNtpDriveModule,
+           ntp_features::kNtpDriveModuleDataParam)
+           .empty() &&
+      base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kSignedOutNtpModulesSwitch)) {
+    return true;
+  }
+
+  if (!IsProfileSignedIn(profile)) {
+    LogModuleEnablement(ntp_features::kNtpDriveModule, false, "not signed in");
+    return false;
+  }
+
+  auto* sync_service = SyncServiceFactory::GetForProfile(profile);
+  if (base::FeatureList::IsEnabled(
+          ntp_features::kNtpDriveModuleHistorySyncRequirement)) {
+    if (!sync_service ||
+        !sync_service->GetUserSettings()->GetSelectedTypes().Has(
+            syncer::UserSelectableType::kHistory)) {
+      LogModuleEnablement(ntp_features::kNtpDriveModule, false,
+                          "no history sync");
+      return false;
+    }
+  } else {
+    if (!sync_service || !sync_service->IsSyncFeatureEnabled()) {
+      LogModuleEnablement(ntp_features::kNtpDriveModule, false, "no sync");
+      return false;
+    }
+  }
+
+  if (!is_managed_profile) {
+    LogModuleEnablement(ntp_features::kNtpDriveModule, false,
+                        "account not managed");
+    return false;
+  }
+  return true;
+}
+
+bool IsEnUSLocaleOnlyFeatureEnabled(const base::Feature& ntp_feature) {
+  if (base::FeatureList::GetInstance()->IsFeatureOverridden(ntp_feature.name)) {
+    return base::FeatureList::IsEnabled(ntp_feature);
+  }
+  return IsInUS();
+}
+
+bool IsFeatureEnabled(const base::Feature& feature) {
+  if (base::FeatureList::GetInstance()->IsFeatureOverridden(feature.name)) {
+    return IsFeatureForceEnabled(feature);
+  }
+
+  bool is_default_enabled =
+      feature.default_state == base::FeatureState::FEATURE_ENABLED_BY_DEFAULT;
+  LogModuleEnablement(feature, is_default_enabled,
+                      "default feature flag value");
+  return is_default_enabled;
+}
+
+bool IsFeatureForceEnabled(const base::Feature& feature) {
+  const bool force_enabled = base::FeatureList::IsEnabled(feature);
+  LogModuleEnablement(
+      feature, force_enabled,
+      force_enabled ? "feature flag forced on" : "feature flag forced off");
+  return force_enabled;
+}
+
+bool IsGoogleCalendarModuleEnabled(bool is_managed_profile, Profile* profile) {
+  if (!IsProfileSignedIn(profile)) {
+    LogModuleEnablement(ntp_features::kNtpCalendarModule, false,
+                        "not signed in");
+    return false;
+  }
+
+  if (!is_managed_profile) {
+    LogModuleEnablement(ntp_features::kNtpCalendarModule, false,
+                        "account not managed");
+
+    // Override if in test, which must be using a command line override and
+    // fake data.                           }
+    return !base::GetFieldTrialParamValueByFeature(
+                ntp_features::kNtpCalendarModule,
+                ntp_features::kNtpCalendarModuleDataParam)
+                .empty() &&
+           base::CommandLine::ForCurrentProcess()->HasSwitch(
+               switches::kSignedOutNtpModulesSwitch);
+  }
+
+  return IsFeatureEnabled(ntp_features::kNtpCalendarModule);
+}
+
+bool IsMostRelevantTabResumeModuleEnabled(Profile* profile) {
+  if (!IsProfileSignedIn(profile)) {
+    LogModuleEnablement(ntp_features::kNtpMostRelevantTabResumptionModule,
+                        false, "not signed in");
+    return false;
+  }
+
+  return g_browser_process &&
+         page_content_annotations::features::
+             ShouldExecutePageVisibilityModelOnPageContent(
+                 g_browser_process->GetApplicationLocale()) &&
+         base::FeatureList::IsEnabled(
+             ntp_features::kNtpMostRelevantTabResumptionModule);
+}
+
+bool IsMicrosoftFilesModuleEnabledForProfile(Profile* profile) {
+  if (IsFeatureEnabled(ntp_features::kNtpSharepointModule) &&
+      IsFeatureEnabled(ntp_features::kNtpMicrosoftAuthenticationModule) &&
+      profile->GetPrefs()->IsManagedPreference(
+          prefs::kNtpSharepointModuleVisible) &&
+      profile->GetPrefs()->GetBoolean(prefs::kNtpSharepointModuleVisible)) {
+    return true;
+  }
+  LogModuleEnablement(ntp_features::kNtpSharepointModule, false,
+                      "disabled by policy");
+  return false;
+}
+
+bool IsOutlookCalendarModuleEnabledForProfile(Profile* profile) {
+  if (IsFeatureEnabled(ntp_features::kNtpOutlookCalendarModule) &&
+      IsFeatureEnabled(ntp_features::kNtpMicrosoftAuthenticationModule) &&
+      profile->GetPrefs()->IsManagedPreference(
+          prefs::kNtpOutlookModuleVisible) &&
+      profile->GetPrefs()->GetBoolean(prefs::kNtpOutlookModuleVisible)) {
+    return true;
+  }
+  LogModuleEnablement(ntp_features::kNtpOutlookCalendarModule, false,
+                      "disabled by policy");
+  return false;
+}
+
+bool IsMicrosoftModuleEnabledForProfile(Profile* profile) {
+  return IsMicrosoftFilesModuleEnabledForProfile(profile) ||
+         IsOutlookCalendarModuleEnabledForProfile(profile);
+}
+
+bool IsProfileSignedIn(Profile* profile) {
+  auto* identity_manager = IdentityManagerFactory::GetForProfile(profile);
+  return !base::FeatureList::IsEnabled(
+             ntp_features::kNtpModuleSignInRequirement) ||
+         (identity_manager && identity_manager->GetAccountsInCookieJar()
+                                      .GetPotentiallyInvalidSignedInAccounts()
+                                      .size() > 0);
+}
+
+std::string GetVariationsServiceCountryCode(
+    variations::VariationsService* variations_service) {
+  std::string country_code;
+  if (!variations_service) {
+    return country_code;
+  }
+  country_code = variations_service->GetStoredPermanentCountry();
+  return country_code.empty() ? variations_service->GetLatestCountry()
+                              : country_code;
+}
+
+void LogModuleEnablement(const base::Feature& feature,
+                         bool enabled,
+                         const std::string& reason) {
+  OPTIMIZATION_GUIDE_LOGGER(
+      optimization_guide_common::mojom::LogSource::NTP_MODULE,
+      OptimizationGuideLogger::GetInstance())
+      << feature.name << (enabled ? " enabled: " : " disabled: ") << reason;
+}
+
+void LogModuleDismissed(const base::Feature& feature,
+                        bool dismissed,
+                        const std::string& remaining_hours) {
+  std::string log = base::StrCat({feature.name, " dismissal: "});
+  if (dismissed) {
+    base::StrAppend(&log, {remaining_hours, " hours remaining"});
+  } else {
+    base::StrAppend(&log, {" not dismissed"});
+  }
+  OPTIMIZATION_GUIDE_LOGGER(
+      optimization_guide_common::mojom::LogSource::NTP_MODULE,
+      OptimizationGuideLogger::GetInstance())
+      << log;
+}
+
+void LogModuleError(const base::Feature& feature,
+                    const std::string& error_message) {
+  OPTIMIZATION_GUIDE_LOGGER(
+      optimization_guide_common::mojom::LogSource::NTP_MODULE,
+      OptimizationGuideLogger::GetInstance())
+      << feature.name << " error: " << error_message;
+}
+
+bool IsTopSitesEnabled(Profile* profile) {
+  return !IsCustomLinksEnabled(profile);
+}
+
+bool IsCustomLinksEnabled(Profile* profile) {
+  return profile->GetPrefs()->GetBoolean(ntp_prefs::kNtpCustomLinksVisible);
+}
+
+// TODO(b/502297163): Implement for Android.
+#if !BUILDFLAG(IS_ANDROID)
+bool IsEnterpriseShortcutsEmpty(Profile* profile) {
+  return profile->GetPrefs()
+      ->GetList(ntp_tiles::prefs::kEnterpriseShortcutsPolicyList)
+      .empty();
+}
+#endif
+
+bool IsEnterpriseShortcutsEnabled(Profile* profile) {
+  // Enable enterprise shortcuts if the enterprise shortcuts policy is set, and
+  // user has enabled visibility.
+// TODO(b/502297163): Implement for Android.
+#if !BUILDFLAG(IS_ANDROID)
+  return !IsEnterpriseShortcutsEmpty(profile) &&
+         profile->GetPrefs()->GetBoolean(
+             ntp_prefs::kNtpEnterpriseShortcutsVisible);
+#else
+  return false;
+#endif
+}
+
+bool IsPersonalShortcutsVisible(Profile* profile) {
+  // Always return true if no enterprise shortcuts are set by policy. Rely on
+  // `IsTopSitesEnabled()` and `IsCustomLinksEnabled()` only.
+// TODO(b/502297163): Implement for Android.
+#if !BUILDFLAG(IS_ANDROID)
+  if (IsEnterpriseShortcutsEmpty(profile)) {
+    return true;
+  }
+  return profile->GetPrefs()->GetBoolean(
+      ntp_prefs::kNtpPersonalShortcutsVisible);
+#else
+  return true;
+#endif
+}
+
+std::set<ntp_tiles::TileType> GetEnabledTileTypes(Profile* profile) {
+  std::set<ntp_tiles::TileType> enabled_types;
+  if (IsPersonalShortcutsVisible(profile) && IsCustomLinksEnabled(profile)) {
+    enabled_types.insert(ntp_tiles::TileType::kCustomLinks);
+  }
+  if (IsPersonalShortcutsVisible(profile) && IsTopSitesEnabled(profile)) {
+    enabled_types.insert(ntp_tiles::TileType::kTopSites);
+  }
+  if (IsEnterpriseShortcutsEnabled(profile)) {
+    enabled_types.insert(ntp_tiles::TileType::kEnterpriseShortcuts);
+  }
+  return enabled_types;
+}
+
+// Updates the staleness info for shortcuts
+void UpdateShortcutsStaleness(Profile* profile) {
+  // Do not update staleness if shortcuts auto removal is disabled.
+  if (profile->GetPrefs()->GetBoolean(
+          ntp_prefs::kNtpShortcutsAutoRemovalDisabled)) {
+    RecordShortcutsAutoRemovalMetrics(profile, /*prev_count=*/0);
+    return;
+  }
+
+  // Do not update staleness if shortcuts are not visible.
+  if (!profile->GetPrefs()->GetBoolean(ntp_prefs::kNtpShortcutsVisible)) {
+    RecordShortcutsAutoRemovalMetrics(profile, /*prev_count=*/0);
+    return;
+  }
+
+  // Update the last update time if it is null.
+  base::Time prev_update_time =
+      profile->GetPrefs()->GetTime(ntp_prefs::kNtpLastShortcutsStalenessUpdate);
+  if (prev_update_time.is_null()) {
+    profile->GetPrefs()->SetTime(ntp_prefs::kNtpLastShortcutsStalenessUpdate,
+                                 base::Time::Now());
+    return;
+  }
+
+  // Update the staleness info if time delta is above the threshold.
+  const base::Time shortcuts_load_time = base::Time::Now();
+  const base::TimeDelta time_since_last_update =
+      shortcuts_load_time - prev_update_time;
+  const base::TimeDelta staleness_threshold =
+      ntp_features::kShortcutsMinStalenessUpdateTimeInterval.Get();
+  if (time_since_last_update <= staleness_threshold) {
+    return;
+  }
+
+  const int staleness_count =
+      profile->GetPrefs()->GetInteger(ntp_prefs::kNtpShortcutsStalenessCount);
+  profile->GetPrefs()->SetTime(ntp_prefs::kNtpLastShortcutsStalenessUpdate,
+                               shortcuts_load_time);
+  profile->GetPrefs()->SetInteger(ntp_prefs::kNtpShortcutsStalenessCount,
+                                  staleness_count + 1);
+
+  RecordShortcutsAutoRemovalMetrics(profile, staleness_count);
+}
+
+void UpdateModulesStaleness(Profile* profile,
+                            const std::vector<std::string>& module_ids) {
+  // (1) If it's the first update, do not update the staleness counters.
+  base::Time module_load_time = base::Time::Now();
+  base::Time prev_update_time =
+      profile->GetPrefs()->GetTime(ntp_prefs::kNtpLastModuleStalenessUpdate);
+  if (prev_update_time.is_null()) {
+    profile->GetPrefs()->SetTime(ntp_prefs::kNtpLastModuleStalenessUpdate,
+                                 module_load_time);
+    return;
+  }
+
+  // (2) Do not update the staleness if time delta is below the threshold.
+  const base::TimeDelta time_since_last_update =
+      module_load_time - prev_update_time;
+  const base::TimeDelta staleness_threshold =
+      ntp_features::kModuleMinStalenessUpdateTimeInterval.Get();
+  if (time_since_last_update <= staleness_threshold) {
+    return;
+  }
+
+  // (3) Do not update staleness if feature is disabled for all modules,
+  // and log the reason for why the auto-removal was skipped for all modules.
+  const base::DictValue& auto_removal_disabled_dict =
+      profile->GetPrefs()->GetDict(
+          ntp_prefs::kNtpModulesAutoRemovalDisabledDict);
+  const bool is_disabled_for_all_modules =
+      auto_removal_disabled_dict.FindBool(ntp_modules::kAllModulesId)
+          .value_or(false);
+  if (is_disabled_for_all_modules) {
+    for (const std::string& module_id : module_ids) {
+      RecordModuleAutoRemovalMetrics(profile, auto_removal_disabled_dict,
+                                     module_id, /*prev_count=*/0);
+    }
+    return;
+  }
+
+  // The staleness update time is updated as long as both conditions
+  // (2) and (3) are met.
+  profile->GetPrefs()->SetTime(ntp_prefs::kNtpLastModuleStalenessUpdate,
+                               module_load_time);
+
+  // (4) Do not update staleness if feature is disabled for the module.
+  const base::DictValue& staleness_counts_dict =
+      profile->GetPrefs()->GetDict(ntp_prefs::kNtpModuleStalenessCountDict);
+  ScopedDictPrefUpdate update(profile->GetPrefs(),
+                              ntp_prefs::kNtpModuleStalenessCountDict);
+  for (const std::string& module_id : module_ids) {
+    const bool is_disabled_for_module =
+        auto_removal_disabled_dict.FindBool(module_id).value_or(false);
+    const int prev_count = staleness_counts_dict.FindInt(module_id).value_or(0);
+    if (!is_disabled_for_module) {
+      update->Set(module_id, prev_count + 1);
+    }
+    RecordModuleAutoRemovalMetrics(profile, auto_removal_disabled_dict,
+                                   module_id, prev_count);
+  }
+}
+
+void DisableShortcutsAutoRemoval(Profile* profile) {
+  profile->GetPrefs()->SetBoolean(ntp_prefs::kNtpShortcutsAutoRemovalDisabled,
+                                  true);
+}
+
+void DisableModuleAutoRemoval(Profile* profile, const std::string& module_id) {
+  ScopedDictPrefUpdate update(profile->GetPrefs(),
+                              ntp_prefs::kNtpModulesAutoRemovalDisabledDict);
+  update->Set(module_id, true);
+}
+
+void DisableModuleListAutoRemoval(Profile* profile,
+                                  const std::vector<std::string>& module_ids) {
+  ScopedDictPrefUpdate update(profile->GetPrefs(),
+                              ntp_prefs::kNtpModulesAutoRemovalDisabledDict);
+  for (const auto& module_id : module_ids) {
+    update->Set(module_id, true);
+  }
+}
+
+void RecordShortcutsAutoRemovalMetrics(Profile* profile, int prev_count) {
+  // Auto-removal skipped due to managed preference.
+  if (IsEnterpriseShortcutsEnabled(profile)) {
+    base::UmaHistogramEnumeration(
+        kShortcutsAutoRemovalReasonHistogram,
+        NtpShortcutsAutoRemovalReason::kManagedPreference);
+    return;
+  }
+
+  // Auto-removal skipped due to shortcuts being hidden.
+  if (!profile->GetPrefs()->GetBoolean(ntp_prefs::kNtpShortcutsVisible)) {
+    base::UmaHistogramEnumeration(kShortcutsAutoRemovalReasonHistogram,
+                                  NtpShortcutsAutoRemovalReason::kNotVisible);
+    return;
+  }
+
+  // Auto-removal skipped due to it being disabled.
+  if (profile->GetPrefs()->GetBoolean(
+          ntp_prefs::kNtpShortcutsAutoRemovalDisabled)) {
+    base::UmaHistogramEnumeration(kShortcutsAutoRemovalReasonHistogram,
+                                  NtpShortcutsAutoRemovalReason::kDisabled);
+    return;
+  }
+
+  // Log the new staleness count for shortcuts. We're only logging it here
+  // because the auto-removal will be skipped anyway due to conditions above.
+  // NOTE: An exclusive max of 101 days was picked as the max threshold.
+  base::UmaHistogramExactLinear("NewTabPage.MostVisited.AutoRemovalStaleDays",
+                                prev_count, 101);
+
+  // Auto-removal skipped due to the staleness threshold.
+  if (prev_count < ntp_features::kStaleShortcutsCountThreshold.Get()) {
+    base::UmaHistogramEnumeration(
+        kShortcutsAutoRemovalReasonHistogram,
+        NtpShortcutsAutoRemovalReason::kStaleDaysCount);
+    return;
+  }
+}
+
+void RecordModuleAutoRemovalMetrics(
+    Profile* profile,
+    const base::DictValue& auto_removal_disabled_dict,
+    const std::string& module_id,
+    const int prev_count) {
+  // Auto-removal skipped due to managed preference.
+  if (profile->GetPrefs()->IsManagedPreference(prefs::kNtpModulesVisible)) {
+    base::UmaHistogramSparse(kModulesAutoRemovalReasonManagedPreference,
+                             base::PersistentHash(module_id));
+    return;
+  }
+
+  // Auto-removal skipped due to it being disabled for all modules.
+  const bool is_disabled_for_all_modules =
+      auto_removal_disabled_dict.FindBool(ntp_modules::kAllModulesId)
+          .value_or(false);
+  if (is_disabled_for_all_modules) {
+    base::UmaHistogramSparse(kModulesAutoRemovalReasonDisabledAllModules,
+                             base::PersistentHash(module_id));
+    return;
+  }
+
+  // Auto-removal skipped due to it being disabled for the module.
+  const bool is_disabled_for_module =
+      auto_removal_disabled_dict.FindBool(module_id).value_or(false);
+  if (is_disabled_for_module) {
+    base::UmaHistogramSparse(kModulesAutoRemovalReasonDisabled,
+                             base::PersistentHash(module_id));
+    return;
+  }
+
+  // Log the new staleness count for this module. We're only logging it here
+  // because the auto-removal will be skipped anyway due to conditions above.
+  // If for whatever reason the logged count is above the threshold, we'll
+  // need to investigate why the auto-removal was not performed.
+  // NOTE: An exclusive max of 101 days was picked as the max staleness
+  // threshold; if the auto-removal threshold is changed to above that, then
+  // the logging should be changed to using COUNT instead.
+  // See: UmaHistogramExactLinear documentation for more details.
+  base::UmaHistogramExactLinear(
+      "NewTabPage.Modules.AutoRemovalStaleDays." + module_id, prev_count, 101);
+
+  // Auto-removal skipped due to the staleness threshold.
+  const int staleness_threshold =
+      ntp_features::kStaleModulesCountThreshold.Get();
+  if (prev_count < staleness_threshold) {
+    base::UmaHistogramSparse(kModulesAutoRemovalReasonStaleDaysCount,
+                             base::PersistentHash(module_id));
+  }
+}

@@ -1,0 +1,118 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_AUTHENTICATION_TEST_SIGNIN_EARL_GREY_UI_TEST_UTIL_H_
+#define IOS_CHROME_BROWSER_AUTHENTICATION_TEST_SIGNIN_EARL_GREY_UI_TEST_UTIL_H_
+
+#import <Foundation/Foundation.h>
+
+#import "ios/chrome/browser/authentication/ui_bundled/cells/signin_promo_view_constants.h"
+
+@class FakeSystemIdentity;
+
+// Test methods that perform sign in actions on Chrome UI.
+@interface SigninEarlGreyUI : NSObject
+
+// Calls
+// +[SigninEarlGreyUI signinWithFakeIdentity:fakeIdentity enableHistorySync:NO].
+// `fakeIdentity` is added if it was not added yet.
++ (void)signinWithFakeIdentity:(FakeSystemIdentity*)fakeIdentity;
+
+// Signs the account for `fakeIdentity` into Chrome through the Settings screen,
+// with history/tab sync enabled or not according to `enableHistorySync` (most
+// tests should not require it).
+// There will be a GREYAssert if the tools menus is open when calling this
+// method or if the account is not successfully signed in.
+// `fakeIdentity` is added if it was not added yet.
++ (void)signinWithFakeIdentity:(FakeSystemIdentity*)fakeIdentity
+             enableHistorySync:(BOOL)enableHistorySync;
+
+// Scrolls down in the sync settings and tap on sign-out button.
++ (void)tapSignOutFromSyncSettings;
+
+// Signs the primary account out of Chrome through the sync settings list
+// screen. Taps the "Sign Out" button, dismisses the confirmation snackbar and
+// close the settings. Verifies the user is signed-out.
++ (void)signOut;
+// Opens the settings > sync > signout. If `expectClearDataConfirmation` is
+// true, expects the "Sign out and clear data?" confirmation dialog to show up,
+// and accepts it. If `expectsSnackbar`, dismisses it, otherwise check it does
+// not appears. If `closeSettings`, tap on "Done".  Verifies the user is
+// signed-out.
++ (void)signOutWithClearDataConfirmation:(BOOL)expectClearDataConfirmation
+                          expectSnackbar:(BOOL)expectSnackbar
+                           closeSettings:(BOOL)closeSettings;
+
+// dismisses the confirmation snackbar on sign-out.
++ (void)dismissSignoutSnackbar;
+
+// Opens the confirmation dialog to remove an account from the device, without
+// confirming it.
++ (void)openRemoveAccountConfirmationDialogWithFakeIdentity:
+    (FakeSystemIdentity*)fakeIdentity;
+
+// Taps "Remove from this device" button and follow-up confirmation.
+// Assumes the user is on the Settings screen.
++ (void)tapRemoveAccountFromDeviceWithFakeIdentity:
+    (FakeSystemIdentity*)fakeIdentity;
+
+// Opens the recent tabs and tap in the primary sign-in button.
++ (void)tapPrimarySignInButtonInRecentTabs;
+
+// Checks that the sign-in promo view (with a close button) is visible using the
+// right mode.
++ (void)verifySigninPromoVisibleWithMode:(SigninPromoViewMode)mode;
+
+// Checks that the sign-in promo view is visible using the right mode. If
+// `closeButton` is set to YES, the close button in the sign-in promo has to be
+// visible.
++ (void)verifySigninPromoVisibleWithMode:(SigninPromoViewMode)mode
+                             closeButton:(BOOL)closeButton;
+
+// Checks that the sign-in promo view is not visible.
++ (void)verifySigninPromoNotVisible;
+
+// Checks that the web sign-in consistency sheet visibility matches `isVisible`.
++ (void)verifyWebSigninIsVisible:(BOOL)isVisible;
+
+// Submits encryption passphrase, if the user is on the Encryption page.
++ (void)submitSyncPassphrase:(NSString*)passphrase;
+
+// Ensure the fake add-account menu is displayed.
++ (void)assertFakeAddAccountMenuDisplayed;
+
+// Enters [fakeIdentity] in the fake add-account menu and validates it. The menu
+// should be opened
++ (void)addFakeAccountInFakeAddAccountMenu:(FakeSystemIdentity*)fakeIdentity;
+
+// Enters [fakeIdentity] in the fake add-account menu and validates it. The menu
+// should be opened
++ (void)addFakeAccountInFakeAddAccountMenu:(FakeSystemIdentity*)fakeIdentity
+                   withUnknownCapabilities:(BOOL)unknownCapabilities;
+
+// Handles the identity confirmation snackbar. If `assertVisible` is YES,
+// the test will fail if the snackbar is not visible. Otherwise, if the snackbar
+// is visible, it is dismissed.
++ (void)dismissSigninConfirmationSnackbarForIdentity:
+            (FakeSystemIdentity*)identity
+                                       assertVisible:(BOOL)assertVisible;
+
+// Handles the identity confirmation snackbar with a title. If `assertVisible`
+// is YES, the test will fail if the snackbar is not visible. Otherwise, if the
+// snackbar is visible, it is dismissed.
++ (void)dismissSigninConfirmationSnackbarWithTitle:(NSString*)title
+                                     assertVisible:(BOOL)assertVisible;
+
+// Opens settings > identity.
++ (void)openSyncSettings;
+
+// Opens settings > identity > Manage accounts on this device.
++ (void)openManageAccountsFromSettings;
+
+// Opens settings > identity > account menu.
++ (void)openAccountMenuFromSettings;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_AUTHENTICATION_TEST_SIGNIN_EARL_GREY_UI_TEST_UTIL_H_

@@ -1,0 +1,271 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_VIEWS_TABS_GROUPS_TAB_GROUP_EDITOR_BUBBLE_VIEW_H_
+#define CHROME_BROWSER_UI_VIEWS_TABS_GROUPS_TAB_GROUP_EDITOR_BUBBLE_VIEW_H_
+
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "base/memory/raw_ptr.h"
+#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
+#include "components/tab_groups/tab_group_color.h"
+#include "ui/base/interaction/element_identifier.h"
+#include "ui/base/metadata/metadata_header_macros.h"
+#include "ui/base/mojom/menu_source_type.mojom-forward.h"
+#include "ui/views/bubble/bubble_dialog_delegate_view.h"
+#include "ui/views/controls/button/label_button.h"
+#include "ui/views/controls/textfield/textfield.h"
+#include "ui/views/controls/textfield/textfield_controller.h"
+
+#include "base/callback_list.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "base/memory/raw_ref.h"
+#endif
+
+class BrowserWindowInterface;
+
+namespace tab_groups {
+enum class TabGroupColorId;
+class TabGroupId;
+}  // namespace tab_groups
+
+namespace views {
+class Separator;
+}  // namespace views
+
+class ColorPickerView;
+class ManageSharingRow;
+
+// A dialog for changing a tab group's visual parameters.
+class TabGroupEditorBubbleView : public views::BubbleDialogDelegateView,
+                                 public TabStripModelObserver {
+  METADATA_HEADER(TabGroupEditorBubbleView, views::BubbleDialogDelegateView)
+
+ public:
+  using Colors =
+      std::vector<std::pair<tab_groups::TabGroupColorId, std::u16string>>;
+
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kTabGroupEditorBubbleViewId);
+
+  static constexpr int TAB_GROUP_HEADER_CXMENU_SAVE_GROUP = 1;
+  static constexpr int TAB_GROUP_HEADER_CXMENU_NEW_TAB_IN_GROUP = 2;
+  static constexpr int TAB_GROUP_HEADER_CXMENU_UNGROUP = 3;
+  static constexpr int TAB_GROUP_HEADER_CXMENU_MANAGE_SHARING = 4;
+  static constexpr int TAB_GROUP_HEADER_CXMENU_SHARE = 5;
+  static constexpr int TAB_GROUP_HEADER_CXMENU_CLOSE_GROUP = 6;
+  static constexpr int TAB_GROUP_HEADER_CXMENU_DELETE_GROUP = 7;
+  static constexpr int TAB_GROUP_HEADER_CXMENU_LEAVE_GROUP = 8;
+  static constexpr int TAB_GROUP_HEADER_CXMENU_MOVE_GROUP_TO_NEW_WINDOW = 9;
+  static constexpr int TAB_GROUP_HEADER_CXMENU_RECENT_ACTIVITY = 10;
+  static constexpr int TAB_GROUP_HEADER_CXMENU_CONVERT_TO_BOOKMARK = 11;
+  static constexpr int TAB_GROUP_HEADER_CXMENU_FOCUS_GROUP = 12;
+  static constexpr int TAB_GROUP_HEADER_CXMENU_HOME = 13;
+  static constexpr int TAB_GROUP_HEADER_CXMENU_ASK_GEMINI = 14;
+
+  friend class TabGroupEditorBubbleInteractiveUiTest;
+
+  ~TabGroupEditorBubbleView() override;
+
+  // Shows the editor for `group`. Returns the bubble's widget.
+  static std::unique_ptr<views::Widget> Show(
+      BrowserWindowInterface* browser,
+      const tab_groups::TabGroupId& group,
+      views::View* anchor_view,
+      std::optional<gfx::Rect> anchor_rect,
+      bool stop_context_menu_propagation);
+
+  // views::BubbleDialogDelegateView:
+  views::View* GetInitiallyFocusedView() override;
+  gfx::Rect GetAnchorRect() const override;
+  // This needs to be added as it does not know the correct theme color until it
+  // is added to widget.
+  void AddedToWidget() override;
+
+ private:
+  TabGroupEditorBubbleView(BrowserWindowInterface* browser,
+                           const tab_groups::TabGroupId& group,
+                           views::View* anchor_view,
+                           std::optional<gfx::Rect> anchor_rect,
+                           bool stop_context_menu_propagation);
+
+  // TabStripModelObserver:
+  void OnTabGroupChanged(const TabGroupChange& change) override;
+
+  void UpdateGroup();
+  std::u16string GetTextForCloseButton() const;
+
+  // Returns whether the user has the appropriate profile and the
+  // enabled features to save/share groups.
+  bool CanSaveGroups() const;
+  bool CanShareGroups() const;
+
+  // Returns whether the user has permissions to create shared groups.
+  bool IsAllowedToCreateSharedGroup() const;
+
+  bool IsGroupSaved() const;
+  bool IsGroupShared() const;
+  bool ShouldShowSavedFooter() const;
+  // Returns true if the user created the group. Returns false in cases where
+  // the user was invited to join the group.
+  bool OwnsGroup() const;
+
+  // When certain settings change, the menu items need to be updated, this
+  // method destroys the children of the view, and then recreates them in the
+  // correct order/visibility.
+  void RebuildMenuContents();
+  void UpdateMenuContentsVisibility();
+
+  std::unique_ptr<views::Separator> BuildSeparator();
+  std::unique_ptr<ColorPickerView> BuildColorPicker();
+  std::unique_ptr<views::LabelButton> BuildNewTabInGroupButton();
+  std::unique_ptr<views::LabelButton> BuildHomeButton();
+  std::unique_ptr<views::LabelButton> BuildAskGeminiButton();
+  std::unique_ptr<views::LabelButton> BuildUngroupButton();
+  std::unique_ptr<views::LabelButton> BuildCloseGroupButton();
+  std::unique_ptr<views::LabelButton> BuildDeleteGroupButton();
+  std::unique_ptr<views::LabelButton> BuildLeaveGroupButton();
+  std::unique_ptr<views::LabelButton> BuildMoveGroupToNewWindowButton();
+  std::unique_ptr<views::LabelButton> BuildFocusGroupButton();
+  std::unique_ptr<views::LabelButton> BuildUnfocusGroupButton();
+  std::unique_ptr<ManageSharingRow> BuildManageSharingButton();
+  std::unique_ptr<views::LabelButton> BuildShareGroupButton();
+  std::unique_ptr<views::LabelButton> BuildRecentActivityButton();
+
+  void NewTabInGroupPressed();
+  void HomePressed();
+  void AskGeminiPressed();
+  void UngroupPressed();
+  void ShareOrManagePressed();
+  void CloseGroupPressed();
+  void DeleteGroupPressed();
+  void LeaveGroupPressed();
+  void MoveGroupToNewWindowPressed();
+  void FocusGroupPressed();
+  void UnfocusGroupPressed();
+  void RecentActivityPressed();
+
+  // The action for moving a group to a new window is only enabled when the
+  // tabstrip contains more than just the tabs in the current group.
+  bool CanMoveGroupToNewWindow();
+
+  void OnBubbleClose();
+
+#if BUILDFLAG(IS_CHROMEOS)
+  void PreventCloseOnDeactivateForEmoji();
+  void ClearCloseOnDeactivatePin();
+  void OnEmojiPickerClosed(ui::TrackedElement* element);
+#endif
+
+  // Creates the set of tab group colors to display and returns the color that
+  // is initially selected.
+  tab_groups::TabGroupColorId InitColorSet();
+
+  // the implementation of the ungroup command. This method is static so that
+  // it can be called from dialogs as a callback.
+  static void Ungroup(BrowserWindowInterface* browser,
+                      tab_groups::TabGroupId group);
+
+  class TitleFieldController : public views::TextfieldController {
+   public:
+    explicit TitleFieldController(TabGroupEditorBubbleView* parent)
+        : parent_(parent) {}
+    ~TitleFieldController() override = default;
+
+    // views::TextfieldController:
+    void ContentsChanged(views::Textfield* sender,
+                         const std::u16string& new_contents) override;
+    bool HandleKeyEvent(views::Textfield* sender,
+                        const ui::KeyEvent& key_event) override;
+
+   private:
+    const raw_ptr<TabGroupEditorBubbleView> parent_;
+  };
+
+  class TitleField : public views::Textfield {
+    METADATA_HEADER(TitleField, views::Textfield)
+
+   public:
+    explicit TitleField(TabGroupEditorBubbleView& parent,
+                        bool stop_context_menu_propagation)
+        : parent_(parent),
+          stop_context_menu_propagation_(stop_context_menu_propagation) {}
+    ~TitleField() override = default;
+
+    // views::Textfield:
+    void ShowContextMenu(const gfx::Point& p,
+                         ui::mojom::MenuSourceType source_type) override;
+
+#if BUILDFLAG(IS_CHROMEOS)
+    void ExecuteCommand(int command_id, int event_flags) override;
+#endif
+
+   private:
+    const raw_ref<TabGroupEditorBubbleView> parent_;
+
+    // Whether the context menu should be hidden the first time it shows.
+    // Needed because there is no easy way to stop the propagation of a
+    // ShowContextMenu event, which is sometimes used to open the bubble
+    // itself.
+    bool stop_context_menu_propagation_;
+  };
+  std::unique_ptr<TitleField> BuildTitleField(const std::u16string& title);
+  std::u16string GetGroupTitle();
+
+  class Footer : public views::View {
+    METADATA_HEADER(Footer, views::View)
+   public:
+    explicit Footer(BrowserWindowInterface* browser_);
+    ~Footer() override = default;
+
+    static void OpenLearnMorePage(const BrowserWindowInterface* browser_);
+  };
+
+  TitleFieldController title_field_controller_;
+  Colors colors_;
+
+  raw_ptr<BrowserWindowInterface> browser_;
+  const tab_groups::TabGroupId group_;
+
+  // Ptr access to specific children. Must be cleared and reset by
+  // RebuildMenuContents.
+  raw_ptr<TitleField> title_field_ = nullptr;
+  raw_ptr<ColorPickerView> color_selector_ = nullptr;
+  raw_ptr<Footer> footer_ = nullptr;
+  raw_ptr<ManageSharingRow> manage_shared_group_button_ = nullptr;
+  raw_ptr<views::ImageView> save_group_icon_ = nullptr;
+  raw_ptr<views::Label> save_group_label_ = nullptr;
+
+  // The different menu items, used for referring back to specific children for
+  // styling.
+  std::vector<raw_ptr<views::LabelButton>> simple_menu_items_;
+
+  // If true will use the `anchor_rect_` provided in the constructor, otherwise
+  // fall back to using the anchor view bounds.
+  const bool use_set_anchor_rect_;
+
+  // The first title shown to the user when the bubble dialog is opened. Used
+  // for logging whether the user changes the title.
+  std::u16string title_at_opening_;
+
+  // Stored value for constructor param.
+  bool stop_context_menu_propagation_;
+
+  base::CallbackListSubscription browser_close_subscription_;
+  void OnBrowserDidClose(BrowserWindowInterface* browser);
+
+#if BUILDFLAG(IS_CHROMEOS)
+  // Ensures the bubble dialog remains open when the emoji picker menu steals
+  // focus (crbug.com/485778122). Needed as both are browser-managed UIs in
+  // ChromeOS.
+  std::unique_ptr<views::BubbleDialogDelegate::CloseOnDeactivatePin>
+      close_on_deactivate_pin_;
+
+  base::CallbackListSubscription emoji_picker_hidden_subscription_;
+#endif
+};
+
+#endif  // CHROME_BROWSER_UI_VIEWS_TABS_GROUPS_TAB_GROUP_EDITOR_BUBBLE_VIEW_H_

@@ -1,0 +1,56 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_TOOLBAR_UI_BUTTONS_TOOLBAR_BUTTON_FACTORY_H_
+#define IOS_CHROME_BROWSER_TOOLBAR_UI_BUTTONS_TOOLBAR_BUTTON_FACTORY_H_
+
+#import <UIKit/UIKit.h>
+
+@protocol GeminiCommands;
+@class ToolbarButton;
+@protocol ToolbarElementWithBackground;
+@class ToolbarTabGridBadgeButton;
+
+// Factory for creating toolbar buttons.
+@interface ToolbarButtonFactory : NSObject
+
+// Handler for Gemini commands.
+@property(nonatomic, weak) id<GeminiCommands> geminiHandler;
+
+// Initializer for this factory in `incognito`.
+- (instancetype)initWithIncognito:(BOOL)incognito NS_DESIGNATED_INITIALIZER;
+- (instancetype)init NS_UNAVAILABLE;
+
+// Creates a back button.
+- (ToolbarButton*)makeBackButton;
+
+// Creates a forward button.
+- (ToolbarButton*)makeForwardButton;
+
+// Creates a UIView containing conjoined back and forward navigation buttons.
+- (UIView<ToolbarElementWithBackground>*)
+    makeConjoinedBackButton:(ToolbarButton*)backButton
+              forwardButton:(ToolbarButton*)forwardButton;
+
+// Creates a reload button.
+- (ToolbarButton*)makeReloadButton;
+
+// Creates a stop button.
+- (ToolbarButton*)makeStopButton;
+
+// Creates a share button.
+- (ToolbarButton*)makeShareButton;
+
+// Creates a tab grid button.
+- (ToolbarTabGridBadgeButton*)makeTabGridButton;
+
+// Creates an assistant button.
+- (ToolbarButton*)makeAssistantButton;
+
+// Creates a tools menu button.
+- (ToolbarButton*)makeToolsMenuButton;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_TOOLBAR_UI_BUTTONS_TOOLBAR_BUTTON_FACTORY_H_

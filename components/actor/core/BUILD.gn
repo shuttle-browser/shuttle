@@ -1,0 +1,101 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("task_id") {
+  sources = [ "task_id.h" ]
+  deps = [ "//base" ]
+}
+
+source_set("logging") {
+  sources = [ "actor_logging.h" ]
+  deps = [ "//base" ]
+}
+
+source_set("journal") {
+  sources = [
+    "aggregated_journal.cc",
+    "aggregated_journal.h",
+    "aggregated_journal_file_serializer.cc",
+    "aggregated_journal_file_serializer.h",
+    "aggregated_journal_in_memory_serializer.cc",
+    "aggregated_journal_in_memory_serializer.h",
+    "aggregated_journal_serializer.cc",
+    "aggregated_journal_serializer.h",
+  ]
+  deps = [
+    ":logging",
+    "//base",
+    "//components/tracing:tracing_metrics",
+    "//third_party/perfetto:libperfetto",
+    "//third_party/perfetto/protos/perfetto/config:zero_gen",
+    "//third_party/perfetto/protos/perfetto/trace/perfetto:zero_gen",
+    "//third_party/protobuf:protobuf_lite",
+    "//url",
+  ]
+  public_deps = [
+    ":core",
+    ":task_id",
+    "//components/actor/public/mojom:mojo_bindings",
+  ]
+}
+
+source_set("core") {
+  sources = [
+    "actor_features.cc",
+    "actor_features.h",
+    "actor_metrics.cc",
+    "actor_metrics.h",
+    "actor_switches.cc",
+    "actor_switches.h",
+    "actor_ui_mode.h",
+    "actor_util.cc",
+    "actor_util.h",
+    "journal_details_builder.cc",
+    "journal_details_builder.h",
+    "page_stability_metrics.h",
+    "page_stability_metrics_common.cc",
+    "page_stability_metrics_common.h",
+    "page_stability_monitor_delegate.cc",
+    "page_stability_monitor_delegate.h",
+    "safety_list_manager.cc",
+    "safety_list_manager.h",
+    "shared_types.cc",
+    "shared_types.h",
+    "task_source_info.cc",
+    "task_source_info.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//components/actor/public/mojom:mojo_bindings",
+    "//components/content_settings/core/common",
+    "//components/page_content_annotations/core",
+    "//url",
+  ]
+
+  deps = [
+    "//net",
+    "//ui/base",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [
+    "aggregated_journal_serializer_unittest.cc",
+    "aggregated_journal_unittest.cc",
+    "page_stability_monitor_delegate_unittest.cc",
+    "safety_list_manager_unittest.cc",
+    "shared_types_unittest.cc",
+  ]
+  deps = [
+    ":core",
+    ":journal",
+    "//base",
+    "//base/test:test_support",
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//testing/gtest",
+    "//url",
+  ]
+}

@@ -1,0 +1,187 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//mojo/public/tools/bindings/mojom.gni")
+import("//testing/test.gni")
+
+# This is an experimental API and should not be used outside of its approved
+# implementation. There is a visibility rule that ensures any new dependency on
+# this target must be approved.
+# TODO(crbug.com/433569400) Link to doc for more information.
+mojom("mojom_experiment") {
+  sources = [ "tab_strip_experiment_api.mojom" ]
+
+  deps = [
+    ":mojom",
+    "//ui/gfx/geometry/mojom",
+  ]
+
+  webui_module_path = "/"
+  visibility = [
+    "//chrome/browser/ui/tabs/tab_strip_api",
+    "//chrome/browser/ui/tabs/tab_strip_api:impl",
+    "//chrome/browser/ui/tabs/tab_strip_api:impl_header",
+    "//chrome/browser/ui/tabs/tab_strip_api:unit_tests",
+    "//chrome/browser/ui/tabs/tab_strip_api/tab_strip_model_impl:browser_tests",
+    "//chrome/browser/ui/webui_browser",
+    "//components/browser_apis/tab_strip:service",
+    "//components/browser_apis/tab_strip:unit_tests",
+  ]
+}
+
+mojom("mojom_ui_controller") {
+  sources = [ "tab_strip_ui_controller.mojom" ]
+
+  deps = [
+    ":mojom",
+    "//ui/gfx/geometry/mojom",
+  ]
+
+  webui_module_path = "/"
+  visibility = [
+    "//chrome/browser/ui/tabs/tab_strip_api/controllers",
+    "//chrome/browser/ui/tabs/tab_strip_api/controllers:browser_tests",
+    "//chrome/browser/ui/tabs/tab_strip_api/tab_strip_model_impl:browser_tests",
+    "//chrome/browser/ui/webui_browser",
+    "//components/browser_apis/tab_strip/resources",
+  ]
+}
+
+mojom("mojom") {
+  sources = [
+    "tab_strip_api.mojom",
+    "tab_strip_api_data_model.mojom",
+    "tab_strip_api_events.mojom",
+    "tab_strip_api_types.mojom",
+  ]
+
+  public_deps = [
+    "//components/tab_groups/public/mojom:mojo_bindings",
+    "//components/tabs/public/mojom",
+    "//mojo/public/mojom/base",
+    "//url/mojom:url_mojom_gurl",
+  ]
+
+  webui_module_path = "/"
+
+  cpp_typemaps = [
+    {
+      types = [
+        {
+          mojom = "tabs_api.mojom.NodeId"
+          cpp = "::tabs_api::NodeId"
+        },
+        {
+          mojom = "tabs_api.mojom.NodeId.Type"
+          cpp = "enum ::tabs_api::NodeId::Type"
+        },
+        {
+          mojom = "tabs_api.mojom.Path"
+          cpp = "::tabs_api::Path"
+        },
+        {
+          mojom = "tabs_api.mojom.Position"
+          cpp = "::tabs_api::Position"
+        },
+        {
+          mojom = "tabs_api.mojom.TabGroupVisualData"
+          cpp = "::tab_groups::TabGroupVisualData"
+        },
+        {
+          mojom = "tabs_api.mojom.Image"
+          cpp = "::gfx::ImageSkia"
+        },
+        {
+          mojom = "tabs_api.mojom.SplitTabVisualData"
+          cpp = "::split_tabs::SplitTabVisualData"
+        },
+      ]
+      traits_headers = [
+        "types/image_mojom_traits.h",
+        "types/node_id.h",
+        "types/node_id_mojom_traits.h",
+        "types/path.h",
+        "types/path_mojom_traits.h",
+        "types/position.h",
+        "types/position_mojom_traits.h",
+        "types/tab_group_visual_data_mojom_traits.h",
+        "types/split_tab_visual_data_mojom_traits.h",
+        "//components/tab_groups/tab_group_visual_data.h",
+        "//ui/gfx/image/image_skia.h",
+        "//components/split_tabs/split_tab_visual_data.h",
+      ]
+      traits_sources = [
+        "types/image_mojom_traits.cc",
+        "types/node_id_mojom_traits.cc",
+        "types/path_mojom_traits.cc",
+        "types/position_mojom_traits.cc",
+        "types/split_tab_visual_data_mojom_traits.cc",
+        "types/tab_group_visual_data_mojom_traits.cc",
+      ]
+      traits_public_deps = [
+        "types",
+        "//base",
+        "//net",
+        "//ui/gfx",
+      ]
+    },
+  ]
+
+  ts_typemaps = [
+    {
+      source = "node_id_converter.ts"
+      types = [
+        {
+          converter = "NodeIdConverter"
+          mojom = "tabs_api.mojom.NodeId"
+          ts = "string"
+        },
+      ]
+    },
+  ]
+}
+
+source_set("service") {
+  sources = [
+    "event_broadcaster.cc",
+    "event_broadcaster.h",
+    "tab_strip_service.h",
+    "tab_strip_service_impl.cc",
+    "tab_strip_service_impl.h",
+  ]
+
+  public_deps = [ ":mojom" ]
+
+  deps = [
+    ":mojom_experiment",
+    "adapters",
+    "events",
+    "observation",
+    "types",
+    "utilities",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  sources = [
+    "tab_strip_experiment_service_unittest.cc",
+    "tab_strip_service_impl_unittest.cc",
+  ]
+
+  deps = [
+    ":service",
+    "adapters",
+    "events:unit_tests",
+    "observation:unit_tests",
+    "testing",
+    "types:unit_tests",
+    "utilities:unit_tests",
+    "//base/test:test_support",
+    "//components/browser_apis/tab_strip:mojom_experiment",
+    "//components/tabs:public",
+    "//testing/gtest",
+  ]
+}

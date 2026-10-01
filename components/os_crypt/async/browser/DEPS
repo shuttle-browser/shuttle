@@ -1,0 +1,14 @@
+include_rules = [
+  "+components/dbus",
+  "+components/prefs",
+  "+components/version_info",
+  "+crypto",
+  "+dbus",
+]
+
+specific_include_rules = {
+  "keychain_key_provider.mm": [
+    "+components/os_crypt/common/keychain_password_mac.h",
+    "+components/os_crypt/common/os_crypt_switches.h",
+  ],
+}

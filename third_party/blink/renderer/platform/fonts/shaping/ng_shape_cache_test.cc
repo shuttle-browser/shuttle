@@ -1,0 +1,102 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/platform/fonts/shaping/ng_shape_cache.h"
+
+#include "base/test/task_environment.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/renderer/platform/fonts/font.h"
+#include "third_party/blink/renderer/platform/fonts/font_performance.h"
+#include "third_party/blink/renderer/platform/testing/font_test_base.h"
+#include "third_party/blink/renderer/platform/testing/font_test_helpers.h"
+#include "third_party/blink/renderer/platform/text/text_direction.h"
+
+namespace blink {
+
+class NGShapeCacheTest : public FontTestBase {
+ protected:
+  void SetUp() override {
+    Font* font = test::CreateAhemFont(100);
+    cache = MakeGarbageCollected<NGShapeCache>(font->PrimaryFont());
+  }
+  Persistent<NGShapeCache> cache;
+};
+
+TEST_F(NGShapeCacheTest, AddEntriesAndCacheHits) {
+  auto ShapeResultFunc = []() -> ShaperResult {
+    // For the purposes of this test the actual internals of the shape result
+    // doesn't matter.
+    return {MakeGarbageCollected<ShapeResult>(0, 0, TextDirection::kLtr),
+            /*can_cache=*/true};
+  };
+
+  auto CreateKey = [](const String& text,
+                      TextDirection direction) -> ShapeCacheKey {
+    return ShapeCacheKey(text, 0, text.length(), g_null_atom, {}, direction);
+  };
+
+  // Adding an entry is successful.
+  const auto* entry_A_LTR =
+      cache->GetOrCreate(CreateKey("A", TextDirection::kLtr), ShapeResultFunc);
+  ASSERT_TRUE(entry_A_LTR);
+
+  // Adding the same entry again hits cache.
+  EXPECT_EQ(
+      cache->GetOrCreate(CreateKey("A", TextDirection::kLtr), ShapeResultFunc),
+      entry_A_LTR);
+
+  // Adding the an entry with different text does not hit cache.
+  const auto* entry_B_LTR =
+      cache->GetOrCreate(CreateKey("B", TextDirection::kLtr), ShapeResultFunc);
+  ASSERT_TRUE(entry_B_LTR);
+  EXPECT_NE(entry_B_LTR, entry_A_LTR);
+
+  // Adding the same entry again hits cache.
+  EXPECT_EQ(
+      cache->GetOrCreate(CreateKey("B", TextDirection::kLtr), ShapeResultFunc),
+      entry_B_LTR);
+
+  // Adding the an entry with different direction does not hit cache.
+  const auto* entry_A_RTL =
+      cache->GetOrCreate(CreateKey("A", TextDirection::kRtl), ShapeResultFunc);
+  ASSERT_TRUE(entry_A_RTL);
+  EXPECT_NE(entry_A_RTL, entry_A_LTR);
+  EXPECT_NE(entry_A_RTL, entry_B_LTR);
+
+  // Adding the same entry again hits cache.
+  EXPECT_EQ(
+      cache->GetOrCreate(CreateKey("A", TextDirection::kRtl), ShapeResultFunc),
+      entry_A_RTL);
+}
+
+TEST_F(NGShapeCacheTest, FontPerformanceMetrics) {
+  FontPerformance::Reset();
+
+  auto ShapeResultFunc = []() -> ShaperResult {
+    return {MakeGarbageCollected<ShapeResult>(0, 0, TextDirection::kLtr),
+            /*can_cache=*/true};
+  };
+
+  auto CreateKey = [](const String& text) -> ShapeCacheKey {
+    return ShapeCacheKey(text, 0, text.length(), g_null_atom, {},
+                         TextDirection::kLtr);
+  };
+
+  // First access: Miss
+  cache->GetOrCreate(CreateKey("A"), ShapeResultFunc);
+  EXPECT_EQ(FontPerformance::ShapeCacheHitCount(), 0u);
+  EXPECT_EQ(FontPerformance::ShapeCacheMissCount(), 1u);
+
+  // Second access: Hit
+  cache->GetOrCreate(CreateKey("A"), ShapeResultFunc);
+  EXPECT_EQ(FontPerformance::ShapeCacheHitCount(), 1u);
+  EXPECT_EQ(FontPerformance::ShapeCacheMissCount(), 1u);
+
+  // Access with different key: Miss
+  cache->GetOrCreate(CreateKey("B"), ShapeResultFunc);
+  EXPECT_EQ(FontPerformance::ShapeCacheHitCount(), 1u);
+  EXPECT_EQ(FontPerformance::ShapeCacheMissCount(), 2u);
+}
+
+}  // namespace blink

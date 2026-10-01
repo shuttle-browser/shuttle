@@ -1,0 +1,353 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.payments.ui;
+
+import static org.chromium.build.NullUtil.assumeNonNull;
+
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.AnimatorSet;
+import android.animation.ObjectAnimator;
+import android.app.Activity;
+import android.app.Dialog;
+import android.content.Context;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.view.Gravity;
+import android.view.View;
+import android.view.View.OnLayoutChangeListener;
+import android.view.ViewGroup;
+import android.view.ViewGroup.LayoutParams;
+import android.view.Window;
+import android.view.WindowManager;
+import android.widget.FrameLayout;
+
+import org.chromium.base.CancelableRunnable;
+import org.chromium.base.SysUtils;
+import org.chromium.base.task.PostTask;
+import org.chromium.base.task.TaskTraits;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.R;
+import org.chromium.chrome.browser.ui.edge_to_edge.EdgeToEdgeUtils;
+import org.chromium.components.browser_ui.widget.AlwaysDismissedDialog;
+import org.chromium.components.payments.PaymentFeatureList;
+import org.chromium.ui.UiUtils;
+import org.chromium.ui.interpolators.Interpolators;
+import org.chromium.ui.util.ColorUtils;
+
+import java.util.ArrayList;
+import java.util.Collection;
+
+/**
+ * A fullscreen semitransparent dialog used for dimming Chrome when overlaying a bottom sheet
+ * dialog/CCT or an alert dialog on top of it. FLAG_DIM_BEHIND is not being used because it causes
+ * the web contents of a payment handler CCT to also dim on some versions of Android (e.g., Nougat).
+ *
+ * <p>Note: Do not use this class outside of the payments.ui package!
+ */
+@NullMarked
+/* package */ class DimmingDialog {
+    /**
+     * Length of the animation to either show the UI or expand it to full height. Note that click of
+     * 'Pay' button in PaymentRequestUi is not accepted until the animation is done, so this
+     * duration also serves the function of preventing the user from accidentally double-clicking on
+     * the screen when triggering payment and thus authorizing unwanted transaction.
+     */
+    private static final int DIALOG_ENTER_ANIMATION_MS = 225;
+
+    /** Length of the animation to hide the bottom sheet UI. */
+    private static final int DIALOG_EXIT_ANIMATION_MS = 195;
+
+    // If the payment app crashes immediately on launch, the background dim may "flash" (dim
+    // then un-dim quickly) if ran synchronously. The delay exists to mitigate this flash issue.
+    // A slightly longer delay is used on low-end devices to account for slower processing of
+    // such crashes. These short values were chosen to be mostly indiscernible to the user.
+    private static final int BACKGROUND_DIM_DELAY_MS_HIGH_END_DEVICE = 100;
+    private static final int BACKGROUND_DIM_DELAY_MS_LOW_END_DEVICE = 150;
+
+    private final AlwaysDismissedDialog mDialog;
+    private final ViewGroup mFullContainer;
+    private final int mAnimatorTranslation;
+    private @Nullable DimmingDialogObserver mObserver;
+    private boolean mIsAnimatingDisappearance;
+    private @Nullable CancelableRunnable mShowScrimRunnable;
+
+    /** Listener for the events of the DimmingDialog. */
+    public interface DimmingDialogObserver {
+        /** Called when the UI is dismissed. */
+        void onDismiss();
+
+        /** Called when the scrim is shown. */
+        void onScrimShown();
+    }
+
+    /**
+     * Builds the dimming dialog.
+     *
+     * @param activity The activity on top of which the dialog should be displayed.
+     * @param observer The listener for the events of this dialog.
+     */
+    /* package */ DimmingDialog(Activity activity, DimmingDialogObserver observer) {
+        mObserver = observer;
+        // To handle the specced animations, the dialog is entirely contained within a translucent
+        // FrameLayout. This could eventually be converted to a real BottomSheetDialog, but that
+        // requires exploration of how interactions would work when the dialog can be sent back and
+        // forth between the peeking and expanded state.
+        mFullContainer = new FrameLayout(activity);
+        mDialog =
+                new AlwaysDismissedDialog(
+                        activity,
+                        R.style.DimmingDialog,
+                        EdgeToEdgeUtils.isEdgeToEdgeEverywhereEnabled());
+        mDialog.setOnDismissListener((v) -> notifyListenerDialogDismissed());
+        mDialog.addContentView(
+                mFullContainer,
+                new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        Window dialogWindow = mDialog.getWindow();
+        assumeNonNull(dialogWindow);
+        dialogWindow.setGravity(Gravity.CENTER);
+        dialogWindow.setLayout(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
+        dialogWindow.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+
+        mAnimatorTranslation =
+                activity.getResources().getDimensionPixelSize(R.dimen.payments_ui_translation);
+    }
+
+    /**
+     * Makes sure that the color of the icons in the status bar makes the icons visible.
+     *
+     * @param window The window whose status bar icon color is being set.
+     */
+    /* package */ static void setVisibleStatusBarIconColor(Window window) {
+        UiUtils.setStatusBarIconColor(
+                window.getDecorView().getRootView(),
+                !ColorUtils.shouldUseLightForegroundOnBackground(window.getStatusBarColor()));
+    }
+
+    /**
+     * @param bottomSheetView The view to show in the bottom sheet.
+     * @param backgroundColor The color for the bottom sheet view. Used to color navigation bar.
+     */
+    /* package */ void addBottomSheetView(View bottomSheetView, int backgroundColor) {
+        FrameLayout.LayoutParams bottomSheetParams =
+                new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
+        bottomSheetParams.gravity = Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM;
+        mFullContainer.addView(bottomSheetView, bottomSheetParams);
+        bottomSheetView.addOnLayoutChangeListener(new FadeInAnimator());
+        mDialog.setNavBarColor(backgroundColor);
+    }
+
+    /**
+     * Shows the scrim by setting the dialog's background color and the Android status bar color to
+     * a translucent dark grey.
+     */
+    private void showScrim() {
+        int scrimColor = mFullContainer.getContext().getColor(R.color.modal_dialog_scrim_color);
+        mFullContainer.setBackgroundColor(scrimColor);
+        mDialog.setStatusBarColor(scrimColor);
+        setVisibleStatusBarIconColor(assumeNonNull(mDialog.getWindow()));
+        if (mObserver != null) mObserver.onScrimShown();
+    }
+
+    /**
+     * Show the dialog.
+     *
+     * @param shouldDelayScrim If true, the scrim is drawn async after a short delay. If false, the
+     *     scrim is drawn immediately.
+     * @return Whether the show is successful.
+     */
+    /* package */ boolean show(boolean shouldDelayScrim) {
+        if (shouldDelayScrim
+                && PaymentFeatureList.isEnabled(
+                        PaymentFeatureList.DELAY_NATIVE_PAYMENT_APP_SCRIM_SHOW)) {
+            mShowScrimRunnable = new CancelableRunnable(this::showScrim);
+            int delayMs =
+                    SysUtils.isLowEndDevice()
+                            ? BACKGROUND_DIM_DELAY_MS_LOW_END_DEVICE
+                            : BACKGROUND_DIM_DELAY_MS_HIGH_END_DEVICE;
+            PostTask.postDelayedTask(TaskTraits.UI_DEFAULT, mShowScrimRunnable, delayMs);
+        } else {
+            showScrim();
+        }
+
+        try {
+            mDialog.show();
+            return true;
+        } catch (WindowManager.BadTokenException badToken) {
+            // The exception could be thrown according to https://crbug.com/40726011.
+            return false;
+        }
+    }
+
+    /** Hide the dialog without dismissing it. */
+    /* package */ void hide() {
+        if (mShowScrimRunnable != null) {
+            mShowScrimRunnable.cancel();
+        }
+        mDialog.hide();
+    }
+
+    /**
+     * Dismiss the dialog.
+     *
+     * @param isAnimated If true, the dialog dismissal is animated.
+     */
+    /* package */ void dismiss(boolean isAnimated) {
+        if (mShowScrimRunnable != null) {
+            mShowScrimRunnable.cancel();
+        }
+        if (isAnimated) {
+            new DisappearingAnimator(true);
+        } else {
+            mDialog.dismiss();
+            notifyListenerDialogDismissed();
+        }
+    }
+
+    private void notifyListenerDialogDismissed() {
+        if (mObserver == null) return;
+        mObserver.onDismiss();
+        mObserver = null;
+    }
+
+    /** @param overlay The overlay to show. This can be an error dialog, for example. */
+    /* package */ void showOverlay(View overlay) {
+        // Animate the bottom sheet going away.
+        new DisappearingAnimator(false);
+
+        int floatingDialogWidth =
+                DimmingDialog.computeMaxWidth(
+                        mFullContainer.getContext(),
+                        mFullContainer.getMeasuredWidth(),
+                        mFullContainer.getMeasuredHeight());
+        FrameLayout.LayoutParams overlayParams =
+                new FrameLayout.LayoutParams(floatingDialogWidth, LayoutParams.WRAP_CONTENT);
+        overlayParams.gravity = Gravity.CENTER;
+        mFullContainer.addView(overlay, overlayParams);
+    }
+
+    /** @return Whether the dialog is currently animating disappearance. */
+    /* package */ boolean isAnimatingDisappearance() {
+        return mIsAnimatingDisappearance;
+    }
+
+    /**
+     * Computes the maximum possible width for a dialog box.
+     *
+     * Follows https://www.google.com/design/spec/components/dialogs.html#dialogs-simple-dialogs
+     *
+     * @param context         Context to pull resources from.
+     * @param availableWidth  Available width for the dialog.
+     * @param availableHeight Available height for the dialog.
+     * @return Maximum possible width for the dialog box.
+     *
+     * TODO(dfalcantara): Revisit this function when the new assets come in.
+     * TODO(dfalcantara): The dialog should listen for configuration changes and resize accordingly.
+     */
+    private static int computeMaxWidth(Context context, int availableWidth, int availableHeight) {
+        int baseUnit = context.getResources().getDimensionPixelSize(R.dimen.dialog_width_unit);
+        int maxSize = Math.min(availableWidth, availableHeight);
+        int multiplier = maxSize / baseUnit;
+        return multiplier * baseUnit;
+    }
+
+    /**
+     * Animates the whole dialog fading in and darkening everything else on screen.
+     * This particular animation is not tracked because it is not meant to be cancellable.
+     */
+    private class FadeInAnimator extends AnimatorListenerAdapter implements OnLayoutChangeListener {
+        @Override
+        public void onLayoutChange(
+                View v,
+                int left,
+                int top,
+                int right,
+                int bottom,
+                int oldLeft,
+                int oldTop,
+                int oldRight,
+                int oldBottom) {
+            mFullContainer.getChildAt(0).removeOnLayoutChangeListener(this);
+
+            Animator scrimFader =
+                    ObjectAnimator.ofInt(
+                            mFullContainer.getBackground(),
+                            AnimatorProperties.DRAWABLE_ALPHA_PROPERTY,
+                            0,
+                            255);
+            Animator alphaAnimator = ObjectAnimator.ofFloat(mFullContainer, View.ALPHA, 0f, 1f);
+
+            AnimatorSet alphaSet = new AnimatorSet();
+            alphaSet.playTogether(scrimFader, alphaAnimator);
+            alphaSet.setDuration(DIALOG_ENTER_ANIMATION_MS);
+            alphaSet.setInterpolator(Interpolators.LINEAR_OUT_SLOW_IN_INTERPOLATOR);
+            alphaSet.start();
+        }
+    }
+
+    /** Animates the bottom sheet (and optionally, the scrim) disappearing off screen. */
+    private class DisappearingAnimator extends AnimatorListenerAdapter {
+        private final boolean mIsDialogClosing;
+
+        public DisappearingAnimator(boolean removeDialog) {
+            mIsDialogClosing = removeDialog;
+
+            Collection<Animator> animators = new ArrayList<>();
+
+            View child = mFullContainer.getChildAt(0);
+            if (child != null) {
+                // Sheet fader.
+                animators.add(ObjectAnimator.ofFloat(child, View.ALPHA, child.getAlpha(), 0f));
+                // Sheet translator.
+                animators.add(
+                        ObjectAnimator.ofFloat(
+                                child, View.TRANSLATION_Y, 0f, mAnimatorTranslation));
+            }
+
+            if (mIsDialogClosing) {
+                // Scrim fader.
+                animators.add(
+                        ObjectAnimator.ofInt(
+                                mFullContainer.getBackground(),
+                                AnimatorProperties.DRAWABLE_ALPHA_PROPERTY,
+                                127,
+                                0));
+            }
+
+            if (animators.isEmpty()) return;
+
+            mIsAnimatingDisappearance = true;
+
+            AnimatorSet current = new AnimatorSet();
+            current.setDuration(DIALOG_EXIT_ANIMATION_MS);
+            current.setInterpolator(Interpolators.FAST_OUT_LINEAR_IN_INTERPOLATOR);
+            current.playTogether(animators);
+            current.addListener(this);
+            current.start();
+        }
+
+        @Override
+        public void onAnimationEnd(Animator animation) {
+            mIsAnimatingDisappearance = false;
+            mFullContainer.removeView(mFullContainer.getChildAt(0));
+            if (mIsDialogClosing) {
+                if (mDialog.isShowing()) mDialog.dismiss();
+                notifyListenerDialogDismissed();
+            }
+        }
+    }
+
+    public Dialog getDialogForTest() {
+        return mDialog;
+    }
+
+    /** Force the Dialog window to refresh its visual state. */
+    /* package */ void refresh() {
+        Window window = mDialog.getWindow();
+        assumeNonNull(window);
+        window.setAttributes(window.getAttributes());
+    }
+}

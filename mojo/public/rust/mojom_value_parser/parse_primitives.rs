@@ -1,0 +1,168 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+//! Defines the primitive parsers that the rest of the mojom parsers build upon.
+//!
+//! This module contains the lowest-level parsers. These parse simple, generic
+//! data types (ints and floats), and interact directly with the encoded data as
+//! a byte stream.
+//!
+//! In this library, a *parser* is a function that takes in a byte array (and
+//! possibly some other information) and returns a `Result<value>`, for some
+//! type `value`. In the process, it mutates the input data stream, dropping
+//! however much data it read.
+//!
+//! Since Mojom messages encode expected offsets of data for validation
+//! purposes, parsers also track how much data has been parsed in total.
+//!
+//! All parsers ensure that enough data exists, and return an error result if
+//! not.
+//!
+//! This strategy basically re-invents `nom`, but so long as it's limited to
+//! this crate, it's convenient to have our own version where we can tailor the
+//! behavior and input/output types.
+
+// TODO(crbug.com/496946897): Figure out if integers are encoded as
+// little-endian or host-endian.
+
+use crate::ast::{InterfaceId, UntypedHandle};
+use crate::errors::*;
+use std::any::type_name;
+
+/// The input to a parser. Represents the two parts of a mojom message:
+/// the raw bytes of the payload, and the attached list of handles.
+pub struct ParserData<'a> {
+    /// The raw bytes of the message which have yet to be parsed.
+    remaining_bytes: &'a [u8],
+    /// The handles attached to the message separately from the raw bytes.
+    message_handles: &'a mut [Option<UntypedHandle>],
+    /// The interface IDs attached to the message. These were encoded as part
+    /// of the raw bytes, but `remaining_bytes` should not contain the encoded
+    /// version.
+    interface_ids: Vec<Option<InterfaceId>>,
+    bytes_parsed: usize,
+}
+
+// Since the primitive parsers require mutable references, encapsulate the
+// internal representation so we don't accidentally mutate it elsewhere.
+impl<'a> ParserData<'a> {
+    /// Create a new ParserData from a byte array.
+    pub fn new(
+        data: &'a [u8],
+        handles: &'a mut [Option<crate::ast::UntypedHandle>],
+        interface_ids: Vec<Option<InterfaceId>>,
+    ) -> ParserData<'a> {
+        ParserData {
+            remaining_bytes: data,
+            message_handles: handles,
+            interface_ids,
+            bytes_parsed: 0,
+        }
+    }
+
+    /// How many bytes have been parsed since the ParserData was created.
+    pub fn bytes_parsed(&self) -> usize {
+        self.bytes_parsed
+    }
+
+    /// How many bytes remain to be parsed.
+    pub fn remaining_bytes(&self) -> usize {
+        self.remaining_bytes.len()
+    }
+
+    /// Take ownership of the handle at index i of `message_handles`.
+    ///
+    /// If there is no handle at that index (it's out of bounds, or ownership
+    /// was already taken), returns None.
+    pub fn take_handle(&mut self, idx: usize) -> Option<UntypedHandle> {
+        let handle_ref = self.message_handles.get_mut(idx)?;
+        std::mem::take(handle_ref)
+    }
+
+    /// Take ownership of the interface ID at index i of `message_handles`.
+    ///
+    /// If there is no ID at that index (it's out of bounds, or ownership
+    /// was already taken), returns None.
+    pub fn take_interface_id(&mut self, idx: usize) -> Option<InterfaceId> {
+        let id_ref = self.interface_ids.get_mut(idx)?;
+        std::mem::take(id_ref)
+    }
+
+    pub fn into_bytes(self) -> &'a [u8] {
+        self.remaining_bytes
+    }
+}
+
+/// Skips the next `bytes_to_parse` bytes, assuming they exist.
+pub fn parse_padding(data: &mut ParserData, bytes_to_parse: usize) -> ParsingResult<()> {
+    let mk_err = || ParsingError {
+        offset: data.bytes_parsed(),
+        ty: ParsingErrorType::NotEnoughData {
+            tried_to_parse: "padding".to_string(),
+            expected_size: bytes_to_parse,
+            remaining_bytes: data.remaining_bytes.len(),
+        },
+    };
+    data.remaining_bytes = data.remaining_bytes.get(bytes_to_parse..).ok_or_else(mk_err)?;
+    data.bytes_parsed += bytes_to_parse;
+    Ok(())
+}
+
+/// Returns a vector containing the next `bytes_to_parse` bytes, assuming they
+/// exist.
+pub fn parse_raw_bytes<'a>(
+    data: &mut ParserData<'a>,
+    bytes_to_parse: usize,
+) -> ParsingResult<&'a [u8]> {
+    let mk_err = || ParsingError {
+        offset: data.bytes_parsed(),
+        ty: ParsingErrorType::NotEnoughData {
+            tried_to_parse: "raw bytes".to_string(),
+            expected_size: bytes_to_parse,
+            remaining_bytes: data.remaining_bytes.len(),
+        },
+    };
+    let (head, tail) = data.remaining_bytes.split_at_checked(bytes_to_parse).ok_or_else(mk_err)?;
+    data.remaining_bytes = tail;
+    data.bytes_parsed += bytes_to_parse;
+    Ok(head)
+}
+
+// Declares a function named $name, which takes a byte slice (&[u8]), reads the
+// first $size_in_bytes entries, and interprets them as a value of type
+// $target_type, assuming they are in little-endian order.
+// Returns the parsed value, and the number of bytes parsed, and
+// the remainder of the byte slice.
+// Returns an error if there aren't enough bytes in the slice.
+macro_rules! declare_primitive_parser {
+    ($target_type:ty, $size_in_bytes:literal, $name:ident) => {
+        pub fn $name(data: &mut ParserData) -> ParsingResult<$target_type> {
+            let mk_err = || ParsingError {
+                offset: data.bytes_parsed(),
+                ty: ParsingErrorType::NotEnoughData {
+                    tried_to_parse: type_name::<$target_type>().to_string(),
+                    expected_size: $size_in_bytes,
+                    remaining_bytes: data.remaining_bytes.len(),
+                },
+            };
+            let (head, tail) =
+                data.remaining_bytes.split_first_chunk::<$size_in_bytes>().ok_or_else(mk_err)?;
+            let ret = <$target_type>::from_le_bytes(*head);
+            data.remaining_bytes = tail;
+            data.bytes_parsed += $size_in_bytes;
+            Ok(ret)
+        }
+    };
+}
+
+declare_primitive_parser!(u8, 1, parse_u8);
+declare_primitive_parser!(u16, 2, parse_u16);
+declare_primitive_parser!(u32, 4, parse_u32);
+declare_primitive_parser!(u64, 8, parse_u64);
+declare_primitive_parser!(i8, 1, parse_i8);
+declare_primitive_parser!(i16, 2, parse_i16);
+declare_primitive_parser!(i32, 4, parse_i32);
+declare_primitive_parser!(i64, 8, parse_i64);
+declare_primitive_parser!(f32, 4, parse_f32);
+declare_primitive_parser!(f64, 8, parse_f64);

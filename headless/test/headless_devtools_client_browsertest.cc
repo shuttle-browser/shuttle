@@ -1,0 +1,517 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <memory>
+
+#include "base/base_paths.h"
+#include "base/files/file_util.h"
+#include "base/functional/bind.h"
+#include "base/json/json_reader.h"
+#include "base/json/json_writer.h"
+#include "base/path_service.h"
+#include "base/strings/string_util.h"
+#include "base/threading/thread_restrictions.h"
+#include "base/values.h"
+#include "build/build_config.h"
+#include "components/devtools/simple_devtools_protocol_client/simple_devtools_protocol_client.h"
+#include "content/public/browser/render_widget_host_view.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/common/url_constants.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/no_renderer_crashes_assertion.h"
+#include "headless/lib/browser/headless_web_contents_impl.h"
+#include "headless/public/switches.h"
+#include "headless/test/headless_browser_test.h"
+#include "headless/test/headless_browser_test_utils.h"
+#include "headless/test/headless_devtooled_browsertest.h"
+#include "net/test/embedded_test_server/embedded_test_server.h"
+#include "net/test/embedded_test_server/register_basic_auth_handler.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/chrome_debug_urls.h"
+#include "third_party/inspector_protocol/crdtp/dispatch.h"
+#include "url/gurl.h"
+
+#define EXPECT_SIZE_EQ(expected, actual)               \
+  do {                                                 \
+    EXPECT_EQ((expected).width(), (actual).width());   \
+    EXPECT_EQ((expected).height(), (actual).height()); \
+  } while (false)
+
+using simple_devtools_protocol_client::SimpleDevToolsProtocolClient;
+
+using testing::ElementsAre;
+using testing::NotNull;
+using testing::UnorderedElementsAre;
+
+namespace headless {
+
+class HeadlessDevToolsClientNavigationTest
+    : public HeadlessDevTooledBrowserTest {
+ public:
+  void RunDevTooledTest() override {
+    ASSERT_TRUE(embedded_test_server()->Start());
+
+    devtools_client_.AddEventHandler(
+        "Page.loadEventFired",
+        base::BindRepeating(
+            &HeadlessDevToolsClientNavigationTest::OnLoadEventFired,
+            base::Unretained(this)));
+    SendCommandSync(devtools_client_, "Page.enable");
+
+    devtools_client_.SendCommand(
+        "Page.navigate",
+        Param("url", embedded_test_server()->GetURL("/hello.html").spec()));
+  }
+
+  void OnLoadEventFired(const base::DictValue& params) {
+    devtools_client_.SendCommand("Page.disable");
+    FinishAsynchronousTest();
+  }
+};
+
+HEADLESS_DEVTOOLED_TEST_F(HeadlessDevToolsClientNavigationTest);
+
+
+class HeadlessCrashObserverTest : public HeadlessDevTooledBrowserTest {
+ public:
+  void RunDevTooledTest() override {
+    devtools_client_.AddEventHandler(
+        "Inspector.targetCrashed",
+        base::BindRepeating(&HeadlessCrashObserverTest::OnTargetCrashed,
+                            base::Unretained(this)));
+
+    SendCommandSync(devtools_client_, "Inspector.enable");
+
+    devtools_client_.SendCommand("Page.navigate",
+                                 Param("url", blink::kChromeUICrashURL));
+  }
+
+  void OnTargetCrashed(const base::DictValue&) { FinishAsynchronousTest(); }
+
+  // Make sure we don't fail because the renderer crashed!
+  void PrimaryMainFrameRenderProcessGone(
+      base::TerminationStatus status) override {
+#if BUILDFLAG(IS_WIN) && defined(ADDRESS_SANITIZER)
+    // TODO(crbug.com/40577245): Make ASan not interfere and expect a crash.
+    // ASan's normal error exit code is 1, which base categorizes as the process
+    // being killed.
+    EXPECT_EQ(base::TERMINATION_STATUS_PROCESS_WAS_KILLED, status);
+#elif BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
+    BUILDFLAG(IS_FUCHSIA)
+    EXPECT_EQ(base::TERMINATION_STATUS_PROCESS_CRASHED, status);
+#else
+    EXPECT_EQ(base::TERMINATION_STATUS_ABNORMAL_TERMINATION, status);
+#endif
+  }
+
+ private:
+  content::ScopedAllowRendererCrashes scoped_allow_renderer_crashes_;
+};
+
+// TODO(crbug.com/40206073): HeadlessCrashObserverTest.RunAsyncTest is flaky on
+// Win debug.
+#if BUILDFLAG(IS_WIN) && !defined(NDEBUG)
+DISABLED_HEADLESS_DEVTOOLED_TEST_F(HeadlessCrashObserverTest);
+#else
+HEADLESS_DEVTOOLED_TEST_F(HeadlessCrashObserverTest);
+#endif
+
+class HeadlessDevToolsNetworkBlockedUrlTest
+    : public HeadlessDevTooledBrowserTest {
+ public:
+  void RunDevTooledTest() override {
+    ASSERT_TRUE(embedded_test_server()->Start());
+
+    devtools_client_.AddEventHandler(
+        "Network.requestWillBeSent",
+        base::BindRepeating(
+            &HeadlessDevToolsNetworkBlockedUrlTest::OnRequestWillBeSent,
+            base::Unretained(this)));
+
+    devtools_client_.AddEventHandler(
+        "Network.responseReceived",
+        base::BindRepeating(
+            &HeadlessDevToolsNetworkBlockedUrlTest::OnResponseReceived,
+            base::Unretained(this)));
+
+    devtools_client_.AddEventHandler(
+        "Network.loadingFailed",
+        base::BindRepeating(
+            &HeadlessDevToolsNetworkBlockedUrlTest::OnLoadingFailed,
+            base::Unretained(this)));
+
+    SendCommandSync(devtools_client_, "Network.enable");
+
+    devtools_client_.AddEventHandler(
+        "Page.loadEventFired",
+        base::BindRepeating(
+            &HeadlessDevToolsNetworkBlockedUrlTest::OnLoadEventFired,
+            base::Unretained(this)));
+
+    SendCommandSync(devtools_client_, "Page.enable");
+
+    base::ListValue urls;
+    base::DictValue url_pattern;
+    url_pattern.Set("urlPattern", "*://*:*/hello.html");
+    url_pattern.Set("block", true);
+    urls.Append(std::move(url_pattern));
+    devtools_client_.SendCommand("Network.setBlockedURLs",
+                                 Param("urlPatterns", std::move(urls)));
+
+    devtools_client_.SendCommand(
+        "Page.navigate",
+        Param("url",
+              embedded_test_server()->GetURL("/dom_tree_test.html").spec()));
+  }
+
+  std::string GetUrlPath(const std::string& url) const {
+    GURL gurl(url);
+    return gurl.GetPath();
+  }
+
+  void OnRequestWillBeSent(const base::DictValue& params) {
+    std::string path = GetUrlPath(DictString(params, "params.request.url"));
+    requests_to_be_sent_.push_back(path);
+    request_id_to_path_[DictString(params, "params.requestId")] = path;
+  }
+
+  void OnResponseReceived(const base::DictValue& params) {
+    responses_received_.push_back(
+        GetUrlPath(DictString(params, "params.response.url")));
+  }
+
+  void OnLoadingFailed(const base::DictValue& params) {
+    failures_.push_back(
+        request_id_to_path_[DictString(params, "params.requestId")]);
+    EXPECT_EQ("inspector", DictString(params, "params.blockedReason"));
+  }
+
+  void OnLoadEventFired(const base::DictValue&) {
+    EXPECT_THAT(requests_to_be_sent_,
+                testing::UnorderedElementsAre(
+                    "/dom_tree_test.html", "/dom_tree_test.css", "/iframe.html",
+                    "/Ahem.ttf", "/hello.html"));
+    EXPECT_THAT(responses_received_,
+                testing::UnorderedElementsAre("/dom_tree_test.html",
+                                              "/dom_tree_test.css",
+                                              "/iframe.html", "/Ahem.ttf"));
+    EXPECT_THAT(failures_, ElementsAre("/hello.html"));
+
+    FinishAsynchronousTest();
+  }
+
+  std::map<std::string, std::string> request_id_to_path_;
+  std::vector<std::string> requests_to_be_sent_;
+  std::vector<std::string> responses_received_;
+  std::vector<std::string> failures_;
+};
+
+HEADLESS_DEVTOOLED_TEST_F(HeadlessDevToolsNetworkBlockedUrlTest);
+
+class DevToolsNetworkOfflineEmulationTest
+    : public HeadlessDevTooledBrowserTest {
+  void RunDevTooledTest() override {
+    ASSERT_TRUE(embedded_test_server()->Start());
+
+    devtools_client_.AddEventHandler(
+        "Network.loadingFailed",
+        base::BindRepeating(
+            &DevToolsNetworkOfflineEmulationTest::OnLoadingFailed,
+            base::Unretained(this)));
+
+    SendCommandSync(devtools_client_, "Network.enable");
+
+    base::DictValue params;
+    params.Set("offline", true);
+    params.Set("latency", 0);
+    params.Set("downloadThroughput", 0);
+    params.Set("uploadThroughput", 0);
+    devtools_client_.SendCommand("Network.emulateNetworkConditions",
+                                 std::move(params));
+
+    devtools_client_.SendCommand(
+        "Page.navigate",
+        Param("url", embedded_test_server()->GetURL("/hello.html").spec()));
+  }
+
+  void OnLoadingFailed(const base::DictValue& params) {
+    EXPECT_THAT(params, DictHasValue("params.errorText",
+                                     "net::ERR_INTERNET_DISCONNECTED"));
+    EXPECT_EQ("net::ERR_INTERNET_DISCONNECTED",
+              DictString(params, "params.errorText"));
+
+    FinishAsynchronousTest();
+  }
+};
+
+HEADLESS_DEVTOOLED_TEST_F(DevToolsNetworkOfflineEmulationTest);
+
+class DomTreeExtractionBrowserTest : public HeadlessDevTooledBrowserTest {
+ public:
+  void RunDevTooledTest() override {
+    ASSERT_TRUE(embedded_test_server()->Start());
+
+    devtools_client_.AddEventHandler(
+        "Page.loadEventFired",
+        base::BindRepeating(&DomTreeExtractionBrowserTest::OnLoadEventFired,
+                            base::Unretained(this)));
+
+    SendCommandSync(devtools_client_, "Page.enable");
+
+    devtools_client_.SendCommand(
+        "Page.navigate",
+        Param("url",
+              embedded_test_server()->GetURL("/dom_tree_test.html").spec()));
+  }
+
+  void OnLoadEventFired(const base::DictValue&) {
+    SendCommandSync(devtools_client_, "Page.disable");
+
+    base::ListValue css_whitelist;
+    css_whitelist.Append("color");
+    css_whitelist.Append("display");
+    css_whitelist.Append("font-style");
+    css_whitelist.Append("font-family");
+    css_whitelist.Append("margin-left");
+    css_whitelist.Append("margin-right");
+    css_whitelist.Append("margin-top");
+    css_whitelist.Append("margin-bottom");
+    devtools_client_.SendCommand(
+        "DOMSnapshot.getSnapshot",
+        Param("computedStyleWhitelist", css_whitelist),
+        base::BindOnce(&DomTreeExtractionBrowserTest::OnGetSnapshotDone,
+                       base::Unretained(this)));
+  }
+
+  void OnGetSnapshotDone(base::DictValue result) {
+    std::vector<base::DictValue> dom_nodes;
+    GetDomNodes(result, &dom_nodes);
+
+    std::vector<base::DictValue> computed_styles;
+    GetComputedStyles(result, &computed_styles);
+
+    base::ScopedAllowBlockingForTesting allow_blocking;
+    base::FilePath source_root_dir;
+    base::PathService::Get(base::DIR_SRC_TEST_DATA_ROOT, &source_root_dir);
+
+    CompareToGolden(
+        dom_nodes,
+        source_root_dir.Append(FILE_PATH_LITERAL(
+            "headless/test/dom_tree_extraction_expected_nodes.txt")));
+
+    CompareToGolden(
+        computed_styles,
+        source_root_dir.Append(FILE_PATH_LITERAL(
+            "headless/test/dom_tree_extraction_expected_styles.txt")));
+
+    FinishAsynchronousTest();
+  }
+
+  void GetDomNodes(const base::DictValue& result,
+                   std::vector<base::DictValue>* dom_nodes) {
+    GURL::Replacements replace_port;
+    replace_port.SetPortStr("");
+
+    const base::ListValue* dom_nodes_list =
+        result.FindListByDottedPath("result.domNodes");
+    ASSERT_NE(dom_nodes_list, nullptr);
+    ASSERT_GT(dom_nodes_list->size(), 0ul);
+
+    const base::ListValue* layout_tree_nodes_list =
+        result.FindListByDottedPath("result.layoutTreeNodes");
+    ASSERT_NE(layout_tree_nodes_list, nullptr);
+    ASSERT_GT(layout_tree_nodes_list->size(), 0ul);
+
+    // For convenience, flatten the dom tree into an array of dicts.
+    dom_nodes->reserve(dom_nodes_list->size());
+    for (const auto& dom_node : *dom_nodes_list) {
+      ASSERT_TRUE(dom_node.is_dict());
+      dom_nodes->push_back(dom_node.GetDict().Clone());
+      base::DictValue& node_dict = dom_nodes->back();
+
+      // Node IDs are assigned in a non deterministic way.
+      if (node_dict.Find("backendNodeId"))
+        node_dict.Set("backendNodeId", "?");
+
+      // Frame IDs are random.
+      if (node_dict.Find("frameId"))
+        node_dict.Set("frameId", "?");
+
+      // Ports are random.
+      if (base::Value* base_url_value = node_dict.Find("baseURL")) {
+        node_dict.Set("baseURL", GURL(base_url_value->GetString())
+                                     .ReplaceComponents(replace_port)
+                                     .spec());
+      }
+
+      if (base::Value* document_url_value = node_dict.Find("documentURL")) {
+        node_dict.Set("documentURL", GURL(document_url_value->GetString())
+                                         .ReplaceComponents(replace_port)
+                                         .spec());
+      }
+
+      // Golden file expects scrollOffsetXY to have fractional part.
+      // TODO(kvitekp): Consider updating golden files.
+      if (std::optional<double> x = node_dict.FindDouble("scrollOffsetX")) {
+        node_dict.Set("scrollOffsetX", *x);
+      }
+
+      if (std::optional<double> y = node_dict.FindDouble("scrollOffsetY")) {
+        node_dict.Set("scrollOffsetY", *y);
+      }
+
+      // Merge LayoutTreeNode data into the dom_node dictionary.
+      if (std::optional<int> layout_node_index =
+              node_dict.FindInt("layoutNodeIndex")) {
+        ASSERT_LE(0, *layout_node_index);
+        ASSERT_GT(layout_tree_nodes_list->size(),
+                  static_cast<size_t>(*layout_node_index));
+
+        const base::DictValue& layout_tree_node =
+            (*layout_tree_nodes_list)[*layout_node_index].GetDict();
+
+        if (const base::DictValue* bounding_box =
+                layout_tree_node.FindDict("boundingBox")) {
+          node_dict.Set("boundingBox", bounding_box->Clone());
+          FixBoundingBox(node_dict);
+        }
+
+        if (const std::string* layout_text =
+                layout_tree_node.FindString("layoutText")) {
+          node_dict.Set("layoutText", *layout_text);
+        }
+
+        if (std::optional<int> style_index =
+                layout_tree_node.FindInt("styleIndex")) {
+          node_dict.Set("styleIndex", *style_index);
+        }
+
+        if (const base::ListValue* inline_text_nodes =
+                layout_tree_node.FindList("inlineTextNodes")) {
+          base::ListValue list = inline_text_nodes->Clone();
+          for (auto& list_entry : list) {
+            ASSERT_TRUE(list_entry.is_dict());
+            FixBoundingBox(list_entry.GetDict());
+          }
+          node_dict.Set("inlineTextNodes", std::move(list));
+        }
+      }
+    }
+  }
+
+  void FixBoundingBox(base::DictValue& dict) {
+    if (base::DictValue* bounding_box = dict.FindDict("boundingBox")) {
+      // The golden file expects double values in boundingBox.
+      // TODO(kvitekp): Consider updating the golden and just
+      // cloning the |boundingBox| dictionary here.
+      bounding_box->Set("x", *bounding_box->FindDouble("x"));
+      bounding_box->Set("y", *bounding_box->FindDouble("y"));
+      bounding_box->Set("width", *bounding_box->FindDouble("width"));
+      bounding_box->Set("height", *bounding_box->FindDouble("height"));
+    }
+  }
+
+  void GetComputedStyles(const base::DictValue& result,
+                         std::vector<base::DictValue>* computed_styles) {
+    const base::ListValue* computed_styles_list =
+        result.FindListByDottedPath("result.computedStyles");
+    ASSERT_NE(computed_styles_list, nullptr);
+    ASSERT_GT(computed_styles_list->size(), 0ul);
+
+    computed_styles->reserve(computed_styles_list->size());
+    for (const auto& computed_style : *computed_styles_list) {
+      ASSERT_TRUE(computed_style.is_dict());
+      const base::ListValue* properties_list =
+          computed_style.GetDict().FindList("properties");
+      ASSERT_NE(properties_list, nullptr);
+
+      base::DictValue computed_style_dict;
+      for (const auto& property : *properties_list) {
+        ASSERT_TRUE(property.is_dict());
+        const base::DictValue& property_dict = property.GetDict();
+        computed_style_dict.Set(*property_dict.FindString("name"),
+                                *property_dict.FindString("value"));
+      }
+      computed_styles->push_back(std::move(computed_style_dict));
+    }
+  }
+
+  void CompareToGolden(const std::vector<base::DictValue>& entries,
+                       base::FilePath expected_filepath) {
+    std::string expected_entries;
+    ASSERT_TRUE(base::ReadFileToString(expected_filepath, &expected_entries));
+
+    std::string actual_entries;
+    for (const base::DictValue& entry : entries) {
+      std::string entry_json;
+      base::JSONWriter::WriteWithOptions(
+          entry, base::JSONWriter::OPTIONS_PRETTY_PRINT, &entry_json);
+      actual_entries += entry_json;
+    }
+
+#if BUILDFLAG(IS_WIN)
+    ASSERT_TRUE(base::RemoveChars(actual_entries, "\r", &actual_entries));
+#endif
+
+    EXPECT_EQ(expected_entries, actual_entries);
+  }
+};
+
+// TODO(crbug.com/40697467): Fix this test on Fuchsia and re-enable.
+// NOTE: These macros expand to: DomTreeExtractionBrowserTest.RunAsyncTest
+#if BUILDFLAG(IS_FUCHSIA)
+DISABLED_HEADLESS_DEVTOOLED_TEST_F(DomTreeExtractionBrowserTest);
+#else
+HEADLESS_DEVTOOLED_TEST_F(DomTreeExtractionBrowserTest);
+#endif
+
+class NavigatorLanguages : public HeadlessDevTooledBrowserTest {
+ public:
+  void RunDevTooledTest() override {
+    devtools_client_.SendCommand(
+        "Runtime.evaluate",
+        Param("expression", "JSON.stringify(navigator.languages)"),
+        base::BindOnce(&NavigatorLanguages::OnEvaluateResult,
+                       base::Unretained(this)));
+  }
+
+  void OnEvaluateResult(base::DictValue result) {
+    EXPECT_THAT(result, DictHasValue("result.result.value",
+                                     "[\"en-UK\",\"DE\",\"FR\"]"));
+    FinishAsynchronousTest();
+  }
+
+  void CustomizeHeadlessBrowserContext(
+      HeadlessBrowserContext::CreateParams& params) override {
+    params.accept_language = "en-UK, DE, FR";
+  }
+};
+
+HEADLESS_DEVTOOLED_TEST_F(NavigatorLanguages);
+
+class AcceptLanguagesSwitch : public HeadlessDevTooledBrowserTest {
+ public:
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    HeadlessDevTooledBrowserTest::SetUpCommandLine(command_line);
+    command_line->AppendSwitchASCII(switches::kAcceptLang, "cz-CZ");
+  }
+
+  void RunDevTooledTest() override {
+    devtools_client_.SendCommand(
+        "Runtime.evaluate",
+        Param("expression", "JSON.stringify(navigator.languages)"),
+        base::BindOnce(&AcceptLanguagesSwitch::OnEvaluateResult,
+                       base::Unretained(this)));
+  }
+
+  void OnEvaluateResult(base::DictValue result) {
+    EXPECT_THAT(result, DictHasValue("result.result.value", "[\"cz-CZ\"]"));
+    FinishAsynchronousTest();
+  }
+};
+
+HEADLESS_DEVTOOLED_TEST_F(AcceptLanguagesSwitch);
+
+}  // namespace headless

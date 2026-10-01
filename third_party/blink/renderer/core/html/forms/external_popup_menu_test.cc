@@ -1,0 +1,824 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "third_party/blink/renderer/core/html/forms/external_popup_menu.h"
+
+#include <memory>
+
+#include "base/strings/stringprintf.h"
+#include "content/test/test_blink_web_unit_test_support.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/mojom/choosers/popup_menu.mojom-blink.h"
+#include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
+#include "third_party/blink/public/web/web_popup_menu_info.h"
+#include "third_party/blink/public/web/web_settings.h"
+#include "third_party/blink/renderer/core/frame/frame_test_helpers.h"
+#include "third_party/blink/renderer/core/frame/visual_viewport.h"
+#include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
+#include "third_party/blink/renderer/core/html/forms/html_option_element.h"
+#include "third_party/blink/renderer/core/html/forms/html_select_element.h"
+#include "third_party/blink/renderer/core/html/forms/popup_menu.h"
+#include "third_party/blink/renderer/core/html/html_div_element.h"
+#include "third_party/blink/renderer/core/html/html_iframe_element.h"
+#include "third_party/blink/renderer/core/html_names.h"
+#include "third_party/blink/renderer/core/layout/layout_box.h"
+#include "third_party/blink/renderer/core/layout/layout_object.h"
+#include "third_party/blink/renderer/core/page/page.h"
+#include "third_party/blink/renderer/core/testing/fake_local_frame_host.h"
+#include "third_party/blink/renderer/core/testing/page_test_base.h"
+#include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+#include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
+#include "third_party/blink/renderer/platform/testing/task_environment.h"
+#include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
+#include "third_party/blink/renderer/platform/testing/url_loader_mock_factory.h"
+#include "third_party/blink/renderer/platform/testing/url_test_helpers.h"
+
+namespace blink {
+
+class ExternalPopupMenuDisplayNoneItemsTest : public PageTestBase {
+ public:
+  ExternalPopupMenuDisplayNoneItemsTest() = default;
+
+ protected:
+  void SetUp() override {
+    PageTestBase::SetUp();
+    auto* element = MakeGarbageCollected<HTMLSelectElement>(GetDocument());
+    // Set the 4th an 5th items to have "display: none" property
+    element->SetInnerHTMLWithoutTrustedTypes(
+        "<option><option><option><option style='display:none;'><option "
+        "style='display:none;'><option><option>");
+    GetDocument().body()->AppendChild(element, ASSERT_NO_EXCEPTION);
+    owner_element_ = element;
+    GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+  }
+
+  Persistent<HTMLSelectElement> owner_element_;
+};
+
+TEST_F(ExternalPopupMenuDisplayNoneItemsTest, PopupMenuInfoSizeTest) {
+  double font_size;
+  int32_t selected_item;
+  Vector<mojom::blink::MenuItemPtr> menu_items;
+  bool right_aligned;
+  bool allow_multiple_selection;
+  ExternalPopupMenu::GetPopupMenuInfo(
+      *owner_element_, &font_size, &selected_item, &menu_items, &right_aligned,
+      &allow_multiple_selection);
+  EXPECT_EQ(5U, menu_items.size());
+}
+
+TEST_F(ExternalPopupMenuDisplayNoneItemsTest, IndexMappingTest) {
+  // 6th indexed item in popupmenu would be the 4th item in ExternalPopupMenu,
+  // and vice-versa.
+  EXPECT_EQ(
+      4, ExternalPopupMenu::ToExternalPopupMenuItemIndex(6, *owner_element_));
+  EXPECT_EQ(6, ExternalPopupMenu::ToPopupMenuItemIndex(4, *owner_element_));
+
+  // Invalid index, methods should return -1.
+  EXPECT_EQ(
+      -1, ExternalPopupMenu::ToExternalPopupMenuItemIndex(8, *owner_element_));
+  EXPECT_EQ(-1, ExternalPopupMenu::ToPopupMenuItemIndex(8, *owner_element_));
+}
+
+class ExternalPopupMenuHrElementItemsTest : public PageTestBase {
+ public:
+  ExternalPopupMenuHrElementItemsTest() = default;
+
+ protected:
+  void SetUp() override {
+    PageTestBase::SetUp();
+    auto* element = MakeGarbageCollected<HTMLSelectElement>(GetDocument());
+    element->SetInnerHTMLWithoutTrustedTypes(R"HTML(
+      <option>zero</option>
+      <option>one</option>
+      <hr>
+      <option>two or three</option>
+    )HTML");
+    GetDocument().body()->AppendChild(element, ASSERT_NO_EXCEPTION);
+    owner_element_ = element;
+    GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+  }
+
+  Persistent<HTMLSelectElement> owner_element_;
+};
+
+TEST_F(ExternalPopupMenuHrElementItemsTest, PopupMenuInfoSizeTest) {
+  double font_size;
+  int32_t selected_item;
+  Vector<mojom::blink::MenuItemPtr> menu_items;
+  bool right_aligned;
+  bool allow_multiple_selection;
+  ExternalPopupMenu::GetPopupMenuInfo(
+      *owner_element_, &font_size, &selected_item, &menu_items, &right_aligned,
+      &allow_multiple_selection);
+#if BUILDFLAG(IS_ANDROID)
+  EXPECT_EQ(3U, menu_items.size());
+#else
+  EXPECT_EQ(4U, menu_items.size());
+#endif
+}
+
+TEST_F(ExternalPopupMenuHrElementItemsTest, IndexMappingTest) {
+  EXPECT_EQ(
+      0, ExternalPopupMenu::ToExternalPopupMenuItemIndex(0, *owner_element_));
+  EXPECT_EQ(
+      1, ExternalPopupMenu::ToExternalPopupMenuItemIndex(1, *owner_element_));
+#if BUILDFLAG(IS_ANDROID)
+  EXPECT_EQ(
+      -1, ExternalPopupMenu::ToExternalPopupMenuItemIndex(2, *owner_element_));
+  EXPECT_EQ(
+      2, ExternalPopupMenu::ToExternalPopupMenuItemIndex(3, *owner_element_));
+#else
+  EXPECT_EQ(
+      2, ExternalPopupMenu::ToExternalPopupMenuItemIndex(2, *owner_element_));
+  EXPECT_EQ(
+      3, ExternalPopupMenu::ToExternalPopupMenuItemIndex(3, *owner_element_));
+#endif
+
+  EXPECT_EQ(0, ExternalPopupMenu::ToPopupMenuItemIndex(0, *owner_element_));
+  EXPECT_EQ(1, ExternalPopupMenu::ToPopupMenuItemIndex(1, *owner_element_));
+#if BUILDFLAG(IS_ANDROID)
+  EXPECT_EQ(3, ExternalPopupMenu::ToPopupMenuItemIndex(2, *owner_element_));
+  EXPECT_EQ(-1, ExternalPopupMenu::ToPopupMenuItemIndex(3, *owner_element_));
+#else
+  EXPECT_EQ(2, ExternalPopupMenu::ToPopupMenuItemIndex(2, *owner_element_));
+  EXPECT_EQ(3, ExternalPopupMenu::ToPopupMenuItemIndex(3, *owner_element_));
+#endif
+}
+
+class FramelessExternalPopupMenuTest : public PageTestBase {};
+
+TEST_F(FramelessExternalPopupMenuTest, DescendantOption) {
+  auto* select = MakeGarbageCollected<HTMLSelectElement>(GetDocument());
+  GetDocument().body()->appendChild(select);
+
+  auto* wrapper_div = MakeGarbageCollected<HTMLDivElement>(GetDocument());
+  select->appendChild(wrapper_div);
+  auto* option = MakeGarbageCollected<HTMLOptionElement>(GetDocument());
+  option->setTextContent("option in wrapper_div");
+  wrapper_div->appendChild(option);
+
+  auto* wrapper_div_display_none =
+      MakeGarbageCollected<HTMLDivElement>(GetDocument());
+  select->appendChild(wrapper_div_display_none);
+  auto* option2 = MakeGarbageCollected<HTMLOptionElement>(GetDocument());
+  option2->setTextContent("option in wrapper_div_display_none");
+  wrapper_div_display_none->appendChild(option2);
+
+  GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  double font_size;
+  int32_t selected_item;
+  Vector<mojom::blink::MenuItemPtr> menu_items;
+  bool right_aligned;
+  bool allow_multiple_selection;
+  ExternalPopupMenu::GetPopupMenuInfo(*select, &font_size, &selected_item,
+                                      &menu_items, &right_aligned,
+                                      &allow_multiple_selection);
+
+  ASSERT_EQ(2u, menu_items.size());
+  EXPECT_EQ(menu_items[0]->label, "option in wrapper_div");
+  EXPECT_EQ(menu_items[1]->label, "option in wrapper_div_display_none");
+}
+
+TEST_F(FramelessExternalPopupMenuTest, DescendantOptionIndexMapping) {
+  auto* select = MakeGarbageCollected<HTMLSelectElement>(GetDocument());
+  GetDocument().body()->appendChild(select);
+
+  auto* wrapper_div = MakeGarbageCollected<HTMLDivElement>(GetDocument());
+  select->appendChild(wrapper_div);
+  auto* option = MakeGarbageCollected<HTMLOptionElement>(GetDocument());
+  option->setTextContent("option in wrapper_div");
+  wrapper_div->appendChild(option);
+
+  auto* wrapper_div_display_none =
+      MakeGarbageCollected<HTMLDivElement>(GetDocument());
+  select->appendChild(wrapper_div_display_none);
+  auto* option2 = MakeGarbageCollected<HTMLOptionElement>(GetDocument());
+  option2->setTextContent("option in wrapper_div_display_none");
+  wrapper_div_display_none->appendChild(option2);
+
+  GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  EXPECT_EQ(0, ExternalPopupMenu::ToExternalPopupMenuItemIndex(0, *select));
+  EXPECT_EQ(1, ExternalPopupMenu::ToExternalPopupMenuItemIndex(1, *select));
+  EXPECT_EQ(0, ExternalPopupMenu::ToPopupMenuItemIndex(0, *select));
+  EXPECT_EQ(1, ExternalPopupMenu::ToPopupMenuItemIndex(1, *select));
+}
+
+class TestLocalFrameExternalPopupClient : public FakeLocalFrameHost {
+ public:
+  void ShowPopupMenu(
+      mojo::PendingRemote<mojom::blink::PopupMenuClient> popup_client,
+      const gfx::Rect& bounds,
+      double font_size,
+      int32_t selected_item,
+      Vector<mojom::blink::MenuItemPtr> menu_items,
+      bool right_aligned,
+      bool allow_multiple_selection) override {
+    Reset();
+
+    bounds_ = bounds;
+    selected_item_ = selected_item;
+    menu_items_ = std::move(menu_items);
+    popup_client_.Bind(std::move(popup_client));
+    popup_client_.set_disconnect_handler(
+        BindOnce(&TestLocalFrameExternalPopupClient::Reset, Unretained(this)));
+    std::move(showed_callback_).Run();
+  }
+
+  void Reset() { popup_client_.reset(); }
+
+  void WaitUntilShowedPopup() {
+    base::RunLoop run_loop;
+    showed_callback_ = run_loop.QuitClosure();
+    run_loop.Run();
+  }
+
+  mojom::blink::PopupMenuClient* PopupClient() {
+    DCHECK(popup_client_);
+    return popup_client_.get();
+  }
+
+  bool IsBound() const { return popup_client_.is_bound(); }
+
+  const Vector<mojom::blink::MenuItemPtr>& MenuItems() const {
+    return menu_items_;
+  }
+
+  int32_t SelectedItem() const { return selected_item_; }
+
+  const gfx::Rect& ShownBounds() const { return bounds_; }
+
+ private:
+  base::OnceClosure showed_callback_;
+  mojo::Remote<mojom::blink::PopupMenuClient> popup_client_;
+  int32_t selected_item_;
+  Vector<mojom::blink::MenuItemPtr> menu_items_;
+  gfx::Rect bounds_;
+};
+
+class ExternalPopupMenuTest : public PageTestBase {
+ public:
+  ExternalPopupMenuTest() : base_url_("http://www.test.com") {}
+
+ protected:
+  void SetUp() override {
+    frame_host_.Init(
+        web_frame_client_.GetRemoteNavigationAssociatedInterfaces());
+    helper_.Initialize(&web_frame_client_);
+    WebView()->GetChromeClient().SetUseExternalPopupMenus(true);
+  }
+  void TearDown() override {
+    url_test_helpers::UnregisterAllURLsAndClearMemoryCache();
+  }
+
+  void RegisterMockedURLLoad(const std::string& file_name) {
+    // TODO(crbug.com/751425): We should use the mock functionality
+    // via |helper_|.
+    url_test_helpers::RegisterMockedURLLoadFromBase(
+        WebString::FromUtf8(base_url_), test::CoreTestDataPath("popup"),
+        WebString::FromUtf8(file_name), WebString("text/html"));
+  }
+
+  void LoadFrame(const std::string& file_name) {
+    frame_test_helpers::LoadFrame(MainFrame(), base_url_ + file_name);
+    WebView()->MainFrameViewWidget()->Resize(gfx::Size(800, 600));
+    WebView()->MainFrameWidget()->UpdateAllLifecyclePhases(
+        DocumentUpdateReason::kTest);
+  }
+
+  WebViewImpl* WebView() const { return helper_.GetWebView(); }
+
+  const Vector<mojom::blink::MenuItemPtr>& MenuItems() const {
+    return frame_host_.MenuItems();
+  }
+
+  bool IsBound() const { return frame_host_.IsBound(); }
+
+  int32_t SelectedItem() const { return frame_host_.SelectedItem(); }
+
+  const gfx::Rect& ShownBounds() const { return frame_host_.ShownBounds(); }
+
+  mojom::blink::PopupMenuClient* PopupClient() {
+    return frame_host_.PopupClient();
+  }
+
+  void WaitUntilShowedPopup() { frame_host_.WaitUntilShowedPopup(); }
+
+  WebLocalFrameImpl* MainFrame() const { return helper_.LocalMainFrame(); }
+
+ private:
+  TestLocalFrameExternalPopupClient frame_host_;
+  frame_test_helpers::TestWebFrameClient web_frame_client_;
+  std::string base_url_;
+  frame_test_helpers::WebViewHelper helper_;
+};
+
+TEST_F(ExternalPopupMenuTest, PopupAccountsForVisualViewportTransform) {
+  RegisterMockedURLLoad("select_mid_screen.html");
+  LoadFrame("select_mid_screen.html");
+
+  WebView()->MainFrameViewWidget()->Resize(gfx::Size(100, 100));
+  WebView()->MainFrameWidget()->UpdateAllLifecyclePhases(
+      DocumentUpdateReason::kTest);
+
+  auto* select = To<HTMLSelectElement>(
+      MainFrame()->GetFrame()->GetDocument()->getElementById(
+          AtomicString("select")));
+  auto* layout_object = select->GetLayoutObject();
+  ASSERT_TRUE(layout_object);
+
+  VisualViewport& visual_viewport = WebView()->GetPage()->GetVisualViewport();
+
+  gfx::Rect rect_in_document = layout_object->AbsoluteBoundingBoxRect();
+
+  constexpr int kScaleFactor = 2;
+  ScrollOffset scroll_delta(20, 30);
+
+  const int expected_x =
+      (rect_in_document.x() - scroll_delta.x()) * kScaleFactor;
+  const int expected_y =
+      (rect_in_document.y() - scroll_delta.y()) * kScaleFactor;
+
+  WebView()->SetPageScaleFactor(kScaleFactor);
+  visual_viewport.Move(scroll_delta);
+  select->ShowPopup();
+  WaitUntilShowedPopup();
+
+  EXPECT_EQ(expected_x, ShownBounds().x());
+  EXPECT_EQ(expected_y, ShownBounds().y());
+}
+
+TEST_F(ExternalPopupMenuTest, PopupClippedToViewportVariations) {
+  struct TestCase {
+    int left;
+    int top;
+    int width;
+    int height;
+    float dpr;
+    bool expect_shown;
+    int expected_x;
+    int expected_y;
+    int expected_width;
+    int expected_height;
+  } test_cases[] = {
+      // Top left partial
+      {-50, -50, 200, 200, 1.0f, true, 0, 0, 150, 150},
+      // Top left partial with DPR > 1.0
+      {-50, -50, 200, 200, 2.0f, true, 0, 0, 150, 150},
+      // Top left partial with DPR < 1.0
+      {-50, -50, 200, 200, 0.5f, true, 0, 0, 150, 150},
+      // Top left complete
+      {-250, -250, 200, 200, 1.0f, false, 0, 0, 0, 0},
+      // Top left complete with DPR > 1.0
+      {-250, -250, 200, 200, 2.0f, false, 0, 0, 0, 0},
+      // Top left complete with DPR < 1.0
+      {-250, -250, 200, 200, 0.5f, false, 0, 0, 0, 0},
+      // Bottom right partial
+      {750, 550, 200, 200, 1.0f, true, 750, 550, 50, 50},
+      // Bottom right partial with DPR > 1.0
+      {750, 550, 200, 200, 2.0f, true, 750, 550, 50, 50},
+      // Bottom right partial with DPR < 1.0
+      {750, 550, 200, 200, 0.5f, true, 750, 550, 50, 50},
+      // Bottom right complete
+      {850, 650, 200, 200, 1.0f, false, 0, 0, 0, 0},
+      // Bottom right complete with DPR > 1.0
+      {850, 650, 200, 200, 2.0f, false, 0, 0, 0, 0},
+      // Bottom right complete with DPR < 1.0
+      {850, 650, 200, 200, 0.5f, false, 0, 0, 0, 0},
+  };
+
+  for (const auto& test_case : test_cases) {
+    SCOPED_TRACE(testing::Message()
+                 << "left: " << test_case.left << ", top: " << test_case.top
+                 << ", dpr: " << test_case.dpr);
+
+    WebView()->MainFrameWidget()->SetDeviceScaleFactorForTesting(test_case.dpr);
+
+    frame_test_helpers::LoadHTMLString(
+        MainFrame(),
+        base::StringPrintf(R"HTML(
+      <!DOCTYPE html>
+      <html>
+      <style>
+        body { margin: 0; }
+        select {
+          position: fixed;
+          left: %dpx;
+          top: %dpx;
+          width: %dpx;
+          height: %dpx;
+        }
+      </style>
+      <body>
+      <select id=select>
+        <option>option</option>
+      </select>
+      </body>
+      </html>
+      )HTML",
+          test_case.left, test_case.top, test_case.width, test_case.height),
+        url_test_helpers::ToKURL("http://www.test.com/"));
+
+    WebView()->MainFrameViewWidget()->Resize(
+        gfx::Size(800 * test_case.dpr, 600 * test_case.dpr));
+    WebView()->MainFrameWidget()->UpdateAllLifecyclePhases(
+        DocumentUpdateReason::kTest);
+
+    auto* select = To<HTMLSelectElement>(
+        MainFrame()->GetFrame()->GetDocument()->getElementById(
+            AtomicString("select")));
+    auto* layout_object = select->GetLayoutObject();
+    ASSERT_TRUE(layout_object);
+
+    select->ShowPopup();
+
+    if (test_case.expect_shown) {
+      WaitUntilShowedPopup();
+      EXPECT_EQ(test_case.expected_x, ShownBounds().x());
+      EXPECT_EQ(test_case.expected_y, ShownBounds().y());
+      EXPECT_EQ(test_case.expected_width, ShownBounds().width());
+      EXPECT_EQ(test_case.expected_height, ShownBounds().height());
+    } else {
+      EXPECT_FALSE(select->PopupIsVisible());
+    }
+  }
+}
+
+TEST_F(ExternalPopupMenuTest, PopupAccountsForDeviceScaleFactor) {
+  RegisterMockedURLLoad("select_mid_screen.html");
+  LoadFrame("select_mid_screen.html");
+
+  constexpr float kScaleFactor = 2.0f;
+  WebView()->MainFrameWidget()->SetDeviceScaleFactorForTesting(kScaleFactor);
+  WebView()->MainFrameWidget()->UpdateAllLifecyclePhases(
+      DocumentUpdateReason::kTest);
+
+  auto* select = To<HTMLSelectElement>(
+      MainFrame()->GetFrame()->GetDocument()->getElementById(
+          AtomicString("select")));
+  auto* layout_object = select->GetLayoutObject();
+  ASSERT_TRUE(layout_object);
+
+  select->ShowPopup();
+  WaitUntilShowedPopup();
+
+  // The test file has no body margins but 50px of padding.
+  EXPECT_EQ(50, ShownBounds().x());
+  EXPECT_EQ(50, ShownBounds().y());
+}
+
+TEST_F(ExternalPopupMenuTest, DidAcceptIndex) {
+  RegisterMockedURLLoad("select.html");
+  LoadFrame("select.html");
+
+  auto* select = To<HTMLSelectElement>(
+      MainFrame()->GetFrame()->GetDocument()->getElementById(
+          AtomicString("select")));
+  auto* layout_object = select->GetLayoutObject();
+  ASSERT_TRUE(layout_object);
+
+  select->ShowPopup();
+  WaitUntilShowedPopup();
+
+  ASSERT_TRUE(select->PopupIsVisible());
+
+  PopupClient()->DidAcceptIndices({2});
+  base::RunLoop().RunUntilIdle();
+
+  EXPECT_FALSE(select->PopupIsVisible());
+  ASSERT_EQ("2", select->InnerElement().innerText().Utf8());
+  EXPECT_EQ(2, select->selectedIndex());
+}
+
+TEST_F(ExternalPopupMenuTest, DidAcceptIndices) {
+  RegisterMockedURLLoad("select.html");
+  LoadFrame("select.html");
+
+  auto* select = To<HTMLSelectElement>(
+      MainFrame()->GetFrame()->GetDocument()->getElementById(
+          AtomicString("select")));
+  auto* layout_object = select->GetLayoutObject();
+  ASSERT_TRUE(layout_object);
+
+  select->ShowPopup();
+  WaitUntilShowedPopup();
+
+  ASSERT_TRUE(select->PopupIsVisible());
+
+  PopupClient()->DidAcceptIndices({2});
+  base::RunLoop().RunUntilIdle();
+
+  EXPECT_FALSE(select->PopupIsVisible());
+  EXPECT_EQ("2", select->InnerElement().innerText());
+  EXPECT_EQ(2, select->selectedIndex());
+}
+
+TEST_F(ExternalPopupMenuTest, DidAcceptIndicesClearSelect) {
+  RegisterMockedURLLoad("select.html");
+  LoadFrame("select.html");
+
+  auto* select = To<HTMLSelectElement>(
+      MainFrame()->GetFrame()->GetDocument()->getElementById(
+          AtomicString("select")));
+  auto* layout_object = select->GetLayoutObject();
+  ASSERT_TRUE(layout_object);
+
+  select->ShowPopup();
+  WaitUntilShowedPopup();
+
+  ASSERT_TRUE(select->PopupIsVisible());
+  PopupClient()->DidAcceptIndices({});
+  base::RunLoop().RunUntilIdle();
+
+  EXPECT_FALSE(select->PopupIsVisible());
+  EXPECT_EQ(-1, select->selectedIndex());
+}
+
+TEST_F(ExternalPopupMenuTest, OnClick) {
+  RegisterMockedURLLoad("select.html");
+  LoadFrame("select.html");
+
+  auto* select = To<HTMLSelectElement>(
+      MainFrame()->GetFrame()->GetDocument()->getElementById(
+          AtomicString("select")));
+  auto* layout_object = select->GetLayoutObject();
+  ASSERT_TRUE(layout_object);
+
+  select->ShowPopup();
+  WaitUntilShowedPopup();
+
+  ASSERT_TRUE(select->PopupIsVisible());
+  PopupClient()->DidAcceptIndices({2});
+
+  auto* result = MainFrame()->GetFrame()->GetDocument()->getElementById(
+      AtomicString("result"));
+  EXPECT_EQ("", result->innerText());
+
+  base::RunLoop().RunUntilIdle();
+
+  EXPECT_FALSE(select->PopupIsVisible());
+  EXPECT_EQ(2, select->selectedIndex());
+  EXPECT_EQ("2", result->innerText());
+}
+
+// Normal case: test showing a select popup, canceling/selecting an item.
+TEST_F(ExternalPopupMenuTest, NormalCase) {
+  RegisterMockedURLLoad("select.html");
+  LoadFrame("select.html");
+
+  // Show the popup-menu.
+  auto* select = To<HTMLSelectElement>(
+      MainFrame()->GetFrame()->GetDocument()->getElementById(
+          AtomicString("select")));
+  auto* layout_object = select->GetLayoutObject();
+  ASSERT_TRUE(layout_object);
+
+  select->ShowPopup();
+  WaitUntilShowedPopup();
+
+  ASSERT_TRUE(select->PopupIsVisible());
+  ASSERT_EQ(3U, MenuItems().size());
+  EXPECT_EQ(1, SelectedItem());
+
+  // Simulate the user canceling the popup; the index should not have changed.
+  PopupClient()->DidCancel();
+  base::RunLoop().RunUntilIdle();
+  EXPECT_EQ(1, select->selectedIndex());
+
+  // Show the pop-up again and this time make a selection.
+  select->ShowPopup();
+  WaitUntilShowedPopup();
+
+  PopupClient()->DidAcceptIndices({0});
+  base::RunLoop().RunUntilIdle();
+  EXPECT_EQ(0, select->selectedIndex());
+
+  // Show the pop-up again and make another selection.
+  select->ShowPopup();
+  WaitUntilShowedPopup();
+
+  ASSERT_EQ(3U, MenuItems().size());
+  EXPECT_EQ(0, SelectedItem());
+}
+
+// Page shows popup, then navigates away while popup showing, then select.
+TEST_F(ExternalPopupMenuTest, ShowPopupThenNavigate) {
+  RegisterMockedURLLoad("select.html");
+  LoadFrame("select.html");
+
+  // Show the popup-menu.
+  auto* document = MainFrame()->GetFrame()->GetDocument();
+  auto* select =
+      To<HTMLSelectElement>(document->getElementById(AtomicString("select")));
+  auto* layout_object = select->GetLayoutObject();
+  ASSERT_TRUE(layout_object);
+
+  select->ShowPopup();
+  WaitUntilShowedPopup();
+
+  // Now we navigate to another pager.
+  document->documentElement()->SetInnerHTMLWithoutTrustedTypes(
+      "<blink>Awesome page!</blink>");
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+  base::RunLoop().RunUntilIdle();
+
+  // Now HTMLSelectElement should be nullptr and mojo is disconnected.
+  select =
+      To<HTMLSelectElement>(document->getElementById(AtomicString("select")));
+  EXPECT_FALSE(select);
+  EXPECT_FALSE(IsBound());
+}
+
+// An empty select should not cause a crash when clicked.
+// http://crbug.com/63774
+TEST_F(ExternalPopupMenuTest, EmptySelect) {
+  RegisterMockedURLLoad("select.html");
+  LoadFrame("select.html");
+
+  auto* select = To<HTMLSelectElement>(
+      MainFrame()->GetFrame()->GetDocument()->getElementById(
+          AtomicString("emptySelect")));
+  EXPECT_TRUE(select);
+  select->click();
+}
+
+// Tests that nothing bad happen when the page removes the select when it
+// changes. (http://crbug.com/61997)
+TEST_F(ExternalPopupMenuTest, RemoveOnChange) {
+  RegisterMockedURLLoad("select_event_remove_on_change.html");
+  LoadFrame("select_event_remove_on_change.html");
+
+  // Show the popup-menu.
+  auto* document = MainFrame()->GetFrame()->GetDocument();
+  auto* select =
+      To<HTMLSelectElement>(document->getElementById(AtomicString("s")));
+  auto* layout_object = select->GetLayoutObject();
+  ASSERT_TRUE(layout_object);
+
+  select->ShowPopup();
+  WaitUntilShowedPopup();
+
+  // Select something, it causes the select to be removed from the page.
+  PopupClient()->DidAcceptIndices({1});
+  base::RunLoop().RunUntilIdle();
+
+  // Just to check the soundness of the test.
+  // It should return nullptr as the select has been removed.
+  select = To<HTMLSelectElement>(document->getElementById(AtomicString("s")));
+  EXPECT_FALSE(select);
+}
+
+// crbug.com/912211
+TEST_F(ExternalPopupMenuTest, RemoveFrameOnChange) {
+  RegisterMockedURLLoad("select_event_remove_frame_on_change.html");
+  LoadFrame("select_event_remove_frame_on_change.html");
+
+  // Open a popup.
+  auto* iframe = To<HTMLIFrameElement>(
+      MainFrame()->GetFrame()->GetDocument()->QuerySelector(
+          AtomicString("iframe")));
+  auto* select = To<HTMLSelectElement>(
+      iframe->contentDocument()->QuerySelector(AtomicString("select")));
+  auto* layout_object = select->GetLayoutObject();
+  ASSERT_TRUE(layout_object);
+
+  select->ShowPopup();
+
+  // Select something on the sub-frame, it causes the frame to be removed from
+  // the page.
+  select->SelectOptionByPopup(1);
+  // The test passes if the test didn't crash and ASAN didn't complain.
+}
+
+TEST_F(ExternalPopupMenuTest, OopifSelectOutsideViewport) {
+  frame_test_helpers::WebViewHelper helper;
+  helper.InitializeRemote();
+  WebLocalFrameImpl* local_child =
+      helper.CreateLocalChild(*helper.RemoteMainFrame());
+  ASSERT_TRUE(local_child);
+  helper.GetWebView()->Resize(gfx::Size(800, 600));
+
+  // The select is positioned at (200, 200)
+  std::string html = R"HTML(
+    <!DOCTYPE html>
+    <style>
+      body {
+        margin: 0;
+      }
+      select {
+        position: absolute;
+        left: 200px;
+        top: 200px;
+        width: 100px;
+        height: 30px;
+      }
+    </style>
+    <select id="select">
+      <option>1</option>
+      <option>2</option>
+    </select>
+  )HTML";
+
+  frame_test_helpers::LoadHTMLString(
+      local_child, html, url_test_helpers::ToKURL("http://example.com/"));
+
+  // Resize the child frame view to be large enough to contain the select.
+  local_child->GetFrameView()->Resize(500, 500);
+  local_child->GetFrame()->GetDocument()->UpdateStyleAndLayout(
+      DocumentUpdateReason::kTest);
+
+  // Set the visual viewport to be smaller than the select's position.
+  // Select is at (200, 200, 100, 30).
+  // Viewport is 100x100.
+  helper.GetWebView()->GetPage()->GetVisualViewport().SetSize(
+      gfx::Size(100, 100));
+
+  helper.GetWebView()->GetChromeClient().SetUseExternalPopupMenus(true);
+  auto* select = To<HTMLSelectElement>(
+      local_child->GetFrame()->GetDocument()->getElementById(
+          AtomicString("select")));
+  ASSERT_TRUE(select);
+
+  // Set viewport intersection.
+  mojom::blink::ViewportIntersectionState intersection_state;
+  intersection_state.main_frame_intersection = gfx::Rect(0, 0, 100, 100);
+  intersection_state.viewport_intersection = gfx::Rect(0, 0, 100, 100);
+  intersection_state.outermost_main_frame_size = gfx::Size(800, 600);
+  local_child->GetFrame()->SetViewportIntersectionFromParent(
+      intersection_state);
+
+  // The select is at (200, 200) which does not intersect the 100x100 viewport,
+  // but it is visible within the 500x500 child frame (as configured by the
+  // viewport intersection). The select should not open.
+  select->ShowPopup();
+  EXPECT_FALSE(select->PopupIsVisible());
+}
+
+TEST_F(ExternalPopupMenuTest, OopifSelectInsideViewport) {
+  frame_test_helpers::WebViewHelper helper;
+  helper.InitializeRemote();
+  WebLocalFrameImpl* local_child =
+      helper.CreateLocalChild(*helper.RemoteMainFrame());
+  ASSERT_TRUE(local_child);
+  helper.GetWebView()->Resize(gfx::Size(800, 600));
+
+  // The select is positioned at (0, 400)
+  std::string html = R"HTML(
+    <!DOCTYPE html>
+    <style>
+      body {
+        margin: 0;
+      }
+      select {
+        position: absolute;
+        left: 0px;
+        top: 400px;
+        width: 100px;
+        height: 30px;
+      }
+    </style>
+    <select id="select">
+      <option>1</option>
+      <option>2</option>
+    </select>
+  )HTML";
+
+  frame_test_helpers::LoadHTMLString(
+      local_child, html, url_test_helpers::ToKURL("http://example.com/"));
+
+  // Resize the child frame view to be large enough to contain the select.
+  local_child->GetFrameView()->Resize(500, 1000);
+  local_child->GetFrame()->GetDocument()->UpdateStyleAndLayout(
+      DocumentUpdateReason::kTest);
+
+  // Set the visual viewport to 300x300, which is smaller than the select's
+  // local y-coordinate (400)
+  helper.GetWebView()->GetPage()->GetVisualViewport().SetSize(
+      gfx::Size(300, 300));
+
+  helper.GetWebView()->GetChromeClient().SetUseExternalPopupMenus(true);
+  auto* select = To<HTMLSelectElement>(
+      local_child->GetFrame()->GetDocument()->getElementById(
+          AtomicString("select")));
+  ASSERT_TRUE(select);
+
+  // Set viewport intersection, indicating that the child frame is scrolled in
+  // the main frame such that the portion [300, 600] is visible.
+  mojom::blink::ViewportIntersectionState intersection_state;
+  intersection_state.main_frame_intersection = gfx::Rect(0, 300, 500, 300);
+  intersection_state.viewport_intersection = gfx::Rect(0, 300, 500, 300);
+  intersection_state.outermost_main_frame_size = gfx::Size(800, 600);
+  local_child->GetFrame()->SetViewportIntersectionFromParent(
+      intersection_state);
+
+  // The select is at y=400, which is outside a 300x300 viewport relative to the
+  // child frame's top-left, but it is visible within the scrolled viewport
+  // intersection (y in [300, 600]). The select should open.
+  select->ShowPopup();
+  EXPECT_TRUE(select->PopupIsVisible());
+}
+
+}  // namespace blink

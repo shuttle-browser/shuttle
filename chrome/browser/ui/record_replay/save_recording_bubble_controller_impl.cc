@@ -1,0 +1,55 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/record_replay/save_recording_bubble_controller_impl.h"
+
+#include "base/functional/callback.h"
+#include "base/strings/utf_string_conversions.h"
+#include "components/record_replay/core/browser/task_store.h"
+
+namespace record_replay {
+
+SaveRecordingBubbleControllerImpl::SaveRecordingBubbleControllerImpl(
+    Recording recording,
+    TaskStore* task_store,
+    base::OnceCallback<void(std::string_view)> show_toast_callback,
+    base::OnceClosure on_close_closure)
+    : recording_(std::move(recording)),
+      task_store_(*task_store),
+      show_toast_callback_(std::move(show_toast_callback)),
+      on_close_closure_(std::move(on_close_closure)) {
+  CHECK(task_store);
+}
+
+SaveRecordingBubbleControllerImpl::~SaveRecordingBubbleControllerImpl() {
+  if (on_close_closure_) {
+    std::move(on_close_closure_).Run();
+  }
+}
+
+void SaveRecordingBubbleControllerImpl::OnSave(std::u16string_view name) {
+  recording_.set_name(base::UTF16ToUTF8(name));
+  task_store_->AddRecording(std::move(recording_),
+                            base::BindOnce([](int64_t id) {}));
+  if (show_toast_callback_) {
+    std::move(show_toast_callback_).Run("Recording saved");
+  }
+}
+
+void SaveRecordingBubbleControllerImpl::OnCancel() {
+}
+
+void SaveRecordingBubbleControllerImpl::OnBubbleClosed() {
+  // Self-destruction is handled by the owner of this controller.
+  // The owner (likely RecordReplayPageActionController) should clean up
+  // when the bubble closes.
+  CHECK(on_close_closure_);
+  std::move(on_close_closure_).Run();
+}
+
+std::string_view SaveRecordingBubbleControllerImpl::GetUrl() const {
+  return recording_.url();
+}
+
+}  // namespace record_replay

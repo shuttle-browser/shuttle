@@ -1,0 +1,5 @@
+file://chrome/android/java/src/org/chromium/chrome/browser/browserservices/OWNERS
+
+per-file ...BrowserServicesIntentDataProvider.java=jinsukkim@chromium.org
+per-file ...BrowserServicesIntentDataProvider.java=sinansahin@google.com
+per-file ...BrowserServicesIntentDataProvider.java=adelm@google.com

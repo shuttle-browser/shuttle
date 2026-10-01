@@ -1,0 +1,38 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <string>
+
+#include "components/prefs/pref_service.h"
+#include "components/user_prefs/user_prefs.h"
+#include "content/public/browser/android/browser_context_handle.h"
+#include "content/public/browser/browser_context.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "components/user_prefs/android/jni_headers/UserPrefs_jni.h"
+
+namespace user_prefs {
+
+static bool JNI_UserPrefs_AreNativePrefsLoaded(
+    JNIEnv* env,
+    const base::android::JavaRef<jobject>& jbrowser_context_handle) {
+  return UserPrefs::ArePrefsLoaded(
+      content::BrowserContextFromJavaHandle(jbrowser_context_handle));
+}
+
+static base::android::ScopedJavaLocalRef<jobject> JNI_UserPrefs_Get(
+    JNIEnv* env,
+    const base::android::JavaRef<jobject>& jbrowser_context_handle) {
+  content::BrowserContext* context =
+      content::BrowserContextFromJavaHandle(jbrowser_context_handle);
+  PrefService* pref_service = UserPrefs::Get(context);
+  if (!pref_service) {
+    return nullptr;
+  }
+  return pref_service->GetJavaObject();
+}
+
+}  // namespace user_prefs
+
+DEFINE_JNI(UserPrefs)

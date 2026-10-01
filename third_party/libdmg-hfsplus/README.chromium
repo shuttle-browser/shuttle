@@ -1,0 +1,151 @@
+Name: libdmg-hfsplus
+Short Name: libdmg-hfsplus
+URL: https://github.com/mozilla/libdmg-hfsplus
+Version: N/A
+Revision: 7fa480f6da5c8a987fe0940f1654e62db6f0b165
+Update Mechanism: Manual (https://crbug.com/461840788)
+License: GPL-3.0
+License File: src/LICENSE
+CPEPrefix: unknown
+Security Critical: no
+Shipped: no
+
+Description:
+libdmg-hfsplus is a POSIX-compatible OSS library and toolchain for authoring
+and modifying a limited subset of Apple DMG files containing HFS+ filesystems.
+This library is part of packaging Chrome into DMGs for distribution, offering
+much more control over the generated DMG than Apple's tools provide. See
+crbug.com/404856000 for more details on the project to convert Chrome's Mac
+packaging process to use this library. There are many divergent forks of this
+project; this specific upstream is the fork maintained by Mozilla, used for
+packaging Firefox.
+
+Most importantly for Chrome distribution, libdmg-hfsplus can generate a DMG
+file that can be efficiently patched with brand codes (or other attribution
+strings) without fully decompressing the DMG or fully parsing its structure
+and contained file system. This uses Apple's documented mechanism for
+customizing individual application instances without breaking code
+signing or notarization; see
+https://developer.apple.com/library/archive/technotes/tn2206/_index.html#//apple_ref/doc/uid/DTS40007919-CH1-TNTAG401
+for more details (section "Moving Away From Custom Resource Rules").
+
+This codebase must not be used anywhere it will be exposed to untrusted inputs.
+It is written in plain C with minimal input sanitization, missing bounds checks,
+incorrect memory management, inconsistent error handling, and heavy reliance on
+illegal pointer casts for a variety of purposes (both field repurposing and type
+punning show up). Mozilla has added a modest suite
+of functional tests covering the functionality they added, touching on base
+functionality of the library along the way, but these tests rely on bit-for-bit
+reproducible output; due to platform differences in compression libraries, they
+are effectively nonportable.
+
+As such, the Chrome build process isolates it to the greatest extent possible,
+running it on its own VM with limited capabilities and access only to the files
+it needs to package, and a means of output. The DMGs created by this tool are
+not signed, since the VM does not have signing authority and they are intended
+to be patched dynamically for brand code assignment. macOS does not block
+unsigned DMGs, and code signing for the contained application is preserved,
+since the "patch region" for brand codes is contained in the extended attribute
+documented in the Apple tech note link above.
+
+The security posture of the project makes it an odd choice for Chromium, but
+no other DMG authoring library is known; all tools not derived from this
+codebase appear to rely on Apple's DMG authoring utility, `hdiutil`, instead.
+`hdiutil` cannot reliably package Chromium with any extended attribute attached,
+before any consideration about patching it without rebuilding the entire DMG;
+after extensive experimentation, the only mode capable of packaging Chromium
+with its current size and complexity (c.a. late 2025) is the mode that does
+not support HFS+ extended attributes at all.
+
+This target cannot be made to build in Chromium without modification due to
+some `#define` conflicts from Chromium's zlib. To support all features required
+for creating Chromium DMGs, LZMA compression must be ported from xz-utils to
+lzma_sdk and a new HFS+ volume configuration feature must be added (setting a
+folder to be automatically opened on mount).
+
+Local modifications:
+  * patches/2026-01-08-omnibus.patch
+    * The upstream adopted many of the changes we had previously made locally.
+      This patch file aggregates the remaining differences originally written
+      in separate commits (and separate patch files) where the Chromium
+      version still deviates from upstream. Remaining differences include:
+      * Some additional whitespace cleanups
+      * Formatting tweaks to some comments in hfsplus.h
+      * Rename `compress` (compress.h, compress.c, io.c) to `compressFn` to
+        resolve a conflict with `#define`s transitive from Chromium's zlib.h
+  * patches/2026-01-26-lzma-sdk.patch
+    * Uses `lzma_sdk` instead of `xz` for LZMA compression, since Chromium
+      already has `lzma_sdk` in `third_party`.
+    * Relies on an adapter that, in Chromium, made more sense to stash near
+      the other Google-specific `lzma_sdk` stuff rather than `libdmg-hfsplus`;
+      that's `third_party/lzma_sdk/google/seven_zip_c_buf_stream.[h|c]`.
+    * See https://chromium-review.googlesource.com/c/chromium/src/+/7467001
+      for the diff that includes the general-purpose "use a C buffer as an
+      `lzma_sdk` stream" component.
+    * `lzma_sdk`'s compression presets are not identical to `xz's`, so the
+      exact interpretation of the `--level` flag will be different.
+  * patches/2026-02-02-SizedBuf-dmg-attribute.patch
+    * Adds a new type, `SizedBuf`, containing a `char[]` with allocated capacity
+      `cap` and actual contained data length `len`.
+    * Replaces logic reached from `dmg attribute` codepath to use SizedBuf
+      instead of null-terminated strings to handle placeholders and replacements
+      so values containing embedded null bytes can be used. It is not possible
+      to specify such a string on the command line as of this patch, this only
+      paves the way for such an implementation.
+    * Backwards-compatible: existing string-based function signatures remain
+      in place, as wrappers that call the SizedBuf APIs.
+  * patches/2026-02-05-data-format-flag.patch
+    * Adds `parse_data_param.[h|c]` to abstract over parsing C-strings to
+      SizedBuf, using some encoding looked up by name.
+    * Adds `--data-format` flag to `dmg`, used in `dmg attribute`, to specify
+      which data param parser should parse the "sentinel" and "attribution"
+      positional parameters. Default is the `literal` parser, matching existing
+      behavior.
+    * Implements only the `literal` parser.
+  * patches/2026-02-09-dmg-build-data-format.patch
+    * Extends `--data-format` flag to `dmg build` when looking for a sentinel.
+    * Extends `SizedBuf` plumbing into the `dmg build` logic by converting
+      `buildDmg` to `buildDmgWithSentinelBuf` and rewriting `buildDmg` to call
+      it (preserving `buildDmg`'s API). This converges on SizedBuf entry points
+      already written for the prior `dmg attribute` patch.
+    * Consequently, supports NUL bytes in the sentinel for `dmg build`.
+  * patches/2026-02-10-hfs-attribute-data-format.patch
+    * Adds `--data-format` flag to `hfsplus`, used in `hfs setattr`, to specify
+      a data param parser for the value to be written into the attribute.
+    * The extended attribute logic was already ready to handle NUL bytes.
+    * Fixes SizedBuf types and adds ReallocBuf.
+  * patches/2026-02-23a-btree-fixes.patch
+    * Refuses to insert a record that does not fit into a btree node, instead
+      of silently creating a corrupt filesystem.
+    * Correctly handles attempting to remove a nonexistent record that would,
+      if it existed, be the greatest record in a specific leaf node.
+  * patches/2026-02-23b-omaha-data-format-and-cleanups.patch
+    * Adds `--data-format=omaha_tag_zone` to create an Omaha tag with data
+      equal to the provided string, padding up to the full 8K max tag size,
+      prefixing with an Omaha 4 tag header (including data size)
+    * Scattered include cleanups, extra assertions, and extra debugging
+    * Note: A default-formatted HFS+ file system cannot support an 8K Omaha
+      tag using libdmg-hfsplus because libdmg-hfsplus only writes "inline"
+      extended attributes (they are written directly into the file system's
+      attribute B-tree rather than as a file-like object referenced from it).
+      To support 8K Omaha tags, the HFS+ volume must be created with a larger
+      attribute B-tree node size. `newfs_hfs -n a=16384 ...` does this;
+      `hdiutil create -fsargs "-n a=16384 -fs HFS+ ..." causes hdiutil to
+      propagate this flag when it creates the file system.
+  * patches/2026-03-03-path-and-link-lookup-comments.patch
+    * Adds comment to `getRecordFromPath3` explaining the interpretation of
+      each parameter and the apparent semantics of the function.
+    * Adds comment to `getLinkTarget` explaining its behavior.
+    * This patch contains only comments.
+  * patches/2026-03-05-hfs-set-openfolder.patch
+    * Adds `setopenfolder` command to `hfsplus` to configure a path to
+      automatically open in Finder when mounting the volume.
+      * This overrides the `-noautoopen` flag in `hdiutil attach` and Finder's
+      default behavior of automatically opening the root.
+      * See also: `hdiutil makehybrid`'s `-hfs-openfolder` flag.
+    * Adds comments to `getRecordFromPath`, `getRecordFromPath2`,
+      `FLIPENDIAN`, and `FLIPENDIANLE`.
+    * Improves a few error messages in hfslib.c.
+    * Adds `NULL` checks to `getRecordFromPath3`.
+    * In hfslib.c, checks return value of `updateVolume`.
+

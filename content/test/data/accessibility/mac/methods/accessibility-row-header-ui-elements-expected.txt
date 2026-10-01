@@ -1,0 +1,5 @@
+table.accessibilityRowHeaderUIElements=ERROR:FAILED_TO_PARSE
+rowheader.accessibilityRowHeaderUIElements=ERROR:FAILED_TO_PARSE
+cell.accessibilityRowHeaderUIElements=ERROR:FAILED_TO_PARSE
+columnheader1.accessibilityRowHeaderUIElements=ERROR:FAILED_TO_PARSE
+columnheader2.accessibilityRowHeaderUIElements=ERROR:FAILED_TO_PARSE

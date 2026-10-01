@@ -1,0 +1,1486 @@
+# Copyright 2021 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+"""Definitions of builders in the chromium.mac builder group."""
+
+load("@chromium-luci//args.star", "args")
+load("@chromium-luci//branches.star", "branches")
+load("@chromium-luci//builder_config.star", "builder_config")
+load("@chromium-luci//builder_health_indicators.star", "health_spec")
+load("@chromium-luci//builders.star", "cpu", "os")
+load("@chromium-luci//ci.star", "ci")
+load("@chromium-luci//consoles.star", "consoles")
+load("@chromium-luci//gn_args.star", "gn_args")
+load("@chromium-luci//targets.star", "targets")
+load("//lib/ci_constants.star", "ci_constants")
+load("//lib/gardener_rotations.star", "gardener_rotations")
+load("//lib/siso.star", "siso")
+load("//lib/xcode.star", "xcode")
+
+ci.defaults.set(
+    executable = ci_constants.DEFAULT_EXECUTABLE,
+    builder_group = "chromium.mac",
+    builder_config_settings = builder_config.ci_settings(
+        retry_failed_shards = True,
+    ),
+    pool = ci_constants.DEFAULT_POOL,
+    os = os.MAC_DEFAULT,
+    gardener_rotations = gardener_rotations.CHROMIUM,
+    tree_closing = True,
+    tree_closing_notifiers = ci_constants.DEFAULT_TREE_CLOSING_NOTIFIERS,
+    main_console_view = "main",
+    execution_timeout = ci_constants.DEFAULT_EXECUTION_TIMEOUT,
+    experiments = {
+        "chromium_tests.resultdb_module": 100,
+    },
+    health_spec = health_spec.default(),
+    service_account = ci_constants.DEFAULT_SERVICE_ACCOUNT,
+    shadow_service_account = ci_constants.DEFAULT_SHADOW_SERVICE_ACCOUNT,
+    siso_project = siso.project.DEFAULT_TRUSTED,
+    siso_remote_jobs = siso.remote_jobs.DEFAULT,
+    thin_tester_cores = 8,
+)
+
+targets.builder_defaults.set(mixins = [
+    "chromium-tester-service-account",
+])
+
+consoles.console_view(
+    name = "chromium.mac",
+    branch_selector = [
+        branches.selector.IOS_BRANCHES,
+        branches.selector.MAC_BRANCHES,
+    ],
+    ordering = {
+        None: ["release"],
+        "release": consoles.ordering(short_names = ["bld"]),
+        "debug": consoles.ordering(short_names = ["bld"]),
+        "ios|default": consoles.ordering(short_names = ["dev", "sim"]),
+    },
+)
+
+consoles.console_view(
+    name = "sheriff.ios",
+    title = "iOS Sheriff Console",
+    ordering = {
+        "*type*": consoles.ordering(short_names = ["dev", "sim"]),
+        None: ["chromium.mac", "chromium.fyi"],
+        "chromium.mac": "*type*",
+        "chromium.fyi|13": "*type*",
+    },
+)
+
+def ios_builder(*, name, **kwargs):
+    kwargs.setdefault("gardener_rotations", gardener_rotations.IOS)
+    kwargs.setdefault("xcode", xcode.xcode_default)
+    return ci.builder(name = name, **kwargs)
+
+ci.builder(
+    name = "Mac Builder",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+            apply_configs = [
+                # This is necessary due to child builders running the
+                # telemetry_perf_unittests suite.
+                "chromium_with_telemetry_dependencies",
+                "use_clang_coverage",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_arch = builder_config.target_arch.INTEL,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "gpu_tests",
+            "release_builder",
+            "remoteexec",
+            "minimal_symbols",
+            "x64",
+            "mac",
+        ],
+    ),
+    targets = targets.bundle(
+        targets = [
+            "chromium_mac_scripts",
+        ],
+        additional_compile_targets = [
+            "all",
+        ],
+        per_test_modifications = {
+            "check_static_initializers": targets.mixin(
+                args = [
+                    "--allow-coverage-initializer",
+                ],
+            ),
+        },
+    ),
+    cpu = cpu.ARM64,
+    console_view_entry = consoles.console_view_entry(
+        category = "release",
+        short_name = "bld",
+    ),
+    cq_mirrors_console_view = "mirrors",
+    contact_team_email = "bling-engprod@google.com",
+    siso_project = siso.project.DEFAULT_TRUSTED,
+    siso_remote_jobs = siso.remote_jobs.DEFAULT,
+)
+
+ci.builder(
+    name = "Mac Builder (dbg)",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.DEBUG,
+            target_arch = builder_config.target_arch.INTEL,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "gpu_tests",
+            "debug_builder",
+            "remoteexec",
+            "x64",
+            "mac",
+        ],
+    ),
+    targets = targets.bundle(
+        additional_compile_targets = [
+            "all",
+        ],
+    ),
+    os = os.MAC_ANY,
+    cpu = cpu.ARM64,
+    console_view_entry = consoles.console_view_entry(
+        category = "debug",
+        short_name = "bld",
+    ),
+    cq_mirrors_console_view = "mirrors",
+    contact_team_email = "bling-engprod@google.com",
+)
+
+ci.builder(
+    name = "mac-arm64-on-arm64-rel",
+
+    # TODO(crbug.com/40172659): Expand to more branches when all M1 bots are
+    # rosettaless.
+    # branch_selector = branches.selector.MAC_BRANCHES,
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "release_builder",
+            "remoteexec",
+            "mac",
+            "arm64",
+        ],
+    ),
+    targets = targets.bundle(
+        additional_compile_targets = [
+            "all",
+        ],
+    ),
+    os = os.MAC_DEFAULT,
+    cpu = cpu.ARM64,
+    console_view_entry = consoles.console_view_entry(
+        category = "release|arm64",
+        short_name = "a64",
+    ),
+    contact_team_email = "bling-engprod@google.com",
+)
+
+ci.builder(
+    name = "mac-arm64-dbg",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "compiles chrome with debug builds on ARM MacOS",
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.DEBUG,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "debug_builder",
+            "remoteexec",
+            "mac",
+            "arm64",
+        ],
+    ),
+    targets = targets.bundle(
+        additional_compile_targets = [
+            "all",
+        ],
+    ),
+    builderless = True,
+    os = os.MAC_DEFAULT,
+    cpu = cpu.ARM64,
+    console_view_entry = consoles.console_view_entry(
+        category = "debug|arm64",
+        short_name = "bld",
+    ),
+    contact_team_email = "bling-engprod@google.com",
+)
+
+ci.builder(
+    name = "mac-arm64-rel",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+            apply_configs = [
+                # This is necessary due to child builders running the
+                # telemetry_perf_unittests suite.
+                "chromium_with_telemetry_dependencies",
+                "use_clang_coverage",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "arm64",
+            "gpu_tests",
+            "release_builder",
+            "remoteexec",
+            "minimal_symbols",
+            "mac",
+        ],
+    ),
+    targets = targets.bundle(
+        targets = [
+            "chromium_mac_scripts",
+        ],
+        additional_compile_targets = [
+            "all",
+        ],
+        per_test_modifications = {
+            "check_static_initializers": targets.mixin(
+                args = [
+                    "--allow-coverage-initializer",
+                ],
+            ),
+        },
+    ),
+    os = os.MAC_DEFAULT,
+    cpu = cpu.ARM64,
+    console_view_entry = consoles.console_view_entry(
+        category = "release|arm64",
+        short_name = "bld",
+    ),
+    contact_team_email = "bling-engprod@google.com",
+)
+
+ci.builder(
+    name = "mac-intel-on-arm64-rel",
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "release_builder",
+            "remoteexec",
+            "mac",
+            "x64",
+        ],
+    ),
+    targets = targets.bundle(
+        additional_compile_targets = [
+            "all",
+        ],
+    ),
+    os = os.MAC_DEFAULT,
+    cpu = cpu.ARM64,
+    gardener_rotations = args.ignore_default(None),
+    tree_closing = False,
+    console_view_entry = consoles.console_view_entry(
+        category = "release",
+        short_name = "a64",
+    ),
+)
+
+ci.thin_tester(
+    name = "mac13-arm64-rel-tests",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    parent = "ci/mac-arm64-rel",
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    targets = targets.bundle(
+        targets = [
+            "chromium_mac_gtests_no_nacl",
+            "chromium_mac_rel_isolated_scripts",
+        ],
+        mixins = [
+            # Only run selected test suites on CQ. https://crbug.com/1234525.
+            "ci_only",
+            "mac_13_arm64",
+        ],
+        per_test_modifications = {
+            "browser_tests": targets.remove(
+                reason = "https://crbug.com/1406364",
+            ),
+            "grit_python_unittests": targets.remove(
+                reason = "TODO(crbug.com/40204342): Re-enable.",
+            ),
+            "interactive_ui_tests": targets.mixin(
+                ci_only = False,
+                swarming = targets.swarming(
+                    shards = 6,
+                ),
+            ),
+            "telemetry_unittests": targets.remove(
+                reason = "TODO(crbug.com/40204348): Re-enable when platform is supported.",
+            ),
+        },
+    ),
+    ssd = None,
+    tree_closing = False,
+    console_view_entry = consoles.console_view_entry(
+        category = "release|arm64",
+        short_name = "13",
+    ),
+    contact_team_email = "bling-engprod@google.com",
+)
+
+ci.thin_tester(
+    name = "mac14-arm64-rel-tests",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "Runs MacOS 14 tests on ARM machines",
+    parent = "ci/mac-arm64-rel",
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    targets = targets.bundle(
+        targets = [
+            "chromium_mac_gtests_no_nacl_mac14_arm",
+            "chromium_mac_rel_isolated_scripts",
+        ],
+        mixins = [
+            # Only run selected test suites on CQ. https://crbug.com/1234525.
+            "ci_only",
+            "mac_14_arm64",
+        ],
+        per_test_modifications = {
+            "browser_tests": targets.remove(
+                reason = "https://crbug.com/1406364",
+            ),
+            "chromedriver_py_tests": targets.mixin(
+                # TODO(crbug.com/347304858) : Remove once fixed.
+                experiment_percentage = 100,
+            ),
+            "grit_python_unittests": targets.remove(
+                reason = "TODO(crbug.com/40204342): Re-enable.",
+            ),
+            "interactive_ui_tests": targets.mixin(
+                ci_only = False,
+                swarming = targets.swarming(
+                    shards = 6,
+                ),
+            ),
+            "telemetry_unittests": targets.remove(
+                reason = "TODO(crbug.com/40204348): Re-enable when platform is supported.",
+            ),
+        },
+    ),
+    ssd = None,
+    tree_closing = False,
+    console_view_entry = consoles.console_view_entry(
+        category = "release|arm64",
+        short_name = "14",
+    ),
+    contact_team_email = "bling-engprod@google.com",
+)
+
+ci.thin_tester(
+    name = "mac15-arm64-rel-tests",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "Runs MacOS 15 tests on ARM machines",
+    parent = "ci/mac-arm64-rel",
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    targets = targets.bundle(
+        targets = [
+            "chromium_mac_gtests",
+            "chromium_mac_rel_isolated_scripts",
+        ],
+        mixins = [
+            "mac_26_vm_optional",
+        ],
+        per_test_modifications = {
+            # TODO(crbug.com/436628295): test fails on VM
+            "blink_web_tests": targets.per_test_modification(
+                mixins = "mac_15_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # TODO(crbug.com/436628295): test fails on VM
+            "blink_wpt_tests": targets.per_test_modification(
+                mixins = "mac_15_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            "browser_tests": targets.remove(
+                reason = "https://crbug.com/1406364",
+            ),
+            # TODO(crbug.com/436628295): test fails on VM
+            "chromedriver_py_tests_headless_shell": targets.per_test_modification(
+                mixins = "mac_15_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # TODO(crbug.com/436628295): test fails on VM
+            "chromedriver_py_tests": targets.per_test_modification(
+                mixins = "mac_15_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # https://crbug.com/514242886: Perf tests should not run in VMs
+            "components_perftests": targets.per_test_modification(
+                mixins = "mac_15_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # TODO(crbug.com/436628295): tests are <3x slower on VM
+            "content_browsertests": targets.per_test_modification(
+                mixins = "mac_15_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # TODO(crbug.com/436628295): test fails on VM
+            "headless_shell_wpt_tests": targets.per_test_modification(
+                mixins = "mac_15_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # TODO(crbug.com/436628295): tests fails on VM when host OS
+            # is 26.4 while VM OS is 15.6.1
+            "interactive_ui_tests": targets.per_test_modification(
+                mixins = [
+                    targets.mixin(
+                        swarming = targets.swarming(
+                            shards = 8,
+                        ),
+                    ),
+                    "mac_15_arm64",
+                ],
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # TODO(crbug.com/500901289): tests are flaky on VM when host OS is 26+ while VM OS is 15.6.1
+            "sync_integration_tests": targets.per_test_modification(
+                mixins = [
+                    "mac_15_arm64",
+                    "ci_only",
+                ],
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            "telemetry_perf_unittests": targets.mixin(
+                ci_only = True,
+            ),
+        },
+    ),
+    ssd = None,
+    tree_closing = False,
+    console_view_entry = consoles.console_view_entry(
+        category = "release|arm64",
+        short_name = "15",
+    ),
+    contact_team_email = "bling-engprod@google.com",
+)
+
+ci.thin_tester(
+    name = "mac26-arm64-rel-tests",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "Runs MacOS 26 tests on ARM machines",
+    parent = "ci/mac-arm64-rel",
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    targets = targets.bundle(
+        targets = [
+            "chromium_mac_gtests",
+            "chromium_mac_rel_isolated_scripts",
+        ],
+        mixins = [
+            "mac_26_vm_optional",
+            "isolate_profile_data",
+        ],
+        per_test_modifications = {
+            # TODO(crbug.com/436628295): test fails on VM
+            "blink_web_tests": targets.per_test_modification(
+                mixins = "mac_26_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # TODO(crbug.com/436628295): test fails on VM
+            "blink_wpt_tests": targets.per_test_modification(
+                mixins = "mac_26_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            "browser_tests": targets.per_test_modification(
+                mixins = [
+                    targets.mixin(
+                        args = [
+                            "--test-launcher-filter-file=../../testing/buildbot/filters/mac.mac26-arm64-rel.browser_tests.filter",
+                        ],
+                        swarming = targets.swarming(
+                            shards = 25,
+                        ),
+                    ),
+                    "mac_26_arm64",
+                    "ci_only",
+                ],
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # TODO(crbug.com/436628295): test fails on VM
+            "chromedriver_py_tests_headless_shell": targets.per_test_modification(
+                mixins = "mac_26_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # TODO(crbug.com/436628295): test fails on VM
+            "chromedriver_py_tests": targets.per_test_modification(
+                mixins = "mac_26_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # https://crbug.com/514242886: Perf tests should not run in VMs
+            "components_perftests": targets.per_test_modification(
+                mixins = "mac_26_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # TODO(crbug.com/436628295): tests are <3x slower on VM
+            "content_browsertests": targets.per_test_modification(
+                mixins = "mac_26_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # TODO(crbug.com/436628295): test fails on VM
+            "headless_shell_wpt_tests": targets.per_test_modification(
+                mixins = "mac_26_arm64",
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # TODO(crbug.com/436628295): tests fails on VM when host OS
+            # is 26.4 while VM OS is 15.6.1
+            "interactive_ui_tests": targets.per_test_modification(
+                mixins = [
+                    targets.mixin(
+                        swarming = targets.swarming(
+                            shards = 8,
+                        ),
+                    ),
+                    "mac_26_arm64",
+                ],
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            # TODO(crbug.com/500901289): tests are flaky on VM when host OS is 26+ while VM OS is 15.6.1
+            "sync_integration_tests": targets.per_test_modification(
+                mixins = [
+                    "mac_26_arm64",
+                    "ci_only",
+                ],
+                remove_mixins = "mac_26_vm_optional",
+            ),
+            "telemetry_perf_unittests": targets.mixin(
+                ci_only = True,
+            ),
+        },
+    ),
+    ssd = None,
+    tree_closing = False,
+    console_view_entry = consoles.console_view_entry(
+        category = "release|arm64",
+        short_name = "26",
+    ),
+    contact_team_email = "bling-engprod@google.com",
+)
+
+ci.thin_tester(
+    name = "Mac13 Tests",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    parent = "ci/Mac Builder",
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    targets = targets.bundle(
+        targets = [
+            "chromium_mac_gtests_no_nacl",
+            "chromium_mac_rel_isolated_scripts_once",
+        ],
+        mixins = [
+            "mac_13_x64",
+            "isolate_profile_data",
+        ],
+        per_test_modifications = {
+            "blink_web_tests": targets.mixin(
+                swarming = targets.swarming(
+                    dimensions = {
+                        "gpu": None,
+                    },
+                    shards = 12,
+                ),
+            ),
+            "blink_wpt_tests": targets.mixin(
+                swarming = targets.swarming(
+                    dimensions = {
+                        "gpu": None,
+                    },
+                    shards = 6,
+                ),
+            ),
+            "browser_tests": targets.mixin(
+                ci_only = True,
+                swarming = targets.swarming(
+                    # crbug.com/1361887, crbug.com/509389281
+                    shards = 40,
+                ),
+            ),
+            "content_browsertests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 12,
+                ),
+            ),
+            "interactive_ui_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 8,
+                ),
+            ),
+            "sync_integration_tests": targets.mixin(
+                ci_only = True,
+                swarming = targets.swarming(
+                    shards = 4,
+                ),
+            ),
+            "telemetry_perf_unittests": targets.mixin(
+                ci_only = True,
+            ),
+            "unit_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 2,
+                ),
+            ),
+        },
+    ),
+    ssd = None,
+    console_view_entry = consoles.console_view_entry(
+        category = "mac",
+        short_name = "13",
+    ),
+    contact_team_email = "bling-engprod@google.com",
+    properties = {
+        "$build/test_utils": {
+            "min_failed_suites_to_skip_retry": 10,
+        },
+    },
+)
+
+ci.thin_tester(
+    name = "mac26-tests-dbg",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "Runs Mac 26 tests with debug config.",
+    parent = "ci/mac-arm64-dbg",
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.DEBUG,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    targets = targets.bundle(
+        targets = [
+            "chromium_mac_gtests",
+            "chromium_dbg_isolated_scripts",
+        ],
+        mixins = [
+            "mac_26_arm64",
+        ],
+        per_test_modifications = {
+            "blink_web_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 16,
+                ),
+            ),
+            "blink_wpt_tests": targets.mixin(
+                args = [
+                    "--debug",
+                ],
+                swarming = targets.swarming(
+                    shards = 8,
+                ),
+            ),
+            "browser_tests": targets.remove(
+                reason = "https://crbug.com/1406364",
+            ),
+            "content_browsertests": targets.mixin(
+                # https://crbug.com/1279504
+                swarming = targets.swarming(
+                    shards = 18,
+                ),
+            ),
+            "interactive_ui_tests": targets.mixin(
+                # TODO(crbug.com/338408669): Remove experimental when suite is
+                # ready to be sheriffed.
+                experiment_percentage = 100,
+                swarming = targets.swarming(
+                    shards = 12,
+                ),
+            ),
+            "performance_test_suite": targets.mixin(
+                args = [
+                    "--browser=debug",
+                ],
+            ),
+            "sync_integration_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 3,
+                ),
+            ),
+            "telemetry_perf_unittests": targets.remove(
+                reason = "# TODO crbug.com/1277277",
+            ),
+            "unit_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 2,
+                ),
+            ),
+        },
+    ),
+    ssd = None,
+    gardener_rotations = args.ignore_default(None),
+    console_view_entry = consoles.console_view_entry(
+        category = "debug",
+        short_name = "26",
+    ),
+    cq_mirrors_console_view = "mirrors",
+    contact_team_email = "bling-engprod@google.com",
+)
+
+ci.thin_tester(
+    name = "mac14-tests",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "Runs default MacOS 14 tests on CI.",
+    parent = "ci/Mac Builder",
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    targets = targets.bundle(
+        targets = [
+            "chromium_mac_gtests_no_nacl",
+            "chromium_mac_rel_isolated_scripts",
+            "gtests_once",
+        ],
+        mixins = [
+            "mac_14_x64",
+            "isolate_profile_data",
+        ],
+        per_test_modifications = {
+            "blink_web_tests": targets.mixin(
+                swarming = targets.swarming(
+                    dimensions = {
+                        "gpu": None,
+                    },
+                    shards = 12,
+                ),
+            ),
+            "blink_wpt_tests": targets.mixin(
+                swarming = targets.swarming(
+                    dimensions = {
+                        "gpu": None,
+                    },
+                    shards = 6,
+                ),
+            ),
+            "browser_tests": targets.mixin(
+                ci_only = True,
+                swarming = targets.swarming(
+                    # crbug.com/1361887
+                    shards = 20,
+                ),
+            ),
+            "content_browsertests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 12,
+                ),
+            ),
+            "interactive_ui_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 6,
+                ),
+            ),
+            "sync_integration_tests": targets.mixin(
+                ci_only = True,
+                swarming = targets.swarming(
+                    shards = 4,
+                ),
+            ),
+            "telemetry_perf_unittests": targets.mixin(
+                ci_only = True,
+            ),
+            "unit_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 2,
+                ),
+            ),
+        },
+    ),
+    ssd = None,
+    # TODO(crbug.com/336530603): Add to rotation when it's stable.
+    gardener_rotations = args.ignore_default(None),
+    console_view_entry = consoles.console_view_entry(
+        category = "mac",
+        short_name = "14",
+    ),
+    contact_team_email = "bling-engprod@google.com",
+)
+
+ci.thin_tester(
+    name = "mac15-x64-rel-tests",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "Runs default MacOS 15 tests on CI.",
+    parent = "ci/Mac Builder",
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    targets = targets.bundle(
+        targets = [
+            "chromium_mac_gtests_no_nacl",
+            "chromium_mac_rel_isolated_scripts",
+            "gtests_once",
+        ],
+        mixins = [
+            "mac_15_x64",
+            "isolate_profile_data",
+        ],
+        per_test_modifications = {
+            "blink_web_tests": targets.mixin(
+                swarming = targets.swarming(
+                    dimensions = {
+                        "gpu": None,
+                    },
+                    shards = 12,
+                ),
+            ),
+            "blink_wpt_tests": targets.mixin(
+                swarming = targets.swarming(
+                    dimensions = {
+                        "gpu": None,
+                    },
+                    shards = 6,
+                ),
+            ),
+            "browser_tests": targets.mixin(
+                ci_only = True,
+                swarming = targets.swarming(
+                    # crbug.com/1361887
+                    shards = 20,
+                ),
+            ),
+            "content_browsertests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 12,
+                ),
+            ),
+            "content_unittests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 2,
+                ),
+            ),
+            "interactive_ui_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 14,
+                ),
+            ),
+            "sync_integration_tests": targets.mixin(
+                ci_only = True,
+                swarming = targets.swarming(
+                    shards = 4,
+                ),
+            ),
+            "telemetry_perf_unittests": targets.mixin(
+                ci_only = True,
+            ),
+            "unit_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 2,
+                ),
+            ),
+        },
+    ),
+    ssd = None,
+    console_view_entry = consoles.console_view_entry(
+        category = "mac",
+        short_name = "15",
+    ),
+    contact_team_email = "bling-engprod@google.com",
+)
+
+ci.thin_tester(
+    name = "mac26-x64-rel-tests",
+    branch_selector = branches.selector.MAC_BRANCHES,
+    description_html = "Runs selected MacOS 26 tests on CI.",
+    parent = "ci/Mac Builder",
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    targets = targets.bundle(
+        targets = [
+            "mac26_x86_tests",
+        ],
+        mixins = [
+            "limited_capacity_bot",
+            "mac_26_x64",
+        ],
+    ),
+    ssd = None,
+    console_view_entry = consoles.console_view_entry(
+        category = "mac",
+        short_name = "26",
+    ),
+    contact_team_email = "bling-engprod@google.com",
+)
+
+ci.thin_tester(
+    name = "mac-no-initial-webui-rel",
+    description_html = "Runs tests with Initial WebUI disabled to check legacy UI path.",
+    parent = "ci/mac-arm64-rel",
+    builder_spec = builder_config.builder_spec(
+        execution_mode = builder_config.execution_mode.TEST,
+        gclient_config = builder_config.gclient_config(
+            config = "chromium",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.MAC,
+        ),
+    ),
+    targets = targets.bundle(
+        targets = [
+            # TODO(crbug.com/40252679): Add browser_tests after the bug is resolved.
+            "interactive_ui_tests",
+            "unit_tests",
+        ],
+        mixins = [
+            "mac_default_arm64",
+            "isolate_profile_data",
+        ],
+        per_test_modifications = {
+            "interactive_ui_tests": targets.mixin(
+                args = [
+                    "--disable-features=InitialWebUI,WebUIReloadButton,SkipIPCChannelPausingForNonGuests,WebUIInProcessResourceLoadingV2,InitialWebUISyncNavStartToCommit",
+                ],
+                swarming = targets.swarming(
+                    shards = 4,
+                ),
+            ),
+            "unit_tests": targets.mixin(
+                args = [
+                    "--disable-features=InitialWebUI,WebUIReloadButton,SkipIPCChannelPausingForNonGuests,WebUIInProcessResourceLoadingV2,InitialWebUISyncNavStartToCommit",
+                ],
+            ),
+        },
+    ),
+    ssd = None,
+    console_view_entry = consoles.console_view_entry(
+        category = "mac",
+        short_name = "no-webui",
+    ),
+    cq_mirrors_console_view = "mirrors",
+    contact_team_email = "chrome-webium-product-eng@google.com",
+)
+
+ios_builder(
+    # We don't have necessary capacity to run this configuration in CQ, but it
+    # is part of the main waterfall
+    name = "ios-catalyst",
+    description_html = (
+        "Builds the open-source version of Chrome for iOS as a Catalyst app " +
+        "(i.e. an iOS app for running in a wrapper on macOS). Build-only " +
+        "(does not run tests)."
+    ),
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "ios",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+                "mac_toolchain",
+            ],
+            build_config = builder_config.build_config.DEBUG,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.IOS,
+        ),
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "compile_only",
+            "debug_static_builder",
+            "remoteexec",
+            "ios_catalyst",
+            "arm64",
+            "asan",
+            "libfuzzer",
+            "no_dsyms",
+            "no_remoting",
+        ],
+    ),
+    targets = targets.bundle(
+        additional_compile_targets = [
+            "ios/chrome/app:chrome",
+            "ios/chrome/test:all_fuzzer_tests",
+        ],
+    ),
+    builderless = True,
+    cpu = cpu.ARM64,
+    tree_closing = False,
+    console_view_entry = [
+        consoles.console_view_entry(
+            category = "ios|default",
+            short_name = "ctl",
+        ),
+    ],
+)
+
+ios_builder(
+    name = "ios-device",
+    description_html = (
+        "Builds the open-source version of Chrome for iOS as a binary for " +
+        "running on a real device. Build-only (does not run tests)."
+    ),
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "ios",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+                "mac_toolchain",
+            ],
+            build_config = builder_config.build_config.RELEASE,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.IOS,
+        ),
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "minimal_symbols",
+            "ios_device",
+            "arm64",
+            "release_builder",
+            "remoteexec",
+            "xctest",
+        ],
+    ),
+    targets = targets.bundle(
+        targets = [
+            "chromium_ios_scripts",
+        ],
+        additional_compile_targets = [
+            "all",
+        ],
+        mixins = [
+            "ci_only",
+            "expand-as-isolated-script",
+            "has_native_resultdb_integration",
+            "ios_restart_device",
+            "limited_capacity_bot",
+            "mac_toolchain",
+            "out_dir_arg",
+            "xcode_27_main",
+            "xctest",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    console_view_entry = [
+        consoles.console_view_entry(
+            category = "ios|default",
+            short_name = "dev",
+        ),
+        consoles.console_view_entry(
+            branch_selector = branches.selector.MAIN,
+            console_view = "sheriff.ios",
+            category = "chromium.mac",
+            short_name = "dev",
+        ),
+    ],
+)
+
+ios_builder(
+    name = "ios-simulator",
+    branch_selector = branches.selector.IOS_BRANCHES,
+    description_html = (
+        "Builds the open-source version of Chrome for iOS as a simulator " +
+        "binary and runs tests. This is what's included on most CQ runs " +
+        "(even for CLs that don't explicitly touch an iOS file)."
+    ),
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "ios",
+            apply_configs = [
+                "use_clang_coverage",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+                "mac_toolchain",
+            ],
+            build_config = builder_config.build_config.DEBUG,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.IOS,
+        ),
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "debug_static_builder",
+            "remoteexec",
+            "ios_simulator",
+            "arm64",
+            "xctest",
+            "ios_enable_dangling_raw_ptr_checks",
+            "ios_chrome_enable_profile_altering_tests",
+        ],
+    ),
+    targets = targets.bundle(
+        targets = [
+            "ios_simulator_tests",
+        ],
+        additional_compile_targets = [
+            "all",
+        ],
+        mixins = [
+            "expand-as-isolated-script",
+            "has_native_resultdb_integration",
+            "isolate_profile_data",
+            "mac_default_arm64",
+            "mac_toolchain",
+            "out_dir_arg",
+            "xcode_27_main",
+            "xctest",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    console_view_entry = [
+        consoles.console_view_entry(
+            category = "ios|default",
+            short_name = "sim",
+        ),
+        consoles.console_view_entry(
+            branch_selector = branches.selector.MAIN,
+            console_view = "sheriff.ios",
+            category = "chromium.mac",
+            short_name = "sim",
+        ),
+    ],
+    cq_mirrors_console_view = "mirrors",
+)
+
+ios_builder(
+    name = "ios-simulator-full-configs",
+    branch_selector = branches.selector.IOS_BRANCHES,
+    description_html = (
+        "Builds the open-source version of Chrome for iOS as a simulator " +
+        "binary, and runs tests on a large variety of configurations. These " +
+        "configurations are less common (e.g. weird screen sizes, older OS " +
+        "versions) and failures are less frequent, so these configs only " +
+        "run in the CQ for CLs that actually touch an ios-related file. " +
+        "Other CLs may introduce failures, but we handle them reactively as " +
+        "they appear on the console."
+    ),
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "ios",
+            apply_configs = [
+                "use_clang_coverage",
+            ],
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+                "mac_toolchain",
+            ],
+            build_config = builder_config.build_config.DEBUG,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.IOS,
+        ),
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "debug_static_builder",
+            "remoteexec",
+            "ios_simulator",
+            "arm64",
+            "xctest",
+            "ios_enable_dangling_raw_ptr_checks",
+            "ios_chrome_enable_profile_altering_tests",
+        ],
+    ),
+    targets = targets.bundle(
+        targets = [
+            "ios_simulator_full_configs_tests",
+        ],
+        additional_compile_targets = [
+            "all",
+        ],
+        mixins = [
+            "expand-as-isolated-script",
+            "has_native_resultdb_integration",
+            "isolate_profile_data",
+            "mac_default_arm64",
+            "mac_toolchain",
+            "out_dir_arg",
+            "xcode_27_main",
+            "xctest",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    console_view_entry = [
+        consoles.console_view_entry(
+            category = "ios|default",
+            short_name = "ful",
+        ),
+        consoles.console_view_entry(
+            branch_selector = branches.selector.MAIN,
+            console_view = "sheriff.ios",
+            category = "chromium.mac",
+            short_name = "ful",
+        ),
+    ],
+    cq_mirrors_console_view = "mirrors",
+)
+
+ios_builder(
+    name = "ios-simulator-noncq",
+    description_html = (
+        "Builds the open-source version of Chrome for iOS as a simulator " +
+        "binary. Runs tests that are not included on CQ runs, but that we " +
+        "still want tested regularly."
+    ),
+    builder_spec = builder_config.builder_spec(
+        gclient_config = builder_config.gclient_config(
+            config = "ios",
+        ),
+        chromium_config = builder_config.chromium_config(
+            config = "chromium",
+            apply_configs = [
+                "mb",
+                "mac_toolchain",
+            ],
+            build_config = builder_config.build_config.DEBUG,
+            target_arch = builder_config.target_arch.ARM,
+            target_bits = 64,
+            target_platform = builder_config.target_platform.IOS,
+        ),
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "debug_static_builder",
+            "remoteexec",
+            "ios_simulator",
+            "arm64",
+            "xctest",
+            "ios_enable_dangling_raw_ptr_checks",
+            "ios_chrome_enable_profile_altering_tests",
+        ],
+    ),
+    targets = targets.bundle(
+        targets = [
+            "ios_simulator_noncq_tests",
+        ],
+        additional_compile_targets = [
+            "all",
+        ],
+        mixins = [
+            "expand-as-isolated-script",
+            "has_native_resultdb_integration",
+            "mac_default_arm64",
+            "mac_toolchain",
+            "out_dir_arg",
+            "xcode_27_main",
+            "xctest",
+        ],
+    ),
+    cpu = cpu.ARM64,
+    console_view_entry = [
+        consoles.console_view_entry(
+            category = "ios|default",
+            short_name = "non",
+        ),
+        consoles.console_view_entry(
+            branch_selector = branches.selector.MAIN,
+            console_view = "sheriff.ios",
+            category = "chromium.mac",
+            short_name = "non",
+        ),
+    ],
+)

@@ -1,0 +1,409 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import 'chrome://resources/cr_elements/cr_link_row/cr_link_row.js';
+import '../controls/settings_toggle_button.js';
+import '../settings_page/settings_section.js';
+import '../privacy_icons.html.js';
+// <if expr="_google_chrome">
+import '../internal/icons.html.js';
+
+// </if>
+
+import {PrefsMixin} from '/shared/settings/prefs/prefs_mixin.js';
+import {WebUiListenerMixin} from 'chrome://resources/cr_elements/web_ui_listener_mixin.js';
+import {assert, assertNotReached} from 'chrome://resources/js/assert.js';
+import {OpenWindowProxyImpl} from 'chrome://resources/js/open_window_proxy.js';
+import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
+
+import type {SettingsToggleButtonElement} from '../controls/settings_toggle_button.js';
+import {loadTimeData} from '../i18n_setup.js';
+import type {MetricsBrowserProxy} from '../metrics_browser_proxy.js';
+import {AiPageInteractions, MetricsBrowserProxyImpl} from '../metrics_browser_proxy.js';
+import {routes} from '../route.js';
+import {Router} from '../router.js';
+import {SettingsViewMixin} from '../settings_page/settings_view_mixin.js';
+
+import {getTemplate} from './ai_page.html.js';
+import {FeatureOptInState, SettingsAiPageFeaturePrefName} from './constants.js';
+// <if expr="_google_chrome">
+import type {OnDeviceAiBrowserProxy, OnDeviceAiEnabled} from './on_device_ai_browser_proxy.js';
+import {OnDeviceAiBrowserProxyImpl} from './on_device_ai_browser_proxy.js';
+// </if>
+
+const SettingsAiPageElementBase =
+    WebUiListenerMixin(SettingsViewMixin(PrefsMixin(PolymerElement)));
+export class SettingsAiPageElement extends SettingsAiPageElementBase {
+  static get is() {
+    return 'settings-ai-page';
+  }
+
+  static get template() {
+    return getTemplate();
+  }
+
+  static get properties() {
+    return {
+      showComposeControl_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showComposeControl'),
+      },
+
+      showHistorySearchControl_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showHistorySearchControl'),
+      },
+
+      showPasswordChangeControl_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showPasswordChangeControl'),
+      },
+
+      showAiSuggestionsControl_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showAiSuggestionsControl'),
+      },
+
+      showInlineCueMenuControl_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showInlineCueMenuControl'),
+      },
+
+      showSkillsSettingPage_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showSkillsSettingPage'),
+      },
+
+      showIndigoControl_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showIndigoControl'),
+      },
+
+      showGoogleSearchAiModeWorkspaceControl_: {
+        type: Boolean,
+        value: () =>
+            loadTimeData.getBoolean('showGoogleSearchAiModeWorkspaceControl'),
+      },
+
+      showDictationControl_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showDictationControl'),
+      },
+
+      // <if expr="_google_chrome">
+      showOnDeviceAiSettings_: {
+        type: Boolean,
+        value: () => loadTimeData.getBoolean('showOnDeviceAiSettings'),
+      },
+
+      onDeviceAiPref_: {
+        type: Object,
+        value: () => ({
+          key: 'settings.on_device_ai_enabled',
+          type: chrome.settingsPrivate.PrefType.BOOLEAN,
+          value: true,
+        }),
+      },
+      // </if>
+    };
+  }
+
+  declare private showComposeControl_: boolean;
+  declare private showHistorySearchControl_: boolean;
+  declare private showPasswordChangeControl_: boolean;
+  declare private showAiSuggestionsControl_: boolean;
+  declare private showInlineCueMenuControl_: boolean;
+  declare private showSkillsSettingPage_: boolean;
+  declare private showIndigoControl_: boolean;
+  declare private showGoogleSearchAiModeWorkspaceControl_: boolean;
+  declare private showDictationControl_: boolean;
+  // <if expr="_google_chrome">
+  declare private showOnDeviceAiSettings_: boolean;
+  declare private onDeviceAiPref_: chrome.settingsPrivate.PrefObject<boolean>;
+  private onDeviceAiBrowserProxy_: OnDeviceAiBrowserProxy =
+      OnDeviceAiBrowserProxyImpl.getInstance();
+  // </if>
+
+  private shouldRecordMetrics_: boolean = true;
+  private metricsBrowserProxy_: MetricsBrowserProxy =
+      MetricsBrowserProxyImpl.getInstance();
+
+  override connectedCallback() {
+    super.connectedCallback();
+    this.maybeLogVisibilityMetrics_();
+    // <if expr="_google_chrome">
+    const setOnDeviceAiPref = (onDeviceAiEnabled: OnDeviceAiEnabled) =>
+        this.setOnDeviceAiPref_(onDeviceAiEnabled);
+    this.addWebUiListener('on-device-ai-enabled-changed', setOnDeviceAiPref);
+    this.onDeviceAiBrowserProxy_.getOnDeviceAiEnabled().then(setOnDeviceAiPref);
+    // </if>
+  }
+
+  private maybeLogVisibilityMetrics_() {
+    // Only record metrics when the user first navigates to the main AI page.
+    if (!this.shouldRecordMetrics_ ||
+        Router.getInstance().getCurrentRoute() !== routes.AI) {
+      return;
+    }
+    this.shouldRecordMetrics_ = false;
+
+    this.metricsBrowserProxy_.recordBooleanHistogram(
+        'Settings.AiPage.ElementVisibility.HistorySearch',
+        this.showHistorySearchControl_);
+    this.metricsBrowserProxy_.recordBooleanHistogram(
+        'Settings.AiPage.ElementVisibility.Compose', this.showComposeControl_);
+    this.metricsBrowserProxy_.recordBooleanHistogram(
+        'Settings.AiPage.ElementVisibility.PasswordChange',
+        this.showPasswordChangeControl_);
+    this.metricsBrowserProxy_.recordBooleanHistogram(
+        'Settings.AiPage.ElementVisibility.AiSuggestions',
+        this.showAiSuggestionsControl_);
+    this.metricsBrowserProxy_.recordBooleanHistogram(
+        'Settings.AiPage.ElementVisibility.Indigo', this.showIndigoControl_);
+    this.metricsBrowserProxy_.recordBooleanHistogram(
+        'Settings.AiPage.ElementVisibility.GoogleSearchAiModeWorkspace',
+        this.showGoogleSearchAiModeWorkspaceControl_);
+  }
+
+  private onHistorySearchRowClick_() {
+    this.recordInteractionMetrics_(
+        AiPageInteractions.HISTORY_SEARCH_CLICK,
+        'Settings.AiPage.HistorySearchEntryPointClick');
+
+    const router = Router.getInstance();
+    router.navigateTo(router.getRoutes().HISTORY_SEARCH);
+  }
+
+  private onComposeRowClick_() {
+    this.recordInteractionMetrics_(
+        AiPageInteractions.COMPOSE_CLICK,
+        'Settings.AiPage.ComposeEntryPointClick');
+
+    const router = Router.getInstance();
+    router.navigateTo(router.getRoutes().OFFER_WRITING_HELP);
+  }
+
+  private onPasswordChangeRowClick_() {
+    this.recordInteractionMetrics_(
+        AiPageInteractions.PASSWORD_CHANGE_CLICK,
+        'Settings.AiPage.PasswordChangeEntryPointClick');
+
+    OpenWindowProxyImpl.getInstance().openUrl(
+        loadTimeData.getString('passwordChangeSettingsUrl'));
+  }
+
+  private onAiSuggestionsRowClick_() {
+    this.recordInteractionMetrics_(
+        AiPageInteractions.AI_SUGGESTIONS_CLICK,
+        'Settings.AiPage.AiSuggestionsEntryPointClick');
+
+    const router = Router.getInstance();
+    router.navigateTo(router.getRoutes().AI_SUGGESTIONS);
+  }
+
+  private onInlineCueMenuRowClick_() {
+    this.recordInteractionMetrics_(
+        AiPageInteractions.INLINE_CUE_MENU_CLICK,
+        'Settings.AiPage.InlineCueMenuEntryPointClick');
+
+    const router = Router.getInstance();
+    router.navigateTo(router.getRoutes().INLINE_CUE_MENU);
+  }
+
+  private onSkillsRowClick_() {
+    this.recordInteractionMetrics_(
+        AiPageInteractions.SKILLS_CLICK,
+        'Settings.AiPage.SkillsEntryPointClick');
+
+    const router = Router.getInstance();
+    router.navigateTo(router.getRoutes().SKILLS);
+  }
+
+  private onDictationRowClick_() {
+    const router = Router.getInstance();
+    router.navigateTo(router.getRoutes().DICTATION);
+  }
+
+  private onIndigoRowClick_() {
+    this.recordInteractionMetrics_(
+        AiPageInteractions.INDIGO_CLICK,
+        'Settings.AiPage.IndigoEntryPointClick');
+
+    OpenWindowProxyImpl.getInstance().openUrl(
+        loadTimeData.getString('indigoSavedUrl'));
+  }
+
+  private onGoogleSearchAiModeWorkspaceRowClick_() {
+    this.recordInteractionMetrics_(
+        AiPageInteractions.GOOGLE_SEARCH_AI_MODE_WORKSPACE_CLICK,
+        'Settings.AiPage.GoogleSearchAiModeWorkspaceEntryPointClick');
+
+    let isRestricted = false;
+    try {
+      const consentState =
+          this.getPref('contextual_search.drive_consent_state').value;
+      isRestricted = consentState === 1;  // DriveConsentState::kRestricted
+    } catch (e) {
+      console.error(
+          'Failed to read contextual_search.drive_consent_state pref:', e);
+    }
+
+    let url;
+    try {
+      url = loadTimeData.getString(
+          isRestricted ? 'googleSearchAiModeRestrictedUrl' :
+                         'googleSearchAiModeWorkspaceUrl');
+    } catch (e) {
+      console.error('Failed to read URL from loadTimeData:', e);
+      return;
+    }
+
+    OpenWindowProxyImpl.getInstance().openUrl(url);
+  }
+
+
+  private recordInteractionMetrics_(
+      interaction: AiPageInteractions, action: string) {
+    this.metricsBrowserProxy_.recordAiPageInteractions(interaction);
+    this.metricsBrowserProxy_.recordAction(action);
+  }
+
+  private getHistorySearchSublabel_(): string {
+    const isAnswersEnabled =
+        loadTimeData.getBoolean('historyEmbeddingsAnswersFeatureEnabled');
+    if (this.getPref(SettingsAiPageFeaturePrefName.HISTORY_SEARCH).value ===
+        FeatureOptInState.ENABLED) {
+      return isAnswersEnabled ?
+          loadTimeData.getString('historySearchWithAnswersSublabelOn') :
+          loadTimeData.getString('historySearchSublabelOn');
+    }
+    return isAnswersEnabled ?
+        loadTimeData.getString('historySearchWithAnswersSublabelOff') :
+        loadTimeData.getString('historySearchSublabelOff');
+  }
+
+  // <if expr="_google_chrome">
+  private onOnDeviceAiSubLabelLinkClicked_() {
+    OpenWindowProxyImpl.getInstance().openUrl(
+        loadTimeData.getString('onDeviceAiLearnMoreUrl'));
+  }
+
+  private onOnDeviceAiSendFeedback_(e: Event) {
+    e.stopPropagation();
+    this.onDeviceAiBrowserProxy_.openFeedbackDialog();
+  }
+
+  private onOnDeviceAiSettingsBooleanControlChange_(e: Event) {
+    const enabled = (e.target as SettingsToggleButtonElement).checked;
+    this.onDeviceAiBrowserProxy_.setOnDeviceAiEnabled(enabled);
+  }
+
+  private setOnDeviceAiPref_(onDeviceAiEnabled: OnDeviceAiEnabled) {
+    const pref: chrome.settingsPrivate.PrefObject<boolean> = {
+      key: 'settings.on_device_ai_enabled',
+      type: chrome.settingsPrivate.PrefType.BOOLEAN,
+      value: onDeviceAiEnabled.enabled,
+    };
+
+    if (!onDeviceAiEnabled.allowedByPolicy) {
+      pref.enforcement = chrome.settingsPrivate.Enforcement.ENFORCED;
+      pref.controlledBy = chrome.settingsPrivate.ControlledBy.USER_POLICY;
+      pref.value = false;
+    }
+
+    this.onDeviceAiPref_ = pref;
+  }
+  // </if>
+
+  // SettingsViewMixin implementation.
+  override getFocusConfig() {
+    const map = new Map();
+
+    if (routes.HISTORY_SEARCH) {
+      map.set(routes.HISTORY_SEARCH.path, '#historySearchRowV2');
+    }
+
+    if (routes.OFFER_WRITING_HELP) {
+      map.set(routes.OFFER_WRITING_HELP.path, '#composeRowV2');
+    }
+
+    if (routes.AI_SUGGESTIONS) {
+      map.set(routes.AI_SUGGESTIONS.path, '#aiSuggestionsRow');
+    }
+
+    if (routes.INLINE_CUE_MENU) {
+      map.set(routes.INLINE_CUE_MENU.path, '#inlineCueMenuRow');
+    }
+
+    if (routes.SKILLS) {
+      map.set(routes.SKILLS.path, '#skillsRow');
+    }
+
+    if (routes.DICTATION) {
+      map.set(routes.DICTATION.path, '#dictationRow');
+    }
+
+    return map;
+  }
+
+  // SettingsViewMixin implementation.
+  override getAssociatedControlFor(childViewId: string): HTMLElement {
+    const ids = [
+      'compose',
+      'dictation',
+      'historySearch',
+      'aiSuggestions',
+      'inlineCueMenu',
+      'skills',
+    ];
+    assert(ids.includes(childViewId));
+
+    let triggerId: string|null = null;
+    switch (childViewId) {
+      case 'compose':
+        assert(this.showComposeControl_);
+        triggerId = 'composeRowV2';
+        break;
+      case 'historySearch':
+        assert(this.showHistorySearchControl_);
+        triggerId = 'historySearchRowV2';
+        break;
+      case 'aiSuggestions':
+        assert(this.showAiSuggestionsControl_);
+        triggerId = 'aiSuggestionsRow';
+        break;
+      case 'inlineCueMenu':
+        assert(this.showInlineCueMenuControl_);
+        triggerId = 'inlineCueMenuRow';
+        break;
+      case 'skills':
+        assert(this.showSkillsSettingPage_);
+        triggerId = 'skillsRow';
+        break;
+      case 'dictation':
+        assert(this.showDictationControl_);
+        triggerId = 'dictationRow';
+        break;
+      default:
+        assertNotReached();
+    }
+
+    assert(triggerId);
+
+    const control =
+        this.shadowRoot!.querySelector<HTMLElement>(`#${triggerId}`);
+    assert(
+        control,
+        `Failed to find associated control for child '${childViewId}'`);
+    return control;
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'settings-ai-page': SettingsAiPageElement;
+  }
+}
+
+customElements.define(SettingsAiPageElement.is, SettingsAiPageElement);

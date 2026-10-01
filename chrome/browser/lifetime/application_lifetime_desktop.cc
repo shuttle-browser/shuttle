@@ -1,0 +1,582 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/lifetime/application_lifetime_desktop.h"
+
+#include <optional>
+
+#include "base/auto_reset.h"
+#include "base/callback_list.h"
+#include "base/files/file_path.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#include "base/no_destructor.h"
+#include "base/process/process.h"
+#include "base/threading/hang_watcher.h"
+#include "base/time/time.h"
+#include "base/types/strong_alias.h"
+#include "base/values.h"
+#include "build/build_config.h"
+#include "chrome/browser/background/glic/glic_background_mode_manager.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/browser_process_platform_part.h"
+#include "chrome/browser/download/download_core_service.h"
+#include "chrome/browser/global_features.h"
+#include "chrome/browser/lifetime/application_lifetime.h"
+#include "chrome/browser/lifetime/browser_close_manager.h"
+#include "chrome/browser/lifetime/browser_shutdown.h"
+#include "chrome/browser/lifetime/termination_notification.h"
+#include "chrome/browser/metrics/shutdown_watcher_helper.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/sessions/app_session_service_factory.h"
+#include "chrome/browser/sessions/exit_type_service.h"
+#include "chrome/browser/sessions/session_restore.h"
+#include "chrome/browser/sessions/session_service_factory.h"
+#include "chrome/browser/ui/browser_init_state.h"
+#include "chrome/browser/ui/browser_window/public/browser_collection.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+#include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
+#include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_controller.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/unload_controller.h"
+#include "chrome/common/buildflags.h"
+#include "chrome/common/chrome_features.h"
+#include "chrome/common/pref_names.h"
+#include "components/keep_alive_registry/keep_alive_registry.h"
+#include "components/keep_alive_registry/keep_alive_types.h"
+#include "components/prefs/pref_service.h"
+#include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
+#include "ui/base/base_window.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chrome/browser/ash/boot_times_recorder/boot_times_recorder.h"
+#include "chrome/browser/lifetime/application_lifetime_chromeos.h"
+#include "chromeos/ash/components/login/session/session_termination_manager.h"
+#else  // !BUILDFLAG(IS_CHROMEOS)
+#include "chrome/browser/ui/profiles/profile_picker.h"
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+#if BUILDFLAG(IS_WIN)
+#include "base/win/win_util.h"
+#endif  // BUILDFLAG(IS_WIN)
+
+#if BUILDFLAG(IS_MAC)
+#include "chrome/browser/shutdown_watchdog_mac.h"
+#endif  // BUILDFLAG(IS_MAC)
+
+#if BUILDFLAG(ENABLE_SESSION_SERVICE)
+#include "chrome/browser/sessions/session_data_service.h"
+#include "chrome/browser/sessions/session_data_service_factory.h"
+#endif  // BUILDFLAG(ENABLE_SESSION_SERVICE)
+
+namespace chrome {
+
+namespace {
+
+base::RepeatingCallbackList<void(bool)>& GetClosingAllBrowsersCallbackList() {
+  static base::NoDestructor<base::RepeatingCallbackList<void(bool)>>
+      callback_list;
+  return *callback_list;
+}
+
+// Saves the number of tabs and windows per profile to prefs before restart.
+void SavePreRestartTabWindowCounts() {
+  if (!base::FeatureList::IsEnabled(features::kRecordTabWindowDiffOnRestart)) {
+    return;
+  }
+
+  if (!g_browser_process->profile_manager()) {
+    return;
+  }
+
+  for (Profile* profile :
+       g_browser_process->profile_manager()->GetLoadedProfiles()) {
+    // Skip incognito profiles since they won't be restored.
+    if (profile->IsOffTheRecord()) {
+      continue;
+    }
+
+    SessionRestore::StateCounts counts;
+    GlobalBrowserCollection::GetInstance()->ForEach(
+        [profile, &counts](BrowserWindowInterface* browser) {
+          if (browser->GetProfile() != profile) {
+            return true;
+          }
+          // Skip windows that are explicitly not restored.
+          if (BrowserInitState::From(browser)->omit_from_session_restore()) {
+            return true;
+          }
+
+          BrowserWindowInterface::Type type = browser->GetType();
+          if (type == BrowserWindowInterface::Type::TYPE_NORMAL) {
+            counts.normal_tabs += browser->GetTabStripModel()->count();
+            counts.normal_windows++;
+          } else if (type == BrowserWindowInterface::Type::TYPE_APP) {
+            counts.app_tabs += browser->GetTabStripModel()->count();
+            counts.app_windows++;
+          }
+          return true;
+        });
+
+    base::DictValue dict;
+    if (counts.normal_tabs > 0) {
+      dict.Set(SessionRestore::kNormalTabsKey, counts.normal_tabs);
+      dict.Set(SessionRestore::kNormalWindowsKey, counts.normal_windows);
+    }
+
+    if (counts.app_tabs > 0) {
+      dict.Set(SessionRestore::kAppTabsKey, counts.app_tabs);
+      dict.Set(SessionRestore::kAppWindowsKey, counts.app_windows);
+    }
+
+    if (counts.normal_tabs > 0 || counts.app_tabs > 0) {
+      profile->GetPrefs()->SetDict(prefs::kPreSmartRestartSessionState,
+                                   std::move(dict));
+    }
+  }
+}
+
+// Forward declaration.
+void TryToCloseBrowsersForProfile(
+    Profile* original_profile,
+    bool match_original_profile,
+    const ProfileBrowsersCloseCallback& on_close_success,
+    const ProfileBrowsersCloseCallback& on_close_aborted,
+    const base::FilePath& profile_path,
+    bool skip_beforeunload);
+
+void PostTryToCloseBrowsersForProfile(
+    Profile* original_profile,
+    bool match_original_profile,
+    const ProfileBrowsersCloseCallback& on_close_success,
+    const ProfileBrowsersCloseCallback& on_close_aborted,
+    const base::FilePath& profile_path,
+    bool skip_beforeunload,
+    bool tab_close_confirmed) {
+  static bool resetting_handlers = false;
+
+  if (tab_close_confirmed) {
+    TryToCloseBrowsersForProfile(original_profile, match_original_profile,
+                                 on_close_success, on_close_aborted,
+                                 profile_path, skip_beforeunload);
+  } else if (!resetting_handlers) {
+    base::AutoReset<bool> resetting_handlers_scoper(&resetting_handlers, true);
+    GlobalBrowserCollection::GetInstance()->ForEach(
+        [original_profile,
+         match_original_profile](BrowserWindowInterface* browser) {
+          bool matches = match_original_profile
+                             ? browser->GetProfile()->GetOriginalProfile() ==
+                                   original_profile
+                             : browser->GetProfile() == original_profile;
+          if (matches) {
+            UnloadController::From(browser)->ResetTryToCloseWindow();
+          }
+          return true;
+        });
+    if (on_close_aborted) {
+      on_close_aborted.Run(profile_path);
+    }
+  }
+}
+
+void TryToCloseBrowsersForProfile(
+    Profile* original_profile,
+    bool match_original_profile,
+    const ProfileBrowsersCloseCallback& on_close_success,
+    const ProfileBrowsersCloseCallback& on_close_aborted,
+    const base::FilePath& profile_path,
+    bool skip_beforeunload) {
+  auto matches_profile = [original_profile, match_original_profile](
+                             BrowserWindowInterface* browser) {
+    return match_original_profile
+               ? browser->GetProfile()->GetOriginalProfile() == original_profile
+               : browser->GetProfile() == original_profile;
+  };
+
+  bool waiting_for_close = false;
+
+  GlobalBrowserCollection::GetInstance()->ForEach(
+      [&](BrowserWindowInterface* browser) {
+        if (!matches_profile(browser)) {
+          return true;
+        }
+        if (UnloadController::From(browser)->TryToCloseWindow(
+                skip_beforeunload,
+                base::BindRepeating(&PostTryToCloseBrowsersForProfile,
+                                    original_profile, match_original_profile,
+                                    on_close_success, on_close_aborted,
+                                    profile_path, skip_beforeunload))) {
+          waiting_for_close = true;
+          return false;
+        }
+        return true;
+      });
+
+  if (waiting_for_close) {
+    return;
+  }
+
+  if (on_close_success) {
+    on_close_success.Run(profile_path);
+  }
+
+  GlobalBrowserCollection::GetInstance()->ForEach(
+      [&](BrowserWindowInterface* browser) {
+        if (matches_profile(browser) && browser->GetWindow()) {
+          browser->GetWindow()->Close();
+        }
+        return true;
+      });
+}
+
+using IgnoreUnloadHandlers =
+    base::StrongAlias<class IgnoreUnloadHandlersTag, bool>;
+
+void AttemptRestartInternal(IgnoreUnloadHandlers ignore_unload_handlers,
+                            RelaunchMode mode) {
+  // TODO(beng): Can this use ProfileManager::GetLoadedProfiles instead?
+  // TODO(crbug.com/40180622): Unset SaveSessionState if the restart fails.
+  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+      [](BrowserWindowInterface* browser) {
+        browser->GetProfile()->SaveSessionState();
+#if BUILDFLAG(ENABLE_SESSION_SERVICE)
+        if (auto* session_data_service =
+                SessionDataServiceFactory::GetForProfile(
+                    browser->GetProfile())) {
+          session_data_service->SetForceKeepSessionState();
+        }
+#endif  // BUILDFLAG(ENABLE_SESSION_SERVICE)
+        return true;
+      });
+
+#if BUILDFLAG(ENABLE_SESSION_SERVICE)
+  SavePreRestartTabWindowCounts();
+#endif
+
+  PrefService* pref_service = g_browser_process->local_state();
+  pref_service->SetBoolean(prefs::kWasRestarted, true);
+  if (mode == RelaunchMode::kBackground) {
+    pref_service->SetBoolean(prefs::kRestartInBackgroundOnShutdown, true);
+  }
+  KeepAliveRegistry::GetInstance()->SetRestarting();
+
+#if BUILDFLAG(IS_CHROMEOS)
+  DCHECK(
+      !ash::SessionTerminationManager::IsSendingStopRequestToSessionManager());
+
+  ash::BootTimesRecorder::Get()->set_restart_requested();
+  ash::SessionTerminationManager::SetSendStopRequestToSessionManager(false);
+
+  // If an update is pending StopSession() will trigger a system reboot,
+  // which in turn will send SIGTERM to Chrome, and that ends up processing
+  // unload handlers.
+  if (UpdatePending()) {
+    browser_shutdown::NotifyAppTerminating();
+    StopSession();
+    return;
+  }
+
+  // Run exit process in clean stack.
+  content::GetUIThreadTaskRunner({})->PostTask(
+      FROM_HERE, base::BindOnce(&ExitIgnoreUnloadHandlers));
+#else   // !BUILDFLAG(IS_CHROMEOS).
+  // Set the flag to restore state after the restart.
+  pref_service->SetBoolean(prefs::kRestartLastSessionOnShutdown, true);
+  if (ignore_unload_handlers) {
+    ExitIgnoreUnloadHandlers();
+  } else {
+    AttemptExit();
+  }
+#endif  // BUILDFLAG(IS_CHROMEOS)
+}
+
+void ShutdownIfNoBrowsers() {
+  if (KeepAliveRegistry::GetInstance()->IsOriginRegistered(
+          KeepAliveOrigin::BROWSER)) {
+    return;
+  }
+
+  // Tell everyone that we are shutting down.
+  browser_shutdown::SetTryingToQuit(true);
+
+  auto* glic_background_mode_manager =
+      glic::GlicBackgroundModeManager::GetInstance();
+  if (glic_background_mode_manager) {
+    glic_background_mode_manager->ExitBackgroundMode();
+  }
+
+  auto* browser_features =
+      g_browser_process ? g_browser_process->GetFeatures() : nullptr;
+  if (browser_features && browser_features->omnibox_everywhere_controller()) {
+    browser_features->omnibox_everywhere_controller()->ExitBackgroundMode();
+  }
+
+#if BUILDFLAG(ENABLE_SESSION_SERVICE)
+  // If ShuttingDownWithoutClosingBrowsers() returns true, the session
+  // services may not get a chance to shut down normally, so explicitly shut
+  // them down here to ensure they have a chance to persist their data.
+  ProfileManager::ShutdownSessionServices();
+#endif  // BUILDFLAG(ENABLE_SESSION_SERVICE)
+  browser_shutdown::NotifyAppTerminating();
+#if BUILDFLAG(IS_CHROMEOS)
+  StopSession();
+#endif  // BUILDFLAG(IS_CHROMEOS)
+  OnAppExiting();
+}
+
+}  // namespace
+
+void CloseAllBrowsersAndQuit() {
+  browser_shutdown::SetTryingToQuit(true);
+  CloseAllBrowsers();
+}
+
+void CloseAllBrowsers() {
+  // If there are no browsers and closing the last browser would quit the
+  // application, send the APP_TERMINATING action here. Otherwise, it will be
+  // sent by RemoveBrowser() when the last browser has closed.
+  const auto* const keep_alive_registry = KeepAliveRegistry::GetInstance();
+  if (!keep_alive_registry->IsOriginRegistered(KeepAliveOrigin::BROWSER) &&
+      (browser_shutdown::IsTryingToQuit() ||
+       !keep_alive_registry->IsKeepingAlive())) {
+    ShutdownIfNoBrowsers();
+    return;
+  }
+
+#if BUILDFLAG(IS_CHROMEOS)
+  ash::BootTimesRecorder::Get()->AddLogoutTimeMarker("StartedClosingWindows",
+                                                     false);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+  scoped_refptr<BrowserCloseManager> browser_close_manager =
+      new BrowserCloseManager;
+  browser_close_manager->StartClosingBrowsers();
+}
+
+void AttemptRestart() {
+  AttemptRestartInternal(IgnoreUnloadHandlers(false), RelaunchMode::kNormal);
+}
+
+void AttemptRestartWithMode(RelaunchMode mode) {
+  AttemptRestartInternal(IgnoreUnloadHandlers(false), mode);
+}
+
+#if !BUILDFLAG(IS_CHROMEOS)
+void RelaunchIgnoreUnloadHandlers() {
+  AttemptRestartInternal(IgnoreUnloadHandlers(true), RelaunchMode::kNormal);
+}
+#endif  // !BUILDFLAG(IS_CHROMEOS)
+
+void SessionEnding() {
+  // This is a time-limited shutdown where we need to write as much to
+  // disk as we can as soon as we can, and where we must kill the
+  // process within a hang timeout to avoid user prompts.
+
+  // EndSession is invoked once per frame. Only do something the first time.
+  static bool already_ended = false;
+  // We may get called in the middle of shutdown, e.g.
+  // https://crbug.com/41311326 and https://crbug.com/40754301.  In this case,
+  // do nothing.
+  if (already_ended || !g_browser_process) {
+    return;
+  }
+  already_ended = true;
+
+#if BUILDFLAG(IS_MAC)
+  // Hand off from the graceful-path emergency watchdog (armed at SIGTERM
+  // receipt with the same 10s budget EndSession()'s rundown wait uses, which
+  // would otherwise fire mid-critical-writes) to a strict bound covering
+  // SessionEnding itself. See shutdown_watchdog_mac.h.
+  shutdown_watchdog::ArmForSessionEnding();
+#endif
+
+  // ~ShutdownWatcherHelper uses IO (it joins a thread). We'll only trigger that
+  // if Terminate() fails, which leaves us in a weird state, or the OS is going
+  // to kill us soon. Either way we don't care about that here.
+  base::ScopedAllowBlocking allow_blocking;
+
+  // Two different types of hang detection cannot attempt to upload crashes at
+  // the same time or they would interfere with each other.
+  std::optional<ShutdownWatcherHelper> shutdown_watcher;
+  std::optional<base::WatchHangsInScope> watch_hangs_scope;
+  if (base::HangWatcher::IsCrashReportingEnabled()) {
+    // TODO(crbug.com/40840897): Migrate away from ShutdownWatcher and its old
+    // timing.
+    base::HangWatcher::SetShuttingDown();
+    constexpr base::TimeDelta kShutdownHangDelay{base::Seconds(30)};
+    watch_hangs_scope.emplace(kShutdownHangDelay);
+  } else {
+    // Start watching for hang during shutdown, and crash it if takes too long.
+    // We disarm when |shutdown_watcher| object is destroyed, which is when we
+    // exit this function.
+    constexpr base::TimeDelta kShutdownHangDelay{base::Seconds(90)};
+    shutdown_watcher.emplace();
+    shutdown_watcher->Arm(kShutdownHangDelay);
+  }
+
+  browser_shutdown::OnShutdownStarting(
+      browser_shutdown::ShutdownType::kEndSession);
+
+  // In a clean shutdown, browser_shutdown::OnShutdownStarting sets
+  // g_shutdown_type, and browser_shutdown::ShutdownPreThreadsStop calls
+  // RecordShutdownInfoPrefs to update the pref with the value. However, here
+  // the process is going to exit without calling ShutdownPreThreadsStop.
+  // Instead, here we call RecordShutdownInfoPrefs to record the shutdown info.
+  browser_shutdown::RecordShutdownInfoPrefs();
+
+  OnClosingAllBrowsers(true);
+
+  // Write important data first.
+  g_browser_process->EndSession();
+
+  // Emit the shutdown metric for the end-session case. The process will exit
+  // after this point.
+  browser_shutdown::RecordShutdownMetrics();
+
+#if BUILDFLAG(IS_WIN)
+  base::win::SetShouldCrashOnProcessDetach(false);
+#endif  // BUILDFLAG(IS_WIN)
+
+  // On Windows 7 and later, the system will consider the process ripe for
+  // termination as soon as it hides or destroys its windows. Since any
+  // execution past that point will be non-deterministically cut short, we
+  // might as well put ourselves out of that misery deterministically.
+  base::Process::TerminateCurrentProcessImmediately(0);
+}
+
+void ShutdownIfNeeded() {
+  if (browser_shutdown::IsTryingToQuit()) {
+    return;
+  }
+
+  ShutdownIfNoBrowsers();
+}
+
+void OnAppExiting() {
+  static bool notified = false;
+  if (notified) {
+    return;
+  }
+  notified = true;
+  HandleAppExitingForPlatform();
+}
+
+void OnClosingAllBrowsers(bool closing) {
+  GetClosingAllBrowsersCallbackList().Notify(closing);
+}
+
+base::CallbackListSubscription AddClosingAllBrowsersCallback(
+    base::RepeatingCallback<void(bool)> closing_all_browsers_callback) {
+  return GetClosingAllBrowsersCallbackList().Add(
+      std::move(closing_all_browsers_callback));
+}
+
+void MarkAsCleanShutdown() {
+#if BUILDFLAG(IS_CHROMEOS)
+  LogMarkAsCleanShutdown();
+  // Tracks profiles that have pending write of the exit type.
+  std::set<Profile*> pending_profiles;
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+      [&](BrowserWindowInterface* browser) {
+        Profile* const profile = browser->GetProfile();
+        if (ExitTypeService* exit_type_service =
+                ExitTypeService::GetInstanceForProfile(profile)) {
+          exit_type_service->SetCurrentSessionExitType(ExitType::kClean);
+
+#if BUILDFLAG(IS_CHROMEOS)
+          // Explicitly schedule pending writes on ChromeOS so that even if the
+          // UI thread is hosed (e.g. taking a long time to close all tabs
+          // because of page faults/swap-in), the clean shutdown flag still gets
+          // a chance to be persisted. See https://crbug.com/1294764
+          if (pending_profiles.insert(profile).second) {
+            profile->GetPrefs()->CommitPendingWrite();
+          }
+#endif  // BUILDFLAG(IS_CHROMEOS)
+        }
+        return true;
+      });
+}
+
+bool AreAllBrowsersCloseable() {
+  if (GlobalBrowserCollection::GetInstance()->IsEmpty()) {
+    return true;
+  }
+
+  // If there are any downloads active, all browsers are not closeable.
+  // However, this does not block for malicious downloads.
+  if (DownloadCoreService::BlockingShutdownCountAllProfiles() > 0) {
+    return false;
+  }
+
+  // Check TabsNeedBeforeUnloadFired().
+  bool all_closeable = true;
+  ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
+      [&all_closeable](BrowserWindowInterface* bwi) {
+        if (UnloadController::From(bwi)->TabsNeedBeforeUnloadFired()) {
+          all_closeable = false;
+        }
+        return all_closeable;
+      });
+  return all_closeable;
+}
+
+void CloseAllBrowsersWithProfile(Profile* profile) {
+  ProfileBrowserCollection* browser_collection =
+      ProfileBrowserCollection::GetForProfile(profile);
+  if (!browser_collection) {
+    return;
+  }
+
+  browser_collection->ForEach([profile](BrowserWindowInterface* browser) {
+    if (browser->GetProfile()->GetOriginalProfile() ==
+        profile->GetOriginalProfile()) {
+      browser->GetWindow()->Close();
+    }
+    return true;
+  });
+}
+
+void CloseAllBrowsersWithProfile(
+    Profile* profile,
+    bool skip_beforeunload,
+    const ProfileBrowsersCloseCallback& on_close_success,
+    const ProfileBrowsersCloseCallback& on_close_aborted) {
+  SessionServiceFactory::ShutdownForProfile(profile);
+  AppSessionServiceFactory::ShutdownForProfile(profile);
+
+  TryToCloseBrowsersForProfile(profile->GetOriginalProfile(),
+                               /*match_original_profile=*/true,
+                               on_close_success, on_close_aborted,
+                               profile->GetPath(), skip_beforeunload);
+}
+
+void CloseAllBrowsersWithIncognitoProfile(Profile* profile,
+                                          bool skip_beforeunload) {
+  CHECK(profile->IsOffTheRecord());
+
+  // If any matching browser is devtools, we can't skip beforeunload.
+  if (skip_beforeunload) {
+    GlobalBrowserCollection::GetInstance()->ForEach(
+        [profile, &skip_beforeunload](BrowserWindowInterface* browser) {
+          if (browser->GetProfile() == profile &&
+              browser->GetType() ==
+                  BrowserWindowInterface::Type::TYPE_DEVTOOLS) {
+            skip_beforeunload = false;
+            return false;
+          }
+          return true;
+        });
+  }
+
+  TryToCloseBrowsersForProfile(profile, /*match_original_profile=*/false,
+                               base::NullCallback(), base::NullCallback(),
+                               profile->GetPath(), skip_beforeunload);
+}
+
+}  // namespace chrome

@@ -1,0 +1,98 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_VIEWS_FRAME_APP_MENU_BUTTON_H_
+#define CHROME_BROWSER_UI_VIEWS_FRAME_APP_MENU_BUTTON_H_
+
+#include <memory>
+
+#include "base/memory/raw_ptr.h"
+#include "base/observer_list.h"
+#include "base/timer/elapsed_timer.h"
+#include "chrome/browser/ui/views/toolbar/app_menu_control.h"
+#include "chrome/browser/ui/views/toolbar/toolbar_button.h"
+#include "chrome/browser/ui/views/toolbar/toolbar_button_menu_highlighter.h"
+#include "ui/base/metadata/metadata_header_macros.h"
+
+class AppMenu;
+class ActionAppMenu;
+class AppMenuButtonObserver;
+class AppMenuModel;
+class BrowserWindowInterface;
+
+namespace views {
+class MenuButtonController;
+}  // namespace views
+
+// The app menu button lives in the top right of browser windows. It shows three
+// dots and adds a status badge when there's a need to alert the user. Clicking
+// displays the app menu.
+class AppMenuButton : public ToolbarButton, public AppMenuControl {
+  METADATA_HEADER(AppMenuButton, ToolbarButton)
+
+ public:
+  explicit AppMenuButton(PressedCallback callback);
+
+  AppMenuButton(const AppMenuButton&) = delete;
+  AppMenuButton& operator=(const AppMenuButton&) = delete;
+
+  ~AppMenuButton() override;
+
+  // AppMenuControl overrides:
+  views::BubbleAnchor GetAnchor() override;
+  bool IsDrawn() const override;
+  bool IsMenuShowing() const override;
+  views::DialogDelegate* GetDialogDelegate() override;
+  void CloseMenu() override;
+  void ShowMenu() override;
+  void AddObserver(AppMenuButtonObserver* observer) override;
+  void RemoveObserver(AppMenuButtonObserver* observer) override;
+  bool HasFocus() const override;
+  void Focus(views::AccessiblePaneView* pane) override;
+  void SetTypeAndSeverity(
+      AppMenuIconController::TypeAndSeverity type_and_severity) override;
+  void SetIsMaximizedOrFullscreen(bool maximized_or_fullscreen) override;
+  views::View* GetFocusablePaneView() override;
+
+  views::MenuButtonController* menu_button_controller() const {
+    return menu_button_controller_;
+  }
+
+  // Called by the app menu when it closes.
+  virtual void OnMenuClosed();
+
+  void SetMenuTimerForTesting(base::ElapsedTimer timer);
+
+  AppMenu* app_menu() { return menu_.get(); }
+  AppMenuModel* app_menu_model() { return menu_model_.get(); }
+  ActionAppMenu* action_app_menu() { return action_menu_.get(); }
+
+ protected:
+  void RunMenu(std::unique_ptr<AppMenuModel> menu_model,
+               BrowserWindowInterface* browser,
+               int run_flags);
+  // Not using an AppMenuModel because the new Block Style menu hierarchy
+  // is managed by the Actions framework.
+  void RunActionMenu(BrowserWindowInterface* browser_window_interface,
+                     int run_flags);
+
+ private:
+  // App model and menu.
+  // Note that the menu should be destroyed before the model it uses, so the
+  // menu should be listed later.
+  // TODO(mgiuca): Simplify this model so that correctness does not depend on
+  // destruction order. https://crbug.com/41382638
+  std::unique_ptr<AppMenuModel> menu_model_;
+  std::unique_ptr<AppMenu> menu_;
+  std::unique_ptr<ActionAppMenu> action_menu_;
+
+  base::ObserverList<AppMenuButtonObserver>::Unchecked observer_list_;
+
+  raw_ptr<views::MenuButtonController> menu_button_controller_;
+  ToolbarButtonMenuHighlighter highlighter_;
+
+  base::WeakPtrFactory<AppMenuButton> weak_ptr_factory_{this};
+};
+
+#endif  // CHROME_BROWSER_UI_VIEWS_FRAME_APP_MENU_BUTTON_H_

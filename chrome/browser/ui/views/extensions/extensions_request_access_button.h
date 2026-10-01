@@ -1,0 +1,141 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_VIEWS_EXTENSIONS_EXTENSIONS_REQUEST_ACCESS_BUTTON_H_
+#define CHROME_BROWSER_UI_VIEWS_EXTENSIONS_EXTENSIONS_REQUEST_ACCESS_BUTTON_H_
+
+#include <optional>
+
+#include "base/memory/raw_ptr.h"
+#include "base/scoped_observation.h"
+#include "base/timer/timer.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/extensions/extensions_container.h"
+#include "chrome/browser/ui/extensions/extensions_toolbar_view_model.h"
+#include "chrome/browser/ui/views/toolbar/toolbar_chip_button.h"
+#include "extensions/common/extension_id.h"
+#include "ui/views/input_event_activation_protector.h"
+#include "ui/views/view_observer.h"
+
+namespace ui {
+class Event;
+}  // namespace ui
+#include "ui/base/metadata/metadata_header_macros.h"
+#include "url/origin.h"
+
+namespace content {
+class WebContents;
+}  // namespace content
+
+class ExtensionsContainerViews;
+class ExtensionsRequestAccessHoverCardCoordinator;
+
+// Button in the toolbar bar that displays the extensions that requests
+// access, and are allowed to do so, and grants them access.
+class ExtensionsRequestAccessButton : public ToolbarChipButton {
+  METADATA_HEADER(ExtensionsRequestAccessButton, ToolbarChipButton)
+
+ public:
+  explicit ExtensionsRequestAccessButton(
+      BrowserWindowInterface* browser,
+      ExtensionsToolbarViewModel* extensions_toolbar_view_model,
+      ExtensionsContainerViews* extensions_container_views);
+  ExtensionsRequestAccessButton(const ExtensionsRequestAccessButton&) = delete;
+  const ExtensionsRequestAccessButton& operator=(
+      const ExtensionsRequestAccessButton&) = delete;
+  ~ExtensionsRequestAccessButton() override;
+
+  // Updates the button visibility and content given
+  // `request_access_button_params`.
+  void Update(const ExtensionsToolbarViewModel::RequestAccessButtonParams&
+                  request_access_button_params);
+
+  // Displays the button's hover card, if possible.
+  void MaybeShowHoverCard();
+
+  // Hides the button and resets the `confirmation_origin_` variable.
+  void ResetConfirmation();
+
+  // Returns whether the button is showing a confirmation message.
+  bool IsShowingConfirmation() const;
+
+  // Returns whether the button is showing a confirmation message for `origin`.
+  bool IsShowingConfirmationFor(const url::Origin& origin) const;
+
+  // Returns the number of extensions included in the button.
+  size_t GetExtensionsCount() const;
+
+  // ToolbarButton:
+  bool ShouldShowInkdropAfterIphInteraction() override;
+
+  // Accessors used by tests:
+  std::vector<extensions::ExtensionId> GetExtensionIdsForTesting() {
+    return extension_ids_;
+  }
+  ExtensionsRequestAccessHoverCardCoordinator*
+  GetHoverCardCoordinatorForTesting() {
+    return hover_card_coordinator_.get();
+  }
+  void remove_confirmation_for_testing(bool remove_confirmation) {
+    remove_confirmation_for_testing_ = remove_confirmation;
+  }
+
+ private:
+  // Grants one-time site access to `extension_ids` and shows a confirmation
+  // message on the button.
+  void OnButtonPressed(const ui::Event& event);
+
+  content::WebContents* GetActiveWebContents() const;
+
+  // views::View:
+  void VisibilityChanged(views::View* starting_from, bool is_visible) override;
+  void OnBoundsChanged(const gfx::Rect& previous_bounds) override;
+  void AddedToWidget() override;
+  void RemovedFromWidget() override;
+
+  raw_ptr<BrowserWindowInterface> browser_;
+  raw_ptr<ExtensionsToolbarViewModel> extensions_toolbar_view_model_;
+  raw_ptr<ExtensionsContainerViews> extensions_container_views_;
+
+  std::unique_ptr<ExtensionsRequestAccessHoverCardCoordinator>
+      hover_card_coordinator_;
+
+  // Extensions included in the request access button.
+  std::vector<extensions::ExtensionId> extension_ids_;
+
+  // The origin for which the button is displaying a confirmation message, if
+  // any.
+  std::optional<url::Origin> confirmation_origin_;
+
+  // A timer used to collapse the button after showing a confirmation message.
+  base::OneShotTimer collapse_timer_;
+
+  // Flag to not show confirmation message in tests.
+  bool remove_confirmation_for_testing_{false};
+
+  std::unique_ptr<views::InputEventActivationProtector> input_protector_;
+
+  class SiblingObserver : public views::ViewObserver {
+   public:
+    explicit SiblingObserver(ExtensionsRequestAccessButton* button);
+    ~SiblingObserver() override;
+
+    // views::ViewObserver:
+    void OnViewBoundsChanged(views::View* observed_view) override;
+    void OnViewIsDeleting(views::View* observed_view) override;
+
+   private:
+    raw_ptr<ExtensionsRequestAccessButton> button_;
+  };
+
+  void OnSiblingDeleting();
+
+  SiblingObserver sibling_observer_{this};
+  base::ScopedObservation<views::View, views::ViewObserver>
+      sibling_observation_{&sibling_observer_};
+
+  void UpdateClipPath(views::View* extensions_button);
+};
+
+#endif  // CHROME_BROWSER_UI_VIEWS_EXTENSIONS_EXTENSIONS_REQUEST_ACCESS_BUTTON_H_

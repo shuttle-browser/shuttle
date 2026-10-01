@@ -1,0 +1,119 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/exclusive_access/exclusive_access_bubble.h"
+
+#include "base/test/task_environment.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+class MockExclusiveAccessBubble : public ExclusiveAccessBubble {
+ public:
+  explicit MockExclusiveAccessBubble(ExclusiveAccessBubbleParams params)
+      : ExclusiveAccessBubble(params) {}
+  ~MockExclusiveAccessBubble() override = default;
+  MOCK_METHOD(void, Show, (), (override));
+  MOCK_METHOD(void, Hide, (), (override));
+
+  using ExclusiveAccessBubble::SetMustShowOnNextInteraction;
+  using ExclusiveAccessBubble::ShowAndStartTimers;
+  using ExclusiveAccessBubble::StartHideTimer;
+};
+
+class ExclusiveAccessBubbleTest : public testing::Test {
+ public:
+  static constexpr base::TimeDelta kEnsureHideTime =
+      ExclusiveAccessBubble::kShowTime + base::Seconds(1);
+
+  ExclusiveAccessBubbleTest()
+      : bubble_(
+            {.type =
+                 EXCLUSIVE_ACCESS_BUBBLE_TYPE_FULLSCREEN_EXIT_INSTRUCTION}) {}
+  ~ExclusiveAccessBubbleTest() override = default;
+  MockExclusiveAccessBubble bubble_;
+  base::test::TaskEnvironment task_environment_{
+      base::test::TaskEnvironment::TimeSource::MOCK_TIME};
+};
+
+TEST_F(ExclusiveAccessBubbleTest, ShowAndStartTimers) {
+  EXPECT_FALSE(bubble_.hide_timeout_.IsRunning());
+  EXPECT_TRUE(bubble_.snooze_until_.is_null());
+
+  EXPECT_CALL(bubble_, Show()).Times(1);
+  bubble_.ShowAndStartTimers();
+  EXPECT_TRUE(bubble_.hide_timeout_.IsRunning());
+  EXPECT_FALSE(bubble_.snooze_until_.is_null());
+}
+
+TEST_F(ExclusiveAccessBubbleTest, HideTimeout) {
+  EXPECT_CALL(bubble_, Show()).Times(1);
+  EXPECT_CALL(bubble_, Hide()).Times(1);
+  bubble_.ShowAndStartTimers();
+  task_environment_.FastForwardBy(base::Seconds(5));
+}
+
+TEST_F(ExclusiveAccessBubbleTest, DoesNotReshowOnUserInputAfterHide) {
+  EXPECT_CALL(bubble_, Show()).Times(1);
+  bubble_.ShowAndStartTimers();
+  task_environment_.FastForwardBy(base::Seconds(5));
+  bubble_.OnUserInput();
+}
+
+TEST_F(ExclusiveAccessBubbleTest, DoesReshowOnUserInputAfterSnooze) {
+  EXPECT_CALL(bubble_, Show()).Times(2);
+  bubble_.ShowAndStartTimers();
+  task_environment_.FastForwardBy(base::Minutes(16));
+  bubble_.OnUserInput();
+}
+
+TEST_F(ExclusiveAccessBubbleTest, StartHideTimerRestartsTimer) {
+  EXPECT_CALL(bubble_, Show()).Times(1);
+  bubble_.ShowAndStartTimers();
+  EXPECT_TRUE(bubble_.hide_timeout_.IsRunning());
+
+  task_environment_.FastForwardBy(base::Seconds(1));
+  auto remaining =
+      bubble_.hide_timeout_.desired_run_time() - base::TimeTicks::Now();
+  EXPECT_LT(remaining, ExclusiveAccessBubble::kShowTime);
+
+  // Verify that the time increases.
+  bubble_.StartHideTimer();
+  auto new_remaining =
+      bubble_.hide_timeout_.desired_run_time() - base::TimeTicks::Now();
+  EXPECT_LT(remaining, new_remaining);
+}
+
+TEST_F(ExclusiveAccessBubbleTest, ReshowOnFirstInputPreservedByStartHideTimer) {
+  EXPECT_CALL(bubble_, Show()).Times(1);
+  bubble_.ShowAndStartTimers();
+  bubble_.SetMustShowOnNextInteraction();
+  bubble_.StartHideTimer();
+  task_environment_.FastForwardBy(kEnsureHideTime);
+  EXPECT_CALL(bubble_, Show()).Times(1);
+  bubble_.OnUserInput();
+}
+
+TEST_F(ExclusiveAccessBubbleTest,
+       ReshowOnFirstInputPreservedByShowAndStartTimers) {
+  EXPECT_CALL(bubble_, Show()).Times(1);
+  bubble_.ShowAndStartTimers();
+  bubble_.SetMustShowOnNextInteraction();
+  EXPECT_CALL(bubble_, Show()).Times(1);
+  bubble_.ShowAndStartTimers();
+  task_environment_.FastForwardBy(kEnsureHideTime);
+  EXPECT_CALL(bubble_, Show()).Times(1);
+  bubble_.OnUserInput();
+}
+
+TEST_F(ExclusiveAccessBubbleTest, ReshowOnFirstInputOnlyOnce) {
+  EXPECT_CALL(bubble_, Show()).Times(1);
+  bubble_.ShowAndStartTimers();
+  bubble_.SetMustShowOnNextInteraction();
+  task_environment_.FastForwardBy(kEnsureHideTime);
+  EXPECT_CALL(bubble_, Show()).Times(1);
+  bubble_.OnUserInput();
+  task_environment_.FastForwardBy(kEnsureHideTime);
+  EXPECT_CALL(bubble_, Show()).Times(0);
+  bubble_.OnUserInput();
+}

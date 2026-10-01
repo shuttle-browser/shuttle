@@ -1,0 +1,173 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/signin/chrome_signin_client.h"
+
+#include "base/test/scoped_feature_list.h"
+#include "base/version.h"
+#include "base/version_info/version_info.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
+#include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/hats/hats_service_factory.h"
+#include "chrome/browser/ui/hats/mock_hats_service.h"
+#include "chrome/browser/ui/hats/survey_config.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "chrome/test/base/scoped_browser_locale.h"
+#include "components/keep_alive_registry/keep_alive_types.h"
+#include "components/keep_alive_registry/scoped_keep_alive.h"
+#include "components/prefs/pref_service.h"
+#include "components/signin/public/base/consent_level.h"
+#include "components/signin/public/base/signin_switches.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/signin/public/identity_manager/identity_test_utils.h"
+#include "content/public/test/browser_test.h"
+#include "url/gurl.h"
+
+using testing::_;
+using testing::Eq;
+using testing::Not;
+using testing::Pair;
+using testing::UnorderedElementsAre;
+
+#if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
+class ChromeSigninClientHatsSurveyBrowserTest : public InProcessBrowserTest {
+ public:
+  ChromeSigninClientHatsSurveyBrowserTest() {
+    // Disable the (temporary) FRE refresh survey to avoid conflicts with the
+    // permanent identity surveys.
+    feature_list_.InitAndDisableFeature(
+        switches::kBeforeFirstRunDesktopRefreshSurvey);
+  }
+
+  void SetUpOnMainThread() override {
+    mock_hats_service_ = static_cast<MockHatsService*>(
+        HatsServiceFactory::GetInstance()->SetTestingFactoryAndUse(
+            browser()->GetProfile(),
+            base::BindRepeating(&BuildMockHatsService)));
+  }
+
+  void TearDownOnMainThread() override { mock_hats_service_ = nullptr; }
+
+  MockHatsService* mock_hats_service() { return mock_hats_service_; }
+
+ private:
+  raw_ptr<MockHatsService> mock_hats_service_ = nullptr;
+
+  base::test::ScopedFeatureList feature_list_;
+};
+
+// Tests that a HaTS survey is launched when a user signs in through an eligible
+// access point.
+IN_PROC_BROWSER_TEST_F(ChromeSigninClientHatsSurveyBrowserTest,
+                       HatsSurveyLaunchedOnSignin) {
+  // Expect the HaTS service to launch the password bubble sign-in survey.
+  // TODO(crbug.com/430925046): Investigate the number of Google Accounts.
+  EXPECT_CALL(
+      *mock_hats_service(),
+      LaunchDelayedSurvey(
+          kHatsSurveyTriggerIdentityPasswordBubbleSignin, _, _,
+          UnorderedElementsAre(
+              Pair("Channel", _),
+              Pair("Chrome Version", version_info::GetVersion().GetString()),
+              Pair("Number of Chrome Profiles", "1"),
+              Pair("Number of Google Accounts", "0"),
+              Pair("Sign-in Status", "Signed In"))));
+  // Expect that the surveys for other access point will NOT be launched.
+  EXPECT_CALL(*mock_hats_service(),
+              LaunchDelayedSurvey(
+                  Not(kHatsSurveyTriggerIdentityPasswordBubbleSignin), _, _, _))
+      .Times(0);
+
+  // Simulate a user signing in via the password bubble, which should trigger
+  // the survey.
+  signin::IdentityManager* identity_manager =
+      IdentityManagerFactory::GetForProfile(browser()->GetProfile());
+  signin::MakeAccountAvailable(
+      identity_manager,
+      signin::AccountAvailabilityOptionsBuilder()
+          .AsPrimary(signin::ConsentLevel::kSignin)
+          .WithAccessPoint(signin_metrics::AccessPoint::kPasswordBubble)
+          .Build("alice@example.com"));
+  signin::WaitForRefreshTokensLoaded(identity_manager);
+}
+
+// Tests that if a user signs in when no browser is open, the HaTS survey is
+// launched immediately when a browser is subsequently created for that profile.
+IN_PROC_BROWSER_TEST_F(ChromeSigninClientHatsSurveyBrowserTest,
+                       HatsSurveyLaunchedOnBrowserCreationAfterSignin) {
+  Profile* profile = browser()->GetProfile();
+  // Keep the browser process running while browsers are closed.
+  ScopedKeepAlive keep_alive(KeepAliveOrigin::BROWSER,
+                             KeepAliveRestartOption::DISABLED);
+  // Keep the profile alive and close all existing browsers.
+  ScopedProfileKeepAlive profile_keep_alive(
+      profile, ProfileKeepAliveOrigin::kProfilePickerView);
+  CloseAllBrowsers();
+
+  // Sign in to Chrome. The survey won't launch yet, as it requires an active
+  // browser.
+  signin::MakeAccountAvailable(
+      IdentityManagerFactory::GetForProfile(profile),
+      signin::AccountAvailabilityOptionsBuilder()
+          .AsPrimary(signin::ConsentLevel::kSignin)
+          .WithAccessPoint(signin_metrics::AccessPoint::kForYouFre)
+          .Build("alice@example.com"));
+
+  // Expect the HaTS service to launch the first run sign-in survey.
+  std::map<std::string, std::string> expected_string_psd = {
+      {"Channel", "unknown"},
+      {"Chrome Version", version_info::GetVersion().GetString()},
+      {"Number of Chrome Profiles", "1"},
+      {"Number of Google Accounts", "1"},
+      {"Sign-in Status", "Signed In"}};
+  EXPECT_CALL(*mock_hats_service(),
+              LaunchDelayedSurvey(kHatsSurveyTriggerIdentityFirstRunSignin, _,
+                                  _, Eq(expected_string_psd)));
+  EXPECT_CALL(*mock_hats_service(),
+              LaunchDelayedSurvey(Not(kHatsSurveyTriggerIdentityFirstRunSignin),
+                                  _, _, _))
+      .Times(0);
+
+  // Create a new browser for the signed-in profile, which should now trigger
+  // the survey.
+  BrowserWindowInterface* new_browser = CreateBrowser(profile);
+  ASSERT_TRUE(new_browser);
+}
+
+// Tests that a HaTS survey is NOT launched when the locale is not supported,
+// even if the user signs in through an eligible access point.
+IN_PROC_BROWSER_TEST_F(ChromeSigninClientHatsSurveyBrowserTest,
+                       HatsSurveyNotLaunchedOnSigninUnsupportedLocale) {
+  auto* feature_list = base::FeatureList::GetInstance();
+  if (feature_list &&
+      feature_list->IsFeatureOverridden(
+          switches::kChromeIdentitySurveyPasswordBubbleSignin.name)) {
+    GTEST_SKIP() << "Feature is overridden by the field trial config,"
+                    "bypassing the embedded locale check.";
+  }
+
+  // Set up the pseudo locale.
+  auto locale = std::make_unique<ScopedBrowserLocale>("en-XA");
+
+  // Expect that the HaTS service will NEVER launch any survey.
+  EXPECT_CALL(*mock_hats_service(), LaunchDelayedSurvey(_, _, _, _)).Times(0);
+
+  // Simulate a user signing in via the password bubble.
+  // This would normally trigger the survey if the locale was supported.
+  signin::IdentityManager* identity_manager =
+      IdentityManagerFactory::GetForProfile(browser()->GetProfile());
+  signin::MakeAccountAvailable(
+      identity_manager,
+      signin::AccountAvailabilityOptionsBuilder()
+          .AsPrimary(signin::ConsentLevel::kSignin)
+          .WithAccessPoint(signin_metrics::AccessPoint::kPasswordBubble)
+          .Build("bob@example.com"));
+  signin::WaitForRefreshTokensLoaded(identity_manager);
+}
+
+#endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)

@@ -1,0 +1,60 @@
+caption: Allow HTTPS-Only Mode to be enabled
+default: allowed
+desc: |-
+  This policy controls whether users can enable HTTPS-Only Mode (Always Use Secure Connections) in Settings. HTTPS-Only Mode upgrades all navigations to HTTPS.
+
+  If this setting is not set or set to "allowed", users will be allowed to enable HTTPS-Only Mode.
+
+  If this setting is set to "disallowed", HTTPS-Only Mode will be disabled.
+
+  If this setting is set to "force_enabled", HTTPS-Only Mode will be enabled in Strict mode.
+
+  If this setting is set to "force_balanced_enabled", HTTPS-Only Mode will be enabled in Balanced mode.
+
+  "force_enabled" is supported from M112 onwards, "force_balanced_enabled" is supported from M129 onwards.
+
+  "force_enabled" and "force_balanced_enabled" can be recommended to users too.
+  HTTPS-Only Mode will be set Strict or Balanced initially but users are allowed to
+  change it.
+
+  If you set this policy to a value that is not supported by the version of Chrome that receives the policy, Chrome will default to the allowed setting.
+
+  The separate <ph name="HTTP_ALLOWLIST_POLICY_NAME">HttpAllowlist</ph> policy
+  can be used to exempt specific hostnames or hostname patterns from being
+  upgraded to HTTPS by this feature.
+
+example_value: disallowed
+features:
+  dynamic_refresh: true
+  per_profile: true
+  can_be_recommended: true
+items:
+- caption: Do not restrict users' HTTPS-Only Mode setting
+  name: allowed
+  value: allowed
+- caption: Disable HTTPS-Only Mode
+  name: disallowed
+  value: disallowed
+- caption: Enable HTTPS-Only Mode in Strict mode
+  name: force_enabled
+  value: force_enabled
+- caption: Enable HTTPS-Only Mode in Balanced Mode
+  name: force_balanced_enabled
+  value: force_balanced_enabled
+owners:
+- cthomp@chromium.org
+- trusty-transport@chromium.org
+schema:
+  enum:
+  - allowed
+  - disallowed
+  - force_enabled
+  - force_balanced_enabled
+  type: string
+supported_on:
+- chrome.*:94-
+- chrome_os:94-
+- android:94-
+- fuchsia:112-
+tags: []
+type: string-enum

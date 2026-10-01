@@ -1,0 +1,169 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import 'chrome://resources/cr_elements/cr_action_menu/cr_action_menu.js';
+import 'chrome://resources/cr_elements/cr_button/cr_button.js';
+import 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
+import 'chrome://resources/cr_elements/cr_tooltip/cr_tooltip.js';
+import '//resources/cr_elements/cr_icon_button/cr_icon_button.js';
+import '//resources/cr_elements/icons.html.js';
+import '//resources/cr_elements/cr_auto_img/cr_auto_img.js';
+import './icons.html.js';
+
+import type {CrActionMenuElement} from '//resources/cr_elements/cr_action_menu/cr_action_menu.js';
+import type {CrButtonElement} from '//resources/cr_elements/cr_button/cr_button.js';
+import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
+import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
+
+import {getCss} from './card.css.js';
+import {getHtml} from './card.html.js';
+import type {Skill} from './skill.mojom-webui.js';
+import {SkillsDialogType, SkillSource} from './skill.mojom-webui.js';
+import {SkillsManagementAction, SkillsManagementPage} from './skill_metrics.mojom-webui.js';
+import {SkillsPageBrowserProxy} from './skills_page_browser_proxy.js';
+
+const GSTATIC_HOSTS: string[] = ['www.gstatic.com', 'gstatic.com'];
+const ILLUSTRATION_WIDTH: number = 238;
+const ILLUSTRATION_HEIGHT: number = 119;
+
+export enum CardType {
+  USER_SKILL_CARD = 'user-skill-card',
+  DISCOVER_SKILL_CARD = 'discover-skill-card',
+}
+
+export interface SkillCardElement {
+  $: {
+    name: HTMLElement,
+    icon: HTMLElement,
+    menu: CrActionMenuElement,
+    deleteButton: CrButtonElement,
+    copyButton: CrButtonElement,
+    moreButton: CrButtonElement,
+    saveButton: CrButtonElement,
+    editButton: CrButtonElement,
+    illustrationImage: HTMLImageElement,
+  };
+}
+
+export class SkillCardElement extends CrLitElement {
+  static get is() {
+    return 'skill-card';
+  }
+
+  static override get styles() {
+    return getCss();
+  }
+
+  override render() {
+    return getHtml.bind(this)();
+  }
+
+  static override get properties() {
+    return {
+      skill: {type: Object},
+      cardType: {type: String},
+      saveDisabled: {type: Boolean},
+      hideTooltip: {type: Boolean},
+      webuiRoundedIconsEnabled_: {type: Boolean},
+    };
+  }
+
+  accessor skill: Skill = {
+    id: '',
+    sourceSkillId: '',
+    name: '',
+    icon: '',
+    prompt: '',
+    // Default to user created since these are added by the user via the UI.
+    source: SkillSource.kUserCreated,
+    description: '',
+    curatedBy: '',
+    imageUrl: '',
+    creationTime: {internalValue: 0n},
+    lastUpdateTime: {internalValue: 0n},
+    category: '',
+  };
+  accessor cardType: CardType = CardType.USER_SKILL_CARD;
+  accessor saveDisabled: boolean = false;
+  accessor hideTooltip: boolean = false;
+
+  protected accessor webuiRoundedIconsEnabled_: boolean =
+      loadTimeData.getBoolean('webuiRoundedIconsEnabled');
+
+  private proxy_: SkillsPageBrowserProxy = SkillsPageBrowserProxy.getInstance();
+
+  protected ariaLabelForSkill_(prefix: string): string {
+    return loadTimeData.getString(prefix) + ' ' + this.skill.name;
+  }
+
+  protected isDiscoverCard_(): boolean {
+    return this.cardType === CardType.DISCOVER_SKILL_CARD;
+  }
+
+  protected getCardBodyText_(): string {
+    return this.isDiscoverCard_() ? this.skill.description : this.skill.prompt;
+  }
+
+  protected getIllustrationUrl_(): string {
+    const urlString = this.skill.imageUrl;
+    if (!urlString) {
+      return '';
+    }
+    try {
+      const url = new URL(urlString);
+      if (url.protocol === 'https:' && GSTATIC_HOSTS.includes(url.hostname)) {
+        const dpr = window.devicePixelRatio || 1;
+        const width = Math.round(ILLUSTRATION_WIDTH * dpr);
+        const height = Math.round(ILLUSTRATION_HEIGHT * dpr);
+        return `${urlString}=w${width}-h${height}-rw`;
+      }
+    } catch (_) {
+      // Invalid URL, ignore and return original.
+    }
+    return urlString;
+  }
+
+  protected onEditButtonClick_() {
+    this.proxy_.handler.openSkillsDialog(
+        SkillsDialogType.kEdit, this.skill);
+    this.logCardAction_(SkillsManagementAction.kClickedEditSkill);
+  }
+
+  protected onSaveButtonClick_() {
+    this.fire('save-button-click', this.skill);
+  }
+
+  protected onMoreButtonClick_(event: MouseEvent) {
+    this.$.menu.showAt(event.target as HTMLElement);
+  }
+
+  protected onCopyButtonClick_() {
+    // TODO: b/481441891 - Add toast/snackbar to let user know copy was
+    // successful.
+    navigator.clipboard.writeText(this.skill.prompt);
+    this.logCardAction_(SkillsManagementAction.kClickedCopyInstructions);
+    this.$.menu.close();
+  }
+
+  protected onDeleteButtonClick_() {
+    this.logCardAction_(SkillsManagementAction.kClickedDeleteSkill);
+    this.proxy_.handler.deleteSkill(this.skill.id);
+    this.$.menu.close();
+  }
+  protected logCardAction_(action: SkillsManagementAction) {
+    this.proxy_.handler.recordSkillsManagementAction(
+        this.cardType === CardType.USER_SKILL_CARD ?
+            SkillsManagementPage.kYourSkills :
+            SkillsManagementPage.kBrowseSkills,
+        action);
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'skill-card': SkillCardElement;
+  }
+}
+
+customElements.define(SkillCardElement.is, SkillCardElement);

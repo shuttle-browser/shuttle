@@ -1,0 +1,27 @@
+caption: URLs to open on startup
+desc: |-
+  If <ph name="RESTORE_ON_STARTUP_POLICY_NAME">RestoreOnStartup</ph> is set to RestoreOnStartupIsURLs, then setting <ph name="RESTORE_ON_STARTUP_URLS_POLICY_NAME">RestoreOnStartupURLs</ph> to a list of URLs specify which URLs open.
+
+  If not set, the New Tab page opens on start up.
+example_value:
+- https://example.com
+- https://www.chromium.org
+features:
+  can_be_recommended: true
+  dynamic_refresh: true
+  per_profile: true
+future_on:
+- fuchsia
+owners:
+- file://components/policy/OWNERS
+- rsorokin@chromium.org
+schema:
+  items:
+    type: string
+  type: array
+sensitive: true
+supported_on:
+- chrome.*:8-
+- chrome_os:11-
+tags: []
+type: list

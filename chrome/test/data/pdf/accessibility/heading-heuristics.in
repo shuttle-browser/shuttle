@@ -1,0 +1,168 @@
+{{header}}
+{{object 1 0}} <<
+  /Type /Catalog
+  /Pages 2 0 R
+>>
+endobj
+{{object 2 0}} <<
+  /Type /Pages
+  /MediaBox [0 0 300 440]
+  /Count 1
+  /Kids [3 0 R]
+>>
+endobj
+{{object 3 0}} <<
+  /Type /Page
+  /Parent 2 0 R
+  /Resources <<
+    /Font <<
+      /F1 4 0 R % Normal font, Times-Roman
+      /F2 5 0 R % Semi-bold font by weight (600), name: MySemiBoldFont
+      /F3 7 0 R % Font with heading name: Helvetica-Semibold, weight 400
+      /F4 9 0 R % Bold font: MyBoldFont, weight 700
+    >>
+  >>
+  /Contents 11 0 R
+>>
+endobj
+{{object 4 0}} <<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Times-Roman
+>>
+endobj
+{{object 5 0}} <<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /MySemiBoldFont
+  /FontDescriptor 6 0 R
+>>
+endobj
+{{object 6 0}} <<
+  /Type /FontDescriptor
+  /FontName /MySemiBoldFont
+  /FontWeight 600
+  /StemV 80
+  /Flags 0
+>>
+endobj
+{{object 7 0}} <<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /Helvetica-Semibold
+  /FontDescriptor 8 0 R
+>>
+endobj
+{{object 8 0}} <<
+  /Type /FontDescriptor
+  /FontName /Helvetica-Semibold
+  /FontWeight 400
+  /Flags 0
+>>
+endobj
+{{object 9 0}} <<
+  /Type /Font
+  /Subtype /Type1
+  /BaseFont /MyBoldFont
+  /FontDescriptor 10 0 R
+>>
+endobj
+{{object 10 0}} <<
+  /Type /FontDescriptor
+  /FontName /MyBoldFont
+  /FontWeight 700
+  /StemV 120
+  /Flags 0
+>>
+endobj
+{{object 11 0}} <<
+  {{streamlen}}
+>>
+stream
+BT
+/F1 10 Tf
+1 0 0 1 10 400 Tm
+(This is body text line one.) Tj
+ET
+BT
+/F1 10 Tf
+1 0 0 1 10 380 Tm
+(This is body text line two.) Tj
+ET
+BT
+/F1 10 Tf
+1 0 0 1 10 360 Tm
+(This is body text line three.) Tj
+ET
+BT
+/F1 10 Tf
+1 0 0 1 10 340 Tm
+(This is body text line four.) Tj
+ET
+BT
+/F2 10 Tf
+1 0 0 1 10 300 Tm
+(Heading By Weight) Tj
+ET
+BT
+/F1 10 Tf
+1 0 0 1 10 280 Tm
+(Body text below weight heading.) Tj
+ET
+BT
+/F1 10 Tf
+1 0 0 1 10 260 Tm
+(More body text below weight heading.) Tj
+ET
+BT
+/F3 10 Tf
+1 0 0 1 10 220 Tm
+(Heading By Name) Tj
+ET
+BT
+/F1 10 Tf
+1 0 0 1 10 200 Tm
+(Body text below name heading.) Tj
+ET
+BT
+/F1 10 Tf
+1 0 0 1 10 180 Tm
+(More body text below name heading.) Tj
+ET
+BT
+/F4 10 Tf
+1 0 0 1 10 140 Tm
+(ALL CAPS BOLD HEADING) Tj
+ET
+BT
+/F1 10 Tf
+1 0 0 1 10 100 Tm
+(ALL CAPS NORMAL HEADING) Tj
+ET
+BT
+/F1 10 Tf
+1 0 0 1 10 60 Tm
+(Body text with ) Tj
+/F4 10 Tf
+(inline bold text) Tj
+/F1 10 Tf
+( in a paragraph.) Tj
+ET
+BT
+/F1 10 Tf
+1 0 0 1 10 40 Tm
+(Body text with ) Tj
+(INLINE ALL CAPS TEXT) Tj
+( in a paragraph.) Tj
+ET
+BT
+/F1 10 Tf
+1 0 0 1 10 20 Tm
+(Trailing body text.) Tj
+ET
+endstream
+endobj
+{{xref}}
+{{trailer}}
+{{startxref}}
+%%EOF

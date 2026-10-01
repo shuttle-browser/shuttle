@@ -1,0 +1,168 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_AUTOFILL_CORE_BROWSER_PAYMENTS_BNPL_STRATEGY_H_
+#define COMPONENTS_AUTOFILL_CORE_BROWSER_PAYMENTS_BNPL_STRATEGY_H_
+
+#include "components/autofill/core/browser/payments/payments_autofill_client.h"
+
+namespace autofill::payments {
+
+// Interface for objects that define a strategy for handling a BNPL autofill
+// flow with different implementations meant to handle different operating
+// systems. Created lazily in the PaymentsAutofillClient when it is needed.
+class BnplStrategy {
+ public:
+  // Defines the next step that the BnplManager should take after the user has
+  // been shown a payment method autofill suggestion. The strategy
+  // implementation determines which action to return based on the platform.
+  enum class SuggestionsShownNextAction {
+    // The flow should check if a BNPL suggestion is currently being shown.
+    // If it isn't, then run the update suggestions barrier callback.
+    kNotifyUpdateCallbackOfSuggestionsShownResponse = 0,
+
+    // The flow does not need to run the update suggestions barrier callback.
+    kSkipNotifyingUpdateCallbackOfSuggestionsShownResponse = 1,
+
+    kMaxValue = kSkipNotifyingUpdateCallbackOfSuggestionsShownResponse,
+  };
+
+  // Defines the next step that the BnplManager should take after the user has
+  // decided to use BNPL. The strategy implementation determines which action to
+  // return based on the platform.
+  enum class UserDecisionToUseBnplNextAction {
+    // The flow should show the Select BNPL Issuer UI.
+    kShowSelectBnplIssuerUiForDesktop = 0,
+
+    // The flow should check if amount extraction has finished extracting the
+    // checkout amount from the webpage. If complete, show the BNPL selection
+    // screen. Otherwise, show the progress screen.
+    kCheckAmountExtractionBeforeContinuingFlowForAndroid = 1,
+
+    // The flow logic will handle the next step, nothing needs to be done and
+    // the UI does not need to be notified of anything.
+    kDoNothing = 2,
+
+    kMaxValue = kDoNothing,
+  };
+
+  // Defines the next step that the BnplManager should take after amount
+  // extraction returns. The strategy implementation determines
+  // which action to return based on the platform.
+  enum class BnplAmountExtractionReturnedNextAction {
+    // Run the update suggestions barrier callback.
+    kNotifyUpdateCallbackOfAmountExtractionReturnedResponse = 0,
+
+    // Notify the UI to update accordingly based on the amount extraction
+    // response.
+    kNotifyUiOfAmountExtractionReturnedResponse = 1,
+
+    kMaxValue = kNotifyUiOfAmountExtractionReturnedResponse,
+  };
+
+  // Defines the step that the BnplManager should take before switching to the
+  // next view, based on the platform.
+  enum class BeforeSwitchingViewAction {
+    // The UI code should handle the switching. BnplManager will
+    // continue to show the next view directly.
+    kDoNothing = 0,
+
+    // Close the current view before showing the next one.
+    kCloseCurrentUi = 1,
+
+    kMaxValue = kCloseCurrentUi,
+  };
+
+  // Defines the next step that the BnplManager should take after AI-based
+  // amount extraction returns. The strategy implementation determines which
+  // action to return based on the platform.
+  enum class BnplAiBasedAmountExtractionReturnedNextAction {
+    // Replaces the loading throbber with issuer suggestions.
+    kReplaceLoadingThrobberWithIssuerSuggestionsOnDesktop = 0,
+
+    // Show the issuer selection screen.
+    kSwitchToIssuerSelectionScreenOnAndroid = 1,
+
+    kMaxValue = kSwitchToIssuerSelectionScreenOnAndroid,
+  };
+
+  // Defines the action to take to dismiss the active BNPL UI.
+  enum class UiDismissalAction {
+    // Dismiss the suggestions popup/accessory.
+    kHideSuggestions = 0,
+
+    // Dismiss the explicit BNPL UI (dialog or sheet) via the delegate.
+    kRemoveBnplUi = 1,
+
+    kMaxValue = kRemoveBnplUi,
+  };
+
+  // Defines the action to take when the user decides to use saved cards / Pay
+  // Now tab.
+  enum class UserDecisionToUseSavedCardsNextAction {
+    // Desktop: Update inline popup items / throbbers in the autofill dropdown.
+    kUpdateDesktopPopupSuggestions = 0,
+
+    // Android: Clear/reset selected issuer choice or flow state for tabbed
+    // sheet.
+    kResetSelectedIssuerOrFlowStateOnAndroid = 1,
+
+    kMaxValue = kResetSelectedIssuerOrFlowStateOnAndroid,
+  };
+
+  // Defines the action to take when the user decides to use BNPL again (e.g.
+  // returned to Pay Later tab when flow state already exists).
+  enum class UserDecisionToUseBnplAgainNextAction {
+    // Desktop: Do nothing (user has already navigated or flow is ongoing).
+    kDoNothing = 0,
+
+    // Android: Re-show the BNPL issuer selection UI with cached checkout
+    // amount.
+    kReshowSelectBnplIssuerUiOnAndroid = 1,
+
+    kMaxValue = kReshowSelectBnplIssuerUiOnAndroid,
+  };
+
+  virtual ~BnplStrategy();
+
+  // Returns the next action to take after the user has been shown a payment
+  // method autofill suggestion.
+  virtual SuggestionsShownNextAction GetNextActionOnSuggestionsShown();
+
+  // Returns the next action to take after the user has decided to use BNPL.
+  virtual UserDecisionToUseBnplNextAction
+  GetNextActionOnUserDecisionToUseBnpl();
+
+  // Returns the next action to take when the user decides to use BNPL again.
+  virtual UserDecisionToUseBnplAgainNextAction
+  GetNextActionOnUserDecisionToUseBnplAgain();
+
+  // Returns the next action to take after the amount extraction is finished.
+  virtual BnplAmountExtractionReturnedNextAction
+  GetNextActionOnAmountExtractionReturned();
+
+  // Returns the action to take before switching to the next view.
+  virtual BeforeSwitchingViewAction GetBeforeViewSwitchAction();
+
+  // Returns the next action to take after the AI-based amount extraction is
+  // finished.
+  virtual BnplAiBasedAmountExtractionReturnedNextAction
+  GetNextActionOnAiBasedAmountExtractionReturned();
+
+  // Returns the next action to take when the user decides to use saved cards.
+  virtual UserDecisionToUseSavedCardsNextAction
+  GetNextActionOnUserDecisionToUseSavedCards();
+
+  // Returns the action to take to dismiss the active BNPL UI.
+  virtual UiDismissalAction GetUiDismissalAction();
+
+  // Returns whether the existing UI should be removed after a server response.
+  // `result` is used by platforms to check if the UI should remain open.
+  virtual bool ShouldRemoveExistingUiOnServerReturn(
+      PaymentsAutofillClient::PaymentsRpcResult result) = 0;
+};
+
+}  // namespace autofill::payments
+
+#endif  // COMPONENTS_AUTOFILL_CORE_BROWSER_PAYMENTS_BNPL_STRATEGY_H_

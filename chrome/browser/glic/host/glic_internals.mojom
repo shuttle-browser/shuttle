@@ -1,0 +1,286 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module glic.mojom;
+
+import "chrome/common/glic_enums.mojom";
+import "mojo/public/mojom/base/time.mojom";
+import "url/mojom/url.mojom";
+
+enum GlicExperimentalTriggeringState {
+  kUnavailable = 0,
+  kNeedsOptIn = 1,
+  kReady = 2,
+};
+
+// Whether actuation is enabled, and if not, why not.
+enum ActuationEligibility {
+  kEligible,
+  kMissingAccountCapability,
+  kMissingChromeBenefits,
+  kDisabledByPolicy,
+  kEnterpriseWithoutManagement,
+  kPlatformUnsupported,
+};
+
+struct GeminiEnterpriseSettingsInfo {
+  string project_id;
+  string app_id;
+  string location;
+};
+
+// Struct containing data about eligibility for GLIC.
+struct ProfileEnablement {
+  // Whether the GLIC feature is enabled.
+  bool feature_enabled;
+
+  // Whether the profile is regular (e.g. not incognito)
+  bool is_regular_profile;
+
+  // Whether Glic is rolled out to the profile. Rollout can be enabled by the
+  // `GlicRollout` flag, or by the `GlicTieredRollout` flag and synced pref.
+  bool is_rolled_out;
+
+  // Whether a primary account exists and has the required Account Capabilities
+  // to use Glic.
+  bool primary_account_is_capable;
+
+  // Whether the primary account exists and is fully signed in.
+  bool primary_account_is_fully_signed_in;
+
+  // Whether the profile is allowed to use Glic by chrome policy.
+  bool allowed_by_chrome_policy;
+
+  // Whether the profile is allowed to use Glic by remote admin.
+  bool allowed_by_remote_admin;
+
+  // Whether the profile is allowed to use Glic by remote for other reasons.
+  bool allowed_by_remote_other;
+
+  // Whether the user has consented with the FRE.
+  bool fre_is_consented;
+
+  // Whether Glic access is allowed by country filtering.
+  bool allowed_by_country_filter;
+
+  // Whether Glic access is allowed by UI locale filtering.
+  bool allowed_by_locale_filter;
+
+  // Whether the user has consented to actuation.
+  bool actuation_is_consented;
+
+  // Whether live (audio) functionality is allowed for this account type.
+  bool live_allowed;
+
+  // Whether 'Create Image with Gemini' functionality is allowed for this
+  // account type.
+  bool share_image_allowed;
+
+  // Settings for Gemini Enterprise.
+  GeminiEnterpriseSettingsInfo? gemini_enterprise_settings;
+
+  // Summary of whether actuation is enabled, and if not, why not.
+  ActuationEligibility actuation_eligibility;
+
+  // Summary of whether Glic API actuation is enabled, and if not, why not.
+  ActuationEligibility glic_api_actuation_eligibility;
+
+  GlicExperimentalTriggeringState glic_experimental_triggering_state;
+};
+
+// Basic configuration information about Glic.
+struct ConfigInfo {
+  // The URL from which the guest web client is loaded from.
+  url.mojom.Url guest_url;
+
+  // User configured preset URLs for different environments of the guest web
+  // client.
+  url.mojom.Url autopush_guest_url;
+  url.mojom.Url staging_guest_url;
+  url.mojom.Url preprod_guest_url;
+  url.mojom.Url prod_guest_url;
+
+  // User configured preset URL for web continuity.
+  url.mojom.Url web_continuity_originating_host_url;
+};
+
+struct TieredRolloutInfo {
+  // User's AI subscription tier (null if unavailable).
+  int32? ai_subscription_tier;
+  // Eligible for V1 (feature flag + pref).
+  bool is_eligible_for_tiered_rollout_v1;
+  // Eligible for V2 (feature flag + tier).
+  bool is_eligible_for_tiered_rollout_v2;
+  // Combined eligibility (V1 or V2).
+  bool is_eligible_overall;
+  // Value of the kGlicRolloutEligibility pref.
+  bool glic_rollout_eligibility_pref;
+  // Comma separated integers set from experiment config, eligible tiers
+  // configured for V2.
+  string tiered_rollout_v2_eligible_tiers;
+  // Text status of syncing the preference.
+  string preference_sync_status;
+};
+
+// Consolidated data payload to populate the Glic internals page.
+struct InternalsDataPayload {
+  ProfileEnablement enablement;
+  ConfigInfo config;
+  bool show_error_allowed;
+  bool experimental_triggering_enabled;
+  InternalsDebugInfo debug_info;
+  TieredRolloutInfo tiered_rollout_info;
+};
+
+struct InternalsDebugInfo {
+  // Feature flags
+  bool glic_actor_feature_enabled;
+  bool glic_rollout_feature_enabled;
+  bool glic_tiered_rollout_feature_enabled;
+  bool glic_tiered_rollout_v2_feature_enabled;
+
+  // Platform and form factor
+  Platform platform;
+  FormFactor form_factor;
+
+  // Browser and user settings
+  map<string, bool> boolean_settings;
+  string hotkey;
+
+  // Locale and country settings
+  string locale;
+  string permanent_country_code;
+  string session_country_code;
+
+  // Additional enablement checks
+  bool system_requirement_met;
+  bool os_version_supported;
+  bool anchor_entrypoint_override_active;
+  bool primary_account_needs_signed_in;
+  string dogfood_status;
+};
+
+// This determines how invoke will handle waiting for first run experience
+// completion.
+enum FreCompletionWaitMode {
+  kDefault,
+  kNever,
+};
+
+struct ScreenshotTestKeyConfiguration {
+  string public_key;
+  string auth_secret;
+};
+
+// Use ongoing conversation for the tab if it exists. Otherwise, fall back
+// to the default behavior for opening the UI (typically a new conversation).
+struct DefaultConversation {};
+
+// Always invoke into a new conversation.
+struct NewConversation {};
+
+// Defines the conversation an invocation targets.
+union InvokeConversationSelection {
+  DefaultConversation default_conversation;
+  NewConversation new_conversation;
+  string conversation_id;
+};
+
+// Targets the default Glic surface (e.g., side panel).
+struct DefaultSurfaceMojo {};
+
+// Targets a new tab for the invocation.
+struct NewTabMojo {
+  bool open_in_foreground;
+};
+
+// Defines the surface an invocation targets.
+union InvokeTargetSurface {
+  DefaultSurfaceMojo default_surface;
+  NewTabMojo new_tab;
+};
+
+// Payload for Universal Cart invocation.
+struct UniversalCartPayloadMojo {
+  array<uint8> serialized_metadata;
+};
+
+// Source-specific payload for the invocation.
+union TriggerInvokePayload {
+  UniversalCartPayloadMojo universal_cart;
+};
+
+// Configuration options for invoking Glic from the internals page.
+struct TriggerInvokeFromInternalsOptions {
+  InvocationSource invocation_source;
+  array<string> prompts;
+  InvokeConversationSelection conversation;
+  FeatureMode? feature_mode;
+  bool disable_zss;
+  string? zss_additional_content;
+  string? skill_id;
+  string? error_message;
+  mojo_base.mojom.TimeDelta? timeout;
+  bool auto_submit;
+  FreOverride fre_override = kUnspecified;
+  bool wait_for_panel_open;
+  bool? focus_on_show;
+  FreCompletionWaitMode fre_completion_wait_mode = kDefault;
+  bool? show_panel;
+  InvokeTargetSurface surface;
+  int32? specific_tab_index;
+  array<int32>? specific_tabs_to_share_indices;
+  ActuationTarget actuation_target;
+  // Source-specific payload for the invocation.
+  TriggerInvokePayload? payload;
+  bool take_screenshot;
+  ScreenshotTestKeyConfiguration? key_config;
+  bool supersede_if_in_progress;
+};
+
+// Page handler for the glic internals WebUI.
+interface InternalsPageHandler {
+  // Called by the internals WebUI page to get the data it will present.
+  GetInternalsDataPayload() => (InternalsDataPayload internals_data);
+
+  // Sets the guest URL presets for the internals page.
+  SetGuestUrlPresets(url.mojom.Url autopush,
+                     url.mojom.Url staging,
+                     url.mojom.Url preprod,
+                     url.mojom.Url prod);
+
+  // Triggers an invocation for testing from the internals page.
+  TriggerInvokeFromInternalsAction(
+      TriggerInvokeFromInternalsOptions options)
+      => (bool success, string error_message);
+
+  // Gets the titles of all open tabs in the current window.
+  GetOpenTabs() => (array<string> tab_titles);
+
+  // Sets the web continuity originating host URL preset for the internals page.
+  SetWebContinuityOriginatingHostUrlPreset(
+      url.mojom.Url web_continuity_originating_host_url);
+
+  // Sets whether errors are allowed to be shown.
+  SetShowErrorAllowed(bool allowed);
+
+  // Shows the experimental opt-in dialog.
+  ShowExperimentalOptIn();
+
+  // Revokes experimental triggering consent.
+  RevokeExperimentalTriggeringConsent();
+
+  // Revokes Glic FRE consent.
+  RevokeGlicConsent();
+
+  // Revokes Actuation consent.
+  RevokeActuationConsent();
+};
+
+// Factory for InternalsPageHandler used in chrome://glic/internals.
+interface InternalsPageHandlerFactory {
+  // Creates the InternalsPageHandler for chrome://glic/internals.
+  CreateInternalsPageHandler(
+      pending_receiver<InternalsPageHandler> receiver);
+};

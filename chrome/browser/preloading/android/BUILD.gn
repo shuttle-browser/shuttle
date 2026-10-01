@@ -1,0 +1,40 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/config/android/rules.gni")
+import("//third_party/jni_zero/jni_zero.gni")
+
+generate_jni("jni_headers") {
+  sources = [
+    "java/src/org/chromium/chrome/browser/preloading/PreloadingDataBridge.java",
+    "java/src/org/chromium/chrome/browser/preloading/PreloadingFeatureMap.java",
+  ]
+}
+
+android_library("java") {
+  srcjar_deps = [ ":jni_headers" ]
+  sources = [
+    "java/src/org/chromium/chrome/browser/preloading/PreloadingDataBridge.java",
+    "java/src/org/chromium/chrome/browser/preloading/PreloadingFeatureMap.java",
+  ]
+
+  deps = [
+    "//base:features_java",
+    "//content/public/android:content_java",
+    "//third_party/jni_zero:jni_zero_java",
+  ]
+}
+
+source_set("android") {
+  sources = [
+    "preloading_data_bridge.cc",
+    "preloading_feature_map.cc",
+  ]
+  deps = [
+    ":jni_headers",
+    "//base",
+    "//chrome/browser/preloading",
+    "//content/public/browser",
+  ]
+}

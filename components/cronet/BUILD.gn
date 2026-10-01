@@ -1,0 +1,97 @@
+# Copyright 2017 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/buildflag_header.gni")
+import("//build/config/android/rules.gni")
+import("//build/toolchain/toolchain.gni")
+import("//build/util/lastchange.gni")
+import("//build/util/process_version.gni")
+import("//chrome/version.gni")
+import("//testing/test.gni")
+import("//third_party/protobuf/proto_library.gni")
+
+process_version("cronet_version_header") {
+  template_file = "//components/cronet/version.h.in"
+  sources = [ "//chrome/VERSION" ]
+  output = "$target_gen_dir/version.h"
+  extra_args = [
+    "-e",
+    "VERSION_FULL=\"%s.%s.%s.%s\" % (MAJOR,MINOR,BUILD,PATCH)",
+  ]
+}
+
+proto_library("request_context_config_proto") {
+  sources = [ "proto/request_context_config.proto" ]
+}
+
+proto_java_library("request_context_config_java_proto") {
+  proto_path = "."
+  sources = [ "proto/request_context_config.proto" ]
+}
+
+# Cronet common implementation.
+source_set("cronet_common") {
+  sources = [
+    "cronet_context.cc",
+    "cronet_context.h",
+    "cronet_global_state.h",
+    "cronet_prefs_manager.cc",
+    "cronet_prefs_manager.h",
+    "cronet_proxy_delegate.cc",
+    "cronet_proxy_delegate.h",
+    "cronet_upload_data_stream.cc",
+    "cronet_upload_data_stream.h",
+    "cronet_url_request.cc",
+    "cronet_url_request.h",
+    "host_cache_persistence_manager.cc",
+    "host_cache_persistence_manager.h",
+    "url_request_context_config.cc",
+    "url_request_context_config.h",
+  ]
+  deps = [
+    ":cronet_version_header",
+    ":metrics_util",
+    ":request_context_config_proto",
+    "//base",
+    "//components/cronet/android:cronet_jni_headers",
+    "//components/prefs",
+    "//net",
+  ]
+
+  public_deps = [ "//components/metrics:library_support" ]
+}
+
+source_set("metrics_util") {
+  sources = [
+    "metrics_util.cc",
+    "metrics_util.h",
+  ]
+  deps = [
+    "//base",
+    "//net",
+  ]
+}
+
+# Unit tests for Cronet common implementation.
+source_set("cronet_common_unittests") {
+  testonly = true
+
+  deps = [
+    ":cronet_common",
+    "//components/prefs:test_support",
+    "//net:test_support",
+  ]
+
+  sources = [
+    "cronet_stale_host_resolver_unittest.cc",
+    "host_cache_persistence_manager_unittest.cc",
+    "network_tasks_unittest.cc",
+    "url_request_context_config_unittest.cc",
+  ]
+}
+
+group("cronet_package") {
+  testonly = true
+  deps = [ "//components/cronet/android:cronet_package_android" ]
+}

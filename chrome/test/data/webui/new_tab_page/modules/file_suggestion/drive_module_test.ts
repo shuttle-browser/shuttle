@@ -1,0 +1,301 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import type {DisableModuleEvent, DismissModuleInstanceEvent, DriveModuleElement} from 'chrome://new-tab-page/lazy_load.js';
+import {driveModuleDescriptor, FileProxy} from 'chrome://new-tab-page/lazy_load.js';
+import {$$, DriveSuggestionHandlerRemote} from 'chrome://new-tab-page/new_tab_page.js';
+import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
+import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import {fakeMetricsPrivate} from 'chrome://webui-test/metrics_test_support.js';
+import type {TestMock} from 'chrome://webui-test/test_mock.js';
+import {eventToPromise, microtasksFinished} from 'chrome://webui-test/test_util.js';
+
+import {installMock} from '../../test_support.js';
+
+suite('DriveModuleV2', () => {
+  let handler: TestMock<DriveSuggestionHandlerRemote>;
+  const iconUrl = 'https://example.com/application/vnd.google-apps.spreadsheet';
+
+  suiteSetup(() => {
+    loadTimeData.overrideValues({
+      hideDismissModules: false,
+      showDriveModuleSeeMoreLink: true,
+      modulesDriveSeeMoreAcc: 'See more in Google Drive',
+    });
+  });
+
+  setup(() => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    handler = installMock(DriveSuggestionHandlerRemote, FileProxy.setHandler);
+  });
+
+  test(
+      'setting files via handler populates `ntp-file-suggestion`', async () => {
+        const data = {
+          files: [
+            {
+              justificationText: 'Edited last week',
+              title: 'Foo',
+              id: '123',
+              iconUrl: iconUrl,
+              itemUrl: 'https://foo.com',
+            },
+            {
+              justificationText: 'Edited yesterday',
+              title: 'Bar',
+              id: '132',
+              iconUrl: iconUrl,
+              itemUrl: 'https://bar.com',
+            },
+            {
+              justificationText: 'Created today',
+              title: 'Baz',
+              id: '213',
+              iconUrl: iconUrl,
+              itemUrl: 'https://baz.com',
+            },
+            {
+              justificationText: 'Created yesterday',
+              title: 'Qux',
+              id: '231',
+              iconUrl: iconUrl,
+              itemUrl: 'https://qux.com',
+            },
+            {
+              justificationText: 'Edited last week',
+              title: 'FooBar',
+              id: '312',
+              iconUrl: iconUrl,
+              itemUrl: 'https://foo.com',
+            },
+            {
+              justificationText: 'Edited yesterday',
+              title: 'BazQux',
+              id: '321',
+              iconUrl: iconUrl,
+              itemUrl: 'https://bar.com',
+            },
+          ],
+        };
+        handler.setPromiseResolveFor('getFiles', data);
+
+        const module =
+            await driveModuleDescriptor.initialize(0) as DriveModuleElement;
+        assertTrue(!!module);
+        document.body.append(module);
+        await handler.whenCalled('getFiles');
+        await microtasksFinished();
+        const fileSuggestion = module.$.fileSuggestion;
+        const items =
+            Array.from(fileSuggestion.shadowRoot.querySelectorAll('.file'));
+
+        assertEquals(6, items.length);
+      });
+
+  test('module does not render if there are no files', async () => {
+    handler.setPromiseResolveFor('getFiles', {files: []});
+
+    const module = await driveModuleDescriptor.initialize(0);
+    await handler.whenCalled('getFiles');
+    assertFalse(!!module);
+  });
+
+  test('clicking the info button opens the ntp info dialog box', async () => {
+    // Arrange.
+    const data = {
+      files: [
+        {
+          justificationText: 'Edited yesterday',
+          title: 'Abc',
+          id: '012',
+          iconUrl: iconUrl,
+          itemUrl: 'https://abc.com',
+        },
+      ],
+    };
+    handler.setPromiseResolveFor('getFiles', data);
+    const driveModule =
+        await driveModuleDescriptor.initialize(0) as DriveModuleElement;
+    assertTrue(!!driveModule);
+    document.body.append(driveModule);
+    await microtasksFinished();
+    assertFalse(!!$$(driveModule, 'ntp-info-dialog'));
+
+    // Act.
+    const infoButton =
+        driveModule.$.moduleHeader.shadowRoot.querySelector<HTMLElement>(
+            '#info');
+    assertTrue(!!infoButton);
+    infoButton.click();
+    await microtasksFinished();
+
+    // Assert.
+    assertTrue(!!$$(driveModule, 'ntp-info-dialog'));
+  });
+
+  test(
+      'clicking the disable button sets the correct toast message',
+      async () => {
+        // Arrange.
+        const data = {
+          files: [
+            {
+              justificationText: 'Edited yesterday',
+              title: 'Abc',
+              id: '012',
+              iconUrl: iconUrl,
+              itemUrl: 'https://abc.com',
+            },
+          ],
+        };
+        handler.setPromiseResolveFor('getFiles', data);
+        const driveModule =
+            await driveModuleDescriptor.initialize(0) as DriveModuleElement;
+        document.body.append(driveModule);
+        await microtasksFinished();
+
+        // Act.
+        const whenFired = eventToPromise('disable-module', driveModule);
+        const disableButton =
+            driveModule.$.moduleHeader.shadowRoot.querySelector<HTMLElement>(
+                '#disable');
+        assertTrue(!!disableButton);
+        disableButton.click();
+
+        // Assert.
+        const event: DisableModuleEvent = await whenFired;
+        assertEquals(
+            'You won\'t see Google Drive on this page again',
+            event.detail.message);
+      });
+
+  test('backend is notified when module is dismissed or restored', async () => {
+    // Arrange.
+    const data = {
+      files: [
+        {
+          justificationText: '',
+          title: '',
+          id: '',
+          iconUrl: '',
+          itemUrl: '',
+        },
+      ],
+    };
+    handler.setPromiseResolveFor('getFiles', data);
+    const moduleElement =
+        await driveModuleDescriptor.initialize(0) as DriveModuleElement;
+    assertTrue(!!moduleElement);
+    document.body.append(moduleElement);
+    await microtasksFinished();
+
+    // Act.
+    const whenFired = eventToPromise('dismiss-module-instance', moduleElement);
+    const dismissButton =
+        moduleElement.$.moduleHeader.shadowRoot.querySelector<HTMLElement>(
+            '#dismiss');
+    assertTrue(!!dismissButton);
+    dismissButton.click();
+
+    // Assert.
+    const event: DismissModuleInstanceEvent = await whenFired;
+    assertEquals('Files hidden', event.detail.message);
+    assertTrue(!!event.detail.restoreCallback);
+    assertEquals(1, handler.getCallCount('dismissModule'));
+
+    // Act.
+    event.detail.restoreCallback();
+
+    // Assert.
+    assertEquals(1, handler.getCallCount('restoreModule'));
+  });
+
+  test('clicking file records correct metrics', async () => {
+    const metrics = fakeMetricsPrivate();
+
+    // Arrange.
+    const data = {
+      files: [
+        {
+          justificationText: 'Edited yesterday',
+          title: 'Abc',
+          id: '012',
+          iconUrl: iconUrl,
+          itemUrl: 'https://abc.com',
+        },
+      ],
+    };
+    handler.setPromiseResolveFor('getFiles', data);
+    const driveModule =
+        await driveModuleDescriptor.initialize(0) as DriveModuleElement;
+    assertTrue(!!driveModule);
+    document.body.append(driveModule);
+    await microtasksFinished();
+
+    // Act.
+    const fileSuggestion = driveModule.$.fileSuggestion;
+    const file = $$<HTMLElement>(fileSuggestion, '.file');
+    assertTrue(!!file);
+    file.click();
+    await microtasksFinished();
+
+    // Assert.
+    assertEquals(1, metrics.count('NewTabPage.Drive.FileClick'));
+    assertEquals(1, metrics.count('NewTabPage.Drive.FileClick', 0));
+  });
+
+  test('see more link is gated by showDriveModuleSeeMoreLink', async () => {
+    loadTimeData.overrideValues({showDriveModuleSeeMoreLink: false});
+    const data = {
+      files: [
+        {
+          justificationText: 'Edited yesterday',
+          title: 'Abc',
+          id: '012',
+          iconUrl: iconUrl,
+          itemUrl: 'https://abc.com',
+        },
+      ],
+    };
+    handler.setPromiseResolveFor('getFiles', data);
+    const driveModule =
+        await driveModuleDescriptor.initialize(0) as DriveModuleElement;
+    assertTrue(!!driveModule);
+    document.body.append(driveModule);
+    await microtasksFinished();
+
+    const fileSuggestion = driveModule.$.fileSuggestion;
+    assertEquals('', fileSuggestion.seeMoreUrl);
+    assertFalse(
+        !!fileSuggestion.shadowRoot.querySelector('#seeMoreButtonContainer'));
+  });
+
+  test('see more link has correct aria-label', async () => {
+    loadTimeData.overrideValues({showDriveModuleSeeMoreLink: true});
+    const data = {
+      files: [
+        {
+          justificationText: 'Edited yesterday',
+          title: 'Abc',
+          id: '012',
+          iconUrl: iconUrl,
+          itemUrl: 'https://abc.com',
+        },
+      ],
+    };
+    handler.setPromiseResolveFor('getFiles', data);
+    const driveModule =
+        await driveModuleDescriptor.initialize(0) as DriveModuleElement;
+    assertTrue(!!driveModule);
+    document.body.append(driveModule);
+    await microtasksFinished();
+
+    const fileSuggestion = driveModule.$.fileSuggestion;
+    const seeMoreButton =
+        fileSuggestion.shadowRoot.querySelector('#seeMoreButtonContainer a');
+    assertTrue(!!seeMoreButton);
+    assertEquals(
+        'See more in Google Drive', seeMoreButton.getAttribute('aria-label'));
+  });
+});

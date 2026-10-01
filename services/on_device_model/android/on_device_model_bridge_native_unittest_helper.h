@@ -1,0 +1,93 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef SERVICES_ON_DEVICE_MODEL_ANDROID_ON_DEVICE_MODEL_BRIDGE_NATIVE_UNITTEST_HELPER_H_
+#define SERVICES_ON_DEVICE_MODEL_ANDROID_ON_DEVICE_MODEL_BRIDGE_NATIVE_UNITTEST_HELPER_H_
+
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "base/android/scoped_java_ref.h"
+#include "components/optimization_guide/proto/model_execution.pb.h"
+#include "services/on_device_model/android/backend_session_impl_android.h"
+#include "services/on_device_model/android/model_downloader_android.h"
+
+namespace on_device_model {
+
+class OnDeviceModelBridgeNativeUnitTestSettings {
+ public:
+  OnDeviceModelBridgeNativeUnitTestSettings();
+  ~OnDeviceModelBridgeNativeUnitTestSettings();
+
+  void Init(base::android::ScopedJavaGlobalRef<jobject>* java_helper);
+  void SetGenerateResult(BackendSessionImplAndroid::GenerateResult result);
+  void SetCompleteAsync(bool complete_async);
+  void SetSessionCallbackOnDifferentThread(
+      bool session_callback_on_different_thread);
+  void SetDownloaderCallbackOnDifferentThread(
+      bool downloader_callback_on_different_thread);
+  void SetDefaultStatusCheckResult(
+      std::optional<ModelDownloaderAndroid::ModelStatus> status);
+
+  void SetSizeInTokens(int size_in_tokens);
+  void SetExecuteResult(const std::vector<std::string>& execute_result);
+
+ private:
+  base::android::ScopedJavaGlobalRef<jobject> java_settings_;
+};
+
+// A test helper for calling the Java test helper. This allows centralizing the
+// JNI calls and avoiding `-Wunused-function` warnings in multiple places.
+class OnDeviceModelBridgeNativeUnitTestHelper {
+ public:
+  OnDeviceModelBridgeNativeUnitTestHelper();
+  ~OnDeviceModelBridgeNativeUnitTestHelper();
+
+  // Sets a default AiCoreFactory that uses upstream (dummy) implementations.
+  // Use this for tests that need to verify behavior when MLKit is not
+  // available.
+  void SetDefaultAiCoreFactory();
+  void SetMockAiCoreFactory();
+
+  // `index` is the index of the session backend in the list of session backends
+  // created by the mock AiCoreFactory. The list is in the order of the calls to
+  // `AiCoreFactory.createSessionBackend()`.
+  void VerifySessionParams(
+      int index,
+      optimization_guide::proto::ModelExecutionFeature feature,
+      int top_k,
+      float temperature);
+  void VerifyGenerateOptions(int index, int max_output_tokens);
+
+  OnDeviceModelBridgeNativeUnitTestSettings& settings() { return settings_; }
+
+  void ResumeOnCompleteCallback();
+
+  void VerifyDownloaderParams(
+      optimization_guide::proto::ModelExecutionFeature feature,
+      bool require_persistent_mode);
+
+  void TriggerDownloaderOnUnavailable(
+      ModelDownloaderAndroid::DownloadFailureReason reason);
+  void TriggerDownloaderOnAvailable(const std::string& name,
+                                    const std::string& version);
+  void TriggerDownloaderOnDownloadProgress(int64_t downloaded_bytes,
+                                           int64_t total_bytes);
+  void TriggerDownloaderOnStatusCheckResult(
+      ModelDownloaderAndroid::ModelStatus model_status);
+  void TriggerAllDownloadersOnStatusCheckResult(
+      ModelDownloaderAndroid::ModelStatus model_status);
+  void UnInstallModel();
+
+  int GetStatusCheckerCount();
+
+ private:
+  base::android::ScopedJavaGlobalRef<jobject> java_helper_;
+  OnDeviceModelBridgeNativeUnitTestSettings settings_;
+};
+
+}  // namespace on_device_model
+
+#endif  // SERVICES_ON_DEVICE_MODEL_ANDROID_ON_DEVICE_MODEL_BRIDGE_NATIVE_UNITTEST_HELPER_H_

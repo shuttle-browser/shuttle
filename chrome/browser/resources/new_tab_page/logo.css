@@ -1,0 +1,146 @@
+/* Copyright 2024 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=chrome://resources/cr_elements/cr_hidden_style_lit.css.js
+ * #scheme=relative
+ * #include=cr-hidden-style-lit
+ * #css_wrapper_metadata_end */
+
+:host {
+  --ntp-logo-height: 168px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  min-height: var(--ntp-logo-height);
+}
+
+/*
+ * In case we use the boxed container for the Doodle, we can borrow 20px from
+ * the bottom margin to make the Doodle logo larger.
+ */
+:host([doodle-boxed_][show-tight-doodle-boxing_]) {
+  --ntp-logo-margin-bottom: 18px;
+}
+
+:host([doodle-boxed_]) {
+  justify-content: flex-end;
+}
+
+#logo {
+  forced-color-adjust: none;
+  height: 92px;
+  width: 272px;
+}
+
+:host([use-google-logo26_]) #logo {
+  height: 82px;
+  width: 270px;
+}
+
+:host([single-colored]) #logo {
+  -webkit-mask-image: url(./icons/google_logo.svg);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100%;
+  background-color: var(--ntp-logo-color);
+}
+
+:host(:not([single-colored])) #logo {
+  background-image: url(./icons/google_logo.svg);
+  background-repeat: no-repeat;
+  background-size: 100%;
+}
+
+:host([doodle-boxed_]:not([show-tight-doodle-boxing_])) #imageDoodle {
+  background-color: var(--ntp-logo-box-color);
+  border-radius: 20px;
+  padding: 16px 24px;
+}
+
+:host([doodle-boxed_][show-tight-doodle-boxing_]) #imageDoodle {
+  background-color: var(--ntp-logo-box-color);
+  border-radius: 28px;
+  padding: 16px;
+}
+
+#imageContainer {
+  cursor: pointer;
+  display: flex;
+  height: fit-content;
+  outline: none;
+  position: relative;
+  width: fit-content;
+}
+
+#imageContainer[tabindex='-1'] {
+  cursor: auto;
+}
+
+:host-context(.focus-outline-visible) #imageContainer:focus {
+  box-shadow: 0 0 0 2px rgba(var(--google-blue-600-rgb), .4);
+}
+
+#image {
+  max-height: var(--ntp-logo-height);
+  max-width: 100%;
+}
+
+:host([doodle-boxed_]) #image {
+  max-height: 128px;
+}
+
+/*
+ * The max-height of 156px + 32px of vertical padding + 18px of bottom margin
+ * equals the height of the ntp-logo container + bottom margin, which is 206px.
+ */
+:host([doodle-boxed_][show-tight-doodle-boxing_]) #image {
+  max-height: 156px;
+}
+
+#animation {
+  height: 100%;
+  pointer-events: none;
+  position: absolute;
+  width: 100%;
+}
+
+#doodle {
+  position: relative;
+}
+
+#shareButton {
+  background-color: var(--color-new-tab-page-doodle-share-button-background, none);
+  border: none;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+  position: absolute;
+  width: 32px;
+  bottom: 0;
+}
+
+:host-context([dir='ltr']) #shareButton {
+  right: -40px;
+}
+
+:host-context([dir='rtl']) #shareButton {
+  left: -40px;
+}
+
+#shareButtonIcon {
+  width: 18px;
+  height: 18px;
+  margin: 7px;
+  vertical-align: bottom;
+  mask-image: url(chrome://new-tab-page/icons/share_unfilled_old.svg);
+  background-color: var(--color-new-tab-page-doodle-share-button-icon, none);
+}
+
+:host-context([webui-rounded-icons]) #shareButtonIcon {
+  mask-image: url(chrome://new-tab-page/icons/share_unfilled.svg);
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}

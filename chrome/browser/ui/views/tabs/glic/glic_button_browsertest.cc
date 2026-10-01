@@ -1,0 +1,336 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "base/callback_list.h"
+#include "base/test/run_until.h"
+#include "base/test/scoped_feature_list.h"
+#include "chrome/app/chrome_command_ids.h"
+#include "chrome/browser/glic/glic_pref_names.h"
+#include "chrome/browser/glic/public/glic_keyed_service.h"
+#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
+#include "chrome/browser/glic/public/service/glic_instance_coordinator.h"
+#include "chrome/browser/glic/suggestions/contextual_cueing_features.h"
+#include "chrome/browser/glic/test_support/glic_test_environment.h"
+#include "chrome/browser/glic/test_support/glic_test_util.h"
+#include "chrome/browser/private_ai/private_ai_service_factory.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/themes/theme_helper.h"
+#include "chrome/browser/themes/theme_service.h"
+#include "chrome/browser/themes/theme_service_factory.h"
+#include "chrome/browser/ui/browser_element_identifiers.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/glic/glic_button_interface.h"
+#include "chrome/browser/ui/views/interaction/browser_elements_views.h"
+#include "chrome/browser/ui/views/tabs/glic/tab_strip_glic_button.h"
+#include "chrome/browser/ui/views/tabs/tab_strip_action_container.h"
+#include "chrome/common/chrome_features.h"
+#include "chrome/grit/branded_strings.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "components/keyed_service/content/browser_context_dependency_manager.h"
+#include "components/prefs/pref_service.h"
+#include "components/private_ai/features.h"
+#include "components/private_ai/private_ai_service.h"
+#include "components/private_ai/proto/private_ai.pb.h"
+#include "components/private_ai/testing/mock_private_ai_client.h"
+#include "content/public/test/browser_test.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/menu_source_type.mojom-shared.h"
+#include "ui/events/event_constants.h"
+#include "ui/views/controls/button/button.h"
+#include "ui/views/view_utils.h"
+
+namespace glic {
+namespace {
+
+class GlicButtonTest : public InProcessBrowserTest {
+ public:
+  GlicButtonTest() = default;
+
+  void SetUpOnMainThread() override {
+    InProcessBrowserTest::SetUpOnMainThread();
+  }
+
+ protected:
+  glic::TabStripGlicButton* glic_button() {
+    return views::AsViewClass<glic::TabStripGlicButton>(
+        glic::GlicButtonInterface::FromBrowser(browser()));
+  }
+
+  GlicKeyedService* glic_service() {
+    return GlicKeyedServiceFactory::GetGlicKeyedService(
+        browser()->GetProfile());
+  }
+
+  void WaitForGlicPanelShow() {
+    ASSERT_TRUE(base::test::RunUntil([&]() {
+      return glic_service()->instance_coordinator().IsAnyPanelShowing();
+    })) << "Glic panel should have been shown";
+  }
+
+ private:
+  GlicTestEnvironment glic_test_env_;
+};
+
+IN_PROC_BROWSER_TEST_F(GlicButtonTest, ContextMenuPinned) {
+  browser()->GetProfile()->GetPrefs()->SetBoolean(
+      glic::prefs::kGlicPinnedToTabstrip, true);
+
+  glic_button()->ShowContextMenuForViewImpl(glic_button(), gfx::Point(),
+                                            ui::mojom::MenuSourceType::kMouse);
+  EXPECT_TRUE(glic_button()->IsContextMenuShowingForTest());
+}
+
+IN_PROC_BROWSER_TEST_F(GlicButtonTest, ContextMenuUnpinned) {
+  browser()->GetProfile()->GetPrefs()->SetBoolean(
+      glic::prefs::kGlicPinnedToTabstrip, false);
+
+  glic_button()->ShowContextMenuForViewImpl(glic_button(), gfx::Point(),
+                                            ui::mojom::MenuSourceType::kMouse);
+  EXPECT_FALSE(glic_button()->IsContextMenuShowingForTest());
+}
+
+IN_PROC_BROWSER_TEST_F(GlicButtonTest, UnpinCommand) {
+  PrefService* profile_prefs = browser()->GetProfile()->GetPrefs();
+  profile_prefs->SetBoolean(glic::prefs::kGlicPinnedToTabstrip, true);
+
+  glic_button()->ExecuteCommand(IDC_GLIC_TOGGLE_PIN, ui::EF_NONE);
+  EXPECT_FALSE(profile_prefs->GetBoolean(glic::prefs::kGlicPinnedToTabstrip));
+}
+
+IN_PROC_BROWSER_TEST_F(GlicButtonTest, TooltipAndA11yTextForOpening) {
+  EXPECT_FALSE(glic_service()->instance_coordinator().IsAnyPanelShowing());
+  EXPECT_EQ(glic_button()->GetViewAccessibility().GetCachedName(),
+            l10n_util::GetStringUTF16(IDS_GLIC_TAB_STRIP_BUTTON_TOOLTIP));
+}
+
+// Tests using programmatic window activation are flaky on Linux.
+// TODO(crbug.com/428742560): De-flake for Linux.
+#if BUILDFLAG(IS_LINUX)
+#define MAYBE_TooltipAndA11yTextWhileGlicWindowOpen \
+  DISABLED_TooltipAndA11yTextWhileGlicWindowOpen
+#else
+#define MAYBE_TooltipAndA11yTextWhileGlicWindowOpen \
+  TooltipAndA11yTextWhileGlicWindowOpen
+#endif  // BUILDFLAG(IS_LINUX)
+IN_PROC_BROWSER_TEST_F(GlicButtonTest,
+                       MAYBE_TooltipAndA11yTextWhileGlicWindowOpen) {
+  if (base::FeatureList::IsEnabled(features::kGlicMultiInstance)) {
+    // TODO(b/453696965): Broken in multi-instance.
+    GTEST_SKIP() << "Skipping for kGlicMultiInstance";
+  }
+  // Toggle to open the glic window.
+  glic_service()->ToggleUI(browser(), false,
+                           mojom::InvocationSource::kTopChromeButton);
+  WaitForGlicPanelShow();
+
+  EXPECT_EQ(glic_button()->GetViewAccessibility().GetCachedName(),
+            l10n_util::GetStringUTF16(IDS_GLIC_TAB_STRIP_BUTTON_TOOLTIP_CLOSE));
+  EXPECT_EQ(glic_button()->GetTooltipText(),
+            l10n_util::GetStringUTF16(IDS_GLIC_TAB_STRIP_BUTTON_TOOLTIP_CLOSE));
+}
+
+class GlicButtonPrewarmDelayedTest : public GlicButtonTest {
+ public:
+  GlicButtonPrewarmDelayedTest() {
+    feature_list_.InitWithFeaturesAndParameters(
+        {{private_ai::kPrivateAi, {{"api-key", "xxxxx"}}},
+         {glic::kZeroStateSuggestionsUsePrivateAi,
+          {{"ZSSPrivateAiPrewarmDelay", "0ms"}}}},
+        {});
+  }
+
+ protected:
+  void SetUpOnMainThread() override {
+    GlicButtonTest::SetUpOnMainThread();
+    auto mock_client = std::make_unique<
+        testing::StrictMock<private_ai::MockPrivateAiClient>>();
+    mock_client_ptr_ = mock_client.get();
+    private_ai::PrivateAiService* service =
+        private_ai::PrivateAiServiceFactory::GetForProfile(
+            browser()->GetProfile());
+    ASSERT_TRUE(service);
+    service->SetClientForTesting(std::move(mock_client));
+  }
+
+  void TearDownOnMainThread() override {
+    mock_client_ptr_ = nullptr;
+    private_ai::PrivateAiService* service =
+        private_ai::PrivateAiServiceFactory::GetForProfile(
+            browser()->GetProfile());
+    if (service) {
+      service->SetClientForTesting(nullptr);
+    }
+    GlicButtonTest::TearDownOnMainThread();
+  }
+
+  raw_ptr<testing::StrictMock<private_ai::MockPrivateAiClient>>
+      mock_client_ptr_ = nullptr;
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(GlicButtonPrewarmDelayedTest, PrewarmDelayedOnHover) {
+  base::RunLoop run_loop;
+  bool connection_established = false;
+  EXPECT_CALL(*mock_client_ptr_,
+              EstablishConnection(
+                  private_ai::proto::FEATURE_NAME_CHROME_ZERO_STATE_SUGGESTION))
+      .WillOnce([&]() {
+        connection_established = true;
+        run_loop.Quit();
+      });
+
+  // Transition GlicButton to STATE_HOVERED.
+  glic_button()->SetState(views::Button::ButtonState::STATE_HOVERED);
+
+  // Connection should not be established immediately (still requires pumping
+  // the loop).
+  EXPECT_FALSE(connection_established);
+
+  // Run the loop until the timer fires and the callback quits the loop.
+  run_loop.Run();
+
+  EXPECT_TRUE(connection_established);
+}
+
+class GlicButtonPrewarmCancelledTest : public GlicButtonTest {
+ public:
+  GlicButtonPrewarmCancelledTest() {
+    feature_list_.InitWithFeaturesAndParameters(
+        {{private_ai::kPrivateAi, {{"api-key", "xxxxx"}}},
+         {glic::kZeroStateSuggestionsUsePrivateAi,
+          {{"ZSSPrivateAiPrewarmDelay", "10s"}}}},
+        {});
+  }
+
+ protected:
+  void SetUpOnMainThread() override {
+    GlicButtonTest::SetUpOnMainThread();
+    auto mock_client = std::make_unique<
+        testing::StrictMock<private_ai::MockPrivateAiClient>>();
+    mock_client_ptr_ = mock_client.get();
+    private_ai::PrivateAiService* service =
+        private_ai::PrivateAiServiceFactory::GetForProfile(
+            browser()->GetProfile());
+    ASSERT_TRUE(service);
+    service->SetClientForTesting(std::move(mock_client));
+  }
+
+  void TearDownOnMainThread() override {
+    mock_client_ptr_ = nullptr;
+    private_ai::PrivateAiService* service =
+        private_ai::PrivateAiServiceFactory::GetForProfile(
+            browser()->GetProfile());
+    if (service) {
+      service->SetClientForTesting(nullptr);
+    }
+    GlicButtonTest::TearDownOnMainThread();
+  }
+
+  raw_ptr<testing::StrictMock<private_ai::MockPrivateAiClient>>
+      mock_client_ptr_ = nullptr;
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(GlicButtonPrewarmCancelledTest,
+                       PrewarmCancelledOnHoverExit) {
+  EXPECT_CALL(*mock_client_ptr_,
+              EstablishConnection(
+                  private_ai::proto::FEATURE_NAME_CHROME_ZERO_STATE_SUGGESTION))
+      .Times(0);
+
+  // Transition to STATE_HOVERED. Starts the prewarm timer.
+  glic_button()->SetState(views::Button::ButtonState::STATE_HOVERED);
+  EXPECT_TRUE(glic_button()->IsPrewarmTimerRunningForTesting());
+
+  // Transition back to STATE_NORMAL immediately, stopping the timer.
+  glic_button()->SetState(views::Button::ButtonState::STATE_NORMAL);
+  EXPECT_FALSE(glic_button()->IsPrewarmTimerRunningForTesting());
+}
+
+class FakeThemeService : public ThemeService {
+ public:
+  explicit FakeThemeService(Profile* profile)
+      : ThemeService(profile, GetFakeThemeHelper()) {}
+  bool UsingExtensionTheme() const override {
+    return is_using_extension_theme_;
+  }
+  void set_using_extension_theme(bool value) {
+    is_using_extension_theme_ = value;
+  }
+
+ private:
+  static const ThemeHelper& GetFakeThemeHelper() {
+    static base::NoDestructor<ThemeHelper> helper;
+    return *helper;
+  }
+
+  bool is_using_extension_theme_ = false;
+};
+
+class GlicButtonThemeTest : public GlicButtonTest {
+ public:
+  GlicButtonThemeTest() {
+    feature_list_.InitAndEnableFeatureWithParameters(
+        features::kGlicButtonPressedState, {{"custom-theme-fallback", "true"}});
+  }
+
+  void SetUpInProcessBrowserTestFixture() override {
+    GlicButtonTest::SetUpInProcessBrowserTestFixture();
+    create_services_subscription_ =
+        BrowserContextDependencyManager::GetInstance()
+            ->RegisterCreateServicesCallbackForTesting(
+                base::BindRepeating([](content::BrowserContext* context) {
+                  ThemeServiceFactory::GetInstance()->SetTestingFactory(
+                      context,
+                      base::BindRepeating([](content::BrowserContext* context)
+                                              -> std::unique_ptr<KeyedService> {
+                        auto service = std::make_unique<FakeThemeService>(
+                            static_cast<Profile*>(context));
+                        service->Init();
+                        return service;
+                      }));
+                }));
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+  base::CallbackListSubscription create_services_subscription_;
+};
+
+// TODO(crbug.com/484258521): Resolve flakiness on Linux.
+#if BUILDFLAG(IS_LINUX)
+#define MAYBE_CustomThemeFallback DISABLED_CustomThemeFallback
+#else
+#define MAYBE_CustomThemeFallback CustomThemeFallback
+#endif
+IN_PROC_BROWSER_TEST_F(GlicButtonThemeTest, MAYBE_CustomThemeFallback) {
+  FakeThemeService* fake_theme_service = static_cast<FakeThemeService*>(
+      ThemeServiceFactory::GetForProfile(browser()->GetProfile()));
+  ASSERT_TRUE(fake_theme_service);
+
+  // 1. By default, the button should not use the fallback text color.
+  EXPECT_NE(glic_button()->GetTextColorForTesting(views::Button::STATE_NORMAL),
+            glic_button()->GetColorProvider()->GetColor(
+                kColorTabSearchButtonCRForegroundFrameActive));
+
+  // 2. Enable the custom theme fallback in the fake theme service.
+  fake_theme_service->set_using_extension_theme(true);
+
+  // Trigger OnThemeChanged to update the button colors.
+  glic_button()->OnThemeChanged();
+
+  // 3. Verify that the button now uses the custom theme fallback color.
+  EXPECT_EQ(glic_button()->GetTextColorForTesting(views::Button::STATE_NORMAL),
+            glic_button()->GetColorProvider()->GetColor(
+                kColorTabSearchButtonCRForegroundFrameActive));
+}
+
+}  // namespace
+}  // namespace glic

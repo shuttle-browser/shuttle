@@ -1,0 +1,76 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.tab_group_suggestion.toolbar;
+
+import android.content.Context;
+import android.graphics.drawable.Drawable;
+import android.view.View;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab_group_suggestion.R;
+import org.chromium.chrome.browser.tabmodel.TabModelSelector;
+import org.chromium.chrome.browser.toolbar.adaptive.AdaptiveToolbarButtonVariant;
+import org.chromium.chrome.browser.toolbar.optional_button.BaseButtonDataProvider;
+import org.chromium.chrome.browser.toolbar.optional_button.ButtonData.ButtonSpec;
+
+import java.util.function.Supplier;
+
+/** Defines the UI details and click handler for the tab grouping toolbar button. */
+@NullMarked
+public class GroupSuggestionsButtonDataProvider extends BaseButtonDataProvider {
+    public static final int ACTION_CHIP_COLLAPSE_DELAY_MS = 6000;
+
+    private final Supplier<GroupSuggestionsButtonController>
+            mGroupSuggestionsButtonControllerSupplier;
+    private final Supplier<@Nullable TabModelSelector> mTabModelSelectorSupplier;
+
+    public GroupSuggestionsButtonDataProvider(
+            Supplier<@Nullable Tab> activeTabSupplier,
+            Context context,
+            Drawable buttonDrawable,
+            Supplier<GroupSuggestionsButtonController> groupSuggestionsButtonControllerSupplier,
+            Supplier<@Nullable TabModelSelector> tabModelSelectorSupplier) {
+        super(
+                activeTabSupplier,
+                /* modalDialogManager= */ null,
+                new ButtonSpec.Builder(
+                                buttonDrawable,
+                                context.getString(R.string.tab_group_suggestion_action_chip_label),
+                                /* supportsTinting= */ true)
+                        .setActionChipLabelResId(R.string.tab_group_suggestion_action_chip_label)
+                        .setActionChipCollapseDelayMs(ACTION_CHIP_COLLAPSE_DELAY_MS)
+                        .setButtonVariant(AdaptiveToolbarButtonVariant.TAB_GROUPING)
+                        .setHoverTooltipTextId(R.string.tab_group_suggestion_action_chip_label)
+                        .build());
+        mGroupSuggestionsButtonControllerSupplier = groupSuggestionsButtonControllerSupplier;
+        mTabModelSelectorSupplier = tabModelSelectorSupplier;
+    }
+
+    @Override
+    protected boolean shouldShowButton(@Nullable Tab tab) {
+        if (!super.shouldShowButton(tab)) {
+            return false;
+        }
+
+        // Don't show button if the tab is already grouped (e.g. after clicking the button).
+        return tab.getTabGroupId() == null;
+    }
+
+    @Override
+    public void onClick(View view) {
+        Tab activeTab = mActiveTabSupplier.get();
+        if (activeTab == null) return;
+        GroupSuggestionsButtonController groupController =
+                mGroupSuggestionsButtonControllerSupplier.get();
+        if (groupController == null) return;
+        TabModelSelector selector = mTabModelSelectorSupplier.get();
+        if (selector == null) return;
+
+        groupController.onButtonClicked(activeTab, selector.getModel(/* incognito= */ false));
+        notifyObservers(false);
+    }
+}

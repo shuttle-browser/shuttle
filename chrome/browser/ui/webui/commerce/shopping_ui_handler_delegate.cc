@@ -1,0 +1,146 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/webui/commerce/shopping_ui_handler_delegate.h"
+
+#include "base/memory/raw_ptr.h"
+#include "chrome/browser/bookmarks/bookmark_model_factory.h"
+#include "chrome/browser/feedback/show_feedback_page.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/signin/signin_ui_util.h"
+#include "chrome/browser/ui/bookmarks/bookmark_editor.h"
+#include "chrome/browser/ui/bookmarks/bookmark_utils.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+#include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
+#include "chrome/browser/ui/chrome_pages.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/common/url_constants.h"
+#include "components/bookmarks/browser/bookmark_model.h"
+#include "components/commerce/core/commerce_feature_list.h"
+#include "components/commerce/core/commerce_utils.h"
+#include "components/commerce/core/price_tracking_utils.h"
+#include "components/commerce/core/webui/shopping_service_handler.h"
+#include "components/signin/public/base/signin_metrics.h"
+#include "components/signin/public/identity_manager/account_info.h"
+#include "components/strings/grit/components_strings.h"
+#include "content/public/browser/page_navigator.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_ui.h"
+#include "shopping_ui_handler_delegate.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/base/page_transition_types.h"
+
+namespace commerce {
+
+ShoppingUiHandlerDelegate::ShoppingUiHandlerDelegate(Profile* profile)
+    : profile_(profile),
+      bookmark_model_(BookmarkModelFactory::GetForBrowserContext(profile)) {}
+
+ShoppingUiHandlerDelegate::~ShoppingUiHandlerDelegate() = default;
+
+std::optional<GURL> ShoppingUiHandlerDelegate::GetCurrentTabUrl() {
+  BrowserWindowInterface* browser =
+      ProfileBrowserCollection::GetForProfile(profile_)->FindTabbedBrowser();
+  if (!browser) {
+    return std::nullopt;
+  }
+
+  content::WebContents* web_contents =
+      browser->GetTabStripModel()->GetActiveWebContents();
+  if (!web_contents) {
+    return std::nullopt;
+  }
+  return std::make_optional<GURL>(web_contents->GetLastCommittedURL());
+}
+
+const bookmarks::BookmarkNode*
+ShoppingUiHandlerDelegate::GetOrAddBookmarkForCurrentUrl() {
+  BrowserWindowInterface* const browser =
+      ProfileBrowserCollection::GetForProfile(profile_)->GetLastActiveBrowser();
+  if (!browser) {
+    return nullptr;
+  }
+  content::WebContents* web_contents =
+      browser->GetTabStripModel()->GetActiveWebContents();
+  if (!web_contents) {
+    return nullptr;
+  }
+
+  const bookmarks::BookmarkNode* existing_node =
+      bookmark_model_->GetMostRecentlyAddedUserNodeForURL(
+          web_contents->GetLastCommittedURL());
+  if (existing_node != nullptr &&
+      !bookmark_model_->IsLocalOnlyNode(*existing_node)) {
+    return existing_node;
+  }
+  GURL url;
+  std::u16string title;
+  const bookmarks::BookmarkNode* parent =
+      commerce::GetShoppingCollectionBookmarkFolder(bookmark_model_, true);
+
+  if (chrome::GetURLAndTitleToBookmark(web_contents, &url, &title) && parent) {
+    return bookmark_model_->AddNewURL(parent, parent->children().size(), title,
+                                      url);
+  }
+  return nullptr;
+}
+
+void ShoppingUiHandlerDelegate::OpenUrlInNewTab(const GURL& url) {
+  BrowserWindowInterface* browser =
+      ProfileBrowserCollection::GetForProfile(profile_)->GetLastActiveBrowser();
+  if (!browser) {
+    return;
+  }
+
+  NavigateToUrl(browser, url);
+}
+
+void ShoppingUiHandlerDelegate::SwitchToOrOpenTab(const GURL& url) {
+  if (!url.is_valid() || !url.SchemeIsHTTPOrHTTPS()) {
+    return;
+  }
+  BrowserWindowInterface* browser =
+      GlobalBrowserCollection::GetInstance()->GetActiveBrowser();
+  if (!browser) {
+    browser = ProfileBrowserCollection::GetForProfile(profile_)
+                  ->GetLastActiveBrowser();
+  }
+  if (!browser) {
+    return;
+  }
+
+  auto* tab_strip_model = browser->GetTabStripModel();
+  for (int i = 0; i < tab_strip_model->count(); ++i) {
+    auto* web_contents = tab_strip_model->GetWebContentsAt(i);
+    if (web_contents->GetLastCommittedURL() == url) {
+      tab_strip_model->ActivateTabAt(i);
+      return;
+    }
+  }
+
+  NavigateToUrl(browser, url);
+}
+
+ukm::SourceId ShoppingUiHandlerDelegate::GetCurrentTabUkmSourceId() {
+  BrowserWindowInterface* browser =
+      ProfileBrowserCollection::GetForProfile(profile_)->FindTabbedBrowser();
+  if (!browser) {
+    return ukm::kInvalidSourceId;
+  }
+  content::WebContents* web_contents =
+      browser->GetTabStripModel()->GetActiveWebContents();
+  if (!web_contents) {
+    return ukm::kInvalidSourceId;
+  }
+  return web_contents->GetPrimaryMainFrame()->GetPageUkmSourceId();
+}
+
+void ShoppingUiHandlerDelegate::NavigateToUrl(BrowserWindowInterface* browser,
+                                              const GURL& url) {
+  browser->OpenGURL(url, WindowOpenDisposition::NEW_FOREGROUND_TAB);
+}
+
+}  // namespace commerce

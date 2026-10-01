@@ -1,0 +1,447 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/frame/system_menu_model_builder.h"
+
+#include "base/command_line.h"
+#include "base/feature_list.h"
+#include "base/strings/utf_string_conversions.h"
+#include "build/build_config.h"
+#include "chrome/app/chrome_command_ids.h"
+#include "chrome/app/vector_icons/vector_icons.h"
+#include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/browser_commands.h"
+#include "chrome/browser/ui/browser_element_identifiers.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/immersive/immersive_mode_controller.h"
+#include "chrome/browser/ui/tabs/features.h"
+#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
+#include "chrome/browser/ui/toolbar/app_menu_model.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/web_applications/app_browser_controller.h"
+#include "chrome/browser/user_education/user_education_service.h"
+#include "chrome/common/chrome_features.h"
+#include "chrome/common/chrome_switches.h"
+#include "chrome/grit/generated_resources.h"
+#include "components/strings/grit/components_strings.h"
+#include "components/user_education/common/new_badge/new_badge_controller.h"
+#include "components/vector_icons/vector_icons.h"
+#include "ui/base/accelerators/accelerator.h"
+#include "ui/base/models/menu_model.h"
+#include "ui/menus/simple_menu_model.h"
+#include "ui/views/window/vector_icons/vector_icons.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "ash/multi_user/multi_user_window_manager.h"
+#include "ash/shell.h"
+#include "chrome/browser/ash/boca/on_task/on_task_locked_controller.h"
+#include "chrome/browser/ui/ash/multi_user/multi_user_util.h"
+#include "chrome/browser/ui/browser_window.h"
+#include "chrome/browser/ui/settings_window_manager_chromeos.h"
+#include "chromeos/strings/grit/chromeos_strings.h"
+#include "chromeos/ui/frame/desks/move_to_desks_menu_delegate.h"
+#include "chromeos/ui/frame/desks/move_to_desks_menu_model.h"
+#include "components/account_id/account_id.h"
+#include "components/user_manager/user.h"
+#include "components/user_manager/user_manager.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/gfx/native_ui_types.h"
+#include "ui/views/widget/widget.h"
+#endif
+
+#if BUILDFLAG(IS_OZONE) && !BUILDFLAG(IS_CHROMEOS)
+#include "ui/ozone/public/ozone_platform.h"
+#endif
+
+namespace {
+
+#if !BUILDFLAG(IS_MAC)
+void AddItemWithIconMaybe(ui::SimpleMenuModel* model,
+                          int command_id,
+                          int string_id,
+                          const gfx::VectorIcon& icon) {
+  if (features::IsMenuSimplificationEnabled()) {
+    model->AddItemWithStringIdAndIcon(
+        command_id, string_id,
+        ui::ImageModel::FromVectorIcon(icon, ui::kColorMenuIcon,
+                                       ui::SimpleMenuModel::kDefaultIconSize));
+  } else {
+    model->AddItemWithStringId(command_id, string_id);
+  }
+}
+#endif  // !BUILDFLAG(IS_MAC)
+
+}  // namespace
+
+DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(SystemMenuModelBuilder,
+                                      kToggleVerticalTabsElementId);
+DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(SystemMenuModelBuilder,
+                                      kToggleVerticalTabsCollapseElementId);
+DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(
+    SystemMenuModelBuilder,
+    kToggleVerticalTabsExpandOnHoverElementId);
+
+SystemMenuModelBuilder::SystemMenuModelBuilder(
+    ui::AcceleratorProvider* provider,
+    BrowserWindowInterface* browser)
+    : menu_delegate_(provider, browser) {}
+
+SystemMenuModelBuilder::~SystemMenuModelBuilder() = default;
+
+void SystemMenuModelBuilder::Init() {
+  ui::SimpleMenuModel* model = new ui::SimpleMenuModel(&menu_delegate_);
+  menu_model_.reset(model);
+  BuildMenu(model);
+#if BUILDFLAG(IS_WIN)
+  // On Windows we put the menu items in the system menu (not at the end). Doing
+  // this necessitates adding a trailing separator.
+  if (!features::IsMenuSimplificationEnabled()) {
+    model->AddSeparator(ui::NORMAL_SEPARATOR);
+  }
+#endif  // BUILDFLAG(IS_WIN)
+}
+
+void SystemMenuModelBuilder::BuildMenu(ui::SimpleMenuModel* model) {
+  // We add the menu items in reverse order so that insertion_index never needs
+  // to change.
+  if (browser()->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL) {
+    BuildSystemMenuForBrowserWindow(model);
+  } else {
+    BuildSystemMenuForAppOrPopupWindow(model);
+  }
+}
+
+// Capitalization Policy (go/chrome-capitalization):
+// Native right-click context menus on macOS use Title Case (`_MAC` string
+// variants) to follow Apple Human Interface Guidelines (HIG), while other
+// platforms use sentence case.
+void SystemMenuModelBuilder::BuildSystemMenuForBrowserWindow(
+    ui::SimpleMenuModel* model) {
+#if BUILDFLAG(IS_WIN)
+  if (features::IsMenuSimplificationEnabled()) {
+    AddItemWithIconMaybe(model, IDC_RESTORE_WINDOW, IDS_RESTORE_WINDOW_MENU_WIN,
+                         views::kChromeRestoreIcon);
+    model->SetElementIdentifierAt(
+        model->GetIndexOfCommandId(IDC_RESTORE_WINDOW).value(),
+        kSystemMenuRestoreItemElementId);
+    model->AddItemWithStringId(IDC_MOVE_WINDOW, IDS_MOVE_WINDOW_MENU_WIN);
+    model->AddItemWithStringId(IDC_SIZE_WINDOW, IDS_SIZE_WINDOW_MENU_WIN);
+    AddItemWithIconMaybe(model, IDC_MINIMIZE_WINDOW,
+                         IDS_MINIMIZE_WINDOW_MENU_WIN,
+                         views::kChromeMinimizeIcon);
+    AddItemWithIconMaybe(model, IDC_MAXIMIZE_WINDOW,
+                         IDS_MAXIMIZE_WINDOW_MENU_WIN,
+                         views::kChromeMaximizeIcon);
+    model->AddSeparator(ui::NORMAL_SEPARATOR);
+  }
+#endif  // BUILDFLAG(IS_WIN)
+
+#if BUILDFLAG(IS_LINUX)
+  AddItemWithIconMaybe(model, IDC_MINIMIZE_WINDOW, IDS_MINIMIZE_WINDOW_MENU,
+                       views::kChromeMinimizeIcon);
+  AddItemWithIconMaybe(model, IDC_MAXIMIZE_WINDOW, IDS_MAXIMIZE_WINDOW_MENU,
+                       views::kChromeMaximizeIcon);
+  AddItemWithIconMaybe(model, IDC_RESTORE_WINDOW, IDS_RESTORE_WINDOW_MENU,
+                       views::kChromeRestoreIcon);
+  model->AddSeparator(ui::NORMAL_SEPARATOR);
+#endif  // BUILDFLAG(IS_LINUX)
+
+#if BUILDFLAG(IS_MAC)
+  model->AddItemWithStringId(IDC_NEW_TAB, IDS_NEW_TAB_MAC);
+#else
+  model->AddItemWithStringId(IDC_NEW_TAB, IDS_NEW_TAB);
+#endif
+  model->SetElementIdentifierAt(model->GetIndexOfCommandId(IDC_NEW_TAB).value(),
+                                kSystemMenuNewTabElementId);
+#if BUILDFLAG(IS_MAC)
+  model->AddItemWithStringId(IDC_RESTORE_TAB, IDS_REOPEN_CLOSED_TABS_MAC);
+#else
+  model->AddItemWithStringId(IDC_RESTORE_TAB, IDS_RESTORE_TAB);
+#endif
+  model->SetElementIdentifierAt(
+      model->GetIndexOfCommandId(IDC_RESTORE_TAB).value(),
+      kSystemMenuRestoreTabElementId);
+
+#if BUILDFLAG(IS_MAC)
+  model->AddItemWithStringId(IDC_BOOKMARK_ALL_TABS, IDS_BOOKMARK_ALL_TABS_MAC);
+  model->AddItemWithStringId(IDC_NAME_WINDOW, IDS_NAME_WINDOW_MAC);
+#else
+  AddItemWithIconMaybe(model, IDC_BOOKMARK_ALL_TABS, IDS_BOOKMARK_ALL_TABS,
+                       kBookmarkAllTabsChromeRefreshOldIcon);
+  AddItemWithIconMaybe(model, IDC_NAME_WINDOW, IDS_NAME_WINDOW,
+                       kNameWindowOldIcon);
+#endif  // BUILDFLAG(IS_MAC)
+  model->AddSeparator(ui::NORMAL_SEPARATOR);
+  model->AddItemWithStringId(IDC_TAB_SEARCH_TOGGLE_PIN,
+                             IDS_TAB_STRIP_PIN_TAB_SEARCH);
+
+#if BUILDFLAG(IS_WIN)
+  // On Windows we can not remove an item when showing the menu. So only add
+  // the glic toggle option if glic is enabled when building the menu.
+  if (glic::GlicEnabling::IsEnabledForProfile(browser()->GetProfile())) {
+#endif  // BUILDFLAG(IS_WIN)
+    model->AddItemWithStringId(IDC_GLIC_TOGGLE_PIN, IDS_GLIC_PIN);
+#if BUILDFLAG(IS_WIN)
+  }
+#endif  // BUILDFLAG(IS_WIN)
+
+  if (auto* controller =
+          tabs::VerticalTabStripStateController::From(browser())) {
+    model->AddSeparator(ui::NORMAL_SEPARATOR);
+
+    const int switch_to_horizontal_id =
+#if BUILDFLAG(IS_MAC)
+        IDS_SWITCH_TO_HORIZONTAL_TAB_MAC;
+#else
+        IDS_SWITCH_TO_HORIZONTAL_TAB;
+#endif
+
+    const int switch_to_vertical_id =
+#if BUILDFLAG(IS_MAC)
+        IDS_SWITCH_TO_VERTICAL_TAB_MAC;
+#else
+        IDS_SWITCH_TO_VERTICAL_TAB;
+#endif
+    if (controller->ShouldDisplayVerticalTabs()) {
+      model->AddItemWithStringId(IDC_TOGGLE_VERTICAL_TABS,
+                                 switch_to_horizontal_id);
+
+      model->AddItemWithStringId(IDC_TOGGLE_VERTICAL_TABS_COLLAPSE,
+                                 controller->IsCollapsed()
+                                     ? IDS_EXPAND_VERTICAL_TABS
+                                     : IDS_COLLAPSE_VERTICAL_TABS);
+      model->SetElementIdentifierAt(
+          model->GetIndexOfCommandId(IDC_TOGGLE_VERTICAL_TABS_COLLAPSE).value(),
+          kToggleVerticalTabsCollapseElementId);
+    } else {
+      if (base::FeatureList::IsEnabled(tabs::kTabStripUnification)) {
+        model->AddItemWithStringId(IDC_TAB_SCROLL_BUTTONS_TOGGLE_PIN,
+                                   IDS_TAB_SCROLL_PIN_BUTTONS_SYSTEM_MENU);
+      }
+
+      model->AddItemWithStringId(IDC_TOGGLE_VERTICAL_TABS,
+                                 switch_to_vertical_id);
+      const user_education::DisplayNewBadge show_badge =
+          UserEducationService::MaybeShowNewBadge(browser()->GetProfile(),
+                                                  tabs::kVerticalTabsNewBadge);
+      model->SetIsNewFeatureAt(
+          model->GetIndexOfCommandId(IDC_TOGGLE_VERTICAL_TABS).value(),
+          show_badge, ui::NewBadgeType::kNew);
+    }
+    model->SetElementIdentifierAt(
+        model->GetIndexOfCommandId(IDC_TOGGLE_VERTICAL_TABS).value(),
+        kToggleVerticalTabsElementId);
+
+    const bool show_expand_on_hover =
+        tabs::IsVerticalTabsExpandOnHoverFeatureEnabled() &&
+        controller->ShouldDisplayVerticalTabs();
+    if (show_expand_on_hover) {
+      model->AddItemWithStringId(
+          IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER,
+          controller->IsExpandOnHoverEnabled()
+              ? IDS_VERTICAL_TABS_DISABLE_EXPAND_ON_HOVER
+              : IDS_VERTICAL_TABS_ENABLE_EXPAND_ON_HOVER);
+      model->SetElementIdentifierAt(
+          model->GetIndexOfCommandId(IDC_TOGGLE_VERTICAL_TABS_EXPAND_ON_HOVER)
+              .value(),
+          kToggleVerticalTabsExpandOnHoverElementId);
+    }
+
+    model->AddItemWithStringId(IDC_VERTICAL_TABS_SEND_FEEDBACK,
+                               IDS_VERTICAL_TABS_SEND_FEEDBACK);
+  }
+
+  if (chrome::CanOpenTaskManager()) {
+    model->AddSeparator(ui::NORMAL_SEPARATOR);
+    const int task_manager_string_id =
+#if BUILDFLAG(IS_MAC)
+        IDS_TASK_MANAGER_MAC;
+#else
+        IDS_TASK_MANAGER;
+#endif
+    model->AddItemWithStringId(IDC_TASK_MANAGER_CONTEXT_MENU,
+                               task_manager_string_id);
+  }
+#if BUILDFLAG(IS_LINUX)
+  model->AddSeparator(ui::NORMAL_SEPARATOR);
+  bool supports_server_side_decorations = true;
+#if BUILDFLAG(IS_OZONE) && !BUILDFLAG(IS_CHROMEOS)
+  supports_server_side_decorations =
+      ui::OzonePlatform::GetInstance()
+          ->GetPlatformRuntimeProperties()
+          .supports_server_side_window_decorations;
+#endif  // BUILDFLAG(IS_OZONE) && !BUILDFLAG(IS_CHROMEOS)
+  if (supports_server_side_decorations) {
+    model->AddCheckItemWithStringId(IDC_USE_SYSTEM_TITLE_BAR,
+                                    IDS_SHOW_WINDOW_DECORATIONS_MENU);
+  }
+  model->AddSeparator(ui::NORMAL_SEPARATOR);
+  model->AddItemWithStringId(IDC_CLOSE_WINDOW, IDS_CLOSE_WINDOW_MENU);
+#endif  // BUILDFLAG(IS_LINUX)
+
+#if BUILDFLAG(IS_WIN)
+  if (features::IsMenuSimplificationEnabled()) {
+    model->AddSeparator(ui::NORMAL_SEPARATOR);
+    AddItemWithIconMaybe(model, IDC_CLOSE_WINDOW, IDS_CLOSE_WINDOW_MENU_WIN,
+                         kCloseChromeRefreshOldIcon);
+  }
+#endif  // BUILDFLAG(IS_WIN)
+
+#if BUILDFLAG(IS_CHROMEOS)
+  AppendMoveToDesksMenu(model);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+  AppendTeleportMenu(model);
+  // If it's a regular browser window with tabs, we don't add any more items,
+  // since it already has menus (Page, Chrome).
+}
+
+void SystemMenuModelBuilder::BuildSystemMenuForAppOrPopupWindow(
+    ui::SimpleMenuModel* model) {
+  model->AddItemWithStringId(IDC_BACK, IDS_CONTENT_CONTEXT_BACK);
+  model->AddItemWithStringId(IDC_FORWARD, IDS_CONTENT_CONTEXT_FORWARD);
+  model->AddItemWithStringId(IDC_RELOAD, IDS_APP_MENU_RELOAD);
+  if (!web_app::AppBrowserController::IsWebApp(browser())) {
+    bool is_captive_portal_signin = false;
+#if BUILDFLAG(IS_CHROMEOS)
+    is_captive_portal_signin =
+        browser()->GetProfile()->IsOffTheRecord() &&
+        browser()->GetProfile()->GetOTRProfileID().IsCaptivePortal();
+#endif
+    if (!is_captive_portal_signin) {
+      model->AddSeparator(ui::NORMAL_SEPARATOR);
+      if (browser()->GetType() == BrowserWindowInterface::Type::TYPE_APP ||
+          browser()->GetType() ==
+              BrowserWindowInterface::Type::TYPE_APP_POPUP) {
+        model->AddItemWithStringId(IDC_NEW_TAB, IDS_APP_MENU_NEW_WEB_PAGE);
+      } else {
+        model->AddItemWithStringId(IDC_SHOW_AS_TAB, IDS_SHOW_AS_TAB);
+      }
+    }
+    model->AddSeparator(ui::NORMAL_SEPARATOR);
+    model->AddItemWithStringId(IDC_CUT, IDS_CUT);
+    model->AddItemWithStringId(IDC_COPY, IDS_COPY);
+    model->AddItemWithStringId(IDC_PASTE, IDS_PASTE);
+    model->AddSeparator(ui::NORMAL_SEPARATOR);
+    model->AddItemWithStringId(IDC_FIND, IDS_FIND);
+    model->AddItemWithStringId(IDC_PRINT, IDS_PRINT);
+    zoom_menu_contents_ =
+        std::make_unique<ui::SimpleMenuModel>(&menu_delegate_);
+    zoom_menu_contents_->AddItemWithStringId(IDC_ZOOM_PLUS, IDS_ZOOM_PLUS);
+    zoom_menu_contents_->AddItemWithStringId(IDC_ZOOM_NORMAL, IDS_ZOOM_NORMAL);
+    zoom_menu_contents_->AddItemWithStringId(IDC_ZOOM_MINUS, IDS_ZOOM_MINUS);
+    model->AddSubMenuWithStringId(AppMenuModel::kZoomMenuPlaceholder,
+                                  IDS_ZOOM_MENU, zoom_menu_contents_.get());
+  }
+
+  bool should_show_task_manager =
+      (browser()->GetType() == BrowserWindowInterface::Type::TYPE_APP ||
+       browser()->GetType() == BrowserWindowInterface::Type::TYPE_APP_POPUP) &&
+      chrome::CanOpenTaskManager();
+#if BUILDFLAG(IS_CHROMEOS)
+  // Hide TaskManager option for the app if it is locked for OnTask. Only
+  // relevant for non-web browser scenarios.
+  if (ash::boca::OnTaskLockedController::From(browser())
+          ->is_locked_for_on_task()) {
+    should_show_task_manager = false;
+  }
+#endif
+  if (should_show_task_manager) {
+    model->AddSeparator(ui::NORMAL_SEPARATOR);
+    const int task_manager_string_id =
+#if BUILDFLAG(IS_MAC)
+        IDS_TASK_MANAGER_MAC;
+#else
+        IDS_TASK_MANAGER;
+#endif
+    model->AddItemWithStringId(IDC_TASK_MANAGER, task_manager_string_id);
+  }
+#if BUILDFLAG(IS_LINUX)
+  model->AddSeparator(ui::NORMAL_SEPARATOR);
+  model->AddItemWithStringId(IDC_CLOSE_WINDOW, IDS_CLOSE);
+#endif
+#if BUILDFLAG(IS_CHROMEOS)
+  AppendMoveToDesksMenu(model);
+#endif
+  AppendTeleportMenu(model);
+}
+
+#if BUILDFLAG(IS_CHROMEOS)
+void SystemMenuModelBuilder::AppendMoveToDesksMenu(ui::SimpleMenuModel* model) {
+  auto* const browser = menu_delegate_.browser();
+  // Do not show the move to desks menu if the app is locked for OnTask. Only
+  // relevant for non-web browser scenarios.
+  if (ash::boca::OnTaskLockedController::From(browser)
+          ->is_locked_for_on_task() ||
+      !chromeos::MoveToDesksMenuDelegate::ShouldShowMoveToDesksMenu()) {
+    return;
+  }
+
+  model->AddSeparator(ui::NORMAL_SEPARATOR);
+  move_to_desks_model_ = std::make_unique<chromeos::MoveToDesksMenuModel>(
+      std::make_unique<chromeos::MoveToDesksMenuDelegate>(
+          views::Widget::GetWidgetForNativeWindow(
+              browser->GetWindow()->GetNativeWindow())));
+  model->AddSubMenuWithStringId(chromeos::MoveToDesksMenuModel::kMenuCommandId,
+                                IDS_MOVE_TO_DESKS_MENU,
+                                move_to_desks_model_.get());
+}
+#endif
+
+void SystemMenuModelBuilder::AppendTeleportMenu(ui::SimpleMenuModel* model) {
+#if BUILDFLAG(IS_CHROMEOS)
+  DCHECK(browser()->GetWindow());
+
+  // Avoid appending the teleport menu for the settings window.  This window's
+  // presentation is unique: it's a normal browser window with an app-like
+  // frame, which doesn't have a user icon badge.  Thus if teleported it's not
+  // clear what user it applies to. Rather than bother to implement badging just
+  // for this rare case, simply prevent the user from teleporting the window.
+  if (chrome::SettingsWindowManager::GetInstance()->IsSettingsBrowser(
+          browser())) {
+    return;
+  }
+
+  // Don't show the menu for incognito windows.
+  if (browser()->GetProfile()->IsOffTheRecord()) {
+    return;
+  }
+
+  // To show the menu we need at least two logged in users.
+  user_manager::UserManager* user_manager = user_manager::UserManager::Get();
+  const user_manager::UserList logged_in_users =
+      user_manager->GetLRULoggedInUsers();
+  if (logged_in_users.size() <= 1u) {
+    return;
+  }
+
+  // If this does not belong to a profile or there is no window, or the window
+  // is not owned by anyone, we don't show the menu addition.
+  auto* window_manager = ash::Shell::Get()->multi_user_window_manager();
+  const AccountId account_id =
+      multi_user_util::GetAccountIdFromProfile(browser()->GetProfile());
+  aura::Window* window = browser()->GetWindow()->GetNativeWindow();
+  if (!account_id.is_valid() || !window ||
+      !window_manager->GetWindowOwner(window).is_valid()) {
+    return;
+  }
+
+  model->AddSeparator(ui::NORMAL_SEPARATOR);
+  int command_id = IDC_VISIT_DESKTOP_OF_LRU_USER_NEXT;
+  for (size_t user_index = 1; user_index < logged_in_users.size();
+       ++user_index) {
+    if (command_id > IDC_VISIT_DESKTOP_OF_LRU_USER_LAST) {
+      break;
+    }
+    const user_manager::User* user_info = logged_in_users[user_index];
+    model->AddItem(
+        command_id,
+        l10n_util::GetStringFUTF16(
+            IDS_VISIT_DESKTOP_OF_LRU_USER, user_info->GetDisplayName(),
+            base::ASCIIToUTF16(user_info->GetDisplayEmail())));
+    ++command_id;
+  }
+#endif
+}

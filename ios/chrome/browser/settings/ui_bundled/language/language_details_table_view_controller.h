@@ -1,0 +1,43 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_SETTINGS_UI_BUNDLED_LANGUAGE_LANGUAGE_DETAILS_TABLE_VIEW_CONTROLLER_H_
+#define IOS_CHROME_BROWSER_SETTINGS_UI_BUNDLED_LANGUAGE_LANGUAGE_DETAILS_TABLE_VIEW_CONTROLLER_H_
+
+#include "base/i18n/language_tag.h"
+#import "ios/chrome/browser/settings/ui_bundled/settings_controller_protocol.h"
+#import "ios/chrome/browser/settings/ui_bundled/settings_root_table_view_controller.h"
+
+@class LanguageDetailsTableViewController;
+@class LanguageItem;
+
+// Protocol used by LanguageDetailsTableViewController to communicate to its
+// delegate.
+@protocol LanguageDetailsTableViewControllerDelegate
+
+// Informs the delegate that user selected whether or not to offer Translate for
+// `languageTag`.
+- (void)languageDetailsTableViewController:
+            (LanguageDetailsTableViewController*)tableViewController
+                   didSelectOfferTranslate:(BOOL)offerTranslate
+                               languageTag:(base::i18n::LanguageTag)languageTag;
+
+@end
+
+// Controller for the UI that allows the user to choose whether or not Translate
+// should be offered for a given language.
+@interface LanguageDetailsTableViewController
+    : SettingsRootTableViewController <SettingsControllerProtocol>
+
+// The designated initializer. `languageItem` and `delegate` must not be nil.
+// `delegate` will not be retained.
+- (instancetype)initWithLanguageItem:(LanguageItem*)languageItem
+                            delegate:
+                                (id<LanguageDetailsTableViewControllerDelegate>)
+                                    delegate NS_DESIGNATED_INITIALIZER;
+- (instancetype)initWithStyle:(UITableViewStyle)style NS_UNAVAILABLE;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_SETTINGS_UI_BUNDLED_LANGUAGE_LANGUAGE_DETAILS_TABLE_VIEW_CONTROLLER_H_

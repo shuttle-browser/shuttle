@@ -1,0 +1,647 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/preloading/preload_serving_metrics.h"
+
+#include <sstream>
+#include <string_view>
+
+#include "base/containers/span.h"
+#include "base/debug/dump_without_crashing.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/strings/strcat.h"
+#include "content/browser/preloading/prefetch/prefetch_features.h"
+#include "content/browser/preloading/prefetch/prefetch_match_resolver.h"
+#include "content/browser/preloading/prefetch/prefetch_servable_state.h"
+#include "content/browser/preloading/preload_serving_metrics_holder.h"
+#include "net/http/http_no_vary_search_data.h"
+
+namespace content {
+
+namespace {
+
+// Copied from components/page_load_metrics/browser/page_load_metrics_util.h
+#define PAGE_LOAD_HISTOGRAM(name, sample)                             \
+  base::UmaHistogramCustomTimes(name, sample, base::Milliseconds(10), \
+                                base::Minutes(10), 100)
+
+#define WITH(prefix, name) base::StrCat({prefix, name})
+
+void RecordMetricsPrefetchMatchAheadOfPrerenderDebug(
+    const char* prefix,
+    const PrefetchMatchMetrics& prefetch_match_metrics) {
+  if (!prefetch_match_metrics.prerender_debug_metrics) {
+    // For safety. Basically we expect that the field is non null as this
+    // function is called for prerender initial navigation failed.
+    return;
+  }
+
+  // `prefetch_ahead_of_prerender_debug_metrics` is filled iff there is prefetch
+  // ahead of prerender.
+  const PrefetchMatchPrefetchAheadOfPrerenderDebugMetrics*
+      prefetch_ahead_of_prerender_debug_metrics_nullable =
+          prefetch_match_metrics.prerender_debug_metrics
+              ->prefetch_ahead_of_prerender_debug_metrics.get();
+
+  base::UmaHistogramBoolean(WITH(prefix, "PrefetchMatchMetrics.ExistsPaop"),
+                            prefetch_ahead_of_prerender_debug_metrics_nullable);
+
+  if (!prefetch_ahead_of_prerender_debug_metrics_nullable) {
+    return;
+  }
+  const PrefetchMatchPrefetchAheadOfPrerenderDebugMetrics&
+      prefetch_ahead_of_prerender_debug_metrics =
+          *prefetch_ahead_of_prerender_debug_metrics_nullable;
+
+  base::UmaHistogramEnumeration(
+      WITH(prefix, "PrefetchMatchMetrics.ExistsPaopThen.PrefetchStatus"),
+      prefetch_ahead_of_prerender_debug_metrics.prefetch_status);
+  base::UmaHistogramSparse(
+      WITH(prefix,
+           "PrefetchMatchMetrics.ExistsPaopThen.ServableStateAndMatcherAction"),
+      GetCodeOfPrefetchServableStateAndPrefetchMatchResolverActionForDebug(
+          prefetch_ahead_of_prerender_debug_metrics.servable_state,
+          prefetch_ahead_of_prerender_debug_metrics.match_resolver_action));
+  base::UmaHistogramSparse(
+      WITH(prefix,
+           "PrefetchMatchMetrics.ExistsPaopThen."
+           "PotentialCandidateCollectResultAndServableStateAndMatcherAction"),
+      GetCodeOfPotentialCandidateCollectResultAndServableStateAndMatcherAction(
+          prefetch_ahead_of_prerender_debug_metrics.collect_result,
+          prefetch_ahead_of_prerender_debug_metrics.servable_state,
+          prefetch_ahead_of_prerender_debug_metrics.match_resolver_action));
+  // Cardinality: `#PrefetchPotentialCandidateServingResult * 16 = 14 * 16 =
+  // 224.
+  base::UmaHistogramSparse(
+      WITH(prefix,
+           "PrefetchMatchMetrics.ExistsPaopThen."
+           "PotentialCandidateServingResultAndServableStateAndMatcherAction"),
+      GetCodeOfPotentialCandidateServingResultAndServableStateAndMatcherAction(
+          prefetch_match_metrics
+              .GetPrefetchPotentialCandidateServingResultLast(),
+          prefetch_ahead_of_prerender_debug_metrics.servable_state,
+          prefetch_ahead_of_prerender_debug_metrics.match_resolver_action));
+  base::UmaHistogramCounts100(
+      WITH(prefix, "PrefetchMatchMetrics.ExistsPaopThen.QueueSize"),
+      prefetch_ahead_of_prerender_debug_metrics.queue_size);
+  base::UmaHistogramCounts100(
+      WITH(prefix, "PrefetchMatchMetrics.ExistsPaopThen.QueueIndexPlus1"),
+      // Do +1 and record null as 0.
+      prefetch_ahead_of_prerender_debug_metrics.queue_index.value_or(-1) + 1);
+}
+
+void RecordMetricsInternal(
+    const PreloadServingMetrics& metrics,
+    const char* prefix,
+    bool is_prerender_initial_navigation,
+    const PrefetchMatchMetrics* prefetch_match_metrics_force_use = nullptr) {
+  // We expect that prefetch match count is zero or one.
+  base::UmaHistogramCounts100(WITH(prefix, "PrefetchMatchMetrics.Count"),
+                              metrics.prefetch_match_metrics_list.size());
+
+  [&]() {
+    const PrefetchMatchMetrics* prefetch_match_metrics_nullable;
+    if (prefetch_match_metrics_force_use) {
+      prefetch_match_metrics_nullable = prefetch_match_metrics_force_use;
+    } else {
+      // We only checks the first two prefetch matching, as they are most likely
+      // to have meaningful data and checking other ones is costly with UMAs.
+      //
+      // TODO(crbug.com/360094997): Consider to use UKM.
+      prefetch_match_metrics_nullable =
+          metrics.GetMeaningfulPrefetchMatchMetrics();
+    }
+
+    const bool is_potential_match =
+        prefetch_match_metrics_nullable &&
+        prefetch_match_metrics_nullable->IsPotentialMatch();
+    const bool is_potential_match_with_ahead_of_prerender =
+        is_potential_match &&
+        prefetch_match_metrics_nullable
+            ->prefetch_potential_candidate_serving_result_ahead_of_prerender
+            .has_value();
+
+    base::UmaHistogramBoolean(
+        WITH(prefix, "PrefetchMatchMetrics.IsPotentialMatch"),
+        is_potential_match);
+    if (is_prerender_initial_navigation) {
+      base::UmaHistogramBoolean(
+          WITH(prefix,
+               "PrefetchMatchMetrics.IsPotentialMatch.WithAheadOfPrerender"),
+          is_potential_match_with_ahead_of_prerender);
+    }
+
+    if (!is_potential_match) {
+      return;
+    }
+    auto& prefetch_match_metrics = *prefetch_match_metrics_nullable;
+
+    base::UmaHistogramCounts100(WITH(prefix,
+                                     "PrefetchMatchMetrics.PotentialMatchThen."
+                                     "NumberOfInitialCandidates"),
+                                prefetch_match_metrics.n_initial_candidates);
+    base::UmaHistogramCounts100(
+        WITH(prefix,
+             "PrefetchMatchMetrics.PotentialMatchThen."
+             "NumberOfInitialCandidatesBlockUntilHead"),
+        prefetch_match_metrics.n_initial_candidates_block_until_head);
+    const bool is_actual_match = prefetch_match_metrics.IsActualMatch();
+    base::UmaHistogramBoolean(
+        WITH(prefix, "PrefetchMatchMetrics.PotentialMatchThen.IsActualMatch"),
+        is_actual_match);
+    CHECK(prefetch_match_metrics
+              .prefetch_potential_candidate_serving_result_last.has_value());
+    base::UmaHistogramEnumeration(
+        WITH(prefix,
+             "PrefetchMatchMetrics.PotentialMatchThen."
+             "PotentialCandidateServingResult.Last"),
+        prefetch_match_metrics.prefetch_potential_candidate_serving_result_last
+            .value());
+
+    base::TimeDelta prefetch_match_duration =
+        prefetch_match_metrics.time_match_end -
+        prefetch_match_metrics.time_match_start;
+    // We use `UmaHistogramMediumTimes()` (1ms to 3min) because timeout of
+    // `PrefetchStreamingURLLoader` is 10sec and `UmaHistogramTimes()` (1ms to
+    // 10sec) has too small range.
+    base::UmaHistogramMediumTimes(
+        WITH(prefix, "PrefetchMatchMetrics.PotentialMatchThen.MatchDuration"),
+        prefetch_match_duration);
+    if (is_actual_match) {
+      base::UmaHistogramMediumTimes(
+          WITH(prefix,
+               "PrefetchMatchMetrics.PotentialMatchThen.MatchDuration."
+               "ForActualMatch"),
+          prefetch_match_duration);
+    } else {
+      base::UmaHistogramMediumTimes(
+          WITH(prefix,
+               "PrefetchMatchMetrics.PotentialMatchThen.MatchDuration."
+               "ForNotActualMatch"),
+          prefetch_match_duration);
+    }
+
+    if (is_actual_match) {
+      CHECK(prefetch_match_metrics.prefetch_container_metrics
+                ->time_added_to_prefetch_service.has_value());
+      base::TimeDelta time_from_prefetch_container_added_to_match_start =
+          prefetch_match_metrics.time_match_start -
+          prefetch_match_metrics.prefetch_container_metrics
+              ->time_added_to_prefetch_service.value();
+      // Actually matched `PrefetchContainer` was potentially matched at the
+      // timing of match start, and was necessarily added to `PrefetchService`
+      // ahead.
+      CHECK_LE(base::Seconds(0),
+               time_from_prefetch_container_added_to_match_start);
+      base::UmaHistogramMediumTimes(
+          WITH(prefix,
+               "PrefetchMatchMetrics.ActualMatchThen."
+               "TimeFromPrefetchContainerAddedToMatchStart"),
+          time_from_prefetch_container_added_to_match_start);
+    }
+
+    if (is_prerender_initial_navigation &&
+        prefetch_match_metrics
+            .prefetch_potential_candidate_serving_result_ahead_of_prerender
+            .has_value()) {
+      base::UmaHistogramEnumeration(
+          WITH(prefix,
+               "PrefetchMatchMetrics.PotentialMatchThen.WithAheadOfPrerender."
+               "PotentialCandidateServingResult"),
+          prefetch_match_metrics
+              .prefetch_potential_candidate_serving_result_ahead_of_prerender
+              .value());
+    }
+  }();
+}
+
+}  // namespace
+
+PrefetchContainerMetrics::PrefetchContainerMetrics() = default;
+
+PrefetchContainerMetrics::~PrefetchContainerMetrics() = default;
+
+PrefetchContainerMetrics::PrefetchContainerMetrics(
+    const PrefetchContainerMetrics&) = default;
+PrefetchContainerMetrics& PrefetchContainerMetrics::operator=(
+    const PrefetchContainerMetrics&) = default;
+
+PrefetchMatchPrefetchAheadOfPrerenderDebugMetrics::
+    PrefetchMatchPrefetchAheadOfPrerenderDebugMetrics()
+    :  // The fields will be filled just after ctor, but they have no default
+       // ctor. Here, we fill invalid values.
+      match_resolver_action(PrefetchMatchResolverAction(
+          PrefetchMatchResolverAction::ActionKind::kDrop,
+          PrefetchContainer::LoadState::kFailed,
+          /*is_expired=*/std::nullopt)),
+      prefetch_key_navigated(std::nullopt, GURL()),
+      prefetch_key_ahead_of_prerender(std::nullopt, GURL()) {}
+
+PrefetchMatchPrefetchAheadOfPrerenderDebugMetrics::
+    ~PrefetchMatchPrefetchAheadOfPrerenderDebugMetrics() = default;
+
+PrefetchMatchPrerenderDebugMetrics::PrefetchMatchPrerenderDebugMetrics() =
+    default;
+
+PrefetchMatchPrerenderDebugMetrics::~PrefetchMatchPrerenderDebugMetrics() =
+    default;
+
+PrefetchMatchMetrics::PrefetchMatchMetrics() = default;
+
+PrefetchMatchMetrics::~PrefetchMatchMetrics() = default;
+
+bool PrefetchMatchMetrics::IsPotentialMatch() const {
+  return n_initial_candidates > 0;
+}
+
+bool PrefetchMatchMetrics::IsActualMatch() const {
+  return !!prefetch_container_metrics;
+}
+
+PrefetchPotentialCandidateServingResult
+PrefetchMatchMetrics::GetPrefetchPotentialCandidateServingResultLast() const {
+  return prefetch_potential_candidate_serving_result_last.value_or(
+      PrefetchPotentialCandidateServingResult::kNotServedNoCandidates);
+}
+
+const PrefetchMatchMetrics*
+PreloadServingMetrics::GetMeaningfulPrefetchMatchMetrics() const {
+  // There is no `PrefetchMatchMetrics` if an interceptor ahead of
+  // `PrefetchURLLoaderInterceptor` intercepted.
+  if (prefetch_match_metrics_list.size() == 0) {
+    return nullptr;
+  }
+
+  CHECK(prefetch_match_metrics_list[0]);
+
+  // There is one `PrefetchMatchMetrics` if `PrefetchURLLoaderInterceptor` with
+  // `PrefetchServiceWorkerState::kControlled` intercepted.
+  if (prefetch_match_metrics_list.size() == 1) {
+    return prefetch_match_metrics_list[0].get();
+  }
+
+  CHECK(prefetch_match_metrics_list[1]);
+
+  // If `PrefetchURLLoaderInterceptor` with
+  // `PrefetchServiceWorkerState::kControlled` didn't intercept and one with
+  // `PrefetchServiceWorkerState::kDisallowed` entered prefetch matching, return
+  // the latter. Return the first one otherwise.
+  //
+  // (We are not confident whether `size() >= 2` implies the first two is such
+  // types or not.)
+  if (prefetch_match_metrics_list[0]->expected_service_worker_state ==
+          PrefetchServiceWorkerState::kControlled &&
+      prefetch_match_metrics_list[1]->expected_service_worker_state ==
+          PrefetchServiceWorkerState::kDisallowed &&
+      prefetch_match_metrics_list[1]->IsPotentialMatch()) {
+    return prefetch_match_metrics_list[1].get();
+  } else {
+    return prefetch_match_metrics_list[0].get();
+  }
+}
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+//
+// LINT.IfChange(UsedInstantLoad)
+enum class UsedInstantLoad {
+  kNoInstantLoad = 0,
+  kPrefetch = 1,
+  kPrerender = 2,
+  kBFCache = 3,
+  kMaxValue = kBFCache,
+};
+// LINT.ThenChange(//tools/metrics/histograms/enums.xml:UsedInstantLoad)
+
+void PreloadServingMetrics::RecordMetricsForNonPrerenderNavigationCommitted()
+    const {
+  RecordMetricsInternal(*this, "PreloadServingMetrics.ForNavigationCommitted.",
+                        /*is_prerender_initial_navigation=*/false);
+  if (prerender_initial_preload_serving_metrics) {
+    RecordMetricsInternal(
+        *prerender_initial_preload_serving_metrics,
+        "PreloadServingMetrics.ForPrerenderInitialNavigationUsed.",
+        /*is_prerender_initial_navigation=*/true);
+  }
+}
+
+void PreloadServingMetrics::RecordPreloadServingMetricsByNavigationInitiator(
+    bool did_nav_use_bfcache,
+    bool is_served_by_legacy_search_prefetch,
+    std::string_view navigation_initiator_string,
+    bool is_url_srp) const {
+  const PrefetchMatchMetrics* meaningful_prefetch_match_metrics =
+      GetMeaningfulPrefetchMatchMetrics();
+  const bool is_prefetch_actual_match =
+      meaningful_prefetch_match_metrics &&
+      meaningful_prefetch_match_metrics->IsActualMatch();
+
+  UsedInstantLoad used_instant_load;
+  if (did_nav_use_bfcache) {
+    used_instant_load = UsedInstantLoad::kBFCache;
+  } else if (prerender_initial_preload_serving_metrics) {
+    used_instant_load = UsedInstantLoad::kPrerender;
+  } else if (is_prefetch_actual_match || is_served_by_legacy_search_prefetch) {
+    used_instant_load = UsedInstantLoad::kPrefetch;
+  } else {
+    used_instant_load = UsedInstantLoad::kNoInstantLoad;
+  }
+
+  base::UmaHistogramEnumeration(
+      base::StrCat(
+          {"PreloadServingMetrics.", navigation_initiator_string, ".All"}),
+      used_instant_load);
+  if (is_url_srp) {
+    base::UmaHistogramEnumeration(
+        base::StrCat(
+            {"PreloadServingMetrics.", navigation_initiator_string, ".SRP"}),
+        used_instant_load);
+  }
+}
+
+void PreloadServingMetrics::RecordMetricsForPrerenderInitialNavigationFailed()
+    const {
+  RecordMetricsInternal(
+      *this, "PreloadServingMetrics.ForPrerenderInitialNavigationFailed.",
+      /*is_prerender_initial_navigation=*/true);
+
+  auto& metrics = *this;
+  [&]() {
+    const PrefetchMatchMetrics* meaningful_prefetch_match_metrics =
+        metrics.GetMeaningfulPrefetchMatchMetrics();
+    const bool is_potential_match =
+        meaningful_prefetch_match_metrics &&
+        meaningful_prefetch_match_metrics->IsPotentialMatch();
+    if (!is_potential_match) {
+      return;
+    }
+    auto& prefetch_match_metrics = *meaningful_prefetch_match_metrics;
+
+    base::TimeDelta prefetch_match_duration =
+        prefetch_match_metrics.time_match_end -
+        prefetch_match_metrics.time_match_start;
+    if (prefetch_match_duration >= base::Milliseconds(10000)) {
+      RecordMetricsInternal(
+          *this,
+          "PreloadServingMetrics.ForPrerenderInitialNavigationFailed."
+          "WithMatchDurationGe10000.",
+          /*is_prerender_initial_navigation=*/true);
+    }
+  }();
+
+  // We record additional metrics if prerender is aborted by
+  // `PrerenderURLLoaderThrottle`.
+  if (metrics.is_prerender_aborted_by_prerender_url_loader_throttle) {
+    // We are mainly interested to prefetch matchings with
+    // `n_initial_candidates = 0`. As `GetMeaningfulPrefetchMatchMetrics()`
+    // ignores such prefetch matching, we force to record the first
+    // (`PrefetchServiceWorkerState::kControlled`) and the second
+    // (`PrefetchServiceWorkerState::kDisallowed`) prefetch matching.
+
+    if (metrics.prefetch_match_metrics_list.size() > 0) {
+      const PrefetchMatchMetrics& prefetch_match_metrics =
+          *metrics.prefetch_match_metrics_list[0].get();
+      const char* prefix =
+          "PreloadServingMetrics.ForPrerenderInitialNavigationFailed."
+          "FallbackAborted.Match0.";
+      RecordMetricsPrefetchMatchAheadOfPrerenderDebug(prefix,
+                                                      prefetch_match_metrics);
+      RecordMetricsInternal(
+          *this, prefix,
+          /*is_prerender_initial_navigation=*/true,
+          /*prefetch_match_metrics_force_use=*/&prefetch_match_metrics);
+    }
+    if (metrics.prefetch_match_metrics_list.size() > 1) {
+      const PrefetchMatchMetrics& prefetch_match_metrics =
+          *metrics.prefetch_match_metrics_list[1].get();
+      const char* prefix =
+          "PreloadServingMetrics.ForPrerenderInitialNavigationFailed."
+          "FallbackAborted.Match1.";
+      RecordMetricsPrefetchMatchAheadOfPrerenderDebug(prefix,
+                                                      prefetch_match_metrics);
+      RecordMetricsInternal(
+          *this, prefix,
+          /*is_prerender_initial_navigation=*/true,
+          /*prefetch_match_metrics_force_use=*/&prefetch_match_metrics);
+
+      // See https://crbug.com/479983093 for more details.
+      if (prefetch_match_metrics.prerender_debug_metrics &&
+          prefetch_match_metrics.prerender_debug_metrics
+              ->prefetch_ahead_of_prerender_debug_metrics) {
+        const PrefetchMatchPrefetchAheadOfPrerenderDebugMetrics& debug_metrics =
+            *prefetch_match_metrics.prerender_debug_metrics
+                 ->prefetch_ahead_of_prerender_debug_metrics.get();
+        if (debug_metrics.collect_result ==
+            PrefetchPotentialCandidateCollectResult::
+                kUnavailablePrefetchIsNotInPrefetchService) {
+          // -
+          //   `PrefetchPotentialCandidateCollectResult::kUnavailablePrefetchIsNotInPrefetchService`
+          //   implies prefetch ahead of prerender didn't exist at the match
+          //   timing in the sense of
+          //   `CollectPotentialMatchPrefetchContainers()`.
+          // - Existence of `PrefetchMatchPrefetchAheadOfPrerenderDebugMetrics`
+          //   implies prefetch ahead of prerender existed at the match timing
+          //   in the sense of
+          //   `PrefetchService::FindPrefetchAheadOfPrerenderForMetrics()`.
+          //
+          // We don't expect the difference as it aborts the prerender. We
+          // record some values to investigate the issue.
+          SCOPED_CRASH_KEY_BOOL(
+              "PreloadServingMetrics", "keys_same",
+              debug_metrics.prefetch_key_navigated ==
+                  debug_metrics.prefetch_key_ahead_of_prerender);
+          SCOPED_CRASH_KEY_BOOL(
+              "PreloadServingMetrics", "urls_same",
+              debug_metrics.prefetch_key_navigated.url() ==
+                  debug_metrics.prefetch_key_ahead_of_prerender.url());
+          SCOPED_CRASH_KEY_BOOL(
+              "PreloadServingMetrics", "non_urls_same",
+              debug_metrics.prefetch_key_navigated.NonUrlPartIsSame(
+                  debug_metrics.prefetch_key_ahead_of_prerender));
+          SCOPED_CRASH_KEY_STRING256(
+              "PreloadServingMetrics", "prefetch_url",
+              debug_metrics.prefetch_key_ahead_of_prerender.url().spec());
+          std::string nvs_string;
+          if (debug_metrics.prefetch_nvs_hint_ahead_of_prerender.has_value()) {
+            std::ostringstream oss;
+            oss << debug_metrics.prefetch_nvs_hint_ahead_of_prerender.value();
+            nvs_string = oss.str();
+          }
+          SCOPED_CRASH_KEY_STRING256("PreloadServingMetrics", "nvs_hint",
+                                     nvs_string);
+          // Temporarily disable `DumpWithoutCrashing` as we collected data.
+          // Reenable it when we need it.
+          //
+          // Removal is managed by https://crbug.com/479983093.
+          // base::debug::DumpWithoutCrashing();
+        }
+      }
+    }
+  }
+}
+
+void PreloadServingMetrics::RecordFirstContentfulPaint(
+    base::TimeDelta corrected_first_contentful_paint,
+    bool is_in_foreground,
+    bool is_served_by_legacy_search_prefetch,
+    std::string_view navigation_initiator_string,
+    bool is_url_srp) const {
+  const bool is_prerender_used = !!prerender_initial_preload_serving_metrics;
+  const PrefetchMatchMetrics* meaningful_prefetch_match_metrics =
+      GetMeaningfulPrefetchMatchMetrics();
+  const bool is_prefetch_actual_match =
+      meaningful_prefetch_match_metrics &&
+      meaningful_prefetch_match_metrics->IsActualMatch();
+
+  const char* suffix;
+  const char* used_instant_load_suffix;
+  if (is_prerender_used) {
+    suffix = ".WithPrerender";
+    used_instant_load_suffix = "Prerender";
+  } else if (is_prefetch_actual_match || is_served_by_legacy_search_prefetch) {
+    suffix = ".WithPrefetch";
+    used_instant_load_suffix = "Prefetch";
+  } else {
+    suffix = ".WithoutPreload";
+    used_instant_load_suffix = "NoInstantLoad";
+  }
+
+  PAGE_LOAD_HISTOGRAM(
+      base::StrCat({"PreloadServingMetrics.PageLoad.Clients.PaintTiming."
+                    "NavigationToFirstContentfulPaint",
+                    suffix}),
+      corrected_first_contentful_paint);
+
+  const std::array<std::string_view, 2> navigation_initiators = {
+      "All", navigation_initiator_string};
+  static constexpr std::string_view kAllOnly[] = {"All"};
+  static constexpr std::string_view kAllAndSrp[] = {"All", "SRP"};
+  const base::span<const std::string_view> srp_alls =
+      is_url_srp ? base::span<const std::string_view>(kAllAndSrp)
+                 : base::span<const std::string_view>(kAllOnly);
+  const std::array<std::string_view, 2> used_instant_loads = {
+      "All", used_instant_load_suffix};
+
+  if (is_in_foreground) {
+    for (const auto navigation_initiator : navigation_initiators) {
+      for (const auto srp_all : srp_alls) {
+        for (const auto used_instant_load : used_instant_loads) {
+          PAGE_LOAD_HISTOGRAM(
+              base::StrCat(
+                  {"PreloadServingMetrics.PageLoad.Clients.PaintTiming."
+                   "NavigationToFirstContentfulPaint.",
+                   navigation_initiator, ".", srp_all, ".", used_instant_load}),
+              corrected_first_contentful_paint);
+        }
+      }
+    }
+  }
+
+  for (const auto navigation_initiator : navigation_initiators) {
+    for (const auto srp_all : srp_alls) {
+      for (const auto used_instant_load : used_instant_loads) {
+        PAGE_LOAD_HISTOGRAM(
+            base::StrCat({"PreloadServingMetrics.PageLoad.Clients.PaintTiming."
+                          "NavigationToFirstContentfulPaint."
+                          "WithoutFiltering.",
+                          navigation_initiator, ".", srp_all, ".",
+                          used_instant_load}),
+            corrected_first_contentful_paint);
+      }
+    }
+  }
+
+  if (is_prefetch_actual_match) {
+    if (base::FeatureList::IsEnabled(features::kPrefetchOffTheMainThread)) {
+      CHECK(meaningful_prefetch_match_metrics->prefetch_container_metrics);
+      const char* pre_prefetch_suffix =
+          meaningful_prefetch_match_metrics->prefetch_container_metrics
+                  ->is_constructed_from_pre_prefetch
+              ? ".WithPrePrefetch"
+              : ".WithoutPrePrefetch";
+      PAGE_LOAD_HISTOGRAM(
+          base::StrCat({"PreloadServingMetrics.PageLoad.Clients.PaintTiming."
+                        "NavigationToFirstContentfulPaint.WithPrefetch",
+                        pre_prefetch_suffix}),
+          corrected_first_contentful_paint);
+
+      if (is_in_foreground) {
+        for (const auto navigation_initiator : navigation_initiators) {
+          for (const auto srp_all : srp_alls) {
+            PAGE_LOAD_HISTOGRAM(
+                base::StrCat(
+                    {"PreloadServingMetrics.PageLoad.Clients.PaintTiming."
+                     "NavigationToFirstContentfulPaint.",
+                     navigation_initiator, ".", srp_all, ".Prefetch",
+                     pre_prefetch_suffix}),
+                corrected_first_contentful_paint);
+          }
+        }
+      }
+
+      for (const auto navigation_initiator : navigation_initiators) {
+        for (const auto srp_all : srp_alls) {
+          PAGE_LOAD_HISTOGRAM(
+              base::StrCat(
+                  {"PreloadServingMetrics.PageLoad.Clients.PaintTiming."
+                   "NavigationToFirstContentfulPaint."
+                   "WithoutFiltering.",
+                   navigation_initiator, ".", srp_all, ".Prefetch",
+                   pre_prefetch_suffix}),
+              corrected_first_contentful_paint);
+        }
+      }
+    }
+  }
+}
+
+PreloadServingMetrics::PreloadServingMetrics() = default;
+
+PreloadServingMetrics::~PreloadServingMetrics() = default;
+
+// static
+std::unique_ptr<PreloadServingMetricsCapsule>
+PreloadServingMetricsCapsuleImpl::TakeFromNavigationHandle(
+    NavigationHandle& navigation_handle) {
+  return base::WrapUnique(new PreloadServingMetricsCapsuleImpl(
+      PreloadServingMetricsHolder::GetOrCreateForNavigationHandle(
+          navigation_handle)
+          ->Take()));
+}
+
+PreloadServingMetricsCapsuleImpl::PreloadServingMetricsCapsuleImpl(
+    std::unique_ptr<PreloadServingMetrics> preload_serving_metrics)
+    : preload_serving_metrics_(std::move(preload_serving_metrics)) {}
+
+PreloadServingMetricsCapsuleImpl::~PreloadServingMetricsCapsuleImpl() = default;
+
+void PreloadServingMetricsCapsuleImpl::
+    RecordMetricsForNonPrerenderNavigationCommitted() const {
+  preload_serving_metrics_->RecordMetricsForNonPrerenderNavigationCommitted();
+}
+
+void PreloadServingMetricsCapsuleImpl::
+    RecordPreloadServingMetricsByNavigationInitiator(
+        bool did_nav_use_bfcache,
+        bool is_served_by_legacy_search_prefetch,
+        std::string_view navigation_initiator_string,
+        bool is_url_srp) const {
+  preload_serving_metrics_->RecordPreloadServingMetricsByNavigationInitiator(
+      did_nav_use_bfcache, is_served_by_legacy_search_prefetch,
+      navigation_initiator_string, is_url_srp);
+}
+
+void PreloadServingMetricsCapsuleImpl::RecordFirstContentfulPaint(
+    base::TimeDelta corrected_first_contentful_paint,
+    bool is_in_foreground,
+    bool is_served_by_legacy_search_prefetch,
+    std::string_view navigation_initiator_string,
+    bool is_url_srp) const {
+  preload_serving_metrics_->RecordFirstContentfulPaint(
+      std::move(corrected_first_contentful_paint), is_in_foreground,
+      is_served_by_legacy_search_prefetch, navigation_initiator_string,
+      is_url_srp);
+}
+
+}  // namespace content

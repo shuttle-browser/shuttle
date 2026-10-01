@@ -1,0 +1,241 @@
+/*
+ * Copyright (C) 2013 Google Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following disclaimer
+ * in the documentation and/or other materials provided with the
+ * distribution.
+ *     * Neither the name of Google Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include "third_party/blink/renderer/platform/wtf/text/text_codec_utf8.h"
+
+#include <limits>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "base/compiler_specific.h"
+#include "base/features.h"
+#include "base/test/scoped_feature_list.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/renderer/platform/wtf/text/text_codec.h"
+#include "third_party/blink/renderer/platform/wtf/text/text_encoding.h"
+#include "third_party/blink/renderer/platform/wtf/text/text_encoding_registry.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
+#include "third_party/blink/renderer/platform/wtf/vector.h"
+#include "third_party/fuzztest/src/fuzztest/fuzztest.h"
+
+namespace blink {
+
+namespace {
+
+class TextCodecUtf8Test : public testing::TestWithParam<bool> {
+ public:
+  void SetUp() override {
+    scoped_feature_list_.InitWithFeatureState(
+        base::features::kUtfConversionAsciiFastPath, GetParam());
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+INSTANTIATE_TEST_SUITE_P(All, TextCodecUtf8Test, testing::Bool());
+
+TEST_P(TextCodecUtf8Test, DecodeAscii) {
+  TextEncoding encoding("UTF-8");
+  std::unique_ptr<TextCodec> codec(NewTextCodec(encoding));
+
+  bool saw_error = false;
+  const auto input = base::byte_span_from_cstring("HelloWorld");
+  const String& result =
+      codec->Decode(input, FlushBehavior::kDataEof, false, saw_error);
+  EXPECT_FALSE(saw_error);
+  ASSERT_EQ(input.size(), result.length());
+  for (wtf_size_t i = 0; i < input.size(); ++i) {
+    EXPECT_EQ(input[i], result[i]);
+  }
+}
+
+TEST_P(TextCodecUtf8Test, DecodeChineseCharacters) {
+  TextEncoding encoding("UTF-8");
+  std::unique_ptr<TextCodec> codec(NewTextCodec(encoding));
+
+  // "Kanji" in Chinese characters.
+  const char kTestCase[] = "\xe6\xbc\xa2\xe5\xad\x97";
+
+  bool saw_error = false;
+  const String& result =
+      codec->Decode(base::byte_span_from_cstring(kTestCase),
+                    FlushBehavior::kDataEof, false, saw_error);
+  EXPECT_FALSE(saw_error);
+  ASSERT_EQ(2u, result.length());
+  EXPECT_EQ(0x6f22U, result[0]);
+  EXPECT_EQ(0x5b57U, result[1]);
+}
+
+TEST_P(TextCodecUtf8Test, Decode0xFF) {
+  TextEncoding encoding("UTF-8");
+  std::unique_ptr<TextCodec> codec(NewTextCodec(encoding));
+
+  bool saw_error = false;
+  const String& result =
+      codec->Decode(base::byte_span_from_cstring("\xff"),
+                    FlushBehavior::kDataEof, false, saw_error);
+  EXPECT_TRUE(saw_error);
+  ASSERT_EQ(1u, result.length());
+  EXPECT_EQ(0xFFFDU, result[0]);
+}
+
+TEST_P(TextCodecUtf8Test, DecodeOverflow) {
+  TextEncoding encoding("UTF-8");
+  std::unique_ptr<TextCodec> codec(NewTextCodec(encoding));
+
+  // Prime the partial sequence buffer.
+  bool saw_error = false;
+  codec->Decode(base::byte_span_from_cstring("\xC2"),
+                FlushBehavior::kDoNotFlush, false, saw_error);
+  EXPECT_FALSE(saw_error);
+
+  EXPECT_DEATH_IF_SUPPORTED(
+      // SAFETY: Unsafe operation for a death test.
+      codec->Decode(base::as_bytes(UNSAFE_BUFFERS(base::span(
+                        "", std::numeric_limits<wtf_size_t>::max()))),
+                    FlushBehavior::kDataEof, false, saw_error),
+      "");
+}
+
+TEST_P(TextCodecUtf8Test, DecodeMultiplePartialsAfterError) {
+  TextEncoding encoding("UTF-8");
+  std::unique_ptr<TextCodec> codec(NewTextCodec(encoding));
+
+  constexpr std::array<uint8_t, 4> data = {0xf0, 0xc3, 0x80, 0x2a};
+  const auto [first_chunk, second_chunk] = base::span(data).split_at(1u);
+
+  bool saw_error = false;
+  {
+    String s = codec->Decode(first_chunk, FlushBehavior::kDoNotFlush, false,
+                             saw_error);
+    EXPECT_TRUE(s.empty());
+    EXPECT_FALSE(saw_error);
+  }
+  {
+    String s = codec->Decode(second_chunk, FlushBehavior::kDoNotFlush, false,
+                             saw_error);
+    ASSERT_EQ(s.length(), 3u);
+    EXPECT_EQ(s[0], 0xfffd);  // 0xf0, invalid => replacement character
+    EXPECT_EQ(s[1], 0x00c0);  // 0xc3 0x80
+    EXPECT_EQ(s[2], 0x002a);  // 0x2a
+    EXPECT_TRUE(saw_error);
+  }
+  {
+    String s = codec->Decode({}, FlushBehavior::kDataEof, false, saw_error);
+    EXPECT_TRUE(s.empty());
+    EXPECT_TRUE(saw_error);
+  }
+}
+
+void DecodeFastPathMatchesLegacy(std::string_view input, bool stop_on_error) {
+  TextEncoding encoding("UTF-8");
+  auto input_span = base::as_bytes(base::span(input));
+
+  String out_fast;
+  bool saw_error_fast = false;
+  {
+    base::test::ScopedFeatureList features(
+        base::features::kUtfConversionAsciiFastPath);
+    std::unique_ptr<TextCodec> codec(NewTextCodec(encoding));
+    out_fast = codec->Decode(input_span, FlushBehavior::kDataEof, stop_on_error,
+                             saw_error_fast);
+  }
+
+  String out_legacy;
+  bool saw_error_legacy = false;
+  {
+    base::test::ScopedFeatureList features;
+    features.InitAndDisableFeature(base::features::kUtfConversionAsciiFastPath);
+    std::unique_ptr<TextCodec> codec(NewTextCodec(encoding));
+    out_legacy = codec->Decode(input_span, FlushBehavior::kDataEof,
+                               stop_on_error, saw_error_legacy);
+  }
+
+  EXPECT_EQ(saw_error_fast, saw_error_legacy);
+  EXPECT_EQ(out_fast, out_legacy);
+  EXPECT_EQ(out_fast.Is8Bit(), out_legacy.Is8Bit());
+}
+FUZZ_TEST(TextCodecUtf8FuzzTest, DecodeFastPathMatchesLegacy);
+
+void DecodeStreamingFastPathMatchesLegacy(
+    const std::vector<std::string>& chunks,
+    bool stop_on_error) {
+  TextEncoding encoding("UTF-8");
+
+  std::vector<String> outputs_fast;
+  std::vector<bool> errors_fast;
+  {
+    base::test::ScopedFeatureList features(
+        base::features::kUtfConversionAsciiFastPath);
+    std::unique_ptr<TextCodec> codec(NewTextCodec(encoding));
+    for (size_t i = 0; i < chunks.size(); ++i) {
+      bool saw_error = false;
+      const bool is_last = (i + 1 == chunks.size());
+      FlushBehavior flush =
+          is_last ? FlushBehavior::kDataEof : FlushBehavior::kDoNotFlush;
+      String out = codec->Decode(base::as_bytes(base::span(chunks[i])), flush,
+                                 stop_on_error, saw_error);
+      outputs_fast.push_back(out);
+      errors_fast.push_back(saw_error);
+    }
+  }
+
+  std::vector<String> outputs_legacy;
+  std::vector<bool> errors_legacy;
+  {
+    base::test::ScopedFeatureList features;
+    features.InitAndDisableFeature(base::features::kUtfConversionAsciiFastPath);
+    std::unique_ptr<TextCodec> codec(NewTextCodec(encoding));
+    for (size_t i = 0; i < chunks.size(); ++i) {
+      bool saw_error = false;
+      const bool is_last = (i + 1 == chunks.size());
+      FlushBehavior flush =
+          is_last ? FlushBehavior::kDataEof : FlushBehavior::kDoNotFlush;
+      String out = codec->Decode(base::as_bytes(base::span(chunks[i])), flush,
+                                 stop_on_error, saw_error);
+      outputs_legacy.push_back(out);
+      errors_legacy.push_back(saw_error);
+    }
+  }
+
+  EXPECT_EQ(errors_fast, errors_legacy);
+  EXPECT_EQ(outputs_fast, outputs_legacy);
+  for (size_t i = 0; i < outputs_fast.size(); ++i) {
+    EXPECT_EQ(outputs_fast[i].Is8Bit(), outputs_legacy[i].Is8Bit());
+  }
+}
+FUZZ_TEST(TextCodecUtf8FuzzTest, DecodeStreamingFastPathMatchesLegacy);
+
+}  // namespace
+
+}  // namespace blink

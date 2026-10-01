@@ -1,0 +1,140 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.bookmarks;
+
+import android.content.Context;
+import android.content.res.Configuration;
+import android.graphics.Color;
+import android.view.View;
+
+import org.chromium.base.supplier.OneshotSupplier;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.bookmarks.BookmarkModel.BookmarkDeleteObserver;
+import org.chromium.chrome.browser.bookmarks.BookmarkUiState.BookmarkUiMode;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
+import org.chromium.components.bookmarks.BookmarkId;
+import org.chromium.components.browser_ui.widget.dragreorder.DragTouchHandler;
+import org.chromium.components.browser_ui.widget.selectable_list.SelectableListLayout;
+import org.chromium.components.browser_ui.widget.selectable_list.SelectableListToolbar.SearchDelegate;
+import org.chromium.components.browser_ui.widget.selectable_list.SelectionDelegate;
+import org.chromium.ui.base.Clipboard;
+import org.chromium.ui.modaldialog.ModalDialogManager;
+import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.ui.modelutil.PropertyModelChangeProcessor;
+
+import java.util.function.BooleanSupplier;
+
+/** Responsible for the business logic for the BookmarkManagerToolbar. */
+@NullMarked
+public class BookmarkToolbarCoordinator {
+    private final BookmarkToolbar mToolbar;
+    private final PropertyModel mModel;
+    private final BookmarkToolbarMediator mMediator;
+
+    BookmarkToolbarCoordinator(
+            Context context,
+            Profile profile,
+            SelectableListLayout<BookmarkId> selectableListLayout,
+            SelectionDelegate<BookmarkId> selectionDelegate,
+            SearchDelegate searchDelegate,
+            DragTouchHandler dragTouchHandler,
+            boolean isDialogUi,
+            OneshotSupplier<BookmarkDelegate> bookmarkDelegateSupplier,
+            BookmarkModel bookmarkModel,
+            BookmarkOpener bookmarkOpener,
+            BookmarkUiPrefs bookmarkUiPrefs,
+            ModalDialogManager modalDialogManager,
+            Runnable endSearchRunnable,
+            BooleanSupplier incognitoEnabledSupplier,
+            BookmarkManagerOpener bookmarkManagerOpener,
+            SnackbarManager snackbarManager,
+            View nextFocusableView,
+            @Nullable BookmarkDeleteObserver bookmarkDeleteObserver) {
+        mToolbar =
+                (BookmarkToolbar)
+                        selectableListLayout.initializeToolbar(
+                                R.layout.bookmark_toolbar,
+                                selectionDelegate,
+                                0,
+                                R.id.normal_menu_group,
+                                R.id.selection_mode_menu_group,
+                                null,
+                                isDialogUi);
+        mToolbar.setNormalBackgroundColor(Color.TRANSPARENT);
+        if (BookmarkUtils.isDesktopBookmarksLayoutEnabled()) {
+            mToolbar.setTitleMarginStart(
+                    context.getResources()
+                            .getDimensionPixelSize(
+                                    R.dimen.bookmark_desktop_toolbar_title_margin_start));
+        }
+
+        updateToolbarPadding(context);
+
+        mToolbar.initializeSearchView(
+                searchDelegate, R.string.bookmark_toolbar_search, R.id.search_menu_id);
+
+        mModel = new PropertyModel.Builder(BookmarkToolbarProperties.ALL_KEYS).build();
+        mModel.set(BookmarkToolbarProperties.SELECTION_DELEGATE, selectionDelegate);
+        mModel.set(BookmarkToolbarProperties.BOOKMARK_UI_MODE, BookmarkUiMode.LOADING);
+        mModel.set(BookmarkToolbarProperties.IS_DIALOG_UI, isDialogUi);
+        mModel.set(BookmarkToolbarProperties.DRAG_ENABLED, false);
+        mModel.set(BookmarkToolbarProperties.NEXT_FOCUSABLE_VIEW, nextFocusableView);
+        mMediator =
+                new BookmarkToolbarMediator(
+                        context,
+                        profile,
+                        mModel,
+                        dragTouchHandler,
+                        bookmarkDelegateSupplier,
+                        selectionDelegate,
+                        bookmarkModel,
+                        bookmarkOpener,
+                        bookmarkUiPrefs,
+                        new BookmarkAddNewFolderCoordinator(
+                                context, modalDialogManager, bookmarkModel),
+                        endSearchRunnable,
+                        incognitoEnabledSupplier,
+                        bookmarkManagerOpener,
+                        snackbarManager,
+                        Clipboard.getInstance(),
+                        bookmarkDeleteObserver);
+
+        PropertyModelChangeProcessor.create(mModel, mToolbar, BookmarkToolbarViewBinder::bind);
+    }
+
+    public void onConfigurationChanged(Configuration newConfig) {
+        updateToolbarPadding(mToolbar.getContext());
+        mMediator.setSmallScreen(newConfig.screenWidthDp < BookmarkUtils.WIDE_DISPLAY_THRESHOLD_DP);
+    }
+
+    private void updateToolbarPadding(Context context) {
+        if (!BookmarkUtils.isDesktopBookmarksLayoutEnabled()) {
+            return;
+        }
+        int padding =
+                context.getResources()
+                        .getDimensionPixelSize(R.dimen.bookmark_desktop_content_padding);
+        int paddingStartOffset =
+                context.getResources()
+                        .getDimensionPixelSize(R.dimen.toolbar_wide_display_start_offset);
+        int expectedStart = padding + paddingStartOffset;
+        if (mToolbar.getPaddingStart() != expectedStart || mToolbar.getPaddingEnd() != padding) {
+            mToolbar.setPaddingRelative(
+                    expectedStart, mToolbar.getPaddingTop(), padding, mToolbar.getPaddingBottom());
+        }
+    }
+
+    // Testing methods
+
+    public BookmarkToolbar getToolbarForTesting() {
+        return mToolbar;
+    }
+
+    BookmarkToolbarMediator getMediatorForTesting() {
+        return mMediator;
+    }
+}

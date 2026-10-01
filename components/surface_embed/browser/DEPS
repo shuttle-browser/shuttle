@@ -1,0 +1,22 @@
+include_rules = [
+  "+components/guest_contents/browser",
+  "+components/viz/common",
+  "+components/viz/host",
+  "+content/public/browser",
+  "+content/public/common",
+  "+mojo/public/cpp/bindings",
+  "+services/viz/public/mojom",
+  "+third_party/blink/public/common",
+  "+third_party/skia/include/core",
+  "+ui/accessibility",
+  "+ui/compositor",
+  "+ui/gfx/geometry",
+]
+
+specific_include_rules = {
+  ".*_browsertest\\.cc": [
+    "+content/public/test",
+    "+content/shell/browser",
+    "+net/dns/mock_host_resolver.h",
+  ],
+}

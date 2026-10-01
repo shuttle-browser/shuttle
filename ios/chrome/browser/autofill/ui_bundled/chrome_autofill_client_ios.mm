@@ -1,0 +1,881 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/autofill/ui_bundled/chrome_autofill_client_ios.h"
+
+#import <algorithm>
+#import <optional>
+#import <utility>
+#import <vector>
+
+#import "base/check.h"
+#import "base/check_deref.h"
+#import "base/containers/to_vector.h"
+#import "base/functional/bind.h"
+#import "base/functional/callback.h"
+#import "base/memory/ptr_util.h"
+#import "base/notreached.h"
+#import "base/strings/string_util.h"
+#import "base/strings/sys_string_conversions.h"
+#import "base/strings/utf_string_conversions.h"
+#import "components/account_settings/account_setting_service.h"
+#import "components/application_locale_storage/application_locale_storage.h"
+#import "components/autofill/core/browser/at_memory/at_memory_manager.h"
+#import "components/autofill/core/browser/autofill_server_prediction.h"
+#import "components/autofill/core/browser/crowdsourcing/votes_uploader.h"
+#import "components/autofill/core/browser/data_manager/autofill_ai/entity_data_manager.h"
+#import "components/autofill/core/browser/data_manager/valuables/valuables_data_manager.h"
+#import "components/autofill/core/browser/form_import/addresses/autofill_save_update_address_profile_delegate_ios.h"
+#import "components/autofill/core/browser/form_import/form_data_importer.h"
+#import "components/autofill/core/browser/form_predictions_tracker.h"
+#import "components/autofill/core/browser/foundations/autofill_driver.h"
+#import "components/autofill/core/browser/foundations/autofill_manager.h"
+#import "components/autofill/core/browser/logging/log_manager.h"
+#import "components/autofill/core/browser/logging/log_router.h"
+#import "components/autofill/core/browser/payments/payments_network_interface.h"
+#import "components/autofill/core/browser/permissions/autofill_policy_service.h"
+#import "components/autofill/core/browser/single_field_fillers/single_field_fill_router.h"
+#import "components/autofill/core/browser/suggestions/suggestion_type.h"
+#import "components/autofill/core/browser/ui/autofill_suggestion_delegate.h"
+#import "components/autofill/core/common/autofill_debug_features.h"
+#import "components/autofill/core/common/autofill_features.h"
+#import "components/autofill/core/common/autofill_prefs.h"
+#import "components/autofill/ios/browser/autofill_client_ios.h"
+#import "components/autofill/ios/browser/autofill_driver_ios_factory.h"
+#import "components/autofill/ios/browser/autofill_util.h"
+#import "components/infobars/core/infobar.h"
+#import "components/infobars/core/infobar_manager.h"
+#import "components/keyed_service/core/service_access_type.h"
+#import "components/optimization_guide/core/model_execution/remote_model_executor.h"
+#import "components/optimization_guide/proto/features/common_quality_data.pb.h"
+#import "components/password_manager/core/browser/form_parsing/form_data_parser.h"
+#import "components/password_manager/core/browser/password_form.h"
+#import "components/password_manager/core/common/password_manager_pref_names.h"
+#import "components/personal_context/core/personal_context_eligibility_service.h"
+#import "components/personal_context/first_run/personal_context_first_run_service.h"
+#import "components/security_state/ios/security_state_utils.h"
+#import "components/subscription_eligibility/subscription_eligibility_service.h"
+#import "components/sync/service/sync_service.h"
+#import "components/translate/core/browser/translate_manager.h"
+#import "components/ukm/ios/ukm_url_recorder.h"
+#import "ios/chrome/browser/autofill/atmemory/model/ios_at_memory_query_service_factory.h"
+#import "ios/chrome/browser/autofill/autofill_ai/error_dialog/model/autofill_ai_error_dialog_context.h"
+#import "ios/chrome/browser/autofill/autofill_ai/public/save_entity_params.h"
+#import "ios/chrome/browser/autofill/model/address_normalizer_factory.h"
+#import "ios/chrome/browser/autofill/model/autocomplete_history_manager_factory.h"
+#import "ios/chrome/browser/autofill/model/autofill_ai_prefetch_failure_infobar_delegate_ios.h"
+#import "ios/chrome/browser/autofill/model/autofill_ai_save_entity_infobar_delegate_ios.h"
+#import "ios/chrome/browser/autofill/model/autofill_ai_util.h"
+#import "ios/chrome/browser/autofill/model/autofill_log_router_factory.h"
+#import "ios/chrome/browser/autofill/model/autofill_policy_service_factory.h"
+#import "ios/chrome/browser/autofill/model/bottom_sheet/autofill_bottom_sheet_tab_helper.h"
+#import "ios/chrome/browser/autofill/model/ios_autofill_ai_model_cache_factory.h"
+#import "ios/chrome/browser/autofill/model/ios_autofill_ai_model_executor_factory.h"
+#import "ios/chrome/browser/autofill/model/ios_autofill_ai_personal_context_access_manager_factory.h"
+#import "ios/chrome/browser/autofill/model/ios_autofill_entity_data_manager_factory.h"
+#import "ios/chrome/browser/autofill/model/ios_autofill_entity_suppression_manager_factory.h"
+#import "ios/chrome/browser/autofill/model/ios_autofill_field_classification_model_handler_factory.h"
+#import "ios/chrome/browser/autofill/model/ios_wallet_pass_access_manager_factory.h"
+#import "ios/chrome/browser/autofill/model/personal_data_manager_factory.h"
+#import "ios/chrome/browser/autofill/model/strike_database_factory.h"
+#import "ios/chrome/browser/consent_auditor/model/consent_auditor_factory.h"
+#import "ios/chrome/browser/device_reauth/model/ios_device_authenticator.h"
+#import "ios/chrome/browser/device_reauth/model/ios_device_authenticator_factory.h"
+#import "ios/chrome/browser/device_reauth/model/reauthentication_service.h"
+#import "ios/chrome/browser/device_reauth/model/reauthentication_service_factory.h"
+#import "ios/chrome/browser/history/model/history_service_factory.h"
+#import "ios/chrome/browser/infobars/model/infobar_ios.h"
+#import "ios/chrome/browser/infobars/model/infobar_utils.h"
+#import "ios/chrome/browser/intelligence/actor/model/actor_tab_helper.h"
+#import "ios/chrome/browser/metrics/model/google_groups_manager_factory.h"
+#import "ios/chrome/browser/metrics/model/ios_profile_metrics_service_factory.h"
+#import "ios/chrome/browser/optimization_guide/model/optimization_guide_service.h"
+#import "ios/chrome/browser/optimization_guide/model/optimization_guide_service_factory.h"
+#import "ios/chrome/browser/passwords/model/ios_password_field_classification_model_handler_factory.h"
+#import "ios/chrome/browser/passwords/model/password_tab_helper.h"
+#import "ios/chrome/browser/personal_context/model/ios_personal_context_eligibility_service_factory.h"
+#import "ios/chrome/browser/personal_context/model/ios_personal_context_first_run_service_factory.h"
+#import "ios/chrome/browser/shared/model/application_context/application_context.h"
+#import "ios/chrome/browser/shared/public/commands/autofill_commands.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/signin/model/authentication_service.h"
+#import "ios/chrome/browser/signin/model/authentication_service_factory.h"
+#import "ios/chrome/browser/signin/model/identity_manager_factory.h"
+#import "ios/chrome/browser/subscription_eligibility/model/subscription_eligibility_service_factory.h"
+#import "ios/chrome/browser/sync/model/sync_service_factory.h"
+#import "ios/chrome/browser/translate/model/chrome_ios_translate_client.h"
+#import "ios/chrome/browser/webdata_services/model/web_data_service_factory.h"
+#import "ios/chrome/common/channel_info.h"
+#import "ios/web/public/web_state.h"
+#import "services/network/public/cpp/shared_url_loader_factory.h"
+#import "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
+
+namespace autofill {
+
+// Delay before allowing dismissal of the Save/Update dialog for Autofill AI
+// forms. This allows enough time to show the confirmation checkmark that the
+// user has saved their entity data to Google Wallet.
+const base::TimeDelta kConfirmationDelay = base::Milliseconds(500);
+
+ChromeAutofillClientIOS::ChromeAutofillClientIOS(
+    ProfileIOS* profile,
+    web::WebState* web_state,
+    infobars::InfoBarManager* infobar_manager,
+    id<AutofillClientIOSBridge, AutofillDriverIOSBridge> bridge)
+    : AutofillClientIOS(web_state, bridge),
+      pref_service_(profile->GetPrefs()),
+      sync_service_(SyncServiceFactory::GetForProfile(profile)),
+      personal_data_manager_(
+          PersonalDataManagerFactory::GetForProfile(profile)),
+      autocomplete_history_manager_(
+          AutocompleteHistoryManagerFactory::GetForProfile(profile)),
+      profile_(profile),
+      bridge_(bridge),
+      identity_manager_(
+          IdentityManagerFactory::GetForProfile(profile->GetOriginalProfile())),
+      form_data_importer_(std::make_unique<FormDataImporter>(
+          this,
+          ios::HistoryServiceFactory::GetForProfile(
+              profile_,
+              ServiceAccessType::EXPLICIT_ACCESS))),
+      infobar_manager_(infobar_manager),
+      log_router_(AutofillLogRouterFactory::GetForProfile(profile_)),
+      ablation_study_(GetApplicationContext()->GetLocalState()),
+      form_predictions_tracker_(
+          std::make_unique<FormPredictionsTracker>(this)) {
+  if (base::FeatureList::IsEnabled(features::kAutofillAiWithDataSchema)) {
+    autofill_ai_manager_ = std::make_unique<AutofillAiManager>(
+        this, StrikeDatabaseFactory::GetForProfile(profile));
+  }
+  // TODO(crbug.com/449708427): Remove once `AccountInfo` supports full_name on
+  // IOS.
+  if (personal_data_manager_) {
+    AuthenticationService* authenticationService =
+        AuthenticationServiceFactory::GetForProfile(profile);
+    if (authenticationService) {
+      id<SystemIdentity> identity = authenticationService->GetPrimaryIdentity();
+      // Tries to create kAccountNameEmail profile using the current primary
+      // account data.
+      if (identity) {
+        personal_data_manager_->address_data_manager()
+            .MaybeCreateAccountNameEmailProfile(
+                base::SysNSStringToUTF8(identity.userFullName),
+                base::SysNSStringToUTF8(identity.userEmail));
+      }
+    }
+  }
+
+  // Notify the EntityDataManager about the availability of device re-auth.
+  // This information is injected through the client because the Android device
+  // authenticator is tied to UI. As a result, the data manager has no
+  // cross-platform way to derive this information.
+  if (EntityDataManager* edm = base::FeatureList::IsEnabled(
+                                   features::kAutofillAiWalletPrivatePasses) ||
+                                       base::FeatureList::IsEnabled(
+                                           features::kAutofillAmbientAutofill)
+                                   ? GetEntityDataManager()
+                                   : nullptr) {
+    edm->SetReauthAvailability(SupportsDeviceReauth());
+  }
+
+  if (web_state) {
+    if (ActorTabHelper* actor_tab_helper =
+            ActorTabHelper::FromWebState(web_state)) {
+      actor_actuation_state_subscription_ =
+          actor_tab_helper->AddActuationStateChangedCallback(
+              base::BindRepeating(
+                  &ChromeAutofillClientIOS::OnActorTaskStateChange,
+                  weak_ptr_factory_.GetWeakPtr()));
+    }
+  }
+
+  if (autofill::IsAutofillAtMemorySearchUIEnabled(this)) {
+    at_memory_manager_ = std::make_unique<AtMemoryManager>(
+        this, ios::HistoryServiceFactory::GetForProfile(
+                  profile_, ServiceAccessType::EXPLICIT_ACCESS));
+  }
+}
+
+ChromeAutofillClientIOS::~ChromeAutofillClientIOS() {
+  HideSuggestions(SuggestionHidingReason::kTabGone, /*product=*/std::nullopt);
+}
+
+void ChromeAutofillClientIOS::SetBaseViewController(
+    UIViewController* base_view_controller) {
+  base_view_controller_ = base_view_controller;
+}
+
+base::WeakPtr<AutofillClient> ChromeAutofillClientIOS::GetWeakPtr() {
+  return weak_ptr_factory_.GetWeakPtr();
+}
+
+const std::string& ChromeAutofillClientIOS::GetAppLocale() const {
+  return GetApplicationContext()->GetApplicationLocaleStorage()->Get();
+}
+
+version_info::Channel ChromeAutofillClientIOS::GetChannel() const {
+  return ::GetChannel();
+}
+
+bool ChromeAutofillClientIOS::IsOffTheRecord() const {
+  return web_state()->GetBrowserState()->IsOffTheRecord();
+}
+
+scoped_refptr<network::SharedURLLoaderFactory>
+ChromeAutofillClientIOS::GetURLLoaderFactory() {
+  return base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
+      web_state()->GetBrowserState()->GetURLLoaderFactory());
+}
+
+AutofillCrowdsourcingManager&
+ChromeAutofillClientIOS::GetCrowdsourcingManager() {
+  if (!crowdsourcing_manager_) {
+    // Lazy initialization to avoid virtual function calls in the constructor.
+    crowdsourcing_manager_ =
+        std::make_unique<AutofillCrowdsourcingManager>(this, GetChannel());
+  }
+  return *crowdsourcing_manager_;
+}
+
+VotesUploader& ChromeAutofillClientIOS::GetVotesUploader() {
+  return votes_uploader_;
+}
+
+PersonalDataManager& ChromeAutofillClientIOS::GetPersonalDataManager() {
+  return CHECK_DEREF(personal_data_manager_.get());
+}
+
+ValuablesDataManager* ChromeAutofillClientIOS::GetValuablesDataManager() {
+  return nullptr;
+}
+
+EntityDataManager* ChromeAutofillClientIOS::GetEntityDataManager() {
+  return IOSAutofillEntityDataManagerFactory::GetForProfile(profile_);
+}
+
+EntitySuppressionManager*
+ChromeAutofillClientIOS::GetEntitySuppressionManager() {
+  return IOSAutofillEntitySuppressionManagerFactory::GetForProfile(profile_);
+}
+
+WalletPassAccessManager* ChromeAutofillClientIOS::GetWalletPassAccessManager() {
+  return IOSWalletPassAccessManagerFactory::GetForProfile(profile_);
+}
+
+consent_auditor::ConsentAuditor* ChromeAutofillClientIOS::GetConsentAuditor() {
+  return ConsentAuditorFactory::GetForProfile(profile_);
+}
+
+FieldClassificationModelHandler*
+ChromeAutofillClientIOS::GetAutofillFieldClassificationModelHandler() {
+  if (base::FeatureList::IsEnabled(features::kAutofillModelPredictions)) {
+    return IOSAutofillFieldClassificationModelHandlerFactory::GetForProfile(
+        profile_);
+  }
+  return nullptr;
+}
+
+FieldClassificationModelHandler*
+ChromeAutofillClientIOS::GetPasswordManagerFieldClassificationModelHandler() {
+  return IOSPasswordFieldClassificationModelHandlerFactory::GetForProfile(
+      profile_);
+}
+
+SingleFieldFillRouter& ChromeAutofillClientIOS::GetSingleFieldFillRouter() {
+  return single_field_fill_router_;
+}
+
+personal_context::PersonalContextFirstRunService*
+ChromeAutofillClientIOS::GetPersonalContextFirstRunService() {
+  return IOSPersonalContextFirstRunServiceFactory::GetForProfile(profile_);
+}
+
+AutocompleteHistoryManager*
+ChromeAutofillClientIOS::GetAutocompleteHistoryManager() {
+  return autocomplete_history_manager_;
+}
+
+void ChromeAutofillClientIOS::GetAiPageContent(
+    GetAiPageContentCallback callback) {
+  // Cancel any ongoing page context operation.
+  if (page_context_wrapper_) {
+    page_context_wrapper_ = nil;
+  }
+
+  base::OnceCallback<void(PageContextWrapperCallbackResponse)>
+      page_context_completion_callback = base::BindOnce(
+          [](GetAiPageContentCallback inner_callback,
+             PageContextWrapperCallbackResponse response) {
+            if (!response.has_value()) {
+              std::move(inner_callback).Run(std::nullopt);
+              return;
+            }
+
+            std::move(inner_callback)
+                .Run((*response)->annotated_page_content());
+          },
+          std::move(callback));
+
+  // Populate the PageContext proto and then execute the query.
+  page_context_wrapper_ = [[PageContextWrapper alloc]
+        initWithWebState:web_state()
+      completionCallback:std::move(page_context_completion_callback)];
+  [page_context_wrapper_ setShouldGetAnnotatedPageContent:YES];
+  [page_context_wrapper_ setShouldGetSnapshot:NO];
+  [page_context_wrapper_ setShouldGetFullPagePDF:NO];
+  [page_context_wrapper_ populatePageContextFieldsAsync];
+}
+
+AutofillAiManager* ChromeAutofillClientIOS::GetAutofillAiManager() {
+  return autofill_ai_manager_.get();
+}
+
+AutofillAiPersonalContextAccessManager*
+ChromeAutofillClientIOS::GetAutofillAiPersonalContextAccessManager() {
+  if (!base::FeatureList::IsEnabled(features::kAutofillAmbientAutofill)) {
+    return nullptr;
+  }
+  return IOSAutofillAiPersonalContextAccessManagerFactory::GetForProfile(
+      profile_);
+}
+
+AutofillAiModelCache* ChromeAutofillClientIOS::GetAutofillAiModelCache() {
+  return IOSAutofillAiModelCacheFactory::GetForProfile(profile_);
+}
+
+AutofillAiModelExecutor* ChromeAutofillClientIOS::GetAutofillAiModelExecutor() {
+  return IOSAutofillAiModelExecutorFactory::GetForProfile(profile_);
+}
+
+optimization_guide::RemoteModelExecutor*
+ChromeAutofillClientIOS::GetRemoteModelExecutor() {
+  return OptimizationGuideServiceFactory::GetForProfile(profile_);
+}
+
+autofill::AtMemoryManager* ChromeAutofillClientIOS::GetAtMemoryManager() {
+  return at_memory_manager_.get();
+}
+
+autofill::AtMemoryQueryService*
+ChromeAutofillClientIOS::GetAtMemoryQueryService() {
+  return IOSAtMemoryQueryServiceFactory::GetForProfile(profile_);
+}
+
+personal_context::PersonalContextEligibilityState
+ChromeAutofillClientIOS::GetPersonalContextEligibilityState() const {
+  personal_context::PersonalContextEligibilityService* service =
+      GetPersonalContextEligibilityService();
+  return service ? service->GetEligibilityState()
+                 : personal_context::PersonalContextEligibilityState::
+                       kDisabledNotEligible;
+}
+
+personal_context::PersonalContextEligibilityService*
+ChromeAutofillClientIOS::GetPersonalContextEligibilityService() const {
+  return IOSPersonalContextEligibilityServiceFactory::GetForProfile(profile_);
+}
+
+PrefService* ChromeAutofillClientIOS::GetPrefs() {
+  return const_cast<PrefService*>(std::as_const(*this).GetPrefs());
+}
+
+const PrefService* ChromeAutofillClientIOS::GetPrefs() const {
+  return pref_service_;
+}
+
+syncer::SyncService* ChromeAutofillClientIOS::GetSyncService() {
+  return sync_service_;
+}
+
+signin::IdentityManager* ChromeAutofillClientIOS::GetIdentityManager() {
+  return const_cast<signin::IdentityManager*>(
+      std::as_const(*this).GetIdentityManager());
+}
+
+const signin::IdentityManager* ChromeAutofillClientIOS::GetIdentityManager()
+    const {
+  return identity_manager_;
+}
+
+metrics::ProfileMetricsService*
+ChromeAutofillClientIOS::GetProfileMetricsService() {
+  CHECK(profile_);
+  return IOSProfileMetricsServiceFactory::GetForProfile(profile_);
+}
+
+FormDataImporter* ChromeAutofillClientIOS::GetFormDataImporter() {
+  return form_data_importer_.get();
+}
+
+FormPredictionsTracker* ChromeAutofillClientIOS::GetFormPredictionsTracker() {
+  return form_predictions_tracker_.get();
+}
+
+const GoogleGroupsManager* ChromeAutofillClientIOS::GetGoogleGroupsManager()
+    const {
+  return GoogleGroupsManagerFactory::GetForProfile(
+      profile_->GetOriginalProfile());
+}
+
+payments::IOSChromePaymentsAutofillClient*
+ChromeAutofillClientIOS::GetPaymentsAutofillClient() {
+  return &payments_autofill_client_;
+}
+
+strike_database::StrikeDatabase* ChromeAutofillClientIOS::GetStrikeDatabase() {
+  return StrikeDatabaseFactory::GetForProfile(profile_->GetOriginalProfile());
+}
+
+ukm::UkmRecorder* ChromeAutofillClientIOS::GetUkmRecorder() {
+  return GetApplicationContext()->GetUkmRecorder();
+}
+
+AddressNormalizer* ChromeAutofillClientIOS::GetAddressNormalizer() {
+  return AddressNormalizerFactory::GetInstance();
+}
+
+const GURL& ChromeAutofillClientIOS::GetLastCommittedPrimaryMainFrameURL()
+    const {
+  return web_state()->GetLastCommittedURL();
+}
+
+url::Origin ChromeAutofillClientIOS::GetLastCommittedPrimaryMainFrameOrigin()
+    const {
+  return url::Origin::Create(GetLastCommittedPrimaryMainFrameURL());
+}
+
+security_state::SecurityLevel
+ChromeAutofillClientIOS::GetSecurityLevelForUmaHistograms() {
+  return security_state::GetSecurityLevelForWebState(web_state());
+}
+
+const translate::LanguageState* ChromeAutofillClientIOS::GetLanguageState() {
+  // TODO(crbug.com/41430413): iOS vs other platforms extracts language from
+  // the top level frame vs whatever frame directly holds the form.
+  auto* translate_client = ChromeIOSTranslateClient::FromWebState(web_state());
+  if (translate_client) {
+    auto* translate_manager = translate_client->GetTranslateManager();
+    if (translate_manager) {
+      return translate_manager->GetLanguageState();
+    }
+  }
+  return nullptr;
+}
+
+translate::TranslateDriver* ChromeAutofillClientIOS::GetTranslateDriver() {
+  auto* translate_client = ChromeIOSTranslateClient::FromWebState(web_state());
+  if (translate_client) {
+    return translate_client->GetTranslateDriver();
+  }
+  return nullptr;
+}
+
+GeoIpCountryCode ChromeAutofillClientIOS::GetVariationConfigCountryCode()
+    const {
+  return GeoIpCountryCode(GetCountryCodeFromVariations());
+}
+
+const subscription_eligibility::SubscriptionEligibilityService*
+ChromeAutofillClientIOS::GetSubscriptionEligibilityService() const {
+  return SubscriptionEligibilityServiceFactory::GetForProfile(profile_);
+}
+
+void ChromeAutofillClientIOS::ShowAutofillSettings(
+    SuggestionType suggestion_type) {
+  NOTREACHED();
+}
+
+void ChromeAutofillClientIOS::ConfirmSaveAddressProfile(
+    const AutofillProfile& profile,
+    const AutofillProfile* original_profile,
+    SaveAddressBubbleType save_address_bubble_type,
+    AddressProfileSavePromptCallback callback) {
+  for (infobars::InfoBar* infobar : infobar_manager_->infobars()) {
+    AutofillSaveUpdateAddressProfileDelegateIOS* existing_delegate =
+        AutofillSaveUpdateAddressProfileDelegateIOS::FromInfobarDelegate(
+            infobar->delegate());
+
+    if (existing_delegate) {
+      if (existing_delegate->is_infobar_visible()) {
+        // AutoDecline the new prompt if the existing prompt is visible.
+        std::move(callback).Run(
+            AutofillClient::AddressPromptUserDecision::kAutoDeclined, profile);
+        return;
+      } else {
+        // If the existing prompt is not visible, it means that the user has
+        // closed the prompt of the previous import process using the "Cancel"
+        // button or it has been accepted by the user. A fallback icon is shown
+        // for the user in the omnibox to get back to the prompt. If it is
+        // already accepted by the user, the save button is disabled and the
+        // saved data is shown to user. In both the cases, the original prompt
+        // is replaced by the new one provided that the modal view of the
+        // original infobar is not visible to the user.
+        infobar_manager_->RemoveInfoBar(infobar);
+        break;
+      }
+    }
+  }
+
+  auto delegate = std::make_unique<AutofillSaveUpdateAddressProfileDelegateIOS>(
+      profile, original_profile, GetUserEmail(), GetAppLocale(),
+      save_address_bubble_type == SaveAddressBubbleType::kMigrateToAccount,
+      std::move(callback));
+
+  infobar_manager_->AddInfoBar(std::make_unique<InfoBarIOS>(
+      InfobarType::kInfobarTypeSaveAutofillAddressProfile,
+      std::move(delegate)));
+}
+
+AutofillClient::SuggestionUiSessionId
+ChromeAutofillClientIOS::ShowAutofillSuggestions(
+    const AutofillClient::PopupOpenArgs& open_args,
+    base::WeakPtr<AutofillSuggestionDelegate> delegate) {
+  active_suggestion_delegate_ = std::move(delegate);
+
+
+  [bridge_ showAutofillPopup:open_args.suggestions
+          suggestionDelegate:active_suggestion_delegate_];
+  return SuggestionUiSessionId();
+}
+
+void ChromeAutofillClientIOS::UpdateAutofillDataListValues(
+    base::span<const SelectOption> datalist) {
+  // No op. ios/web_view does not support display datalist.
+}
+
+void ChromeAutofillClientIOS::HideSuggestions(
+    SuggestionHidingReason reason,
+    std::optional<FillingProduct> product) {
+  // If a `product` filter is specified, only hide if it matches the active
+  // popup.
+  if (product && active_suggestion_delegate_ &&
+      product != active_suggestion_delegate_->GetMainFillingProduct()) {
+    return;
+  }
+
+  active_suggestion_delegate_.reset();
+  [bridge_ hideAutofillPopup];
+  if (reason == SuggestionHidingReason::kAcceptSuggestion) {
+    [commands_handler_ legacyResetAutofillSuggestionsLoadingStates];
+  }
+}
+
+bool ChromeAutofillClientIOS::IsAutofillEnabled() const {
+  if (IsAutofillProfileEnabled() || AutofillClient::GetPaymentsAutofillClient()
+                                        ->IsAutofillPaymentMethodsEnabled()) {
+    return true;
+  }
+
+  if (base::FeatureList::IsEnabled(
+          features::kAutofillEnableAutofillSettingsEnterprisePolicy)) {
+    const GURL& url = GetLastCommittedPrimaryMainFrameURL();
+    return !IsAutofillTypeBlockedByPolicy(
+               url, AutofillPolicyDataCategory::kIdentityDocs) ||
+           !IsAutofillTypeBlockedByPolicy(
+               url, AutofillPolicyDataCategory::kTravel) ||
+           !IsAutofillTypeBlockedByPolicy(
+               url, AutofillPolicyDataCategory::kShopping);
+  }
+
+  return false;
+}
+
+bool ChromeAutofillClientIOS::IsAutofillProfileEnabled() const {
+  if (!prefs::IsAutofillProfileEnabled(GetPrefs())) {
+    return false;
+  }
+
+  if (base::FeatureList::IsEnabled(
+          features::kAutofillEnableAutofillSettingsEnterprisePolicy) &&
+      IsAutofillTypeBlockedByPolicy(GetLastCommittedPrimaryMainFrameURL(),
+                                    AutofillPolicyDataCategory::kContactInfo)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool ChromeAutofillClientIOS::IsAutofillTypeBlockedByPolicy(
+    const GURL& url,
+    AutofillPolicyDataCategory category) const {
+  AutofillPolicyService* service =
+      AutofillPolicyServiceFactory::GetForProfile(profile_);
+  return service && service->IsAutofillTypeBlockedByPolicy(url, category);
+}
+
+bool ChromeAutofillClientIOS::IsWalletPublicPassStorageEnabled() const {
+  return autofill::IsWalletPublicPassStorageEnabled(profile_);
+}
+
+bool ChromeAutofillClientIOS::IsAutocompleteEnabled() const {
+  return prefs::IsAutocompleteEnabled(GetPrefs());
+}
+
+bool ChromeAutofillClientIOS::IsPasswordManagerEnabled() const {
+  return GetPrefs()->GetBoolean(
+      password_manager::prefs::kCredentialsEnableService);
+}
+
+bool ChromeAutofillClientIOS::UsesPlatformAutofill() const {
+  return false;
+}
+
+bool ChromeAutofillClientIOS::IsContextSecure() const {
+  return consider_as_secure_for_testing_ ||
+         IsContextSecureForWebState(web_state());
+}
+
+LogManager* ChromeAutofillClientIOS::GetCurrentLogManager() {
+  if (!log_manager_ && log_router_ && log_router_->HasReceivers()) {
+    // TODO(crbug.com/40612524): Replace the closure with a callback to the
+    // renderer that indicates if log messages should be sent from the
+    // renderer.
+    log_manager_ = LogManager::Create(log_router_, base::RepeatingClosure());
+  }
+  return log_manager_.get();
+}
+
+autofill_metrics::FormInteractionsUkmLogger&
+ChromeAutofillClientIOS::GetFormInteractionsUkmLogger() {
+  return form_interactions_ukm_logger_;
+}
+
+const AutofillAblationStudy& ChromeAutofillClientIOS::GetAblationStudy() const {
+  return ablation_study_;
+}
+
+bool ChromeAutofillClientIOS::IsLastQueriedField(FieldGlobalId field_id) {
+  return [bridge_ isLastQueriedField:field_id];
+}
+
+bool ChromeAutofillClientIOS::IsTabInActorMode() const {
+  if (!web_state()) {
+    return false;
+  }
+  if (base::FeatureList::IsEnabled(features::debug::kAutofillForceActorMode)) {
+    return true;
+  }
+  ActorTabHelper* actor_tab_helper = ActorTabHelper::FromWebState(web_state());
+  return actor_tab_helper && actor_tab_helper->IsActuating();
+}
+
+bool ChromeAutofillClientIOS::ShouldFormatForLargeKeyboardAccessory() const {
+  return YES;
+}
+
+std::unique_ptr<device_reauth::DeviceAuthenticator>
+ChromeAutofillClientIOS::GetDeviceAuthenticator(std::string histogram) const {
+  device_reauth::DeviceAuthParams params(
+      base::Seconds(60), device_reauth::DeviceAuthSource::kAutofill, std::move(histogram));
+  id<ReauthenticationProtocol> reauthModule =
+      ReauthenticationServiceFactory::GetForProfile(profile_)
+          ->GetReauthModule();
+  return CreateIOSDeviceAuthenticator(reauthModule, profile_, params);
+}
+
+std::optional<std::u16string> ChromeAutofillClientIOS::GetUserEmail() {
+  AuthenticationService* authenticationService =
+      AuthenticationServiceFactory::GetForProfile(profile_);
+  DCHECK(authenticationService);
+  id<SystemIdentity> identity = authenticationService->GetPrimaryIdentity();
+  if (identity) {
+    return base::SysNSStringToUTF16(identity.userEmail);
+  }
+  return std::nullopt;
+}
+
+PasswordFormClassification ChromeAutofillClientIOS::ClassifyAsPasswordForm(
+    AutofillManager& manager,
+    FormGlobalId form_id,
+    FieldGlobalId field_id) const {
+  const FormStructure* form_structure = manager.FindCachedFormById(form_id);
+  if (!form_structure) {
+    return {};
+  }
+
+  FormData form_data = form_structure->ToFormData();
+
+  // Gets the renderer form corresponding to `field_id` when Autofill across
+  // iframes is enabled.
+  const auto GetRendererForm = [&]() -> std::optional<FormData> {
+    const AutofillDriverRouter& router =
+        static_cast<AutofillClientIOS&>(manager.client())
+            .GetAutofillDriverFactory()
+            .router();
+
+    std::vector<FormData> renderer_forms = router.GetRendererForms(form_data);
+
+    // Find the form to which `field_id` belongs.
+    auto renderer_forms_it =
+        std::ranges::find_if(renderer_forms, [field_id](const FormData& form) {
+          return std::ranges::find(form.fields(), field_id,
+                                   &FormFieldData::global_id) !=
+                 form.fields().end();
+        });
+    if (renderer_forms_it == renderer_forms.end()) {
+      return std::nullopt;
+    }
+    return *renderer_forms_it;
+  };
+
+  const std::optional<FormData> renderer_form = GetRendererForm();
+
+  if (!renderer_form) {
+    return {};
+  }
+
+  auto field_ids =
+      base::ToVector(renderer_form.value().fields(), &FormFieldData::global_id);
+  return password_manager::ClassifyAsPasswordForm(
+      *renderer_form,
+      password_manager::ConvertToFormPredictions(
+          *renderer_form, form_structure->GetServerPredictions(field_ids)));
+}
+
+AutofillSaveCardInfoBarDelegateIOS*
+ChromeAutofillClientIOS::GetAutofillSaveCardInfoBarDelegateIOS() {
+  const auto save_card_infobar = std::ranges::find(
+      infobar_manager_->infobars(),
+      infobars::InfoBarDelegate::AUTOFILL_CC_INFOBAR_DELEGATE_MOBILE,
+      &infobars::InfoBar::GetIdentifier);
+  return save_card_infobar != infobar_manager_->infobars().cend()
+             ? AutofillSaveCardInfoBarDelegateIOS::FromInfobarDelegate(
+                   (*save_card_infobar)->delegate())
+             : nullptr;
+}
+
+void ChromeAutofillClientIOS::RemoveAutofillSaveCardInfoBar() {
+  const auto save_card_infobar = std::ranges::find(
+      infobar_manager_->infobars(),
+      infobars::InfoBarDelegate::AUTOFILL_CC_INFOBAR_DELEGATE_MOBILE,
+      &infobars::InfoBar::GetIdentifier);
+  if (save_card_infobar != infobar_manager_->infobars().cend()) {
+    infobar_manager_->RemoveInfoBar(*save_card_infobar);
+  }
+}
+
+void ChromeAutofillClientIOS::ShowEntityImportBubble(
+    EntityInstance new_entity,
+    std::optional<EntityInstance> old_entity,
+    bool save_is_synchronous,
+    EntityImportPromptResultCallback prompt_result_callback) {
+  // Enhanced Autofill is only available to signed-in users.
+  std::optional<std::u16string> user_email = GetUserEmail();
+  if (!user_email.has_value()) {
+    std::move(prompt_result_callback)
+        .Run(AutofillAiBubbleResult::kUnknown, std::nullopt, {});
+    return;
+  }
+
+  // Remove any existing infobars of the same type.
+  const auto existing_infobar = std::ranges::find(
+      infobar_manager_->infobars(),
+      infobars::InfoBarDelegate::AUTOFILL_AI_SAVE_ENTITY_INFOBAR_DELEGATE_IOS,
+      &infobars::InfoBar::GetIdentifier);
+
+  if (existing_infobar != infobar_manager_->infobars().cend()) {
+    infobar_manager_->RemoveInfoBar(*existing_infobar);
+  }
+
+  SaveEntityParams params(std::move(new_entity), std::move(old_entity),
+                          std::move(user_email.value()), save_is_synchronous,
+                          std::move(prompt_result_callback));
+
+  auto delegate = std::make_unique<AutofillAiSaveEntityInfoBarDelegateIOS>(
+      std::move(params),
+      base::BindOnce(&ChromeAutofillClientIOS::ShowAutofillAiSaveUpdateUI,
+                     weak_ptr_factory_.GetWeakPtr()));
+
+  infobar_manager_->AddInfoBar(std::make_unique<InfoBarIOS>(
+      InfobarType::kInfobarTypeAutofillAiSaveEntity, std::move(delegate)));
+}
+
+void ChromeAutofillClientIOS::CloseEntityImportBubble() {
+  // This should be a no-op if the entity import bubble is already closed.
+  base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE,
+      base::BindOnce(
+          [](__weak id<AutofillCommands> handler) {
+            [handler dismissSaveEntityDialog];
+          },
+          commands_handler_),
+      kConfirmationDelay);
+}
+
+void ChromeAutofillClientIOS::ShowAutofillAiLocalSaveNotification() {
+  AutofillAiErrorDialogContext errorContext;
+  errorContext.type = AutofillAiErrorDialogType::kTypeLocalSave;
+  [commands_handler_ showAutofillAiErrorDialog:std::move(errorContext)];
+}
+
+void ChromeAutofillClientIOS::ShowAutofillAiSaveToWalletFailureNotification() {
+  AutofillAiErrorDialogContext errorContext;
+  errorContext.type = AutofillAiErrorDialogType::kTypeSaveToWalletFailure;
+  [commands_handler_ showAutofillAiErrorDialog:std::move(errorContext)];
+}
+
+void ChromeAutofillClientIOS::ShowAutofillAiFetchEntityFailureNotification() {
+  AutofillAiErrorDialogContext errorContext;
+  errorContext.type = AutofillAiErrorDialogType::kTypeFetchEntityFailure;
+  [commands_handler_ showAutofillAiErrorDialog:std::move(errorContext)];
+}
+
+void ChromeAutofillClientIOS::ShowAutofillAiPreFetchFailureNotification() {
+  const auto existing_infobar =
+      std::ranges::find(infobar_manager_->infobars(),
+                        infobars::InfoBarDelegate::
+                            AUTOFILL_AI_PRE_FETCH_FAILURE_INFOBAR_DELEGATE_IOS,
+                        &infobars::InfoBar::GetIdentifier);
+
+  if (existing_infobar != infobar_manager_->infobars().cend()) {
+    infobar_manager_->RemoveInfoBar(*existing_infobar);
+  }
+
+  auto delegate =
+      std::make_unique<AutofillAiPrefetchFailureInfoBarDelegateIOS>();
+
+  infobar_manager_->AddInfoBar(std::make_unique<InfoBarIOS>(
+      InfobarType::kInfobarTypeConfirm, std::move(delegate)));
+}
+
+void ChromeAutofillClientIOS::ShowAutofillAiPrivateInferenceNotice() {
+  [commands_handler_ showAutofillAIPrivateInferenceNotice];
+}
+
+AutofillAiSaveEntityInfoBarDelegateIOS*
+ChromeAutofillClientIOS::GetAutofillAiSaveEntityInfoBarDelegateIOS() {
+  const auto existing_infobar = std::ranges::find(
+      infobar_manager_->infobars(),
+      infobars::InfoBarDelegate::AUTOFILL_AI_SAVE_ENTITY_INFOBAR_DELEGATE_IOS,
+      &infobars::InfoBar::GetIdentifier);
+
+  if (existing_infobar != infobar_manager_->infobars().cend()) {
+    return static_cast<AutofillAiSaveEntityInfoBarDelegateIOS*>(
+        (*existing_infobar)->delegate());
+  } else {
+    return nullptr;
+  }
+}
+
+void ChromeAutofillClientIOS::ShowAutofillAiSaveUpdateUI() {
+  AutofillAiSaveEntityInfoBarDelegateIOS* delegate =
+      GetAutofillAiSaveEntityInfoBarDelegateIOS();
+  if (!delegate) {
+    return;
+  }
+
+  SaveEntityParams params = delegate->ExtractParams();
+  [commands_handler_ showSaveEntityDialog:std::move(params)];
+}
+
+void ChromeAutofillClientIOS::OnActorTaskStateChange(bool is_actuating) {
+  if (is_actuating) {
+    for (AutofillDriver* driver :
+         GetAutofillDriverFactory().GetExistingDrivers()) {
+      driver->GetAutofillManager().ReparseKnownForms();
+    }
+  }
+}
+
+}  // namespace autofill

@@ -1,0 +1,227 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.bookmarks;
+
+import static androidx.test.espresso.Espresso.onView;
+import static androidx.test.espresso.action.ViewActions.click;
+import static androidx.test.espresso.assertion.ViewAssertions.doesNotExist;
+import static androidx.test.espresso.assertion.ViewAssertions.matches;
+import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
+import static androidx.test.espresso.matcher.ViewMatchers.withId;
+
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+import static org.chromium.components.browser_ui.widget.RecyclerViewTestUtils.activeInRecyclerView;
+
+import android.os.Build;
+
+import androidx.annotation.IdRes;
+import androidx.test.espresso.ViewInteraction;
+import androidx.test.filters.MediumTest;
+import androidx.test.platform.app.InstrumentationRegistry;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.RuleChain;
+import org.junit.runner.RunWith;
+
+import org.chromium.base.ThreadUtils;
+import org.chromium.base.test.util.Batch;
+import org.chromium.base.test.util.CommandLineFlags;
+import org.chromium.base.test.util.DisableIf;
+import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.base.test.util.HistogramWatcher;
+import org.chromium.chrome.R;
+import org.chromium.chrome.browser.ChromeTabbedActivity;
+import org.chromium.chrome.browser.flags.ChromeSwitches;
+import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.signin.services.SigninPreferencesManager;
+import org.chromium.chrome.browser.sync.SyncTestRule;
+import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
+import org.chromium.chrome.test.util.BookmarkTestRule;
+import org.chromium.chrome.test.util.BookmarkTestUtil;
+import org.chromium.chrome.test.util.ChromeTabUtils;
+import org.chromium.components.signin.SigninFeatures;
+import org.chromium.content_public.common.ContentUrlConstants;
+import org.chromium.ui.base.DeviceFormFactor;
+
+/** Tests different scenarios when the bookmark personalized signin promo is not shown. */
+@RunWith(ChromeJUnit4ClassRunner.class)
+@CommandLineFlags.Add(ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE)
+@Batch(Batch.PER_CLASS)
+@DisableIf.Device(DeviceFormFactor.DESKTOP)
+public class BookmarkPersonalizedSigninPromoDismissTest {
+    private static final int MAX_IMPRESSIONS_BOOKMARKS = 20;
+
+    private final String mBookmarkPromoShowCountPreferenceName =
+            ChromePreferenceKeys.SYNC_PROMO_SHOW_COUNT.createKey(
+                    SigninPreferencesManager.SigninPromoAccessPointId.BOOKMARKS);
+
+    private final SyncTestRule mSyncTestRule = new SyncTestRule();
+
+    private final BookmarkTestRule mBookmarkTestRule = new BookmarkTestRule();
+
+    // As bookmarks need the fake AccountManagerFacade in SyncTestRule,
+    // BookmarkTestRule should be initialized after and destroyed before the
+    // SyncTestRule.
+    @Rule
+    public final RuleChain chain = RuleChain.outerRule(mSyncTestRule).around(mBookmarkTestRule);
+
+    @Before
+    public void setUp() throws Exception {
+        setPrefSigninPromoDeclinedBookmarksForTests(false);
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    BookmarkModel bookmarkModel =
+                            BookmarkModel.getForProfile(
+                                    Profile.fromWebContents(
+                                            mSyncTestRule
+                                                    .getActivity()
+                                                    .getActivityTab()
+                                                    .getWebContents()));
+                    bookmarkModel.loadFakePartnerBookmarkShimForTesting();
+                });
+        BookmarkTestUtil.waitForBookmarkModelLoaded();
+    }
+
+    @After
+    public void tearDown() {
+        ChromeSharedPreferences.getInstance().removeKey(mBookmarkPromoShowCountPreferenceName);
+        ChromeSharedPreferences.getInstance()
+                .removeKey(ChromePreferenceKeys.SYNC_PROMO_TOTAL_SHOW_COUNT);
+        setPrefSigninPromoDeclinedBookmarksForTests(false);
+    }
+
+    @Test
+    @MediumTest
+    @EnableFeatures({"EnableSeamlessSignin" + ":seamless-signin-promo-type/compact"})
+    // TODO(crbug.com/468024353): Add coverage for two_buttons promo.
+    public void testPromoNotShownAfterBeingDismissed_compactPromo() {
+        testPromoNotShownAfterBeingDismissed(R.id.signin_promo_dismiss_button);
+    }
+
+    @Test
+    @MediumTest
+    // TODO(crbug.com/448227402): Remove this test once Seamless Sign-in is launched.
+    @DisableFeatures(SigninFeatures.ENABLE_SEAMLESS_SIGNIN)
+    public void testPromoNotShownAfterBeingDismissed_seamlessSigninDisabled() {
+        testPromoNotShownAfterBeingDismissed(R.id.sync_promo_close_button);
+    }
+
+    private void testPromoNotShownAfterBeingDismissed(@IdRes int dismissButtonId) {
+        mBookmarkTestRule.showBookmarkManager(mSyncTestRule.getActivity());
+        onActiveViewId(R.id.signin_promo_view_container).check(matches(isDisplayed()));
+        onActiveViewId(dismissButtonId).perform(click());
+        onActiveViewId(R.id.signin_promo_view_container).check(doesNotExist());
+
+        closeBookmarkManager();
+        mBookmarkTestRule.showBookmarkManager(mSyncTestRule.getActivity());
+        onActiveViewId(R.id.signin_promo_view_container).check(doesNotExist());
+    }
+
+    @Test
+    @MediumTest
+    @EnableFeatures({"EnableSeamlessSignin" + ":seamless-signin-promo-type/compact"})
+    // TODO(crbug.com/468024353): Add coverage for two_buttons promo.
+    public void testPromoDismissedHistogramRecordedAfterBeingDismissed_compactPromo() {
+        testPromoDismissedHistogramRecordedAfterBeingDismissed(R.id.signin_promo_dismiss_button);
+    }
+
+    @Test
+    @MediumTest
+    // TODO(crbug.com/448227402): Remove this test once Seamless Sign-in is launched.
+    @DisableFeatures(SigninFeatures.ENABLE_SEAMLESS_SIGNIN)
+    public void testPromoDismissedHistogramRecordedAfterBeingDismissed_seamlessSigninDisabled() {
+        testPromoDismissedHistogramRecordedAfterBeingDismissed(R.id.sync_promo_close_button);
+    }
+
+    private void testPromoDismissedHistogramRecordedAfterBeingDismissed(
+            @IdRes int dismissButtonId) {
+        var histogramWatcher =
+                HistogramWatcher.newBuilder()
+                        .expectAnyRecord("Signin.SyncPromo.Dismissed.Count.Bookmarks")
+                        .allowExtraRecordsForHistogramsAbove()
+                        .build();
+
+        mBookmarkTestRule.showBookmarkManager(mSyncTestRule.getActivity());
+        onActiveViewId(R.id.signin_promo_view_container).check(matches(isDisplayed()));
+        onActiveViewId(dismissButtonId).perform(click());
+        onActiveViewId(R.id.signin_promo_view_container).check(doesNotExist());
+
+        closeBookmarkManager();
+        mBookmarkTestRule.showBookmarkManager(mSyncTestRule.getActivity());
+        onActiveViewId(R.id.signin_promo_view_container).check(doesNotExist());
+        histogramWatcher.assertExpected();
+    }
+
+    @Test
+    @MediumTest
+    public void testPromoNotExistWhenImpressionLimitReached() {
+        ChromeSharedPreferences.getInstance()
+                .writeInt(mBookmarkPromoShowCountPreferenceName, MAX_IMPRESSIONS_BOOKMARKS);
+        mBookmarkTestRule.showBookmarkManager(mSyncTestRule.getActivity());
+        onActiveViewId(R.id.signin_promo_view_container).check(doesNotExist());
+    }
+
+    @Test
+    @MediumTest
+    @DisableIf.Build(sdk_equals = Build.VERSION_CODES.S_V2, message = "crbug.com/40262804")
+    public void testPromoImpressionCountIncrementAfterDisplayingSigninPromo() {
+        assertEquals(
+                0,
+                ChromeSharedPreferences.getInstance()
+                        .readInt(mBookmarkPromoShowCountPreferenceName));
+        var histogramWatcher =
+                HistogramWatcher.newSingleRecordWatcher("Signin.SyncPromo.Shown.Count.Bookmarks");
+
+        mBookmarkTestRule.showBookmarkManager(mSyncTestRule.getActivity());
+        onActiveViewId(R.id.signin_promo_view_container).check(matches(isDisplayed()));
+
+        // If a profile update happens while the promo in bookmarks is being shown, these will be
+        // counted multiple times. The RecyclerView recreates the promo view at its current index,
+        // triggering all metrics again.
+        int bookmarkShownCount =
+                ChromeSharedPreferences.getInstance()
+                        .readInt(mBookmarkPromoShowCountPreferenceName);
+        assertTrue(
+                "Expected at least one, but found " + bookmarkShownCount, bookmarkShownCount >= 1);
+        histogramWatcher.assertExpected();
+    }
+
+    private void closeBookmarkManager() {
+        if (mSyncTestRule.getActivity().isTablet()) {
+            ChromeTabbedActivity chromeTabbedActivity =
+                    (ChromeTabbedActivity) mSyncTestRule.getActivity();
+            ChromeTabUtils.closeCurrentTab(
+                    InstrumentationRegistry.getInstrumentation(), chromeTabbedActivity);
+            // Open a new tab so chrome://bookmarks can be re-loaded within the same test.
+            ChromeTabUtils.fullyLoadUrlInNewTab(
+                    InstrumentationRegistry.getInstrumentation(),
+                    chromeTabbedActivity,
+                    ContentUrlConstants.ABOUT_BLANK_DISPLAY_URL,
+                    false);
+        } else {
+            // This is not within the RecyclerView, don't need to verify active.
+            onView(withId(R.id.close_menu_id)).perform(click());
+        }
+    }
+
+    private static ViewInteraction onActiveViewId(@IdRes int id) {
+        return onView(allOf(withId(id), activeInRecyclerView()));
+    }
+
+    private void setPrefSigninPromoDeclinedBookmarksForTests(boolean isDeclined) {
+        ChromeSharedPreferences.getInstance()
+                .writeBoolean(ChromePreferenceKeys.SIGNIN_PROMO_BOOKMARKS_DECLINED, isDeclined);
+    }
+}

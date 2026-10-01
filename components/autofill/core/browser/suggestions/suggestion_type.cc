@@ -1,0 +1,179 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/autofill/core/browser/suggestions/suggestion_type.h"
+
+#include <ostream>
+#include <string>
+#include <string_view>
+
+#include "base/notreached.h"
+#include "suggestion_type.h"
+
+namespace autofill {
+
+std::string_view SuggestionTypeToStringView(SuggestionType type) {
+  switch (type) {
+    case SuggestionType::kAutocompleteEntry:
+      return "kAutocompleteEntry";
+    case SuggestionType::kAddressEntry:
+      return "kAddressEntry";
+    case SuggestionType::kAddressEntryOnTyping:
+      return "kAddressEntryOnTyping";
+    case SuggestionType::kAddressFieldByFieldFilling:
+      return "kAddressFieldByFieldFilling";
+    case SuggestionType::kManageAddress:
+      return "kManageAddress";
+    case SuggestionType::kManageAutofillAi:
+      return "kManageAutofillAi";
+    case SuggestionType::kManageAutofillAiIdentityDocs:
+      return "kManageAutofillAiIdentityDocs";
+    case SuggestionType::kManageAutofillAiShopping:
+      return "kManageAutofillAiShopping";
+    case SuggestionType::kManageAutofillAiTravel:
+      return "kManageAutofillAiTravel";
+    case SuggestionType::kManageEnhancedAutofill:
+      return "kManageEnhancedAutofill";
+    case SuggestionType::kManageCreditCard:
+      return "kManageCreditCard";
+    case SuggestionType::kManageIban:
+      return "kManageIban";
+    case SuggestionType::kManageLoyaltyCard:
+      return "kManageLoyaltyCard";
+    case SuggestionType::kComposeResumeNudge:
+      return "kComposeResumeNudge";
+    case SuggestionType::kComposeDisable:
+      return "kComposeDisable";
+    case SuggestionType::kComposeGoToSettings:
+      return "kComposeGoToSettings";
+    case SuggestionType::kComposeNeverShowOnThisSiteAgain:
+      return "kComposeNeverShowOnThisSiteAgain";
+    case SuggestionType::kComposeProactiveNudge:
+      return "kComposeProactiveNudge";
+    case SuggestionType::kComposeSavedStateNotification:
+      return "kComposeSavedStateNotification";
+    case SuggestionType::kDatalistEntry:
+      return "kDatalistEntry";
+    case SuggestionType::kPasswordEntry:
+      return "kPasswordEntry";
+    case SuggestionType::kBackupPasswordEntry:
+      return "kBackupPasswordEntry";
+    case SuggestionType::kTroubleSigningInEntry:
+      return "kTroubleSigningInEntry";
+    case SuggestionType::kFreeformFooter:
+      return "kFreeformFooter";
+    case SuggestionType::kAllSavedPasswordsEntry:
+      return "kAllSavedPasswordsEntry";
+    case SuggestionType::kGeneratePasswordEntry:
+      return "kGeneratePasswordEntry";
+    case SuggestionType::kAccountStoragePasswordEntry:
+      return "kAccountStoragePasswordEntry";
+    case SuggestionType::kPasswordFieldByFieldFilling:
+      return "kPasswordFieldByFieldFilling";
+    case SuggestionType::kFillPassword:
+      return "kFillPassword";
+    case SuggestionType::kViewPasswordDetails:
+      return "kViewPasswordDetails";
+    case SuggestionType::kCreditCardEntry:
+      return "kCreditCardEntry";
+    case SuggestionType::kInsecureContextPaymentDisabledMessage:
+      return "kInsecureContextPaymentDisabledMessage";
+    case SuggestionType::kSaveAndFillCreditCardEntry:
+      return "KSaveAndFillCreditCardEntry";
+    case SuggestionType::kScanCreditCard:
+      return "kScanCreditCard";
+    case SuggestionType::kVirtualCreditCardEntry:
+      return "kVirtualCreditCardEntry";
+    case SuggestionType::kIbanEntry:
+      return "kIbanEntry";
+    case SuggestionType::kBnplEntry:
+      return "kBnplEntry";
+    case SuggestionType::kMerchantPromoCodeEntry:
+      return "kMerchantPromoCodeEntry";
+    case SuggestionType::kSeePromoCodeDetails:
+      return "kSeePromoCodeDetails";
+    case SuggestionType::kWebauthnCredential:
+      return "kWebauthnCredential";
+    case SuggestionType::kWebauthnSignInWithAnotherDevice:
+      return "kWebauthnSignInWithAnotherDevice";
+    case SuggestionType::kWebauthnPasskeyQrCode:
+      return "kWebauthnPasskeyQrCode";
+    case SuggestionType::kIdentityCredential:
+      return "kIdentityCredential";
+    case SuggestionType::kTitle:
+      return "kTitle";
+    case SuggestionType::kSeparator:
+      return "kSeparator";
+    case SuggestionType::kUndo:
+      return "kUndo";
+    case SuggestionType::kDevtoolsTestAddresses:
+      return "kDevtoolsTestAddresses";
+    case SuggestionType::kDevtoolsTestAddressByCountry:
+      return "kDevtoolsTestAddressByCountry";
+    case SuggestionType::kDevtoolsTestAddressEntry:
+      return "kDevtoolsTestAddressEntry";
+    case SuggestionType::kFillAutofillAi:
+      return "kFillAutofillAi";
+    case SuggestionType::kPendingStateSignin:
+      return "kPendingStateSignin";
+    case SuggestionType::kAtMemorySearchResult:
+      return "kAtMemorySearchResult";
+    case SuggestionType::kAtMemoryInactivityNudge:
+      return "kAtMemoryInactivityNudge";
+    case SuggestionType::kLoyaltyCardEntry:
+      return "kLoyaltyCardEntry";
+    case SuggestionType::kAllLoyaltyCardsEntry:
+      return "kAllLoyaltyCardsEntry";
+    case SuggestionType::kOneTimePasswordEntry:
+      return "OneTimePasswordEntry";
+    case SuggestionType::kLoadingThrobber:
+      return "kLoadingThrobber";
+    case SuggestionType::kBnplFootnote:
+      return "kBnplFootnote";
+    case SuggestionType::kAutocompleteAtMemoryButton:
+      return "kAutocompleteAtMemoryButton";
+    case SuggestionType::kAtMemoryNoConnection:
+      return "kAtMemoryNoConnection";
+    case SuggestionType::kAtMemoryOpenGemini:
+      return "kAtMemoryOpenGemini";
+    case SuggestionType::kAtMemorySearchAffordance:
+      return "kAtMemorySearchAffordance";
+    case SuggestionType::kPersonalContextNotice:
+      return "kPersonalContextNotice";
+    case SuggestionType::kFetchingAmbientData:
+      return "kFetchingAmbientData";
+    case SuggestionType::kAtMemoryGenericError:
+      return "kAtMemoryGenericError";
+    case SuggestionType::kMaximizeCreditCardBenefitsEntry:
+      return "kMaximizeCreditCardBenefitsEntry";
+    case SuggestionType::kAutofillAiOtherOrders:
+      return "kAutofillAiOtherOrders";
+    case SuggestionType::kAutofillAiOtherShipments:
+      return "kAutofillAiOtherShipments";
+    case SuggestionType::kAutofillAiPrivateInferenceNotice:
+      return "kAutofillAiPrivateInferenceNotice";
+    case SuggestionType::kAtMemoryAiDisclosure:
+      return "kAtMemoryAiDisclosure";
+    case SuggestionType::kAtMemorySourceAttribution:
+      return "kAtMemorySourceAttribution";
+    case SuggestionType::kAtMemoryFetching:
+      return "kAtMemoryFetching";
+    case SuggestionType::kRemoveAutofillAi:
+      return "kRemoveAutofillAi";
+    case SuggestionType::kAutofillAiSourceAttribution:
+      return "kAutofillAiSourceAttribution";
+  }
+  NOTREACHED();
+}
+
+std::string SuggestionTypeToString(SuggestionType type) {
+  return std::string(SuggestionTypeToStringView(type));
+}
+
+std::ostream& operator<<(std::ostream& os, SuggestionType type) {
+  os << SuggestionTypeToStringView(type);
+  return os;
+}
+
+}  // namespace autofill

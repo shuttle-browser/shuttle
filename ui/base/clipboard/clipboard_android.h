@@ -1,0 +1,148 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef UI_BASE_CLIPBOARD_CLIPBOARD_ANDROID_H_
+#define UI_BASE_CLIPBOARD_CLIPBOARD_ANDROID_H_
+
+#include <jni.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include <optional>
+#include <string>
+#include <string_view>
+
+#include "base/android/scoped_java_ref.h"
+#include "base/component_export.h"
+#include "base/functional/callback_forward.h"
+#include "base/time/time.h"
+#include "ui/base/clipboard/clipboard.h"
+
+namespace ui {
+
+// Documentation on the underlying Android API this ultimately abstracts is
+// available at https://developer.android.com/guide/topics/text/copy-paste.
+class ClipboardAndroid : public Clipboard {
+ public:
+  // Callback called whenever the clipboard is modified.  The parameter
+  // represents the time of the modification.
+  using ModifiedCallback = base::RepeatingCallback<void(base::Time)>;
+
+  ClipboardAndroid(const ClipboardAndroid&) = delete;
+  ClipboardAndroid& operator=(const ClipboardAndroid&) = delete;
+
+  // Called by Java when the Java Clipboard is notified that the clipboard has
+  // changed.
+  COMPONENT_EXPORT(UI_BASE_CLIPBOARD)
+  void OnPrimaryClipChanged(JNIEnv* env);
+
+  // Called by Java when the Java Clipboard is notified that the window focus
+  // has changed. Since Chrome will not receive OnPrimaryClipChanged call from
+  // Android if Chrome is in background,Clipboard handler needs to check the
+  // content of clipboard didn't change, when Chrome is back in foreground.
+  void OnPrimaryClipTimestampInvalidated(JNIEnv* env,
+                                         const int64_t j_timestamp_ms);
+
+  // Called by Java side.
+  int64_t GetLastModifiedTimeToJavaTime(JNIEnv* env);
+
+  // Sets the callback called whenever the clipboard is modified.
+  COMPONENT_EXPORT(UI_BASE_CLIPBOARD)
+  void SetModifiedCallback(ModifiedCallback cb);
+
+  // Sets the last modified time without calling the above callback.
+  COMPONENT_EXPORT(UI_BASE_CLIPBOARD)
+  void SetLastModifiedTimeWithoutRunningCallback(base::Time time);
+
+ private:
+  friend class Clipboard;
+
+  ClipboardAndroid();
+  ~ClipboardAndroid() override;
+
+  // Clipboard overrides:
+  void OnPreShutdown() override;
+  void GetSource(ClipboardBuffer buffer,
+                 GetSourceCallback callback) const override;
+  const ClipboardSequenceNumberToken& GetSequenceNumber(
+      ClipboardBuffer buffer) const override;
+  void GetStandardFormats(ClipboardBuffer buffer,
+                          const std::optional<DataTransferEndpoint>& data_dst,
+                          GetStandardFormatsCallback callback) const override;
+  void GetAllAvailableFormats(
+      ClipboardBuffer buffer,
+      const std::optional<DataTransferEndpoint>& data_dst,
+      base::OnceCallback<void(base::flat_set<ClipboardFormatType>)> callback)
+      const override;
+  void GetAvailableFormats(
+      ClipboardBuffer buffer,
+      std::vector<ClipboardFormatType> formats,
+      const std::optional<DataTransferEndpoint>& data_dst,
+      base::OnceCallback<void(base::flat_set<ClipboardFormatType>)> callback)
+      const override;
+  void Clear(ClipboardBuffer buffer) override;
+  void ReadAvailableTypes(ClipboardBuffer buffer,
+                          const std::optional<DataTransferEndpoint>& data_dst,
+                          ReadAvailableTypesCallback callback) const override;
+  void ReadText(ClipboardBuffer buffer,
+                const std::optional<DataTransferEndpoint>& data_dst,
+                ReadTextCallback callback) const override;
+  void ReadAsciiText(ClipboardBuffer buffer,
+                     const std::optional<DataTransferEndpoint>& data_dst,
+                     ReadAsciiTextCallback callback) const override;
+  void ReadHTML(ClipboardBuffer buffer,
+                const std::optional<DataTransferEndpoint>& data_dst,
+                ReadHtmlCallback callback) const override;
+  void ReadSvg(ClipboardBuffer buffer,
+               const std::optional<DataTransferEndpoint>& data_dst,
+               ReadSvgCallback callback) const override;
+  void ReadRTF(ClipboardBuffer buffer,
+               const std::optional<DataTransferEndpoint>& data_dst,
+               ReadRTFCallback callback) const override;
+  void ReadPng(ClipboardBuffer buffer,
+               const std::optional<DataTransferEndpoint>& data_dst,
+               ReadPngCallback callback) const override;
+  void ReadDataTransferCustomData(
+      ClipboardBuffer buffer,
+      const std::u16string& type,
+      const std::optional<DataTransferEndpoint>& data_dst,
+      ReadDataTransferCustomDataCallback callback) const override;
+  void ReadFilenames(ClipboardBuffer buffer,
+                     const std::optional<DataTransferEndpoint>& data_dst,
+                     ReadFilenamesCallback callback) const override;
+  void ReadURL(const std::optional<DataTransferEndpoint>& data_dst,
+               ReadUrlCallback callback) const override;
+  void ReadData(const ClipboardFormatType& format,
+                const std::optional<DataTransferEndpoint>& data_dst,
+                ReadDataCallback callback) const override;
+  base::Time GetLastModifiedTime() const override;
+  void ClearLastModifiedTime() override;
+  void WritePortableAndPlatformRepresentations(
+      ClipboardBuffer buffer,
+      const ObjectMap& objects,
+      const std::vector<RawData>& raw_objects,
+      std::vector<Clipboard::PlatformRepresentation> platform_representations,
+      std::unique_ptr<DataTransferEndpoint> data_src,
+      uint32_t privacy_types) override;
+  void WriteText(std::string_view text) override;
+  void WriteHTML(std::string_view markup,
+                 std::optional<std::string_view> source_url) override;
+  void WriteSvg(std::string_view markup) override;
+  void WriteRTF(std::string_view rtf) override;
+  void WriteFilenames(std::vector<ui::FileInfo> filenames) override;
+  void WriteURL(const ClipboardUrlInfo& url_info) override;
+  void WriteWebSmartPaste() override;
+  void WriteBitmap(const SkBitmap& bitmap) override;
+  void WriteData(const ClipboardFormatType& format,
+                 base::span<const uint8_t> data) override;
+
+  void WriteConfidentialDataForPassword();
+};
+
+COMPONENT_EXPORT(UI_BASE_CLIPBOARD)
+void SetCustomClipDataForTesting(std::optional<std::string> data);
+
+}  // namespace ui
+
+#endif  // UI_BASE_CLIPBOARD_CLIPBOARD_ANDROID_H_

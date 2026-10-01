@@ -1,0 +1,12 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// https://w3c.github.io/paint-timing/#PaintTimingMixin
+interface mixin PaintTimingMixin {
+    // Paint timing only applies to document (Window) contexts. Scoping the
+    // members to Window keeps the properties below out of
+    // PerformanceLongAnimationFrameTiming when it is exposed to web workers.
+    [Exposed=Window] readonly attribute DOMHighResTimeStamp paintTime;
+    [Exposed=Window] readonly attribute DOMHighResTimeStamp? presentationTime;
+};

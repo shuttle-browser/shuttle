@@ -1,0 +1,248 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_USER_EDUCATION_BROWSER_USER_EDUCATION_INTERFACE_H_
+#define CHROME_BROWSER_UI_USER_EDUCATION_BROWSER_USER_EDUCATION_INTERFACE_H_
+
+#include <concepts>
+
+#include "base/feature_list.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/types/pass_key.h"
+#include "components/user_education/common/feature_promo/feature_promo_controller.h"
+#include "components/user_education/common/feature_promo/feature_promo_handle.h"
+#include "components/user_education/common/feature_promo/feature_promo_result.h"
+#include "components/user_education/common/new_badge/new_badge_controller.h"
+#include "components/user_education/common/user_education_context.h"
+#include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
+
+class BookmarkBubbleViewPromoHelper;
+class BrowserFeaturePromoController;
+class BrowserView;
+class BrowserWindowInterface;
+class NewTabPageUI;
+class NtpPromoHandler;
+class SidePanelHeaderController;
+
+namespace content {
+class WebContents;
+}
+
+// Describes what to do when the feature associated with an IPH is used.
+enum class FeaturePromoFeatureUsedAction {
+  // If the promo is showing, it is dismissed. If it is queued, it will be
+  // canceled. In most cases, the promo will not be shown again.
+  kClosePromoIfPresent,
+  // If the promo is showing or queued, it continues to be showing or queued.
+  // However, marking the feature as used may prevent the promo from showing
+  // in the future. If you intend to use e.g. CloseFeaturePromoAndContinue(),
+  // this option will avoid terminating the promo prematurely.
+  kIgnorePromoIfPresent,
+};
+
+// Provides the interface for common User Education actions.
+class BrowserUserEducationInterface {
+ public:
+  DECLARE_USER_DATA(BrowserUserEducationInterface);
+
+  explicit BrowserUserEducationInterface(BrowserWindowInterface* browser);
+  BrowserUserEducationInterface(const BrowserUserEducationInterface&) = delete;
+  void operator=(const BrowserUserEducationInterface&) = delete;
+  virtual ~BrowserUserEducationInterface();
+
+  virtual void Init(BrowserView*);
+  virtual void TearDown();
+
+  // Only a limited number of non-test classes are allowed direct access to the
+  // `UserEducationContext`.
+  template <typename T>
+    requires std::same_as<T, BrowserFeaturePromoController> ||
+             std::same_as<T, UserEducationInternalsPageHandlerImpl> ||
+             std::same_as<T, NtpPromoHandler> || std::same_as<T, NewTabPageUI>
+
+  const user_education::UserEducationContextPtr& GetUserEducationContext(
+      base::PassKey<T>) const {
+    return GetUserEducationContextImpl();
+  }
+
+  // Test-only accessor for user education context.
+  const user_education::UserEducationContextPtr&
+  GetUserEducationContextForTesting() {
+    return GetUserEducationContextImpl();
+  }
+
+  // Returns whether `iph_feature` is queued to be shown. Promos can be queued
+  // for a period of time before they become active, if they are being held due
+  // to an incompatible UI state or a blocking IPH.
+  virtual bool IsFeaturePromoQueued(const base::Feature& iph_feature) const = 0;
+
+  // Returns whether the promo associated with `iph_feature` is running.
+  //
+  // Includes promos with visible bubbles and those which have been continued
+  // with CloseFeaturePromoAndContinue() and are still running in the
+  // background.
+  virtual bool IsFeaturePromoActive(const base::Feature& iph_feature) const = 0;
+
+  // Returns whether any feature promo is running.
+  //
+  // See `IsFeaturePromoActive()` for details for what is considered for a
+  // feature promo to be active.
+  virtual bool IsAnyFeaturePromoActive() const = 0;
+
+  // Returns whether `MaybeShowFeaturePromo()` would succeed immediately if
+  // called right now.
+  //
+  // Promos can be queued for a short time until conditions are right to show
+  // them, and this function does not take that into account, leading to false
+  // negatives (in addition to just failing during browser/Feature Engagement
+  // initialization).
+  //
+  // In many cases, instead consider:
+  //  - If you want to know whether a promo is likely to show, just call
+  //    `MaybeShowFeaturePromo()` and look at the return value.
+  //  - For most promos, if you want to know whether the promo is permanently
+  //    dismissed, call `HasFeaturePromoBeenDismissed()`.
+  //
+  // Only call this method if figuring out whether to try to show an IPH would
+  // involve significant expense, and you do not mind the drawbacks/false
+  // negatives listed above. Because of the drawbacks and cost of this method,
+  // it is protected by a PassKey to prevent unnecessary usage.
+  template <typename T>
+    requires std::same_as<T, BookmarkBubbleViewPromoHelper> ||
+             std::same_as<T, SidePanelHeaderController>
+  user_education::FeaturePromoResult WouldShowFeaturePromo(
+      const base::Feature& iph_feature,
+      base::PassKey<T>) const {
+    return WouldShowFeaturePromoImpl(iph_feature);
+  }
+
+  // Returns whether the promo for `iph_feature` has been dismissed in a way
+  // that would prevent it from showing again (user action, toast timeout, etc.)
+  // Unlike other methods, this can be reliably called during most of browser
+  // initialization.
+  //
+  // This does not take additional conditions into account; an additional
+  // condition *might* prevent a promo from ever showing again, but interpreting
+  // the conditions is promo-specific.
+  //
+  // It also does not [yet] take into account promos which can reshow after a
+  // specific amount of time. For now it will return true if the promo has ever
+  // been dismissed.
+  virtual bool HasFeaturePromoBeenDismissed(
+      const base::Feature& iph_feature) const = 0;
+
+  // Maybe shows an in-product help promo.
+  //
+  // If this feature promo is likely to be shown at browser startup, prefer
+  // calling `MaybeShowStartupFeaturePromo()` instead.
+  //
+  // Returns true if the promo is shown *or* queued; false if it was rejected
+  // right away. This can be used to make snap decisions on whether to show UI
+  // that could interfere with an IPH.
+  virtual bool MaybeShowFeaturePromo(
+      user_education::FeaturePromoParams params) = 0;
+
+  // Maybe shows an in-product help promo at startup, whenever the Feature
+  // Engagement system is fully initialized. If the promo cannot be queued for
+  // whatever reason, `params.show_promo_result_callback` will be called with
+  // the appropriate error. The promo may still not run if it is excluded for
+  // other reasons (e.g. another promo starts first; its Feature Engagement
+  // conditions are not satisfied).
+  //
+  // On success, when the FE system is initialized (which might be immediately),
+  // or when the promo is determined to have failed to show for any reason,
+  // `show_promo_result_callback` is called with the result of whether the promo
+  // was actually shown. Since `show_promo_result_callback` could be called any
+  // time, make sure that you will not experience any race conditions or UAFs if
+  // the calling object goes out of scope.
+  //
+  // IMPORTANT USAGE NOTE: Once a promo has been successfully queued in an
+  // eligible browser using this method, subsequent attempts to show the same
+  // promo using this method will fail *even if the initial attempt failed for
+  // some other reason*. You can therefore safely call this method at browser
+  // window creation, as subsequent browser windows in the same profile won't be
+  // able to re-show the promo.
+  //
+  // Returns true if the promo is shown *or* queued; false if it was rejected
+  // right away. This can be used to make snap decisions on whether to show UI
+  // that could interfere with an IPH.
+  virtual bool MaybeShowStartupFeaturePromo(
+      user_education::FeaturePromoParams params) = 0;
+
+  // Aborts the in-product help promo for `iph_feature` if it is showing or
+  // cancels a pending startup promo. Aborting a promo means it was not fully
+  // shown or interacted with, and may allow the promo to show again. Returns
+  // whether a showing or pending promo was canceled.
+  virtual bool AbortFeaturePromo(const base::Feature& iph_feature) = 0;
+
+  // Closes the bubble for a feature promo but continues the promo; returns a
+  // handle that can be used to end the promo when it is destructed. The handle
+  // will be valid (i.e. have a true boolean value) if the promo was showing,
+  // invalid otherwise.
+  virtual user_education::FeaturePromoHandle CloseFeaturePromoAndContinue(
+      const base::Feature& iph_feature) = 0;
+
+  // Records that the user has engaged the specific `feature` associated with an
+  // IPH promo; this information is used to determine whether to show the promo
+  // in the future. Also specifies which `action` should be taken regarding
+  // existing queued or showing promos associated with `feature`.
+  //
+  // Returns whether a promo was closed as a result.
+  virtual bool NotifyFeaturePromoFeatureUsed(
+      const base::Feature& feature,
+      FeaturePromoFeatureUsedAction action) = 0;
+
+  // Records that the user has performed an action that is specified in in a
+  // FeaturePromoSpecification by calling the `SetAdditionalConditions()`
+  // method; this information may be used to determine whether and when to show
+  // the promo in the future.
+  virtual void NotifyAdditionalConditionEvent(const char* event_name) = 0;
+
+  // Returns whether a "New" Badge should be shown on the entry point for
+  // `feature`; the badge must be registered for the feature in
+  // browser_user_education_service.cc. Call exactly once per time the surface
+  // containing the badge will be shown to the user.
+  virtual user_education::DisplayNewBadge MaybeShowNewBadgeFor(
+      const base::Feature& feature) = 0;
+
+  // Records that the user has engaged the specific `feature` associated with a
+  // "New" Badge; this information is used to determine whether to show the
+  // badge in the future.
+  //
+  // You can also call `UserEducationService::MaybeNotifyNewBadgeFeatureUsed()`
+  // if you only have access ot a `BrowserContext` or `Profile`.
+  virtual void NotifyNewBadgeFeatureUsed(const base::Feature& feature) = 0;
+
+  // Returns the interface associated with the browser containing `contents` in
+  // its tabstrip, or null if `contents` is not a tab in any known browser.
+  //
+  // For WebUI embedded in a specific browser window or secondary UI of a
+  // browser window, instead use `MaybeGetForWebUiContents()`.
+  static BrowserUserEducationInterface* MaybeGetForWebContentsInTab(
+      content::WebContents* contents);
+
+  // Returns the interface associated with the browser containing `contents` in
+  // a WebUI. Returns null if it cannot determine the associated browser. Use
+  // this function for secondary UI (side panels, dialogs, etc.)
+  static BrowserUserEducationInterface* MaybeGetForWebUiContents(
+      content::WebContents* contents);
+
+  // Retrieves from the a browser window interface, or null if none.
+  // Note: May return null in unit_tests, even for a valid `browser`.
+  static BrowserUserEducationInterface* From(BrowserWindowInterface* browser);
+
+ protected:
+  virtual const user_education::UserEducationContextPtr&
+  GetUserEducationContextImpl() const = 0;
+
+  // Implementation for `WouldShowFeaturePromo()`.
+  virtual user_education::FeaturePromoResult WouldShowFeaturePromoImpl(
+      const base::Feature& iph_feature) const = 0;
+
+ private:
+  ui::ScopedUnownedUserData<BrowserUserEducationInterface>
+      scoped_unowned_user_data_;
+};
+
+#endif  // CHROME_BROWSER_UI_USER_EDUCATION_BROWSER_USER_EDUCATION_INTERFACE_H_

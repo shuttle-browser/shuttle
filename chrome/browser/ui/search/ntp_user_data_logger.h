@@ -1,0 +1,133 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_SEARCH_NTP_USER_DATA_LOGGER_H_
+#define CHROME_BROWSER_UI_SEARCH_NTP_USER_DATA_LOGGER_H_
+
+#include <stddef.h>
+
+#include <array>
+#include <optional>
+
+#include "base/memory/raw_ptr.h"
+#include "base/time/time.h"
+#include "build/build_config.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/search/most_visited_metrics_logger.h"
+#include "chrome/common/search/ntp_logging_events.h"
+#include "components/ntp_tiles/constants.h"
+#include "components/ntp_tiles/ntp_tile_impression.h"
+
+// This enum must match the numbering for NewTabPageLogoShown in enums.xml.
+// Do not reorder or remove items, and only add new items before
+// LOGO_IMPRESSION_TYPE_MAX.
+// LINT.IfChange(LogoImpressionType)
+enum LogoImpressionType {
+  // Static Doodle image.
+  LOGO_IMPRESSION_TYPE_STATIC = 0,
+  // (Deprecated) Call-to-action Doodle image.
+  LOGO_IMPRESSION_TYPE_CTA = 1,
+  // Animated Doodle image.
+  LOGO_IMPRESSION_TYPE_ANIMATED = 2,
+
+  LOGO_IMPRESSION_TYPE_MAX
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/new_tab_page/enums.xml:NewTabPageLogoShown)
+
+// This enum must match the numbering for NewTabPageLogoClick in enums.xml.
+// Do not reorder or remove items, and only add new items before
+// LOGO_CLICK_TYPE_MAX.
+// LINT.IfChange(LogoClickType)
+enum LogoClickType {
+  // Static Doodle image.
+  LOGO_CLICK_TYPE_STATIC = 0,
+  // (Deprecated) Call-to-action Doodle image.
+  LOGO_CLICK_TYPE_CTA = 1,
+  // Animated Doodle image.
+  LOGO_CLICK_TYPE_ANIMATED = 2,
+
+  LOGO_CLICK_TYPE_MAX
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/new_tab_page/enums.xml:NewTabPageLogoClick)
+
+// Helper class for logging data from the NTP. Attached to each NTP instance.
+class NTPUserDataLogger : public MostVisitedMetricsLogger {
+ public:
+  // Creates a NTPUserDataLogger. MUST be called only when the NTP is active.
+  // `ntp_navigation_start_time_ticks` is the monotonic-clock timestamp of the
+  // NTP navigation start; it is used directly as the anchor for trace events.
+  NTPUserDataLogger(Profile* profile,
+                    const GURL& ntp_url,
+                    base::TimeTicks ntp_navigation_start_time_ticks);
+
+  NTPUserDataLogger(const NTPUserDataLogger&) = delete;
+  NTPUserDataLogger& operator=(const NTPUserDataLogger&) = delete;
+
+  ~NTPUserDataLogger() override;
+
+  // Called when a One Google Bar fetch has been completed after |duration|.
+  // |success| is true if the fetch was successful.
+  static void LogOneGoogleBarFetchDuration(bool success,
+                                           const base::TimeDelta& duration);
+
+  // MostVisitedMetricsLogger:
+  // Called when an event occurs on the NTP that requires a counter to be
+  // incremented. |time| is the delta time from navigation start until this
+  // event happened. The NTP_ALL_TILES_LOADED event may be logged from all NTPs;
+  // all others require Google as the default search provider.
+  void LogEvent(NTPLoggingEventType event, base::TimeDelta time) override;
+
+  // Called when all NTP tiles have finished loading (successfully or failing).
+  void LogMostVisitedLoaded(base::TimeDelta time,
+                            bool using_most_visited,
+                            bool using_custom_links,
+                            bool using_enterprise_shortcuts,
+                            bool is_visible,
+                            std::optional<bool> is_expanded) override;
+
+ private:
+  // Returns whether Google is selected as the default search engine. Virtual
+  // for testing.
+  virtual bool DefaultSearchProviderIsGoogle() const;
+
+  // Returns whether a custom background is configured. Virtual for testing.
+  virtual bool CustomBackgroundIsConfigured() const;
+
+  // Logs a number of statistics regarding the NTP. Called when an NTP tab is
+  // about to be deactivated (be it by switching tabs, losing focus or closing
+  // the tab/shutting down Chrome), or when the user navigates to a URL.
+  void EmitNtpStatistics(base::TimeDelta load_time,
+                         bool using_most_visited,
+                         bool using_custom_links,
+                         bool using_enterprise_shortcuts,
+                         bool is_visible,
+                         std::optional<bool> is_expanded);
+
+  void EmitNtpTraceEvent(const char* event_name, base::TimeDelta duration);
+
+  void RecordDoodleImpression(base::TimeDelta time,
+                              LogoImpressionType logo_type);
+
+  // Logs the user |action| via base::RecordAction.
+  void RecordAction(const char* action);
+
+  // Whether we have already emitted NTP stats for this web contents.
+  bool has_emitted_ = false;
+
+  bool should_record_doodle_load_time_ = true;
+
+  // Are stats being logged during Chrome startup?
+  bool during_startup_;
+
+  // The URL of this New Tab Page - varies based on NTP version.
+  GURL ntp_url_;
+
+  // The profile in which this New Tab Page was loaded.
+  raw_ptr<Profile> profile_;
+
+  // Keeps the starting time of NTP navigation.
+  const base::TimeTicks ntp_navigation_start_time_;
+};
+
+#endif  // CHROME_BROWSER_UI_SEARCH_NTP_USER_DATA_LOGGER_H_

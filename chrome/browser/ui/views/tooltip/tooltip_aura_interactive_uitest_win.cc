@@ -1,0 +1,59 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "base/strings/utf_string_conversions.h"
+#include "build/build_config.h"
+#include "chrome/browser/ui/browser_element_identifiers.h"
+#include "chrome/browser/ui/browser_window.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/view_ids.h"
+#include "chrome/browser/ui/views/accessibility/uia_accessibility_event_waiter.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "chrome/test/base/interactive_test_utils.h"
+#include "chrome/test/base/ui_test_utils.h"
+#include "chrome/test/interaction/interactive_browser_test.h"
+#include "content/public/test/browser_test.h"
+#include "ui/aura/window.h"
+#include "ui/aura/window_tree_host.h"
+#include "ui/base/test/ui_controls.h"
+#include "ui/gfx/geometry/point.h"
+
+class TooltipAuraUiaTest : public InteractiveBrowserTest {};
+
+// Flakily tests: http://crbug.com/41474224
+IN_PROC_BROWSER_TEST_F(TooltipAuraUiaTest, DISABLED_TooltipUiaEvents) {
+  // Setup accessibility waiter
+  HWND window_handle = GetDesktopWindow();
+  UiaAccessibilityWaiterInfo opened_info = {
+      window_handle, base::ASCIIToWide("tooltip"),
+      base::ASCIIToWide("Reload this page"), ax::mojom::Event::kTooltipOpened};
+  UiaAccessibilityEventWaiter opened_waiter(opened_info);
+
+  // Move mouse to Refresh button
+  ASSERT_TRUE(RunTestSequence(MoveMouseTo(
+      kReloadButtonElementId, base::BindOnce([](ui::TrackedElement* el) {
+        return el->GetScreenBounds().CenterPoint();
+      }))));
+
+  // Wait for accessibility event
+  opened_waiter.Wait();
+
+  // Setup accessibility waiter
+  UiaAccessibilityWaiterInfo closed_info = {
+      window_handle, base::ASCIIToWide("tooltip"),
+      base::ASCIIToWide("Reload this page"), ax::mojom::Event::kTooltipClosed};
+  UiaAccessibilityEventWaiter closed_waiter(closed_info);
+
+  // Move mouse away from the refresh button
+  views::View* omnibox_view =
+      BrowserView::GetBrowserViewForBrowser(browser())->GetViewByID(
+          VIEW_ID_OMNIBOX);
+  gfx::Point center_omnibox =
+      ui_test_utils::GetCenterInScreenCoordinates(omnibox_view);
+  ui_controls::SendMouseMove(center_omnibox.x(), center_omnibox.y());
+
+  // Wait for accessibility event
+  closed_waiter.Wait();
+}

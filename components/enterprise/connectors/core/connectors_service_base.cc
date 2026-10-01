@@ -1,0 +1,356 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/enterprise/connectors/core/connectors_service_base.h"
+
+#include "base/feature_list.h"
+#include "base/path_service.h"
+#include "base/strings/strcat.h"
+#include "base/version_info/version_info.h"
+#include "components/enterprise/connectors/core/connectors_prefs.h"
+#include "components/policy/core/common/cloud/cloud_policy_util.h"
+#include "components/policy/core/common/cloud/user_cloud_policy_manager.h"
+#include "components/policy/core/common/policy_types.h"
+#include "components/prefs/pref_service.h"
+#include "components/safe_browsing/core/common/features.h"
+#include "components/ukm/scheme_constants.h"
+
+namespace enterprise_connectors {
+
+ConnectorsServiceBase::ConnectorsServiceBase(
+    std::unique_ptr<ConnectorsManagerBase> manager)
+    : connectors_manager_base_(std::move(manager)) {
+  DCHECK(connectors_manager_base_);
+}
+
+ConnectorsServiceBase::ConnectorsServiceBase(ConnectorsServiceBase&&) = default;
+ConnectorsServiceBase& ConnectorsServiceBase::operator=(
+    ConnectorsServiceBase&&) = default;
+ConnectorsServiceBase::~ConnectorsServiceBase() = default;
+
+ConnectorsServiceBase::DmToken::DmToken(const std::string& value,
+                                        policy::PolicyScope scope)
+    : value(value), scope(scope) {}
+ConnectorsServiceBase::DmToken::DmToken(DmToken&&) = default;
+ConnectorsServiceBase::DmToken& ConnectorsServiceBase::DmToken::operator=(
+    DmToken&&) = default;
+ConnectorsServiceBase::DmToken::DmToken(const DmToken&) = default;
+ConnectorsServiceBase::DmToken& ConnectorsServiceBase::DmToken::operator=(
+    const DmToken&) = default;
+ConnectorsServiceBase::DmToken::~DmToken() = default;
+
+base::expected<std::string,
+               ConnectorsServiceBase::NoDMTokenForRealTimeUrlCheckReason>
+ConnectorsServiceBase::GetDMTokenForRealTimeUrlCheck() const {
+  if (!ConnectorsEnabled()) {
+    return base::unexpected(
+        NoDMTokenForRealTimeUrlCheckReason::kConnectorsDisabled);
+  }
+
+  if (GetPrefs()->GetInteger(kEnterpriseRealTimeUrlCheckMode) ==
+      REAL_TIME_CHECK_DISABLED) {
+    return base::unexpected(
+        NoDMTokenForRealTimeUrlCheckReason::kPolicyDisabled);
+  }
+
+  std::optional<DmToken> dm_token =
+      GetDmToken(kEnterpriseRealTimeUrlCheckScope);
+
+  if (dm_token.has_value()) {
+    return dm_token.value().value;
+  }
+  return base::unexpected(NoDMTokenForRealTimeUrlCheckReason::kNoDmToken);
+}
+
+EnterpriseRealTimeUrlCheckMode
+ConnectorsServiceBase::GetAppliedRealTimeUrlCheck() const {
+  if (!ConnectorsEnabled() ||
+      !GetDmToken(kEnterpriseRealTimeUrlCheckScope).has_value()) {
+    return REAL_TIME_CHECK_DISABLED;
+  }
+
+  return static_cast<EnterpriseRealTimeUrlCheckMode>(
+      GetPrefs()->GetInteger(kEnterpriseRealTimeUrlCheckMode));
+}
+
+std::optional<policy::PolicyScope>
+ConnectorsServiceBase::GetRealtimeUrlCheckScope() const {
+  std::optional<policy::PolicyScope> policy_scope = std::nullopt;
+  if (std::optional<DmToken> dm_token =
+          GetDmToken(kEnterpriseRealTimeUrlCheckScope)) {
+    policy_scope = dm_token.value().scope;
+  }
+  return policy_scope;
+}
+
+std::vector<std::string>
+ConnectorsServiceBase::GetReportingServiceProviderNames() {
+  if (!ConnectorsEnabled()) {
+    return {};
+  }
+
+  if (!GetDmToken(kOnSecurityEventScopePref).has_value()) {
+    return {};
+  }
+
+  return connectors_manager_base_->GetReportingServiceProviderNames();
+}
+
+std::optional<ReportingSettings> ConnectorsServiceBase::GetReportingSettings() {
+  if (!ConnectorsEnabled()) {
+    return std::nullopt;
+  }
+
+  std::optional<ReportingSettings> settings =
+      connectors_manager_base_->GetReportingSettings();
+  if (!settings.has_value()) {
+    return std::nullopt;
+  }
+
+  std::optional<DmToken> dm_token = GetDmToken(kOnSecurityEventScopePref);
+  if (!dm_token.has_value()) {
+    return std::nullopt;
+  }
+
+  settings.value().dm_token = dm_token.value().value;
+  settings.value().per_profile =
+      dm_token.value().scope == policy::POLICY_SCOPE_USER;
+
+  return settings;
+}
+
+std::optional<AnalysisSettings> ConnectorsServiceBase::GetAnalysisSettings(
+    const GURL& url,
+    AnalysisConnector connector) {
+  DCHECK_NE(connector, AnalysisConnector::FILE_TRANSFER);
+  if (!ConnectorsEnabled() || IsURLExemptFromAnalysis(url, connector)) {
+    return std::nullopt;
+  }
+
+  if (url.SchemeIsBlob() || url.SchemeIsFileSystem()) {
+    GURL inner = url.inner_url() ? *url.inner_url() : GURL(url.GetPath());
+    return GetCommonAnalysisSettings(
+        connectors_manager_base_->GetAnalysisSettings(inner, connector),
+        connector);
+  }
+
+  return GetCommonAnalysisSettings(
+      connectors_manager_base_->GetAnalysisSettings(url, connector), connector);
+}
+
+std::optional<AnalysisSettings>
+ConnectorsServiceBase::GetCommonAnalysisSettings(
+    std::optional<AnalysisSettings> settings,
+    AnalysisConnector connector) {
+  if (!settings.has_value()) {
+    return std::nullopt;
+  }
+
+#if !BUILDFLAG(ENTERPRISE_LOCAL_CONTENT_ANALYSIS)
+  if (settings->cloud_or_local_settings.is_local_analysis()) {
+    return std::nullopt;
+  }
+#endif
+
+  std::optional<DmToken> dm_token =
+      GetDmToken(AnalysisConnectorScopePref(connector));
+  bool is_cloud = settings.value().cloud_or_local_settings.is_cloud_analysis();
+
+  if (is_cloud) {
+    if (!dm_token.has_value()) {
+      return std::nullopt;
+    }
+
+    std::get<CloudAnalysisSettings>(settings.value().cloud_or_local_settings)
+        .dm_token = dm_token.value().value;
+  }
+
+  settings.value().per_profile =
+      (dm_token.has_value() &&
+       dm_token.value().scope == policy::POLICY_SCOPE_USER) ||
+      GetPolicyScope(AnalysisConnectorScopePref(connector)) ==
+          policy::POLICY_SCOPE_USER;
+  settings.value().client_metadata = BuildClientMetadata(is_cloud);
+
+  return settings;
+}
+
+#if !BUILDFLAG(IS_CHROMEOS)
+std::optional<std::string> ConnectorsServiceBase::GetProfileDmToken() const {
+  policy::CloudPolicyManager* policy_manager =
+      GetManagedUserCloudPolicyManager();
+  if (policy_manager && policy_manager->core() &&
+      policy_manager->core()->store() &&
+      policy_manager->core()->store()->has_policy() &&
+      policy_manager->core()->store()->policy()->has_request_token()) {
+    return policy_manager->core()->store()->policy()->request_token();
+  }
+
+  return std::nullopt;
+}
+#endif  // !BUILDFLAG(IS_CHROMEOS)
+
+policy::PolicyScope ConnectorsServiceBase::GetPolicyScope(
+    const char* scope_pref) const {
+  return static_cast<policy::PolicyScope>(GetPrefs()->GetInteger(scope_pref));
+}
+
+void ConnectorsServiceBase::PopulateBrowserMetadata(
+    bool include_device_info,
+    ClientMetadata::Browser* browser_proto) {
+  base::FilePath browser_id;
+  if (base::PathService::Get(base::DIR_EXE, &browser_id)) {
+    browser_proto->set_browser_id(browser_id.AsUTF8Unsafe());
+  }
+  browser_proto->set_chrome_version(
+      std::string(version_info::GetVersionNumber()));
+  if (include_device_info) {
+    browser_proto->set_machine_user(policy::GetOSUsername());
+  }
+}
+
+void ConnectorsServiceBase::PopulateDeviceMetadata(
+    const std::string& client_id,
+    ClientMetadata::Device* device_proto) {
+  std::optional<std::string> browser_dm_token = GetBrowserDmToken();
+  if (browser_dm_token.has_value() && !device_proto->has_dm_token()) {
+    device_proto->set_dm_token(*browser_dm_token);
+  }
+  device_proto->set_client_id(client_id);
+  device_proto->set_os_version(policy::GetOSVersion());
+  device_proto->set_os_platform(policy::GetOSPlatform());
+  device_proto->set_name(policy::GetDeviceName());
+  if (base::FeatureList::IsEnabled(safe_browsing::kEnhancedFieldsForSecOps)) {
+    device_proto->set_device_fqdn(policy::GetDeviceFqdn());
+    device_proto->set_network_name(policy::GetNetworkName());
+  }
+}
+
+bool ConnectorsServiceBase::HasExtraUiToDisplay(AnalysisConnector connector,
+                                                const std::string& tag) {
+  return GetCustomMessage(connector, tag) || GetLearnMoreUrl(connector, tag) ||
+         GetBypassJustificationRequired(connector, tag);
+}
+
+bool ConnectorsServiceBase::IsConnectorEnabled(
+    AnalysisConnector connector) const {
+  if (!ConnectorsEnabled()) {
+    return false;
+  }
+
+  return connectors_manager_base_->IsAnalysisConnectorEnabled(connector);
+}
+
+std::vector<const AnalysisConfig*>
+ConnectorsServiceBase::GetAnalysisServiceConfigs(AnalysisConnector connector) {
+  if (!ConnectorsEnabled()) {
+    return {};
+  }
+
+  return connectors_manager_base_->GetAnalysisServiceConfigs(connector);
+}
+
+bool ConnectorsServiceBase::DelayUntilVerdict(AnalysisConnector connector) {
+  if (!ConnectorsEnabled()) {
+    return false;
+  }
+
+  return connectors_manager_base_->DelayUntilVerdict(connector);
+}
+
+std::optional<std::u16string> ConnectorsServiceBase::GetCustomMessage(
+    AnalysisConnector connector,
+    const std::string& tag) {
+  if (!ConnectorsEnabled()) {
+    return std::nullopt;
+  }
+
+  return connectors_manager_base_->GetCustomMessage(connector, tag);
+}
+
+std::optional<GURL> ConnectorsServiceBase::GetLearnMoreUrl(
+    AnalysisConnector connector,
+    const std::string& tag) {
+  if (!ConnectorsEnabled()) {
+    return std::nullopt;
+  }
+
+  return connectors_manager_base_->GetLearnMoreUrl(connector, tag);
+}
+
+bool ConnectorsServiceBase::GetBypassJustificationRequired(
+    AnalysisConnector connector,
+    const std::string& tag) {
+  if (!ConnectorsEnabled()) {
+    return false;
+  }
+
+  return connectors_manager_base_->GetBypassJustificationRequired(connector,
+                                                                  tag);
+}
+
+void ConnectorsServiceBase::ObserveTelemetryReporting(
+    base::RepeatingCallback<void()> callback) {
+  connectors_manager_base_->SetTelemetryObserverCallback(callback);
+}
+
+std::vector<std::string> ConnectorsServiceBase::GetAnalysisServiceProviderNames(
+    AnalysisConnector connector) {
+  if (!ConnectorsEnabled()) {
+    return {};
+  }
+
+  if (!GetDmToken(AnalysisConnectorScopePref(connector)).has_value()) {
+    return {};
+  }
+
+  return connectors_manager_base_->GetAnalysisServiceProviderNames(connector);
+}
+
+bool ConnectorsServiceBase::IsURLExemptFromAnalysis(
+    const GURL& url,
+    AnalysisConnector connector) {
+  if (url.SchemeIs(ukm::kChromeUIScheme)) {
+    return true;
+  }
+
+  // Devtools are only exempt for file attaching and pasting since that doesn't
+  // have a chance of leaking sensitive data.
+  if (url.SchemeIs(ukm::kChromeDevToolsScheme) &&
+      (connector == AnalysisConnector::BULK_DATA_ENTRY ||
+       connector == AnalysisConnector::FILE_ATTACHED)) {
+    return true;
+  }
+
+  return false;
+}
+
+ConnectorsManagerBase*
+ConnectorsServiceBase::ConnectorsManagerBaseForTesting() {
+  return connectors_manager_base_.get();
+}
+
+std::string ConnectorsServiceBase::GetRealTimeUrlCheckIdentifier() const {
+  auto dm_token = GetDmToken(kEnterpriseRealTimeUrlCheckScope);
+  if (!dm_token) {
+    return std::string();
+  }
+
+  if (IsProfileAffiliated()) {
+    std::string device_id = GetDeviceClientId();
+    std::string email = GetProfileEmail();
+    if (!email.empty()) {
+      return base::StrCat({device_id, "\n", email});
+    }
+    return device_id;
+  }
+
+  if (dm_token->scope == policy::POLICY_SCOPE_MACHINE) {
+    return GetDeviceClientId();
+  }
+
+  return GetProfileEmail();
+}
+
+}  // namespace enterprise_connectors

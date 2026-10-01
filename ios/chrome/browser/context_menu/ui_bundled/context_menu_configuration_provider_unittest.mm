@@ -1,0 +1,655 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/context_menu/ui_bundled/context_menu_configuration_provider.h"
+
+#import "base/apple/foundation_util.h"
+#import "base/ios/ios_util.h"
+#import "base/json/json_reader.h"
+#import "base/test/metrics/histogram_tester.h"
+#import "base/test/scoped_feature_list.h"
+#import "components/enterprise/connectors/core/common.h"
+#import "components/enterprise/connectors/core/connectors_prefs.h"
+#import "components/optimization_guide/core/optimization_guide_enums.h"
+#import "components/policy/core/common/policy_pref_names.h"
+#import "components/prefs/testing_pref_service.h"
+#import "components/signin/public/base/consent_level.h"
+#import "components/signin/public/base/signin_metrics.h"
+#import "components/signin/public/identity_manager/account_capabilities_test_mutator.h"
+#import "components/signin/public/identity_manager/identity_test_environment.h"
+#import "components/strings/grit/components_strings.h"
+#import "ios/chrome/browser/context_menu/ui_bundled/context_menu_configuration_provider+Testing.h"
+#import "ios/chrome/browser/enterprise/data_controls/model/data_controls_tab_helper.h"
+#import "ios/chrome/browser/intelligence/bwg/model/fake_gemini_service.h"
+#import "ios/chrome/browser/intelligence/bwg/model/gemini_service_factory.h"
+#import "ios/chrome/browser/intelligence/bwg/model/gemini_tab_helper.h"
+#import "ios/chrome/browser/intelligence/features/features.h"
+#import "ios/chrome/browser/menu/ui_bundled/browser_action_factory.h"
+#import "ios/chrome/browser/menu/ui_bundled/menu_histograms.h"
+#import "ios/chrome/browser/optimization_guide/model/optimization_guide_service.h"
+#import "ios/chrome/browser/optimization_guide/model/optimization_guide_service_factory.h"
+#import "ios/chrome/browser/photos/model/photos_service_factory.h"
+#import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
+#import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
+#import "ios/chrome/browser/shared/model/web_state_list/web_state_opener.h"
+#import "ios/chrome/browser/shared/public/commands/activity_service_commands.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/enhanced_calendar_commands.h"
+#import "ios/chrome/browser/shared/public/commands/gemini_commands.h"
+#import "ios/chrome/browser/shared/public/commands/mini_map_commands.h"
+#import "ios/chrome/browser/shared/public/commands/save_to_photos_commands.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/shared/public/commands/unit_conversion_commands.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/signin/model/fake_system_identity.h"
+#import "ios/chrome/browser/signin/model/fake_system_identity_manager.h"
+#import "ios/chrome/browser/signin/model/identity_manager_factory.h"
+#import "ios/chrome/browser/signin/model/identity_test_environment_browser_state_adaptor.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
+#import "ios/components/enterprise/analysis/features.h"
+#import "ios/web/public/test/fakes/fake_web_frame.h"
+#import "ios/web/public/test/fakes/fake_web_frames_manager.h"
+#import "ios/web/public/test/fakes/fake_web_state.h"
+#import "ios/web/public/test/web_task_environment.h"
+#import "ios/web/public/ui/context_menu_params.h"
+#import "testing/gtest_mac.h"
+#import "testing/platform_test.h"
+#import "third_party/ocmock/OCMock/OCMock.h"
+#import "ui/base/l10n/l10n_util.h"
+#import "url/origin.h"
+
+namespace ios::provider {
+void SetMockProtectedUrl(bool is_protected);
+}
+
+namespace {
+
+// Menu scenario to create a BrowserActionFactory.
+const MenuScenarioHistogram kTestMenuScenario =
+    kMenuScenarioHistogramHistoryEntry;
+
+// Email for the primary account when signing-in.
+const char kPrimaryAccountEmail[] = "peter.parker@gmail.com";
+
+// Image source URL for the context menu params.
+const char kImageUrl[] = "https://www.example.com/image.jpg";
+
+// Link URL for the context menu params.
+const char kLinkUrl[] = "https://www.example.com";
+
+constexpr char kTestUrl[] = "https://allowed.com";
+constexpr char kTestDisallowedUrl[] = "https://disallowed.com";
+
+// The pref for Download Connectors Analysis.
+constexpr char kDownloadConnectorsAnalysisPref[] = R"([
+  {
+    "service_provider": "google",
+    "enable": [
+      {"url_list": ["*"], "tags": ["dlp", "malware"]}
+    ],
+    "block_until_verdict": 1,
+    "block_password_protected": true,
+    "block_large_files": true
+  }
+])";
+
+// Returns context menu params with `src_url` set to `image_url`.
+web::ContextMenuParams GetContextMenuParamsWithImageUrl(const char* image_url) {
+  web::ContextMenuParams params;
+  params.src_url = GURL(image_url);
+  params.frame_id = "fake_frame_id";
+  params.frame_security_origin =
+      url::Origin::Create(GURL("https://allowed.com/"));
+  return params;
+}
+
+// Returns context menu params with `link_url` set to `kLinkUrl` and the given
+// location.
+web::ContextMenuParams GetContextMenuParamsWithLinkURL(const char* link_url,
+                                                       CGPoint location) {
+  web::ContextMenuParams params;
+  params.link_url = GURL(kLinkUrl);
+  params.location = location;
+  return params;
+}
+
+}  // namespace
+
+// Unit tests for the ContextMenuConfigurationProvider.
+class ContextMenuConfigurationProviderTest : public PlatformTest {
+ protected:
+  void SetUp() final {
+    PlatformTest::SetUp();
+    TestProfileIOS::Builder builder;
+    builder.AddTestingFactory(
+        IdentityManagerFactory::GetInstance(),
+        base::BindRepeating(IdentityTestEnvironmentBrowserStateAdaptor::
+                                BuildIdentityManagerForTests));
+    builder.AddTestingFactory(
+        OptimizationGuideServiceFactory::GetInstance(),
+        OptimizationGuideServiceFactory::GetDefaultFactory());
+    builder.AddTestingFactory(PhotosServiceFactory::GetInstance(),
+                              PhotosServiceFactory::GetDefaultFactory());
+    builder.AddTestingFactory(
+        GeminiServiceFactory::GetInstance(),
+        base::BindRepeating(
+            [](ProfileIOS* profile) -> std::unique_ptr<KeyedService> {
+              return std::make_unique<FakeGeminiService>();
+            }));
+    profile_ = std::move(builder).Build();
+    browser_ = std::make_unique<TestBrowser>(profile_.get());
+    std::unique_ptr<web::FakeWebState> web_state =
+        std::make_unique<web::FakeWebState>();
+    web_state->SetBrowserState(profile_.get());
+    data_controls::DataControlsTabHelper::CreateForWebState(web_state.get());
+    browser_->GetWebStateList()->InsertWebState(
+        std::move(web_state),
+        WebStateList::InsertionParams::Automatic().Activate());
+
+    base_view_controller_ = [[UIViewController alloc] init];
+    configuration_provider_ = [[ContextMenuConfigurationProvider alloc]
+           initWithBrowser:browser_.get()
+        baseViewController:base_view_controller_];
+
+    mock_scene_handler = OCMStrictProtocolMock(@protocol(SceneCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:mock_scene_handler
+                     forProtocol:@protocol(SceneCommands)];
+    mock_mini_map_commands_handler =
+        OCMStrictProtocolMock(@protocol(MiniMapCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:mock_mini_map_commands_handler
+                     forProtocol:@protocol(MiniMapCommands)];
+    mock_unit_conversion_handler =
+        OCMStrictProtocolMock(@protocol(UnitConversionCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:mock_unit_conversion_handler
+                     forProtocol:@protocol(UnitConversionCommands)];
+    mock_save_to_photos_commands_handler =
+        OCMStrictProtocolMock(@protocol(SaveToPhotosCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:mock_save_to_photos_commands_handler
+                     forProtocol:@protocol(SaveToPhotosCommands)];
+    mock_activity_service_commands_handler =
+        OCMStrictProtocolMock(@protocol(ActivityServiceCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:mock_activity_service_commands_handler
+                     forProtocol:@protocol(ActivityServiceCommands)];
+    mock_enhanced_calendar_handler =
+        OCMStrictProtocolMock(@protocol(EnhancedCalendarCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:mock_enhanced_calendar_handler
+                     forProtocol:@protocol(EnhancedCalendarCommands)];
+    mock_gemini_handler = OCMStrictProtocolMock(@protocol(GeminiCommands));
+    [browser_->GetCommandDispatcher()
+        startDispatchingToTarget:mock_gemini_handler
+                     forProtocol:@protocol(GeminiCommands)];
+  }
+
+  void TearDown() final {
+    ios::provider::SetMockProtectedUrl(false);
+    [configuration_provider_ stop];
+    PlatformTest::TearDown();
+  }
+
+  // Signs in with a fake primary account and configures it with model execution
+  // capabilities so that Gemini availability checks pass.
+  void SignIn() {
+    signin::IdentityManager* identity_manager =
+        IdentityManagerFactory::GetForProfile(profile_.get());
+    AccountInfo account = signin::MakePrimaryAccountAvailable(
+        identity_manager, kPrimaryAccountEmail, signin::ConsentLevel::kSignin);
+    AccountCapabilitiesTestMutator mutator(&account);
+    mutator.set_can_use_model_execution_features(true);
+    signin::UpdateAccountInfoForAccount(identity_manager, account);
+  }
+
+  // Returns a BrowserActionFactory.
+  BrowserActionFactory* GetBrowserActionFactory() {
+    return [[BrowserActionFactory alloc] initWithBrowser:browser_.get()
+                                                scenario:kTestMenuScenario];
+  }
+
+  // The UIMenu returned by the action provider from the
+  // ContextMenuConfigurationProvider.
+  UIMenu* GetContextMenuForParams(const web::ContextMenuParams& params) {
+    UIContextMenuActionProvider actionProvider = [configuration_provider_
+        contextMenuActionProviderForWebState:browser_->GetWebStateList()
+                                                 ->GetActiveWebState()
+                                      params:params];
+    return actionProvider(@[]);
+  }
+
+  // Returns the browser's active web state.
+  web::FakeWebState* GetActiveWebState() {
+    return static_cast<web::FakeWebState*>(
+        browser_->GetWebStateList()->GetActiveWebState());
+  }
+
+  // Returns the FILE_DOWNLOADED analysis Connector.
+  enterprise_connectors::AnalysisConnector connector() {
+    return enterprise_connectors::AnalysisConnector::FILE_DOWNLOADED;
+  }
+
+  // Set the pref to block all download.
+  void SetDownloadConnectorsPref(PrefService* pref_service, const char* pref) {
+    pref_service->Set(
+        enterprise_connectors::AnalysisConnectorPref(connector()),
+        *base::JSONReader::Read(pref, base::JSON_PARSE_CHROMIUM_EXTENSIONS));
+    pref_service->SetInteger(
+        enterprise_connectors::AnalysisConnectorScopePref(connector()),
+        policy::POLICY_SCOPE_MACHINE);
+  }
+
+  IOSChromeScopedTestingLocalState scoped_testing_local_state_;
+  web::WebTaskEnvironment task_environment_;
+  std::unique_ptr<TestProfileIOS> profile_;
+  std::unique_ptr<TestBrowser> browser_;
+  UIViewController* base_view_controller_;
+  ContextMenuConfigurationProvider* configuration_provider_;
+
+  id mock_mini_map_commands_handler;
+  id mock_unit_conversion_handler;
+  id mock_save_to_photos_commands_handler;
+  id mock_activity_service_commands_handler;
+  id mock_scene_handler;
+  id mock_enhanced_calendar_handler;
+  id mock_gemini_handler;
+};
+
+// TODO(crbug.com/484919846): Remove this test once the "Save to Photos for
+// signed-out users" experiment is fully launched.
+// Test that the "Save Image in Google Photos" action is added to the context
+// menu if enough conditions are met when signed-in.
+TEST_F(ContextMenuConfigurationProviderTest,
+       HasSaveImageToPhotosMenuElementWhenSignedIn) {
+  SignIn();
+
+  // Get menu with params containing image source URL.
+  web::ContextMenuParams paramsWithImage =
+      GetContextMenuParamsWithImageUrl(kImageUrl);
+  UIMenu* menu = GetContextMenuForParams(paramsWithImage);
+
+  // Test that there is a UImenu within the image context menu.
+  NSUInteger indexOfFoundSubMenu =
+      [menu.children indexOfObjectPassingTest:^BOOL(UIMenuElement* menuElement,
+                                                    NSUInteger, BOOL*) {
+        return [menuElement isKindOfClass:[UIMenu class]];
+      }];
+  ASSERT_TRUE(indexOfFoundSubMenu != NSNotFound);
+
+  UIMenu* subMenu = (UIMenu*)menu.children[indexOfFoundSubMenu];
+  BrowserActionFactory* actionFactory = GetBrowserActionFactory();
+  UIMenuElement* expectedMenuElement =
+      [actionFactory actionToSaveToPhotosWithImageURL:GURL(kImageUrl)
+                                             referrer:web::Referrer()
+                                             webState:GetActiveWebState()
+                                               params:paramsWithImage
+                                                block:nil];
+
+  // Test that there is an element with the expected title in the submenu.
+  NSUInteger indexOfFoundMenuElement =
+      [subMenu.children indexOfObjectPassingTest:^BOOL(
+                            UIMenuElement* menuElement, NSUInteger, BOOL*) {
+        return [menuElement.title isEqualToString:expectedMenuElement.title];
+      }];
+  ASSERT_TRUE(indexOfFoundMenuElement != NSNotFound);
+
+  UIMenuElement* foundMenuElement = subMenu.children[indexOfFoundMenuElement];
+  // Test that the element has the expected subtitle.
+  EXPECT_EQ(foundMenuElement.subtitle, expectedMenuElement.subtitle);
+  // Test that the element has the expected image.
+  EXPECT_TRUE([foundMenuElement.image isEqual:expectedMenuElement.image]);
+  // Test that the element is not disabled.
+  EXPECT_NE(base::apple::ObjCCast<UIAction>(foundMenuElement).attributes,
+            UIMenuElementAttributesDisabled);
+}
+
+// TODO(crbug.com/484919846): Rename test to HasSaveImageToPhotosMenuElement
+// once the "Save to Photos for signed-out users" experiment is fully launched.
+
+// Test that the "Save Image in Google Photos" action is added to the context
+// menu if enough conditions are met when signed-out.
+TEST_F(ContextMenuConfigurationProviderTest,
+       HasSaveImageToPhotosMenuElementWhenSignedOut) {
+  // Enables the flag to show the "Save Image in Photos" action when signed-out.
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(kIOSSaveToPhotosSignedOut);
+
+  // Get menu with params containing image source URL.
+  web::ContextMenuParams paramsWithImage =
+      GetContextMenuParamsWithImageUrl(kImageUrl);
+  UIMenu* menu = GetContextMenuForParams(paramsWithImage);
+
+  // Test that there is a UImenu within the image context menu.
+  NSUInteger indexOfFoundSubMenu =
+      [menu.children indexOfObjectPassingTest:^BOOL(UIMenuElement* menuElement,
+                                                    NSUInteger, BOOL*) {
+        return [menuElement isKindOfClass:[UIMenu class]];
+      }];
+  ASSERT_TRUE(indexOfFoundSubMenu != NSNotFound);
+
+  UIMenu* subMenu = (UIMenu*)menu.children[indexOfFoundSubMenu];
+  BrowserActionFactory* actionFactory = GetBrowserActionFactory();
+  UIMenuElement* expectedMenuElement =
+      [actionFactory actionToSaveToPhotosWithImageURL:GURL(kImageUrl)
+                                             referrer:web::Referrer()
+                                             webState:GetActiveWebState()
+                                               params:paramsWithImage
+                                                block:nil];
+
+  // Test that there is an element with the expected title in the submenu.
+  NSUInteger indexOfFoundMenuElement =
+      [subMenu.children indexOfObjectPassingTest:^BOOL(
+                            UIMenuElement* menuElement, NSUInteger, BOOL*) {
+        return [menuElement.title isEqualToString:expectedMenuElement.title];
+      }];
+  ASSERT_TRUE(indexOfFoundMenuElement != NSNotFound);
+
+  UIMenuElement* foundMenuElement = subMenu.children[indexOfFoundMenuElement];
+  // Test that the element has the expected subtitle.
+  EXPECT_EQ(foundMenuElement.subtitle, expectedMenuElement.subtitle);
+  // Test that the element has the expected image.
+  EXPECT_TRUE([foundMenuElement.image isEqual:expectedMenuElement.image]);
+  // Test that the element is not disabled.
+  EXPECT_NE(base::apple::ObjCCast<UIAction>(foundMenuElement).attributes,
+            UIMenuElementAttributesDisabled);
+}
+
+// Test that the "Share" action is added to the context
+// menu if enough conditions are met.
+TEST_F(ContextMenuConfigurationProviderTest, HasShareInWebContextMenuElement) {
+  // Get menu with params containing url.
+  web::ContextMenuParams params_with_link =
+      GetContextMenuParamsWithLinkURL(kLinkUrl, CGPointMake(0, 0));
+
+  UIMenu* menu = GetContextMenuForParams(params_with_link);
+
+  BrowserActionFactory* action_factory = GetBrowserActionFactory();
+  UIMenuElement* expected_menu_element =
+      [action_factory actionToShareWithBlock:nil];
+
+  ASSERT_NE(expected_menu_element, nil);
+
+  // Test that there is a UIMenu with the expected title in the menu.
+  NSUInteger index_of_found_menu_element =
+      [menu.children indexOfObjectPassingTest:^BOOL(UIMenuElement* menu_element,
+                                                    NSUInteger, BOOL*) {
+        return [menu_element.title isEqualToString:expected_menu_element.title];
+      }];
+
+  ASSERT_TRUE(index_of_found_menu_element != NSNotFound);
+
+  UIMenuElement* found_menu_element =
+      menu.children[index_of_found_menu_element];
+
+  // Test that the element has the expected subtitle.
+  EXPECT_NSEQ(found_menu_element.subtitle, expected_menu_element.subtitle);
+  // Test that the element has the expected image.
+  EXPECT_NSEQ(found_menu_element.image, expected_menu_element.image);
+}
+
+TEST_F(ContextMenuConfigurationProviderTest, EntityDetectionAllowedURL) {
+  base::HistogramTester histogram_tester;
+  web::ContextMenuParams params;
+
+  OptimizationGuideService* optimization_guide_service =
+      OptimizationGuideServiceFactory::GetForProfile(profile_.get());
+  optimization_guide::proto::Any any_metadata;
+  optimization_guide::OptimizationMetadata metadata;
+  metadata.set_any_metadata(any_metadata);
+  optimization_guide_service->AddHintForTesting(
+      GURL(kTestUrl),
+      optimization_guide::proto::TEXT_CLASSIFIER_ENTITY_DETECTION, metadata);
+
+  SignIn();
+  GetActiveWebState()->SetCurrentURL(GURL(kTestUrl));
+
+  [configuration_provider_
+      contextMenuActionProviderForWebState:GetActiveWebState()
+                                    params:params];
+  histogram_tester.ExpectUniqueSample(
+      "IOS.Mobile.ContextMenu.EntitySelectionAllowed", true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ApplyDecision.TextClassifierEntityDetection",
+      optimization_guide::OptimizationTypeDecision::kAllowedByHint, 1);
+}
+
+TEST_F(ContextMenuConfigurationProviderTest, NoEntityDetectionOnDisallowedURL) {
+  base::HistogramTester histogram_tester;
+  web::ContextMenuParams params;
+
+  SignIn();
+  GetActiveWebState()->SetCurrentURL(GURL(kTestDisallowedUrl));
+
+  [configuration_provider_
+      contextMenuActionProviderForWebState:GetActiveWebState()
+                                    params:params];
+  histogram_tester.ExpectTotalCount(
+      "IOS.Mobile.ContextMenu.EntitySelectionAllowed", 0);
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ApplyDecision.TextClassifierEntityDetection",
+      optimization_guide::OptimizationTypeDecision::kRequestedUnregisteredType,
+      1);
+}
+
+// Test that "Save in Photos" action is disabled and has a download restriction
+// subtitle.
+TEST_F(ContextMenuConfigurationProviderTest,
+       HasSaveImageWithDownloadRestrictionMenuElement) {
+  PrefService* pref_service = profile_->GetPrefs();
+  pref_service->SetInteger(
+      policy::policy_prefs::kDownloadRestrictions,
+      static_cast<int>(policy::DownloadRestriction::ALL_FILES));
+
+  // Get menu with params containing image source URL.
+  web::ContextMenuParams paramsWithImage =
+      GetContextMenuParamsWithImageUrl(kImageUrl);
+  UIMenu* menu = GetContextMenuForParams(paramsWithImage);
+
+  BrowserActionFactory* actionFactory = GetBrowserActionFactory();
+  UIMenuElement* expectedMenuElement =
+      [actionFactory actionSaveImageWithBlock:nil];
+
+  // Test that there is an element with the expected title in the menu.
+  NSUInteger indexOfFoundMenuElement =
+      [menu.children indexOfObjectPassingTest:^BOOL(UIMenuElement* menuElement,
+                                                    NSUInteger, BOOL*) {
+        return [menuElement.title isEqualToString:expectedMenuElement.title];
+      }];
+  ASSERT_TRUE(indexOfFoundMenuElement != NSNotFound);
+  UIMenuElement* foundMenuElement = menu.children[indexOfFoundMenuElement];
+
+  // Test that the element has the expected subtitle.
+  EXPECT_TRUE([foundMenuElement.subtitle
+      isEqualToString:l10n_util::GetNSString(
+                          IDS_POLICY_ACTION_BLOCKED_BY_ORGANIZATION)]);
+
+  // Test that the element is disabled.
+  EXPECT_EQ(base::apple::ObjCCast<UIAction>(foundMenuElement).attributes,
+            UIMenuElementAttributesDisabled);
+}
+
+// TODO(crbug.com/484919846): Remove this test as the test below will cover this
+// case once the "Save to Photos for signed-out users" experiment is fully
+// launched.
+//
+// Test that "Save in Photos" action is disabled and has a download blocked
+// subtitle if download protection connector is enabled.
+TEST_F(ContextMenuConfigurationProviderTest,
+       SaveImageBlockedWhenEnableFileDOwnloadConnector) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      enterprise_connectors::kEnableFileDownloadConnectorIOS);
+
+  PrefService* pref_service = profile_->GetPrefs();
+  SetDownloadConnectorsPref(pref_service, kDownloadConnectorsAnalysisPref);
+
+  // Get menu with params containing image source URL.
+  web::ContextMenuParams paramsWithImage =
+      GetContextMenuParamsWithImageUrl(kImageUrl);
+  UIMenu* menu = GetContextMenuForParams(paramsWithImage);
+
+  BrowserActionFactory* actionFactory = GetBrowserActionFactory();
+  UIMenuElement* expectedMenuElement =
+      [actionFactory actionSaveImageWithBlock:nil];
+
+  // Test that there is an element with the expected title in the menu.
+  NSUInteger indexOfFoundMenuElement =
+      [menu.children indexOfObjectPassingTest:^BOOL(UIMenuElement* menuElement,
+                                                    NSUInteger, BOOL*) {
+        return [menuElement.title isEqualToString:expectedMenuElement.title];
+      }];
+  ASSERT_TRUE(indexOfFoundMenuElement != NSNotFound);
+  UIMenuElement* foundMenuElement = menu.children[indexOfFoundMenuElement];
+
+  // Test that the element has the expected subtitle.
+  EXPECT_TRUE([foundMenuElement.subtitle
+      isEqualToString:l10n_util::GetNSString(
+                          IDS_POLICY_ACTION_BLOCKED_BY_ORGANIZATION)]);
+
+  // Test that the element is disabled.
+  EXPECT_EQ(base::apple::ObjCCast<UIAction>(foundMenuElement).attributes,
+            UIMenuElementAttributesDisabled);
+}
+
+// Tests that all options to save image to different locations are blocked and
+// has a download blocked subtitle if download protection connector is enabled.
+TEST_F(ContextMenuConfigurationProviderTest,
+       AllOptionsToSaveImageBlockedWhenEnableFileDownloadConnector) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      enterprise_connectors::kEnableFileDownloadConnectorIOS);
+
+  PrefService* pref_service = profile_->GetPrefs();
+  SetDownloadConnectorsPref(pref_service, kDownloadConnectorsAnalysisPref);
+
+  SignIn();
+
+  // Get menu with params containing image source URL.
+  web::ContextMenuParams paramsWithImage =
+      GetContextMenuParamsWithImageUrl(kImageUrl);
+  UIMenu* menu = GetContextMenuForParams(paramsWithImage);
+
+  // Test that there is a UImenu within the image context menu.
+  NSUInteger indexOfFoundSubMenu =
+      [menu.children indexOfObjectPassingTest:^BOOL(UIMenuElement* menuElement,
+                                                    NSUInteger, BOOL*) {
+        return [menuElement isKindOfClass:[UIMenu class]];
+      }];
+  ASSERT_TRUE(indexOfFoundSubMenu != NSNotFound);
+
+  UIMenu* subMenu = (UIMenu*)menu.children[indexOfFoundSubMenu];
+  BrowserActionFactory* actionFactory = GetBrowserActionFactory();
+  UIMenuElement* expectedMenuElementNativeSave =
+      [actionFactory actionSaveImageWithBlock:nil];
+  UIMenuElement* expectedMenuElementPhotosSave =
+      [actionFactory actionToSaveToPhotosWithImageURL:GURL(kImageUrl)
+                                             referrer:web::Referrer()
+                                             webState:GetActiveWebState()
+                                               params:paramsWithImage
+                                                block:nil];
+
+  // Test that there is an element with the expected title in the submenu for
+  // saving the image to native photo album.
+  NSUInteger indexOfFoundMenuElementNativeSave =
+      [subMenu.children indexOfObjectPassingTest:^BOOL(
+                            UIMenuElement* menuElement, NSUInteger, BOOL*) {
+        return [menuElement.title
+            isEqualToString:expectedMenuElementNativeSave.title];
+      }];
+  ASSERT_TRUE(indexOfFoundMenuElementNativeSave != NSNotFound);
+
+  UIMenuElement* foundMenuElementNativeSave =
+      subMenu.children[indexOfFoundMenuElementNativeSave];
+  // Test that the element has the expected subtitle.
+  EXPECT_TRUE([foundMenuElementNativeSave.subtitle
+      isEqualToString:l10n_util::GetNSString(
+                          IDS_POLICY_ACTION_BLOCKED_BY_ORGANIZATION)]);
+
+  // Test that the native save element is disabled.
+  EXPECT_EQ(
+      base::apple::ObjCCast<UIAction>(foundMenuElementNativeSave).attributes,
+      UIMenuElementAttributesDisabled);
+
+  // Test that there is an element with the expected title in the submenu for
+  // saving the image to Google Photos.
+  NSUInteger indexOfFoundMenuElementPhotosSave =
+      [subMenu.children indexOfObjectPassingTest:^BOOL(
+                            UIMenuElement* menuElement, NSUInteger, BOOL*) {
+        return [menuElement.title
+            isEqualToString:expectedMenuElementPhotosSave.title];
+      }];
+  ASSERT_TRUE(indexOfFoundMenuElementPhotosSave != NSNotFound);
+
+  UIMenuElement* foundMenuElementPhotosSave =
+      subMenu.children[indexOfFoundMenuElementPhotosSave];
+  // Test that the element has the expected subtitle.
+  EXPECT_TRUE([foundMenuElementPhotosSave.subtitle
+      isEqualToString:l10n_util::GetNSString(
+                          IDS_POLICY_ACTION_BLOCKED_BY_ORGANIZATION)]);
+
+  // Test that the element is disabled.
+  EXPECT_EQ(
+      base::apple::ObjCCast<UIAction>(foundMenuElementPhotosSave).attributes,
+      UIMenuElementAttributesDisabled);
+}
+
+// Tests that the "Edit Image with Gemini" action is not added to the context
+// menu if the page URL is protected.
+TEST_F(ContextMenuConfigurationProviderTest, GeminiImageRemix_ProtectedURL) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures({kPageActionMenu}, {});
+
+  SignIn();
+
+  // Configure WebState to allow page context extraction.
+  web::FakeWebState* web_state = GetActiveWebState();
+  web_state->WasShown();
+  web_state->SetContentIsHTML(true);
+  web_state->SetContentsMimeType("text/html");
+
+  // Configure WebFramesManager and bind GeminiTabHelper to the WebState to
+  // satisfy Gemini availability checks for the active WebState.
+  auto frames_manager = std::make_unique<web::FakeWebFramesManager>();
+  auto main_frame = web::FakeWebFrame::CreateMainWebFrame();
+  frames_manager->AddWebFrame(std::move(main_frame));
+  web_state->SetWebFramesManager(std::move(frames_manager));
+
+  GeminiTabHelper::CreateForWebState(web_state);
+
+  // Configure the mock Gemini service to mark the profile as eligible.
+  FakeGeminiService* fake_gemini_service = static_cast<FakeGeminiService*>(
+      GeminiServiceFactory::GetForProfile(profile_.get()));
+  fake_gemini_service->SetIsEligible(true);
+
+  NSString* expected_title =
+      l10n_util::GetNSString(IDS_IOS_GEMINI_IMAGE_CONTEXT_MENU_ENTRY_POINT);
+  web_state->SetCurrentURL(GURL("https://example.com"));
+
+  // Verify that the action is added to the context menu on an unprotected URL.
+  ios::provider::SetMockProtectedUrl(false);
+  web::ContextMenuParams params = GetContextMenuParamsWithImageUrl(kImageUrl);
+  UIMenu* menu = GetContextMenuForParams(params);
+
+  NSUInteger indexOfGeminiAction =
+      [menu.children indexOfObjectPassingTest:^BOOL(UIMenuElement* menuElement,
+                                                    NSUInteger, BOOL*) {
+        return [menuElement.title isEqualToString:expected_title];
+      }];
+  EXPECT_NE(indexOfGeminiAction, (NSUInteger)NSNotFound);
+
+  // Verify that the action is not added to the context menu on a protected URL.
+  ios::provider::SetMockProtectedUrl(true);
+  UIMenu* protected_menu = GetContextMenuForParams(params);
+
+  NSUInteger indexOfProtectedGeminiAction = [protected_menu.children
+      indexOfObjectPassingTest:^BOOL(UIMenuElement* menuElement, NSUInteger,
+                                     BOOL*) {
+        return [menuElement.title isEqualToString:expected_title];
+      }];
+  EXPECT_EQ(indexOfProtectedGeminiAction, (NSUInteger)NSNotFound);
+}

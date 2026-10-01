@@ -1,0 +1,400 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/renderer_host/page_impl.h"
+
+#include "base/barrier_closure.h"
+#include "base/feature_list.h"
+#include "base/i18n/character_encoding.h"
+#include "base/trace_event/optional_trace_event.h"
+#include "cc/base/features.h"
+#include "cc/input/browser_controls_offset_tag_modifications.h"
+#include "content/browser/manifest/manifest_manager_host.h"
+#include "content/browser/preloading/prerender/prerender_features.h"
+#include "content/browser/preloading/prerender/prerender_host.h"
+#include "content/browser/renderer_host/frame_tree_node.h"
+#include "content/browser/renderer_host/page_delegate.h"
+#include "content/browser/renderer_host/render_frame_host_delegate.h"
+#include "content/browser/renderer_host/render_frame_host_impl.h"
+#include "content/browser/renderer_host/render_frame_proxy_host.h"
+#include "content/browser/renderer_host/render_view_host_delegate.h"
+#include "content/browser/renderer_host/render_view_host_impl.h"
+#include "content/public/browser/content_browser_client.h"
+#include "content/public/browser/peak_gpu_memory_tracker_factory.h"
+#include "content/public/browser/render_view_host.h"
+#include "content/public/common/content_client.h"
+#include "services/viz/public/mojom/compositing/offset_tag.mojom.h"
+#include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/common/loader/loader_constants.h"
+#include "third_party/blink/public/mojom/manifest/manifest.mojom.h"
+#include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom.h"
+#include "third_party/perfetto/include/perfetto/tracing/traced_value.h"
+
+namespace content {
+
+PageImpl::PageImpl(RenderFrameHostImpl& rfh, PageDelegate& delegate)
+    : main_document_(rfh), delegate_(delegate) {
+
+#if BUILDFLAG(IS_ANDROID)
+  page_proxy_ = std::make_unique<PageProxy>(this);
+#endif
+}
+
+PageImpl::~PageImpl() {
+#if BUILDFLAG(IS_ANDROID)
+  page_proxy_->WillDeletePage(GetMainDocument().IsInLifecycleState(
+      RenderFrameHost::LifecycleState::kPrerendering));
+#endif
+
+  // As SupportsUserData is a base class of PageImpl, Page members will be
+  // destroyed before running ~SupportsUserData, which would delete the
+  // associated PageUserData objects. Avoid this by calling ClearAllUserData
+  // explicitly here to ensure that the PageUserData destructors can access
+  // associated Page object.
+  ClearAllUserData();
+
+  // If we still have a PeakGpuMemoryTracker, then the loading it was observing
+  // never completed. Cancel its callback so that we don't report partial
+  // loads to UMA.
+  CancelLoadingMemoryTracker();
+}
+
+const std::optional<GURL>& PageImpl::GetManifestUrl() const {
+  return manifest_url_;
+}
+
+void PageImpl::GetManifest(GetManifestCallback callback) {
+  ManifestManagerHost* manifest_manager_host =
+      ManifestManagerHost::GetOrCreateForPage(*this);
+  manifest_manager_host->GetManifest(std::move(callback));
+}
+
+bool PageImpl::IsPrimary() const {
+  return main_document_->IsInPrimaryMainFrame();
+}
+
+const blink::mojom::CaptureHandleConfig& PageImpl::GetCaptureHandleConfig() {
+  return capture_handle_config_;
+}
+
+void PageImpl::SetCaptureHandleConfig(
+    blink::mojom::CaptureHandleConfigPtr config) {
+  if (capture_handle_config_ == *config) {
+    return;
+  }
+  capture_handle_config_ = std::move(*config);
+
+  // Notify the tab-level observers via the delegate bridge.
+  main_document_->delegate()->OnCaptureHandleConfigUpdate(*this);
+}
+
+void PageImpl::UpdateManifestUrl(const GURL& manifest_url) {
+  manifest_url_ = manifest_url;
+
+  // If |main_document_| is not active, the notification is sent on the page
+  // activation.
+  if (!main_document_->IsActive()) {
+    return;
+  }
+
+  main_document_->delegate()->OnManifestUrlChanged(*this);
+}
+
+void PageImpl::WriteIntoTrace(perfetto::TracedValue context) {
+  auto dict = std::move(context).WriteDictionary();
+  dict.Add("main_document", *main_document_);
+}
+
+base::WeakPtr<Page> PageImpl::GetWeakPtr() {
+  return weak_factory_.GetWeakPtr();
+}
+
+base::SafeRef<Page> PageImpl::GetSafeRef() {
+  return weak_factory_.GetSafeRef();
+}
+
+base::WeakPtr<PageImpl> PageImpl::GetWeakPtrImpl() {
+  return weak_factory_.GetWeakPtr();
+}
+
+bool PageImpl::IsPageScaleFactorOne() {
+  return GetPageScaleFactor() == 1.f;
+}
+
+const std::string& PageImpl::GetContentsMimeType() const {
+  return contents_mime_type_;
+}
+
+#if BUILDFLAG(IS_ANDROID)
+base::android::ScopedJavaLocalRef<jobject> PageImpl::GetJavaPage() {
+  return page_proxy_->GetJavaPage();
+}
+#endif
+
+void PageImpl::OnFirstVisuallyNonEmptyPaint() {
+  did_first_visually_non_empty_paint_ = true;
+  delegate_->OnFirstVisuallyNonEmptyPaint(*this);
+}
+
+void PageImpl::OnThemeColorChanged(const std::optional<SkColor>& theme_color) {
+  main_document_theme_color_ = theme_color;
+  delegate_->OnThemeColorChanged(*this);
+}
+
+void PageImpl::DidChangeBackgroundColor(SkColor4f background_color,
+                                        bool color_adjust) {
+  // TODO(aaronhk): This should remain an SkColor4f
+  main_document_background_color_ = background_color.toSkColor();
+  delegate_->OnBackgroundColorChanged(*this);
+  if (color_adjust) {
+    // <meta name="color-scheme" content="dark"> may pass the dark canvas
+    // background before the first paint in order to avoid flashing the white
+    // background in between loading documents. If we perform a navigation
+    // within the same renderer process, we keep the content background from the
+    // previous page while rendering is blocked in the new page, but for cross
+    // process navigations we would paint the default background (typically
+    // white) while the rendering is blocked.
+    main_document_->GetRenderWidgetHost()->GetView()->SetContentBackgroundColor(
+        background_color.toSkColor());
+  }
+}
+
+void PageImpl::DidInferColorScheme(
+    blink::mojom::PreferredColorScheme color_scheme) {
+  main_document_inferred_color_scheme_ = color_scheme;
+  delegate_->DidInferColorScheme(*this);
+}
+
+void PageImpl::NotifyPageBecameCurrent() {
+  if (!IsPrimary()) {
+    return;
+  }
+  delegate_->NotifyPageBecamePrimary(*this);
+}
+
+void PageImpl::SetContentsMimeType(std::string mime_type) {
+  contents_mime_type_ = std::move(mime_type);
+}
+
+void PageImpl::SetActivationStartTime(base::TimeTicks activation_start) {
+  CHECK(!activation_start_time_);
+  activation_start_time_ = activation_start;
+}
+
+void PageImpl::NotifyCrossOriginSubframePrerenderIsAllowed() {
+  is_cross_origin_subframe_prerender_allowed_ = true;
+}
+
+void PageImpl::Activate(
+    StoredPage::RenderViewHostImplSafeRefSet& render_view_hosts,
+    std::optional<blink::ViewTransitionState> view_transition_state,
+    base::OnceCallback<void(base::TimeTicks)> completion_callback) {
+  TRACE_EVENT0("navigation", "PageImpl::Activate");
+
+  // SetActivationStartTime() should be called first as the value is used in
+  // the callback below.
+  CHECK(activation_start_time_.has_value());
+
+  base::OnceClosure did_activate_render_views = base::BindOnce(
+      &PageImpl::DidActivateAllRenderViewsForPrerendering,
+      weak_factory_.GetWeakPtr(), std::move(completion_callback));
+
+  base::RepeatingClosure barrier = base::BarrierClosure(
+      render_view_hosts.size(), std::move(did_activate_render_views));
+  bool view_transition_state_consumed = false;
+  for (const auto& rvh : render_view_hosts) {
+    auto params = blink::mojom::PrerenderPageActivationParams::New();
+
+    const bool is_main_document = main_document_->GetRenderViewHost() == &*rvh;
+    if (is_main_document) {
+      // These RenderViews still need to know about activation so their
+      // documents are created in the non-prerendered state once their
+      // navigation is committed.
+      // Note that there cannot be a use-after-move since the if condition
+      // should be true at most once.
+      CHECK(!view_transition_state_consumed);
+      params->view_transition_state = std::move(view_transition_state);
+      view_transition_state_consumed = true;
+    }
+
+    // For prerendering activation, send activation_start only to the
+    // RenderViewHost for the main frame to avoid sending the info
+    // cross-origin. Only this RenderViewHost needs the info, as we expect
+    // the other RenderViewHosts are made for cross-origin iframes which
+    // have not yet loaded their document. To the renderer, it just looks
+    // like an ongoing navigation is happening in the frame and has not yet
+    // committed.
+    //
+    // Even cross-origin, we allow if the main document has the special
+    // header. See PrerenderHost::AllowCrossOriginSubframeNavigation() for
+    // detail.
+    const bool should_send_activation_start =
+        is_main_document || is_cross_origin_subframe_prerender_allowed_;
+    if (should_send_activation_start) {
+      params->activation_start = *activation_start_time_;
+    }
+
+    params->was_user_activated =
+        main_document_->frame_tree_node()
+                ->has_received_user_gesture_before_nav()
+            ? blink::mojom::WasActivatedOption::kYes
+            : blink::mojom::WasActivatedOption::kNo;
+    rvh->ActivatePrerenderedPage(std::move(params), barrier);
+  }
+
+  // Prepare each RenderFrameHostImpl in this Page for activation.
+  main_document_->ForEachRenderFrameHostImplIncludingSpeculative(
+      [](RenderFrameHostImpl* rfh) {
+        rfh->RendererWillActivateForPrerendering();
+      });
+}
+
+void PageImpl::MaybeDispatchLoadEventsOnPrerenderActivation() {
+  CHECK(IsPrimary(), base::NotFatalUntil::M154);
+
+  // Dispatch LoadProgressChanged notification on activation with the
+  // prerender last load progress value if the value is not equal to
+  // blink::kFinalLoadProgress, whose notification is dispatched during call
+  // to DidStopLoading.
+  if (load_progress() != blink::kFinalLoadProgress) {
+    main_document_->DidChangeLoadProgress(load_progress());
+  }
+
+  // Dispatch PrimaryMainDocumentElementAvailable before dispatching following
+  // load complete events.
+  if (is_main_document_element_available()) {
+    main_document_->MainDocumentElementAvailable(uses_temporary_zoom_level());
+  }
+
+  main_document_->ForEachRenderFrameHostImpl(
+      &RenderFrameHostImpl::MaybeDispatchDOMContentLoadedOnPrerenderActivation);
+
+  if (is_on_load_completed_in_main_document()) {
+    main_document_->DocumentOnLoadCompleted();
+  }
+
+  if (first_contentful_paint_in_main_document_time_) {
+    main_document_->NotifyFirstContentfulPaint(
+        *first_contentful_paint_in_main_document_time_);
+  }
+
+  main_document_->ForEachRenderFrameHostImpl(
+      &RenderFrameHostImpl::MaybeDispatchDidFinishLoadOnPrerenderActivation);
+}
+
+void PageImpl::DidActivateAllRenderViewsForPrerendering(
+    base::OnceCallback<void(base::TimeTicks)> completion_callback) {
+  TRACE_EVENT0("navigation",
+               "PageImpl::DidActivateAllRenderViewsForPrerendering");
+
+  // Tell each RenderFrameHostImpl in this Page that activation finished.
+  main_document_->ForEachRenderFrameHostImplIncludingSpeculative(
+      [this](RenderFrameHostImpl* rfh) {
+        if (&rfh->GetPage() != this) {
+          return;
+        }
+        rfh->RendererDidActivateForPrerendering();
+      });
+  CHECK(activation_start_time_.has_value());
+  std::move(completion_callback).Run(*activation_start_time_);
+}
+
+RenderFrameHost& PageImpl::GetMainDocumentHelper() {
+  return *main_document_;
+}
+
+RenderFrameHostImpl& PageImpl::GetMainDocument() const {
+  return *main_document_;
+}
+
+void PageImpl::UpdateBrowserControlsState(
+    cc::BrowserControlsState constraints,
+    cc::BrowserControlsState current,
+    bool animate,
+    const std::optional<cc::BrowserControlsOffsetTagModifications>&
+        offset_tag_modifications) {
+  // TODO(crbug.com/40159655): Asking for the LocalMainFrame interface
+  // before the RenderFrame is created is racy.
+  if (!GetMainDocument().IsRenderFrameLive()) {
+    return;
+  }
+
+  GetMainDocument().GetRenderWidgetHost()->UpdateBrowserControlsState(
+      constraints, current, animate, offset_tag_modifications);
+}
+
+float PageImpl::GetPageScaleFactor() const {
+  return GetMainDocument().GetPageScaleFactor();
+}
+
+void PageImpl::UpdateEncoding(const std::string& encoding_name) {
+  if (encoding_name == last_reported_encoding_) {
+    return;
+  }
+  last_reported_encoding_ = encoding_name;
+
+  canonical_encoding_ =
+      base::GetCanonicalEncodingNameByAliasName(encoding_name);
+}
+
+void PageImpl::NotifyVirtualKeyboardOverlayRect(
+    const gfx::Rect& keyboard_rect) {
+  // TODO(crbug.com/40222405): send notification to outer frames if
+  // needed.
+  CHECK_EQ(virtual_keyboard_mode(),
+           ui::mojom::VirtualKeyboardMode::kOverlaysContent,
+           base::NotFatalUntil::M154);
+  GetMainDocument().GetAssociatedLocalFrame()->NotifyVirtualKeyboardOverlayRect(
+      keyboard_rect);
+}
+
+void PageImpl::ShowInterestInElement(int nodeID) {
+  GetMainDocument().GetAssociatedLocalFrame()->ShowInterestInElement(nodeID);
+}
+
+void PageImpl::SetVirtualKeyboardMode(ui::mojom::VirtualKeyboardMode mode) {
+  if (virtual_keyboard_mode_ == mode) {
+    return;
+  }
+
+  virtual_keyboard_mode_ = mode;
+
+  delegate_->OnVirtualKeyboardModeChanged(*this);
+}
+
+base::flat_map<std::string, std::string> PageImpl::GetKeyboardLayoutMap() {
+  return GetMainDocument().GetRenderWidgetHost()->GetKeyboardLayoutMap();
+}
+
+void PageImpl::TakeLoadingMemoryTracker(NavigationRequest* request) {
+  CHECK(IsPrimary());
+  loading_memory_tracker_ = request->TakePeakGpuMemoryTracker();
+}
+
+void PageImpl::ResetLoadingMemoryTracker() {
+  CHECK(IsPrimary());
+  if (loading_memory_tracker_) {
+    loading_memory_tracker_.reset();
+  }
+}
+
+void PageImpl::CancelLoadingMemoryTracker() {
+  if (loading_memory_tracker_) {
+    loading_memory_tracker_->Cancel();
+    loading_memory_tracker_.reset();
+  }
+}
+
+void PageImpl::SetLastCommitParams(
+    mojom::DidCommitProvisionalLoadParamsPtr commit_params) {
+  CHECK(GetMainDocument().IsOutermostMainFrame());
+  last_commit_params_ = std::move(commit_params);
+}
+
+mojom::DidCommitProvisionalLoadParamsPtr PageImpl::TakeLastCommitParams() {
+  CHECK(GetMainDocument().IsOutermostMainFrame());
+  return std::move(last_commit_params_);
+}
+
+}  // namespace content

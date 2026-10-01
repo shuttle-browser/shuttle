@@ -1,0 +1,201 @@
+# Copyright 2020 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("payments") {
+  sources = [
+    "chrome_payment_request_delegate.h",
+    "payment_request_display_manager_factory.h",
+    "payment_request_factory.h",
+    "web_payments_observer.h",
+    "webapps/twa_package_helper.h",
+  ]
+
+  public_deps = [
+    "//chrome/browser/profiles:profile",
+    "//components/payments/content",
+    "//content/public/browser",
+  ]
+}
+
+source_set("impl") {
+  sources = [ "web_payments_observer.cc" ]
+
+  public_deps = [ ":payments" ]
+
+  deps = [
+    "//base",
+    "//components/payments/core",
+    "//content/public/browser",
+    "//net",
+    "//services/metrics/public/cpp:ukm_builders",
+    "//services/network/public/cpp",
+    "//url",
+  ]
+
+  if (!is_android) {
+    sources += [
+      "chrome_payment_request_delegate.cc",
+      "payment_request_display_manager_factory.cc",
+      "payment_request_factory.cc",
+      "webapps/twa_package_helper.cc",
+    ]
+
+    deps += [
+      "//chrome/browser/apps/app_service",
+      "//chrome/browser/autofill",
+      "//chrome/browser/profiles:profile",
+      "//chrome/browser/signin",
+      "//chrome/browser/ui",
+      "//chrome/browser/ui/views/payments",
+      "//chrome/browser/ui/web_applications",
+      "//chrome/browser/web_applications",
+      "//chrome/common:version_header",
+      "//components/payments/content",
+      "//components/payments/content:utils",
+      "//components/webauthn/content/browser",
+      "//components/webdata_services",
+    ]
+
+    if (is_chromeos) {
+      deps += [ "//chrome/browser/ash/apps" ]
+    }
+  } else {
+    deps += [
+      "//chrome/browser/payments/android:service_worker_payment_app_bridge",
+    ]
+  }
+}
+
+source_set("browser_tests") {
+  testonly = true
+
+  sources = [
+    "abort_payment_handler_browsertest.cc",
+    "android_payment_app_factory_browsertest.cc",
+    "can_make_payment_event_fields_browsertest.cc",
+    "colocated_payment_manifests_browsertest.cc",
+    "empty_parameters_browsertest.cc",
+    "has_enrolled_instrument_browsertest.cc",
+    "has_enrolled_instrument_query_quota_browsertest.cc",
+    "iframe_csp_browsertest.cc",
+    "ignore_payment_method_browsertest.cc",
+    "journey_logger_browsertest.cc",
+    "load_and_remove_iframe_with_many_payment_requests_browsertest.cc",
+    "payment_handler_change_payment_method_browsertest.cc",
+    "payment_handler_change_shipping_address_option_browsertest.cc",
+    "payment_handler_enable_delegations_browsertest.cc",
+    "payment_handler_enforce_full_delegation_browsertest.cc",
+    "payment_handler_error_browsertest.cc",
+    "payment_handler_exploit_browsertest.cc",
+    "payment_handler_install_failed_browsertest.cc",
+    "payment_handler_jit_install_with_registered_sw_browsertest.cc",
+    "payment_handler_just_in_time_installation_browsertest.cc",
+    "payment_handler_ui_browsertest.cc",
+    "payment_handler_uninstall_browsertest.cc",
+    "payment_method_redirect_browsertest.cc",
+    "payment_request_app_store_billing_browsertest.cc",
+    "payment_request_can_make_payment_browsertest.cc",
+    "payment_request_can_make_payment_event_browsertest.cc",
+    "payment_request_connection_allowlist_browsertest.cc",
+    "payment_request_fail_complete_browsertest.cc",
+    "payment_request_id_browsertest.cc",
+    "payment_request_security_policy_browsertest.cc",
+    "sec_fetch_site_browsertest.cc",
+    "secure_payment_confirmation_browsertest.cc",
+    "secure_payment_confirmation_browsertest.h",
+    "secure_payment_confirmation_opt_out_browsertest.cc",
+    "two_payment_requests_browsertest.cc",
+    "web_payments_observer_browsertest.cc",
+  ]
+
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+  deps = [
+    ":payments",
+    "//base/test:test_support",
+    "//chrome/browser/payments/browser_binding:browsertests",
+    "//chrome/test:test_support",
+    "//chrome/test/payments:test_support",
+    "//components/payments/content",
+    "//components/payments/content:test_support",
+    "//components/payments/content:utils",
+    "//components/payments/core",
+    "//components/payments/core:test_support",
+    "//components/ukm:test_support",
+    "//components/webdata_services",
+    "//crypto:test_support",
+    "//device/fido:test_support",
+    "//services/metrics/public/cpp:ukm_builders",
+  ]
+
+  if (is_android) {
+    sources += [ "expandable_payment_handler_browsertest.cc" ]
+    deps += [
+      "//components/payments/content/android",
+      "//components/payments/content/browser_binding:test_support",
+    ]
+  }
+
+  if (!is_android) {
+    sources += [
+      "capability_delegation_browsertest.cc",
+      "manifest_verifier_browsertest.cc",
+      "payment_manifest_parser_browsertest.cc",
+      "secure_payment_confirmation_authenticator_browsertest.cc",
+      "service_worker_payment_app_finder_browsertest.cc",
+      "site_per_process_payments_browsertest.cc",
+    ]
+
+    deps += [
+      "//chrome/test:test_support_ui",
+      "//components/payments/content:utils",
+      "//components/payments/content/utility",
+      "//components/permissions",
+      "//components/webdata_services",
+    ]
+  }
+
+  if (is_chromeos) {
+    deps += [ "//chromeos/ash/experiences/arc" ]
+  }
+}
+
+source_set("unittests") {
+  testonly = true
+
+  sources = [
+    "payment_handler_permission_context_unittest.cc",
+    "web_payments_observer_unittest.cc",
+  ]
+
+  deps = [
+    ":payments",
+    "//base/test:test_support",
+    "//chrome/browser/content_settings",
+    "//chrome/browser/content_settings:content_settings_factory",
+    "//chrome/browser/payments/browser_binding:unittests",
+    "//chrome/test:test_support",
+    "//components/content_settings/core/test:test_support",
+    "//components/infobars/content",
+    "//components/payments/core",
+    "//components/permissions",
+    "//components/ukm:test_support",
+    "//content/test:test_support",
+    "//services/metrics/public/cpp:ukm_builders",
+    "//services/network/public/cpp",
+    "//testing/gmock",
+    "//testing/gtest",
+    "//third_party/fuzztest",
+  ]
+
+  if (is_android) {
+    sources += [ "android/payment_app_service_bridge_unittest.cc" ]
+
+    deps += [
+      "//components/payments/content",
+      "//components/payments/content:utils",
+      "//components/payments/content/android",
+    ]
+  }
+}

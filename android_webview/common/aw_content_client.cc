@@ -1,0 +1,176 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "android_webview/common/aw_content_client.h"
+
+#include <string_view>
+
+#include "android_webview/common/aw_features.h"
+#include "android_webview/common/aw_media_drm_bridge_client.h"
+#include "android_webview/common/aw_resource.h"
+#include "android_webview/common/crash_reporter/crash_keys.h"
+#include "android_webview/common/url_constants.h"
+#include "base/android/jni_android.h"
+#include "base/command_line.h"
+#include "base/debug/crash_logging.h"
+#include "base/feature_list.h"
+#include "base/functional/bind.h"
+#include "base/memory/ref_counted_memory.h"
+#include "base/no_destructor.h"
+#include "base/task/sequenced_task_runner.h"
+#include "components/cdm/common/android_cdm_registration.h"
+#include "components/embedder_support/origin_trials/origin_trial_policy_impl.h"
+#include "components/heap_profiling/in_process/child_process_snapshot_controller.h"
+#include "components/heap_profiling/in_process/heap_profiler_controller.h"
+#include "components/heap_profiling/in_process/mojom/snapshot_controller.mojom.h"
+#include "components/version_info/version_info.h"
+#include "content/public/common/cdm_info.h"
+#include "content/public/common/content_features.h"
+#include "content/public/common/content_switches.h"
+#include "gpu/config/gpu_info.h"
+#include "gpu/config/gpu_util.h"
+#include "mojo/public/cpp/bindings/binder_map.h"
+#include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "third_party/widevine/cdm/buildflags.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/base/resource/resource_bundle.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "android_webview/common_jni/DisableOriginTrialsSafeModeUtils_jni.h"
+
+namespace android_webview {
+
+AwContentClient::AwContentClient() = default;
+AwContentClient::~AwContentClient() = default;
+
+void AwContentClient::AddAdditionalSchemes(Schemes* schemes) {
+  schemes->local_schemes.push_back(url::kContentScheme);
+  schemes->secure_schemes.push_back(
+      android_webview::kAndroidWebViewVideoPosterScheme);
+  schemes->csp_bypassing_schemes.push_back(
+      android_webview::kAndroidWebViewVideoPosterScheme);
+  schemes->allow_non_standard_schemes_in_origins = true;
+}
+
+std::u16string AwContentClient::GetLocalizedString(int message_id) {
+  // TODO(boliu): Used only by WebKit, so only bundle those resources for
+  // Android WebView.
+  return l10n_util::GetStringUTF16(message_id);
+}
+
+std::string_view AwContentClient::GetDataResource(
+    int resource_id,
+    ui::ResourceScaleFactor scale_factor) {
+  // TODO(boliu): Used only by WebKit, so only bundle those resources for
+  // Android WebView.
+  return ui::ResourceBundle::GetSharedInstance().GetRawDataResourceForScale(
+      resource_id, scale_factor);
+}
+
+scoped_refptr<base::RefCountedMemory> AwContentClient::GetDataResourceBytes(
+    int resource_id) {
+  return ui::ResourceBundle::GetSharedInstance().LoadDataResourceBytes(
+      resource_id);
+}
+
+std::string AwContentClient::GetDataResourceString(int resource_id) {
+  return ui::ResourceBundle::GetSharedInstance().LoadDataResourceString(
+      resource_id);
+}
+
+void AwContentClient::SetGpuInfo(const gpu::GPUInfo& gpu_info) {
+  gpu::SetKeysForCrashLogging(gpu_info);
+}
+
+void AwContentClient::AddContentDecryptionModules(
+    std::vector<content::CdmInfo>* cdms,
+    std::vector<media::CdmHostFilePath>* cdm_host_file_paths) {
+#if BUILDFLAG(ENABLE_WIDEVINE)
+  // Register Widevine.
+  cdm::AddAndroidWidevineCdm(cdms);
+#endif
+
+  // Register any other CDMs supported by the device.
+  cdm::AddOtherAndroidCdms(cdms);
+}
+
+bool AwContentClient::UsingSynchronousCompositing() {
+  return true;
+}
+
+media::MediaDrmBridgeClient* AwContentClient::GetMediaDrmBridgeClient() {
+  return new AwMediaDrmBridgeClient(
+      AwResource::GetConfigKeySystemUuidMapping());
+}
+
+void AwContentClient::ExposeInterfacesToBrowser(
+    scoped_refptr<base::SequencedTaskRunner> io_task_runner,
+    mojo::BinderMap* binders) {
+  // The ChildProcessSnapshotController allows the browser process tell the
+  // child process when to collect the samples into a snapshot.
+  if (base::FeatureList::IsEnabled(features::kWebViewMemoryProfilingClient)) {
+    const auto* heap_profiler_controller =
+        heap_profiling::HeapProfilerController::GetInstance();
+    if (heap_profiler_controller && heap_profiler_controller->IsEnabled()) {
+      binders->Add<heap_profiling::mojom::SnapshotController>(
+          &heap_profiling::ChildProcessSnapshotController::
+              CreateSelfOwnedReceiver,
+          base::SequencedTaskRunner::GetCurrentDefault());
+    }
+  }
+}
+
+blink::OriginTrialPolicy* AwContentClient::GetOriginTrialPolicy() {
+  // Prevent initialization race (see crbug.com/721144). There may be a
+  // race when the policy is needed for worker startup (which happens on a
+  // separate worker thread).
+  base::AutoLock auto_lock(origin_trial_policy_lock_);
+  if (!origin_trial_policy_)
+    origin_trial_policy_ =
+        std::make_unique<embedder_support::OriginTrialPolicyImpl>();
+  // If we turn on the Disable Origin Trial SafeMode on we will set the policy
+  // flag to true after construction. This will work because trial token
+  // validator will always get the current instance of policy when needed.
+  if (IsDisableOriginTrialsSafeModeActionOn()) {
+    origin_trial_policy_->SetAllowOnlyDeprecationTrials(true);
+  }
+  return origin_trial_policy_.get();
+}
+
+bool AwContentClient::ShouldAllowDefaultSiteInstanceGroup() {
+  // TODO(crbug.com/419595581): Remove this function once default
+  // SiteInstanceGroups are supported on Android WebView.
+  return false;
+}
+
+bool AwContentClient::ShouldIgnoreDuplicateNavs(
+    const GURL& url,
+    bool is_renderer_initiated) const {
+  if (!base::FeatureList::IsEnabled(features::kWebViewIgnoreDuplicateNavs)) {
+    return false;
+  }
+
+  return content::ContentClient::ShouldIgnoreDuplicateNavs(
+      url, is_renderer_initiated);
+}
+
+base::TimeDelta AwContentClient::GetIgnoreDuplicateNavsThreshold() const {
+  return features::kWebViewDuplicateNavThreshold.Get();
+}
+
+
+bool IsDisableOriginTrialsSafeModeActionOn() {
+  // TODO(crbug.com/393461816) - fix origin trial safemode for renderers.
+  if (base::android::IsJavaAvailable()) {
+    JNIEnv* env = base::android::AttachCurrentThread();
+    return Java_DisableOriginTrialsSafeModeUtils_isDisableOriginTrialsEnabled(
+        env);
+  } else {
+    return false;
+  }
+}
+
+}  // namespace android_webview
+
+DEFINE_JNI(DisableOriginTrialsSafeModeUtils)

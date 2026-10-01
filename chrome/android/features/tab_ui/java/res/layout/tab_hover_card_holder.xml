@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2023 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<org.chromium.chrome.browser.tasks.tab_management.TabHoverCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/tab_hover_card_holder"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:visibility="gone"
+    android:theme="@style/ThemeOverlay.BrowserUI.NoElevationShadow"
+    android:elevation="@dimen/tab_hover_card_elevation"
+    android:background="@drawable/popup_bg_shadow_16dp">
+
+    <LinearLayout
+        android:id="@+id/content_view"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/popup_bg_shape_16dp"
+        android:clipToOutline="true">
+
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/tab_hover_card_text_content_margin"
+            android:layout_marginStart="@dimen/tab_hover_card_text_content_margin"
+            android:layout_marginEnd="@dimen/tab_hover_card_text_content_margin"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textDirection="locale"
+            android:textAppearance="@style/TextAppearance.TextMediumThick.Primary"/>
+
+        <TextView
+            android:id="@+id/url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/tab_hover_card_url_top_margin"
+            android:layout_marginStart="@dimen/tab_hover_card_text_content_margin"
+            android:layout_marginEnd="@dimen/tab_hover_card_text_content_margin"
+            android:layout_marginBottom="@dimen/tab_hover_card_text_content_margin"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textDirection="locale"
+            android:textAppearance="@style/TextAppearance.TextMedium.Secondary"/>
+
+        <org.chromium.chrome.browser.tab_ui.TabThumbnailView
+            android:id="@+id/thumbnail"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/tab_hover_card_thumbnail_height"
+            android:layout_marginBottom="@dimen/tab_hover_card_text_content_margin"
+            android:visibility="gone"
+            android:gravity="center_horizontal"
+            android:scaleType="fitCenter"
+            android:importantForAccessibility="no"
+            android:src="@color/thumbnail_placeholder_on_primary_bg"/>
+
+        <org.chromium.components.browser_ui.widget.text.TextViewWithCompoundDrawables
+            android:id="@+id/alert_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/tab_hover_card_text_content_margin"
+            android:layout_marginEnd="@dimen/tab_hover_card_text_content_margin"
+            android:layout_marginBottom="@dimen/tab_hover_card_text_content_margin"
+            android:ellipsize="end"
+            android:visibility="gone"
+            android:textDirection="locale"
+            android:drawablePadding="8dp"
+            android:gravity="center_vertical"
+            android:paddingEnd="@dimen/tab_hover_card_footer_text_end_padding"
+            app:drawableWidth="16dp"
+            app:drawableHeight="16dp"
+            android:textAppearance="@style/TextAppearance.TextMedium.Secondary"/>
+
+        <org.chromium.components.browser_ui.widget.text.TextViewWithCompoundDrawables
+            android:id="@+id/memory_usage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/tab_hover_card_text_content_margin"
+            android:layout_marginEnd="@dimen/tab_hover_card_text_content_margin"
+            android:layout_marginBottom="@dimen/tab_hover_card_text_content_margin"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:visibility="gone"
+            android:textDirection="locale"
+            android:drawableStart="@drawable/ic_speed_24dp"
+            app:chromeDrawableTint="@color/default_icon_color_tint_list"
+            android:drawablePadding="8dp"
+            android:gravity="center_vertical"
+            android:paddingEnd="@dimen/tab_hover_card_footer_text_end_padding"
+            app:drawableWidth="16dp"
+            app:drawableHeight="16dp"
+            android:textAppearance="@style/TextAppearance.TextMedium.Secondary"/>
+    </LinearLayout>
+</org.chromium.chrome.browser.tasks.tab_management.TabHoverCardView>

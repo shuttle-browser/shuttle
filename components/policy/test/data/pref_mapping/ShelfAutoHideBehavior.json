@@ -1,0 +1,14 @@
+[
+  {
+    "os": [
+      "chromeos"
+    ],
+    "simple_policy_pref_mapping_test": {
+      "pref_name": "auto_hide_behavior_local",
+      "default_value": "",
+      "values_to_test": [
+        "Always"
+      ]
+    }
+  }
+]

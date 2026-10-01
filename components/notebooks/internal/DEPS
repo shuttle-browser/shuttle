@@ -1,0 +1,14 @@
+include_rules = [
+  "+components/endpoint_fetcher",
+  "+components/signin/public",
+  "+net/base",
+  "+net/http",
+  "+net/traffic_annotation",
+  "+services/network/public",
+]
+
+specific_include_rules = {
+  "notebooks_network_service_impl_unittest\\.cc": [
+    "+services/network/test",
+  ]
+}

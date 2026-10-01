@@ -1,0 +1,56 @@
+# Copyright 2023 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("image_fetcher") {
+  sources = [
+    "image_decoder_impl.cc",
+    "image_decoder_impl.h",
+    "image_fetcher_service_factory.cc",
+    "image_fetcher_service_factory.h",
+  ]
+
+  public_deps = [ "//chrome/browser:browser_public_dependencies" ]
+
+  deps = [
+    "//base",
+    "//chrome/browser/image_decoder",
+    "//chrome/browser/net",
+    "//chrome/browser/profiles",
+    "//chrome/common:constants",
+    "//components/image_fetcher/core",
+    "//components/image_fetcher/core/cache",
+    "//components/keyed_service/core",
+    "//content/public/browser",
+  ]
+
+  if (is_android) {
+    deps += [ "//components/image_fetcher:android" ]
+  }
+}
+
+if (!is_android) {
+  source_set("browser_tests") {
+    testonly = true
+
+    defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+    sources = [ "image_fetcher_impl_browsertest.cc" ]
+
+    deps = [
+      ":image_fetcher",
+      "//base",
+      "//chrome/browser/profiles:profile",
+      "//chrome/browser/ui",
+      "//chrome/test:test_support",
+      "//chrome/test:test_support_ui",
+      "//components/image_fetcher/core",
+      "//content/public/browser",
+      "//content/test:test_support",
+      "//net:test_support",
+      "//testing/gtest",
+      "//ui/gfx",
+      "//url",
+    ]
+  }
+}

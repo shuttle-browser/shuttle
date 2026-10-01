@@ -1,0 +1,18 @@
+# CSD model
+per-file client_side_*=nwokedi@chromium.org
+per-file client_side_*=jdh@chromium.org
+per-file csd_*=nwokedi@chromium.org
+per-file csd_*=jdh@chromium.org
+per-file credit_card_form*=nwokedi@chromium.org
+per-file credit_card_form*=jdh@chromium.org
+per-file credit_card_form*=bcb@chromium.org
+
+per-file suspicious_site_warning_allowlist*=richche@google.com
+per-file suspicious_site_warning_allowlist*=awado@google.com
+
+# HaTS
+per-file safe_browsing_hats_delegate*=nwokedi@chromium.org
+
+per-file safe_browsing_metrics_collector*=skrakowi@chromium.org
+per-file ping_manager*=skrakowi@chromium.org
+per-file intelligent_scan_delegate*=skrakowi@chromium.org

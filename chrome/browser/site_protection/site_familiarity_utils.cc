@@ -1,0 +1,256 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/site_protection/site_familiarity_utils.h"
+
+#include "base/metrics/field_trial_params.h"
+#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/search_engines/template_url_service_factory.h"
+#include "components/content_settings/browser/ui/javascript_optimizer_setting.h"
+#include "components/content_settings/core/browser/host_content_settings_map.h"
+#include "components/prefs/pref_service.h"
+#include "components/safe_browsing/core/common/features.h"
+#include "components/safe_browsing/core/common/safe_browsing_prefs.h"
+#include "components/search_engines/template_url_service.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/render_process_host.h"
+#include "content/public/browser/security_principal.h"
+#include "content/public/browser/site_instance.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/common/content_features.h"
+
+namespace site_protection {
+namespace {
+HostContentSettingsMap* GetHostContentSettingsMap(
+    content::WebContents* web_contents) {
+  if (!web_contents) {
+    return nullptr;
+  }
+  content::BrowserContext* browser_context = web_contents->GetBrowserContext();
+  Profile* profile = Profile::FromBrowserContext(browser_context);
+
+  return HostContentSettingsMapFactory::GetForProfile(profile);
+}
+}  // namespace
+
+bool AreV8OptimizationsDisabledOnUnfamiliarSites(Profile* profile) {
+  return ComputeDefaultJavascriptOptimizerSetting(profile) ==
+         content_settings::JavascriptOptimizerSetting::
+             kBlockedForUnfamiliarSites;
+}
+
+bool CanEnableBlockingJavascriptOptimizersForUnfamiliarSites(Profile* profile) {
+  if (!safe_browsing::IsSafeBrowsingEnabled(*profile->GetPrefs())) {
+    // Blocking js-opt on unfamiliar sites requires Safe Browsing to be enabled.
+    return false;
+  }
+
+  if (!base::FeatureList::IsEnabled(
+          features::kProcessSelectionDeferringConditions)) {
+    // Blocking js-opt on unfamiliar sites needs to be available to the user.
+    return false;
+  }
+
+  HostContentSettingsMap* host_content_settings_map =
+      HostContentSettingsMapFactory::GetForProfile(profile);
+  content_settings::ProviderType content_setting_provider;
+  host_content_settings_map->GetDefaultContentSetting(
+      ContentSettingsType::JAVASCRIPT_OPTIMIZER, &content_setting_provider);
+  auto content_setting_source =
+      content_settings::GetSettingSourceFromProviderType(
+          content_setting_provider);
+  if (content_setting_source != content_settings::SettingSource::kUser) {
+    // Respect content setting provided by enterprise policy. Currently the
+    // JavascriptOptimizerSetting::kBlockedForUnfamiliarSites value cannot be
+    // set via enterprise policy.
+    return false;
+  }
+  return true;
+}
+
+bool IsBlockFeaturesOnUnfamiliarSitesForEsbEnabled(Profile* profile) {
+  if (!profile) {
+    return false;
+  }
+  return safe_browsing::IsEnhancedProtectionEnabled(*profile->GetPrefs()) &&
+         base::FeatureList::IsEnabled(
+             safe_browsing::
+                 kEnableBlockV8OptimizerOnUnfamiliarSitesForEsbClients);
+}
+
+base::TimeDelta GetMinAgeOfInitialVisitForFamiliarity(Profile* profile) {
+  if (base::FeatureList::IsEnabled(
+          safe_browsing::kMigrateToBlockV8OptimizerOnUnfamiliarSites)) {
+    return safe_browsing::
+        kMigrateToBlockV8OptimizerOnUnfamiliarSitesMinAgeOfInitialVisit.Get();
+  }
+  if (IsBlockFeaturesOnUnfamiliarSitesForEsbEnabled(profile)) {
+    return safe_browsing::kEsbMinAgeOfInitialVisit.Get();
+  }
+  return safe_browsing::kEsbMinAgeOfInitialVisit.default_value;
+}
+
+int GetMinSiteEngagementScoreForFamiliarity(Profile* profile) {
+  if (base::FeatureList::IsEnabled(
+          safe_browsing::kMigrateToBlockV8OptimizerOnUnfamiliarSites)) {
+    return safe_browsing::
+        kMigrateToBlockV8OptimizerOnUnfamiliarSitesMinSiteEngagementScore.Get();
+  }
+  if (IsBlockFeaturesOnUnfamiliarSitesForEsbEnabled(profile)) {
+    return safe_browsing::kEsbMinSiteEngagementScore.Get();
+  }
+  return safe_browsing::kEsbMinSiteEngagementScore.default_value;
+}
+
+content_settings::JavascriptOptimizerSetting
+ComputeDefaultJavascriptOptimizerSetting(Profile* profile) {
+  HostContentSettingsMap* host_content_settings_map =
+      HostContentSettingsMapFactory::GetForProfile(profile);
+  if (!host_content_settings_map) {
+    // If there is no HostContentSettingsMap, assume that this is being called
+    // during the startup sequence for the profile picker. Return that
+    // JavaScript optimizers are allowed.
+    return content_settings::JavascriptOptimizerSetting::kAllowed;
+  }
+  content_settings::ProviderType content_setting_provider;
+  const auto default_content_setting =
+      host_content_settings_map->GetDefaultContentSetting(
+          ContentSettingsType::JAVASCRIPT_OPTIMIZER, &content_setting_provider);
+  if (default_content_setting == ContentSetting::CONTENT_SETTING_BLOCK) {
+    return content_settings::JavascriptOptimizerSetting::kBlocked;
+  }
+  if (!CanEnableBlockingJavascriptOptimizersForUnfamiliarSites(profile)) {
+    return content_settings::JavascriptOptimizerSetting::kAllowed;
+  }
+
+  PrefService* prefs = profile->GetPrefs();
+  if (prefs->HasPrefPath(
+          prefs::kJavascriptOptimizerBlockedForUnfamiliarSites)) {
+    return prefs->GetBoolean(
+               prefs::kJavascriptOptimizerBlockedForUnfamiliarSites)
+               ? content_settings::JavascriptOptimizerSetting::
+                     kBlockedForUnfamiliarSites
+               : content_settings::JavascriptOptimizerSetting::kAllowed;
+  }
+
+  if (base::FeatureList::IsEnabled(
+          safe_browsing::kMigrateToBlockV8OptimizerOnUnfamiliarSites)) {
+    return content_settings::JavascriptOptimizerSetting::
+        kBlockedForUnfamiliarSites;
+  }
+
+  if (IsBlockFeaturesOnUnfamiliarSitesForEsbEnabled(profile)) {
+    return content_settings::JavascriptOptimizerSetting::
+        kBlockedForUnfamiliarSites;
+  }
+
+  return content_settings::JavascriptOptimizerSetting::kAllowed;
+}
+
+bool IsV8OptimizerBlockingDryRun(Profile* profile) {
+  if (ComputeDefaultJavascriptOptimizerSetting(profile) !=
+      content_settings::JavascriptOptimizerSetting::
+          kBlockedForUnfamiliarSites) {
+    return false;
+  }
+
+  PrefService* prefs = profile->GetPrefs();
+  if (prefs->HasPrefPath(
+          prefs::kJavascriptOptimizerBlockedForUnfamiliarSites)) {
+    return false;  // Opted in via pref, so don't apply dry run.
+  }
+
+  if (base::FeatureList::IsEnabled(
+          safe_browsing::kMigrateToBlockV8OptimizerOnUnfamiliarSites)) {
+    return safe_browsing::kMigrateToBlockV8OptimizerOnUnfamiliarSitesDryRun
+        .Get();
+  }
+  if (IsBlockFeaturesOnUnfamiliarSitesForEsbEnabled(profile)) {
+    return safe_browsing::kEsbDryRun.Get();
+  }
+
+  return false;
+}
+
+std::optional<bool> AreV8OptimizationsDisabled(
+    content::WebContents* web_contents) {
+  if (!web_contents) {
+    return std::nullopt;
+  }
+
+  content::RenderFrameHost* render_frame_host =
+      web_contents->GetPrimaryMainFrame();
+  if (!render_frame_host) {
+    return std::nullopt;
+  }
+
+  content::RenderProcessHost* render_process_host =
+      render_frame_host->GetProcess();
+  if (!render_process_host) {
+    return std::nullopt;
+  }
+
+  return render_process_host->AreV8OptimizationsDisabled();
+}
+
+std::optional<content_settings::SettingSource>
+GetJavascriptOptimizerSettingSource(content::WebContents* web_contents) {
+  if (!web_contents) {
+    return std::nullopt;
+  }
+
+  HostContentSettingsMap* map = GetHostContentSettingsMap(web_contents);
+  if (!map) {
+    return std::nullopt;
+  }
+
+  const GURL& site_url = web_contents->GetURL();
+  if (site_url.is_empty()) {
+    return std::nullopt;
+  }
+
+  content_settings::SettingInfo setting_info;
+  map->GetContentSetting(site_url, site_url,
+                         ContentSettingsType::JAVASCRIPT_OPTIMIZER,
+                         &setting_info);
+  return setting_info.source;
+}
+
+void EnableV8Optimizations(content::WebContents* web_contents) {
+  if (!web_contents) {
+    return;
+  }
+
+  HostContentSettingsMap* map = GetHostContentSettingsMap(web_contents);
+  if (!map) {
+    return;
+  }
+
+  const GURL& site_url = web_contents->GetSiteInstance()
+                             ->GetSecurityPrincipal()
+                             .GetDeprecatedSiteURL();
+  if (site_url.is_empty()) {
+    return;
+  }
+
+  map->SetContentSettingDefaultScope(site_url, site_url,
+                                     ContentSettingsType::JAVASCRIPT_OPTIMIZER,
+                                     ContentSetting::CONTENT_SETTING_ALLOW);
+}
+
+bool IsDefaultSearchEngineUrl(const GURL& url, Profile* profile) {
+  TemplateURLService* template_url_service =
+      TemplateURLServiceFactory::GetForProfile(profile);
+  if (!template_url_service) {
+    return false;
+  }
+  if (!template_url_service->GetDefaultSearchProvider()) {
+    return false;
+  }
+  return template_url_service->IsSearchResultsPageFromDefaultSearchProvider(
+      url);
+}
+
+}  // namespace site_protection

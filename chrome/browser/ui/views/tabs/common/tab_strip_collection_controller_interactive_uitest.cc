@@ -1,0 +1,763 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
+#include "chrome/app/chrome_command_ids.h"
+#include "chrome/browser/ui/browser_commands.h"
+#include "chrome/browser/ui/browser_element_identifiers.h"
+#include "chrome/browser/ui/browser_tabstrip.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+#include "chrome/browser/ui/tabs/tab_group_deletion_dialog_controller.h"
+#include "chrome/browser/ui/tabs/tab_group_model.h"
+#include "chrome/browser/ui/tabs/tab_menu_model.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/frame/browser_widget.h"
+#include "chrome/browser/ui/views/frame/vertical_tab_strip_region_view.h"
+#include "chrome/browser/ui/views/tabs/common/tab_view.h"
+#include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_bubble_view.h"
+#include "chrome/browser/ui/views/test/vertical_tabs_interactive_test_mixin.h"
+#include "chrome/common/webui_url_constants.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "chrome/test/interaction/interactive_browser_test.h"
+#include "components/tabs/public/tab_group.h"
+#include "content/public/test/browser_test.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/base/test/ui_controls.h"
+#include "ui/events/base_event_utils.h"
+#include "ui/events/event_constants.h"
+#include "ui/events/keycodes/keyboard_codes.h"
+#include "ui/menus/simple_menu_model.h"
+#include "ui/views/controls/scroll_view.h"
+#include "ui/views/test/views_test_utils.h"
+#include "ui/views/view_utils.h"
+
+namespace {
+
+const char kFirstTabName[] = "FirstTab";
+const char kSecondTabName[] = "SecondTab";
+const char kThirdTabName[] = "ThirdTab";
+const int kShift = ui::EF_LEFT_MOUSE_BUTTON | ui::EF_SHIFT_DOWN;
+
+#include "chrome/browser/ui/tabs/features.h"
+#include "chrome/browser/ui/views/frame/base_tab_strip_region_view.h"
+#include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
+
+class TabStripCollectionControllerInteractiveUiTest
+    : public VerticalTabsInteractiveTestMixin<InteractiveBrowserTest>,
+      public testing::WithParamInterface<TabStripOrientation> {
+ public:
+  TabStripCollectionControllerInteractiveUiTest() = default;
+  ~TabStripCollectionControllerInteractiveUiTest() override = default;
+
+  TabStripOrientation orientation() const { return GetParam(); }
+  bool is_horizontal() const {
+    return orientation() == TabStripOrientation::kHorizontal;
+  }
+
+  void SetUpOnMainThread() override {
+    VerticalTabsInteractiveTestMixin<
+        InteractiveBrowserTest>::SetUpOnMainThread();
+    if (is_horizontal()) {
+      ExitVerticalTabsMode();
+    }
+  }
+
+  const std::vector<base::test::FeatureRefAndParams> GetEnabledFeatures()
+      override {
+    auto enabled = VerticalTabsInteractiveTestMixin<
+        InteractiveBrowserTest>::GetEnabledFeatures();
+    enabled.push_back({tabs::kTabStripUnification, {}});
+    return enabled;
+  }
+
+  TabStripView* GetTabStripView() {
+    auto* base_region = views::AsViewClass<BaseTabStripRegionView>(
+        BrowserView::GetBrowserViewForBrowser(browser())->tab_strip_view());
+    return base_region ? views::AsViewClass<TabStripView>(
+                             base_region->GetTabStripView())
+                       : nullptr;
+  }
+
+  ui::ElementIdentifier tab_strip_anchor_element() const {
+    return is_horizontal() ? kNewTabButtonElementId
+                           : kVerticalTabStripBottomContainerElementId;
+  }
+
+  bool CheckMenuHasStringId(int message_id) {
+    ui::SimpleMenuModel* menu_model = vertical_tab_strip_controller()
+                                          ->GetTabContextMenuController()
+                                          ->GetMenuModel();
+    for (size_t i = 0; i < menu_model->GetItemCount(); i++) {
+      if (l10n_util::GetStringUTF16(message_id) == menu_model->GetLabelAt(i)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  int GetPlatformDependentAccelerator() {
+#if BUILDFLAG(IS_MAC)
+    return ui::EF_LEFT_MOUSE_BUTTON | ui::EF_COMMAND_DOWN;
+#else
+    return ui::EF_LEFT_MOUSE_BUTTON | ui::EF_CONTROL_DOWN;
+#endif
+  }
+
+  base::OnceCallback<void(views::View*)> ClickWithFlags(int flags) {
+    return base::BindOnce(
+        [](int flags, views::View* view) {
+          ui::MouseEvent event(ui::EventType::kMousePressed, gfx::Point(),
+                               gfx::Point(), base::TimeTicks::Now(), flags,
+                               ui::EF_LEFT_MOUSE_BUTTON);
+          view->OnMousePressed(event);
+          ui::MouseEvent release_event(
+              ui::EventType::kMouseReleased, gfx::Point(), gfx::Point(),
+              base::TimeTicks::Now(), flags, ui::EF_LEFT_MOUSE_BUTTON);
+          view->OnMouseReleased(release_event);
+        },
+        flags);
+  }
+};
+
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerInteractiveUiTest,
+                       VerifyTabSelection) {
+  RunTestSequence(
+      // Verify Vertical Tabs is showing.
+      WaitForShow(kNewTabButtonElementId),
+      // Create a second tab.
+      EnsurePresent(kNewTabButtonElementId),
+      PressButton(kNewTabButtonElementId,
+                  ui::test::InteractionTestUtil::InputType::kDontCare),
+      // Name views so we can interact with them.
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kFirstTabName,
+                                        0),
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kSecondTabName,
+                                        1),
+      // Verify active tab is at index 1.
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->active_index(); },
+          1),
+      // Select tab at index 0 and verify active index.
+      MoveMouseTo(kFirstTabName), ClickMouse(ui_controls::LEFT),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->active_index(); },
+          0));
+}
+
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerInteractiveUiTest,
+                       VerifyClosingTabWithMiddleMouseButton) {
+  RunTestSequence(
+      // Verify Vertical Tabs is showing.
+      WaitForShow(kNewTabButtonElementId),
+      // Create a second tab.
+      EnsurePresent(kNewTabButtonElementId),
+      PressButton(kNewTabButtonElementId,
+                  ui::test::InteractionTestUtil::InputType::kDontCare),
+      CheckResult([this]() { return browser()->GetTabStripModel()->count(); },
+                  2),
+      // Name views so we can interact with them.
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kFirstTabName,
+                                        0),
+      // Close tab at index 0 w/middle mouse button and verify tab count.
+      MoveMouseTo(kFirstTabName),
+#if BUILDFLAG(IS_MAC)
+      // Interactive tests on Mac don't support middle click so simulate the
+      // event.
+      WithView(kFirstTabName,
+               [](views::View* view) {
+                 gfx::Point point = view->bounds().CenterPoint();
+                 ui::MouseEvent event(ui::EventType::kMouseReleased, point,
+                                      point, ui::EventTimeForNow(),
+                                      ui::EF_MIDDLE_MOUSE_BUTTON,
+                                      ui::EF_MIDDLE_MOUSE_BUTTON);
+                 view->OnMouseReleased(event);
+               }),
+#else
+      ClickMouse(ui_controls::MIDDLE),
+#endif
+      CheckResult([this]() { return browser()->GetTabStripModel()->count(); },
+                  1),
+      WaitForHide(kFirstTabName));
+}
+
+IN_PROC_BROWSER_TEST_P(
+    TabStripCollectionControllerInteractiveUiTest,
+    VerifyNotClosingTabWhenMiddleMouseButtonReleasedElsewhere) {
+  RunTestSequence(
+      // Verify Vertical Tabs is showing.
+      WaitForShow(kNewTabButtonElementId),
+      // Create a second tab.
+      EnsurePresent(kNewTabButtonElementId),
+      PressButton(kNewTabButtonElementId,
+                  ui::test::InteractionTestUtil::InputType::kDontCare),
+      CheckResult([this]() { return browser()->GetTabStripModel()->count(); },
+                  2),
+      // Name views so we can interact with them.
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kFirstTabName,
+                                        0),
+      // Move mouse to tab at index 0.
+      MoveMouseTo(kFirstTabName),
+      // We pass a point outside the view's local bounds so that HitTestPoint()
+      // fails.
+      WithView(kFirstTabName,
+               [](views::View* view) {
+                 gfx::Point off_tab_point(-10, -10);
+                 ui::MouseEvent event(
+                     ui::EventType::kMouseReleased, off_tab_point,
+                     off_tab_point, ui::EventTimeForNow(),
+                     ui::EF_MIDDLE_MOUSE_BUTTON, ui::EF_MIDDLE_MOUSE_BUTTON);
+                 view->OnMouseReleased(event);
+               }),
+      // Verify that the tab count is still 2 (the tab did not close).
+      CheckResult([this]() { return browser()->GetTabStripModel()->count(); },
+                  2));
+}
+
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerInteractiveUiTest,
+                       ShiftMultiTabSelection) {
+  RunTestSequence(
+      // Verify Vertical Tabs is showing.
+      WaitForShow(kNewTabButtonElementId),
+      // Create three tabs.
+      EnsurePresent(kNewTabButtonElementId),
+      PressButton(kNewTabButtonElementId,
+                  ui::test::InteractionTestUtil::InputType::kDontCare),
+      PressButton(kNewTabButtonElementId,
+                  ui::test::InteractionTestUtil::InputType::kDontCare),
+      // Wait for model to update.
+      CheckResult([this]() { return browser()->GetTabStripModel()->count(); },
+                  3),
+      // Name views so we can interact with them.
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kFirstTabName,
+                                        0),
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kSecondTabName,
+                                        1),
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kThirdTabName,
+                                        2),
+      // Set Tab 2 to be active.
+      WaitForShow(kSecondTabName),
+      WithView(kSecondTabName, ClickWithFlags(ui::EF_LEFT_MOUSE_BUTTON)),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->active_index(); },
+          1),
+      // Shift + Click Tab 3.
+      WaitForShow(kThirdTabName),
+      WithView(kThirdTabName, ClickWithFlags(kShift)),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->IsTabSelected(0); },
+          false),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->IsTabSelected(1); },
+          true),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->IsTabSelected(2); },
+          true),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->active_index(); },
+          2),
+      // Ctrl/Command + Shift + Click Tab 1.
+      WithView(kFirstTabName,
+               ClickWithFlags(kShift | GetPlatformDependentAccelerator())),
+      // Verify all Tabs are selected, Tab 1 is active.
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->IsTabSelected(0); },
+          true),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->IsTabSelected(1); },
+          true),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->IsTabSelected(2); },
+          true),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->active_index(); },
+          0));
+}
+
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerInteractiveUiTest,
+                       ToggleTabSelection) {
+  RunTestSequence(
+      // Verify Vertical Tabs is showing.
+      WaitForShow(kNewTabButtonElementId),
+      // Create a second tab.
+      EnsurePresent(kNewTabButtonElementId),
+      PressButton(kNewTabButtonElementId,
+                  ui::test::InteractionTestUtil::InputType::kDontCare),
+      // Name views so we can interact with them.
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kFirstTabName,
+                                        0),
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kSecondTabName,
+                                        1),
+      // Set Tab 1 to be active.
+      MoveMouseTo(kFirstTabName), ClickMouse(ui_controls::LEFT),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->active_index(); },
+          0),
+      // Shift + Click Tab 2.
+      WithView(kSecondTabName,
+               ClickWithFlags(GetPlatformDependentAccelerator())),
+      // Verify both tabs are selected, but tab 1 is active.
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->IsTabSelected(0); },
+          true),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->IsTabSelected(1); },
+          true),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->active_index(); },
+          1),
+      // Shift + Click Tab 2.
+      WithView(kSecondTabName,
+               ClickWithFlags(GetPlatformDependentAccelerator())),
+      // Verify only tab 1 is selected and active.
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->IsTabSelected(0); },
+          true),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->IsTabSelected(1); },
+          false),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->active_index(); },
+          0));
+}
+
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerInteractiveUiTest,
+                       KeyboardTabSelection) {
+  ui::Accelerator previous_tab_accelerator, next_tab_accelerator;
+
+  ASSERT_TRUE(BrowserView::GetBrowserViewForBrowser(browser())->GetAccelerator(
+      IDC_SELECT_NEXT_TAB, &previous_tab_accelerator));
+  ASSERT_TRUE(BrowserView::GetBrowserViewForBrowser(browser())->GetAccelerator(
+      IDC_SELECT_PREVIOUS_TAB, &next_tab_accelerator));
+
+  RunTestSequence(
+      // Verify Vertical Tabs is showing.
+      WaitForShow(kNewTabButtonElementId),
+      // Create a second tab.
+      EnsurePresent(kNewTabButtonElementId),
+      PressButton(kNewTabButtonElementId,
+                  ui::test::InteractionTestUtil::InputType::kDontCare),
+      // Move to left (Tab 0) and verify active index.
+      SendAccelerator(kBrowserViewElementId, previous_tab_accelerator),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->active_index(); },
+          0),
+      // Move to right (Tab 1) and verify active index.
+      SendAccelerator(kBrowserViewElementId, next_tab_accelerator),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->active_index(); },
+          1));
+}
+
+// Tab Group Accelerators are not defined on ChromeOS.
+#if BUILDFLAG(IS_CHROMEOS)
+#define MAYBE_KeyboardTabGroupCommands DISABLED_KeyboardTabGroupCommands
+#else
+#define MAYBE_KeyboardTabGroupCommands KeyboardTabGroupCommands
+#endif
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerInteractiveUiTest,
+                       MAYBE_KeyboardTabGroupCommands) {
+  ui::Accelerator create_new_tab_group_accelerator,
+      add_new_tab_to_group_accelerator, close_tab_group_accelerator;
+
+  ASSERT_TRUE(BrowserView::GetBrowserViewForBrowser(browser())->GetAccelerator(
+      IDC_CREATE_NEW_TAB_GROUP, &create_new_tab_group_accelerator));
+  ASSERT_TRUE(BrowserView::GetBrowserViewForBrowser(browser())->GetAccelerator(
+      IDC_ADD_NEW_TAB_TO_GROUP, &add_new_tab_to_group_accelerator));
+  ASSERT_TRUE(BrowserView::GetBrowserViewForBrowser(browser())->GetAccelerator(
+      IDC_CLOSE_TAB_GROUP, &close_tab_group_accelerator));
+
+  RunTestSequence(
+      // Verify Vertical Tabs is showing.
+      WaitForShow(kNewTabButtonElementId),
+      // Keyboard Command to Create New Tab Group.
+      SendAccelerator(kBrowserViewElementId, create_new_tab_group_accelerator),
+      // Verify One Tab Group Exists.
+      CheckResult(
+          [this]() {
+            return browser()
+                ->GetTabStripModel()
+                ->group_model()
+                ->ListTabGroups()
+                .size();
+          },
+          1),
+      // Hide Tab Group Bubble to avoid failing future inputs.
+      SendAccelerator(kTabGroupEditorBubbleId,
+                      ui::Accelerator(ui::VKEY_ESCAPE, ui::EF_NONE)),
+      WaitForHide(kTabGroupEditorBubbleId),
+      // Keyboard Command to Add New Tab in Group.
+      SendAccelerator(kBrowserViewElementId, add_new_tab_to_group_accelerator),
+      // Verify One Tab Group Exists and its Tab Count is 2.
+      CheckResult(
+          [this]() {
+            return browser()
+                ->GetTabStripModel()
+                ->group_model()
+                ->ListTabGroups()
+                .size();
+          },
+          1),
+      CheckResult(
+          [this]() {
+            auto* group_model = browser()->GetTabStripModel()->group_model();
+            return group_model
+                ->GetTabGroup(group_model->ListTabGroups().front())
+                ->ListTabs()
+                .length();
+          },
+          2),
+      // Keyboard Command to Delete Current Tab Group.
+      SendAccelerator(kBrowserViewElementId, close_tab_group_accelerator),
+      // Verify No Tab Groups Exist.
+      CheckResult(
+          [this]() {
+            return browser()
+                ->GetTabStripModel()
+                ->group_model()
+                ->ListTabGroups()
+                .size();
+          },
+          0));
+}
+
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerInteractiveUiTest,
+                       VerifyTabContextMenu) {
+  RunTestSequence(
+      // Verify Vertical Tabs is showing.
+      WaitForShow(kNewTabButtonElementId),
+      // Identify Tab by Type (TabView).
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kFirstTabName,
+                                        0),
+      // Open Tab Context Menu.
+      MoveMouseTo(kFirstTabName), ClickMouse(ui_controls::RIGHT),
+      WaitForShow(TabMenuModel::kAddNewTabAdjacentMenuItem),
+      SelectMenuItem(TabMenuModel::kAddNewTabAdjacentMenuItem),
+      // Verify functionality of command in the Tab Context Menu.
+      CheckResult([this]() { return browser()->GetTabStripModel()->count(); },
+                  2));
+}
+
+// TODO(crbug.com/505768540): Investigate why test fails to show the duplicate
+// menu item on windows.
+// TODO(crbug.com/547746068): Re-enable on mac.
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+#define MAYBE_TabOpenedWhileUsingTabContextMenu \
+  DISABLED_TabOpenedWhileUsingTabContextMenu
+#else
+#define MAYBE_TabOpenedWhileUsingTabContextMenu \
+  TabOpenedWhileUsingTabContextMenu
+#endif
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerInteractiveUiTest,
+                       MAYBE_TabOpenedWhileUsingTabContextMenu) {
+  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kSecondTabId);
+  RunTestSequence(
+      // Verify Vertical Tabs is showing.
+      WaitForShow(kNewTabButtonElementId),
+      // Add a second tab and open its context menu.
+      AddInstrumentedTab(kSecondTabId, GURL("https://www.example.com/")),
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kSecondTabName,
+                                        1),
+      MoveMouseTo(kSecondTabName), ClickMouse(ui_controls::RIGHT),
+      // Wait for the menu to show before opening a third tab, otherwise the
+      // context menu could be opened on that third tab.
+      WaitForShow(TabMenuModel::kDuplicateMenuItem),
+      // Add a third tab at the index of the second tab, while the context menu
+      // is still open. Use chrome::AddTabAt instead of AddInstrumentedTab so
+      // that the tab is added in the background and the resulting focus change
+      // does not cause the context menu to close.
+      Do([this]() {
+        chrome::AddTabAt(browser(), chrome::ChromeUINewTabPageURLAsGURL(), 1,
+                         /*foreground=*/false);
+      }),
+      // Select the duplicate tab menu item.
+      WaitForShow(TabMenuModel::kDuplicateMenuItem),
+      SelectMenuItem(TabMenuModel::kDuplicateMenuItem),
+      // Verify that the original tab that the context menu was opened on is the
+      // one that was duplicated, not the tab inserted after the context menu
+      // was opened.
+      CheckResult([this]() { return browser()->GetTabStripModel()->count(); },
+                  4),
+      CheckResult(
+          [this]() { return browser()->GetTabStripModel()->active_index(); },
+          3),
+      CheckResult(
+          [this]() {
+            return browser()
+                ->GetTabStripModel()
+                ->GetActiveTab()
+                ->GetContents()
+                ->GetLastCommittedURL()
+                .spec();
+          },
+          "https://www.example.com/"));
+}
+
+class TabStripCollectionControllerTabGroupFocusingInteractiveUiTest
+    : public VerticalTabsInteractiveTestMixin<InteractiveBrowserTest> {
+ public:
+  const std::vector<base::test::FeatureRefAndParams> GetEnabledFeatures()
+      override {
+    return {{features::kTabGroupsFocusing, {}}};
+  }
+
+  bool CheckBrowserHasColorOverride() {
+    BrowserWidget* widget =
+        BrowserView::GetBrowserViewForBrowser(browser())->browser_widget();
+    return widget->user_color_override() != std::nullopt;
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(
+    TabStripCollectionControllerTabGroupFocusingInteractiveUiTest,
+    OnTabGroupFocusChangedUpdatesTheme) {
+  RunTestSequence(
+      // Verify Vertical Tabs is showing.
+      WaitForShow(kNewTabButtonElementId),
+      // Create a second tab.
+      EnsurePresent(kNewTabButtonElementId),
+      PressButton(kNewTabButtonElementId,
+                  ui::test::InteractionTestUtil::InputType::kDontCare),
+      Do([this]() {
+        EXPECT_FALSE(CheckBrowserHasColorOverride());
+        browser()->GetTabStripModel()->AddToNewGroup({0, 1});
+      }),
+      WaitForShow(kTabGroupHeaderElementId), Do([this]() {
+        std::optional<tab_groups::TabGroupId> group =
+            browser()->GetTabStripModel()->GetActiveTab()->GetGroup();
+        EXPECT_TRUE(group.has_value());
+
+        // Focus on the group, which should override the tab strip color.
+        browser()->GetTabStripModel()->SetFocusedGroup(group.value());
+        EXPECT_TRUE(CheckBrowserHasColorOverride());
+
+        // Unset focused group, which should remove the override.
+        browser()->GetTabStripModel()->SetFocusedGroup(std::nullopt);
+        EXPECT_FALSE(CheckBrowserHasColorOverride());
+
+        // Focus on the group again, which should override the tab strip color.
+        browser()->GetTabStripModel()->SetFocusedGroup(group.value());
+        EXPECT_TRUE(CheckBrowserHasColorOverride());
+      }));
+}
+
+IN_PROC_BROWSER_TEST_F(
+    TabStripCollectionControllerTabGroupFocusingInteractiveUiTest,
+    UnfocusButtonShowsWhenGroupFocused) {
+  RunTestSequence(
+      // Verify Vertical Tabs is showing.
+      WaitForShow(kNewTabButtonElementId),
+      // Create a second tab.
+      EnsurePresent(kNewTabButtonElementId),
+      PressButton(kNewTabButtonElementId,
+                  ui::test::InteractionTestUtil::InputType::kDontCare),
+      Do([this]() { browser()->GetTabStripModel()->AddToNewGroup({0, 1}); }),
+      WaitForShow(kTabGroupHeaderElementId), Do([this]() {
+        std::optional<tab_groups::TabGroupId> group =
+            browser()->GetTabStripModel()->GetActiveTab()->GetGroup();
+        EXPECT_TRUE(group.has_value());
+
+        // Focus on the group, which should show the unfocus button.
+        browser()->GetTabStripModel()->SetFocusedGroup(group.value());
+      }),
+      WaitForShow(kUnfocusTabGroupButtonElementId), Do([this]() {
+        // Unset focused group, which should hide the button.
+        browser()->GetTabStripModel()->SetFocusedGroup(std::nullopt);
+      }),
+      WaitForHide(kUnfocusTabGroupButtonElementId));
+}
+
+IN_PROC_BROWSER_TEST_F(
+    TabStripCollectionControllerTabGroupFocusingInteractiveUiTest,
+    FocusNextAndPreviousTabGroupInFocusMode) {
+  tab_groups::TabGroupId group1 = tab_groups::TabGroupId::GenerateNew();
+  tab_groups::TabGroupId group2 = tab_groups::TabGroupId::GenerateNew();
+  tab_groups::TabGroupId group3 = tab_groups::TabGroupId::GenerateNew();
+
+  RunTestSequence(WaitForShow(kNewTabButtonElementId),
+                  PressButton(kNewTabButtonElementId),
+                  PressButton(kNewTabButtonElementId),
+                  PressButton(kNewTabButtonElementId), Do([&]() {
+                    TabStripModel* model = browser()->GetTabStripModel();
+                    ASSERT_EQ(model->count(), 4);
+                    group1 = model->AddToNewGroup({0});
+                    group2 = model->AddToNewGroup({1, 2});
+                    group3 = model->AddToNewGroup({3});
+
+                    EXPECT_EQ(model->group_model()->ListTabGroups().size(), 3u);
+
+                    // In unfocused state, FocusNextTabGroup uses legacy
+                    // behavior (activates tab).
+                    EXPECT_EQ(model->GetFocusedGroup(), std::nullopt);
+                    model->ActivateTabAt(0);
+                    EXPECT_EQ(model->active_index(), 0);
+
+                    chrome::FocusNextTabGroup(browser());
+                    EXPECT_EQ(model->GetFocusedGroup(), std::nullopt);
+                    EXPECT_EQ(model->active_index(), 1);
+
+                    chrome::FocusNextTabGroup(browser());
+                    EXPECT_EQ(model->GetFocusedGroup(), std::nullopt);
+                    EXPECT_EQ(model->active_index(), 3);
+
+                    chrome::FocusNextTabGroup(browser());
+                    EXPECT_EQ(model->GetFocusedGroup(), std::nullopt);
+                    EXPECT_EQ(model->active_index(), 0);
+
+                    // 2. Enter Focus Mode on group 1.
+                    model->SetFocusedGroup(group1);
+                    EXPECT_EQ(model->GetFocusedGroup(), group1);
+
+                    // FocusNextTabGroup should cycle focus.
+                    chrome::FocusNextTabGroup(browser());
+                    EXPECT_EQ(model->GetFocusedGroup(), group2);
+
+                    chrome::FocusNextTabGroup(browser());
+                    EXPECT_EQ(model->GetFocusedGroup(), group3);
+
+                    chrome::FocusNextTabGroup(browser());
+                    EXPECT_EQ(model->GetFocusedGroup(), group1);
+
+                    // FocusPreviousTabGroup should cycle focus.
+                    chrome::FocusPreviousTabGroup(browser());
+                    EXPECT_EQ(model->GetFocusedGroup(), group3);
+
+                    chrome::FocusPreviousTabGroup(browser());
+                    EXPECT_EQ(model->GetFocusedGroup(), group2);
+
+                    chrome::FocusPreviousTabGroup(browser());
+                    EXPECT_EQ(model->GetFocusedGroup(), group1);
+                  }));
+}
+
+// TODO(crbug.com/481392191) Fix these flaky hovercard tests.
+#if BUILDFLAG(IS_WIN)
+#define MAYBE_VerticalTabHoverCardShowUnpinned \
+  DISABLED_VerticalTabHoverCardShowUnpinned
+#else
+#define MAYBE_VerticalTabHoverCardShowUnpinned VerticalTabHoverCardShowUnpinned
+#endif  // BUILDFLAG(IS_WIN)
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerInteractiveUiTest,
+                       MAYBE_VerticalTabHoverCardShowUnpinned) {
+  RunTestSequence(
+      WaitForShow(kNewTabButtonElementId), MoveMouseTo(kNewTabButtonElementId),
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kFirstTabName,
+                                        0),
+      MoveMouseTo(kFirstTabName),
+      WaitForShow(TabHoverCardBubbleView::kHoverCardBubbleElementId));
+}
+
+#if BUILDFLAG(IS_WIN)
+#define MAYBE_ScrollingHidesHoverCard DISABLED_ScrollingHidesHoverCard
+#else
+#define MAYBE_ScrollingHidesHoverCard ScrollingHidesHoverCard
+#endif  // BUILDFLAG(IS_WIN)
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerInteractiveUiTest,
+                       MAYBE_ScrollingHidesHoverCard) {
+  RunTestSequence(
+      WaitForShow(kNewTabButtonElementId), MoveMouseTo(kNewTabButtonElementId),
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kFirstTabName,
+                                        0),
+      MoveMouseTo(kFirstTabName),
+      WaitForShow(TabHoverCardBubbleView::kHoverCardBubbleElementId),
+      Do([this]() {
+        gfx::PointF scroll_offset =
+            is_horizontal() ? gfx::PointF(-100, 0) : gfx::PointF(0, -100);
+        GetTabStripView()->unpinned_tabs_scroll_view()->ScrollByOffset(
+            scroll_offset);
+      }),
+      WaitForHide(TabHoverCardBubbleView::kHoverCardBubbleElementId));
+}
+
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerInteractiveUiTest,
+                       ScrollingUnpinnedContainerClosesTabGroupEditorBubble) {
+  RunTestSequence(
+      WaitForShow(kNewTabButtonElementId), Do([this]() {
+        browser()->GetTabStripModel()->ExecuteContextMenuCommand(
+            browser()->GetTabStripModel()->active_index(),
+            TabStripModel::ContextMenuCommand::
+                CommandAddToNewGroupFromMenuItem);
+      }),
+      WaitForShow(kTabGroupHeaderElementId),
+      WaitForShow(kTabGroupEditorBubbleId), Do([this]() {
+        // We need to wait for the ignore-scroll timer in
+        // TabGroupEditorBubbleTracker to expire. The tracker ignores scroll
+        // events for a short duration after opening because layout/positioning
+        // transitions during the opening animation could scroll the container
+        // and cause the bubble to close prematurely.
+        base::RunLoop run_loop(base::RunLoop::Type::kNestableTasksAllowed);
+        base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+            FROM_HERE, run_loop.QuitClosure(), base::Milliseconds(300));
+        run_loop.Run();
+
+        gfx::PointF scroll_offset =
+            is_horizontal() ? gfx::PointF(-100, 0) : gfx::PointF(0, -100);
+        GetTabStripView()->unpinned_tabs_scroll_view()->ScrollByOffset(
+            scroll_offset);
+      }),
+      WaitForHide(kTabGroupEditorBubbleId));
+}
+
+#if BUILDFLAG(IS_WIN)
+#define MAYBE_MousePressHidesHoverCard DISABLED_MousePressHidesHoverCard
+#else
+#define MAYBE_MousePressHidesHoverCard MousePressHidesHoverCard
+#endif  // BUILDFLAG(IS_WIN)
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerInteractiveUiTest,
+                       MAYBE_MousePressHidesHoverCard) {
+  RunTestSequence(
+      WaitForShow(kNewTabButtonElementId), MoveMouseTo(kNewTabButtonElementId),
+      NameDescendantViewByType<TabView>(kBrowserViewElementId, kFirstTabName,
+                                        0),
+      MoveMouseTo(kFirstTabName),
+      WaitForShow(TabHoverCardBubbleView::kHoverCardBubbleElementId),
+      ClickMouse(ui_controls::MouseButton::LEFT, /*release=*/false),
+      WaitForHide(TabHoverCardBubbleView::kHoverCardBubbleElementId));
+}
+
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerInteractiveUiTest,
+                       CloseLastGroupedTabCreatesNewTab) {
+  RunTestSequence(
+      WaitForShow(kNewTabButtonElementId), Do([this]() {
+        TabStripModel* model = browser()->GetTabStripModel();
+        model->AddToNewGroup({0});
+        ASSERT_TRUE(model->GetTabAtIndex(0)->GetGroup().has_value());
+
+        auto* base_region = views::AsViewClass<BaseTabStripRegionView>(
+            BrowserView::GetBrowserViewForBrowser(browser())->tab_strip_view());
+        ASSERT_NE(base_region, nullptr);
+        auto* controller = base_region->GetTabStripCollectionController();
+        ASSERT_NE(controller, nullptr);
+
+        controller->CloseTab(model->GetTabAtIndex(0),
+                             CloseTabSource::kFromMouse);
+
+        tab_groups::DeletionDialogController* deletion_dialog_controller =
+            tab_groups::DeletionDialogController::From(browser());
+        if (deletion_dialog_controller &&
+            deletion_dialog_controller->IsShowingDialog()) {
+          deletion_dialog_controller->SimulateOkButtonForTesting();
+        }
+
+        EXPECT_EQ(model->count(), 1);
+        EXPECT_FALSE(model->GetActiveTab()->GetGroup().has_value());
+      }));
+}
+
+}  // namespace
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    TabStripCollectionControllerInteractiveUiTest,
+    testing::Values(TabStripOrientation::kVertical,
+                    TabStripOrientation::kHorizontal),
+    [](const testing::TestParamInfo<TabStripOrientation>& info) {
+      switch (info.param) {
+        case TabStripOrientation::kVertical:
+          return "Vertical";
+        case TabStripOrientation::kHorizontal:
+          return "Horizontal";
+      }
+    });

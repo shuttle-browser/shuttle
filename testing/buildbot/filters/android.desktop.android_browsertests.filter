@@ -1,0 +1,41 @@
+# https://crbug.com/375086487
+-InstallableManagerBrowserTest.CheckFavicon
+-InstallableManagerBrowserTest.CheckManifestCorruptedIcon
+-InstallableManagerBrowserTest.CheckManifestWithIconThatIsTooSmall
+-InstallableManagerBrowserTest.CheckManifestWithOnlyRelatedApplications
+-InstallableManagerBrowserTest.DebugModeAccumulatesErrorsWithManifest
+-InstallableManagerBrowserTest.DebugModeBadFallbackMaskable
+-InstallableManagerBrowserTest.GetAllInstallabilityErrorsWithPlayAppManifest
+
+# https://crbug.com/393195683
+-AppBannerManagerPrerenderBrowserTest.PrerenderingShouldNotUpdateState
+-PrerenderBrowserTest.PreloadingHoldbackOverridden
+-PrerenderBrowserTest.PrerenderAndActivate
+-PrerenderBrowserTest.SameOriginMainFrameNavigation
+-PrerenderBrowserTest.SameSiteCrossOriginMainFrameNavigation
+-PrerenderPrewarmDefaultSearchEngineTest.PrewarmPrerenderReuseThenActivate
+
+# https://crbug.com/538259294
+-All/AppBannerManagerBrowserTest.ImplicitNameDocumentTitle/*
+-All/AppBannerManagerBrowserTest.ManifestChangeTriggersPipeline/*
+-All/AppBannerManagerBrowserTest.MissingManifest/*
+-All/AppBannerManagerBrowserTest.NoPageManifestProvidesDefaultManifest/*
+-All/AppBannerManagerBrowserTest.NoServiceWorker/*
+-All/AppBannerManagerBrowserTest.PendingServiceWorker/0
+-All/AppBannerManagerBrowserTest.RemoveAndReAddManifestRestoresPromotability/*
+-All/AppBannerManagerBrowserTest.RemovingManifestFromCompleteStateUpdatesResult/*
+-All/AppBannerManagerBrowserTest.RemovingManifestStopsPipeline/*
+-All/AppBannerManagerBrowserTest.WebAppBannerCancelled/*
+-All/AppBannerManagerBrowserTest.WebAppBannerInIFrame/*
+-All/AppBannerManagerBrowserTest.WebAppBannerNotCreated/*
+-All/AppBannerManagerBrowserTest.WebAppBannerReprompt/1
+-All/AppBannerManagerBrowserTest.WebAppBannerTerminated/1
+
+# https://crbug.com/538259295
+-AppBannerManagerBrowserTestWithChromeBFCache.VerifyBFCacheBehavior
+
+# https://crbug.com/538266164
+-AppBannerManagerFencedFrameBrowserTest.FencedFrameShouldNotUpdateState
+
+# https://crbug.com/538266717
+-org.chromium.chrome.browser.popups.PopupMultiwindowPTTest*

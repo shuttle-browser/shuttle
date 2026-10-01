@@ -1,0 +1,47 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// This file was exported from google3, do not edit manually.
+// See README.chromium for details.
+
+edition = "2023";
+
+option optimize_for = LITE_RUNTIME;
+option java_package = "org.chromium.components.metrics";
+
+package private_metrics;
+
+import "third_party/metrics_proto/private_metrics/system_profiles/coarse_system_profile.proto";
+
+option features.enum_type = CLOSED;
+
+// System profile for PUMA for Regional Capabilities. All fields in this proto
+// should be populated by the client before sending the report.
+//
+// Next tag: 7
+message RcCoarseSystemProfile {
+  Platform platform = 1;
+
+  // The possible channels for an installation, from least to most stable.
+  enum Channel {
+    CHANNEL_UNKNOWN = 0;  // Unknown channel -- perhaps an unofficial build?
+    CHANNEL_CANARY = 1;
+    CHANNEL_DEV = 2;
+    CHANNEL_BETA = 3;
+    CHANNEL_STABLE = 4;
+  }
+
+  Channel channel = 2;
+  int32 milestone = 3;
+  bool is_extended_stable_channel = 4;
+
+  // Profile country ID as reported by
+  // RegionalCapabilitiesService::GetCountryId().
+  //
+  // See <go/chrome-regionalcapabilities/country-determination#rcaps-country>.
+  //
+  // When a country is not available from the RegionalCapabilitiesService, this
+  // field falls back to the default value indicating an unknown country.
+  int32 profile_country_id = 5;
+}

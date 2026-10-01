@@ -1,0 +1,126 @@
+// Copyright 2014 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+
+#include "remoting/host/linux/audio_pipe_reader.h"
+
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <memory>
+#include <utility>
+
+#include "base/containers/span.h"
+#include "base/files/file.h"
+#include "base/files/scoped_temp_dir.h"
+#include "base/message_loop/message_pump_type.h"
+#include "base/task/thread_pool.h"
+#include "base/test/task_environment.h"
+#include "base/test/test_future.h"
+#include "base/time/time.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace remoting {
+
+class AudioPipeReaderTest : public testing::Test,
+                            public AudioPipeReader::StreamObserver {
+ public:
+  AudioPipeReaderTest() : stop_at_position_(-1) {}
+
+  AudioPipeReaderTest(const AudioPipeReaderTest&) = delete;
+  AudioPipeReaderTest& operator=(const AudioPipeReaderTest&) = delete;
+
+  void SetUp() override {
+    ASSERT_TRUE(test_dir_.CreateUniqueTempDir());
+    pipe_path_ = test_dir_.GetPath().AppendASCII("test_pipe");
+    audio_task_runner_ = base::ThreadPool::CreateSingleThreadTaskRunner(
+        {base::MayBlock(), base::TaskPriority::BEST_EFFORT},
+        base::SingleThreadTaskRunnerThreadMode::DEDICATED);
+    reader_ = AudioPipeReader::Create(audio_task_runner_, pipe_path_);
+    reader_->AddObserver(this);
+  }
+
+  // AudioPipeReader::StreamObserver interface.
+  void OnDataRead(scoped_refptr<base::RefCountedString> data) override {
+    read_data_ += data->as_string();
+    if (stop_at_position_ > 0 &&
+        static_cast<int>(read_data_.size()) >= stop_at_position_) {
+      stop_at_position_ = -1;
+      future_.SetValue();
+    }
+  }
+
+  void CreatePipe() {
+    ASSERT_EQ(mkfifo(pipe_path_.value().c_str(), 0600), 0);
+    output_ = std::make_unique<base::File>(
+        pipe_path_, base::File::FLAG_OPEN | base::File::FLAG_WRITE);
+    ASSERT_TRUE(output_->IsValid());
+  }
+
+  void DeletePipe() {
+    output_.reset();
+    ASSERT_EQ(unlink(pipe_path_.value().c_str()), 0);
+  }
+
+  void WaitForInput(int num_bytes) {
+    future_.Clear();
+    stop_at_position_ = read_data_.size() + num_bytes;
+    if (static_cast<int>(read_data_.size()) >= stop_at_position_) {
+      return;
+    }
+    ASSERT_TRUE(future_.Wait());
+  }
+
+  void WriteAndWait(const std::string& data) {
+    ASSERT_TRUE(output_->WriteAtCurrentPosAndCheck(base::as_byte_span(data)));
+    WaitForInput(data.size());
+  }
+
+ protected:
+  base::test::TaskEnvironment task_environment_{
+      base::test::TaskEnvironment::MainThreadType::IO};
+  base::test::TestFuture<void> future_;
+  scoped_refptr<base::SingleThreadTaskRunner> audio_task_runner_;
+  base::ScopedTempDir test_dir_;
+  base::FilePath pipe_path_;
+  std::unique_ptr<base::File> output_;
+
+  scoped_refptr<AudioPipeReader> reader_;
+
+  std::string read_data_;
+  int stop_at_position_;
+};
+
+// Verify that the reader can detect when the pipe is created and destroyed.
+TEST_F(AudioPipeReaderTest, CreateAndDestroyPipe) {
+  ASSERT_NO_FATAL_FAILURE(CreatePipe());
+  ASSERT_NO_FATAL_FAILURE(WriteAndWait("ABCD"));
+  ASSERT_NO_FATAL_FAILURE(DeletePipe());
+
+  ASSERT_NO_FATAL_FAILURE(CreatePipe());
+  ASSERT_NO_FATAL_FAILURE(WriteAndWait("abcd"));
+  ASSERT_NO_FATAL_FAILURE(DeletePipe());
+
+  EXPECT_EQ(read_data_, "ABCDabcd");
+}
+
+// Verifies that the reader reads at the right speed.
+TEST_F(AudioPipeReaderTest, Pacing) {
+  int test_data_size = int{AudioPipeReader::kSamplingRate} *
+                       AudioPipeReader::kChannels *
+                       AudioPipeReader::kBytesPerSample / 2;
+  std::string test_data(test_data_size, '\0');
+
+  ASSERT_NO_FATAL_FAILURE(CreatePipe());
+
+  base::TimeTicks start_time = base::TimeTicks::Now();
+  ASSERT_NO_FATAL_FAILURE(WriteAndWait(test_data));
+  base::TimeDelta time_passed = base::TimeTicks::Now() - start_time;
+
+  EXPECT_EQ(read_data_, test_data);
+  EXPECT_GE(time_passed, base::Milliseconds(500));
+}
+
+}  // namespace remoting

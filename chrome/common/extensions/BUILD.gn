@@ -1,0 +1,235 @@
+# Copyright 2016 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//extensions/buildflags/buildflags.gni")
+import("//tools/json_schema_compiler/json_features.gni")
+
+assert(enable_extensions_core)
+
+source_set("extensions") {
+  # The files that can be included from other modules.
+  public = [
+    "activity_log_policy_util.h",
+    "api/notifications/notification_style.h",
+    "api/omnibox/omnibox_handler.h",
+    "api/side_panel/side_panel_info.h",
+    "api/storage/storage_schema_manifest_handler.h",
+    "chrome_extensions_client.h",
+    "extension_constants.h",
+    "extension_metrics.h",
+    "manifest_handlers/app_launch_info.h",
+    "manifest_handlers/natively_connectable_handler.h",
+    "manifest_handlers/settings_overrides_handler.h",
+    "manifest_handlers/theme_handler.h",
+    "permissions/chrome_api_permissions.h",
+    "permissions/chrome_permission_message_provider.h",
+    "permissions/chrome_permission_message_rules.h",
+    "sync_helper.h",
+  ]
+
+  # Files that can only be included from here.
+  sources = [
+    "activity_log_policy_util.cc",
+    "api/notifications/notification_style.cc",
+    "api/omnibox/omnibox_handler.cc",
+    "api/side_panel/side_panel_info.cc",
+    "api/storage/storage_schema_manifest_handler.cc",
+    "chrome_extensions_api_provider.cc",
+    "chrome_extensions_api_provider.h",
+    "chrome_extensions_client.cc",
+    "chrome_manifest_handlers.cc",
+    "chrome_manifest_handlers.h",
+    "extension_metrics.cc",
+    "manifest_handlers/app_launch_info.cc",
+    "manifest_handlers/minimum_chrome_version_checker.cc",
+    "manifest_handlers/minimum_chrome_version_checker.h",
+    "manifest_handlers/natively_connectable_handler.cc",
+    "manifest_handlers/settings_overrides_handler.cc",
+    "manifest_handlers/theme_handler.cc",
+    "permissions/chrome_api_permissions.cc",
+    "permissions/chrome_permission_message_provider.cc",
+    "permissions/chrome_permission_message_rules.cc",
+    "sync_helper.cc",
+  ]
+
+  public_deps = [
+    "//base",
+    "//chrome/common:buildflags",
+    "//chrome/common/extensions/api",
+    "//components/services/app_service/public/cpp:app_types",
+    "//extensions/common",
+    "//extensions/common:common_constants",
+    "//extensions/common:mojom",
+    "//ui/gfx/geometry",
+    "//url",
+  ]
+
+  deps = [
+    "//chrome/app:branded_strings",
+    "//chrome/app:generated_resources",
+    "//chrome/common:chrome_features",
+    "//chrome/common:non_code_constants",
+    "//chrome/common:request_code_constants",
+    "//chrome/common:resources",
+    "//chrome/common:url_constants",
+    "//chrome/common/extensions/api",
+    "//chrome/common/extensions/api:extensions_features",
+    "//components/app_constants",
+    "//components/device_signals/core/common:features",
+    "//components/policy/core/common",
+    "//components/url_formatter",
+    "//components/version_info",
+    "//extensions:extensions_resources",
+    "//extensions/common",
+    "//extensions/common:common_constants",
+    "//extensions/common:core_api_provider",
+    "//extensions/common:mojom",
+    "//extensions/strings",
+    "//ui/gfx/geometry",
+    "//ui/message_center/public/cpp",
+    "//url",
+  ]
+
+  # TODO(https://crbug.com/356905053): These sources do not currently build
+  # cleanly on the experimental desktop-android configuration. Gradually include
+  # more of them, or omit them behind more targeted GN flags.
+  if (enable_extensions) {
+    public += [ "api/file_browser_handlers/file_browser_handler.h" ]
+
+    sources += [ "api/file_browser_handlers/file_browser_handler.cc" ]
+  }
+
+  if (enable_platform_apps) {
+    public += [ "api/url_handlers/url_handlers_parser.h" ]
+    sources += [ "api/url_handlers/url_handlers_parser.cc" ]
+  }
+
+  if (is_chromeos) {
+    public += [ "api/file_system_provider_capabilities/file_system_provider_capabilities_handler.h" ]
+
+    sources += [ "api/file_system_provider_capabilities/file_system_provider_capabilities_handler.cc" ]
+
+    public_deps += [ "//ash/constants" ]
+  }
+}
+
+source_set("test_support") {
+  testonly = true
+
+  sources = [
+    "manifest_tests/chrome_manifest_test.cc",
+    "manifest_tests/chrome_manifest_test.h",
+  ]
+
+  deps = [
+    "//base",
+    "//chrome/common:constants",
+    "//components/version_info",
+    "//extensions:test_support",
+    "//extensions/buildflags",
+    "//extensions/common",
+    "//testing/gtest",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+
+  sources = [
+    "activity_log_policy_util_unittest.cc",
+    "api/common_extension_api_unittest.cc",
+    "api/storage/storage_schema_manifest_handler_unittest.cc",
+    "chrome_extensions_client_unittest.cc",
+    "extension_unittest.cc",
+    "manifest_handlers/automation_unittest.cc",
+    "manifest_handlers/background_scripts_manifest_unittest.cc",
+    "manifest_handlers/content_scripts_manifest_unittest.cc",
+    "manifest_handlers/exclude_matches_manifest_unittest.cc",
+    "manifest_handlers/icons_manifest_unittest.cc",
+    "manifest_handlers/natively_connectable_handler_unittest.cc",
+    "manifest_handlers/settings_overrides_handler_unittest.cc",
+    "manifest_handlers/theme_handler_unittest.cc",
+    "manifest_handlers/theme_manifest_unittest.cc",
+    "manifest_tests/extension_manifests_background_unittest.cc",
+    "manifest_tests/extension_manifests_chromepermission_unittest.cc",
+    "manifest_tests/extension_manifests_contentsecuritypolicy_unittest.cc",
+    "manifest_tests/extension_manifests_default_extent_path_unittest.cc",
+    "manifest_tests/extension_manifests_experimental_unittest.cc",
+    "manifest_tests/extension_manifests_icons_unittest.cc",
+    "manifest_tests/extension_manifests_initvalue_unittest.cc",
+    "manifest_tests/extension_manifests_kiosk_unittest.cc",
+    "manifest_tests/extension_manifests_launch_unittest.cc",
+    "manifest_tests/extension_manifests_manifest_version_unittest.cc",
+    "manifest_tests/extension_manifests_name_unittest.cc",
+    "manifest_tests/extension_manifests_offline_unittest.cc",
+    "manifest_tests/extension_manifests_old_unittest.cc",
+    "manifest_tests/extension_manifests_options_unittest.cc",
+    "manifest_tests/extension_manifests_portsinpermissions_unittest.cc",
+    "manifest_tests/extension_manifests_sample_unittest.cc",
+    "manifest_tests/extension_manifests_theme_unittest.cc",
+    "manifest_tests/extension_manifests_ui_unittest.cc",
+    "manifest_tests/extension_manifests_validapp_unittest.cc",
+    "manifest_tests/extension_manifests_web_accessible_resources_unittest.cc",
+    "manifest_tests/extension_manifests_web_unittest.cc",
+    "manifest_tests/permissions_parser_unittest.cc",
+    "manifest_unittest.cc",
+    "permissions/chrome_api_permissions_unittest.cc",
+    "permissions/chrome_permission_message_provider_unittest.cc",
+    "permissions/chrome_permission_message_rules_unittest.cc",
+    "permissions/permission_set_unittest.cc",
+    "permissions/permissions_data_unittest.cc",
+    "permissions/settings_override_permission_unittest.cc",
+    "sync_type_unittest.cc",
+  ]
+
+  if (!is_android) {
+    sources += [
+      "api/extension_action/browser_action_manifest_unittest.cc",
+
+      # Side panel is not yet supported on desktop Android.
+      "manifest_tests/extension_manifests_side_panel_unittest.cc",
+    ]
+  }
+
+  if (is_chromeos) {
+    sources += [
+      "api/file_browser_handlers/file_browser_handler_manifest_unittest.cc",
+      "api/file_system_provider/file_system_provider_handler_unittest.cc",
+      "manifest_tests/extension_manifests_webview_accessible_resources_unittest.cc",
+    ]
+  }
+
+  if (enable_platform_apps) {
+    sources += [
+      "api/url_handlers/url_handlers_parser_unittest.cc",
+      "manifest_tests/extension_manifests_platformapp_unittest.cc",
+    ]
+  }
+
+  deps = [
+    ":extension_features_unittest",
+    ":extensions",
+    ":test_support",
+    "//base",
+    "//base/i18n:test_support",
+    "//chrome/test:test_support",
+    "//extensions:test_support",
+    "//extensions/common",
+    "//extensions/common:common_constants",
+    "//extensions/strings",
+    "//testing/gtest",
+  ]
+}
+
+json_features("extension_features_unittest") {
+  feature_type = "APIFeature"
+  method_name = "AddUnittestAPIFeatures"
+  sources = [
+    "//chrome/test/data/extensions/extension_api_unittest/api_features.json",
+  ]
+}
+
+group("test_features") {
+  public_deps = [ ":extension_features_unittest" ]
+}

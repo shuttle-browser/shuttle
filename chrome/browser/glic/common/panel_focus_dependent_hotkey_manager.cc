@@ -1,0 +1,111 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/glic/common/panel_focus_dependent_hotkey_manager.h"
+
+#include "base/metrics/user_metrics.h"
+#include "base/metrics/user_metrics_action.h"
+#include "chrome/browser/glic/common/view_scoped_registration_delegate.h"
+#include "chrome/browser/glic/public/features.h"
+
+namespace glic {
+
+namespace {
+
+static constexpr std::array kSupportedCommands = {
+// On Android, kClose is handled in GlicSidePanelUi to let Glic's internal
+// WebContents process Escape key first.
+#if !BUILDFLAG(IS_ANDROID)
+    glic::LocalHotkeyManager::Command::kClose,
+#endif
+    glic::LocalHotkeyManager::Command::kFocusToggle,
+    glic::LocalHotkeyManager::Command::kZoomIn,
+    glic::LocalHotkeyManager::Command::kZoomOut,
+    glic::LocalHotkeyManager::Command::kZoomReset,
+#if BUILDFLAG(IS_WIN)
+    glic::LocalHotkeyManager::Command::kTitleBarContextMenu,
+#endif
+};
+
+}  // namespace
+
+PanelFocusDependentHotkeyManager::PanelFocusDependentHotkeyManager(
+    base::WeakPtr<LocalHotkeyManager::Panel> panel)
+    : panel_(panel) {
+  hotkey_manager_ = std::make_unique<LocalHotkeyManager>(
+      std::make_unique<ViewScopedRegistrationDelegate>(panel), this,
+      kSupportedCommands);
+}
+
+PanelFocusDependentHotkeyManager::~PanelFocusDependentHotkeyManager() = default;
+
+bool PanelFocusDependentHotkeyManager::AcceleratorPressed(
+    LocalHotkeyManager::Command command) {
+  return AcceleratorPressed(command, ui::Accelerator());
+}
+
+bool PanelFocusDependentHotkeyManager::AcceleratorPressed(
+    LocalHotkeyManager::Command command,
+    const ui::Accelerator& accelerator) {
+  if (!panel_ || !panel_->HasFocus()) {
+    return false;
+  }
+
+  // Derive source for zoom actions.
+  ZoomSource zoom_source = accelerator.IsShiftDown()
+                               ? ZoomSource::kHotkeyWithShift
+                               : ZoomSource::kHotkey;
+
+  switch (command) {
+    case LocalHotkeyManager::Command::kClose: {
+#if !BUILDFLAG(IS_ANDROID)
+      if (panel_->HasSelectionOverlay()) {
+        panel_->CloseSelectionOverlay();
+        return true;
+      }
+#endif
+      panel_->Close(CloseOptions());
+      return true;
+    }
+    case glic::LocalHotkeyManager::Command::kFocusToggle:
+      if (panel_->ActivateBrowser()) {
+        base::RecordAction(base::UserMetricsAction("Glic.FocusHotKey"));
+        return true;
+      }
+      return false;
+    case LocalHotkeyManager::Command::kZoomIn:
+      panel_->Zoom(mojom::ZoomAction::kZoomIn, zoom_source);
+      return true;
+    case LocalHotkeyManager::Command::kZoomOut:
+      panel_->Zoom(mojom::ZoomAction::kZoomOut, zoom_source);
+      return true;
+    case LocalHotkeyManager::Command::kZoomReset:
+      panel_->Zoom(mojom::ZoomAction::kReset, zoom_source);
+      return true;
+#if BUILDFLAG(IS_WIN)
+    case LocalHotkeyManager::Command::kTitleBarContextMenu:
+      panel_->ShowTitleBarContextMenuAt(gfx::Point());
+      return true;
+#endif  //  BUILDFLAG(IS_WIN)
+
+    default:
+      NOTREACHED() << "no handling implemented for "
+                   << LocalHotkeyManager::CommandToString(command);
+  }
+}
+
+bool PanelFocusDependentHotkeyManager::CanHandleAccelerators() const {
+  return panel_ && panel_->HasFocus();
+}
+
+void PanelFocusDependentHotkeyManager::InitializeAccelerators() {
+  hotkey_manager_->InitializeAccelerators();
+}
+
+bool PanelFocusDependentHotkeyManager::IsRegisteredAccelerator(
+    const ui::Accelerator& accelerator) const {
+  return hotkey_manager_->IsRegisteredAccelerator(accelerator);
+}
+
+}  // namespace glic

@@ -1,0 +1,142 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_PAYMENTS_CONTENT_SECURE_PAYMENT_CONFIRMATION_SERVICE_H_
+#define COMPONENTS_PAYMENTS_CONTENT_SECURE_PAYMENT_CONFIRMATION_SERVICE_H_
+
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "base/memory/scoped_refptr.h"
+#include "base/memory/weak_ptr.h"
+#include "components/payments/content/browser_binding/passkey_browser_binder.h"
+#include "components/payments/core/secure_payment_confirmation_metrics.h"
+#include "components/webauthn/core/browser/remote_validation.h"
+#include "components/webdata/common/web_data_service_base.h"
+#include "components/webdata/common/web_data_service_consumer.h"
+#include "content/public/browser/document_service.h"
+#include "content/public/browser/global_routing_id.h"
+#include "mojo/public/cpp/bindings/message.h"
+#include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "third_party/blink/public/mojom/payments/secure_payment_confirmation_service.mojom.h"
+
+namespace webauthn {
+
+class InternalAuthenticator;
+
+}  // namespace webauthn
+
+namespace payments {
+
+class WebPaymentsWebDataService;
+
+// https://w3c.github.io/secure-payment-confirmation/#enumdef-securepaymentconfirmationavailability
+namespace spc_capabilities {
+
+// This is the set of SPC capabilities (currently only 1) computed by the
+// browser.
+inline constexpr char kBrowserBoundKeyHardware[] = "browserBoundKeyHardware";
+
+}  // namespace spc_capabilities
+
+// Implementation of the mojom::SecurePaymentConfirmationService interface,
+// which provides SPC-related functionality that is not tied to a specific
+// PaymentRequest invocation.
+class SecurePaymentConfirmationService
+    : public content::DocumentService<mojom::SecurePaymentConfirmationService> {
+ public:
+  SecurePaymentConfirmationService(
+      content::RenderFrameHost& render_frame_host,
+      mojo::PendingReceiver<mojom::SecurePaymentConfirmationService> receiver,
+      scoped_refptr<WebPaymentsWebDataService> web_data_service,
+      std::unique_ptr<webauthn::InternalAuthenticator> authenticator,
+      std::string browser_bound_key_store_keychain_access_group);
+  ~SecurePaymentConfirmationService() override;
+
+  SecurePaymentConfirmationService(const SecurePaymentConfirmationService&) =
+      delete;
+  SecurePaymentConfirmationService& operator=(
+      const SecurePaymentConfirmationService&) = delete;
+
+  // mojom::SecurePaymentConfirmationService:
+  void SecurePaymentConfirmationAvailability(
+      SecurePaymentConfirmationAvailabilityCallback callback) override;
+
+  // mojom::SecurePaymentConfirmationService:
+  void GetSecurePaymentConfirmationCapabilities(
+      GetSecurePaymentConfirmationCapabilitiesCallback callback) override;
+
+  // mojom::SecurePaymentConfirmationService:
+  void StorePaymentCredential(const std::vector<uint8_t>& credential_id,
+                              const std::string& rp_id,
+                              const std::vector<uint8_t>& user_id,
+                              StorePaymentCredentialCallback callback) override;
+
+  // mojom::SecurePaymentConfirmationService:
+  void MakePaymentCredential(
+      blink::mojom::PublicKeyCredentialCreationOptionsPtr options,
+      MakePaymentCredentialCallback callback) override;
+
+  void SetPasskeyBrowserBinderForTesting(
+      std::unique_ptr<PasskeyBrowserBinder> passkey_browser_binder);
+
+  void SetBrowserBoundKeyStoreForTesting(
+      scoped_refptr<BrowserBoundKeyStore> browser_bound_key_store);
+
+ private:
+  // Called after the RpId check has been completed, to continue the process of
+  // storing the payment credential.
+  void ContinueStorePaymentCredentialAfterRpIdCheck(
+      mojo::ReportBadMessageCallback bad_message_callback,
+      std::vector<uint8_t> credential_id,
+      std::string rp_id,
+      std::vector<uint8_t> user_id,
+      StorePaymentCredentialCallback callback,
+      blink::mojom::AuthenticatorStatus rp_id_validation_result);
+
+  // MakeCredentialCallback:
+  void OnAuthenticatorMakeCredential(
+      SecurePaymentConfirmationService::MakePaymentCredentialCallback callback,
+      std::string maybe_relying_party,
+      std::optional<PasskeyBrowserBinder::UnboundKey> browser_bound_key,
+      ::blink::mojom::AuthenticatorStatus authenticator_status,
+      ::blink::mojom::MakeCredentialAuthenticatorResponsePtr response,
+      ::blink::mojom::WebAuthnDOMExceptionDetailsPtr maybe_exception_details);
+
+  // Called after creating an unbound browser bound key from the store in
+  // MakePaymentCredential.
+  void OnCreateUnboundKey(
+      std::string relying_party_id,
+      blink::mojom::PublicKeyCredentialCreationOptionsPtr options,
+      MakePaymentCredentialCallback callback,
+      std::optional<PasskeyBrowserBinder::UnboundKey> unbound_key);
+
+  // Checks if hardware backed browser bound keys are supported on this device,
+  // i.e. if it has a hardware security chip that can be used to generate and
+  // store key pairs. If so, runs |callback| with `true`. Otherwise, runs
+  // |callback| with `false`.
+  void IsBrowserBoundKeyHardwareSupported(
+      base::OnceCallback<void(bool)> callback);
+
+  void RecordFirstSystemPromptResult(
+      SecurePaymentConfirmationEnrollSystemPromptResult result);
+
+  scoped_refptr<WebPaymentsWebDataService> web_data_service_;
+  std::unique_ptr<webauthn::InternalAuthenticator> authenticator_;
+  bool is_system_prompt_result_recorded_ = false;
+  std::unique_ptr<PasskeyBrowserBinder> passkey_browser_binder_;
+  scoped_refptr<BrowserBoundKeyStore> test_browser_bound_key_store_;
+  std::string browser_bound_key_store_keychain_access_group_;
+  std::unique_ptr<webauthn::RemoteValidation> remote_validation_;
+
+  base::WeakPtrFactory<SecurePaymentConfirmationService> weak_ptr_factory_{
+      this};
+};
+
+}  // namespace payments
+
+#endif  // COMPONENTS_PAYMENTS_CONTENT_SECURE_PAYMENT_CONFIRMATION_SERVICE_H_

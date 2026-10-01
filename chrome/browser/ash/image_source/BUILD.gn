@@ -1,0 +1,19 @@
+# Copyright 2024 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+assert(is_chromeos)
+
+static_library("image_source") {
+  sources = [
+    "image_source.cc",
+    "image_source.h",
+  ]
+
+  deps = [
+    "//base",
+    "//chrome/browser/ash/login/users/avatar",
+    "//components/user_manager",
+    "//net",
+  ]
+}

@@ -1,0 +1,208 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/sessions/model/live_tab_context_browser_agent.h"
+
+#import <memory>
+#import <optional>
+#import <utility>
+
+#import "base/notreached.h"
+#import "base/strings/sys_string_conversions.h"
+#import "base/uuid.h"
+#import "components/sessions/core/session_types.h"
+#import "components/split_tabs/split_tab_id.h"
+#import "components/tab_groups/tab_group_id.h"
+#import "components/tab_groups/tab_group_visual_data.h"
+#import "ios/chrome/browser/sessions/model/session_util.h"
+#import "ios/chrome/browser/shared/model/profile/profile_ios.h"
+#import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
+#import "ios/chrome/browser/shared/model/web_state_list/web_state_opener.h"
+#import "ios/web/public/web_state.h"
+#import "ui/base/mojom/window_show_state.mojom.h"
+
+LiveTabContextBrowserAgent::LiveTabContextBrowserAgent(Browser* browser)
+    : BrowserUserData(browser),
+      profile_(browser->GetProfile()),
+      web_state_list_(browser->GetWebStateList()),
+      session_id_(SessionID::NewUnique()) {}
+
+LiveTabContextBrowserAgent::~LiveTabContextBrowserAgent() {}
+
+void LiveTabContextBrowserAgent::ShowBrowserWindow() {
+  // No need to do anything here, as the singleton browser "window" is already
+  // shown.
+}
+
+SessionID LiveTabContextBrowserAgent::GetSessionID() const {
+  return session_id_;
+}
+
+sessions::SessionWindow::WindowType LiveTabContextBrowserAgent::GetWindowType()
+    const {
+  // Not supported by iOS.
+  return sessions::SessionWindow::TYPE_NORMAL;
+}
+
+int LiveTabContextBrowserAgent::GetTabCount() const {
+  return web_state_list_->count();
+}
+
+int LiveTabContextBrowserAgent::GetSelectedIndex() const {
+  return web_state_list_->active_index();
+}
+
+std::string LiveTabContextBrowserAgent::GetAppName() const {
+  return std::string();
+}
+
+std::string LiveTabContextBrowserAgent::GetUserTitle() const {
+  return std::string();
+}
+
+sessions::LiveTab* LiveTabContextBrowserAgent::GetLiveTabAt(int index) const {
+  return nullptr;
+}
+
+sessions::LiveTab* LiveTabContextBrowserAgent::GetActiveLiveTab() const {
+  return nullptr;
+}
+
+std::map<std::string, std::string>
+LiveTabContextBrowserAgent::GetExtraDataForTab(int index) const {
+  return std::map<std::string, std::string>();
+}
+
+std::map<std::string, std::string>
+LiveTabContextBrowserAgent::GetExtraDataForWindow() const {
+  return std::map<std::string, std::string>();
+}
+
+std::optional<tab_groups::TabGroupId>
+LiveTabContextBrowserAgent::GetTabGroupForTab(int index) const {
+  // Not supported by iOS.
+  return std::nullopt;
+}
+
+std::optional<split_tabs::SplitTabId>
+LiveTabContextBrowserAgent::GetSplitForTab(int index) const {
+  // Split views are not currently supported on the iOS platform. This
+  // function would get the SplitTabId implementation of a given tab.
+  return std::nullopt;
+}
+
+const tab_groups::TabGroupVisualData*
+LiveTabContextBrowserAgent::GetVisualDataForGroup(
+    const tab_groups::TabGroupId& group) const {
+  // Since we never return a group from GetTabGroupForTab(), this should never
+  // be called.
+  NOTREACHED();
+}
+
+const split_tabs::SplitTabVisualData*
+LiveTabContextBrowserAgent::GetVisualDataForSplit(
+    const split_tabs::SplitTabId& split_id) const {
+  // Split views are not currently supported on the iOS platform. This function
+  // would return the visual data of the split (orientation and ratio).
+  return nullptr;
+}
+
+bool LiveTabContextBrowserAgent::IsTabPinned(int index) const {
+  // Not supported by iOS.
+  return false;
+}
+
+const std::optional<base::Uuid>
+LiveTabContextBrowserAgent::GetSavedTabGroupIdForGroup(
+    const tab_groups::TabGroupId& group) const {
+  // Not supported by iOS... yet.
+  NOTREACHED();
+}
+
+const std::optional<tab_groups::TabGroupId>
+LiveTabContextBrowserAgent::GetGroupIdForSavedGroup(
+    const base::Uuid& saved) const {
+  // Not supported by iOS... yet.
+  NOTREACHED();
+}
+
+void LiveTabContextBrowserAgent::SetVisualDataForGroup(
+    const tab_groups::TabGroupId& group,
+    const tab_groups::TabGroupVisualData& visual_data) {
+  // Not supported on iOS.
+}
+
+const std::optional<tab_groups::TabGroupId>
+LiveTabContextBrowserAgent::GetInitialFocusedTabGroup() const {
+  // iOS does not support focused tab groups.
+
+  // This function would return the tab group ID that was focused when the
+  // window was closed, so it can be restored to focus.
+  return std::nullopt;
+}
+
+void LiveTabContextBrowserAgent::SetFocusedTabGroup(
+    const tab_groups::TabGroupId& group) {
+  // iOS does not support focused tab groups.
+
+  // This function would set the focused tab group for the window, removing the
+  // visibility of other tabs to instead show just the given tab group.
+  NOTREACHED();
+}
+
+const gfx::Rect LiveTabContextBrowserAgent::GetRestoredBounds() const {
+  // Not supported by iOS.
+  return gfx::Rect();
+}
+
+ui::mojom::WindowShowState LiveTabContextBrowserAgent::GetRestoredState()
+    const {
+  // Not supported by iOS.
+  return ui::mojom::WindowShowState::kNormal;
+}
+
+std::string LiveTabContextBrowserAgent::GetWorkspace() const {
+  // Not supported by iOS.
+  return std::string();
+}
+
+sessions::LiveTab* LiveTabContextBrowserAgent::AddRestoredTab(
+    const sessions::tab_restore::Tab& tab,
+    int tab_index,
+    bool select,
+    bool is_restoring_group_or_window,
+    sessions::tab_restore::Type original_session_type) {
+  // TODO(crbug.com/40491734): Handle tab-switch animation somehow...
+  web_state_list_->InsertWebState(
+      session_util::CreateWebStateWithNavigationEntries(
+          profile_, tab.normalized_navigation_index(), tab.navigations),
+      WebStateList::InsertionParams::AtIndex(tab_index).Activate());
+  return nullptr;
+}
+
+sessions::LiveTab* LiveTabContextBrowserAgent::ReplaceRestoredTab(
+    const sessions::tab_restore::Tab& tab) {
+  web_state_list_->ReplaceWebStateAt(
+      web_state_list_->active_index(),
+      session_util::CreateWebStateWithNavigationEntries(
+          profile_, tab.normalized_navigation_index(), tab.navigations));
+
+  return nullptr;
+}
+
+void LiveTabContextBrowserAgent::ReconstructSplit(
+    sessions::LiveTab* leading_tab,
+    sessions::LiveTab* trailing_tab,
+    split_tabs::SplitTabId split_id,
+    const split_tabs::SplitTabVisualData& visual_data) {
+  // Split views are currently not supported on the iOS platform.
+  // This function serves as a placeholder to store the logic that would combine
+  // two tabs into a singular SplitView object.
+  NOTREACHED();
+}
+
+void LiveTabContextBrowserAgent::CloseTab() {
+  web_state_list_->CloseWebStateAt(web_state_list_->active_index(),
+                                   WebStateList::ClosingReason::kUserAction);
+}

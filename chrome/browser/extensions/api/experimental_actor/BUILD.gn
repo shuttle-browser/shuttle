@@ -1,0 +1,35 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//chrome/common/features.gni")
+import("//extensions/buildflags/buildflags.gni")
+
+assert(enable_extensions,
+       "Cannot depend on extensions because enable_extensions=false.")
+
+source_set("experimental_actor") {
+  sources = [
+    "experimental_actor_api.cc",
+    "experimental_actor_api.h",
+  ]
+
+  configs += [ "//build/config/compiler:wexit_time_destructors" ]
+
+  deps = [
+    "//base",
+    "//chrome/browser/actor",
+    "//chrome/browser/ai",
+    "//chrome/browser/extensions",
+    "//chrome/browser/ui",
+    "//components/actor/core:journal",
+    "//components/actor/core:task_id",
+  ]
+
+  # TODO(bokan): This is here to preserve behavior but extension API shouldn't
+  # be using Glic enterprise policies and can be removed.
+  deps += [
+    "//chrome/browser/glic",
+    "//chrome/browser/glic/actor",
+  ]
+}

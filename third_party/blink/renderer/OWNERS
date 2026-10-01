@@ -1,0 +1,82 @@
+# Please prefer to use more specific OWNERS where area-specific expertise is
+# useful. For example, blink/renderer/core/*/OWNERS.
+
+# New owners should be proposed by email to blink-core-owners-discuss@chromium.org,
+# similar to the committer nomination process. Once 3 "+1"s have been received,
+# the nominator should put up a CL to add the nominated person.
+# Once accepted, new owners should also be added to
+# blink-core-owners-discuss@chromium.org, by emailing one of the group owners,
+# currently including: chrishtr, jbroman, and rbyers.
+
+# Reviewers (comments indicate areas of expertise):
+alexis.menard@intel.com
+almaher@microsoft.com
+andruud@chromium.org
+# bokan reviews changes around viewport behavior, scrolling, cc/blink interaction, co-ordinate spaces and input events
+bokan@chromium.org
+cbiesinger@chromium.org
+chrishtr@chromium.org
+clamy@chromium.org
+daniec@microsoft.com
+dbaron@chromium.org
+dcheng@chromium.org
+dgozman@chromium.org
+dlibby@microsoft.com
+dom@chromium.org
+# drott reviews font specific changes.
+drott@chromium.org
+# dtapuska reviews input-related changes
+dtapuska@chromium.org
+# flackr reviews animation, input-related and scrolling-related changes.
+flackr@chromium.org
+fmalita@chromium.org
+# foolip reviews <video>, <track>, WebVTT and Fullscreen.
+foolip@chromium.org
+fs@opera.com
+fserb@chromium.org
+futhark@chromium.org
+fwang@igalia.com
+haraken@chromium.org
+hayato@chromium.org
+hiroshige@chromium.org
+ikilpatrick@chromium.org
+japhet@chromium.org
+jarhar@chromium.org
+jbroman@chromium.org
+jfernandez@igalia.com
+junov@chromium.org
+kbr@chromium.org
+keishi@chromium.org
+# kevers reviews animation, scrolling-related and a11y changes.
+kevers@chromium.org
+khushalsagar@chromium.org
+kinuko@chromium.org
+kojii@chromium.org
+kouhei@chromium.org
+masonf@chromium.org
+mkwst@chromium.org
+mlippautz@chromium.org
+mstensho@chromium.org
+# mustaq reviews input-related changes.
+mustaq@chromium.org
+nhiroki@chromium.org
+nrosenthal@google.com
+obrufau@igalia.com
+# pdr reviews many svg and text autosizing patches.
+pdr@chromium.org
+rego@igalia.com
+rbuis@igalia.com
+schenney@chromium.org
+shaseley@chromium.org
+skobes@chromium.org
+svillar@igalia.com
+szager@chromium.org
+thakis@chromium.org
+tkent@chromium.org
+toyoshim@chromium.org
+vmpstr@chromium.org
+vollick@chromium.org
+wangxianzhu@chromium.org
+xiaochengh@chromium.org
+yoavweiss@chromium.org
+yyanagisawa@chromium.org

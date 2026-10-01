@@ -1,0 +1,6 @@
+WebView focusable focused actions:[CLEAR_FOCUS, AX_FOCUS] bundle:[chromeRole="rootWebArea"]
+++View actions:[AX_FOCUS] bundle:[chromeRole="genericContainer"]
+++++View actions:[AX_FOCUS] bundle:[chromeRole="iframe"]
+++++++View actions:[AX_FOCUS] bundle:[chromeRole="rootWebArea"]
+++++++++View containerTitle:"iframe_onscreen" actions:[AX_FOCUS] bundle:[chromeRole="group"]
+++++++++View containerTitle:"iframe_offscreen" actions:[AX_FOCUS] bundle:[chromeRole="group"]

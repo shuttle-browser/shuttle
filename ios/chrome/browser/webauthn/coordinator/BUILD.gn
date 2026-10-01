@@ -1,0 +1,51 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("coordinator") {
+  sources = [
+    "passkey_incognito_interstitial_coordinator.h",
+    "passkey_incognito_interstitial_coordinator.mm",
+    "passkey_welcome_screen_coordinator.h",
+    "passkey_welcome_screen_coordinator.mm",
+  ]
+  deps = [
+    "//base",
+    "//components/strings",
+    "//components/webauthn/ios",
+    "//components/webauthn/ios:passkey_types",
+    "//ios/chrome/app/strings",
+    "//ios/chrome/browser/settings/ui_bundled/password:title_view",
+    "//ios/chrome/browser/shared/coordinator/chrome_coordinator",
+    "//ios/chrome/browser/shared/model/browser",
+    "//ios/chrome/browser/shared/model/profile",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/signin/model",
+    "//ios/chrome/browser/signin/model:authentication_service",
+    "//ios/chrome/browser/signin/model:authentication_service_factory",
+    "//ios/chrome/browser/webauthn/public",
+    "//ios/chrome/browser/webauthn/ui",
+    "//ios/chrome/common/credential_provider/ui",
+    "//ios/chrome/common/ui/confirmation_alert",
+    "//ios/chrome/common/ui/elements:branded_navigation_item_title_view",
+    "//ui/base",
+  ]
+}
+
+source_set("unit_tests") {
+  testonly = true
+  sources = [ "passkey_incognito_interstitial_coordinator_unittest.mm" ]
+  deps = [
+    ":coordinator",
+    "//base/test:test_support",
+    "//components/webauthn/ios",
+    "//ios/chrome/browser/shared/model/browser/test:test_support",
+    "//ios/chrome/browser/shared/model/profile/test",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/webauthn/ui",
+    "//ios/chrome/common/ui/confirmation_alert",
+    "//ios/chrome/test:test_support",
+    "//testing/gtest",
+    "//third_party/ocmock",
+  ]
+}

@@ -1,0 +1,16 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module contextual_tasks.mojom;
+
+enum TabSelectionMode {
+  // Only Embeddings match signal is used to score the tabs.
+  kEmbeddingsMatch = 0,
+  // Both Static and Behavioral signals are used to score the tabs.
+  kMultiSignalScoring = 1,
+  // Only Static signals are used to score the tabs.
+  kStaticSignalsOnly = 2,
+  // Score using TfLite ML model, using static signals only.
+  kStaticSignalsMlModel = 3,
+};

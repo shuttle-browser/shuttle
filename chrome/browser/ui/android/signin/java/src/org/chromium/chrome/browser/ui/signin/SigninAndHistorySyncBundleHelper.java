@@ -1,0 +1,166 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.ui.signin;
+
+import android.os.Bundle;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.ui.signin.account_picker.AccountPickerBottomSheetStrings;
+import org.chromium.google_apis.gaia.CoreAccountId;
+import org.chromium.google_apis.gaia.GaiaId;
+
+import java.util.function.Function;
+
+/**
+ * Helper to serialize/deserialize (@link FullscreenSigninAndHistorySyncConfig} and {@link
+ * BottomSheetSigninAndHistorySyncConfig} objects using Bundle, to bypass crash due to the use of
+ * Parcelable in activity extras (See https://crbug.com/172602571 & https://crbug.com/394559360).
+ */
+@NullMarked
+public final class SigninAndHistorySyncBundleHelper {
+    private SigninAndHistorySyncBundleHelper() {}
+
+    // Fields of {@link FullscreenSigninConfig}.
+    private static final String SIGNIN_CONFIG_TITLE = "Signin.SigninConfig.Title";
+    private static final String SIGNIN_CONFIG_SUBTITLE = "Signin.SigninConfig.Subtitle";
+    private static final String SIGNIN_CONFIG_DISMISS_TEXT = "Signin.SigninConfig.DismissText";
+    private static final String SIGNIN_CONFIG_LOGO_ID = "Signin.SigninConfig.LogoId";
+    private static final String SIGNIN_CONFIG_DISABLE_SIGNIN = "Signin.SigninConfig.DisableSignin";
+    private static final String SIGNIN_CONFIG_SELECTED_ACCOUNT_EMAIL =
+            "Signin.SigninConfig.SelectedAccountEmail";
+    private static final String SIGNIN_CONFIG_FLOW = "Signin.SigninConfig.Flow";
+
+    // Fields of {@link HistorySyncConfig}.
+    private static final String HISTORY_SYNC_CONFIG_TITLE = "Signin.HistorySyncConfig.Title";
+    private static final String HISTORY_SYNC_CONFIG_SUBTITLE = "Signin.HistorySyncConfig.Subtitle";
+
+    // Fields common to {@link FullscreenSigninAndHistorySyncConfig} and
+    // {@link BottomSheetSigninAndHistorySyncConfig}.
+    private static final String HISTORY_OPT_IN_MODE = "Signin.HistoryOptInMode";
+
+    // Fields of {@link AccountPickerBottomSheetStrings}
+    private static final String BOTTOM_SHEET_STRINGS_TITLE = "Signin.BottomSheetStrings.Title";
+    private static final String BOTTOM_SHEET_STRINGS_SUBTITLE =
+            "Signin.BottomSheetStrings.Subtitle";
+    private static final String BOTTOM_SHEET_STRINGS_DISMISS_BUTTON =
+            "Signin.BottomSheetStrings.DismissButton";
+
+    // Fields of {@link BottomSheetSigninAndHistorySyncConfig.
+    private static final String BOTTOM_SHEET_NO_ACCOUNT_SIGNIN_MODE =
+            "Signin.BottomSheetNoAccountSigninMode";
+    private static final String BOTTOM_SHEET_WITH_ACCOUNT_SIGNIN_MODE =
+            "Signin.BottomSheetWithAccountSigninMode";
+    private static final String BOTTOM_SHEET_SELECTED_ACCOUNT_ID =
+            "Signin.BottomSheetSelectedAccountId";
+    private static final String BOTTOM_SHEET_SHOW_SIGNIN_SNACKBAR =
+            "Signin.BottomSheetShouldShowSigninSnackbar";
+    private static final String BOTTOM_SHEET_SURVEY_CONFIG = "Signin.BottomSheetSigninSurveyConfig";
+    private static final String BOTTOM_SHEET_DELEGATE_CONTEXT = "Signin.BottomSheetDelegateContext";
+
+    public static Bundle getBundle(FullscreenSigninAndHistorySyncConfig config) {
+        Bundle bundle = new Bundle();
+        bundle.putString(SIGNIN_CONFIG_TITLE, config.signinConfig.title);
+        bundle.putString(SIGNIN_CONFIG_SUBTITLE, config.signinConfig.subtitle);
+        bundle.putString(SIGNIN_CONFIG_DISMISS_TEXT, config.signinConfig.dismissText);
+        bundle.putInt(SIGNIN_CONFIG_LOGO_ID, config.signinConfig.logoId);
+        bundle.putBoolean(SIGNIN_CONFIG_DISABLE_SIGNIN, config.signinConfig.shouldDisableSignin);
+        bundle.putString(HISTORY_SYNC_CONFIG_TITLE, config.historySyncConfig.title);
+        bundle.putString(HISTORY_SYNC_CONFIG_SUBTITLE, config.historySyncConfig.subtitle);
+        bundle.putInt(HISTORY_OPT_IN_MODE, config.historyOptInMode);
+        bundle.putString(
+                SIGNIN_CONFIG_SELECTED_ACCOUNT_EMAIL, config.signinConfig.selectedAccountEmail);
+        bundle.putInt(SIGNIN_CONFIG_FLOW, config.signinConfig.signinFlow);
+        return bundle;
+    }
+
+    public static FullscreenSigninAndHistorySyncConfig getFullscreenConfig(Bundle bundle) {
+        FullscreenSigninAndHistorySyncConfig.Builder builder =
+                FullscreenSigninAndHistorySyncConfig.builder(
+                        bundle.getString(SIGNIN_CONFIG_TITLE, ""),
+                        bundle.getString(SIGNIN_CONFIG_SUBTITLE, ""),
+                        bundle.getString(SIGNIN_CONFIG_DISMISS_TEXT, ""),
+                        bundle.getString(HISTORY_SYNC_CONFIG_TITLE, ""),
+                        bundle.getString(HISTORY_SYNC_CONFIG_SUBTITLE, ""));
+        builder.signinLogoId(bundle.getInt(SIGNIN_CONFIG_LOGO_ID, 0));
+        builder.shouldDisableSignin(bundle.getBoolean(SIGNIN_CONFIG_DISABLE_SIGNIN, false));
+        builder.historyOptInMode(bundle.getInt(HISTORY_OPT_IN_MODE, 0));
+        builder.selectedAccountEmail(bundle.getString(SIGNIN_CONFIG_SELECTED_ACCOUNT_EMAIL));
+        builder.signinFlow(
+                bundle.getInt(
+                        SIGNIN_CONFIG_FLOW,
+                        SigninAndHistorySyncCoordinator.SigninFlow.DEFAULT_SIGNIN));
+        return builder.build();
+    }
+
+    public static Bundle getBundle(BottomSheetSigninAndHistorySyncConfig config) {
+        return getBundle(config, /* delegateContext= */ null);
+    }
+
+    public static Bundle getBundle(
+            BottomSheetSigninAndHistorySyncConfig config,
+            @Nullable DelegateContext delegateContext) {
+        Bundle bundle = new Bundle();
+        bundle.putString(BOTTOM_SHEET_STRINGS_TITLE, config.bottomSheetStrings.titleString);
+        bundle.putString(BOTTOM_SHEET_STRINGS_SUBTITLE, config.bottomSheetStrings.subtitleString);
+        bundle.putString(
+                BOTTOM_SHEET_STRINGS_DISMISS_BUTTON, config.bottomSheetStrings.dismissButtonString);
+
+        bundle.putString(HISTORY_SYNC_CONFIG_TITLE, config.historySyncConfig.title);
+        bundle.putString(HISTORY_SYNC_CONFIG_SUBTITLE, config.historySyncConfig.subtitle);
+
+        bundle.putInt(HISTORY_OPT_IN_MODE, config.historyOptInMode);
+        bundle.putInt(BOTTOM_SHEET_NO_ACCOUNT_SIGNIN_MODE, config.noAccountSigninMode);
+        bundle.putInt(BOTTOM_SHEET_WITH_ACCOUNT_SIGNIN_MODE, config.withAccountSigninMode);
+        bundle.putString(
+                BOTTOM_SHEET_SELECTED_ACCOUNT_ID,
+                config.selectedCoreAccountId == null
+                        ? null
+                        : config.selectedCoreAccountId.getId().toString());
+        bundle.putBoolean(BOTTOM_SHEET_SHOW_SIGNIN_SNACKBAR, config.shouldShowSigninSnackbar);
+        if (config.signinSurveyType != null) {
+            bundle.putInt(BOTTOM_SHEET_SURVEY_CONFIG, config.signinSurveyType);
+        }
+        if (delegateContext != null) {
+            bundle.putBundle(BOTTOM_SHEET_DELEGATE_CONTEXT, delegateContext.toBundle());
+        }
+        return bundle;
+    }
+
+    public static BottomSheetSigninAndHistorySyncConfig getBottomSheetConfig(Bundle bundle) {
+        BottomSheetSigninAndHistorySyncConfig.Builder builder =
+                new BottomSheetSigninAndHistorySyncConfig.Builder(
+                        new AccountPickerBottomSheetStrings.Builder(
+                                        bundle.getString(BOTTOM_SHEET_STRINGS_TITLE, ""))
+                                .setSubtitleString(bundle.getString(BOTTOM_SHEET_STRINGS_SUBTITLE))
+                                .setDismissButtonString(
+                                        bundle.getString(BOTTOM_SHEET_STRINGS_DISMISS_BUTTON))
+                                .build(),
+                        bundle.getInt(BOTTOM_SHEET_NO_ACCOUNT_SIGNIN_MODE, 0),
+                        bundle.getInt(BOTTOM_SHEET_WITH_ACCOUNT_SIGNIN_MODE, 0),
+                        bundle.getInt(HISTORY_OPT_IN_MODE, 0),
+                        bundle.getString(HISTORY_SYNC_CONFIG_TITLE, ""),
+                        bundle.getString(HISTORY_SYNC_CONFIG_SUBTITLE, ""));
+        String selectedAccountId = bundle.getString(BOTTOM_SHEET_SELECTED_ACCOUNT_ID);
+        if (selectedAccountId != null) {
+            builder.selectedCoreAccountId(new CoreAccountId(new GaiaId(selectedAccountId)));
+        }
+        builder.shouldShowSigninSnackbar(bundle.getBoolean(BOTTOM_SHEET_SHOW_SIGNIN_SNACKBAR));
+        Integer surveyType = bundle.getInt(BOTTOM_SHEET_SURVEY_CONFIG, -1);
+        if (surveyType != -1) {
+            builder.signinSurveyType(surveyType);
+        }
+        return builder.build();
+    }
+
+    public static @Nullable DelegateContext getDelegateContext(
+            Bundle bundle, @Nullable Function<Bundle, DelegateContext> factory) {
+        Bundle delegateBundle = bundle.getBundle(BOTTOM_SHEET_DELEGATE_CONTEXT);
+        if (delegateBundle != null && factory != null) {
+            return factory.apply(delegateBundle);
+        }
+        return null;
+    }
+}

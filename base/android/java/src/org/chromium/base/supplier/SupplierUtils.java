@@ -1,0 +1,197 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.base.supplier;
+
+import static org.chromium.build.NullUtil.assertNonNull;
+import static org.chromium.build.NullUtil.assumeNonNull;
+
+import org.chromium.base.Callback;
+import org.chromium.base.ThreadUtils;
+import org.chromium.build.BuildConfig;
+import org.chromium.build.annotations.Contract;
+import org.chromium.build.annotations.NonNull;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
+
+/** Utilities for interactions with Suppliers. */
+@NullMarked
+public class SupplierUtils {
+    @SuppressWarnings("NullAway") // Might be fixed by https://github.com/uber/NullAway/issues/1455
+    private static final Supplier<?> NULL_SUPPLIER = () -> null;
+
+    private static final Supplier<Boolean> TRUE_SUPPLIER = () -> true;
+    private static final Supplier<Boolean> FALSE_SUPPLIER = () -> false;
+    @SuppressWarnings("UnusedVariable")
+    private static final BooleanSupplier TRUE_BOOLEAN_SUPPLIER = () -> true;
+    @SuppressWarnings("UnusedVariable")
+    private static final BooleanSupplier FALSE_BOOLEAN_SUPPLIER = () -> false;
+
+    private SupplierUtils() {}
+
+    private static class Barrier {
+        private int mWaitingCount;
+        private @Nullable Runnable mCallback;
+
+        @SuppressWarnings("unchecked")
+        void waitForAll(Runnable callback, Supplier<?>... suppliers) {
+            ThreadUtils.assertOnUiThread();
+            assert mCallback == null;
+            int waitingSupplierCount = 0;
+            Callback<?> supplierCallback = _ -> onSupplierAvailable();
+            for (Supplier<?> supplier : suppliers) {
+                if (supplier.get() != null) {
+                    continue;
+                }
+
+                waitingSupplierCount++;
+                if (supplier instanceof NullableObservableSupplier<?>) {
+                    NullableObservableSupplier<?> observableSupplier =
+                            ((NullableObservableSupplier<?>) supplier);
+                    new OneShotCallback(observableSupplier, supplierCallback);
+                } else if (supplier instanceof OneshotSupplier) {
+                    ((OneshotSupplier) supplier).onAvailable(supplierCallback);
+                } else if (supplier instanceof SyncOneshotSupplier) {
+                    ((SyncOneshotSupplier) supplier).onAvailable(supplierCallback);
+                } else {
+                    assert false
+                            : "Unexpected Supplier type that does not already have a value: "
+                                    + supplier;
+                }
+            }
+            // Never run callback synchronously so that behavior is consistent when suppliers are
+            // ready vs not.
+            if (waitingSupplierCount == 0) {
+                // Hardcoded to UI thread... This should probably be "whatever thread is active",
+                // but that API does not yet exist in PostTask, and ObservableSuppliers are
+                // UI-thread only anyways.
+                ThreadUtils.postOnUiThread(callback);
+            } else {
+                mWaitingCount = waitingSupplierCount;
+                mCallback = callback;
+            }
+        }
+
+        private void onSupplierAvailable() {
+            ThreadUtils.assertOnUiThread();
+            mWaitingCount--;
+            assert mWaitingCount >= 0;
+            if (mWaitingCount == 0) {
+                assumeNonNull(mCallback);
+                mCallback.run();
+            }
+        }
+    }
+
+    /**
+     * Waits for all suppliers to have assigned values, and when that happens, notifies the
+     * specified callback.
+     *
+     * <p>If all suppliers already have values, then the callback will be notified synchronously.
+     *
+     * <p>To prevent leaking objects, it is recommended to use {@link
+     * org.chromium.base.CallbackController} for the {@link Runnable} callback.
+     *
+     * <p>May be used only on UI thread.
+     *
+     * @param callback The callback to be notified when all suppliers have values set.
+     * @param suppliers The list of suppliers to check for values.
+     */
+    public static void waitForAll(Runnable callback, Supplier<?>... suppliers) {
+        assert callback != null;
+        new Barrier().waitForAll(callback, suppliers);
+    }
+
+    /** Casts a Supplier<@Nullable T> -> Supplier<@NonNull T> */
+    public static <T> Supplier<T> asNonNull(Supplier<@Nullable T> supplier) {
+        assert supplier.get() != null;
+        if (BuildConfig.ENABLE_ASSERTS) {
+            return () -> assertNonNull(supplier.get());
+        }
+        return (Supplier<T>) supplier;
+    }
+
+    @Contract("!null -> !null")
+    public static <T extends @Nullable Object> @Nullable T getOrNull(@Nullable Supplier<T> sup) {
+        return sup == null ? null : sup.get();
+    }
+
+    public static <T extends @Nullable Object> @NonNull T getOr(
+            @Nullable Supplier<T> sup, T value) {
+        T ret = sup == null ? null : sup.get();
+        return ret == null ? value : ret;
+    }
+
+    public static <T extends @Nullable Boolean> boolean getOr(
+            @Nullable Supplier<T> sup, boolean value) {
+        Boolean ret = sup == null ? null : sup.get();
+        return ret == null ? value : ret;
+    }
+
+    /** Returns a singleton {@link Supplier} that always supplies true. */
+    public static Supplier<Boolean> alwaysTrue() {
+        return TRUE_SUPPLIER;
+    }
+
+    /** Returns a singleton {@link Supplier} that always supplies false. */
+    public static Supplier<Boolean> alwaysFalse() {
+        return FALSE_SUPPLIER;
+    }
+
+    /** Returns a singleton {@link BooleanSupplier} that always supplies true. */
+    public static BooleanSupplier alwaysTrueBooleanSupplier() {
+        return TRUE_BOOLEAN_SUPPLIER;
+    }
+
+    /** Returns a singleton {@link BooleanSupplier} that always supplies false. */
+    public static BooleanSupplier alwaysFalseBooleanSupplier() {
+        return FALSE_BOOLEAN_SUPPLIER;
+    }
+
+    /** Returns a singleton {@link Supplier} for the given boolean without allocation. */
+    public static Supplier<Boolean> of(boolean value) {
+        return value ? alwaysTrue() : alwaysFalse();
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T extends @Nullable Object> Supplier<T> of(T value) {
+        return value == null ? ofNull() : () -> value;
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T extends @Nullable Object> Supplier<T> ofNull() {
+        return (Supplier<T>) NULL_SUPPLIER;
+    }
+
+    /** Casts a NullableObservableSupplier of a derived type to one of a base type. */
+    @SuppressWarnings("unchecked")
+    public static <BaseT, ChildT extends BaseT> NullableObservableSupplier<BaseT> upcast(
+            NullableObservableSupplier<ChildT> s, Class<BaseT> baseClass) {
+        return (NullableObservableSupplier<BaseT>) s;
+    }
+
+    /** Casts a MonotonicObservableSupplier of a derived type to one of a base type. */
+    @SuppressWarnings("unchecked")
+    public static <BaseT, ChildT extends BaseT> MonotonicObservableSupplier<BaseT> upcast(
+            MonotonicObservableSupplier<ChildT> s, Class<BaseT> baseClass) {
+        return (MonotonicObservableSupplier<BaseT>) s;
+    }
+
+    /** Casts a NonNullObservableSupplier of a derived type to one of a base type. */
+    @SuppressWarnings("unchecked")
+    public static <BaseT, ChildT extends BaseT> NonNullObservableSupplier<BaseT> upcast(
+            NonNullObservableSupplier<ChildT> s, Class<BaseT> baseClass) {
+        return (NonNullObservableSupplier<BaseT>) s;
+    }
+
+    /** Casts an OneshotSupplier of a derived type to one of a base type. */
+    @SuppressWarnings("unchecked")
+    public static <BaseT, ChildT extends BaseT> OneshotSupplier<BaseT> upcast(
+            OneshotSupplier<ChildT> s, Class<BaseT> baseClass) {
+        return (OneshotSupplier<BaseT>) s;
+    }
+}

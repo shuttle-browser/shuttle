@@ -1,0 +1,603 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/exo/ui_lock_controller.h"
+
+#include "ash/constants/ash_features.h"
+#include "ash/shell.h"
+#include "ash/wm/window_state.h"
+#include "base/feature_list.h"
+#include "base/memory/weak_ptr.h"
+#include "base/test/power_monitor_test.h"
+#include "base/test/scoped_feature_list.h"
+#include "chromeos/ash/components/login/auth/auth_events_recorder.h"
+#include "chromeos/dbus/power/fake_power_manager_client.h"
+#include "chromeos/dbus/power/power_manager_client.h"
+#include "chromeos/dbus/power_manager/backlight.pb.h"
+#include "chromeos/ui/base/window_properties.h"
+#include "components/exo/buffer.h"
+#include "components/exo/display.h"
+#include "components/exo/pointer.h"
+#include "components/exo/pointer_constraint_delegate.h"
+#include "components/exo/pointer_delegate.h"
+#include "components/exo/shell_surface.h"
+#include "components/exo/surface.h"
+#include "components/exo/test/exo_test_base.h"
+#include "components/exo/test/exo_test_helper.h"
+#include "components/exo/test/mock_security_delegate.h"
+#include "components/exo/test/shell_surface_builder.h"
+#include "components/exo/test/test_security_delegate.h"
+#include "components/exo/wm_helper.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/class_property.h"
+#include "ui/display/types/display_constants.h"
+#include "ui/wm/core/window_util.h"
+
+namespace exo {
+
+namespace {
+
+constexpr char kOverviewToExitAppId[] = "overview-to-exit";
+
+aura::Window* GetTopLevelWindow(
+    const std::unique_ptr<ShellSurface>& shell_surface) {
+  auto* top_level_widget = views::Widget::GetTopLevelWidgetForNativeView(
+      shell_surface->host_window());
+  assert(top_level_widget);
+  return top_level_widget->GetNativeWindow();
+}
+
+class PermissiveSecurityDelegate : public test::TestSecurityDelegate {
+ public:
+  bool CanSelfActivate(aura::Window* window) const override { return true; }
+};
+
+ash::WindowState* GetTopLevelWindowState(
+    const std::unique_ptr<ShellSurface>& shell_surface) {
+  return ash::WindowState::Get(GetTopLevelWindow(shell_surface));
+}
+
+class MockPointerDelegate : public PointerDelegate {
+ public:
+  MockPointerDelegate() {
+    EXPECT_CALL(*this, CanAcceptPointerEventsForSurface(testing::_))
+        .WillRepeatedly(testing::Return(true));
+  }
+
+  // Overridden from PointerDelegate:
+  MOCK_METHOD1(OnPointerDestroying, void(Pointer*));
+  MOCK_CONST_METHOD1(CanAcceptPointerEventsForSurface, bool(Surface*));
+  MOCK_METHOD3(OnPointerEnter, void(Surface*, const gfx::PointF&, int));
+  MOCK_METHOD1(OnPointerLeave, void(Surface*));
+  MOCK_METHOD2(OnPointerMotion, void(base::TimeTicks, const gfx::PointF&));
+  MOCK_METHOD3(OnPointerButton, void(base::TimeTicks, int, bool));
+  MOCK_METHOD3(OnPointerScroll,
+               void(base::TimeTicks, const gfx::Vector2dF&, bool));
+  MOCK_METHOD1(OnFingerScrollStop, void(base::TimeTicks));
+  MOCK_METHOD0(OnPointerFrame, void());
+
+  base::WeakPtr<PointerDelegate> GetWeakPtr() override {
+    return weak_factory_.GetWeakPtr();
+  }
+
+ private:
+  base::WeakPtrFactory<MockPointerDelegate> weak_factory_{this};
+};
+
+class MockPointerConstraintDelegate : public PointerConstraintDelegate {
+ public:
+  MockPointerConstraintDelegate(Pointer* pointer, Surface* surface)
+      : pointer_(pointer) {
+    EXPECT_CALL(*this, GetConstrainedSurface())
+        .WillRepeatedly(testing::Return(surface));
+    ON_CALL(*this, OnConstraintActivated).WillByDefault([this]() {
+      activated_count++;
+    });
+    ON_CALL(*this, OnConstraintBroken).WillByDefault([this]() {
+      broken_count++;
+    });
+  }
+
+  ~MockPointerConstraintDelegate() override {
+    // Notifying destruction here removes some boilerplate from tests.
+    pointer_->OnPointerConstraintDelegateDestroying(this);
+  }
+
+  // Overridden from PointerConstraintDelegate:
+  MOCK_METHOD0(OnConstraintActivated, void());
+  MOCK_METHOD0(OnAlreadyConstrained, void());
+  MOCK_METHOD0(OnConstraintBroken, void());
+  MOCK_METHOD0(IsPersistent, bool());
+  MOCK_METHOD0(GetConstrainedSurface, Surface*());
+  MOCK_METHOD0(OnDefunct, void());
+
+  raw_ptr<Pointer> pointer_;
+  int activated_count = 0;
+  int broken_count = 0;
+};
+
+class UILockControllerTest : public test::ExoTestBase {
+ public:
+  UILockControllerTest()
+      : test::ExoTestBase(base::test::TaskEnvironment::TimeSource::MOCK_TIME) {}
+  ~UILockControllerTest() override = default;
+
+  UILockControllerTest(const UILockControllerTest&) = delete;
+  UILockControllerTest& operator=(const UILockControllerTest&) = delete;
+
+ protected:
+  class TestPropertyResolver : public exo::WMHelper::AppPropertyResolver {
+   public:
+    TestPropertyResolver() = default;
+    ~TestPropertyResolver() override = default;
+    void PopulateProperties(
+        const Params& params,
+        ui::PropertyHandler& out_properties_container) override {
+      out_properties_container.SetProperty(
+          chromeos::kUseOverviewToExitFullscreen,
+          params.app_id == kOverviewToExitAppId);
+      out_properties_container.SetProperty(
+          chromeos::kUseOverviewToExitPointerLock,
+          params.app_id == kOverviewToExitAppId);
+    }
+  };
+
+  // test::ExoTestBase:
+  void SetUp() override {
+    test::ExoTestBase::SetUp();
+    seat_ = std::make_unique<Seat>();
+
+    // Order of window activations and observer callbacks is not trivial, e.g.
+    // lock screen widget is active when `OnLockStateChanged(locked=false)`
+    // callback is called. It's better to test them with views.
+    // `AuthEventsRecorder` is required for `set_show_lock_screen_views=true`.
+    auth_events_recorder_ = ash::AuthEventsRecorder::CreateForTesting();
+    GetSessionControllerClient()->set_show_lock_screen_views(true);
+
+    WMHelper::GetInstance()->RegisterAppPropertyResolver(
+        std::make_unique<TestPropertyResolver>());
+  }
+
+  void TearDown() override {
+    auth_events_recorder_.reset();
+    seat_.reset();
+    test::ExoTestBase::TearDown();
+  }
+
+  std::unique_ptr<ShellSurface> BuildSurface(gfx::Point origin, int w, int h) {
+    test::ShellSurfaceBuilder builder({w, h});
+    builder.SetOrigin(origin);
+    builder.SetSecurityDelegate(&permissive_delegate_);
+    builder.SetNoCommit();
+    return builder.BuildShellSurface();
+  }
+
+  std::unique_ptr<ShellSurface> BuildSurface(int w, int h) {
+    return BuildSurface(gfx::Point(0, 0), w, h);
+  }
+
+  views::Widget* GetEscNotification(
+      const std::unique_ptr<ShellSurface>& surface) {
+    return seat_->GetUILockControllerForTesting()->GetEscNotificationForTesting(
+        GetTopLevelWindow(surface));
+  }
+
+  views::Widget* GetPointerCaptureNotification(
+      const std::unique_ptr<ShellSurface>& surface) {
+    return seat_->GetUILockControllerForTesting()
+        ->GetPointerCaptureNotificationForTesting(GetTopLevelWindow(surface));
+  }
+
+  std::unique_ptr<Seat> seat_;
+  base::test::ScopedFeatureList scoped_feature_list_;
+  std::unique_ptr<ash::AuthEventsRecorder> auth_events_recorder_;
+  PermissiveSecurityDelegate permissive_delegate_;
+};
+
+TEST_F(UILockControllerTest, FullScreenShowsEscNotification) {
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->SetUseImmersiveForFullscreen(false);
+  test_surface->SetFullscreen(true, display::kInvalidDisplayId);
+  test_surface->surface_for_testing()->Commit();
+
+  EXPECT_TRUE(GetTopLevelWindowState(test_surface)->IsFullscreen());
+  EXPECT_TRUE(GetEscNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, EscNotificationClosesAfterDuration) {
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->SetUseImmersiveForFullscreen(false);
+  test_surface->SetFullscreen(true, display::kInvalidDisplayId);
+  test_surface->surface_for_testing()->Commit();
+
+  EXPECT_TRUE(GetEscNotification(test_surface));
+  task_environment()->FastForwardBy(base::Seconds(5));
+  EXPECT_FALSE(GetEscNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, LosingFullscreenHidesNotification) {
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->SetUseImmersiveForFullscreen(false);
+  test_surface->SetFullscreen(true, display::kInvalidDisplayId);
+  test_surface->surface_for_testing()->Commit();
+
+  EXPECT_TRUE(GetTopLevelWindowState(test_surface)->IsFullscreen());
+  EXPECT_TRUE(GetEscNotification(test_surface));
+
+  // Have surface loose fullscreen, notification should now be hidden.
+  test_surface->Minimize();
+  test_surface->SetFullscreen(false, display::kInvalidDisplayId);
+  test_surface->surface_for_testing()->Commit();
+
+  EXPECT_FALSE(GetTopLevelWindowState(test_surface)->IsFullscreen());
+  EXPECT_FALSE(
+      seat_->GetUILockControllerForTesting()->GetEscNotificationForTesting(
+          GetTopLevelWindow(test_surface)));
+}
+
+TEST_F(UILockControllerTest, EscNotificationIsReshownIfInterrupted) {
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->SetUseImmersiveForFullscreen(false);
+  test_surface->SetFullscreen(true, display::kInvalidDisplayId);
+  test_surface->surface_for_testing()->Commit();
+
+  EXPECT_TRUE(GetEscNotification(test_surface));
+
+  // Stop fullscreen.
+  test_surface->SetFullscreen(false, display::kInvalidDisplayId);
+  EXPECT_FALSE(
+      seat_->GetUILockControllerForTesting()->GetEscNotificationForTesting(
+          GetTopLevelWindow(test_surface)));
+
+  // Fullscreen should show notification since it did not stay visible for
+  // duration.
+  test_surface->SetFullscreen(true, display::kInvalidDisplayId);
+  EXPECT_TRUE(GetEscNotification(test_surface));
+
+  // After duration, notification should be removed.
+  task_environment()->FastForwardBy(base::Seconds(5));
+  EXPECT_FALSE(GetEscNotification(test_surface));
+
+  // Notification is shown after fullscreen toggle.
+  test_surface->SetFullscreen(false, display::kInvalidDisplayId);
+  test_surface->SetFullscreen(true, display::kInvalidDisplayId);
+  EXPECT_TRUE(GetEscNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, EscNotificationIsReshownAfterUnlock) {
+  // Arrange: Go fullscreen and time out the notification.
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->SetUseImmersiveForFullscreen(false);
+  test_surface->SetFullscreen(true, display::kInvalidDisplayId);
+  test_surface->surface_for_testing()->Commit();
+  task_environment()->FastForwardBy(base::Seconds(10));
+  // Ensure the notification did time out; if not, we can't trust the test
+  // result.
+  EXPECT_FALSE(GetEscNotification(test_surface));
+
+  // Act: Simulate locking and unlocking.
+  GetSessionControllerClient()->LockScreen();
+  GetSessionControllerClient()->UnlockScreen();
+
+  // Assert: Notification shown again.
+  EXPECT_TRUE(GetEscNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, EscNotificationReshownWhenScreenTurnedOn) {
+  // Arrange: Set up a pointer capture notification, then let it expire.
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->SetUseImmersiveForFullscreen(false);
+  test_surface->SetFullscreen(true, display::kInvalidDisplayId);
+  test_surface->surface_for_testing()->Commit();
+  task_environment()->FastForwardBy(base::Seconds(10));
+  // Ensure the notification did time out; if not, we can't trust the test
+  // result.
+  EXPECT_FALSE(GetEscNotification(test_surface));
+
+  // Act: Simulate turning the backlight off and on again.
+  power_manager::SetBacklightBrightnessRequest request;
+  request.set_percent(0);
+  chromeos::FakePowerManagerClient::Get()->SetScreenBrightness(request);
+  base::RunLoop().RunUntilIdle();
+  request.set_percent(100);
+  chromeos::FakePowerManagerClient::Get()->SetScreenBrightness(request);
+  base::RunLoop().RunUntilIdle();
+
+  // Assert: Notification shown again.
+  EXPECT_TRUE(GetEscNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, EscNotificationReshownWhenLidReopened) {
+  // Arrange: Set up a pointer capture notification, then let it expire.
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->SetUseImmersiveForFullscreen(false);
+  test_surface->SetFullscreen(true, display::kInvalidDisplayId);
+  test_surface->surface_for_testing()->Commit();
+  task_environment()->FastForwardBy(base::Seconds(10));
+  // Ensure the notification did time out; if not, we can't trust the test
+  // result.
+  EXPECT_FALSE(GetEscNotification(test_surface));
+
+  // Act: Simulate closing and reopening the lid.
+  chromeos::FakePowerManagerClient::Get()->SetLidState(
+      chromeos::PowerManagerClient::LidState::CLOSED, base::TimeTicks::Now());
+  chromeos::FakePowerManagerClient::Get()->SetLidState(
+      chromeos::PowerManagerClient::LidState::OPEN, base::TimeTicks::Now());
+
+  // Assert: Notification shown again.
+  EXPECT_TRUE(GetEscNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, EscNotificationShowsOnSecondaryDisplay) {
+  // Create surface on secondary display.
+  UpdateDisplay("900x800,70x600");
+  std::unique_ptr<ShellSurface> test_surface =
+      BuildSurface(gfx::Point(900, 100), 200, 200);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->SetUseImmersiveForFullscreen(false);
+  test_surface->SetFullscreen(true, display::kInvalidDisplayId);
+  test_surface->surface_for_testing()->Commit();
+
+  // Esc notification should be in secondary display.
+  views::Widget* esc_notification = GetEscNotification(test_surface);
+  EXPECT_TRUE(GetSecondaryDisplay().bounds().Contains(
+      esc_notification->GetWindowBoundsInScreen()));
+}
+
+TEST_F(UILockControllerTest, PointerLockShowsNotification) {
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->surface_for_testing()->Commit();
+  testing::NiceMock<MockPointerDelegate> delegate;
+  Pointer pointer(&delegate, seat_.get());
+  testing::NiceMock<MockPointerConstraintDelegate> constraint(
+      &pointer, test_surface->surface_for_testing());
+  EXPECT_FALSE(GetPointerCaptureNotification(test_surface));
+
+  EXPECT_TRUE(pointer.ConstrainPointer(&constraint));
+
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, PointerLockNotificationObeysCooldown) {
+  // Arrange: Set up a pointer capture notification.
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->surface_for_testing()->Commit();
+  testing::NiceMock<MockPointerDelegate> delegate;
+  Pointer pointer(&delegate, seat_.get());
+  testing::NiceMock<MockPointerConstraintDelegate> constraint(
+      &pointer, test_surface->surface_for_testing());
+  EXPECT_TRUE(pointer.ConstrainPointer(&constraint));
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+
+  // Act: Wait for the notification to timeout.
+  task_environment()->FastForwardBy(base::Seconds(5));
+
+  // Assert: Notification has disappeared.
+  EXPECT_FALSE(GetPointerCaptureNotification(test_surface));
+
+  // Act: Remove and re-apply the constraint.
+  pointer.OnPointerConstraintDelegateDestroying(&constraint);
+  EXPECT_TRUE(pointer.ConstrainPointer(&constraint));
+
+  // Assert: Notification not shown due to the cooldown.
+  EXPECT_FALSE(GetPointerCaptureNotification(test_surface));
+
+  // Act: Wait for the cooldown, then re-apply again
+  pointer.OnPointerConstraintDelegateDestroying(&constraint);
+  task_environment()->FastForwardBy(base::Minutes(5));
+  EXPECT_TRUE(pointer.ConstrainPointer(&constraint));
+
+  // Assert: Cooldown has expired so notification is shown.
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, PointerLockNotificationReshownOnLidOpen) {
+  // Arrange: Set up a pointer capture notification, then let it expire.
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->surface_for_testing()->Commit();
+  testing::NiceMock<MockPointerDelegate> delegate;
+  Pointer pointer(&delegate, seat_.get());
+  testing::NiceMock<MockPointerConstraintDelegate> constraint(
+      &pointer, test_surface->surface_for_testing());
+  EXPECT_TRUE(pointer.ConstrainPointer(&constraint));
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+  task_environment()->FastForwardBy(base::Seconds(5));
+  EXPECT_FALSE(GetPointerCaptureNotification(test_surface));
+
+  // Act: Simulate closing and reopening the lid.
+  chromeos::FakePowerManagerClient::Get()->SetLidState(
+      chromeos::PowerManagerClient::LidState::CLOSED, base::TimeTicks::Now());
+  chromeos::FakePowerManagerClient::Get()->SetLidState(
+      chromeos::PowerManagerClient::LidState::OPEN, base::TimeTicks::Now());
+
+  // Assert: Notification shown again.
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, PointerLockNotificationReshownWhenScreenTurnedOn) {
+  // Arrange: Set up a pointer capture notification, then let it expire.
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->surface_for_testing()->Commit();
+  testing::NiceMock<MockPointerDelegate> delegate;
+  Pointer pointer(&delegate, seat_.get());
+  testing::NiceMock<MockPointerConstraintDelegate> constraint(
+      &pointer, test_surface->surface_for_testing());
+  EXPECT_TRUE(pointer.ConstrainPointer(&constraint));
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+  task_environment()->FastForwardBy(base::Seconds(5));
+  EXPECT_FALSE(GetPointerCaptureNotification(test_surface));
+
+  // Act: Simulate turning the backlight off and on again.
+  power_manager::SetBacklightBrightnessRequest request;
+  request.set_percent(0);
+  chromeos::FakePowerManagerClient::Get()->SetScreenBrightness(request);
+  base::RunLoop().RunUntilIdle();
+  request.set_percent(100);
+  chromeos::FakePowerManagerClient::Get()->SetScreenBrightness(request);
+  base::RunLoop().RunUntilIdle();
+
+  // Assert: Notification shown again.
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, PointerLockNotificationReshownOnUnlock) {
+  // Lock screen takes focus and it disables pointer capture.
+  GetSessionControllerClient()->set_show_lock_screen_views(false);
+
+  // Arrange: Set up a pointer capture notification, then let it expire.
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->surface_for_testing()->Commit();
+  testing::NiceMock<MockPointerDelegate> delegate;
+  Pointer pointer(&delegate, seat_.get());
+  testing::NiceMock<MockPointerConstraintDelegate> constraint(
+      &pointer, test_surface->surface_for_testing());
+  EXPECT_TRUE(pointer.ConstrainPointer(&constraint));
+  task_environment()->FastForwardBy(base::Seconds(5));
+  EXPECT_FALSE(GetPointerCaptureNotification(test_surface));
+
+  // Act: Simulate locking and unlocking.
+  GetSessionControllerClient()->LockScreen();
+  GetSessionControllerClient()->UnlockScreen();
+
+  // Assert: Notification shown again.
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, PointerLockNotificationReshownAfterSuspend) {
+  // Arrange: Set up a pointer capture notification, then let it expire.
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->surface_for_testing()->Commit();
+  testing::NiceMock<MockPointerDelegate> delegate;
+  Pointer pointer(&delegate, seat_.get());
+  testing::NiceMock<MockPointerConstraintDelegate> constraint(
+      &pointer, test_surface->surface_for_testing());
+  EXPECT_TRUE(pointer.ConstrainPointer(&constraint));
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+  task_environment()->FastForwardBy(base::Seconds(5));
+  EXPECT_FALSE(GetPointerCaptureNotification(test_surface));
+
+  // Act: Simulate suspend and resume
+  chromeos::FakePowerManagerClient::Get()->SendSuspendImminent(
+      power_manager::SuspendImminent_Reason_IDLE);
+  task_environment()->FastForwardBy(base::Minutes(1));
+  chromeos::FakePowerManagerClient::Get()->SendSuspendDone(base::Minutes(1));
+
+  // Assert: Notification shown again.
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, PointerLockNotificationReshownAfterIdle) {
+  // Arrange: Set up a pointer capture notification, then let it expire.
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->surface_for_testing()->Commit();
+  testing::NiceMock<MockPointerDelegate> delegate;
+  Pointer pointer(&delegate, seat_.get());
+  testing::NiceMock<MockPointerConstraintDelegate> constraint(
+      &pointer, test_surface->surface_for_testing());
+  EXPECT_TRUE(pointer.ConstrainPointer(&constraint));
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+  task_environment()->FastForwardBy(base::Seconds(5));
+  EXPECT_FALSE(GetPointerCaptureNotification(test_surface));
+
+  // Act: Simulate activity, then go idle.
+  seat_->GetUILockControllerForTesting()->OnUserActivity(/*event=*/nullptr);
+  task_environment()->FastForwardBy(base::Minutes(10));
+
+  // Assert: Notification not yet shown again.
+  EXPECT_FALSE(GetPointerCaptureNotification(test_surface));
+
+  // Act: Simulate activity after being idle.
+  seat_->GetUILockControllerForTesting()->OnUserActivity(/*event=*/nullptr);
+
+  // Assert: Notification shown again.
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, PointerLockCooldownResetForAllWindows) {
+  // Arrange: Create two surfaces, one with a pointer lock notification.
+  std::unique_ptr<ShellSurface> other_surface = BuildSurface(1024, 768);
+  other_surface->SetApplicationId(kOverviewToExitAppId);
+  other_surface->surface_for_testing()->Commit();
+
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->surface_for_testing()->Commit();
+
+  testing::NiceMock<MockPointerDelegate> delegate;
+  Pointer pointer(&delegate, seat_.get());
+  testing::NiceMock<MockPointerConstraintDelegate> constraint(
+      &pointer, test_surface->surface_for_testing());
+  EXPECT_TRUE(pointer.ConstrainPointer(&constraint));
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+
+  // Act: Focus the other window, then lock and unlock.
+  wm::ActivateWindow(other_surface->surface_for_testing()->window());
+  GetSessionControllerClient()->LockScreen();
+  GetSessionControllerClient()->UnlockScreen();
+
+  // Assert: Notification shown again.
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, FullscreenNotificationHasPriority) {
+  // Arrange: Set up a pointer capture notification.
+  std::unique_ptr<ShellSurface> test_surface = BuildSurface(1024, 768);
+  test_surface->SetApplicationId(kOverviewToExitAppId);
+  test_surface->surface_for_testing()->Commit();
+  testing::NiceMock<MockPointerDelegate> delegate;
+  Pointer pointer(&delegate, seat_.get());
+  testing::NiceMock<MockPointerConstraintDelegate> constraint(
+      &pointer, test_surface->surface_for_testing());
+  EXPECT_TRUE(pointer.ConstrainPointer(&constraint));
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+
+  // Act: Go fullscreen.
+  test_surface->SetUseImmersiveForFullscreen(false);
+  test_surface->SetFullscreen(true, display::kInvalidDisplayId);
+  test_surface->surface_for_testing()->Commit();
+
+  // Assert: Fullscreen notification overrides pointer notification.
+  EXPECT_FALSE(GetPointerCaptureNotification(test_surface));
+  EXPECT_TRUE(GetEscNotification(test_surface));
+
+  // Act: Exit fullscreen.
+  test_surface->SetFullscreen(false, display::kInvalidDisplayId);
+  test_surface->surface_for_testing()->Commit();
+
+  // Assert: Pointer notification returns, since it was interrupted.
+  EXPECT_TRUE(GetPointerCaptureNotification(test_surface));
+  EXPECT_FALSE(GetEscNotification(test_surface));
+}
+
+TEST_F(UILockControllerTest, OnlyShowWhenActive) {
+  std::unique_ptr<ShellSurface> test_surface1 = BuildSurface(1024, 768);
+  test_surface1->SetApplicationId(kOverviewToExitAppId);
+  test_surface1->surface_for_testing()->Commit();
+  std::unique_ptr<ShellSurface> test_surface2 =
+      BuildSurface(gfx::Point(100, 100), 200, 200);
+  test_surface2->surface_for_testing()->Commit();
+
+  // Surface2 is active when we make Surface1 fullscreen.
+  // The exit notification should not be shown.
+  test_surface1->SetFullscreen(true, display::kInvalidDisplayId);
+  EXPECT_FALSE(GetEscNotification(test_surface1));
+}
+
+}  // namespace
+}  // namespace exo

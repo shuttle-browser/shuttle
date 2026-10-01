@@ -1,0 +1,34 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module gfx.mojom;
+
+import "ui/gfx/geometry/mojom/geometry.mojom";
+
+struct CAContext {
+  // The integer handle to create the CAContext.
+  uint32 id;
+
+  // A mach port that will keep previous CAContext alive (and frozen) until
+  // the port is released.
+  handle<platform>? fence_mach_port;
+};
+
+union CALayerContent {
+  // A CAContext for remote CoreAnimation.
+  CAContext ca_context;
+
+  // A mach port for an IOSurface.
+  handle<platform> io_surface_mach_port;
+};
+
+// gfx::CALayerParams
+struct CALayerParams {
+  // The content to display.
+  CALayerContent? content;
+
+  // The geometry of the frame.
+  gfx.mojom.Size pixel_size;
+  float scale_factor;
+};

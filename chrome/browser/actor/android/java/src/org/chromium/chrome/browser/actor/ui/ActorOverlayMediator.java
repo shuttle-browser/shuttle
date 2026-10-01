@@ -1,0 +1,328 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.actor.ui;
+
+import android.content.Context;
+import android.content.res.Resources;
+
+import org.chromium.base.Callback;
+import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.base.supplier.NonNullObservableSupplier;
+import org.chromium.base.supplier.NullableObservableSupplier;
+import org.chromium.base.supplier.ObservableSuppliers;
+import org.chromium.base.supplier.SettableNonNullObservableSupplier;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider;
+import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider.ControlsPosition;
+import org.chromium.chrome.browser.browser_controls.BrowserControlsVisibilityManager;
+import org.chromium.chrome.browser.layouts.LayoutManager;
+import org.chromium.chrome.browser.layouts.LayoutStateProvider;
+import org.chromium.chrome.browser.layouts.LayoutType;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabObscuringHandler;
+import org.chromium.chrome.browser.tab.TabObserver;
+import org.chromium.chrome.browser.tabmodel.TabModelSelector;
+import org.chromium.components.browser_ui.widget.gesture.BackPressHandler;
+import org.chromium.ui.modelutil.PropertyKey;
+import org.chromium.ui.modelutil.PropertyModel;
+import org.chromium.ui.modelutil.PropertyObservable;
+
+/** Mediator for the Actor Overlay. */
+@NullMarked
+class ActorOverlayMediator
+        implements ActorUiTabController.Observer,
+                LayoutStateProvider.LayoutStateObserver,
+                BackPressHandler {
+    private final PropertyModel mModel;
+    private final NullableObservableSupplier<Tab> mCurrentTabSupplier;
+    private final TabObserver mTabObserver;
+    private final Callback<@Nullable Tab> mCurrentTabObserver;
+    private final BrowserControlsVisibilityManager mBrowserControlsVisibilityManager;
+    private final BrowserControlsStateProvider.Observer mBrowserControlsObserver;
+    private final TabObscuringHandler mTabObscuringHandler;
+    private final MonotonicObservableSupplier<LayoutManager> mLayoutManagerSupplier;
+    private final Callback<LayoutManager> mLayoutManagerAvailableCallback;
+    private final SettableNonNullObservableSupplier<Boolean> mBackPressChangedSupplier =
+            ObservableSuppliers.createNonNull(false);
+    private final Runnable mInflateOverlayCallback;
+    private final Runnable mBackPressCallback;
+    private final Runnable mDismissSnackbarCallback;
+    private final int mButtonContainerHeight;
+    private final int mButtonMarginTop;
+    private final int mGlowPadding;
+    private final PropertyObservable.PropertyObserver<PropertyKey> mModelObserver;
+
+    private @Nullable Tab mCurrentTab;
+    private @Nullable ActorUiTabController mTabController;
+    private @Nullable LayoutManager mLayoutManager;
+    private TabObscuringHandler.@Nullable Token mTabObscuringToken;
+
+    /**
+     * @param context The Context to read Android resources.
+     * @param model The PropertyModel to modify.
+     * @param tabModelSelector The TabModelSelector to observe.
+     * @param browserControlsVisibilityManager The BrowserControlsVisibilityManager to observe.
+     * @param tabObscuringHandler The TabObscuringHandler to obscure the web content.
+     * @param layoutManagerSupplier The LayoutManager supplier to observe layout changes.
+     * @param inflateOverlayCallback The callback to ensure the overlay view is inflated.
+     * @param backPressCallback The callback to show the snackbar.
+     * @param dismissSnackbarCallback The callback to dismiss the snackbar.
+     */
+    public ActorOverlayMediator(
+            Context context,
+            PropertyModel model,
+            TabModelSelector tabModelSelector,
+            BrowserControlsVisibilityManager browserControlsVisibilityManager,
+            TabObscuringHandler tabObscuringHandler,
+            MonotonicObservableSupplier<LayoutManager> layoutManagerSupplier,
+            Runnable inflateOverlayCallback,
+            Runnable backPressCallback,
+            Runnable dismissSnackbarCallback) {
+        mModel = model;
+        Resources res = context.getResources();
+        mButtonContainerHeight =
+                res.getDimensionPixelSize(R.dimen.actor_overlay_button_height)
+                        + 2 * res.getDimensionPixelSize(R.dimen.actor_overlay_button_glow_padding);
+        mButtonMarginTop = res.getDimensionPixelSize(R.dimen.actor_overlay_button_margin_top);
+        mGlowPadding = res.getDimensionPixelSize(R.dimen.actor_overlay_button_glow_padding);
+
+        mModelObserver =
+                (source, key) -> {
+                    if (key == ActorOverlayProperties.CONTROLS_POSITION
+                            || key == ActorOverlayProperties.TOP_MARGIN) {
+                        updateHandoffButtonTopMargin();
+                    }
+                };
+        mModel.addObserver(mModelObserver);
+
+        mCurrentTabSupplier = tabModelSelector.getCurrentTabSupplier();
+        mBrowserControlsVisibilityManager = browserControlsVisibilityManager;
+        mTabObscuringHandler = tabObscuringHandler;
+        mLayoutManagerSupplier = layoutManagerSupplier;
+        mInflateOverlayCallback = inflateOverlayCallback;
+        mBackPressCallback = backPressCallback;
+        mDismissSnackbarCallback = dismissSnackbarCallback;
+
+        mTabObserver =
+                new TabObserver() {
+                    @Override
+                    public void onShown(Tab tab, int type) {
+                        updateVisibility();
+                        updateTakeOverButtonVisibility();
+                    }
+
+                    @Override
+                    public void onHidden(Tab tab, int reason) {
+                        updateVisibility();
+                        updateTakeOverButtonVisibility();
+                    }
+                };
+
+        mCurrentTabObserver = this::onCurrentTabChanged;
+        mCurrentTabSupplier.addSyncObserverAndCallIfNonNull(mCurrentTabObserver);
+
+        mBrowserControlsObserver =
+                new BrowserControlsStateProvider.Observer() {
+                    @Override
+                    public void onControlsPositionChanged(@ControlsPosition int controlsPosition) {
+                        mModel.set(ActorOverlayProperties.CONTROLS_POSITION, controlsPosition);
+                    }
+
+                    @Override
+                    public void onTopControlsHeightChanged(
+                            int topControlsHeight, int topControlsMinHeight) {
+                        mModel.set(ActorOverlayProperties.TOP_MARGIN, topControlsHeight);
+                    }
+
+                    @Override
+                    public void onBottomControlsHeightChanged(
+                            int bottomControlsHeight, int bottomControlsMinHeight) {
+                        mModel.set(ActorOverlayProperties.BOTTOM_MARGIN, bottomControlsHeight);
+                    }
+                };
+        mBrowserControlsVisibilityManager.addObserver(mBrowserControlsObserver);
+        mModel.set(
+                ActorOverlayProperties.CONTROLS_POSITION,
+                mBrowserControlsVisibilityManager.getControlsPosition());
+        mModel.set(
+                ActorOverlayProperties.TOP_MARGIN,
+                mBrowserControlsVisibilityManager.getTopControlsHeight());
+        mModel.set(
+                ActorOverlayProperties.BOTTOM_MARGIN,
+                mBrowserControlsVisibilityManager.getBottomControlsHeight());
+        updateHandoffButtonTopMargin();
+
+        mLayoutManagerAvailableCallback = this::onLayoutManagerAvailable;
+        mLayoutManagerSupplier.addSyncObserverAndCallIfNonNull(mLayoutManagerAvailableCallback);
+    }
+
+    private void onLayoutManagerAvailable(LayoutManager layoutManager) {
+        mLayoutManager = layoutManager;
+        mLayoutManager.addObserver(this);
+        updateVisibility();
+        updateTakeOverButtonVisibility();
+    }
+
+    @Override
+    public void onStartedShowing(int layoutType) {
+        updateVisibility();
+        updateTakeOverButtonVisibility();
+    }
+
+    @Override
+    public void onUiTabStateChanged(ActorUiTabController.UiTabState state) {
+        updateVisibility();
+        updateTakeOverButtonVisibility();
+    }
+
+    private boolean isHandoffButtonActive() {
+        if (mTabController == null) return false;
+        ActorUiTabController.UiTabState state = mTabController.getUiTabState();
+        return state != null && state.handoffButton.isActive;
+    }
+
+    private void updateTakeOverButtonVisibility() {
+        if (mCurrentTab == null) {
+            mModel.set(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE, false);
+            return;
+        }
+        boolean visible = calculateCanShowOverlay(mCurrentTab) && isHandoffButtonActive();
+        mModel.set(ActorOverlayProperties.TAKE_OVER_TASK_BUTTON_VISIBLE, visible);
+    }
+
+    /** Called when a task state changes, to re-evaluate visibility. */
+    void onTaskStateChanged() {
+        updateVisibility();
+        updateTakeOverButtonVisibility();
+    }
+
+    private void updateVisibility() {
+        if (mCurrentTab == null || mTabController == null) {
+            setOverlayVisible(false);
+            return;
+        }
+        boolean canShow = calculateCanShowOverlay(mCurrentTab);
+        ActorUiTabController.UiTabState state = mTabController.getUiTabState();
+        boolean isActive = state != null && state.actorOverlay.isActive;
+
+        setOverlayVisible(canShow && isActive);
+    }
+
+    private void onCurrentTabChanged(@Nullable Tab tab) {
+        mDismissSnackbarCallback.run();
+        // TODO(crbug.com/520161144): We had to remove "assert mTabController != null;" to pass the
+        // test in ActorOverlayCoordinatorTest#testTabSwitchToDestroyedTab.
+        if (mCurrentTab != null) {
+            mCurrentTab.removeObserver(mTabObserver);
+            if (mTabController != null) {
+                mTabController.removeObserver(this);
+            }
+        }
+
+        mCurrentTab = tab;
+
+        if (mCurrentTab != null) {
+            mCurrentTab.addObserver(mTabObserver);
+            mTabController = ActorUiTabController.from(mCurrentTab);
+            if (mTabController != null) {
+                mTabController.addObserver(this);
+            }
+        } else {
+            mTabController = null;
+        }
+
+        updateVisibility();
+        updateTakeOverButtonVisibility();
+    }
+
+    private boolean calculateCanShowOverlay(@Nullable Tab tab) {
+        boolean isBrowsing =
+                mLayoutManager != null
+                        && mLayoutManager.getActiveLayoutType() == LayoutType.BROWSING;
+        return isBrowsing
+                && tab != null
+                && !tab.isDestroyed()
+                && !tab.isClosing()
+                && !tab.isNativePage()
+                && !tab.isHidden();
+    }
+
+    /**
+     * Sets the visibility of the overlay.
+     *
+     * @param visible True to make the overlay visible, false to hide it.
+     */
+    void setOverlayVisible(boolean visible) {
+        if (visible) {
+            mInflateOverlayCallback.run();
+        }
+        mModel.set(ActorOverlayProperties.VISIBLE, visible);
+        boolean isVisible = mModel.get(ActorOverlayProperties.VISIBLE);
+
+        mBackPressChangedSupplier.set(isVisible);
+
+        if (isVisible) {
+            if (mTabObscuringToken == null) {
+                mTabObscuringToken =
+                        mTabObscuringHandler.obscure(TabObscuringHandler.Target.TAB_CONTENT);
+            }
+        } else if (mTabObscuringToken != null) {
+            mTabObscuringHandler.unobscure(mTabObscuringToken);
+            mTabObscuringToken = null;
+        }
+    }
+
+    @Override
+    public int handleBackPress() {
+        mBackPressCallback.run();
+        return BackPressResult.SUCCESS;
+    }
+
+    @Override
+    public NonNullObservableSupplier<Boolean> getHandleBackPressChangedSupplier() {
+        return mBackPressChangedSupplier;
+    }
+
+    private void updateHandoffButtonTopMargin() {
+        int topControlsHeight = mModel.get(ActorOverlayProperties.TOP_MARGIN);
+        @ControlsPosition
+        int controlsPosition = mModel.get(ActorOverlayProperties.CONTROLS_POSITION);
+        int topMargin;
+        if (controlsPosition == ControlsPosition.BOTTOM) {
+            topMargin = topControlsHeight + mButtonMarginTop - mGlowPadding;
+        } else {
+            topMargin = topControlsHeight - mButtonContainerHeight / 2;
+        }
+        mModel.set(ActorOverlayProperties.HANDOFF_BUTTON_TOP_MARGIN, topMargin);
+    }
+
+    BrowserControlsStateProvider.Observer getBrowserControlsObserverForTesting() {
+        return mBrowserControlsObserver;
+    }
+
+    /** Cleans up the mediator. */
+    public void destroy() {
+        mModel.removeObserver(mModelObserver);
+        if (mTabController != null) {
+            mTabController.removeObserver(this);
+            mTabController = null;
+        }
+        if (mCurrentTab != null) {
+            mCurrentTab.removeObserver(mTabObserver);
+            mCurrentTab = null;
+        }
+        if (mTabObscuringToken != null) {
+            mTabObscuringHandler.unobscure(mTabObscuringToken);
+            mTabObscuringToken = null;
+        }
+        mCurrentTabSupplier.removeObserver(mCurrentTabObserver);
+        mBrowserControlsVisibilityManager.removeObserver(mBrowserControlsObserver);
+        mLayoutManagerSupplier.removeObserver(mLayoutManagerAvailableCallback);
+        if (mLayoutManager != null) {
+            mLayoutManager.removeObserver(this);
+        }
+    }
+}

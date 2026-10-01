@@ -1,0 +1,177 @@
+/* Copyright 2025 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=//resources/cr_elements/cr_icons_lit.css.js
+ * #import=//resources/cr_elements/cr_shared_vars.css.js
+ * #import=./toolbar_styles_shared.css.js
+ * #include=toolbar-styles-shared cr-icons-lit
+ * #scheme=relative
+ * #css_wrapper_metadata_end */
+
+#audio-controls #play-pause {
+  --cr-icon-button-icon-size: 20px;
+  --cr-icon-button-fill-color: var(--play-pause-icon-color);
+  --cr-icon-button-size: 28px;
+  color: var(--color-side-panel-entry-icon);
+}
+
+.immersive-toolbar-container #play-pause,
+.immersive-toolbar-container #previousGranularity,
+.immersive-toolbar-container #nextGranularity {
+  --cr-icon-button-focus-outline-color:
+    var(--on-audio-player-focus-outline-color);
+}
+
+
+#audio-controls {
+  background: var(--audio-player-background-color);
+  border-radius: 100px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: fit-content;
+  margin-inline-end: 8px;
+  padding: 0 6px;
+  position: relative;
+  z-index: 9998;
+}
+
+.audio-controls {
+  margin: 0;
+}
+
+#audio-controls cr-icon-button {
+  --cr-icon-button-fill-color: var(--audio-controls-icon-color-internal);
+  margin: 4px 2px;
+}
+
+#line-focus-off {
+  background: var(--audio-player-background-color);
+  border: none;
+  margin-inline-end: auto;
+  position: relative;
+  z-index: 9998;
+}
+
+#granularity-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+#font-size-increase {
+  --cr-icon-button-fill-color: var(--color-sys-on-surface-subtle);
+}
+
+#font-size-decrease {
+  margin-inline-start: 12px;
+  --cr-icon-button-fill-color: var(--color-sys-on-surface-subtle);
+}
+
+#font-size-reset {
+  margin-inline-end: 4px;
+}
+
+.immersive-toolbar-container {
+  --cr-icon-button-fill-color-default: var(--toolbar-icon-color);
+  --play-pause-icon-color: var(--audio-player-icon-color);
+  --rate-button-text-color: var(--audio-controls-icon-color);
+  --audio-controls-icon-color-internal: var(--audio-controls-icon-color);
+  background-color: var(--background-color);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: end;
+  overflow: visible;
+  padding: 16px;
+  font-family: var(--immersive-menu-font);
+  font-size: var(--immersive-menu-font-size);
+  font-style: normal;
+  font-weight: var(--immersive-menu-font-weight);
+  line-height: var(--immersive-menu-font-line-height);
+  outline: none;
+  border: none;
+}
+
+.immersive-toolbar-container cr-icon-button {
+  --cr-icon-button-icon-size: 20px;
+  --cr-icon-button-size: 28px;
+  --cr-icon-button-hover-background-color:
+      var(--toolbar-icon-hover-background-color);
+  --cr-icon-button-focus-outline-color: var(--toolbar-focus-outline-color);
+}
+
+.immersive-toolbar-container cr-button {
+  --cr-focus-outline-color: var(--toolbar-focus-outline-color);
+  --cr-button-text-color: var(--rate-button-text-color);
+}
+
+.announce-block {
+  width:1px;
+  height:1px;
+  overflow:hidden;
+  position: absolute;
+}
+
+/*
+ * Based on styling for cr-icon-button.
+ * The rate menu needs to use a text-based button instead of an icon-based
+ * button in order for the rates to be properly localized. i.e. 1,5 vs. 1.5
+ */
+#rate {
+  --cr-focus-outline-color: var(--on-audio-player-focus-outline-color);
+  background-color: transparent;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 500;
+  height: 28px;
+  margin: 4px 2px;
+  min-width: 0;
+  padding: 0;
+  width: 28px;
+}
+
+.spinner {
+  display: inline-block;
+  height: 100%;
+  vertical-align: middle;
+}
+
+#ai-playback-toggle {
+  --cr-icon-button-size: 32px;
+  background-color: var(--toggle-inactive-background-color);
+  --cr-icon-button-fill-color: var(--toolbar-icon-color);
+  border-radius: 50%;
+}
+
+#ai-playback-toggle:hover:not(.active) {
+  background-color: color-mix(
+      in srgb,
+      var(--toggle-active-background-color) 8%,
+      var(--toggle-inactive-background-color));
+}
+
+#ai-playback-toggle.active {
+  background-color: var(--toggle-active-background-color);
+  --cr-icon-button-fill-color: var(--background-color);
+  border-radius: 12px;
+}
+
+.immersive-font-size-menu::part(dialog) {
+  border-radius: var(--cornerRadii-medium-small, 12px);
+}
+
+@media (forced-colors: active) {
+  cr-icon-button,
+  #audio-controls cr-icon-button,
+  #audio-controls #play-pause {
+    --cr-icon-button-fill-color: CanvasText;
+  }
+}

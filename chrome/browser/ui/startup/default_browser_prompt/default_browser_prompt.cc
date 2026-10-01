@@ -1,0 +1,95 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt.h"
+
+#include <limits>
+#include <string>
+#include <utility>
+
+#include "base/check_is_test.h"
+#include "base/functional/bind.h"
+#include "base/location.h"
+#include "base/memory/weak_ptr.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
+#include "base/version.h"
+#include "build/build_config.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/default_browser/default_browser_manager.h"
+#include "chrome/browser/global_features.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_infobar_delegate.h"
+#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt_manager.h"
+#include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt_prefs.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/common/pref_names.h"
+#include "components/infobars/content/content_infobar_manager.h"
+#include "components/prefs/pref_registry_simple.h"
+#include "components/prefs/pref_service.h"
+#include "components/version_info/version_info.h"
+#include "content/public/browser/visibility.h"
+#include "content/public/browser/web_contents.h"
+
+namespace {
+
+// Do not show the prompt if "suppress_default_browser_prompt_for_version" in
+// the initial preferences is set to the current version.
+bool ShouldShowDefaultBrowserPromptForCurrentVersion() {
+  const std::string disable_version_string =
+      g_browser_process->local_state()->GetString(
+          prefs::kBrowserSuppressDefaultBrowserPrompt);
+  const base::Version disable_version(disable_version_string);
+  DCHECK(disable_version_string.empty() || disable_version.IsValid());
+  return !(disable_version.IsValid() &&
+           disable_version == version_info::GetVersion());
+}
+
+void OnCheckIsDefaultBrowserFinished(
+    Profile* profile,
+    base::OnceCallback<void(bool)> done_callback,
+    shell_integration::DefaultWebClientState state) {
+  bool did_show_prompt = false;
+  if (state == shell_integration::IS_DEFAULT) {
+    // Notify the user in the future if Chrome ceases to be the user's chosen
+    // default browser.
+    chrome::startup::default_prompt::ResetPromptPrefs(profile);
+  } else if (state == shell_integration::NOT_DEFAULT &&
+             shell_integration::CanSetAsDefaultBrowser() &&
+             ShouldShowDefaultBrowserPromptForCurrentVersion()) {
+    // Only show the prompt if some other program is the user's default browser.
+    // In particular, don't show it if another install mode is default (e.g.,
+    // don't prompt for Chrome Beta if stable Chrome is the default).
+    did_show_prompt =
+        DefaultBrowserPromptManager::GetInstance()->MaybeShowPrompt();
+  }
+  std::move(done_callback).Run(did_show_prompt);
+}
+
+}  // namespace
+
+void RegisterDefaultBrowserPromptPrefs(PrefRegistrySimple* registry) {
+  registry->RegisterStringPref(prefs::kBrowserSuppressDefaultBrowserPrompt,
+                               std::string());
+}
+
+void ShowDefaultBrowserPrompt(Profile* profile,
+                              base::OnceCallback<void(bool)> done_callback) {
+  // Do not check if Chrome is the default browser if there is a policy in
+  // control of this setting.
+  if (g_browser_process->local_state()->IsManagedPreference(
+          prefs::kDefaultBrowserSettingEnabled)) {
+    // Handling of the browser.default_browser_setting_enabled policy setting is
+    // taken care of in BrowserProcessImpl.
+    return;
+  }
+
+  default_browser::DefaultBrowserManager::From(g_browser_process)
+      ->GetDefaultBrowserState(base::BindOnce(
+          &OnCheckIsDefaultBrowserFinished, profile, std::move(done_callback)));
+}

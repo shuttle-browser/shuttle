@@ -1,0 +1,54 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_SCENE_UI_SCENE_VIEW_CONTROLLER_H_
+#define IOS_CHROME_BROWSER_SCENE_UI_SCENE_VIEW_CONTROLLER_H_
+
+#import <UIKit/UIKit.h>
+
+#import "ios/chrome/browser/assistant/ui/assistant_container_presenter.h"
+#import "ios/chrome/browser/fullscreen/ui_bundled/fullscreen_ui_element.h"
+#import "ios/chrome/browser/scene/ui/scene_consumer.h"
+#import "ios/chrome/browser/shared/ui/util/ui_view_controller_with_display_tracing.h"
+
+@protocol AppBarCommands;
+@class AssistantContainerViewController;
+@protocol GeminiCommands;
+@class LayoutGuideCenter;
+@class SceneLayoutState;
+@protocol SceneMutator;
+@protocol SceneViewControllerDelegate;
+
+// A view controller that can act as the `rootViewController` for a scene's
+// window.
+@interface SceneViewController
+    : UIViewControllerWithDisplayTracing <AssistantContainerPresenter,
+                                          FullscreenUIElement,
+                                          SceneConsumer>
+
+// The layout state to observe.
+@property(nonatomic, weak) SceneLayoutState* layoutState;
+
+// This view controller's LayoutGuideCenter.
+@property(nonatomic, strong) LayoutGuideCenter* layoutGuideCenter;
+// Delegate for this view controller.
+@property(nonatomic, weak) id<SceneViewControllerDelegate> delegate;
+// Mutator for this view controller.
+@property(nonatomic, weak) id<SceneMutator> mutator;
+
+// Handler for App Bar commands.
+@property(nonatomic, weak) id<AppBarCommands> appBarHandler;
+
+// Handler for Gemini commands.
+@property(nonatomic, weak) id<GeminiCommands> geminiHandler;
+
+// Sets the app bar.
+- (void)setAppBar:(UIViewController*)appBar;
+
+// Sets the TabGrid view controller.
+- (void)setTabGrid:(UIViewController*)tabGridViewController;
+
+@end
+
+#endif  // IOS_CHROME_BROWSER_SCENE_UI_SCENE_VIEW_CONTROLLER_H_

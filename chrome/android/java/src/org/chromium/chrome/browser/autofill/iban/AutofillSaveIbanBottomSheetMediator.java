@@ -1,0 +1,208 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.autofill.iban;
+
+import androidx.annotation.VisibleForTesting;
+
+import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.chrome.browser.autofill.AutofillSheetUiController;
+import org.chromium.chrome.browser.layouts.LayoutStateProvider;
+import org.chromium.chrome.browser.layouts.LayoutStateProvider.LayoutStateObserver;
+import org.chromium.chrome.browser.layouts.LayoutType;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabSelectionType;
+import org.chromium.chrome.browser.tabmodel.TabModel;
+import org.chromium.chrome.browser.tabmodel.TabModelObserver;
+import org.chromium.components.autofill.SaveIbanPromptOffer;
+import org.chromium.components.autofill.SaveIbanPromptResult;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetController.StateChangeReason;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetObserver;
+
+/**
+ * Mediator class for the autofill IBAN save UI.
+ *
+ * <p>This component shows a bottom sheet to let the user choose to save a IBAN.
+ *
+ * <p>This mediator manages the lifecycle of the bottom sheet by observing layout and tab changes.
+ * When the layout is no longer on browsing (for example the tab switcher) the bottom sheet is
+ * hidden. When the selected tab changes the bottom sheet is hidden.
+ *
+ * <p>This mediator sends UI events (OnUiCanceled, OnUiAccepted, etc.) to the bridge.
+ */
+@NullMarked
+/*package*/ class AutofillSaveIbanBottomSheetMediator
+        implements BottomSheetObserver, TabModelObserver, LayoutStateObserver {
+    @VisibleForTesting
+    static final String SAVE_IBAN_PROMPT_OFFER_HISTOGRAM = "Autofill.SaveIbanPromptOffer";
+
+    @VisibleForTesting
+    static final String SAVE_IBAN_PROMPT_RESULT_FOR_SAVE_WITH_NICKNAME_HISTOGRAM =
+            "Autofill.SaveIbanPromptResult";
+
+    static final String SAVE_IBAN_PROMPT_RESULT_HISTOGRAM = "Autofill.SaveIbanPromptResult2";
+
+    private final AutofillSaveIbanBottomSheetCoordinator.NativeDelegate mDelegate;
+    private final AutofillSaveIbanBottomSheetContent mBottomSheetContent;
+    private final AutofillSheetUiController mAutofillSheetUiController;
+    private final LayoutStateProvider mLayoutStateProvider;
+    private final TabModel mTabModel;
+    private final boolean mIsServerSave;
+    private boolean mFinished;
+
+    /**
+     * Creates the mediator.
+     *
+     * @param delegate The delegate to signal UI flow events (OnUiCanceled, OnUiAccepted, etc.).
+     * @param bottomSheetContent The bottom sheet content to be shown.
+     * @param uiController The controller to use for showing or hiding the content.
+     * @param layoutStateProvider The LayoutStateProvider used to detect when the bottom sheet needs
+     *     to be hidden after a change of layout (e.g. to the tab switcher).
+     * @param tabModel The TabModel used to detect when the bottom sheet needs to be hidden after a
+     *     tab change.
+     * @param isServerSave Whether or not the bottom sheet is for a server IBAN save.
+     */
+    AutofillSaveIbanBottomSheetMediator(
+            AutofillSaveIbanBottomSheetCoordinator.NativeDelegate delegate,
+            AutofillSaveIbanBottomSheetContent bottomSheetContent,
+            AutofillSheetUiController uiController,
+            LayoutStateProvider layoutStateProvider,
+            TabModel tabModel,
+            boolean isServerSave) {
+        mDelegate = delegate;
+        mBottomSheetContent = bottomSheetContent;
+        mAutofillSheetUiController = uiController;
+        mLayoutStateProvider = layoutStateProvider;
+        mTabModel = tabModel;
+        mIsServerSave = isServerSave;
+
+        mAutofillSheetUiController.addObserver(this);
+        mLayoutStateProvider.addObserver(this);
+        mTabModel.addObserver(this);
+    }
+
+    /** Requests to show the bottom sheet content. */
+    void requestShowContent() {
+        if (mAutofillSheetUiController.requestShowContent(
+                mBottomSheetContent, /* animate= */ true)) {
+            logSaveIbanPromptOffer(SaveIbanPromptOffer.SHOWN, mIsServerSave);
+        } else {
+            mDelegate.onUiIgnored();
+            logSaveIbanPromptResult(SaveIbanPromptResult.UNKNOWN, mIsServerSave);
+        }
+    }
+
+    public void onAccepted(String userProvidedNickname) {
+        hide(StateChangeReason.INTERACTION_COMPLETE);
+        mDelegate.onUiAccepted(userProvidedNickname);
+
+        RecordHistogram.recordBooleanHistogram(
+                SAVE_IBAN_PROMPT_RESULT_FOR_SAVE_WITH_NICKNAME_HISTOGRAM
+                        + (mIsServerSave ? ".Upload" : ".Local")
+                        + ".SavedWithNickname",
+                !userProvidedNickname.isEmpty());
+        logSaveIbanPromptResult(SaveIbanPromptResult.ACCEPTED, mIsServerSave);
+    }
+
+    public void onCanceled() {
+        hide(StateChangeReason.INTERACTION_COMPLETE);
+        mDelegate.onUiCanceled();
+
+        logSaveIbanPromptResult(SaveIbanPromptResult.CANCELLED, mIsServerSave);
+    }
+
+    public void onIgnored() {
+        hide(StateChangeReason.INTERACTION_COMPLETE);
+        mDelegate.onUiIgnored();
+    }
+
+    void hide(@StateChangeReason int hideReason) {
+        mAutofillSheetUiController.hideContent(
+                mBottomSheetContent, /* animate= */ true, hideReason);
+        mAutofillSheetUiController.removeObserver(this);
+        mLayoutStateProvider.removeObserver(this);
+        mTabModel.removeObserver(this);
+    }
+
+    // Overrides BottomSheetObserver onSheetClosed method for BottomSheetController.
+    @Override
+    public void onSheetClosed(@StateChangeReason int reason) {
+        switch (reason) {
+            case StateChangeReason.BACK_PRESS:
+            case StateChangeReason.SWIPE:
+            case StateChangeReason.TAP_SCRIM:
+                finish(this::onCanceled);
+                break;
+            case StateChangeReason.INTERACTION_COMPLETE:
+                // Expecting AutofillSaveIbanBottomSheetCoordinator to set up the appropriate
+                // callbacks to native on button presses in this case.
+                mFinished = true;
+                break;
+            default:
+                finish(this::onIgnored);
+                break;
+        }
+    }
+
+    // TabModelObserver.
+    @Override
+    public void didSelectTab(Tab tab, @TabSelectionType int type, int lastId) {
+        // While the bottom sheet scrim covers the omnibox UI, a new tab can be created in other
+        // ways such as by opening a link from another app. In this case we want to hide the bottom
+        // sheet rather than keeping the bottom sheet open while this tab loads behind the scrim.
+        if (lastId != tab.getId()) {
+            mAutofillSheetUiController.hideContent(
+                    mBottomSheetContent, /* animate= */ false, StateChangeReason.NONE);
+        }
+    }
+
+    // LayoutStateObserver.
+    @Override
+    public void onStartedShowing(@LayoutType int layoutType) {
+        // When the browser layout changes away from browsing to say the tab switcher, then the
+        // bottom sheet must be hidden.
+        if (layoutType != LayoutType.BROWSING) {
+            mAutofillSheetUiController.hideContent(
+                    mBottomSheetContent, /* animate= */ true, StateChangeReason.NONE);
+        }
+    }
+
+    void finish(Runnable callback) {
+        if (!mFinished) {
+            mFinished = true;
+            callback.run();
+        }
+    }
+
+    /**
+     * Helper function to log SaveIbanPromptOffer histogram.
+     *
+     * @param offer The offer bucket to log.
+     * @param isServerSave Whether it's a server save.
+     */
+    private void logSaveIbanPromptOffer(@SaveIbanPromptOffer int offer, boolean isServerSave) {
+        RecordHistogram.recordEnumeratedHistogram(
+                SAVE_IBAN_PROMPT_OFFER_HISTOGRAM
+                        + (isServerSave ? ".Upload" : ".Local")
+                        + ".FirstShow",
+                offer,
+                SaveIbanPromptOffer.MAX_VALUE + 1);
+    }
+
+    /**
+     * Helper function to log SaveIbanPromptResult histogram.
+     *
+     * @param result The result bucket to log.
+     * @param isServerSave Whether it's a server save.
+     */
+    private void logSaveIbanPromptResult(@SaveIbanPromptResult int result, boolean isServerSave) {
+        RecordHistogram.recordEnumeratedHistogram(
+                SAVE_IBAN_PROMPT_RESULT_HISTOGRAM
+                        + (isServerSave ? ".Upload" : ".Local")
+                        + ".FirstShow",
+                result,
+                SaveIbanPromptResult.MAX_VALUE + 1);
+    }
+}

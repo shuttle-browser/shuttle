@@ -1,0 +1,37 @@
+// Copyright 2012 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+//
+// Common sync protocol for encrypted data.
+
+// If you change or add any fields in this file, update proto_visitors.h and
+// potentially proto_enum_conversions.{h, cc}.
+
+syntax = "proto2";
+
+option java_multiple_files = true;
+option java_package = "org.chromium.components.sync.protocol";
+
+option optimize_for = LITE_RUNTIME;
+
+package sync_pb;
+
+// A proto representation of an encrypted blob as exposed in the Sync protocol,
+// along with metadata to help identify which key should be used to decrypt this
+// specific encrypted blob. The latter information is useful as performance
+// optimization, because rotation of the encryption key doesn't immediately
+// re-encrypt all data. If rotation has been issued multiple times, it may lead
+// to a significant number of candidate keys that need to be tried with, so it
+// is faster to be able to narrow down to exactly one candidate key (based on a
+// name or ID).
+message EncryptedData {
+  // The initial version of Sync's encryption (referred here as V1) populated
+  // exactly two fields below: `key_name` and `blob`.
+  optional string key_name = 1;
+  optional string blob = 2;  // base64-encoded.
+  // The more modern (experimental) V2 populates `blob_v2` and optionally
+  // `key_id_v2` (clients should handle absence correctly and fall back to
+  // exhaustive attempts with all keys available).
+  optional bytes blob_v2 = 3;
+  optional uint32 key_id_v2 = 4;
+}

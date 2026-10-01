@@ -1,0 +1,478 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/utility/safe_browsing/mac/hfs.h"
+
+#include <libkern/OSByteOrder.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include <array>
+#include <memory>
+#include <string_view>
+#include <vector>
+
+#include "base/compiler_specific.h"
+#include "base/containers/span.h"
+#include "base/files/file.h"
+#include "base/logging.h"
+#include "base/strings/string_util.h"
+#include "base/strings/string_view_util.h"
+#include "base/strings/utf_string_conversions.h"
+#include "chrome/utility/safe_browsing/mac/dmg_test_utils.h"
+#include "chrome/utility/safe_browsing/mac/read_stream.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace safe_browsing {
+namespace dmg {
+namespace {
+
+class HFSIteratorTest : public testing::Test {
+ public:
+  void GetTargetFiles(bool case_sensitive,
+                      std::set<std::u16string>* files,
+                      std::set<std::u16string>* dirs) {
+    const auto kBaseFiles = std::to_array({
+        u"first/second/third/fourth/fifth/random",
+        u"first/second/third/fourth/Hello World",
+        u"first/second/third/symlink-random",
+        u"first/second/goat-output.txt",
+        u"first/unicode_name",
+        u"README.txt",
+        u".metadata_never_index",
+    });
+
+    const auto kBaseDirs = std::to_array({
+        u"first/second/third/fourth/fifth",
+        u"first/second/third/fourth",
+        u"first/second/third",
+        u"first/second",
+        u"first",
+        u".Trashes",
+    });
+
+    const std::u16string dmg_name = u"SafeBrowsingDMG/";
+
+    for (size_t i = 0; i < std::size(kBaseFiles); ++i)
+      files->insert(dmg_name + kBaseFiles[i]);
+
+    files->insert(dmg_name + u"first/second/" + u"Tĕsẗ 🐐 ");
+
+    dirs->insert(dmg_name.substr(0, dmg_name.size() - 1));
+    for (size_t i = 0; i < std::size(kBaseDirs); ++i)
+      dirs->insert(dmg_name + kBaseDirs[i]);
+
+    if (case_sensitive) {
+      files->insert(u"SafeBrowsingDMG/first/second/third/fourth/hEllo wOrld");
+    }
+  }
+
+  void TestTargetFiles(safe_browsing::dmg::HFSIterator* hfs_reader,
+                       bool case_sensitive) {
+    std::set<std::u16string> files, dirs;
+    GetTargetFiles(case_sensitive, &files, &dirs);
+
+    ASSERT_TRUE(hfs_reader->Open());
+    while (hfs_reader->Next()) {
+      std::u16string path = hfs_reader->GetPath();
+      // Skip over .fseventsd files.
+      if (path.find(u"SafeBrowsingDMG/.fseventsd") != std::u16string::npos) {
+        continue;
+      }
+      if (hfs_reader->IsDirectory())
+        EXPECT_TRUE(dirs.erase(path)) << path;
+      else
+        EXPECT_TRUE(files.erase(path)) << path;
+    }
+
+    EXPECT_EQ(0u, files.size());
+    for (const auto& file : files) {
+      ADD_FAILURE() << "Unexpected missing file " << file;
+    }
+  }
+};
+
+TEST_F(HFSIteratorTest, HFSPlus) {
+  base::File file;
+  ASSERT_NO_FATAL_FAILURE(test::GetTestFile("hfs_plus.img", &file));
+
+  FileReadStream stream(file.GetPlatformFile());
+  HFSIterator hfs_reader(&stream);
+  TestTargetFiles(&hfs_reader, false);
+}
+
+TEST_F(HFSIteratorTest, HFSXCaseSensitive) {
+  base::File file;
+  ASSERT_NO_FATAL_FAILURE(test::GetTestFile("hfsx_case_sensitive.img", &file));
+
+  FileReadStream stream(file.GetPlatformFile());
+  HFSIterator hfs_reader(&stream);
+  TestTargetFiles(&hfs_reader, true);
+}
+
+class HFSFileReadTest : public testing::TestWithParam<const char*> {
+ protected:
+  void SetUp() override {
+    ASSERT_NO_FATAL_FAILURE(test::GetTestFile(GetParam(), &hfs_file_));
+
+    hfs_stream_ = std::make_unique<FileReadStream>(hfs_file_.GetPlatformFile());
+    hfs_reader_ = std::make_unique<HFSIterator>(hfs_stream_.get());
+    ASSERT_TRUE(hfs_reader_->Open());
+  }
+
+  bool GoToFile(const char16_t* name) {
+    while (hfs_reader_->Next()) {
+      if (EndsWith(hfs_reader_->GetPath(), name,
+                   base::CompareCase::SENSITIVE)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  HFSIterator* hfs_reader() { return hfs_reader_.get(); }
+
+ private:
+  base::File hfs_file_;
+  std::unique_ptr<FileReadStream> hfs_stream_;
+  std::unique_ptr<HFSIterator> hfs_reader_;
+};
+
+TEST_P(HFSFileReadTest, ReadReadme) {
+  ASSERT_TRUE(GoToFile(u"README.txt"));
+
+  std::unique_ptr<ReadStream> stream = hfs_reader()->GetReadStream();
+  ASSERT_TRUE(stream.get());
+
+  EXPECT_FALSE(hfs_reader()->IsSymbolicLink());
+  EXPECT_FALSE(hfs_reader()->IsHardLink());
+  EXPECT_FALSE(hfs_reader()->IsDecmpfsCompressed());
+
+  std::vector<uint8_t> buffer(4, 0);
+
+  // Read the first four bytes.
+  EXPECT_TRUE(stream->ReadExact(buffer));
+  const uint8_t expected[] = { 'T', 'h', 'i', 's' };
+  EXPECT_EQ(base::span(expected), base::span(buffer));
+  buffer.clear();
+
+  // Rewind back to the start.
+  EXPECT_EQ(0, stream->Seek(0, SEEK_SET));
+
+  // Read the entire file now.
+  auto maybe_data = ReadEntireStream(*stream);
+  ASSERT_TRUE(maybe_data.has_value());
+  EXPECT_EQ(
+      "This is a test HFS+ filesystem generated by "
+      "chrome/test/data/safe_browsing/dmg/make_hfs.sh.\n",
+      base::as_string_view(maybe_data.value()));
+  EXPECT_EQ(92u, maybe_data->size());
+}
+
+TEST_P(HFSFileReadTest, ReadRandom) {
+  ASSERT_TRUE(GoToFile(u"fifth/random"));
+
+  std::unique_ptr<ReadStream> stream = hfs_reader()->GetReadStream();
+  ASSERT_TRUE(stream.get());
+
+  EXPECT_FALSE(hfs_reader()->IsSymbolicLink());
+  EXPECT_FALSE(hfs_reader()->IsHardLink());
+  EXPECT_FALSE(hfs_reader()->IsDecmpfsCompressed());
+
+  auto maybe_data = ReadEntireStream(*stream);
+  ASSERT_TRUE(maybe_data.has_value());
+  EXPECT_EQ(768u, maybe_data->size());
+}
+
+TEST_P(HFSFileReadTest, Symlink) {
+  ASSERT_TRUE(GoToFile(u"symlink-random"));
+
+  std::unique_ptr<ReadStream> stream = hfs_reader()->GetReadStream();
+  ASSERT_TRUE(stream.get());
+
+  EXPECT_TRUE(hfs_reader()->IsSymbolicLink());
+  EXPECT_FALSE(hfs_reader()->IsHardLink());
+  EXPECT_FALSE(hfs_reader()->IsDecmpfsCompressed());
+
+  auto maybe_data = ReadEntireStream(*stream);
+  ASSERT_TRUE(maybe_data.has_value());
+
+  EXPECT_EQ("fourth/fifth/random", base::as_string_view(maybe_data.value()));
+}
+
+TEST_P(HFSFileReadTest, HardLink) {
+  ASSERT_TRUE(GoToFile(u"unicode_name"));
+
+  EXPECT_FALSE(hfs_reader()->IsSymbolicLink());
+  EXPECT_TRUE(hfs_reader()->IsHardLink());
+  EXPECT_FALSE(hfs_reader()->IsDecmpfsCompressed());
+}
+
+TEST_P(HFSFileReadTest, DecmpfsFile) {
+  ASSERT_TRUE(GoToFile(u"first/second/goat-output.txt"));
+
+  std::unique_ptr<ReadStream> stream = hfs_reader()->GetReadStream();
+  ASSERT_TRUE(stream.get());
+
+  EXPECT_FALSE(hfs_reader()->IsSymbolicLink());
+  EXPECT_FALSE(hfs_reader()->IsHardLink());
+  EXPECT_TRUE(hfs_reader()->IsDecmpfsCompressed());
+
+  auto maybe_data = ReadEntireStream(*stream);
+  ASSERT_TRUE(maybe_data.has_value());
+  EXPECT_EQ(0u, maybe_data->size());
+}
+
+// Builds a minimal HFS+ image in memory whose catalog leaf node lays out
+// records using the trailing record-offset table and a `keyLength` larger than
+// the catalog key's name would imply. The iterator must locate records via the
+// offset table and locate each record's data via `keyLength`, as described in
+// TN1150 "Node Structure".
+TEST(HFSBTreeIteratorTest, LeafRecordsLocatedByOffsetTableAndKeyLength) {
+  constexpr uint32_t kBlockSize = 4096;
+  constexpr uint16_t kNodeSize = 4096;
+  constexpr uint32_t kCatalogStartBlock = 1;
+  constexpr uint32_t kCatalogBlockCount = 2;
+  constexpr uint32_t kFileDataBlock = 3;
+  constexpr size_t kCatalogOffset = kCatalogStartBlock * kBlockSize;
+  constexpr size_t kLeafOffset = kCatalogOffset + kNodeSize;
+  constexpr std::string_view kFileData = "hello";
+
+  std::vector<uint8_t> image(4 * kBlockSize, 0);
+
+  auto put16 = [&](size_t at, uint16_t v) {
+    v = OSSwapHostToBigInt16(v);
+    base::span(image).subspan(at).copy_prefix_from(base::byte_span_from_ref(v));
+  };
+  auto put32 = [&](size_t at, uint32_t v) {
+    v = OSSwapHostToBigInt32(v);
+    base::span(image).subspan(at).copy_prefix_from(base::byte_span_from_ref(v));
+  };
+
+  // HFSPlusVolumeHeader at byte 1024.
+  constexpr size_t kVH = 1024;
+  HFSPlusVolumeHeader header = {};
+  header.signature = OSSwapHostToBigInt16(kHFSPlusSigWord);  // signature
+  header.version = OSSwapHostToBigInt16(kHFSPlusVersion);    // version
+  header.blockSize = OSSwapHostToBigInt32(kBlockSize);       // blockSize
+  header.totalBlocks =
+      OSSwapHostToBigInt32(image.size() / kBlockSize);  // totalBlocks
+
+  header.catalogFile.logicalSize =
+      OSSwapHostToBigInt64(kCatalogBlockCount * kBlockSize);
+  header.catalogFile.totalBlocks = OSSwapHostToBigInt32(kCatalogBlockCount);
+  header.catalogFile.extents[0].startBlock =
+      OSSwapHostToBigInt32(kCatalogStartBlock);
+  header.catalogFile.extents[0].blockCount =
+      OSSwapHostToBigInt32(kCatalogBlockCount);
+  base::span(image)
+      .subspan(kVH, sizeof(header))
+      .copy_from(base::byte_span_from_ref(header));
+
+  // Catalog header node (node 0): BTNodeDescriptor + BTHeaderRec.
+  BTNodeDescriptor header_descriptor = {};
+  header_descriptor.kind = kBTHeaderNode;
+  header_descriptor.numRecords = OSSwapHostToBigInt16(3);
+  base::span(image)
+      .subspan(kCatalogOffset, sizeof(header_descriptor))
+      .copy_from(base::byte_span_from_ref(header_descriptor));
+
+  BTHeaderRec header_rec = {};
+  header_rec.treeDepth = OSSwapHostToBigInt16(1);
+  header_rec.rootNode = OSSwapHostToBigInt32(1);
+  header_rec.leafRecords = OSSwapHostToBigInt32(2);
+  header_rec.firstLeafNode = OSSwapHostToBigInt32(1);
+  header_rec.lastLeafNode = OSSwapHostToBigInt32(1);
+  header_rec.nodeSize = OSSwapHostToBigInt16(kNodeSize);
+  header_rec.maxKeyLength =
+      OSSwapHostToBigInt16(kHFSPlusCatalogKeyMaximumLength);
+  header_rec.totalNodes = OSSwapHostToBigInt32(2);
+  base::span(image)
+      .subspan(kCatalogOffset + sizeof(header_descriptor), sizeof(header_rec))
+      .copy_from(base::byte_span_from_ref(header_rec));
+
+  // Catalog leaf node (node 1).
+  BTNodeDescriptor leaf_descriptor = {};
+  leaf_descriptor.kind = static_cast<uint8_t>(kBTLeafNode);
+  leaf_descriptor.height = 1;
+  leaf_descriptor.numRecords = OSSwapHostToBigInt16(2);
+  base::span(image)
+      .subspan(kLeafOffset, sizeof(leaf_descriptor))
+      .copy_from(base::byte_span_from_ref(leaf_descriptor));
+
+  // Record 0: root folder. The key declares a length larger than the bytes
+  // occupied by parentID + nodeName, leaving padding before the data.
+  constexpr uint16_t kRecord0 = sizeof(leaf_descriptor);
+  constexpr uint16_t kRecord0KeyLength = 32;
+  put16(kLeafOffset + kRecord0, kRecord0KeyLength);     // keyLength
+  put32(kLeafOffset + kRecord0 + 2, kHFSRootParentID);  // parentID
+  put16(kLeafOffset + kRecord0 + 6, 1);                 // nodeName.length
+  put16(kLeafOffset + kRecord0 + 8, 'V');               // nodeName.unicode[0]
+
+  constexpr size_t kFolderData =
+      kLeafOffset + kRecord0 + sizeof(uint16_t) + kRecord0KeyLength;
+  HFSPlusCatalogFolder folder = {};
+  folder.recordType = OSSwapHostToBigInt16(kHFSPlusFolderRecord);
+  folder.folderID = OSSwapHostToBigInt32(kHFSRootFolderID);
+  base::span(image)
+      .subspan(kFolderData, sizeof(folder))
+      .copy_from(base::byte_span_from_ref(folder));
+  static_assert(sizeof(HFSPlusCatalogFolder) == 88);
+  constexpr uint16_t kRecord0End = kRecord0 + sizeof(uint16_t) +
+                                   kRecord0KeyLength +
+                                   sizeof(HFSPlusCatalogFolder);
+
+  // Record 1: file. Placed at a non-contiguous offset relative to record 0.
+  constexpr uint16_t kRecord1 = 600;
+  static_assert(kRecord1 > kRecord0End);
+  constexpr uint16_t kRecord1KeyLength = 8;
+  put16(kLeafOffset + kRecord1, kRecord1KeyLength);     // keyLength
+  put32(kLeafOffset + kRecord1 + 2, kHFSRootFolderID);  // parentID
+  put16(kLeafOffset + kRecord1 + 6, 1);                 // nodeName.length
+  put16(kLeafOffset + kRecord1 + 8, 'f');               // nodeName.unicode[0]
+
+  constexpr size_t kFileRec =
+      kLeafOffset + kRecord1 + sizeof(uint16_t) + kRecord1KeyLength;
+  HFSPlusCatalogFile file = {};
+  file.recordType = OSSwapHostToBigInt16(kHFSPlusFileRecord);
+  file.fileID = OSSwapHostToBigInt32(kHFSFirstUserCatalogNodeID);
+  file.dataFork.logicalSize = OSSwapHostToBigInt64(kFileData.size());
+  file.dataFork.totalBlocks = OSSwapHostToBigInt32(1);
+  file.dataFork.extents[0].startBlock = OSSwapHostToBigInt32(kFileDataBlock);
+  file.dataFork.extents[0].blockCount = OSSwapHostToBigInt32(1);
+  base::span(image)
+      .subspan(kFileRec, sizeof(file))
+      .copy_from(base::byte_span_from_ref(file));
+
+  static_assert(sizeof(file) == 248);
+  constexpr uint16_t kRecord1End =
+      kRecord1 + sizeof(uint16_t) + kRecord1KeyLength + sizeof(file);
+
+  // Record offset table at the end of the leaf, in reverse order.
+  put16(kLeafOffset + kNodeSize - 2, kRecord0);
+  put16(kLeafOffset + kNodeSize - 4, kRecord1);
+  put16(kLeafOffset + kNodeSize - 6, kRecord1End);
+
+  // File data fork contents.
+  base::span(image)
+      .subspan(kFileDataBlock * kBlockSize)
+      .copy_prefix_from(base::as_byte_span(kFileData));
+
+  MemoryReadStream stream(image);
+  HFSIterator hfs_reader(&stream);
+  EXPECT_TRUE(hfs_reader.Open());
+
+  bool next1 = hfs_reader.Next();
+  EXPECT_TRUE(next1);
+  if (next1) {
+    EXPECT_TRUE(hfs_reader.IsDirectory());
+    EXPECT_FALSE(hfs_reader.IsFile());
+    EXPECT_EQ(u"V", hfs_reader.GetPath());
+  }
+
+  bool next2 = hfs_reader.Next();
+  EXPECT_TRUE(next2);
+  if (next2) {
+    EXPECT_FALSE(hfs_reader.IsDirectory());
+    EXPECT_TRUE(hfs_reader.IsFile());
+    EXPECT_FALSE(hfs_reader.IsHardLink());
+    EXPECT_EQ(u"V/f", hfs_reader.GetPath());
+
+    std::unique_ptr<ReadStream> file_stream = hfs_reader.GetReadStream();
+    EXPECT_TRUE(file_stream);
+    if (file_stream) {
+      auto data = ReadEntireStream(*file_stream);
+      EXPECT_TRUE(data.has_value());
+      if (data.has_value()) {
+        EXPECT_EQ(kFileData, base::as_string_view(*data));
+      }
+    }
+  }
+
+  EXPECT_FALSE(hfs_reader.Next());
+}
+
+TEST(HFSBTreeIteratorTest, InconsistentOffsetTableRejected) {
+  constexpr uint32_t kBlockSize = 4096;
+  constexpr uint16_t kNodeSize = 4096;
+  constexpr uint32_t kCatalogStartBlock = 1;
+  constexpr uint32_t kCatalogBlockCount = 2;
+  constexpr size_t kCatalogOffset = kCatalogStartBlock * kBlockSize;
+  constexpr size_t kLeafOffset = kCatalogOffset + kNodeSize;
+
+  std::vector<uint8_t> image(3 * kBlockSize, 0);
+
+  auto put16 = [&](size_t at, uint16_t v) {
+    v = OSSwapHostToBigInt16(v);
+    base::span(image).subspan(at).copy_prefix_from(base::byte_span_from_ref(v));
+  };
+
+  // HFSPlusVolumeHeader at byte 1024.
+  constexpr size_t kVH = 1024;
+  HFSPlusVolumeHeader header = {};
+  header.signature = OSSwapHostToBigInt16(kHFSPlusSigWord);
+  header.version = OSSwapHostToBigInt16(kHFSPlusVersion);
+  header.blockSize = OSSwapHostToBigInt32(kBlockSize);
+  header.totalBlocks = OSSwapHostToBigInt32(image.size() / kBlockSize);
+
+  header.catalogFile.logicalSize =
+      OSSwapHostToBigInt64(kCatalogBlockCount * kBlockSize);
+  header.catalogFile.totalBlocks = OSSwapHostToBigInt32(kCatalogBlockCount);
+  header.catalogFile.extents[0].startBlock =
+      OSSwapHostToBigInt32(kCatalogStartBlock);
+  header.catalogFile.extents[0].blockCount =
+      OSSwapHostToBigInt32(kCatalogBlockCount);
+  base::span(image)
+      .subspan(kVH, sizeof(header))
+      .copy_from(base::byte_span_from_ref(header));
+
+  // Catalog header node (node 0): BTNodeDescriptor + BTHeaderRec.
+  BTNodeDescriptor header_descriptor = {};
+  header_descriptor.kind = kBTHeaderNode;
+  header_descriptor.numRecords = OSSwapHostToBigInt16(3);
+  base::span(image)
+      .subspan(kCatalogOffset, sizeof(header_descriptor))
+      .copy_from(base::byte_span_from_ref(header_descriptor));
+
+  BTHeaderRec header_rec = {};
+  header_rec.treeDepth = OSSwapHostToBigInt16(1);
+  header_rec.rootNode = OSSwapHostToBigInt32(1);
+  header_rec.leafRecords = OSSwapHostToBigInt32(1);
+  header_rec.firstLeafNode = OSSwapHostToBigInt32(1);
+  header_rec.lastLeafNode = OSSwapHostToBigInt32(1);
+  header_rec.nodeSize = OSSwapHostToBigInt16(kNodeSize);
+  header_rec.maxKeyLength =
+      OSSwapHostToBigInt16(kHFSPlusCatalogKeyMaximumLength);
+  header_rec.totalNodes = OSSwapHostToBigInt32(2);
+  base::span(image)
+      .subspan(kCatalogOffset + sizeof(header_descriptor), sizeof(header_rec))
+      .copy_from(base::byte_span_from_ref(header_rec));
+
+  // Catalog leaf node (node 1).
+  BTNodeDescriptor leaf_descriptor = {};
+  leaf_descriptor.kind = static_cast<uint8_t>(kBTLeafNode);
+  leaf_descriptor.height = 1;
+  leaf_descriptor.numRecords = OSSwapHostToBigInt16(1);
+  base::span(image)
+      .subspan(kLeafOffset, sizeof(leaf_descriptor))
+      .copy_from(base::byte_span_from_ref(leaf_descriptor));
+
+  // Record offset table: set offset[0] to an invalid small value (< 14).
+  put16(kLeafOffset + kNodeSize - 2, 10);
+  put16(kLeafOffset + kNodeSize - 4, 100);
+
+  MemoryReadStream stream(image);
+  HFSIterator hfs_reader(&stream);
+  EXPECT_TRUE(hfs_reader.Open());
+  EXPECT_FALSE(hfs_reader.Next());
+}
+
+INSTANTIATE_TEST_SUITE_P(HFSIteratorTest,
+                         HFSFileReadTest,
+                         testing::Values("hfs_plus.img",
+                                         "hfsx_case_sensitive.img"));
+
+}  // namespace
+}  // namespace dmg
+}  // namespace safe_browsing

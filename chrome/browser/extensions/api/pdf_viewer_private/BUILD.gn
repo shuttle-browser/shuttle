@@ -1,0 +1,59 @@
+# Copyright 2022 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//extensions/buildflags/buildflags.gni")
+import("//pdf/features.gni")
+import("//services/screen_ai/buildflags/features.gni")
+
+assert(enable_extensions,
+       "Cannot depend on extensions because enable_extensions=false.")
+assert(enable_pdf)
+
+source_set("pdf_viewer_private") {
+  sources = [
+    "pdf_viewer_private_api.cc",
+    "pdf_viewer_private_api.h",
+  ]
+
+  deps = [
+    "//base",
+    "//chrome/browser/extensions",
+    "//chrome/browser/glic",
+    "//chrome/browser/pdf",
+    "//chrome/browser/pdf:pdf_pref_names",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui/user_education",
+    "//chrome/common:constants",
+    "//chrome/common/extensions/api",
+    "//components/pdf/common:constants",
+    "//components/prefs",
+    "//components/tabs:public",
+    "//extensions/browser",
+    "//extensions/browser/mime_handler",
+    "//extensions/browser/mime_handler:stream_container",
+    "//pdf:features",
+    "//url",
+  ]
+  if (enable_pdf_save_to_drive) {
+    deps += [
+      "//chrome/browser/save_to_drive",
+      "//chrome/browser/ui/hats",
+      "//chrome/browser/ui/save_to_drive",
+    ]
+  }
+}
+
+source_set("browser_tests") {
+  testonly = true
+  defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
+
+  sources = [ "pdf_viewer_private_browsertest.cc" ]
+  deps = [
+    ":pdf_viewer_private",
+    "//chrome/browser/glic",
+    "//chrome/browser/glic/test_support",
+    "//chrome/test:test_support",
+    "//content/test:test_support",
+  ]
+}

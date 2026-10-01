@@ -1,0 +1,52 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/enterprise/connectors/analysis/page_print_analysis_request.h"
+
+#include "base/memory/read_only_shared_memory_region.h"
+#include "chrome/browser/enterprise/connectors/common.h"
+#include "chrome/browser/safe_browsing/cloud_content_scanning/deep_scanning_utils.h"
+#include "components/enterprise/connectors/core/cloud_content_scanning/binary_upload_service.h"
+#include "components/enterprise/connectors/core/cloud_content_scanning/common.h"
+#include "components/enterprise/connectors/core/cloud_content_scanning/deep_scanning_utils.h"
+
+namespace enterprise_connectors {
+
+namespace {
+
+constexpr size_t kMaxPageSize = 50 * 1024 * 1024;
+
+}  // namespace
+
+PagePrintAnalysisRequest::PagePrintAnalysisRequest(
+    const AnalysisSettings& analysis_settings,
+    base::ReadOnlySharedMemoryRegion page,
+    BinaryUploadRequest::ContentAnalysisCallback callback)
+    : BinaryUploadRequest(std::move(callback),
+                          analysis_settings.cloud_or_local_settings,
+                          base::BindRepeating(&GetBrowserPolicyConnector)),
+      page_(std::move(page)) {
+  DCHECK(page_.IsValid());
+  IncrementCrashKey(ScanningCrashKey::PENDING_PRINTS);
+  IncrementCrashKey(ScanningCrashKey::TOTAL_PRINTS);
+}
+
+PagePrintAnalysisRequest::~PagePrintAnalysisRequest() {
+  DecrementCrashKey(ScanningCrashKey::PENDING_PRINTS);
+}
+
+void PagePrintAnalysisRequest::GetRequestData(DataCallback callback) {
+  Data data;
+  data.size = page_.GetSize();
+  data.page = page_.Duplicate();
+
+  std::move(callback).Run(
+      // Only enforce a max size for cloud scans.
+      data.size >= kMaxPageSize && cloud_or_local_settings().is_cloud_analysis()
+          ? ScanRequestUploadResult::kFileTooLarge
+          : ScanRequestUploadResult::kSuccess,
+      std::move(data));
+}
+
+}  // namespace enterprise_connectors

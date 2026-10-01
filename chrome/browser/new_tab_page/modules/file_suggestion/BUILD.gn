@@ -1,0 +1,18 @@
+# Copyright 2021 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//mojo/public/tools/bindings/mojom.gni")
+import("//ui/webui/webui_features.gni")
+
+assert(enable_webui_ntp)
+
+mojom("mojo_bindings") {
+  sources = [
+    "drive_suggestion.mojom",
+    "file_suggestion.mojom",
+    "microsoft_files.mojom",
+  ]
+  webui_module_path = "/"
+  public_deps = [ "//url/mojom:url_mojom_gurl" ]
+}

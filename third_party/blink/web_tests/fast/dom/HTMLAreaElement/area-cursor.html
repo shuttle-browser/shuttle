@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<head>
+<script>
+onload = function() {
+    if (!window.testRunner)
+        return;
+
+    testRunner.dumpAsText();
+    // <area> is display:none, so it has no offsets of its own. Aim at the
+    // middle of the image the map is attached to instead.
+    var image = document.querySelector('img');
+    eventSender.mouseMoveTo(image.offsetLeft + image.offsetWidth / 2,
+                            image.offsetTop + image.offsetHeight / 2);
+    document.getElementById('result').innerHTML =
+        window.getComputedStyle(document.querySelector('area')).cursor +
+        ' / ' + internals.getCurrentCursorInfo();
+}
+</script>
+</head>
+<body style="cursor:default">
+  <map id="menu" name="menu">
+   <area shape="rect" coords="0,0,199,199" href="dummy.gif"/>
+  </map>
+  <img style="cursor:auto;width:200px;height:200px" usemap="#menu" src="dummy.gif"/>
+  <p>Test for <a href="crbug.com/455253">crbug.com/455253</a>: cursor pointer on image-link</p>
+  <p>Result: <span id="result">default</span></p>
+</body>

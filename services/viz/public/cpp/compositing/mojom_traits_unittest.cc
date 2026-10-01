@@ -1,0 +1,2788 @@
+// Copyright 2017 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include <utility>
+
+#include "base/compiler_specific.h"
+#include "base/functional/bind.h"
+#include "base/run_loop.h"
+#include "base/test/gtest_util.h"
+#include "base/test/task_environment.h"
+#include "base/time/time.h"
+#include "base/trace_event/traced_value.h"
+#include "build/build_config.h"
+#include "components/viz/common/frame_sinks/begin_frame_args.h"
+#include "components/viz/common/frame_sinks/blit_request.h"
+#include "components/viz/common/frame_sinks/copy_output_result.h"
+#include "components/viz/common/frame_timing_details.h"
+#include "components/viz/common/performance_hint_utils.h"
+#include "components/viz/common/quads/compositor_frame.h"
+#include "components/viz/common/quads/compositor_render_pass.h"
+#include "components/viz/common/quads/debug_border_draw_quad.h"
+#include "components/viz/common/quads/frame_interval_inputs.h"
+#include "components/viz/common/quads/offset_tag.h"
+#include "components/viz/common/quads/shared_element_draw_quad.h"
+#include "components/viz/common/quads/solid_color_draw_quad.h"
+#include "components/viz/common/quads/texture_draw_quad.h"
+#include "components/viz/common/quads/trees_in_viz_timing.h"
+#include "components/viz/common/resources/returned_resource.h"
+#include "components/viz/common/resources/shared_image_format.h"
+#include "components/viz/common/resources/transferable_resource.h"
+#include "components/viz/common/surfaces/frame_sink_bundle_id.h"
+#include "components/viz/common/surfaces/region_capture_bounds.h"
+#include "components/viz/common/surfaces/subtree_capture_id.h"
+#include "components/viz/common/surfaces/surface_info.h"
+#include "components/viz/common/surfaces/surface_range.h"
+#include "components/viz/common/surfaces/tracked_element_rects.h"
+#include "components/viz/common/vertical_scroll_direction.h"
+#include "components/viz/common/view_transition_element_resource_id.h"
+#include "components/viz/test/begin_frame_args_test.h"
+#include "components/viz/test/compositor_frame_helpers.h"
+#include "gpu/ipc/common/mailbox_mojom_traits.h"
+#include "gpu/ipc/common/sync_token_mojom_traits.h"
+#include "ipc/param_traits_utils.h"
+#include "mojo/public/cpp/base/time_mojom_traits.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "mojo/public/cpp/test_support/test_utils.h"
+#include "services/viz/public/cpp/compositing/begin_frame_args_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/compositor_frame_metadata_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/compositor_frame_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/compositor_render_pass_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/copy_output_request_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/copy_output_result_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/filter_operation_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/filter_operations_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/frame_sink_id_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/local_surface_id_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/offset_tag_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/returned_resource_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/selection_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/shared_quad_state_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/surface_id_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/surface_info_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/transferable_resource_mojom_traits.h"
+#include "services/viz/public/cpp/compositing/view_transition_element_resource_id_mojom_traits.h"
+#include "services/viz/public/mojom/compositing/begin_frame_args.mojom.h"
+#include "services/viz/public/mojom/compositing/blit_request.mojom.h"
+#include "services/viz/public/mojom/compositing/compositor_frame.mojom.h"
+#include "services/viz/public/mojom/compositing/filter_operation.mojom.h"
+#include "services/viz/public/mojom/compositing/filter_operations.mojom.h"
+#include "services/viz/public/mojom/compositing/frame_interval_inputs.mojom.h"
+#include "services/viz/public/mojom/compositing/frame_sink_bundle_id.mojom.h"
+#include "services/viz/public/mojom/compositing/frame_timing_details.mojom.h"
+#include "services/viz/public/mojom/compositing/region_capture_bounds.mojom.h"
+#include "services/viz/public/mojom/compositing/returned_resource.mojom.h"
+#include "services/viz/public/mojom/compositing/selection.mojom.h"
+#include "services/viz/public/mojom/compositing/surface_info.mojom.h"
+#include "services/viz/public/mojom/compositing/surface_range.mojom.h"
+#include "services/viz/public/mojom/compositing/thread.mojom.h"
+#include "services/viz/public/mojom/compositing/tracked_element_rects.mojom.h"
+#include "services/viz/public/mojom/compositing/transferable_resource.mojom.h"
+#include "services/viz/public/mojom/compositing/trees_in_viz_timing.mojom.h"
+#include "services/viz/public/mojom/compositing/vertical_scroll_direction.mojom.h"
+#include "skia/public/mojom/bitmap_skbitmap_mojom_traits.h"
+#include "skia/public/mojom/tile_mode_mojom_traits.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/fuzztest/src/fuzztest/fuzztest.h"
+#include "third_party/skia/include/core/SkColor.h"
+#include "third_party/skia/include/core/SkColorSpace.h"
+#include "third_party/skia/include/core/SkRefCnt.h"
+#include "third_party/skia/include/core/SkString.h"
+#include "ui/gfx/geometry/mojom/geometry_mojom_traits.h"
+#include "ui/gfx/geometry/vector2d_f.h"
+#include "ui/gfx/hdr_metadata.h"
+#include "ui/gfx/mojom/buffer_types_mojom_traits.h"
+#include "ui/gfx/mojom/color_space_mojom_traits.h"
+#include "ui/gfx/mojom/selection_bound_mojom_traits.h"
+#include "ui/gfx/mojom/transform_mojom_traits.h"
+#include "ui/gfx/presentation_feedback.h"
+#include "ui/gfx/swap_result.h"
+#include "ui/latency/mojom/latency_info_mojom_traits.h"
+
+namespace viz {
+
+namespace {
+
+class CompositingStructTraitsTest : public testing::Test {
+ public:
+  CompositingStructTraitsTest() = default;
+  ~CompositingStructTraitsTest() override = default;
+
+ private:
+  // StructTraits for compositing can return deserialization error traces,
+  // which have an implicit dependency on a functioning task environment to
+  // look up the current `MessageDispatchContext`. In addition,
+  // `CopyOutputRequest` serialization uses ThreadPool to post result
+  // callbacks, so a full TaskEnvironment is required here.
+  base::test::TaskEnvironment task_environment_;
+};
+
+}  // namespace
+
+TEST_F(CompositingStructTraitsTest, BeginFrameArgs) {
+  const base::TimeTicks frame_time = base::TimeTicks::Now();
+  const base::TimeTicks deadline = base::TimeTicks::Now();
+  const base::TimeDelta interval = base::Milliseconds(1337);
+  const BeginFrameArgs::BeginFrameArgsType type = BeginFrameArgs::NORMAL;
+  const bool on_critical_path = true;
+  const uint64_t source_id = 5;
+  const uint64_t sequence_number = 10;
+  const uint64_t frames_throttled_since_last = 20;
+  const bool animate_only = true;
+  const base::TimeDelta unthrottled_interval = base::Microseconds(100);
+  BeginFrameArgs input;
+  input.frame_id = BeginFrameId(source_id, sequence_number);
+  input.frames_throttled_since_last = frames_throttled_since_last;
+  input.frame_time = frame_time;
+  input.deadline = deadline;
+  input.interval = interval;
+  input.type = type;
+  input.on_critical_path = on_critical_path;
+  input.animate_only = animate_only;
+  input.unthrottled_interval = unthrottled_interval;
+
+  BeginFrameArgs output;
+  mojo::test::SerializeAndDeserialize<mojom::BeginFrameArgs>(input, output);
+
+  EXPECT_EQ(source_id, output.frame_id.source_id);
+  EXPECT_EQ(sequence_number, output.frame_id.sequence_number);
+  EXPECT_EQ(frames_throttled_since_last, output.frames_throttled_since_last);
+  EXPECT_EQ(frame_time, output.frame_time);
+  EXPECT_EQ(deadline, output.deadline);
+  EXPECT_EQ(interval, output.interval);
+  EXPECT_EQ(type, output.type);
+  EXPECT_EQ(on_critical_path, output.on_critical_path);
+  EXPECT_EQ(animate_only, output.animate_only);
+  EXPECT_EQ(unthrottled_interval, output.unthrottled_interval);
+  EXPECT_EQ(std::nullopt, output.deadline_derived_interval);
+}
+
+TEST_F(CompositingStructTraitsTest, BeginFrameArgsWithUnthrottledInterval) {
+  const base::TimeTicks frame_time = base::TimeTicks::Now();
+  const base::TimeTicks deadline = base::TimeTicks::Now();
+  const base::TimeDelta interval = base::Milliseconds(1337);
+  const BeginFrameArgs::BeginFrameArgsType type = BeginFrameArgs::NORMAL;
+  const uint64_t source_id = 5;
+  const uint64_t sequence_number = 10;
+
+  {
+    // Test where unthrottled_interval matches interval.
+    // In Mojo it should be null, but deserialized back to interval.
+    BeginFrameArgs input =
+        BeginFrameArgs::Create(BEGINFRAME_FROM_HERE, source_id, sequence_number,
+                               frame_time, deadline, interval, type);
+
+    input.unthrottled_interval = interval;
+    BeginFrameArgs output;
+    mojo::test::SerializeAndDeserialize<mojom::BeginFrameArgs>(input, output);
+    EXPECT_EQ(interval, output.unthrottled_interval);
+  }
+
+  {
+    // Test where unthrottled_interval is different from interval.
+    // In Mojo it should be sent as a value.
+    BeginFrameArgs input =
+        BeginFrameArgs::Create(BEGINFRAME_FROM_HERE, source_id, sequence_number,
+                               frame_time, deadline, interval, type);
+    const base::TimeDelta unthrottled = interval - base::Milliseconds(5);
+    input.unthrottled_interval = unthrottled;
+    BeginFrameArgs output;
+    mojo::test::SerializeAndDeserialize<mojom::BeginFrameArgs>(input, output);
+    EXPECT_EQ(unthrottled, output.unthrottled_interval);
+  }
+
+  {
+    // Test where unthrottled_interval is default (which also matches interval).
+    BeginFrameArgs input =
+        BeginFrameArgs::Create(BEGINFRAME_FROM_HERE, source_id, sequence_number,
+                               frame_time, deadline, interval, type);
+    BeginFrameArgs output;
+    mojo::test::SerializeAndDeserialize<mojom::BeginFrameArgs>(input, output);
+    EXPECT_EQ(interval, output.unthrottled_interval);
+  }
+}
+
+TEST_F(CompositingStructTraitsTest, BeginFrameArgsWithDeadlineDerivedInterval) {
+  const base::TimeTicks frame_time = base::TimeTicks::Now();
+  const base::TimeTicks deadline = base::TimeTicks::Now();
+  const base::TimeDelta interval = base::Milliseconds(1337);
+  const BeginFrameArgs::BeginFrameArgsType type = BeginFrameArgs::NORMAL;
+  const uint64_t source_id = 5;
+  const uint64_t sequence_number = 10;
+
+  {
+    // Test where deadline_derived_interval is set.
+    BeginFrameArgs input =
+        BeginFrameArgs::Create(BEGINFRAME_FROM_HERE, source_id, sequence_number,
+                               frame_time, deadline, interval, type);
+    input.deadline_derived_interval = base::Milliseconds(8);
+    BeginFrameArgs output;
+    mojo::test::SerializeAndDeserialize<mojom::BeginFrameArgs>(input, output);
+    EXPECT_EQ(base::Milliseconds(8), output.deadline_derived_interval);
+  }
+
+  {
+    // Test where deadline_derived_interval is nullopt.
+    BeginFrameArgs input =
+        BeginFrameArgs::Create(BEGINFRAME_FROM_HERE, source_id, sequence_number,
+                               frame_time, deadline, interval, type);
+    input.deadline_derived_interval = std::nullopt;
+    BeginFrameArgs output;
+    mojo::test::SerializeAndDeserialize<mojom::BeginFrameArgs>(input, output);
+    EXPECT_EQ(std::nullopt, output.deadline_derived_interval);
+  }
+}
+
+TEST_F(CompositingStructTraitsTest, BeginFrameAck) {
+  const uint64_t source_id = 5;
+  const uint64_t sequence_number = 10;
+  const bool has_damage = true;
+  BeginFrameAck input;
+  input.frame_id = BeginFrameId(source_id, sequence_number);
+  input.has_damage = has_damage;
+
+  BeginFrameAck output;
+  mojo::test::SerializeAndDeserialize<mojom::BeginFrameAck>(input, output);
+
+  EXPECT_EQ(source_id, output.frame_id.source_id);
+  EXPECT_EQ(sequence_number, output.frame_id.sequence_number);
+  EXPECT_TRUE(output.has_damage);
+}
+
+namespace {
+
+void ExpectEqual(const cc::FilterOperation& input,
+                 const cc::FilterOperation& output) {
+  EXPECT_EQ(input.type(), output.type());
+  switch (input.type()) {
+    case cc::FilterOperation::GRAYSCALE:
+    case cc::FilterOperation::SEPIA:
+    case cc::FilterOperation::SATURATE:
+    case cc::FilterOperation::HUE_ROTATE:
+    case cc::FilterOperation::INVERT:
+    case cc::FilterOperation::BRIGHTNESS:
+    case cc::FilterOperation::SATURATING_BRIGHTNESS:
+    case cc::FilterOperation::CONTRAST:
+    case cc::FilterOperation::OPACITY:
+    case cc::FilterOperation::BLUR:
+      EXPECT_EQ(input.amount(), output.amount());
+      break;
+    case cc::FilterOperation::DROP_SHADOW:
+      EXPECT_EQ(input.amount(), output.amount());
+      EXPECT_EQ(input.offset(), output.offset());
+      EXPECT_EQ(input.drop_shadow_color(), output.drop_shadow_color());
+      break;
+    case cc::FilterOperation::COLOR_MATRIX:
+      EXPECT_EQ(input.matrix(), output.matrix());
+      break;
+    case cc::FilterOperation::ZOOM:
+      EXPECT_EQ(input.amount(), output.amount());
+      EXPECT_EQ(input.zoom_inset(), output.zoom_inset());
+      break;
+    case cc::FilterOperation::REFERENCE: {
+      ASSERT_EQ(!!input.image_filter(), !!output.image_filter());
+      if (input.image_filter()) {
+        EXPECT_TRUE(
+            input.image_filter()->EqualsForTesting(*output.image_filter()));
+      }
+      break;
+    }
+    case cc::FilterOperation::ALPHA_THRESHOLD:
+      NOTREACHED();
+    case cc::FilterOperation::OFFSET:
+      EXPECT_EQ(input.offset(), output.offset());
+      break;
+  }
+}
+
+}  // namespace
+
+TEST_F(CompositingStructTraitsTest, FilterOperationBlur) {
+  cc::FilterOperation input = cc::FilterOperation::CreateBlurFilter(20);
+
+  cc::FilterOperation output;
+  mojo::test::SerializeAndDeserialize<mojom::FilterOperation>(input, output);
+  ExpectEqual(input, output);
+}
+
+TEST_F(CompositingStructTraitsTest, FilterOperationDropShadow) {
+  cc::FilterOperation input = cc::FilterOperation::CreateDropShadowFilter(
+      gfx::Point(4, 4), 4.0f, SkColor4f{0.15f, 0.0f, 0.0f, 1.0f});
+
+  cc::FilterOperation output;
+  mojo::test::SerializeAndDeserialize<mojom::FilterOperation>(input, output);
+  ExpectEqual(input, output);
+}
+
+TEST_F(CompositingStructTraitsTest, FilterOperationReferenceFilter) {
+  cc::FilterOperation input = cc::FilterOperation::CreateReferenceFilter(
+      sk_make_sp<cc::DropShadowPaintFilter>(
+          SkIntToScalar(3), SkIntToScalar(8), SkIntToScalar(4),
+          SkIntToScalar(9), SkColors::kBlack,
+          cc::DropShadowPaintFilter::ShadowMode::kDrawShadowAndForeground,
+          nullptr));
+
+  cc::FilterOperation output;
+  mojo::test::SerializeAndDeserialize<mojom::FilterOperation>(input, output);
+  ExpectEqual(input, output);
+}
+
+TEST_F(CompositingStructTraitsTest, FilterOperations) {
+  cc::FilterOperations input;
+  input.Append(cc::FilterOperation::CreateBlurFilter(0.f));
+  input.Append(cc::FilterOperation::CreateSaturateFilter(4.f));
+  input.Append(cc::FilterOperation::CreateZoomFilter(2.0f, 1));
+
+  cc::FilterOperations output;
+  mojo::test::SerializeAndDeserialize<mojom::FilterOperations>(input, output);
+
+  EXPECT_EQ(input.size(), output.size());
+  for (size_t i = 0; i < input.size(); ++i) {
+    ExpectEqual(input.at(i), output.at(i));
+  }
+}
+
+TEST_F(CompositingStructTraitsTest, LocalSurfaceId) {
+  LocalSurfaceId input(
+      42, base::UnguessableToken::CreateForTesting(0x12345678, 0x9abcdef0));
+
+  LocalSurfaceId output;
+  mojo::test::SerializeAndDeserialize<mojom::LocalSurfaceId>(input, output);
+
+  EXPECT_EQ(input, output);
+}
+
+TEST_F(CompositingStructTraitsTest, CopyOutputRequest_BitmapRequest) {
+  const auto result_format = CopyOutputRequest::ResultFormat::RGBA;
+  const auto result_destination =
+      CopyOutputRequest::ResultDestination::kSystemMemory;
+  const gfx::Rect area(5, 7, 44, 55);
+  const auto source =
+      base::UnguessableToken::CreateForTesting(0xdeadbeef, 0xdeadf00d);
+  // Requesting 2:3 scale in X dimension, 5:4 in Y dimension.
+  const gfx::Vector2d scale_from(2, 5);
+  const gfx::Vector2d scale_to(3, 4);
+  const gfx::Rect result_rect(7, 8, 132, 44);
+
+  base::RunLoop run_loop;
+  std::unique_ptr<CopyOutputRequest> input(new CopyOutputRequest(
+      result_format, result_destination,
+      base::BindOnce(
+          [](base::OnceClosure quit_closure, const gfx::Rect& expected_rect,
+             std::unique_ptr<CopyOutputResult> result) {
+            EXPECT_EQ(expected_rect, result->rect());
+            // Note: CopyOutputResult plumbing for bitmap requests is tested in
+            // CompositingStructTraitsTest.CopyOutputResult_Bitmap.
+            std::move(quit_closure).Run();
+          },
+          run_loop.QuitClosure(), result_rect)));
+  input->SetScaleRatio(scale_from, scale_to);
+  EXPECT_EQ(scale_from, input->scale_from());
+  EXPECT_EQ(scale_to, input->scale_to());
+  input->set_area(area);
+  input->set_result_selection(result_rect);
+  input->set_source(source);
+  EXPECT_TRUE(input->is_scaled());
+  std::unique_ptr<CopyOutputRequest> output;
+  mojo::test::SerializeAndDeserialize<mojom::CopyOutputRequest>(input, output);
+
+  EXPECT_EQ(result_format, output->result_format());
+  EXPECT_EQ(result_destination, output->result_destination());
+  EXPECT_TRUE(output->is_scaled());
+  EXPECT_EQ(scale_from, output->scale_from());
+  EXPECT_EQ(scale_to, output->scale_to());
+  EXPECT_TRUE(output->has_source());
+  EXPECT_EQ(source, output->source());
+  EXPECT_TRUE(output->has_area());
+  EXPECT_EQ(area, output->area());
+  EXPECT_TRUE(output->has_result_selection());
+  EXPECT_EQ(result_rect, output->result_selection());
+
+  SkBitmap bitmap;
+  bitmap.allocPixels(SkImageInfo::MakeN32Premul(
+      result_rect.width(), result_rect.height(), SkColorSpace::MakeSRGB()));
+  output->SendResult(std::make_unique<CopyOutputSkBitmapResult>(
+      result_rect, std::move(bitmap)));
+  // If the CopyOutputRequest callback is called, this ends. Otherwise, the test
+  // will time out and fail.
+  run_loop.Run();
+}
+
+TEST_F(CompositingStructTraitsTest, CopyOutputRequest_MessagePipeBroken) {
+  base::RunLoop run_loop;
+  auto request = std::make_unique<CopyOutputRequest>(
+      CopyOutputRequest::ResultFormat::RGBA,
+      CopyOutputRequest::ResultDestination::kSystemMemory,
+      base::BindOnce(
+          [](base::OnceClosure quit_closure,
+             std::unique_ptr<CopyOutputResult> result) {
+            EXPECT_TRUE(result->IsEmpty());
+            std::move(quit_closure).Run();
+          },
+          run_loop.QuitClosure()));
+  auto result_sender = mojo::StructTraits<
+      mojom::CopyOutputRequestDataView,
+      std::unique_ptr<CopyOutputRequest>>::result_sender(request);
+  result_sender.reset();
+  // The callback must be called with an empty CopyOutputResult. If it's never
+  // called, this will never end and the test times out.
+  run_loop.Run();
+}
+
+TEST_F(CompositingStructTraitsTest, CopyOutputRequest_TextureRequest) {
+  const auto result_format = CopyOutputRequest::ResultFormat::RGBA;
+  const auto result_destination =
+      CopyOutputRequest::ResultDestination::kSharedImage;
+
+  const int8_t mailbox_name[GL_MAILBOX_SIZE_CHROMIUM] = {
+      0, 9, 8, 7, 6, 5, 4, 3, 2, 1, 9, 7, 5, 3, 1, 3};
+  gpu::Mailbox mailbox;
+  mailbox.SetName(mailbox_name);
+  gpu::SyncToken sync_token;
+  const gfx::Rect result_rect(10, 10);
+
+  base::RunLoop run_loop_for_result;
+  std::unique_ptr<CopyOutputRequest> input(new CopyOutputRequest(
+      result_format, result_destination,
+      base::BindOnce(
+          [](base::OnceClosure quit_closure, const gfx::Rect& expected_rect,
+             std::unique_ptr<CopyOutputResult> result) {
+            EXPECT_EQ(expected_rect, result->rect());
+            // Note: CopyOutputResult plumbing for texture requests is tested in
+            // CompositingStructTraitsTest.CopyOutputResult_Texture.
+            std::move(quit_closure).Run();
+          },
+          run_loop_for_result.QuitClosure(), result_rect)));
+  EXPECT_FALSE(input->is_scaled());
+  std::unique_ptr<CopyOutputRequest> output;
+  mojo::test::SerializeAndDeserialize<mojom::CopyOutputRequest>(input, output);
+
+  EXPECT_EQ(output->result_format(), result_format);
+  EXPECT_EQ(output->result_destination(), result_destination);
+  EXPECT_FALSE(output->is_scaled());
+  EXPECT_FALSE(output->has_source());
+  EXPECT_FALSE(output->has_area());
+
+  base::RunLoop run_loop_for_release;
+
+  ReleaseCallback release_callback = base::BindOnce(
+      [](base::OnceClosure quit_closure,
+         const gpu::SyncToken& expected_sync_token,
+         const gpu::SyncToken& sync_token, bool is_lost) {
+        EXPECT_EQ(expected_sync_token, sync_token);
+        EXPECT_FALSE(is_lost);
+        std::move(quit_closure).Run();
+      },
+      run_loop_for_release.QuitClosure(), sync_token);
+
+  output->SendResult(std::make_unique<CopyOutputSharedImageResult>(
+      result_format, result_rect, mailbox, gfx::ColorSpace::CreateSRGB(),
+      "CopyOutputRequest_TextureRequest", std::move(release_callback)));
+
+  // Wait for the result to be delivered to the other side: The
+  // CopyOutputRequest callback will be called, at which point
+  // |run_loop_for_result| ends. Otherwise, the test will time out and fail.
+  run_loop_for_result.Run();
+
+  // Now, wait for the the texture release callback on this side to be run:
+  // The CopyOutputResult callback will be called, at which point
+  // |run_loop_for_release| ends. Otherwise, the test will time out and fail.
+  run_loop_for_release.Run();
+}
+
+TEST_F(CompositingStructTraitsTest, CopyOutputRequest_CallbackRunsOnce) {
+  int n_called = 0;
+  auto request = std::make_unique<CopyOutputRequest>(
+      CopyOutputRequest::ResultFormat::RGBA,
+      CopyOutputRequest::ResultDestination::kSystemMemory,
+      base::BindOnce(
+          [](int* n_called, std::unique_ptr<CopyOutputResult> result) {
+            ++*n_called;
+          },
+          base::Unretained(&n_called)));
+  auto result_sender_pending_remote = mojo::StructTraits<
+      mojom::CopyOutputRequestDataView,
+      std::unique_ptr<CopyOutputRequest>>::result_sender(request);
+
+  mojo::Remote<mojom::CopyOutputResultSender> result_sender_remote(
+      std::move(result_sender_pending_remote));
+  for (int i = 0; i < 10; i++)
+    result_sender_remote->SendResult(std::make_unique<CopyOutputResult>(
+        request->result_format(), request->result_destination(),
+        gfx::Rect(10, 10), false));
+  EXPECT_EQ(0, n_called);
+  result_sender_remote.FlushForTesting();
+  EXPECT_EQ(1, n_called);
+}
+
+TEST_F(CompositingStructTraitsTest, Selection) {
+  gfx::SelectionBound start;
+  start.SetEdge(gfx::PointF(1234.5f, 67891.f), gfx::PointF(5432.1f, 1987.6f));
+  start.set_visible(true);
+  start.set_type(gfx::SelectionBound::CENTER);
+  gfx::SelectionBound end;
+  end.SetEdge(gfx::PointF(1337.5f, 52124.f), gfx::PointF(1234.3f, 8765.6f));
+  end.set_visible(false);
+  end.set_type(gfx::SelectionBound::RIGHT);
+  Selection<gfx::SelectionBound> input;
+  input.start = start;
+  input.end = end;
+  Selection<gfx::SelectionBound> output;
+  mojo::test::SerializeAndDeserialize<mojom::Selection>(input, output);
+  EXPECT_EQ(start, output.start);
+  EXPECT_EQ(end, output.end);
+}
+
+TEST_F(CompositingStructTraitsTest, SharedQuadState) {
+  const auto quad_to_target_transform =
+      gfx::Transform::RowMajor(1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f,
+                               10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f);
+  const gfx::Rect layer_rect(1234, 5678);
+  const gfx::Rect visible_layer_rect(12, 34, 56, 78);
+  const gfx::MaskFilterInfo mask_filter_info(
+      gfx::RRectF(gfx::RectF(1.f, 2.f, 30.f, 40.f), 5));
+  const gfx::Rect clip_rect(123, 456, 789, 101112);
+  bool are_contents_opaque = true;
+  const float opacity = 0.9f;
+  const SkBlendMode blend_mode = SkBlendMode::kSrcOver;
+  const int sorting_context_id = 1337;
+  bool is_fast_rounded_corner = true;
+  SharedQuadState input_sqs;
+  input_sqs.SetAll(quad_to_target_transform, layer_rect, visible_layer_rect,
+                   mask_filter_info, clip_rect, are_contents_opaque, opacity,
+                   blend_mode, sorting_context_id, /*layer_id=*/0u,
+                   is_fast_rounded_corner);
+  SharedQuadState output_sqs;
+  mojo::test::SerializeAndDeserialize<mojom::SharedQuadState>(input_sqs,
+                                                              output_sqs);
+  EXPECT_EQ(quad_to_target_transform, output_sqs.quad_to_target_transform);
+  EXPECT_EQ(layer_rect, output_sqs.quad_layer_rect);
+  EXPECT_EQ(visible_layer_rect, output_sqs.visible_quad_layer_rect);
+  EXPECT_EQ(mask_filter_info.rounded_corner_bounds(),
+            output_sqs.mask_filter_info.rounded_corner_bounds());
+  EXPECT_EQ(clip_rect, output_sqs.clip_rect);
+  EXPECT_EQ(opacity, output_sqs.opacity);
+  EXPECT_EQ(blend_mode, output_sqs.blend_mode);
+  EXPECT_EQ(sorting_context_id, output_sqs.sorting_context_id);
+  EXPECT_EQ(is_fast_rounded_corner, output_sqs.is_fast_rounded_corner);
+}
+
+// Note that this is a fairly trivial test of CompositorFrame serialization as
+// most of the heavy lifting has already been done by CompositorFrameMetadata,
+// CompositorRenderPass, and QuadListBasic unit tests.
+TEST_F(CompositingStructTraitsTest, CompositorFrame) {
+  auto render_pass = CompositorRenderPass::Create();
+  render_pass->SetNew(CompositorRenderPassId{1}, gfx::Rect(5, 6),
+                      gfx::Rect(2, 3), gfx::Transform());
+
+  // SharedQuadState.
+  const auto sqs_quad_to_target_transform =
+      gfx::Transform::RowMajor(1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f,
+                               10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f);
+  const gfx::Rect sqs_layer_rect(1234, 5678);
+  const gfx::Rect sqs_visible_layer_rect(12, 34, 56, 78);
+  const gfx::MaskFilterInfo sqs_mask_filter_info(
+      gfx::RRectF(gfx::RectF(3.f, 4.f, 50.f, 15.f), 3));
+  const gfx::Rect sqs_clip_rect(123, 456, 789, 101112);
+  bool sqs_are_contents_opaque = false;
+  const float sqs_opacity = 0.9f;
+  const SkBlendMode sqs_blend_mode = SkBlendMode::kSrcOver;
+  const int sqs_sorting_context_id = 1337;
+  SharedQuadState* sqs = render_pass->CreateAndAppendSharedQuadState();
+  sqs->SetAll(sqs_quad_to_target_transform, sqs_layer_rect,
+              sqs_visible_layer_rect, sqs_mask_filter_info, sqs_clip_rect,
+              sqs_are_contents_opaque, sqs_opacity, sqs_blend_mode,
+              sqs_sorting_context_id, /*layer_id=*/0u,
+              /*fast_rounded_corner=*/false);
+
+  // DebugBorderDrawQuad.
+  const gfx::Rect rect1(1234, 4321, 1357, 7531);
+  const SkColor4f color1 = SkColors::kRed;
+  const int32_t width1 = 1337;
+  DebugBorderDrawQuad* debug_quad =
+      render_pass->CreateAndAppendDrawQuad<DebugBorderDrawQuad>();
+  debug_quad->SetNew(sqs, rect1, rect1, color1, width1);
+
+  // SolidColorDrawQuad.
+  const gfx::Rect rect2(2468, 8642, 4321, 1234);
+  const SkColor4f color2 = SkColors::kWhite;
+  const bool force_anti_aliasing_off = true;
+  SolidColorDrawQuad* solid_quad =
+      render_pass->CreateAndAppendDrawQuad<SolidColorDrawQuad>();
+  solid_quad->SetNew(sqs, rect2, rect2, color2, force_anti_aliasing_off);
+
+  // TransferableResource constants.
+  const ResourceId single_plane_id(1337);
+  const ResourceId multi_plane_id(1338);
+  const SharedImageFormat single_plane_format = SinglePlaneFormat::kALPHA_8;
+  const SharedImageFormat multi_plane_format = MultiPlaneFormat::kNV12;
+  const gfx::Size tr_size(1234, 5678);
+  TransferableResource single_plane_resource = TransferableResource::Make(
+      gpu::ClientSharedImage::CreateForTesting(
+          gpu::SharedImageMetadata{.format = single_plane_format,
+                                   .size = tr_size,
+                                   .alpha_type = kPremul_SkAlphaType}),
+      TransferableResource::ResourceSource::kTest, gpu::SyncToken());
+  single_plane_resource.id = single_plane_id;
+  TransferableResource multi_plane_resource = TransferableResource::Make(
+      gpu::ClientSharedImage::CreateForTesting(
+          gpu::SharedImageMetadata{.format = multi_plane_format,
+                                   .size = tr_size,
+                                   .alpha_type = kPremul_SkAlphaType}),
+      TransferableResource::ResourceSource::kTest, gpu::SyncToken());
+  multi_plane_resource.id = multi_plane_id;
+
+  // CompositorFrameMetadata constants.
+  const float device_scale_factor = 2.6f;
+  const gfx::PointF root_scroll_offset(1234.5f, 6789.1f);
+  const float page_scale_factor = 1337.5f;
+  const gfx::SizeF scrollable_viewport_size(1337.7f, 1234.5f);
+  const BeginFrameAck begin_frame_ack(5, 10, false);
+
+  CompositorFrame input;
+  input.metadata.device_scale_factor = device_scale_factor;
+  input.metadata.root_scroll_offset = root_scroll_offset;
+  input.metadata.page_scale_factor = page_scale_factor;
+  input.metadata.scrollable_viewport_size = scrollable_viewport_size;
+  input.render_pass_list.push_back(std::move(render_pass));
+  input.resource_list.push_back(single_plane_resource);
+  input.resource_list.push_back(multi_plane_resource);
+  input.metadata.begin_frame_ack = begin_frame_ack;
+  input.metadata.frame_token = 1;
+
+  CompositorFrame output;
+  mojo::test::SerializeAndDeserialize<mojom::CompositorFrame>(input, output);
+
+  EXPECT_EQ(device_scale_factor, output.metadata.device_scale_factor);
+  EXPECT_EQ(root_scroll_offset, output.metadata.root_scroll_offset);
+  EXPECT_EQ(page_scale_factor, output.metadata.page_scale_factor);
+  EXPECT_EQ(scrollable_viewport_size, output.metadata.scrollable_viewport_size);
+  EXPECT_EQ(begin_frame_ack, output.metadata.begin_frame_ack);
+
+  ASSERT_EQ(2u, output.resource_list.size());
+  TransferableResource out_resource1 = output.resource_list[0];
+  EXPECT_EQ(single_plane_id, out_resource1.id);
+  EXPECT_EQ(single_plane_format, out_resource1.GetFormat());
+  EXPECT_EQ(tr_size, out_resource1.GetSize());
+  TransferableResource out_resource2 = output.resource_list[1];
+  EXPECT_EQ(multi_plane_id, out_resource2.id);
+  EXPECT_EQ(multi_plane_format, out_resource2.GetFormat());
+  EXPECT_EQ(tr_size, out_resource2.GetSize());
+
+  EXPECT_EQ(1u, output.render_pass_list.size());
+  const CompositorRenderPass* out_render_pass =
+      output.render_pass_list[0].get();
+  ASSERT_EQ(2u, out_render_pass->quad_list.size());
+  ASSERT_EQ(1u, out_render_pass->shared_quad_state_list.size());
+
+  const SharedQuadState* out_sqs =
+      out_render_pass->shared_quad_state_list.ElementAt(0);
+  EXPECT_EQ(sqs_quad_to_target_transform, out_sqs->quad_to_target_transform);
+  EXPECT_EQ(sqs_layer_rect, out_sqs->quad_layer_rect);
+  EXPECT_EQ(sqs_visible_layer_rect, out_sqs->visible_quad_layer_rect);
+  EXPECT_EQ(sqs_mask_filter_info, out_sqs->mask_filter_info);
+  EXPECT_EQ(sqs_clip_rect, out_sqs->clip_rect);
+  EXPECT_EQ(sqs_are_contents_opaque, out_sqs->are_contents_opaque);
+  EXPECT_EQ(sqs_opacity, out_sqs->opacity);
+  EXPECT_EQ(sqs_blend_mode, out_sqs->blend_mode);
+  EXPECT_EQ(sqs_sorting_context_id, out_sqs->sorting_context_id);
+
+  const DebugBorderDrawQuad* out_debug_border_draw_quad =
+      DebugBorderDrawQuad::MaterialCast(
+          out_render_pass->quad_list.ElementAt(0));
+  EXPECT_EQ(rect1, out_debug_border_draw_quad->rect);
+  EXPECT_EQ(rect1, out_debug_border_draw_quad->visible_rect);
+  EXPECT_EQ(color1, out_debug_border_draw_quad->color);
+  EXPECT_EQ(width1, out_debug_border_draw_quad->width);
+
+  const SolidColorDrawQuad* out_solid_color_draw_quad =
+      SolidColorDrawQuad::MaterialCast(out_render_pass->quad_list.ElementAt(1));
+  EXPECT_EQ(rect2, out_solid_color_draw_quad->rect);
+  EXPECT_EQ(rect2, out_solid_color_draw_quad->visible_rect);
+  EXPECT_EQ(color2, out_solid_color_draw_quad->color);
+  EXPECT_EQ(force_anti_aliasing_off,
+            out_solid_color_draw_quad->force_anti_aliasing_off);
+}
+
+TEST_F(CompositingStructTraitsTest, CompositorFrameTransitionDirective) {
+  auto frame = CompositorFrameBuilder()
+                   .AddDefaultRenderPass()
+                   .AddDefaultRenderPass()
+                   .AddDefaultRenderPass()
+                   .Build();
+
+  blink::ViewTransitionToken transition_token;
+  CompositorFrameTransitionDirective::SharedElement element;
+  element.render_pass_id = frame.render_pass_list.front()->id;
+  element.view_transition_element_resource_id =
+      ViewTransitionElementResourceId(transition_token, 1, false);
+  uint32_t sequence_id = 1u;
+  frame.metadata.transition_directives.push_back(
+      CompositorFrameTransitionDirective::CreateSave(
+          transition_token, /*maybe_cross_frame_sink=*/true, sequence_id,
+          {element}, {}, /*delay_layer_tree_view_deletion=*/false));
+
+  // This ensures de-serialization succeeds if all passes are present.
+  CompositorFrame output;
+  ASSERT_TRUE(mojo::test::SerializeAndDeserialize<mojom::CompositorFrame>(
+      frame, output));
+  EXPECT_EQ(output.metadata.transition_directives.size(), 1u);
+  const auto& directive = output.metadata.transition_directives[0];
+  EXPECT_EQ(directive.transition_token(), transition_token);
+  EXPECT_TRUE(directive.maybe_cross_frame_sink());
+  EXPECT_EQ(directive.sequence_id(), sequence_id);
+  EXPECT_EQ(directive.type(), CompositorFrameTransitionDirective::Type::kSave);
+  EXPECT_EQ(directive.shared_elements().size(), 1u);
+  EXPECT_EQ(directive.shared_elements()[0], element);
+
+  element.render_pass_id = CompositorRenderPassId(
+      frame.render_pass_list.back()->id.GetUnsafeValue() + 1);
+  frame.metadata.transition_directives.push_back(
+      CompositorFrameTransitionDirective::CreateSave(
+          transition_token, /*maybe_cross_frame_sink=*/true, sequence_id,
+          {element}, {}, /*delay_layer_tree_view_deletion=*/false));
+
+  // This ensures de-serialization fails if a pass is missing.
+  ASSERT_FALSE(mojo::test::SerializeAndDeserialize<mojom::CompositorFrame>(
+      frame, output));
+}
+
+TEST_F(CompositingStructTraitsTest, ViewTransitionElementResourceId) {
+  ViewTransitionElementResourceId empty_id;
+  ASSERT_FALSE(empty_id.IsValid());
+  ViewTransitionElementResourceId empty_output_id;
+  ASSERT_TRUE(
+      mojo::test::SerializeAndDeserialize<
+          mojom::ViewTransitionElementResourceId>(empty_id, empty_output_id));
+  ASSERT_FALSE(empty_output_id.IsValid());
+
+  ViewTransitionElementResourceId valid_id(blink::ViewTransitionToken(), 2u,
+                                           false);
+  ASSERT_TRUE(valid_id.IsValid());
+  ViewTransitionElementResourceId valid_output_id;
+  ASSERT_TRUE(
+      mojo::test::SerializeAndDeserialize<
+          mojom::ViewTransitionElementResourceId>(valid_id, valid_output_id));
+  ASSERT_TRUE(valid_output_id.IsValid());
+  ASSERT_EQ(valid_output_id, valid_id);
+
+  // Fuzzer found crash: transition token present but local_id is 0.
+  auto mojom_id = mojom::ViewTransitionElementResourceId::New();
+  mojom_id->transition_token = blink::ViewTransitionToken();
+  mojom_id->local_id = ViewTransitionElementResourceId::kInvalidLocalId;
+  ViewTransitionElementResourceId output;
+  EXPECT_FALSE(mojo::test::SerializeAndDeserialize<
+               mojom::ViewTransitionElementResourceId>(mojom_id, output));
+
+  // Also test transition token NOT present but local_id is NOT 0.
+  output = ViewTransitionElementResourceId();
+  mojom_id = mojom::ViewTransitionElementResourceId::New();
+  mojom_id->transition_token = std::nullopt;
+  mojom_id->local_id = 1u;
+  EXPECT_FALSE(mojo::test::SerializeAndDeserialize<
+               mojom::ViewTransitionElementResourceId>(mojom_id, output));
+
+  // Also test transition token NOT present and for_scope_snapshot is true.
+  output = ViewTransitionElementResourceId();
+  mojom_id = mojom::ViewTransitionElementResourceId::New();
+  mojom_id->transition_token = std::nullopt;
+  mojom_id->local_id = ViewTransitionElementResourceId::kInvalidLocalId;
+  mojom_id->for_scope_snapshot = true;
+  EXPECT_FALSE(mojo::test::SerializeAndDeserialize<
+               mojom::ViewTransitionElementResourceId>(mojom_id, output));
+}
+
+TEST_F(CompositingStructTraitsTest, SurfaceInfo) {
+  const SurfaceId surface_id(
+      FrameSinkId(1234, 4321),
+      LocalSurfaceId(5678,
+                     base::UnguessableToken::CreateForTesting(143254, 144132)));
+  constexpr float device_scale_factor = 1.234f;
+  constexpr gfx::Size size(987, 123);
+
+  SurfaceInfo input(surface_id, device_scale_factor, size);
+  SurfaceInfo output;
+  mojo::test::SerializeAndDeserialize<mojom::SurfaceInfo>(input, output);
+
+  EXPECT_EQ(input.id(), output.id());
+  EXPECT_EQ(input.size_in_pixels(), output.size_in_pixels());
+  EXPECT_EQ(input.device_scale_factor(), output.device_scale_factor());
+}
+
+TEST_F(CompositingStructTraitsTest, ReturnedResource) {
+  const ResourceId id(1337u);
+  const gpu::CommandBufferNamespace command_buffer_namespace = gpu::IN_PROCESS;
+  const gpu::CommandBufferId command_buffer_id(
+      gpu::CommandBufferId::FromUnsafeValue(0xdeadbeef));
+  const uint64_t release_count = 0xdeadbeefdead;
+  gpu::SyncToken sync_token(command_buffer_namespace, command_buffer_id,
+                            release_count);
+  sync_token.SetVerifyFlush();
+  const int count = 1234;
+  const bool lost = true;
+
+  ReturnedResource input{
+      id, gpu::SharedImageExportResult::CreateForTesting(sync_token),
+      gfx::GpuFenceHandle(), count, lost};
+
+  ReturnedResource output;
+  mojo::test::SerializeAndDeserialize<mojom::ReturnedResource>(input, output);
+
+  EXPECT_EQ(id, output.id);
+  EXPECT_TRUE(input.shared_image_export_result.IsEqualForTesting(
+      output.shared_image_export_result));
+  EXPECT_EQ(count, output.count);
+  EXPECT_EQ(lost, output.lost);
+}
+
+TEST_F(CompositingStructTraitsTest, CompositorFrameMetadata) {
+  const float device_scale_factor = 2.6f;
+  const gfx::PointF root_scroll_offset(1234.5f, 6789.1f);
+  const float page_scale_factor = 1337.5f;
+  const gfx::SizeF scrollable_viewport_size(1337.7f, 1234.5f);
+  const bool may_contain_video = true;
+  const SkColor4f root_background_color = {0.0f, 0.02f, 0.224f, 0.0f};
+  ui::LatencyInfo latency_info;
+  latency_info.set_trace_id(5);
+  latency_info.AddLatencyNumber(ui::INPUT_EVENT_LATENCY_BEGIN_RWH_COMPONENT);
+  std::vector<ui::LatencyInfo> latency_infos = {latency_info};
+  std::vector<SurfaceRange> referenced_surfaces;
+  SurfaceId id(FrameSinkId(1234, 4321),
+               LocalSurfaceId(5678, base::UnguessableToken::Create()));
+  referenced_surfaces.emplace_back(id);
+  std::vector<SurfaceIdAndDeadline> activation_dependencies;
+  SurfaceId id2(FrameSinkId(4321, 1234),
+                LocalSurfaceId(8765, base::UnguessableToken::Create()));
+  activation_dependencies.emplace_back(id2);
+  uint32_t frame_token = 0xdeadbeef;
+  uint64_t begin_frame_ack_sequence_number = 0xdeadbeef;
+  FrameDeadline frame_deadline(base::TimeTicks(), 4u, base::TimeDelta(), true);
+  const float min_page_scale_factor = 3.5f;
+  const float top_controls_visible_height = 12.f;
+  constexpr uint32_t view_transition_deadline_in_frames = 240u;
+
+  CompositorFrameMetadata input;
+  input.device_scale_factor = device_scale_factor;
+  input.root_scroll_offset = root_scroll_offset;
+  input.page_scale_factor = page_scale_factor;
+  input.scrollable_viewport_size = scrollable_viewport_size;
+  input.may_contain_video = may_contain_video;
+  input.root_background_color = root_background_color;
+  input.latency_info = latency_infos;
+  input.referenced_surfaces = referenced_surfaces;
+  input.activation_dependencies = activation_dependencies;
+  input.deadline = frame_deadline;
+  input.frame_token = frame_token;
+  input.begin_frame_ack.frame_id.sequence_number =
+      begin_frame_ack_sequence_number;
+  input.min_page_scale_factor = min_page_scale_factor;
+  input.top_controls_visible_height.emplace(top_controls_visible_height);
+  input.view_transition_deadline_in_frames.emplace(
+      view_transition_deadline_in_frames);
+
+  CompositorFrameMetadata output;
+  mojo::test::SerializeAndDeserialize<mojom::CompositorFrameMetadata>(input,
+                                                                      output);
+  EXPECT_EQ(device_scale_factor, output.device_scale_factor);
+  EXPECT_EQ(root_scroll_offset, output.root_scroll_offset);
+  EXPECT_EQ(page_scale_factor, output.page_scale_factor);
+  EXPECT_EQ(scrollable_viewport_size, output.scrollable_viewport_size);
+  EXPECT_EQ(may_contain_video, output.may_contain_video);
+  EXPECT_EQ(root_background_color, output.root_background_color);
+  EXPECT_EQ(latency_infos.size(), output.latency_info.size());
+  EXPECT_TRUE(output.latency_info[0].FindLatency(
+      ui::INPUT_EVENT_LATENCY_BEGIN_RWH_COMPONENT, nullptr));
+  EXPECT_EQ(referenced_surfaces.size(), output.referenced_surfaces.size());
+  for (uint32_t i = 0; i < referenced_surfaces.size(); ++i)
+    EXPECT_EQ(referenced_surfaces[i], output.referenced_surfaces[i]);
+  EXPECT_EQ(activation_dependencies.size(),
+            output.activation_dependencies.size());
+  for (uint32_t i = 0; i < activation_dependencies.size(); ++i)
+    EXPECT_EQ(activation_dependencies[i], output.activation_dependencies[i]);
+  EXPECT_EQ(frame_deadline, output.deadline);
+  EXPECT_EQ(frame_token, output.frame_token);
+  EXPECT_EQ(begin_frame_ack_sequence_number,
+            output.begin_frame_ack.frame_id.sequence_number);
+  EXPECT_EQ(min_page_scale_factor, output.min_page_scale_factor);
+  EXPECT_EQ(*output.top_controls_visible_height, top_controls_visible_height);
+  EXPECT_EQ(output.view_transition_deadline_in_frames,
+            view_transition_deadline_in_frames);
+}
+
+TEST_F(CompositingStructTraitsTest,
+       CompositorFrameMetadataBadOffsetTagDefinition) {
+  CompositorFrameMetadata input;
+  input.device_scale_factor = 1.0f;
+  input.frame_token = 1u;
+  input.begin_frame_ack.frame_id.sequence_number = 1u;
+
+  {
+    // Verify metadata serialization/deserialization is initially successful.
+    CompositorFrameMetadata output;
+    bool result =
+        mojo::test::SerializeAndDeserialize<mojom::CompositorFrameMetadata>(
+            input, output);
+    EXPECT_TRUE(result);
+  }
+
+  SurfaceId surface_id(
+      FrameSinkId(1337, 1234),
+      LocalSurfaceId(0xfbadbeef, base::UnguessableToken::Create()));
+
+  OffsetTagDefinition offset_tag_def;
+  offset_tag_def.tag = OffsetTag(base::Token(1, 1));
+  offset_tag_def.provider = SurfaceRange(surface_id);
+  offset_tag_def.constraints.min_offset = {-20.4f, -89.3f};
+  offset_tag_def.constraints.max_offset = {60.4f, 489.3f};
+
+  input.offset_tag_definitions.push_back((offset_tag_def));
+  {
+    // There is no corresponding Surfacerange entry in `referenced_surfaces` so
+    // this should fail deserialization.
+    CompositorFrameMetadata output;
+    bool result =
+        mojo::test::SerializeAndDeserialize<mojom::CompositorFrameMetadata>(
+            input, output);
+    EXPECT_FALSE(result);
+  }
+}
+
+TEST_F(CompositingStructTraitsTest,
+       CompositorFrameMetadataActivationDependenciesWithDeadlines) {
+  CompositorFrameMetadata input;
+  input.device_scale_factor = 1.0f;
+  input.frame_token = 1u;
+  input.begin_frame_ack.frame_id.sequence_number = 1u;
+
+  SurfaceId surface_id1(
+      FrameSinkId(1337, 1234),
+      LocalSurfaceId(0xfbadbeef, base::UnguessableToken::Create()));
+  SurfaceId surface_id2(
+      FrameSinkId(1337, 5678),
+      LocalSurfaceId(0xdeadbeef, base::UnguessableToken::Create()));
+  input.activation_dependencies.emplace_back(surface_id1, std::nullopt);
+  input.activation_dependencies.emplace_back(surface_id2, 4u);
+
+  CompositorFrameMetadata output;
+  EXPECT_TRUE(
+      mojo::test::SerializeAndDeserialize<mojom::CompositorFrameMetadata>(
+          input, output));
+  EXPECT_EQ(output.activation_dependencies.size(), 2u);
+  EXPECT_EQ(output.activation_dependencies[0].surface_id, surface_id1);
+  EXPECT_EQ(output.activation_dependencies[0].deadline_in_frames, std::nullopt);
+  EXPECT_EQ(output.activation_dependencies[1].surface_id, surface_id2);
+  EXPECT_EQ(output.activation_dependencies[1].deadline_in_frames, 4u);
+}
+
+TEST_F(CompositingStructTraitsTest, RenderPass) {
+  constexpr CompositorRenderPassId kRenderPassId{3u};
+  constexpr gfx::Rect kOutputRect(45, 22, 120, 13);
+  constexpr gfx::Transform kTransformToRoot =
+      gfx::Transform::Affine(1.0, 0.5, 0.5, -0.5, -1.0, 0.0);
+  constexpr gfx::Rect kDamageRect(56, 123, 19, 43);
+  const std::optional<SkPath> kBackdropFilterBounds = SkPath::RRect(
+      SkRRect(gfx::RRectF{10, 20, 130, 140, 1, 2, 3, 4, 5, 6, 7, 8}));
+  constexpr SubtreeCaptureId kSubtreeCaptureId(base::Token(0u, 22u));
+  constexpr bool kHasTransparentBackground = true;
+  constexpr bool kCacheRenderPass = true;
+  constexpr bool kHasDamageFromContributingContent = true;
+  constexpr bool kGenerateMipmap = true;
+  constexpr bool kHasPerQuadDamage = true;
+
+  cc::FilterOperations filters;
+  filters.Append(cc::FilterOperation::CreateBlurFilter(0.f));
+  filters.Append(cc::FilterOperation::CreateZoomFilter(2.0f, 1));
+  cc::FilterOperations backdrop_filters;
+  backdrop_filters.Append(cc::FilterOperation::CreateSaturateFilter(4.f));
+  backdrop_filters.Append(cc::FilterOperation::CreateZoomFilter(2.0f, 1));
+  backdrop_filters.Append(cc::FilterOperation::CreateSaturateFilter(2.f));
+
+  auto input = CompositorRenderPass::Create();
+  input->SetAll(kRenderPassId, kOutputRect, kDamageRect, kTransformToRoot,
+                filters, backdrop_filters, kBackdropFilterBounds,
+                kSubtreeCaptureId, kOutputRect.size(),
+                ViewTransitionElementResourceId(), kHasTransparentBackground,
+                kCacheRenderPass, kHasDamageFromContributingContent,
+                kGenerateMipmap, kHasPerQuadDamage);
+  input->copy_requests.push_back(CopyOutputRequest::CreateStubForTesting());
+  constexpr gfx::Rect kCopyOutputArea(24, 42, 75, 57);
+  input->copy_requests.back()->set_area(kCopyOutputArea);
+
+  SharedQuadState* shared_state_1 = input->CreateAndAppendSharedQuadState();
+  shared_state_1->SetAll(
+      gfx::Transform::RowMajor(16.1f, 15.3f, 14.3f, 13.7f, 12.2f, 11.4f, 10.4f,
+                               9.8f, 8.1f, 7.3f, 6.3f, 5.7f, 4.8f, 3.4f, 2.4f,
+                               1.2f),
+      gfx::Rect(1, 2), gfx::Rect(1337, 5679, 9101112, 131415),
+      gfx::MaskFilterInfo(gfx::RRectF(gfx::RectF(5.f, 6.f, 70.f, 89.f), 10.f)),
+      gfx::Rect(1357, 2468, 121314, 1337), /*contents_opaque=*/true,
+      /*opacity_f=*/2, SkBlendMode::kSrcOver, /*sorting_context=*/1,
+      /*layer_id=*/0u, /*fast_rounded_corner=*/false);
+
+  SharedQuadState* shared_state_2 = input->CreateAndAppendSharedQuadState();
+  shared_state_2->SetAll(
+      gfx::Transform::RowMajor(1.1f, 2.3f, 3.3f, 4.7f, 5.2f, 6.4f, 7.4f, 8.8f,
+                               9.1f, 10.3f, 11.3f, 12.7f, 13.8f, 14.4f, 15.4f,
+                               16.2f),
+      gfx::Rect(1337, 1234), gfx::Rect(1234, 5678, 9101112, 13141516),
+      gfx::MaskFilterInfo(gfx::RRectF(gfx::RectF(23.f, 45.f, 60.f, 70.f), 8.f)),
+      gfx::Rect(1357, 2468, 121314, 1337), /*contents_opaque=*/true,
+      /*opacity_f=*/2, SkBlendMode::kSrcOver, /*sorting_context=*/1,
+      /*layer_id=*/0u, /*fast_rounded_corner=*/false);
+
+  // This quad uses the first shared quad state. The next two quads use the
+  // second shared quad state.
+  DebugBorderDrawQuad* debug_quad =
+      input->CreateAndAppendDrawQuad<DebugBorderDrawQuad>();
+  const gfx::Rect debug_quad_rect(12, 56, 89, 10);
+  debug_quad->SetNew(shared_state_1, debug_quad_rect, debug_quad_rect,
+                     SkColors::kBlue, 1337);
+
+  SolidColorDrawQuad* color_quad =
+      input->CreateAndAppendDrawQuad<SolidColorDrawQuad>();
+  const gfx::Rect color_quad_rect(123, 456, 789, 101);
+  color_quad->SetNew(shared_state_2, color_quad_rect, color_quad_rect,
+                     SkColors::kRed, true);
+
+  SurfaceDrawQuad* surface_quad =
+      input->CreateAndAppendDrawQuad<SurfaceDrawQuad>();
+  const gfx::Rect surface_quad_rect(1337, 2448, 1234, 5678);
+  surface_quad->SetNew(
+      shared_state_2, surface_quad_rect, surface_quad_rect,
+      SurfaceRange(
+          std::nullopt,
+          SurfaceId(FrameSinkId(1337, 1234),
+                    LocalSurfaceId(1234, base::UnguessableToken::Create()))),
+      SkColors::kYellow, false);
+  // Test non-default values.
+  surface_quad->is_reflection = !surface_quad->is_reflection;
+  surface_quad->allow_merge = !surface_quad->allow_merge;
+
+  std::unique_ptr<CompositorRenderPass> output;
+  mojo::test::SerializeAndDeserialize<mojom::CompositorRenderPass>(input,
+                                                                   output);
+
+  EXPECT_EQ(input->quad_list.size(), output->quad_list.size());
+  EXPECT_EQ(input->shared_quad_state_list.size(),
+            output->shared_quad_state_list.size());
+  EXPECT_EQ(kRenderPassId, output->id);
+  EXPECT_EQ(kOutputRect, output->output_rect);
+  EXPECT_EQ(kDamageRect, output->damage_rect);
+  EXPECT_EQ(kTransformToRoot, output->transform_to_root_target);
+  EXPECT_EQ(kHasTransparentBackground, output->has_transparent_background);
+  EXPECT_EQ(filters, output->filters);
+  EXPECT_EQ(backdrop_filters, output->backdrop_filters);
+  EXPECT_EQ(kBackdropFilterBounds, output->backdrop_filter_bounds);
+  EXPECT_EQ(kSubtreeCaptureId, output->subtree_capture_id);
+  EXPECT_EQ(kCacheRenderPass, output->cache_render_pass);
+  EXPECT_EQ(kHasDamageFromContributingContent,
+            output->has_damage_from_contributing_content);
+  EXPECT_EQ(kHasPerQuadDamage, output->has_per_quad_damage);
+  EXPECT_EQ(kGenerateMipmap, output->generate_mipmap);
+  ASSERT_EQ(1u, output->copy_requests.size());
+  EXPECT_EQ(kCopyOutputArea, output->copy_requests.front()->area());
+
+  SharedQuadState* out_sqs1 = output->shared_quad_state_list.ElementAt(0);
+  EXPECT_EQ(shared_state_1->quad_to_target_transform,
+            out_sqs1->quad_to_target_transform);
+  EXPECT_EQ(shared_state_1->quad_layer_rect, out_sqs1->quad_layer_rect);
+  EXPECT_EQ(shared_state_1->visible_quad_layer_rect,
+            out_sqs1->visible_quad_layer_rect);
+  EXPECT_EQ(shared_state_1->mask_filter_info, out_sqs1->mask_filter_info);
+  EXPECT_EQ(shared_state_1->clip_rect, out_sqs1->clip_rect);
+  EXPECT_EQ(shared_state_1->opacity, out_sqs1->opacity);
+  EXPECT_EQ(shared_state_1->blend_mode, out_sqs1->blend_mode);
+  EXPECT_EQ(shared_state_1->sorting_context_id, out_sqs1->sorting_context_id);
+
+  SharedQuadState* out_sqs2 = output->shared_quad_state_list.ElementAt(1);
+  EXPECT_EQ(shared_state_2->quad_to_target_transform,
+            out_sqs2->quad_to_target_transform);
+  EXPECT_EQ(shared_state_2->quad_layer_rect, out_sqs2->quad_layer_rect);
+  EXPECT_EQ(shared_state_2->visible_quad_layer_rect,
+            out_sqs2->visible_quad_layer_rect);
+  EXPECT_EQ(shared_state_2->mask_filter_info, out_sqs2->mask_filter_info);
+  EXPECT_EQ(shared_state_2->clip_rect, out_sqs2->clip_rect);
+  EXPECT_EQ(shared_state_2->opacity, out_sqs2->opacity);
+  EXPECT_EQ(shared_state_2->blend_mode, out_sqs2->blend_mode);
+  EXPECT_EQ(shared_state_2->sorting_context_id, out_sqs2->sorting_context_id);
+
+  const DebugBorderDrawQuad* out_debug_quad =
+      DebugBorderDrawQuad::MaterialCast(output->quad_list.ElementAt(0));
+  EXPECT_EQ(out_debug_quad->shared_quad_state, out_sqs1);
+  EXPECT_EQ(debug_quad->rect, out_debug_quad->rect);
+  EXPECT_EQ(debug_quad->visible_rect, out_debug_quad->visible_rect);
+  EXPECT_EQ(debug_quad->color, out_debug_quad->color);
+  EXPECT_EQ(debug_quad->width, out_debug_quad->width);
+
+  const SolidColorDrawQuad* out_color_quad =
+      SolidColorDrawQuad::MaterialCast(output->quad_list.ElementAt(1));
+  EXPECT_EQ(out_color_quad->shared_quad_state, out_sqs2);
+  EXPECT_EQ(color_quad->rect, out_color_quad->rect);
+  EXPECT_EQ(color_quad->visible_rect, out_color_quad->visible_rect);
+  EXPECT_EQ(color_quad->color, out_color_quad->color);
+  EXPECT_EQ(color_quad->force_anti_aliasing_off,
+            out_color_quad->force_anti_aliasing_off);
+
+  const SurfaceDrawQuad* out_surface_quad =
+      SurfaceDrawQuad::MaterialCast(output->quad_list.ElementAt(2));
+  EXPECT_EQ(out_surface_quad->shared_quad_state, out_sqs2);
+  EXPECT_EQ(surface_quad->rect, out_surface_quad->rect);
+  EXPECT_EQ(surface_quad->visible_rect, out_surface_quad->visible_rect);
+  EXPECT_EQ(surface_quad->surface_range, out_surface_quad->surface_range);
+  EXPECT_EQ(surface_quad->default_background_color,
+            out_surface_quad->default_background_color);
+  EXPECT_EQ(surface_quad->stretch_content_to_fill_bounds,
+            out_surface_quad->stretch_content_to_fill_bounds);
+  EXPECT_EQ(surface_quad->allow_merge, out_surface_quad->allow_merge);
+  EXPECT_EQ(surface_quad->is_reflection, out_surface_quad->is_reflection);
+  EXPECT_EQ(surface_quad->override_child_filter_quality,
+            out_surface_quad->override_child_filter_quality);
+  EXPECT_EQ(surface_quad->override_child_dynamic_range_limit,
+            out_surface_quad->override_child_dynamic_range_limit);
+}
+
+TEST_F(CompositingStructTraitsTest, RenderPassWithEmptySharedQuadStateList) {
+  constexpr CompositorRenderPassId kRenderPassId{3u};
+  constexpr gfx::Rect kOutputRect(45, 22, 120, 13);
+  constexpr gfx::Rect kDamageRect(56, 123, 19, 43);
+  constexpr gfx::Transform kTransformToRoot =
+      gfx::Transform::Affine(1.0, 0.5, 0.5, -0.5, -1.0, 0.0);
+  const std::optional<SkPath> kBackdropFilterBounds;
+  constexpr SubtreeCaptureId kEmptySubtreeCaptureId;
+  constexpr bool kHasTransparentBackground = true;
+  constexpr bool kCacheRenderPass = false;
+  constexpr bool kHasDamageFromContributingContent = false;
+  constexpr bool kGenerateMipmap = false;
+  constexpr bool kHasPerQuadDamage = false;
+
+  auto input = CompositorRenderPass::Create();
+  input->SetAll(kRenderPassId, kOutputRect, kDamageRect, kTransformToRoot,
+                cc::FilterOperations(), cc::FilterOperations(),
+                kBackdropFilterBounds, kEmptySubtreeCaptureId,
+                kOutputRect.size(), ViewTransitionElementResourceId(),
+                kHasTransparentBackground, kCacheRenderPass,
+                kHasDamageFromContributingContent, kGenerateMipmap,
+                kHasPerQuadDamage);
+
+  // Unlike the previous test, don't add any quads to the list; we need to
+  // verify that the serialization code can deal with that.
+  std::unique_ptr<CompositorRenderPass> output;
+  mojo::test::SerializeAndDeserialize<mojom::CompositorRenderPass>(input,
+                                                                   output);
+
+  EXPECT_EQ(input->quad_list.size(), output->quad_list.size());
+  EXPECT_EQ(input->shared_quad_state_list.size(),
+            output->shared_quad_state_list.size());
+  EXPECT_EQ(kRenderPassId, output->id);
+  EXPECT_EQ(kOutputRect, output->output_rect);
+  EXPECT_EQ(kDamageRect, output->damage_rect);
+  EXPECT_EQ(kTransformToRoot, output->transform_to_root_target);
+  EXPECT_EQ(kBackdropFilterBounds, output->backdrop_filter_bounds);
+  EXPECT_EQ(kEmptySubtreeCaptureId, output->subtree_capture_id);
+  EXPECT_EQ(kOutputRect.size(), output->subtree_size);
+  EXPECT_FALSE(output->subtree_capture_id.is_valid());
+  EXPECT_EQ(kHasTransparentBackground, output->has_transparent_background);
+}
+
+// Verifies that backdrop filters with null (no) crop rect still work correctly.
+// This ensures that null backdrop_filter_bounds means "don't apply bounds"
+// rather than "don't show any backdrop-filter".
+TEST_F(CompositingStructTraitsTest, BackdropFilterWithNullBounds) {
+  // Create a null backdrop filter bounds
+  const std::optional<SkPath> kBackdropFilterBounds;
+
+  cc::FilterOperations backdrop_filters;
+  backdrop_filters.Append(cc::FilterOperation::CreateBlurFilter(5.0f));
+
+  auto input = CompositorRenderPass::Create();
+  input->SetAll(CompositorRenderPassId{1u}, gfx::Rect(100, 100), gfx::Rect(),
+                gfx::Transform(), cc::FilterOperations(), backdrop_filters,
+                kBackdropFilterBounds, SubtreeCaptureId(), gfx::Size(100, 100),
+                ViewTransitionElementResourceId(), true, false, false, false,
+                false);
+
+  std::unique_ptr<CompositorRenderPass> output;
+  mojo::test::SerializeAndDeserialize<mojom::CompositorRenderPass>(input,
+                                                                   output);
+
+  // backdrop_filter_bounds should remain nullopt after serialization
+  EXPECT_EQ(kBackdropFilterBounds, output->backdrop_filter_bounds);
+  EXPECT_FALSE(output->backdrop_filter_bounds.has_value());
+
+  // Verify backdrop filters should still be present and valid
+  EXPECT_FALSE(output->backdrop_filters.IsEmpty());
+  EXPECT_EQ(1u, output->backdrop_filters.size());
+  EXPECT_EQ(cc::FilterOperation::BLUR, output->backdrop_filters.at(0).type());
+  EXPECT_EQ(5.0f, output->backdrop_filters.at(0).amount());
+}
+
+TEST_F(CompositingStructTraitsTest, QuadListBasic) {
+  auto render_pass = CompositorRenderPass::Create();
+  render_pass->SetNew(CompositorRenderPassId{1}, gfx::Rect(), gfx::Rect(),
+                      gfx::Transform());
+
+  SharedQuadState* sqs = render_pass->CreateAndAppendSharedQuadState();
+
+  const gfx::Rect rect1(1234, 4321, 1357, 7531);
+  const SkColor4f color1 = SkColors::kRed;
+  const int32_t width1 = 1337;
+  DebugBorderDrawQuad* debug_quad =
+      render_pass->CreateAndAppendDrawQuad<DebugBorderDrawQuad>();
+  debug_quad->SetNew(sqs, rect1, rect1, color1, width1);
+
+  const gfx::Rect rect2(2468, 8642, 4321, 1234);
+  const SkColor4f color2 = SkColors::kWhite;
+  const bool force_anti_aliasing_off = true;
+  SolidColorDrawQuad* solid_quad =
+      render_pass->CreateAndAppendDrawQuad<SolidColorDrawQuad>();
+  solid_quad->SetNew(sqs, rect2, rect2, color2, force_anti_aliasing_off);
+
+  const gfx::Rect rect3(1029, 3847, 5610, 2938);
+  const SurfaceId primary_surface_id(
+      FrameSinkId(1234, 4321),
+      LocalSurfaceId(5678, base::UnguessableToken::Create()));
+  const SurfaceId fallback_surface_id(
+      FrameSinkId(2468, 1357),
+      LocalSurfaceId(1234, base::UnguessableToken::Create()));
+  SurfaceDrawQuad* primary_surface_quad =
+      render_pass->CreateAndAppendDrawQuad<SurfaceDrawQuad>();
+  primary_surface_quad->SetNew(
+      sqs, rect3, rect3, SurfaceRange(fallback_surface_id, primary_surface_id),
+      SkColors::kBlue, false);
+  primary_surface_quad->override_child_filter_quality =
+      cc::PaintFlags::FilterQuality::kHigh;
+  primary_surface_quad->override_child_dynamic_range_limit =
+      cc::PaintFlags::DynamicRangeLimitMixture(0.25f, 0.5f);
+
+  const gfx::Rect rect4(1234, 5678, 91012, 13141);
+  const bool needs_blending = true;
+  const ResourceId resource_id4(1337);
+  const CompositorRenderPassId render_pass_id{1234u};
+  const gfx::RectF mask_uv_rect(0, 0, 1337.1f, 1234.2f);
+  const gfx::Size mask_texture_size(1234, 5678);
+  gfx::Vector2dF filters_scale(1234.1f, 4321.2f);
+  gfx::PointF filters_origin(8765.4f, 4567.8f);
+  const float backdrop_filter_quality = 1.0f;
+  const bool intersects_damage_under = false;
+
+  CompositorRenderPassDrawQuad* render_pass_quad =
+      render_pass->CreateAndAppendDrawQuad<CompositorRenderPassDrawQuad>();
+  render_pass_quad->SetAll(sqs, rect4, rect4, needs_blending, render_pass_id,
+                           resource_id4, mask_uv_rect, mask_texture_size,
+                           filters_scale, filters_origin,
+                           force_anti_aliasing_off, backdrop_filter_quality,
+                           intersects_damage_under);
+
+  const gfx::Rect rect5(123, 567, 91011, 13141);
+  const ResourceId resource_id5(1337);
+
+  const gfx::PointF tex_coord_top_left(12.1f, 34.2f);
+  const gfx::PointF tex_coord_bottom_right(56.3f, 78.4f);
+  const SkColor4f background_color = SkColors::kGreen;
+  const bool nearest_neighbor = true;
+  const bool secure_output_only = true;
+  const gfx::ProtectedVideoType protected_video_type =
+      gfx::ProtectedVideoType::kClear;
+  TextureDrawQuad* texture_draw_quad =
+      render_pass->CreateAndAppendDrawQuad<TextureDrawQuad>();
+  texture_draw_quad->SetAll(sqs, rect5, rect5, needs_blending, resource_id5,
+                            tex_coord_top_left, tex_coord_bottom_right,
+                            background_color, nearest_neighbor,
+                            secure_output_only, protected_video_type,
+                            /*is_tex_coords_normalized=*/false);
+
+  // Create a TextureDrawQuad with rounded-display masks.
+  const gfx::Rect rect7(421, 865, 11109, 151413);
+  const bool needs_blending7 = false;
+  const ResourceId resource_id7(4834);
+  const int origin_rounded_display_mask_radius = 10;
+  const int other_rounded_display_mask_radius = 15;
+  const bool is_horizontally_positioned = false;
+
+  TextureDrawQuad* rounded_display_mask_quad =
+      render_pass->CreateAndAppendDrawQuad<TextureDrawQuad>();
+  rounded_display_mask_quad->SetAll(
+      sqs, rect7, rect7, needs_blending7, resource_id7, tex_coord_top_left,
+      tex_coord_bottom_right, SkColors::kTransparent, false, false,
+      protected_video_type,
+      /*is_tex_coords_normalized=*/false);
+  rounded_display_mask_quad->rounded_display_masks_info =
+      TextureDrawQuad::RoundedDisplayMasksInfo::CreateRoundedDisplayMasksInfo(
+          origin_rounded_display_mask_radius, other_rounded_display_mask_radius,
+          is_horizontally_positioned);
+
+  std::unique_ptr<CompositorRenderPass> output;
+  mojo::test::SerializeAndDeserialize<mojom::CompositorRenderPass>(render_pass,
+                                                                   output);
+
+  ASSERT_EQ(render_pass->quad_list.size(), output->quad_list.size());
+
+  const DebugBorderDrawQuad* out_debug_border_draw_quad =
+      DebugBorderDrawQuad::MaterialCast(output->quad_list.ElementAt(0));
+  EXPECT_EQ(rect1, out_debug_border_draw_quad->rect);
+  EXPECT_EQ(rect1, out_debug_border_draw_quad->visible_rect);
+  EXPECT_FALSE(out_debug_border_draw_quad->needs_blending);
+  EXPECT_EQ(color1, out_debug_border_draw_quad->color);
+  EXPECT_EQ(width1, out_debug_border_draw_quad->width);
+
+  const SolidColorDrawQuad* out_solid_color_draw_quad =
+      SolidColorDrawQuad::MaterialCast(output->quad_list.ElementAt(1));
+  EXPECT_EQ(rect2, out_solid_color_draw_quad->rect);
+  EXPECT_EQ(rect2, out_solid_color_draw_quad->visible_rect);
+  EXPECT_FALSE(out_solid_color_draw_quad->needs_blending);
+  EXPECT_EQ(color2, out_solid_color_draw_quad->color);
+  EXPECT_EQ(force_anti_aliasing_off,
+            out_solid_color_draw_quad->force_anti_aliasing_off);
+
+  const SurfaceDrawQuad* out_primary_surface_draw_quad =
+      SurfaceDrawQuad::MaterialCast(output->quad_list.ElementAt(2));
+  EXPECT_EQ(rect3, out_primary_surface_draw_quad->rect);
+  EXPECT_EQ(rect3, out_primary_surface_draw_quad->visible_rect);
+  EXPECT_TRUE(out_primary_surface_draw_quad->needs_blending);
+  EXPECT_EQ(primary_surface_quad->override_child_filter_quality,
+            out_primary_surface_draw_quad->override_child_filter_quality);
+  EXPECT_EQ(primary_surface_quad->override_child_dynamic_range_limit,
+            out_primary_surface_draw_quad->override_child_dynamic_range_limit);
+  EXPECT_EQ(primary_surface_id,
+            out_primary_surface_draw_quad->surface_range.end());
+  EXPECT_EQ(SkColors::kBlue,
+            out_primary_surface_draw_quad->default_background_color);
+  EXPECT_EQ(fallback_surface_id,
+            out_primary_surface_draw_quad->surface_range.start());
+
+  const CompositorRenderPassDrawQuad* out_render_pass_draw_quad =
+      CompositorRenderPassDrawQuad::MaterialCast(
+          output->quad_list.ElementAt(3));
+  EXPECT_EQ(rect4, out_render_pass_draw_quad->rect);
+  EXPECT_EQ(rect4, out_render_pass_draw_quad->visible_rect);
+  EXPECT_EQ(render_pass_id, out_render_pass_draw_quad->render_pass_id);
+  EXPECT_EQ(resource_id4, out_render_pass_draw_quad->mask_resource_id());
+  EXPECT_EQ(mask_uv_rect, out_render_pass_draw_quad->mask_uv_rect);
+  EXPECT_EQ(mask_texture_size, out_render_pass_draw_quad->mask_texture_size);
+  EXPECT_EQ(filters_scale, out_render_pass_draw_quad->filters_scale);
+  EXPECT_EQ(filters_origin, out_render_pass_draw_quad->filters_origin);
+  EXPECT_EQ(force_anti_aliasing_off,
+            out_render_pass_draw_quad->force_anti_aliasing_off);
+  EXPECT_EQ(backdrop_filter_quality,
+            out_render_pass_draw_quad->backdrop_filter_quality);
+  EXPECT_EQ(intersects_damage_under,
+            out_render_pass_draw_quad->intersects_damage_under);
+
+  const TextureDrawQuad* out_texture_draw_quad =
+      TextureDrawQuad::MaterialCast(output->quad_list.ElementAt(4));
+  EXPECT_EQ(rect5, out_texture_draw_quad->rect);
+  EXPECT_EQ(rect5, out_texture_draw_quad->visible_rect);
+  EXPECT_EQ(needs_blending, out_texture_draw_quad->needs_blending);
+  EXPECT_EQ(resource_id5, out_texture_draw_quad->resource_id);
+  EXPECT_EQ(gfx::BoundingRect(tex_coord_top_left, tex_coord_bottom_right),
+            out_texture_draw_quad->GetNormalizedTexCoords(gfx::Size(1, 1)));
+  EXPECT_EQ(background_color, out_texture_draw_quad->background_color);
+  EXPECT_EQ(nearest_neighbor, out_texture_draw_quad->nearest_neighbor);
+  EXPECT_EQ(secure_output_only, out_texture_draw_quad->secure_output_only);
+
+  const TextureDrawQuad* out_rounded_display_mask_quad =
+      TextureDrawQuad::MaterialCast(output->quad_list.ElementAt(5));
+  EXPECT_EQ(rect7, out_rounded_display_mask_quad->rect);
+  EXPECT_EQ(rect7, out_rounded_display_mask_quad->visible_rect);
+  EXPECT_EQ(needs_blending7, out_rounded_display_mask_quad->needs_blending);
+  EXPECT_EQ(resource_id7, out_rounded_display_mask_quad->resource_id);
+  EXPECT_EQ(
+      gfx::BoundingRect(tex_coord_top_left, tex_coord_bottom_right),
+      out_rounded_display_mask_quad->GetNormalizedTexCoords(gfx::Size(1, 1)));
+  EXPECT_EQ(origin_rounded_display_mask_radius,
+            out_rounded_display_mask_quad->rounded_display_masks_info
+                .radii[TextureDrawQuad::RoundedDisplayMasksInfo::
+                           kOriginRoundedDisplayMaskIndex]);
+  EXPECT_EQ(other_rounded_display_mask_radius,
+            out_rounded_display_mask_quad->rounded_display_masks_info
+                .radii[TextureDrawQuad::RoundedDisplayMasksInfo::
+                           kOtherRoundedDisplayMaskIndex]);
+  EXPECT_EQ(is_horizontally_positioned,
+            out_rounded_display_mask_quad->rounded_display_masks_info
+                .is_horizontally_positioned);
+}
+
+TEST_F(CompositingStructTraitsTest, SharedElementDrawQuadValid) {
+  auto render_pass = CompositorRenderPass::Create();
+  render_pass->SetNew(CompositorRenderPassId{1}, gfx::Rect(0, 0, 100, 100),
+                      gfx::Rect(0, 0, 100, 100), gfx::Transform());
+  SharedQuadState* sqs = render_pass->CreateAndAppendSharedQuadState();
+
+  blink::ViewTransitionToken transition_token;
+  ViewTransitionElementResourceId resource_id(transition_token, 1u, false);
+
+  auto* quad = render_pass->CreateAndAppendDrawQuad<SharedElementDrawQuad>();
+  quad->SetNew(sqs, gfx::Rect(0, 0, 100, 100), gfx::Rect(0, 0, 100, 100),
+               resource_id);
+
+  std::unique_ptr<CompositorRenderPass> output;
+  EXPECT_TRUE(mojo::test::SerializeAndDeserialize<mojom::CompositorRenderPass>(
+      render_pass, output));
+  ASSERT_TRUE(output);
+  ASSERT_EQ(1u, output->quad_list.size());
+  const auto* out_quad =
+      SharedElementDrawQuad::MaterialCast(output->quad_list.ElementAt(0));
+  ASSERT_TRUE(out_quad);
+  EXPECT_EQ(resource_id, out_quad->element_resource_id);
+  EXPECT_TRUE(out_quad->element_resource_id.IsValid());
+}
+
+TEST_F(CompositingStructTraitsTest, SharedElementDrawQuadInvalid) {
+  auto render_pass = CompositorRenderPass::Create();
+  render_pass->SetNew(CompositorRenderPassId{1}, gfx::Rect(0, 0, 100, 100),
+                      gfx::Rect(0, 0, 100, 100), gfx::Transform());
+  SharedQuadState* sqs = render_pass->CreateAndAppendSharedQuadState();
+
+  // Create an invalid (default-constructed) ViewTransitionElementResourceId.
+  ViewTransitionElementResourceId invalid_resource_id;
+
+  auto* quad = render_pass->CreateAndAppendDrawQuad<SharedElementDrawQuad>();
+  quad->SetNew(sqs, gfx::Rect(0, 0, 100, 100), gfx::Rect(0, 0, 100, 100),
+               invalid_resource_id);
+
+  std::unique_ptr<CompositorRenderPass> output;
+  // Should fail IPC deserialization because element_resource_id is invalid.
+  EXPECT_FALSE(mojo::test::SerializeAndDeserialize<mojom::CompositorRenderPass>(
+      render_pass, output));
+}
+
+TEST_F(CompositingStructTraitsTest, SurfaceId) {
+  static constexpr FrameSinkId frame_sink_id(1337, 1234);
+  static LocalSurfaceId local_surface_id(0xfbadbeef,
+                                         base::UnguessableToken::Create());
+  SurfaceId input(frame_sink_id, local_surface_id);
+  SurfaceId output;
+  mojo::test::SerializeAndDeserialize<mojom::SurfaceId>(input, output);
+  EXPECT_EQ(frame_sink_id, output.frame_sink_id());
+  EXPECT_EQ(local_surface_id, output.local_surface_id());
+}
+
+TEST_F(CompositingStructTraitsTest, OffsetTag) {
+  constexpr OffsetTag input(base::Token(1, 1));
+  OffsetTag output;
+
+  mojo::test::SerializeAndDeserialize<mojom::OffsetTag>(input, output);
+  EXPECT_EQ(input, output);
+}
+
+TEST_F(CompositingStructTraitsTest, OffsetTagValue) {
+  constexpr OffsetTag kTag(base::Token(1, 1));
+  OffsetTagValue input = {kTag, {5.0f, 7.7f}};
+  OffsetTagValue output;
+
+  mojo::test::SerializeAndDeserialize<mojom::OffsetTagValue>(input, output);
+  EXPECT_EQ(input.tag, output.tag);
+  EXPECT_EQ(input.offset, output.offset);
+}
+
+TEST_F(CompositingStructTraitsTest, OffsetTagDefinition) {
+  SurfaceId surface_id(
+      FrameSinkId(1337, 1234),
+      LocalSurfaceId(0xfbadbeef, base::UnguessableToken::Create()));
+
+  OffsetTagDefinition input;
+  input.tag = OffsetTag(base::Token(1, 1));
+  input.provider = SurfaceRange(surface_id);
+  input.constraints.min_offset = {-20.4f, -89.3f};
+  input.constraints.max_offset = {60.4f, 489.3f};
+
+  OffsetTagDefinition output;
+  mojo::test::SerializeAndDeserialize<mojom::OffsetTagDefinition>(input,
+                                                                  output);
+  EXPECT_EQ(input.tag, output.tag);
+  EXPECT_EQ(input.provider, output.provider);
+  EXPECT_EQ(input.constraints.min_offset, output.constraints.min_offset);
+  EXPECT_EQ(input.constraints.max_offset, output.constraints.max_offset);
+}
+
+TEST_F(CompositingStructTraitsTest, TransferableResource) {
+  const ResourceId id(1337);
+  const SharedImageFormat format = SinglePlaneFormat::kALPHA_8;
+  const gfx::Size size(1234, 5678);
+  const int8_t mailbox_name[GL_MAILBOX_SIZE_CHROMIUM] = {
+      0, 9, 8, 7, 6, 5, 4, 3, 2, 1, 9, 7, 5, 3, 1, 2};
+  const gpu::CommandBufferNamespace command_buffer_namespace = gpu::IN_PROCESS;
+  const gpu::CommandBufferId command_buffer_id(
+      gpu::CommandBufferId::FromUnsafeValue(0xdeadbeef));
+  const uint64_t release_count = 0xdeadbeefdeadL;
+  const uint32_t texture_target = 1337;
+  const TransferableResource::SynchronizationType sync_type =
+      TransferableResource::SynchronizationType::kGpuCommandsCompleted;
+  const bool is_software = false;
+  const bool is_overlay_candidate = true;
+
+  gpu::Mailbox mailbox;
+  mailbox.SetName(mailbox_name);
+
+  gpu::SharedImageUsageSet usage;
+  if (is_overlay_candidate) {
+    usage |= gpu::SHARED_IMAGE_USAGE_SCANOUT;
+  }
+
+  gpu::SharedImageMetadata metadata{
+      .format = format,
+      .size = size,
+      .surface_origin = kBottomLeft_GrSurfaceOrigin,
+      .alpha_type = kPremul_SkAlphaType,
+      .usage = usage};
+  gpu::SyncToken sync_token = gpu::SyncToken(command_buffer_namespace,
+                                             command_buffer_id, release_count);
+  sync_token.SetVerifyFlush();
+
+  scoped_refptr<gpu::ClientSharedImage> shared_image =
+      gpu::ClientSharedImage::CreateForTesting(
+          mailbox, metadata, gpu::SyncToken(), texture_target, is_software);
+
+  TransferableResource input = TransferableResource::Make(
+      shared_image, TransferableResource::ResourceSource::kTest, sync_token);
+  input.id = id;
+  input.synchronization_type = sync_type;
+
+  TransferableResource output;
+  mojo::test::SerializeAndDeserialize<mojom::TransferableResource>(input,
+                                                                   output);
+
+  EXPECT_EQ(id, output.id);
+  EXPECT_EQ(format, output.GetFormat());
+  EXPECT_EQ(size, output.GetSize());
+  EXPECT_EQ(mailbox, output.mailbox());
+  EXPECT_EQ(sync_token, output.sync_token());
+  EXPECT_EQ(texture_target, output.texture_target());
+  EXPECT_EQ(sync_type, output.synchronization_type);
+  EXPECT_EQ(is_software, output.GetIsSoftware());
+  EXPECT_EQ(is_overlay_candidate, output.GetIsOverlayCandidate());
+  EXPECT_EQ(kBottomLeft_GrSurfaceOrigin, output.GetOrigin());
+}
+
+TEST_F(CompositingStructTraitsTest, SharedImageFormatWithSinglePlane) {
+  SharedImageFormat input = SinglePlaneFormat::kR_8;
+  SharedImageFormat output;
+  mojo::test::SerializeAndDeserialize<mojom::SharedImageFormat>(input, output);
+  EXPECT_EQ(input, output);
+}
+
+TEST_F(CompositingStructTraitsTest, SharedImageFormatWithMultiPlane) {
+  SharedImageFormat input = MultiPlaneFormat::kNV12;
+  SharedImageFormat output;
+  mojo::test::SerializeAndDeserialize<mojom::SharedImageFormat>(input, output);
+  EXPECT_EQ(input, output);
+}
+
+TEST_F(CompositingStructTraitsTest, SharedImageFormatWithUnknownPlane) {
+  SharedImageFormat input = SharedImageFormat();
+  SharedImageFormat output;
+  EXPECT_CHECK_DEATH(
+      mojo::test::SerializeAndDeserialize<mojom::SharedImageFormat>(input,
+                                                                    output));
+}
+
+TEST_F(CompositingStructTraitsTest, CopyOutputResult_EmptyBitmap) {
+  auto input = std::make_unique<CopyOutputResult>(
+      CopyOutputRequest::ResultFormat::RGBA,
+      CopyOutputRequest::ResultDestination::kSystemMemory,
+      CopyOutputResult::Error::kUnknown);
+  std::unique_ptr<CopyOutputResult> output;
+  mojo::test::SerializeAndDeserialize<mojom::CopyOutputResult>(input, output);
+
+  EXPECT_TRUE(output->IsEmpty());
+  EXPECT_EQ(output->format(), CopyOutputResult::Format::RGBA);
+  EXPECT_EQ(output->destination(),
+            CopyOutputResult::Destination::kSystemMemory);
+  EXPECT_TRUE(output->rect().IsEmpty());
+  auto scoped_bitmap = output->ScopedAccessSkBitmap();
+  auto bitmap = scoped_bitmap.bitmap();
+  EXPECT_FALSE(bitmap.readyToDraw());
+  EXPECT_EQ(output->GetSharedImage().get(), nullptr);
+}
+
+TEST_F(CompositingStructTraitsTest, CopyOutputResult_EmptyTexture) {
+  auto input = std::make_unique<CopyOutputResult>(
+      CopyOutputRequest::ResultFormat::RGBA,
+      CopyOutputRequest::ResultDestination::kSharedImage,
+      CopyOutputResult::Error::kUnknown);
+  EXPECT_TRUE(input->IsEmpty());
+
+  std::unique_ptr<CopyOutputResult> output;
+  mojo::test::SerializeAndDeserialize<mojom::CopyOutputResult>(input, output);
+
+  EXPECT_TRUE(output->IsEmpty());
+  EXPECT_EQ(output->format(), CopyOutputResult::Format::RGBA);
+  EXPECT_EQ(output->destination(), CopyOutputResult::Destination::kSharedImage);
+  EXPECT_TRUE(output->rect().IsEmpty());
+  EXPECT_EQ(output->GetSharedImage().get(), nullptr);
+}
+
+TEST_F(CompositingStructTraitsTest, CopyOutputResult_Bitmap) {
+  const gfx::Rect result_rect(42, 43, 7, 8);
+  SkBitmap bitmap;
+  const sk_sp<SkColorSpace> adobe_rgb =
+      SkColorSpace::MakeRGB(SkNamedTransferFn::kSRGB, SkNamedGamut::kAdobeRGB);
+  bitmap.allocPixels(SkImageInfo::MakeN32Premul(7, 8, adobe_rgb));
+  bitmap.eraseARGB(123, 213, 77, 33);
+  TrackedElementRects tracked_element_rects;
+  tracked_element_rects[TrackedElementFeature::kTrackedElementFeatureMax] = {
+      {base::Token(1, 1), gfx::Rect(40, 40, 20, 20),
+       /*should_add_to_compositor_frame_metadata=*/true}};
+  std::unique_ptr<CopyOutputResult> input =
+      std::make_unique<CopyOutputSkBitmapResult>(result_rect,
+                                                 std::move(bitmap));
+  input->SetTrackedElementRects(tracked_element_rects);
+
+  std::unique_ptr<CopyOutputResult> output;
+  mojo::test::SerializeAndDeserialize<mojom::CopyOutputResult>(input, output);
+
+  EXPECT_FALSE(output->IsEmpty());
+  EXPECT_EQ(output->format(), CopyOutputResult::Format::RGBA);
+  EXPECT_EQ(output->destination(),
+            CopyOutputResult::Destination::kSystemMemory);
+  EXPECT_EQ(output->rect(), result_rect);
+  EXPECT_EQ(output->GetSharedImage().get(), nullptr);
+
+  auto scoped_bitmap = output->ScopedAccessSkBitmap();
+  auto out_bitmap = scoped_bitmap.bitmap();
+  EXPECT_TRUE(out_bitmap.readyToDraw());
+  EXPECT_EQ(out_bitmap.width(), result_rect.width());
+  EXPECT_EQ(out_bitmap.height(), result_rect.height());
+
+  // Check that the pixels are the same as the input and the color spaces are
+  // equivalent.
+  SkBitmap expected_bitmap;
+  expected_bitmap.allocPixels(SkImageInfo::MakeN32Premul(7, 8, adobe_rgb));
+  expected_bitmap.eraseARGB(123, 213, 77, 33);
+  EXPECT_EQ(expected_bitmap.computeByteSize(), out_bitmap.computeByteSize());
+  UNSAFE_TODO(EXPECT_EQ(
+      0, std::memcmp(expected_bitmap.getPixels(), out_bitmap.getPixels(),
+                     expected_bitmap.computeByteSize())));
+  EXPECT_TRUE(SkColorSpace::Equals(expected_bitmap.colorSpace(),
+                                   out_bitmap.colorSpace()));
+
+  EXPECT_EQ(output->GetTrackedElementRects(), tracked_element_rects);
+}
+
+TEST_F(CompositingStructTraitsTest, TrackedElementRects) {
+  TrackedElementRects input;
+  const auto token1 = base::Token(1, 1);
+  const auto token2 = base::Token(2, 2);
+  const gfx::Rect rect1(1, 2, 3, 4);
+  const gfx::Rect rect2(5, 6, 7, 8);
+  const blink::FrameToken frame_token = blink::LocalFrameToken();
+  const blink::LocalFrameToken parent_frame_token = blink::LocalFrameToken();
+
+  input[TrackedElementFeature::kTrackedElementFeatureMax] = {
+      TrackedElementRect(token1, rect1,
+                         /*should_add_to_compositor_frame_metadata=*/true,
+                         /*should_exclude_fixed_and_sticky_occlusions=*/true,
+                         frame_token, parent_frame_token),
+      TrackedElementRect(token2, rect2,
+                         /*should_add_to_compositor_frame_metadata=*/false,
+                         /*should_exclude_fixed_and_sticky_occlusions=*/false,
+                         std::nullopt, std::nullopt)};
+
+  TrackedElementRects output;
+  mojo::test::SerializeAndDeserialize<mojom::TrackedElementRects>(input,
+                                                                  output);
+
+  EXPECT_EQ(input, output);
+  EXPECT_EQ(output[TrackedElementFeature::kTrackedElementFeatureMax].size(),
+            2u);
+  EXPECT_TRUE(output[TrackedElementFeature::kTrackedElementFeatureMax][0]
+                  .should_add_to_compositor_frame_metadata);
+  EXPECT_TRUE(output[TrackedElementFeature::kTrackedElementFeatureMax][0]
+                  .should_exclude_fixed_and_sticky_occlusions);
+  EXPECT_FALSE(output[TrackedElementFeature::kTrackedElementFeatureMax][1]
+                   .should_add_to_compositor_frame_metadata);
+  EXPECT_FALSE(output[TrackedElementFeature::kTrackedElementFeatureMax][1]
+                   .should_exclude_fixed_and_sticky_occlusions);
+}
+
+TEST_F(CompositingStructTraitsTest, CopyOutputResult_Texture) {
+  const gfx::Rect result_rect(12, 34, 56, 78);
+  const gfx::ColorSpace result_color_space =
+      gfx::ColorSpace::CreateDisplayP3D65();
+  const int8_t mailbox_name[GL_MAILBOX_SIZE_CHROMIUM] = {
+      0, 9, 8, 7, 6, 5, 4, 3, 2, 1, 9, 7, 5, 3, 1, 3};
+  gpu::SyncToken sync_token(gpu::CommandBufferNamespace::GPU_IO,
+                            gpu::CommandBufferId::FromUnsafeValue(0x123),
+                            71234838);
+  sync_token.SetVerifyFlush();
+  base::RunLoop run_loop;
+  ReleaseCallback release_callback = base::BindOnce(
+      [](base::OnceClosure quit_closure,
+         const gpu::SyncToken& expected_sync_token,
+         const gpu::SyncToken& sync_token, bool is_lost) {
+        EXPECT_EQ(expected_sync_token, sync_token);
+        EXPECT_TRUE(is_lost);
+        std::move(quit_closure).Run();
+      },
+      run_loop.QuitClosure(), sync_token);
+  gpu::Mailbox mailbox;
+  mailbox.SetName(mailbox_name);
+  std::unique_ptr<CopyOutputResult> input =
+      std::make_unique<CopyOutputSharedImageResult>(
+          CopyOutputResult::Format::RGBA, result_rect, mailbox,
+          result_color_space, "CopyOutputResult_Texture",
+          std::move(release_callback));
+
+  std::unique_ptr<CopyOutputResult> output;
+  mojo::test::SerializeAndDeserialize<mojom::CopyOutputResult>(input, output);
+
+  EXPECT_FALSE(output->IsEmpty());
+  EXPECT_EQ(output->format(), CopyOutputResult::Format::RGBA);
+  EXPECT_EQ(output->destination(), CopyOutputResult::Destination::kSharedImage);
+  EXPECT_EQ(output->rect(), result_rect);
+  ASSERT_NE(output->GetSharedImage().get(), nullptr);
+  EXPECT_EQ(output->GetSharedImage()->mailbox(), mailbox);
+  EXPECT_EQ(output->GetSharedImage()->color_space(), result_color_space);
+
+  ReleaseCallback out_callback = output->TakeSharedImageOwnership();
+
+  ASSERT_TRUE(out_callback);
+  std::move(out_callback).Run(sync_token, true /* is_lost */);
+
+  // If the CopyOutputResult callback is called (which is the intended
+  // behaviour), this will exit. Otherwise, this test will time out and fail.
+  run_loop.Run();
+}
+
+TEST_F(CompositingStructTraitsTest, TreesInVizTimingTest) {
+  // Set some appropriately ordered ttimestamps.
+  const base::TimeTicks start_update_display_tree = base::TimeTicks::Now();
+  const base::TimeTicks start_prepare_to_draw =
+      start_update_display_tree + base::Seconds(1);
+  const base::TimeTicks start_draw_layers =
+      start_prepare_to_draw + base::Seconds(2);
+  const base::TimeTicks submit_compositor_frame =
+      start_draw_layers + base::Seconds(3);
+  TreesInVizTiming timestamps = {start_update_display_tree,
+                                 start_prepare_to_draw, start_draw_layers,
+                                 submit_compositor_frame};
+  TreesInVizTiming out;
+  EXPECT_TRUE(mojo::test::SerializeAndDeserialize<mojom::TreesInVizTiming>(
+      timestamps, out));
+  EXPECT_EQ(start_update_display_tree, out.start_update_display_tree);
+  EXPECT_EQ(start_prepare_to_draw, out.start_prepare_to_draw);
+  EXPECT_EQ(start_draw_layers, out.start_draw_layers);
+  EXPECT_EQ(submit_compositor_frame, out.submit_compositor_frame);
+}
+
+TEST_F(CompositingStructTraitsTest, TreesInVizUnsetTest) {
+  TreesInVizTiming timestamps;
+  TreesInVizTiming out;
+  EXPECT_TRUE(mojo::test::SerializeAndDeserialize<mojom::TreesInVizTiming>(
+      timestamps, out));
+}
+
+TEST_F(CompositingStructTraitsTest, TreesInVizBadTimestampOrderTest) {
+  const base::TimeTicks start_update_display_tree = base::TimeTicks::Now();
+  const base::TimeTicks start_prepare_to_draw =
+      start_update_display_tree + base::Seconds(1);
+  const base::TimeTicks start_draw_layers;  // imagine we didn't set these
+  const base::TimeTicks submit_compositor_frame;
+  TreesInVizTiming timestamps = {start_update_display_tree,
+                                 start_prepare_to_draw, start_draw_layers,
+                                 submit_compositor_frame};
+  TreesInVizTiming out;
+  EXPECT_FALSE(mojo::test::SerializeAndDeserialize<mojom::TreesInVizTiming>(
+      timestamps, out));
+}
+
+TEST_F(CompositingStructTraitsTest, RegionCaptureBounds) {
+  RegionCaptureBounds input;
+  const RegionCaptureCropId crop_id = base::Token::CreateRandom();
+  const gfx::Rect bounds(10, 20, 30, 40);
+  input.Set(crop_id, bounds);
+
+  RegionCaptureBounds output;
+  EXPECT_TRUE(mojo::test::SerializeAndDeserialize<mojom::RegionCaptureBounds>(
+      input, output));
+  EXPECT_EQ(input, output);
+}
+
+TEST_F(CompositingStructTraitsTest, VerticalScrollDirection) {
+  const VerticalScrollDirection input = VerticalScrollDirection::kDown;
+  VerticalScrollDirection output;
+  EXPECT_TRUE(
+      mojo::test::SerializeAndDeserialize<mojom::VerticalScrollDirection>(
+          input, output));
+  EXPECT_EQ(input, output);
+}
+
+TEST_F(CompositingStructTraitsTest, FrameTimingDetails) {
+  FrameTimingDetails input;
+  input.received_compositor_frame_timestamp = base::TimeTicks::Now();
+  input.embedded_frame_timestamp = base::TimeTicks::Now();
+  input.draw_start_timestamp = base::TimeTicks::Now();
+  input.swap_timings.swap_start = base::TimeTicks::Now();
+  input.swap_timings.swap_end = base::TimeTicks::Now();
+  input.presentation_feedback.timestamp = base::TimeTicks::Now();
+  input.presentation_feedback.interval = base::Milliseconds(16);
+  input.presentation_feedback.flags = gfx::PresentationFeedback::kVSync;
+  input.frame_id = BeginFrameId(1, 2);
+
+  FrameTimingDetails output;
+  EXPECT_TRUE(mojo::test::SerializeAndDeserialize<mojom::FrameTimingDetails>(
+      input, output));
+  EXPECT_EQ(input.received_compositor_frame_timestamp,
+            output.received_compositor_frame_timestamp);
+  EXPECT_EQ(input.embedded_frame_timestamp, output.embedded_frame_timestamp);
+  EXPECT_EQ(input.draw_start_timestamp, output.draw_start_timestamp);
+  EXPECT_EQ(input.swap_timings.swap_start, output.swap_timings.swap_start);
+  EXPECT_EQ(input.swap_timings.swap_end, output.swap_timings.swap_end);
+  EXPECT_EQ(input.presentation_feedback.timestamp,
+            output.presentation_feedback.timestamp);
+  EXPECT_EQ(input.presentation_feedback.interval,
+            output.presentation_feedback.interval);
+  EXPECT_EQ(input.presentation_feedback.flags,
+            output.presentation_feedback.flags);
+  EXPECT_EQ(input.frame_id, output.frame_id);
+}
+
+TEST_F(CompositingStructTraitsTest, BlitRequest) {
+  BlitRequest input(gfx::Point(1, 2), LetterboxingBehavior::kLetterbox,
+                    gpu::ClientSharedImage::CreateForTesting(),
+                    gpu::SyncToken(), true);
+
+  BlitRequest output;
+  EXPECT_TRUE(
+      mojo::test::SerializeAndDeserialize<mojom::BlitRequest>(input, output));
+}
+
+TEST_F(CompositingStructTraitsTest, FrameIntervalInputs) {
+  FrameIntervalInputs input;
+  input.frame_time = base::TimeTicks::Now();
+  input.has_input = true;
+  input.has_user_input = false;
+  input.major_scroll_speed_in_pixels_per_second = 100.5f;
+  ContentFrameIntervalInfo info;
+  info.type = ContentFrameIntervalType::kVideo;
+  info.frame_interval = base::Milliseconds(16);
+  info.duplicate_count = 2;
+  input.content_interval_info.push_back(info);
+  input.has_only_content_frame_interval_updates = true;
+
+  FrameIntervalInputs output;
+  EXPECT_TRUE(mojo::test::SerializeAndDeserialize<mojom::FrameIntervalInputs>(
+      input, output));
+  EXPECT_EQ(input.frame_time, output.frame_time);
+  EXPECT_EQ(input.has_input, output.has_input);
+  EXPECT_EQ(input.has_user_input, output.has_user_input);
+  EXPECT_EQ(input.major_scroll_speed_in_pixels_per_second,
+            output.major_scroll_speed_in_pixels_per_second);
+  ASSERT_EQ(input.content_interval_info.size(),
+            output.content_interval_info.size());
+  EXPECT_EQ(input.content_interval_info[0].type,
+            output.content_interval_info[0].type);
+  EXPECT_EQ(input.content_interval_info[0].frame_interval,
+            output.content_interval_info[0].frame_interval);
+  EXPECT_EQ(input.content_interval_info[0].duplicate_count,
+            output.content_interval_info[0].duplicate_count);
+  EXPECT_EQ(input.has_only_content_frame_interval_updates,
+            output.has_only_content_frame_interval_updates);
+}
+
+TEST_F(CompositingStructTraitsTest, Thread) {
+  Thread input{base::PlatformThreadId::ForTest(123), Thread::Type::kCompositor};
+  Thread output;
+  EXPECT_TRUE(
+      mojo::test::SerializeAndDeserialize<mojom::Thread>(input, output));
+  EXPECT_EQ(input, output);
+}
+
+TEST_F(CompositingStructTraitsTest, FrameSinkBundleId) {
+  FrameSinkBundleId input(1, 2);
+  FrameSinkBundleId output;
+  EXPECT_TRUE(mojo::test::SerializeAndDeserialize<mojom::FrameSinkBundleId>(
+      input, output));
+  EXPECT_EQ(input, output);
+}
+
+namespace {
+
+auto AnyTimeTicks() {
+  return fuzztest::Map(
+      [](int64_t micros) {
+        return base::TimeTicks() + base::Microseconds(micros);
+      },
+      fuzztest::Arbitrary<int64_t>());
+}
+
+auto AnyTimeDelta() {
+  return fuzztest::Map(
+      [](int64_t micros) { return base::Microseconds(micros); },
+      fuzztest::Arbitrary<int64_t>());
+}
+
+class CompositingStructTraitsFuzzTest {
+ public:
+  CompositingStructTraitsFuzzTest() = default;
+  ~CompositingStructTraitsFuzzTest() = default;
+
+  void BeginFrameArgsFuzz(const BeginFrameArgs& input);
+  void BeginFrameAckFuzz(const BeginFrameAck& input);
+  void BeginFrameAckAsValueFuzz(const BeginFrameAck& input);
+  void SurfaceIdFuzz(const SurfaceId& input);
+  void FrameSinkIdFuzz(const FrameSinkId& input);
+  void LocalSurfaceIdFuzz(const LocalSurfaceId& input);
+  void SurfaceRangeFuzz(const SurfaceRange& input);
+  void FilterOperationFuzz(const cc::FilterOperation& input);
+  void FilterOperationsFuzz(const cc::FilterOperations& input);
+  void SelectionFuzz(const Selection<gfx::SelectionBound>& input);
+  void SharedQuadStateFuzz(const SharedQuadState& input);
+  void CompositorFrameTransitionDirectiveFuzz(
+      const CompositorFrameTransitionDirective& input);
+  void CompositorFrameFuzz(const CompositorFrame& input);
+  void ViewTransitionElementResourceIdFuzz(
+      const ViewTransitionElementResourceId& input);
+  void SurfaceInfoFuzz(const SurfaceInfo& input);
+  void ReturnedResourceFuzz(const ReturnedResource& input);
+  void CompositorFrameMetadataFuzz(const CompositorFrameMetadata& input);
+  void CompositorRenderPassFuzz(
+      const std::unique_ptr<CompositorRenderPass>& input);
+  void OffsetTagFuzz(const OffsetTag& input);
+  void OffsetTagValueFuzz(const OffsetTagValue& input);
+  void OffsetTagDefinitionFuzz(const OffsetTagDefinition& input);
+  void SharedImageFormatFuzz(const SharedImageFormat& input);
+  void TransferableResourceFuzz(const TransferableResource& input);
+  void CopyOutputResultFuzz(const std::unique_ptr<CopyOutputResult>& input);
+  void TreesInVizTimingFuzz(const TreesInVizTiming& input);
+  void RegionCaptureBoundsFuzz(const RegionCaptureBounds& input);
+  void VerticalScrollDirectionFuzz(VerticalScrollDirection input);
+  void FrameTimingDetailsFuzz(const FrameTimingDetails& input);
+  void TrackedElementRectsFuzz(const TrackedElementRects& input);
+  void BlitRequestFuzz(BlitRequest input);
+  void FrameIntervalInputsFuzz(const FrameIntervalInputs& input);
+  void ThreadFuzz(const Thread& input);
+  void FrameSinkBundleIdFuzz(const FrameSinkBundleId& input);
+
+ private:
+  // StructTraits for compositing can return deserialization error traces,
+  // which have an implicit dependency on a functioning task environment to
+  // look up the current `MessageDispatchContext`.
+  base::test::SingleThreadTaskEnvironment task_environment_;
+};
+
+auto AnyBeginFrameId() {
+  return fuzztest::ConstructorOf<BeginFrameId>(fuzztest::Arbitrary<uint64_t>(),
+                                               fuzztest::Arbitrary<uint64_t>());
+}
+
+auto AnyBeginFrameAck() {
+  return fuzztest::ConstructorOf<BeginFrameAck>(
+      /*source_id=*/fuzztest::Arbitrary<uint64_t>(),
+      /*sequence_number=*/
+      fuzztest::InRange<uint64_t>(1, std::numeric_limits<uint64_t>::max()),
+      /*has_damage=*/fuzztest::Arbitrary<bool>(),
+      /*trace_id=*/fuzztest::Arbitrary<int64_t>());
+}
+
+auto AnyBeginFrameArgs() {
+  return fuzztest::Map(
+      [](base::TimeTicks frame_time, base::TimeTicks deadline,
+         base::TimeDelta interval, base::TimeDelta unthrottled_interval,
+         BeginFrameId frame_id, int64_t trace_id, base::TimeTicks dispatch_time,
+         base::TimeTicks client_arrival_time,
+         BeginFrameArgs::BeginFrameArgsType type, bool on_critical_path,
+         bool animate_only, uint64_t frames_throttled_since_last) {
+        BeginFrameArgs args;
+        args.frame_time = frame_time;
+        args.deadline = deadline;
+        args.interval = interval;
+        args.unthrottled_interval = unthrottled_interval;
+        args.frame_id = frame_id;
+        args.trace_id = trace_id;
+        args.dispatch_time = dispatch_time;
+        args.client_arrival_time = client_arrival_time;
+        args.type = type;
+        args.on_critical_path = on_critical_path;
+        args.animate_only = animate_only;
+        args.frames_throttled_since_last = frames_throttled_since_last;
+        return args;
+      },
+      AnyTimeTicks(), AnyTimeTicks(), AnyTimeDelta(), AnyTimeDelta(),
+      AnyBeginFrameId(), fuzztest::Arbitrary<int64_t>(), AnyTimeTicks(),
+      AnyTimeTicks(),
+      fuzztest::ElementOf({BeginFrameArgs::INVALID, BeginFrameArgs::NORMAL,
+                           BeginFrameArgs::MISSED}),
+      fuzztest::Arbitrary<bool>(), fuzztest::Arbitrary<bool>(),
+      fuzztest::Arbitrary<uint64_t>());
+}
+
+void CompositingStructTraitsFuzzTest::BeginFrameArgsFuzz(
+    const BeginFrameArgs& input) {
+  BeginFrameArgs output;
+  mojo::test::SerializeAndDeserialize<mojom::BeginFrameArgs>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, BeginFrameArgsFuzz)
+    .WithDomains(AnyBeginFrameArgs());
+
+void CompositingStructTraitsFuzzTest::BeginFrameAckFuzz(
+    const BeginFrameAck& input) {
+  BeginFrameAck output;
+  mojo::test::SerializeAndDeserialize<mojom::BeginFrameAck>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, BeginFrameAckFuzz)
+    .WithDomains(AnyBeginFrameAck());
+
+void CompositingStructTraitsFuzzTest::BeginFrameAckAsValueFuzz(
+    const BeginFrameAck& input) {
+  base::trace_event::TracedValue dict;
+  input.AsValueInto(&dict);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, BeginFrameAckAsValueFuzz)
+    .WithDomains(AnyBeginFrameAck());
+
+auto AnyFrameSinkId() {
+  return fuzztest::ConstructorOf<FrameSinkId>(fuzztest::Arbitrary<uint32_t>(),
+                                              fuzztest::Arbitrary<uint32_t>());
+}
+
+auto AnyUnguessableToken() {
+  return fuzztest::Map(
+      [](uint64_t high, uint64_t low) {
+        return base::UnguessableToken::Deserialize(high, low).value_or(
+            base::UnguessableToken::Create());
+      },
+      fuzztest::Arbitrary<uint64_t>(), fuzztest::Arbitrary<uint64_t>());
+}
+
+auto AnyLocalSurfaceId() {
+  return fuzztest::ConstructorOf<LocalSurfaceId>(
+      fuzztest::Arbitrary<uint32_t>(), fuzztest::Arbitrary<uint32_t>(),
+      AnyUnguessableToken());
+}
+
+auto AnySurfaceId() {
+  return fuzztest::ConstructorOf<SurfaceId>(AnyFrameSinkId(),
+                                            AnyLocalSurfaceId());
+}
+
+void CompositingStructTraitsFuzzTest::SurfaceIdFuzz(const SurfaceId& input) {
+  SurfaceId output;
+  mojo::test::SerializeAndDeserialize<mojom::SurfaceId>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, SurfaceIdFuzz)
+    .WithDomains(AnySurfaceId());
+
+void CompositingStructTraitsFuzzTest::FrameSinkIdFuzz(
+    const FrameSinkId& input) {
+  FrameSinkId output;
+  mojo::test::SerializeAndDeserialize<mojom::FrameSinkId>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, FrameSinkIdFuzz)
+    .WithDomains(AnyFrameSinkId());
+
+void CompositingStructTraitsFuzzTest::LocalSurfaceIdFuzz(
+    const LocalSurfaceId& input) {
+  LocalSurfaceId output;
+  mojo::test::SerializeAndDeserialize<mojom::LocalSurfaceId>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, LocalSurfaceIdFuzz)
+    .WithDomains(AnyLocalSurfaceId());
+
+auto AnySurfaceRange() {
+  return fuzztest::ConstructorOf<SurfaceRange>(
+      fuzztest::OptionalOf(AnySurfaceId()), AnySurfaceId());
+}
+
+void CompositingStructTraitsFuzzTest::SurfaceRangeFuzz(
+    const SurfaceRange& input) {
+  SurfaceRange output;
+  mojo::test::SerializeAndDeserialize<mojom::SurfaceRange>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, SurfaceRangeFuzz)
+    .WithDomains(
+        fuzztest::Filter([](const SurfaceRange& r) { return r.IsValid(); },
+                         AnySurfaceRange()));
+
+auto AnyPoint() {
+  return fuzztest::ConstructorOf<gfx::Point>(fuzztest::Arbitrary<int>(),
+                                             fuzztest::Arbitrary<int>());
+}
+
+auto AnyRect() {
+  return fuzztest::ConstructorOf<gfx::Rect>(
+      fuzztest::Arbitrary<int>(), fuzztest::Arbitrary<int>(),
+      fuzztest::InRange(0, 10000), fuzztest::InRange(0, 10000));
+}
+auto AnySkColor4f() {
+  return fuzztest::Map(
+      [](float r, float g, float b, float a) { return SkColor4f{r, g, b, a}; },
+      fuzztest::Arbitrary<float>(), fuzztest::Arbitrary<float>(),
+      fuzztest::Arbitrary<float>(), fuzztest::Arbitrary<float>());
+}
+
+auto AnyFilterOperation() {
+  return fuzztest::OneOf(
+      fuzztest::Map(cc::FilterOperation::CreateGrayscaleFilter,
+                    fuzztest::Arbitrary<float>()),
+      fuzztest::Map(cc::FilterOperation::CreateSepiaFilter,
+                    fuzztest::Arbitrary<float>()),
+      fuzztest::Map(cc::FilterOperation::CreateSaturateFilter,
+                    fuzztest::Arbitrary<float>()),
+      fuzztest::Map(cc::FilterOperation::CreateHueRotateFilter,
+                    fuzztest::Arbitrary<float>()),
+      fuzztest::Map(cc::FilterOperation::CreateInvertFilter,
+                    fuzztest::Arbitrary<float>()),
+      fuzztest::Map(cc::FilterOperation::CreateBrightnessFilter,
+                    fuzztest::Arbitrary<float>()),
+      fuzztest::Map(cc::FilterOperation::CreateContrastFilter,
+                    fuzztest::Arbitrary<float>()),
+      fuzztest::Map(cc::FilterOperation::CreateOpacityFilter,
+                    fuzztest::Arbitrary<float>()),
+      fuzztest::Map(
+          cc::FilterOperation::CreateBlurFilter, fuzztest::Arbitrary<float>(),
+          fuzztest::ElementOf({SkTileMode::kClamp, SkTileMode::kRepeat,
+                               SkTileMode::kMirror, SkTileMode::kDecal})),
+      fuzztest::Map(cc::FilterOperation::CreateDropShadowFilter, AnyPoint(),
+                    fuzztest::Arbitrary<float>(), AnySkColor4f()),
+      fuzztest::Map(cc::FilterOperation::CreateColorMatrixFilter,
+                    fuzztest::Arbitrary<cc::FilterOperation::Matrix>()),
+      fuzztest::Map(cc::FilterOperation::CreateZoomFilter,
+                    fuzztest::Arbitrary<float>(), fuzztest::Arbitrary<int>()),
+      fuzztest::Map(cc::FilterOperation::CreateReferenceFilter,
+                    fuzztest::Just<sk_sp<cc::PaintFilter>>(nullptr)),
+      fuzztest::Map(cc::FilterOperation::CreateSaturatingBrightnessFilter,
+                    fuzztest::Arbitrary<float>()),
+      fuzztest::Map(cc::FilterOperation::CreateAlphaThresholdFilter,
+                    fuzztest::VectorOf(AnyRect())),
+      fuzztest::Map(cc::FilterOperation::CreateOffsetFilter, AnyPoint()));
+}
+
+auto AnyFilterOperations() {
+  return fuzztest::Map(
+      [](std::vector<cc::FilterOperation> operations) {
+        return cc::FilterOperations(std::move(operations));
+      },
+      fuzztest::VectorOf(AnyFilterOperation()));
+}
+
+void CompositingStructTraitsFuzzTest::FilterOperationFuzz(
+    const cc::FilterOperation& input) {
+  cc::FilterOperation output;
+  mojo::test::SerializeAndDeserialize<mojom::FilterOperation>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, FilterOperationFuzz)
+    .WithDomains(AnyFilterOperation());
+
+void CompositingStructTraitsFuzzTest::FilterOperationsFuzz(
+    const cc::FilterOperations& input) {
+  cc::FilterOperations output;
+  mojo::test::SerializeAndDeserialize<mojom::FilterOperations>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, FilterOperationsFuzz)
+    .WithDomains(AnyFilterOperations());
+
+auto AnyPointF() {
+  return fuzztest::ConstructorOf<gfx::PointF>(fuzztest::Arbitrary<float>(),
+                                              fuzztest::Arbitrary<float>());
+}
+
+auto AnySelectionBound() {
+  return fuzztest::Map(
+      [](gfx::SelectionBound::Type type, gfx::PointF edge_start,
+         gfx::PointF edge_end, bool visible) {
+        gfx::SelectionBound bound;
+        bound.set_type(type);
+        bound.SetEdge(edge_start, edge_end);
+        bound.set_visible(visible);
+        return bound;
+      },
+      fuzztest::ElementOf(
+          {gfx::SelectionBound::LEFT, gfx::SelectionBound::RIGHT,
+           gfx::SelectionBound::CENTER, gfx::SelectionBound::EMPTY}),
+      AnyPointF(), AnyPointF(), fuzztest::Arbitrary<bool>());
+}
+
+auto AnySelection() {
+  return fuzztest::Map(
+      [](const gfx::SelectionBound& start, const gfx::SelectionBound& end) {
+        Selection<gfx::SelectionBound> selection;
+        selection.start = start;
+        selection.end = end;
+        return selection;
+      },
+      AnySelectionBound(), AnySelectionBound());
+}
+
+void CompositingStructTraitsFuzzTest::SelectionFuzz(
+    const Selection<gfx::SelectionBound>& input) {
+  Selection<gfx::SelectionBound> output;
+  mojo::test::SerializeAndDeserialize<mojom::Selection>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, SelectionFuzz)
+    .WithDomains(AnySelection());
+
+auto AnySharedQuadState() {
+  return fuzztest::Map(
+      [](const gfx::Rect& quad_layer_rect,
+         const gfx::Rect& visible_quad_layer_rect,
+         const std::optional<gfx::Rect>& clip_rect, bool are_contents_opaque,
+         float opacity, int sorting_context_id, uint32_t layer_id,
+         bool is_fast_rounded_corner) {
+        SharedQuadState sqs;
+        sqs.SetAll(gfx::Transform(), quad_layer_rect, visible_quad_layer_rect,
+                   gfx::MaskFilterInfo(), clip_rect, are_contents_opaque,
+                   opacity, SkBlendMode::kSrcOver, sorting_context_id, layer_id,
+                   is_fast_rounded_corner);
+        return sqs;
+      },
+      AnyRect(), AnyRect(), fuzztest::OptionalOf(AnyRect()),
+      fuzztest::Arbitrary<bool>(), fuzztest::Arbitrary<float>(),
+      fuzztest::Arbitrary<int>(), fuzztest::Arbitrary<uint32_t>(),
+      fuzztest::Arbitrary<bool>());
+}
+
+void CompositingStructTraitsFuzzTest::SharedQuadStateFuzz(
+    const SharedQuadState& input) {
+  SharedQuadState output;
+  mojo::test::SerializeAndDeserialize<mojom::SharedQuadState>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, SharedQuadStateFuzz)
+    .WithDomains(AnySharedQuadState());
+
+auto AnyCompositorFrameTransitionDirective() {
+  return fuzztest::Map(
+      [](uint32_t sequence_id, bool maybe_cross_frame_sink) {
+        blink::ViewTransitionToken transition_token;
+        return CompositorFrameTransitionDirective::CreateSave(
+            transition_token, maybe_cross_frame_sink, sequence_id, {}, {},
+            false);
+      },
+      fuzztest::Arbitrary<uint32_t>(), fuzztest::Arbitrary<bool>());
+}
+
+void CompositingStructTraitsFuzzTest::CompositorFrameTransitionDirectiveFuzz(
+    const CompositorFrameTransitionDirective& input) {
+  CompositorFrameTransitionDirective output;
+  mojo::test::SerializeAndDeserialize<
+      mojom::CompositorFrameTransitionDirective>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest,
+            CompositorFrameTransitionDirectiveFuzz)
+    .WithDomains(AnyCompositorFrameTransitionDirective());
+
+auto AnyCompositorFrame() {
+  return fuzztest::Map(
+      [](float device_scale_factor) {
+        auto frame = CompositorFrameBuilder().AddDefaultRenderPass().Build();
+        frame.metadata.device_scale_factor = device_scale_factor;
+        return frame;
+      },
+      fuzztest::Positive<float>());
+}
+
+void CompositingStructTraitsFuzzTest::CompositorFrameFuzz(
+    const CompositorFrame& input) {
+  CompositorFrame output;
+  mojo::test::SerializeAndDeserialize<mojom::CompositorFrame>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, CompositorFrameFuzz)
+    .WithDomains(AnyCompositorFrame());
+
+auto AnyViewTransitionElementResourceId() {
+  return fuzztest::Map(
+      [](uint64_t high, uint64_t low, uint32_t local_id,
+         bool for_scope_snapshot) {
+        return ViewTransitionElementResourceId(
+            blink::ViewTransitionToken(
+                base::UnguessableToken::Deserialize(high, low).value_or(
+                    base::UnguessableToken::Create())),
+            local_id, for_scope_snapshot);
+      },
+      fuzztest::Arbitrary<uint64_t>(), fuzztest::Arbitrary<uint64_t>(),
+      fuzztest::InRange<uint32_t>(1, std::numeric_limits<uint32_t>::max()),
+      fuzztest::Arbitrary<bool>());
+}
+void CompositingStructTraitsFuzzTest::ViewTransitionElementResourceIdFuzz(
+    const ViewTransitionElementResourceId& input) {
+  ViewTransitionElementResourceId output;
+  mojo::test::SerializeAndDeserialize<mojom::ViewTransitionElementResourceId>(
+      input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest,
+            ViewTransitionElementResourceIdFuzz)
+    .WithDomains(AnyViewTransitionElementResourceId());
+
+auto AnySurfaceInfo() {
+  return fuzztest::Map(
+      [](const SurfaceId& id, float device_scale_factor, int w, int h) {
+        return SurfaceInfo(id, device_scale_factor, gfx::Size(w, h));
+      },
+      AnySurfaceId(), fuzztest::Positive<float>(), fuzztest::InRange(1, 10000),
+      fuzztest::InRange(1, 10000));
+}
+void CompositingStructTraitsFuzzTest::SurfaceInfoFuzz(
+    const SurfaceInfo& input) {
+  SurfaceInfo output;
+  mojo::test::SerializeAndDeserialize<mojom::SurfaceInfo>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, SurfaceInfoFuzz)
+    .WithDomains(fuzztest::Filter(
+        [](const SurfaceInfo& info) { return info.is_valid(); },
+        AnySurfaceInfo()));
+
+auto AnyReturnedResource() {
+  return fuzztest::Map(
+      [](uint32_t id, int count, bool lost) {
+        ReturnedResource res;
+        res.id = ResourceId(id);
+        res.count = count;
+        res.lost = lost;
+        return res;
+      },
+      fuzztest::InRange<uint32_t>(1, 1000000), fuzztest::Arbitrary<int>(),
+      fuzztest::Arbitrary<bool>());
+}
+void CompositingStructTraitsFuzzTest::ReturnedResourceFuzz(
+    const ReturnedResource& input) {
+  ReturnedResource output;
+  mojo::test::SerializeAndDeserialize<mojom::ReturnedResource>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, ReturnedResourceFuzz)
+    .WithDomains(AnyReturnedResource());
+
+auto AnyCompositorFrameMetadata() {
+  return fuzztest::Map(
+      [](float device_scale_factor, const gfx::PointF& root_scroll_offset,
+         float page_scale_factor, uint32_t frame_token) {
+        CompositorFrameMetadata metadata;
+        metadata.device_scale_factor = device_scale_factor;
+        metadata.root_scroll_offset = root_scroll_offset;
+        metadata.page_scale_factor = page_scale_factor;
+        metadata.frame_token = frame_token;
+        return metadata;
+      },
+      fuzztest::Positive<float>(), AnyPointF(), fuzztest::Arbitrary<float>(),
+      fuzztest::InRange<uint32_t>(1, std::numeric_limits<uint32_t>::max()));
+}
+void CompositingStructTraitsFuzzTest::CompositorFrameMetadataFuzz(
+    const CompositorFrameMetadata& input) {
+  CompositorFrameMetadata output;
+  mojo::test::SerializeAndDeserialize<mojom::CompositorFrameMetadata>(input,
+                                                                      output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, CompositorFrameMetadataFuzz)
+    .WithDomains(AnyCompositorFrameMetadata());
+
+auto AnyCompositorRenderPass() {
+  return fuzztest::Map(
+      [](uint64_t id, const gfx::Rect& output_rect) {
+        auto pass = CompositorRenderPass::Create();
+        pass->SetNew(CompositorRenderPassId(id), output_rect, output_rect,
+                     gfx::Transform());
+        return pass;
+      },
+      fuzztest::InRange<uint64_t>(1, std::numeric_limits<uint64_t>::max()),
+      AnyRect());
+}
+void CompositingStructTraitsFuzzTest::CompositorRenderPassFuzz(
+    const std::unique_ptr<CompositorRenderPass>& input) {
+  std::unique_ptr<CompositorRenderPass> output;
+  mojo::test::SerializeAndDeserialize<mojom::CompositorRenderPass>(input,
+                                                                   output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, CompositorRenderPassFuzz)
+    .WithDomains(AnyCompositorRenderPass());
+
+auto AnyOffsetTag() {
+  return fuzztest::Map(
+      [](uint64_t high, uint64_t low) {
+        return OffsetTag(base::Token(high, low));
+      },
+      fuzztest::Arbitrary<uint64_t>(), fuzztest::Arbitrary<uint64_t>());
+}
+
+void CompositingStructTraitsFuzzTest::OffsetTagFuzz(const OffsetTag& input) {
+  OffsetTag output;
+  mojo::test::SerializeAndDeserialize<mojom::OffsetTag>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, OffsetTagFuzz)
+    .WithDomains(AnyOffsetTag());
+
+auto AnyVector2dF() {
+  return fuzztest::ConstructorOf<gfx::Vector2dF>(fuzztest::Arbitrary<float>(),
+                                                 fuzztest::Arbitrary<float>());
+}
+
+auto AnyOffsetTagValue() {
+  return fuzztest::Map(
+      [](const OffsetTag& tag, const gfx::Vector2dF& offset) {
+        return OffsetTagValue{tag, offset};
+      },
+      AnyOffsetTag(), AnyVector2dF());
+}
+
+void CompositingStructTraitsFuzzTest::OffsetTagValueFuzz(
+    const OffsetTagValue& input) {
+  OffsetTagValue output;
+  mojo::test::SerializeAndDeserialize<mojom::OffsetTagValue>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, OffsetTagValueFuzz)
+    .WithDomains(fuzztest::Filter(
+        [](const OffsetTagValue& value) { return value.IsValid(); },
+        AnyOffsetTagValue()));
+
+auto AnyOffsetTagConstraints() {
+  return fuzztest::Map(
+      [](float min_x, float max_x, float min_y, float max_y) {
+        return OffsetTagConstraints(min_x, max_x, min_y, max_y);
+      },
+      fuzztest::NonPositive<float>(), fuzztest::NonNegative<float>(),
+      fuzztest::NonPositive<float>(), fuzztest::NonNegative<float>());
+}
+auto AnyOffsetTagDefinition() {
+  return fuzztest::Map(
+      [](const OffsetTag& tag, const SurfaceRange& provider,
+         const OffsetTagConstraints& constraints) {
+        return OffsetTagDefinition(tag, provider, constraints);
+      },
+      AnyOffsetTag(), AnySurfaceRange(), AnyOffsetTagConstraints());
+}
+
+void CompositingStructTraitsFuzzTest::OffsetTagDefinitionFuzz(
+    const OffsetTagDefinition& input) {
+  OffsetTagDefinition output;
+  mojo::test::SerializeAndDeserialize<mojom::OffsetTagDefinition>(input,
+                                                                  output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, OffsetTagDefinitionFuzz)
+    .WithDomains(fuzztest::Filter(
+        [](const OffsetTagDefinition& def) { return def.IsValid(); },
+        AnyOffsetTagDefinition()));
+
+auto AnySharedImageFormat() {
+  return fuzztest::Map(
+      [](bool is_single, uint8_t pc, uint8_t sub, uint8_t cf) {
+        if (is_single) {
+          return SharedImageFormat(SinglePlaneFormat::kRGBA_8888);
+        } else {
+          return SharedImageFormat::MultiPlane(
+              static_cast<SharedImageFormat::PlaneConfig>(pc % 5),
+              static_cast<SharedImageFormat::Subsampling>(sub % 3),
+              static_cast<SharedImageFormat::ChannelFormat>(cf % 4));
+        }
+      },
+      fuzztest::Arbitrary<bool>(), fuzztest::Arbitrary<uint8_t>(),
+      fuzztest::Arbitrary<uint8_t>(), fuzztest::Arbitrary<uint8_t>());
+}
+
+void CompositingStructTraitsFuzzTest::SharedImageFormatFuzz(
+    const SharedImageFormat& input) {
+  SharedImageFormat output;
+  mojo::test::SerializeAndDeserialize<mojom::SharedImageFormat>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, SharedImageFormatFuzz)
+    .WithDomains(AnySharedImageFormat());
+
+auto AnyTransferableResource() {
+  return fuzztest::Map(
+      [](uint32_t id) {
+        TransferableResource res;
+        res.id = ResourceId(id);
+        res.set_shared_image(gpu::ClientSharedImage::CreateForTesting());
+        return res;
+      },
+      fuzztest::InRange<uint32_t>(1, 1000000));
+}
+void CompositingStructTraitsFuzzTest::TransferableResourceFuzz(
+    const TransferableResource& input) {
+  TransferableResource output;
+  mojo::test::SerializeAndDeserialize<mojom::TransferableResource>(input,
+                                                                   output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, TransferableResourceFuzz)
+    .WithDomains(AnyTransferableResource());
+
+auto AnyCopyOutputResult() {
+  return fuzztest::Map(
+      [](CopyOutputResult::Destination destination,
+         CopyOutputResult::Error error) {
+        return std::make_unique<CopyOutputResult>(
+            CopyOutputResult::Format::RGBA, destination, error);
+      },
+      fuzztest::ElementOf({CopyOutputResult::Destination::kSystemMemory,
+                           CopyOutputResult::Destination::kSharedImage}),
+      fuzztest::ElementOf({CopyOutputResult::Error::kUnknown,
+                           CopyOutputResult::Error::kTimeout,
+                           CopyOutputResult::Error::kNone}));
+}
+
+void CompositingStructTraitsFuzzTest::CopyOutputResultFuzz(
+    const std::unique_ptr<CopyOutputResult>& input) {
+  std::unique_ptr<CopyOutputResult> output;
+  mojo::test::SerializeAndDeserialize<mojom::CopyOutputResult>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, CopyOutputResultFuzz)
+    .WithDomains(AnyCopyOutputResult());
+
+auto AnyTreesInVizTiming() {
+  return fuzztest::Map(
+      [](const base::TimeTicks t1, const base::TimeTicks t2,
+         const base::TimeTicks t3, const base::TimeTicks t4) {
+        TreesInVizTiming timing;
+        timing.start_update_display_tree = t1;
+        timing.start_prepare_to_draw = t2;
+        timing.start_draw_layers = t3;
+        timing.submit_compositor_frame = t4;
+        return timing;
+      },
+      AnyTimeTicks(), AnyTimeTicks(), AnyTimeTicks(), AnyTimeTicks());
+}
+
+void CompositingStructTraitsFuzzTest::TreesInVizTimingFuzz(
+    const TreesInVizTiming& input) {
+  TreesInVizTiming output;
+  mojo::test::SerializeAndDeserialize<mojom::TreesInVizTiming>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, TreesInVizTimingFuzz)
+    .WithDomains(AnyTreesInVizTiming());
+
+auto AnyToken() {
+  return fuzztest::ConstructorOf<base::Token>(fuzztest::Arbitrary<uint64_t>(),
+                                              fuzztest::Arbitrary<uint64_t>());
+}
+
+auto AnySwapTimings() {
+  return fuzztest::ConstructorOf<gfx::SwapTimings>(AnyTimeTicks(),
+                                                   AnyTimeTicks());
+}
+
+auto AnyPresentationFeedback() {
+  return fuzztest::ConstructorOf<gfx::PresentationFeedback>(
+      AnyTimeTicks(), AnyTimeDelta(), fuzztest::Arbitrary<uint32_t>());
+}
+
+auto AnyRegionCaptureBounds() {
+  return fuzztest::Map(
+      [](std::vector<std::pair<base::Token, gfx::Rect>> bounds) {
+        return RegionCaptureBounds(
+            base::flat_map<RegionCaptureCropId, gfx::Rect>(std::move(bounds)));
+      },
+      fuzztest::VectorOf(fuzztest::PairOf(AnyToken(), AnyRect())));
+}
+
+auto AnyVerticalScrollDirection() {
+  return fuzztest::ElementOf({VerticalScrollDirection::kNull,
+                              VerticalScrollDirection::kDown,
+                              VerticalScrollDirection::kUp});
+}
+
+auto AnyFrameTimingDetails() {
+  return fuzztest::Map(
+      [](base::TimeTicks received, base::TimeTicks embedded,
+         base::TimeTicks draw_start, const gfx::SwapTimings& swap_timings,
+         const gfx::PresentationFeedback& feedback, BeginFrameId frame_id,
+         base::TimeTicks start_update, base::TimeTicks start_prepare,
+         base::TimeTicks start_draw, base::TimeTicks submit) {
+        FrameTimingDetails details;
+        details.received_compositor_frame_timestamp = received;
+        details.embedded_frame_timestamp = embedded;
+        details.draw_start_timestamp = draw_start;
+        details.swap_timings = swap_timings;
+        details.presentation_feedback = feedback;
+        details.frame_id = frame_id;
+        details.start_update_display_tree = start_update;
+        details.start_prepare_to_draw = start_prepare;
+        details.start_draw_layers = start_draw;
+        details.submit_compositor_frame = submit;
+        return details;
+      },
+      AnyTimeTicks(), AnyTimeTicks(), AnyTimeTicks(), AnySwapTimings(),
+      AnyPresentationFeedback(), AnyBeginFrameId(), AnyTimeTicks(),
+      AnyTimeTicks(), AnyTimeTicks(), AnyTimeTicks());
+}
+
+auto AnyTrackedElementId() {
+  return AnyToken();
+}
+
+auto AnyFrameToken() {
+  return fuzztest::OneOf(
+      fuzztest::Map(
+          [](const base::UnguessableToken& token) {
+            return blink::FrameToken(blink::LocalFrameToken(token));
+          },
+          AnyUnguessableToken()),
+      fuzztest::Map(
+          [](const base::UnguessableToken& token) {
+            return blink::FrameToken(blink::RemoteFrameToken(token));
+          },
+          AnyUnguessableToken()));
+}
+
+auto AnyTrackedElementRect() {
+  return fuzztest::Map(
+      [](const TrackedElementId& id, const gfx::Rect& bounds,
+         bool add_to_metadata, bool exclude_occlusion,
+         const std::optional<blink::FrameToken>& token,
+         const std::optional<base::UnguessableToken>& parent_token) {
+        std::optional<blink::LocalFrameToken> parent_local_token;
+        if (parent_token) {
+          parent_local_token = blink::LocalFrameToken(*parent_token);
+        }
+        return TrackedElementRect(id, bounds, add_to_metadata,
+                                  exclude_occlusion, token, parent_local_token);
+      },
+      AnyTrackedElementId(), AnyRect(), fuzztest::Arbitrary<bool>(),
+      fuzztest::Arbitrary<bool>(), fuzztest::OptionalOf(AnyFrameToken()),
+      fuzztest::OptionalOf(AnyUnguessableToken()));
+}
+
+auto AnyTrackedElementRects() {
+  return fuzztest::Map(
+      [](std::vector<std::pair<TrackedElementFeature,
+                               std::vector<TrackedElementRect>>> data) {
+        return TrackedElementRects(data.begin(), data.end());
+      },
+      fuzztest::VectorOf(fuzztest::PairOf(
+          fuzztest::ElementOf(
+              {TrackedElementFeature::kTrackedElementFeatureMax}),
+          fuzztest::VectorOf(AnyTrackedElementRect()))));
+}
+
+auto AnyLetterboxingBehavior() {
+  return fuzztest::ElementOf({LetterboxingBehavior::kDoNotLetterbox,
+                              LetterboxingBehavior::kLetterbox});
+}
+
+auto AnyBlitRequest() {
+  return fuzztest::Map(
+      [](const gfx::Point& offset, LetterboxingBehavior behavior,
+         bool populates_mappable) {
+        return BlitRequest(offset, behavior,
+                           gpu::ClientSharedImage::CreateForTesting(),
+                           gpu::SyncToken(), populates_mappable);
+      },
+      AnyPoint(), AnyLetterboxingBehavior(), fuzztest::Arbitrary<bool>());
+}
+
+auto AnyContentFrameIntervalType() {
+  return fuzztest::ElementOf(
+      {ContentFrameIntervalType::kVideo,
+       ContentFrameIntervalType::kAnimatingImage,
+       ContentFrameIntervalType::kScrollBarFadeOutAnimation,
+       ContentFrameIntervalType::kCompositorScroll});
+}
+
+auto AnyContentFrameIntervalInfo() {
+  return fuzztest::Map(
+      [](ContentFrameIntervalType type, base::TimeDelta interval,
+         uint32_t count) {
+        ContentFrameIntervalInfo info;
+        info.type = type;
+        info.frame_interval = interval;
+        info.duplicate_count = count;
+        return info;
+      },
+      AnyContentFrameIntervalType(), AnyTimeDelta(),
+      fuzztest::Arbitrary<uint32_t>());
+}
+
+auto AnyFrameIntervalInputs() {
+  return fuzztest::Map(
+      [](base::TimeTicks time, bool has_input, bool has_user_input, float speed,
+         std::vector<ContentFrameIntervalInfo> info, bool only_updates) {
+        FrameIntervalInputs inputs;
+        inputs.frame_time = time;
+        inputs.has_input = has_input;
+        inputs.has_user_input = has_user_input;
+        inputs.major_scroll_speed_in_pixels_per_second = speed;
+        inputs.content_interval_info = std::move(info);
+        inputs.has_only_content_frame_interval_updates = only_updates;
+        return inputs;
+      },
+      AnyTimeTicks(), fuzztest::Arbitrary<bool>(), fuzztest::Arbitrary<bool>(),
+      fuzztest::Arbitrary<float>(),
+      fuzztest::VectorOf(AnyContentFrameIntervalInfo()),
+      fuzztest::Arbitrary<bool>());
+}
+
+auto AnyThreadType() {
+  return fuzztest::ElementOf({Thread::Type::kMain, Thread::Type::kIO,
+                              Thread::Type::kCompositor, Thread::Type::kVideo,
+                              Thread::Type::kOther});
+}
+
+auto AnyThread() {
+  return fuzztest::Map(
+      [](int id, Thread::Type type) {
+        return Thread{base::PlatformThreadId::ForTest(id), type};
+      },
+      fuzztest::Arbitrary<int>(), AnyThreadType());
+}
+
+auto AnyFrameSinkBundleId() {
+  return fuzztest::ConstructorOf<FrameSinkBundleId>(
+      fuzztest::Arbitrary<uint32_t>(), fuzztest::Arbitrary<uint32_t>());
+}
+
+void CompositingStructTraitsFuzzTest::RegionCaptureBoundsFuzz(
+    const RegionCaptureBounds& input) {
+  RegionCaptureBounds output;
+  mojo::test::SerializeAndDeserialize<mojom::RegionCaptureBounds>(input,
+                                                                  output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, RegionCaptureBoundsFuzz)
+    .WithDomains(AnyRegionCaptureBounds());
+
+void CompositingStructTraitsFuzzTest::VerticalScrollDirectionFuzz(
+    VerticalScrollDirection input) {
+  VerticalScrollDirection output;
+  mojo::test::SerializeAndDeserialize<mojom::VerticalScrollDirection>(input,
+                                                                      output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, VerticalScrollDirectionFuzz)
+    .WithDomains(AnyVerticalScrollDirection());
+
+void CompositingStructTraitsFuzzTest::FrameTimingDetailsFuzz(
+    const FrameTimingDetails& input) {
+  FrameTimingDetails output;
+  mojo::test::SerializeAndDeserialize<mojom::FrameTimingDetails>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, FrameTimingDetailsFuzz)
+    .WithDomains(AnyFrameTimingDetails());
+
+void CompositingStructTraitsFuzzTest::TrackedElementRectsFuzz(
+    const TrackedElementRects& input) {
+  TrackedElementRects output;
+  mojo::test::SerializeAndDeserialize<mojom::TrackedElementRects>(input,
+                                                                  output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, TrackedElementRectsFuzz)
+    .WithDomains(AnyTrackedElementRects());
+
+void CompositingStructTraitsFuzzTest::BlitRequestFuzz(BlitRequest input) {
+  BlitRequest output;
+  mojo::test::SerializeAndDeserialize<mojom::BlitRequest>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, BlitRequestFuzz)
+    .WithDomains(AnyBlitRequest());
+
+void CompositingStructTraitsFuzzTest::FrameIntervalInputsFuzz(
+    const FrameIntervalInputs& input) {
+  FrameIntervalInputs output;
+  mojo::test::SerializeAndDeserialize<mojom::FrameIntervalInputs>(input,
+                                                                  output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, FrameIntervalInputsFuzz)
+    .WithDomains(AnyFrameIntervalInputs());
+
+void CompositingStructTraitsFuzzTest::ThreadFuzz(const Thread& input) {
+  Thread output;
+  mojo::test::SerializeAndDeserialize<mojom::Thread>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, ThreadFuzz)
+    .WithDomains(AnyThread());
+
+void CompositingStructTraitsFuzzTest::FrameSinkBundleIdFuzz(
+    const FrameSinkBundleId& input) {
+  FrameSinkBundleId output;
+  mojo::test::SerializeAndDeserialize<mojom::FrameSinkBundleId>(input, output);
+}
+FUZZ_TEST_F(CompositingStructTraitsFuzzTest, FrameSinkBundleIdFuzz)
+    .WithDomains(AnyFrameSinkBundleId());
+
+}  // namespace
+
+}  // namespace viz

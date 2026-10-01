@@ -1,0 +1,119 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.ui.default_browser_promo;
+
+import android.content.pm.ResolveInfo;
+import android.text.TextUtils;
+
+import org.chromium.base.ContextUtils;
+import org.chromium.base.FeatureList;
+import org.chromium.base.PackageManagerUtils;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.util.ChromePackageNameVariant;
+import org.chromium.chrome.browser.util.DefaultBrowserInfo;
+import org.chromium.chrome.browser.util.DefaultBrowserInfo.DefaultBrowserState;
+
+/**
+ * A utility class providing information regarding the default browser states of the system to
+ * facilitate testing and interacting with external states by {@link PackageManagerUtils}
+ */
+@NullMarked
+public class DefaultBrowserStateProvider {
+
+    /**
+     * This decides whether the promo should be promoted base on the current default browser state.
+     * Return false if any of following criteria is met:
+     *      1. Any chrome, including pre-stable, has been set as default.
+     *      2. On Chrome stable, no default browser is set and multiple chrome channels are
+     *         installed.
+     *
+     * @return boolean if promo dialog can be displayed.
+     */
+    public boolean shouldShowPromo() {
+        int state = getCurrentDefaultBrowserState(true);
+        if (state == DefaultBrowserState.CHROME_DEFAULT) {
+            return false;
+        } else if (state == DefaultBrowserState.NO_DEFAULT) {
+            // Criteria 2
+            return !isChromeStable() || !isChromePreStableInstalled();
+        } else { // other default
+            // Criteria 1
+            return state != DefaultBrowserState.OTHER_CHROME_DEFAULT;
+        }
+    }
+
+    public @DefaultBrowserState int getCurrentDefaultBrowserState() {
+        return getCurrentDefaultBrowserState(false);
+    }
+
+    /**
+     * Gets the current default browser state. After {@link
+     * ChromeFeatureList.sDefaultBrowserPromoEntryPoint} enable by default, The parameter will be
+     * deleted and the no the no-arg method can also be removed.
+     *
+     * @param needIdentifyOtherChromeDefault Determines whether the result includes
+     *     OTHER_CHROME_DEFAULT.
+     * @return The current default browser state.
+     */
+    public @DefaultBrowserState int getCurrentDefaultBrowserState(
+            boolean needIdentifyOtherChromeDefault) {
+        DefaultBrowserInfo.DefaultInfo defaultBrowserInfo =
+                DefaultBrowserInfo.getDefaultBrowserInfoCacheResult();
+        return defaultBrowserInfo != null
+                ? defaultBrowserInfo.defaultBrowserState
+                : getCurrentDefaultBrowserState(
+                        getDefaultWebBrowserActivityResolveInfo(), needIdentifyOtherChromeDefault);
+    }
+
+    @DefaultBrowserState
+    int getCurrentDefaultBrowserState(
+            @Nullable ResolveInfo info, boolean needIdentifyOtherChromeDefault) {
+        if (info == null || info.match == 0) return DefaultBrowserState.NO_DEFAULT; // no default
+
+        String defaultPackage = info.activityInfo.packageName;
+        String myPackage = ContextUtils.getApplicationContext().getPackageName();
+        if (TextUtils.equals(myPackage, defaultPackage)) {
+            return DefaultBrowserState.CHROME_DEFAULT; // Already default
+        }
+
+        //  Check if it is a different Chrome (e.g. the user is in Canary, but Stable is the
+        // default).
+        boolean isFrePromoEnabled =
+                FeatureList.isNativeInitialized()
+                        && ChromeFeatureList.isEnabled(ChromeFeatureList.DEFAULT_BROWSER_PROMO_FRE);
+
+        if (ChromeFeatureList.sDefaultBrowserPromoEntryPoint.isEnabled()
+                || isFrePromoEnabled
+                || needIdentifyOtherChromeDefault) {
+            if (ChromePackageNameVariant.CHROME_PACKAGE_NAMES.contains(defaultPackage)) {
+                return DefaultBrowserState.OTHER_CHROME_DEFAULT;
+            }
+        }
+
+        return DefaultBrowserState.OTHER_DEFAULT;
+    }
+
+    boolean isChromeStable() {
+        return ContextUtils.getApplicationContext()
+                .getPackageName()
+                .equals(ChromePackageNameVariant.CHROME_STABLE_PACKAGE_NAME);
+    }
+
+    boolean isChromePreStableInstalled() {
+        for (ResolveInfo info : PackageManagerUtils.queryAllWebBrowsersInfo()) {
+            if (ChromePackageNameVariant.CHROME_PRE_STABLE_PACKAGE_NAMES.contains(
+                    info.activityInfo.packageName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Nullable ResolveInfo getDefaultWebBrowserActivityResolveInfo() {
+        return DefaultBrowserInfo.getDefaultWebBrowserInfo();
+    }
+}

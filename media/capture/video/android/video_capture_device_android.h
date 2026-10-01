@@ -1,0 +1,270 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef MEDIA_CAPTURE_VIDEO_ANDROID_VIDEO_CAPTURE_DEVICE_ANDROID_H_
+#define MEDIA_CAPTURE_VIDEO_ANDROID_VIDEO_CAPTURE_DEVICE_ANDROID_H_
+
+#include <jni.h>
+
+#include <list>
+#include <string>
+
+#include "base/android/scoped_java_ref.h"
+#include "base/containers/flat_map.h"
+#include "base/containers/heap_array.h"
+#include "base/functional/callback.h"
+#include "base/memory/weak_ptr.h"
+#include "base/sequence_checker.h"
+#include "base/synchronization/lock.h"
+#include "base/thread_annotations.h"
+#include "base/threading/thread.h"
+#include "base/time/time.h"
+#include "gpu/config/gpu_driver_bug_workarounds.h"
+#include "gpu/vulkan/vulkan_device_queue.h"
+#include "gpu/vulkan/vulkan_implementation.h"
+#include "gpu/vulkan/vulkan_ycbcr_info.h"
+#include "media/capture/capture_export.h"
+#include "media/capture/video/video_capture_device.h"
+#include "media/capture/video/video_capture_gpu_channel_host.h"
+
+namespace base {
+class Location;
+class SingleThreadTaskRunner;
+}  // namespace base
+
+namespace gpu {
+enum class SkiaBackendType;
+}  // namespace gpu
+
+namespace media {
+
+// VideoCaptureDevice on Android. The VideoCaptureDevice API's are called
+// by VideoCaptureManager on its own thread, while OnFrameAvailable is called
+// on JAVA thread (i.e., UI thread). Both will access |state_| and |client_|,
+// but only VideoCaptureManager would change their value.
+class CAPTURE_EXPORT VideoCaptureDeviceAndroid
+    : public VideoCaptureDevice,
+      public VideoCaptureGpuContextLostObserver {
+ public:
+  using HardwareBufferAvailableCallback =
+      base::RepeatingCallback<void(base::android::ScopedHardwareBufferHandle,
+                                   int32_t,
+                                   int32_t,
+                                   int64_t)>;
+
+  // Automatically generated enum to interface with Java world.
+  //
+  // A Java counterpart will be generated for this enum.
+  // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.media
+  enum AndroidImageFormat {
+    // Android graphics ImageFormat mapping, see reference in:
+    // http://developer.android.com/reference/android/graphics/ImageFormat.html
+    ANDROID_IMAGE_FORMAT_NV21 = 17,
+    ANDROID_IMAGE_FORMAT_YUV_420_888 = 35,
+    ANDROID_IMAGE_FORMAT_YV12 = 842094169,
+    ANDROID_IMAGE_FORMAT_UNKNOWN = 0,
+  };
+
+  // A Java counterpart will be generated for this enum.
+  // The values of these are matched with the ones in media::VideoCaptureError
+  // to allow direct static_casting.
+  // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.media
+  enum class AndroidVideoCaptureError {
+    ANDROID_API_1_CAMERA_ERROR_CALLBACK_RECEIVED = 68,
+    ANDROID_API_2_CAMERA_DEVICE_ERROR_RECEIVED = 69,
+    ANDROID_API_2_CAPTURE_SESSION_CONFIGURE_FAILED = 70,
+    ANDROID_API_2_IMAGE_READER_UNEXPECTED_IMAGE_FORMAT = 71,
+    ANDROID_API_2_IMAGE_READER_SIZE_DID_NOT_MATCH_IMAGE_SIZE = 72,
+    ANDROID_API_2_ERROR_RESTARTING_PREVIEW = 73,
+    ANDROID_API_2_ERROR_CONFIGURING_CAMERA = 114,
+  };
+
+  // A Java counterpart will be generated for this enum.
+  // The values of these are matched with the ones in
+  // media::VideoCaptureFrameDropReason to allow direct static_casting.
+  // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.media
+  enum class AndroidVideoCaptureFrameDropReason {
+    ANDROID_API_1_UNEXPECTED_DATA_LENGTH = 8,
+    ANDROID_API_2_ACQUIRED_IMAGE_IS_NULL = 9,
+  };
+
+  VideoCaptureDeviceAndroid() = delete;
+
+  VideoCaptureDeviceAndroid(
+      const VideoCaptureDeviceDescriptor& device_descriptor,
+      const gpu::GpuDriverBugWorkarounds& gpu_workarounds);
+
+  VideoCaptureDeviceAndroid(const VideoCaptureDeviceAndroid&) = delete;
+  VideoCaptureDeviceAndroid& operator=(const VideoCaptureDeviceAndroid&) =
+      delete;
+
+  ~VideoCaptureDeviceAndroid() override;
+
+  static VideoCaptureDevice* Create(
+      const VideoCaptureDeviceDescriptor& device_descriptor);
+
+  // Registers the Java VideoCaptureDevice pointer, used by the rest of the
+  // methods of the class to operate the Java capture code. This method must be
+  // called after the class constructor and before AllocateAndStart().
+  void Init();
+
+  // VideoCaptureDevice implementation.
+  void AllocateAndStart(const VideoCaptureParams& params,
+                        std::unique_ptr<Client> client) override;
+  void StopAndDeAllocate() override;
+  void GetPhotoState(GetPhotoStateCallback callback) override;
+  void SetPhotoOptions(mojom::PhotoSettingsPtr settings,
+                       SetPhotoOptionsCallback callback) override;
+  void TakePhoto(TakePhotoCallback callback) override;
+  void InvalidateBuffers() override;
+
+  // VideoCaptureGpuContextLostObserver implementation.
+  void OnContextLost() override;
+
+  void OnHardwareBufferAvailableOnMainThread(
+      base::android::ScopedHardwareBufferHandle ahb_handle,
+      int32_t data_space,
+      int32_t rotation,
+      int64_t timestamp);
+
+  // Implement org.chromium.media.VideoCapture.Natives.OnI420FrameAvailable.
+  void OnI420FrameAvailable(JNIEnv* env,
+                            const base::android::JavaRef<jobject>& y_buffer,
+                            int32_t y_stride,
+                            const base::android::JavaRef<jobject>& u_buffer,
+                            const base::android::JavaRef<jobject>& v_buffer,
+                            int32_t uv_row_stride,
+                            int32_t uv_pixel_stride,
+                            int32_t width,
+                            int32_t height,
+                            int32_t rotation,
+                            int64_t timestamp,
+                            int32_t data_space);
+
+  // Implement
+  // org.chromium.media.VideoCapture.Natives.onHardwareBufferAvailable.
+  void OnHardwareBufferAvailable(
+      JNIEnv* env,
+      const base::android::JavaRef<jobject>& hardwareBuffer,
+      int32_t data_space,
+      int32_t rotation,
+      int64_t timestamp);
+
+  // Implement org.chromium.media.VideoCapture.Natives.OnError.
+  void OnError(JNIEnv* env,
+               int android_video_capture_error,
+               const base::android::JavaRef<jstring>& message);
+
+  // Implement org.chromium.media.VideoCapture.nativeOnFrameDropped.
+  void OnFrameDropped(JNIEnv* env,
+                      int android_video_capture_frame_drop_reason);
+
+  void OnGetPhotoCapabilitiesReply(
+      JNIEnv* env,
+      int64_t callback_id,
+      const base::android::JavaRef<jobject>& photo_capabilities);
+
+  // Implement org.chromium.media.VideoCapture.nativeOnPhotoTaken.
+  void OnPhotoTaken(JNIEnv* env,
+                    int64_t callback_id,
+                    const base::android::JavaRef<jbyteArray>& data);
+
+  // Implement org.chromium.media.VideoCapture.Natives.onStarted.
+  void OnStarted(JNIEnv* env);
+
+  // Implement
+  // org.chromium.media.VideoCapture.Natives.onInteractiveStateChanged.
+  void OnInteractiveStateChanged(JNIEnv* env, bool is_interactive);
+
+  // Implement
+  // org.chromium.media.VideoCapture.Natives.dCheckCurrentlyOnIncomingTaskRunner.
+  void DCheckCurrentlyOnIncomingTaskRunner(JNIEnv* env);
+
+ protected:
+  // Helper code executed when the frame is available; if it is the first frame,
+  // setup time fluctuation control and process any pending photo requests.
+  void ProcessFirstFrameAvailable(base::TimeTicks current_time);
+
+  // Checks if there is a client and if the |state_| is kConfigured.
+  bool IsClientConfigured();
+
+  // Checks if the incoming frame arrived too early so that is needs to be
+  // dropped. If not, advance the next frame expectation time and return false;
+  bool ThrottleFrame(base::TimeTicks current_time);
+
+  void SendIncomingDataToClient(base::span<const uint8_t> data,
+                                int rotation,
+                                base::TimeTicks reference_time,
+                                base::TimeDelta timestamp,
+                                gfx::ColorSpace color_space);
+
+ private:
+  enum InternalState {
+    kIdle,        // The device is opened but not in use.
+    kConfigured,  // The device has been AllocateAndStart()ed.
+    kError        // Hit error. User needs to recover by destroying the object.
+  };
+
+  VideoPixelFormat GetPixelFormat();
+  void SetErrorState(media::VideoCaptureError error,
+                     const base::Location& from_here,
+                     const std::string& reason);
+
+  void OnInteractiveStateChangedOnMainThread(bool is_interactive);
+
+  void DoGetPhotoState(GetPhotoStateCallback callback);
+  void DoSetPhotoOptions(mojom::PhotoSettingsPtr settings,
+                         SetPhotoOptionsCallback callback);
+  void DoTakePhoto(TakePhotoCallback callback);
+
+  // Thread on which we are created.
+  const scoped_refptr<base::SingleThreadTaskRunner> main_task_runner_;
+
+  // |lock_| protects |state_|, |client_|, |got_first_frame_| and
+  // |photo_requests_queue_| from concurrent access.
+  base::Lock lock_;
+  InternalState state_ = kIdle;
+  std::unique_ptr<VideoCaptureDevice::Client> client_;
+  bool got_first_frame_ = false;
+  // Photo-related requests waiting for |got_first_frame_| to be served. Android
+  // APIs need the device capturing or nearly-capturing to be fully operational.
+  std::list<base::OnceClosure> photo_requests_queue_;
+
+  base::TimeTicks expected_next_frame_time_;
+  base::TimeDelta frame_interval_;
+
+  // List of callbacks for photo API in flight, being served in Java side.
+  base::Lock photo_callbacks_lock_;
+  int64_t nextPhotoRequestId_ = 0;
+  base::flat_map<int64_t, GetPhotoStateCallback> get_photo_state_callbacks_;
+  base::flat_map<int64_t, TakePhotoCallback> take_photo_callbacks_;
+
+  const VideoCaptureDeviceDescriptor device_descriptor_;
+  VideoCaptureFormat capture_format_;
+
+  // Buffer used for copying I420 frame data, to avoid allocations on every frame.
+  base::HeapArray<uint8_t> i420_buffer_;
+
+  // Java VideoCaptureAndroid instance.
+  base::android::ScopedJavaLocalRef<jobject> j_capture_;
+
+  const gpu::GpuDriverBugWorkarounds gpu_workarounds_;
+
+  std::optional<bool> need_ycbcr_info_;
+  gpu::SkiaBackendType skia_backend_;
+  std::optional<gpu::VulkanYCbCrInfo> ycbcr_info_;
+
+  base::TimeTicks first_failed_shared_image_time_;
+  HardwareBufferAvailableCallback hardware_buffer_available_cb_
+      GUARDED_BY(lock_);
+
+  base::WeakPtr<VideoCaptureDeviceAndroid> weak_this_ GUARDED_BY(lock_);
+  SEQUENCE_CHECKER(main_sequence_checker_);
+  base::WeakPtrFactory<VideoCaptureDeviceAndroid> weak_ptr_factory_
+      GUARDED_BY_CONTEXT(main_sequence_checker_){this};
+};
+
+}  // namespace media
+
+#endif  // MEDIA_CAPTURE_VIDEO_ANDROID_VIDEO_CAPTURE_DEVICE_ANDROID_H_

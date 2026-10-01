@@ -1,0 +1,193 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "services/on_device_model/android/model_downloader_android.h"
+
+#include "base/android/jni_android.h"
+#include "base/android/jni_string.h"
+#include "base/functional/bind.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/strings/strcat.h"
+#include "base/types/expected.h"
+#include "components/optimization_guide/core/optimization_guide_util.h"
+#include "services/on_device_model/android/on_device_model_bridge.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "services/on_device_model/android/jni_headers/AiCoreModelDownloaderWrapper_jni.h"
+
+namespace on_device_model {
+
+namespace {
+
+void LogModelDownloadResult(
+    optimization_guide::proto::ModelExecutionFeature feature,
+    base::expected<void, ModelDownloaderAndroid::DownloadFailureReason>
+        failure_reason) {
+  bool success = failure_reason.has_value();
+  base::UmaHistogramBoolean("OnDeviceModel.Android.IsModelDownloadSuccessful",
+                            success);
+  base::UmaHistogramBoolean(
+      base::StrCat(
+          {"OnDeviceModel.Android.IsModelDownloadSuccessful.",
+           optimization_guide::GetStringNameForModelExecutionFeature(feature)}),
+      success);
+  if (!success) {
+    base::UmaHistogramEnumeration(
+        "OnDeviceModel.Android.ModelDownloadFailureReason",
+        failure_reason.error());
+    base::UmaHistogramEnumeration(
+        base::StrCat({"OnDeviceModel.Android.ModelDownloadFailureReason.",
+                      optimization_guide::GetStringNameForModelExecutionFeature(
+                          feature)}),
+        failure_reason.error());
+  }
+}
+
+}  // namespace
+
+ModelDownloaderAndroid::ModelDownloaderAndroid(
+    optimization_guide::proto::ModelExecutionFeature feature,
+    mojom::DownloaderParamsPtr params)
+    : java_downloader_(
+          OnDeviceModelBridge::CreateModelDownloader(feature,
+                                                     std::move(params))),
+      feature_(feature) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  weak_ptr_ = weak_factory_.GetWeakPtr();
+}
+
+ModelDownloaderAndroid::~ModelDownloaderAndroid() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_AiCoreModelDownloaderWrapper_onNativeDestroyed(env, java_downloader_);
+}
+
+void ModelDownloaderAndroid::CheckStatus(
+    OnStatusCheckCompleteCallback callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  CHECK(!on_status_check_callback_) << "CheckStatus() can only be called once.";
+  on_status_check_callback_ = std::move(callback);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_AiCoreModelDownloaderWrapper_checkStatus(
+      env, java_downloader_, reinterpret_cast<intptr_t>(this));
+}
+
+void ModelDownloaderAndroid::StartDownload(
+    OnDownloadCompleteCallback on_download_complete_callback,
+    OnDownloadProgressCallback on_download_progress_callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  CHECK(!on_download_complete_callback_)
+      << "StartDownload() can only be called once.";
+  on_download_complete_callback_ = std::move(on_download_complete_callback);
+  on_download_progress_callback_ = std::move(on_download_progress_callback);
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_AiCoreModelDownloaderWrapper_startDownload(
+      env, java_downloader_, reinterpret_cast<intptr_t>(this));
+}
+
+void ModelDownloaderAndroid::OnAvailable(
+    const std::string& base_model_name,
+    const std::string& base_model_version) {
+  sequence_checker_helper_.PostTask(
+      FROM_HERE,
+      base::BindOnce(&ModelDownloaderAndroid::OnAvailableOnSequence, weak_ptr_,
+                     base_model_name, base_model_version));
+}
+
+void ModelDownloaderAndroid::OnAvailableOnSequence(
+    const std::string& base_model_name,
+    const std::string& base_model_version) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  LogModelDownloadResult(feature_, base::ok());
+  std::move(on_download_complete_callback_)
+      .Run(BaseModelSpec{.name = base_model_name,
+                         .version = base_model_version});
+}
+
+void ModelDownloaderAndroid::OnUnavailable(
+    DownloadFailureReason failure_reason) {
+  sequence_checker_helper_.PostTask(
+      FROM_HERE,
+      base::BindOnce(&ModelDownloaderAndroid::OnUnavailableOnSequence,
+                     weak_ptr_, failure_reason));
+}
+
+void ModelDownloaderAndroid::OnUnavailableOnSequence(
+    DownloadFailureReason failure_reason) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  LogModelDownloadResult(feature_, base::unexpected(failure_reason));
+  std::move(on_download_complete_callback_)
+      .Run(base::unexpected(failure_reason));
+}
+
+void ModelDownloaderAndroid::OnStatusCheckResult(ModelStatus model_status) {
+  sequence_checker_helper_.PostTask(
+      FROM_HERE,
+      base::BindOnce(&ModelDownloaderAndroid::OnStatusCheckResultOnSequence,
+                     weak_ptr_, model_status));
+}
+
+void ModelDownloaderAndroid::OnStatusCheckResultOnSequence(
+    ModelStatus model_status) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  std::move(on_status_check_callback_).Run(model_status);
+}
+
+void ModelDownloaderAndroid::OnDownloadProgress(int64_t downloaded_bytes,
+                                                int64_t total_bytes) {
+  sequence_checker_helper_.PostTask(
+      FROM_HERE,
+      base::BindOnce(&ModelDownloaderAndroid::OnDownloadProgressOnSequence,
+                     weak_ptr_, downloaded_bytes, total_bytes));
+}
+
+void ModelDownloaderAndroid::OnDownloadProgressOnSequence(
+    int64_t downloaded_bytes,
+    int64_t total_bytes) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (on_download_progress_callback_) {
+    on_download_progress_callback_.Run(downloaded_bytes, total_bytes);
+  }
+}
+
+static void JNI_AiCoreModelDownloaderWrapper_OnAvailable(
+    JNIEnv* env,
+    int64_t model_downloader_android,
+    const jni_zero::JavaRef<jstring>& j_name,
+    const jni_zero::JavaRef<jstring>& j_version) {
+  reinterpret_cast<ModelDownloaderAndroid*>(model_downloader_android)
+      ->OnAvailable(base::android::ConvertJavaStringToUTF8(env, j_name),
+                    base::android::ConvertJavaStringToUTF8(env, j_version));
+}
+
+static void JNI_AiCoreModelDownloaderWrapper_OnUnavailable(
+    JNIEnv* env,
+    int64_t model_downloader_android,
+    int32_t j_reason) {
+  reinterpret_cast<ModelDownloaderAndroid*>(model_downloader_android)
+      ->OnUnavailable(
+          static_cast<ModelDownloaderAndroid::DownloadFailureReason>(j_reason));
+}
+
+static void JNI_AiCoreModelDownloaderWrapper_OnStatusCheckResult(
+    JNIEnv* env,
+    int64_t model_downloader_android,
+    int32_t j_status_result) {
+  reinterpret_cast<ModelDownloaderAndroid*>(model_downloader_android)
+      ->OnStatusCheckResult(
+          static_cast<ModelDownloaderAndroid::ModelStatus>(j_status_result));
+}
+
+static void JNI_AiCoreModelDownloaderWrapper_OnDownloadProgress(
+    JNIEnv* env,
+    int64_t model_downloader_android,
+    int64_t downloaded_bytes,
+    int64_t total_bytes) {
+  reinterpret_cast<ModelDownloaderAndroid*>(model_downloader_android)
+      ->OnDownloadProgress(downloaded_bytes, total_bytes);
+}
+
+}  // namespace on_device_model
+
+DEFINE_JNI(AiCoreModelDownloaderWrapper)

@@ -1,0 +1,10 @@
+{
+  "name": "chrome.contextMenus ids",
+  "version": "0.1",
+  "manifest_version": 3,
+  "description": "test for string and integer ID forms",
+  "background": {
+    "service_worker": "test.js"
+  },
+  "permissions": ["contextMenus"]
+}

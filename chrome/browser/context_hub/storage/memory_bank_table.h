@@ -1,0 +1,105 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_CONTEXT_HUB_STORAGE_MEMORY_BANK_TABLE_H_
+#define CHROME_BROWSER_CONTEXT_HUB_STORAGE_MEMORY_BANK_TABLE_H_
+
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#include "base/containers/span.h"
+#include "base/memory/raw_ptr.h"
+#include "chrome/browser/context_hub/memory_bank/memory_bank_entry.h"
+
+namespace sql {
+class Database;
+}  // namespace sql
+
+namespace context_hub {
+
+// This class manages the table storing memory bank entries within the
+// SQLite database passed to initialization.
+//
+// Schema:
+// -----------------------------------------------------------------------------
+// memory_bank_entries
+//
+//   id                                 INTEGER PRIMARY KEY Auto-incremented by
+//                                      SQLite, uniquely identifies each entry.
+//   type                               INTEGER NOT NULL (0: kTab,
+//                                      1: kTextSelection)
+//   timestamp                          INTEGER NOT NULL The timestamp of the
+//                                      memory bank entry, stored as
+//                                      microseconds since the Windows epoch.
+//   url                                TEXT NOT NULL The URL of the memory bank
+//                                      entry.
+//   tab_title                          TEXT NOT NULL The title of the tab
+//                                      associated with the memory bank entry.
+//   selected_text                      TEXT The selected text from the page.
+//   tags                               TEXT (JSON-serialized string of tags)
+//   note                               TEXT User-provided notes for the entry.
+//   collection                         TEXT The collection name the entry
+//                                      belongs to.
+// -----------------------------------------------------------------------------
+class MemoryBankTable {
+ public:
+  MemoryBankTable();
+  MemoryBankTable(const MemoryBankTable&) = delete;
+  MemoryBankTable& operator=(const MemoryBankTable&) = delete;
+  ~MemoryBankTable();
+
+  // Initializes the table with the given SQLite database. Must be called
+  // before any other methods. Returns true on success.
+  bool Init(sql::Database* db);
+
+  // Creates the memory_bank_entries table and its indexes at database
+  // version 1. Should only be called when initializing or migrating a database
+  // from a clean state.
+  bool MigrateFromCleanStateToVersion1();
+
+  // Migrates the memory_bank_entries table from version 1 to version 2 by
+  // adding the note and collection columns. Returns true on success.
+  bool MigrateToVersion2AddNoteAndCollectionColumns();
+
+  // Inserts or replaces a record in memory_bank_entries. Returns true on
+  // success.
+  bool AddOrUpdateEntry(const MemoryBankEntry& entry);
+
+  // Updates the annotations (tags, note, collection) for an existing entry.
+  // Returns true on success, or false if not found or on error.
+  bool UpdateEntryAnnotations(int64_t id,
+                              const std::vector<std::string>& tags,
+                              const std::optional<std::string>& note,
+                              const std::optional<std::string>& collection);
+
+  // Retrieves a single entry by ID. Returns std::nullopt if not found.
+  std::optional<MemoryBankEntry> GetEntry(int64_t id);
+
+  // Retrieves entries matching the given IDs.
+  std::vector<MemoryBankEntry> GetEntriesByIds(base::span<const int64_t> ids);
+
+  // Retrieves all entries from memory_bank_entries ordered by timestamp DESC.
+  std::vector<MemoryBankEntry> GetAllEntries();
+
+  // Retrieves all unique tags stored across memory bank entries.
+  std::vector<std::string> GetAllTags();
+
+  // Retrieves all unique collection names stored across memory bank entries.
+  std::vector<std::string> GetAllCollections();
+
+  // Returns the total number of entries in memory_bank_entries.
+  size_t GetEntryCount();
+
+  // Deletes records by IDs. Returns true on success.
+  bool DeleteEntries(base::span<const int64_t> ids);
+
+ private:
+  // Owned by ContextHubDatabase, outlives this class.
+  raw_ptr<sql::Database> db_ = nullptr;
+};
+
+}  // namespace context_hub
+
+#endif  // CHROME_BROWSER_CONTEXT_HUB_STORAGE_MEMORY_BANK_TABLE_H_

@@ -1,0 +1,278 @@
+// Copyright 2016 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+module autofill.mojom;
+
+import "components/autofill/core/common/mojom/autofill_types.mojom";
+import "mojo/public/mojom/base/string16.mojom";
+
+// There is one instance of this interface per render frame in the render
+// process. All methods are called by browser on renderer.
+interface AutofillAgent {
+  // Scrolls the page to make sure that the element corresponding to `field_id`
+  // is visible on the user's display. This will be used by Autofill to bring a
+  // field into display before showing suggestions to fill that field.
+  ScrollFieldIntoView(FieldRendererId field_id);
+
+  // Triggers extraction of new or updated forms. This is called when a form is
+  // seen in a subframe and it is not known yet which form in the parent frame
+  // contains the form in the subframe.
+  TriggerFormExtraction();
+
+  // Triggers extraction of new or updated forms and notifies the caller when
+  // it's done.
+  // If `success == false`, TriggerFormExtractionWithResponse() was triggered
+  // while another TriggerFormExtractionWithResponse() was ongoing.
+  TriggerFormExtractionWithResponse() => (bool success);
+
+  // Clears the form cache in the renderer. Use this before
+  // `TriggerFormExtraction` to get a full new extraction of forms.
+  ClearFormCache();
+
+  // Fills or previews the form identified by `form` with the data of its
+  // fields. `action_type` denotes if the action is a Fill or Undo.
+  // `action_persistence` denotes if the operation is a Fill or Preview.
+  //
+  // `fill_id` uniquely identifies the fill operation. It does *not* uniquely
+  // identify this ApplyFormAction() call. See `FillId` for details.
+  //
+  // Only if `supports_refill` is true, the renderer may request a refill via
+  // a subsequent AutofillDriver::RequestRefill() call. It is still at the
+  // discretion of the browser process whether to honor the request. For
+  // example, the browser process ignores refill requests after a certain
+  // timeout.
+  ApplyFieldsAction(FormActionType action_type,
+                    ActionPersistence action_persistence,
+                    array<FormFieldData_FillData> fields,
+                    FillId fill_id,
+                    bool supports_refill);
+
+  // Fills or previews the field identified by `field` with `value`.
+  // `action_persistence` denotes if the operation is a Fill or Preview.
+  // `action_type` indicates whether to replace the field's entire value
+  // or only the current selection or select all text inside the field.
+  // For non-text fields, this parameter has no effect. This must not be
+  // `kReplaceSelection` if `action_persistence` is `kPreview`.
+  // Enabling this is desirable but not implemented, yet.
+  // If `action_type` is `kSelectAll`, then the `value` must be empty.
+  ApplyFieldAction(FieldActionType action_type,
+                   ActionPersistence action_persistence,
+                   FieldRendererId field,
+                   mojo_base.mojom.String16 value);
+
+  // Extracts the form that contains the given field and responds with the
+  // FormData, if that form can be found and extracted.
+  ExtractFormWithField(FieldRendererId field_id) => (FormData? form);
+
+  // Tries to extract the node value from the DOM and returns the extracted
+  // value back to the browser process. The response string contains the
+  // node value if present. If the string is empty, it means no node value
+  // was found.
+  // See `form_util::ExtractFinalCheckoutAmountFromDom()` for details.
+  ExtractLabeledTextNodeValue(mojo_base.mojom.String16 value_regex,
+                              mojo_base.mojom.String16 label_regex,
+                              uint32 number_of_ancestor_levels_to_search)
+      => (string value);
+
+  // Sends the heuristic and server field type predictions to the renderer.
+  FieldTypePredictionsAvailable(array<FormDataPredictions> forms);
+
+  // For all elements the DOM Node ID will be exposed on the DOM
+  // as attribute "dom-node-id". This is done for data collection purposes.
+  ExposeDomNodeIds();
+
+  // Tells the renderer that the Autofill previewed form should be cleared.
+  ClearPreviewedForm();
+
+  // Tells the renderer to trigger Autofill suggestions on the `field`, as if
+  // triggered through the provided `trigger_source`.
+  // For the most part, suggestions are triggered through Blink events on the
+  // renderer-side. However, manual fallbacks from the context menu are
+  // triggered from the browser processes. They need to make another round-trip
+  // to the renderer, since rendering suggestions relies on the `field`'s
+  // position. Since the browser process doesn't have up-to-date coordinates,
+  // suggestions are triggered through the renderer, which causes the field and
+  // its coordinates to be re-extracted.
+  // Assuming the `field` is found, the driver's `AskForValuesToFill()` will be
+  // called.
+  TriggerSuggestions(
+      FieldRendererId field, AutofillSuggestionTriggerSource trigger_source);
+
+  // Sets the autofill/autocomplete suggestion availability of `field` (if it
+  // still exists).
+  SetSuggestionAvailability(
+      FieldRendererId field,
+      AutofillSuggestionAvailability suggestion_availability);
+
+  // Sets the value of `field` (if it still exists) to the given data list
+  // value.
+  AcceptDataListSuggestion(
+      FieldRendererId field, mojo_base.mojom.String16 value);
+
+  // Tells the renderer to preview the username and password with the given
+  // values.
+  PreviewPasswordSuggestion(
+      mojo_base.mojom.String16 username, mojo_base.mojom.String16 password);
+
+  // Tells the renderer to preview the generated password.
+  PreviewPasswordGenerationSuggestion(mojo_base.mojom.String16 password);
+
+  // Returns a vector of four digit combinations present in the DOM of a
+  // webpage. Used to check for the presence of the virtual card last four in
+  // the DOM prior to offering CVC autofill for a virtual card saved on a
+  // merchant website.
+  GetPotentialLastFourCombinationsForStandaloneCvc()
+      => (array<string> potential_matches);
+
+  // Part of the Email Verification Protocol (EVP).
+  // The website can include an email field and a hidden token field with a
+  // `nonce` attribute in the same form.
+  // When the user autofills the email, the browser detects this and tries to
+  // verify the email.
+  // This method queries the renderer if it has an email-verification-token
+  // field in the form owning the `email_field_id`. If so, returns its nonce.
+  // Otherwise, returns a nullopt.
+  // The browser will then send this nonce (challenge) to the verifier (issuer)
+  // to get a token.
+  GetNonceForEmailVerification(FieldRendererId email_field_id)
+      => (string? nonce);
+
+  // Sends an email verification token along with the corresponding email
+  // address and the email field's ID to the renderer. At form submission
+  // time, the renderer will verify that the email field's value still
+  // matches the verified email address, find the associated token field,
+  // and inject the token.
+  SendEmailVerificationToken(FieldRendererId email_field_id,
+                             string email,
+                             string token);
+
+  // Notifies the renderer of a change in the email verification state for the
+  // given email field.
+  UpdateEmailVerificationState(
+      FieldRendererId email_field_id, EmailVerificationState state);
+
+  // Starts observing the visibility of the field identified by `field_id`.
+  // The `observer` will be notified when the field becomes visible (e.g.,
+  // meets the 800ms visibility condition). Only one field can be actively
+  // observed at a time. A subsequent call to `ObserveFieldVisibility()` will
+  // cancel the previous observer's subscription. The caller can detect this
+  // cancellation by registering a disconnect handler via
+  // `set_disconnect_handler()`.
+  //
+  // Note: We use a `pending_remote<AutofillVisibilityObserver>` instead of a
+  // standard Mojo response callback (e.g., `=> (bool is_visible)`) because the
+  // visibility condition depends on user interaction (scrolling) and may be
+  // delayed indefinitely. Since standard Mojo response callbacks are expected
+  // to return promptly, we avoid using a response callback here in favor of a
+  // dedicated Mojo observer interface.
+  ObserveFieldVisibility(FieldRendererId field_id,
+                         pending_remote<AutofillVisibilityObserver> observer);
+};
+
+// There is one instance of this interface per render frame in the render
+// process. This renderer interface is called by the browser.
+interface PasswordAutofillAgent {
+  // Provides fill information for a password form, which can fill the form and
+  // prepare field autocomplete for multiple matching logins. Lets the renderer
+  // know if it should disable the popup because the browser process will own
+  // the popup UI.
+  ApplyFillDataOnParsingCompletion(PasswordFormFillData form_data);
+
+  // Fills the username and password with with given values.
+  FillPasswordSuggestion(
+      mojo_base.mojom.String16 username, mojo_base.mojom.String16 password)
+      => (bool success);
+
+  // Similar to FillPasswordSuggestion, but is also provided the
+  // FieldRendererIds of the elements to be filled.
+  // `suggestion_source` specified how the user has interacted with
+  // PWM suggestions, such as manual fallback. Used to update the
+  // `FieldPropertiesMask` of the filled fields.
+  FillPasswordSuggestionById(
+      FieldRendererId username_element_id,
+      FieldRendererId password_element_id,
+      mojo_base.mojom.String16 username,
+      mojo_base.mojom.String16 password,
+      AutofillSuggestionTriggerSource suggestion_source);
+
+  // Previews the username and password, determined from the given
+  // FieldRendererIds, with the given values.
+  PreviewPasswordSuggestionById(FieldRendererId username_element_id,
+                                FieldRendererId password_element_id,
+                                mojo_base.mojom.String16 username,
+                                mojo_base.mojom.String16 password);
+
+  // Informs that there are no saved credentials for filling.
+  // This is the "no results" equivalent of ApplyFillDataOnParsingCompletion. In
+  // certain cases the password manager shows popups (e.g. promo UIs) even if
+  // there are no saved credentials.
+  InformNoSavedCredentials(bool should_show_popup_without_passwords);
+
+  // Fills the given `credential` into the last focused text input.
+  FillIntoFocusedField(
+      bool is_password, mojo_base.mojom.String16 credential);
+
+  // Previews the given `value` into the field identified by `field_id`.
+  PreviewField(FieldRendererId field_id, mojo_base.mojom.String16 value);
+
+  // Fills the given `value` into the field identified by `field_id`.
+  // `field_properties` will be used to update the field data map with
+  // metadata about filling. See `FieldPropertiesFlags` for potential
+  // values.
+  FillField(FieldRendererId field_id,
+            mojo_base.mojom.String16 value,
+            uint32 field_properties) => (bool success);
+
+  // Fills a given change password form, specifically `password_element_id` with
+  // `old_password` and `new_password_element_id`, `confirm_password_element_id`
+  // with `new_password`. Upon completion asynchronously returns `form_data`
+  // with filled values if the form was successfully filled.
+  FillChangePasswordForm(FieldRendererId password_element_id,
+                         FieldRendererId new_password_element_id,
+                         FieldRendererId confirm_password_element_id,
+                         mojo_base.mojom.String16 old_password,
+                         mojo_base.mojom.String16 new_password)
+      => (FormData? form_data);
+
+  // Notification to start (`active` == true) or stop (`active` == false)
+  // logging the decisions made about saving the password.
+  SetLoggingState(bool active);
+
+  // Triggers a form submission on the last interacted element.
+  [EnableIf=is_android]
+  TriggerFormSubmission();
+
+  // Annotate password related (username, password) DOM input elements with
+  // corresponding HTML attributes. It is used only for debugging.
+  AnnotateFieldsWithParsingResult(ParsingResult parsing_result);
+
+  // Scrolls to the element if needed and checks if the view area of the field
+  // is visible.
+  CheckViewAreaVisible(FieldRendererId field_id) => (bool is_visible);
+};
+
+// There is one instance of this interface per render frame in the render
+// process.
+interface PasswordGenerationAgent {
+  // Tells the renderer to populate the correct password fields with this
+  // generated password.
+  GeneratedPasswordAccepted(mojo_base.mojom.String16 generated_password);
+
+  // Tells the renderer that the generated password was rejected by the user
+  // and should not be shown again in the same generation flow.
+  GeneratedPasswordRejected();
+
+  // Tells the renderer to find a focused element, and if it is a password field
+  // eligible for generation then to trigger generation by returning
+  // non-empty PasswordGenerationUIData.
+  TriggeredGeneratePassword() => (PasswordGenerationUIData? data);
+
+  // Tells the renderer that a password can be generated on the fields
+  // identified by `form`.
+  FoundFormEligibleForGeneration(PasswordFormGenerationData form);
+
+  // Tells the renderer to advance focus to the next field after password fields
+  // (assuming that password fields are adjacent in account creation).
+  FocusNextFieldAfterPasswords();
+};

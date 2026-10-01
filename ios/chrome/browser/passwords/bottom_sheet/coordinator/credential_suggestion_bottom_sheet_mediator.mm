@@ -1,0 +1,792 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/passwords/bottom_sheet/coordinator/credential_suggestion_bottom_sheet_mediator.h"
+
+#import "base/base64.h"
+#import "base/feature_list.h"
+#import "base/functional/bind.h"
+#import "base/functional/callback.h"
+#import "base/functional/callback_helpers.h"
+#import "base/memory/raw_ptr.h"
+#import "base/memory/weak_ptr.h"
+#import "base/metrics/histogram_functions.h"
+#import "base/strings/sys_string_conversions.h"
+#import "components/autofill/core/common/unique_ids.h"
+#import "components/autofill/ios/browser/form_suggestion_provider.h"
+#import "components/autofill/ios/form_util/form_activity_params.h"
+#import "components/feature_engagement/public/tracker.h"
+#import "components/image_fetcher/core/image_fetcher_impl.h"
+#import "components/image_fetcher/ios/ios_image_decoder_impl.h"
+#import "components/password_manager/core/browser/password_form.h"
+#import "components/password_manager/core/browser/password_manager.h"
+#import "components/password_manager/core/browser/password_manager_client.h"
+#import "components/password_manager/core/browser/password_store/password_form_converters.h"
+#import "components/password_manager/core/browser/password_store/password_store_interface.h"
+#import "components/password_manager/core/browser/password_store/stored_credential.h"
+#import "components/password_manager/core/browser/ui/credential_ui_entry.h"
+#import "components/password_manager/ios/features.h"
+#import "components/password_manager/ios/ios_password_manager_driver_factory.h"
+#import "components/prefs/pref_service.h"
+#import "components/ukm/ios/ukm_url_recorder.h"
+#import "components/webauthn/ios/features.h"
+#import "components/webauthn/ios/ios_webauthn_credentials_delegate.h"
+#import "components/webauthn/ios/ios_webauthn_credentials_delegate_factory.h"
+#import "components/webauthn/ios/passkey_suggestion_utils.h"
+#import "ios/chrome/browser/autofill/model/bottom_sheet/autofill_bottom_sheet_java_script_feature.h"
+#import "ios/chrome/browser/autofill/model/bottom_sheet/autofill_bottom_sheet_tab_helper.h"
+#import "ios/chrome/browser/autofill/model/form_input_suggestions_provider.h"
+#import "ios/chrome/browser/autofill/model/form_suggestion_tab_helper.h"
+#import "ios/chrome/browser/default_browser/model/default_browser_interest_signals.h"
+#import "ios/chrome/browser/favicon/model/favicon_loader.h"
+#import "ios/chrome/browser/passwords/bottom_sheet/coordinator/credential_suggestion_bottom_sheet_mediator_base+Subclassing.h"
+#import "ios/chrome/browser/passwords/bottom_sheet/coordinator/password_suggestion_bottom_sheet_exit_reason.h"
+#import "ios/chrome/browser/passwords/bottom_sheet/ui/credential_suggestion_bottom_sheet_consumer.h"
+#import "ios/chrome/browser/passwords/model/password_native_keystroke_autologin.h"
+#import "ios/chrome/browser/passwords/model/password_tab_helper.h"
+#import "ios/chrome/browser/passwords/password_suggestion/ui/password_suggestion_utils.h"
+#import "ios/chrome/browser/settings/ui_bundled/password/password_sharing/multi_avatar_image_util.h"
+#import "ios/chrome/browser/shared/model/prefs/pref_names.h"
+#import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
+#import "ios/chrome/browser/shared/ui/symbols/symbols.h"
+#import "ios/chrome/common/ui/favicon/favicon_constants.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "ios/web/public/js_messaging/web_frames_manager.h"
+#import "ios/web/public/web_state.h"
+#import "services/network/public/cpp/shared_url_loader_factory.h"
+#import "ui/base/l10n/l10n_util_mac.h"
+#import "ui/gfx/image/image.h"
+#import "url/gurl.h"
+
+namespace {
+
+constexpr char kImageFetcherUmaClient[] = "PasswordBottomSheet";
+constexpr CGFloat kProfileImageSize = 80.0;
+
+using PasswordSuggestionBottomSheetExitReason::kBadProvider;
+
+int PrimaryActionStringIdFromSuggestion(FormSuggestion* suggestion) {
+  if (IsConditionalPasskeyLoginEnabled()) {
+    return IDS_IOS_CREDENTIAL_BOTTOM_SHEET_CONTINUE;
+  }
+  return suggestion.metadata.is_single_username_form
+             ? IDS_IOS_CREDENTIAL_BOTTOM_SHEET_CONTINUE
+             : IDS_IOS_CREDENTIAL_BOTTOM_SHEET_USE_PASSWORD;
+}
+
+// Makes a query to retrieve suggestions from a FormSuggestionProvider from the
+// provided `params`. Only ask for suggestions with passwords.
+FormSuggestionProviderQuery* MakeQueryFromParameters(
+    const autofill::FormActivityParams& params) {
+  return [[FormSuggestionProviderQuery alloc]
+      initWithFormName:base::SysUTF8ToNSString(params.form_name)
+        formRendererID:params.form_renderer_id
+       fieldIdentifier:base::SysUTF8ToNSString(params.field_identifier)
+       fieldRendererID:params.field_renderer_id
+             fieldType:params.field_type
+                  type:params.type
+            typedValue:base::SysUTF8ToNSString(params.value)
+               frameID:base::SysUTF8ToNSString(params.frame_id)
+          onlyPassword:YES];
+}
+
+// Makes a copy of suggestions with `params` and `provider` set in the copies.
+NSArray<FormSuggestion*>* SetParamsAndProviderInSuggestions(
+    NSArray<FormSuggestion*>* suggestions,
+    const autofill::FormActivityParams& params,
+    id<FormSuggestionProvider> provider) {
+  NSMutableArray<FormSuggestion*>* suggestions_copy =
+      [NSMutableArray<FormSuggestion*> arrayWithCapacity:[suggestions count]];
+  for (FormSuggestion* suggestion in suggestions) {
+    [suggestions_copy addObject:[FormSuggestion copy:suggestion
+                                        andSetParams:params
+                                            provider:provider]];
+  }
+  return suggestions_copy;
+}
+
+// Retrieves the PasswordManager from the given WebState. Returns nullptr if
+// the WebState or PasswordTabHelper is unavailable.
+password_manager::PasswordManager* GetPasswordManager(
+    web::WebState* web_state) {
+  if (!web_state) {
+    return nullptr;
+  }
+  PasswordTabHelper* tab_helper = PasswordTabHelper::FromWebState(web_state);
+  return tab_helper ? tab_helper->GetPasswordManager() : nullptr;
+}
+
+// Returns YES if `suggestions` contains both password and passkey suggestions.
+BOOL ContainsPasswordsAndPasskeys(NSArray<FormSuggestion*>* suggestions) {
+  BOOL hasPasskeys = NO;
+  BOOL hasPasswords = NO;
+  for (FormSuggestion* suggestion in suggestions) {
+    switch (suggestion.type) {
+      case autofill::SuggestionType::kWebauthnCredential:
+        hasPasskeys = YES;
+        break;
+      case autofill::SuggestionType::kPasswordEntry:
+      case autofill::SuggestionType::kBackupPasswordEntry:
+        hasPasswords = YES;
+        break;
+      default:
+        break;
+    }
+    if (hasPasskeys && hasPasswords) {
+      return YES;
+    }
+  }
+  return NO;
+}
+
+// Returns a set of lowercase usernames that have registered passkeys in the
+// given vector matching the passkey suggestions.
+NSMutableSet<NSString*>* GetPasskeyUsernames(
+    const std::vector<password_manager::PasskeyCredential>& passkeys,
+    NSArray<FormSuggestion*>* suggestions) {
+  NSMutableSet<NSString*>* passkeyUsernames = [NSMutableSet set];
+  for (FormSuggestion* suggestion in suggestions) {
+    NSString* passkeyUsername =
+        webauthn::GetPasskeyUsernameForSuggestion(suggestion, passkeys);
+    if (passkeyUsername.length) {
+      [passkeyUsernames addObject:[passkeyUsername lowercaseString]];
+    }
+  }
+  return passkeyUsernames;
+}
+
+// Returns suggestions filtered to only contain passkeys when there is a
+// password suggestion and a passkey suggestion for the same username.
+NSArray<FormSuggestion*>* FilterDuplicateSuggestions(
+    NSArray<FormSuggestion*>* suggestions,
+    webauthn::IOSWebAuthnCredentialsDelegate* delegate) {
+  if (!delegate) {
+    return suggestions;
+  }
+
+  if (!ContainsPasswordsAndPasskeys(suggestions)) {
+    return suggestions;
+  }
+
+  auto passkeys_result = delegate->GetPasskeys();
+  if (!passkeys_result.has_value() || !(*passkeys_result) ||
+      (*passkeys_result)->empty()) {
+    return suggestions;
+  }
+
+  const std::vector<password_manager::PasskeyCredential>& passkeys =
+      **passkeys_result;
+
+  NSMutableSet<NSString*>* passkeyUsernames =
+      GetPasskeyUsernames(passkeys, suggestions);
+  if (!passkeyUsernames.count) {
+    return suggestions;
+  }
+
+  NSMutableArray<FormSuggestion*>* filteredSuggestions =
+      [NSMutableArray arrayWithCapacity:suggestions.count];
+  for (FormSuggestion* suggestion in suggestions) {
+    if (suggestion.type == autofill::SuggestionType::kPasswordEntry ||
+        suggestion.type == autofill::SuggestionType::kBackupPasswordEntry) {
+      NSString* username = suggestion.value;
+      if (username.length &&
+          [passkeyUsernames containsObject:[username lowercaseString]]) {
+        continue;
+      }
+    }
+    [filteredSuggestions addObject:suggestion];
+  }
+
+  return filteredSuggestions;
+}
+
+}  // namespace
+
+// TODO(crbug.com/372426818): Move this is to its own specific file/module.
+@interface BottomSheetFormSuggestionProviderWrapper : NSObject
+
+- (instancetype)
+    initWithFormSuggestionProvider:(id<FormSuggestionProvider>)provider
+                            params:(autofill::FormActivityParams)params;
+
+- (void)retrieveSuggestionsForForm:(autofill::FormActivityParams)params
+                          webState:(web::WebState*)webState
+                        completion:
+                            (void (^)(NSArray<FormSuggestion*>* suggestions))
+                                completion;
+
+- (void)didSelectSuggestion:(FormSuggestion*)suggestion
+                    atIndex:(NSInteger)index
+                   webState:(web::WebState*)webState
+          completionHandler:(ProceduralBlock)completionHandler;
+
+@end
+
+@implementation BottomSheetFormSuggestionProviderWrapper {
+  // Suggestions provider for the bottom sheet.
+  __weak id<FormSuggestionProvider> _providerWrapper;
+
+  // Form activity parameters giving the context around the sheet trigger.
+  autofill::FormActivityParams _params;
+}
+
+- (instancetype)
+    initWithFormSuggestionProvider:(id<FormSuggestionProvider>)provider
+                            params:(autofill::FormActivityParams)params {
+  if ((self = [super init])) {
+    _providerWrapper = provider;
+    _params = params;
+  }
+  return self;
+}
+
+- (void)retrieveSuggestionsForForm:(autofill::FormActivityParams)params
+                          webState:(web::WebState*)webState
+                        completion:
+                            (void (^)(NSArray<FormSuggestion*>* suggestions))
+                                completion {
+  FormSuggestionProviderQuery* formQuery = MakeQueryFromParameters(params);
+  [_providerWrapper
+      retrieveSuggestionsForForm:formQuery
+                        webState:webState
+               completionHandler:^(NSArray<FormSuggestion*>* suggestions,
+                                   id<FormSuggestionProvider> delegate) {
+                 bool stateless = base::FeatureList::IsEnabled(
+                     password_manager::features::kIOSStatelessFillDataFlow);
+                 NSArray<FormSuggestion*>* wrappedSuggestions =
+                     stateless ? SetParamsAndProviderInSuggestions(
+                                     suggestions, params, delegate)
+                               : suggestions;
+                 completion(wrappedSuggestions);
+               }];
+}
+
+- (void)didSelectSuggestion:(FormSuggestion*)suggestion
+                    atIndex:(NSInteger)index
+                   webState:(web::WebState*)webState
+          completionHandler:(ProceduralBlock)completionHandler {
+  FormSuggestionMetadata metadata = suggestion.metadata;
+  // Specify that auto submit is possible from this endpoint. This is needed if
+  // script submission is used.
+  metadata.accepts_auto_submit = true;
+  suggestion = [FormSuggestion copy:suggestion withMetadata:metadata];
+
+  std::string frameId = _params.frame_id;
+  autofill::FieldRendererId fieldId = _params.field_renderer_id;
+  base::WeakPtr<web::WebState> weakWebState = webState->GetWeakPtr();
+
+  // Trigger a keystroke submission directly from native if script submit
+  // (within the renderer itself) isn't used.
+  bool shouldTriggerKeystrokeSubmission =
+      suggestion.metadata.should_trigger_submission &&
+      password_manager::features::kAutoSubmissionTypeParam.Get() !=
+          password_manager::features::AutoSubmissionType::kScriptSubmit;
+
+  if (password_manager::PasswordManager* passwordManager =
+          GetPasswordManager(webState)) {
+    passwordManager->GetClient()->StartSubmissionTrackingAfterTouchToFill(
+        base::SysNSStringToUTF16(suggestion.value));
+  }
+
+  // The coordinator is expected to always provide a completion handler that
+  // cleans up its state (and potentially dismisses the sheet). If it is nil,
+  // `base::BindOnce` will crash.
+  CHECK(completionHandler);
+
+  __weak UIView* weakView = webState->GetView();
+  ProceduralBlock wrappedCompletionHandler =
+      shouldTriggerKeystrokeSubmission
+          ? base::CallbackToBlock(
+                base::BindOnce(&TriggerAutoSubmission, weakWebState, frameId,
+                               fieldId, base::BindOnce(completionHandler)))
+          : ^{
+              // Close the keyboard after filling the suggestion to avoid
+              // re-popping the keyboard.
+              [weakView endEditing:YES];
+              // Run the -didSelectSuggestion completion block which ownership
+              // was transferred here.
+              completionHandler();
+            };
+
+  [_providerWrapper
+      didSelectSuggestion:suggestion
+                  atIndex:index
+                     form:base::SysUTF8ToNSString(_params.form_name)
+           formRendererID:_params.form_renderer_id
+          fieldIdentifier:base::SysUTF8ToNSString(_params.field_identifier)
+          fieldRendererID:_params.field_renderer_id
+                  frameID:base::SysUTF8ToNSString(_params.frame_id)
+        completionHandler:wrappedCompletionHandler];
+}
+
+- (SuggestionProviderType)type {
+  return _providerWrapper.type;
+}
+
+@end
+
+@interface CredentialSuggestionBottomSheetMediator ()
+
+// Default globe favicon when no favicon is available.
+@property(nonatomic, readonly) FaviconAttributes* defaultGlobeIconAttributes;
+
+@end
+
+@implementation CredentialSuggestionBottomSheetMediator {
+  // The interfaces for getting and manipulating a user's saved passwords.
+  scoped_refptr<password_manager::PasswordStoreInterface> _profilePasswordStore;
+  scoped_refptr<password_manager::PasswordStoreInterface> _accountPasswordStore;
+
+  // Vector of credentials related to the current page.
+  std::vector<password_manager::CredentialUIEntry> _credentials;
+
+  // Vector of credentials that have been received via the password sharing
+  // feature and the user has not been notified about them yet.
+  std::vector<password_manager::StoredCredential> _sharedUnnotifiedCredentials;
+
+  // Profile images of password senders if any of the passwords were received
+  // via the password sharing feature. Empty otherwise.
+  NSMutableArray<UIImage*>* _senderImages;
+
+  // FaviconLoader is a keyed service that uses LargeIconService to retrieve
+  // favicon images.
+  raw_ptr<FaviconLoader> _faviconLoader;
+
+  // Preference service from the application context.
+  raw_ptr<PrefService> _prefService;
+
+  // Fetches profile pictures.
+  std::unique_ptr<image_fetcher::ImageFetcher> _imageFetcher;
+
+  // Feature engagement tracker for notifying promo events.
+  raw_ptr<feature_engagement::Tracker> _engagementTracker;
+
+  // Parameters that give the details on the field that triggered the bottom
+  // sheet. The sheet is tied to these fields during its entire lifetime.
+  autofill::FormActivityParams _params;
+
+  // Provider wrapper that gives suggestions and handles suggestion selection.
+  // The underlying concrete provider will be determined during initialization
+  // depending on the version of the sheet.
+  BottomSheetFormSuggestionProviderWrapper* _suggestionsProviderWrapper;
+}
+
+@synthesize defaultGlobeIconAttributes = _defaultGlobeIconAttributes;
+
+- (instancetype)
+      initWithWebStateList:(WebStateList*)webStateList
+             faviconLoader:(FaviconLoader*)faviconLoader
+               prefService:(PrefService*)prefService
+                    params:(const autofill::FormActivityParams&)params
+              reauthModule:(id<ReauthenticationProtocol>)reauthModule
+      profilePasswordStore:
+          (scoped_refptr<password_manager::PasswordStoreInterface>)
+              profilePasswordStore
+      accountPasswordStore:
+          (scoped_refptr<password_manager::PasswordStoreInterface>)
+              accountPasswordStore
+    sharedURLLoaderFactory:
+        (scoped_refptr<network::SharedURLLoaderFactory>)sharedURLLoaderFactory
+         engagementTracker:(feature_engagement::Tracker*)engagementTracker {
+  self = [super initWithWebStateList:webStateList
+                        reauthModule:reauthModule
+                         requestInfo:std::nullopt];
+  if (self) {
+    _faviconLoader = faviconLoader;
+    _prefService = prefService;
+
+    _profilePasswordStore = profilePasswordStore;
+    _accountPasswordStore = accountPasswordStore;
+    _imageFetcher = std::make_unique<image_fetcher::ImageFetcherImpl>(
+        image_fetcher::CreateIOSImageDecoder(), sharedURLLoaderFactory);
+    _senderImages = [NSMutableArray array];
+    _params = params;
+
+    web::WebState* activeWebState = webStateList->GetActiveWebState();
+    if (activeWebState) {
+      PasswordTabHelper* passwordTabHelper =
+          PasswordTabHelper::FromWebState(activeWebState);
+      CHECK(passwordTabHelper);
+      id<FormSuggestionProvider> provider =
+          passwordTabHelper->GetSuggestionProvider();
+      CHECK(provider);
+      _suggestionsProviderWrapper =
+          [[BottomSheetFormSuggestionProviderWrapper alloc]
+              initWithFormSuggestionProvider:provider
+                                      params:_params];
+
+      // The 'params' argument may go out of scope before the completion block
+      // is called, so we need to store variables used in the completion block
+      // locally.
+      autofill::FormRendererId formId = params.form_renderer_id;
+
+      webauthn::IOSWebAuthnCredentialsDelegate* delegate =
+          webauthn::IOSWebAuthnCredentialsDelegateFactory::GetFactory(
+              activeWebState)
+              ->GetDelegateForFrameId(params.frame_id);
+      self.webAuthnCredentialsDelegate =
+          delegate ? delegate->GetWeakPtr() : nullptr;
+
+      __weak __typeof(self) weakSelf = self;
+      [_suggestionsProviderWrapper
+          retrieveSuggestionsForForm:params
+                            webState:activeWebState
+                          completion:^(NSArray<FormSuggestion*>* suggestions) {
+                            [weakSelf suggestionsReceived:suggestions
+                                                   formId:formId];
+                          }];
+    }
+
+    _engagementTracker = engagementTracker;
+  }
+  return self;
+}
+
+- (std::optional<password_manager::CredentialUIEntry>)
+    getCredentialForFormSuggestion:(FormSuggestion*)formSuggestion {
+  NSString* username = formSuggestion.value;
+  auto it = std::ranges::find_if(
+      _credentials,
+      [username](const password_manager::CredentialUIEntry& credential) {
+        CHECK(!credential.facets.empty());
+        for (auto facet : credential.facets) {
+          if ([base::SysUTF16ToNSString(credential.username)
+                  isEqualToString:username]) {
+            return true;
+          }
+        }
+        return false;
+      });
+  return it != _credentials.end()
+             ? std::optional<password_manager::CredentialUIEntry>(*it)
+             : std::nullopt;
+}
+
+- (void)setCredentialsForTesting:
+    (std::vector<password_manager::CredentialUIEntry>)credentials {
+  _credentials = credentials;
+}
+
+#pragma mark - CredentialSuggestionBottomSheetMediatorBase
+
+- (void)setConsumer:(id<CredentialSuggestionBottomSheetConsumer>)consumer {
+  [super setConsumer:consumer];
+
+  // The bottom sheet isn't presented when there are no suggestions to show, so
+  // there's no need to update the consumer.
+  if (![self hasSuggestions]) {
+    return;
+  }
+
+  if ([self shouldDisplaySharingNotification]) {
+    [self.consumer setTitle:[self sharingNotificationTitle]
+                   subtitle:[self sharingNotificationSubtitle:self.domain]];
+    [self.consumer setAvatarImage:CreateMultiAvatarImage(_senderImages,
+                                                         kProfileImageSize)];
+  }
+
+  // Determine the primary action label only from the first suggestion, which
+  // is sufficient as all the suggestions should have the same metadata.
+  [self.consumer
+      setPrimaryActionString:l10n_util::GetNSString(
+                                 PrimaryActionStringIdFromSuggestion(
+                                     self.suggestions.firstObject))
+       secondaryActionString:l10n_util::GetNSString(
+                                 IDS_IOS_CREDENTIAL_BOTTOM_SHEET_USE_KEYBOARD)
+        secondaryActionImage:SymbolWithPointSize(SymbolKeyboard,
+                                                 kSymbolActionPointSize)];
+}
+
+- (void)disconnect {
+  [super disconnect];
+
+  _prefService = nullptr;
+  _faviconLoader = nullptr;
+
+  _suggestionsProviderWrapper = nil;
+}
+
+- (void)dealloc {
+  CHECK(!_suggestionsProviderWrapper, base::NotFatalUntil::M155);
+}
+
+- (void)didSelectSuggestion:(FormSuggestion*)suggestion
+                    atIndex:(NSInteger)index
+                 completion:(ProceduralBlock)completion {
+  [self markSharedPasswordNotificationsDisplayed];
+  [super didSelectSuggestion:suggestion atIndex:index completion:completion];
+}
+
+- (void)logExitReason:(PasswordSuggestionBottomSheetExitReason)exitReason {
+  base::UmaHistogramEnumeration("IOS.PasswordBottomSheet.ExitReason",
+                                exitReason);
+}
+
+- (void)onDismissWithoutAnyCredentialAction {
+  [self incrementDismissCount];
+  [self markSharedPasswordNotificationsDisplayed];
+}
+
+#pragma mark - CredentialSuggestionBottomSheetDelegate
+
+- (void)disableBottomSheet {
+  web::WebState* activeWebState = [self activeWebState];
+  if (!activeWebState) {
+    return;
+  }
+
+  AutofillBottomSheetTabHelper* tabHelper =
+      AutofillBottomSheetTabHelper::FromWebState(activeWebState);
+  if (!tabHelper) {
+    return;
+  }
+
+  tabHelper->DetachPasswordListenersForAllFrames(/*refocus=*/true);
+}
+
+- (void)loadFaviconWithBlockHandler:
+    (FaviconLoader::FaviconAttributesCompletionBlock)faviconLoadedBlock {
+  if (!_faviconLoader) {
+    // Mediator is disconnecting (bottom sheet is being closed). No need to
+    // fetch for the favicon anymore.
+    return;
+  }
+  if (!self.URL.is_empty()) {
+    _faviconLoader->FaviconForPageUrl(
+        self.URL, kDesiredMediumFaviconSizePt, kMinFaviconSizePt,
+        /*fallback_to_google_server=*/NO, faviconLoadedBlock);
+  } else {
+    faviconLoadedBlock([self defaultGlobeIconAttributes], /*cached*/ true);
+  }
+}
+
+#pragma mark - Subclassing
+
+// Performs suggestion selection.
+- (void)selectSuggestion:(FormSuggestion*)suggestion
+                 atIndex:(NSInteger)index
+              completion:(ProceduralBlock)completion {
+  default_browser::NotifyPasswordAutofillSuggestionUsed(_engagementTracker);
+
+  if (web::WebState* activeWebState = [self activeWebState]) {
+    BottomSheetFormSuggestionProviderWrapper* providerWrapper =
+        _suggestionsProviderWrapper;
+
+    [self disconnect];
+
+    if ([providerWrapper type] == SuggestionProviderTypePassword) {
+      [providerWrapper didSelectSuggestion:suggestion
+                                   atIndex:index
+                                  webState:activeWebState
+                         completionHandler:completion];
+      // Do not run completion here as its ownership was transferred to
+      // -didSelectSuggestion.
+      completion = nil;
+    } else {
+      [self logExitReason:kBadProvider];
+    }
+  }
+
+  if (completion) {
+    completion();
+  }
+}
+
+#pragma mark - Private
+
+// Handles when suggestions are successfully retrieved.
+- (void)suggestionsReceived:(NSArray<FormSuggestion*>*)suggestions
+                     formId:(autofill::FormRendererId)formId {
+  web::WebState* webState = [self activeWebState];
+  if (!webState) {
+    return;
+  }
+  webauthn::IOSWebAuthnCredentialsDelegate* delegate =
+      self.webAuthnCredentialsDelegate.get();
+  NSArray<FormSuggestion*>* filteredSuggestions =
+      FilterDuplicateSuggestions(suggestions, delegate);
+  self.suggestions = filteredSuggestions;
+  [self logSubmissionReadinessMetrics:filteredSuggestions];
+  [self fetchCredentialsForForm:formId webState:webState];
+}
+
+// Logs the SubmissionReadiness metric when suggestions are successfully loaded.
+- (void)logSubmissionReadinessMetrics:(NSArray<FormSuggestion*>*)suggestions {
+  if (suggestions.count > 0) {
+    // Log submission readiness only when the bottom sheet is actually shown to
+    // the user (which is confirmed by suggestions being successfully loaded and
+    // passed to the consumer). Logging this earlier (e.g., during form
+    // analysis) would skew metrics with forms where the bottom sheet was never
+    // presented.
+    password_manager::SubmissionReadinessState readiness =
+        suggestions.firstObject.metadata.submission_readiness;
+    base::UmaHistogramEnumeration(
+        "PasswordManager.TouchToFill.SubmissionReadiness", readiness);
+
+    web::WebState* activeWebState = [self activeWebState];
+    if (activeWebState) {
+      ukm::SourceId source_id =
+          ukm::GetSourceIdForWebStateDocument(activeWebState);
+      ukm::builders::TouchToFill_SubmissionReadiness(source_id)
+          .SetSubmissionReadiness(static_cast<int64_t>(readiness))
+          .Record(ukm::UkmRecorder::Get());
+    }
+  }
+}
+
+// Returns the active web state, if any.
+- (web::WebState*)activeWebState {
+  return self.webStateList ? self.webStateList->GetActiveWebState() : nullptr;
+}
+
+// Returns the default favicon attributes after making sure they are
+// initialized.
+- (FaviconAttributes*)defaultGlobeIconAttributes {
+  if (!_defaultGlobeIconAttributes) {
+    _defaultGlobeIconAttributes = GetDefaultGlobeFaviconAttributes();
+  }
+  return _defaultGlobeIconAttributes;
+}
+
+// Increments the dismiss count preference.
+- (void)incrementDismissCount {
+  if (_prefService) {
+    int currentDismissCount =
+        _prefService->GetInteger(prefs::kIosPasswordBottomSheetDismissCount);
+    if (currentDismissCount <
+        AutofillBottomSheetTabHelper::kCredentialBottomSheetMaxDismissCount) {
+      _prefService->SetInteger(prefs::kIosPasswordBottomSheetDismissCount,
+                               currentDismissCount + 1);
+    }
+  }
+}
+
+// Fetches all credentials for the current form.
+- (void)fetchCredentialsForForm:(autofill::FormRendererId)formId
+                       webState:(web::WebState*)webState {
+  _credentials.clear();
+
+  if (![self hasSuggestions]) {
+    return;
+  }
+
+  password_manager::PasswordManager* passwordManager =
+      GetPasswordManager(webState);
+  if (!passwordManager) {
+    return;
+  }
+
+  web::WebFramesManager* webFramesManager =
+      AutofillBottomSheetJavaScriptFeature::GetInstance()->GetWebFramesManager(
+          webState);
+  web::WebFrame* frame = webFramesManager->GetFrameWithId(_params.frame_id);
+
+  if (!frame) {
+    return;
+  }
+
+  password_manager::PasswordManagerDriver* driver =
+      IOSPasswordManagerDriverFactory::FromWebStateAndWebFrame(webState, frame);
+  const base::span<const password_manager::StoredCredential> credentials =
+      passwordManager->GetBestMatches(driver, formId);
+
+  for (const password_manager::StoredCredential& cred : credentials) {
+    if (cred.type ==
+            password_manager::PasswordForm::Type::kReceivedViaSharing &&
+        !cred.sharing_notification_displayed) {
+      _sharedUnnotifiedCredentials.push_back(
+          password_manager::CloneStoredCredential(cred));
+      __weak __typeof__(self) weakSelf = self;
+      image_fetcher::ImageFetcherParams params(NO_TRAFFIC_ANNOTATION_YET,
+                                               kImageFetcherUmaClient);
+      _imageFetcher->FetchImage(
+          cred.sender_profile_image_url,
+          base::BindOnce(^(const gfx::Image& image,
+                           const image_fetcher::RequestMetadata& metadata) {
+            if (!image.IsEmpty()) {
+              [weakSelf onSenderImageFetched:[image.ToUIImage() copy]];
+            }
+          }),
+          params);
+    }
+    _credentials.push_back(password_manager::CredentialUIEntry(
+        password_manager::CloneStoredCredential(cred)));
+  }
+}
+
+// Returns whether the bottom sheet should contain a notification about shared
+// passwords.
+- (BOOL)shouldDisplaySharingNotification {
+  return (_sharedUnnotifiedCredentials.size() > 0);
+}
+
+// Marks sharing notification as displayed in password store for all credentials
+// on `_sharedUnnotifiedCredentials`.
+- (void)markSharedPasswordNotificationsDisplayed {
+  if (![self shouldDisplaySharingNotification]) {
+    return;
+  }
+
+  for (password_manager::StoredCredential& cred :
+       _sharedUnnotifiedCredentials) {
+    cred.sharing_notification_displayed = true;
+    if (cred.IsUsingAccountStore()) {
+      _accountPasswordStore->UpdateLogin(std::move(cred));
+    } else {
+      _profilePasswordStore->UpdateLogin(std::move(cred));
+    }
+  }
+  _sharedUnnotifiedCredentials.clear();
+}
+
+// Creates title to be displayed when the user needs to be notified about new
+// shared passwords.
+- (NSString*)sharingNotificationTitle {
+  return base::SysUTF16ToNSString(l10n_util::GetPluralStringFUTF16(
+      IDS_IOS_PASSWORD_SHARING_NOTIFICATION_TITLE,
+      _sharedUnnotifiedCredentials.size()));
+}
+
+// Creates subtitle to be displayed when the user needs to be notified about new
+// shared passwords.
+- (NSString*)sharingNotificationSubtitle:(NSString*)domain {
+  if (_sharedUnnotifiedCredentials.size() == 1) {
+    return base::SysUTF16ToNSString(l10n_util::GetStringFUTF16(
+        IDS_IOS_PASSWORD_SHARING_NOTIFICATION_SINGLE_PASSWORD_SUBTITLE,
+        _sharedUnnotifiedCredentials[0].sender_name,
+        base::SysNSStringToUTF16(domain)));
+  } else {
+    return base::SysUTF16ToNSString(l10n_util::GetStringFUTF16(
+        IDS_IOS_PASSWORD_SHARING_NOTIFICATION_MULTIPLE_PASSWORDS_SUBTITLE,
+        base::SysNSStringToUTF16(domain)));
+  }
+}
+
+// Stores the fetched `image` and passes it to the consumer.
+- (void)onSenderImageFetched:(UIImage*)image {
+  [_senderImages addObject:image];
+  [self.consumer
+      setAvatarImage:CreateMultiAvatarImage(_senderImages, kProfileImageSize)];
+}
+
+// Returns the AutofillBottomSheetTabHelper for the active webstate or nil if
+// it can't be retrieved.
+- (AutofillBottomSheetTabHelper*)tabHelper {
+  web::WebState* activeWebState = [self activeWebState];
+  if (!activeWebState) {
+    return nil;
+  }
+
+  return AutofillBottomSheetTabHelper::FromWebState(activeWebState);
+}
+
+// Refocuses the login fields that was blurred to show this bottom sheet, if
+// deemed needed.
+- (void)refocus {
+  if (AutofillBottomSheetTabHelper* tabHelper = [self tabHelper]) {
+    tabHelper->RefocusElementIfNeeded(_params.frame_id);
+  }
+}
+
+@end

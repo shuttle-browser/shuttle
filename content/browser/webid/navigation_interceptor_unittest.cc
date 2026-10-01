@@ -1,0 +1,1379 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/webid/navigation_interceptor.h"
+
+#include <variant>
+
+#include "base/containers/to_vector.h"
+#include "base/strings/string_split.h"
+#include "base/strings/string_util.h"
+#include "base/test/bind.h"
+#include "base/test/task_environment.h"
+#include "content/browser/webid/accounts_fetcher.h"
+#include "content/browser/webid/identity_registry.h"
+#include "content/browser/webid/request_service.h"
+#include "content/public/browser/browser_context.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_entry.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_contents_observer.h"
+#include "content/public/browser/webid/federated_embedder_login_request.h"
+#include "content/public/browser/webid/identity_credential_source.h"
+#include "content/public/common/content_features.h"
+#include "content/public/test/back_forward_cache_util.h"
+#include "content/public/test/mock_navigation_handle.h"
+#include "content/public/test/mock_navigation_throttle_registry.h"
+#include "content/public/test/test_renderer_host.h"
+#include "content/public/test/web_contents_tester.h"
+#include "net/base/url_util.h"
+#include "net/http/http_response_headers.h"
+#include "net/http/structured_headers.h"
+#include "services/data_decoder/public/cpp/test_support/in_process_data_decoder.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/functional/overload.h"
+#include "third_party/blink/public/mojom/webid/federated_request.mojom.h"
+#include "url/gurl.h"
+#include "url/origin.h"
+
+namespace content::webid {
+
+using ::testing::_;
+using ::testing::ElementsAre;
+using ::testing::Eq;
+using ::testing::Field;
+using ::testing::Optional;
+using ::testing::Pointee;
+using ::testing::Return;
+using ::testing::WithArgs;
+using MediationRequirement = ::password_manager::CredentialMediationRequirement;
+using RequestTokenCallback = Request::RequestTokenCallback;
+
+class InterceptorMockNavigationHandle : public MockNavigationHandle {
+ public:
+  explicit InterceptorMockNavigationHandle(WebContents* web_contents)
+      : MockNavigationHandle(web_contents) {}
+
+  bool StartedWithTransientActivation() override { return true; }
+};
+
+class MockRequestInitiator {
+ public:
+  MockRequestInitiator() = default;
+  ~MockRequestInitiator() = default;
+
+  MOCK_METHOD(bool,
+              Run,
+              (RenderFrameHost * rfh,
+               std::vector<blink::mojom::IdentityProviderGetParametersPtr>
+                   idp_get_params,
+               MediationRequirement requirement,
+               NavigationHandle* navigation_handle,
+               const GURL& intercepted_url,
+               RequestTokenCallback callback));
+
+  NavigationInterceptor::RequestInitiator GetInitiator() {
+    return base::BindRepeating(&MockRequestInitiator::Run,
+                               base::Unretained(this));
+  }
+};
+
+net::structured_headers::Dictionary EncodeParams(
+    const std::map<std::string,
+                   std::variant<std::string, std::vector<std::string>>>&
+        params) {
+  net::structured_headers::Dictionary dictionary;
+  for (const auto& [key, value_variant] : params) {
+    dictionary[key] = std::visit(
+        absl::Overload{
+            [](const std::string& value) {
+              return net::structured_headers::ParameterizedMember(
+                  net::structured_headers::Item(
+                      value, net::structured_headers::Item::kStringType),
+                  net::structured_headers::Parameters());
+            },
+            [](const std::vector<std::string>& values) {
+              return net::structured_headers::ParameterizedMember(
+                  base::ToVector(
+                      values,
+                      [](const auto& value) {
+                        return net::structured_headers::ParameterizedItem(
+                            net::structured_headers::Item(
+                                value,
+                                net::structured_headers::Item::kStringType),
+                            net::structured_headers::Parameters());
+                      }),
+                  net::structured_headers::Parameters());
+            },
+        },
+        value_variant);
+  }
+  return dictionary;
+}
+
+class NavigationStartObserver : public WebContentsObserver {
+ public:
+  explicit NavigationStartObserver(WebContents* web_contents)
+      : WebContentsObserver(web_contents) {}
+  ~NavigationStartObserver() override = default;
+
+  void DidStartNavigation(NavigationHandle* navigation_handle) override {
+    started_url_ = navigation_handle->GetURL();
+    if (wait_loop_) {
+      wait_loop_->Quit();
+    }
+  }
+
+  void Wait() {
+    if (started_url_.is_valid()) {
+      return;
+    }
+    wait_loop_ = std::make_unique<base::RunLoop>();
+    wait_loop_->Run();
+  }
+
+  const GURL& started_url() const { return started_url_; }
+
+ private:
+  std::unique_ptr<base::RunLoop> wait_loop_;
+  GURL started_url_;
+};
+
+class NavigationFinishObserver : public WebContentsObserver {
+ public:
+  explicit NavigationFinishObserver(WebContents* web_contents)
+      : WebContentsObserver(web_contents) {}
+  ~NavigationFinishObserver() override = default;
+
+  void DidFinishNavigation(NavigationHandle* navigation_handle) override {
+    wait_loop_.Quit();
+  }
+
+  void Wait() { wait_loop_.Run(); }
+
+ private:
+  base::RunLoop wait_loop_;
+};
+
+class NavigationInterceptorTest : public RenderViewHostTestHarness {
+ public:
+  NavigationInterceptorTest() {
+    features_.InitAndEnableFeature(features::kFedCmNavigationInterception);
+  }
+  ~NavigationInterceptorTest() override = default;
+
+ protected:
+  base::test::ScopedFeatureList features_;
+  GURL base_url_{"https://idp.example/"};
+};
+
+TEST_F(NavigationInterceptorTest, SerializedHeaderFormat) {
+  auto header = EncodeParams({
+      {"config_url", "https://idp.example/fedcm.json"},
+      {"client_id", "1234"},
+      {"context", "continue"},
+      {"login_hint", "user@email.com"},
+      {"domain_hint", "domain.com"},
+      {"params", R"({"custom_key":"custom_value"})"},
+      {"fields", std::vector<std::string>{"name", "email"}},
+  });
+  EXPECT_EQ(
+      net::structured_headers::SerializeDictionary(header).value(),
+      R"(client_id="1234", config_url="https://idp.example/fedcm.json", context="continue", domain_hint="domain.com", fields=("name" "email"), login_hint="user@email.com", params="{\"custom_key\":\"custom_value\"}")");
+}
+
+TEST_F(NavigationInterceptorTest, WillProcessResponse) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  NavigateAndCommit(GURL("https://rp.example/"));
+
+  std::unique_ptr<MockRequestInitiator> mock_initiator =
+      std::make_unique<MockRequestInitiator>();
+
+  InterceptorMockNavigationHandle mock_navigation_handle(web_contents());
+  mock_navigation_handle.set_url(base_url_);
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("FedCM-Intercept-Navigation",
+                     net::structured_headers::SerializeDictionary(
+                         EncodeParams({
+                             {"config_url", "https://idp.example/fedcm.json"},
+                             {"client_id", "1234"},
+                         }))
+                         .value());
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  NavigationInterceptor interceptor(registry, mock_initiator->GetInitiator());
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(*mock_initiator, Run).WillOnce([&]() {
+    // When Run is finally called, quit the RunLoop.
+    run_loop.Quit();
+    return true;
+  });
+
+  interceptor.WillStartRequest();
+  auto result = interceptor.WillProcessResponse();
+  EXPECT_EQ(result, NavigationThrottle::DEFER);
+
+  // This will block the test until run_loop.Quit() is called inside the mock.
+  run_loop.Run();
+}
+
+TEST_F(NavigationInterceptorTest,
+       WillProcessResponseWithFederationInitiateRequest) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  NavigateAndCommit(GURL("https://rp.example/"));
+
+  std::unique_ptr<MockRequestInitiator> mock_initiator =
+      std::make_unique<MockRequestInitiator>();
+
+  InterceptorMockNavigationHandle mock_navigation_handle(web_contents());
+  mock_navigation_handle.set_url(base_url_);
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("Federation-Initiate-Request",
+                     net::structured_headers::SerializeDictionary(
+                         EncodeParams({
+                             {"config_url", "https://idp.example/fedcm.json"},
+                             {"client_id", "1234"},
+                         }))
+                         .value());
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  NavigationInterceptor interceptor(registry, mock_initiator->GetInitiator());
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(*mock_initiator, Run).WillOnce([&]() {
+    // When Run is finally called, quit the RunLoop.
+    run_loop.Quit();
+    return true;
+  });
+
+  interceptor.WillStartRequest();
+  auto result = interceptor.WillProcessResponse();
+  EXPECT_EQ(result, NavigationThrottle::DEFER);
+
+  // This will block the test until run_loop.Quit() is called inside the mock.
+  run_loop.Run();
+}
+
+TEST_F(NavigationInterceptorTest, WillProcessResponseWithRedirect) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  NavigateAndCommit(GURL("https://rp.example/"));
+
+  std::unique_ptr<MockRequestInitiator> mock_initiator =
+      std::make_unique<MockRequestInitiator>();
+
+  InterceptorMockNavigationHandle mock_navigation_handle(web_contents());
+  mock_navigation_handle.set_url(base_url_);
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  // Simulate a redirect.
+  mock_navigation_handle.set_is_same_document(false);
+  mock_navigation_handle.set_redirect_chain(
+      {GURL("https://idp.example/"), GURL("https://rp.example/")});
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("FedCM-Intercept-Navigation",
+                     net::structured_headers::SerializeDictionary(
+                         EncodeParams({
+                             {"config_url", "https://idp.example/fedcm.json"},
+                             {"client_id", "1234"},
+                         }))
+                         .value());
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  NavigationInterceptor interceptor(registry, mock_initiator->GetInitiator());
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(*mock_initiator, Run).WillOnce([&]() {
+    // When Run is finally called, quit the RunLoop.
+    run_loop.Quit();
+    return true;
+  });
+
+  interceptor.WillStartRequest();
+  auto result = interceptor.WillProcessResponse();
+  EXPECT_EQ(result, NavigationThrottle::DEFER);
+
+  // This will block the test until run_loop.Quit() is called inside the mock.
+  run_loop.Run();
+}
+
+TEST_F(NavigationInterceptorTest, WillProcessResponseNoActivation) {
+  NavigateAndCommit(GURL("https://rp.example/"));
+
+  std::unique_ptr<MockRequestInitiator> mock_initiator =
+      std::make_unique<MockRequestInitiator>();
+
+  // MockNavigationHandle (as opposed to InterceptorNavigationHandle) does not
+  // have activation.
+  MockNavigationHandle mock_navigation_handle(web_contents());
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("FedCM-Intercept-Navigation",
+                     net::structured_headers::SerializeDictionary(
+                         EncodeParams({
+                             {"config_url", "https://idp.example/fedcm.json"},
+                             {"client_id", "1234"},
+                         }))
+                         .value());
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  NavigationInterceptor interceptor(registry, mock_initiator->GetInitiator());
+
+  // Because there was no activation, we should proceed.
+  auto result = interceptor.WillProcessResponse();
+  EXPECT_EQ(result, NavigationThrottle::PROCEED);
+}
+
+TEST_F(NavigationInterceptorTest, NavigationAfterStartRequest) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  // TODO(crbug.com/462217238): Make interception work with bfcache.
+  DisableBackForwardCacheForTesting(
+      web_contents(),
+      BackForwardCache::DisableForTestingReason::TEST_REQUIRES_NO_CACHING);
+
+  NavigateAndCommit(GURL("https://rp.example/"));
+  InterceptorMockNavigationHandle mock_navigation_handle(web_contents());
+  mock_navigation_handle.set_url(base_url_);
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("FedCM-Intercept-Navigation",
+                     net::structured_headers::SerializeDictionary(
+                         EncodeParams({
+                             {"config_url", "https://idp.example/fedcm.json"},
+                             {"client_id", "1234"},
+                         }))
+                         .value());
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  MockRequestInitiator mock_initiator;
+  NavigationInterceptor interceptor(registry, mock_initiator.GetInitiator());
+
+  NavigationFinishObserver observer(web_contents());
+  interceptor.WillStartRequest();
+  NavigateAndCommit(GURL("https://foo.example/"), ui::PAGE_TRANSITION_TYPED);
+  observer.Wait();
+  auto result = interceptor.WillProcessResponse();
+  EXPECT_EQ(result, NavigationThrottle::PROCEED);
+}
+
+TEST_F(NavigationInterceptorTest, WillProcessResponseTokenRequestFails) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  NavigateAndCommit(GURL("https://rp.example/"));
+
+  auto mock_initiator = std::make_unique<MockRequestInitiator>();
+
+  InterceptorMockNavigationHandle mock_navigation_handle(web_contents());
+  mock_navigation_handle.set_url(base_url_);
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("FedCM-Intercept-Navigation",
+                     net::structured_headers::SerializeDictionary(
+                         EncodeParams({
+                             {"config_url", "https://idp.example/fedcm.json"},
+                             {"client_id", "1234"},
+                         }))
+                         .value());
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  NavigationInterceptor interceptor(registry, mock_initiator->GetInitiator());
+
+  EXPECT_CALL(*mock_initiator, Run)
+      .WillOnce(
+          WithArgs<5>([](RequestTokenCallback callback) {
+            std::move(callback).Run(
+                blink::mojom::RequestTokenStatus::kError,
+                /*selected_identity_provider_config_url=*/std::nullopt,
+                /*token=*/std::nullopt,
+                /*error=*/nullptr,
+                /*is_auto_selected=*/false);
+            return false;
+          }));
+
+  base::RunLoop run_loop;
+  bool was_cancelled = false;
+  std::optional<NavigationThrottle::ThrottleCheckResult> cancel_result;
+
+  interceptor.set_cancel_deferred_navigation_callback_for_testing(
+      base::BindLambdaForTesting(
+          [&](NavigationThrottle::ThrottleCheckResult result) {
+            was_cancelled = true;
+            cancel_result = result;
+            run_loop.Quit();
+          }));
+
+  interceptor.WillStartRequest();
+  auto result = interceptor.WillProcessResponse();
+  EXPECT_EQ(result, NavigationThrottle::DEFER);
+
+  run_loop.Run();
+
+  EXPECT_TRUE(was_cancelled);
+  ASSERT_TRUE(cancel_result.has_value());
+  EXPECT_EQ(cancel_result->action(), NavigationThrottle::CANCEL);
+}
+
+TEST_F(NavigationInterceptorTest,
+       WillProcessResponseTokenRequestTooManyRequests) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  NavigateAndCommit(GURL("https://rp.example/"));
+
+  auto mock_initiator = std::make_unique<MockRequestInitiator>();
+
+  InterceptorMockNavigationHandle mock_navigation_handle(web_contents());
+  mock_navigation_handle.set_url(base_url_);
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("FedCM-Intercept-Navigation",
+                     net::structured_headers::SerializeDictionary(
+                         EncodeParams({
+                             {"config_url", "https://idp.example/fedcm.json"},
+                             {"client_id", "1234"},
+                         }))
+                         .value());
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  NavigationInterceptor interceptor(registry, mock_initiator->GetInitiator());
+
+  EXPECT_CALL(*mock_initiator, Run)
+      .WillOnce(WithArgs<5>([](RequestTokenCallback callback) {
+        std::move(callback).Run(
+            blink::mojom::RequestTokenStatus::kErrorTooManyRequests,
+            /*selected_identity_provider_config_url=*/std::nullopt,
+            /*token=*/std::nullopt,
+            /*error=*/nullptr,
+            /*is_auto_selected=*/false);
+        return false;
+      }));
+
+  base::RunLoop run_loop;
+  bool was_resumed = false;
+
+  interceptor.set_resume_callback_for_testing(base::BindLambdaForTesting([&]() {
+    was_resumed = true;
+    run_loop.Quit();
+  }));
+
+  interceptor.WillStartRequest();
+  auto result = interceptor.WillProcessResponse();
+  EXPECT_EQ(result, NavigationThrottle::DEFER);
+
+  run_loop.Run();
+
+  EXPECT_TRUE(was_resumed);
+}
+
+TEST_F(NavigationInterceptorTest, RequestBuilderBuildsRequest) {
+  const char* kconfig_url = "https://idp.example/fedcm.json";
+  const char* kclient_id = "1234";
+  const char* kLoginHint = "user@example.com";
+  const char* kDomainHint = "example.com";
+  const char* kParamsJson = "{\"custom_key\":\"custom_value\"}";
+
+  NavigationInterceptor::RequestBuilder builder;
+  auto parsed_dictionary = EncodeParams({
+      {"config_url", kconfig_url},
+      {"client_id", kclient_id},
+      {"context", "continue"},
+      {"login_hint", kLoginHint},
+      {"domain_hint", kDomainHint},
+      {"params", kParamsJson},
+      {"fields", std::vector<std::string>{"name", "email"}},
+  });
+  auto result = builder.Build(base_url_, parsed_dictionary);
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result->size(), 1u);
+
+  const auto& idp_get_params = (*result)[0];
+  ASSERT_TRUE(idp_get_params);
+
+  EXPECT_EQ(idp_get_params->context, blink::mojom::RpContext::kContinue);
+  EXPECT_EQ(idp_get_params->mode, blink::mojom::RpMode::kActive);
+
+  ASSERT_EQ(idp_get_params->providers.size(), 1u);
+  const auto& idp_options = idp_get_params->providers[0];
+  ASSERT_TRUE(idp_options);
+  EXPECT_EQ(idp_options->login_hint, kLoginHint);
+  EXPECT_EQ(idp_options->domain_hint, kDomainHint);
+  EXPECT_EQ(idp_options->params_json, kParamsJson);
+  EXPECT_EQ(idp_options->fields, std::vector<std::string>({"name", "email"}));
+
+  const auto& idp_config = idp_options->config;
+  ASSERT_TRUE(idp_config);
+  EXPECT_EQ(idp_config->config_url, GURL(kconfig_url));
+  EXPECT_EQ(idp_config->client_id, kclient_id);
+}
+
+TEST_F(NavigationInterceptorTest, RequestBuilderParsesAllFields) {
+  NavigationInterceptor::RequestBuilder builder;
+  auto parsed_dictionary = EncodeParams({
+      {"config_url", "https://idp.example/fedcm.json"},
+      {"client_id", "123"},
+      {"fields",
+       std::vector<std::string>{"name", "email", "picture", "tel", "username"}},
+  });
+  auto result = builder.Build(base_url_, parsed_dictionary);
+
+  ASSERT_TRUE(result.has_value());
+  const auto& idp_options = (*result)[0]->providers[0];
+  ASSERT_TRUE(idp_options);
+  EXPECT_EQ(idp_options->fields,
+            std::vector<std::string>(
+                {"name", "email", "picture", "tel", "username"}));
+}
+
+TEST_F(NavigationInterceptorTest, RequestBuilderHandlesMissingFields) {
+  NavigationInterceptor::RequestBuilder builder;
+  auto parsed_dictionary = EncodeParams({
+      {"config_url", "https://idp.example/fedcm.json"},
+      {"client_id", "123"},
+  });
+  auto result = builder.Build(base_url_, parsed_dictionary);
+
+  ASSERT_TRUE(result.has_value());
+  const auto& idp_options = (*result)[0]->providers[0];
+  ASSERT_TRUE(idp_options);
+  EXPECT_TRUE(!idp_options->fields.has_value() || idp_options->fields->empty());
+}
+
+TEST_F(NavigationInterceptorTest, RequestBuilderMissingParams) {
+  NavigationInterceptor::RequestBuilder builder;
+  auto parsed_dictionary = EncodeParams({
+      {"config_url", "https://idp.example/fedcm.json"},
+      {"client_id", "123"},
+  });
+  auto result = builder.Build(base_url_, parsed_dictionary);
+
+  ASSERT_TRUE(result.has_value());
+  const auto& idp_options = (*result)[0]->providers[0];
+  ASSERT_TRUE(idp_options);
+  EXPECT_FALSE(idp_options->params_json.has_value());
+}
+
+TEST_F(NavigationInterceptorTest,
+       RequestBuilderMissingContextDefaultsToSignIn) {
+  NavigationInterceptor::RequestBuilder builder;
+  auto parsed_dictionary = EncodeParams({
+      {"config_url", "https://idp.example/fedcm.json"},
+      {"client_id", "123"},
+  });
+  auto result = builder.Build(base_url_, parsed_dictionary);
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ((*result)[0]->context, blink::mojom::RpContext::kSignIn);
+}
+
+TEST_F(NavigationInterceptorTest, RequestBuilderParsesContext) {
+  const struct {
+    std::string context_str;
+    blink::mojom::RpContext context_enum;
+  } kTestCases[] = {
+      {"signin", blink::mojom::RpContext::kSignIn},
+      {"signup", blink::mojom::RpContext::kSignUp},
+      {"use", blink::mojom::RpContext::kUse},
+      {"continue", blink::mojom::RpContext::kContinue},
+  };
+
+  for (const auto& test_case : kTestCases) {
+    NavigationInterceptor::RequestBuilder builder;
+    auto parsed_dictionary = EncodeParams({
+        {"config_url", "https://idp.example/fedcm.json"},
+        {"client_id", "123"},
+        {"context", test_case.context_str},
+    });
+    auto result = builder.Build(base_url_, parsed_dictionary);
+
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ((*result)[0]->context, test_case.context_enum);
+  }
+}
+
+TEST_F(NavigationInterceptorTest,
+       RequestBuilderReturnsNulloptOnInvalidContext) {
+  NavigationInterceptor::RequestBuilder builder;
+  auto parsed_dictionary = EncodeParams({
+      {"config_url", "https://idp.example/fedcm.json"},
+      {"client_id", "123"},
+      {"context", "invalid"},
+  });
+  auto result = builder.Build(base_url_, parsed_dictionary);
+
+  ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(NavigationInterceptorTest, RequestBuilderSupportsRelativeUrl) {
+  NavigationInterceptor::RequestBuilder builder;
+  auto parsed_dictionary = EncodeParams({
+      {"config_url", "fedcm.json"},
+      {"client_id", "123"},
+  });
+  auto result = builder.Build(base_url_, parsed_dictionary);
+
+  ASSERT_TRUE(result.has_value());
+  EXPECT_EQ((*result)[0]->providers[0]->config->config_url,
+            GURL("https://idp.example/fedcm.json"));
+}
+
+TEST_F(NavigationInterceptorTest, RequestBuilderDisallowsCrossOriginUrl) {
+  NavigationInterceptor::RequestBuilder builder;
+  auto parsed_dictionary = EncodeParams({
+      {"config_url", "https://cross-origin.idp.example/fedcm.json"},
+      {"client_id", "123"},
+  });
+  auto result = builder.Build(base_url_, parsed_dictionary);
+
+  ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(NavigationInterceptorTest,
+       RequestBuilderReturnsNulloptOnMissingconfig_url) {
+  NavigationInterceptor::RequestBuilder builder;
+  auto parsed_dictionary = EncodeParams({
+      {"client_id", "123"},
+  });
+  auto result = builder.Build(base_url_, parsed_dictionary);
+
+  ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(NavigationInterceptorTest,
+       RequestBuilderReturnsNulloptOnMissingclient_id) {
+  NavigationInterceptor::RequestBuilder builder;
+  auto parsed_dictionary = EncodeParams({
+      {"config_url", "https://idp.example/fedcm.json"},
+  });
+  auto result = builder.Build(base_url_, parsed_dictionary);
+
+  ASSERT_FALSE(result.has_value());
+}
+
+// Regression test for http://crbug.com/545549898.
+TEST_F(NavigationInterceptorTest, RequestBuilderHandlesInnerLists) {
+  const struct {
+    std::string_view desc;
+    std::string_view input;
+    testing::Matcher<std::optional<
+        std::vector<blink::mojom::IdentityProviderGetParametersPtr>>>
+        matches;
+  } kTestCases[] = {
+      {
+          "config_url-inner-list-rejected",
+          R"(config_url=("https://idp.example/fedcm.json"))",
+          Eq(std::nullopt),
+      },
+      {
+          "client_id-inner-list-rejected",
+          R"(config_url="https://idp.example/fedcm.json", client_id=("123"))",
+          Eq(std::nullopt),
+      },
+      {
+          "login_hint-inner-list-ignored",
+          R"(config_url="https://idp.example/fedcm.json", client_id="123", login_hint=("x"))",
+          Optional(ElementsAre(Pointee(Field(
+              &blink::mojom::IdentityProviderGetParameters::providers,
+              ElementsAre(Pointee(Field(
+                  &blink::mojom::IdentityProviderRequestOptions::login_hint,
+                  ""))))))),
+      },
+      {
+          "domain_hint-inner-list-ignored",
+          R"(config_url="https://idp.example/fedcm.json", client_id="123", domain_hint=("x"))",
+          Optional(ElementsAre(Pointee(Field(
+              &blink::mojom::IdentityProviderGetParameters::providers,
+              ElementsAre(Pointee(Field(
+                  &blink::mojom::IdentityProviderRequestOptions::domain_hint,
+                  ""))))))),
+      },
+      {
+          "params-inner-list-ignored",
+          R"(config_url="https://idp.example/fedcm.json", client_id="123", params=("x"))",
+          Optional(ElementsAre(Pointee(Field(
+              &blink::mojom::IdentityProviderGetParameters::providers,
+              ElementsAre(Pointee(Field(
+                  &blink::mojom::IdentityProviderRequestOptions::params_json,
+                  std::nullopt))))))),
+      },
+      {
+          "fields-not-inner-list-ignored",
+          R"(config_url="https://idp.example/fedcm.json", client_id="123", fields="x")",
+          Optional(ElementsAre(Pointee(
+              Field(&blink::mojom::IdentityProviderGetParameters::providers,
+                    ElementsAre(Pointee(Field(
+                        &blink::mojom::IdentityProviderRequestOptions::fields,
+                        std::nullopt))))))),
+      },
+      {
+          "fields-element-not-string-rejected",
+          R"(config_url="https://idp.example/fedcm.json", client_id="123", fields=(x))",
+          Eq(std::nullopt),
+      },
+      {
+          "context-inner-list-ignored",
+          R"(config_url="https://idp.example/fedcm.json", client_id="123", context=("x"))",
+          Optional(ElementsAre(Pointee(
+              Field(&blink::mojom::IdentityProviderGetParameters::context,
+                    blink::mojom::RpContext::kSignIn)))),
+      },
+  };
+
+  for (const auto& test_case : kTestCases) {
+    SCOPED_TRACE(test_case.desc);
+
+    auto dict = net::structured_headers::ParseDictionary(test_case.input);
+    ASSERT_TRUE(dict);
+
+    NavigationInterceptor::RequestBuilder builder;
+    EXPECT_THAT(builder.Build(base_url_, *std::move(dict)), test_case.matches);
+  }
+}
+
+TEST_F(NavigationInterceptorTest, ResponseBuilderBuildsResponse) {
+  NavigationInterceptor::ResponseBuilder builder;
+  base::DictValue response_dict;
+  response_dict.Set("redirect_to", "https://example.com/redirect");
+  base::Value response(std::move(response_dict));
+
+  auto params = builder.Build(response);
+
+  ASSERT_TRUE(params.has_value());
+  EXPECT_EQ(params->url, GURL("https://example.com/redirect"));
+  EXPECT_EQ(static_cast<int>(params->transition_type),
+            static_cast<int>(ui::PAGE_TRANSITION_LINK));
+}
+
+TEST_F(NavigationInterceptorTest, ResponseBuilderFailsWithNoRedirectUrl) {
+  NavigationInterceptor::ResponseBuilder builder;
+  base::Value response(base::Value::Type::DICT);
+
+  auto params = builder.Build(response);
+
+  ASSERT_FALSE(params.has_value());
+}
+
+TEST_F(NavigationInterceptorTest, ResponseBuilderFailsWithInvalidRedirectUrl) {
+  NavigationInterceptor::ResponseBuilder builder;
+  base::DictValue response_dict;
+  response_dict.Set("redirect_to", "not a valid url");
+  base::Value response(std::move(response_dict));
+
+  auto params = builder.Build(response);
+
+  ASSERT_FALSE(params.has_value());
+}
+
+TEST_F(NavigationInterceptorTest, ResponseBuilderFailsWithInternalUrls) {
+  NavigationInterceptor::ResponseBuilder builder;
+  base::DictValue response_dict;
+  response_dict.Set("redirect_to", "chrome://settings");
+  base::Value response(std::move(response_dict));
+
+  auto params = builder.Build(response);
+
+  ASSERT_FALSE(params.has_value());
+}
+
+TEST_F(NavigationInterceptorTest, ResponseBuilderBuildsPostResponse) {
+  NavigationInterceptor::ResponseBuilder builder;
+  base::DictValue redirect_dict;
+  redirect_dict.Set("url", "https://example.com/redirect");
+  redirect_dict.Set("method", "POST");
+  redirect_dict.Set("body", "key=value");
+  base::DictValue response_dict;
+  response_dict.Set("redirect_to", std::move(redirect_dict));
+  base::Value response(std::move(response_dict));
+
+  auto params = builder.Build(response);
+
+  ASSERT_TRUE(params.has_value());
+  EXPECT_EQ(params->url, GURL("https://example.com/redirect"));
+  EXPECT_EQ(static_cast<int>(params->transition_type),
+            static_cast<int>(ui::PAGE_TRANSITION_FORM_SUBMIT));
+  ASSERT_TRUE(params->post_data);
+  const auto& elements = *params->post_data->elements();
+  ASSERT_EQ(elements.size(), 1u);
+  ASSERT_EQ(elements[0].type(), network::DataElement::Tag::kBytes);
+  EXPECT_EQ(elements[0].As<network::DataElementBytes>().AsStringPiece(),
+            "key=value");
+}
+
+TEST_F(NavigationInterceptorTest,
+       ResponseBuilderFailsWithPostResponseMissingUrl) {
+  NavigationInterceptor::ResponseBuilder builder;
+  base::DictValue redirect_dict;
+  redirect_dict.Set("method", "POST");
+  redirect_dict.Set("body", "key=value");
+  base::DictValue response_dict;
+  response_dict.Set("redirect_to", std::move(redirect_dict));
+  base::Value response(std::move(response_dict));
+
+  auto params = builder.Build(response);
+
+  ASSERT_FALSE(params.has_value());
+}
+
+TEST_F(NavigationInterceptorTest,
+       ResponseBuilderSucceedsWithPostResponseMissingMethod) {
+  NavigationInterceptor::ResponseBuilder builder;
+  base::DictValue redirect_dict;
+  redirect_dict.Set("url", "https://example.com/redirect");
+  redirect_dict.Set("body", "key=value");
+  base::DictValue response_dict;
+  response_dict.Set("redirect_to", std::move(redirect_dict));
+  base::Value response(std::move(response_dict));
+
+  auto params = builder.Build(response);
+
+  ASSERT_TRUE(params.has_value());
+  EXPECT_EQ(params->url, GURL("https://example.com/redirect"));
+  EXPECT_FALSE(params->post_data);
+}
+
+TEST_F(NavigationInterceptorTest,
+       ResponseBuilderSucceedsWithPostResponseMissingBody) {
+  NavigationInterceptor::ResponseBuilder builder;
+  base::DictValue redirect_dict;
+  redirect_dict.Set("url", "https://example.com/redirect");
+  redirect_dict.Set("method", "POST");
+  base::DictValue response_dict;
+  response_dict.Set("redirect_to", std::move(redirect_dict));
+  base::Value response(std::move(response_dict));
+
+  auto params = builder.Build(response);
+
+  ASSERT_TRUE(params.has_value());
+  EXPECT_EQ(params->url, GURL("https://example.com/redirect"));
+  ASSERT_TRUE(params->post_data);
+  const auto& elements = *params->post_data->elements();
+  ASSERT_EQ(elements.size(), 0u);
+}
+
+TEST_F(NavigationInterceptorTest, WillProcessResponseWithConnectionStatus) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  bool connection_status_received = false;
+  FederatedEmbedderLoginRequest::Set(
+      web_contents(), url::Origin::Create(GURL("https://idp.example/")), "1234",
+      base::BindLambdaForTesting([&](FederatedLoginResult result) {
+        EXPECT_EQ(result, FederatedLoginResult::kSuccess);
+        connection_status_received = true;
+      }));
+
+  NavigateAndCommit(GURL("https://rp.example/"));
+  InterceptorMockNavigationHandle mock_navigation_handle(web_contents());
+  mock_navigation_handle.set_url(base_url_);
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("Federation-RP-Connection-Status",
+                     "status=\"connected\", account_id=\"1234\"");
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  MockRequestInitiator mock_initiator;
+  NavigationInterceptor interceptor(registry, mock_initiator.GetInitiator());
+
+  base::RunLoop run_loop;
+  bool was_resumed = false;
+  interceptor.set_resume_callback_for_testing(base::BindLambdaForTesting([&]() {
+    was_resumed = true;
+    run_loop.Quit();
+  }));
+
+  interceptor.WillStartRequest();
+  auto result = interceptor.WillProcessResponse();
+  EXPECT_EQ(result, NavigationThrottle::DEFER);
+
+  run_loop.Run();
+
+  EXPECT_TRUE(connection_status_received);
+  EXPECT_TRUE(was_resumed);
+}
+
+TEST_F(NavigationInterceptorTest,
+       WillProcessResponseWithMismatchingConnectionStatus) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  bool connection_status_received = false;
+  FederatedEmbedderLoginRequest::Set(
+      web_contents(), url::Origin::Create(GURL("https://idp.example/")), "1234",
+      base::BindLambdaForTesting([&](FederatedLoginResult result) {
+        EXPECT_EQ(result, FederatedLoginResult::kExpectedAccountNotPresent);
+        connection_status_received = true;
+      }));
+
+  NavigateAndCommit(GURL("https://rp.example/"));
+  InterceptorMockNavigationHandle mock_navigation_handle(web_contents());
+  mock_navigation_handle.set_url(base_url_);
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("Federation-RP-Connection-Status",
+                     "status=\"connected\", account_id=\"5678\"");
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  MockRequestInitiator mock_initiator;
+  NavigationInterceptor interceptor(registry, mock_initiator.GetInitiator());
+
+  base::RunLoop run_loop;
+  bool was_resumed = false;
+  interceptor.set_resume_callback_for_testing(base::BindLambdaForTesting([&]() {
+    was_resumed = true;
+    run_loop.Quit();
+  }));
+
+  interceptor.WillStartRequest();
+  auto result = interceptor.WillProcessResponse();
+  EXPECT_EQ(result, NavigationThrottle::DEFER);
+
+  run_loop.Run();
+
+  EXPECT_TRUE(connection_status_received);
+  EXPECT_TRUE(was_resumed);
+}
+
+TEST_F(NavigationInterceptorTest,
+       WillProcessResponseInPopupWithConnectionStatus) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  bool connection_status_received = false;
+  FederatedEmbedderLoginRequest::Set(
+      web_contents(), url::Origin::Create(GURL("https://idp.example/")), "1234",
+      base::BindLambdaForTesting([&](FederatedLoginResult result) {
+        EXPECT_EQ(result, FederatedLoginResult::kSuccess);
+        connection_status_received = true;
+      }));
+
+  // Create a popup and set its opener.
+  std::unique_ptr<WebContents> popup = CreateTestWebContents();
+  WebContentsTester::For(popup.get())->SetOpener(web_contents());
+
+  // Navigate the popup to a valid URL once.
+  WebContentsTester::For(popup.get())
+      ->NavigateAndCommit(GURL("https://idp.example/"));
+
+  InterceptorMockNavigationHandle mock_navigation_handle(popup.get());
+  mock_navigation_handle.set_url(base_url_);
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(Return(popup->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(popup->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("Federation-RP-Connection-Status",
+                     "status=\"connected\", account_id=\"1234\"");
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  MockRequestInitiator mock_initiator;
+  NavigationInterceptor interceptor(registry, mock_initiator.GetInitiator());
+
+  base::RunLoop run_loop;
+  bool was_resumed = false;
+  interceptor.set_resume_callback_for_testing(base::BindLambdaForTesting([&]() {
+    was_resumed = true;
+    run_loop.Quit();
+  }));
+
+  interceptor.WillStartRequest();
+  auto result = interceptor.WillProcessResponse();
+  EXPECT_EQ(result.action(), NavigationThrottle::DEFER);
+
+  run_loop.Run();
+
+  EXPECT_TRUE(connection_status_received);
+  EXPECT_TRUE(was_resumed);
+}
+
+TEST_F(NavigationInterceptorTest,
+       WillProcessResponseWithMismatchedOriginConnectionStatus) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  bool connection_status_received = false;
+  FederatedEmbedderLoginRequest::Set(
+      web_contents(), url::Origin::Create(base_url_), "1234",
+      base::BindLambdaForTesting([&](FederatedLoginResult result) {
+        connection_status_received = true;
+      }));
+
+  NavigateAndCommit(GURL("https://rp.example/"));
+  InterceptorMockNavigationHandle mock_navigation_handle(web_contents());
+  // The navigation is to attacker.example, but the embedder request is for
+  // idp.example.
+  mock_navigation_handle.set_url(GURL("https://attacker.example/"));
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("Federation-RP-Connection-Status",
+                     "status=\"connected\", account_id=\"1234\"");
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  MockRequestInitiator mock_initiator;
+  NavigationInterceptor interceptor(registry, mock_initiator.GetInitiator());
+
+  base::RunLoop run_loop;
+  bool was_resumed = false;
+  interceptor.set_resume_callback_for_testing(base::BindLambdaForTesting([&]() {
+    was_resumed = true;
+    run_loop.Quit();
+  }));
+
+  interceptor.WillStartRequest();
+  auto result = interceptor.WillProcessResponse();
+  EXPECT_EQ(result, NavigationThrottle::DEFER);
+
+  run_loop.Run();
+
+  // The connection status header should be ignored due to origin mismatch.
+  EXPECT_FALSE(connection_status_received);
+  EXPECT_TRUE(was_resumed);
+}
+
+TEST_F(NavigationInterceptorTest,
+       WillRedirectRequestWithValidSameOriginInterception) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  NavigateAndCommit(GURL("https://rp.example/"));
+
+  std::unique_ptr<MockRequestInitiator> mock_initiator =
+      std::make_unique<MockRequestInitiator>();
+  InterceptorMockNavigationHandle mock_navigation_handle(web_contents());
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  // Simulate a redirect: idp.example/redirect -> idp.example/login.
+  // Note that NavigationHandle::GetURL() returns the post-redirect URL
+  // when WillRedirectRequest is called.
+  mock_navigation_handle.set_url(GURL("https://idp.example/login"));
+  mock_navigation_handle.set_is_same_document(false);
+  mock_navigation_handle.set_redirect_chain(
+      {GURL("https://idp.example/redirect"),
+       GURL("https://idp.example/login")});
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("FedCM-Intercept-Navigation",
+                     net::structured_headers::SerializeDictionary(
+                         EncodeParams({
+                             {"config_url", "https://idp.example/fedcm.json"},
+                             {"client_id", "1234"},
+                         }))
+                         .value());
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  NavigationInterceptor interceptor(registry, mock_initiator->GetInitiator());
+
+  base::RunLoop run_loop;
+  bool request_token_called = false;
+  EXPECT_CALL(*mock_initiator,
+              Run(_, _, _, _, GURL("https://idp.example/redirect"), _))
+      .WillOnce([&]() {
+        request_token_called = true;
+        run_loop.Quit();
+        return true;
+      });
+
+  bool was_cancelled = false;
+  interceptor.set_cancel_deferred_navigation_callback_for_testing(
+      base::BindLambdaForTesting(
+          [&](NavigationThrottle::ThrottleCheckResult result) {
+            was_cancelled = true;
+            run_loop.Quit();
+          }));
+
+  interceptor.WillStartRequest();
+  auto result = interceptor.WillRedirectRequest();
+  EXPECT_EQ(result, NavigationThrottle::DEFER);
+
+  run_loop.Run();
+
+  EXPECT_FALSE(was_cancelled);
+  EXPECT_TRUE(request_token_called);
+}
+
+TEST_F(NavigationInterceptorTest,
+       WillRedirectRequestWithCrossOriginBypassAttempt) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  NavigateAndCommit(GURL("https://rp.example/"));
+
+  std::unique_ptr<MockRequestInitiator> mock_initiator =
+      std::make_unique<MockRequestInitiator>();
+  InterceptorMockNavigationHandle mock_navigation_handle(web_contents());
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  // Simulate a redirect: attacker.example -> victim.example.
+  // Note that NavigationHandle::GetURL() returns the post-redirect URL
+  // when WillRedirectRequest is called.
+  mock_navigation_handle.set_url(GURL("https://victim.example/"));
+  mock_navigation_handle.set_is_same_document(false);
+  mock_navigation_handle.set_redirect_chain(
+      {GURL("https://attacker.example/redirect"),
+       GURL("https://victim.example/")});
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader(
+      "FedCM-Intercept-Navigation",
+      net::structured_headers::SerializeDictionary(
+          EncodeParams({
+              {"config_url", "https://victim.example/fedcm.json"},
+              {"client_id", "1234"},
+          }))
+          .value());
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  NavigationInterceptor interceptor(registry, mock_initiator->GetInitiator());
+
+  base::RunLoop run_loop;
+  bool request_token_called = false;
+  EXPECT_CALL(*mock_initiator, Run).WillRepeatedly([&]() {
+    request_token_called = true;
+    run_loop.Quit();
+    return true;
+  });
+
+  bool was_cancelled = false;
+  interceptor.set_cancel_deferred_navigation_callback_for_testing(
+      base::BindLambdaForTesting(
+          [&](NavigationThrottle::ThrottleCheckResult result) {
+            was_cancelled = true;
+            run_loop.Quit();
+          }));
+
+  interceptor.WillStartRequest();
+  auto result = interceptor.WillRedirectRequest();
+  EXPECT_EQ(result, NavigationThrottle::DEFER);
+
+  run_loop.Run();
+
+  EXPECT_TRUE(was_cancelled);
+  EXPECT_FALSE(request_token_called);
+}
+
+class EmbedderLoginNavigationInterceptorTest
+    : public RenderViewHostTestHarness {
+ public:
+  EmbedderLoginNavigationInterceptorTest() {
+    features_.InitWithFeatures({features::kFedCmEmbedderInitiatedLogin},
+                               {features::kFedCmNavigationInterception});
+  }
+  ~EmbedderLoginNavigationInterceptorTest() override = default;
+
+ protected:
+  base::test::ScopedFeatureList features_;
+  GURL base_url_{"https://idp.example/"};
+};
+
+TEST_F(EmbedderLoginNavigationInterceptorTest,
+       IgnoreConnectionStatusWithoutEmbedderLoginRequest) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  NavigateAndCommit(GURL("https://rp.example/"));
+  InterceptorMockNavigationHandle mock_navigation_handle(web_contents());
+  mock_navigation_handle.set_url(base_url_);
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("Federation-RP-Connection-Status",
+                     "status=\"connected\", account_id=\"1234\"");
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  MockRequestInitiator mock_initiator;
+  NavigationInterceptor interceptor(registry, mock_initiator.GetInitiator());
+
+  interceptor.WillStartRequest();
+  auto result = interceptor.WillProcessResponse();
+  EXPECT_EQ(result, NavigationThrottle::PROCEED);
+}
+
+TEST_F(NavigationInterceptorTest, TokenRequestFailsSynchronousDestruction) {
+  // Uses an in-process data decoder service for testing.
+  data_decoder::test::InProcessDataDecoder in_process_data_decoder;
+
+  NavigateAndCommit(GURL("https://rp.example/"));
+
+  auto mock_initiator = std::make_unique<MockRequestInitiator>();
+
+  InterceptorMockNavigationHandle mock_navigation_handle(web_contents());
+  mock_navigation_handle.set_url(base_url_);
+  EXPECT_CALL(mock_navigation_handle, GetPreviousRenderFrameHostId)
+      .WillRepeatedly(
+          Return(web_contents()->GetPrimaryMainFrame()->GetGlobalId()));
+  mock_navigation_handle.set_render_frame_host(
+      web_contents()->GetPrimaryMainFrame());
+  mock_navigation_handle.set_is_in_primary_main_frame(true);
+
+  auto headers = base::MakeRefCounted<net::HttpResponseHeaders>("");
+  headers->AddHeader("FedCM-Intercept-Navigation",
+                     net::structured_headers::SerializeDictionary(
+                         EncodeParams({
+                             {"config_url", "https://idp.example/fedcm.json"},
+                             {"client_id", "1234"},
+                         }))
+                         .value());
+  mock_navigation_handle.set_response_headers(headers);
+
+  MockNavigationThrottleRegistry registry(&mock_navigation_handle);
+
+  auto interceptor = std::make_unique<NavigationInterceptor>(
+      registry, mock_initiator->GetInitiator());
+
+  EXPECT_CALL(*mock_initiator, Run)
+      .WillOnce(WithArgs<5>([](RequestTokenCallback callback) {
+        std::move(callback).Run(
+            blink::mojom::RequestTokenStatus::kError,
+            /*selected_identity_provider_config_url=*/std::nullopt,
+            /*token=*/std::nullopt,
+            /*error=*/nullptr,
+            /*is_auto_selected=*/false);
+        return false;
+      }));
+
+  base::RunLoop run_loop;
+  bool was_cancelled = false;
+  std::optional<NavigationThrottle::ThrottleCheckResult> cancel_result;
+
+  NavigationInterceptor* interceptor_ptr = interceptor.get();
+  interceptor_ptr->set_cancel_deferred_navigation_callback_for_testing(
+      base::BindLambdaForTesting(
+          [&](NavigationThrottle::ThrottleCheckResult result) {
+            was_cancelled = true;
+            cancel_result = result;
+            interceptor.reset();
+            run_loop.Quit();
+          }));
+
+  interceptor_ptr->WillStartRequest();
+  auto result = interceptor_ptr->WillProcessResponse();
+
+  // If the interceptor was synchronously destroyed during WillProcessResponse
+  // because the callback ran inline, returning DEFER means it didn't crash via
+  // use-after-free inside NavigationInterceptor::OnHeaderParsed.
+  EXPECT_EQ(result, NavigationThrottle::DEFER);
+
+  run_loop.Run();
+
+  EXPECT_TRUE(was_cancelled);
+  ASSERT_TRUE(cancel_result.has_value());
+  EXPECT_EQ(cancel_result->action(), NavigationThrottle::CANCEL);
+}
+
+}  // namespace content::webid

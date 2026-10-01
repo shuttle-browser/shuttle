@@ -1,0 +1,16 @@
+{
+  "name": "webNavigation",
+  "version": "1.0",
+  "manifest_version": 3,
+  "description": "Tests the webNavigation API events - getFrame.",
+  "background": {
+    "service_worker": "test_getFrame.js"
+  },
+  "permissions": [
+    "webNavigation",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ]
+}

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>
+      Test decodeAudioData Out of Memory Handling
+    </title>
+    <script src="../../resources/testharness.js"></script>
+    <script src="../../resources/testharnessreport.js"></script>
+  </head>
+  <body>
+    <script>
+      const createMaliciousWav = (sampleRate, targetFrames = 4294967296) => {
+        // Calculate numSamples so that resampling from 1 Hz to sampleRate
+        // produces a total frame count exceeding targetFrames.
+        const numSamples = Math.ceil(targetFrames / sampleRate) + 1;
+        const buffer = new ArrayBuffer(44 + numSamples * 2);
+        const view = new DataView(buffer);
+
+        // RIFF
+        view.setUint32(0, 0x52494646, false);
+        view.setUint32(4, 36 + numSamples * 2, true);
+        // WAVE
+        view.setUint32(8, 0x57415645, false);
+        // fmt
+        view.setUint32(12, 0x666d7420, false);
+        view.setUint32(16, 16, true); // chunk size
+        view.setUint16(20, 1, true); // PCM
+        view.setUint16(22, 1, true); // 1 channel
+        view.setUint32(24, 1, true); // sample rate: 1 Hz
+        view.setUint32(28, 2, true); // byte rate
+        view.setUint16(32, 2, true); // block align
+        view.setUint16(34, 16, true); // bits per sample
+        // data
+        view.setUint32(36, 0x64617461, false);
+        view.setUint32(40, numSamples * 2, true);
+
+        return buffer;
+      };
+
+      promise_test(async (t) => {
+        const context = new AudioContext();
+        // Test 1: Targets values exceeding full 32-bit unsigned limits (2^32)
+        const maliciousBuffer = createMaliciousWav(context.sampleRate);
+
+        await promise_rejects_dom(
+            t,
+            'EncodingError',
+            context.decodeAudioData(maliciousBuffer),
+            'decodeAudioData should reject with EncodingError when extreme ' +
+            'up-sampling memory allocation fails or overflows');
+      }, 'decodeAudioData safely rejects unsigned 32-bit overflow wrapping');
+
+      promise_test(async (t) => {
+        const context = new AudioContext();
+        // Test 2: Targets values exceeding signed INT_MAX but below UINT_MAX.
+        // Forcing a destination calculation of ~3 billion frames.
+        const targetVulnerableFrames = 3_000_000_000;
+        const maliciousBuffer = createMaliciousWav(
+            context.sampleRate, targetVulnerableFrames);
+
+        await promise_rejects_dom(
+            t,
+            'EncodingError',
+            context.decodeAudioData(maliciousBuffer),
+            'decodeAudioData should reject with EncodingError when signed ' +
+            'boundary frame allocation fails or exceeds limits');
+      }, 'decodeAudioData safely rejects allocations exceeding signed INT_MAX');
+    </script>
+  </body>
+</html>

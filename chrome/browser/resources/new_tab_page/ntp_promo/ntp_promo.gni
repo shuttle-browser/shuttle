@@ -1,0 +1,11 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+ntp_promo_ts_files = [
+  "ntp_promo/ntp_promo_proxy.ts",
+  "ntp_promo/individual_promos.ts",
+  "ntp_promo/individual_promos.html.ts",
+]
+
+ntp_promo_css_files = [ "ntp_promo/individual_promos.css" ]

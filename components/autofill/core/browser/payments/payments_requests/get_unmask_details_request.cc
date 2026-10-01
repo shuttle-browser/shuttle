@@ -1,0 +1,102 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/autofill/core/browser/payments/payments_requests/get_unmask_details_request.h"
+
+#include <optional>
+#include <string>
+#include <utility>
+
+#include "base/functional/callback.h"
+#include "base/json/json_writer.h"
+#include "base/logging.h"
+#include "base/values.h"
+#include "components/autofill/core/browser/payments/payments_autofill_client.h"
+#include "components/autofill/core/browser/payments/payments_request_details.h"
+#include "components/autofill/core/browser/payments/payments_requests/payments_request.h"
+
+namespace autofill::payments {
+
+namespace {
+const char kGetUnmaskDetailsRequestPath[] =
+    "payments/apis/chromepaymentsservice/getdetailsforgetrealpan";
+}  // namespace
+
+GetUnmaskDetailsRequest::GetUnmaskDetailsRequest(
+    base::OnceCallback<void(PaymentsAutofillClient::PaymentsRpcResult,
+                            UnmaskDetails&)> callback,
+    const std::string& app_locale,
+    const bool full_sync_enabled)
+    : callback_(std::move(callback)),
+      app_locale_(app_locale),
+      full_sync_enabled_(full_sync_enabled) {}
+
+GetUnmaskDetailsRequest::~GetUnmaskDetailsRequest() = default;
+
+std::string GetUnmaskDetailsRequest::GetRequestUrlPath() {
+  return kGetUnmaskDetailsRequestPath;
+}
+
+std::string GetUnmaskDetailsRequest::GetRequestContentType() {
+  return "application/json";
+}
+
+std::string GetUnmaskDetailsRequest::GetRequestContent() {
+  base::DictValue request_dict;
+  base::DictValue context;
+  context.Set("language_code", app_locale_);
+  context.Set("billable_service", kUnmaskPaymentMethodBillableServiceNumber);
+  request_dict.Set("context", std::move(context));
+
+  request_dict.Set("chrome_user_context",
+                   BuildChromeUserContext(/*client_behavior_signals=*/{},
+                                          full_sync_enabled_));
+
+  std::string request_content = base::WriteJson(request_dict).value_or("");
+  DVLOG(3) << "getdetailsforgetrealpan request body: " << request_content;
+  return request_content;
+}
+
+void GetUnmaskDetailsRequest::ParseResponse(const base::DictValue& response) {
+  const auto* method = response.FindString("authentication_method");
+  if (method) {
+    if (*method == "CVC") {
+      unmask_details_.unmask_auth_method =
+          PaymentsAutofillClient::UnmaskAuthMethod::kCvc;
+    } else if (*method == "FIDO") {
+      unmask_details_.unmask_auth_method =
+          PaymentsAutofillClient::UnmaskAuthMethod::kFido;
+    }
+  }
+
+  const std::optional<bool> server_denotes_fido_eligible_but_not_opted_in =
+      response.FindBool("offer_fido_opt_in");
+  unmask_details_.server_denotes_fido_eligible_but_not_opted_in =
+      server_denotes_fido_eligible_but_not_opted_in.value_or(false);
+
+  const base::DictValue* dictionary_value =
+      response.FindDict("fido_request_options");
+  if (dictionary_value)
+    unmask_details_.fido_request_options = dictionary_value->Clone();
+
+  const auto* fido_eligible_card_ids =
+      response.FindList("fido_eligible_card_id");
+  if (fido_eligible_card_ids) {
+    for (const base::Value& result : *fido_eligible_card_ids) {
+      unmask_details_.fido_eligible_card_ids.insert(result.GetString());
+    }
+  }
+}
+
+bool GetUnmaskDetailsRequest::IsResponseComplete() {
+  return unmask_details_.unmask_auth_method !=
+         PaymentsAutofillClient::UnmaskAuthMethod::kUnknown;
+}
+
+void GetUnmaskDetailsRequest::RespondToDelegate(
+    PaymentsAutofillClient::PaymentsRpcResult result) {
+  std::move(callback_).Run(result, unmask_details_);
+}
+
+}  // namespace autofill::payments

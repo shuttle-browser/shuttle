@@ -1,0 +1,136 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CONTENT_BROWSER_MEMORY_COORDINATOR_CHILD_MEMORY_CONSUMER_REGISTRY_HOST_H_
+#define CONTENT_BROWSER_MEMORY_COORDINATOR_CHILD_MEMORY_CONSUMER_REGISTRY_HOST_H_
+
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "base/functional/callback.h"
+#include "base/memory/raw_ref.h"
+#include "base/memory_coordinator/traits.h"
+#include "content/common/buildflags.h"
+#include "content/common/content_export.h"
+#include "content/common/memory_coordinator/memory_consumer_group_controller.h"
+#include "content/common/memory_coordinator/memory_consumer_group_host.h"
+#include "content/common/memory_coordinator/mojom/memory_coordinator.mojom.h"
+#include "content/public/common/child_process_id.h"
+#include "content/public/common/process_type.h"
+#include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "mojo/public/cpp/bindings/pending_remote.h"
+#include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
+
+#if BUILDFLAG(ENABLE_MEMORY_COORDINATOR_INTERNALS)
+#include "content/common/memory_coordinator/mojom/memory_coordinator_diagnostics.mojom.h"
+#endif
+
+namespace content {
+
+// An implementation of mojom::ChildMemoryConsumerRegistryHost that registers
+// memory consumer groups in a child process with a
+// MemoryConsumerGroupController. An instance of this class is created for each
+// child process connection.
+class CONTENT_EXPORT ChildMemoryConsumerRegistryHost
+    : public mojom::ChildMemoryConsumerRegistryHost,
+      public MemoryConsumerGroupHost
+#if BUILDFLAG(ENABLE_MEMORY_COORDINATOR_INTERNALS)
+    ,
+      public mojom::MemoryCoordinatorDiagnosticsHost
+#endif
+{
+ public:
+  // `disconnect_handler` is the callback that will be run when the connection
+  // with the child process is lost (i.e. a Mojo pipe is closed, or the child
+  // process exited). This must delete the instance.
+  ChildMemoryConsumerRegistryHost(
+      MemoryConsumerGroupController& controller,
+      ProcessType process_type,
+      ChildProcessId child_process_id,
+      mojo::PendingReceiver<mojom::ChildMemoryConsumerRegistryHost> receiver,
+      base::OnceClosure disconnect_handler);
+
+  ChildMemoryConsumerRegistryHost(const ChildMemoryConsumerRegistryHost&) =
+      delete;
+  ChildMemoryConsumerRegistryHost& operator=(
+      const ChildMemoryConsumerRegistryHost&) = delete;
+
+  ~ChildMemoryConsumerRegistryHost() override;
+
+  // mojom::ChildMemoryConsumerRegistryHost:
+  void BindCoordinator(mojo::PendingRemote<mojom::ChildMemoryCoordinator>
+                           coordinator_remote) override;
+
+  void Register(
+      std::vector<mojom::MemoryConsumerRegistrationPtr> registrations) override;
+  void Unregister(uint32_t consumer_id) override;
+
+  // MemoryConsumerGroupHost:
+  void UpdateConsumers(std::vector<MemoryConsumerUpdate> updates) override;
+  void SetOverrideLimit(uint32_t consumer_id, int percentage) override;
+  void ClearOverrideLimit(uint32_t consumer_id, int policy_limit) override;
+
+#if BUILDFLAG(ENABLE_MEMORY_COORDINATOR_INTERNALS)
+  // mojom::MemoryCoordinatorDiagnosticsHost:
+  void OnMemoryLimitChanged(uint32_t consumer_id,
+                            base::MemoryLimit memory_limit) override;
+
+  // Enables/disables additional diagnostics reported by the child process.
+  void EnableDiagnosticsReporting();
+  void DisableDiagnosticsReporting();
+#endif  // BUILDFLAG(ENABLE_MEMORY_COORDINATOR_INTERNALS)
+
+ private:
+  class RenderProcessExitedObserver;
+
+  // Validates and registers a single consumer. Returns false (after reporting a
+  // bad message) if the registration is invalid; callers should stop processing
+  // the current message in that case.
+  bool RegisterImpl(uint32_t consumer_id,
+                    const std::string& consumer_name,
+                    base::MemoryConsumerTraits traits);
+
+  void RunDisconnectHandler();
+
+#if BUILDFLAG(ENABLE_MEMORY_COORDINATOR_INTERNALS)
+  void EnableReportingImpl();
+#endif
+
+  const raw_ref<MemoryConsumerGroupController> controller_;
+
+  const ProcessType process_type_;
+  const ChildProcessId child_process_id_;
+
+  mojo::Receiver<mojom::ChildMemoryConsumerRegistryHost> receiver_;
+  mojo::Remote<mojom::ChildMemoryCoordinator> coordinator_remote_;
+
+#if BUILDFLAG(ENABLE_MEMORY_COORDINATOR_INTERNALS)
+  bool diagnostics_enabled_ = false;
+  mojo::Receiver<mojom::MemoryCoordinatorDiagnosticsHost>
+      diagnostics_host_receiver_{this};
+#endif
+
+  // Tracks whether this host has been registered with the controller.
+  // Registration is delayed until BindCoordinator is called to ensure the
+  // Mojo remote is bound before the manager propagates any initial overrides.
+  // We must track this to avoid calling RemoveMemoryConsumerGroupHost in the
+  // destructor if registration never happened.
+  bool registered_with_controller_ = false;
+
+  // Handles a disconnection with the child process.
+  base::OnceClosure disconnect_handler_;
+
+  // Holds the IDs of consumers living in the child process.
+  absl::flat_hash_set<uint32_t> consumers_;
+
+  std::unique_ptr<RenderProcessExitedObserver> process_observer_;
+};
+
+}  // namespace content
+
+#endif  // CONTENT_BROWSER_MEMORY_COORDINATOR_CHILD_MEMORY_CONSUMER_REGISTRY_HOST_H_

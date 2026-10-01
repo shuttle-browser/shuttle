@@ -1,0 +1,13 @@
+This is a testharness.js-based test.
+[FAIL] Can set 'stroke-linejoin' to the 'crop' keyword: crop
+  Failed to execute 'set' on 'StylePropertyMap': Invalid type for property
+[FAIL] Can set 'stroke-linejoin' to the 'arcs' keyword: arcs
+  Failed to execute 'set' on 'StylePropertyMap': Invalid type for property
+[FAIL] Can set 'stroke-linejoin' to the 'stupid' keyword: stupid
+  Failed to execute 'set' on 'StylePropertyMap': Invalid type for property
+[FAIL] 'stroke-linejoin' does not support 'crop bevel'
+  assert_class_string: Unsupported value must be a CSSStyleValue and not one of its subclasses expected "[object CSSStyleValue]" but got "[object Undefined]"
+[FAIL] 'stroke-linejoin' does not support 'round arcs'
+  assert_class_string: Unsupported value must be a CSSStyleValue and not one of its subclasses expected "[object CSSStyleValue]" but got "[object Undefined]"
+Harness: the test ran to completion.
+

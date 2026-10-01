@@ -1,0 +1,36 @@
+include_rules = [
+  # Existing dependencies within //chrome. There is an active effort to
+  # refactor ash codes in //chrome to break these dependencies; see b/332804822.
+  # Whenever possible, avoid adding new //chrome dependencies to this list.
+  "+chrome/browser/ash/app_restore",
+  "+chrome/browser/ash/browser_delegate/browser_controller.h",
+  "+chrome/browser/ash/browser_delegate/browser_delegate.h",
+  "+chrome/browser/ash/system_web_apps",
+  "+chrome/browser/profiles",
+  "+chrome/browser/ui/ash/birch",
+  "+chrome/browser/ui/ash/desks",
+  "+chrome/browser/ui/ash/new_window",
+  "+chrome/browser/ui/ash/system_web_apps",
+  "+chrome/browser/ui/browser_window/public/browser_window_interface.h",
+  "+chrome/browser/ui/browser_window/public/create_browser_window.h",
+  "+chrome/browser/ui/browser_tab_strip_tracker.h",
+  "+chrome/browser/ui/tabs/tab_strip_model.h",
+  "+chrome/browser/ui/tabs/tab_strip_model_observer.h",
+  "+chrome/browser/ui/views/frame",
+  "+chrome/browser/ui/webui/ash/scanner_feedback_dialog/scanner_feedback_dialog.h",
+]
+
+specific_include_rules = {
+  ".*_browsertest\\.cc": [
+    "+chrome/browser/ui/browser.h",
+    "+chrome/browser/ui/browser_tabstrip.h",
+    "+chrome/browser/ui/browser_window.h",
+    "+chrome/browser/ui/browser_window/public",
+    "+chrome/browser/ui/views/tabs",
+    "+chrome/test",
+    "+gmock/gmock.h",
+  ],
+  "snap_group_browsertest\\.cc": [
+    "+chrome/common/webui_url_constants.h",
+  ]
+}

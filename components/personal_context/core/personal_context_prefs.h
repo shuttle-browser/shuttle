@@ -1,0 +1,43 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_PERSONAL_CONTEXT_CORE_PERSONAL_CONTEXT_PREFS_H_
+#define COMPONENTS_PERSONAL_CONTEXT_CORE_PERSONAL_CONTEXT_PREFS_H_
+
+class PrefRegistrySimple;
+
+namespace personal_context::prefs {
+
+inline constexpr char kPersonalContextAmbientAutofillNoticeShouldBeShown[] =
+    "autofill.personal_context.ambient_autofill_notice_should_be_shown";
+
+inline constexpr char kPersonalContextAmbientAutofillNoticeImpressionCount[] =
+    "autofill.personal_context.ambient_autofill_notice_impression_count";
+
+// Timestamp when the user acknowledged the Ambient Autofill notice UI.
+inline constexpr char kAmbientAutofillNoticeAcknowledgedTimestamp[] =
+    "autofill.ambient_autofill_notice_acknowledged_timestamp";
+
+inline constexpr char kPersonalContextAtMemoryNoticeShouldBeShown[] =
+    "autofill.personal_context.at_memory_notice_should_be_shown";
+
+inline constexpr char kPersonalContextAtMemoryNoticeImpressionCount[] =
+    "autofill.personal_context.at_memory_notice_impression_count";
+
+// Represents the user-visible toggle in Autofill settings. Note that this only
+// represents the settings toggle, which is only one of multiple conditions for
+// PersonalContext to be enabled. Features that want to consume Context must
+// instead check via EnablementService.
+inline constexpr char kPersonalContextInAutofillSettingsToggleStatus[] =
+    "autofill.personal_context.settings_toggle_status";
+
+// Base64-encoded ML-KEM-768 private key used for HPKE encryption of Personal Context.
+inline constexpr char kPersonalContextPrivateKey[] =
+    "autofill.personal_context.private_key";
+
+void RegisterProfilePrefs(PrefRegistrySimple* registry);
+
+}  // namespace personal_context::prefs
+
+#endif  // COMPONENTS_PERSONAL_CONTEXT_CORE_PERSONAL_CONTEXT_PREFS_H_

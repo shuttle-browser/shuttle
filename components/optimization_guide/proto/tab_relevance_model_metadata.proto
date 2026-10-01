@@ -1,0 +1,100 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+edition = "2023";
+
+package optimization_guide.proto;
+
+option optimize_for = LITE_RUNTIME;
+option java_package = "org.chromium.components.optimization_guide.proto";
+option java_outer_classname = "TabRelevanceModelMetadataProto";
+
+// Metadata for OPTIMIZATION_TARGET_CONTEXTUAL_TASKS_TAB_RELEVANCE.
+message TabRelevanceModelMetadata {
+  // Features used by the Tab Relevance model.
+  // Missing feature values are padded with zeros.
+  enum TabRelevanceFeature {
+    // Unknown feature.
+    TAB_RELEVANCE_FEATURE_UNKNOWN = 0;
+    // Number of words in the query.
+    // (Length: 1)
+    TAB_RELEVANCE_FEATURE_QUERY_LENGTH = 1;
+    // Lexical similarity between the query and the candidate tab's title.
+    // (Length: 1)
+    TAB_RELEVANCE_FEATURE_QUERY_TITLE_LEXICAL_SIMILARITY = 2;
+    // Cosine similarity between the query and the active tab's title,
+    // followed by the similarity between the query and each of the
+    // `num_passages_per_tab` passages in the active tab.
+    // (Length: 1 + num_passages_per_tab)
+    TAB_RELEVANCE_FEATURE_QUERY_ACTIVE_TAB_SIMILARITY = 3;
+    // Cosine similarity between the query and the candidate tab's title,
+    // followed by the similarity between the query and each of the
+    // `num_passages_per_tab` passages in the candidate tab.
+    // (Length: 1 + num_passages_per_tab)
+    TAB_RELEVANCE_FEATURE_QUERY_CANDIDATE_TAB_SIMILARITY = 4;
+    // Cosine similarity between the active tab's title and the candidate tab's
+    // title.
+    // (Length: 1)
+    TAB_RELEVANCE_FEATURE_ACTIVE_CANDIDATE_TAB_SIMILARITY = 5;
+    // Raw embedding of the query.
+    // (Length: num_embedding_dimensions)
+    TAB_RELEVANCE_FEATURE_QUERY_EMBEDDING = 6;
+    // Raw embeddings of the previous queries in conversation thread.
+    // (Length: num_conversation_thread_turns , num_embedding_dimensions)
+    TAB_RELEVANCE_FEATURE_CONVERSATION_THREAD_QUERIES_EMBEDDINGS = 7;
+    // Raw embeddings of the tab titles coming from the context library, i.e.
+    // from the previous turns in the conversation thread.
+    // (Length: max_titles_per_thread , num_embedding_dimensions)
+    TAB_RELEVANCE_FEATURE_CONVERSATION_THREAD_TITLES_EMBEDDINGS = 8;
+    // Raw embedding of the active tab's title.
+    // (Length: num_embedding_dimensions)
+    TAB_RELEVANCE_FEATURE_ACTIVE_TITLE_EMBEDDING = 9;
+    // Raw embeddings of the active tab's passages.
+    // (Length: num_passages_per_tab , num_embedding_dimensions)
+    TAB_RELEVANCE_FEATURE_ACTIVE_PASSAGES_EMBEDDINGS = 10;
+    // Raw embedding of the candidate tab's title.
+    // (Length: num_embedding_dimensions)
+    TAB_RELEVANCE_FEATURE_CANDIDATE_TAB_TITLE_EMBEDDING = 11;
+    // Raw embeddings of the candidate tab's passages.
+    // (Length: num_passages_per_tab , num_embedding_dimensions)
+    TAB_RELEVANCE_FEATURE_CANDIDATE_TAB_PASSAGES_EMBEDDINGS = 12;
+    // Duration since the candidate tab was last active.
+    // (Length: 1)
+    TAB_RELEVANCE_FEATURE_CANDIDATE_TAB_RECENCY = 13;
+    // Duration of the candidate tab's last visit.
+    // (Length: 1)
+    TAB_RELEVANCE_FEATURE_CANDIDATE_TAB_LAST_DURATION = 14;
+  }
+
+  // The ordered sequence of features as they appear in the model's input
+  // vector. Clients must construct the input vector in this exact order.
+  repeated TabRelevanceFeature feature_sequence = 1;
+
+  // The total number of features in the model's input vector.
+  int32 num_features = 2;
+
+  // The number of passages used per tab.
+  int32 num_passages_per_tab = 3;
+
+  // The number of turns used from the conversation thread. This is strictly the
+  // number of previous turns in the conversation thread, not including the
+  // current turn.
+  int32 num_conversation_thread_turns = 4;
+
+  // The maximum number of titles per conversation thread. These titles are
+  // coming from the context library.
+  int32 max_titles_per_thread = 5;
+
+  // The number of dimensions in the embedding vectors.
+  int32 num_embedding_dimensions = 6;
+
+  // The ordered sequence of features as they appear in the multi-turn model's
+  // input tensors. The client must construct and bind the input tensors in this
+  // exact order.
+  repeated TabRelevanceFeature input_feature_sequence = 7;
+
+  // The ordered sequence of features as they appear in the multi-turn model's
+  // output cosine similarities vector (if present).
+  repeated TabRelevanceFeature output_feature_sequence = 8;
+}

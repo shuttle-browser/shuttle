@@ -1,0 +1,100 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.search_engines.settings.extensions;
+
+import android.content.Context;
+
+import androidx.annotation.VisibleForTesting;
+
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.search_engines.ExtensionControlHandler;
+import org.chromium.chrome.browser.search_engines.R;
+import org.chromium.chrome.browser.search_engines.settings.common.BaseSiteSearchMediator;
+import org.chromium.components.browser_ui.settings.SettingsCustomTabLauncher;
+import org.chromium.components.browser_ui.widget.BrowserUiListMenuUtils;
+import org.chromium.components.browser_ui.widget.ListItemBuilder;
+import org.chromium.components.search_engines.TemplateUrl;
+import org.chromium.components.search_engines.TemplateUrlCategory;
+import org.chromium.ui.listmenu.ListMenuDelegate;
+import org.chromium.ui.listmenu.ListMenuItemProperties;
+import org.chromium.ui.modelutil.MVCListAdapter.ModelList;
+
+import java.util.List;
+
+/** Mediator for the search engines settings extensions section. */
+@NullMarked
+public class ExtensionSearchEngineMediator extends BaseSiteSearchMediator {
+    private static final String EXTENSION_MANAGE_URL_PREFIX = "chrome://extensions/?id=";
+    private final SettingsCustomTabLauncher mSettingsCustomTabLauncher;
+    private final ExtensionControlHandler mExtensionControlHandler;
+
+    public ExtensionSearchEngineMediator(
+            Context context,
+            ModelList modelList,
+            Profile profile,
+            SettingsCustomTabLauncher settingsCustomTabLauncher) {
+        super(context, modelList, profile);
+        mSettingsCustomTabLauncher = settingsCustomTabLauncher;
+        mExtensionControlHandler = ExtensionControlHandler.createForProfile(profile);
+
+        initializeTemplateUrlService();
+    }
+
+    @Override
+    protected void refreshList() {
+        mModelList.clear();
+
+        List<TemplateUrl> urls =
+                mTemplateUrlService.getTemplateUrlsByCategory(TemplateUrlCategory.EXTENSION);
+
+        for (TemplateUrl url : urls) {
+            mModelList.add(createListItem(url));
+        }
+    }
+
+    @Override
+    protected @Nullable ListMenuDelegate createMenuDelegate(TemplateUrl url) {
+        return () -> {
+            ModelList menuItems = new ModelList();
+            menuItems.add(
+                    new ListItemBuilder()
+                            .withTitleRes(R.string.site_search_extensions_menu_manage)
+                            .build());
+            menuItems.add(
+                    new ListItemBuilder()
+                            .withTitleRes(R.string.site_search_extensions_menu_disable)
+                            .build());
+
+            return BrowserUiListMenuUtils.getBasicListMenu(
+                    mContext,
+                    menuItems,
+                    (model, view) -> {
+                        int textId = model.get(ListMenuItemProperties.TITLE_ID);
+                        onMenuItemClicked(textId, url);
+                    });
+        };
+    }
+
+    @VisibleForTesting
+    void onMenuItemClicked(int textId, TemplateUrl url) {
+        String extensionId = url.getProvidingExtensionId();
+        if (extensionId == null) return;
+
+        if (R.string.site_search_extensions_menu_manage == textId) {
+            mSettingsCustomTabLauncher.openUrlInCct(
+                    mContext, EXTENSION_MANAGE_URL_PREFIX + extensionId);
+        } else if (R.string.site_search_extensions_menu_disable == textId) {
+            mExtensionControlHandler.disableExtension(extensionId);
+        }
+    }
+
+    @Override
+    public void destroy() {
+        mExtensionControlHandler.destroy();
+        super.destroy();
+    }
+}

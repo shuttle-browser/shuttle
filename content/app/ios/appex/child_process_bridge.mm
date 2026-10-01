@@ -1,0 +1,205 @@
+// Copyright 2024 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/app/ios/appex/child_process_bridge.h"
+
+#include <pthread.h>
+#include <xpc/xpc.h>
+
+#include <vector>
+
+#include "base/apple/bundle_locations.h"
+#include "base/apple/mach_port_rendezvous_ios.h"
+#include "base/check_op.h"
+#include "base/command_line.h"
+#include "base/compiler_specific.h"
+#include "base/files/file_util.h"
+#include "base/strings/sys_string_conversions.h"
+#include "base/system/sys_info.h"
+#include "base/threading/platform_thread.h"
+#include "content/app/ios/appex/child_process_sandbox.h"
+#include "gpu/ipc/common/ios/be_layer_hierarchy_transport.h"
+#include "sandbox/policy/switches.h"
+
+// Leaked variables for now.
+static size_t g_argc = 0;
+static std::vector<const char*> g_argv;
+static pthread_t g_main_thread;
+static id<ChildProcessExtension> g_swift_process;
+static xpc_connection_t g_connection;
+
+#define IOS_INIT_EXPORT __attribute__((visibility("default")))
+
+// The embedder must implement this.
+extern "C" int ChildProcessMain(int argc, const char** argv);
+
+class GPUProcessTransport : public gpu::BELayerHierarchyTransport {
+ public:
+  GPUProcessTransport() { gpu::BELayerHierarchyTransport::SetInstance(this); }
+  ~GPUProcessTransport() override {
+    gpu::BELayerHierarchyTransport::SetInstance(nullptr);
+  }
+
+  void ForwardBELayerHierarchyToBrowser(
+      gpu::SurfaceHandle surface_handle,
+      xpc_object_t ipc_representation) override {
+    xpc_object_t message = xpc_dictionary_create(nil, nil, 0);
+    xpc_dictionary_set_string(message, "message", "layerHandle");
+    xpc_dictionary_set_value(message, "layer", ipc_representation);
+    xpc_dictionary_set_uint64(message, "handle", surface_handle);
+    xpc_connection_send_message(g_connection, message);
+  }
+};
+
+static std::unique_ptr<GPUProcessTransport> g_gpu_transport;
+
+extern "C" IOS_INIT_EXPORT void GpuProcessInit() {
+  g_gpu_transport = std::make_unique<GPUProcessTransport>();
+}
+
+extern "C" IOS_INIT_EXPORT void ChildProcessInit(
+    id<ChildProcessExtension> process) {
+  // Up two levels: chrome.app/Extensions/chrome_content_process.appex
+  NSBundle* bundle = [NSBundle bundleWithURL:[[[NSBundle mainBundle].bundleURL
+                                               URLByDeletingLastPathComponent]
+                                              URLByDeletingLastPathComponent]];
+  base::apple::SetOverrideFrameworkBundle(bundle);
+  g_swift_process = process;
+}
+
+void* RunMain(void* data) {
+  ChildProcessMain((int)g_argc, g_argv.data());
+  return nullptr;
+}
+
+extern "C" IOS_INIT_EXPORT void ChildProcessHandleNewConnection(
+                                 xpc_connection_t connection) {
+  xpc_connection_set_event_handler(connection, ^(xpc_object_t msg) {
+    xpc_type_t msg_type = xpc_get_type(msg);
+    CHECK_EQ(msg_type, XPC_TYPE_DICTIONARY);
+    xpc_object_t args_array = xpc_dictionary_get_array(msg, "args");
+    g_argc = xpc_array_get_count(args_array);
+    g_argv.resize(g_argc);
+    for (size_t i = 0; i < g_argc; ++i) {
+      g_argv[i] = UNSAFE_TODO(strdup(xpc_array_get_string(args_array, i)));
+    }
+
+    // Setup stdout/stderr.
+    int fd = xpc_dictionary_dup_fd(msg, "stdout");
+    if (fd != -1) {
+      dup2(fd, STDOUT_FILENO);
+      close(fd);
+    }
+    fd = xpc_dictionary_dup_fd(msg, "stderr");
+    if (fd != -1) {
+      dup2(fd, STDERR_FILENO);
+      close(fd);
+    }
+
+    // See child_process_launcher_helper_ios.mm for discussion of this
+    // bookmark data.
+    size_t tmp_dir_length = 0;
+    const void* tmp_dir =
+        xpc_dictionary_get_data(msg, "tmp_dir", &tmp_dir_length);
+    CHECK(tmp_dir);
+    NSData* bookmark_temp_dir = [NSData dataWithBytes:tmp_dir
+                                               length:tmp_dir_length];
+    BOOL bookmarkIsStale = NO;
+    NSError* error = nil;
+    NSURL* tmp_dir_url =
+        [NSURL URLByResolvingBookmarkData:bookmark_temp_dir
+                                  options:NSURLBookmarkResolutionWithoutUI
+                            relativeToURL:nil
+                      bookmarkDataIsStale:&bookmarkIsStale
+                                    error:&error];
+    CHECK(error == nil) << base::SysNSStringToUTF8(
+        [error localizedDescription]);
+    CHECK(tmp_dir_url);
+    std::string file_path = base::SysNSStringToUTF8(tmp_dir_url.path) + "/";
+    CHECK_EQ(setenv("TMPDIR", file_path.c_str(), 1), 0);
+
+    base::FilePath assigned_path;
+    CHECK(base::GetTempDir(&assigned_path));
+    CHECK(assigned_path.value() == file_path);
+
+    // The gpu_cache_dir key will only be set for the GPU process extension, but
+    // this code runs for all extension types.
+    size_t gpu_cache_bookmark_length = 0;
+    const void* gpu_cache_bookmark_data = xpc_dictionary_get_data(
+        msg, "gpu_cache_dir", &gpu_cache_bookmark_length);
+    if (gpu_cache_bookmark_data) {
+      CHECK(g_gpu_transport);
+
+      // See code in child_process_launcher_helper_ios.mm about this.
+      const char* browser_container_home =
+          xpc_dictionary_get_string(msg, "browser_container_home");
+      CHECK(browser_container_home);
+      CHECK_EQ(setenv("CFFIXED_USER_HOME", browser_container_home, 1), 0);
+
+      // Per Apple, we need to set this for Metal shader cache to work properly.
+      NSString* gpu_bundle_id = [[NSBundle mainBundle] bundleIdentifier];
+      CHECK(gpu_bundle_id);
+      CHECK_EQ(setenv("DIRHELPER_USER_DIR_SUFFIX",
+                      base::SysNSStringToUTF8(gpu_bundle_id).c_str(), 1),
+               0);
+
+      // Open the bookmark for the cache directory which will ensure later
+      // accesses after the sandbox starts succeed.
+      NSData* gpu_cache_bookmark =
+          [NSData dataWithBytes:gpu_cache_bookmark_data
+                         length:gpu_cache_bookmark_length];
+      NSURL* gpu_cache_url =
+          [NSURL URLByResolvingBookmarkData:gpu_cache_bookmark
+                                    options:NSURLBookmarkResolutionWithoutUI
+                              relativeToURL:nil
+                        bookmarkDataIsStale:&bookmarkIsStale
+                                      error:&error];
+      CHECK(error == nil) << base::SysNSStringToUTF8(
+          [error localizedDescription]);
+      CHECK(gpu_cache_url);
+    }
+
+    mach_port_t port = xpc_dictionary_copy_mach_send(msg, "port");
+    base::apple::ScopedMachSendRight server_port(port);
+    bool res =
+        base::MachPortRendezvousClientIOS::Initialize(std::move(server_port));
+    CHECK(res) << "MachPortRendezvousClient failed";
+    pthread_attr_t attr;
+    CHECK_EQ(pthread_attr_init(&attr), 0);
+    // iOS default secondary thread stack is 512KB, which is insufficient for
+    // V8 which expects ~984KB (V8_DEFAULT_STACK_SIZE_KB in
+    // v8/src/common/globals.h). Use Chromium's default thread stack size
+    // (1MB on iOS).
+    CHECK_EQ(pthread_attr_setstacksize(
+                 &attr, base::PlatformThread::GetDefaultThreadStackSize()),
+             0);
+    // TODO(dtapuska): For now we create our own main thread, figure out if we
+    // can use the ExtensionMain (thread 0) as the main thread but calling
+    // CFRunLoopRunInMode seems to crash it so we can't enter a nested event
+    // loop with some objects on the stack.
+    CHECK_EQ(pthread_create(&g_main_thread, &attr, RunMain, NULL), 0);
+    CHECK_EQ(pthread_attr_destroy(&attr), 0);
+  });
+  xpc_connection_activate(connection);
+  g_connection = connection;
+}
+
+namespace content {
+
+void ChildProcessEnterSandbox() {
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          sandbox::policy::switches::kNoSandbox)) {
+    return;
+  }
+
+  base::SysInfo::IsLowEndDevice();
+
+  // Request the local time before entering the sandbox since that causes a
+  // crash after the sandbox is entered.
+  base::Time::Now().LocalMidnight();
+
+  [g_swift_process applySandbox];
+}
+
+}  // namespace content

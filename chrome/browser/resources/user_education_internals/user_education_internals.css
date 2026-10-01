@@ -1,0 +1,233 @@
+/* Copyright 2024 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #import=//resources/cr_elements/cr_nav_menu_item_style_lit.css.js
+ * #import=//resources/cr_elements/cr_shared_style_lit.css.js
+ * #import=//resources/cr_elements/cr_hidden_style_lit.css.js
+ * #import=//resources/cr_elements/cr_scrollable_lit.css.js
+ * #import=//resources/cr_elements/cr_shared_vars.css.js
+ * #include=cr-shared-style-lit cr-hidden-style-lit cr-nav-menu-item-style-lit cr-scrollable-lit
+ * #scheme=relative
+ * #css_wrapper_metadata_end */
+
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  --global-section-border-color: var(--google-green-300);
+  --iph-section-border-color: var(--google-blue-300);
+  --main-column-max-width: 680px;
+  --new-badge-section-border-color: var(--google-yellow-300);
+  --ntp-promos-section-border-color: var(--google-purple-200);
+  --non-iph-promo-section-border-color:
+      color-mix(in hsl, var(--google-yellow-300), var(--google-red-300));
+  --tutorials-section-border-color: var(--google-red-300);
+  --whats-new-section-border-color: var(--google-grey-300);
+  --side-bar-width: 200px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    --global-section-border-color: var(--google-green-700);
+    --iph-section-border-color: var(--google-blue-700);
+    --new-badge-section-border-color: var(--google-yellow-700);
+    --ntp-promos-section-border-color: var(--google-purple-900);
+    --non-iph-promo-section-border-color:
+        color-mix(in hsl, var(--google-yellow-700), var(--google-red-700));
+    --tutorials-section-border-color: var(--google-red-700);
+    --whats-new-section-border-color: var(--google-grey-700);
+  }
+}
+
+cr-toolbar {
+  min-height: 56px;
+
+  --cr-toolbar-center-basis: var(--main-column-max-width);
+}
+
+cr-toolbar:not([narrow]) {
+  --cr-toolbar-left-spacer-width: var(--side-bar-width);
+}
+
+user-education-internals-card.highlighted,
+user-education-whats-new-internals-card.highlighted {
+  background-color: var(--cr-iph-anchor-highlight-color);
+}
+
+h2 {
+  padding-inline: var(--cr-section-padding);
+}
+
+p {
+  line-height: 1.4;
+  padding-inline: var(--cr-section-padding);
+}
+
+.blurb-warning {
+  color: var(--cr-fallback-color-error);
+}
+
+.whats-new-section {
+  padding-inline: var(--cr-section-padding);
+}
+
+.if-empty {
+  display: block;
+}
+
+.promo-list:has(:is(
+    user-education-internals-card,
+    user-education-whats-new-internals-card):not([hidden])) > .if-empty {
+  display: none;
+}
+
+#container {
+  align-items: flex-start;
+  color: var(--cr-primary-text-color);
+  display: flex;
+  flex: 1;
+  overflow: auto;
+}
+
+#left,
+#main,
+#right {
+  flex: 1;
+}
+
+#left {
+  height: 100%;
+  position: sticky;
+  top: 0;
+}
+
+#sidebar {
+  width: var(--side-bar-width);
+}
+
+#menu {
+  flex-direction: column;
+}
+
+#main {
+  display: flex;
+  flex-basis: var(--main-column-max-width);
+  justify-content: center;
+  position: relative;
+}
+
+#content {
+  width: var(--main-column-max-width);
+}
+
+#global {
+  border-inline-start: 1px solid var(--global-section-border-color);
+  padding-inline: var(--cr-section-padding);
+  scroll-margin-top: 16px;
+}
+
+#session {
+  padding-block-start: 0;
+  padding-block-end: var(--cr-section-vertical-padding);
+  margin-block-start: 0;
+  margin-block-end: var(--cr-section-vertical-padding);
+  padding-inline: var(--cr-section-padding);
+}
+
+#tutorials {
+  border-inline-start: 1px solid var(--tutorials-section-border-color);
+  padding-inline: var(--cr-section-padding);
+  scroll-margin-top: 16px;
+}
+
+#iph {
+  border-inline-start: 1px solid var(--iph-section-border-color);
+  padding-inline: var(--cr-section-padding);
+  scroll-margin-top: 16px;
+}
+
+#newBadges {
+  border-inline-start: 1px solid var(--new-badge-section-border-color);
+  padding-inline: var(--cr-section-padding);
+  scroll-margin-top: 16px;
+}
+
+#nonIphPromos {
+  border-inline-start: 1px solid var(--non-iph-promo-section-border-color);
+  padding-inline: var(--cr-section-padding);
+  scroll-margin-top: 16px;
+}
+
+#whatsNew {
+  border-inline-start: 1px solid var(--whats-new-section-border-color);
+  padding-inline: var(--cr-section-padding);
+  scroll-margin-top: 16px;
+}
+
+#ntpPromos {
+  border-inline-start: 1px solid var(--ntp-promos-section-border-color);
+  padding-inline: var(--cr-section-padding);
+  scroll-margin-top: 16px;
+}
+
+user-education-internals-card,
+user-education-whats-new-internals-card {
+  padding-block: var(--cr-section-vertical-padding);
+  padding-inline: var(--cr-section-padding);
+}
+
+
+
+#global li {
+  margin-block: 1em;
+}
+
+#label h3 {
+  margin-block: 0;
+}
+
+#ntpPromoPreferences h3 {
+  margin-inline: var(--cr-section-padding);
+}
+
+#left h2 {
+  border-bottom: 1px solid var(--cr-separator-color);
+  margin: 0 0 12px 0;
+  padding: 16px;
+}
+
+/* Width is left + --cr-section-padding + main. */
+@media (max-width: 920px) {
+  #main {
+    flex: 1;
+    min-width: auto;
+  }
+
+  #content {
+    flex-basis: var(--main-column-max-width);
+    padding-inline: var(--cr-section-indent-padding);
+    width: auto;
+  }
+}
+
+.note {
+  font-weight: bold;
+  padding: 4px 0;
+}
+
+.inline-code {
+  font-weight: normal;
+  font-family: monospace;
+}
+
+#whatsNewVersionOverride {
+  padding-inline: var(--cr-section-padding);
+}
+
+#launch-whats-new-staging {
+  margin-inline: var(--cr-section-padding);
+}

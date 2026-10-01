@@ -1,0 +1,221 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "components/optimization_guide/core/model_execution/model_execution_prefs.h"
+
+#include "base/json/values_util.h"
+#include "base/notreached.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/time/time.h"
+#include "components/optimization_guide/core/feature_registry/enterprise_policy_registry.h"
+#include "components/optimization_guide/core/feature_registry/feature_registration.h"
+#include "components/optimization_guide/core/model_execution/on_device_features.h"
+#include "components/optimization_guide/core/optimization_guide_features.h"
+#include "components/optimization_guide/public/mojom/model_broker.mojom.h"
+#include "components/prefs/pref_registry_simple.h"
+#include "components/prefs/pref_service.h"
+#include "services/preferences/public/cpp/dictionary_value_update.h"
+#include "services/preferences/public/cpp/scoped_pref_update.h"
+
+namespace optimization_guide::model_execution::prefs {
+
+namespace {
+
+std::string PrefKey(mojom::OnDeviceFeature feature) {
+  return base::NumberToString(
+      (static_cast<uint64_t>(ToModelExecutionFeatureProto(feature))));
+}
+
+void SetLastUsage(PrefService* local_state,
+                  mojom::OnDeviceFeature feature,
+                  base::Time time) {
+  ::prefs::ScopedDictionaryPrefUpdate update(local_state,
+                                             localstate::kLastUsageByFeature);
+  update->Set(PrefKey(feature), base::TimeToValue(time));
+}
+
+bool IsUseRecent(std::optional<base::Time> last_use) {
+  if (!last_use) {
+    return false;
+  }
+  auto time_since_use = base::Time::Now() - *last_use;
+  base::TimeDelta recent_use_period =
+      features::GetOnDeviceEligibleModelFeatureRecentUsePeriod();
+  // Note: Since we're storing a base::Time, we need to consider the possibility
+  // of clock changes.
+  return time_since_use < recent_use_period &&
+         time_since_use > -recent_use_period;
+}
+
+}  // namespace
+
+void RegisterProfilePrefs(PrefRegistrySimple* registry) {
+  RegisterGenAiFeatures(registry);
+}
+
+namespace localstate {
+
+// Preference of the last version checked. Used to determine when the
+// disconnect count is reset.
+const char kOnDeviceModelChromeVersion[] =
+    "optimization_guide.on_device.last_version";
+
+// Preference where number of disconnects (crashes) of on device model is
+// stored.
+const char kOnDeviceModelCrashCount[] =
+    "optimization_guide.on_device.model_crash_count";
+
+const char kOnDeviceModelValidationResult[] =
+    "optimization_guide.on_device.model_validation_result";
+
+// Stores the last computed `OnDeviceModelPerformanceClass` of the device.
+const char kOnDevicePerformanceClass[] =
+    "optimization_guide.on_device.performance_class";
+
+// Stores the last chrome version that the performance class was checked.
+const char kOnDevicePerformanceClassVersion[] =
+    "optimization_guide.on_device.performance_class_version";
+
+// Stores the device VRAM in MB.
+const char kOnDeviceVramMb[] = "optimization_guide.on_device.vram_mb";
+
+// Stores the id of the GPU performance class was last checked on.
+const char kOnDevicePerformanceClassGPUId[] =
+    "optimization_guide.on_device.performance_class_gpu_id";
+
+// Timestamps for the last time each features was used while on-device eligible.
+// Used to decide which models are worth fetching.
+const char kLastUsageByFeature[] =
+    "optimization_guide.model_execution.last_usage_by_feature";
+
+// A timestamp for the last time the on-device model was eligible for download.
+const char kLastTimeEligibleForOnDeviceModelDownload[] =
+    "optimization_guide.on_device.last_time_eligible_for_download";
+
+// An integer pref that contains the user's client id.
+const char kModelQualityLoggingClientId[] =
+    "optimization_guide.model_quality_logging_client_id";
+
+// An integer pref for the on-device GenAI foundational model enterprise policy
+// settings.
+const char kGenAILocalFoundationalModelEnterprisePolicySettings[] =
+    "optimization_guide.gen_ai_local_foundational_model_settings";
+
+// A boolean pref for the on-device GenAI foundational model user settings.
+const char kOnDeviceAiUserSettingsEnabled[] =
+    "optimization_guide.on_device_foundational_model_user_settings";
+
+// Boolean pref indicating whether the AI embeddings model is eligible for
+// download.
+const char kEmbeddingApiModelDownloadEligible[] =
+    "optimization_guide.on_device.embedding_api_model_download_eligible";
+
+// A dictionary pref that tracks the state of assets managed by the manifest.
+const char kManifestAssetLedger[] =
+    "optimization_guide.model_execution.manifest_asset_ledger";
+
+}  // namespace localstate
+
+void RegisterLocalStatePrefs(PrefRegistrySimple* registry) {
+  registry->RegisterStringPref(localstate::kOnDeviceModelChromeVersion,
+                               std::string());
+  registry->RegisterIntegerPref(localstate::kOnDeviceModelCrashCount, 0);
+  registry->RegisterIntegerPref(localstate::kOnDevicePerformanceClass, 0);
+  registry->RegisterStringPref(localstate::kOnDevicePerformanceClassVersion,
+                               std::string());
+  registry->RegisterUint64Pref(localstate::kOnDeviceVramMb, 0);
+  registry->RegisterStringPref(localstate::kOnDevicePerformanceClassGPUId,
+                               std::string());
+  registry->RegisterTimePref(
+      localstate::kLastTimeEligibleForOnDeviceModelDownload, base::Time::Min());
+  registry->RegisterDictionaryPref(localstate::kOnDeviceModelValidationResult);
+  registry->RegisterDictionaryPref(localstate::kLastUsageByFeature);
+  registry->RegisterInt64Pref(localstate::kModelQualityLoggingClientId, 0,
+                              PrefRegistry::LOSSY_PREF);
+  registry->RegisterIntegerPref(
+      localstate::kGenAILocalFoundationalModelEnterprisePolicySettings, 0);
+  registry->RegisterBooleanPref(localstate::kOnDeviceAiUserSettingsEnabled,
+                                true);
+  registry->RegisterBooleanPref(localstate::kEmbeddingApiModelDownloadEligible,
+                                false);
+  registry->RegisterDictionaryPref(localstate::kManifestAssetLedger);
+}
+
+void PruneOldUsagePrefs(PrefService* local_state) {
+  ::prefs::ScopedDictionaryPrefUpdate update(local_state,
+                                             localstate::kLastUsageByFeature);
+  std::vector<std::string> keys_to_prune_;  // Avoid iterator invalidation.
+  for (auto kv : *update->AsConstDict()) {
+    if (!IsUseRecent(base::ValueToTime(kv.second))) {
+      keys_to_prune_.emplace_back(kv.first);
+    }
+  }
+  for (const auto& key : keys_to_prune_) {
+    update->Remove(key);
+  }
+}
+
+void RecordFeatureUsage(PrefService* local_state,
+                        mojom::OnDeviceFeature feature) {
+  SetLastUsage(local_state, feature, base::Time::Now());
+}
+
+bool WasFeatureRecentlyUsed(const PrefService* local_state,
+                            mojom::OnDeviceFeature feature) {
+  const auto* value = local_state->GetDict(localstate::kLastUsageByFeature)
+                          .Find(PrefKey(feature));
+  if (!value) {
+    return false;
+  }
+  return IsUseRecent(base::ValueToTime(*value));
+}
+
+void RecordUseCaseUsage(PrefService* local_state,
+                        const std::string& use_case_name) {
+  ::prefs::ScopedDictionaryPrefUpdate update(local_state,
+                                             localstate::kLastUsageByFeature);
+  update->Set(use_case_name, base::TimeToValue(base::Time::Now()));
+}
+
+void ClearUseCaseUsage(PrefService* local_state,
+                       const std::string& use_case_name) {
+  ::prefs::ScopedDictionaryPrefUpdate update(local_state,
+                                             localstate::kLastUsageByFeature);
+  update->Remove(use_case_name);
+  // TODO(crbug.com/489511499): Remove this fallback once all features have
+  // migrated to using RecordUseCaseUsage with string names.
+  if (std::optional<mojom::OnDeviceFeature> feature =
+          GetFeatureForUseCase(use_case_name)) {
+    update->Remove(PrefKey(*feature));
+  }
+}
+
+void ClearAllUseCaseUsages(PrefService* local_state) {
+  local_state->ClearPref(localstate::kLastUsageByFeature);
+}
+
+bool WasUseCaseRecentlyUsed(const PrefService* local_state,
+                            const std::string& use_case_name) {
+  const auto& dict = local_state->GetDict(localstate::kLastUsageByFeature);
+
+  const auto* value = dict.Find(use_case_name);
+  if (value && IsUseRecent(base::ValueToTime(*value))) {
+    return true;
+  }
+
+  // Fallback to legacy integer keys mapped to this use case.
+  // TODO(crbug.com/489511499): Remove this fallback once all features have
+  // migrated to using RecordUseCaseUsage with string names.
+  if (std::optional<mojom::OnDeviceFeature> feature =
+          GetFeatureForUseCase(use_case_name)) {
+    value = dict.Find(PrefKey(*feature));
+    if (value && IsUseRecent(base::ValueToTime(*value))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace optimization_guide::model_execution::prefs

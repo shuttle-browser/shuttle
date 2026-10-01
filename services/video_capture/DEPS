@@ -1,0 +1,13 @@
+include_rules = [
+  "+gpu/command_buffer/client",
+  "+gpu/config",
+  "+gpu/ipc/client/gpu_channel_host.h",
+  "+gpu/ipc/client/gpu_channel_observer.h",
+  "+media/base",
+  "+media/device_monitors",
+  "+media/mojo",
+  "+media/capture",
+  "+media/media_buildflags.h",
+  "+ui/gfx",
+  "+services/viz/public/cpp/gpu",
+]

@@ -1,0 +1,603 @@
+// Copyright 2020 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+import type {SkColor} from '//resources/mojo/skia/public/mojom/skcolor.mojom-webui.js';
+import type {Doodle, LogoElement, Theme} from 'chrome://new-tab-page/new_tab_page.js';
+import {$$, DoodleImageType, DoodleShareChannel, NewTabPageProxy, PageCallbackRouter, PageHandlerRemote, WindowProxy} from 'chrome://new-tab-page/new_tab_page.js';
+import {hexColorToSkColor} from 'chrome://resources/js/color_utils.js';
+import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
+import {PromiseResolver} from 'chrome://resources/js/promise_resolver.js';
+import {assertEquals, assertFalse, assertGE, assertLE, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import type {TestMock} from 'chrome://webui-test/test_mock.js';
+import {microtasksFinished} from 'chrome://webui-test/test_util.js';
+
+import {assertNotStyle, assertStyle, createBackgroundImage, createTheme, installMock, keydown} from './test_support.js';
+
+const imageOffsetHeight = 168;
+const imageOffsetWidth = 336;
+const WHITE_COLOR: SkColor = {
+  value: 0xffffffff,
+};
+
+/**
+ * @return {!{top: number, right: number, bottom: number, left: number}}
+ */
+function getRelativePosition(element: Element, reference: Element) {
+  const referenceRect = reference.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  return {
+    top: elementRect.top - referenceRect.top,
+    right: elementRect.right - referenceRect.right,
+    bottom: elementRect.bottom - referenceRect.bottom,
+    left: elementRect.left - referenceRect.left,
+  };
+}
+
+function createImageDataUrl(
+    width: number, height: number, color: string): string {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" ' +
+      `width="${width}" height="${height}">` +
+      `<rect width="100%" height="100%" fill="${color}"/>` +
+      '</svg>';
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+function createImageDoodle(width: number = 500, height: number = 200): Doodle {
+  return {
+    image: {
+      light: {
+        animationUrl: null,
+        animationImpressionLogUrl: null,
+        imageUrl: createImageDataUrl(width, height, 'red'),
+        width,
+        height,
+        backgroundColor: WHITE_COLOR,
+        imageImpressionLogUrl: 'https://log.com',
+      },
+      dark: {
+        animationUrl: null,
+        animationImpressionLogUrl: null,
+        imageUrl: createImageDataUrl(width, height, 'blue'),
+        width,
+        height,
+        backgroundColor: {value: 0x000000ff},
+        imageImpressionLogUrl: 'https://dark_log.com',
+      },
+      onClickUrl: 'https://foo.com',
+      shareUrl: 'https://foo.com',
+    },
+    description: 'Dummy',
+  };
+}
+
+suite('NewTabPageLogoTest', () => {
+  let windowProxy: TestMock<WindowProxy>;
+  let handler: TestMock<PageHandlerRemote>;
+
+  async function createLogo(
+      doodle: Doodle|null = null,
+      theme: Theme|null = null): Promise<LogoElement> {
+    handler.setPromiseResolveFor('getDoodle', {
+      doodle: doodle,
+    });
+    const logo = document.createElement('ntp-logo');
+    document.body.appendChild(logo);
+    logo.theme = theme;
+    await microtasksFinished();
+    return logo;
+  }
+
+  setup(() => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+
+    windowProxy = installMock(WindowProxy);
+    windowProxy.setResultFor('createIframeSrc', '');
+    handler = installMock(
+        PageHandlerRemote,
+        mock => NewTabPageProxy.setInstance(mock, new PageCallbackRouter()));
+    handler.setPromiseResolveFor('onDoodleImageRendered', {
+      imageClickParams: '',
+      interactionLogUrl: null,
+      shareId: '',
+    });
+  });
+
+  [true, false].forEach(dark => {
+    const darkStr = dark ? 'dark' : 'light';
+    test(`setting ${darkStr} simple doodle shows image`, async () => {
+      // Arrange.
+      const doodle =
+          createImageDoodle(/*width=*/ 500, /*height=*/ imageOffsetHeight);
+      assertTrue(!!doodle.image);
+      const imageDoodle = dark ? doodle.image.dark : doodle.image.light;
+      assertTrue(!!imageDoodle);
+
+      // Act.
+      const logo = await createLogo(
+          doodle,
+          createTheme(
+              {isDark: dark, backgroundColor: imageDoodle.backgroundColor}));
+      await microtasksFinished();
+
+      // Assert.
+      assertNotStyle($$(logo, '#doodle')!, 'display', 'none');
+      assertFalse(!!$$(logo, '#logo'));
+      assertEquals(
+          imageDoodle.imageUrl, $$<HTMLImageElement>(logo, '#image')!.src);
+      assertNotStyle($$(logo, '#image')!, 'display', 'none');
+      assertEquals(500, $$<HTMLElement>(logo, '#image')!.offsetWidth);
+      assertEquals(
+          imageOffsetHeight, $$<HTMLElement>(logo, '#image')!.offsetHeight);
+      assertNotStyle($$(logo, '#shareButton')!, 'display', 'none');
+      assertEquals(32, $$<HTMLElement>(logo, '#shareButton')!.offsetWidth);
+      assertEquals(32, $$<HTMLElement>(logo, '#shareButton')!.offsetHeight);
+    });
+  });
+
+  test('background image with doodle is boxed', async () => {
+    // Arrange.
+    const theme = createTheme();
+    theme.backgroundImage = createBackgroundImage('https://img.png');
+
+    // Act.
+    const logo = await createLogo(createImageDoodle(), theme);
+
+    // Assert.
+    assertTrue(!!$$(logo, '#doodle'));
+    assertTrue(logo.hasAttribute('doodle-boxed_'));
+  });
+
+  test('background image without doodle is not boxed', async () => {
+    // Arrange.
+    const theme = createTheme();
+    theme.backgroundImage = createBackgroundImage('https://img.png');
+
+    // Act.
+    const logo = await createLogo(null, theme);
+
+    // Assert.
+    assertTrue(!!$$(logo, '#logo'));
+    assertFalse(logo.hasAttribute('doodle-boxed_'));
+  });
+
+  [null, '#ff0000'].forEach(color => {
+    test(`${color || 'no'} background color shows box`, async () => {
+      // Arrange.
+      const doodle = createImageDoodle();
+      assertTrue(!!doodle.image);
+      doodle.image.light.backgroundColor.value = 0xff0000ff;
+      loadTimeData.overrideValues({animatedDoodlesEnabled: true});
+
+      // Act.
+      const logo = await createLogo(
+          doodle, createTheme({
+            isDark: false,
+            backgroundColor: color ? hexColorToSkColor(color) : undefined,
+          }));
+      // Assert.
+      assertStyle($$(logo, '#imageDoodle')!, 'padding', '16px');
+      assertStyle($$(logo, '#imageDoodle')!, 'border-radius', '28px');
+      assertStyle(
+          $$(logo, '#imageDoodle')!, 'background-color', 'rgb(0, 0, 255)');
+    });
+  });
+
+  [true, false].forEach(isAnimated => {
+    const animatedStr = isAnimated ? 'animated' : 'static';
+    test(`${animatedStr} doodle uses correct boxed properties`, async () => {
+      // Arrange.
+      const doodle = createImageDoodle();
+      assertTrue(!!doodle.image);
+      doodle.image.light.animationUrl =
+          isAnimated ? 'https://animated_doodle.com' : null;
+      const expectedPadding = isAnimated ? '16px' : '16px 24px';
+      const expectedBorderRadius = isAnimated ? '28px' : '20px';
+      loadTimeData.overrideValues({animatedDoodlesEnabled: isAnimated});
+
+      // Act.
+      const logo = await createLogo(
+          doodle, createTheme({
+            isDark: false,
+            // Note: Doodle boxing is not applied to default light mode, so we
+            // use a different color to enable boxing.
+            backgroundColor: hexColorToSkColor('#ff0000'),
+          }));
+      // Assert.
+      assertStyle($$(logo, '#imageDoodle')!, 'padding', expectedPadding);
+      assertStyle(
+          $$(logo, '#imageDoodle')!, 'border-radius', expectedBorderRadius);
+    });
+  });
+
+  [[1000, 500] /* too large */,
+   [100, 50] /* too small */,
+  ].forEach(([width, height]) => {
+    test(`${width}x${height} doodle aligned correctly`, async () => {
+      // Act.
+      const logo = await createLogo(
+          createImageDoodle(width, height),
+          createTheme({isDark: false, backgroundColor: WHITE_COLOR}));
+
+      // Assert.
+      assertEquals(imageOffsetHeight, logo.offsetHeight);
+      assertGE(200, $$<HTMLElement>(logo, '#image')!.offsetHeight);
+      const pos = getRelativePosition($$(logo, '#imageDoodle')!, logo);
+      assertLE(0, pos.top);
+      assertEquals(0, pos.bottom);
+    });
+
+    test(`${width}x${height} boxed doodle aligned correctly`, async () => {
+      // Act.
+      const logo = await createLogo(
+          createImageDoodle(width, height),
+          createTheme({isDark: true, backgroundColor: {value: 0xff0000ff}}));
+      await microtasksFinished();
+
+      // Assert.
+      assertEquals(imageOffsetHeight, logo.offsetHeight);
+      assertGE(160, $$<HTMLElement>(logo, '#image')!.offsetHeight);
+      const pos = getRelativePosition($$(logo, '#imageDoodle')!, logo);
+      assertGE(pos.top, 8);
+      assertEquals(0, pos.bottom);
+    });
+  });
+
+  test('dark mode and no dark doodle shows logo', async () => {
+    // Arrange.
+    const doodle = createImageDoodle();
+    doodle.image!.dark = null;
+
+    // Act.
+    const logo = await createLogo(doodle, createTheme({isDark: true}));
+    await microtasksFinished();
+
+    // Assert.
+    assertFalse(!!$$(logo, '#doodle'));
+    assertTrue(!!$$(logo, '#logo'));
+  });
+
+  test('setting too large image doodle resizes image', async () => {
+    // Arrange.
+    const doodle = createImageDoodle(/*width=*/ 1000, /*height=*/ 500);
+
+    // Act.
+    const logo = await createLogo(
+        doodle, createTheme({isDark: false, backgroundColor: WHITE_COLOR}));
+
+    // Assert.
+    assertEquals(
+        imageOffsetWidth, $$<HTMLElement>(logo, '#image')!.offsetWidth);
+    assertEquals(
+        imageOffsetHeight, $$<HTMLElement>(logo, '#image')!.offsetHeight);
+    assertEquals(32, $$<HTMLElement>(logo, '#shareButton')!.offsetWidth);
+    assertEquals(32, $$<HTMLElement>(logo, '#shareButton')!.offsetHeight);
+  });
+
+  test('setting animated doodle shows image', async () => {
+    // Arrange.
+    const doodle = createImageDoodle();
+    doodle.image!.light.imageUrl = 'data:foo';
+    doodle.image!.light.animationUrl = 'https://foo.com';
+
+    // Act.
+    const logo = await createLogo(doodle, createTheme({isDark: false}));
+
+    // Assert.
+    assertNotStyle($$(logo, '#doodle')!, 'display', 'none');
+    assertEquals($$(logo, '#logo'), null);
+    assertEquals($$<HTMLImageElement>(logo, '#image')!.src, 'data:foo');
+    assertNotStyle($$(logo, '#image')!, 'display', 'none');
+  });
+
+  test('before doodle loaded shows nothing', () => {
+    // Act.
+    handler.setPromiseResolveFor('getDoodle');
+    const logo = document.createElement('ntp-logo');
+    document.body.appendChild(logo);
+
+    // Assert.
+    assertEquals($$(logo, '#logo'), null);
+    assertEquals($$(logo, '#doodle'), null);
+  });
+
+  test('unavailable doodle shows logo', async () => {
+    // Act.
+    const logo = await createLogo();
+
+    // Assert.
+    assertNotStyle($$(logo, '#logo')!, 'display', 'none');
+    assertEquals($$(logo, '#doodle'), null);
+  });
+
+  [true, false].forEach(useGoogleLogo26 => {
+    const logoName = useGoogleLogo26 ? '2026' : 'legacy';
+
+    test(`${logoName} Google logo multi-colored render path`, async () => {
+      // Arrange.
+      loadTimeData.overrideValues({useGoogleLogo26});
+
+      // Act.
+      const logo = await createLogo();
+
+      // Assert.
+      assertNotStyle($$(logo, '#logo')!, 'background-image', '');
+      assertStyle($$(logo, '#logo')!, '-webkit-mask-image', 'none');
+      assertStyle($$(logo, '#logo')!, 'background-color', 'rgba(0, 0, 0, 0)');
+    });
+
+    test(`${logoName} Google logo single-colored render path`, async () => {
+      // Arrange.
+      loadTimeData.overrideValues({useGoogleLogo26});
+
+      // Act.
+      const logo = await createLogo();
+      logo.singleColored = true;
+      logo.style.setProperty('--ntp-logo-color', 'red');
+      await microtasksFinished();
+
+      // Assert.
+      assertNotStyle($$(logo, '#logo')!, '-webkit-mask-image', 'none');
+      assertStyle($$(logo, '#logo')!, 'background-color', 'rgb(255, 0, 0)');
+      assertStyle($$(logo, '#logo')!, 'background-image', 'none');
+    });
+
+    test(`${logoName} Google logo aligned correctly`, async () => {
+      // Arrange.
+      loadTimeData.overrideValues({useGoogleLogo26});
+
+      // Act.
+      const logo = await createLogo();
+
+      // Assert.
+      const pos = getRelativePosition($$(logo, '#logo')!, logo);
+      assertEquals(0, pos.bottom);
+      assertEquals(
+          useGoogleLogo26 ? 82 : 92,
+          $$<HTMLElement>(logo, '#logo')!.offsetHeight);
+      assertEquals(
+          useGoogleLogo26 ? 270 : 272,
+          $$<HTMLElement>(logo, '#logo')!.offsetWidth);
+    });
+  });
+
+  test('doodle aligned correctly', async () => {
+    // Act.
+    const logo =
+        await createLogo(createImageDoodle(), createTheme({isDark: false}));
+
+    // Assert.
+    const pos = getRelativePosition($$(logo, '#doodle')!, logo);
+    assertEquals(0, pos.bottom);
+  });
+
+  [true, false].forEach(hasUrl => {
+    const withOut = hasUrl ? 'with' : 'without';
+    test(`clicking simple doodle ${withOut} URL`, async () => {
+      // Arrange.
+      const doodle = createImageDoodle();
+      doodle.image!.onClickUrl = hasUrl ? 'https://foo.com' : null;
+      const logo = await createLogo(doodle, createTheme({isDark: false}));
+
+      // Act.
+      $$<HTMLElement>(logo, '#image')!.click();
+
+      // Assert.
+      assertEquals(hasUrl ? 1 : 0, windowProxy.getCallCount('open'));
+      if (hasUrl) {
+        assertEquals('https://foo.com/', windowProxy.getArgs('open')[0]);
+      }
+      assertEquals(
+          hasUrl ? 0 : -1, $$<HTMLElement>(logo, '#imageContainer')!.tabIndex);
+    });
+
+    [' ', 'Enter'].forEach(key => {
+      test(`pressing ${key} on simple doodle ${withOut} URL`, async () => {
+        // Arrange.
+        const doodle = createImageDoodle();
+        doodle.image!.onClickUrl = hasUrl ? 'https://foo.com' : null;
+        const logo = await createLogo(doodle, createTheme({isDark: false}));
+
+        // Act.
+        keydown($$<HTMLElement>(logo, '#image')!, key);
+
+        // Assert.
+        assertEquals(hasUrl ? 1 : 0, windowProxy.getCallCount('open'));
+        if (hasUrl) {
+          assertEquals('https://foo.com/', windowProxy.getArgs('open')[0]);
+        }
+        assertEquals(
+            hasUrl ? 0 : -1,
+            $$<HTMLElement>(logo, '#imageContainer')!.tabIndex);
+      });
+    });
+
+    test(`animated doodle opens ${withOut} URL`, async () => {
+      // Arrange.
+      const doodle = createImageDoodle();
+      assertTrue(!!doodle.image);
+      doodle.image.light.animationUrl = 'https://foo.com';
+      doodle.image.onClickUrl = hasUrl ? 'https://bar.com' : null;
+      const logo = await createLogo(doodle, createTheme({isDark: false}));
+      assertEquals(
+          hasUrl ? 0 : -1, $$<HTMLElement>(logo, '#imageContainer')!.tabIndex);
+
+      // Act (click).
+      $$<HTMLElement>(logo, '#image')!.click();
+      await microtasksFinished();
+
+      // Assert.
+      assertEquals(hasUrl ? 1 : 0, windowProxy.getCallCount('open'));
+      if (hasUrl) {
+        assertEquals('https://bar.com/', windowProxy.getArgs('open')[0]);
+      }
+      assertEquals(
+          hasUrl ? 0 : -1, $$<HTMLElement>(logo, '#imageContainer')!.tabIndex);
+    });
+  });
+
+  test('share dialog removed on start', async () => {
+    // Arrange.
+    const logo = await createLogo(createImageDoodle());
+
+    // Assert.
+    assertFalse(!!logo.shadowRoot.querySelector('ntp-doodle-share-dialog'));
+  });
+
+  test('clicking share button adds share dialog', async () => {
+    // Arrange.
+    const doodle = createImageDoodle();
+    const logo = await createLogo(doodle, createTheme({isDark: false}));
+
+    // Act.
+    $$<HTMLElement>(logo, '#shareButton')!.click();
+    await microtasksFinished();
+
+    // Assert.
+    const dialog = logo.shadowRoot.querySelector('ntp-doodle-share-dialog');
+    assertTrue(!!dialog);
+    assertEquals(doodle.description, dialog.title);
+    // Check that the title is not set as an HTML attribute, which would result
+    // in showing a tooltip on hover.
+    assertFalse(dialog.hasAttribute('title'));
+  });
+
+  test('closing share dialog removes share dialog', async () => {
+    // Arrange.
+    const logo =
+        await createLogo(createImageDoodle(), createTheme({isDark: false}));
+    $$<HTMLElement>(logo, '#shareButton')!.click();
+    await microtasksFinished();
+
+    // Act.
+    logo.shadowRoot.querySelector('ntp-doodle-share-dialog')!.dispatchEvent(
+        new Event('close'));
+    await microtasksFinished();
+
+    // Assert.
+    assertFalse(!!logo.shadowRoot.querySelector('ntp-doodle-share-dialog'));
+  });
+
+  [true, false].forEach(dark => {
+    const darkStr = dark ? 'dark' : 'light';
+    test(`${darkStr} simple doodle logging flow`, async () => {
+      // Arrange.
+      const doodleResolver = new PromiseResolver();
+      handler.setResultFor('getDoodle', doodleResolver.promise);
+      const logo = document.createElement('ntp-logo');
+      document.body.appendChild(logo);
+      logo.theme = createTheme({isDark: dark});
+      handler.setPromiseResolveFor('onDoodleImageRendered', {
+        imageClickParams: 'foo=bar&hello=world',
+        interactionLogUrl: null,
+        shareId: '123',
+      });
+      const doodle = createImageDoodle();
+      assertTrue(!!doodle.image);
+      doodle.image.onClickUrl = 'https://click.com?ct=supi';
+      const imageDoodle = dark ? doodle.image.dark : doodle.image.light;
+      assertTrue(!!imageDoodle);
+
+      // Act (load).
+      doodleResolver.resolve({doodle});
+      await microtasksFinished();
+
+      // Assert (load).
+      const [type, _, logUrl] =
+          await handler.whenCalled('onDoodleImageRendered');
+      assertEquals(DoodleImageType.kStatic, type);
+      assertEquals(imageDoodle.imageImpressionLogUrl, logUrl);
+
+      // Act (click).
+      $$<HTMLElement>(logo, '#image')!.click();
+
+      // Assert (click).
+      const [type2] = await handler.whenCalled('onDoodleImageClicked');
+      const onClickUrl = await windowProxy.whenCalled('open');
+      assertEquals(DoodleImageType.kStatic, type2);
+      assertEquals(
+          'https://click.com/?ct=supi&foo=bar&hello=world', onClickUrl);
+
+      // Act (share).
+      $$<HTMLElement>(logo, '#shareButton')!.click();
+      await microtasksFinished();
+      ($$(logo, 'ntp-doodle-share-dialog')!
+       ).dispatchEvent(new CustomEvent('share', {
+        detail: DoodleShareChannel.kFacebook,
+      }));
+
+      // Assert (share).
+      const [channel, doodleId, shareId] =
+          await handler.whenCalled('onDoodleShared');
+      assertEquals(DoodleShareChannel.kFacebook, channel);
+      assertEquals('supi', doodleId);
+      assertEquals('123', shareId);
+    });
+
+    test(`${darkStr} animated doodle logging flow`, async () => {
+      // Arrange.
+      const doodleResolver = new PromiseResolver();
+      handler.setResultFor('getDoodle', doodleResolver.promise);
+      const logo = document.createElement('ntp-logo');
+      document.body.appendChild(logo);
+      logo.theme = createTheme({isDark: dark});
+      handler.setPromiseResolveFor('onDoodleImageRendered', {
+        imageClickParams: 'foo=bar&hello=world',
+        interactionLogUrl: 'https://interaction.com',
+        shareId: '123',
+      });
+      const doodle = createImageDoodle();
+      assertTrue(!!doodle.image);
+      assertTrue(!!doodle.image.dark);
+      assertTrue(!!doodle.image.light);
+      doodle.image.onClickUrl = 'https://click.com?ct=supi';
+      doodle.image.light.animationUrl = 'https://animation.com';
+      doodle.image.dark.animationUrl = 'https://dark_animation.com';
+      doodle.image.light.animationImpressionLogUrl =
+          'https://animation_log.com';
+      doodle.image.dark.animationImpressionLogUrl =
+          'https://dark_animation_log.com';
+      const imageDoodle = dark ? doodle.image.dark : doodle.image.light;
+
+      // Act (load).
+      doodleResolver.resolve({doodle});
+      await microtasksFinished();
+
+      // Assert (load).
+      const [type, _, logUrl] =
+          await handler.whenCalled('onDoodleImageRendered');
+      assertEquals(DoodleImageType.kAnimation, type);
+      assertEquals(imageDoodle.imageImpressionLogUrl, logUrl);
+
+      // Act (click).
+      handler.resetResolver('onDoodleImageRendered');
+      handler.setPromiseResolveFor('onDoodleImageRendered', {
+        imageClickParams: 'foo=bar&hello=world',
+        interactionLogUrl: 'https://interaction.com',
+        shareId: '123',
+      });
+      $$<HTMLElement>(logo, '#image')!.click();
+
+      // Assert (click).
+      const [type2, interactionLogUrl] =
+          await handler.whenCalled('onDoodleImageClicked');
+      assertEquals(DoodleImageType.kAnimation, type2);
+      assertEquals('https://interaction.com', interactionLogUrl);
+
+      // Act (share).
+      $$<HTMLElement>(logo, '#shareButton')!.click();
+      await microtasksFinished();
+      ($$(logo, 'ntp-doodle-share-dialog')!
+       ).dispatchEvent(new CustomEvent('share', {
+        detail: DoodleShareChannel.kFacebook,
+      }));
+
+      // Assert (share).
+      const [channel, doodleId, shareId] =
+          await handler.whenCalled('onDoodleShared');
+      assertEquals(DoodleShareChannel.kFacebook, channel);
+      assertEquals('supi', doodleId);
+      assertEquals('123', shareId);
+    });
+  });
+});

@@ -1,0 +1,213 @@
+// Copyright 2018 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_ASH_LOGIN_LOGIN_DISPLAY_HOST_COMMON_H_
+#define CHROME_BROWSER_UI_ASH_LOGIN_LOGIN_DISPLAY_HOST_COMMON_H_
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "ash/public/cpp/login_accelerators.h"
+#include "base/memory/raw_ref.h"
+#include "base/memory/scoped_refptr.h"
+#include "base/scoped_observation.h"
+#include "chrome/browser/ash/browser_delegate/browser_controller.h"
+#include "chrome/browser/ash/login/oobe_quick_start/target_device_bootstrap_controller.h"
+#include "chrome/browser/ash/tpm/tpm_firmware_update.h"
+#include "chrome/browser/ui/ash/login/kiosk_app_menu_controller.h"
+#include "chrome/browser/ui/ash/login/login_display_host.h"
+#include "chrome/browser/ui/ash/login/login_ui_pref_controller.h"
+#include "chrome/browser/ui/ash/login/signin_ui.h"
+#include "chromeos/ash/components/login/session/session_termination_manager.h"
+#include "components/keep_alive_registry/scoped_keep_alive.h"
+#include "components/user_manager/user_type.h"
+
+class AccountId;
+class ApplicationLocaleStorage;
+class PrefService;
+
+namespace network {
+class SharedURLLoaderFactory;
+}  // namespace network
+
+namespace policy {
+class BrowserPolicyConnectorAsh;
+}  // namespace policy
+
+namespace ash {
+
+class LoginFeedback;
+class OobeMetricsHelper;
+class OobeCrosEventsMetrics;
+
+// LoginDisplayHostCommon contains code which is not specific to a particular UI
+// implementation - the goal is to reduce code duplication between
+// LoginDisplayHostMojo and LoginDisplayHostWebUI.
+class LoginDisplayHostCommon : public LoginDisplayHost,
+                               public BrowserController::Observer,
+                               public SigninUI,
+                               public ash::SessionTerminationManager::Observer {
+ public:
+  // `local_state`, `application_locale_storage` and
+  // `browser_policy_connector_ash` must be non-null and must outlive `this`.
+  // `shared_url_loader_factory` must be non-null.
+  LoginDisplayHostCommon(
+      PrefService* local_state,
+      ApplicationLocaleStorage* application_locale_storage,
+      scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory,
+      policy::BrowserPolicyConnectorAsh* browser_policy_connector_ash,
+      bool update_geolocation_usage_allowed);
+
+  LoginDisplayHostCommon(const LoginDisplayHostCommon&) = delete;
+  LoginDisplayHostCommon& operator=(const LoginDisplayHostCommon&) = delete;
+
+  ~LoginDisplayHostCommon() override;
+
+  // LoginDisplayHost:
+  void BeforeSessionStart() final;
+  bool IsFinalizing() final;
+  void Finalize(base::OnceClosure completion_callback) final;
+  void FinalizeImmediately() final;
+  void StartUserAdding(base::OnceClosure completion_callback) final;
+  void StartSignInScreen() final;
+  void StartKiosk(const KioskAppId& kiosk_app_id, bool is_auto_launch) final;
+  void CompleteLogin(const UserContext& user_context) final;
+  void OnGaiaScreenReady() final;
+  void SetDisplayEmail(const std::string& email) final;
+  void ShowAllowlistCheckFailedError() final;
+  void UpdateWallpaper(const AccountId& prefilled_account) final;
+  bool IsUserAllowlisted(
+      const AccountId& account_id,
+      const std::optional<user_manager::UserType>& user_type) final;
+  void CancelPasswordChangedFlow() final;
+  void AddWizardCreatedObserverForTests(
+      base::RepeatingClosure on_created) final;
+  base::WeakPtr<quick_start::TargetDeviceBootstrapController>
+  GetQuickStartBootstrapController() final;
+  // Most of the accelerators are handled in a same way, but not all.
+  bool HandleAccelerator(LoginAcceleratorAction action) override;
+  void SkipPostLoginScreensForDemoMode() override;
+
+  // SigninUI:
+  void SetAuthSessionForOnboarding(const UserContext& user_context) final;
+  void ClearOnboardingAuthSession() final;
+  void StartUserOnboarding() final;
+  void ResumeUserOnboarding(const PrefService& prefs,
+                            OobeScreenId screen_id) final;
+  void StartManagementTransition() final;
+  void ShowTosForExistingUser() final;
+  void ShowNewTermsForFlexUsers() final;
+  void StartEncryptionMigration(
+      std::unique_ptr<UserContext> user_context,
+      EncryptionMigrationMode migration_mode,
+      base::OnceCallback<void(std::unique_ptr<UserContext>)> on_skip_migration)
+      final;
+  void ShowSigninError(SigninError error, const std::string& details) final;
+  void ShowOobeNotCompletedError() final;
+
+  // TODO: b/481969867 - Remove after managed local pin and password flag is
+  // enabled.
+  void SAMLConfirmPassword(::login::StringList scraped_passwords,
+                           std::unique_ptr<UserContext> user_context) final;
+  void ShowSamlConfirmPassword(std::unique_ptr<UserContext> user_context) final;
+  void ShowPasswordSelectionScreen() final;
+  void ShowRemoveLocalAuthFactorsScreen() final;
+  WizardContext* GetWizardContextForTesting() final;
+
+  // BrowserController::Observer:
+  void OnBrowserCreated(BrowserDelegate* browser) override;
+  WizardContext* GetWizardContext() override;
+  OobeMetricsHelper* GetOobeMetricsHelper() override;
+
+  // ash::SessionTerminationManager::Observer:
+  void OnAppTerminating() override;
+
+ protected:
+  virtual void OnStartSignInScreen() = 0;
+  virtual void OnStartAppLaunch() = 0;
+  virtual void OnBrowserCreated() = 0;
+  virtual void OnStartUserAdding() = 0;
+  virtual void OnFinalize() = 0;
+  virtual void OnCancelPasswordChangedFlow() = 0;
+
+  // This function needed to isolate error messages on the Views and WebUI side.
+  virtual bool IsOobeUIDialogVisible() const = 0;
+
+  // Marks display host for deletion.
+  void ShutdownDisplayHost();
+
+  // Common code for OnStartSignInScreen() call above.
+  void OnStartSignInScreenCommon();
+
+  // Common code for ShowGaiaDialog() call above.
+  void ShowGaiaDialogCommon(const AccountId& prefilled_account);
+
+  // Triggers |on_wizard_controller_created_for_tests_| callback.
+  void NotifyWizardCreated();
+
+  const raw_ref<PrefService> local_state_;
+  const raw_ref<ApplicationLocaleStorage> application_locale_storage_;
+  const scoped_refptr<network::SharedURLLoaderFactory>
+      shared_url_loader_factory_;
+  const raw_ref<policy::BrowserPolicyConnectorAsh>
+      browser_policy_connector_ash_;
+
+ private:
+  void Cleanup();
+  // Set screen, from which WC flow will continue after attempt to show
+  // TermsOfServiceScreen.
+  void SetScreenAfterManagedTos(OobeScreenId screen_id);
+
+  void OnPowerwashAllowedCallback(
+      bool is_reset_allowed,
+      std::optional<tpm_firmware_update::Mode> tpm_firmware_update_mode);
+
+  // True if session start is in progress.
+  bool session_starting_ = false;
+
+  // Has ShutdownDisplayHost() already been called?  Used to avoid posting our
+  // own deletion to the message loop twice if the user logs out while we're
+  // still in the process of cleaning up after login
+  // (http://crbug.com/40853076).
+  bool shutting_down_ = false;
+
+  // Used to make sure Finalize() is not called twice.
+  bool is_finalizing_ = false;
+
+  // Make sure chrome won't exit while we are at login/oobe screen.
+  ScopedKeepAlive keep_alive_;
+
+  KioskAppMenuController kiosk_app_menu_controller_;
+
+  std::unique_ptr<LoginFeedback> login_feedback_;
+
+  std::unique_ptr<LoginUIPrefController> login_ui_pref_controller_;
+
+  std::unique_ptr<WizardContext> wizard_context_;
+
+  // Callback to be executed when WebUI is started.
+  base::RepeatingClosure on_wizard_controller_created_for_tests_;
+
+  std::unique_ptr<ash::quick_start::TargetDeviceBootstrapController>
+      bootstrap_controller_;
+
+  std::unique_ptr<OobeMetricsHelper> oobe_metrics_helper_;
+
+  std::unique_ptr<OobeCrosEventsMetrics> oobe_cros_events_metrics_;
+
+  base::ScopedObservation<BrowserController, BrowserController::Observer>
+      browser_controller_observation_{this};
+
+  base::ScopedObservation<ash::SessionTerminationManager,
+                          ash::SessionTerminationManager::Observer>
+      session_termination_observation_{this};
+
+  base::WeakPtrFactory<LoginDisplayHostCommon> weak_factory_{this};
+};
+
+}  // namespace ash
+
+#endif  // CHROME_BROWSER_UI_ASH_LOGIN_LOGIN_DISPLAY_HOST_COMMON_H_

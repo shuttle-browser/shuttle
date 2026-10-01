@@ -1,0 +1,13 @@
+include_rules = [
+  "+components/prefs",
+  "+google_apis/gaia",
+  "+services/network/public/cpp",
+  "+third_party/protobuf",
+]
+
+specific_include_rules = {
+   '.*_unittest\\.cc': [
+      '+services/network/test/test_url_loader_factory.h',
+      "+services/network/test/test_utils.h"
+   ],
+}

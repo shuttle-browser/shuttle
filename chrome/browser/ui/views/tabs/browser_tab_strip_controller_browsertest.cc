@@ -1,0 +1,566 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/views/tabs/browser_tab_strip_controller.h"
+
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/test_mock_time_task_runner.h"
+#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
+#include "chrome/browser/ui/tabs/features.h"
+#include "chrome/browser/ui/tabs/saved_tab_groups/tab_group_sync_service_initialized_observer.h"
+#include "chrome/browser/ui/tabs/tab_creation_metrics_controller.h"
+#include "chrome/browser/ui/tabs/tab_group_model.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/frame/browser_widget.h"
+#include "chrome/test/base/in_process_browser_test.h"
+#include "components/saved_tab_groups/public/tab_group_sync_service.h"
+#include "content/public/test/browser_test.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "ui/events/event.h"
+
+namespace {
+ui::MouseEvent dummy_event_ = ui::MouseEvent(ui::EventType::kMousePressed,
+                                             gfx::PointF(),
+                                             gfx::PointF(),
+                                             base::TimeTicks::Now(),
+                                             0,
+                                             0);
+
+constexpr char kHistogramName[] = "Tab.GroupingTransition2";
+}  // namespace
+
+class BrowserTabStripControllerTestBase : public InProcessBrowserTest {
+ public:
+  BrowserTabStripControllerTestBase()
+      : task_runner_(base::MakeRefCounted<base::TestMockTimeTaskRunner>()) {}
+
+  void SetUpOnMainThread() override {
+    tabs::TabCreationMetricsController::SetTaskRunnerForTesting(task_runner_);
+  }
+
+  void TearDownOnMainThread() override {
+    tabs::TabCreationMetricsController::SetTaskRunnerForTesting(nullptr);
+  }
+
+  TabStripModel* tab_strip_model() { return browser()->GetTabStripModel(); }
+  TabStrip* tabstrip() {
+    return BrowserView::GetBrowserViewForBrowser(browser())
+        ->horizontal_tab_strip_for_testing();
+  }
+  TabStripController* controller() { return tabstrip()->controller(); }
+
+ protected:
+  void FastForwardPastDelay() {
+    task_runner_->FastForwardBy(tabs::TabCreationMetricsController::kDelay +
+                                base::Seconds(1));
+  }
+
+  void WaitForTabSyncServiceInitialization() {
+    tab_groups::TabGroupSyncService* tgss_service =
+        static_cast<tab_groups::TabGroupSyncService*>(
+            tab_groups::TabGroupSyncServiceFactory::GetForProfile(
+                browser()->GetProfile()));
+    // Make the observer
+    tab_groups::TabGroupSyncServiceInitializedObserver tgss_observer{
+        tgss_service};
+    tgss_observer.Wait();
+  }
+
+  scoped_refptr<base::TestMockTimeTaskRunner> task_runner_;
+};
+
+using BrowserTabStripControllerTest = BrowserTabStripControllerTestBase;
+
+IN_PROC_BROWSER_TEST_F(BrowserTabStripControllerTest,
+                       AddTabsWithActiveTabGroup) {
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  EXPECT_EQ(tab_strip_model()->count(), 4);
+
+  tab_groups::TabGroupId group_id = tab_strip_model()->AddToNewGroup({1, 2});
+
+  EXPECT_EQ(group_id, tab_strip_model()->GetTabGroupForTab(1));
+  EXPECT_EQ(group_id, tab_strip_model()->GetTabGroupForTab(2));
+
+  // Select a tab in the group.
+  controller()->SelectTab(1, dummy_event_);
+  ASSERT_TRUE(tabstrip()->tab_at(1)->IsActive());
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+
+  // Create a new tab, it should not have been added to the group even
+  // though a tab in the group is selected.
+  EXPECT_EQ(std::nullopt, tab_strip_model()->GetTabGroupForTab(0));
+  EXPECT_EQ(group_id, tab_strip_model()->GetTabGroupForTab(1));
+  EXPECT_EQ(group_id, tab_strip_model()->GetTabGroupForTab(2));
+  EXPECT_EQ(std::nullopt, tab_strip_model()->GetTabGroupForTab(3));
+  EXPECT_EQ(std::nullopt, tab_strip_model()->GetTabGroupForTab(4));
+}
+
+IN_PROC_BROWSER_TEST_F(BrowserTabStripControllerTest,
+                       VerifyTabMetrics1) {
+  base::HistogramTester histogram_tester;
+
+  // Make a tab, put it in group A
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  tab_groups::TabGroupId group_a = tab_strip_model()->AddToNewGroup({1});
+
+  // Select the tab in group A and then make two tabs. Of these two tabs,
+  // group the first one to A
+  controller()->SelectTab(1, dummy_event_);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->SelectTab(1, dummy_event_);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->AddTabToGroup(2, group_a);
+
+  // Select the ungrouped tab and make a new tab. Put the new tab in
+  // a new group B. Place the ungrouped tab in B.
+  controller()->SelectTab(3, dummy_event_);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  tab_groups::TabGroupId group_b = tab_strip_model()->AddToNewGroup({4});
+  controller()->AddTabToGroup(3, group_b);
+
+  FastForwardPastDelay();
+  histogram_tester.ExpectBucketCount(
+      kHistogramName, tabs::TabGroupingTransitionType::kUngroupedToUngrouped,
+      0);
+  histogram_tester.ExpectBucketCount(
+      kHistogramName, tabs::TabGroupingTransitionType::kUngroupedToGrouped, 2);
+  histogram_tester.ExpectBucketCount(
+      kHistogramName, tabs::TabGroupingTransitionType::kGroupedToUngrouped, 0);
+  histogram_tester.ExpectBucketCount(
+      kHistogramName,
+      tabs::TabGroupingTransitionType::kGroupedToInPreviousGroup, 1);
+  histogram_tester.ExpectBucketCount(
+      kHistogramName,
+      tabs::TabGroupingTransitionType::kGroupedToOutsidePreviousGroup, 1);
+  histogram_tester.ExpectTotalCount(kHistogramName, 4);
+
+  EXPECT_EQ(group_a, tab_strip_model()->GetTabGroupForTab(1));
+  EXPECT_EQ(group_a, tab_strip_model()->GetTabGroupForTab(2));
+  EXPECT_EQ(group_b, tab_strip_model()->GetTabGroupForTab(3));
+  EXPECT_EQ(group_b, tab_strip_model()->GetTabGroupForTab(4));
+
+  WaitForTabSyncServiceInitialization();
+}
+
+IN_PROC_BROWSER_TEST_F(BrowserTabStripControllerTest,
+                       VerifyTabMetrics2) {
+  base::HistogramTester histogram_tester;
+
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  tab_groups::TabGroupId group_a = tab_strip_model()->AddToNewGroup({2});
+
+  controller()->SelectTab(2, dummy_event_);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+
+  FastForwardPastDelay();
+  histogram_tester.ExpectBucketCount(
+      kHistogramName, tabs::TabGroupingTransitionType::kUngroupedToUngrouped,
+      1);
+  histogram_tester.ExpectBucketCount(
+      kHistogramName, tabs::TabGroupingTransitionType::kUngroupedToGrouped, 1);
+  histogram_tester.ExpectBucketCount(
+      kHistogramName, tabs::TabGroupingTransitionType::kGroupedToUngrouped, 1);
+  histogram_tester.ExpectBucketCount(
+      kHistogramName,
+      tabs::TabGroupingTransitionType::kGroupedToInPreviousGroup, 0);
+  histogram_tester.ExpectBucketCount(
+      kHistogramName,
+      tabs::TabGroupingTransitionType::kGroupedToOutsidePreviousGroup, 0);
+  histogram_tester.ExpectTotalCount(kHistogramName, 3);
+
+  EXPECT_EQ(std::nullopt, tab_strip_model()->GetTabGroupForTab(1));
+  EXPECT_EQ(group_a, tab_strip_model()->GetTabGroupForTab(2));
+  EXPECT_EQ(std::nullopt, tab_strip_model()->GetTabGroupForTab(3));
+
+  WaitForTabSyncServiceInitialization();
+}
+
+class BrowserTabStripControllerTestToggleTabGroupCollapsedState
+    : public BrowserTabStripControllerTestBase {
+ public:
+  BrowserTabStripControllerTestToggleTabGroupCollapsedState() = default;
+  ~BrowserTabStripControllerTestToggleTabGroupCollapsedState() override =
+      default;
+};
+
+// Active tab is in the group, next available tab exists outside group
+IN_PROC_BROWSER_TEST_F(
+    BrowserTabStripControllerTestToggleTabGroupCollapsedState,
+    CollapseWithActiveTabInGroupAndNextAvailable) {
+  // Create tabs and a group
+  ASSERT_EQ(tab_strip_model()->count(), 1);  // 0
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);  // 1
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);  // 2
+  // Tabs [0, 1] in group
+  const tab_groups::TabGroupId group = tab_strip_model()->AddToNewGroup({0, 1});
+  // Active tab in group
+  browser()->GetTabStripModel()->ActivateTabAt(0);
+  int next_available_index = 2;  // Tab 2 is outside group
+
+  // Expect: group is collapsed, active tab switched to next available tab.
+  controller()->ToggleTabGroupCollapsedState(
+      group, ToggleTabGroupCollapsedStateOrigin::kMouse);
+
+  // Verify active tab switched to the next available tab outside group
+  EXPECT_EQ(browser()->GetTabStripModel()->active_index(),
+            next_available_index);
+  EXPECT_TRUE(controller()->IsGroupCollapsed(group));
+}
+
+// Active tab is in the group, no available tab outside group
+IN_PROC_BROWSER_TEST_F(
+    BrowserTabStripControllerTestToggleTabGroupCollapsedState,
+    CollapseWithActiveTabInGroupAndNoNextAvailable) {
+  // Only tab in group
+  ASSERT_EQ(tab_strip_model()->count(), 1);  // 0
+  const tab_groups::TabGroupId group = tab_strip_model()->AddToNewGroup({0});
+  // Active tab in group
+  browser()->GetTabStripModel()->ActivateTabAt(0);
+
+  // Expect: group collapse is cancelled temporarily, new tab is created outside
+  // group and activated.
+  controller()->ToggleTabGroupCollapsedState(
+      group, ToggleTabGroupCollapsedStateOrigin::kMouse);
+
+  // Verify a new tab was created
+  EXPECT_EQ(tab_strip_model()->count(), 2);
+  // Verify new tab is active and outside the group
+  EXPECT_EQ(tab_strip_model()->active_index(), 1);
+  EXPECT_FALSE(tab_strip_model()->GetTabGroupForTab(1).has_value());
+  // Group should not be collapsed yet because we switched to a new tab
+  EXPECT_TRUE(controller()->IsGroupCollapsed(group));
+}
+
+// Active tab is NOT in the group
+IN_PROC_BROWSER_TEST_F(
+    BrowserTabStripControllerTestToggleTabGroupCollapsedState,
+    CollapseWithActiveTabOutsideGroup) {
+  // Create tabs and a group
+  ASSERT_EQ(tab_strip_model()->count(), 1);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  // Tab 0 in group
+  const tab_groups::TabGroupId group = tab_strip_model()->AddToNewGroup({0});
+  // Active tab outside group
+  tab_strip_model()->ActivateTabAt(1);
+
+  // Expect: re-activate the active tab to clear any selection and collapse
+  // group
+  controller()->ToggleTabGroupCollapsedState(
+      group, ToggleTabGroupCollapsedStateOrigin::kMouse);
+
+  // Active tab should remain the same
+  EXPECT_EQ(tab_strip_model()->active_index(), 1);
+  // Verify active tab should not in the group
+  EXPECT_FALSE(tab_strip_model()->GetTabGroupForTab(1).has_value());
+  // Group should be collapsed
+  EXPECT_TRUE(controller()->IsGroupCollapsed(group));
+}
+
+class BrowserTabStripControllerTestFocusedGroup
+    : public BrowserTabStripControllerTestBase {
+ public:
+  BrowserTabStripControllerTestFocusedGroup() {
+    scoped_feature_list_.InitWithFeatures({features::kTabGroupsFocusing},
+                                          {tabs::kTabStripUnification});
+  }
+  ~BrowserTabStripControllerTestFocusedGroup() override = default;
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(BrowserTabStripControllerTestFocusedGroup,
+                       SetAndGetFocusedGroup) {
+  // Create tabs and groups.
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  EXPECT_EQ(tab_strip_model()->count(), 4);
+
+  const tab_groups::TabGroupId group1 =
+      tab_strip_model()->AddToNewGroup({0, 1});
+  const tab_groups::TabGroupId group2 =
+      tab_strip_model()->AddToNewGroup({2, 3});
+
+  // Initially, no group is focused.
+  EXPECT_EQ(controller()->GetFocusedGroup(), std::nullopt);
+
+  // Focus on group1.
+  controller()->SetFocusedGroup(group1);
+  EXPECT_EQ(controller()->GetFocusedGroup(), group1);
+
+  // Focus on group2.
+  controller()->SetFocusedGroup(group2);
+  EXPECT_EQ(controller()->GetFocusedGroup(), group2);
+
+  // Unset focused group.
+  controller()->SetFocusedGroup(std::nullopt);
+  EXPECT_EQ(controller()->GetFocusedGroup(), std::nullopt);
+}
+
+IN_PROC_BROWSER_TEST_F(BrowserTabStripControllerTestFocusedGroup,
+                       FocusedGroupIsResetWhenDeleted) {
+  // Create tabs and a group.
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  EXPECT_EQ(tab_strip_model()->count(), 2);
+  const tab_groups::TabGroupId group = tab_strip_model()->AddToNewGroup({0, 1});
+
+  // Focus on the group.
+  controller()->SetFocusedGroup(group);
+  EXPECT_EQ(controller()->GetFocusedGroup(), group);
+
+  // Delete the group by ungrouping all its tabs.
+  tab_strip_model()->RemoveFromGroup({0, 1});
+
+  // Verify the focused group is reset.
+  EXPECT_EQ(controller()->GetFocusedGroup(), std::nullopt);
+}
+
+IN_PROC_BROWSER_TEST_F(BrowserTabStripControllerTestFocusedGroup,
+                       FocusedGroupUpdatesThemeMultipleTimes) {
+  BrowserWidget* widget =
+      BrowserView::GetBrowserViewForBrowser(browser())->browser_widget();
+  EXPECT_EQ(widget->user_color_override(), std::nullopt);
+
+  // Create a tab and a group.
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  EXPECT_EQ(tab_strip_model()->count(), 2);
+  const tab_groups::TabGroupId group = tab_strip_model()->AddToNewGroup({0, 1});
+
+  // Focus on the group.
+  controller()->SetFocusedGroup(group);
+  EXPECT_NE(widget->user_color_override(), std::nullopt);
+
+  // Unset focused group.
+  controller()->SetFocusedGroup(std::nullopt);
+  EXPECT_EQ(widget->user_color_override(), std::nullopt);
+
+  // Focus on the group again.
+  controller()->SetFocusedGroup(group);
+  EXPECT_NE(widget->user_color_override(), std::nullopt);
+}
+
+IN_PROC_BROWSER_TEST_F(BrowserTabStripControllerTestFocusedGroup,
+                       NewTabInFocusedGroupJoinsFocusedGroup) {
+  // Create tabs and a group.
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  EXPECT_EQ(tab_strip_model()->count(), 2);
+  const tab_groups::TabGroupId group = tab_strip_model()->AddToNewGroup({0, 1});
+
+  // Focus on the group.
+  controller()->SetFocusedGroup(group);
+  EXPECT_EQ(controller()->GetFocusedGroup(), group);
+
+  // Creating a new tab via user intent (controller/command) should join the
+  // focused group.
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  EXPECT_EQ(tab_strip_model()->count(), 3);
+  EXPECT_EQ(tab_strip_model()->GetTabGroupForTab(2), group);
+  EXPECT_EQ(controller()->GetFocusedGroup(), group);
+}
+
+IN_PROC_BROWSER_TEST_F(BrowserTabStripControllerTest,
+                       CloseTabFromTabStripExecutesClose) {
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  EXPECT_EQ(tab_strip_model()->count(), 2);
+
+  EXPECT_FALSE(tabstrip()->tab_container_for_testing()->InTabClose());
+
+  tabstrip()->CloseTab(tabstrip()->tab_at(0), CloseTabSource::kFromMouse);
+
+  EXPECT_TRUE(tabstrip()->tab_container_for_testing()->InTabClose());
+  EXPECT_EQ(tab_strip_model()->count(), 1);
+}
+
+class BrowserTabStripControllerTestFocusFreezing
+    : public BrowserTabStripControllerTest {
+ public:
+  BrowserTabStripControllerTestFocusFreezing() {
+    scoped_feature_list_.InitWithFeatures({features::kTabGroupsFocusing},
+                                          {tabs::kTabStripUnification});
+  }
+  ~BrowserTabStripControllerTestFocusFreezing() override = default;
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(BrowserTabStripControllerTestFocusFreezing,
+                       FocusingGroupFreezesUnfocusedTabs) {
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  ASSERT_EQ(tab_strip_model()->count(), 4);
+
+  const tab_groups::TabGroupId group1 =
+      tab_strip_model()->AddToNewGroup({0, 1});
+  tab_strip_model()->AddToNewGroup({2});
+
+  EXPECT_FALSE(tabstrip()->tab_at(0)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(1)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(3)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+
+  // Focus on group1. Unpinned tabs outside group1 should be frozen.
+  controller()->SetFocusedGroup(group1);
+  EXPECT_FALSE(tabstrip()->tab_at(0)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(1)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_TRUE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_TRUE(tabstrip()->tab_at(3)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+
+  // Unfocus group1. All tabs should be unfrozen.
+  controller()->SetFocusedGroup(std::nullopt);
+  EXPECT_FALSE(tabstrip()->tab_at(0)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(1)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(3)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+}
+
+IN_PROC_BROWSER_TEST_F(BrowserTabStripControllerTestFocusFreezing,
+                       PinnedTabsAreNotFrozenWhenUnfocused) {
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  ASSERT_EQ(tab_strip_model()->count(), 4);
+
+  tab_strip_model()->SetTabPinned(0, true);
+  const tab_groups::TabGroupId group1 =
+      tab_strip_model()->AddToNewGroup({1, 2});
+
+  // Focus on group1.
+  controller()->SetFocusedGroup(group1);
+  // Pinned tab (0) and focused group tabs (1, 2) should not be frozen.
+  EXPECT_FALSE(tabstrip()->tab_at(0)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(1)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  // Unpinned ungrouped tab (3) should be frozen.
+  EXPECT_TRUE(tabstrip()->tab_at(3)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+
+  // Pin tab 3. Once pinned, it moves to index 1 and should not be frozen.
+  tab_strip_model()->SetTabPinned(3, true);
+  EXPECT_FALSE(tabstrip()->tab_at(1)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+
+  // Unpin the tab (now at index 1). It moves after the pinned tabs (to index 1)
+  // and becomes unpinned outside the focused group, so it should be frozen.
+  tab_strip_model()->SetTabPinned(1, false);
+  EXPECT_TRUE(tabstrip()->tab_at(1)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+}
+
+IN_PROC_BROWSER_TEST_F(BrowserTabStripControllerTestFocusFreezing,
+                       SwitchingFocusedGroupsUpdatesFreezing) {
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  ASSERT_EQ(tab_strip_model()->count(), 4);
+
+  const tab_groups::TabGroupId group1 =
+      tab_strip_model()->AddToNewGroup({0, 1});
+  const tab_groups::TabGroupId group2 =
+      tab_strip_model()->AddToNewGroup({2, 3});
+
+  // Focus group1.
+  controller()->SetFocusedGroup(group1);
+  EXPECT_FALSE(tabstrip()->tab_at(0)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(1)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_TRUE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_TRUE(tabstrip()->tab_at(3)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+
+  // Switch focus to group2.
+  controller()->SetFocusedGroup(group2);
+  EXPECT_TRUE(tabstrip()->tab_at(0)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_TRUE(tabstrip()->tab_at(1)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(3)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+}
+
+IN_PROC_BROWSER_TEST_F(BrowserTabStripControllerTestFocusFreezing,
+                       CollapseAndFocusFreezingVotesAreIndependent) {
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  controller()->CreateNewTab(NewTabTypes::kNewTabCommand);
+  ASSERT_EQ(tab_strip_model()->count(), 4);
+
+  const tab_groups::TabGroupId group1 =
+      tab_strip_model()->AddToNewGroup({0, 1});
+  const tab_groups::TabGroupId group2 =
+      tab_strip_model()->AddToNewGroup({2, 3});
+
+  // Collapse group2.
+  tabstrip()->ToggleTabGroupCollapsedState(group2);
+  EXPECT_FALSE(tabstrip()->tab_at(0)->HasFreezingVote(
+      FreezingVoteReason::kCollapsedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(1)->HasFreezingVote(
+      FreezingVoteReason::kCollapsedGroup));
+  EXPECT_TRUE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kCollapsedGroup));
+  EXPECT_TRUE(tabstrip()->tab_at(3)->HasFreezingVote(
+      FreezingVoteReason::kCollapsedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(3)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+
+  // Focus group1 while group2 is collapsed.
+  controller()->SetFocusedGroup(group1);
+  EXPECT_FALSE(tabstrip()->tab_at(0)->HasFreezingVote());
+  EXPECT_FALSE(tabstrip()->tab_at(1)->HasFreezingVote());
+  // Tabs in group2 now have both collapsed and unfocused freezing votes.
+  EXPECT_TRUE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kCollapsedGroup));
+  EXPECT_TRUE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_TRUE(tabstrip()->tab_at(2)->HasFreezingVote());
+  EXPECT_TRUE(tabstrip()->tab_at(3)->HasFreezingVote(
+      FreezingVoteReason::kCollapsedGroup));
+  EXPECT_TRUE(tabstrip()->tab_at(3)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_TRUE(tabstrip()->tab_at(3)->HasFreezingVote());
+
+  // Unfocus group1. Unfocused votes should be released, but collapsed votes
+  // remain.
+  controller()->SetFocusedGroup(std::nullopt);
+  EXPECT_TRUE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kCollapsedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_TRUE(tabstrip()->tab_at(2)->HasFreezingVote());
+
+  // Expand group2. Collapsed votes are released.
+  tabstrip()->ToggleTabGroupCollapsedState(group2);
+  EXPECT_FALSE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kCollapsedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(2)->HasFreezingVote(
+      FreezingVoteReason::kFocusedGroup));
+  EXPECT_FALSE(tabstrip()->tab_at(2)->HasFreezingVote());
+}

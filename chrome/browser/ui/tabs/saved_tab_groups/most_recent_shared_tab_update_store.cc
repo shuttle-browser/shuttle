@@ -1,0 +1,76 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/ui/tabs/saved_tab_groups/most_recent_shared_tab_update_store.h"
+
+#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
+#include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
+#include "components/feature_engagement/public/feature_constants.h"
+#include "ui/base/interaction/element_tracker.h"
+#include "ui/views/interaction/element_tracker_views.h"
+#include "ui/views/view.h"
+
+namespace tab_groups {
+
+DEFINE_USER_DATA(MostRecentSharedTabUpdateStore);
+
+// static
+MostRecentSharedTabUpdateStore* MostRecentSharedTabUpdateStore::From(
+    BrowserWindowInterface* browser_window) {
+  return Get(browser_window->GetUnownedUserDataHost());
+}
+
+MostRecentSharedTabUpdateStore::MostRecentSharedTabUpdateStore(
+    BrowserWindowInterface* browser_window)
+    : browser_window_(browser_window),
+      scoped_unowned_user_data_(browser_window->GetUnownedUserDataHost(),
+                                *this) {}
+MostRecentSharedTabUpdateStore::~MostRecentSharedTabUpdateStore() = default;
+
+void MostRecentSharedTabUpdateStore::SetLastUpdatedTab(
+    LocalTabGroupID group_id,
+    std::optional<LocalTabID> tab_id) {
+  last_updated_tab_ = {group_id, tab_id};
+
+  MaybeShowPromo(feature_engagement::kIPHTabGroupsSharedTabChangedFeature);
+}
+
+ui::TrackedElement* MostRecentSharedTabUpdateStore::GetIPHAnchor(
+    BrowserView* browser_view) {
+  CHECK(last_updated_tab_.has_value());
+
+  if (last_updated_tab_->second.has_value()) {
+    // Last update was an active tab. Anchor to this tab.
+    tabs::TabInterface* tab = SavedTabGroupUtils::GetGroupedTab(
+        last_updated_tab_->first, last_updated_tab_->second.value());
+    views::View* tab_view =
+        tab ? browser_view->tab_strip_view()->GetTabAnchorView(tab->GetHandle())
+            : nullptr;
+    return tab_view
+               ? views::ElementTrackerViews::GetInstance()->GetElementForView(
+                     tab_view)
+               : nullptr;
+  } else {
+    // Last update was removing a tab. Anchor to the tab group header.
+    views::View* tab_group_header =
+        browser_view->tab_strip_view()->GetTabGroupAnchorView(
+            last_updated_tab_->first);
+    return tab_group_header
+               ? views::ElementTrackerViews::GetInstance()->GetElementForView(
+                     tab_group_header)
+               : nullptr;
+  }
+}
+
+void MostRecentSharedTabUpdateStore::MaybeShowPromo(
+    const base::Feature& feature) {
+  BrowserUserEducationInterface::From(browser_window_)
+      ->MaybeShowFeaturePromo(feature);
+}
+
+}  // namespace tab_groups

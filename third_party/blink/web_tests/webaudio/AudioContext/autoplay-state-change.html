@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>
+      Test if AudioContext state changes correctly after a source starts.
+    </title>
+    <script src="../../resources/testharness.js"></script>
+    <script src="../../resources/testharnessreport.js"></script>
+  </head>
+  <body>
+    <script>
+      const activateDocument = () => {
+        return new Promise((resolve, reject) => {
+          chrome.gpuBenchmarking.pointerActionSequence([
+            {
+              source: 'mouse',
+              actions: [
+                { name: 'pointerDown', x: 1, y: 1 },
+                { name: 'pointerUp' },
+              ],
+            }
+          ], resolve);
+        });
+      };
+
+      promise_test(async () => {
+        const autoplayIgnoresWebAudioEnabled =
+            internals.runtimeFlags.autoplayIgnoresWebAudioEnabled;
+        internals.runtimeFlags.autoplayIgnoresWebAudioEnabled = false;
+        internals.settings.setAutoplayPolicy(
+            'document-user-activation-required');
+
+        try {
+          const context = new AudioContext();
+          const osc = new OscillatorNode(context);
+          osc.connect(context.destination);
+
+          await activateDocument();
+
+          assert_equals(
+              context.state,
+              'suspended',
+              'Context state should be suspended before start');
+          osc.start();
+          assert_equals(
+              context.state,
+              'running',
+              'Context state should be running after start');
+
+        } finally {
+          internals.runtimeFlags.autoplayIgnoresWebAudioEnabled =
+              autoplayIgnoresWebAudioEnabled;
+          internals.settings.setAutoplayPolicy('no-user-gesture-required');
+        }
+      }, `Test if AudioContext state changes correctly after a source starts.`);
+    </script>
+  </body>
+</html>

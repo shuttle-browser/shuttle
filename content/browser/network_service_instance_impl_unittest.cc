@@ -1,0 +1,311 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/network_service_instance_impl.h"
+
+#include <stdint.h>
+
+#include "base/command_line.h"
+#include "base/files/file_enumerator.h"
+#include "base/files/file_util.h"
+#include "base/files/scoped_temp_dir.h"
+#include "base/no_destructor.h"
+#include "base/strings/string_number_conversions.h"
+#include "base/test/scoped_feature_list.h"
+#include "base/unguessable_token.h"
+#include "content/public/browser/network_service_instance.h"
+#include "content/public/common/content_client.h"
+#include "content/public/test/browser_task_environment.h"
+#include "content/public/test/test_content_browser_client.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "net/http/http_cache.h"
+#include "net/log/file_net_log_observer.h"
+#include "net/test/embedded_test_server/embedded_test_server.h"
+#include "services/cert_verifier/public/mojom/cert_verifier_service_factory.mojom.h"
+#include "services/network/public/cpp/features.h"
+#include "services/network/public/cpp/originating_process_id.h"
+#include "services/network/public/cpp/resource_request.h"
+#include "services/network/public/cpp/simple_url_loader.h"
+#include "services/network/public/cpp/transferable_directory.h"
+#include "services/network/public/mojom/net_log.mojom.h"
+#include "services/network/public/mojom/network_context.mojom.h"
+#include "services/network/public/mojom/url_loader_factory.mojom.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace content {
+
+namespace {
+
+// A leaky class that overrides Content Browser Client to say that shutdown has
+// started.
+class EarlyShutdownTestContentBrowserClient : public TestContentBrowserClient {
+ public:
+  static EarlyShutdownTestContentBrowserClient* GetInstance() {
+    static base::NoDestructor<EarlyShutdownTestContentBrowserClient> instance;
+    return instance.get();
+  }
+
+ private:
+  bool IsShuttingDown() override { return true; }
+};
+
+}  // namespace
+
+// This test exists as a regression test for https://crbug.com/1369808.
+class NetworkServiceShutdownRaceTest : public testing::TestWithParam<bool> {
+ public:
+  NetworkServiceShutdownRaceTest() {
+    if (GetParam()) {
+      feature_list_.InitAndEnableFeature(
+          network::features::kCreateNetworkContextNonBlocking);
+    } else {
+      feature_list_.InitAndDisableFeature(
+          network::features::kCreateNetworkContextNonBlocking);
+    }
+  }
+
+  NetworkServiceShutdownRaceTest(const NetworkServiceShutdownRaceTest&) =
+      delete;
+  NetworkServiceShutdownRaceTest& operator=(
+      const NetworkServiceShutdownRaceTest&) = delete;
+
+ protected:
+  // Trigger a NetworkContext creation using default parameters. This posts a
+  // background thread with a reply to the UI thread. This reply will race
+  // shutdown.
+  void CreateNetworkContext() {
+    mojo::Remote<network::mojom::NetworkContext> network_context;
+    network::mojom::NetworkContextParamsPtr context_params =
+        network::mojom::NetworkContextParams::New();
+    context_params->cert_verifier_params = GetCertVerifierParams(
+        cert_verifier::mojom::CertVerifierCreationParams::New());
+    CreateNetworkContextInNetworkService(
+        network_context.BindNewPipeAndPassReceiver(),
+        std::move(context_params));
+  }
+
+ private:
+  BrowserTaskEnvironment task_environment_{BrowserTaskEnvironment::IO_MAINLOOP};
+  base::test::ScopedFeatureList feature_list_;
+};
+
+// This should not crash.
+TEST_P(NetworkServiceShutdownRaceTest, CreateNetworkContextDuringShutdown) {
+  // Set browser as shutting down. Note: this never gets reset back to the old
+  // client and will intentionally leak, because the pending UI tasks that cause
+  // issue 1369808 are run after the test fixture has been completely torn down,
+  // and require IsShuttingDown() to still return true at that point to
+  // reproduce the bug.
+  std::ignore = SetBrowserClientForTesting(
+      EarlyShutdownTestContentBrowserClient::GetInstance());
+  // Trigger the network context creation.
+  CreateNetworkContext();
+}
+
+INSTANTIATE_TEST_SUITE_P(All, NetworkServiceShutdownRaceTest, testing::Bool());
+
+TEST(NetworkServiceInstanceImplParseCommandLineTest,
+     ParseNetLogMaximumFileNoSwitch) {
+  base::CommandLine command_line{base::CommandLine::NO_PROGRAM};
+  EXPECT_EQ(GetNetLogMaximumFileSizeFromCommandLineForTesting(command_line),
+            std::numeric_limits<uint64_t>::max());
+}
+
+TEST(NetworkServiceInstanceImplParseCommandLineTest,
+     ParseNetLogMaximumFileSizeZero) {
+  base::CommandLine command_line{base::CommandLine::NO_PROGRAM};
+  command_line.AppendSwitchASCII("net-log-max-size-mb", "0");
+  EXPECT_EQ(GetNetLogMaximumFileSizeFromCommandLineForTesting(command_line),
+            0u);
+}
+
+TEST(NetworkServiceInstanceImplParseCommandLineTest,
+     ParseNetLogMaximumFileSizeSmall) {
+  base::CommandLine command_line{base::CommandLine::NO_PROGRAM};
+  command_line.AppendSwitchASCII("net-log-max-size-mb", "42");
+  EXPECT_EQ(GetNetLogMaximumFileSizeFromCommandLineForTesting(command_line),
+            42u * 1024 * 1024);
+}
+
+// Regression test for <https://crbug.com/352496169>.
+TEST(NetworkServiceInstanceImplParseCommandLineTest,
+     ParseNetLogMaximumFileSizeLargeButInRange) {
+  constexpr uint64_t kTestCases[] = {
+      1 << 12,
+      std::numeric_limits<uint32_t>::max(),
+  };
+
+  for (uint64_t test_case : kTestCases) {
+    base::CommandLine command_line{base::CommandLine::NO_PROGRAM};
+    command_line.AppendSwitchASCII("net-log-max-size-mb",
+                                   base::NumberToString(test_case));
+    EXPECT_EQ(GetNetLogMaximumFileSizeFromCommandLineForTesting(command_line),
+              test_case * 1024 * 1024);
+  }
+}
+
+TEST(NetworkServiceInstanceImplParseCommandLineTest,
+     ParseNetLogMaximumFileSizeTooLarge) {
+  constexpr uint64_t kTooLarge =
+      uint64_t{std::numeric_limits<uint32_t>::max()} + 1;
+  base::CommandLine command_line{base::CommandLine::NO_PROGRAM};
+  command_line.AppendSwitchASCII("net-log-max-size-mb",
+                                 base::NumberToString(kTooLarge));
+  EXPECT_EQ(GetNetLogMaximumFileSizeFromCommandLineForTesting(command_line),
+            std::numeric_limits<uint64_t>::max());
+}
+
+TEST(NetworkServiceInstanceImplParseCommandLineTest,
+     ParseNetLogMaximumFileSizeNotNumeric) {
+  constexpr std::string_view kTestCases[] = {"",    " ",     "-", "-0",
+                                             "-42", "hello", "\a"};
+  for (std::string_view test_case : kTestCases) {
+    SCOPED_TRACE(testing::Message() << "Test case: " << test_case);
+    base::CommandLine command_line{base::CommandLine::NO_PROGRAM};
+    command_line.AppendSwitchASCII("net-log-max-size-mb", test_case);
+    EXPECT_EQ(GetNetLogMaximumFileSizeFromCommandLineForTesting(command_line),
+              std::numeric_limits<uint64_t>::max());
+  }
+}
+
+TEST(NetworkServiceInstanceImplParseCommandLineTest,
+     ParseNetLogFileFormatNoSwitch) {
+  base::CommandLine command_line{base::CommandLine::NO_PROGRAM};
+  EXPECT_EQ(GetNetLogFileFormatFromCommandLineForTesting(command_line),
+            net::NetLogFileFormat::kJson);
+}
+
+TEST(NetworkServiceInstanceImplParseCommandLineTest,
+     ParseNetLogFileFormatJson) {
+  base::CommandLine command_line{base::CommandLine::NO_PROGRAM};
+  command_line.AppendSwitchASCII("net-log-file-format", "json");
+  EXPECT_EQ(GetNetLogFileFormatFromCommandLineForTesting(command_line),
+            net::NetLogFileFormat::kJson);
+}
+
+TEST(NetworkServiceInstanceImplParseCommandLineTest,
+     ParseNetLogFileFormatNdjson) {
+  base::CommandLine command_line{base::CommandLine::NO_PROGRAM};
+  command_line.AppendSwitchASCII("net-log-file-format", "ndjson");
+  EXPECT_EQ(GetNetLogFileFormatFromCommandLineForTesting(command_line),
+            net::NetLogFileFormat::kNdjson);
+}
+
+TEST(NetworkServiceInstanceImplParseCommandLineTest,
+     ParseNetLogFileFormatInvalid) {
+  base::CommandLine command_line{base::CommandLine::NO_PROGRAM};
+  command_line.AppendSwitchASCII("net-log-file-format", "invalid");
+  EXPECT_EQ(GetNetLogFileFormatFromCommandLineForTesting(command_line),
+            net::NetLogFileFormat::kJson);
+}
+
+class NetworkServiceHttpCacheEarlyInitTest : public testing::Test {
+ public:
+  NetworkServiceHttpCacheEarlyInitTest() = default;
+
+ protected:
+  void SetUp() override {
+    ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
+    cache_path_ = temp_dir_.GetPath().AppendASCII("cache");
+  }
+
+  void CreateNetworkContext(bool enable_early_init,
+                            std::optional<bool> check_disk) {
+    if (enable_early_init) {
+      feature_list_.InitAndEnableFeatureWithParameters(
+          net::kHttpCacheInitializeDiskCacheBackendEarly,
+          {{"check_disk", *check_disk ? "true" : "false"}});
+    } else {
+      feature_list_.InitAndDisableFeature(
+          net::kHttpCacheInitializeDiskCacheBackendEarly);
+    }
+
+    network::mojom::NetworkContextParamsPtr context_params =
+        network::mojom::NetworkContextParams::New();
+    context_params->file_paths = network::mojom::NetworkContextFilePaths::New();
+    context_params->file_paths->http_cache_directory =
+        network::TransferableDirectory(cache_path_);
+    context_params->cert_verifier_params = GetCertVerifierParams(
+        cert_verifier::mojom::CertVerifierCreationParams::New());
+
+    CreateNetworkContextInNetworkService(
+        network_context_.BindNewPipeAndPassReceiver(),
+        std::move(context_params));
+
+    // Await cache initialization.
+    task_environment_.RunUntilIdle();
+    disk_cache::FlushCacheThreadForTesting();
+  }
+
+  void MakeRequest() {
+    net::test_server::EmbeddedTestServer test_server;
+    test_server.AddDefaultHandlers(
+        base::FilePath(FILE_PATH_LITERAL("content/test/data")));
+    ASSERT_TRUE(test_server.Start());
+
+    mojo::Remote<network::mojom::URLLoaderFactory> loader_factory;
+    network::mojom::URLLoaderFactoryParamsPtr params =
+        network::mojom::URLLoaderFactoryParams::New();
+    params->process_id = network::OriginatingProcessId::browser();
+    network_context_->CreateURLLoaderFactory(
+        loader_factory.BindNewPipeAndPassReceiver(), std::move(params));
+
+    auto request = std::make_unique<network::ResourceRequest>();
+    request->url = test_server.GetURL("/echo");
+
+    auto loader = network::SimpleURLLoader::Create(
+        std::move(request),
+        net::DefineNetworkTrafficAnnotation("test", "test"));
+    loader->DownloadToString(
+        loader_factory.get(),
+        base::BindOnce([](std::optional<std::string> body) {}), 1024);
+    task_environment_.RunUntilIdle();
+    disk_cache::FlushCacheThreadForTesting();
+  }
+
+  bool CacheExists() {
+    // See HttpCache::DefaultBackend::HasExistingFileToLoad() for detail.
+#if !BUILDFLAG(IS_ANDROID)
+    if (!base::DirectoryExists(cache_path_)) {
+      return false;
+    }
+    base::FileEnumerator enumerator(cache_path_, true,
+                                    base::FileEnumerator::FILES);
+    return !enumerator.Next().empty();
+#else
+    return base::DirectoryExists(cache_path_);
+#endif
+  }
+
+  BrowserTaskEnvironment task_environment_{BrowserTaskEnvironment::IO_MAINLOOP};
+  base::ScopedTempDir temp_dir_;
+  base::FilePath cache_path_;
+  base::test::ScopedFeatureList feature_list_;
+  mojo::Remote<network::mojom::NetworkContext> network_context_;
+};
+
+TEST_F(NetworkServiceHttpCacheEarlyInitTest, EarlyInitDisabled) {
+  ASSERT_FALSE(CacheExists());
+  CreateNetworkContext(/*enable_early_init=*/false,
+                       /*check_disk=*/std::nullopt);
+  EXPECT_FALSE(CacheExists());
+  MakeRequest();
+  EXPECT_TRUE(CacheExists());
+}
+
+TEST_F(NetworkServiceHttpCacheEarlyInitTest, EarlyInitEnabledCheckDiskTrue) {
+  ASSERT_FALSE(CacheExists());
+  CreateNetworkContext(/*enable_early_init=*/true, /*check_disk=*/true);
+  EXPECT_FALSE(CacheExists());
+  MakeRequest();
+  EXPECT_TRUE(CacheExists());
+}
+
+TEST_F(NetworkServiceHttpCacheEarlyInitTest, EarlyInitEnabledCheckDiskFalse) {
+  ASSERT_FALSE(CacheExists());
+  CreateNetworkContext(/*enable_early_init=*/true, /*check_disk=*/false);
+  EXPECT_TRUE(CacheExists());
+}
+
+}  // namespace content

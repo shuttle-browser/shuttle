@@ -1,0 +1,89 @@
+// Copyright 2019 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef COMPONENTS_PASSWORD_MANAGER_CORE_BROWSER_LEAK_DETECTION_DELEGATE_H_
+#define COMPONENTS_PASSWORD_MANAGER_CORE_BROWSER_LEAK_DETECTION_DELEGATE_H_
+
+#include <memory>
+#include <utility>
+
+#include "base/memory/raw_ptr.h"
+#include "base/timer/elapsed_timer.h"
+#include "base/types/expected.h"
+#include "components/password_manager/core/browser/leak_detection/leak_detection_check_factory.h"
+#include "components/password_manager/core/browser/leak_detection/leak_detection_types.h"
+#include "components/password_manager/core/browser/leak_detection_dialog_utils.h"
+#include "components/password_manager/core/browser/password_form.h"
+#include "components/password_manager/core/browser/password_store/stored_credential.h"
+
+namespace password_manager {
+
+class LeakDetectionDelegateHelper;
+enum class LeakDetectionInitiator;
+class PasswordManagerClient;
+struct PasswordForm;
+
+// The helper class that encapsulates the requests and their processing.
+class LeakDetectionDelegate {
+ public:
+  explicit LeakDetectionDelegate(PasswordManagerClient* client);
+  ~LeakDetectionDelegate();
+
+  // Not copyable or movable
+  LeakDetectionDelegate(const LeakDetectionDelegate&) = delete;
+  LeakDetectionDelegate& operator=(const LeakDetectionDelegate&) = delete;
+  LeakDetectionDelegate(LeakDetectionDelegate&&) = delete;
+  LeakDetectionDelegate& operator=(LeakDetectionDelegate&&) = delete;
+
+#if defined(UNIT_TEST)
+  void set_leak_factory(std::unique_ptr<LeakDetectionCheckFactory> factory) {
+    leak_factory_ = std::move(factory);
+  }
+#endif  // defined(UNIT_TEST)
+
+  void StartLeakCheck(LeakDetectionInitiator initiator,
+                      const PasswordForm& credentials,
+                      const GURL& form_url,
+                      bool is_non_password_login_detected = false);
+
+ private:
+  void OnLeakDetectionDone(PasswordForm credentials,
+                           base::Time check_start_time,
+                           bool is_non_password_login_detected,
+                           base::expected<IsLeaked, LeakDetectionError> result);
+  void OnError(LeakDetectionError error);
+
+  // Initiates the showing of the leak detection notification. It is called by
+  // `helper_` after `in_stores` and `is_reused`
+  // were determined asynchronously. `all_urls_with_leaked_credentials` contains
+  // all the URLs on which the leaked username/password pair is used.
+  LeakedPasswordDetails PrepareLeakDetails(
+      PasswordForm::Store in_stores,
+      IsReused is_reused,
+      IsSavedAsBackup is_saved_as_backup,
+      StoredCredential credentials,
+      std::vector<GURL> all_urls_with_leaked_credentials);
+
+  // Notifies `client_` about leaked credentials.
+  void NotifyUserCredentialsWereLeaked(base::Time check_start_time,
+                                       bool is_non_password_login_detected,
+                                       LeakedPasswordDetails details);
+
+  raw_ptr<PasswordManagerClient> client_;
+  // The factory that creates objects for performing a leak check up.
+  std::unique_ptr<LeakDetectionCheckFactory> leak_factory_;
+
+  // Current leak check-up being performed in the background.
+  std::unique_ptr<LeakDetectionCheck> leak_check_;
+
+  // Helper class to asynchronously determine `CredentialLeakType` for leaked
+  // credentials.
+  std::unique_ptr<LeakDetectionDelegateHelper> helper_;
+
+  base::WeakPtrFactory<LeakDetectionDelegate> weak_ptr_factory_{this};
+};
+
+}  // namespace password_manager
+
+#endif  // COMPONENTS_PASSWORD_MANAGER_CORE_BROWSER_LEAK_DETECTION_DELEGATE_H_

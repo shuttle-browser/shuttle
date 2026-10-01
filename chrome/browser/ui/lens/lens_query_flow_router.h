@@ -1,0 +1,369 @@
+// Copyright 2025 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef CHROME_BROWSER_UI_LENS_LENS_QUERY_FLOW_ROUTER_H_
+#define CHROME_BROWSER_UI_LENS_LENS_QUERY_FLOW_ROUTER_H_
+
+#include <optional>
+
+#include "base/memory/raw_ptr.h"
+#include "base/scoped_observation.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/contextual_search/desktop_query_contextualizer_delegate.h"
+#include "chrome/browser/ui/contextual_search/tab_contextualization_controller.h"
+#include "chrome/browser/ui/lens/lens_search_controller.h"
+#include "components/contextual_search/contextual_search_session_handle.h"
+#include "components/lens/lens_overlay_invocation_source.h"
+
+namespace lens {
+class LensOverlayQueryController;
+
+using CreateSearchUrlRequestInfo = contextual_search::
+    ContextualSearchContextController::CreateSearchUrlRequestInfo;
+using SearchUrlType =
+    contextual_search::ContextualSearchContextController::SearchUrlType;
+
+// Returns true if the given invocation source originates from the Omnibox.
+bool IsOmniboxInvocationSource(
+    std::optional<lens::LensOverlayInvocationSource> invocation_source);
+
+// Returns true if the active tab should be forced to contextualize for the
+// given invocation source when no overlay token is present.
+// `session_handle` is the contextual search session the query will be issued
+// on, and may be null.
+bool ShouldFetchActiveTabForInvocationSource(
+    std::optional<lens::LensOverlayInvocationSource> invocation_source,
+    const contextual_search::ContextualSearchSessionHandle* session_handle =
+        nullptr);
+
+// A router for queries that Lens should perform.
+class LensQueryFlowRouter
+    : public contextual_search::ContextualSearchContextController::
+          ContextUploadStatusObserver {
+ public:
+  // The context upload mode determines whether only the viewport screenshot or
+  // full page content (e.g. text/DOM) is included in the context upload.
+  enum class ContextUploadMode {
+    kViewportOnly,
+    kFullPage,
+    kSelectedRegionOnly,
+  };
+
+  explicit LensQueryFlowRouter(LensSearchController* lens_search_controller);
+  ~LensQueryFlowRouter() override;
+
+  // Returns the current context upload mode.
+  ContextUploadMode context_upload_mode() const { return context_upload_mode_; }
+
+  // Whether the query router is in an off state.
+  bool IsOff() const;
+
+  // Starts a query flow by sending a request to Lens using the viewport
+  // screenshot. This is called by the the overlay when it is first initialized.
+  // This is not called when the overlay is reshown. If there is a pending
+  // contextual or region search that should be requested immediately, it will
+  // be called after this function.
+  void StartQueryFlow(
+      const SkBitmap& screenshot,
+      const SkBitmap& initial_image,
+      GURL page_url,
+      std::optional<std::string> page_title,
+      std::vector<lens::mojom::CenterRotatedBoxPtr> significant_region_boxes,
+      base::span<const PageContent> underlying_page_contents,
+      lens::MimeType primary_content_type,
+      std::optional<uint32_t> pdf_current_page,
+      float ui_scale_factor,
+      base::TimeTicks invocation_time);
+
+  // Restarts the query flow if its in a state where no cluster info is
+  // available or permissions were not granted.
+  void MaybeRestartQueryFlow();
+
+  // If the query flow is pending because permissions were not granted, resume
+  // it.
+  void MaybeResumeQueryFlow();
+
+  // Sends a task completion Gen204 ping for certain user actions.
+  void SendTaskCompletionGen204IfEnabled(lens::mojom::UserAction user_action);
+
+  // Sends a semantic event Gen204 ping.
+  void SendSemanticEventGen204IfEnabled(lens::mojom::SemanticEvent event);
+
+  // Returns the suggest inputs for the current page.
+  std::optional<lens::proto::LensOverlaySuggestInputs> GetSuggestInputs();
+
+  // Returns the current gen204 id.
+  uint64_t gen204_id() const { return gen204_id_; }
+
+  // Returns the file token for the tab and full image viewport uploaded when
+  // the overlay first opens.
+  virtual std::optional<base::UnguessableToken> overlay_tab_context_file_token()
+      const;
+
+  // Sets the callback for when the suggest inputs are ready.
+  void SetSuggestInputsReadyCallback(base::RepeatingClosure callback);
+
+  // Sends a region search interaction. Expected to be called multiple times. If
+  // region_bytes are included, those will be sent to Lens instead of cropping
+  // the region out of the screenshot. This should be used to provide a higher
+  // definition image than image cropping would provide.
+  void SendRegionSearch(
+      base::Time query_start_time,
+      lens::mojom::CenterRotatedBoxPtr region,
+      lens::LensOverlaySelectionType lens_selection_type,
+      std::map<std::string, std::string> additional_search_query_params,
+      std::optional<SkBitmap> region_bytes,
+      lens::LensOverlayInvocationSource invocation_source);
+
+  // Sends a text-only interaction. Expected to be called multiple times.
+  void SendTextOnlyQuery(
+      base::Time query_start_time,
+      const std::string& query_text,
+      lens::LensOverlaySelectionType lens_selection_type,
+      std::map<std::string, std::string> additional_search_query_params,
+      lens::LensOverlayInvocationSource invocation_source);
+
+  // Sends a text query interaction contextualized to the current page. Expected
+  // to be called multiple times.
+  void SendContextualTextQuery(
+      base::Time query_start_time,
+      const std::string& query_text,
+      lens::LensOverlaySelectionType lens_selection_type,
+      std::map<std::string, std::string> additional_search_query_params,
+      lens::LensOverlayInvocationSource invocation_source);
+
+  // Sends a multimodal interaction. Expected to be called multiple times.
+  void SendMultimodalRequest(
+      base::Time query_start_time,
+      lens::mojom::CenterRotatedBoxPtr region,
+      const std::string& query_text,
+      lens::LensOverlaySelectionType lens_selection_type,
+      std::map<std::string, std::string> additional_search_query_params,
+      std::optional<SkBitmap> region_bytes,
+      lens::LensOverlayInvocationSource invocation_source);
+
+  // Testing method to trigger the context upload status changed callback.
+  void OnContextUploadStatusChangedForTesting(
+      const base::UnguessableToken& context_token,
+      lens::MimeType mime_type,
+      contextual_search::ContextUploadStatus context_upload_status,
+      const std::optional<contextual_search::ContextUploadErrorType>&
+          error_type);
+
+  // Handles the interaction response from the server.
+  void HandleInteractionResponse(
+      std::optional<lens::ImageCrop> image_crop,
+      lens::LensOverlayInteractionResponse interaction_response);
+
+  // Removes the contextual search context if no region selection was made.
+  void RemoveContextualSearchContextIfNecessary(bool has_region_selection);
+
+  void SetQueryContextualizerForTesting(
+      std::unique_ptr<contextual_tasks::QueryContextualizer> contextualizer);
+
+  void reset_context_upload_status_observation() {
+    context_upload_status_observation_.Reset();
+  }
+
+ protected:
+  // Creates a contextual search session handle. Virtual for testing.
+  virtual std::unique_ptr<contextual_search::ContextualSearchSessionHandle>
+  CreateContextualSearchSessionHandle();
+
+  // Returns the viewport screenshot. Virtual for testing.
+  virtual const SkBitmap& GetViewportScreenshot() const;
+
+  // Returns the contextual search session handle for the query router if it
+  // exists. Virtual for testing.
+  virtual contextual_search::ContextualSearchSessionHandle*
+  GetContextualSearchSessionHandle() const;
+
+  // Returns the tab contextualization controller. Virtual for testing.
+  virtual TabContextualizationController* GetTabContextualizationController()
+      const;
+
+  // Returns whether the current active tab is context eligible.
+  virtual bool IsActiveTabContextEligible() const;
+
+  // Returns whether full page context should be populated based on page context
+  // eligibility and permissions.
+  bool ShouldPopulateFullPageContext() const;
+
+  virtual Profile* profile() const;
+
+ private:
+  friend class LensQueryFlowRouterTestApi;
+
+  // contextual_search::ContextualSearchContextController::ContextUploadStatusObserver:
+  void OnContextUploadStatusChanged(
+      const base::UnguessableToken& context_token,
+      lens::MimeType mime_type,
+      contextual_search::ContextUploadStatus context_upload_status,
+      const std::optional<contextual_search::ContextUploadErrorType>&
+          error_type) override;
+
+  // Callbacks for DesktopQueryContextualizerDelegate:
+  contextual_search::ContextualSearchSessionHandle* GetOrCreateSessionHandle();
+  std::optional<lens::ImageEncodingOptions> GetViewportEncodingOptions();
+
+  LensOverlayQueryController* lens_overlay_query_controller() const {
+    return lens_search_controller_->lens_overlay_query_controller();
+  }
+
+  bool ShouldRouteToContextualTasks() const {
+    return lens_search_controller_->should_route_to_contextual_tasks();
+  }
+
+  LensOverlayGen204Controller* gen204_controller() const {
+    return lens_search_controller_->gen204_controller();
+  }
+
+  LensSearchContextualizationController*
+  lens_search_contextualization_controller() const {
+    return lens_search_controller_->lens_search_contextualization_controller();
+  }
+
+  LensOverlayController* lens_overlay_controller() const {
+    return lens_search_controller_->lens_overlay_controller();
+  }
+
+  tabs::TabInterface* tab_interface() const {
+    return lens_search_controller_->GetTabInterface();
+  }
+
+  content::WebContents* web_contents() const {
+    return tab_interface()->GetContents();
+  }
+
+  BrowserWindowInterface* browser_window_interface() const {
+    return tab_interface()->GetBrowserWindowInterface();
+  }
+
+  // Records Lens query eligibility state when Unified Side Panel is enabled.
+  void RecordQueryEligibility(
+      std::optional<lens::LensOverlayInvocationSource> invocation_source);
+
+  // Sends the provided request info to the contextual tasks panel to create a
+  // search URL which is then loaded into the contextual tasks panel.
+  void SendInteractionToContextualTasks(
+      std::unique_ptr<CreateSearchUrlRequestInfo> request_info);
+
+  // Opens the contextual tasks panel to a provided URL.
+  void OpenContextualTasksPanel(
+      std::optional<lens::LensOverlaySelectionType> lens_selection_type,
+      bool is_contextual_text_query,
+      GURL url);
+
+  // Opens the contextual tasks error page.
+  void ShowContextualTasksErrorPage();
+
+  // Uploads the viewport and page context using the contextual search session
+  // handle for the query router.
+  void UploadContextualInputData(
+      ContextUploadMode upload_mode,
+      std::unique_ptr<lens::ContextualInputData> contextual_input_data);
+
+  // Called when the tab context has been added to the session handle, allowing
+  // the upload flow to start.
+  void OnFinishedAddingTabContext(
+      contextual_search::ContextualSearchSessionHandle* session_handle,
+      std::unique_ptr<lens::ContextualInputData> contextual_input_data,
+      const base::UnguessableToken& token);
+
+  // Creates the contextual input data from data collected from overlay
+  // initialization to be used for the contextual search session.
+  std::unique_ptr<lens::ContextualInputData> CreateContextualInputData(
+      ContextUploadMode upload_mode,
+      const SkBitmap& screenshot,
+      GURL page_url,
+      std::optional<std::string> page_title,
+      base::span<const PageContent> underlying_page_contents,
+      lens::MimeType primary_content_type,
+      std::optional<uint32_t> pdf_current_page);
+
+  // Creates the search url request info from an interaction.
+  std::unique_ptr<CreateSearchUrlRequestInfo>
+  CreateSearchUrlRequestInfoFromInteraction(
+      lens::mojom::CenterRotatedBoxPtr region,
+      std::optional<SkBitmap> region_bytes,
+      std::optional<std::string> query_text,
+      lens::LensOverlaySelectionType lens_selection_type,
+      std::map<std::string, std::string> additional_search_query_params,
+      base::Time query_start_time,
+      lens::LensOverlayInvocationSource invocation_source);
+
+  // Called when QueryContextualizer completes contextualization.
+  void OnContextualizedComplete(
+      base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
+          session_handle);
+
+  // Holds parameters captured when the query flow is started, allowing context
+  // to be stashed and upgraded lazily if needed.
+  struct InitialContextParams {
+    SkBitmap screenshot;
+    GURL page_url;
+    std::optional<std::string> page_title;
+    std::vector<lens::mojom::CenterRotatedBoxPtr> significant_region_boxes;
+    std::vector<lens::PageContent> underlying_page_contents;
+    lens::MimeType primary_content_type = lens::MimeType::kImage;
+    std::optional<uint32_t> pdf_current_page;
+    float ui_scale_factor = 1.0f;
+    base::TimeTicks invocation_time;
+  };
+
+  // Stash initial context parameters captured on overlay open for lazy
+  // upgrades.
+  std::optional<InitialContextParams> initial_context_params_;
+
+  // The current mode used for context upload (viewport-only vs full-page).
+  ContextUploadMode context_upload_mode_ = ContextUploadMode::kViewportOnly;
+
+  // Stores a pending search request to be sent to contextual tasks after the
+  // tab context is ready.
+  std::unique_ptr<CreateSearchUrlRequestInfo> pending_search_url_request_;
+
+  // The contextual search session handle that is used to make requests to the
+  // contextual search service. This is only stored by this query router in
+  // cases where the overlay has been opened but a results panel is not present.
+  // This handle is pending because it will eventually be moved to the
+  // contextual tasks UI for ownership.
+  std::unique_ptr<contextual_search::ContextualSearchSessionHandle>
+      pending_session_handle_;
+
+  // The callback for when the suggest inputs are ready.
+  base::RepeatingClosure suggest_inputs_ready_callback_;
+
+  // The current gen204 id for logging, set on each overlay invocation.
+  uint64_t gen204_id_ = 0;
+
+  // An optional value representing the file token for the tab and full image
+  // viewport uploaded when the overlay first opens.
+  std::optional<base::UnguessableToken> overlay_tab_context_file_token_ =
+      std::nullopt;
+
+  raw_ptr<LensSearchController> lens_search_controller_;
+
+  // Closure of UploadContextualInputData to be called by
+  // MaybeResumeQueryFlow().
+  base::OnceClosure pending_upload_request_;
+
+  base::ScopedObservation<contextual_search::ContextualSearchContextController,
+                          contextual_search::ContextualSearchContextController::
+                              ContextUploadStatusObserver>
+      context_upload_status_observation_{this};
+
+  std::unique_ptr<contextual_tasks::DesktopQueryContextualizerDelegate>
+      contextualizer_delegate_;
+  std::unique_ptr<contextual_tasks::QueryContextualizer> query_contextualizer_;
+
+  // Track if we have already logged the query eligibility for the current
+  // session.
+  bool eligibility_logged_in_session_ = false;
+
+  base::WeakPtrFactory<LensQueryFlowRouter> weak_factory_{this};
+};
+
+}  // namespace lens
+
+#endif  // CHROME_BROWSER_UI_LENS_LENS_QUERY_FLOW_ROUTER_H_

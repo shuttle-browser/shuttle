@@ -1,0 +1,50 @@
+// Copyright 2022 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "chrome/browser/metrics/family_link_user_metrics_provider.h"
+
+#include "base/metrics/histogram_functions.h"
+#include "chrome/browser/browser_process.h"
+#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/supervised_user/supervised_user_url_filtering_service_factory.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/supervised_user/core/browser/supervised_user_log_record.h"
+#include "components/supervised_user/core/browser/supervised_user_utils.h"
+
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"  // nogncheck
+#endif
+
+FamilyLinkUserMetricsProvider::~FamilyLinkUserMetricsProvider() = default;
+
+bool FamilyLinkUserMetricsProvider::ProvideHistograms() {
+  // This function is called at unpredictable intervals throughout the Chrome
+  // session, so guarantee it will never crash.
+  std::vector<supervised_user::SupervisedUserLogRecord> records;
+  for (Profile* const profile :
+       g_browser_process->profile_manager()->GetLoadedProfiles()) {
+#if !BUILDFLAG(IS_ANDROID)
+    auto* profile_browser_collection =
+      ProfileBrowserCollection::GetForProfile(profile);
+    if (!FamilyLinkUserMetricsProvider::
+            skip_active_browser_count_for_unittesting_ &&
+        (!profile_browser_collection || profile_browser_collection->IsEmpty())) {
+      // The profile is loaded, but there's no opened browser for this
+      // profile.
+      continue;
+    }
+#endif
+    records.push_back(supervised_user::SupervisedUserLogRecord::Create(
+        IdentityManagerFactory::GetForProfile(profile), *profile->GetPrefs(),
+        *HostContentSettingsMapFactory::GetForProfile(profile),
+        supervised_user::SupervisedUserUrlFilteringServiceFactory::
+            GetForProfile(profile),
+        g_browser_process->device_parental_controls()));
+  }
+  return supervised_user::SupervisedUserLogRecord::EmitHistograms(
+      records, g_browser_process->device_parental_controls());
+}

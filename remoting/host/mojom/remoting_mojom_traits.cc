@@ -1,0 +1,962 @@
+// Copyright 2021 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "remoting/host/mojom/remoting_mojom_traits.h"
+
+#include <string_view>
+
+#include "base/compiler_specific.h"
+#include "base/logging.h"
+#include "base/notreached.h"
+#include "remoting/base/buildflags.h"
+#include "remoting/base/source_location.h"
+
+#if BUILDFLAG(REMOTING_MULTI_PROCESS)
+#include "remoting/host/mojom/desktop_session.mojom-shared.h"
+#endif  // BUILDFLAG(REMOTING_MULTI_PROCESS)
+
+namespace mojo {
+
+#if BUILDFLAG(REMOTING_MULTI_PROCESS)
+
+// static
+bool mojo::StructTraits<remoting::mojom::AudioPacketDataView,
+                        ::std::unique_ptr<::remoting::AudioPacket>>::
+    Read(remoting::mojom::AudioPacketDataView data_view,
+         ::std::unique_ptr<::remoting::AudioPacket>* out_packet) {
+  auto packet = std::make_unique<::remoting::AudioPacket>();
+
+  packet->set_timestamp(data_view.timestamp());
+
+  if (!data_view.ReadData(packet->mutable_data())) {
+    return false;
+  }
+
+  ::remoting::AudioPacket::Encoding encoding;
+  if (!data_view.ReadEncoding(&encoding)) {
+    return false;
+  }
+  packet->set_encoding(encoding);
+
+  ::remoting::AudioPacket::SamplingRate sampling_rate;
+  if (!data_view.ReadSamplingRate(&sampling_rate)) {
+    return false;
+  }
+  packet->set_sampling_rate(sampling_rate);
+
+  ::remoting::AudioPacket::BytesPerSample bytes_per_sample;
+  if (!data_view.ReadBytesPerSample(&bytes_per_sample)) {
+    return false;
+  }
+  packet->set_bytes_per_sample(bytes_per_sample);
+
+  ::remoting::AudioPacket::Channels channels;
+  if (!data_view.ReadChannels(&channels)) {
+    return false;
+  }
+  packet->set_channels(channels);
+
+  *out_packet = std::move(packet);
+
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::ClipboardEventDataView,
+                        ::remoting::protocol::ClipboardEvent>::
+    Read(remoting::mojom::ClipboardEventDataView data_view,
+         ::remoting::protocol::ClipboardEvent* out_event) {
+  std::string mime_type;
+  if (!data_view.ReadMimeType(&mime_type)) {
+    return false;
+  }
+  out_event->set_mime_type(std::move(mime_type));
+  std::string data;
+  if (!data_view.ReadData(&data)) {
+    return false;
+  }
+  out_event->set_data(std::move(data));
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::DesktopCaptureOptionsDataView,
+                        ::webrtc::DesktopCaptureOptions>::
+    Read(remoting::mojom::DesktopCaptureOptionsDataView data_view,
+         ::webrtc::DesktopCaptureOptions* out_options) {
+  out_options->set_use_update_notifications(
+      data_view.use_update_notifications());
+  out_options->set_detect_updated_region(data_view.detect_updated_region());
+
+#if BUILDFLAG(IS_WIN)
+  out_options->set_allow_directx_capturer(data_view.allow_directx_capturer());
+#endif  // BUILDFLAG(IS_WIN)
+
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::DesktopEnvironmentOptionsDataView,
+                        ::remoting::DesktopEnvironmentOptions>::
+    Read(remoting::mojom::DesktopEnvironmentOptionsDataView data_view,
+         ::remoting::DesktopEnvironmentOptions* out_options) {
+  out_options->set_enable_curtaining(data_view.enable_curtaining());
+  out_options->set_enable_user_interface(data_view.enable_user_interface());
+  out_options->set_enable_notifications(data_view.enable_notifications());
+  out_options->set_terminate_upon_input(data_view.terminate_upon_input());
+  out_options->set_enable_remote_webauthn(data_view.enable_remote_webauthn());
+  out_options->set_enable_security_key(data_view.enable_security_key());
+
+  if (!data_view.ReadDesktopCaptureOptions(
+          out_options->desktop_capture_options())) {
+    return false;
+  }
+
+  return true;
+}
+
+// static
+bool mojo::StructTraits<
+    remoting::mojom::DesktopRectDataView,
+    ::webrtc::DesktopRect>::Read(remoting::mojom::DesktopRectDataView data_view,
+                                 ::webrtc::DesktopRect* out_rect) {
+  *out_rect = webrtc::DesktopRect::MakeLTRB(
+      data_view.left(), data_view.top(), data_view.right(), data_view.bottom());
+  return true;
+}
+
+// static
+bool mojo::StructTraits<
+    remoting::mojom::DesktopSizeDataView,
+    ::webrtc::DesktopSize>::Read(remoting::mojom::DesktopSizeDataView data_view,
+                                 ::webrtc::DesktopSize* out_size) {
+  out_size->set(data_view.width(), data_view.height());
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::DesktopVectorDataView,
+                        ::webrtc::DesktopVector>::
+    Read(remoting::mojom::DesktopVectorDataView data_view,
+         ::webrtc::DesktopVector* out_vector) {
+  out_vector->set(data_view.x(), data_view.y());
+  return true;
+}
+
+#if BUILDFLAG(IS_WIN)
+// static
+bool mojo::UnionTraits<
+    remoting::mojom::FileChooserResultDataView,
+    ::remoting::Result<base::FilePath,
+                       ::remoting::protocol::FileTransfer_Error>>::
+    Read(remoting::mojom::FileChooserResultDataView data_view,
+         ::remoting::Result<base::FilePath,
+                            ::remoting::protocol::FileTransfer_Error>*
+             out_result) {
+  switch (data_view.tag()) {
+    case remoting::mojom::FileChooserResultDataView::Tag::kFilepath: {
+      base::FilePath filepath;
+      if (!data_view.ReadFilepath(&filepath)) {
+        return false;
+      }
+      out_result->EmplaceSuccess(std::move(filepath));
+      return true;
+    }
+    case remoting::mojom::FileChooserResultDataView::Tag::kError: {
+      ::remoting::protocol::FileTransfer_Error error;
+      if (!data_view.ReadError(&error)) {
+        return false;
+      }
+      out_result->EmplaceError(std::move(error));
+      return true;
+    }
+  }
+}
+#endif  // BUILDFLAG(IS_WIN)
+
+// static
+bool mojo::UnionTraits<
+    remoting::mojom::ReadChunkResultDataView,
+    ::remoting::Result<std::vector<uint8_t>,
+                       ::remoting::protocol::FileTransfer_Error>>::
+    Read(remoting::mojom::ReadChunkResultDataView data_view,
+         ::remoting::Result<std::vector<uint8_t>,
+                            ::remoting::protocol::FileTransfer_Error>*
+             out_result) {
+  switch (data_view.tag()) {
+    case remoting::mojom::ReadChunkResultDataView::Tag::kData: {
+      std::vector<uint8_t> data;
+      if (!data_view.ReadData(&data)) {
+        return false;
+      }
+      out_result->EmplaceSuccess(std::move(data));
+      return true;
+    }
+    case remoting::mojom::ReadChunkResultDataView::Tag::kError: {
+      ::remoting::protocol::FileTransfer_Error error;
+      if (!data_view.ReadError(&error)) {
+        return false;
+      }
+      out_result->EmplaceError(std::move(error));
+      return true;
+    }
+  }
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::FileTransferErrorDataView,
+                        ::remoting::protocol::FileTransfer_Error>::
+    Read(remoting::mojom::FileTransferErrorDataView data_view,
+         ::remoting::protocol::FileTransfer_Error* out_error) {
+  ::remoting::protocol::FileTransfer_Error_Type type;
+  if (!data_view.ReadType(&type)) {
+    return false;
+  }
+  out_error->set_type(type);
+
+  if (data_view.api_error_code().has_value()) {
+    out_error->set_api_error_code(data_view.api_error_code().value());
+  }
+
+  std::string function;
+  if (!data_view.ReadFunction(&function)) {
+    return false;
+  }
+  out_error->set_function(std::move(function));
+
+  std::string source_file;
+  if (!data_view.ReadSourceFile(&source_file)) {
+    return false;
+  }
+  out_error->set_source_file(std::move(source_file));
+
+  out_error->set_line_number(data_view.line_number());
+
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::KeyboardLayoutDataView,
+                        ::remoting::protocol::KeyboardLayout>::
+    Read(remoting::mojom::KeyboardLayoutDataView data_view,
+         ::remoting::protocol::KeyboardLayout* out_layout) {
+  return data_view.ReadKeys(out_layout->mutable_keys());
+}
+
+// static
+bool mojo::UnionTraits<remoting::mojom::KeyActionDataView,
+                       ::remoting::protocol::KeyboardLayout_KeyAction>::
+    Read(remoting::mojom::KeyActionDataView data_view,
+         ::remoting::protocol::KeyboardLayout_KeyAction* out_action) {
+  switch (data_view.tag()) {
+    case remoting::mojom::KeyActionDataView::Tag::kFunction:
+      ::remoting::protocol::LayoutKeyFunction function;
+      if (!data_view.ReadFunction(&function)) {
+        return false;
+      }
+      out_action->set_function(function);
+      return true;
+    case remoting::mojom::KeyActionDataView::Tag::kCharacter:
+      std::string character;
+      if (!data_view.ReadCharacter(&character)) {
+        return false;
+      }
+      out_action->set_character(std::move(character));
+      return true;
+  }
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::KeyBehaviorDataView,
+                        ::remoting::protocol::KeyboardLayout::KeyBehavior>::
+    Read(remoting::mojom::KeyBehaviorDataView data_view,
+         ::remoting::protocol::KeyboardLayout::KeyBehavior* out_behavior) {
+  return data_view.ReadActions(out_behavior->mutable_actions());
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::KeyEventDataView,
+                        ::remoting::protocol::KeyEvent>::
+    Read(remoting::mojom::KeyEventDataView data_view,
+         ::remoting::protocol::KeyEvent* out_event) {
+  out_event->set_pressed(data_view.pressed());
+  out_event->set_usb_keycode(data_view.usb_keycode());
+  out_event->set_lock_states(data_view.lock_states());
+
+  if (data_view.caps_lock_state().has_value()) {
+    out_event->set_caps_lock_state(data_view.caps_lock_state().value());
+  }
+
+  if (data_view.num_lock_state().has_value()) {
+    out_event->set_num_lock_state(data_view.num_lock_state().value());
+  }
+
+  return true;
+}
+
+// static
+bool mojo::StructTraits<
+    remoting::mojom::MouseCursorDataView,
+    ::webrtc::MouseCursor>::Read(remoting::mojom::MouseCursorDataView data_view,
+                                 ::webrtc::MouseCursor* out_cursor) {
+  ::webrtc::DesktopSize image_size;
+  if (!data_view.ReadImageSize(&image_size)) {
+    return false;
+  }
+
+  mojo::ArrayDataView<uint8_t> image_data;
+  data_view.GetImageDataDataView(&image_data);
+
+  base::CheckedNumeric<size_t> expected_image_data_size =
+      ::webrtc::DesktopFrame::kBytesPerPixel * image_size.width() *
+      image_size.height();
+  if (!expected_image_data_size.IsValid()) {
+    return false;
+  }
+
+  // ValueOrDie() won't CHECK since we've already verified the value is valid.
+  if (image_data.size() != expected_image_data_size.ValueOrDie()) {
+    return false;
+  }
+
+  ::webrtc::DesktopVector hotspot;
+  if (!data_view.ReadHotspot(&hotspot)) {
+    return false;
+  }
+
+  auto new_frame = std::make_unique<::webrtc::BasicDesktopFrame>(
+      image_size, webrtc::FOURCC_ARGB);
+  UNSAFE_TODO(memcpy(new_frame->data(), image_data.data(), image_data.size()));
+
+  // ::webrtc::MouseCursor methods take a raw pointer *and* take ownership.
+  // TODO(joedow): Update webrtc::MouseCursor to use std::unique_ptr.
+  out_cursor->set_image(new_frame.release());
+  out_cursor->set_hotspot(hotspot);
+
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::MouseEventDataView,
+                        ::remoting::protocol::MouseEvent>::
+    Read(remoting::mojom::MouseEventDataView data_view,
+         ::remoting::protocol::MouseEvent* out_event) {
+  if (data_view.x().has_value()) {
+    out_event->set_x(data_view.x().value());
+  }
+
+  if (data_view.y().has_value()) {
+    out_event->set_y(data_view.y().value());
+  }
+
+  if (data_view.button() != remoting::mojom::MouseButton::kUndefined) {
+    ::remoting::protocol::MouseEvent::MouseButton mouse_button;
+    if (!data_view.ReadButton(&mouse_button)) {
+      return false;
+    }
+    out_event->set_button(mouse_button);
+  }
+
+  if (data_view.button_down().has_value()) {
+    out_event->set_button_down(data_view.button_down().value());
+  }
+
+  if (data_view.wheel_delta_x().has_value()) {
+    out_event->set_wheel_delta_x(data_view.wheel_delta_x().value());
+  }
+
+  if (data_view.wheel_delta_y().has_value()) {
+    out_event->set_wheel_delta_y(data_view.wheel_delta_y().value());
+  }
+
+  if (data_view.wheel_ticks_x().has_value()) {
+    out_event->set_wheel_ticks_x(data_view.wheel_ticks_x().value());
+  }
+
+  if (data_view.wheel_ticks_y().has_value()) {
+    out_event->set_wheel_ticks_y(data_view.wheel_ticks_y().value());
+  }
+
+  if (data_view.delta_x().has_value()) {
+    out_event->set_delta_x(data_view.delta_x().value());
+  }
+
+  if (data_view.delta_y().has_value()) {
+    out_event->set_delta_y(data_view.delta_y().value());
+  }
+
+  remoting::mojom::FractionalCoordinateDataView fractional_coordinate_data_view;
+  data_view.GetFractionalCoordinateDataView(&fractional_coordinate_data_view);
+
+  if (!fractional_coordinate_data_view.is_null()) {
+    mojo::StructTraits<remoting::mojom::FractionalCoordinateDataView,
+                       ::remoting::protocol::FractionalCoordinate>::
+        Read(fractional_coordinate_data_view,
+             out_event->mutable_fractional_coordinate());
+  }
+
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::ScreenResolutionDataView,
+                        ::remoting::ScreenResolution>::
+    Read(remoting::mojom::ScreenResolutionDataView data_view,
+         ::remoting::ScreenResolution* out_resolution) {
+  ::webrtc::DesktopSize desktop_size;
+  if (!data_view.ReadDimensions(&desktop_size)) {
+    return false;
+  }
+
+  ::webrtc::DesktopVector dpi;
+  if (!data_view.ReadDpi(&dpi)) {
+    return false;
+  }
+
+  *out_resolution =
+      ::remoting::ScreenResolution(std::move(desktop_size), std::move(dpi));
+
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::TextEventDataView,
+                        ::remoting::protocol::TextEvent>::
+    Read(remoting::mojom::TextEventDataView data_view,
+         ::remoting::protocol::TextEvent* out_event) {
+  std::string text;
+  if (!data_view.ReadText(&text)) {
+    return false;
+  }
+  out_event->set_text(std::move(text));
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::TouchEventPointDataView,
+                        ::remoting::protocol::TouchEventPoint>::
+    Read(remoting::mojom::TouchEventPointDataView data_view,
+         ::remoting::protocol::TouchEventPoint* out_event) {
+  out_event->set_id(data_view.id());
+  gfx::PointF position;
+  if (!data_view.ReadPosition(&position)) {
+    return false;
+  }
+  out_event->set_x(position.x());
+  out_event->set_y(position.y());
+  gfx::PointF radius;
+  if (!data_view.ReadRadius(&radius)) {
+    return false;
+  }
+  out_event->set_radius_x(radius.x());
+  out_event->set_radius_y(radius.y());
+  out_event->set_angle(data_view.angle());
+  out_event->set_pressure(data_view.pressure());
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::TouchEventDataView,
+                        ::remoting::protocol::TouchEvent>::
+    Read(remoting::mojom::TouchEventDataView data_view,
+         ::remoting::protocol::TouchEvent* out_event) {
+  ::remoting::protocol::TouchEvent::TouchEventType touch_event_type;
+  if (!data_view.ReadEventType(&touch_event_type)) {
+    return false;
+  }
+  out_event->set_event_type(touch_event_type);
+
+  if (!data_view.ReadTouchPoints(out_event->mutable_touch_points())) {
+    return false;
+  }
+
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::TransportRouteDataView,
+                        ::remoting::protocol::TransportRoute>::
+    Read(remoting::mojom::TransportRouteDataView data_view,
+         ::remoting::protocol::TransportRoute* out_transport_route) {
+  if (!data_view.ReadType(&out_transport_route->type)) {
+    return false;
+  }
+
+  if (!data_view.ReadRemoteAddress(&out_transport_route->remote_address)) {
+    return false;
+  }
+
+  if (!data_view.ReadLocalAddress(&out_transport_route->local_address)) {
+    return false;
+  }
+
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::VideoTrackLayoutDataView,
+                        ::remoting::protocol::VideoTrackLayout>::
+    Read(remoting::mojom::VideoTrackLayoutDataView data_view,
+         ::remoting::protocol::VideoTrackLayout* out_track) {
+  std::optional<int64_t> screen_id = data_view.screen_id();
+  if (screen_id.has_value()) {
+    out_track->set_screen_id(screen_id.value());
+  }
+
+  std::string media_stream_id;
+  if (!data_view.ReadMediaStreamId(&media_stream_id)) {
+    return false;
+  }
+  // Don't set |media_stream_id| if the value is empty as the client will
+  // misinterpret an empty protobuf value and multi-mon scenarios will break.
+  if (!media_stream_id.empty()) {
+    out_track->set_media_stream_id(std::move(media_stream_id));
+  }
+
+  gfx::Point position;
+  if (!data_view.ReadPosition(&position)) {
+    return false;
+  }
+  out_track->set_position_x(position.x());
+  out_track->set_position_y(position.y());
+
+  webrtc::DesktopSize size;
+  if (!data_view.ReadSize(&size)) {
+    return false;
+  }
+  out_track->set_width(size.width());
+  out_track->set_height(size.height());
+
+  webrtc::DesktopVector dpi;
+  if (!data_view.ReadDpi(&dpi)) {
+    return false;
+  }
+  out_track->set_x_dpi(dpi.x());
+  out_track->set_y_dpi(dpi.y());
+
+  std::string display_name;
+  if (!data_view.ReadDisplayName(&display_name)) {
+    return false;
+  }
+  out_track->set_display_name(std::move(display_name));
+
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::VideoLayoutDataView,
+                        ::remoting::protocol::VideoLayout>::
+    Read(remoting::mojom::VideoLayoutDataView data_view,
+         ::remoting::protocol::VideoLayout* out_layout) {
+  if (!data_view.ReadTracks(out_layout->mutable_video_track())) {
+    return false;
+  }
+
+  out_layout->set_supports_full_desktop_capture(
+      data_view.supports_full_desktop_capture());
+
+  out_layout->set_primary_screen_id(data_view.primary_screen_id());
+
+  std::optional<::remoting::protocol::VideoLayout::PixelType> pixel_type;
+  if (!data_view.ReadPixelType(&pixel_type)) {
+    return false;
+  }
+  if (pixel_type.has_value()) {
+    out_layout->set_pixel_type(pixel_type.value());
+  }
+
+  return true;
+}
+
+#endif  // BUILDFLAG(REMOTING_MULTI_PROCESS)
+
+// static
+bool mojo::StructTraits<remoting::mojom::SourceLocationDataView,
+                        ::remoting::SourceLocation>::
+    Read(remoting::mojom::SourceLocationDataView data_view,
+         ::remoting::SourceLocation* out_source_info) {
+  std::optional<std::string_view> function_name;
+  std::optional<std::string_view> file_name;
+  if (!data_view.ReadFunctionName(&function_name)) {
+    return false;
+  }
+  if (!data_view.ReadFileName(&file_name)) {
+    return false;
+  }
+  out_source_info->InitializeWithBackingStore(function_name, file_name,
+                                              data_view.line_number());
+
+  return true;
+}
+
+// static
+bool mojo::StructTraits<
+    remoting::mojom::PortRangeDataView,
+    ::remoting::PortRange>::Read(remoting::mojom::PortRangeDataView data_view,
+                                 ::remoting::PortRange* out_range) {
+  auto port_range =
+      ::remoting::PortRange::Create(data_view.min_port(), data_view.max_port());
+  if (!port_range) {
+    return false;
+  }
+  *out_range = *std::move(port_range);
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::SessionPoliciesDataView,
+                        ::remoting::SessionPolicies>::
+    Read(remoting::mojom::SessionPoliciesDataView data_view,
+         ::remoting::SessionPolicies* out_policies) {
+  if (auto clipboard_size = data_view.clipboard_size_bytes();
+      clipboard_size.has_value()) {
+    // This check is needed because the Windows host is still 32-bit.
+    if (!base::IsValueInRangeForNumericType<size_t>(*clipboard_size)) {
+      return false;
+    }
+    out_policies->clipboard_size_bytes =
+        base::checked_cast<size_t>(*clipboard_size);
+  } else {
+    out_policies->clipboard_size_bytes = std::nullopt;
+  }
+  out_policies->allow_stun_connections = data_view.allow_stun_connections();
+  out_policies->allow_relayed_connections =
+      data_view.allow_relayed_connections();
+  if (!data_view.ReadHostUdpPortRange(&out_policies->host_udp_port_range)) {
+    return false;
+  }
+  out_policies->allow_file_transfer = data_view.allow_file_transfer();
+  out_policies->allow_uri_forwarding = data_view.allow_uri_forwarding();
+  if (!data_view.ReadMaximumSessionDuration(
+          &out_policies->maximum_session_duration)) {
+    return false;
+  }
+  out_policies->curtain_required = data_view.curtain_required();
+  out_policies->host_username_match_required =
+      data_view.host_username_match_required();
+  out_policies->allow_remote_input = data_view.allow_remote_input();
+  out_policies->allow_webauthn_forwarding =
+      data_view.allow_webauthn_forwarding();
+  out_policies->allow_gnubby_forwarding = data_view.allow_gnubby_forwarding();
+  out_policies->allow_terminal_mode = data_view.allow_terminal_mode();
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::SessionOptionsDataView,
+                        ::remoting::SessionOptions>::
+    Read(remoting::mojom::SessionOptionsDataView data_view,
+         ::remoting::SessionOptions* out_options) {
+  out_options->detect_updated_region = data_view.detect_updated_region();
+  out_options->capture_video_on_dedicated_thread =
+      data_view.capture_video_on_dedicated_thread();
+#if BUILDFLAG(IS_MAC)
+  out_options->enable_sck_capturer = data_view.enable_sck_capturer();
+#endif  // BUILDFLAG(IS_MAC)
+#if BUILDFLAG(IS_WIN)
+  out_options->allow_dxgi_capturer = data_view.allow_dxgi_capturer();
+#endif  // BUILDFLAG(IS_WIN)
+  out_options->disable_udp = data_view.disable_udp();
+  out_options->vp9_encoder_speed = data_view.vp9_encoder_speed();
+  out_options->av1_active_map = data_view.av1_active_map();
+  out_options->av1_encoder_speed = data_view.av1_encoder_speed();
+  return true;
+}
+
+#if BUILDFLAG(REMOTING_MULTI_PROCESS)
+
+// static
+bool mojo::StructTraits<remoting::mojom::FractionalCoordinateDataView,
+                        ::remoting::protocol::FractionalCoordinate>::
+    Read(remoting::mojom::FractionalCoordinateDataView data_view,
+         ::remoting::protocol::FractionalCoordinate* out_coordinate) {
+  out_coordinate->set_screen_id(data_view.screen_id());
+  out_coordinate->set_x(data_view.x());
+  out_coordinate->set_y(data_view.y());
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::MicrophoneControlDataView,
+                        ::remoting::protocol::MicrophoneControl>::
+    Read(remoting::mojom::MicrophoneControlDataView data_view,
+         ::remoting::protocol::MicrophoneControl* out_control) {
+  out_control->set_enable(data_view.enable());
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::IpcFifoBufferReaderDataView,
+                        std::unique_ptr<remoting::IpcFifoBufferReader>>::
+    Read(remoting::mojom::IpcFifoBufferReaderDataView data_view,
+         std::unique_ptr<remoting::IpcFifoBufferReader>* out_reader) {
+  mojo::ScopedDataPipeConsumerHandle consumer_handle =
+      data_view.TakeConsumerHandle();
+  if (!consumer_handle.is_valid()) {
+    return false;
+  }
+  *out_reader = std::make_unique<remoting::IpcFifoBufferReader>(
+      std::move(consumer_handle));
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::AudioSampleInfoDataView,
+                        ::remoting::protocol::AudioSampleInfo>::
+    Read(remoting::mojom::AudioSampleInfoDataView data_view,
+         ::remoting::protocol::AudioSampleInfo* out_info) {
+  out_info->sampling_rate = data_view.sampling_rate();
+  out_info->channels = data_view.channels();
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::WebrtcSocketAddressDataView,
+                        ::webrtc::SocketAddress>::
+    Read(remoting::mojom::WebrtcSocketAddressDataView data_view,
+         ::webrtc::SocketAddress* out_address) {
+  std::string_view hostname_view;
+  if (!data_view.ReadHostname(&hostname_view)) {
+    return false;
+  }
+
+  ::webrtc::SocketAddress temp;
+  temp.SetIP(hostname_view);
+  temp.SetPort(data_view.port());
+
+  *out_address = std::move(temp);
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::WebrtcCandidateDataView,
+                        ::webrtc::Candidate>::
+    Read(remoting::mojom::WebrtcCandidateDataView data_view,
+         ::webrtc::Candidate* out_candidate) {
+  ::webrtc::Candidate temp;
+
+  std::string_view foundation_view;
+  if (!data_view.ReadFoundation(&foundation_view)) {
+    return false;
+  }
+  temp.set_foundation(foundation_view);
+
+  temp.set_component(data_view.component());
+
+  std::string_view protocol_view;
+  if (!data_view.ReadProtocol(&protocol_view)) {
+    return false;
+  }
+  temp.set_protocol(protocol_view);
+
+  temp.set_priority(data_view.priority());
+
+  ::webrtc::SocketAddress address;
+  if (!data_view.ReadAddress(&address)) {
+    return false;
+  }
+  temp.set_address(address);
+
+  ::webrtc::IceCandidateType candidate_type;
+  if (!data_view.ReadType(&candidate_type)) {
+    return false;
+  }
+  temp.set_type(candidate_type);
+
+  std::string_view tcptype_view;
+  if (!data_view.ReadTcptype(&tcptype_view)) {
+    return false;
+  }
+  temp.set_tcptype(tcptype_view);
+
+  ::webrtc::SocketAddress related_address;
+  if (!data_view.ReadRelatedAddress(&related_address)) {
+    return false;
+  }
+  temp.set_related_address(related_address);
+
+  std::string_view username_view;
+  if (!data_view.ReadUsername(&username_view)) {
+    return false;
+  }
+  temp.set_username(username_view);
+
+  std::string_view password_view;
+  if (!data_view.ReadPassword(&password_view)) {
+    return false;
+  }
+  temp.set_password(password_view);
+
+  temp.set_generation(data_view.generation());
+  temp.set_network_id(data_view.network_id());
+  temp.set_network_cost(data_view.network_cost());
+
+  *out_candidate = std::move(temp);
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::SessionDescriptionDataView,
+                        ::remoting::SessionDescription>::
+    Read(remoting::mojom::SessionDescriptionDataView data_view,
+         ::remoting::SessionDescription* out_description) {
+  ::remoting::SessionDescription temp;
+
+  if (!data_view.ReadType(&temp.type) || !data_view.ReadSdp(&temp.sdp) ||
+      !data_view.ReadSignature(&temp.signature)) {
+    return false;
+  }
+
+  *out_description = std::move(temp);
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::NamedCandidateDataView,
+                        ::remoting::IceTransportInfo::NamedCandidate>::
+    Read(remoting::mojom::NamedCandidateDataView data_view,
+         ::remoting::IceTransportInfo::NamedCandidate* out_candidate) {
+  ::remoting::IceTransportInfo::NamedCandidate temp;
+
+  if (!data_view.ReadSdpMid(&temp.name)) {
+    return false;
+  }
+
+  temp.sdp_m_line_index = data_view.sdp_m_line_index();
+
+  if (!data_view.ReadCandidate(&temp.candidate)) {
+    return false;
+  }
+
+  *out_candidate = std::move(temp);
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::JingleTransportInfoDataView,
+                        ::remoting::JingleTransportInfo>::
+    Read(remoting::mojom::JingleTransportInfoDataView data_view,
+         ::remoting::JingleTransportInfo* out_transport_info) {
+  ::remoting::JingleTransportInfo temp;
+
+  if (!data_view.ReadCandidates(&temp.candidates) ||
+      !data_view.ReadSessionDescription(&temp.session_description)) {
+    return false;
+  }
+
+  *out_transport_info = std::move(temp);
+  return true;
+}
+
+// static
+remoting::mojom::WebrtcProtocolType mojo::EnumTraits<
+    remoting::mojom::WebrtcProtocolType,
+    ::webrtc::ProtocolType>::ToMojom(::webrtc::ProtocolType protocol) {
+  switch (protocol) {
+    case ::webrtc::PROTO_UDP:
+      return remoting::mojom::WebrtcProtocolType::kUdp;
+    case ::webrtc::PROTO_DTLS:
+      return remoting::mojom::WebrtcProtocolType::kDtls;
+    case ::webrtc::PROTO_TCP:
+      return remoting::mojom::WebrtcProtocolType::kTcp;
+    case ::webrtc::PROTO_SSLTCP:
+      return remoting::mojom::WebrtcProtocolType::kSslTcp;
+    case ::webrtc::PROTO_TLS:
+      return remoting::mojom::WebrtcProtocolType::kTls;
+  }
+  NOTREACHED();
+}
+
+// static
+std::optional<::webrtc::ProtocolType>
+mojo::EnumTraits<remoting::mojom::WebrtcProtocolType, ::webrtc::ProtocolType>::
+    FromMojom(remoting::mojom::WebrtcProtocolType input) {
+  switch (input) {
+    case remoting::mojom::WebrtcProtocolType::kUdp:
+      return ::webrtc::PROTO_UDP;
+    case remoting::mojom::WebrtcProtocolType::kDtls:
+      return ::webrtc::PROTO_DTLS;
+    case remoting::mojom::WebrtcProtocolType::kTcp:
+      return ::webrtc::PROTO_TCP;
+    case remoting::mojom::WebrtcProtocolType::kSslTcp:
+      return ::webrtc::PROTO_SSLTCP;
+    case remoting::mojom::WebrtcProtocolType::kTls:
+      return ::webrtc::PROTO_TLS;
+  }
+  return std::nullopt;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::WebrtcRelayServerConfigDataView,
+                        ::webrtc::RelayServerConfig>::
+    Read(remoting::mojom::WebrtcRelayServerConfigDataView data_view,
+         ::webrtc::RelayServerConfig* out_config) {
+  std::string username;
+  if (!data_view.ReadUsername(&username)) {
+    return false;
+  }
+  std::string password;
+  if (!data_view.ReadPassword(&password)) {
+    return false;
+  }
+
+  mojo::ArrayDataView<remoting::mojom::WebrtcProtocolAddressDataView>
+      ports_data;
+  data_view.GetPortsDataView(&ports_data);
+  std::vector<::webrtc::ProtocolAddress> ports;
+  ports.reserve(ports_data.size());
+  for (size_t i = 0; i < ports_data.size(); ++i) {
+    remoting::mojom::WebrtcProtocolAddressDataView port_data;
+    ports_data.GetDataView(i, &port_data);
+
+    ::webrtc::SocketAddress address;
+    if (!port_data.ReadAddress(&address)) {
+      return false;
+    }
+    ::webrtc::ProtocolType proto;
+    if (!port_data.ReadProtocol(&proto)) {
+      return false;
+    }
+    ports.emplace_back(std::move(address), proto);
+  }
+
+  out_config->credentials.username = std::move(username);
+  out_config->credentials.password = std::move(password);
+  out_config->ports = std::move(ports);
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::IceConfigDataView,
+                        ::remoting::protocol::IceConfig>::
+    Read(remoting::mojom::IceConfigDataView data_view,
+         ::remoting::protocol::IceConfig* out_config) {
+  if (!data_view.ReadExpirationTime(&out_config->expiration_time) ||
+      !data_view.ReadStunServers(&out_config->stun_servers) ||
+      !data_view.ReadTurnServers(&out_config->turn_servers)) {
+    return false;
+  }
+  out_config->max_bitrate_kbps = data_view.max_bitrate_kbps();
+  return true;
+}
+
+// static
+bool mojo::StructTraits<remoting::mojom::PairingResponseDataView,
+                        ::remoting::protocol::PairingResponse>::
+    Read(remoting::mojom::PairingResponseDataView data_view,
+         ::remoting::protocol::PairingResponse* out_response) {
+  std::string client_id;
+  std::string shared_secret;
+  if (!data_view.ReadClientId(&client_id) ||
+      !data_view.ReadSharedSecret(&shared_secret)) {
+    return false;
+  }
+  out_response->set_client_id(std::move(client_id));
+  out_response->set_shared_secret(std::move(shared_secret));
+  return true;
+}
+
+#endif  // BUILDFLAG(REMOTING_MULTI_PROCESS)
+
+}  // namespace mojo

@@ -1,0 +1,17 @@
+ALERT: Invalid test: #errors
+#document-fragment
+html
+#document
+| <head>
+| <body>
+
+../resources/tests_innerHTML_1.dat:
+76
+
+Test 76 of 81 in ../resources/tests_innerHTML_1.dat failed. Input:
+<input><option>
+Got:
+| <input>
+| <option>
+Expected:
+| <option>

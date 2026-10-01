@@ -1,0 +1,152 @@
+// Copyright 2023 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "base/containers/to_vector.h"
+
+#include <forward_list>
+#include <ranges>
+#include <set>
+
+#include "base/containers/flat_set.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+
+namespace base::test {
+
+namespace {
+
+using ::testing::ElementsAre;
+using ::testing::IsNull;
+using ::testing::Pointee;
+
+template <class C>
+void IdentityTest() {
+  C c = {1, 2, 3, 4, 5};
+  auto vec = ToVector(c);
+  EXPECT_THAT(vec, ElementsAre(1, 2, 3, 4, 5));
+}
+
+template <class C>
+void ProjectionTest() {
+  C c = {1, 2, 3, 4, 5};
+  auto vec = ToVector(c, [](int x) { return x + 1; });
+  EXPECT_THAT(vec, ElementsAre(2, 3, 4, 5, 6));
+}
+
+TEST(ToVectorTest, Identity) {
+  IdentityTest<std::vector<int>>();
+  IdentityTest<std::set<int>>();
+  IdentityTest<int[]>();
+  IdentityTest<base::flat_set<int>>();
+}
+
+TEST(ToVectorTest, Projection) {
+  ProjectionTest<std::vector<int>>();
+  ProjectionTest<std::set<int>>();
+  ProjectionTest<int[]>();
+  ProjectionTest<base::flat_set<int>>();
+}
+
+TEST(ToVectorTest, IdentityWithCustomType) {
+  std::set<int> v = {1, 2, 3};
+  auto vec = base::ToVector<int64_t>(v);
+  static_assert(std::same_as<decltype(vec), std::vector<int64_t>>);
+
+  EXPECT_THAT(vec, ElementsAre(1L, 2L, 3L));
+}
+
+TEST(ToVectorTest, IdentityWithCustomTypeAndProjection) {
+  std::set<int> v = {1, 2, 3};
+  auto vec = base::ToVector<int64_t>(v, [](int x) { return x * 2; });
+  static_assert(std::same_as<decltype(vec), std::vector<int64_t>>);
+
+  EXPECT_THAT(vec, ElementsAre(2L, 4L, 6L));
+}
+
+TEST(ToVectorTest, MoveOnly) {
+  std::vector<std::unique_ptr<int>> v;
+  v.push_back(std::make_unique<int>(1));
+  v.push_back(std::make_unique<int>(2));
+  v.push_back(std::make_unique<int>(3));
+
+  auto v2 = base::ToVector(std::views::as_rvalue(v));
+  EXPECT_THAT(v2, ElementsAre(Pointee(1), Pointee(2), Pointee(3)));
+
+  // The old vector should be consumed. The standard guarantees that a
+  // moved-from std::unique_ptr will be null.
+  // NOLINT(bugprone-use-after-move)
+  EXPECT_THAT(v, ElementsAre(IsNull(), IsNull(), IsNull()));
+
+  // Another method which is more verbose so not preferable.
+  auto v3 = base::ToVector(
+      std::move(v2), [](std::unique_ptr<int>& p) { return std::move(p); });
+  EXPECT_THAT(v3, ElementsAre(Pointee(1), Pointee(2), Pointee(3)));
+  // NOLINT(bugprone-use-after-move)
+  EXPECT_THAT(v2, ElementsAre(IsNull(), IsNull(), IsNull()));
+}
+
+template <typename C, typename Proj, typename T>
+constexpr bool CorrectlyProjected =
+    std::is_same_v<T,
+                   typename decltype(ToVector(
+                       std::declval<C>(),
+                       std::declval<Proj>()))::value_type>;
+
+TEST(ToVectorTest, CorrectlyProjected) {
+  // Tests that projected types are deduced correctly.
+  constexpr auto proj = [](const auto& value) -> const auto& { return value; };
+  static_assert(CorrectlyProjected<std::vector<std::string>, decltype(proj),
+                                   std::string>);
+  static_assert(
+      CorrectlyProjected<std::set<std::string>, decltype(&std::string::length),
+                         std::size_t>);
+}
+
+TEST(ToVectorTest, MoveConstructionFromArray) {
+  auto vec = base::ToVector({
+      std::make_unique<int>(1),
+      std::make_unique<int>(2),
+      std::make_unique<int>(3),
+  });
+  EXPECT_THAT(vec, ElementsAre(Pointee(1), Pointee(2), Pointee(3)));
+}
+
+TEST(ToVectorTest, CustomTypeWithArray) {
+  auto vec = base::ToVector<std::string_view>({
+      "foo",
+      "bar",
+      "baz",
+  });
+
+  static_assert(std::same_as<decltype(vec), std::vector<std::string_view>>);
+  EXPECT_THAT(vec, ElementsAre("foo", "bar", "baz"));
+}
+
+TEST(ToVectorTest, ConstexprTest) {
+  static constexpr int a[] = {1, 2, 3};
+  static_assert(base::ToVector(a) == std::vector{1, 2, 3});
+  static_assert(base::ToVector(a, [](int x) { return x + 1; }) ==
+                std::vector{2, 3, 4});
+  static_assert(base::ToVector({1, 2, 3}) == std::vector{1, 2, 3});
+}
+
+TEST(ToVectorTest, UnsizedRangeProjected) {
+  const std::forward_list<int> a = {1, 2, 3};
+  EXPECT_THAT(base::ToVector(a, [](int x) { return x + 1; }),
+              ElementsAre(2, 3, 4));
+}
+
+TEST(ToVectorTest, ToVectorWithZipAndProjection) {
+  const std::vector a = {1, 2, 3};
+  const std::vector b = {3, 2, 1};
+  auto z = std::views::zip(a, b);
+
+  EXPECT_THAT(base::ToVector(
+                  z, [](std::pair<int, int> x) { return x.first + x.second; }),
+              ElementsAre(4, 4, 4));
+}
+
+}  // namespace
+
+}  // namespace base::test

@@ -1,0 +1,1605 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#include "content/browser/surface_embed/surface_embed_connector_impl.h"
+
+#include <memory>
+
+#include "base/memory/raw_ptr.h"
+#include "base/test/run_until.h"
+#include "base/test/test_future.h"
+#include "base/time/time.h"
+#include "cc/input/touch_action.h"
+#include "cc/trees/render_frame_metadata.h"
+#include "components/input/cursor_manager.h"
+#include "content/browser/compositor/surface_utils.h"
+#include "content/browser/pointer_lock_browsertest.h"
+#include "content/browser/renderer_host/render_frame_host_impl.h"
+#include "content/browser/renderer_host/render_widget_host_view_child_frame.h"
+#include "content/browser/web_contents/web_contents_impl.h"
+#include "content/public/browser/visibility.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_test.h"
+#include "content/public/test/browser_test_utils.h"
+#include "content/public/test/content_browser_test.h"
+#include "content/public/test/content_browser_test_utils.h"
+#include "content/public/test/fake_frame_widget.h"
+#include "content/public/test/test_utils.h"
+#include "content/shell/browser/shell.h"
+#include "mojo/public/cpp/bindings/associated_remote.h"
+#include "net/dns/mock_host_resolver.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/frame/frame_visual_properties.h"
+#include "third_party/blink/public/mojom/frame/intrinsic_sizing_info.mojom.h"
+#include "third_party/blink/public/mojom/frame/lifecycle.mojom.h"
+#include "third_party/blink/public/mojom/input/pointer_lock_result.mojom.h"
+#include "ui/accessibility/ax_tree_id.h"
+#include "ui/accessibility/ax_tree_manager.h"
+#include "ui/base/cursor/cursor.h"
+#include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/size.h"
+
+namespace content {
+
+namespace {
+
+class MockSurfaceEmbedConnectorDelegate
+    : public SurfaceEmbedConnector::Delegate {
+ public:
+  MockSurfaceEmbedConnectorDelegate() = default;
+  ~MockSurfaceEmbedConnectorDelegate() = default;
+
+  MOCK_METHOD(void,
+              SetFrameSinkId,
+              (const viz::FrameSinkId&, bool),
+              (override));
+  MOCK_METHOD(void,
+              UpdateLocalSurfaceIdFromChild,
+              (const viz::LocalSurfaceId&),
+              (override));
+  MOCK_METHOD(void, DetachedByHost, (), (override));
+  MOCK_METHOD(bool, IsAttachedForTesting, (), (const, override));
+  MOCK_METHOD(void, ChildProcessGone, (), (override));
+  MOCK_METHOD(void, RequestFocusOnEmbedElement, (), (override));
+  MOCK_METHOD(void, AdvanceFocusFromEmbedElement, (bool), (override));
+};
+
+// Returns the embed parent AX tree id for `rfh` by querying the
+// SurfaceEmbedConnector of the WebContents that owns it. This mirrors how
+// RenderFrameHostImpl derives the value internally and returns
+// ui::AXTreeIDUnknown() when the WebContents is not surface-embedded.
+ui::AXTreeID GetEmbedParentAXTreeID(RenderFrameHost* rfh) {
+  SurfaceEmbedConnector* connector =
+      WebContents::FromRenderFrameHost(rfh)->GetSurfaceEmbedConnector();
+  return connector ? connector->GetParentAXTreeID() : ui::AXTreeIDUnknown();
+}
+
+// Returns the parent AX tree id cached in the frame's own accessibility tree
+// data, which is what accessibility clients observe. Unlike
+// GetEmbedParentAXTreeID() this does not consult the connector, so it detects a
+// stale id left behind after the connector is gone.
+ui::AXTreeID CachedParentAXTreeID(RenderFrameHost* rfh) {
+  ui::AXTreeManager* manager = ui::AXTreeManager::FromID(rfh->GetAXTreeID());
+  return manager ? manager->GetParentTreeID() : ui::AXTreeIDUnknown();
+}
+
+}  // namespace
+
+class SurfaceEmbedConnectorImplBrowserTest : public ContentBrowserTest {
+ public:
+  SurfaceEmbedConnectorImplBrowserTest() = default;
+  ~SurfaceEmbedConnectorImplBrowserTest() override = default;
+
+  void SetUpOnMainThread() override {
+    host_resolver()->AddRule("*", "127.0.0.1");
+    ContentBrowserTest::SetUpOnMainThread();
+  }
+
+  void SetScreenInfos(SurfaceEmbedConnectorImpl* connector,
+                      const display::ScreenInfos& screen_infos) {
+    connector->screen_infos_ = screen_infos;
+  }
+
+  void SetLocalSurfaceId(SurfaceEmbedConnectorImpl* connector,
+                         const viz::LocalSurfaceId& local_surface_id) {
+    connector->local_surface_id_ = local_surface_id;
+  }
+
+  RenderWidgetHostViewChildFrame* GetView(
+      SurfaceEmbedConnectorImpl* connector) {
+    return connector->view_;
+  }
+
+  // Clears the connector's stored embed parent AX tree id so a subsequent
+  // stitch (or its absence) can be observed in tests.
+  void ClearEmbedParentAXTreeID(SurfaceEmbedConnectorImpl* connector) {
+    connector->embed_parent_ax_tree_id_ = ui::AXTreeIDUnknown();
+  }
+
+ protected:
+  WebContentsImpl* GetParentWebContents() {
+    return static_cast<WebContentsImpl*>(shell()->web_contents());
+  }
+
+  struct ConnectorTestContext {
+    ConnectorTestContext() = default;
+    ConnectorTestContext(ConnectorTestContext&& other) {
+      parent_shell = other.parent_shell;
+      other.parent_shell = nullptr;
+      parent_web_contents = other.parent_web_contents;
+      other.parent_web_contents = nullptr;
+      child_web_contents = std::move(other.child_web_contents);
+      rwhvcf = other.rwhvcf;
+      other.rwhvcf = nullptr;
+      connector = other.connector;
+      other.connector = nullptr;
+    }
+    ConnectorTestContext& operator=(ConnectorTestContext&& other) {
+      if (this != &other) {
+        // Clear raw_ptrs before closing the shell, since auto-detach in the
+        // parent's destructor will destroy the connector and its view.
+        connector = nullptr;
+        rwhvcf = nullptr;
+        parent_web_contents = nullptr;
+        if (parent_shell) {
+          Shell* shell = parent_shell;
+          parent_shell = nullptr;
+          shell->Close();
+        }
+        parent_shell = other.parent_shell;
+        other.parent_shell = nullptr;
+        parent_web_contents = other.parent_web_contents;
+        other.parent_web_contents = nullptr;
+        child_web_contents = std::move(other.child_web_contents);
+        rwhvcf = other.rwhvcf;
+        other.rwhvcf = nullptr;
+        connector = other.connector;
+        other.connector = nullptr;
+      }
+      return *this;
+    }
+    ~ConnectorTestContext() {
+      // Clear raw_ptrs before closing the shell, since auto-detach in the
+      // parent's destructor will destroy the connector and its view.
+      connector = nullptr;
+      rwhvcf = nullptr;
+      parent_web_contents = nullptr;
+      if (parent_shell) {
+        Shell* shell = parent_shell;
+        parent_shell = nullptr;
+        shell->Close();
+      }
+    }
+
+    raw_ptr<Shell> parent_shell = nullptr;
+    raw_ptr<WebContents> parent_web_contents = nullptr;
+    std::unique_ptr<WebContents> child_web_contents;
+    raw_ptr<RenderWidgetHostViewChildFrame> rwhvcf = nullptr;
+    raw_ptr<SurfaceEmbedConnectorImpl> connector = nullptr;
+  };
+
+  // Creates a parent and child WebContents and attaches a connector between
+  // them. The parent is navigated here so that it has a valid AX tree ID by the
+  // time Attach() runs.
+  //
+  // Tests must NOT navigate `context.parent_web_contents` after this returns:
+  // SurfaceEmbedConnectorImpl holds the embedder RenderFrameHost as a WeakPtr
+  // and CHECKs it (see SetFocusedFrameTree() and OnAttachedToParent()). A
+  // cross-document navigation of the parent replaces that RenderFrameHost,
+  // which in production detaches the child WebContents but here just
+  // invalidates the WeakPtr and crashes the test's mock delegate.
+  ConnectorTestContext SetupConnectorTest(
+      MockSurfaceEmbedConnectorDelegate* delegate,
+      bool navigate_child_before_attach = false) {
+    ConnectorTestContext context;
+
+    context.parent_shell =
+        Shell::CreateNewWindow(GetParentWebContents()->GetBrowserContext(),
+                               GURL(), nullptr, Shell::GetShellDefaultSize());
+    WebContentsImpl* parent_web_contents_impl =
+        static_cast<WebContentsImpl*>(context.parent_shell->web_contents());
+    context.parent_web_contents = parent_web_contents_impl;
+
+    WebContents::CreateParams create_params(
+        GetParentWebContents()->GetBrowserContext());
+    context.child_web_contents = WebContents::Create(create_params);
+    WebContentsImpl* child_web_contents_impl =
+        static_cast<WebContentsImpl*>(context.child_web_contents.get());
+
+    EXPECT_TRUE(NavigateToURL(parent_web_contents_impl, GURL("about:blank")));
+    // Optionally navigate the child before Attach() so it already has a valid
+    // AX tree ID when the connector is attached.
+    if (navigate_child_before_attach) {
+      EXPECT_TRUE(NavigateToURL(child_web_contents_impl, GURL("about:blank")));
+    }
+    // Expect SetView of connector to be called during Attach, which calls
+    // delegate's SetFrameSinkId.
+    EXPECT_CALL(*delegate,
+                SetFrameSinkId(testing::_, /*allow_paint_holding=*/false))
+        .Times(1);
+    SurfaceEmbedConnector::Attach(
+        child_web_contents_impl,
+        parent_web_contents_impl->GetPrimaryMainFrame(), delegate);
+    testing::Mock::VerifyAndClearExpectations(delegate);
+
+    context.connector = static_cast<SurfaceEmbedConnectorImpl*>(
+        child_web_contents_impl->GetSurfaceEmbedConnector());
+    context.rwhvcf = static_cast<RenderWidgetHostViewChildFrame*>(
+        child_web_contents_impl->GetRenderWidgetHostView());
+
+    EXPECT_TRUE(context.rwhvcf);
+
+    return context;
+  }
+
+  void SetViewportIntersectionState(
+      SurfaceEmbedConnectorImpl* connector,
+      const blink::mojom::ViewportIntersectionState& intersection_state) {
+    connector->intersection_state_ = intersection_state;
+  }
+
+  bool HasKeepSurfaceAlive(SurfaceEmbedConnectorImpl* connector) const {
+    return !!connector->keep_surface_alive_;
+  }
+
+  bool HasParentWCObserver(SurfaceEmbedConnectorImpl* connector) const {
+    return !!connector->parent_wc_observer_;
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest, BasicConnection) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+  auto* connector = context.connector.get();
+  auto* parent_impl =
+      static_cast<WebContentsImpl*>(context.parent_web_contents.get());
+
+  // Verify initial state and basic getters.
+  EXPECT_EQ(connector->GetParentWebContentsView(), parent_impl->GetView());
+  EXPECT_EQ(connector->GetParentRenderViewHostDelegateView(),
+            parent_impl->GetDelegateView());
+  EXPECT_EQ(connector->GetInputEventRouter(),
+            parent_impl->GetInputEventRouter());
+
+  // Verify delegate access.
+  EXPECT_EQ(connector->GetDelegate(), &delegate);
+
+  // Verify TextInputManager is forwarded.
+  EXPECT_EQ(connector->GetTextInputManager(),
+            parent_impl->GetTextInputManager());
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       ParentDestruction) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  // Clear raw_ptrs that will dangle when parent is destroyed and auto-detach
+  // triggers.
+  context.connector = nullptr;
+  context.rwhvcf = nullptr;
+  context.parent_web_contents = nullptr;
+  Shell* shell = context.parent_shell;
+  context.parent_shell = nullptr;
+  shell->Close();
+
+  // After parent destruction, child should be auto-detached: connector is
+  // destroyed.
+  auto* child_impl =
+      static_cast<WebContentsImpl*>(context.child_web_contents.get());
+  EXPECT_EQ(child_impl->GetSurfaceEmbedConnector(), nullptr);
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest, ConstGetters) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+  auto* connector = context.connector.get();
+  auto* parent_impl =
+      static_cast<WebContentsImpl*>(context.parent_web_contents.get());
+
+  const SurfaceEmbedConnectorImpl& const_connector = *connector;
+
+  // Verify getters can be called on a const reference.
+  EXPECT_EQ(const_connector.GetParentWebContentsView(), parent_impl->GetView());
+  EXPECT_EQ(const_connector.GetParentRenderViewHostDelegateView(),
+            parent_impl->GetDelegateView());
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest, Detach) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  auto* child_impl =
+      static_cast<WebContentsImpl*>(context.child_web_contents.get());
+
+  auto* connector = child_impl->GetSurfaceEmbedConnector();
+  connector->OnVisibilityChanged(
+      blink::mojom::FrameVisibility::kRenderedInViewport);
+  EXPECT_EQ(context.child_web_contents->GetVisibility(),
+            content::Visibility::VISIBLE);
+
+  // Detach should set it back to kNotRendered, although we cannot directly
+  // observe the connector after detachment since it is destroyed. We ensure
+  // calling Detach does not trigger failed CHECKs in performance_manager
+  // (e.g., in FrameVisibilityDecorator::OnViewportIntersectionChanged and
+  // FrameNodeImpl::SetViewportIntersection) and correctly clears the connector.
+  context.connector = nullptr;  // Clear raw_ptr to avoid DanglingPtr crash.
+  context.rwhvcf = nullptr;     // Clear raw_ptr to avoid DanglingPtr crash.
+  SurfaceEmbedConnector::Detach(context.child_web_contents.get());
+  EXPECT_FALSE(context.child_web_contents->GetSurfaceEmbedConnector());
+  EXPECT_EQ(context.child_web_contents->GetVisibility(),
+            content::Visibility::HIDDEN);
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest, Attach) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+  auto* parent_impl =
+      static_cast<WebContentsImpl*>(context.parent_web_contents.get());
+
+  // Verify the connector is attached to the child WebContents.
+  auto* connector = context.child_web_contents->GetSurfaceEmbedConnector();
+  ASSERT_TRUE(connector);
+
+  // Verify properties.
+  EXPECT_EQ(connector->GetDelegate(), &delegate);
+  EXPECT_EQ(static_cast<SurfaceEmbedConnectorImpl*>(connector)
+                ->GetParentWebContentsView(),
+            parent_impl->GetView());
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       FrameConnectorImplementation) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+  auto* connector = context.connector.get();
+
+  // Verify FrameConnector implementation defaults.
+  //
+  // TODO(cammie): Many of these expectations will need to change when the stub
+  // implementations in SurfaceEmbedConnectorImpl are replaced with real ones.
+  // For example, methods like HasSize(), IsInert(), and LockPointer() currently
+  // return hardcoded default values (false, false, and kUnknownError
+  // respectively). These tests should be updated to verify the actual behavior
+  // once implemented.
+
+  EXPECT_NE(connector->GetParentRenderWidgetHostView(), nullptr);
+  EXPECT_EQ(connector->GetRootRenderWidgetHostView(),
+            connector->GetParentRenderWidgetHostView());
+
+  // RenderProcessGone just forwards to the delegate's ChildProcessGone.
+  EXPECT_CALL(delegate, ChildProcessGone()).Times(1);
+  connector->RenderProcessGone();
+
+  // These return void, just call them to ensure no crash.
+  connector->FirstSurfaceActivation(viz::SurfaceInfo());
+  connector->SendIntrinsicSizingInfoToParent(nullptr);
+
+  // We should construct a proper FrameVisualProperties to avoid crashes when
+  // accessing screen_infos.
+  blink::FrameVisualProperties visual_properties;
+  display::ScreenInfo screen_info;
+  screen_info.device_scale_factor = 2.0f;
+  visual_properties.screen_infos = display::ScreenInfos(screen_info);
+  visual_properties.local_frame_size = gfx::Size(100, 200);
+  visual_properties.rect_in_local_root = gfx::Rect(10, 20, 300, 400);
+  visual_properties.css_zoom_factor = 1.25;
+  visual_properties.local_surface_id =
+      viz::LocalSurfaceId(1, base::UnguessableToken::CreateForTesting(2, 3));
+
+  connector->SynchronizeVisualProperties(visual_properties, false);
+
+  connector->UpdateCursor(ui::Cursor());
+
+  EXPECT_EQ(connector->HasFocus(),
+            FrameConnector::RootViewFocusState::kFocused);
+
+  connector->FocusRootView();  // void
+
+  EXPECT_TRUE(connector->HasSize());
+
+  EXPECT_EQ(connector->GetScreenInfos().current().device_scale_factor, 2.0f);
+  EXPECT_EQ(connector->GetLocalSurfaceId(), visual_properties.local_surface_id);
+
+  // Just check it returns valid reference
+  connector->GetIntersectionState();
+
+  EXPECT_EQ(connector->GetRectInParentViewInDip(), gfx::Rect(5, 10, 150, 200));
+  EXPECT_EQ(connector->GetLocalFrameSizeInDip(), gfx::Size(50, 100));
+  EXPECT_EQ(connector->GetLocalFrameSizeInPixels(), gfx::Size(100, 200));
+
+  EXPECT_EQ(connector->GetCssZoomFactor(), 1.25);
+
+  connector->EnableAutoResize(gfx::Size(), gfx::Size());  // void
+  connector->DisableAutoResize();                         // void
+
+  EXPECT_FALSE(connector->IsInert());
+  EXPECT_EQ(connector->InheritedEffectiveTouchAction(), cc::TouchAction::kAuto);
+
+  // IsHidden() defaults to false initially.
+  EXPECT_FALSE(connector->IsHidden());
+
+  EXPECT_FALSE(connector->IsThrottled());
+  EXPECT_FALSE(connector->IsSubtreeThrottled());
+  EXPECT_FALSE(connector->IsDisplayLocked());
+
+  connector->DidUpdateVisualProperties(cc::RenderFrameMetadata());  // void
+  connector->SetVisibilityForChildViews(true);                      // void
+
+  // Test updating local frame size separately.
+  connector->SetLocalFrameSize(gfx::Size(400, 400));
+  EXPECT_EQ(connector->GetLocalFrameSizeInPixels(), gfx::Size(400, 400));
+  EXPECT_EQ(connector->GetLocalFrameSizeInDip(), gfx::Size(200, 200));
+
+  // Test updating rect in parent view.
+  connector->SetRectInParentView(gfx::Rect(100, 100, 200, 200));
+  EXPECT_EQ(connector->GetRectInParentViewInDip(), gfx::Rect(50, 50, 100, 100));
+
+  connector->OnVisibilityChanged(
+      blink::mojom::FrameVisibility::kRenderedInViewport);
+
+  blink::mojom::ViewportIntersectionState intersection;
+  intersection.viewport_intersection = gfx::Rect(0, 0, 100, 100);
+  SetViewportIntersectionState(connector, intersection);
+
+  EXPECT_TRUE(connector->IsVisible());
+  EXPECT_FALSE(connector->IsHidden());
+
+  connector->OnVisibilityChanged(blink::mojom::FrameVisibility::kNotRendered);
+  EXPECT_FALSE(connector->IsVisible());
+  EXPECT_FALSE(connector->IsHidden());
+
+  connector->DelegateWasShown();
+
+  EXPECT_EQ(connector->EmbedderVisibility(), Visibility::VISIBLE);
+
+  EXPECT_EQ(connector->GetParentViewInput(),
+            connector->GetParentRenderWidgetHostView());
+  EXPECT_EQ(connector->GetRootViewInput(),
+            connector->GetParentRenderWidgetHostView());
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest, SetView) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  EXPECT_CALL(delegate, SetFrameSinkId(testing::_, testing::_)).Times(1);
+  FrameConnector* original_connector =
+      context.rwhvcf->FrameConnectorForTesting();
+
+  context.connector->SetView(context.rwhvcf, false);
+
+  EXPECT_EQ(context.rwhvcf->FrameConnectorForTesting(),
+            context.connector.get());
+
+  context.connector->SetView(nullptr, false);
+
+  EXPECT_EQ(context.rwhvcf->FrameConnectorForTesting(), nullptr);
+  context.rwhvcf->SetFrameConnector(original_connector);
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       SetViewReplacesViewAndVisibility) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  FrameConnector* original_connector =
+      context.rwhvcf->FrameConnectorForTesting();
+
+  EXPECT_CALL(delegate, SetFrameSinkId(testing::_, testing::_)).Times(3);
+
+  context.connector->SetView(context.rwhvcf, false);
+
+  // Call it again to hit the `if (view_)` replacement path and coverage.
+  context.connector->SetView(context.rwhvcf, false);
+
+  // Now test SetView when visibility is not kRenderedInViewport.
+  context.connector->OnVisibilityChanged(
+      blink::mojom::FrameVisibility::kNotRendered);
+  context.connector->SetView(context.rwhvcf, false);
+
+  context.connector->SetView(nullptr, false);
+  context.rwhvcf->SetFrameConnector(original_connector);
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       SetViewPropagatesAllowPaintHolding) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  FrameConnector* original_connector =
+      context.rwhvcf->FrameConnectorForTesting();
+
+  EXPECT_CALL(delegate,
+              SetFrameSinkId(testing::_, /*allow_paint_holding=*/false))
+      .Times(1);
+  context.connector->SetView(context.rwhvcf, /*allow_paint_holding=*/false);
+  testing::Mock::VerifyAndClearExpectations(&delegate);
+
+  context.connector->SetView(nullptr, false);
+
+  EXPECT_CALL(delegate,
+              SetFrameSinkId(testing::_, /*allow_paint_holding=*/true))
+      .Times(1);
+  context.connector->SetView(context.rwhvcf, /*allow_paint_holding=*/true);
+
+  context.connector->SetView(nullptr, false);
+  context.rwhvcf->SetFrameConnector(original_connector);
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       ChildNavigationReplacesView) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  // TODO(crbug.com/479743223): Remove mocked screen info once visual data
+  // plumbs through the connector.
+  // Initialize screen_infos_ to prevent crashes during navigation.
+  display::ScreenInfo screen_info;
+  screen_info.display_id = 1;
+  screen_info.device_scale_factor = 1.0f;
+  screen_info.rect = gfx::Rect(800, 600);
+  screen_info.available_rect = gfx::Rect(800, 600);
+  SetScreenInfos(context.connector, display::ScreenInfos(screen_info));
+  SetLocalSurfaceId(context.connector,
+                    viz::LocalSurfaceId(1, base::UnguessableToken::Create()));
+
+  ASSERT_TRUE(embedded_test_server()->Start());
+
+  GURL url_a = embedded_test_server()->GetURL("a.com", "/title1.html");
+  EXPECT_TRUE(NavigateToURL(context.child_web_contents.get(), url_a));
+
+  auto* old_view = context.child_web_contents->GetRenderWidgetHostView();
+  EXPECT_TRUE(old_view);
+
+  // Clear the raw_ptr in context since the old view will be destroyed
+  // during the cross-process navigation, which triggers DanglingPtr checks.
+  context.rwhvcf = nullptr;
+
+  // Force the old view to fetch the updated screen_infos_ from the connector.
+  // This ensures the speculative RenderWidgetHostView created during navigation
+  // inherits a valid ScreenInfos object, preventing crashes.
+  static_cast<RenderWidgetHostViewBase*>(old_view)->UpdateScreenInfo();
+
+  // The new view creation is asynchronous.
+  GURL url_b = embedded_test_server()->GetURL("b.com", "/title1.html");
+  EXPECT_TRUE(NavigateToURL(context.child_web_contents.get(), url_b));
+
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return context.child_web_contents->GetRenderWidgetHostView() != old_view;
+  }));
+
+  auto* new_view = context.child_web_contents->GetRenderWidgetHostView();
+  EXPECT_NE(old_view, new_view);
+  ASSERT_TRUE(new_view);
+
+  // Verify that the connector was registered with the new view.
+  ASSERT_TRUE(static_cast<RenderWidgetHostViewBase*>(new_view)
+                  ->IsRenderWidgetHostViewChildFrame());
+  auto* new_rwhvcf = static_cast<RenderWidgetHostViewChildFrame*>(new_view);
+  EXPECT_EQ(new_rwhvcf->FrameConnectorForTesting(), context.connector);
+
+  // Clean up.
+  context.connector->SetView(nullptr, false);
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       SameOriginNavigationSetsAllowPaintHolding) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  display::ScreenInfo screen_info;
+  screen_info.display_id = 1;
+  screen_info.device_scale_factor = 1.0f;
+  screen_info.rect = gfx::Rect(800, 600);
+  screen_info.available_rect = gfx::Rect(800, 600);
+  SetScreenInfos(context.connector, display::ScreenInfos(screen_info));
+  SetLocalSurfaceId(context.connector,
+                    viz::LocalSurfaceId(1, base::UnguessableToken::Create()));
+
+  ASSERT_TRUE(embedded_test_server()->Start());
+
+  // Navigate the child to an initial page.
+  GURL url1 = embedded_test_server()->GetURL("a.com", "/title1.html");
+  EXPECT_TRUE(NavigateToURL(context.child_web_contents.get(), url1));
+
+  context.rwhvcf = nullptr;  // Clear raw_ptr to avoid DanglingPtr check.
+
+  // Navigate same-site. The delegate should receive SetFrameSinkId with
+  // allow_paint_holding=true.
+  EXPECT_CALL(delegate,
+              SetFrameSinkId(testing::_, /*allow_paint_holding=*/true))
+      .Times(1);
+
+  GURL url2 = embedded_test_server()->GetURL("a.com", "/title2.html");
+  EXPECT_TRUE(NavigateToURL(context.child_web_contents.get(), url2));
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       CrossOriginNavigationNotAllowPaintHolding) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  display::ScreenInfo screen_info;
+  screen_info.display_id = 1;
+  screen_info.device_scale_factor = 1.0f;
+  screen_info.rect = gfx::Rect(800, 600);
+  screen_info.available_rect = gfx::Rect(800, 600);
+  SetScreenInfos(context.connector, display::ScreenInfos(screen_info));
+  SetLocalSurfaceId(context.connector,
+                    viz::LocalSurfaceId(1, base::UnguessableToken::Create()));
+
+  ASSERT_TRUE(embedded_test_server()->Start());
+
+  // Navigate the child to an initial page.
+  GURL url1 = embedded_test_server()->GetURL("a.com", "/title1.html");
+  EXPECT_TRUE(NavigateToURL(context.child_web_contents.get(), url1));
+
+  context.rwhvcf = nullptr;  // Clear raw_ptr to avoid DanglingPtr check.
+
+  // Navigate cross-site without user interaction. The delegate should receive
+  // SetFrameSinkId with allow_paint_holding=false. See code in
+  // Navigator::DidNavigate() for detailed logic on deciding whether to allow
+  // paint holding for main frame.
+  EXPECT_CALL(delegate,
+              SetFrameSinkId(testing::_, /*allow_paint_holding=*/false))
+      .Times(1);
+
+  GURL url2 = embedded_test_server()->GetURL("b.com", "/title2.html");
+  EXPECT_TRUE(NavigateToURL(context.child_web_contents.get(), url2));
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       PropagateLocalSurfaceId) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  cc::RenderFrameMetadata metadata;
+  metadata.local_surface_id =
+      viz::LocalSurfaceId(1, base::UnguessableToken::Create());
+
+  EXPECT_CALL(delegate,
+              UpdateLocalSurfaceIdFromChild(*metadata.local_surface_id))
+      .Times(1);
+
+  // SurfaceEmbedConnectorImpl inherits from
+  // FrameConnector so we can call
+  // DidUpdateVisualProperties directly.
+  context.connector->DidUpdateVisualProperties(metadata);
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       MultiLevelEmbeddingGetRootRenderWidgetHostView) {
+  MockSurfaceEmbedConnectorDelegate child_delegate;
+  MockSurfaceEmbedConnectorDelegate parent_delegate;
+
+  // Setup Grandparent (Root)
+  WebContents::CreateParams create_params(
+      GetParentWebContents()->GetBrowserContext());
+  std::unique_ptr<WebContents> grandparent_web_contents =
+      WebContents::Create(create_params);
+  WebContentsImpl* grandparent_impl =
+      static_cast<WebContentsImpl*>(grandparent_web_contents.get());
+  EXPECT_TRUE(NavigateToURL(grandparent_impl, GURL("about:blank")));
+
+  // Setup Parent
+  std::unique_ptr<WebContents> parent_web_contents =
+      WebContents::Create(create_params);
+  WebContentsImpl* parent_impl =
+      static_cast<WebContentsImpl*>(parent_web_contents.get());
+  SurfaceEmbedConnector::Attach(
+      parent_impl, grandparent_impl->GetPrimaryMainFrame(), &parent_delegate);
+
+  // Setup Child
+  std::unique_ptr<WebContents> child_web_contents =
+      WebContents::Create(create_params);
+  WebContentsImpl* child_impl =
+      static_cast<WebContentsImpl*>(child_web_contents.get());
+  EXPECT_TRUE(NavigateToURL(parent_impl, GURL("about:blank")));
+  SurfaceEmbedConnector::Attach(child_impl, parent_impl->GetPrimaryMainFrame(),
+                                &child_delegate);
+  auto* child_connector = static_cast<SurfaceEmbedConnectorImpl*>(
+      child_impl->GetSurfaceEmbedConnector());
+
+  // Verify that the child's root render widget host view is the grandparent's
+  EXPECT_NE(grandparent_impl->GetRenderWidgetHostView(), nullptr);
+  EXPECT_EQ(child_connector->GetRootRenderWidgetHostView(),
+            grandparent_impl->GetRenderWidgetHostView());
+  EXPECT_EQ(child_connector->GetParentRenderWidgetHostView(),
+            parent_impl->GetRenderWidgetHostView());
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       HiddenPluginCanBeCaptured) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+
+  // Use shell()->web_contents() as parent since it is attached to a window and
+  // has a compositor.
+  auto* parent_impl = GetParentWebContents();
+  EXPECT_TRUE(NavigateToURL(parent_impl, GURL("about:blank")));
+
+  WebContents::CreateParams create_params(parent_impl->GetBrowserContext());
+  auto child_web_contents = WebContents::Create(create_params);
+  auto* child_impl = static_cast<WebContentsImpl*>(child_web_contents.get());
+
+  SurfaceEmbedConnector::Attach(child_impl, parent_impl->GetPrimaryMainFrame(),
+                                &delegate);
+  auto* connector = static_cast<SurfaceEmbedConnectorImpl*>(
+      child_impl->GetSurfaceEmbedConnector());
+  auto* rwhvcf = static_cast<RenderWidgetHostViewChildFrame*>(
+      child_impl->GetRenderWidgetHostView());
+
+  connector->SetView(rwhvcf, false);
+
+  // We need to wait for the surface ID to be valid.
+  blink::FrameVisualProperties visual_properties;
+  display::ScreenInfo screen_info;
+  screen_info.device_scale_factor = 2.0f;
+  visual_properties.screen_infos = display::ScreenInfos(screen_info);
+  visual_properties.local_surface_id =
+      viz::LocalSurfaceId(1, base::UnguessableToken::CreateForTesting(2, 3));
+  connector->SynchronizeVisualProperties(visual_properties, false);
+
+  // Ensure the plugin is hidden.
+  connector->OnVisibilityChanged(blink::mojom::FrameVisibility::kNotRendered);
+
+  // Increment the capturer count, which should keep the surface alive.
+  auto capturer = child_impl->IncrementCapturerCount(
+      gfx::Size(), /*stay_hidden=*/true, /*stay_awake=*/true,
+      /*is_activity=*/true);
+
+  // Attempt to take a screenshot. It should not fail with kNotImplemented.
+  // It may still fail for other reasons depending on test harness
+  // initialization, but it will have bypassed the IsSurfaceAvailableForCopy
+  // check.
+  base::test::TestFuture<const content::CopyFromSurfaceResult&> future;
+  child_impl->GetRenderWidgetHostView()->CopyFromSurface(
+      gfx::Rect(), gfx::Size(), base::Milliseconds(1), future.GetCallback());
+
+  // We expect it either to succeed, or fail with a different error (like
+  // kTimeout or kFrameGone), but definitely NOT kNotImplemented which is
+  // returned when IsSurfaceAvailableForCopy is false.
+  if (!future.Get().has_value()) {
+    EXPECT_NE(future.Get().error(), CopyFromSurfaceError::kNotImplemented);
+  }
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       HideSetsKeepSurfaceAliveFalse) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  context.rwhvcf->Hide();
+  EXPECT_FALSE(HasKeepSurfaceAlive(context.connector.get()));
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       ResizeIgnoredForEmbedded) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+  auto* child_impl =
+      static_cast<WebContentsImpl*>(context.child_web_contents.get());
+
+  // Navigate the child to ensure it has a RenderFrame and a view.
+  EXPECT_TRUE(
+      NavigateToURL(context.child_web_contents.get(), GURL("about:blank")));
+  // Re-fetch rwhvcf after navigation as it might have changed.
+  context.rwhvcf = static_cast<RenderWidgetHostViewChildFrame*>(
+      child_impl->GetRenderWidgetHostView());
+  ASSERT_TRUE(context.rwhvcf);
+  ASSERT_EQ(context.rwhvcf->FrameConnectorForTesting(),
+            context.connector.get());
+
+  // Initialize screen_infos_ to ensure a valid device scale factor.
+  display::ScreenInfo screen_info;
+  screen_info.device_scale_factor = 1.0f;
+  SetScreenInfos(context.connector, display::ScreenInfos(screen_info));
+
+  // Set an initial size via the connector (the "correct" way for embedded).
+  gfx::Rect initial_bounds(0, 0, 100, 100);
+  context.connector->SetRectInParentView(initial_bounds);
+  context.connector->SetLocalFrameSize(initial_bounds.size());
+  EXPECT_EQ(initial_bounds, context.connector->GetRectInParentViewInDip());
+  EXPECT_EQ(initial_bounds.size(), context.rwhvcf->GetViewBounds().size());
+
+  // Attempt to resize via WebContents::Resize (the "ignored" way for embedded).
+  gfx::Rect ignored_bounds(10, 10, 200, 200);
+  child_impl->Resize(ignored_bounds);
+
+  // The size should remain unchanged.
+  EXPECT_EQ(initial_bounds.size(), context.rwhvcf->GetViewBounds().size());
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       KeepSurfaceAlivePersistsAcrossInvalidSurfaceState) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+  auto* connector = context.connector.get();
+
+  // Ensure we start with an invalid surface ID.
+  ASSERT_FALSE(context.rwhvcf->GetCurrentSurfaceId().is_valid());
+
+  // Request to keep surface alive.
+  connector->SetKeepSurfaceAlive(true);
+
+  // The intent should be saved, but we cannot actually keep it alive yet
+  // because the surface ID is invalid.
+  EXPECT_TRUE(connector->IsKeepingAlive());
+  EXPECT_FALSE(HasKeepSurfaceAlive(connector));
+
+  // Now make the surface ID valid by synchronizing visual properties.
+  blink::FrameVisualProperties visual_properties;
+  display::ScreenInfo screen_info;
+  screen_info.device_scale_factor = 1.0f;
+  visual_properties.screen_infos = display::ScreenInfos(screen_info);
+  visual_properties.local_surface_id =
+      viz::LocalSurfaceId(1, base::UnguessableToken::CreateForTesting(2, 3));
+  connector->SynchronizeVisualProperties(visual_properties, false);
+
+  // The surface ID should now be valid.
+  ASSERT_TRUE(context.rwhvcf->GetCurrentSurfaceId().is_valid());
+
+  // The keep-alive should have been automatically refreshed and now be active.
+  EXPECT_TRUE(connector->IsKeepingAlive());
+  EXPECT_TRUE(HasKeepSurfaceAlive(connector));
+}
+
+// Tests that GetFocusedWebContents, GetFocusedFrameTree, GetFocusedFrame,
+// ContainsOrIsFocusedWebContents, and GetFocusedRenderWidgetHost return correct
+// values when a child WebContents is embedded via SurfaceEmbed.
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       FocusBehaviorWithSurfaceEmbed) {
+  MockSurfaceEmbedConnectorDelegate connector_delegate;
+
+  // Use shell's WebContents as the parent (has proper view and focused frame).
+  WebContentsImpl* parent_impl = GetParentWebContents();
+  ASSERT_TRUE(embedded_test_server()->Start());
+  ASSERT_TRUE(NavigateToURL(parent_impl,
+                            embedded_test_server()->GetURL("/title1.html")));
+  // Wait for the focused frame to be set after navigation.
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return parent_impl->GetFocusedFrame() != nullptr; }));
+
+  WebContents::CreateParams create_params(parent_impl->GetBrowserContext());
+  std::unique_ptr<WebContents> child_wc = WebContents::Create(create_params);
+  auto* child_impl = static_cast<WebContentsImpl*>(child_wc.get());
+
+  SurfaceEmbedConnector::Attach(child_impl, parent_impl->GetPrimaryMainFrame(),
+                                &connector_delegate);
+
+  RenderWidgetHostImpl* parent_main_rwh =
+      parent_impl->GetPrimaryMainFrame()->GetRenderWidgetHost();
+  RenderWidgetHostImpl* child_rwh =
+      child_impl->GetPrimaryMainFrame()->GetRenderWidgetHost();
+
+  // Initially, focus is on the parent. The child does NOT contain focus.
+  EXPECT_FALSE(child_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_EQ(nullptr, child_impl->GetFocusedWebContents());
+  EXPECT_EQ(nullptr, child_impl->GetFocusedFrameTree());
+  EXPECT_EQ(nullptr, child_impl->GetFocusedFrame());
+  EXPECT_EQ(nullptr, child_impl->GetFocusedRenderWidgetHost(child_rwh));
+
+  // The parent should report itself as focused.
+  EXPECT_TRUE(parent_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_EQ(parent_impl, parent_impl->GetFocusedWebContents());
+  EXPECT_EQ(&parent_impl->GetPrimaryFrameTree(),
+            parent_impl->GetFocusedFrameTree());
+  EXPECT_EQ(parent_impl->GetPrimaryMainFrame(), parent_impl->GetFocusedFrame());
+  EXPECT_EQ(parent_main_rwh,
+            parent_impl->GetFocusedRenderWidgetHost(parent_main_rwh));
+
+  // Move focus to the child.
+  child_impl->SetAsFocusedWebContentsIfNecessary();
+
+  // Wait for async focus propagation.
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return child_impl->GetFocusedFrame() != nullptr; }));
+
+  EXPECT_TRUE(child_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_EQ(child_impl, child_impl->GetFocusedWebContents());
+  EXPECT_EQ(&child_impl->GetPrimaryFrameTree(),
+            child_impl->GetFocusedFrameTree());
+  EXPECT_EQ(child_impl->GetPrimaryMainFrame(), child_impl->GetFocusedFrame());
+  EXPECT_EQ(child_rwh, child_impl->GetFocusedRenderWidgetHost(child_rwh));
+
+  // The parent should report the child as focused.
+  EXPECT_TRUE(parent_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_EQ(child_impl, parent_impl->GetFocusedWebContents());
+  EXPECT_EQ(&child_impl->GetPrimaryFrameTree(),
+            parent_impl->GetFocusedFrameTree());
+  EXPECT_EQ(child_impl->GetPrimaryMainFrame(), parent_impl->GetFocusedFrame());
+  EXPECT_EQ(child_rwh,
+            parent_impl->GetFocusedRenderWidgetHost(parent_main_rwh));
+
+  // Move focus back to the parent.
+  parent_impl->SetAsFocusedWebContentsIfNecessary();
+
+  // The child should no longer be focused.
+  EXPECT_FALSE(child_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_EQ(nullptr, child_impl->GetFocusedWebContents());
+  EXPECT_EQ(nullptr, child_impl->GetFocusedFrameTree());
+  EXPECT_EQ(nullptr, child_impl->GetFocusedFrame());
+  EXPECT_EQ(nullptr, child_impl->GetFocusedRenderWidgetHost(child_rwh));
+
+  // The parent should be focused again.
+  EXPECT_TRUE(parent_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_EQ(parent_impl, parent_impl->GetFocusedWebContents());
+  EXPECT_EQ(&parent_impl->GetPrimaryFrameTree(),
+            parent_impl->GetFocusedFrameTree());
+  EXPECT_EQ(parent_impl->GetPrimaryMainFrame(), parent_impl->GetFocusedFrame());
+  EXPECT_EQ(parent_main_rwh,
+            parent_impl->GetFocusedRenderWidgetHost(parent_main_rwh));
+}
+
+// Tests focus behavior with multi-level surface embed nesting:
+// grandparent -> parent -> child. Uses FocusOwningWebContents() to move focus
+// and verifies GetFocusedWebContents, GetFocusedFrame,
+// ContainsOrIsFocusedWebContents, and GetFocusedRenderWidgetHost at each level.
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       FocusBehaviorMultiLevelSurfaceEmbed) {
+  MockSurfaceEmbedConnectorDelegate child_connector_delegate;
+  MockSurfaceEmbedConnectorDelegate parent_connector_delegate;
+
+  // Use shell's WebContents as the grandparent (root, has proper view).
+  WebContentsImpl* grandparent_impl = GetParentWebContents();
+  ASSERT_TRUE(embedded_test_server()->Start());
+  ASSERT_TRUE(NavigateToURL(grandparent_impl,
+                            embedded_test_server()->GetURL("/title1.html")));
+  // Wait for the focused frame to be set after navigation.
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return grandparent_impl->GetFocusedFrame() != nullptr; }));
+
+  WebContents::CreateParams create_params(
+      grandparent_impl->GetBrowserContext());
+  std::unique_ptr<WebContents> parent_wc = WebContents::Create(create_params);
+  auto* parent_impl = static_cast<WebContentsImpl*>(parent_wc.get());
+  ASSERT_TRUE(NavigateToURL(parent_impl, GURL("about:blank")));
+  SurfaceEmbedConnector::Attach(parent_impl,
+                                grandparent_impl->GetPrimaryMainFrame(),
+                                &parent_connector_delegate);
+
+  std::unique_ptr<WebContents> child_wc = WebContents::Create(create_params);
+  auto* child_impl = static_cast<WebContentsImpl*>(child_wc.get());
+  SurfaceEmbedConnector::Attach(child_impl, parent_impl->GetPrimaryMainFrame(),
+                                &child_connector_delegate);
+
+  RenderWidgetHostImpl* grandparent_rwh =
+      grandparent_impl->GetPrimaryMainFrame()->GetRenderWidgetHost();
+  RenderWidgetHostImpl* parent_rwh =
+      parent_impl->GetPrimaryMainFrame()->GetRenderWidgetHost();
+  RenderWidgetHostImpl* child_rwh =
+      child_impl->GetPrimaryMainFrame()->GetRenderWidgetHost();
+
+  // Initially grandparent is focused. Parent and child should return nullptr.
+  EXPECT_TRUE(grandparent_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_FALSE(parent_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_FALSE(child_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_EQ(grandparent_impl, grandparent_impl->GetFocusedWebContents());
+  EXPECT_EQ(nullptr, parent_impl->GetFocusedWebContents());
+  EXPECT_EQ(nullptr, child_impl->GetFocusedWebContents());
+  EXPECT_EQ(grandparent_impl->GetPrimaryMainFrame(),
+            grandparent_impl->GetFocusedFrame());
+  EXPECT_EQ(nullptr, parent_impl->GetFocusedFrame());
+  EXPECT_EQ(nullptr, child_impl->GetFocusedFrame());
+  EXPECT_EQ(grandparent_rwh,
+            grandparent_impl->GetFocusedRenderWidgetHost(grandparent_rwh));
+  EXPECT_EQ(nullptr, parent_impl->GetFocusedRenderWidgetHost(parent_rwh));
+  EXPECT_EQ(nullptr, child_impl->GetFocusedRenderWidgetHost(child_rwh));
+
+  // Focus the child using FocusOwningWebContents.
+  child_impl->FocusOwningWebContents(child_rwh);
+
+  // Wait for async focus propagation.
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return child_impl->GetFocusedFrame() != nullptr; }));
+
+  EXPECT_TRUE(grandparent_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_TRUE(parent_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_TRUE(child_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_EQ(child_impl, grandparent_impl->GetFocusedWebContents());
+  EXPECT_EQ(child_impl, parent_impl->GetFocusedWebContents());
+  EXPECT_EQ(child_impl, child_impl->GetFocusedWebContents());
+  EXPECT_EQ(child_impl->GetPrimaryMainFrame(),
+            grandparent_impl->GetFocusedFrame());
+  EXPECT_EQ(child_impl->GetPrimaryMainFrame(), parent_impl->GetFocusedFrame());
+  EXPECT_EQ(child_impl->GetPrimaryMainFrame(), child_impl->GetFocusedFrame());
+  EXPECT_EQ(child_rwh,
+            grandparent_impl->GetFocusedRenderWidgetHost(grandparent_rwh));
+  EXPECT_EQ(child_rwh, parent_impl->GetFocusedRenderWidgetHost(parent_rwh));
+  EXPECT_EQ(child_rwh, child_impl->GetFocusedRenderWidgetHost(child_rwh));
+
+  // Focus the parent (intermediate level).
+  parent_impl->FocusOwningWebContents(parent_rwh);
+
+  // Wait for async focus propagation.
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return parent_impl->GetFocusedFrame() != nullptr; }));
+
+  EXPECT_TRUE(grandparent_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_TRUE(parent_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_FALSE(child_impl->ContainsOrIsFocusedWebContents());
+  EXPECT_EQ(parent_impl, grandparent_impl->GetFocusedWebContents());
+  EXPECT_EQ(parent_impl, parent_impl->GetFocusedWebContents());
+  EXPECT_EQ(nullptr, child_impl->GetFocusedWebContents());
+  EXPECT_EQ(parent_impl->GetPrimaryMainFrame(),
+            grandparent_impl->GetFocusedFrame());
+  EXPECT_EQ(parent_impl->GetPrimaryMainFrame(), parent_impl->GetFocusedFrame());
+  EXPECT_EQ(nullptr, child_impl->GetFocusedFrame());
+  EXPECT_EQ(parent_rwh,
+            grandparent_impl->GetFocusedRenderWidgetHost(grandparent_rwh));
+  EXPECT_EQ(parent_rwh, parent_impl->GetFocusedRenderWidgetHost(parent_rwh));
+  EXPECT_EQ(nullptr, child_impl->GetFocusedRenderWidgetHost(child_rwh));
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest, UpdateCursor) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  // Ensure the view is set.
+  if (!GetView(context.connector.get())) {
+    context.connector->SetView(context.rwhvcf, false);
+  }
+  ASSERT_TRUE(GetView(context.connector.get()));
+
+  RenderWidgetHostViewBase* root_view =
+      context.connector->GetRootRenderWidgetHostView();
+  ASSERT_TRUE(root_view);
+
+  input::CursorManager* cursor_manager = root_view->GetCursorManager();
+
+  // Verify that updating the cursor works.
+  context.connector->UpdateCursor(ui::Cursor(ui::mojom::CursorType::kHand));
+
+  if (cursor_manager) {
+    ui::Cursor cursor;
+    EXPECT_TRUE(cursor_manager->GetCursorForTesting(
+        GetView(context.connector.get()), cursor));
+    EXPECT_EQ(ui::mojom::CursorType::kHand, cursor.type());
+  }
+}
+
+class MockPointerLockWebContentsDelegate : public WebContentsDelegate {
+ public:
+  MockPointerLockWebContentsDelegate() = default;
+  ~MockPointerLockWebContentsDelegate() override = default;
+
+  void RequestPointerLock(WebContents* web_contents,
+                          bool user_gesture,
+                          bool last_unlocked_by_target) override {
+    web_contents->GotResponseToPointerLockRequest(
+        blink::mojom::PointerLockResult::kSuccess);
+  }
+
+  void LostPointerLock() override {}
+};
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest, PointerLock) {
+  InstallCreateHooksForPointerLockBrowserTests();
+
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  WebContentsImpl* parent_web_contents_impl =
+      static_cast<WebContentsImpl*>(context.parent_web_contents.get());
+  WebContentsImpl* child_web_contents_impl =
+      static_cast<WebContentsImpl*>(context.child_web_contents.get());
+
+  MockPointerLockWebContentsDelegate parent_delegate;
+  parent_web_contents_impl->SetDelegate(&parent_delegate);
+
+  EXPECT_TRUE(NavigateToURL(child_web_contents_impl, GURL("about:blank")));
+
+  child_web_contents_impl->Focus();
+
+  RenderWidgetHostImpl* child_widget =
+      child_web_contents_impl->GetPrimaryMainFrame()->GetRenderWidgetHost();
+
+  // Initially no pointer lock.
+  EXPECT_FALSE(parent_web_contents_impl->mouse_lock_widget_for_testing());
+  EXPECT_FALSE(child_web_contents_impl->mouse_lock_widget_for_testing());
+
+  EXPECT_TRUE(
+      ExecJs(child_web_contents_impl, "document.body.requestPointerLock()"));
+
+  // Since we mocked the delegate to succeed, it should be locked now that we
+  // requested pointer lock from child JS.
+  EXPECT_EQ(child_widget,
+            parent_web_contents_impl->mouse_lock_widget_for_testing());
+  EXPECT_EQ(child_widget,
+            child_web_contents_impl->mouse_lock_widget_for_testing());
+
+  // Unlock.
+  EXPECT_TRUE(ExecJs(child_web_contents_impl, "document.exitPointerLock()"));
+
+  EXPECT_FALSE(parent_web_contents_impl->mouse_lock_widget_for_testing());
+  EXPECT_FALSE(child_web_contents_impl->mouse_lock_widget_for_testing());
+
+  parent_web_contents_impl->SetDelegate(nullptr);
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       PointerLockDestruction) {
+  InstallCreateHooksForPointerLockBrowserTests();
+
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  WebContentsImpl* parent_web_contents_impl =
+      static_cast<WebContentsImpl*>(context.parent_web_contents.get());
+  WebContentsImpl* child_web_contents_impl =
+      static_cast<WebContentsImpl*>(context.child_web_contents.get());
+
+  MockPointerLockWebContentsDelegate parent_delegate;
+  parent_web_contents_impl->SetDelegate(&parent_delegate);
+
+  EXPECT_TRUE(NavigateToURL(child_web_contents_impl, GURL("about:blank")));
+
+  child_web_contents_impl->Focus();
+
+  RenderWidgetHostImpl* child_widget =
+      child_web_contents_impl->GetPrimaryMainFrame()->GetRenderWidgetHost();
+
+  // Initially no pointer lock.
+  EXPECT_FALSE(parent_web_contents_impl->mouse_lock_widget_for_testing());
+  EXPECT_FALSE(child_web_contents_impl->mouse_lock_widget_for_testing());
+
+  EXPECT_TRUE(
+      ExecJs(child_web_contents_impl, "document.body.requestPointerLock()"));
+
+  // It should be locked.
+  EXPECT_EQ(child_widget,
+            parent_web_contents_impl->mouse_lock_widget_for_testing());
+  EXPECT_EQ(child_widget,
+            child_web_contents_impl->mouse_lock_widget_for_testing());
+
+  // Clear raw_ptrs that will dangle after child destruction.
+  context.connector = nullptr;
+  context.rwhvcf = nullptr;
+
+  // Destroy the child WebContents.
+  context.child_web_contents.reset();
+
+  // Verify that parent WebContents's pointer lock widget is cleared.
+  EXPECT_FALSE(parent_web_contents_impl->mouse_lock_widget_for_testing());
+
+  parent_web_contents_impl->SetDelegate(nullptr);
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       ThrottlingPropagationIPC) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+  auto* connector = context.connector.get();
+
+  ASSERT_TRUE(embedded_test_server()->Start());
+  GURL url = embedded_test_server()->GetURL("a.com", "/title1.html");
+  EXPECT_TRUE(NavigateToURL(context.child_web_contents.get(), url));
+
+  context.rwhvcf = static_cast<RenderWidgetHostViewChildFrame*>(
+      static_cast<WebContentsImpl*>(context.child_web_contents.get())
+          ->GetRenderWidgetHostView());
+  ASSERT_TRUE(context.rwhvcf);
+
+  connector->SetView(context.rwhvcf, /*allow_paint_holding=*/false);
+
+  RenderWidgetHostImpl* child_rwh = context.rwhvcf->host();
+  ASSERT_TRUE(child_rwh);
+
+  mojo::AssociatedRemote<blink::mojom::FrameWidgetHost> blink_frame_widget_host;
+  auto blink_frame_widget_host_receiver =
+      blink_frame_widget_host.BindNewEndpointAndPassDedicatedReceiver();
+  mojo::AssociatedRemote<blink::mojom::FrameWidget> blink_frame_widget;
+  auto blink_frame_widget_receiver =
+      blink_frame_widget.BindNewEndpointAndPassDedicatedReceiver();
+  child_rwh->BindFrameWidgetInterfaces(
+      std::move(blink_frame_widget_host_receiver), blink_frame_widget.Unbind());
+  FakeFrameWidget fake_frame_widget(std::move(blink_frame_widget_receiver));
+
+  EXPECT_FALSE(connector->IsThrottled());
+  EXPECT_FALSE(connector->IsSubtreeThrottled());
+  EXPECT_FALSE(connector->IsDisplayLocked());
+
+  connector->UpdateRenderThrottlingStatus(/*is_throttled=*/true,
+                                          /*subtree_throttled=*/false,
+                                          /*display_locked=*/true);
+
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return fake_frame_widget.IsThrottled() == true &&
+           fake_frame_widget.IsSubtreeThrottled() == false &&
+           fake_frame_widget.IsDisplayLocked() == true;
+  }));
+
+  EXPECT_TRUE(connector->IsThrottled());
+  EXPECT_FALSE(connector->IsSubtreeThrottled());
+  EXPECT_TRUE(connector->IsDisplayLocked());
+
+  EXPECT_EQ(true, fake_frame_widget.IsThrottled());
+  EXPECT_EQ(false, fake_frame_widget.IsSubtreeThrottled());
+  EXPECT_EQ(true, fake_frame_widget.IsDisplayLocked());
+
+  connector->UpdateRenderThrottlingStatus(/*is_throttled=*/false,
+                                          /*subtree_throttled=*/true,
+                                          /*display_locked=*/false);
+
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return fake_frame_widget.IsThrottled() == false &&
+           fake_frame_widget.IsSubtreeThrottled() == true &&
+           fake_frame_widget.IsDisplayLocked() == false;
+  }));
+
+  EXPECT_FALSE(connector->IsThrottled());
+  EXPECT_TRUE(connector->IsSubtreeThrottled());
+  EXPECT_FALSE(connector->IsDisplayLocked());
+
+  EXPECT_EQ(false, fake_frame_widget.IsThrottled());
+  EXPECT_EQ(true, fake_frame_widget.IsSubtreeThrottled());
+  EXPECT_EQ(false, fake_frame_widget.IsDisplayLocked());
+}
+
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       SetParentAccessibilityInfoStitchesTrees) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  // The child still needs to navigate to obtain a valid AX tree ID.
+  ASSERT_TRUE(
+      NavigateToURL(context.child_web_contents.get(), GURL("about:blank")));
+
+  auto* parent_rfh = context.parent_web_contents->GetPrimaryMainFrame();
+  auto* child_rfh = static_cast<RenderFrameHostImpl*>(
+      context.child_web_contents->GetPrimaryMainFrame());
+
+  auto parent_ax_tree_id = parent_rfh->GetAXTreeID();
+  ASSERT_NE(parent_ax_tree_id, ui::AXTreeIDUnknown());
+
+  EXPECT_EQ(GetEmbedParentAXTreeID(child_rfh), ui::AXTreeIDUnknown());
+
+  // Node ID 1 is used as a placeholder container node; the action will be
+  // dispatched to the parent frame regardless of whether the node exists.
+  context.connector->SetParentAccessibilityInfo(1, parent_ax_tree_id);
+
+  EXPECT_EQ(GetEmbedParentAXTreeID(child_rfh), parent_ax_tree_id);
+}
+
+// Verifies that accessibility stitching is set up correctly when
+// SurfaceEmbedConnector::Attach() happens after both the parent and child
+// WebContents have already navigated and have valid AX tree IDs.
+IN_PROC_BROWSER_TEST_F(
+    SurfaceEmbedConnectorImplBrowserTest,
+    SetParentAccessibilityInfoStitchesTreesWhenChildNavigatedBeforeAttach) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context =
+      SetupConnectorTest(&delegate, /*navigate_child_before_attach=*/true);
+
+  auto* parent_rfh = context.parent_web_contents->GetPrimaryMainFrame();
+  auto* child_rfh = static_cast<RenderFrameHostImpl*>(
+      context.child_web_contents->GetPrimaryMainFrame());
+
+  // Both parent and child were navigated before Attach(), so both already have
+  // valid AX tree IDs.
+  auto parent_ax_tree_id = parent_rfh->GetAXTreeID();
+  ASSERT_NE(parent_ax_tree_id, ui::AXTreeIDUnknown());
+  ASSERT_NE(child_rfh->GetAXTreeID(), ui::AXTreeIDUnknown());
+
+  EXPECT_EQ(GetEmbedParentAXTreeID(child_rfh), ui::AXTreeIDUnknown());
+
+  // Because the child already has a valid AX tree ID, stitching completes as
+  // soon as the parent accessibility info is provided.
+  context.connector->SetParentAccessibilityInfo(1, parent_ax_tree_id);
+
+  EXPECT_EQ(GetEmbedParentAXTreeID(child_rfh), parent_ax_tree_id);
+}
+
+IN_PROC_BROWSER_TEST_F(
+    SurfaceEmbedConnectorImplBrowserTest,
+    SetParentAccessibilityInfoCachedUntilChildTreeAvailable) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  // The child must NOT be navigated so that it still has AXTreeIDUnknown().
+
+  auto* parent_rfh = context.parent_web_contents->GetPrimaryMainFrame();
+  auto parent_ax_tree_id = parent_rfh->GetAXTreeID();
+  ASSERT_NE(parent_ax_tree_id, ui::AXTreeIDUnknown());
+
+  // The child has not been navigated, so its AX tree ID is still unknown.
+  ASSERT_EQ(context.child_web_contents->GetPrimaryMainFrame()->GetAXTreeID(),
+            ui::AXTreeIDUnknown());
+
+  // The connector stores the values but UpdateAccessibilityTree() returns early
+  // because the child AX tree ID is unknown.
+  context.connector->SetParentAccessibilityInfo(1, parent_ax_tree_id);
+
+  auto* child_rfh = static_cast<RenderFrameHostImpl*>(
+      context.child_web_contents->GetPrimaryMainFrame());
+  EXPECT_EQ(GetEmbedParentAXTreeID(child_rfh), ui::AXTreeIDUnknown());
+
+  // Navigate the child. AXTreeIDForMainFrameHasChanged() fires and completes
+  // the stitching.
+  ASSERT_TRUE(
+      NavigateToURL(context.child_web_contents.get(), GURL("about:blank")));
+
+  auto* new_child_rfh = static_cast<RenderFrameHostImpl*>(
+      context.child_web_contents->GetPrimaryMainFrame());
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return GetEmbedParentAXTreeID(new_child_rfh) == parent_ax_tree_id;
+  }));
+}
+
+// Verifies that SetParentAccessibilityInfo() stitches the trees correctly even
+// when the parent WebContents has full accessibility mode enabled, exercising
+// the AccessibilityPerformAction(kStitchChildTree) dispatch to a live AX tree.
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       SetParentAccessibilityInfoWithAccessibilityEnabled) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  ASSERT_TRUE(
+      NavigateToURL(context.child_web_contents.get(), GURL("about:blank")));
+
+  // Enable full accessibility on the parent WebContents so that the parent
+  // frame owns a live BrowserAccessibilityManager when kStitchChildTree is
+  // dispatched.
+  auto* parent_wci =
+      static_cast<WebContentsImpl*>(context.parent_web_contents.get());
+  parent_wci->SetAccessibilityMode(ui::kAXModeComplete);
+
+  auto* parent_rfh = context.parent_web_contents->GetPrimaryMainFrame();
+  auto parent_ax_tree_id = parent_rfh->GetAXTreeID();
+  ASSERT_NE(parent_ax_tree_id, ui::AXTreeIDUnknown());
+
+  auto* child_rfh = static_cast<RenderFrameHostImpl*>(
+      context.child_web_contents->GetPrimaryMainFrame());
+  EXPECT_EQ(GetEmbedParentAXTreeID(child_rfh), ui::AXTreeIDUnknown());
+
+  // Stitch with a live AX tree backing the parent. The action is dispatched
+  // to the parent frame's accessibility handler without crashing.
+  context.connector->SetParentAccessibilityInfo(1, parent_ax_tree_id);
+
+  EXPECT_EQ(GetEmbedParentAXTreeID(child_rfh), parent_ax_tree_id);
+}
+
+// Verifies the "late accessibility enable" path: accessibility mode is enabled
+// on the parent WebContents only after the connector is already attached and
+// the trees have been stitched, confirming the existing relationship is
+// unaffected.
+IN_PROC_BROWSER_TEST_F(
+    SurfaceEmbedConnectorImplBrowserTest,
+    AccessibilityEnabledAfterStitchingDoesNotBreakRelationship) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  ASSERT_TRUE(
+      NavigateToURL(context.child_web_contents.get(), GURL("about:blank")));
+
+  auto* parent_rfh = context.parent_web_contents->GetPrimaryMainFrame();
+  auto parent_ax_tree_id = parent_rfh->GetAXTreeID();
+  ASSERT_NE(parent_ax_tree_id, ui::AXTreeIDUnknown());
+
+  // Stitch the trees before accessibility is enabled.
+  context.connector->SetParentAccessibilityInfo(1, parent_ax_tree_id);
+
+  auto* child_rfh = static_cast<RenderFrameHostImpl*>(
+      context.child_web_contents->GetPrimaryMainFrame());
+  ASSERT_EQ(GetEmbedParentAXTreeID(child_rfh), parent_ax_tree_id);
+
+  // Enable full accessibility. AXTreeIDForMainFrameHasChanged() re-runs
+  // UpdateAccessibilityTree(); the embed parent must remain the same.
+  auto* parent_wci =
+      static_cast<WebContentsImpl*>(context.parent_web_contents.get());
+  parent_wci->SetAccessibilityMode(ui::kAXModeComplete);
+
+  EXPECT_EQ(GetEmbedParentAXTreeID(child_rfh), parent_ax_tree_id);
+}
+
+// Verifies that calling SetParentAccessibilityInfo() with the same values a
+// second time is a no-op and does not trigger a redundant
+// UpdateAccessibilityTree() (i.e. no extra AccessibilityPerformAction call).
+// This guards against a compromised renderer flooding the browser-side handler.
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       SetParentAccessibilityInfoDeduplicatesIdenticalValues) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  ASSERT_TRUE(
+      NavigateToURL(context.child_web_contents.get(), GURL("about:blank")));
+
+  auto* parent_rfh = context.parent_web_contents->GetPrimaryMainFrame();
+  auto parent_ax_tree_id = parent_rfh->GetAXTreeID();
+  ASSERT_NE(parent_ax_tree_id, ui::AXTreeIDUnknown());
+
+  // First call stitches the trees.
+  context.connector->SetParentAccessibilityInfo(1, parent_ax_tree_id);
+
+  auto* child_rfh = static_cast<RenderFrameHostImpl*>(
+      context.child_web_contents->GetPrimaryMainFrame());
+  ASSERT_EQ(GetEmbedParentAXTreeID(child_rfh), parent_ax_tree_id);
+
+  // Manually clear the relationship so we can detect a second stitch attempt.
+  ClearEmbedParentAXTreeID(context.connector);
+  ASSERT_EQ(GetEmbedParentAXTreeID(child_rfh), ui::AXTreeIDUnknown());
+
+  // Second call with identical values is a no-op (deduplication).
+  context.connector->SetParentAccessibilityInfo(1, parent_ax_tree_id);
+
+  EXPECT_EQ(GetEmbedParentAXTreeID(child_rfh), ui::AXTreeIDUnknown());
+}
+
+// Verifies AccessibilityIsRootFrame() is correct for two-level nested embeds
+// (A contains B contains C). B and C are top-level WebContents with no
+// frame-tree parent, so without the embed_parent_ax_tree_id_ check they would
+// incorrectly report themselves as the AX root.
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       NestedEmbedAccessibilityIsRootFrameIsCorrect) {
+  MockSurfaceEmbedConnectorDelegate delegate_a_b;
+  auto context_a_b = SetupConnectorTest(&delegate_a_b);
+
+  ASSERT_TRUE(
+      NavigateToURL(context_a_b.child_web_contents.get(), GURL("about:blank")));
+
+  auto* rfh_a = static_cast<RenderFrameHostImpl*>(
+      context_a_b.parent_web_contents->GetPrimaryMainFrame());
+  auto* rfh_b = static_cast<RenderFrameHostImpl*>(
+      context_a_b.child_web_contents->GetPrimaryMainFrame());
+
+  auto ax_tree_id_a = rfh_a->GetAXTreeID();
+  ASSERT_NE(ax_tree_id_a, ui::AXTreeIDUnknown());
+
+  // Node ID 1 is used as a placeholder container node; the action will be
+  // dispatched to the parent frame regardless of whether the node exists.
+  context_a_b.connector->SetParentAccessibilityInfo(1, ax_tree_id_a);
+  ASSERT_EQ(GetEmbedParentAXTreeID(rfh_b), ax_tree_id_a);
+
+  // Attach a second level: C is surface-embedded inside B.
+  MockSurfaceEmbedConnectorDelegate delegate_b_c;
+  WebContents::CreateParams create_params(
+      context_a_b.child_web_contents->GetBrowserContext());
+  auto child_c_web_contents = WebContents::Create(create_params);
+  SurfaceEmbedConnector::Attach(
+      child_c_web_contents.get(),
+      context_a_b.child_web_contents->GetPrimaryMainFrame(), &delegate_b_c);
+  ASSERT_TRUE(NavigateToURL(child_c_web_contents.get(), GURL("about:blank")));
+
+  auto* connector_b_c = static_cast<SurfaceEmbedConnectorImpl*>(
+      child_c_web_contents->GetSurfaceEmbedConnector());
+  ASSERT_TRUE(connector_b_c);
+
+  auto* rfh_c = static_cast<RenderFrameHostImpl*>(
+      child_c_web_contents->GetPrimaryMainFrame());
+
+  auto ax_tree_id_b = rfh_b->GetAXTreeID();
+  ASSERT_NE(ax_tree_id_b, ui::AXTreeIDUnknown());
+
+  connector_b_c->SetParentAccessibilityInfo(1, ax_tree_id_b);
+  ASSERT_EQ(GetEmbedParentAXTreeID(rfh_c), ax_tree_id_b);
+
+  EXPECT_TRUE(rfh_a->AccessibilityIsRootFrame());
+  EXPECT_FALSE(rfh_b->AccessibilityIsRootFrame());
+  EXPECT_FALSE(rfh_c->AccessibilityIsRootFrame());
+  EXPECT_EQ(GetEmbedParentAXTreeID(rfh_b), ax_tree_id_a);
+  EXPECT_EQ(GetEmbedParentAXTreeID(rfh_c), ax_tree_id_b);
+
+  // After detaching C, its embed parent is cleared and it is a root again.
+  SurfaceEmbedConnector::Detach(child_c_web_contents.get());
+  EXPECT_TRUE(rfh_c->AccessibilityIsRootFrame());
+  EXPECT_EQ(GetEmbedParentAXTreeID(rfh_c), ui::AXTreeIDUnknown());
+}
+
+// Verifies the embed-parent relationship stays consistent across a
+// cross-document navigation (which swaps the child's main RenderFrameHost) and
+// the subsequent teardown of the child, with full accessibility enabled so each
+// frame owns a live BrowserAccessibilityManager. AccessibilityIsRootFrame()
+// must always agree with the manager's cached parent_tree_id.
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       CrossDocumentNavigationWithAccessibilityIsConsistent) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  context.rwhvcf = nullptr;
+
+  ASSERT_TRUE(embedded_test_server()->Start());
+
+  // Enable full accessibility on both WebContents so each frame owns a live
+  // BrowserAccessibilityManager that caches the embed-parent tree id.
+  static_cast<WebContentsImpl*>(context.parent_web_contents.get())
+      ->SetAccessibilityMode(ui::kAXModeComplete);
+  static_cast<WebContentsImpl*>(context.child_web_contents.get())
+      ->SetAccessibilityMode(ui::kAXModeComplete);
+
+  GURL url_a = embedded_test_server()->GetURL("a.com", "/title1.html");
+  ASSERT_TRUE(NavigateToURL(context.child_web_contents.get(), url_a));
+
+  auto* parent_rfh = context.parent_web_contents->GetPrimaryMainFrame();
+  auto parent_ax_tree_id = parent_rfh->GetAXTreeID();
+  ASSERT_NE(parent_ax_tree_id, ui::AXTreeIDUnknown());
+
+  // Stitch the trees so the child main frame reports the parent as its embed AX
+  // parent and is therefore not an AX root.
+  auto* old_child_rfh = static_cast<RenderFrameHostImpl*>(
+      context.child_web_contents->GetPrimaryMainFrame());
+  RenderFrameDeletedObserver old_rfh_deleted_observer(old_child_rfh);
+  context.connector->SetParentAccessibilityInfo(1, parent_ax_tree_id);
+  ASSERT_EQ(GetEmbedParentAXTreeID(old_child_rfh), parent_ax_tree_id);
+  ASSERT_FALSE(old_child_rfh->AccessibilityIsRootFrame());
+
+  // Navigate cross-site so the child's main RenderFrameHost is swapped. The new
+  GURL url_b = embedded_test_server()->GetURL("b.com", "/title1.html");
+  ASSERT_TRUE(NavigateToURL(context.child_web_contents.get(), url_b));
+
+  auto* new_child_rfh = static_cast<RenderFrameHostImpl*>(
+      context.child_web_contents->GetPrimaryMainFrame());
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return GetEmbedParentAXTreeID(new_child_rfh) == parent_ax_tree_id;
+  }));
+  EXPECT_FALSE(new_child_rfh->AccessibilityIsRootFrame());
+
+  // If the outgoing RenderFrameHost was cached rather than deleted, it shares
+  // the connector's re-stitched embed parent and remains a non-root frame.
+  if (!old_rfh_deleted_observer.deleted()) {
+    EXPECT_FALSE(old_child_rfh->AccessibilityIsRootFrame());
+  }
+
+  // Destroy the still-stitched child. The connector is torn down before the
+  // frame tree, so the child's cached AX data and AccessibilityIsRootFrame()
+  // must remain in agreement as the manager is destroyed.
+  context.connector = nullptr;  // Avoid a dangling raw_ptr across the reset.
+  context.child_web_contents.reset();
+}
+
+// Verifies that a detached child does not keep reporting an embed parent, even
+// across a subsequent cross-document navigation that swaps its main
+// RenderFrameHost. Detach() clears the stitch before the connector is freed, so
+// neither the surviving RenderFrameHost nor a newly created one may inherit the
+// stale embedder AX tree id.
+IN_PROC_BROWSER_TEST_F(SurfaceEmbedConnectorImplBrowserTest,
+                       DetachThenNavigateClearsEmbedParent) {
+  MockSurfaceEmbedConnectorDelegate delegate;
+  auto context = SetupConnectorTest(&delegate);
+
+  // Detach() destroys the child frame view, so drop the test's raw_ptr to it.
+  context.rwhvcf = nullptr;
+
+  ASSERT_TRUE(embedded_test_server()->Start());
+
+  // Enable full accessibility on both WebContents so each frame owns a live
+  // BrowserAccessibilityManager that caches the embed-parent tree id.
+  static_cast<WebContentsImpl*>(context.parent_web_contents.get())
+      ->SetAccessibilityMode(ui::kAXModeComplete);
+  static_cast<WebContentsImpl*>(context.child_web_contents.get())
+      ->SetAccessibilityMode(ui::kAXModeComplete);
+
+  GURL url_a = embedded_test_server()->GetURL("a.com", "/title1.html");
+  ASSERT_TRUE(NavigateToURL(context.child_web_contents.get(), url_a));
+
+  auto parent_ax_tree_id =
+      context.parent_web_contents->GetPrimaryMainFrame()->GetAXTreeID();
+  ASSERT_NE(parent_ax_tree_id, ui::AXTreeIDUnknown());
+
+  auto* child_rfh = static_cast<RenderFrameHostImpl*>(
+      context.child_web_contents->GetPrimaryMainFrame());
+  context.connector->SetParentAccessibilityInfo(1, parent_ax_tree_id);
+  // The stitch is established.
+  ASSERT_EQ(GetEmbedParentAXTreeID(child_rfh), parent_ax_tree_id);
+  ASSERT_FALSE(child_rfh->AccessibilityIsRootFrame());
+
+  // Detach. The stitch must be dropped immediately.
+  context.connector = nullptr;  // Freed by Detach().
+  SurfaceEmbedConnector::Detach(context.child_web_contents.get());
+  EXPECT_EQ(GetEmbedParentAXTreeID(child_rfh), ui::AXTreeIDUnknown());
+  EXPECT_TRUE(child_rfh->AccessibilityIsRootFrame());
+
+  // Navigating cross-site swaps the main RenderFrameHost. The replacement must
+  // not resurrect the embed parent from the now-detached connector.
+  GURL url_b = embedded_test_server()->GetURL("b.com", "/title1.html");
+  ASSERT_TRUE(NavigateToURL(context.child_web_contents.get(), url_b));
+
+  auto* new_child_rfh = static_cast<RenderFrameHostImpl*>(
+      context.child_web_contents->GetPrimaryMainFrame());
+  EXPECT_EQ(GetEmbedParentAXTreeID(new_child_rfh), ui::AXTreeIDUnknown());
+  EXPECT_TRUE(new_child_rfh->AccessibilityIsRootFrame());
+  EXPECT_EQ(CachedParentAXTreeID(new_child_rfh), ui::AXTreeIDUnknown());
+}
+
+}  // namespace content

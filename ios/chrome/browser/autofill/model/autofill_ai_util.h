@@ -1,0 +1,70 @@
+// Copyright 2026 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#ifndef IOS_CHROME_BROWSER_AUTOFILL_MODEL_AUTOFILL_AI_UTIL_H_
+#define IOS_CHROME_BROWSER_AUTOFILL_MODEL_AUTOFILL_AI_UTIL_H_
+
+#import <UIKit/UIKit.h>
+
+#import "components/autofill/core/browser/permissions/autofill_ai/autofill_ai_permission_util.h"
+#import "components/autofill/core/browser/suggestions/suggestion.h"
+
+class ProfileIOS;
+
+namespace autofill {
+
+class AutofillClient;
+
+// Returns the country code from the variations service.
+// If the variations service is not available, an empty string is returned.
+const std::string GetCountryCodeFromVariations();
+
+// Returns whether the wallet public pass storage is enabled for the profile.
+bool IsWalletPublicPassStorageEnabled(ProfileIOS* profile);
+
+// Returns YES if the Autofill AI action can be performed for the given profile.
+bool CanPerformAutofillAiAction(
+    ProfileIOS* profile,
+    AutofillAiAction action,
+    std::optional<EntityType> entity_type = std::nullopt);
+
+// Returns whether Ambient Autofill is enabled for the given profile.
+// Required to be called with a non-nil profile.
+bool IsAmbientAutofillEnabled(ProfileIOS* profile);
+
+// Returns whether the Ambient Autofill feature flag is enabled.
+bool IsAmbientAutofillFeatureEnabled();
+
+// Returns whether Autofill order and shipment entities are supported.
+bool IsAutofillShoppingEnabled();
+
+// Returns whether Autofill AI (AtMemory) is enabled.
+bool IsAutofillAtMemoryEnabled();
+
+// Returns whether Autofill AI (AtMemory) Search UI is enabled for the given
+// client.
+bool IsAutofillAtMemorySearchUIEnabled(const AutofillClient* client);
+
+// Returns whether Enhanced Autofill is enabled.
+bool IsEnhancedAutofillEnabled(ProfileIOS* profile);
+
+// Returns the preference name to use for checking the Autofill AI opt-in
+// status.
+const char* GetAutofillAiOptInPreferenceKeyName();
+
+// Returns whether the Personal Context Autofill setting should be shown.
+// Required to be called with a non-nil profile.
+bool ShouldShowPersonalContextAutofillSetting(ProfileIOS* profile);
+
+// Enables or disables Enhanced Autofill.
+void SetEnhancedAutofillEnabled(ProfileIOS* profile, bool enabled);
+
+// Returns an entity base on the guid.
+base::optional_ref<const EntityInstance> GetEntityInstance(
+    ProfileIOS* profile,
+    const Suggestion::Payload& payload);
+
+}  // namespace autofill
+
+#endif  // IOS_CHROME_BROWSER_AUTOFILL_MODEL_AUTOFILL_AI_UTIL_H_

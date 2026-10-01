@@ -1,0 +1,1734 @@
+// Copyright 2013 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+#import "ios/chrome/browser/settings/ui_bundled/settings_navigation_controller.h"
+
+#import "base/apple/foundation_util.h"
+#import "base/check.h"
+#import "base/ios/ios_util.h"
+#import "base/metrics/user_metrics.h"
+#import "base/metrics/user_metrics_action.h"
+#import "base/notreached.h"
+#import "components/autofill/core/browser/data_manager/personal_data_manager.h"
+#import "components/autofill/core/browser/metrics/autofill_settings_metrics.h"
+#import "components/password_manager/core/browser/ui/credential_ui_entry.h"
+#import "components/password_manager/core/browser/ui/password_check_referrer.h"
+#import "components/strings/grit/components_strings.h"
+#import "components/sync/service/sync_service.h"
+#import "ios/chrome/browser/autofill/model/personal_data_manager_factory.h"
+#import "ios/chrome/browser/autofill/ui_bundled/util/autofill_credit_card_util.h"
+#import "ios/chrome/browser/intelligence/features/features.h"
+#import "ios/chrome/browser/keyboard/ui_bundled/UIKeyCommand+Chrome.h"
+#import "ios/chrome/browser/metrics/model/activity_reporter.h"
+#import "ios/chrome/browser/settings/autofill/autofill_and_passwords/coordinator/autofill_and_passwords_coordinator.h"
+#import "ios/chrome/browser/settings/autofill/autofill_and_passwords/coordinator/autofill_settings_coordinator.h"
+#import "ios/chrome/browser/settings/autofill/autofill_and_passwords/coordinator/identity_docs_coordinator.h"
+#import "ios/chrome/browser/settings/autofill/autofill_and_passwords/coordinator/shopping_coordinator.h"
+#import "ios/chrome/browser/settings/autofill/autofill_and_passwords/coordinator/travel_info_coordinator.h"
+#import "ios/chrome/browser/settings/autofill/payments/coordinator/autofill_credit_card_coordinator.h"
+#import "ios/chrome/browser/settings/autofill/payments/coordinator/autofill_credit_card_coordinator_delegate.h"
+#import "ios/chrome/browser/settings/autofill/suggestions_from_gemini/ui/suggestions_from_gemini_help_improve_table_view_controller.h"
+#import "ios/chrome/browser/settings/google_services/coordinator/google_services_settings_coordinator.h"
+#import "ios/chrome/browser/settings/google_services/ui/google_services_settings_view_controller.h"
+#import "ios/chrome/browser/settings/manage_accounts/coordinator/manage_accounts_coordinator.h"
+#import "ios/chrome/browser/settings/manage_accounts/coordinator/manage_accounts_coordinator_delegate.h"
+#import "ios/chrome/browser/settings/manage_accounts/public/manage_accounts_table_view_controller_constants.h"
+#import "ios/chrome/browser/settings/manage_sync/coordinator/manage_sync_settings_coordinator.h"
+#import "ios/chrome/browser/settings/ui_bundled/autofill/autofill_credit_card_edit_table_view_controller.h"
+#import "ios/chrome/browser/settings/ui_bundled/autofill/autofill_credit_card_table_view_controller.h"
+#import "ios/chrome/browser/settings/ui_bundled/autofill/autofill_profile_edit_coordinator.h"
+#import "ios/chrome/browser/settings/ui_bundled/autofill/autofill_profile_table_view_controller.h"
+#import "ios/chrome/browser/settings/ui_bundled/autofill/enhanced_autofill_table_view_controller.h"
+#import "ios/chrome/browser/settings/ui_bundled/bwg/coordinator/gemini_settings_coordinator.h"
+#import "ios/chrome/browser/settings/ui_bundled/content_settings/content_settings_coordinator.h"
+#import "ios/chrome/browser/settings/ui_bundled/content_settings/content_settings_table_view_controller.h"
+#import "ios/chrome/browser/settings/ui_bundled/default_browser/default_browser_settings_table_view_controller.h"
+#import "ios/chrome/browser/settings/ui_bundled/notifications/notifications_coordinator.h"
+#import "ios/chrome/browser/settings/ui_bundled/password/password_details/password_details_coordinator.h"
+#import "ios/chrome/browser/settings/ui_bundled/password/password_details/password_details_coordinator_delegate.h"
+#import "ios/chrome/browser/settings/ui_bundled/password/password_details/password_details_table_view_controller.h"
+#import "ios/chrome/browser/settings/ui_bundled/password/passwords_coordinator.h"
+#import "ios/chrome/browser/settings/ui_bundled/privacy/privacy_coordinator.h"
+#import "ios/chrome/browser/settings/ui_bundled/privacy/privacy_safe_browsing_coordinator.h"
+#import "ios/chrome/browser/settings/ui_bundled/safety_check/safety_check_coordinator.h"
+#import "ios/chrome/browser/settings/ui_bundled/safety_check/safety_check_table_view_controller.h"
+#import "ios/chrome/browser/settings/ui_bundled/search_engine_table_view_controller.h"
+#import "ios/chrome/browser/settings/ui_bundled/settings_navigation_controller_constants.h"
+#import "ios/chrome/browser/settings/ui_bundled/settings_root_view_controlling.h"
+#import "ios/chrome/browser/settings/ui_bundled/settings_table_view_controller.h"
+#import "ios/chrome/browser/settings/ui_bundled/sync/sync_encryption_passphrase_table_view_controller.h"
+#import "ios/chrome/browser/settings/ui_bundled/tabs/inactive_tabs/inactive_tabs_settings_coordinator.h"
+#import "ios/chrome/browser/shared/model/application_context/application_context.h"
+#import "ios/chrome/browser/shared/model/browser/browser.h"
+#import "ios/chrome/browser/shared/model/profile/profile_ios.h"
+#import "ios/chrome/browser/shared/public/commands/browser_commands.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/picture_in_picture_commands.h"
+#import "ios/chrome/browser/shared/public/commands/quick_delete_commands.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/shared/ui/table_view/table_view_utils.h"
+#import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
+#import "ios/chrome/browser/signin/model/authentication_service.h"
+#import "ios/chrome/browser/signin/model/authentication_service_factory.h"
+#import "ios/chrome/browser/sync/model/enterprise_utils.h"
+#import "ios/chrome/common/ui/colors/semantic_color_names.h"
+#import "ios/chrome/common/ui/util/constraints_ui_util.h"
+#import "ios/chrome/grit/ios_strings.h"
+#import "ios/public/provider/chrome/browser/user_feedback/user_feedback_api.h"
+#import "ui/base/l10n/l10n_util_mac.h"
+
+namespace {
+
+// Helper function to configure handlers for child view controllers.
+
+void ConfigureHandlers(id<SettingsRootViewControlling> controller,
+                       CommandDispatcher* dispatcher) {
+  controller.sceneHandler = HandlerForProtocol(dispatcher, SceneCommands);
+  controller.browserHandler = HandlerForProtocol(dispatcher, BrowserCommands);
+  controller.settingsHandler = HandlerForProtocol(dispatcher, SettingsCommands);
+  controller.snackbarHandler = HandlerForProtocol(dispatcher, SnackbarCommands);
+}
+
+}  // namespace
+
+NSString* const kSettingsDoneButtonId = @"kSettingsDoneButtonId";
+
+@interface SettingsNavigationController () <
+    AutofillAndPasswordsCoordinatorDelegate,
+    AutofillCreditCardCoordinatorDelegate,
+    AutofillProfileEditCoordinatorDelegate,
+    AutofillSettingsCoordinatorDelegate,
+    ContentSettingsCoordinatorDelegate,
+    GeminiSettingsCoordinatorDelegate,
+    GoogleServicesSettingsCoordinatorDelegate,
+    IdentityDocsCoordinatorDelegate,
+    ManageAccountsCoordinatorDelegate,
+    ManageSyncSettingsCoordinatorDelegate,
+    NotificationsCoordinatorDelegate,
+    PasswordDetailsCoordinatorDelegate,
+    PasswordsCoordinatorDelegate,
+    PrivacyCoordinatorDelegate,
+    PrivacySafeBrowsingCoordinatorDelegate,
+    SafetyCheckCoordinatorDelegate,
+    ShoppingCoordinatorDelegate,
+    SyncEncryptionPassphraseTableViewControllerPresentationDelegate,
+    TravelInfoCoordinatorDelegate,
+    UIAdaptivePresentationControllerDelegate,
+    UINavigationControllerDelegate>
+
+// Content settings coordinator.
+@property(nonatomic, strong)
+    ContentSettingsCoordinator* contentSettingsCoordinator;
+
+// Google services settings coordinator.
+@property(nonatomic, strong)
+    GoogleServicesSettingsCoordinator* googleServicesSettingsCoordinator;
+
+// Privacy settings coordinator.
+@property(nonatomic, strong) PrivacyCoordinator* privacySettingsCoordinator;
+
+// Sync settings coordinator.
+@property(nonatomic, strong)
+    ManageSyncSettingsCoordinator* manageSyncSettingsCoordinator;
+
+// Saved passwords settings coordinator.
+@property(nonatomic, strong) PasswordsCoordinator* savedPasswordsCoordinator;
+
+// Password details coordinator.
+@property(nonatomic, strong)
+    PasswordDetailsCoordinator* passwordDetailsCoordinator;
+
+// Autofill profile edit coordinator.
+@property(nonatomic, strong)
+    AutofillProfileEditCoordinator* autofillProfileEditCoordinator;
+
+// Autofill credit card coordinator.
+@property(nonatomic, strong)
+    AutofillCreditCardCoordinator* autofillCreditCardCoordinator;
+
+// Gemini settings coordinator.
+@property(nonatomic, strong)
+    GeminiSettingsCoordinator* geminiSettingsCoordinator;
+
+// Safety Check coordinator.
+@property(nonatomic, strong) SafetyCheckCoordinator* safetyCheckCoordinator;
+
+// Privacy Safe Browsing coordinator.
+@property(nonatomic, strong)
+    PrivacySafeBrowsingCoordinator* privacySafeBrowsingCoordinator;
+
+// Coordinator for the inactive tabs settings.
+@property(nonatomic, strong)
+    InactiveTabsSettingsCoordinator* inactiveTabsSettingsCoordinator;
+
+// Coordinator for the Notifications settings.
+@property(nonatomic, strong) NotificationsCoordinator* notificationsCoordinator;
+
+// Accounts coordinator.
+@property(nonatomic, strong)
+    ManageAccountsCoordinator* manageAccountsCoordinator;
+
+// Handler for Snackbar Commands.
+@property(nonatomic, weak) id<SnackbarCommands> snackbarCommandsHandler;
+
+// Current UIViewController being presented by this Navigation Controller.
+// If nil it means the Navigation Controller is not presenting anything, or the
+// VC being presented doesn't conform to
+// UIAdaptivePresentationControllerDelegate.
+@property(nonatomic, weak)
+    UIViewController<UIAdaptivePresentationControllerDelegate>*
+        currentPresentedViewController;
+
+// The SettingsNavigationControllerDelegate for this NavigationController.
+@property(nonatomic, weak) id<SettingsNavigationControllerDelegate>
+    settingsNavigationDelegate;
+
+// The Browser instance this controller is configured with.
+@property(nonatomic, assign) Browser* browser;
+
+// The Sync EncryptionPassphraseTableViewController if it’s displayed.
+@property(nonatomic, strong) SyncEncryptionPassphraseTableViewController*
+    syncEncryptionPassphraseTableViewController;
+
+@end
+
+@implementation SettingsNavigationController {
+  // Boolean to track if reportDismissalUserAction has been called.
+  BOOL _dismissalUserActionReported;
+  // Autofill and Passwords coordinator.
+  AutofillAndPasswordsCoordinator* _autofillAndPasswordsCoordinator;
+  // Coordinator for the Identity Docs settings page.
+  IdentityDocsCoordinator* _identityDocsCoordinator;
+  // Coordinator for the Shopping settings page.
+  ShoppingCoordinator* _shoppingCoordinator;
+  // Coordinator for the Travel Info settings page.
+  TravelInfoCoordinator* _travelInfoCoordinator;
+  // Autofill settings coordinator.
+  AutofillSettingsCoordinator* _autofillSettingsCoordinator;
+  ActivityReporter* _activityReporter;
+}
+
+#pragma mark - SettingsNavigationController methods.
+
++ (instancetype)
+    mainSettingsControllerForBrowser:(Browser*)browser
+                            delegate:(id<SettingsNavigationControllerDelegate>)
+                                         delegate
+            hasDefaultBrowserBlueDot:(BOOL)hasDefaultBrowserBlueDot {
+  return [self mainSettingsControllerForBrowser:browser
+                                       delegate:delegate
+                       hasDefaultBrowserBlueDot:hasDefaultBrowserBlueDot
+                shouldShowLevelUpWalkthroughIPH:NO];
+}
+
++ (instancetype)
+    mainSettingsControllerForBrowser:(Browser*)browser
+                            delegate:(id<SettingsNavigationControllerDelegate>)
+                                         delegate
+            hasDefaultBrowserBlueDot:(BOOL)hasDefaultBrowserBlueDot
+     shouldShowLevelUpWalkthroughIPH:(BOOL)shouldShowLevelUpWalkthroughIPH {
+  SettingsTableViewController* controller = [[SettingsTableViewController alloc]
+               initWithBrowser:browser
+      hasDefaultBrowserBlueDot:hasDefaultBrowserBlueDot];
+  controller.shouldShowLevelUpPaymentMethodsWalkthroughIPH =
+      shouldShowLevelUpWalkthroughIPH;
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:controller
+                             browser:browser
+                            delegate:delegate];
+  [controller navigationItem].rightBarButtonItem =
+      [navigationController doneButton];
+  return navigationController;
+}
+
++ (instancetype)
+           accountsControllerForBrowser:(Browser*)browser
+                     baseViewController:(UIViewController*)baseViewController
+                               delegate:
+                                   (id<SettingsNavigationControllerDelegate>)
+                                       delegate
+              closeSettingsOnAddAccount:(BOOL)closeSettingsOnAddAccount
+                      showSignoutButton:(BOOL)showSignoutButton
+                         showDoneButton:(BOOL)showDoneButton
+    signoutDismissalByParentCoordinator:
+        (BOOL)signoutDismissalByParentCoordinator {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  navigationController.manageAccountsCoordinator =
+      [[ManageAccountsCoordinator alloc]
+          initWithBaseNavigationController:navigationController
+                                   browser:browser
+                 closeSettingsOnAddAccount:closeSettingsOnAddAccount
+                            showDoneButton:showDoneButton];
+  navigationController.manageAccountsCoordinator.delegate =
+      navigationController;
+  navigationController.manageAccountsCoordinator.showSignoutButton =
+      showSignoutButton;
+  [navigationController.manageAccountsCoordinator start];
+  [baseViewController presentViewController:navigationController
+                                   animated:YES
+                                 completion:nil];
+  return navigationController;
+}
+
++ (instancetype)
+    BWGControllerForBrowser:(Browser*)browser
+                   delegate:(id<SettingsNavigationControllerDelegate>)delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showGeminiSettingsPage];
+  return navigationController;
+}
+
++ (instancetype)
+    geminiHelpImproveControllerForBrowser:(Browser*)browser
+                                 delegate:
+                                     (id<SettingsNavigationControllerDelegate>)
+                                         delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showSuggestionsFromGeminiHelpImprove];
+  return navigationController;
+}
+
++ (instancetype)
+    googleServicesControllerForBrowser:(Browser*)browser
+                              delegate:
+                                  (id<SettingsNavigationControllerDelegate>)
+                                      delegate {
+  // GoogleServicesSettings uses a coordinator to be presented, therefore the
+  // view controller is not accessible. Prefer creating a
+  // `SettingsNavigationController` with a nil root view controller and then
+  // use the coordinator to push the GoogleServicesSettings as the first
+  // root view controller.
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showGoogleServices];
+  return navigationController;
+}
+
++ (instancetype)
+    syncSettingsControllerForBrowser:(Browser*)browser
+                            delegate:(id<SettingsNavigationControllerDelegate>)
+                                         delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showSyncServices];
+  return navigationController;
+}
+
++ (instancetype)
+    priceNotificationsControllerForBrowser:(Browser*)browser
+                                  delegate:
+                                      (id<SettingsNavigationControllerDelegate>)
+                                          delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showPriceNotificationsSettings];
+  return navigationController;
+}
+
+// Creates a new SafetyCheckTableViewController and the chrome
+// around it.
++ (instancetype)
+    safetyCheckControllerForBrowser:(Browser*)browser
+                           delegate:(id<SettingsNavigationControllerDelegate>)
+                                        delegate
+                           referrer:(password_manager::PasswordCheckReferrer)
+                                        referrer {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+
+  [navigationController showSafetyCheckAndStartSafetyCheck:referrer];
+
+  return navigationController;
+}
+
++ (instancetype)
+    safeBrowsingControllerForBrowser:(Browser*)browser
+                            delegate:(id<SettingsNavigationControllerDelegate>)
+                                         delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+
+  [navigationController showSafeBrowsing];
+
+  return navigationController;
+}
+
++ (instancetype)
+    syncPassphraseControllerForBrowser:(Browser*)browser
+                              delegate:
+                                  (id<SettingsNavigationControllerDelegate>)
+                                      delegate {
+  SyncEncryptionPassphraseTableViewController* controller =
+      [[SyncEncryptionPassphraseTableViewController alloc]
+          initWithBrowser:browser];
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:controller
+                             browser:browser
+                            delegate:delegate];
+  controller.presentationDelegate = navigationController;
+  navigationController.syncEncryptionPassphraseTableViewController = controller;
+  [controller navigationItem].leftBarButtonItem =
+      [navigationController cancelButton];
+  return navigationController;
+}
+
++ (instancetype)
+    savePasswordsControllerForBrowser:(Browser*)browser
+      shouldShowLevelUpWalkthroughIPH:(BOOL)shouldShowLevelUpWalkthroughIPH
+                             delegate:(id<SettingsNavigationControllerDelegate>)
+                                          delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showSavedPasswordsWithLevelUpWalkthroughIPH:
+                            shouldShowLevelUpWalkthroughIPH];
+
+  return navigationController;
+}
+
++ (instancetype)
+    autofillAndPasswordsControllerForBrowser:(Browser*)browser
+                                    referrer:
+                                        (autofill::autofill_metrics::
+                                             AutofillSettingsReferrer)referrer
+                                    delegate:
+                                        (id<SettingsNavigationControllerDelegate>)
+                                            delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showAutofillAndPasswordsWithReferrer:referrer];
+
+  return navigationController;
+}
+
++ (instancetype)
+    identityDocsControllerForBrowser:(Browser*)browser
+                            referrer:(autofill::autofill_metrics::
+                                          AutofillSettingsReferrer)referrer
+                            delegate:(id<SettingsNavigationControllerDelegate>)
+                                         delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showIdentityDocsWithReferrer:referrer];
+
+  return navigationController;
+}
+
++ (instancetype)
+    travelControllerForBrowser:(Browser*)browser
+                      referrer:
+                          (autofill::autofill_metrics::AutofillSettingsReferrer)
+                              referrer
+                      delegate:
+                          (id<SettingsNavigationControllerDelegate>)delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showTravelWithReferrer:referrer];
+
+  return navigationController;
+}
+
++ (instancetype)
+    shoppingControllerForBrowser:(Browser*)browser
+                        referrer:(autofill::autofill_metrics::
+                                      AutofillSettingsReferrer)referrer
+                        delegate:
+                            (id<SettingsNavigationControllerDelegate>)delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showShoppingWithReferrer:referrer];
+
+  return navigationController;
+}
+
++ (instancetype)
+    passwordManagerSearchControllerForBrowser:(Browser*)browser
+                                     delegate:
+                                         (id<SettingsNavigationControllerDelegate>)
+                                             delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+
+  [navigationController showPasswordManagerSearchPage];
+
+  return navigationController;
+}
+
++ (instancetype)
+    passwordDetailsControllerForBrowser:(Browser*)browser
+                               delegate:
+                                   (id<SettingsNavigationControllerDelegate>)
+                                       delegate
+                             credential:
+                                 (password_manager::CredentialUIEntry)credential
+                             inEditMode:(BOOL)editMode {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showPasswordDetailsForCredential:credential
+                                              inEditMode:editMode];
+
+  return navigationController;
+}
+
++ (instancetype)
+    credentialImportControllerForBrowser:(Browser*)browser
+                                delegate:
+                                    (id<SettingsNavigationControllerDelegate>)
+                                        delegate
+                                    UUID:(NSUUID*)UUID
+    API_AVAILABLE(ios(26.0)) {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showPasswordManagerForCredentialImport:UUID];
+
+  return navigationController;
+}
+
++ (instancetype)
+    privacyControllerForBrowser:(Browser*)browser
+                       delegate:
+                           (id<SettingsNavigationControllerDelegate>)delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showPrivacy];
+  return navigationController;
+}
+
++ (instancetype)
+    addressDetailsControllerForBrowser:(Browser*)browser
+                              delegate:
+                                  (id<SettingsNavigationControllerDelegate>)
+                                      delegate
+                               address:(autofill::AutofillProfile)address
+                            inEditMode:(BOOL)editMode
+                 offerMigrateToAccount:(BOOL)offerMigrateToAccount {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showAddressDetails:std::move(address)
+                                inEditMode:editMode
+                     offerMigrateToAccount:offerMigrateToAccount];
+  return navigationController;
+}
+
++ (instancetype)
+    autofillProfileControllerForBrowser:(Browser*)browser
+                               delegate:
+                                   (id<SettingsNavigationControllerDelegate>)
+                                       delegate {
+  AutofillProfileTableViewController* controller =
+      [[AutofillProfileTableViewController alloc] initWithBrowser:browser];
+
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:controller
+                             browser:browser
+                            delegate:delegate];
+
+  return navigationController;
+}
+
++ (instancetype)
+    autofillCreditCardControllerForBrowser:(Browser*)browser
+                                  delegate:
+                                      (id<SettingsNavigationControllerDelegate>)
+                                          delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+
+  navigationController.autofillCreditCardCoordinator =
+      [[AutofillCreditCardCoordinator alloc]
+          initWithBaseNavigationController:navigationController
+                                   browser:browser];
+  navigationController.autofillCreditCardCoordinator.delegate =
+      navigationController;
+  [navigationController.autofillCreditCardCoordinator start];
+
+  return navigationController;
+}
+
++ (instancetype)
+    autofillCreditCardEditControllerForBrowser:(Browser*)browser
+                                      delegate:
+                                          (id<SettingsNavigationControllerDelegate>)
+                                              delegate
+                                    creditCard:(autofill::CreditCard)creditCard
+                                    inEditMode:(BOOL)editMode {
+  autofill::PersonalDataManager* personalDataManager =
+      autofill::PersonalDataManagerFactory::GetForProfile(
+          browser->GetProfile());
+
+  AutofillCreditCardEditTableViewController* controller =
+      [[AutofillCreditCardEditTableViewController alloc]
+           initWithCreditCard:creditCard
+          personalDataManager:personalDataManager];
+  if (editMode) {
+    // If `creditCard` needs to be edited from the Payments web page, then a
+    // command to open the Payments URL in a new tab should be dispatched. A
+    // SettingsNavigationController shouldn't be created in this case.
+    CHECK(
+        ![AutofillCreditCardUtil shouldEditCardFromPaymentsWebPage:creditCard]);
+    [controller editButtonPressed];
+  }
+
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:controller
+                             browser:browser
+                            delegate:delegate];
+
+  // Make sure the cancel button is always present, as the Autofill screen isn't
+  // just shown from Settings.
+  [controller navigationItem].leftBarButtonItem =
+      [navigationController cancelButton];
+  return navigationController;
+}
+
++ (instancetype)
+    defaultBrowserControllerForBrowser:(Browser*)browser
+                              delegate:
+                                  (id<SettingsNavigationControllerDelegate>)
+                                      delegate
+                          sourceForUMA:
+                              (DefaultBrowserSettingsPageSource)source {
+  DefaultBrowserSettingsTableViewController* controller =
+      [[DefaultBrowserSettingsTableViewController alloc] init];
+  controller.PIPHandler = HandlerForProtocol(browser->GetCommandDispatcher(),
+                                             PictureInPictureCommands);
+  controller.sceneHandler =
+      HandlerForProtocol(browser->GetCommandDispatcher(), SceneCommands);
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:controller
+                             browser:browser
+                            delegate:delegate];
+  [controller navigationItem].leftBarButtonItem =
+      [navigationController cancelButton];
+  controller.source = source;
+  return navigationController;
+}
+
++ (instancetype)
+    defaultSearchEngineControllerForBrowser:(Browser*)browser
+                                   delegate:
+                                       (id<SettingsNavigationControllerDelegate>)
+                                           delegate {
+  ProfileIOS* profile = browser->GetProfile()->GetOriginalProfile();
+  SearchEngineTableViewController* controller =
+      [[SearchEngineTableViewController alloc] initWithProfile:profile];
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:controller
+                             browser:browser
+                            delegate:delegate];
+  return navigationController;
+}
+
++ (instancetype)
+    inactiveTabsControllerForBrowser:(Browser*)browser
+                            delegate:(id<SettingsNavigationControllerDelegate>)
+                                         delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  navigationController.inactiveTabsSettingsCoordinator =
+      [[InactiveTabsSettingsCoordinator alloc]
+          initWithBaseNavigationController:navigationController
+                                   browser:browser];
+  [navigationController.inactiveTabsSettingsCoordinator start];
+  return navigationController;
+}
+
++ (instancetype)
+    contentSettingsControllerForBrowser:(Browser*)browser
+                               delegate:
+                                   (id<SettingsNavigationControllerDelegate>)
+                                       delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+
+  [navigationController showContentSettings];
+
+  return navigationController;
+}
+
++ (instancetype)
+    notificationsSettingsControllerForBrowser:(Browser*)browser
+                                       client:(std::optional<
+                                                  PushNotificationClientId>)
+                                                  clientID
+                                     delegate:
+                                         (id<SettingsNavigationControllerDelegate>)
+                                             delegate {
+  SettingsNavigationController* navigationController =
+      [[SettingsNavigationController alloc]
+          initWithRootViewController:nil
+                             browser:browser
+                            delegate:delegate];
+  [navigationController showNotificationsSettingsAndHighlightClient:clientID];
+  return navigationController;
+}
+
+#pragma mark - Lifecycle
+
+- (instancetype)initWithRootViewController:(UIViewController*)rootViewController
+                                   browser:(Browser*)browser
+                                  delegate:
+                                      (id<SettingsNavigationControllerDelegate>)
+                                          delegate {
+  CHECK(browser);
+  CHECK_EQ(browser->type(), Browser::Type::kRegular);
+  self = [super initWithRootViewController:rootViewController];
+  if (self) {
+    _browser = browser;
+    _settingsNavigationDelegate = delegate;
+    _activityReporter =
+        [[ActivityReporter alloc] initWithDomain:ActivityReportDomainSettings];
+
+    // FIXME -- RTTI is bad.
+    if ([rootViewController
+            isKindOfClass:[SettingsRootTableViewController class]]) {
+      SettingsRootTableViewController* settingsRootViewController =
+          base::apple::ObjCCast<SettingsRootTableViewController>(
+              rootViewController);
+      // Set up handlers.
+      ConfigureHandlers(settingsRootViewController,
+                        _browser->GetCommandDispatcher());
+    }
+
+    self.modalPresentationStyle = UIModalPresentationFormSheet;
+    // Set the presentationController delegate. This is used for swipe down to
+    // dismiss. This needs to be set after the modalPresentationStyle.
+    self.presentationController.delegate = self;
+  }
+  return self;
+}
+
+- (void)viewDidLoad {
+  [super viewDidLoad];
+
+  self.toolbar.translucent = NO;
+  self.navigationBar.barTintColor =
+      [UIColor colorNamed:kSecondaryBackgroundColor];
+  self.toolbar.barTintColor =
+      [UIColor colorNamed:kGroupedPrimaryBackgroundColor];
+  self.view.backgroundColor =
+      [UIColor colorNamed:kGroupedPrimaryBackgroundColor];
+
+  self.navigationBar.prefersLargeTitles = YES;
+  self.navigationBar.accessibilityIdentifier =
+      password_manager::kSettingsNavigationBarAccessibilityID;
+
+  // Set the NavigationController delegate.
+  self.delegate = self;
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+  [super viewWillAppear:animated];
+  [_activityReporter reportActive];
+}
+
+- (void)viewDidDisappear:(BOOL)animated {
+  [super viewDidDisappear:animated];
+  [_activityReporter reportInactive];
+}
+
+#pragma mark - Public
+
+- (UIBarButtonItem*)cancelButton {
+  UIBarButtonItem* item = [[UIBarButtonItem alloc]
+      initWithBarButtonSystemItem:UIBarButtonSystemItemCancel
+                           target:self
+                           action:@selector(closeSettings)];
+  return item;
+}
+
+- (UIBarButtonItem*)doneButton {
+  if (self.presentingViewController == nil) {
+    // This can be called while being dismissed. In that case, return nil. See
+    // crbug.com/1346604.
+    return nil;
+  }
+
+  UIBarButtonItem* item = [[UIBarButtonItem alloc]
+      initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                           target:self
+                           action:@selector(closeSettings)];
+  item.accessibilityIdentifier = kSettingsDoneButtonId;
+  return item;
+}
+
+- (void)cleanUpSettings {
+  // Notify all controllers of a Settings dismissal.
+  base::RecordAction(base::UserMetricsAction("MobileSettingsCleanupStarted"));
+  for (UIViewController* controller in [self viewControllers]) {
+    if (!_dismissalUserActionReported &&
+        [controller conformsToProtocol:@protocol(SettingsControllerProtocol)]) {
+      [controller performSelector:@selector(reportDismissalUserAction)];
+    }
+
+    if ([controller respondsToSelector:@selector(settingsWillBeDismissed)]) {
+      [controller performSelector:@selector(settingsWillBeDismissed)];
+    }
+  }
+
+  // GoogleServicesSettingsCoordinator and PasswordsCoordinator must be stopped
+  // before dismissing the sync settings view.
+  [self stopManageAccountsCoordinator];
+  [self stopSyncSettingsCoordinator];
+  [self stopContentSettingsCoordinator];
+  [self stopGoogleServicesSettingsCoordinator];
+  [self stopPasswordsCoordinator];
+  [self stopAutofillAndPasswordsCoordinator];
+  [self stopSafetyCheckCoordinator];
+  [self stopPrivacySafeBrowsingCoordinator];
+  [self stopPrivacySettingsCoordinator];
+  [self stopInactiveTabSettingsCoordinator];
+  [self stopPasswordDetailsCoordinator];
+  [self stopAutofillProfileEditCoordinator];
+  [self stopNotificationsCoordinator];
+  [self stopGeminiSettingsCoordinator];
+  [self stopAutofillSettingsCoordinator];
+  [self stopAutofillCreditCardCoordinator];
+  [self stopIdentityDocsCoordinator];
+  [self stopShoppingCoordinator];
+  [self stopTravelInfoCoordinator];
+
+  // Reset the delegate to prevent any queued transitions from attempting to
+  // close the settings.
+  self.settingsNavigationDelegate = nil;
+  self.snackbarCommandsHandler = nil;
+  self.currentPresentedViewController = nil;
+  self.presentationController.delegate = nil;
+  _browser = nil;
+}
+
+- (void)closeSettings {
+  for (UIViewController* controller in [self viewControllers]) {
+    if ([controller conformsToProtocol:@protocol(SettingsControllerProtocol)]) {
+      [controller performSelector:@selector(reportDismissalUserAction)];
+    }
+  }
+  _dismissalUserActionReported = YES;
+
+  [self.settingsNavigationDelegate closeSettings];
+}
+
+- (void)popViewControllerOrCloseSettingsAnimated:(BOOL)animated {
+  if (self.viewControllers.count > 1) {
+    // Pop the top view controller to reveal the view controller underneath.
+    [self popViewControllerAnimated:animated];
+  } else {
+    // If there is only one view controller in the navigation stack,
+    // simply close settings.
+    [self closeSettings];
+  }
+}
+
+#pragma mark - Private
+
+- (void)showGeminiSettingsPage {
+  CHECK(IsPageActionMenuEnabled());
+  [self stopGeminiSettingsCoordinator];
+  self.geminiSettingsCoordinator = [[GeminiSettingsCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser];
+  self.geminiSettingsCoordinator.delegate = self;
+  [self.geminiSettingsCoordinator start];
+}
+
+- (void)stopGeminiSettingsCoordinator {
+  self.geminiSettingsCoordinator.delegate = nil;
+  [self.geminiSettingsCoordinator stop];
+  self.geminiSettingsCoordinator = nil;
+}
+
+- (void)stopManageAccountsCoordinator {
+  self.manageAccountsCoordinator.delegate = nil;
+  [self.manageAccountsCoordinator stop];
+  self.manageAccountsCoordinator = nil;
+}
+
+// Pushes a ContentSettingsCoordinator on this settings navigation
+// controller. Does nothing id the top view controller is already of type
+// `ContentSettingsCoordinator`.
+- (void)showContentSettings {
+  if ([self.topViewController
+          isKindOfClass:[ContentSettingsTableViewController class]]) {
+    // The top view controller is already the Contents Settings panel.
+    // No need to open it.
+    return;
+  }
+  [self stopContentSettingsCoordinator];
+  self.contentSettingsCoordinator = [[ContentSettingsCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser];
+  self.contentSettingsCoordinator.delegate = self;
+  [self.contentSettingsCoordinator start];
+}
+
+// Pushes a GoogleServicesSettingsViewController on this settings navigation
+// controller. Does nothing id the top view controller is already of type
+// `GoogleServicesSettingsViewController`.
+- (void)showGoogleServices {
+  if ([self.topViewController
+          isKindOfClass:[GoogleServicesSettingsViewController class]]) {
+    // The top view controller is already the Google services settings panel.
+    // No need to open it.
+    return;
+  }
+  self.googleServicesSettingsCoordinator =
+      [[GoogleServicesSettingsCoordinator alloc]
+          initWithBaseNavigationController:self
+                                   browser:self.browser];
+  self.googleServicesSettingsCoordinator.delegate = self;
+  [self.googleServicesSettingsCoordinator start];
+}
+
+- (void)showPrivacy {
+  self.privacySettingsCoordinator = [[PrivacyCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser];
+  self.privacySettingsCoordinator.delegate = self;
+  [self.privacySettingsCoordinator start];
+}
+
+// Push the sync services at the top of self. Do nothing if it’s already
+// presents. The user must be signed-in and sign-in must be enabled.
+- (void)showSyncServices {
+  if ([self.topViewController
+          isKindOfClass:[ManageSyncSettingsCoordinator class]]) {
+    // The top view controller is already the Sync settings panel.
+    // No need to open it.
+    return;
+  }
+  CHECK(!self.manageSyncSettingsCoordinator, base::NotFatalUntil::M155);
+  AuthenticationService* authService =
+      AuthenticationServiceFactory::GetForProfile(_browser->GetProfile());
+  CHECK(authService->HasPrimaryIdentity(), base::NotFatalUntil::M155);
+  CHECK(authService->SigninEnabled(), base::NotFatalUntil::M155);
+  self.manageSyncSettingsCoordinator = [[ManageSyncSettingsCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser];
+  self.manageSyncSettingsCoordinator.delegate = self;
+  [self.manageSyncSettingsCoordinator start];
+}
+
+// Shows the Safety Check page and starts the Safety Check for `referrer`.
+- (void)showSafetyCheckAndStartSafetyCheck:
+    (password_manager::PasswordCheckReferrer)referrer {
+  if ([self.topViewController isKindOfClass:[SafetyCheckCoordinator class]] ||
+      [self.safetyCheckCoordinator.baseViewController isBeingDismissed]) {
+    // Do not open the Safety Check panel if:
+    // [1] The top view controller is already the Safety Check panel, or
+    // [2] The Safety Check view controller is currently being dismissed.
+    return;
+  }
+  DCHECK(!self.safetyCheckCoordinator);
+  self.safetyCheckCoordinator = [[SafetyCheckCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser
+                              referrer:referrer];
+  self.safetyCheckCoordinator.delegate = self;
+  [self.safetyCheckCoordinator start];
+  [self.safetyCheckCoordinator startCheckIfNotRunning];
+}
+
+- (void)showSafeBrowsing {
+  if ([self.topViewController
+          isKindOfClass:[PrivacySafeBrowsingCoordinator class]]) {
+    // The top view controller is already the Safe Browsing panel.
+    // No need to open it.
+    return;
+  }
+  DCHECK(!self.privacySafeBrowsingCoordinator);
+  [self.privacySafeBrowsingCoordinator stop];
+  self.privacySafeBrowsingCoordinator = [[PrivacySafeBrowsingCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser];
+  self.privacySafeBrowsingCoordinator.delegate = self;
+  [self.privacySafeBrowsingCoordinator start];
+}
+
+// Stops the content settings coordiantor if it exists.
+- (void)stopContentSettingsCoordinator {
+  [self.contentSettingsCoordinator stop];
+  self.contentSettingsCoordinator = nil;
+}
+
+// Stops the underlying Google services settings coordinator if it exists.
+- (void)stopGoogleServicesSettingsCoordinator {
+  [self.googleServicesSettingsCoordinator stop];
+  self.googleServicesSettingsCoordinator = nil;
+}
+
+// Stops the privacy settings coordinator if it exsists.
+- (void)stopPrivacySettingsCoordinator {
+  [self.privacySettingsCoordinator stop];
+  self.privacySettingsCoordinator = nil;
+}
+
+// Stops the underlying Sync settings coordinator if it exists.
+- (void)stopSyncSettingsCoordinator {
+  [self.manageSyncSettingsCoordinator stop];
+  self.manageSyncSettingsCoordinator = nil;
+}
+
+// Shows the saved passwords.
+- (void)showSavedPasswords {
+  [self showSavedPasswordsWithLevelUpWalkthroughIPH:NO];
+}
+
+// Shows the saved passwords with optional Level Up walkthrough IPH.
+- (void)showSavedPasswordsWithLevelUpWalkthroughIPH:(BOOL)levelUpIPH {
+  self.savedPasswordsCoordinator = [[PasswordsCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser];
+  self.savedPasswordsCoordinator.shouldShowLevelUpWalkthroughIPH = levelUpIPH;
+  self.savedPasswordsCoordinator.delegate = self;
+  [self.savedPasswordsCoordinator start];
+}
+
+// Shows the Autofill and Passwords settings.
+- (void)showAutofillAndPasswordsWithReferrer:
+    (autofill::autofill_metrics::AutofillSettingsReferrer)referrer {
+  _autofillAndPasswordsCoordinator = [[AutofillAndPasswordsCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser
+                              referrer:referrer];
+  _autofillAndPasswordsCoordinator.delegate = self;
+  [_autofillAndPasswordsCoordinator start];
+}
+
+- (void)showPasswordManagerSearchPage {
+  self.savedPasswordsCoordinator = [[PasswordsCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser];
+  self.savedPasswordsCoordinator.delegate = self;
+  self.savedPasswordsCoordinator.openViewControllerForPasswordSearch = true;
+  [self.savedPasswordsCoordinator start];
+}
+
+- (void)showPasswordDetailsForCredential:
+            (password_manager::CredentialUIEntry)credential
+                              inEditMode:(BOOL)editMode {
+  // Not an invariant due to possible race conditions. DCHECKing for debugging
+  // purposes. See crbug.com/40067451.
+  DCHECK(!self.passwordDetailsCoordinator);
+  self.passwordDetailsCoordinator = [[PasswordDetailsCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser
+                            credential:credential
+                               context:DetailsContext::kOutsideSettings];
+  self.passwordDetailsCoordinator.delegate = self;
+  self.passwordDetailsCoordinator.openInEditMode = editMode;
+  [self.passwordDetailsCoordinator start];
+}
+
+// Stops the underlying passwords coordinator if it exists.
+- (void)stopPasswordsCoordinator {
+  [self.savedPasswordsCoordinator stop];
+  self.savedPasswordsCoordinator.delegate = nil;
+  self.savedPasswordsCoordinator = nil;
+}
+
+// Stops the underlying Autofill and Passwords coordinator if it exists.
+- (void)stopAutofillAndPasswordsCoordinator {
+  [_autofillAndPasswordsCoordinator stop];
+  _autofillAndPasswordsCoordinator.delegate = nil;
+  _autofillAndPasswordsCoordinator = nil;
+}
+
+- (void)stopIdentityDocsCoordinator {
+  [_identityDocsCoordinator stop];
+  _identityDocsCoordinator.delegate = nil;
+  _identityDocsCoordinator = nil;
+}
+
+- (void)stopShoppingCoordinator {
+  [_shoppingCoordinator stop];
+  _shoppingCoordinator.delegate = nil;
+  _shoppingCoordinator = nil;
+}
+
+- (void)stopTravelInfoCoordinator {
+  [_travelInfoCoordinator stop];
+  _travelInfoCoordinator.delegate = nil;
+  _travelInfoCoordinator = nil;
+}
+
+// Stops the underlying inactive tabs settings coordinator if it exists.
+- (void)stopInactiveTabSettingsCoordinator {
+  [self.inactiveTabsSettingsCoordinator stop];
+  self.inactiveTabsSettingsCoordinator = nil;
+}
+
+// Stops the underlying SafetyCheck coordinator if it exists.
+- (void)stopSafetyCheckCoordinator {
+  [self.safetyCheckCoordinator stop];
+  self.safetyCheckCoordinator.delegate = nil;
+  self.safetyCheckCoordinator = nil;
+}
+
+// Stops the underlying PrivacySafeBrowsing coordinator if it exists.
+- (void)stopPrivacySafeBrowsingCoordinator {
+  [self.privacySafeBrowsingCoordinator stop];
+  self.privacySafeBrowsingCoordinator.delegate = nil;
+  self.privacySafeBrowsingCoordinator = nil;
+}
+
+// Stops the underlying PasswordDetailsCoordinator.
+- (void)stopPasswordDetailsCoordinator {
+  [self.passwordDetailsCoordinator stop];
+  self.passwordDetailsCoordinator.delegate = nil;
+  self.passwordDetailsCoordinator = nil;
+}
+
+// Stops the underlying AutofillProfileEditCoordinator.
+- (void)stopAutofillProfileEditCoordinator {
+  [self.autofillProfileEditCoordinator stop];
+  self.autofillProfileEditCoordinator.delegate = nil;
+  self.autofillProfileEditCoordinator = nil;
+}
+
+// Stops the underlying NotificationsCoordinator.
+- (void)stopNotificationsCoordinator {
+  [self.notificationsCoordinator stop];
+  self.notificationsCoordinator.delegate = nil;
+  self.notificationsCoordinator = nil;
+}
+
+// Stops the underlying Autofill settings coordinator.
+- (void)stopAutofillSettingsCoordinator {
+  [_autofillSettingsCoordinator stop];
+  _autofillSettingsCoordinator.delegate = nil;
+  _autofillSettingsCoordinator = nil;
+}
+
+// Stops the underlying Autofill Credit Card coordinator.
+- (void)stopAutofillCreditCardCoordinator {
+  [self.autofillCreditCardCoordinator stop];
+  self.autofillCreditCardCoordinator.delegate = nil;
+  self.autofillCreditCardCoordinator = nil;
+}
+
+#pragma mark - ContentSettingsCoordinatorDelegate
+
+- (void)contentSettingsCoordinatorViewControllerWasRemoved:
+    (ContentSettingsCoordinator*)coordinator {
+  DCHECK_EQ(self.contentSettingsCoordinator, coordinator);
+  [self stopContentSettingsCoordinator];
+}
+
+#pragma mark - GoogleServicesSettingsCoordinatorDelegate
+
+- (void)googleServicesSettingsCoordinatorDidRemove:
+    (GoogleServicesSettingsCoordinator*)coordinator {
+  DCHECK_EQ(self.googleServicesSettingsCoordinator, coordinator);
+  [self stopGoogleServicesSettingsCoordinator];
+}
+
+#pragma mark - PrivacyCoordinatorDelegate
+
+- (void)privacyCoordinatorViewControllerWasRemoved:
+    (PrivacyCoordinator*)coordinator {
+  DCHECK_EQ(self.privacySettingsCoordinator, coordinator);
+  [self stopPrivacySettingsCoordinator];
+}
+
+#pragma mark - ManageSyncSettingsCoordinatorDelegate
+
+- (void)manageSyncSettingsCoordinatorWasRemoved:
+    (ManageSyncSettingsCoordinator*)coordinator {
+  DCHECK_EQ(self.manageSyncSettingsCoordinator, coordinator);
+  [self stopSyncSettingsCoordinator];
+}
+
+#pragma mark - PasswordsCoordinatorDelegate
+
+- (void)passwordsCoordinatorDidRemove:(PasswordsCoordinator*)coordinator {
+  DCHECK_EQ(self.savedPasswordsCoordinator, coordinator);
+  [self stopPasswordsCoordinator];
+}
+
+#pragma mark - AutofillAndPasswordsCoordinatorDelegate
+
+- (void)autofillAndPasswordsCoordinatorDidRemove:
+    (AutofillAndPasswordsCoordinator*)coordinator {
+  DCHECK_EQ(_autofillAndPasswordsCoordinator, coordinator);
+  [self stopAutofillAndPasswordsCoordinator];
+}
+
+#pragma mark - IdentityDocsCoordinatorDelegate
+
+- (void)identityDocsCoordinatorDidRemove:(IdentityDocsCoordinator*)coordinator {
+  DCHECK_EQ(_identityDocsCoordinator, coordinator);
+  [self stopIdentityDocsCoordinator];
+}
+
+#pragma mark - ShoppingCoordinatorDelegate
+
+- (void)shoppingCoordinatorDidRemove:(ShoppingCoordinator*)coordinator {
+  DCHECK_EQ(_shoppingCoordinator, coordinator);
+  [self stopShoppingCoordinator];
+}
+
+#pragma mark - TravelInfoCoordinatorDelegate
+
+- (void)travelInfoCoordinatorDidRemove:(TravelInfoCoordinator*)coordinator {
+  DCHECK_EQ(_travelInfoCoordinator, coordinator);
+  [self stopTravelInfoCoordinator];
+}
+
+#pragma mark - PasswordManagerReauthenticationDelegate
+
+- (void)dismissPasswordManagerAfterFailedReauthentication {
+  id<SceneCommands> sceneHandler =
+      HandlerForProtocol(self.browser->GetCommandDispatcher(), SceneCommands);
+
+  [sceneHandler closePresentedViews];
+}
+
+#pragma mark PasswordDetailsCoordinatorDelegate
+
+- (void)passwordDetailsCoordinatorDidRemove:
+    (PasswordDetailsCoordinator*)coordinator {
+  DCHECK_EQ(self.passwordDetailsCoordinator, coordinator);
+  [self stopPasswordDetailsCoordinator];
+}
+
+- (void)passwordDetailsCancelButtonWasTapped {
+  [self closeSettings];
+}
+
+#pragma mark - AutofillProfileEditCoordinatorDelegate
+
+- (void)autofillProfileEditCoordinatorTableViewControllerDidFinish:
+    (AutofillProfileEditCoordinator*)coordinator {
+  DCHECK_EQ(self.autofillProfileEditCoordinator, coordinator);
+  [self stopAutofillProfileEditCoordinator];
+}
+
+#pragma mark - SafetyCheckCoordinatorDelegate
+
+- (void)safetyCheckCoordinatorDidRemove:(SafetyCheckCoordinator*)coordinator {
+  DCHECK_EQ(self.safetyCheckCoordinator, coordinator);
+  [self stopSafetyCheckCoordinator];
+}
+
+#pragma mark - PrivacySafeBrowsingCoordinatorDelegate
+
+- (void)privacySafeBrowsingCoordinatorDidRemove:
+    (PrivacySafeBrowsingCoordinator*)coordinator {
+  DCHECK_EQ(self.privacySafeBrowsingCoordinator, coordinator);
+  [self stopPrivacySafeBrowsingCoordinator];
+}
+
+#pragma mark - NotificationsCoordinatorDelegate
+
+- (void)notificationsCoordinatorDidRemove:
+    (NotificationsCoordinator*)coordinator {
+  DCHECK_EQ(self.notificationsCoordinator, coordinator);
+  [self stopNotificationsCoordinator];
+}
+
+#pragma mark - AutofillSettingsCoordinatorDelegate
+
+- (void)autofillSettingsCoordinatorDidRemove:
+    (AutofillSettingsCoordinator*)coordinator {
+  DCHECK_EQ(_autofillSettingsCoordinator, coordinator);
+  [self stopAutofillSettingsCoordinator];
+}
+
+#pragma mark - AutofillCreditCardCoordinatorDelegate
+
+- (void)autofillCreditCardCoordinatorDidRemove:
+    (AutofillCreditCardCoordinator*)coordinator {
+  DCHECK_EQ(self.autofillCreditCardCoordinator, coordinator);
+  [self stopAutofillCreditCardCoordinator];
+}
+
+#pragma mark - UIAdaptivePresentationControllerDelegate
+
+- (BOOL)presentationControllerShouldDismiss:
+    (UIPresentationController*)presentationController {
+  if ([self.currentPresentedViewController
+          respondsToSelector:@selector(presentationControllerShouldDismiss:)]) {
+    return [self.currentPresentedViewController
+        presentationControllerShouldDismiss:presentationController];
+  }
+  return NO;
+}
+
+- (void)presentationControllerDidDismiss:
+    (UIPresentationController*)presentationController {
+  if ([self.currentPresentedViewController
+          respondsToSelector:@selector(presentationControllerDidDismiss:)]) {
+    [self.currentPresentedViewController
+        presentationControllerDidDismiss:presentationController];
+  }
+  // Call settingsWasDismissed to make sure any necessary cleanup is performed.
+  [self.settingsNavigationDelegate settingsWasDismissed];
+}
+
+- (void)presentationControllerWillDismiss:
+    (UIPresentationController*)presentationController {
+  if ([self.currentPresentedViewController
+          respondsToSelector:@selector(presentationControllerWillDismiss:)]) {
+    [self.currentPresentedViewController
+        presentationControllerWillDismiss:presentationController];
+  }
+}
+
+#pragma mark - UIAccessibilityAction
+
+- (BOOL)accessibilityPerformEscape {
+  UIViewController* poppedController = [self popViewControllerAnimated:YES];
+  if (!poppedController) {
+    [self closeSettings];
+  }
+  return YES;
+}
+
+#pragma mark - UINavigationController
+
+// Ensures that the keyboard is always dismissed during a navigation transition.
+- (BOOL)disablesAutomaticKeyboardDismissal {
+  return NO;
+}
+
+#pragma mark - UINavigationControllerDelegate
+
+- (void)navigationController:(UINavigationController*)navigationController
+      willShowViewController:(UIViewController*)viewController
+                    animated:(BOOL)animated {
+  if ([viewController isMemberOfClass:[SettingsTableViewController class]] &&
+      ![self.currentPresentedViewController
+          isMemberOfClass:[SettingsTableViewController class]] &&
+      [self.currentPresentedViewController
+          conformsToProtocol:@protocol(SettingsControllerProtocol)]) {
+    // Navigated back to root SettingsController from leaf SettingsController.
+    [self.currentPresentedViewController
+        performSelector:@selector(reportBackUserAction)];
+  }
+  self.currentPresentedViewController = base::apple::ObjCCast<
+      UIViewController<UIAdaptivePresentationControllerDelegate>>(
+      viewController);
+}
+
+#pragma mark - UIResponder
+
+// To always be able to register key commands via -keyCommands, the VC must be
+// able to become first responder.
+- (BOOL)canBecomeFirstResponder {
+  return YES;
+}
+
+- (NSArray<UIKeyCommand*>*)keyCommands {
+  if ([self presentedViewController]) {
+    return nil;
+  }
+
+  return @[ UIKeyCommand.cr_close ];
+}
+
+- (void)keyCommand_close {
+  base::RecordAction(base::UserMetricsAction(kMobileKeyCommandClose));
+  [self closeSettings];
+}
+
+#pragma mark - SettingsCommands
+
+// TODO(crbug.com/41352590) : Do not pass `baseViewController` through
+// dispatcher.
+- (void)showAccountsSettingsFromViewController:
+            (UIViewController*)baseViewController
+                          skipIfUINotAvailable:(BOOL)skipIfUINotAvailable {
+  // This command should only be triggered by the settinsg, therefore there is
+  // no issue for the UI to be available or not.
+  CHECK(!skipIfUINotAvailable);
+  [self stopManageAccountsCoordinator];
+  self.manageAccountsCoordinator = [[ManageAccountsCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser
+             closeSettingsOnAddAccount:NO
+                        showDoneButton:NO];
+  self.manageAccountsCoordinator.delegate = self;
+  [self.manageAccountsCoordinator start];
+}
+
+- (void)showGeminiSettings {
+  [self showGeminiSettingsPage];
+}
+
+- (void)showSuggestionsFromGeminiHelpImprove {
+  SuggestionsFromGeminiHelpImproveTableViewController* viewController =
+      [[SuggestionsFromGeminiHelpImproveTableViewController alloc] init];
+  [self pushViewController:viewController animated:NO];
+}
+
+// TODO(crbug.com/41352590) : Do not pass `baseViewController` through
+// dispatcher.
+- (void)showGoogleServicesSettingsFromViewController:
+    (UIViewController*)baseViewController {
+  [self showGoogleServices];
+}
+
+// TODO(crbug.com/41352590) : Do not pass `baseViewController` through
+// dispatcher.
+- (void)showSyncSettingsFromViewController:
+    (UIViewController*)baseViewController {
+  [self showSyncServices];
+}
+
+// TODO(crbug.com/41352590) : Do not pass `baseViewController` through
+// dispatcher.
+- (void)showSyncPassphraseSettingsFromViewController:
+    (UIViewController*)baseViewController {
+  if (self.syncEncryptionPassphraseTableViewController) {
+    // Can occurs if the user double-tap on the "Enter passphrase" button.
+    return;
+  }
+  self.syncEncryptionPassphraseTableViewController =
+      [[SyncEncryptionPassphraseTableViewController alloc]
+          initWithBrowser:self.browser];
+  self.syncEncryptionPassphraseTableViewController.presentationDelegate = self;
+  ConfigureHandlers(self.syncEncryptionPassphraseTableViewController,
+                    _browser->GetCommandDispatcher());
+  [self pushViewController:self.syncEncryptionPassphraseTableViewController
+                  animated:YES];
+}
+
+// TODO(crbug.com/41352590) : Do not pass `baseViewController` through
+// dispatcher.
+- (void)showSyncPassphraseSettingsFromViewController:
+            (UIViewController*)baseViewController
+                                          completion:
+                                              (ProceduralBlock)completion {
+  [self showSyncPassphraseSettingsFromViewController:baseViewController];
+}
+
+- (void)showSavedPasswordsSettingsFromViewController:
+    (UIViewController*)baseViewController {
+  [self showSavedPasswordsSettingsFromViewController:baseViewController
+                     shouldShowLevelUpWalkthroughIPH:NO];
+}
+
+- (void)showSavedPasswordsSettingsFromViewController:
+            (UIViewController*)baseViewController
+                     shouldShowLevelUpWalkthroughIPH:
+                         (BOOL)shouldShowLevelUpWalkthroughIPH {
+  [self showSavedPasswordsWithLevelUpWalkthroughIPH:
+            shouldShowLevelUpWalkthroughIPH];
+}
+
+- (void)showAutofillAndPasswordsSettingsWithReferrer:
+    (autofill::autofill_metrics::AutofillSettingsReferrer)referrer {
+  [self showAutofillAndPasswordsWithReferrer:referrer];
+}
+
+- (void)showIdentityDocsWithReferrer:
+    (autofill::autofill_metrics::AutofillSettingsReferrer)referrer {
+  // TODO(crbug.com/529830970): Record metric using `referrer`.
+  [self stopIdentityDocsCoordinator];
+  _identityDocsCoordinator = [[IdentityDocsCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser];
+  _identityDocsCoordinator.delegate = self;
+  [_identityDocsCoordinator start];
+}
+
+- (void)showShoppingWithReferrer:
+    (autofill::autofill_metrics::AutofillSettingsReferrer)referrer {
+  // TODO(crbug.com/529830970): Record metric using `referrer`.
+  [self stopShoppingCoordinator];
+  _shoppingCoordinator = [[ShoppingCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser];
+  _shoppingCoordinator.delegate = self;
+  [_shoppingCoordinator start];
+}
+
+- (void)showTravelWithReferrer:
+    (autofill::autofill_metrics::AutofillSettingsReferrer)referrer {
+  // TODO(crbug.com/529830970): Record metric using `referrer`.
+  [self stopTravelInfoCoordinator];
+  _travelInfoCoordinator = [[TravelInfoCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser];
+  _travelInfoCoordinator.delegate = self;
+  [_travelInfoCoordinator start];
+}
+
+- (void)showPasswordManagerForCredentialImport:(NSUUID*)UUID
+    API_AVAILABLE(ios(26.0)) {
+  self.savedPasswordsCoordinator = [[PasswordsCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser];
+  self.savedPasswordsCoordinator.delegate = self;
+
+  // `UUID` needs to be set before calling `start`, as the latter will invoke
+  // user verification and the presence of `UUID` will be a signal to start the
+  // credential import on successful user verification.
+  self.savedPasswordsCoordinator.credentialImportUUID = UUID;
+  [self.savedPasswordsCoordinator start];
+}
+
+- (void)showAddressDetails:(const autofill::AutofillProfile)address
+                inEditMode:(BOOL)editMode
+     offerMigrateToAccount:(BOOL)offerMigrateToAccount {
+  self.autofillProfileEditCoordinator = [[AutofillProfileEditCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser
+                               profile:std::move(address)
+                migrateToAccountButton:offerMigrateToAccount];
+  self.autofillProfileEditCoordinator.delegate = self;
+  self.autofillProfileEditCoordinator.openInEditMode = editMode;
+  [self.autofillProfileEditCoordinator start];
+}
+
+// TODO(crbug.com/41352590) : Do not pass `baseViewController` through
+// dispatcher.
+- (void)showProfileSettingsFromViewController:
+    (UIViewController*)baseViewController {
+  AutofillProfileTableViewController* controller =
+      [[AutofillProfileTableViewController alloc] initWithBrowser:self.browser];
+  ConfigureHandlers(controller, _browser->GetCommandDispatcher());
+  [self pushViewController:controller animated:YES];
+}
+
+- (void)showCreditCardSettings {
+  [self stopAutofillCreditCardCoordinator];
+  self.autofillCreditCardCoordinator = [[AutofillCreditCardCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser];
+  self.autofillCreditCardCoordinator.delegate = self;
+  [self.autofillCreditCardCoordinator start];
+}
+
+- (void)showCreditCardDetails:(autofill::CreditCard)creditCard
+                   inEditMode:(BOOL)editMode {
+  autofill::PersonalDataManager* personalDataManager =
+      autofill::PersonalDataManagerFactory::GetForProfile(
+          self.browser->GetProfile());
+  AutofillCreditCardEditTableViewController* controller =
+      [[AutofillCreditCardEditTableViewController alloc]
+           initWithCreditCard:creditCard
+          personalDataManager:personalDataManager];
+  if (editMode) {
+    // If `creditCard` needs to be edited from the Payments web page, then a
+    // command to open the Payments URL in a new tab should be dispatched.
+    CHECK(
+        ![AutofillCreditCardUtil shouldEditCardFromPaymentsWebPage:creditCard]);
+    [controller editButtonPressed];
+  }
+  ConfigureHandlers(controller, _browser->GetCommandDispatcher());
+  [self pushViewController:controller animated:YES];
+}
+
+- (void)showDefaultBrowserSettingsFromViewController:
+            (UIViewController*)baseViewController
+                                        sourceForUMA:
+                                            (DefaultBrowserSettingsPageSource)
+                                                source {
+  DefaultBrowserSettingsTableViewController* controller =
+      [[DefaultBrowserSettingsTableViewController alloc] init];
+  controller.PIPHandler = HandlerForProtocol(_browser->GetCommandDispatcher(),
+                                             PictureInPictureCommands);
+  controller.sceneHandler =
+      HandlerForProtocol(_browser->GetCommandDispatcher(), SceneCommands);
+  ConfigureHandlers(controller, _browser->GetCommandDispatcher());
+  controller.source = source;
+  [self pushViewController:controller animated:YES];
+}
+
+- (void)showDefaultSearchEngineSettings {
+  ProfileIOS* profile = _browser->GetProfile()->GetOriginalProfile();
+  SearchEngineTableViewController* controller =
+      [[SearchEngineTableViewController alloc] initWithProfile:profile];
+  ConfigureHandlers(controller, _browser->GetCommandDispatcher());
+  [self pushViewController:controller animated:YES];
+}
+
+// Shows the Safety Check page and starts the Safety Check for `referrer`.
+- (void)showAndStartSafetyCheckForReferrer:
+    (password_manager::PasswordCheckReferrer)referrer {
+  [self showSafetyCheckAndStartSafetyCheck:referrer];
+}
+
+- (void)showSafeBrowsingSettings {
+  [self showSafeBrowsing];
+}
+
+- (void)showSafeBrowsingSettingsFromPromoInteraction {
+  [self showSafeBrowsing];
+  self.privacySafeBrowsingCoordinator.openedFromPromoInteraction = YES;
+}
+
+- (void)showPasswordSearchPage {
+  [self showPasswordManagerSearchPage];
+}
+
+- (void)showContentsSettingsFromViewController:
+    (UIViewController*)baseViewController {
+  [self showContentSettings];
+}
+
+- (void)showNotificationsSettings {
+  [self stopNotificationsCoordinator];
+  self.notificationsCoordinator = [[NotificationsCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:_browser];
+  self.notificationsCoordinator.delegate = self;
+  [self.notificationsCoordinator start];
+}
+
+- (void)showNotificationsSettingsAndHighlightClient:
+    (std::optional<PushNotificationClientId>)clientID {
+  [self showNotificationsSettings];
+  if (clientID.has_value()) {
+    [self.notificationsCoordinator highlightClient:clientID.value()];
+  }
+}
+
+- (void)showPriceNotificationsSettings {
+  [self stopNotificationsCoordinator];
+  self.notificationsCoordinator = [[NotificationsCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:_browser];
+  self.notificationsCoordinator.delegate = self;
+  [self.notificationsCoordinator start];
+  [self.notificationsCoordinator showTrackingPrice];
+}
+
+- (void)showAutofillSettings {
+  _autofillSettingsCoordinator = [[AutofillSettingsCoordinator alloc]
+      initWithBaseNavigationController:self
+                               browser:self.browser];
+  _autofillSettingsCoordinator.delegate = self;
+  [_autofillSettingsCoordinator start];
+}
+
+- (void)showAutofillSettingsFromNotice {
+  if (IsYourSavedInfoSettingsPageIosEnabled()) {
+    [self showAutofillSettings];
+  } else {
+    [self showProfileSettingsFromViewController:nil];
+  }
+}
+
+- (void)showEnhancedAutofillSettings {
+  EnhancedAutofillTableViewController* controller =
+      [[EnhancedAutofillTableViewController alloc]
+          initWithBrowser:self.browser];
+  ConfigureHandlers(controller, self.browser->GetCommandDispatcher());
+  [self pushViewController:controller animated:self.viewControllers.count > 0];
+}
+
+// `SceneCoordinator` is the entrypoint that handles presentation and captures
+// the dismissal completion block.
+- (void)showEnhancedAutofillSettingsWithCompletion:(ProceduralBlock)completion {
+  NOTREACHED();
+}
+
+#pragma mark - SyncEncryptionPassphraseTableViewControllerPresentationDelegate
+
+- (void)syncEncryptionPassphraseTableViewControllerDidDisappear:
+    (SyncEncryptionPassphraseTableViewController*)viewController {
+  CHECK_EQ(self.syncEncryptionPassphraseTableViewController, viewController);
+  self.syncEncryptionPassphraseTableViewController.presentationDelegate = nil;
+  [self.syncEncryptionPassphraseTableViewController settingsWillBeDismissed];
+  self.syncEncryptionPassphraseTableViewController = nil;
+}
+
+#pragma mark - ManageAccountsCoordinatorDelegate
+
+// Requests the delegate to stop the manage accounts coordinator.
+- (void)manageAccountsCoordinatorWantsToBeStopped:
+    (ManageAccountsCoordinator*)coordinator {
+  CHECK_EQ(coordinator, self.manageAccountsCoordinator);
+  // If this navigation controller was opened directly with the account manager,
+  // the navigation controller should be closed.
+  BOOL stopNavigationController = [self viewControllers].count == 1;
+  [self stopManageAccountsCoordinator];
+  if (stopNavigationController) {
+    [self.settingsNavigationDelegate closeSettings];
+  }
+}
+
+#pragma mark - GeminiSettingsCoordinatorDelegate
+
+- (void)geminiSettingsCoordinatorViewControllerWasRemoved:
+    (GeminiSettingsCoordinator*)coordinator {
+  [self stopGeminiSettingsCoordinator];
+}
+
+@end
