@@ -1,4 +1,0 @@
-file://components/signin/ANDROID_OWNERS
-skym@chromium.org
-
-per-file DefaultBrowserPromoFirstRunFragment*=eleanorlee@google.com

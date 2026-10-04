@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/content_notification/model",
-  # keep-sorted end
-]
-

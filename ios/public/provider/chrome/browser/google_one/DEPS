@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/google_one/shared/google_one_entry_point.h",
-  # keep-sorted end
-]

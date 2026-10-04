@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/web/model/chrome_web_client.h",
-  # keep-sorted end
-]

@@ -1,6 +1,0 @@
-include_rules = [
-  "+components/contextual_cueing",
-  "+components/optimization_guide/core",
-  "+ios/chrome/browser/intelligence/bwg/utils",
-  "+ios/public/provider/chrome/browser/bwg",
-]

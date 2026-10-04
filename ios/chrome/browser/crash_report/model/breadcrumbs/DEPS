@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+components/breadcrumbs/core",
-  # keep-sorted end
-]

@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/reader_mode/model",
-  # keep-sorted end
-]

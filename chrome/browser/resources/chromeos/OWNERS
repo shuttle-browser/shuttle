@@ -1,3 +1,0 @@
-file://ash/webui/PLATFORM_OWNERS
-
-per-file about_os_credits.html=file://chromeos/BUILD_OWNERS

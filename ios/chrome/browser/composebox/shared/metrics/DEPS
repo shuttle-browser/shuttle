@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+components/contextual_search/contextual_search_metrics_recorder.h",
-  # keep-sorted end
-]

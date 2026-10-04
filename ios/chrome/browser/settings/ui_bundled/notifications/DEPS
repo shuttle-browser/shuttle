@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/content_suggestions",
-  "+ios/chrome/browser/push_notification/ui_bundled",
-  # keep-sorted end
-]

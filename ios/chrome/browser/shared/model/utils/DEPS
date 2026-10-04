@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/first_run/model/first_run.h",
-  # keep-sorted end
-]

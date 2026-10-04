@@ -1,5 +1,0 @@
-include_rules = [
-  "+components/embedder_support/origin_trials",
-  "+components/performance_manager/public",
-  "+content/public/browser",
-]

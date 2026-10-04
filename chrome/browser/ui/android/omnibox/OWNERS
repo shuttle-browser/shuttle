@@ -1,3 +1,0 @@
-file://components/omnibox/browser/android/OWNERS
-
-per-file java/src/org/chromium/chrome/browser/omnibox/status/PermissionStatusHandler.java=file://components/permissions/PERMISSIONS_OWNERS

@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
- "+ios/components/ui_util/dynamic_type_util.h"
-  # keep-sorted end
-]

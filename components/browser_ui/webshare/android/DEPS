@@ -1,6 +1,0 @@
-include_rules = [
-  "+components/embedder_support/android/java",
-  "+content/public/android/java",
-  "+mojo/public/java/system",
-  "+ui/android/java",
-]

@@ -1,5 +1,0 @@
-include_rules = [
-  "+components/printing/common",
-  "+printing/cups_printer_status_reason_ash.h",
-  "+printing/mojom",
-]

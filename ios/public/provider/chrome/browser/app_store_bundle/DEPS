@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/app_store_bundle/model",
-  # keep-sorted end
-]

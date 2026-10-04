@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/bookmarks/model",
-  "+ios/chrome/browser/sessions/model",
-  # keep-sorted end
-]

@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+components/page_info/core",
-  "+ios/chrome/browser",
-  # keep-sorted end
-]

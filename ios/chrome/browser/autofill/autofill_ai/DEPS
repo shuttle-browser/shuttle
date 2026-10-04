@@ -1,4 +1,0 @@
-include_rules = [
-  "+components/personal_context/first_run",
-  "+ios/chrome/browser/net/model",
-]

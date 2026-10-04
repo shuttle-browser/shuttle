@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/voice/model/voice_search_language.h",
-  # keep-sorted end
-]

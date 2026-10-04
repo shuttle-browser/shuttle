@@ -1,4 +1,0 @@
-include_rules = [
-  "+components/policy/resources/webui/mojom/policy.mojom.h",
-  "+components/policy/resources/webui/mojom/policy.mojom-forward.h",
-]

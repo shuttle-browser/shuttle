@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+components/shared_highlighting/ios",
-  # keep-sorted end
-]

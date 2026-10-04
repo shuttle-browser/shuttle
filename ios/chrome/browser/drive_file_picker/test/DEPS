@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/drive/model",
-  "+ios/chrome/browser/web/model/choose_file",
-  # keep-sorted end
-]

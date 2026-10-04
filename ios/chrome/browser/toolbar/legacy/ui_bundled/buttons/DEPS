@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/content_suggestions/public",
-  "+ios/chrome/browser/intelligence/bwg/utils/gemini_constants.h",
-  # keep-sorted end
-]

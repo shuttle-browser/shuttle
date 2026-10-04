@@ -1,7 +1,0 @@
-include_rules = [
-  "+ash/constants",
-  "+mojo/public",
-  "+ui/gfx/range",
-  "+sandbox",
-  "+sandbox/policy",
-]

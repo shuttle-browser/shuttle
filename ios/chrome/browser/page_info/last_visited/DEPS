@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+components/page_info/core/page_info_action.h",
-  "+ios/chrome/browser/history",
-  # keep-sorted end
-]

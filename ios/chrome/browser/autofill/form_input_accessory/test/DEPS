@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/autofill",
-  "+ios/chrome/browser/device_reauth/test",
-  # keep-sorted end
-]

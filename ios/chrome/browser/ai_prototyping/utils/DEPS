@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/intelligence/proto_wrappers",
-  # keep-sorted end
-]

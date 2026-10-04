@@ -1,4 +1,0 @@
-include_rules = [
-  "+ios/chrome/browser/lens_overlay/public",
-  "+ios/chrome/browser/ntp/shared/metrics",
-]

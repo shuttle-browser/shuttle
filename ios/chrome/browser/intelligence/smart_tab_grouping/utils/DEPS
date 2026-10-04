@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/saved_tab_groups/ui/tab_group_utils.h",
-  # keep-sorted end
-]
-

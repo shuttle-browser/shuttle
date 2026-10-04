@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/composebox/public/composebox_entrypoint.h",
-  # keep-sorted end
-]

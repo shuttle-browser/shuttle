@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/web_view/test",
-  "+net/test",
-  # keep-sorted end
-]

@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+components/data_sharing/public",
-  # keep-sorted end
-]

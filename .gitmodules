@@ -37,33 +37,9 @@
 [submodule "chrome/test/data/xr/webvr_info"]
 	path = chrome/test/data/xr/webvr_info
 	url = https://chromium.googlesource.com/external/github.com/toji/webvr.info
-[submodule "clank"]
-	path = clank
-	url = https://chrome-internal.googlesource.com/clank/internal/apps
-	gclient-condition = checkout_android and checkout_src_internal
 [submodule "docs/website"]
 	path = docs/website
 	url = https://chromium.googlesource.com/website
-[submodule "ios/third_party/earl_grey2/src"]
-	path = ios/third_party/earl_grey2/src
-	url = https://chromium.googlesource.com/external/github.com/google/EarlGrey
-	gclient-condition = checkout_ios
-[submodule "ios/third_party/edo/src"]
-	path = ios/third_party/edo/src
-	url = https://chromium.googlesource.com/external/github.com/google/eDistantObject
-	gclient-condition = checkout_ios
-[submodule "ios/third_party/gtx/src"]
-	path = ios/third_party/gtx/src
-	url = https://chromium.googlesource.com/external/github.com/google/GTXiLib
-	gclient-condition = checkout_ios
-[submodule "ios/third_party/lottie/src"]
-	path = ios/third_party/lottie/src
-	url = https://chromium.googlesource.com/external/github.com/airbnb/lottie-ios
-	gclient-condition = checkout_ios
-[submodule "ios/third_party/webkit/src"]
-	path = ios/third_party/webkit/src
-	url = https://chromium.googlesource.com/external/github.com/WebKit/webkit
-	gclient-condition = checkout_ios and checkout_ios_webkit
 [submodule "media/cdm/api"]
 	path = media/cdm/api
 	url = https://chromium.googlesource.com/chromium/cdm
@@ -645,14 +621,6 @@
 	path = third_party/android_prebuilts/build_tools
 	url = https://android.googlesource.com/platform/prebuilts/build-tools
 	gclient-condition = checkout_android_prebuilts_build_tools
-[submodule "chromeos/ash/resources/internal"]
-	path = chromeos/ash/resources/internal
-	url = https://chrome-internal.googlesource.com/chrome/chromeos/ash/resources/internal
-	gclient-condition = checkout_src_internal and checkout_chromeos
-[submodule "chromeos/assistant/internal"]
-	path = chromeos/assistant/internal
-	url = https://chrome-internal.googlesource.com/chrome/assistant
-	gclient-condition = checkout_src_internal and checkout_chromeos
 [submodule "chrome/app/theme/default_100_percent/google_chrome"]
 	path = chrome/app/theme/default_100_percent/google_chrome
 	url = https://chrome-internal.googlesource.com/chrome/theme/default_100_percent/google_chrome
@@ -749,10 +717,6 @@
 	path = chrome/elevation_service/internal
 	url = https://chrome-internal.googlesource.com/chrome/elevation_service/internal
 	gclient-condition = checkout_src_internal and checkout_win
-[submodule "chrome/installer/mac/internal"]
-	path = chrome/installer/mac/internal
-	url = https://chrome-internal.googlesource.com/chrome/installer/mac/internal
-	gclient-condition = checkout_src_internal
 [submodule "chrome/test/data/firefox3_profile/searchplugins"]
 	path = chrome/test/data/firefox3_profile/searchplugins
 	url = https://chrome-internal.googlesource.com/chrome/data/osdd/firefox3_profile_searchplugins

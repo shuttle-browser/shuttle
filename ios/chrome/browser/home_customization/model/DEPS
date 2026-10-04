@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+components/application_locale_storage",
-  "+components/themes",
-  # keep-sorted end
-]

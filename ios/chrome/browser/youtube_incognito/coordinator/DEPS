@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/ntp/ui_bundled",
-  "+ios/chrome/browser/url_loading/model",
-  # keep-sorted end
-]

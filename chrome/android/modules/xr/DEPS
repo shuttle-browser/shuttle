@@ -1,3 +1,0 @@
-include_rules = [
-  "+components/thin_webview/java/src/org/chromium/components/thinwebview",
-]

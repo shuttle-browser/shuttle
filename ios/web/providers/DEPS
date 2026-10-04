@@ -1,5 +1,0 @@
-include_rules = [
-  # go/keep-sorted start
-  "+ios/public/provider/web",
-  # go/keep-sorted end
-]

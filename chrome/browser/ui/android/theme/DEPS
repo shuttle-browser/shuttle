@@ -1,5 +1,0 @@
-include_rules = [
-  "+chrome/browser/ui/android/bottombar",
-  "+components/browser_ui/styles/android/java",
-  "+content/public/android/java",
-]

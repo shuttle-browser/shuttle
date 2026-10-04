@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/tabs/model/inactive_tabs",
-  # keep-sorted end
-]

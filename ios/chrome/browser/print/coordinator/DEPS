@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/tabs/model/tab_title_util.h",
-  "+ios/chrome/browser/web/model/print/print_handler.h",
-  # keep-sorted end
-]

@@ -1,3 +1,0 @@
-include_rules = [
-  "+components/webapk/android/libs/client/src/org/chromium/components/webapk/lib/client",
-]

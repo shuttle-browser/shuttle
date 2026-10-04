@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/gcm/model",
-  "+ios/chrome/browser/signin/model",
-  # keep-sorted end
-]

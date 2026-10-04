@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/intelligence/page_action_menu/ui/page_action_menu_entrypoint_view.h",
-  # keep-sorted end
-]

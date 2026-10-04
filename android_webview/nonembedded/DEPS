@@ -1,6 +1,0 @@
-include_rules = [
-  # nonembedded WebView can't depend on //content layer.
-  "-content",
-
-  "+components/crash/android",
-]

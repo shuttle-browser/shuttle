@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/menu/ui_bundled",
-  # keep-sorted end
-]

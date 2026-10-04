@@ -1,5 +1,0 @@
-specific_include_rules = {
-  "skyvault_test_base\\.cc": [
-    "+chrome/browser/signin/identity_manager_factory.h",
-  ],
-}

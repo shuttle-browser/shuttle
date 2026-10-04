@@ -1,6 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/google/model",
-  "+ios/chrome/browser/search_engines/model",
-  # keep-sorted end
-]

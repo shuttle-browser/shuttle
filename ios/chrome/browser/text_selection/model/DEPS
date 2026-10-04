@@ -1,5 +1,0 @@
-include_rules = [
-  # keep-sorted start
-  "+ios/chrome/browser/optimization_guide/model",
-  # keep-sorted end
-]
