@@ -1,7 +1,0 @@
-include_rules = [
-  "+cc/slim",
-  "+components/browser_ui/modaldialog/android",
-  "+components/permissions",
-  "+content/public",
-  "+third_party/skia/include",
-]

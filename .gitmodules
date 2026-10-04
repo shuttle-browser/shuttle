@@ -1,10 +1,6 @@
 [submodule "third_party/clang-format/script"]
 	path = third_party/clang-format/script
 	url = https://chromium.googlesource.com/external/github.com/llvm/llvm-project/clang/tools/clang-format
-[submodule "chrome/browser/resources/preinstalled_web_apps/internal"]
-	path = chrome/browser/resources/preinstalled_web_apps/internal
-	url = https://chrome-internal.googlesource.com/chrome/components/default_apps
-	gclient-condition = checkout_src_internal
 [submodule "third_party/compiler-rt/src"]
 	path = third_party/compiler-rt/src
 	url = https://chromium.googlesource.com/external/github.com/llvm/llvm-project/compiler-rt
@@ -713,10 +709,6 @@
 	path = chrome/common/request_header_integrity/internal
 	url = https://chrome-internal.googlesource.com/chrome/browser/request_header_integrity/internal
 	gclient-condition = checkout_src_internal
-[submodule "chrome/elevation_service/internal"]
-	path = chrome/elevation_service/internal
-	url = https://chrome-internal.googlesource.com/chrome/elevation_service/internal
-	gclient-condition = checkout_src_internal and checkout_win
 [submodule "chrome/test/data/firefox3_profile/searchplugins"]
 	path = chrome/test/data/firefox3_profile/searchplugins
 	url = https://chrome-internal.googlesource.com/chrome/data/osdd/firefox3_profile_searchplugins
@@ -793,25 +785,9 @@
 	path = components/optimization_guide/internal
 	url = https://chrome-internal.googlesource.com/chrome/components/optimization_guide
 	gclient-condition = checkout_src_internal
-[submodule "components/personal_context/core/resources/internal"]
-	path = components/personal_context/core/resources/internal
-	url = https://chrome-internal.googlesource.com/chrome/components/personal_context/core/resources/internal
-	gclient-condition = checkout_src_internal
 [submodule "components/record_replay/internal"]
 	path = components/record_replay/internal
 	url = https://chrome-internal.googlesource.com/chrome/components/record_replay
-	gclient-condition = checkout_src_internal
-[submodule "components/resources/default_100_percent/google_chrome"]
-	path = components/resources/default_100_percent/google_chrome
-	url = https://chrome-internal.googlesource.com/chrome/components/default_100_percent/google_chrome
-	gclient-condition = checkout_src_internal
-[submodule "components/resources/default_200_percent/google_chrome"]
-	path = components/resources/default_200_percent/google_chrome
-	url = https://chrome-internal.googlesource.com/chrome/components/default_200_percent/google_chrome
-	gclient-condition = checkout_src_internal
-[submodule "components/resources/default_300_percent/google_chrome"]
-	path = components/resources/default_300_percent/google_chrome
-	url = https://chrome-internal.googlesource.com/chrome/components/default_300_percent/google_chrome
 	gclient-condition = checkout_src_internal
 [submodule "components/safe_browsing/internal"]
 	path = components/safe_browsing/internal
@@ -901,10 +877,6 @@
 	path = tools/perf/data
 	url = https://chrome-internal.googlesource.com/chrome/tools/perf/data
 	gclient-condition = checkout_src_internal
-[submodule "ui/file_manager/internal"]
-	path = ui/file_manager/internal
-	url = https://chrome-internal.googlesource.com/chrome/file_manager
-	gclient-condition = (checkout_chromeos or checkout_linux) and checkout_src_internal
 [submodule "ui/webui/internal"]
 	path = ui/webui/internal
 	url = https://chrome-internal.googlesource.com/chrome/ui-webui-internal

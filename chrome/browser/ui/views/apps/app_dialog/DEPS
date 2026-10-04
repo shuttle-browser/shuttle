@@ -1,5 +1,0 @@
-specific_include_rules = {
-  "app_uninstall_dialog_view\\.cc": [
-    "+ash/strings",
-  ],
-}
