@@ -148,6 +148,7 @@ function hasFixedCtrlModifierOnly(e: KeyboardEvent): boolean {
   return e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey;
 }
 
+// <if expr="enable_pdf_ink2">
 // Like hasCtrlModifierOnly(), but allow the shift modifier.
 function hasCtrlModifierMaybeWithShift(e: KeyboardEvent): boolean {
   let metaModifier = e.metaKey;
@@ -156,6 +157,7 @@ function hasCtrlModifierMaybeWithShift(e: KeyboardEvent): boolean {
   // </if>
   return hasCtrlModifier(e) && !e.altKey && !metaModifier;
 }
+// </if>
 
 const LOCAL_STORAGE_SIDENAV_COLLAPSED_KEY: string = 'sidenavCollapsed';
 
