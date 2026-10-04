@@ -1120,6 +1120,22 @@ std::optional<int> ChromeMainDelegate::BasicStartupComplete() {
 #if !defined(BUILDING_CHROME_RENDERER)
   const base::CommandLine& command_line =
       *base::CommandLine::ForCurrentProcess();
+
+  // Agent Chrome: the browser process always behaves as if launched with
+  // --no-first-run --no-default-browser-check. This skips the welcome/first-run
+  // experience, the default-browser prompt, the search engine choice dialog,
+  // What's New and feature promos. Headless mode does the same
+  // (headless_mode_init.cc).
+  if (!command_line.HasSwitch(switches::kProcessType)) {
+    base::CommandLine* mutable_command_line =
+        base::CommandLine::ForCurrentProcess();
+    for (const char* agent_switch :
+         {switches::kNoFirstRun, switches::kNoDefaultBrowserCheck}) {
+      if (!mutable_command_line->HasSwitch(agent_switch)) {
+        mutable_command_line->AppendSwitch(agent_switch);
+      }
+    }
+  }
 #endif  // !defined(BUILDING_CHROME_RENDERER)
 
   // Only allow disabling web security via the command-line flag if the user has
