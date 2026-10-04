@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    geolocation {
+      font-size: xxx-large;
+      margin: 0px;
+      border: 0px;
+    }
+  </style>
+</head>
+<body>
+  <div id="parent">
+    <geolocation id="geolocation"></geolocation>
+  </div>
+  <script>
+    function checkGeolocation() {
+      navigator.permissions.query({name: 'geolocation'}).then(permission => {
+          window.document.title = permission.state;
+          permission.onchange = () => {
+            window.document.title = permission.state;
+          };
+      });
+    }
+
+    function getGeolocationPermissionState() {
+      navigator.permissions.query({name: 'geolocation'}).then(permission => {
+        domAutomationController.send(permission.state);
+      });
+    }
+
+    document.getElementById('parent').addEventListener('promptaction', (event) => {
+      window.document.title = 'promptaction';
+    });
+    document.getElementById('parent').addEventListener('promptdismiss', (event) => {
+      window.document.title = 'promptdismiss';
+    });
+  </script>
+</body>
+</html>

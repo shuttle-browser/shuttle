@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2020 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+<resources>
+    <drawable name="ic_more_vert_24dp">
+        @drawable/ic_more_vert_24dp_on_light_bg
+    </drawable>
+    <drawable name="btn_delete_24dp">@drawable/ic_cancel_fill_24dp</drawable>
+    <drawable name="btn_info">@drawable/ic_info_24dp</drawable>
+    <drawable name="ic_settings_gear_24dp">@drawable/ic_settings_24dp</drawable>
+</resources>

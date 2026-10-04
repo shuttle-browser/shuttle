@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2024 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@macro/default_bg_color">
+
+    <LinearLayout
+        android:id="@+id/main_content_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:orientation="vertical"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/kill_button"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ViewStub
+            android:id="@+id/task_manager_toolbar_stub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout="@layout/task_manager_toolbar" />
+
+        <include
+            android:id="@+id/header_linear_layout"
+            layout="@layout/task_item"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/tasks_view"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+    </LinearLayout>
+
+    <org.chromium.ui.widget.ButtonCompat
+        android:id="@+id/kill_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        style="@style/FilledButton"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="16dp"
+        android:layout_marginEnd="16dp"/>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

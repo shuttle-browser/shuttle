@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2022 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Chips default measures -->
+    <dimen name="chip_state_layer_hover_alpha">@dimen/chip_state_layer_hover_alpha_dark</dimen>
+    <dimen name="chip_state_layer_focused_alpha">@dimen/chip_state_layer_focused_alpha_dark</dimen>
+    <dimen name="chip_state_layer_pressed_alpha">@dimen/chip_state_layer_pressed_alpha_dark</dimen>
+</resources>

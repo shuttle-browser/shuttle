@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2025 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Hovered state -->
+    <item android:state_hovered="true">
+        <!-- Ripple ensures the click animation still plays when hovered -->
+        <ripple android:color="@color/color_on_surface_with_alpha_16">
+            <item>
+                <!-- Layer-list stacks the hover highlight on top of the base shape -->
+                <layer-list>
+                    <item android:drawable="@drawable/edit_icon_circle_background_base" />
+                    <item>
+                        <shape android:shape="oval">
+                            <solid android:color="@color/color_on_surface_with_alpha_12" />
+                        </shape>
+                    </item>
+                </layer-list>
+            </item>
+        </ripple>
+    </item>
+
+    <!-- Default state (includes touch press via the ripple) -->
+    <item>
+        <!-- Wrapping the base shape in a ripple ensures quick taps show visual feedback -->
+        <ripple android:color="@color/color_on_surface_with_alpha_16">
+            <item android:drawable="@drawable/edit_icon_circle_background_base" />
+        </ripple>
+    </item>
+
+</selector>
+

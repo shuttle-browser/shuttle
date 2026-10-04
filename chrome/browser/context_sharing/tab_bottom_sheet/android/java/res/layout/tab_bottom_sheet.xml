@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2026 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/tab_bottom_sheet"
+    tools:ignore="HardcodedText"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:focusable="true"
+    android:focusableInTouchMode="true">
+
+    <!-- Tab Bottom Sheet Content: Appears when BottomSheet is expanded -->
+    <FrameLayout
+        android:id="@+id/expanded_content_group"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="visible">
+
+        <!-- Empty Placeholder View (renders behind web_ui_container) -->
+        <org.chromium.components.browser_ui.widget.text.TextViewWithCompoundDrawables
+            android:id="@+id/empty_placeholder_container"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:drawablePadding="@dimen/tab_bottom_sheet_placeholder_drawable_padding"
+            android:padding="@dimen/tab_bottom_sheet_placeholder_padding"
+            android:textAppearance="@style/TextAppearance.TextMedium.Secondary"
+            android:visibility="gone" />
+
+        <!-- Web UI Container -->
+        <org.chromium.chrome.browser.tab_bottom_sheet.TabBottomSheetWebUiContainer
+            android:id="@+id/web_ui_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginTop="@dimen/tab_bottom_sheet_web_ui_top_margin"/>
+    </FrameLayout>
+
+    <!-- Peek View: Appears when BottomSheet is collapsed -->
+    <!-- The content includes the actor control view and the drag handle bar frame. -->
+    <FrameLayout
+        android:id="@+id/peek_view_container"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/tab_bottom_sheet_peek_height_total"
+        android:layout_gravity="top"
+        android:paddingTop="@dimen/tab_bottom_sheet_handle_area_height"
+        android:paddingBottom="@dimen/tab_bottom_sheet_peek_container_bottom_padding"
+        android:visibility="gone">
+    </FrameLayout>
+
+    <!-- Handle Bar: Positioned absolute last to win Z-indexing in FrameLayout -->
+    <ImageView
+        android:id="@+id/handle_bar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal|top"
+        android:layout_marginTop="@dimen/tab_bottom_sheet_handle_margin"
+        android:src="@drawable/drag_handlebar"
+        app:tint="@macro/drag_handle_color"
+        android:importantForAccessibility="no"/>
+</FrameLayout>

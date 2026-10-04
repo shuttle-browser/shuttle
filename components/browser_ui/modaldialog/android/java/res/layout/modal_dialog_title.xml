@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2018 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    style="@style/AlertDialogContent">
+
+
+    <androidx.appcompat.widget.AppCompatImageButton
+        android:id="@+id/title_back"
+        android:src="@drawable/ic_arrow_back_24dp"
+        android:layout_width="@dimen/min_touch_target_size"
+        android:layout_height="@dimen/min_touch_target_size"
+        android:layout_marginStart="0dp"
+        android:background="@drawable/default_icon_background"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/title_icon"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_gravity="center_vertical"
+        android:scaleType="fitCenter"
+        android:layout_marginEnd="8dp"
+        android:importantForAccessibility="no"
+        android:focusable="false"/>
+
+    <androidx.appcompat.widget.DialogTitle
+        android:id="@+id/title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical"
+        android:layout_weight="1"
+        android:gravity="center_vertical"
+        android:ellipsize="end"
+        android:textAppearance="@style/TextAppearance.AlertDialogTitleStyle"
+        android:textAlignment="viewStart" />
+
+    <org.chromium.ui.listmenu.ListMenuButton
+        android:id="@+id/title_more_button"
+        android:src="@drawable/ic_more_vert_24dp"
+        android:layout_width="@dimen/min_touch_target_size"
+        android:layout_height="@dimen/min_touch_target_size"
+        android:layout_marginEnd="0dp"
+        android:background="@drawable/default_icon_background"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/title_end_icon"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_vertical"
+        android:layout_weight="0"
+        android:scaleType="fitCenter"
+        android:layout_marginEnd="0dp"
+        android:importantForAccessibility="no"
+        android:focusable="false"
+        android:visibility="gone" />
+
+    <androidx.appcompat.widget.AppCompatImageButton
+        android:id="@+id/title_close_button"
+        android:src="@drawable/btn_close"
+        android:layout_width="@dimen/min_touch_target_size"
+        android:layout_height="@dimen/min_touch_target_size"
+        android:layout_marginEnd="0dp"
+        android:background="@drawable/default_icon_background"
+        android:contentDescription="@string/close"
+        android:visibility="gone" />
+</LinearLayout>

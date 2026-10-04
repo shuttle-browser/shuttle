@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Copyright 2026 The Chromium Authors
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Picture-In-Picture -->
+    <dimen name="actor_pip_padding_horizontal">16dp</dimen>
+    <dimen name="actor_pip_title_drawable_padding">4dp</dimen>
+    <dimen name="actor_pip_status_margin_top">4dp</dimen>
+
+    <!-- Actor Control Button Dimensions -->
+    <dimen name="actor_control_view_button_horizontal_padding">24dp</dimen>
+
+    <!-- Actor Border Glow -->
+    <dimen name="actor_glow_soft_blur">80dp</dimen>
+    <dimen name="actor_glow_soft_spread">30dp</dimen>
+    <dimen name="actor_glow_strong_blur">20dp</dimen>
+    <dimen name="actor_glow_strong_spread">4dp</dimen>
+
+    <dimen name="actor_gts_glow_soft_blur">40dp</dimen>
+    <dimen name="actor_gts_glow_soft_spread">10dp</dimen>
+    <dimen name="actor_gts_glow_strong_blur">12dp</dimen>
+    <dimen name="actor_gts_glow_strong_spread">2dp</dimen>
+
+    <!-- Actor Overlay Button Dimensions -->
+    <dimen name="actor_overlay_button_height">56dp</dimen>
+    <dimen name="actor_overlay_button_margin_top">16dp</dimen>
+    <dimen name="actor_overlay_button_padding_vertical">16dp</dimen>
+    <dimen name="actor_overlay_button_padding_horizontal">24dp</dimen>
+    <dimen name="actor_overlay_button_icon_size">24dp</dimen>
+    <dimen name="actor_overlay_button_icon_padding">8dp</dimen>
+    <dimen name="actor_overlay_button_corner_radius">100dp</dimen>
+    <dimen name="actor_overlay_button_glow_padding">20dp</dimen>
+
+    <!-- Glic/Actor button glow dimensions -->
+    <dimen name="actor_button_glow_soft_spread_x">3.0dp</dimen>
+    <dimen name="actor_button_glow_soft_spread_y">0.2dp</dimen>
+    <dimen name="actor_button_glow_strong_spread_x">1.2dp</dimen>
+    <dimen name="actor_button_glow_v_offset">0.8dp</dimen>
+    <dimen name="actor_button_glow_soft_blur">8dp</dimen>
+    <dimen name="actor_button_glow_strong_blur">2dp</dimen>
+</resources>
